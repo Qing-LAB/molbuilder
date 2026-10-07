@@ -7,9 +7,7 @@ first lines: :func:`cap_threads` sizes the run's threads and caps BLAS's
 before numpy is imported -- the variables are read when numpy loads -- so
 this module imports only the standard library at load: psutil, when the env
 has it, inside :func:`physical_core_count`, and cupy and gpu4pyscf inside
-:func:`probe_gpu`.  *(Until 2026-10-05 the thread set-up and the GPU probe
-were written into every script as text, emitted from here; user, "yes to
-#1".)*
+:func:`probe_gpu`.
 
 The rule it keeps -- no oversubscription, and the run says what it did.  A
 20-physical / 40-logical host ran at load 40 without it:
@@ -94,8 +92,7 @@ def physical_core_count() -> int:
 #: ONE LIST, read by both chains (`execution/running-a-job.md` § 3.2): the
 #: script's own, :func:`threads_for`, which ends on the node's cores, and the
 #: run script's, which `runwrap` builds from it and ends on the count stated at
-#: prep.  *(Each chain spelled it until 2026-10-05, held in step by a comment
-#: -- which is how the run script came to lack the last two.)*
+#: prep.
 THREAD_SOURCES = ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK", "PBS_NCPUS",
                   "NSLOTS")
 
@@ -271,6 +268,25 @@ def to_gpu(mf):
             "  and finishing on the CPU would make that announcement false.")
 
 
+def run_given(argv=None) -> int:
+    """THIS RUN'S NUMBER, as its run script gave it -- ``--run N`` on the
+    script's command line (`engines/pyscf.md` § 2): the number `launch`
+    decided, which the files the script names for one run carry where its
+    stage's names say so (`runfiles.RunNames`, rendered into the script as
+    templates).  A script started without one stops on its first lines,
+    saying so -- never a number guessed (plan W57 decision 6)."""
+    import sys
+    args = list(sys.argv[1:] if argv is None else argv)
+    for i, word in enumerate(args[:-1]):
+        n = args[i + 1]
+        if word == "--run" and n.isdigit() and (n == "0" or n[0] != "0"):
+            return int(n)
+    raise SystemExit(
+        "this script names its files with its run's number, --run N, which "
+        "its run script gives it -- 'molbuilder jobset launch' starts the "
+        "run script, and decides the number.")
+
+
 __all__ = [
     "GPU4PYSCF_MIN_COMPUTE_CAPABILITY",
     "RUNTIME_INFO_KEYS",
@@ -278,6 +294,7 @@ __all__ = [
     "cap_threads",
     "physical_core_count",
     "probe_gpu",
+    "run_given",
     "runtime_facts",
     "threads_for",
     "to_gpu",

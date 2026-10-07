@@ -1,26 +1,14 @@
-"""Selection blueprint -- rule evaluator + atoms + sidecar I/O (L2).
+"""Selection blueprint -- rule evaluator (L2).
 
 The selection system is layered:
 
   * L1 (:mod:`molbuilder.selection`) -- pure-Python rule dataclasses
     + evaluator + JSON round-trip.  Independent of Flask, used by
     engines + tests + this blueprint.
-  * **L2 (this module)** -- HTTP endpoints that turn a JSON rule
-    tree + a structure path into a list of selected atom indices,
-    plus the atom-list read and sidecar save endpoints.  Stateless:
+  * **L2 (this module)** -- HTTP endpoint that turns a JSON rule
+    tree into a list of selected atom indices.  Stateless:
     every request is self-contained, the server stores no per-user
     selection state.
-  * L3 (``lib/molview/_selection-store.js`` since Phase 9 /
-    2026-06-13) -- workspace-internal JS state holder (atoms,
-    selection, filters, mode, error).  One process-wide instance
-    owned by the workspace dispatcher; external consumers reach
-    it via ``window.molbuilder.workspace.selection.*``
-    (=``ws.selection.*``).  Posts to L2 only on ``applyFilter``
-    and ``writeLabel``; click toggles are client-side.
-  * L4 (``lib/selection-panel.js`` + ``lib/selection/viewer-adapter.js``)
-    -- DOM panel + 3Dmol overlay/click consumer.  Both consume
-    the L3 store via ``ws.selection.*`` and call its mutators on
-    user action.
 
 See ``docs/web/molview.md`` for the full module
 contract, including the public API surface of the store.
@@ -28,21 +16,8 @@ contract, including the public API surface of the store.
 Endpoints
 ---------
 
-``POST /api/selection/atoms``
-    Return the atom list for a structure (one row per atom, with
-    element + optional PDB metadata + region tags + fixed flag).
-    The panel fetches this once per structure load to populate the
-    card's scrollable atom list.
-
 ``POST /api/selection/eval``
-    Evaluate a rule against a structure on disk.
-
-    Body::
-
-        {
-          "structure_path": "/abs/path/to/relaxed.xyz"   (or .pdb),
-          "rule": {<rule-json>}
-        }
+    Evaluate a rule against the workspace's atoms.
 
     Response::
 
@@ -51,22 +26,6 @@ Endpoints
           "count": N,
           "n_atoms_total": M
         }
-
-The structure_path is validated against the same allow-list as the
-files blueprint (path must resolve inside a configured root); on
-failure the response is HTTP 400 with a JSON error.
-
-Reading the structure: dispatch by file extension --
-``.xyz`` -> :func:`Structure.from_xyz`,
-``.pdb`` -> :func:`Structure.from_pdb`.
-Any other extension is rejected at the endpoint boundary with a
-clear "unsupported structure extension" error.  If a
-``<basename>.molstruct.json`` sidecar sits next to the structure
-file, its ``regions`` + ``frozen_atoms`` are applied to the
-Structure so :class:`ByRegion` rules can resolve and the
-reserved ``frozen`` label on each atom-list row reflects the sidecar.
-Missing sidecar is fine -- selection still works for everything
-that doesn't reference a region.
 """
 
 from __future__ import annotations
@@ -81,19 +40,11 @@ from molbuilder.selection import (
 )
 from molbuilder.structure import Structure
 
-# NO PATH VALIDATOR, AND NOTHING THAT READS A FILE.  This blueprint took a
-# `structure_path`, resolved it inside the picker roots and read the pair
-# itself until 2026-09-07 -- a second reader that had drifted to applying
-# only the sidecar's `regions`.  The browser sends the atoms it is looking
-# at; there is no path to fence any more.
+# NO PATH VALIDATOR, AND NOTHING THAT READS A FILE: the browser sends the
+# atoms it is looking at.
 from .files import _PickerError
 
 bp = Blueprint("selection", __name__)
-
-
-# --------------------------------------------------------------------- #
-#  Structure loader                                                     #
-# --------------------------------------------------------------------- #
 
 
 _SUPPORTED_STRUCTURE_SUFFIXES = (".xyz", ".pdb")
@@ -153,12 +104,8 @@ def _struct_from_atoms(atoms: list) -> Structure:
             str(a.get("residueName") or a.get("residue_name") or "MOL"))
         # WHAT THE CALLER ACTUALLY HOLDS, when it holds it.  `by_atom_name`
         # and `by_chain_id` are rule kinds (`selection.py` ByAtomName /
-        # ByChainId); before 2026-09-07 this list carried neither, so
-        # `Structure` filled its defaults -- atom name = element symbol, chain
-        # = "A" -- and both rules answered 200 with a wrong answer rather than
-        # refusing.  Falling back to the same defaults keeps a caller that
-        # sends the older shape working; what changed is that a caller WITH
-        # the columns is now believed.
+        # ByChainId); a caller without the columns gets `Structure`'s
+        # defaults -- atom name = element symbol, chain = "A".
         atom_names.append(str(a.get("atomName") or a.get("atom_name")
                               or element))
         chain_ids.append(str(a.get("chainId") or a.get("chain_id") or "A"))
@@ -179,17 +126,12 @@ def selection_eval():
 
     Preferred body (Modify): ``{atoms: [...store atoms...], rule}`` -- evaluate
     against the IN-MEMORY workspace (`web/molview.md` § 9.5), so filters
-    reflect unsaved edits.  Legacy/Results body ``{structure_path, rule}`` still
-    loads the file on disk (a saved result legitimately lives there)."""
+    reflect unsaved edits."""
     try:
         payload = _parse_request_payload(request)
         # THE BROWSER SENDS THE ATOMS IT IS LOOKING AT.  MolView holds the
         # structure; a filter is answered against that, never against a file
-        # -- the file on disk may not be what is on screen, which is the bug
-        # `71729ff9` fixed ("assign a label in the panel, filter by it, and
-        # the filter read the stale saved file").  That commit added this
-        # branch and left the disk one beside it, for a case Results never
-        # used; the disk branch and its private reader are gone 2026-09-07.
+        # -- the file on disk may not be what is on screen.
         atoms = payload.get("atoms")
         if not isinstance(atoms, list):
             return _bad_request("missing 'atoms'")

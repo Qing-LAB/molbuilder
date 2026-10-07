@@ -29,8 +29,6 @@ word list, because that is where a word goes missing.
 
 A default here is never a judgement call.  `tests/test_siesta_keyword_smoke.py`
 asks the shipped binary what the engine does and asserts this side follows.
-The two defaults that were invented instead were both wrong, and one of them
-refused a correct junction.
 
 **Refusing beats assuming.**  A wrong factor is invisible in the result and
 wrong by a fixed ratio in every number downstream, so an unknown unit raises

@@ -1,7 +1,6 @@
 {#- molbuilder Projects sidebar -- always-visible left panel.
 
-   Included by every main tab template (index, modify, spectra,
-   results) after _app_header.html.
+   Included by every main tab template after _app_header.html.
 
    Behaviour contract:  lib/projects/projects-sidebar.js -- the "inquire model"
      * exposes window.molbuilder.projects.{getCurrentDir, getCurrentFile,
@@ -9,13 +8,11 @@
      * NO tab-specific buttons (no "Open in <Tab>"); the sidebar is a
        pure file browser + state holder + file-MANIPULATION widget.
 
-   File-manipulation buttons (v1 ships just one):
-     * "+ New subdir" -- POST /api/files/mkdir; validated against the
-       projects naming rules (regex for project/structure names,
-       CANONICAL_TOPICS for the topic level).
+   File-manipulation buttons: the create bar below
+   (lib/projects/mutation-bar.js).
 -#}
-{#- Narrow-viewport drawer scaffolding (task #182, 2026-06-02).
-    These two elements are CSS-hidden above the 640 px breakpoint;
+{#- Narrow-viewport drawer scaffolding.
+    These two elements are CSS-hidden above the 785 px breakpoint;
     below it, the toggle button is fixed at top-left and the
     backdrop appears when the sidebar is open.  Behaviour wired in
     ``lib/projects/projects-sidebar.js``.  See the docstring on the drawer
@@ -47,7 +44,7 @@
     (page-shell.css).  Every tab is in the shell today. -#}
 <div class="sidebar-rail">
 <aside class="projects-sidebar dock-panel" id="projects-sidebar" aria-label="Projects file explorer">
-  {#- Width-resize handle (2026-06-12).  Thin strip on the right edge;
+  {#- Width-resize handle.  Thin strip on the right edge;
       drag to resize the sidebar.  Width persists to localStorage so
       it survives reloads.  CSS-hidden when the sidebar is collapsed
       or on narrow viewports (drawer mode). -#}
@@ -60,7 +57,7 @@
       SAME vertical mid-height.  This one lives INSIDE the aside on its right
       (moving) edge, so it slides off WITH the sidebar; clicking hides the
       sidebar and the reopen ▶ appears at the left edge at the same height.
-      ◀ = "push the panel out".  Visible only >= 640 px (the mobile drawer
+      ◀ = "push the panel out".  Visible only >= 786 px (the mobile drawer
       toggle handles narrow viewports).  State persists in sessionStorage. -#}
   <button type="button" id="ps-collapse-toggle"
           class="ps-edge-tab ps-edge-tab--collapse"
@@ -72,9 +69,9 @@
     <h2 class="ps-title">Projects</h2>
   </header>
 
-  {#- 2026-06-12 Mutation bar: three SEPARATE buttons (replaces the
-      earlier "+" dropdown menu).  Each button opens a modal dialog
-      directly — no dropdown, no extra click.  Depth-aware: New
+  {#- Mutation bar: SEPARATE buttons.  New project / New folder /
+      Upload each open a modal dialog directly — no dropdown, no
+      extra click.  Depth-aware: New
       folder + Upload disable themselves at the projects/ root.
       See lib/projects/mutation-bar.js for the wiring + web/projects.md
       § 4. -#}
@@ -133,7 +130,7 @@
               title="Clear filter"
               aria-label="Clear filter" hidden>×</button>
     </span>
-    {#- Run-history toggle (2026-08-19): exists only for a run dir
+    {#- Run-history toggle: exists only for a run dir
         (one holding a `task.json`, or already holding a history -- 
         `/api/checkpoint/state` says which).  Its color IS the checkpoint status (uninit /
         clean / dirty / error -- the same tokens as the sensor pill),
@@ -150,7 +147,7 @@
     <!-- Current-directory entries inserted by projects-sidebar.js. -->
   </ul>
 
-  {#- Run-history view (2026-08-19): shares the file-list space --
+  {#- Run-history view: shares the file-list space --
       #ps-checkpoint-toggle in the filter bar swaps this section and
       #ps-list.  Surfaces the checkpoint repo state + history for the
       current run directory.  Drives:
@@ -183,8 +180,8 @@
     </div>
 
     <!-- Action bar: shown when initialised.  Primary actions + view
-         toggle (List / Graph -- defaults to List in Phase 2, Graph
-         becomes available once @gitgraph/js loads in Phase 3). -->
+         toggle (List / Graph -- defaults to List; the graph is drawn
+         by @gitgraph/js). -->
     <div class="ps-checkpoint-actions" id="ps-checkpoint-actions" hidden>
       <button type="button" id="ps-checkpoint-commit-btn"
               class="ps-checkpoint-action"
@@ -242,9 +239,9 @@
 
   <section class="ps-actions" id="ps-actions"
            aria-label="Current selection">
-    <!-- Status display only.  Per-file actions (preview / delete)
-         live ON the entries themselves -- hover-revealed buttons in
-         the list rows.  Tabs that need the selection inquire via
+    <!-- Status display only.  Per-file actions live ON the entries
+         themselves -- the per-entry ⋯ menu.  Tabs that need the
+         selection inquire via
          window.molbuilder.projects.getCurrentFile(). -->
     <p class="ps-selection">No file selected.</p>
   </section>
@@ -255,10 +252,9 @@
 </div>{#- /.sidebar-rail -#}
 
 <!-- File-preview modal (lives outside the sidebar so it can float
-     centered over the whole page).  Hidden by default; opened by the
-     sidebar's Preview button + closed by Escape / Close button /
-     backdrop click.  Read-only in v1 -- the Save button is visible
-     but disabled so the future feature surface is reviewable. -->
+     centered over the whole page).  Hidden by default; opened from an
+     entry's menu (View) + closed by Escape / Close button / backdrop
+     click. -->
 <div id="ps-preview-modal" class="ps-preview-modal" hidden
      role="dialog" aria-modal="true" aria-labelledby="ps-preview-title">
   <div class="ps-preview-backdrop"></div>
@@ -281,7 +277,7 @@
     <p id="ps-preview-error" class="ps-preview-error" role="alert"></p>
     <p id="ps-preview-status" class="ps-preview-status"></p>
     <footer class="ps-preview-footer">
-      {#- Find button (2026-06-12).  Opens CodeMirror's vendored
+      {#- Find button.  Opens CodeMirror's vendored
           search dialog (Ctrl-F / Cmd-F when the editor is focused;
           this button is the discoverable entry point so users
           don't have to know the keybinding).  Hotkey reminders

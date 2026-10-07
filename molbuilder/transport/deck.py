@@ -1,7 +1,7 @@
 """The transport calculation's deck — SIESTA, on the framework's seam.
 
 Contract: [`engines/transport.md`](?doc=engines/transport.md) §§ 3.2, 3.6, 6.1
-(what transport's decks are and why they were not on the seam) +
+(what transport's decks are) +
 `script-preparation.md` § 4 (the seam this serves).
 
 WHAT THIS IS.  ``transport_spec(struct, cfg, stage_token)`` returns the
@@ -10,61 +10,33 @@ It is the exact shape :mod:`molbuilder.pyscf.vibration_deck` has for
 ``calculation = "vibration"``: the KIND is a render argument, the seam stays
 ONE per engine, and the kind's own module owns its layout.
 
-WHY IT EXISTS.  `transport.md` § 3.2 measured the cost of transport never
-joining floor 3: ``transport/transiesta.py::render_script`` (2026-06-10)
-predates the render pipeline (2026-08-19) and concatenates literal
-f-strings, so the keyword set is fixed in code — **13 keywords and 4 blocks
-against a template offering 45 deck-reaching items**.  Twenty-one SIESTA
-keywords with catalogue rows could reach no transport deck at all, among them
-``MaxSCFIterations`` and ``DM.Tolerance``: absent from the file, so SIESTA
-used its own defaults and a seed ran to 1000 iterations and died
-``SCF_NOT_CONV`` with no way for anyone to ask for a looser budget.
+WHY IT EXISTS.  A transport rung's deck is rendered on the seam, so every
+item its sections name reaches it from the template; a keyword absent from
+the file would run at SIESTA's own default with no way to ask for another
+(`transport.md` § 3.2).
 
-THE LIFT, and its boundary.  :mod:`molbuilder.pyscf.vibration_deck` set the
-direction — *"a move, not a rewrite"* — and that holds for the one piece where
-it can: ``_emit_geometry`` is imported and composed unchanged.  **The other two
-blocks are honest rewrites**, and saying otherwise would be this module lying
-about itself: ``_emit_seed_header`` restates the old header's text, because
-its original read a ``TransportConfig`` and this reads the engine's own
-config.  *(The k-point block was a third rewrite until 2026-09-30; every
-rung's mesh is the k-point mesh's now, `kmesh.py`.)*  The old
-seed emitter is DELETED rather than left beside them, so the reflowed text
-exists in one place.
-The boundary is drawn by a single question, and it is the question
-`script-preparation.md` § 4.1 asks:
+THE BOUNDARY between items and blocks is drawn by a single question, and it
+is the question `script-preparation.md` § 4.1 asks:
 
 * **a keyword with a value is a SECTION ITEM**, resolved from its catalogue
-  declaration.  This is the whole fix: the 21 arrive because
+  declaration.  The template's items arrive because
   :mod:`molbuilder.siesta.layout`'s sections already name them, and transport
   is a calculation KIND on the siesta engine (39 shared rows, measured in
   § 3.3) so it reuses those sections rather than restating them.
 * **structural text is a BLOCK** — the coordinate table, ``%block TS.Elecs``
-  and the reservoir blocks.  Those are lifted whole; a block whose VALUES are
+  and the reservoir blocks.  Those are written whole; a block whose VALUES are
   catalogue items (the T(E) window) asks each value through the framework's
   door and writes it with its note.
 
-``_emit_basis_and_xc`` is therefore NOT lifted: its six keywords are exactly
-``BASIS_SECTION`` + ``XC_SECTION`` + ``electronic_temperature``, and lifting
-it beside them would write each twice — which ``layout.check_rules`` now
-catches ("written twice with different values"), because a migrated deck gets
-the engine's check gate for the first time.
-
-NO ADAPTER ANY MORE.  The lifted NEGF emitter read a ``TransportConfig``,
-so this module projected the engine's config into one (``_legacy_view``) --
-the last place the two vocabularies met.  Since 2026-09-29 its VALUES are
-catalogue items written by the section walk with their notes (the three
-sections below), and what is left of it -- the electrode and reservoir
-declarations -- reads the engine's own config
-(`engines/transport.md` § 6.1b).
+The NEGF settings are catalogue items written by the section walk with their
+notes (the three sections below); the electrode and reservoir declarations
+read the engine's own config (`engines/transport.md` § 6.1b).
 
 **ALL FIVE RUNGS ARE ON THE SEAM.**  Four deck shapes serve them
-(:data:`SHAPE_OF_RUNG`), and each is a layout in this module.  The seam
-question that held ``electrode`` and the NEGF rungs back — *what does a composite
-kind hand its renderer, when the deck describes something the citation was
-composed into?* — is answered, and the answer is that it hands a
-**structure**, like every other kind: `prep` picks WHICH structure the rung
+(:data:`SHAPE_OF_RUNG`), and each is a layout in this module.  A composite
+kind hands its renderer a **structure**, like every other kind: `prep` picks WHICH structure the rung
 describes (the junction, or the lead taken out of it by its region label) and
-``spec_for(struct, cfg, stage_token=)`` is unchanged.  Nothing reaches for the
+``spec_for(struct, cfg, names=)`` is unchanged.  Nothing reaches for the
 ``ComposedJunction`` from inside here.
 
 Which shape a rung gets is a TABLE.  Choosing the LAYOUT for a shape is a
@@ -476,7 +448,7 @@ def _seed_layout(derived, frame, state_block):
 
 
 # ===================================================================== #
-#  The blocks — structural text, lifted.                                #
+#  The blocks — structural text.                                        #
 # ===================================================================== #
 
 def _emit_seed_header(struct, cfg) -> str:
@@ -505,40 +477,30 @@ def _geometry_block(frame):
 def _emit_geometry_block(struct, cfg, frame=None) -> str:
     """Cell + coordinates + the region/annotation metadata.
 
-    Lifted whole: no parameter models a coordinate table, which is what
+    Written whole: no parameter models a coordinate table, which is what
     :class:`~molbuilder.script_emit.Block` is for.
     """
     from .transiesta import _emit_geometry
 
     # NO `emit_atom_metadata` CALL HERE.  The FRAMEWORK emits that fence
     # once, in the record section (`script_emit.py`, the only caller among
-    # the engines).  `_render_seed` called it itself because it was not on
-    # the seam and nothing else would; lifting that call produced the fence
-    # TWICE with different provenance, and `_extract_atom_metadata_dict`
-    # stops at the first END marker -- so the in-body copy won and the
-    # framework's richer one was dead text.  Two on-disk sources of truth
-    # for the region partition the whole ladder is built on.
+    # the engines): `_extract_atom_metadata_dict` stops at the first END
+    # marker, so a second copy here would win over the framework's.
     # `cfg` THROUGH, because the species order is a value a person may set
-    # and this block writes `ChemicalSpeciesLabel`.  It was received and
-    # dropped here, which is the whole of why `species_order` reached every
-    # SIESTA deck and no transport deck (`model/chemistry.md` § 3a).
+    # and this block writes `ChemicalSpeciesLabel` (`model/chemistry.md` § 3a).
     return "\n".join(_emit_geometry(struct, cfg=cfg, frame=frame))
 
 
 def _emit_restart_group(struct, cfg) -> str:
     """``DM.UseSaveDM`` / ``MD.UseSaveXV`` — written in BOTH states.
 
-    `siesta/input.py` records the measured reason this is not optional:
-    *"SIESTA reads `<SystemLabel>.DM` when the file is there whatever the deck
-    omits."*  A deck that says nothing therefore warm-starts from whatever the
-    directory happens to hold, which is how a rung told to start clean
-    silently continued.  The old transport seed omitted the group entirely and
-    its own docstring claimed *"the seed itself starts fresh"* — a claim the
-    file could not keep.
+    SIESTA reads `<SystemLabel>.DM` when the file is there whatever the deck
+    omits (`siesta/input.py`, `_restart_group_lines`), so a deck that says
+    nothing warm-starts from whatever the directory holds.
 
     The keys and the on/off come from the ONE declaration
-    (:func:`molbuilder.siesta.input._restart_group_lines`), so this cannot
-    drift from what `warm_declaration("seed", …)` promises to carry.
+    (:func:`molbuilder.siesta.input._restart_group_lines`).  The seed relaxes
+    nothing, so it has no CG history to answer for.
     """
     from ..siesta.input import _restart_group_lines
 
@@ -554,20 +516,18 @@ def _emit_restart_group(struct, cfg) -> str:
         "# density, which is what `--from` carries and what makes re-running",
         "# an unconverged seed cheap.  It is never the device's: the arrow",
         "# runs the other way (seed .DM -> device SCF).",
-        *_restart_group_lines(cfg),
+        *_restart_group_lines(cfg, relax_type="none"),
         "",
     ])
 
 
 def _emit_solver_note(struct, cfg) -> str:
-    """Why the seed solves with ``diagon`` — restored from the deck this
-    layout replaced.
+    """Why the seed solves with ``diagon``.
 
     ``SCF_SECTION`` is the ENGINE's object, shared with every other kind, so
     its ``solution_method`` help is necessarily a generic three-option menu.
-    The transport-specific half — *the seed must NOT be transiesta* — lived at
-    the keyword in the old hand-written deck and was lost when the generic
-    section took over.  It goes back adjacent to the value, because that is
+    The transport-specific half — *the seed must NOT be transiesta* — sits
+    adjacent to the value, because that is
     where someone about to edit the value will read it, and it is a Block
     rather than a note on the section because mutating a shared section would
     put this text into every kind's deck.
@@ -645,7 +605,7 @@ def transport_spec(struct: Structure, cfg, *,
     ``getattr(config, name)``.  That is not a preference: an item whose name
     is not a field on the config resolves to ``None`` *silently*, so a
     transport deck rendered from a config with different field names would
-    quietly omit every one of the 21 rather than fail.
+    quietly omit every catalogue item rather than fail.
     """
     rung = rung_of(stage_token)
     shape = SHAPE_OF_RUNG.get(rung)
@@ -655,10 +615,6 @@ def transport_spec(struct: Structure, cfg, *,
             f"{', '.join(SHAPE_OF_RUNG)} (engines/transport.md 4.2).  "
             f"`prep` names the rung and hands it down as `stage_token`.")
 
-    # NO SECOND REFUSAL HERE.  One stood between these two lines, for a shape
-    # "not on the seam yet" -- and `SHAPE_OF_RUNG`'s value set is exactly the
-    # four keys below, so it could not fire.  It was the last text describing
-    # a migration this module has finished.
     # THE ONE STATE of the calculation (`science/chemistry-correctness.md`
     # § 2a): `prep` resolves it ONCE, on the whole junction, and hands it to
     # every rung -- a rung's own structure (a lead, the device) is not where
@@ -750,9 +706,7 @@ def _contour_facts(cfg) -> dict:
 def _state_block(state, *, on_junction: bool):
     """WHERE THE CHARGE AND SPIN CAME FROM, in every rung's deck
     (`science/chemistry-correctness.md` § 2a.5, ES2) -- each value beside its
-    source, as the optimization deck writes them.  The rungs wrote none until
-    the M6 review, and the spin `prep` handed them read as *stated* whatever
-    decided it."""
+    source, as the optimization deck writes them."""
     t, c, q = state.spin_treatment, state.unpaired_electrons, state.net_charge
 
     def emit(struct, cfg) -> str:

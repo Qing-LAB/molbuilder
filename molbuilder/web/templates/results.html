@@ -34,8 +34,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/bench-summary.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/transport.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/fc-sweep.css') }}">
-{# 3Dmol: structure + trajectory inspectors both mount a viewer.
-   Plotly: trajectory inspector charts energy / force / SCF traces. #}
+{# Plotly: trajectory inspector charts energy / force / SCF traces. #}
 <script src="{{ url_for('vendor_plotly_js') }}"></script>
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    Defines window.molbuilder.runtime (register/whenReady).  See
@@ -73,11 +72,9 @@
      mount (sorted newest-first).  ALWAYS VISIBLE -- even when zero
      result files exist yet -- so the user can hit Reload after
      starting a job without having to leave + return to /results
-     to recover the button (2026-06-15, supersedes the original
-     single-entry-dropdown hiding rule).  The only path that
-     hides the bar is the registry-unavailable fallback in
-     file-picker.js, which is a load-order error.  Replaced the
-     in-trajectory dropdown (2026-06-01). #}
+     to recover the button.  The only path that hides the bar is
+     the registry-unavailable fallback in file-picker.js, which is
+     a load-order error. #}
   <div id="results-file-picker-bar" class="result-list-bar">
     <label class="result-list-label" for="results-file-picker-select">
       Result file:
@@ -139,15 +136,6 @@
          results/viewer.js::_renderLadder from `/api/results/dir` ->
          `ladder`; hidden for anything that is not a root. #}
       <div class="results-ladder" hidden></div>
-      {# Two corrections, both 2026-09-19.  "Navigate the sidebar to a
-         directory that contains result files" stopped being an instruction
-         when browsing stopped moving this panel -- navigating is now step
-         one of two, and the button is step two.  And "if the dropdown is
-         hidden, the directory has no result files yet" was never true of
-         this page: the bar is ALWAYS VISIBLE (see the comment above it) and
-         hides only when the inspector scripts fail to load, so a user with
-         an empty folder read that sentence, saw a dropdown, and concluded
-         the folder had results. #}
       <p class="inspector-card-note">
         Open a directory in the <strong>Projects</strong> sidebar on the
         left, then click <strong>Reload from current project dir</strong>.
@@ -198,22 +186,9 @@
     </div>
   </section>
 
-  
-  {#- The "Bundle for next stage" card stood here until 2026-08-29.
-      Calculation-to-calculation passing is RETIRED (user ruling): a
-      calculation that builds on a finished result CITES it -- the
-      transport composite picks its junction attempt actively
-      (archive/2026-09-01-transport-design.md 4.1) -- rather than receiving a
-      bundled copy.  Structure->execution hand-overs (builder/modify ->
-      parameter tab -> Task setup) are a different thing and stay. -#}
-
   {# System-load monitor lives INSIDE the results-main flow so it
      stays within the Results-tab panel and never overlaps plots /
-     inspector content.  Foldable; collapse stops polling.  Pre-
-     2026-06-17 user-report-2 it was outside <main> with
-     ``position: fixed; bottom: 0`` and overlapped inspector content
-     even with scroll-padding compensation -- the user's "still
-     occupies space" complaint.  PR 5 moves it in-flow. #}
+     inspector content.  Foldable; collapse stops polling. #}
   {% include "_system_load_monitor.html" %}
 
 </main>
@@ -233,25 +208,23 @@
    ``.log`` / ``.json``).  See lib/inspectors/registry.js §
    "Ordering".  Pinned by
    tests/test_results_blueprint.py::TestInspectorRegistrationOrder. #}
-{#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js. -#}
+{#- The 3Dmol embed is an ES module imported by molview/index.js. -#}
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 {# The FULL MolView module (web/molview.md § 4 + § 9.1: mount is the only import) -- the structure inspector mounts it
-   READ-ONLY via molview.mount's empty-host build path (same script set + dependency order
-   as the /molview-demo template, molview/demo.js), including the persistence dispatcher.
+   READ-ONLY via molview.mount's empty-host build path, including the persistence dispatcher.
    The Results view is a session like any other consumer: its state (opened file, current
    frame, selection, camera) persists + restores on reload.  "Read-only" means no EDIT
    controls, NOT no persistence. #}
 {# The shared MolView + workspace stack -- ONE include, not a pasted copy
    (_molview_scripts.html: vendor 3Dmol + molview/index.js + workspace/dispatcher.js +
-   warning-modal + region-label-definitions).  The old pasted copy here had DIVERGED --
-   it omitted warning-modal.js. #}
+   warning-modal). #}
 {% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/inspectors/lifecycle.js') }}"></script>
 {#- The one element builder the record viewers below share (bench-summary,
     transport, fc-sweep); before them, since they are deferred. -#}
 <script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
-{# An ES module now: it exports `render`/`clear` for the modules that import
+{# An ES module: it exports `render`/`clear` for the modules that import
    it (lib/molview) and still publishes `molbuilder.validationFindings` for the
    classic scripts on this page.  `type="module"` defers it, which costs those
    nothing -- all three read the namespace at call time, inside a handler. #}
@@ -295,15 +268,14 @@
 <script type="module" src="{{ url_for('static', filename='lib/inspectors/structure.js') }}"></script>
 {# Markdown inspector (.md) -- split-pane editor + live preview.
    Registered BEFORE source.js so .md files dispatch to the rich
-   editor rather than the read-only paginated viewer.  See task #32.
+   editor rather than the read-only paginated viewer.
 
    `defer` IS LOad-BEARING, not tidiness.  Registration order decides which
    inspector claims a file (registry.js: "more specific predicates MUST
    register before more general ones"), and a plain classic script runs during
    PARSING while a `type="module"` script is deferred to after it -- so the two
    module inspectors above would register AFTER these two catch-alls, and
-   `.spectra.json` would be claimed by the read-only text viewer.  It was, for
-   about an hour on 2026-08-05.  `defer` puts a classic script in the same
+   `.spectra.json` would be claimed by the read-only text viewer.  `defer` puts a classic script in the same
    queue as a module, so the whole group runs in DOCUMENT order and the order
    you read here is the order that happens. #}
 <script defer src="{{ url_for('static', filename='lib/inspectors/markdown.js') }}"></script>

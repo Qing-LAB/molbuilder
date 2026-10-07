@@ -78,8 +78,7 @@ def calc_dir(isolated_projects_root_module):
         yield d
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
-        # removes.  It used to sit in the developer's real `projects/`, so a
-        # crashed run left a folder behind in their own data.
+        # removes.
         pass
 
 
@@ -96,8 +95,7 @@ def _open(page, base, calc, ready='input[aria-label="tight kgrid"]'):
     `projects.md` § 5's hand-off writes the TARGET page's own selection slot
     and the sidebar restores from it at init.  Calling ``navigateTo`` after
     load instead is a race the sidebar wins: ``restoreSelection`` runs
-    second and puts the tree back at the projects root, which is how this
-    test first "opened a folder with no description in it".
+    second and puts the tree back at the projects root.
     """
     slot = json.dumps(str(calc))
     page.add_init_script(
@@ -125,10 +123,8 @@ def _described(page):
 def _type(page, cell, text):
     """Commit a value into one cell, and WAIT FOR THE MODEL TO TAKE IT.
 
-    A fixed pause here was flaky in both directions -- the assertion read
-    the editor either before ``syncFromModel`` had repainted it or after,
-    depending on the machine.  The repaint IS the signal: the editor's
-    bytes changing means the keystroke reached the description.
+    The repaint IS the signal: the editor's bytes changing means the
+    keystroke reached the description.
     """
     sel = f'input[aria-label="{cell}"]'
     before = page.evaluate(
@@ -144,9 +140,7 @@ def _type(page, cell, text):
 def test_a_typed_k_grid_lands_as_three_numbers(page, flask_server, calc_dir,
                                                typed):
     """All three spellings, because a person writes a k-grid all three ways
-    and the field means the same thing each time.  (They came from
-    ``--kgrid``, deleted with `molbuilder fdf`; the table is the only
-    place a k-grid is typed now.)"""
+    and the field means the same thing each time."""
     _open(page, flask_server, calc_dir)
     _type(page, "tight kgrid", typed)
     got = _described(page)["stages"][0]["overrides"]["kgrid"]
@@ -168,7 +162,7 @@ def test_the_k_grid_is_not_stored_as_text(page, flask_server, calc_dir):
 def test_an_emptied_cell_still_removes_the_override(page, flask_server,
                                                     calc_dir):
     """Absent means *this stage uses the template's value* (`stages.md`
-    § 6.2), and the reader rewrite must not have cost that branch."""
+    § 6.2)."""
     _open(page, flask_server, calc_dir)
     _type(page, "tight kgrid", "4,4,1")
     assert "kgrid" in _described(page)["stages"][0]["overrides"]
@@ -224,8 +218,7 @@ def bool_column_dir(isolated_projects_root_module):
         yield d
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
-        # removes.  It used to sit in the developer's real `projects/`, so a
-        # crashed run left a folder behind in their own data.
+        # removes.
         pass
 
 
@@ -234,21 +227,10 @@ def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
     """**A value's look must never pick the widget** *(user, 2026-08-20)*.
 
     The tests above are the READING half of that rule — text typed into a
-    cell is parsed by the column's declared type, driven under node in
-    ``test_task_setup_cell_readers_js.py``.  This is the OFFERING half:
+    cell is parsed by the column's declared type.  This is the OFFERING half:
     `write_coor_xmol` is declared `bool`, so the catalogue already knows its
     only two answers and the cell must present them rather than invite a
-    person to spell one.  (It was `write_forces` until 2026-09-29, when the
-    rung came to fix that one and it stopped being a column,
-    `engines/template.md` § 6.4.)
-
-    *Replaces the `legalValues` third of
-    ``test_task_setup_tab.py::test_the_viewer_dispatches_widgets_on_the_
-    shape_not_the_look``, retired 2026-09-03 (`process/testing.md`
-    § 3a.1).*  That pin counted call sites — ``src.count("legalValues(") >=
-    3`` — to conclude "both surfaces ask the one widget rule".  A count
-    cannot tell a call that runs from one moved into a branch nothing
-    reaches, and three of anything is not a behaviour.
+    person to spell one.
     """
     _open(page, flask_server, bool_column_dir,
           ready='[aria-label="tight write_coor_xmol"]')
@@ -275,9 +257,8 @@ def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
 
 @pytest.fixture
 def out_of_set_dir(isolated_projects_root_module):
-    """A vibration whose relax rung holds a relaxer the kind no longer
-    offers -- a description written before 2026-09-30, when `Verlet` was
-    offered to every kind (`engines/template.md` § 6.3a)."""
+    """A vibration whose relax rung holds a relaxer the kind does not
+    offer (`engines/template.md` § 6.3a)."""
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.task import (Stage, StructureRef, Task, derive_run,
                                  write_task)

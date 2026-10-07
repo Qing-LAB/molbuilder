@@ -2,9 +2,8 @@
  * transport_calculation.html.  Page-specific layout for the cite/bias/send
  * rows and the viewer host.  Everything shared lives in the lib sheets
  * (tokens / page-shell cards+buttons / form-schema fieldsets /
- * form-components .full-btn + the chemistry card) -- created 2026-07 when the
- * template's inline styles + ownerless classes were pulled in here
- * (`web/ui-contract.md`: no inline styles, page sheets page-only). */
+ * form-components .full-btn + the chemistry card) -- `web/ui-contract.md`:
+ * no inline styles, page sheets page-only. */
 
 .action-row {
     display: flex;
@@ -13,7 +12,7 @@
     margin-top: var(--space-md);
 }
 
-/* THE ONE OFFER (2026-08-29): inverted electrode labels are a naming
+/* THE ONE OFFER: inverted electrode labels are a naming
  * mistake with a one-click fix, so card 1 shows the reason and the
  * button together.  Reason first, action under it -- and the action is
  * `.full-btn` like every other button on this page, held to its own
@@ -30,8 +29,7 @@
  * rule): core.js hides this row with `.hidden = true`, and any
  * class/id rule setting a non-none display ties the UA's
  * `[hidden] { display: none }` on specificity and wins on source
- * order -- leaving an empty ghost panel on every citation.  Caught by
- * test_css_hidden_attribute_audit on the first run, 2026-08-29. */
+ * order -- leaving an empty ghost panel on every citation. */
 #transport-junction-fix[hidden] {
     display: none;
 }
@@ -42,12 +40,3 @@
     padding-right: var(--space-md);
 }
 
-/* (The generated-script preview rules that stood here died with the
- * Generate lane, 2026-08-29 -- the composite tab renders nothing; prep
- * does, on the machine that runs it.  P7b review.) */
-
-
-/* The viewer host's overflow rule lives with the module that needs it
-   (`lib/molview/molview.css`, `.molviewer-host`) -- it was this same 18-line
-   comment and one declaration in TWO tab sheets, differing only in the id.
-   `ui-contract.md` § 1: a widget used on more than one page has one owner. */

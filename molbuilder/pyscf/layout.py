@@ -44,8 +44,7 @@ SCF_SECTION = Section(
 #: The level of theory above the SCF class, in the order PySCF needs it
 #: applied to ``mf``: the functional and its integration grid (Kohn-Sham DFT
 #: only -- Hartree-Fock has neither), density fitting and the dispersion
-#: correction (every method).  It was ``DFT_SECTION`` until 2026-09-28, which
-#: named two of its four items for a method class they are not limited to.
+#: correction (every method).
 THEORY_SECTION = Section(
     "Functional, density fitting, dispersion",
     ("functional", "grid_level", "density_fit", "dispersion"),
@@ -97,9 +96,7 @@ def scf_class(state) -> str:
     with ``mol.spin != 0`` silently becomes ROKS inside PySCF
     (``pyscf/dft/__init__.py``), a setting that changes without a word.
 
-    THE one composition, read by both decks.  Until 2026-09-28 the class
-    WAS the ``method`` field, and four readers mapped its first letter to
-    restricted or unrestricted in their own words."""
+    THE one composition, read by both decks."""
     return (_SCF_LETTERS[state.spin_treatment.value]
             + ("KS" if state.method.value == "DFT" else "HF"))
 
@@ -115,8 +112,7 @@ def hard_scf_hint(state) -> list:
     -- the most common reason such an SCF will not converge -- and nothing
     for a clean organic, where the line would be noise.  Discoverable, not
     prescriptive: a person uncomments and tunes it.  THE one wording, read by
-    the optimization and the vibration deck (two copies until the M6
-    review)."""
+    the optimization and the vibration deck."""
     metals = state.facts.open_d_metals
     if not metals:
         return []
@@ -129,6 +125,19 @@ def hard_scf_hint(state) -> list:
             "# mf.level_shift = 0.2"]
 
 
+#: The SCF tolerances, written to two significant figures (`pyscf.md` § 7.1).
+_TOLERANCES = ("scf_conv_tol", "scf_conv_tol_grad")
+
+
+def as_written(name: str, value):
+    """``value`` as the deck writes it -- a tolerance to two significant
+    figures, anything else unchanged -- so the record states what was
+    asked in the deck's own spelling."""
+    if name in _TOLERANCES and value:
+        return float(f"{value:.1e}")
+    return value
+
+
 def line(cfg, *, is_dft: bool):
     """**Door 2 — the engine's syntax, and there is one of it.**
 
@@ -136,11 +145,7 @@ def line(cfg, *, is_dft: bool):
     the SCF settings, the level of theory, and geomeTRIC's convergence
     targets.
 
-    **It was three functions until 2026-08-18** -- ``line``, ``dft_line`` and
-    ``geom_line`` -- and that is why the writer built a separate ``DeckSpec``
-    per section: a spec carries ONE ``line``, so sections needing different
-    syntax could not share one.  The framework was being worked around rather
-    than used, and the whole-deck runner was unreachable as a result.  Three of
+    A spec carries ONE ``line``, so every section shares it.  Three of
     the items depend on more than their own value, which is what the closure is
     for: the signature stays one-parameter-in, one-line-out, and context the
     engine needs is captured where the engine knows it.
@@ -152,7 +157,7 @@ def line(cfg, *, is_dft: bool):
 
     ``None`` means *not emitted for this configuration*, and it is the whole
     conditionality mechanism: no predicate table, and no ``if`` in the
-    framework.  Three of the seven decline on their own terms --
+    framework.  Among those that decline on their own terms --
 
     * ``scf_conv_tol_grad`` when it is not set, because PySCF derives it from
       the energy tolerance (``scf.hf.kernel``: ``if conv_tol_grad is None:
@@ -179,7 +184,7 @@ def line(cfg, *, is_dft: bool):
         # parameters fitted for it, and PySCF applies `mf.disp` to an HF
         # object through the energy, the gradient and the Hessian, reading
         # the method as 'hf' (`scf/dispersion.py`, `grad/rhf.py`,
-        # `hessian/rhf.py`).  Until 2026-09-28 it was dropped under HF.
+        # `hessian/rhf.py`).
         if name == "functional":
             return f'mf.xc = "{value}"' if is_dft else None
         if name == "grid_level":
@@ -210,11 +215,11 @@ def line(cfg, *, is_dft: bool):
 
     def _scf(name, value):
         if name == "scf_conv_tol":
-            return f"mf.conv_tol  = {value:.0e}"
+            return f"mf.conv_tol  = {value:.1e}"
         if name == "scf_conv_tol_grad":
             if not value or value <= 0:
                 return None
-            return f"mf.conv_tol_grad = {value:.0e}    # set explicitly"
+            return f"mf.conv_tol_grad = {value:.1e}    # set explicitly"
         if name == "scf_max_cycle":
             return f"mf.max_cycle = {value}"
         if name == "scf_init_guess":
@@ -236,22 +241,22 @@ def check_rules(text: str, struct=None, cfg=None):
 
     **It parses.**  A generated Python program that does not compile is a run
     that dies on the queue after the wait, and the failure is always the same
-    shape: an escape mangled while building the emitter's own string.  That bug
-    shipped four times in one day across two generators before anything read a
-    produced file back.  ``ast.parse`` costs microseconds and is decisive.
+    shape: an escape mangled while building the emitter's own string.
+    ``compile`` costs microseconds and is decisive: it
+    also refuses what only the compiler checks, a keyword argument written
+    twice -- the 2026-08-21 ECP deck, which parsed and could not run.
 
     The remaining rules are the two facts a PySCF deck cannot be wrong about
     and still mean what it says: it must build a molecule, and its identity must
     be the one that was stamped -- the name every warm file is keyed by.
     """
-    import ast
     import re
 
     from ..issues import Issue
 
     out = []
     try:
-        ast.parse(text)
+        compile(text, "<deck>", "exec")
     except SyntaxError as exc:
         out.append(Issue(
             "error",

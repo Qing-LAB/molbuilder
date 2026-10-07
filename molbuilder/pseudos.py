@@ -86,15 +86,14 @@ def psml_sources(elements, *, dest_dir=None,
     **No side effects** -- which is why this is here and not
     `jobset.engines._pseudo_dir`, whose job is to CREATE the folder and migrate
     root strays into it.  A read-only check cannot call a function that
-    writes, and copying its rule instead is how the two came to disagree
-    about where a file is: the settings gate read only the library, and
-    called a calculation whose files sat beside it unconfigured (2026-09-25).
+    writes, and copying its rule instead would let the two disagree about
+    where a file is.
 
     In the folder, ``pseudos/`` before the root.  Both are real at different
     moments -- `init` and a travelled bundle leave `<El>.psml` at the root,
     and the first `prep` moves them into ``pseudos/``, keeping what is
-    already there.  Asking only the root is what made the check refuse a
-    calculation whose pseudopotentials were already in place (2026-09-19).
+    already there.  Asking only the root would refuse a calculation whose
+    pseudopotentials are already in place.
     """
     places: List[Path] = []
     if dest_dir is not None:
@@ -128,8 +127,8 @@ def resolve_psml_lib(raw: str, *,
                      dest_dir: Optional[Path] = None) -> Path:
     """Resolve ``cfg.psml_lib``: **a path inside the projects tree.**
 
-    The rule is `job-contracts.md` § 2.5a, ONE line since 2026-08-28
-    (user: the library always lives inside the project tree, so psml
+    The rule is `job-contracts.md` § 2.5a, ONE line (user, 2026-08-28: the
+    library always lives inside the project tree, so psml
     paths speak the same language as every sidebar path):
 
       * a RELATIVE path (``pseudopotential``, ``shared/psml``) is
@@ -140,10 +139,9 @@ def resolve_psml_lib(raw: str, *,
       * an ABSOLUTE path is accepted as a convenience spelling of the
         same fact -- it must lie INSIDE that tree, and is refused
         otherwise;
-      * the ``./`` / ``../`` spellings are RETIRED with the old anchor
-        cascade: pseudopotentials already beside the calculation are
-        used without this field (prep adopts them), so the dotted
-        anchor had no remaining job.
+      * the ``./`` / ``../`` spellings are refused: pseudopotentials
+        already beside the calculation are used without this field (prep
+        adopts them).
 
     Raises :class:`PsmlLibError` for a spelling the rule cannot answer.
     Returns an absolute, **not-resolved** Path whether or not it
@@ -295,8 +293,7 @@ _LIBXC_MAP = {
     9:   ("LDA", "CA"),     # XC_LDA_C_PZ (Perdew-Zunger)
     12:  ("LDA", "CA"),     # XC_LDA_C_PW (Perdew-Wang)
     11:  ("LDA", "CA"),     # XC_LDA_C_OB_PZ (Ortiz-Ballone form of PZ) -- an LDA
-                            # correlation, NOT a vdW-DF exchange (the pre-2026-07
-                            # ("VDW","DRSLL") label mis-classified its family).
+                            # correlation, NOT a vdW-DF exchange.
 }
 
 
@@ -348,7 +345,6 @@ def parse_psml_header(path: Path) -> PsmlInfo:
     # Prefer atomic-number (the element's Z) over z-pseudo (the
     # valence electron count -- e.g. Fe has Z=26 but z-pseudo=16
     # because the pseudo treats 3s²3p⁶3d⁶4s² = 16 e⁻ as valence).
-    # Previous order silently mis-reported Z=16 for Fe.
     z_str = (hdr.attrib.get("atomic-number")
              or hdr.attrib.get("z-pseudo")
              or "")
@@ -367,10 +363,9 @@ def parse_psml_header(path: Path) -> PsmlInfo:
     #     <functional name="..." type="exchange"    id="101"/>
     #     <functional name="..." type="correlation" id="130"/>
     #   </libxc-info>
-    # The id attribute is on <functional>, NOT on <libxc-info>.
-    # Earlier code looked for id on <libxc-info> and missed every
-    # real PSML.  Also support older / synthesized formats that put
-    # id directly on <libxc-info> or on bare <exchange> / <correlation>.
+    # The id attribute is on <functional>, NOT on <libxc-info>.  Older /
+    # synthesized formats that put id directly on <libxc-info> or on bare
+    # <exchange> / <correlation> are read too.
     libxc_ids: List[int] = []
     for el in _findall_local(root, "functional"):
         v = el.attrib.get("id")
@@ -485,8 +480,8 @@ def parse_psml_header(path: Path) -> PsmlInfo:
     # <semilocal-potentials> <slps l=".."> block, from which SIESTA
     # rebuilds the KB projector at read time.  Standard, PseudoDojo-
     # validated pseudos for I, Xe, Rb, Ba do exactly this for their p
-    # channel -- flagging them as "dead" (the pre-2026-07 behaviour) was
-    # a FALSE POSITIVE that ERROR-blocked those common elements.
+    # channel -- flagging them as "dead" would be a FALSE POSITIVE that
+    # ERROR-blocks those common elements.
     #
     # A channel is genuinely null ONLY if EVERY <proj> for that l is
     # ~zero AND there is NO <slps l> semilocal potential for it (nothing
@@ -626,15 +621,15 @@ class CoverageEntry:
 #: channel is physically missing (wrong Hamiltonian), the XC *family* is wrong
 #: (silently-wrong energies), or a valence channel is present and states a
 #: strength of ZERO (``semilocal_only`` — the same silently-wrong-energies
-#: case, added 2026-09-03 by user ruling after PseudoDojo v0.5's sulfur ran
-#: with no p channel).  This is the SINGLE source of truth for "which statuses
-#: are ERROR"; ``misnamed`` joined it 2026-09-19 (the file for an element
-#: exists and is healthy but is not called `<element>.psml`, so SIESTA never
-#: opens it -- a certain start-up failure, said at configuration time).
+#: case, user ruling 2026-09-03 after PseudoDojo v0.5's sulfur ran with no
+#: p channel).  This is the SINGLE source of truth for "which statuses are
+#: ERROR"; ``misnamed`` is one (the file for an element exists and is healthy
+#: but is not called `<element>.psml`, so SIESTA never opens it -- a certain
+#: start-up failure, said at configuration time).
 #: The SIESTA preflight
 #: (``validation.siesta._check_siesta_pseudo_coverage``) and the CLI
 #: (``cli.cmd_pseudo_check``) both consume it so the two surfaces cannot
-#: drift (they did until 2026-07-26: the CLI omitted ``xc_family_mismatch``).
+#: drift.
 #: Everything else — ``xc_mismatch`` (same-family author diff),
 #: ``relativistic_mismatch``, ``generator_mismatch``, ``parse_warning`` — is
 #: advisory (WARN); ``ok`` is a silent pass.
@@ -648,12 +643,6 @@ ERROR_STATUSES = frozenset({"missing", "misnamed", "dead_projector",
 #: ERROR-severity verdict (``xc_family_mismatch`` — *"never physically
 #: correct, energies/forces silently wrong"*), so two copies of it are two
 #: opinions about whether a run may proceed.
-#:
-#: **It was written twice and they already disagreed** (found 2026-08-18):
-#: ``validation/siesta.py`` mapped ``drsll`` / ``lmkll`` to ``VDW`` and
-#: ``cli.py`` had no VDW arm at all, so a van-der-Waals run audited from the
-#: command line compared its pseudos against *no* expected family and passed
-#: a mismatch the preflight would have blocked.
 _XC_FAMILIES = {
     "GGA": ("pbe", "pbesol", "blyp", "revpbe", "rpbe"),
     "LDA": ("ca", "pz", "pw"),
@@ -729,8 +718,7 @@ def check_coverage(elements: Iterable[str],
         # on what each file DECLARES -- so a correct gold pseudopotential
         # saved as `gold.psml` lands here as a perfectly healthy entry for
         # `Au`, and every check below passes it, while SIESTA opens
-        # `Au.psml`, does not find it, and refuses to start.  Measured
-        # 2026-09-19: such a folder answered `ok`.
+        # `Au.psml`, does not find it, and refuses to start.
         #
         # Verbatim, no folding -- the same rule the `key` comment above
         # states: SIESTA reads `<label>.psml`, so a species written `Au1`

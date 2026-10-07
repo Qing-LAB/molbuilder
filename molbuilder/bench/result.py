@@ -8,20 +8,17 @@ writes ``bench-result@1``.  Its ``choice`` block is the decision as DATA
 own exchange vocabulary (mpi_np / cpus_per_task / gres), and its
 ``mechanism`` read from the winning trial's deck -- materialised by
 `summarize` into the report it PRINTS for a PERSON
-applies (§ 2.3.2; interactive ask until 2026-08-19).  The adapter re-resolution this paragraph used to describe
-died with `prep-run` (step 6 u5).
+to apply (§ 2.3.2).
 
-**Stdlib-only** (parsers + json + dataclasses): ships to the target with
-the rest of the prep layer.  The pure ``parse_*`` functions take text and
-are unit-tested; ``build_bench_result`` assembles them.
+The pure ``parse_*`` functions take text; ``build_bench_result``
+assembles the record.
 
 NOTE (output isolation): a point is identified by its ``label``; the
 caller hands each point its own artifacts.  Each trial runs in its own
 ``bench-<point>/`` directory inside the stage's ``bench/`` container
 (job-contracts § 6.3), so points never clobber a shared basename --
 `summarize` maps directories back to points through the job-set's own
-data, never by parsing names (the ``adapters.format_bench`` sweep this
-note used to cite died in step 6 u5).
+data, never by parsing names.
 """
 
 from __future__ import annotations
@@ -38,16 +35,6 @@ SCHEMA = "molbuilder/bench-result@1"
 #  Pure parsers (text -> values; unit-tested)                           #
 # --------------------------------------------------------------------- #
 
-
-# The five readers that were here -- `parse_scf_timing`,
-# `parse_util_csv`, `parse_utilisation` (now
-# `instruments/utilisation.py::utilisation`), `parse_machine`,
-# `parse_util_bound` -- and their regexes moved to
-# `molbuilder/parse/instruments/` on 2026-09-04.  They opened the
-# wrapper's own files and read their bytes here, which was a second
-# read stack for a class of file the parse module had simply never
-# been extended to (`parse.md` § 5c).  This module keeps the SHAPES
-# (`BenchPoint`, `BenchResult`) and the RANKING, which are its own.
 
 
 def machine_kind(machine: Dict) -> Optional[Tuple[str, str, str]]:
@@ -106,10 +93,7 @@ def machine_census(points) -> List[Tuple[str, int]]:
     """``[(brief, how many trials)]``, one entry per KIND, sorted stably.
 
     THE one grouping of a sweep's machines -- the terminal statement and
-    the web payload both read this, because the census was briefly grouped
-    twice (once per surface) and two spellings of "which machines are in
-    play" is the exact drift `machine_brief` exists to prevent one level
-    down.  Points whose record predates the ``[MACHINE]`` line are not
+    the web payload both read this.  Points whose record predates the ``[MACHINE]`` line are not
     counted: absent is absent, never a kind called "?".
     """
     kinds: Dict[Tuple, List] = {}
@@ -122,8 +106,7 @@ def machine_census(points) -> List[Tuple[str, int]]:
 
 # What the run ACTUALLY used, printed by SIESTA itself (read through
 # `parse/engines/siesta_grammar.py`) and by the wrapper (read through
-# `wrapper_log.read_wrapper_log`, the lines' one reader -- two private
-# patterns stood here until 2026-09-26).
+# `wrapper_log.read_wrapper_log`, the lines' one reader).
 
 
 def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
@@ -225,8 +208,8 @@ def compare_asked_to_ran(asked: Dict, effective: Dict) -> Dict:
     # in ``effective`` -- it is real measured data and belongs in the
     # record -- but SIESTA ADJUSTING it is normal, not a fault:
     # ``initparallel.F`` shrinks the requested block so every rank
-    # receives one, and ELPA's GPU path rounds it up to a power of two.
-    # Both depend on the rank count, which is the axis a sweep varies.
+    # receives one, which depends on the rank count -- the axis a sweep
+    # varies.
     # Comparing it would therefore mark most trials of a small system as
     # "ran something other than asked" and bar them from winning, which
     # would leave a legitimate benchmark with no winner at all.  A
@@ -304,7 +287,7 @@ class BenchPoint:
     #: (`generator.md` § 4.3a); ``{}`` for pre-2β records.
     point:   Dict = field(default_factory=dict)
     #: What kind of node was under the run -- the monitor's ``[MACHINE]``
-    #: line (:func:`parse_machine`, `scheduler.md` R12).  Part of the
+    #: line (`parse/instruments/monitor.py`, `scheduler.md` R12).  Part of the
     #: measurement, not metadata about it: on a queue holding many machine
     #: types, two trials of one sweep can land on different hardware, and
     #: a summary that hides which is comparing silently
@@ -372,8 +355,7 @@ def mismatch_phrase(mismatch: Dict) -> str:
 def choose_winner(points: List[BenchPoint]) -> Dict:
     """The portable ``choice`` (§ 5.4): the fastest COMPLETED point by
     steady-state s/iter -- or, when no point can win, ``{"none": <why>}``,
-    the one sentence the terminal, the page and the ledger all say.  ``{}``
-    stood for both reasons until 2026-10-06, and each reader guessed which.
+    the one sentence the terminal, the page and the ledger all say.
 
     **A trial that did not run what it was asked to run cannot win.**  Its
     time is real, but it measures a different configuration than its label
@@ -417,26 +399,14 @@ def choose_winner(points: List[BenchPoint]) -> Dict:
         bits.append("excluded (ran something other than asked): "
                     + ", ".join(f"{p.label} [{mismatch_phrase(p.mismatch)}]"
                                 for p in excluded))
-    # ``label`` is DATA (U13, 2026-08-12): it identified the winner only
-    # inside the rationale prose, so anything needing the winning trial
-    # back -- the mechanism read, a human's cross-check -- had to parse a
-    # sentence.  The id is the id.  ``point`` rides for the same reason
+    # ``label`` is DATA, so anything needing the winning trial back -- the
+    # mechanism read, a human's cross-check -- never parses the rationale
+    # prose.  ``point`` rides for the same reason
     # (§ 4.3a): the winner's VALUE coordinates are reported
     # pins, and they must come from the record, not from its name.
     return {"label": win.label, "engine": win.engine,
             "knobs": dict(win.knobs), "point": dict(win.point),
             "rationale": "; ".join(bits)}
-
-
-# `recommend_resources` was DELETED 2026-08-24 (user).  It produced
-# ``mem_gb = peak RSS x 1.15`` and ``time = s/iter x prod_iters x 1.5`` --
-# a safety factor and a production iteration count NOBODY CHOSE, the second
-# a default sitting in its own signature.  `summarize` wrote both into
-# `run-config.toml`, `prep` folded them in when no flag said otherwise, and
-# they reached `sbatch`: the estimation purge's own target, surviving in the
-# one path it did not sweep.  What a sweep recommends is what it MEASURED --
-# the winning configuration and its knobs; the wall and the memory are the
-# person's to state (`execution/submission.md` S1, S2).
 
 
 def build_bench_result(points: List[BenchPoint], *,

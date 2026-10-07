@@ -26,9 +26,7 @@ LAUNCHER = "bash scripts/install-env.sh"
 
 def fix_cmd(action: str, *args: str) -> str:
     """The ONE spelling of an env command: the launcher, the verb, then the
-    recipe and flags.  The recipe name is one of ``*args`` and not a parameter
-    of its own: required, the verbs that take no recipe (``bootstrap``,
-    ``doctor``) cannot use this function and get spelled by hand instead."""
+    recipe and flags."""
     return " ".join([LAUNCHER, action, *args])
 
 

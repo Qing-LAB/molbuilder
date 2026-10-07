@@ -88,19 +88,3 @@ def test_no_tool_and_no_device_read_the_same(monkeypatch):
     assert monitor._gpu_models() == []
     assert monitor.machine_identity()["gpu"] == "none"
     assert monitor._gpu_present() is False
-
-
-# ------------------------------------------------------------- line format
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 1 test here parsed a monitor line typed by hand around the
-# writer's payload (`process/testing.md` § 6).
-
-
-# `test_the_machine_is_the_logs_first_line` and
-# `test_a_monitor_missing_its_companion_still_monitors` moved to the e2e tier
-# 2026-10-06: the monitor watches a run made on the road with the real
-# SIESTA, `tests/test_monitor_watches_a_live_run_e2e.py` (`process/testing.md`
-# § 6).
-
-

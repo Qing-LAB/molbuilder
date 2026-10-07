@@ -13,13 +13,8 @@ Subcommands:
     molbuilder watch parse run.molwatch.log
     molbuilder watch tail run.molwatch.log
 
-The CLI is built on click (since Phase 5).  ``main(argv)`` is the
-back-compat entry point used by ``project.scripts``; tests call it
-directly with an explicit argv list.
-
-Late imports inside each command body keep ``monkeypatch.setattr`` on
-the public ``molbuilder.build_*`` symbols working in tests -- they
-patch the package attribute, so we re-resolve at call time.
+The CLI is built on click.  ``main(argv)`` is the entry point used by
+``project.scripts``; tests call it directly with an explicit argv list.
 """
 
 from __future__ import annotations
@@ -39,25 +34,6 @@ from .chemistry import BackendUnavailable as _BackendUnavailable
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .structure import Structure
-
-
-# --------------------------------------------------------------------- #
-#  add_dataclass_options: dataclass field metadata -> click.option      #
-# --------------------------------------------------------------------- #
-
-
-# `add_dataclass_options` DELETED 2026-09-17 with its only consumer.
-#
-# A dataclass -> click bridge: it read every PySCFConfig field's metadata and
-# stacked a `click.option` per field, so `molbuilder pyscf` could take the
-# whole engine surface as flags.  ~170 lines whose entire purpose was to make
-# ONE command possible, and that command is the shape decision 34 deleted
-# (`conventions.md` 3: "there is no `molbuilder fdf`" -- user, "obsolete
-# residue from the flat-dir design").
-#
-# A parameter is said in a description, not on a command line.  Nothing else
-# generates options from a dataclass, and the two config files that mention
-# this bridge do so only to explain why a field opts out of it.
 
 
 # --------------------------------------------------------------------- #
@@ -110,14 +86,13 @@ def _trajectory_parser_for(resolved):
     parser answers a TRAJECTORY.  Two conditions are PERMANENT: a directory
     (`detect()` refuses one by name: a run folder is the run door's) and a
     file whose parser answers something else -- both reach `.frames` and
-    raise `AttributeError`.  The `is_dir()` test alone caught only the first,
-    so `<job>_optimized.xyz` still crashed all three verbs.
+    raise `AttributeError`.
 
     **The refusal EXITS rather than raising.**  `watch tail` calls this
     inside a poll loop that treats `ParseError` as transient -- the writer
     may not have flushed enough bytes to be detectable yet -- and sleeps.  A
-    permanent condition raised as a `ParseError` there retried for ever: a
-    silent hang where there used to be a traceback.  `SystemExit` cannot be
+    permanent condition raised as a `ParseError` there would retry for ever:
+    a silent hang.  `SystemExit` cannot be
     swallowed by that `except`, and every verb prints the same
     "Error: ... / exit 2".
     """
@@ -154,10 +129,9 @@ def _emit(struct: Structure, *,
     for.  No destination at all -> dump XYZ to stdout (Unix-pipeable)."""
     # THE PAIR IS THE FILE here too (`model/structure.md` § 2.4).  A freshly
     # built molecule usually has nothing to put in a sidecar, and then the
-    # codec writes none -- "no .json == empty metadata" holds either way.  But
-    # a builder that DOES produce metadata (the DNA/RNA duplex builders set
-    # residue identity; `--electrode` work starts from these files) had it
-    # dropped at the moment it was first written to disk.
+    # codec writes none -- "no .json == empty metadata" holds either way --
+    # and a builder that DOES produce metadata (the DNA/RNA duplex builders
+    # set residue identity) keeps it.
     from .workingcopy_structure import StructureCodec
     codec = StructureCodec()
     wrote_anything = False
@@ -175,18 +149,6 @@ def _emit(struct: Structure, *,
     if not wrote_anything:
         sys.stdout.write(struct.to_xyz())
     click.echo(struct.summary(), err=True)
-
-
-# `KGridParam` / `KGRID` DELETED 2026-09-17.  A click ParamType accepting
-# `4x4x1` / `4,4,1` / `4 4 1`, it existed for `molbuilder fdf --kgrid`, and
-# went unused the moment that command was deleted (a038ad11, 2026-08-11) --
-# which removed its only `type=KGRID` and left the type standing.  No command
-# takes a k-grid on the command line: a k-grid is a PARAMETER, so it is said
-# in the description and reaches the deck through the template.
-#
-# Two test docstrings cited it as the terminal's half of a parity claim --
-# "what works in the terminal works in the table".  The browser's parser is
-# the only one now, and those docstrings say so.
 
 
 # --------------------------------------------------------------------- #
@@ -207,31 +169,11 @@ def cli() -> None:
 # self-contained click group registered here as a single sub-group.
 cli.add_command(envs_group)
 
-# `molbuilder bench ...` was DELETED 2026-08-17 (user: all verbs are unified
-# under `jobset`).  Its four lifecycle verbs went in the 2026-08-12 fold, and
-# its last inhabitant -- `probe-scheduler`, a scheduler-config helper that was
-# never a benchmark verb -- moved to `jobset`, where it is `jobset probe` (it
-# writes the machine's record since 2026-10-02).  A group whose
-# name no longer described anything it contained was the last thing keeping
-# two spellings alive for one act (process/conventions.md 3).
-
-# `molbuilder jobset ...`  (engine-agnostic staged execution: plan / prep /
-# submit a bundle's job-set.json -- the SIESTA stage ladder, and later the
-# bench sweep).  See molbuilder/jobset/ + docs/execution/job-system.md.
+# `molbuilder jobset ...`  (engine-agnostic staged execution).  See
+# molbuilder/jobset/ + docs/execution/job-system.md.
 from .jobset._cli import jobset_group
 cli.add_command(jobset_group)
 
-# `molbuilder transport ...` DELETED 2026-09-17 -- the last calculation-KIND
-# verb group, and the second half of a closure `bench` already received.
-#
-# `conventions.md` 3 named the problem on 2026-08-11: "`jobset`, `bench` and
-# `transport` each ran calculations their own way".  `bench` was folded into
-# `jobset` on 2026-08-17 with its four verbs deleted and its group removed;
-# transport migrated to the composite on 2026-08-29 and its `bundle` verb went,
-# but the group stayed with the two hand-assembly verbs still in it --
-# `electrode`, which wrote a lead deck from flags, and `preflight`, which
-# compared that deck against a device deck.  Both are gone, so the group is.
-#
 # NO CALCULATION KIND HAS A VERB: there is no `spectra`, no `optimization`, no
 # `vibration`.  A kind is described in `task.json` and run through `jobset` --
 # decision 7, "everything is a job set", and a second way in is a second way to
@@ -276,9 +218,7 @@ def cmd_pseudo_check(directory, elements, xc_authors, relativistic):
         if not els:
             raise click.ClickException(f"no parseable .psml files in {d}")
 
-    # The ONE table (`pseudos.expected_xc_family`).  This copy had no VDW arm,
-    # so a van-der-Waals audit compared against no expected family at all and
-    # passed a mismatch the preflight blocks.
+    # The ONE table (`pseudos.expected_xc_family`).
     from .pseudos import expected_xc_family
     fam = expected_xc_family(xc_authors)
 
@@ -397,25 +337,6 @@ def cmd_name(sequence, out, pdb, pyscf_atom_block, title):
     _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
-# `molbuilder pyscf` DELETED 2026-09-17 -- `molbuilder fdf`'s surviving twin.
-#
-# Both took a structure plus every engine field as a flag and wrote a finished
-# deck, skipping the description.  `fdf` went on 2026-08-11 as decision 34;
-# this one kept its flags on the stated grounds that "its ladder runs inside
-# one emitted script" -- and the comment beside it refuted that in the same
-# file: "THIS COMMAND WRITES ONE DECK, AND A LADDER IS N DECKS ... there is no
-# `--stages-json` / `--stage-strategy` here ... `jobset init --engine pyscf
-# --stage-strategy ...` is the one door that writes one."  The exemption
-# described PySCF's script SHAPE, not a property of the verb, and
-# `--stage-strategy` was taken off this command on 2026-08-18 for that reason.
-#
-# The framework already covered it: `prep.py` builds a full `EngineSeam` for
-# PySCF, so `jobset prep` renders it through `spec_for` -> `prepare_deck` like
-# any other engine.  It duplicated no mechanism -- it was a second WAY IN,
-# which is what decision 7 names: "everything is a job set ... a second way in
-# is a second way to lose your results."
-
-
 # --------------------------------------------------------------------- #
 #  validate subcommand (geometry + optional config preflight, JSON out) #
 # --------------------------------------------------------------------- #
@@ -490,9 +411,8 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
 def _struct_for_validate(path):
     """Read either XYZ or PDB; return (Structure, optional cell array).
 
-    A small wrapper around the SIESTA-side _struct_from_file so the
-    validate command supports the same extended-XYZ + PDB inputs as
-    the fdf / pyscf pipelines.
+    A small wrapper around the SIESTA-side _struct_from_file, which reads
+    extended XYZ and PDB.
     """
     from .siesta.input import _struct_from_file
     return _struct_from_file(path)
@@ -596,12 +516,11 @@ def _parse_size3(size_str, flag):
 #: sequence runs forward, growing `-z` it runs backward, so both slabs are
 #: slices of the same crystal rather than one being reversed.
 #:
-#: IT IS THE WALK, NOT THE SEAM.  This was named `_CONTINUES_THE_CRYSTAL`,
-#: which claimed more than it does -- `junction-cell.md` § 3.1a records the
+#: IT IS THE WALK, NOT THE SEAM.  `junction-cell.md` § 3.1a records the
 #: measurement: `sequence` alone does not change the registry at the
 #: boundary, so with both slabs left on registry 0 every layer count the
 #: table calls *continues* comes out eclipsed on (100)/(110) and twinned on
-#: (111).  What decides the seam is `start_registry`, now a spec field.
+#: (111).  What decides the seam is `start_registry`, a spec field.
 _WALK_ALONG_GROWTH = {"+z": "ABC", "-z": "ACB"}
 
 
@@ -636,12 +555,7 @@ def _parse_electrode_spec(spec):
     or ``...:-z=I,J,...``.  ``DIST`` is the centre-to-closest-layer distance
     for the chosen side, and the slab centres on the CENTROID of the trailing
     index list (1 index -> that atom, 2 -> their midpoint, N -> centroid).
-
-    **``@gap=`` is gone** (redesign plan § 3.4).  It built a symmetric PAIR in
-    one step, and pairs are not built as one step any more -- a junction is
-    two flags, one per side, each saying where its slab goes.  ``gap`` was the
-    pair's own parameter and had no meaning for a single slab, so it went with
-    it rather than being kept as a second way to say ``contact``.
+    A junction is two flags, one per side, each saying where its slab goes.
 
     Returns a dict whose ``"mode"`` is always ``"single"`` -- one slab per
     flag, with its own side and stand-off.
@@ -680,14 +594,10 @@ def _parse_electrode_spec(spec):
             f"'@contact=NUM' (key=value form)"
         )
     if key == "gap":
-        # PAIR MODE IS GONE, and `gap` went with it -- it was the PAIR's
-        # parameter, the electrode-to-electrode distance, meaningless for one
-        # slab.  Slabs are built one at a time now and where each goes is
-        # stated (redesign plan § 3.4).
-        #
-        # Refused by name rather than falling into the generic "unknown key",
-        # which would read as a typo: this key existed, did something, and was
-        # removed, so the message has to say what to do instead.
+        # `gap` -- the electrode-to-electrode distance of a PAIR, meaningless
+        # for one slab -- is refused by name rather than falling into the
+        # generic "unknown key", which would read as a typo: the message says
+        # what to do instead.
         raise click.BadParameter(
             f"--electrode {spec!r}: '@gap=' is no longer supported.  It was "
             f"the electrode-to-electrode distance of a PAIR, and pairs are "
@@ -711,12 +621,7 @@ def _parse_electrode_spec(spec):
         # continues the crystal (`junction-cell.md` § 3.1, and the
         # MEASURED FALSE note at § 3.1a): the two sides of a junction want
         # DIFFERENT registries, which is why this is per-flag and not one of
-        # the uniform `--electrode-*` options.
-        #
-        # The web slab card has had this control since it shipped; the CLI
-        # had no spec field for it, so every junction built from the command
-        # line had both slabs on registry 0 and no way to say otherwise.
-        # Omitted still means 0, so existing command lines are unchanged.
+        # the uniform `--electrode-*` options.  Omitted means 0.
         start_registry = 0
         head, sep2, tail = rest.partition(":")
         hkey, has_eq3, hval = head.partition("=")
@@ -740,8 +645,8 @@ def _parse_electrode_spec(spec):
         # ORDER IS PART OF THE GRAMMAR, so say so rather than letting the
         # misplaced key arrive as a bad integer.  `registry=` is recognised
         # only between `contact=` and the side; written after the side it
-        # lands inside the centre-index list, and the message was "entries
-        # must be integers; got '3:registry=B'" -- true, and no help at all.
+        # lands inside the centre-index list, where the integer refusal would
+        # be true and no help at all.
         if "registry=" in idx_str.lower():
             raise click.BadParameter(
                 f"--electrode {spec!r}: 'registry=' comes BEFORE the side, "
@@ -865,8 +770,7 @@ def cmd_modify(input_path, output_path,
 
         # the two registries differ on purpose: with both slabs on the same
         # one the boundary twins instead of continuing the crystal
-        # (junction-cell.md 3.1a).  Omit `registry=` and both stay on A,
-        # which is what this command did before the field existed.
+        # (junction-cell.md 3.1a).  Omit `registry=` and both stay on A.
 
     Stepped 3×3 + 4×4 contact on the same side:
 
@@ -925,13 +829,9 @@ def cmd_modify(input_path, output_path,
 
     # Sub-option warnings: catch "ignored sub-option" cases up front so the
     # user notices before they expect them to take effect.
-    # THE VALUE, NOT ITS NAME.  This read `locals()[name]` against a dict of
-    # parameter names, which couples a warning to the SPELLING of the
-    # signature: rename the `center` parameter and `locals()["center"]` raises
-    # `KeyError` (measured) -- from inside a cosmetic warning, so a rename
-    # that changes nothing about the operation takes the whole command down,
-    # and no test covers this path.  The electrode block below always passed
-    # values directly; this is now the same shape, and neither can drift.
+    # THE VALUE, NOT ITS NAME: a warning keyed on the SPELLING of the
+    # signature (`locals()[name]`) would take the whole command down on a
+    # parameter rename.
     _ORIENT_NONDEFAULTS = (
         ("axis",   axis,   "z"),
         ("angle",  angle,  0.0),
@@ -994,20 +894,14 @@ def cmd_modify(input_path, output_path,
             # THE FLAG IS THE CONVENIENCE; `add_slab` IS THE BUILDER.
             #
             # `--electrode` says "put a slab this far from these atoms, on
-            # this side" -- a genuinely useful way to ask, and the reason the
-            # flag survives.  What went (2026-09-01) is the SECOND BUILDER it
-            # used to call: `add_electrode_slab` placed relative to the
-            # anchor itself, and mirrored the slab for `-z`, which is the
-            # accidental layer-order flip `bench-and-junction-plan.md` § 2.3
-            # records and the redesign set out to make unreachable.
-            #
-            # So the arithmetic happens HERE, where the convenience lives,
-            # and the placement goes to the one builder: centroid -> an
-            # absolute `start_z`, side -> `grow`, and the anchor's xy folded
-            # into the absolute `offset`.  The crystal CARRIES ON outward
-            # from the contact instead of reflecting, so `-z` no longer flips
-            # the layer order.  In the walk vocabulary (`sequence`, 2026-09-07)
-            # that is a different value per side -- read along the growth
+            # this side" -- a genuinely useful way to ask.  The arithmetic
+            # happens HERE, where the convenience lives, and the placement
+            # goes to the one builder: centroid -> an absolute `start_z`,
+            # side -> `grow`, and the anchor's xy folded into the absolute
+            # `offset`.  The crystal CARRIES ON outward from the contact
+            # instead of reflecting, so `-z` does not flip the layer order.
+            # In the walk vocabulary (`sequence`) that is a different value
+            # per side -- read along the growth
             # direction, going up from a layer is the forward walk and going
             # down from one is the backward walk -- which is the mapping
             # `_WALK_ALONG_GROWTH` above writes down once.  Which LAYER each
@@ -1053,12 +947,8 @@ def cmd_modify(input_path, output_path,
     if str(output_path) == "-":
         click.echo(_struct_to_text(struct, fmt), nl=False)
     else:
-        # THE PAIR IS THE FILE (`model/structure.md` § 2.4).  This wrote the
-        # geometry alone with `to_xyz`/`to_pdb`, so `modify` READ a pair
-        # through the codec and wrote back half of it: a device carrying
-        # `L-electrode`, `frozen_atoms` and an explicit cell came out of a
-        # zero-degree rotation with none of them, at exit 0 and without a word.
-        # The codec owns the pairing rule and the both-or-neither write; the
+        # THE PAIR IS THE FILE (`model/structure.md` § 2.4): a device's labels,
+        # held atoms and explicit cell travel in the sidecar.  The codec owns the pairing rule and the both-or-neither write; the
         # format is the one the user asked for, which may not be the one the
         # extension implies.
         from .workingcopy_structure import StructureCodec
@@ -1067,11 +957,6 @@ def cmd_modify(input_path, output_path,
             f"Wrote {output_path}: {struct.n_atoms} atoms (input had {n_in})",
             err=True,
         )
-
-
-# --------------------------------------------------------------------- #
-#  run subcommand (emit a shell wrapper for a generated script)         #
-# --------------------------------------------------------------------- #
 
 
 @cli.command("xv2xyz",
@@ -1086,10 +971,8 @@ def cmd_modify(input_path, output_path,
 def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     """Convert a SIESTA ``.XV`` final-coordinates file to a structure pair.
 
-    THE PAIR IS THE FILE (`model/structure.md` § 2.4).  This wrote a bare
-    ``.xyz`` with the cell hand-packed into an ASE ``Lattice="..."`` comment,
-    justified by a round-trip through a module that does not exist; what
-    actually reopens it reads the pair.
+    THE PAIR IS THE FILE (`model/structure.md` § 2.4): what reopens it
+    reads the pair.
 
     TWO MODES, and the difference is whether a metadata source is there.
 
@@ -1135,10 +1018,7 @@ def _apply_run_metadata(struct, xv_path: Path):
     what its deck declared (`runs.declared`) -- its atom-metadata block (the
     labels, the held atoms, the annotations), applied by that block's one
     reader, and its engine-offset record's axis kinds.  Nothing is looked for
-    beside the ``.XV`` by its name *(a sidecar beside it, then the ``.out``
-    echo or a lone ``.fdf``, until 2026-10-04: in a flat folder, which holds
-    two decks, that found nothing and wrote an isolated molecule's held atom
-    away and its axes periodic -- D19)*.
+    beside the ``.XV`` by its name.
 
     THE ``.XV``'s CELL AND THE ENGINE'S ORIGIN: these coordinates are the
     engine's own, so the cell is the one the run ended on and the offset a
@@ -1204,10 +1084,7 @@ def cmd_monitor(args) -> None:
 
 
 #: Binds no remote client can reach.  `0.0.0.0` is deliberately ABSENT -- it
-#: accepts from every NIC -- and so is the string `"0.0.0.0:127.0.0.1"`, which
-#: sat here until 2026-09-21: it is not a host, no `--host` value can equal it,
-#: and in a set that decides whether TLS is enforced it read as though
-#: `0.0.0.0` were half-excused.  `127.` is matched by prefix below, not here.
+#: accepts from every NIC.  `127.` is matched by prefix below, not here.
 _LOOPBACK_HOSTS = frozenset({
     "127.0.0.1", "localhost", "::1",
 })
@@ -1233,11 +1110,7 @@ def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
     (`deployment.md` § 1).  Auth is opt-in, so the two are independent
     questions and TLS answers neither of them -- which is why the
     message below says so rather than implying a `--cert` makes this
-    safe.  It said "the file-ops endpoints have no auth" until
-    2026-09-21, which was true of a server with no `auth` section and
-    false of one with providers configured, where every non-public
-    endpoint needs a session and `/api/*` answers 401
-    (`access-control.md` §§ 1.1, 2, 3.2).
+    safe (`access-control.md` §§ 1.1, 2, 3.2).
 
     Operators who genuinely want plain HTTP on a non-loopback host
     (e.g., behind a TLS-terminating reverse proxy on the same
@@ -1341,8 +1214,7 @@ def _resolve_tls(cert_cli, key_cli):
     Reads cert/key from the machine config through
     `runtime_config.get_tls`.  ONE shape -- ``"tls": {"cert": ..., "key":
     ...}``; the flat top-level ``cert``/``key`` is refused by name
-    (`runtime_config._FLAT_TLS_RETIRED`, 2026-09-02; this docstring said
-    "accepted" until 2026-09-14).  A partial
+    (`runtime_config._FLAT_TLS_RETIRED`).  A partial
     pair (cert without key or vice versa) is reported on stderr and
     falls back to HTTP.
 
@@ -1353,12 +1225,6 @@ def _resolve_tls(cert_cli, key_cli):
     after resolution so the failure surfaces as a clean
     ``click.UsageError`` instead of the bare ``PermissionError`` Werkzeug
     raises from ``load_cert_chain`` deep in the stack.
-
-    *(This named ``cmd_watch_serve`` as a second call site until 2026-09-21.
-    That verb was removed 2026-05-19 -- the note saying so is at the foot of
-    this file -- so the docstring outlived it by four months.  It named
-    ``cmd_serve`` as the other, which stopped being true when the three
-    refusals moved into one preflight.)*
     """
     cert, key = cert_cli, key_cli
     if cert and key:
@@ -1366,8 +1232,7 @@ def _resolve_tls(cert_cli, key_cli):
     try:
         tls = get_tls(read_config())
     except RuntimeConfigError as exc:
-        # Translate the L1 domain exception into the click surface
-        # (preserves the SystemExit(2) contract the older inline code had).
+        # Translate the L1 domain exception into the click surface.
         raise click.UsageError(str(exc)) from None
     cert = cert or tls.get("cert")
     key  = key  or tls.get("key")
@@ -1445,16 +1310,10 @@ def _check_tls_readable(cert, key) -> None:
 def _refuse_an_unsafe_bind(host, cert, key, allow_insecure, no_auth):
     """Every reason this (host, TLS, auth) combination must not start.
 
-    **One place, because `start` has to ask BEFORE it detaches.**  These three
-    refusals lived only in `cmd_serve`, which `serve start` reaches as a
-    CHILD -- after `daemonize()`, so the refusal went to the log while the
-    terminal had already printed "starting in the background" and exit 0.
-    Measured 2026-09-21: `serve start --host 0.0.0.0` with no TLS says it
-    started, names a log and a pidfile, and ends with "then: molbuilder serve
-    status" -- which is the failure `cmd_serve_start` records fixing for the
-    PORT check, in the same words: *"the failure then landed in the log AFTER
-    `daemonize()`, so nothing reached the terminal."*  That check was hoisted
-    and this one was not.
+    **One place, because `start` has to ask BEFORE it detaches.**  `serve
+    start` reaches `cmd_serve` as a CHILD, after `daemonize()`, where a
+    refusal would go to the log while the terminal had already printed
+    "starting in the background" and exit 0.
 
     Returns the ssl context `cmd_serve` then runs with, so the resolution is
     not spelled twice (D4: two implementations of one rule drift).
@@ -1523,10 +1382,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
 
     The session key is NOT this wizard's.  The server creates
     ``<config dir>/secrets/secret_key`` on its first start and reads it from then
-    on (§ 2.1e).  Until 2026-09-13 this wizard regenerated it on every run
-    -- every signed-in person logged out by a command whose docstring said
-    "idempotent" -- and with a different encoding from the server's own
-    creator.
+    on (§ 2.1e).
 
     Re-running is idempotent except for the Google client secret, which is
     re-prompted each run.  ``--force`` replaces the providers list and
@@ -1547,13 +1403,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     #
     # BEFORE THE WIZARD ASKS ANYTHING, because all three warnings are about
     # the file it is about to write into and the directory it will write it
-    # in.  This command is the one that puts provider entries into
-    # `molbuilder.json` and a client secret into `secrets/`, and it printed
-    # `(mode 0600)` about its own write while saying nothing about a file that
-    # ARRIVED `0644` or a `./molbuilder.json` it is documented to leave alone
-    # (D12).  `serve` and the jobset verbs already call this; the function's
-    # own docstring named THIS command as the surface that did not.  To
-    # stderr, so it reaches a person without entering piped output.
+    # in.  To stderr, so it reaches a person without entering piped output.
     from .placement import machine_config_warnings
     for _warning in machine_config_warnings():
         click.echo(_warning, err=True)
@@ -1576,12 +1426,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     # THE WIZARD WRITES THE FILE THE READER WILL READ, through the reader's
     # own door: `write_config_scope` asks `machine_config_path` for the one
     # location, merges over what is there, validates the merge and writes
-    # it 0600.  Until 2026-09-13 this command had a writer of its own
-    # (`auth_setup.emit_molbuilder_json`), a third reader of the format, an
-    # `--output` naming a file the server never reads, and a merge that
-    # REPLACED `auth` wholesale -- so re-running it to add a provider
-    # dropped `auth.trust_proxy`.  (And it defaulted to `./molbuilder.json`
-    # until 2026-08-30: the git root, for anyone inside a checkout.)
+    # it 0600.
     from .runtime_config import machine_config_path, write_config_scope
     output_path = machine_config_path()
     from .config_dir import client_secret as _secret_home
@@ -1594,8 +1439,8 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     # activation plus the comment keys) has nothing in it to clobber.  Read
     # through the server's reader: a file the server would refuse stops the
     # wizard HERE, before it asks for a secret, and there is no --force past
-    # that -- overwriting a config a person could not read is how a
-    # hand-edit's typo used to erase the auth providers and TLS paths (R10).
+    # that -- overwriting a config a person could not read would let a
+    # hand-edit's typo erase the auth providers and TLS paths (R10).
     try:
         prior = read_config()
     except RuntimeConfigError as exc:
@@ -1687,10 +1532,8 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     #
     # THE SERVER'S OWN VALIDATOR, ONCE: `write_config_scope` validates the
     # merge before it writes, so the wizard cannot emit what the server
-    # would refuse at startup.  Each entry was also run through the private
-    # `_validate_provider` here, and Google's secret written before either
-    # check, until 2026-10-02 (W54 C21) -- a refused config left a secret
-    # behind for an entry that was never written.
+    # would refuse at startup.  Google's secret is written only once the
+    # config has been accepted.
     auth_block = _as.build_auth_block(providers=providers)
     try:
         write_config_scope({"auth": auth_block})
@@ -1773,7 +1616,7 @@ def cmd_runtime_info(input_path, out_path, pretty):
             parser = detect_parser(resolved)
             # INSIDE the try: `parse()` raises ParseError too -- a readable
             # trajectory whose stem is not a legal run label is the shipped
-            # case -- and one line lower it escaped as a traceback.
+            # case.
             traj = parser.parse(resolved)
         except ParseError as e:          # incl. AmbiguousFormatError
             click.echo(f"Error: {e}", err=True)
@@ -1851,19 +1694,14 @@ def _supervise_forever() -> int:
             # Ctrl-C reaches the whole foreground process group, so the child
             # is already stopping; the parent must not print a traceback over
             # its shutdown.  128+SIGINT is what a shell reports for this.
-            # Mattered little while --supervise was opt-in; it is the default
-            # path now, so every Ctrl-C goes through here.
             return 130
         if code == RELOAD_EXIT_CODE:
             click.echo("molbuilder: reload requested -- starting a fresh "
                        "server", err=True)
             continue
         if code < 0:
-            # KILLED BY A SIGNAL -- the 2026-08-28 repair.  A hung child
-            # that somebody killed by hand must come back; before this,
-            # the supervisor read the kill as "not a reload" and quit,
-            # taking the site down exactly when recovery was needed.
-            # Flap-guarded through the same pure policy the daemon uses.
+            # KILLED BY A SIGNAL: a hung child that somebody killed by hand
+            # must come back.  Flap-guarded through the same pure policy the daemon uses.
             from .serve_daemon import flapping
             import time as _time
             _crashes.append(_time.monotonic())
@@ -1891,9 +1729,7 @@ def _supervise_forever() -> int:
                    "one.  Rarely needed: a second key READS the segment out "
                    "of the key file and joins it automatically.  Letters, "
                    "digits, '-' and '_' only -- it is one path component of "
-                   "the URL the job posts to.  (Said 'pass the value already "
-                   "in molbuilder.json' until 2026-09-12; `notify_route` in "
-                   "config has been retired and refused since 2026-08-31.)")
+                   "the URL the job posts to.")
 @click.option("--channel", default="molbuilder",
               help="the name this listener is called on the cluster.  It is "
                    "what a description ticks, so re-issuing under the same "
@@ -1954,12 +1790,8 @@ def cmd_notify_token(user, host, route, channel, replace):
             f"monitor's command line.")
     # NO --keys-file.  The key file has ONE home and the server reads only
     # that one (`web/app.py` asks `read_notify_keys()` with no path), so a flag
-    # naming another was a way to write a key nowhere that works, get "success",
-    # and learn nothing until reports stopped arriving -- the same two-spellings
-    # failure `configuration.md` 2.1e records for the session key.  Removed
-    # 2026-09-12; it had no production caller, and `auth_setup.default_secret_dir`
-    # had already dropped its `home=` for the same reason on 2026-08-31.  A test
-    # that wants another root sets MOLBUILDER_CONFIG_DIR, like everything else.
+    # naming another would write a key nowhere that works.  A test that wants
+    # another root sets MOLBUILDER_CONFIG_DIR, like everything else.
     # ONE DOOR (`auth_setup.issue_notify_key`), shared with the This-machine
     # tab.  Issuing written twice would be free to generate a second route
     # segment from the same file and silence everyone already set up.
@@ -2017,18 +1849,11 @@ def cmd_notify_token(user, host, route, channel, replace):
                     "nothing to pass.")
     # THE WHOLE RULE, NOT TWO THIRDS OF IT (configuration.md § 2.1c).  The
     # config directory is $MOLBUILDER_CONFIG_DIR first, exactly as given, and
-    # only then the XDG pair.  These lines printed the XDG pair alone, so on
-    # any machine with MOLBUILDER_CONFIG_DIR set -- which is the case this
-    # session's cutover created -- following them wrote the key where the
-    # monitor does not look, and silently: a notifier swallows failures by
-    # design, so the job simply never reports.  The Task-setup card emits the
-    # same three branches (task-setup/viewer.js); it stays shell text on both
-    # surfaces because it resolves on the FAR machine, not this one.
-    # DERIVED, never spelled.  This said "the config directory's `notify`"
-    # and printed "$cfg/notify" below; when every credential moved into
-    # `secrets/` the recipe went on telling people to write a webhook where
-    # nothing reads it -- and a notifier swallows failures, so they would
-    # never learn.  `relative_home` answers from the monitor's own resolver.
+    # only then the XDG pair.  The Task-setup card emits the same three
+    # branches (task-setup/viewer.js); it stays shell text on both surfaces
+    # because it resolves on the FAR machine, not this one.
+    # DERIVED, never spelled: `relative_home` answers from the monitor's own
+    # resolver.
     from .config_dir import relative_home
     _notify_rel = relative_home(default_notify_path)
     click.echo(f"\nOn the CLUSTER this is the channel `{channel}`, in the "
@@ -2063,10 +1888,8 @@ def serve_group():
     """The web server, as verbs: ``start`` (background, logged, rotated),
     ``status`` / ``restart`` / ``stop`` (acting on your own instance,
     verified before signalled), and ``foreground`` (the terminal-bound
-    development run).  `docs/ops/deployment.md` § 1.
-
-    *(The bare ``molbuilder serve`` form was retired 2026-08-28 with the
-    group -- a verb is named, never implied.)*
+    development run).  `docs/ops/deployment.md` § 1.  A verb is named,
+    never implied.
     """
 
 
@@ -2077,16 +1900,8 @@ _DEFAULT_SERVE_PORT = 8000
 
 
 def _serve_port_flag(f):
-    """``--port`` for a verb that ACTS ON a running molbuilder.
-
-    `_serve_flags` below already existed for the same reason -- *"one
-    decorator, so the two verbs cannot drift apart"* -- and seven other verbs
-    hand-wrote this option anyway, three hundred lines down (`plan.md` § 5n,
-    J9).  **They had already drifted**: two carried help text that disagreed
-    (*"the SERVE port -- the notebook's own is that plus one"* against *"the
-    SERVE port this notebook belongs to"*) and three carried none at all, so
-    `molbuilder jupyter status --help` explained nothing while its sibling
-    did.
+    """``--port`` for a verb that ACTS ON a running molbuilder -- one
+    decorator, so the verbs cannot drift apart about it (`plan.md` § 5n, J9).
     """
     return click.option(
         "--port", type=int, default=_DEFAULT_SERVE_PORT, show_default=True,
@@ -2100,9 +1915,9 @@ def _serve_port_filter(f):
 
     Distinct from `_serve_port_flag` on purpose: an acting verb must be told
     exactly which server to stop, while a reporting one defaulting to 8000
-    told somebody running on 8888 that nothing was running -- confidently
-    wrong, with the port sitting on disk the whole time (`plan.md` § 5n, J14,
-    the user's own).
+    would tell somebody running on 8888 that nothing was running, with the
+    port sitting on disk the whole time (`plan.md` § 5n, J14, the user's
+    own).
     """
     return click.option(
         "--port", type=int, default=None,
@@ -2115,13 +1930,7 @@ def _serve_flags(f):
     the two verbs cannot drift apart about what a server accepts."""
     for opt in reversed([
         click.option("--host",  default="127.0.0.1", show_default=True),
-        # THE SAME OPTION THE OTHER SEVEN VERBS TAKE.  J9 unified those and
-        # left this one -- the eighth copy, inside the decorator whose own
-        # docstring is "so the two verbs cannot drift apart", and the only
-        # one with no `help=`, so `serve start --help` explained nothing
-        # about `--port` while `serve stop --help` did (found in review
-        # 2026-09-15; the commit that unified the seven claimed this was
-        # covered, and it was not).
+        # THE SAME OPTION THE OTHER VERBS TAKE.
         _serve_port_flag,
         click.option("--cert", type=click.Path(exists=True, dir_okay=False),
                      help="TLS cert (PEM).  Overrides molbuilder.json."),
@@ -2171,15 +1980,13 @@ def _harden_tls_accept_loop() -> None:
     does the TLS wrap.  A silent client now costs one thread for
     ``HANDSHAKE_TIMEOUT_S`` and costs the accept loop nothing.
 
-    Bounding the handshake *in place* was the first attempt and is not enough:
-    it turns an unbounded hang into an N x timeout stall, because the loop still
-    waits for each silent client in turn.  Three were enough to time out an
-    ordinary request in the test.
+    Bounding the handshake *in place* is not enough: it turns an unbounded
+    hang into an N x timeout stall, because the loop still waits for each
+    silent client in turn.
 
     Patched onto Werkzeug's server CLASS rather than replacing ``app.run``,
     because ``app.run`` is the seam the TLS tests capture
-    (``capture_flask_run``) -- bypassing it silently un-tested the ssl_context
-    wiring and hung the suite.
+    (``capture_flask_run``).
     """
     import socket as _socket
     import ssl as _ssl
@@ -2248,29 +2055,22 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
     # Echoed in the parent, before the supervisor fork, so it appears once.
     from .projects import projects_root_with_source
     click.echo(f"molbuilder serve: {projects_root_with_source().describe()}")
-    # AND WHAT IS WRONG WITH THE CONFIG IT JUST READ.  `serve` was not a caller
-    # of either warning until 2026-09-12 -- only the jobset verbs and
-    # `config_provenance` were -- so a `molbuilder.json` that ARRIVED loose
-    # (copied from another machine, restored from a backup, unpacked without
-    # modes) stayed world-readable with its `tls.key` path and provider
-    # credentials in it, and the server that read it said nothing.  § 2.1b exists
-    # for exactly the cases no writer can control.  To stderr, so it reaches a
-    # person without entering piped output.  ONCE: this function runs in the
-    # supervisor and again in the child it re-execs (SUPERVISED_ENV=1), and
-    # printed the warnings both times until 2026-09-13 (K-L5).
+    # AND WHAT IS WRONG WITH THE CONFIG IT JUST READ: a `molbuilder.json` that
+    # ARRIVED loose (copied from another machine, restored from a backup,
+    # unpacked without modes) carries its `tls.key` path and provider
+    # credentials, and § 2.1b exists for exactly the cases no writer can
+    # control.  To stderr, so it reaches a person without entering piped
+    # output.  ONCE: this function runs in the supervisor and again in the
+    # child it re-execs (SUPERVISED_ENV=1).
     if os.environ.get(SUPERVISED_ENV) != "1":
         from .placement import machine_config_warnings
         for _warning in machine_config_warnings():
             click.echo(_warning, err=True)
 
-    # NO APPLICATION IMPORT ABOVE THE PARENT BRANCH.  ``from .web.app import
-    # create_app`` used to sit here, one line into the function and well before
-    # the fork below -- so the supervisor imported the entire web app, Flask
-    # included, before it ever spawned anything.  That is the one thing the
-    # supervisor must not do: its whole value is that a child which fails to
-    # import leaves the parent alive to be fixed and reloaded, and a parent
-    # that imported the same broken module first dies with it.  The import now
-    # happens in the child, below, after the parent has already returned.
+    # NO APPLICATION IMPORT ABOVE THE PARENT BRANCH: the supervisor's whole
+    # value is that a child which fails to import leaves the parent alive to
+    # be fixed and reloaded, and a parent that imported the same broken module
+    # first dies with it.  The import happens in the child, below.
 
     # --debug hands the process tree to Werkzeug's reloader, which forks its
     # own child and respawns it on ANY exit -- including the sentinel the
@@ -2293,8 +2093,7 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
     # From here down we ARE the server -- either the supervised child or an
     # unsupervised run -- so importing the app is what we are for.
 
-    # THE STACK-DUMP HOOK (deployment.md 1.0c; the 2026-08-28 wedge left
-    # nothing to read).  `kill -USR1 <this pid>` appends every thread's
+    # THE STACK-DUMP HOOK (deployment.md 1.0c).  `kill -USR1 <this pid>` appends every thread's
     # stack to the stacks log, so the next hang is diagnosed from a file
     # instead of theorized from thread counts.  Registered before the app
     # import; the handle is kept for the life of the process.
@@ -2305,11 +2104,9 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
         from .serve_daemon import open_private
         _sp = serve_stacks_log(port)
         # 0700 around it and 0600 on it, through the same doors the supervisor
-        # uses.  A bare `mkdir` + `open(_sp, "a")` here landed 0775/0664 on a
-        # file that holds thread stacks of a process carrying a provider's
-        # `client_secret` -- and `configuration.md` § 3.1 said 0600 while this
-        # line made it otherwise (A2).  Under --no-supervise/--debug no LogRoll
-        # runs, so nothing tightened the directory either.
+        # uses: the file holds thread stacks of a process carrying a
+        # provider's `client_secret` (`configuration.md` § 3.1), and under
+        # --no-supervise/--debug no LogRoll runs to tighten the directory.
         ensure_private_dir(_sp.parent, tighten=True)
         globals()["_STACKS_FH"] = open_private(_sp, "a")
         faulthandler.register(_signal.SIGUSR1, file=globals()["_STACKS_FH"],
@@ -2332,7 +2129,7 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
         # THIS PROCESS'S PORT, on the Flask app rather than through
         # `create_app(config=)` -- that argument is the RUNTIME config
         # dict and `{}` there is load-bearing.  `web.app.serve_port`
-        # reads this; parsing it back out of `Host:` gave the wrong
+        # reads this; parsing it back out of `Host:` would give the wrong
         # answer behind a proxy.
         app.config["MOLBUILDER_SERVE_PORT"] = port
         click.echo(
@@ -2388,17 +2185,16 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     #
     # `kill -9` of a supervisor leaves the server CHILD reparented and still
     # holding the port -- the child has no PDEATHSIG, and the supervisor's
-    # cleanup never ran, so the pidfile reads "dead" and this verb happily
-    # detached into a child that could not bind.  The failure then landed in
-    # the log AFTER `daemonize()`, so nothing reached the terminal and the
-    # person was left doing exactly what `serve status` had told them to.
+    # cleanup never ran, so the pidfile reads "dead" -- and a child that
+    # cannot bind fails in the log AFTER `daemonize()`, where nothing reaches
+    # the terminal.
     #
     # Checked here because this is the last moment anything reaches them --
     # the same reason the notebook's clash warning is printed just below.
     # A REFUSAL rather than a warning: a web server that cannot bind has
     # nothing left to do, unlike a notebook whose server is still useful.
     # AND WILL THE CHILD EVEN AGREE TO SERVE THIS BIND?  Same reason as the
-    # port check below, and the same failure it records: every refusal in
+    # port check below: every refusal in
     # `cmd_serve` is raised in the CHILD, which runs after `daemonize()`, so
     # without this the terminal reads "starting in the background ... then:
     # molbuilder serve status" at exit 0 while the server never came up
@@ -2452,12 +2248,10 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     #
     # RESOLVED TLS, not the raw flags.  The server CHILD resolves its own
     # (`cmd_serve`'s `_resolve_tls`, which also reads the `tls` block in
-    # molbuilder.json); this path never did, so a machine that configures TLS
-    # in the file rather than on the command line served the page over https
-    # and started the notebook over http.  The tab builds the frame URL from
-    # `location.protocol`, so it then asked https of a plain-http server and
-    # the frame died as mixed content.  The two schemes must agree, and this
-    # is where they are made to (found in review 2026-09-14).
+    # molbuilder.json), and the tab builds the frame URL from
+    # `location.protocol`, so a notebook on the other scheme dies as mixed
+    # content.  The two schemes must agree, and this is where they are made
+    # to.
     _nb_cert, _nb_key = _resolve_tls(cert, key)
     from .jupyter import port_clash, shepherd_argv
     notebook = shepherd_argv(port, host=host, cert=_nb_cert, key=_nb_key)
@@ -2519,13 +2313,8 @@ def _port_in_use(host: str, port: int):
     guessing from `127.0.0.1` would pass a port held on another interface.
 
     **It returns the error, not a sentence**, because "cannot bind" has more
-    than one cause and the caller has to tell them apart.  It returned
-    ``str(exc)`` and the caller opened with *"port N is already in use"*
-    whatever came back -- so a host that is simply not an address on this
-    machine produced *"port 8771 is already in use on 192.0.2.1 ([Errno 99]
-    Cannot assign requested address)"*, a sentence that contradicts its own
-    parenthetical, followed by advice to hunt an orphaned child with `ss`
-    that was never there (measured 2026-09-21).
+    than one cause and the caller has to tell them apart: a host that is not
+    an address on this machine (EADDRNOTAVAIL) is not a port in use.
     """
     import socket
     try:
@@ -2553,8 +2342,7 @@ def _runtime_dir_dies_at_logout() -> str:
     and the tab shows the no-supervisor state while a notebook with live
     kernels is up.  Reconciliation cannot find them either: it reads the
     pidfile that is gone.  The kernels can then only be killed by hand,
-    which on a GPU box holds a device (found in review 2026-09-15,
-    `plan.md` § 5n.8).
+    which on a GPU box holds a device (`plan.md` § 5n.8).
 
     Quiet when lingering is on, because then the directory survives and
     there is nothing to say.  Quiet too when `loginctl` is absent -- a
@@ -2588,13 +2376,9 @@ def _jupyter_signal(port: int, sig: int, verb: str) -> None:
     **A DELIVERED SIGNAL IS NOT A DONE DEED.**  `signal_supervisor` answers
     for the delivery; the handler runs in another process and, if that
     supervisor holds no notebook argv, writes *"notebook: not configured for
-    this server"* into the SERVE log and returns.  So this used to print
-    "asked the supervisor to start the notebook" and exit 0 for a start that
-    could never happen, and `jupyter status` then prescribed the same
-    command again -- a loop with no diagnosis, while the tab explained the
-    identical condition perfectly well (found in review 2026-09-15,
-    `plan.md` § 5n.8).  Saying it on the way IN is the cheap half; the other
-    half is `cmd_jupyter_status` not recommending this verb as the remedy.
+    this server"* into the SERVE log and returns.  So a start is followed by
+    :data:`_PREDATES_NOTE`, which says where that is written (`plan.md`
+    § 5n.8).
 
     A START reads molbuilder.json first, as the notebook's shepherd will
     (`jupyter._shepherd` asks the machine snapshot): a broken file is refused
@@ -2649,25 +2433,19 @@ def cmd_jupyter_restart(port):
     """Stop and start.  **Every kernel dies** -- a notebook's variables are in
     the kernel, so this is not the harmless verb `serve restart` is.
 
-    WAITS FOR THE STOP TO LAND before asking for the start.  It used to sleep
-    a flat 1.0 s, which is exactly the shepherd's own minimum teardown, so the
-    start signal routinely arrived while the supervisor was still inside
-    `_stop_jupyter`; `_start_jupyter` then saw the old shepherd still alive,
-    answered "already running", and the stop that followed left nothing at
-    all.  The verb silently degraded to `stop` (measured 2026-09-14).
+    WAITS FOR THE STOP TO LAND before asking for the start: a start that
+    arrives while the old shepherd is still alive is answered "already
+    running", and the stop then leaves nothing running.
     """
     import signal as _signal
     import time as _time
     from .jupyter import read_pid, pid_state
     # WAIT ON THE PROCESS, NOT ON ITS PIDFILE.
     #
-    # The pidfile stopped being a liveness signal in the same commit that
-    # added this wait: `_on_stop` now unlinks it FIRST and only then begins
-    # the `_STOP_GRACE_S` teardown, so the file is gone within milliseconds
-    # while the shepherd lives on for five more seconds.  Waiting on the file
-    # therefore returned at once and the start signal landed mid-teardown --
-    # reproducing the exact degradation this verb was fixed for.  Two fixes
-    # in one commit, each undoing the other (found in review 2026-09-14).
+    # `_on_stop` unlinks the pidfile FIRST and only then begins the
+    # `_STOP_GRACE_S` teardown, so the file is gone within milliseconds while
+    # the shepherd lives on for that grace; a start signal landing
+    # mid-teardown sees the old shepherd and does nothing.
     #
     # The pid read BEFORE the stop is the honest handle: `pid_state` answers
     # "ours" only while that process is alive and really is a shepherd.
@@ -2727,9 +2505,8 @@ def cmd_jupyter_status(port):
         # person needs them, and they hold DIFFERENT failures.  Everything
         # `_start_jupyter` cannot do (no argv, the log would not open, the
         # spawn raised) is in the SERVE log; everything jupyter-server itself
-        # refuses -- a taken port above all -- is in the NOTEBOOK log.  This
-        # named only the second, which is empty in the commonest case, and
-        # then offered the start verb again as the remedy (`plan.md` § 5n.8).
+        # refuses -- a taken port above all -- is in the NOTEBOOK log
+        # (`plan.md` § 5n.8).
         from .config_dir import serve_log
         nb_log = jupyter_log(port)
         if nb_log.exists():
@@ -2743,10 +2520,8 @@ def cmd_jupyter_status(port):
     click.echo("answering  " + ("yes" if st["answering"] else
                                 "NO -- it is up but not serving; see the log"))
     click.echo(f"log        {jupyter_log(port)}")
-    # WHAT IS OPEN -- paid for and then withheld until 2026-09-15.  `status`
-    # asks Jupyter for its sessions whenever `include_private` is on, so this
-    # verb was already making the HTTP round trip and printing none of it;
-    # the tab shows the same fact (`plan.md` § 5n.8).
+    # WHAT IS OPEN: `status` asks Jupyter for its sessions whenever
+    # `include_private` is on; the tab shows the same fact (`plan.md` § 5n.8).
     for _nb in (st["open"] or []):
         click.echo(f"open       {_nb.get('path', '?')}"
                    f"   ({_nb.get('state') or 'unknown'})")
@@ -2870,10 +2645,8 @@ def _note_wedge(port: int, pid: int) -> None:
 
     from .config_dir import ensure_private_dir, serve_log
     try:
-        # The same doors the daemon uses.  When `status` is the FIRST writer --
-        # a box where the server has never started -- a bare mkdir + append
-        # created the log 0664 in a 0775 directory, and a later supervisor
-        # start tightened both, so the window was "until one runs" (I5).
+        # The same doors the daemon uses: `status` may be the FIRST writer, on
+        # a box where the server has never started (I5).
         from .serve_daemon import open_private
         ensure_private_dir(serve_log(port).parent, tighten=True)
         with open_private(serve_log(port), "ab") as fh:
@@ -2923,8 +2696,7 @@ def cmd_serve_status(port):
     click.echo(f"answering: {said}")
     # A SUPERSET OF THE SURVEY ROW THAT SENT YOU HERE.  The survey prints
     # `notebook: yes|no` and the port-clash note and then says "detail on
-    # one: ... --port <port>", and the detail knew LESS than the line it came
-    # from (`plan.md` § 5n.8).
+    # one: ... --port <port>" (`plan.md` § 5n.8).
     from .jupyter import pid_state as nb_state, port_clash
     from .jupyter import read_pid as nb_pid
     nb_up = nb_state(nb_pid(port)) == "ours"
@@ -2997,10 +2769,7 @@ def _survey() -> int:
         # THE LOG IS THE RECORD, whichever form was typed.  `_note_wedge`
         # states the rule (`deployment.md` § 1.0c, user ruling 2026-08-28):
         # a detection belongs in the log "not only in whichever terminal
-        # happened to ask".  Before J14 the no-argument form defaulted to
-        # 8000 and took the single-port path, so it logged; making it a
-        # survey silently dropped that for the COMMON invocation (found in
-        # review 2026-09-15).
+        # happened to ask".
         if not ok:
             _note_wedge(p, pid)
         # THE PID ONLY, no HTTP: the survey's question is "what is
@@ -3049,11 +2818,6 @@ def cmd_serve_stop(port):
     ok, msg = signal_supervisor(port, _signal.SIGTERM)
     click.echo(("stopping: " if ok else "") + msg)
     raise SystemExit(0 if ok else 1)
-
-
-# --------------------------------------------------------------------- #
-#  watch subcommand group (live trajectory viewer)                      #
-# --------------------------------------------------------------------- #
 
 
 @cli.group("checkpoint",
@@ -3135,14 +2899,11 @@ def cmd_checkpoint_init(engine, note, calculation, path):
         Repo, CalculationNameError, CheckpointError, NestedRepoRefusedError)
     repo = Repo(_resolve_repo_path(path))
     already = repo.initialized
-    # `init` IS THE REPAIR VERB, so this no longer returns before calling it.
-    #
-    # It used to print "already a checkpoint folder" and stop -- which was fine
-    # while init only ever created things.  Once a folder somebody `git init`-ed
-    # by hand needed a *name* before it could be saved (L3), `save` started
-    # telling people to run exactly this command, and this command did nothing.
-    # A remedy that no-ops is worse than no remedy: it reads as "I tried that,
-    # it is still broken", and the verbs stop covering the work (§ 2.0).
+    # `init` IS THE REPAIR VERB, so it is called on an initialised folder too:
+    # a folder somebody `git init`-ed by hand needs a *name* before it can be
+    # saved (L3), and `save` tells people to run exactly this command.  A
+    # remedy that no-ops reads as "I tried that, it is still broken", and the
+    # verbs stop covering the work (§ 2.0).
     try:
         state = repo.init(engine=engine, note=note,
                           calculation=calculation)
@@ -3188,9 +2949,8 @@ def cmd_checkpoint_save(note, path):
     try:
         state = repo.save(note)
     # Exit 2, the same split `init` draws: this is the person's input, and the
-    # message names the command that fixes it.  A save gained this refusal when
-    # L3's name check moved here, and without this clause a one-command fix
-    # exited 1 -- the code a script reads as "the machine is broken".
+    # message names the command that fixes it.  Exit 1 is what a script reads
+    # as "the machine is broken".
     except CalculationNameError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
@@ -3229,14 +2989,11 @@ def cmd_checkpoint_list(limit, check, path):
         # file end to end, and a pause nobody explained reads as a hang.
         click.echo("comparing file content…", err=True)
     # One call answers both questions: `status` has to read where the folder
-    # stands in order to say what is unsaved, so asking git again for the same
-    # state was a second pair of subprocesses for a value already in hand.
+    # stands in order to say what is unsaved.
     #
     # AND IT IS THE ONE CALL HERE THAT CAN FAIL.  It reads the standing state's
     # MANIFEST, and a lost or tampered archive is *named* rather than absorbed
-    # (I2b) -- which arrived here as an uncaught exception, so `checkpoint list`
-    # answered a damaged folder with a Python traceback while the HTTP route
-    # returned a structured error for the identical condition.
+    # (I2b).
     #
     # The STATES are unaffected by that damage and are exactly what somebody
     # recovering needs to read, so they are printed either way and the damage
@@ -3339,7 +3096,7 @@ def cmd_checkpoint_restore(state, force, path):
         # second time.  That is the honest cost of putting the question last:
         # the check that guards the folder happens immediately before the
         # folder changes, not before a prompt somebody sat reading.  What the
-        # second pass no longer repeats is the EXPENSIVE half -- `force` is the
+        # second pass does not repeat is the EXPENSIVE half -- `force` is the
         # answer, so it does not re-hash the working tree to re-ask a question
         # this branch has already had answered.
         click.echo(str(e), err=True)
@@ -3428,7 +3185,7 @@ def cmd_watch_parse(input_path, frames_only, pretty):
             parser = detect_parser(resolved)
             # INSIDE the try: `parse()` raises ParseError too -- a readable
             # trajectory whose stem is not a legal run label is the shipped
-            # case -- and one line lower it escaped as a traceback.
+            # case.
             traj = parser.parse(resolved)
         except ParseError as e:          # incl. AmbiguousFormatError
             click.echo(f"Error: {e}", err=True)
@@ -3494,8 +3251,7 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
     # The loop below tolerates `ParseError` as a TRANSIENT state (the writer
     # has not flushed enough bytes to be detectable yet) and sleeps.  The
     # directory refusal is an `UnknownFormatError`, which IS a `ParseError`,
-    # so raising it inside the loop retried for ever -- a silent hang where
-    # there used to be a traceback.  Measured 2026-09-18.
+    # so raising it inside the loop would retry for ever -- a silent hang.
     from pathlib import Path as _P
     if _P(input_path).is_dir():
         click.echo(f"Error: {input_path} is a directory.  `watch tail` "
@@ -3547,28 +3303,16 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
         return
 
 
-# ``molbuilder watch serve`` removed 2026-05-19 along with the /watch
-# page route.  Use ``molbuilder serve`` instead -- it hosts the same
-# blueprints (so /api/watch/* remain available for the /results
-# trajectory inspector) and supports the same TLS / --allow-insecure-
-# binding flags.  The ``molbuilder watch parse`` and ``molbuilder
-# watch tail`` subcommands are pure CLI utilities (no web tab) and
-# remain unchanged.
-
-
 # --------------------------------------------------------------------- #
 #  Entry points                                                         #
 # --------------------------------------------------------------------- #
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    """Back-compat int-returning entry point.
+    """The int-returning entry point, for ``project.scripts`` and for tests
+    that call ``cli.main([...])`` directly.
 
-    Kept for ``project.scripts`` and for tests that call
-    ``cli.main([...])`` directly.
-
-    The contract we need to preserve (inherited from the argparse
-    predecessor; tests assert it):
+    The contract (tests assert it):
       * ``--help`` / ``-h``                 -> SystemExit(0)
       * missing / unknown args / commands   -> SystemExit(2)
       * normal command completion           -> return 0 (no SystemExit)

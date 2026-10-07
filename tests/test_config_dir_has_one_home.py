@@ -1,17 +1,6 @@
 """One directory, one function — the callers cannot disagree about it.
 
-`configuration.md` M-4 gave ``environment.json`` one home for its FILENAME,
-which "was a string literal in three modules".  The DIRECTORY that filename
-sits in stayed spelled three times:
-
-    runtime_config._machine_config_file      -> molbuilder.json
-    scheduler/record.machine_scope_path      -> environment.json, environments/
-    auth_setup.default_secret_dir            -> secret_key
-
-They agreed, and two of them said so in prose -- *"Mirrors
-auth_setup.default_secret_dir's convention"* and *"mirrored rather than
-imported"*.  **A comment is not a mechanism.**  Fixed 2026-08-23 by
-``molbuilder/config_dir.py``.  The tests below move the variables and ask
+The directory is ``molbuilder/config_dir.py``'s.  The tests below move the variables and ask
 every door where its file went; a module that spells the rule a second time
 is review's to find (`process/code-audit.md` § 1c), because an agreeing copy
 gives the same answer as the door until the day the rule moves.
@@ -19,9 +8,6 @@ gives the same answer as the door until the day the rule moves.
 from __future__ import annotations
 
 import pytest
-
-
-# `test_every_per_user_file_sits_under_the_one_directory` retired 2026-10-02 (W54): the same check, through XDG, as `test_every_door_moves_with_the_one_variable`.
 
 
 def test_the_directory_is_read_at_call_time_not_captured_at_import(
@@ -37,10 +23,7 @@ def test_the_directory_is_read_at_call_time_not_captured_at_import(
 
 
 # ---------------------------------------------------------------------------
-# The override — `configuration.md` § 2.1c, which carries the rule the
-# 2026-09-01 access plan decided.  (The comment cited the PLAN until
-# 2026-09-02; a plan records how a decision was reached, the contract
-# records what is true now, and only one of them is maintained.)
+# The override — `configuration.md` § 2.1c.
 # ---------------------------------------------------------------------------
 
 class TestTheRootCanBeNamedOutright:
@@ -80,23 +63,9 @@ class TestTheRootCanBeNamedOutright:
         monkeypatch.setenv(CONFIG_DIR_ENV, "")
         assert config_dir() == tmp_path / "xdg" / "molbuilder"
 
-    # `test_it_moves_every_per_user_file_together` retired 2026-10-02 (W54): a subset of `test_every_door_moves_with_the_one_variable`.
 
 # ---------------------------------------------------------------------------
-# The second root — RETIRED 2026-08-31
-# ---------------------------------------------------------------------------
-#
-# `_SECOND_ROOT_HOLDOUTS` listed the three modules that still computed
-# `~/.molbuilder/...` themselves, and its own failure message said: "when the
-# list empties, delete the list and this test with it: the root is gone and
-# there is nothing to shrink."  Step 2 emptied it, so it is deleted rather than
-# left standing as an empty allowance.
-#
-# What replaces it is not a smaller allow-list but a stricter rule: no module
-# may compute a per-user root AT ALL.  Review holds that one; the doors below
-# are asked where their files went.
-# ---------------------------------------------------------------------------
-# Operational state — archive/2026-09-01-config-access-plan.md § 3.2
+# Operational state
 # ---------------------------------------------------------------------------
 
 class TestOperationalStateFollowsXdg:
@@ -144,16 +113,9 @@ class TestOperationalStateFollowsXdg:
 
 
 class TestOperationalStateFollowsTheVariablesOnly:
-    """`paths.logs` / `paths.run` / `paths.reports` are RETIRED.
-
-    They existed for a day.  `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR` already
-    move these directories, so the keys were a second way to say one thing --
-    and being a second way is what put the answer out of reach of the layer
-    that needs it: `serve_daemon` is L1, the config reader is L2, and a
+    """`$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR` alone move these
+    directories: `serve_daemon` is L1, the config reader is L2, and a
     supervisor must be able to write its log before any config is read.
-
-    Deleting them removed the inversion instead of working around it with an
-    injection point (`archive/2026-09-01-config-access-plan.md` § 5.3).
     """
 
     @pytest.fixture()
@@ -174,11 +136,6 @@ class TestOperationalStateFollowsTheVariablesOnly:
         assert reports_dir() == cfg / "state" / "molbuilder" / "reports"
         assert runtime_dir() == cfg / "state" / "molbuilder" / "run"
 
-    # `test_the_retired_key_is_refused` retired 2026-10-02 (W54): a row of `tests/data/molbuilder_json.toml`, naming the variable that replaces it.
-
-    # `test_the_refusal_names_the_variable_that_replaces_it` retired 2026-10-02 (W54): the same row says XDG_STATE_HOME.
-
-    # `test_it_does_not_read_as_a_typo` retired 2026-10-02 (W54): the row's own sentence is the retired-key one, so it is not the typo list.
 
     def test_projects_stays(self, cfg):
         """Data rather than operational state, no XDG equivalent, and
@@ -187,20 +144,15 @@ class TestOperationalStateFollowsTheVariablesOnly:
         self._write(cfg, {"paths": {"projects": "/data/projects"}})
         assert read_config()["paths"]["projects"] == "/data/projects"
 
-    # `test_a_key_nothing_reads_is_still_refused` retired 2026-10-02 (W54): `test_projects.py::test_a_malformed_setting_is_refused_not_ignored` drives the same branch.
 
 # ---------------------------------------------------------------------------
-# One API — archive/2026-09-01-config-access-plan.md § 5
+# One API
 # ---------------------------------------------------------------------------
 
 #: THE DIVISION A11 DRAWS: the module that owns a FORMAT owns its NAME, and
 #: `config_dir` owns the DIRECTORY.  So a file with a format owner keeps its
 #: name there and that owner exposes the path function; what lives in
 #: `config_dir` is the files with no format to own.
-#:
-#: Pulling `environment.json` and `notify` into `config_dir` was tried and
-#: reverted the same day — it took a name from its format owner, and
-#: `test_architecture_rules`' A11 said so before any of this shipped.
 class TestEveryFileHasADoor:
 
     def test_the_ported_ones_take_the_port(self, monkeypatch, tmp_path):
@@ -252,22 +204,12 @@ class TestEveryFileHasADoor:
             + "\n".join(misplaced()))
 
 
-# `TestAFilesResolverIsNotAWayToReachTheRoot` -- two tests that monkeypatched a
-# door to prove a caller asks it (the named-target directory, the provenance
-# display) -- retired 2026-10-02 (W54 T19): while a copy agrees with its door
-# it gives the door's answer, so nothing a run can observe separates them, and
-# `configuration.md` § 2.1c / § 3.1 give that class to review.
-
-
 def test_a_printed_remedy_names_the_resolved_directory(monkeypatch, tmp_path):
     """I3.  `prep` refused a remote target whose record states no activation and
     told the person to *"copy the record into `~/.config/molbuilder/environments/`
     here"* -- a literal, on the machine where `MOLBUILDER_CONFIG_DIR` is the
     whole point of the variable.  Following it put the record where `prep` does
     not look, and `prep` then refused again with the same message.
-
-    This is the defect `notify-token --keys-file` was DELETED for on the same
-    day; the sweep missed this site.
 
     API-LEVEL, and why: the road reaches this refusal (`launch_values.toml`'s
     "...a named target too -- ... the refusal says the copy back"), but a row

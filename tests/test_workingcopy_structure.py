@@ -1,14 +1,11 @@
 """Structure + sidecar codec (``StructureCodec``) — load, edit, write, read of
 the ``.xyz`` + ``.molstruct.json`` pair.
 
-The codec is the LIVE remnant of the retired working-copy stack, and now the one
-place a Structure becomes bytes for every surface that writes one: ``write``
-backs ``/api/structure/save``, ``files`` backs ``/api/structure/export``, and
-``read`` backs ``/api/build/load``.  These tests exercise that surface directly
-(``load`` / ``pair`` / ``files`` / ``write`` / ``read``) — no ``WorkingCopy``
-wrapper (that class + the ``/api/workingcopy/*`` door were removed), and no
-``scratch_blob`` / ``from_scratch`` (the ``{xyz, sidecar}`` text blob was retired
-2026-07-31 with the door shape that was its only caller).
+The codec is the one place a Structure becomes bytes for every surface that
+writes one: ``write`` backs ``/api/structure/save``, ``files`` backs
+``/api/structure/export``, and ``read`` backs ``/api/build/load``.  These tests
+exercise that surface directly (``load`` / ``pair`` / ``files`` / ``write`` /
+``read``).
 """
 import json
 from pathlib import Path
@@ -43,8 +40,7 @@ def test_codec_writes_xyz_and_sidecar(project):
 
     Note the ORDER below.  ``regions`` is the whole store, so assigning it
     replaces everything in it -- including a reserved label written earlier.
-    That is the point of there being one store, and this test used to write the
-    two the other way round and assert a key the file no longer has."""
+    That is the point of there being one store."""
     s = CODEC.load(project / "mol.xyz")
     assert s.n_atoms == 5
     s.regions = {"bridge": [2, 3]}
@@ -73,9 +69,8 @@ def test_labels_roundtrip_through_load(project):
 
 
 def test_write_then_read_restores_structure_labels_and_annotations(project):
-    """The round trip that replaced the retired ``scratch_blob`` -> ``from_scratch``
-    pair: out through the file door and back, with everything the sidecar carries
-    still attached.  Same property, through the seam that actually exists."""
+    """Out through the file door and back, with everything the sidecar carries
+    still attached."""
     s = CODEC.load(project / "mol.xyz")
     s.frozen_atoms = [4]
     s.set_channel("spin", AtomChannel("value", {2: 0.5}))
@@ -115,11 +110,6 @@ def test_it_writes_utf8_regardless_of_the_platform_locale(tmp_path):
     """An explicit encoding, never the platform's, or a non-ASCII title is
     silently corrupted on cp1252 -- and the codec's own `load` reads
     `utf-8-sig`, so a locale-encoded write would not even round-trip here.
-
-    This pinned `Structure.to_extxyz(path)` until 2026-09-22. The argument is
-    gone (the writers return text; the codec owns the file), so the concern
-    moved to the code that now does the writing rather than being deleted
-    with the call site.
     """
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec

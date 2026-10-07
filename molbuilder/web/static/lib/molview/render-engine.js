@@ -43,16 +43,13 @@
  * Data goes down. Nothing comes back up (§ 7.1). The per-frame result carries
  * CONTENT and never styling (§ 6.5) — a `color` or a `radius` on per-frame data
  * is the specific defect this rule exists to catch.
- *
- * Step C wrote the per-frame maths of § 10.3 and § 6.5, below. Step F writes the
- * cost decision, the rebuild window, the self-checks, and the I/O half.
  */
 "use strict";
 
 import { toDisplay } from "./_atom.js";
 // The one answer to "which cell is this structure actually using" (§ 9.3). The
 // drawing asks the same question the Cell page asks, so the two cannot describe
-// different structures — which they did.
+// different structures.
 import { effectiveCell } from "./model-jobs.js";
 
 
@@ -91,17 +88,10 @@ import { effectiveCell } from "./model-jobs.js";
  * The switch being on is not the same as isolate DOING anything: with nothing
  * selected there is nothing to hide, so the whole structure is drawn.  Three
  * readers need this answer -- the drawn-index map below, `processFrame`, and
- * the 3-D window's click gate in `mount.js` -- and until 2026-09-07 the third
- * read the raw switch instead.
- *
- * What that cost: press "Show selected only" with nothing selected, and the
- * drawing did not change (the two readers here were right) while every click
- * in the window was dropped (the third was not).  The 3-D view stopped
- * selecting, nothing looked different, and nothing said why -- the atom list
- * still worked, so it read as a viewer bug.
+ * the 3-D window's click gate in `mount.js`.
  *
  * Exported because `mount.js` is handed the same two facts and must reach the
- * same answer.  A fourth copy is what this replaces.
+ * same answer.
  */
 export function isolateInEffect(switches, selection) {
     return !!(switches || {}).isolate && (selection || []).length > 0;
@@ -267,7 +257,7 @@ const CARTESIAN_AXIS_LENGTH = 1.5;
  * The triad in the window is either the world's x/y/z or the cell's a/b/c
  * (§ 10.3), and which one you are looking at changes what every arrow means: the
  * Cartesian triad says which way is which in the room, the lattice triad says
- * which way the box repeats. Drawn in one palette — which they were — the two are
+ * which way the box repeats. Drawn in one palette, the two are
  * indistinguishable, so a skewed cell reads as a mis-drawn axis widget and a
  * structure whose cell failed to load looks exactly like one that never had a
  * cell. The label at each tip says which, but a label is read second and a
@@ -317,13 +307,7 @@ export function sceneFor(periodicity) {
     /* THE CELL AS IT WILL ACTUALLY BE USED, not the raw field (§ 9.3). A
      * structure given no explicit cell still HAS one — the server works out the
      * box that wraps the atoms and sends it as `resolved_cell` — and that is the
-     * box a calculation runs in, so it is the box to draw.
-     *
-     * Reading `cell` alone is why "Show unit cell" drew nothing on every plain
-     * `.xyz`: the raw field is null there, so the box was null, and the axes
-     * fell back to the Cartesian triad at the world origin — which is § 10.3's
-     * named failure, reached from a different direction than the one it warns
-     * about. */
+     * box a calculation runs in, so it is the box to draw. */
     const used = effectiveCell(periodicity);
     /* NO CORNER, NO BOX (molview.md § 10.3; plan § 5q D13). The box is drawn
      * at the server's `box_corner` and nowhere else: a block that arrives
@@ -342,11 +326,8 @@ export function sceneFor(periodicity) {
      * those are not the same directions, and seeing the angle between them IS
      * the thing worth looking at.
      *
-     * This used to return ONE of them — a/b/c if the structure had a cell, x/y/z
-     * if it did not — so the world frame vanished the moment a cell appeared,
-     * and nothing on screen said which of the two you were looking at except a
-     * single letter at each tip. They are separate now, they carry separate
-     * colours (above), and each rides its own switch: the world triad is what
+     * They carry separate colours (above), and each rides its own switch: the
+     * world triad is what
      * "Show axes" means, and the cell triad belongs to the cell, so it comes and
      * goes with "Show unit cell" alongside the box it describes.
      */
@@ -423,10 +404,6 @@ export function createRenderEngine(embed) {
      * frame unless the cell itself changes, so they are worked out once as
      * scene-level data and are NOT RECOMPUTED PER FRAME. Recomputing them per
      * frame would be work that produces an identical answer four hundred times."
-     *
-     * It was derived inside the per-frame overlay path, so a frame swap re-ran
-     * it — four hundred identical derivations across a played trajectory, which
-     * is exactly the rule's own example of what not to do.
      *
      * Held until the cell changes, and the only two things that can change it
      * say so: a new structure, and a cell edit. */
@@ -516,10 +493,8 @@ export function createRenderEngine(embed) {
         });
         /* ONE ARROW SET, COMPOSED HERE. The axis triad rides the ordinary arrow
          * door carrying its own colours (§ 10.3), and the drawing has one such
-         * door — so writing the forces and then the axes made the second erase
-         * the first: with both switches on the force arrows vanished, and a
-         * frame swap (which re-places the overlays and not the scene) erased
-         * the axes instead. Whatever arrows exist are handed down together. */
+         * door, where a second write erases the first. Whatever arrows exist
+         * are handed down together. */
         const sw = switches();
         const scene = sceneNow();
         // Each triad on its own switch: the world frame is what "Show axes"
@@ -547,8 +522,8 @@ export function createRenderEngine(embed) {
      *
      * § 9.6: "On load, AND ON RESET, the camera is fitted to the structure" —
      * those two moments, and no other. A rebuild is not one of them: isolate is
-     * a rebuild (§ 10.5), so fitting on every rebuild threw away the angle the
-     * user had set the moment they pressed the isolate switch. Nothing above the
+     * a rebuild (§ 10.5), so fitting on every rebuild would throw away the angle
+     * the user had set the moment they pressed the isolate switch. Nothing above the
      * drawing keeps the camera, so there is nothing to restore afterwards —
      * which is exactly why the fit has to be withheld rather than undone.
      *
@@ -558,20 +533,10 @@ export function createRenderEngine(embed) {
         const processed = processAll();
         const s = structure();
         if (!s || !processed.length) {
-            /* NOTHING TO DRAW IS SOMETHING TO DRAW (molview.md § 6.7a).
-             *
-             * This returned without telling the drawing anything, so a model
-             * emptied to NOTHING -- `clear()`, which sets the structure to
-             * null -- left the previous molecule on screen while the panel's
-             * atom list emptied beside it.  Reported 2026-09-02: "when i
-             * click 'start empty' the atom list is clear, but 3dmol is not
-             * updated ... it stays with the old model displayed".
-             *
-             * Deleting every atom took a different route and so looked
-             * fixed: there the structure still EXISTS with zero elements, so
-             * `loadFrames` was reached and cleared the viewer itself.  The
-             * guard here is the same mistake one layer up -- "nothing to
-             * draw" read as "nothing to do". */
+            /* NOTHING TO DRAW IS SOMETHING TO DRAW (molview.md § 6.7a): a
+             * model emptied to NOTHING -- `clear()`, which sets the structure
+             * to null -- must clear the drawing as the panel's atom list
+             * empties beside it. */
             embed.beginBatch();
             /* THE TRIAD IS HANDED DOWN HERE, not assumed to be sitting in
              * the drawing already.
@@ -579,9 +544,7 @@ export function createRenderEngine(embed) {
              * `loadFrames([], [])` redraws the arrows the drawing is HOLDING
              * -- which is right when a structure was on screen a moment ago
              * and wrong on the path that matters most: a page reopened onto
-             * an empty canvas has never handed any arrows down, so there was
-             * nothing to redraw and the window came back a blank rectangle
-             * with "Show axes" reading ON (browser walk, 2026-09-02).
+             * an empty canvas has never handed any arrows down.
              *
              * Sent BEFORE the clear, so the arrows are in hand when
              * `loadFrames` redraws them and sets the empty view's distance.
@@ -622,9 +585,9 @@ export function createRenderEngine(embed) {
         if (!embed.hasMovie()) { doRebuild(true); return; }
 
         // ONLY THE NEW FRAMES (§ 10.5: "process the new frames only, extend the
-        // movie"). Working out all four hundred and keeping the tail made an
-        // append cost what a rebuild costs, which is the distinction the whole
-        // cost table exists to draw.
+        // movie"). Working out all four hundred and keeping the tail would make
+        // an append cost what a rebuild costs, which is the distinction the
+        // whole cost table exists to draw.
         const fresh = [];
         const total = masterCount();
         for (let f = Math.max(0, from); f < total; f++) {
@@ -752,13 +715,11 @@ export function createRenderEngine(embed) {
             /* THE ENGINE IS IDLE THE MOMENT THE WORK IS DONE -- before the cover
              * comes down, and that ordering matters.
              *
-             * These are two different jobs and I had them as one: `phase` holds
-             * DATA arrivals (§ 10.9), the cover blocks POINTER input. Leaving
-             * the phase REBUILDING until the cover dropped meant a switch
-             * toggled in that window was DISCARDED -- § 10.9 says a switch is
+             * These are two different jobs: `phase` holds DATA arrivals
+             * (§ 10.9), the cover blocks POINTER input. § 10.9 says a switch is
              * not held, because "the rebuild reads the switches when it runs",
              * which is only true while a rebuild is actually running. Held over
-             * a cosmetic wait it silently drops the user's input instead. */
+             * a cosmetic wait, the phase would silently drop the user's input. */
             phase = IDLE;
             // Replayed IN ARRIVAL ORDER, then the viewer is idle again.
             const queued = held;

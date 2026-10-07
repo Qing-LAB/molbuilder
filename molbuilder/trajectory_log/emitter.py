@@ -5,24 +5,18 @@ This module is the **single source of truth** for the
 travels beside every PySCF job inside ``mb_pyscf.pyz``
 (``runwrap.PYSCF_COMPANIONS``, ``engines/pyscf.md`` § 3), where molbuilder
 is not installed -- so it imports only the standard library, numpy and
-``constants``, the last the two ways a travelling module does.  Until
-2026-10-05 its source was pasted into the script by
-``inspect.getsource``.
+``constants``, the last the two ways a travelling module does.
 
-Why a real module instead of an inline list-of-strings:
+Why a real module:
 
 * The class can be **unit-tested** directly: instantiate, call the
   hooks with stub envs dicts, assert the on-disk file contents.
-  Pre-fix, behaviour could only be verified by subprocess-running a
-  generated script (review-fix D's smoke test).
 * The class can be **type-checked, linted, and read** as normal Python.
-  The inline list-of-strings was opaque to every tool.
 * The class the tests exercise is the class the run imports -- no
   copy to drift.
 
-Format: see :mod:`molbuilder.trajectory_log.format` for the spec
-docstring (the same format the standalone ``write_initial_preview``
-helper writes).  The emitter writes a step-0 preview block on
+Format: the spec is in ``docs/engines/pyscf.md`` (the same format the
+standalone ``write_initial_preview`` helper writes).  The emitter writes a step-0 preview block on
 construction (so molwatch can render the molecule from second one,
 even before SCF starts) plus one block per accepted opt step.
 
@@ -92,8 +86,7 @@ def header_and_preview(*, job, engine, generator, elements, coords_ang,
     SIESTA run's ``.out`` states too, read as the log's own content
     (`model/parse.md` § 5.3).  ``runtime_info`` writes one
     ``# runtime.<key>: <value>`` line per key handed in, in its order, with
-    no whitelist: the reader accepts any key, and a writer that filtered
-    once dropped ``max_memory_mb`` on the way to disk.
+    no whitelist: the reader accepts any key.
     """
     lines = ["# molwatch trajectory log v1",
              f"# generator: {generator}",
@@ -174,7 +167,7 @@ class MolwatchEmitter:
         # THE ORBITAL-GRADIENT NORM IS AN ENERGY: dE/d(kappa) over
         # dimensionless orbital rotations, in Hartree -- what PySCF compares
         # with `conv_tol_grad` -- so it converts as an energy, to eV.  It is
-        # not a force (it was once scaled by Hartree/Bohr -> eV/Ang).
+        # not a force.
         g_eV    = (float(norm_gorb) * HARTREE_EV) \
                   if norm_gorb is not None else None
         ddm     = float(norm_ddm) if norm_ddm is not None else None
@@ -265,8 +258,7 @@ class MolwatchEmitter:
         (`model/parse.md` § 2b, P-S1).  The words are the reader's own
         (`end_lines`).  Installs an excepthook that remembers the exception
         and hands it to Python's own, and an atexit hook; a failure to
-        write never breaks the exit.  Until 2026-10-05 these hooks were
-        written into the script as text."""
+        write never breaks the exit."""
         import atexit
         import sys
         error: list = []

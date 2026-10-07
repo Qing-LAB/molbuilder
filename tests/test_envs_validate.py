@@ -1,8 +1,6 @@
 """L1 tests for ``molbuilder.envs.validate``'s verdict.
 
-`validate.py` had 598 lines of probe logic and **no test file at all** --
-including the one probe two live engine docs name as the only canary for
-ELPA's silent CPU fallback.  This covers the verdict, which is the part a
+This covers the verdict, which is the part a
 person acts on; the probes themselves need a built GPU env and ~30 minutes.
 """
 from __future__ import annotations

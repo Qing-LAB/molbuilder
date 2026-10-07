@@ -2,10 +2,8 @@
 
 The ONE DOOR for this sidecar: the write side lives here, and the read
 side is re-exported from :mod:`molbuilder.parse.sidecars.molstruct`, so
-a caller needs one import for both. Absorbed from the legacy
-``molbuilder.parsers.molstruct_json`` (deleted 2026-06-21).  The split
-is what ``model/parse.md`` § 4 requires (provenance:
-`docs/archive/old_docs/protocols/parse-module.md` § 8).
+a caller needs one import for both.  The split is what
+``model/parse.md`` § 4 requires.
 
 TRAVELS beside every PySCF script, in ``mb_pyscf.pyz``
 (``runwrap.PYSCF_COMPANIONS``): the codec's ``write_moved`` saves a run's
@@ -18,8 +16,7 @@ Public surface here
 -------------------
 
 * :data:`SCHEMA_VERSION`            — current on-disk schema.  The number
-  lives ONLY on the constant below — typed here too, it went stale at
-  "(6)" while the constant said 7 (redo 2026-08-12).
+  lives ONLY on the constant below.
 * :exc:`MolstructJsonError`         — raised on malformed input or
   invariant violations.  Canonical home; the read-side re-imports.
 * :func:`sidecar_path_for`          — canonical ``<stem>.molstruct
@@ -79,35 +76,27 @@ except ImportError:                  # pragma: no cover - Windows branch
     _HAVE_FLOCK = False
 
 
-#: The on-disk sidecar schema.  BUMPED TO 7 (2026-07-31) with the one-label-store
-#: change, and READ STRICTLY: this build reads 7 and refuses everything else.
+#: The on-disk sidecar schema, READ STRICTLY (:data:`READABLE_VERSIONS`).
 #:
-#: WHAT CHANGED IN 7.  ``frozen_atoms`` stopped being a field of its own and
-#: became an ORDINARY LABEL in ``regions``, like every other one.  What makes it
-#: reserved is not storage: it is a special INTERPRETATION where the context calls
+#: ``frozen_atoms`` is an ORDINARY LABEL in ``regions``, like every other one.
+#: What makes it reserved is not storage: it is a special INTERPRETATION where the context calls
 #: for it (SIESTA's ``Geometry.Constraints``) plus one designated accessor to pull
 #: that group out (:func:`frozen_atoms` here, ``getFrozen()`` in the browser).  One
 #: store, one spelling of the name, interpreted at the end.
 #:
-#: WHY THE CLEAN BREAK.  Versions 3-6 were left in the readable set, so a v3 file
-#: was ACCEPTED and then read by a loader that no longer looks at the old top-level
-#: key -- it came back with its frozen atoms silently gone, and the generated
-#: SIESTA input carried no ``Geometry.Constraints`` block.  A junction's electrodes
-#: were free to relax; the run converged and was wrong.  A version gate that admits
-#: a version the code cannot honour is worse than no gate: it turns a loud failure
-#: into a quiet one.
-SCHEMA_VERSION = 10  # 10 (2026-09-25): `cell_origin` RETIRED -- read and
+#: A version gate that admits a version the code cannot honour is worse than
+#: no gate: it turns a loud failure into a quiet one.
+SCHEMA_VERSION = 10  # 10: `cell_origin` RETIRED -- read and
 #                      ignored, never written again (structure.
 #                      RETIRED_METADATA_KEYS; the user's decision, plan § 5q
 #                      D2) -- and the OPTIONAL stated `engine_offset` added
 #                      (null = the rule places the atoms;
 #                      model/structure-periodicity.md § 6.0).
-#                    9 (2026-08-29): + the OPTIONAL `info` block (the
-#                      free-form NON-structural store,
-#                      archive/2026-09-01-structure-info-plan.md -- additive; absent
+#                    9: + the OPTIONAL `info` block (the free-form
+#                      NON-structural store -- additive; absent
 #                      means "nothing recorded", and it never enters
 #                      structure_hash).
-#                    8 (2026-08-20): + the OPTIONAL identity columns
+#                    8: + the OPTIONAL identity columns
 #                      (structure.IDENTITY_FIELDS, canonical-dict spellings,
 #                      written only when real -- user ruling: additive
 #                      "extra", never conflicting).  A 7 file simply lacks
@@ -115,7 +104,7 @@ SCHEMA_VERSION = 10  # 10 (2026-09-25): `cell_origin` RETIRED -- read and
 #                      8 file that carries them refuses with the stray-key
 #                      message, which names exactly what it does not know.
 
-#: The versions THIS build reads whole.  v8 (2026-08-20) only ADDED the
+#: The versions THIS build reads whole.  v8 only ADDED the
 #: optional identity columns, so a v7 file loses nothing read under v8 rules
 #: (absent identity = the synthesized defaults, which is what v7 meant).
 #: Everything older stores the same facts in DIFFERENT places (v3's top-level
@@ -124,22 +113,15 @@ SCHEMA_VERSION = 10  # 10 (2026-09-25): `cell_origin` RETIRED -- read and
 #: provably additive.
 #:
 #: **AND ONLY WHEN A READER HAS BEEN RUN AGAINST A FILE AT EACH VERSION
-#: CLAIMED.**  That is the check, not the reasoning: this list ran
-#: ``(3, 4, 5, 6)`` on the argument that every bump was additive, and the
-#: argument stopped being true at 7 -- which moved ``frozen_atoms`` out of
-#: its own top-level key and into ``regions``.  A v3 file passed the gate,
-#: and then ``load_text`` -- which reads the keys it NAMES -- never named
-#: the old one.  The atoms did not fail to load; **they were never looked
-#: for.**  A junction came back with its 50 frozen electrode atoms gone,
-#: ``Geometry.Constraints`` vanished from the generated SIESTA input, and
-#: the run converged on a structure nobody asked for (2026-07-31).
+#: CLAIMED.**  That is the check, not the reasoning: ``load_text`` reads the
+#: keys it NAMES, so a key an older version kept elsewhere is never looked
+#: for.
 #:
 #: Each version in the set below is read by a test against a real file at
 #: that version (``tests/test_molstruct_json.py::TestSchemaVersioning``, and
-#: v9 in ``TestARetiredKeyPassesEveryGate``); adding one without such a test is
-#: how the above happens again.
+#: v9 in ``TestARetiredKeyPassesEveryGate``).
 #:
-#: v10 (2026-09-25) removed a key and added an optional one: a v7-v9 file's
+#: v10 removed a key and added an optional one: a v7-v9 file's
 #: `cell_origin` is retired -- read and ignored, by decision (D2) -- and a
 #: missing `engine_offset` means the rule, which is what those files meant for
 #: every structure whose corner nobody typed.
@@ -153,10 +135,8 @@ ENVELOPE_KEYS = ("schema_version", "n_atoms_total", "structure_hash",
                  "selection_rules", "created_by", "created_at")
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
-#: PUBLIC since 2026-09-08.  `transport/compose` held four hand-written copies
-#: of this literal and a `glob("*.molstruct.json")` of its own: a suffix with a
-#: composer (:func:`sidecar_path_for`) and no public name and no finder is how
-#: that happens (`project-layout.md` § 4.5).
+#: PUBLIC: a suffix with a composer (:func:`sidecar_path_for`) has a public
+#: name and a finder (:func:`sidecars_in`, `project-layout.md` § 4.5).
 SUFFIX = ".molstruct.json"
 
 
@@ -186,10 +166,7 @@ class MolstructPairingError(MolstructJsonError):
     block's surface answers it by loading without the labels and saying why,
     since refusing there would leave a finished run unopenable and so
     unfixable.  A block for a *different structure* is not a version fact and
-    gets no such leniency anywhere.  Until 2026-09-05 the two shared one
-    exception type, so a caller that wanted to be lenient about the first had
-    no way to stay strict about the second -- and one that tried swallowed
-    the count guard whole.
+    gets no such leniency anywhere.
     """
 
 
@@ -211,10 +188,7 @@ def sidecar_path_for(structure_path: Union[str, Path]) -> Path:
     THE SUFFIX IS NOT READ, and the `.pdb` row is there to say so: a
     structure molbuilder opens is `.xyz` or `.pdb` (`StructureCodec`
     accepts exactly those two), and both carry their regions, frozen
-    atoms and cell in the same sister file.  The parameter was called
-    ``xyz_path`` and the examples were all `.xyz`, which reads as a rule
-    even though the code never had one -- and on 2026-09-19 a new `.pdb`
-    reader was written around the sidecar rather than through it.
+    atoms and cell in the same sister file.
 
     ``Path.with_suffix`` can't be chained for compound suffixes
     (it'd replace ``.molstruct`` with ``.json`` on the second call),
@@ -227,9 +201,7 @@ def sidecar_path_for(structure_path: Union[str, Path]) -> Path:
 def sidecars_in(directory: Union[str, Path]) -> "List[Path]":
     """Every sidecar in *directory*, sorted by name — the finder half.
 
-    :func:`sidecar_path_for` composes the name; nothing found it, so
-    `transport/compose` spelled ``glob("*.molstruct.json")`` and
-    ``name.endswith(".molstruct.json")`` beside it.  **For every name it
+    :func:`sidecar_path_for` composes the name.  **For every name it
     composes, the framework owns the search** (`project-layout.md` § 4.5).
     """
     d = Path(directory)
@@ -305,7 +277,7 @@ def frozen_atoms(payload: Optional[Dict[str, Any]]) -> List[int]:
     has to.  It reads the label store, because that is the only place the fact
     lives.
     """
-    from molbuilder.structure import FROZEN_LABEL   # lazy: same reason as :152
+    from molbuilder.structure import FROZEN_LABEL   # lazy: stdlib-only at load
     if not isinstance(payload, dict):
         return []
     regions = payload.get("regions")
@@ -364,10 +336,9 @@ def to_dict(
     """Build the canonical sidecar dict from the metadata FIELDS dict + envelope.
 
     ``fields`` is the metadata field dict -- the SAME shape
-    :meth:`Structure.metadata_to_dict` produces (``regions`` / ``frozen_atoms``
-    / ``cell`` / ``engine_offset`` / ``axis_kind`` / ``vacuum`` /
-    ``annotations``).  ``pbc`` was in this list until 2026-09-22 and is not a
-    stored field any more -- see ``structure.RETIRED_METADATA_KEYS``.  STRICT type: ``annotations`` are JSON channel dicts, NOT
+    :meth:`Structure.metadata_to_dict` produces (``regions`` / ``cell`` /
+    ``engine_offset`` / ``axis_kind`` / ``vacuum`` / ``annotations``).
+    STRICT type: ``annotations`` are JSON channel dicts, NOT
     ``AtomChannel`` objects -- serialise a live map with
     :func:`molbuilder.structure.annotations_to_json` first.  A subset is fine
     (an absent key -> the Structure default).  This ONE dict-shaped parameter
@@ -446,8 +417,8 @@ def to_dict(
         "structure_hash":  structure_hash,
         # The Structure metadata block, VERBATIM from the ONE codec
         # (metadata_to_dict, via structure_fields_via_dataclass): regions /
-        # frozen_atoms / cell / engine_offset / axis_kind / vacuum /
-        # annotations -- and never a retired key.  Spread -- NOT re-listed -- so a field added to the
+        # cell / engine_offset / axis_kind / vacuum / annotations -- and never
+        # a retired key.  Spread -- NOT re-listed -- so a field added to the
         # dataclass rides onto the sidecar automatically and this layer can no
         # longer drop or drift one (`model/structure.md` § 2.2: the ONE
         # serialization authority; add a key there and nowhere else).
@@ -571,13 +542,13 @@ def save(
         # region labels (e.g. "α-helix") on cp1252 / latin-1 systems.
         # ``allow_nan=False`` prevents the writer from emitting NaN/Inf
         # tokens (a divergent SCF could write one) — same safety net
-        # as spectra + transport sidecars.
+        # as the spectra sidecar.
         with open(tmp, "w", encoding="utf-8") as fh:
             fh.write(dumps(payload))
             fh.flush()
             # fsync before os.replace so a crash between fclose() and
             # the rename can't leave the OS write buffer holding the
-            # only copy of the new bytes.  Matches spectra + transport.
+            # only copy of the new bytes.  Matches the spectra sidecar.
             try:
                 os.fsync(fh.fileno())
             except OSError:
@@ -604,7 +575,7 @@ def save(
 def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     """Apply a loaded sidecar payload's metadata onto ``struct`` IN PLACE.
 
-    Delegates the whole field set (regions / frozen_atoms / cell / engine_offset /
+    Delegates the whole field set (regions / cell / engine_offset /
     axis_kind / vacuum / annotations) to
     :meth:`molbuilder.structure.Structure.apply_metadata_dict` -- the SINGLE
     dict->struct authority (`model/structure.md` § 2.2).  Because the writer
@@ -641,9 +612,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     #
     # `StructureCodec.load` never reaches here with a stray key, because
     # `parse.sidecars.molstruct.load_text` answers first.  This gate takes a
-    # payload DIRECTLY, so a caller that builds one in code does reach it --
-    # and a guard that disagrees with its neighbours about what is retired
-    # is how this bug happened in the first place.
+    # payload DIRECTLY, so a caller that builds one in code does reach it.
     stray = [k for k in sidecar_data
              if k not in METADATA_FIELDS and k not in ENVELOPE_KEYS
              and k not in IDENTITY_FIELDS and k != "info"

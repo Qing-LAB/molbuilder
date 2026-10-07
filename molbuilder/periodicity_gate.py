@@ -1,9 +1,10 @@
 """The frame-contract gate — structure-periodicity.md § 6.1 / § 6.2.
 
-MODULE  periodicity_gate (L1; imports structure only)
+MODULE  periodicity_gate (L1; imports structure and issues, and cell when
+        it asks)
 ROLE    the ONE place periodicity state is defaulted and validated
-USED-BY StructureCodec (load/save gate), web/blueprints/build.py (the
-        unified periodicity door), tests/test_periodicity_gate.py
+USED-BY web/blueprints/build.py (the unified periodicity door), _shared and
+        modify, tests/test_periodicity_gate.py
 
 Contract (§ 6.1, decided 2026-07-29): the .xyz/.molstruct.json pair is the
 only truth; resolved values are views and are never written back; NOTHING
@@ -45,26 +46,19 @@ Nothing here derives a corner and nothing is materialised: what is stored is
 exactly what the person set, and absent means the rule.
 
 Notices (the machine-readable half of the contract).  Every entry is
-``{"severity", "message", "where", "about"}`` -- FOUR keys.  It was
-``level`` until 2026-09-10, which is why `task-handover.js` carried a
-comment about an error arm that could never fire: it read ``severity``,
-the only spelling `issues_to_json` ever used.  One name now.
-``where`` is the stable id ``Issue`` carries, because the conditions now come
+``{"severity", "message", "where", "about"}`` -- FOUR keys.
+``where`` is the stable id ``Issue`` carries, because the conditions come
 from ``cell.check`` and a finding has to be identifiable without reading its
 prose; ``about`` is the subject, which is what decides where it is shown.
 Callers surface notices; they never parse the message text.
 
-A notice that reports state the gate corrected would have carried a marker;
-NOTHING DOES, and nothing should: clause 1 forbids writing a resolved value
-back, so there is no correction to mark.
+No notice marks a correction: clause 1 forbids writing a resolved value back,
+so there is no correction to mark.
 
 Errors vs notices.  ``ValueError`` (mapped to HTTP 400 by the door) is raised
 for a malformed payload, and for any error-severity finding ``cell.check``
-returns -- this module no longer decides WHICH states those are, it asks
-(``_refuse_on_error``).  The list used to be repeated here and enforced by
-three hand-written checks in this file; they asked the same questions in
-their own words, at their own thresholds, and are gone (cell-plan.md § 6a).
-Everything else — including a box that does not contain its atoms under a
+returns -- this module does not decide WHICH states those are, it asks
+(``_refuse_on_error``).  Everything else — including a box that does not contain its atoms under a
 user-owned origin — is a notice, never an exception: the gate reports, the
 user decides.
 """
@@ -98,33 +92,18 @@ def _notice(level: str, message: str, where: str = "cell.edit") -> Dict[str, str
     because this module IS the cell's gate; a notice from somewhere else says
     its own subject.
 
-    It used to be missing, and the display worked out where to put a message
-    from where it CAME FROM instead -- a load, or a cell edit.  That put a
-    warning about an unusable box above the atom list whenever it arrived with
-    a file, which is not where anybody can act on it.
-
-    ``where`` IS THE STABLE ID (added 2026-08-03), the same one ``Issue``
-    carries, because these entries now come from ``cell.check`` and a finding
-    must be identifiable without reading its prose.  Its absence is why four
-    tests matched on message TEXT -- pinning the wording of a sentence this
-    module's own header says callers must never parse -- so a reworded message
-    broke tests while a deleted check would not have.
+    ``where`` IS THE STABLE ID, the same one ``Issue`` carries, because these
+    entries come from ``cell.check`` and a finding must be identifiable
+    without reading its prose.
 
     CONDITIONS take the checker's id (``cell.no_volume``, ``cell.atoms_outside``
     …).  RECEIPTS -- what an edit just did -- default to ``cell.edit``: they are
     not findings, they have no verdict, and nothing should key on an individual
     one.
     """
-    # BUILT THROUGH `issues.Issue`, and `about` is DERIVED.
-    #
-    # This assembled `{"severity", "message", "where", "about"}` by hand until
-    # 2026-09-09.  Two problems, both silent: `level` was never checked
-    # against anything, and `about` stored a fact `where` already carried --
-    # it was `where.split(".")[0]` in every case the tree produces
-    # (`cell.no_volume` -> `cell`, `append.merge` -> `append`,
-    # `slab.seam_ok` -> `slab`), so the pair could drift with nothing to say
-    # so.  Constructing an `Issue` first borrows its validated `severity`, so
-    # a typo'd level raises HERE instead of reaching the browser as a notice
+    # BUILT THROUGH `issues.Issue`, and `about` is DERIVED (`_wire`).
+    # Constructing an `Issue` first borrows its validated `severity`, so a
+    # typo'd level raises HERE instead of reaching the browser as a notice
     # no stylesheet matches.
     return _wire(Issue(level, message, where))
 
@@ -136,10 +115,6 @@ def _refuse_on_error(s: Structure) -> None:
     because its whole subject is that value and a good one entered straight
     after is accepted.  A structure that ARRIVED holding the same state is
     reported instead (``ok_structure_response``) -- same checker, two verdicts.
-
-    This is what ``_require_right_handed`` and ``_too_small_axes`` used to do
-    inline.  They asked the same two questions ``cell.check`` asks, in their own
-    words and at their own thresholds, and a third copy lived in the emitter.
     """
     from .cell import resolve_and_check
     _rc, issues = resolve_and_check(s)
@@ -154,9 +129,6 @@ def notices_for_report(issues) -> List[Dict[str, str]]:
     THE ONE SERIALIZER.  Every notice on the wire is made here, from an
     ``Issue`` that ``cell.check`` produced -- so the id, the wording and the
     subject travel together and no door invents its own shape.
-    ``ok_structure_response`` used to catch the gate's ``ValueError`` and
-    rebuild a notice by hand from ``str(exc)``, which silently dropped the id
-    and left the front end with a message it could not identify.
 
     **Error becomes warn here, deliberately.**  § 8.2: a request that is
     *loading or modifying* reports a bad box, with the structure, so the user
@@ -176,25 +148,11 @@ def _wire(i: "Issue") -> Dict[str, str]:
     """One `Issue` as the wire notice the browser reads.
 
     THE ONLY PLACE the wire shape is written.  `about` is DERIVED from
-    `where` -- it was a stored fourth key until 2026-09-09 and was
-    `where.split(".")[0]` in every case, so the two could drift and nothing
-    would say so.  `molview/ui.js` filters notices by it
+    `where`, so the two cannot drift.  `molview/ui.js` filters notices by it
     (`n.about === subject`), which is why it is emitted rather than dropped.
-
-    The key is ``severity``, one name on both sides since 2026-09-10 (see the
-    module header).  Both halves of this file carried a note saying the rename
-    was still WAITING -- "three browser modules read `.level`" -- while the
-    header three screens up said it had landed, and the code here has always
-    emitted ``severity``.  Measured 2026-09-10: zero reads of `.level` in
-    `molview/ui.js`, `molview/model.js`, `task-handover.js` or
-    `modify/slab-panel.js`, and four of `.severity`.  A file disagreeing with
-    itself about its own wire key is worse than either answer.
     """
     return {"severity": i.severity, "message": i.message,
             "where": i.where, "about": i.where.split(".")[0]}
-
-
-
 
 
 def validate_periodicity(struct: Structure) -> Tuple[Structure, List[dict]]:
@@ -209,29 +167,16 @@ def validate_periodicity(struct: Structure) -> Tuple[Structure, List[dict]]:
     only what the user set, and every resolved value is a VIEW that is never
     written back.  The struct comes out as it went in.
 
-    It was called ``validate_and_heal`` until 2026-08-01 and that name outlived
-    the behaviour: healing was removed on 2026-07-29 when materialising a
-    resolved corner was found to corrupt a saved pair (the hemeC case named in
-    the module header).  The name then had readers — and the author of this
-    docstring — looking for a correction step that clause 1 forbids, and
-    worrying about a marker (``kind: "heal"``) that two comments described and
-    no code produced.  A function is named for what it does.
-
     The struct is still returned, and callers still adopt it, so that this stays
     the one seam every structure passes through rather than an optional check.
 
     Raises ``ValueError`` (the door maps it to HTTP 400) for a left-handed
     cell (``det <= 0``) or one no origin could make contain the structure.
 
-    ONE LINE SINCE 2026-08-03 (cell-plan.md § 6a).  This function used to walk
-    the § 6.1 state table itself -- five branches, two of which raised and three
-    of which built notices by hand -- while ``validation/`` judged the same box
-    separately in its own vocabulary.  It now does what every other consumer
-    does: ``cell.resolve_and_check(struct)``, once, and hands the findings on.
-
-    The row-by-row reasoning did not disappear; it moved into ``cell.check``
-    where it is stated once and reaches BOTH surfaces.  What did disappear is
-    this function's ability to disagree with the validator about the same box.
+    It does what every other consumer does: ``cell.resolve_and_check(struct)``,
+    once, and hands the findings on -- the row-by-row reasoning is
+    ``cell.check``'s, stated once, so this cannot disagree with the validator
+    about the same box.
     """
     from .cell import resolve_and_check
 
@@ -266,7 +211,7 @@ def _reset_to_derived(s: Structure, what: str,
     Says nothing about the default gap itself.  ``validate_periodicity`` runs on
     the RESULT of every edit (build.py::api_structure_periodicity) and reports it
     there, for every hand-over rather than only for an edit — a second producer
-    here just delivered the same sentence twice."""
+    here would deliver the same sentence twice."""
     if s.n_atoms:
         ext = s.positions.max(axis=0) - s.positions.min(axis=0)
         kinds = s.axis_kind or ("isolated",) * 3
@@ -424,8 +369,7 @@ def apply_edit(struct: Structure, op: str,
     #
     # This is why the browser needs no mark of its own here:
     # `commitPeriodicityOp` POSTs to `/api/structure/periodicity` and adopts
-    # the answer, so the flag it used to set client-side now arrives from
-    # the one place that decides it.
+    # the answer, so the flag arrives from the one place that decides it.
     s.mark_contract_outdated()
     notices: List[dict] = []
     kinds = s.axis_kind or ("isolated",) * 3
@@ -434,10 +378,7 @@ def apply_edit(struct: Structure, op: str,
         return _apply_block(s, payload, notices), notices
 
     if op == "vacuum":
-        # ``null`` CLEARS -- the third state the model gained on 2026-08-03.
-        # molview.md § 9.5 has always documented this payload as "null
-        # clears"; until vacuum became Optional there was nothing to clear
-        # TO, and this branch raised "must be 3 non-negative floats".
+        # ``null`` CLEARS (molview.md § 9.5).
         if payload is None:
             v = None
         else:
@@ -461,8 +402,7 @@ def apply_edit(struct: Structure, op: str,
             # A RECEIPT, not an explanation: what the default now is, and what
             # it leaves between images, is a CONDITION of the resulting box,
             # and ``cell.check`` says it on this same response (the
-            # door re-validates the result).  Saying it twice is what
-            # ``_floor_notices`` used to do.
+            # door re-validates the result).
             notices.append(_notice("info", "vacuum cleared."))
         _reset_to_derived(s, "vacuum", notices)
         s.__post_init__()
@@ -517,8 +457,8 @@ def apply_edit(struct: Structure, op: str,
                 "cell must be a 3×3 matrix of numbers (Å)") from None
         s.cell = cell
         # A cell the structure cannot fit for ANY origin is REFUSED, not
-        # stored — a stored-but-invalid cell locked every later door (review
-        # finding, 2026-07-29).  Asked of the ONE checker, so the rule and its
+        # stored — a stored-but-invalid cell would lock every later door.
+        # Asked of the ONE checker, so the rule and its
         # wording live in a single place.  An origin the person assigned is
         # kept: it is theirs, and whether the atoms still fit is a CONDITION
         # the door reports on the result (molview.md § 6.8).

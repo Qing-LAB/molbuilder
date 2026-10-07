@@ -8,11 +8,6 @@ test can reach is a seam anything can reach (§ 4).  Standing in one level lower
 at ``$3Dmol``, the boundary the module actually has — lets ``index.js`` and the
 sealed layer both run for real, and makes the assertions about the calls that
 actually leave the module.
-
-This file replaces a predecessor of the same name whose stand-in was a fake
-``molbuilder.viewer`` global that the test itself installed.  Those five tests
-passed for months while the module could not mount on any page, because the thing
-they supplied was the thing that was missing.
 """
 from pathlib import Path
 
@@ -138,9 +133,6 @@ def _run(snippet: str) -> object:
 
 def test_the_module_reads_no_global_and_writes_none():
     """§ 4: "It does not read `window.molbuilder` and it does not write to it."
-
-    Both halves failed in the module this replaces: it looked its drawing surface
-    up in a global that nothing published, and published itself into another.
     """
     out = _run("""
         const before = JSON.stringify(Object.keys(global.molbuilder || {}));
@@ -186,9 +178,6 @@ def test_a_mount_that_cannot_build_a_surface_still_resolves_with_a_working_dispo
 def test_the_handle_is_live_on_the_first_call():
     """§ 8: "every door works on the first call after await, with no readiness
     wait and nothing deferred".
-
-    The predecessor deferred a mode requested before an onReady callback fired,
-    which is a state a caller can get wrong; there is nothing to get wrong here.
     """
     out = _run("""
         const vib = await mount(host, {});
@@ -311,8 +300,7 @@ def test_the_knobs_are_live_and_a_drag_never_stops_the_animation():
     frame, issue no call to the drawing surface, and never stop a running
     animation".
 
-    This is the regression home for the slider bug the predecessor's design was
-    built to avoid: a knob that re-registered anything would stop the loop.
+    A knob that re-registered anything would stop the loop.
     """
     out = _run("""
         const vib = await mount(host, { fps: 30 });

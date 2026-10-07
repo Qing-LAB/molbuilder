@@ -9,23 +9,19 @@ each time fresh results arrive.
 Contracts covered:
 
   1. Calling ``updatePhaseIndicator(results)`` with valid results
-     flips ``hidden`` from true to false.  This is the missing
-     transition the audit flagged.
+     flips ``hidden`` from true to false.
   2. The function tolerates a missing element (defensive
      ``if (!els.phaseIndicator) return``) — early return, no
      crash on mounts where the partial doesn't include the dot
      bar.
-  3. Each ``.phase-dot`` gets a class reflecting its phase status
-     (``empty``, ``in_progress``, ``complete``, ``error``).  The
+  3. Each ``.phase-dot`` gets a class reflecting its phase status.  The
      status comes from ``results.phase_<dot-name>`` (e.g.,
      ``phase_frequencies``, ``phase_raman``, ``phase_es``).
   4. Calling ``updatePhaseIndicator`` a second time with new
      results updates the dot classes in place; the visibility
      stays true (it never re-hides).
 
-The audit (#393, Agent B) flagged this as a Top-5 visibility-
-contract gap: ``hidden until first load tick``.  Pinning it
-forward catches a refactor that, e.g., moves the
+This catches a refactor that, e.g., moves the
 ``els.phaseIndicator.hidden = false`` line out of the function
 or gates it on a condition that doesn't fire on the first tick.
 """
@@ -259,11 +255,10 @@ def test_missing_phase_field_defaults_to_empty():
 
 
 def test_relaxation_dot_is_data_driven():
-    """v5 adds the tracked relaxation phase (spectra-migration-plan.md
-    D3/D4) as a FOURTH dot -- and updatePhaseIndicator needs no code
-    for it: the dot's ``data-phase="relaxation"`` resolves
-    ``results.phase_relaxation`` through the same generic read.  A v4
-    blob without the field leaves the dot at phase-empty."""
+    """updatePhaseIndicator needs no code for the relaxation dot: its
+    ``data-phase="relaxation"`` resolves ``results.phase_relaxation``
+    through the same generic read.  A blob without the field leaves the
+    dot at phase-empty."""
     out = _run_with_results(
         {
             "phase_relaxation":  "complete",

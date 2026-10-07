@@ -6,33 +6,22 @@
  *
  *   1. Mount the spectra-inspector core against ``document`` so
  *      the schema form + Generate / Methods / Issues / script-
- *      preview / Save handlers wire up.  This is the unchanged
- *      pre-task-#296 behaviour.
+ *      preview / Save handlers wire up.
  *
- *   2. Wire the Inspect-structure card (task #296, 2026-06-09):
- *      mount a 3Dmol embed in ``#viewer-wrap`` and hook the
+ *   2. Wire the Inspect-structure card:
+ *      mount MolView in ``#spectra-molview-host`` and hook the
  *      ``#load-from-sidebar-btn`` so the user can pick a
  *      structure file in the Projects sidebar and click Load to
  *      see it in the viewer.  The spectra inspector's Generate POST
  *      reads the structure OFF THE MODEL at send time
  *      (core.js reads the structure off the viewer this page mounted)
- *      -- no push, no in-memory holder (the old setStructureText
- *      seam + the pre-#309 hidden ``<textarea id="structure-text">``
- *      are both gone).
+ *      -- no push, no in-memory holder.
  *
- * Mirrors the Optimization tab's pattern in static/viewer.js
- * (the Load button, the info readout, the sidebar onCommit
- * subscription).  Where the two pages diverge today:
- *   * Optimization carries a Build form + Generate buttons +
- *     SIESTA/PySCF schema; spectra carries the spectra schema
- *     and its own Generate/Methods/script-preview machinery in
- *     core.js.
- *   * Optimization's commit also POSTs /api/build/load to get
- *     the canonical workspace payload (atom list, residue ids,
- *     etc.) so the SIESTA validators have it.  Spectra doesn't
- *     consume that payload today; we only need the raw bytes
- *     for the form's structure_text field.  Skipping the build/
- *     load roundtrip keeps the load fast.
+ * Mirrors the Optimization tab's pattern in
+ * structure-optimization/viewer.js (the Load button, the info
+ * readout, the sidebar onCommit subscription).  Optimization
+ * carries the SIESTA/PySCF schema; spectra carries the spectra
+ * schema and its own machinery in core.js.
  */
 import { mount, formula as mvFormula } from "/static/lib/molview/index.js";
 
@@ -45,9 +34,7 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
 
     function _$(id) { return document.getElementById(id); }
 
-    /** The shared `.status` writer (lib/status.js).  This copy allowed only
-     *  ok|warn|error and silently DROPPED anything else, so `muted` -- which
-     *  page-shell declares and other tabs use -- rendered as nothing here. */
+    /** The shared `.status` writer (lib/status.js). */
     function setStatus(elId, msg, kind) {
         window.molbuilder.status.set(elId, msg, kind);
     }
@@ -62,9 +49,7 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
     // value's reason (`science/chemistry-correctness.md` § 2a) -- about the
     // structure the tab would hand over, read by the inspector's one read
     // of the viewer.  It asks on every structure load and every edit to a
-    // charge or spin field, and fills nothing in.  It replaced an
-    // Auto-detect button that spread a suggestion onto the forms,
-    // overwriting them.
+    // charge or spin field, and fills nothing in.
     const _chemistry = window.molbuilder.chemistry.attach({
         kind: "vibration",
         forms: () => (_inspector && typeof _inspector.stateForms === "function"
@@ -105,14 +90,7 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
      * "no structure parsing in a consumer" (lib/inspectors/structure.js).
      * Runs synchronously after every successful Load (the model is settled).
      */
-    /* THE VIEWER IS HANDED IN, because this function does not have one.
-     *
-     * It read `mvHandle` off a `let` declared inside the bootstrap below --
-     * a name that does not exist in this scope -- so every call threw
-     * `ReferenceError: mvHandle is not defined` and the readout was never
-     * written. The throw happened inside the load path, after the structure was
-     * already on screen, so the page looked like it had loaded a molecule and
-     * then simply refused to say what it was. */
+    /* THE VIEWER IS HANDED IN, because this function does not have one. */
     function _updateInfo(viewer, filename) {
         const title   = _$("info-title");
         const atomsEl = _$("info-atoms");
@@ -127,7 +105,7 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
         }
         if (title)   title.textContent   = filename || "loaded";
         if (atomsEl) atomsEl.textContent = String(elements.length);
-        // The Hill formula() is imported from MolView's door (mvFormula = mol-format.js).  `formula`
+        // The Hill formula() is imported from MolView's door (mvFormula).  `formula`
         // here is the DOM readout node; mvFormula is the formatter function.
         if (formula) formula.textContent = mvFormula(elements);
     }
@@ -146,8 +124,7 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
         // selection/cell panel, no editing).  Mounted lazily on the first load.
         const ws   = window.molbuilder && window.molbuilder.workspace;
         const proj = window.molbuilder && window.molbuilder.projects;
-        // NOT gated on a viewer: there is none until a load mounts one, and
-        // testing for one here is what stopped this page mounting at all.
+        // NOT gated on a viewer: there is none until a load mounts one.
         if (!ws || typeof mount !== "function"
                 || !proj || !proj.parser
                 || typeof proj.parser.openMolecule !== "function") {
@@ -185,10 +162,8 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
                     ? `Loaded: ${_basename(_candidatePath)}`
                     : loadable
                         ? `Selected: ${_basename(_candidatePath)}`
-                        // SAY WHY, not just that.  The reason used to exist
-                        // only on the commit path (double-click), so a single
-                        // click left "not loadable" standing alone with no
-                        // way to find out what would be loadable.
+                        // SAY WHY, not just that: a single click names
+                        // what would be loadable.
                         : (_candidatePath
                             ? `Selected: ${_basename(_candidatePath)} `
                               + `(not loadable — .xyz / .pdb only)`
@@ -219,8 +194,7 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
             try {
                 // THE VIEWER FIRST, THEN THE FILE: a viewer mounts before it has
                 // a structure (molview.md § 8), and the load door needs somewhere
-                // to put what it reads. This ran the other way round, which only
-                // worked while the door could find a viewer in a global.
+                // to put what it reads.
                 if (!mvHandle || !mvHandle.ok) {
                     // Cache ONLY a live handle (mount contract: failure ->
                     // {ok:false}); a failed mount must not stick, so the next
@@ -273,7 +247,7 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
 
         // Sidebar onChange / onCommit subscription + initial
         // candidate-path tracking.  Mirrors the Optimization
-        // tab's pattern in static/viewer.js.
+        // tab's pattern in structure-optimization/viewer.js.
         const rt = (window.molbuilder || {}).runtime;
         const projP = (rt && typeof rt.whenReady === "function")
             ? rt.whenReady("projects")
@@ -300,7 +274,7 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
                 });
             }
             // Dblclick commits the file for loading (universal
-            // interaction model — task #301 same channel).
+            // interaction model).
             const subscribe = (typeof proj.onCommit === "function")
                 ? proj.onCommit.bind(proj)
                 : proj.onChange.bind(proj);
@@ -314,9 +288,8 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
             loadBtn.addEventListener("click", () => {
                 if (!_isLoadable(_candidatePath)) return;
                 // Explicit Load = "load the current file NOW", even the one
-                // already on screen: it may have changed on disk.  Clearing
-                // the same-file guard is how the Build tab's Load does it;
-                // this one skipped the reload until the M6 review.  (The
+                // already on screen: it may have changed on disk, so the
+                // same-file guard is cleared.  (The
                 // sidebar's double-click path keeps the guard.)
                 _sidebarLastFile = "";
                 _commitStructure({ file: _candidatePath });

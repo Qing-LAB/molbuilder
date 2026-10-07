@@ -2,10 +2,7 @@
 
 :func:`trajectory_result_to_legacy_dict` is the ONE adapter between a
 :class:`TrajectoryResult` and the molwatch v1 JSON dict the 3Dmol.js
-frontend consumes. "Legacy" names the WIRE SHAPE, not this code: the
-older ``molbuilder.parsers.trajectory_to_legacy_dict`` was deleted with
-that package on 2026-06-21 (provenance:
-`docs/archive/old_docs/protocols/parse-module.md` § 8).
+frontend consumes. "Legacy" names the WIRE SHAPE, not this code.
 
 Public surface:
 
@@ -41,8 +38,7 @@ def wrap_trajectory(traj: Trajectory, parser_name: str,
     parse_warnings get normalised from the legacy ``Warning``
     dataclass into :class:`ParseWarning`.
 
-    Source path is resolved to an absolute path for envelope
-    consistency across phases B/C/D (post-2026-06-19 round-2 fix).
+    Source path is resolved to an absolute path.
     """
     envelope = ParseResult.envelope(parser_name, source)
     source_str = envelope["source"]      # the same string the result carries
@@ -56,7 +52,7 @@ def wrap_trajectory(traj: Trajectory, parser_name: str,
         )
         for w in (getattr(traj, "parse_warnings", None) or [])
     ]
-    # Round-3 BLOCKER fix: legacy Trajectory is NOT frozen; the
+    # A legacy Trajectory is NOT frozen; the
     # caller can mutate its frames/lattice after parse.  Copy both
     # so the returned TrajectoryResult's frozen contract holds end-
     # to-end, not just on top-level attribute reassignment.
@@ -97,7 +93,7 @@ def _nan_to_none(obj: Any) -> Any:
     as ``null``) lets the frontend treat the overflow column as
     "value missing" — Plotly renders the gap in the trace.
 
-    2026-06-14 robustness pass: also handles ``numpy.float64`` /
+    Also handles ``numpy.float64`` /
     ``numpy.float32`` / 0-d numpy arrays (their isinstance(., float)
     check returns False!) and ``numpy.ndarray``.
     """
@@ -148,9 +144,7 @@ def trajectory_result_to_legacy_dict(
 
     The watch web layer (``molbuilder/web/blueprints/watch.py``)
     calls this to keep returning the same JSON shape the existing
-    3Dmol.js client consumes.  This is the adapter's one home; the
-    retired ``molbuilder.parsers.trajectory_to_legacy_dict`` re-exported
-    it until that package was deleted (2026-06-21).
+    3Dmol.js client consumes.  This is the adapter's one home.
 
     Output shape::
 
@@ -175,7 +169,7 @@ def trajectory_result_to_legacy_dict(
           "max_forces_constrained": [...] | [],
         }
 
-    None / empty-list mapping (matches the legacy parsers' output):
+    None / empty-list mapping:
       Frame.forces      = None  → forces      = []
       Frame.scf_history = None  → scf_history = []   (when ALL frames)
       Trajectory.lattice = None → lattice     = null
@@ -230,10 +224,9 @@ def trajectory_result_to_legacy_dict(
         out_elapsed.append(f.elapsed_s)
         out_in_progress.append(bool(getattr(f, "in_progress", False)))
 
-    # Legacy shape quirk: when no parser tracks SCF data for ANY
-    # frame (PySCF .log absent, SIESTA had no `scf:` lines), the
-    # original parsers returned a top-level empty list — not
-    # [[], [], ...].  Collapse only when EVERY frame's scf_history
+    # When no parser tracks SCF data for ANY frame (PySCF .log
+    # absent, SIESTA had no `scf:` lines), the series is a top-level
+    # empty list — not [[], [], ...].  Collapse only when EVERY frame's scf_history
     # is None (the parser-says-no-scf-data signal); a frame with
     # ``scf_history=[]`` is intentional (e.g. a molwatch preview
     # block carries an empty SCF section) and stays as [] in the
@@ -246,7 +239,7 @@ def trajectory_result_to_legacy_dict(
     else:
         lattice_out = None
 
-    # 2026-06-12: ``max_forces_constrained`` collapses to a single
+    # ``max_forces_constrained`` collapses to a single
     # top-level empty list when NO frame had a constrained value
     # (the typical case: no frozen atoms anywhere in the run).
     if all(v is None for v in out_max_forces_constrained):
@@ -258,7 +251,7 @@ def trajectory_result_to_legacy_dict(
     # reaches the browser, the fetch throws SyntaxError and the
     # Results-tab trajectory plot renders blank.  Plotly renders
     # ``null`` as a gap in the line; that gap IS the divergence
-    # diagnostic (per the 2026-06-14 BDT-stage-2 report).
+    # diagnostic.
     out_scf = _nan_to_none(out_scf)
     out_energies = _nan_to_none(out_energies)
     out_max_forces = _nan_to_none(out_max_forces)
@@ -280,9 +273,7 @@ def trajectory_result_to_legacy_dict(
     # a `wall_time: nan` line into a float NaN quite happily, and NaN is
     # not a legal JSON token: the browser's `r.json()` throws and the whole
     # Results tab renders blank -- the failure the comment above describes,
-    # reached through a series that was not being sieved.  (`wall_times`
-    # was not either, before the split; two series now, so twice the way
-    # in.)  Sieving first also means the derivation can only ever see None
+    # reached through a series that was not being sieved.  Sieving first also means the derivation can only ever see None
     # or a finite number, so it cannot manufacture a fresh NaN by
     # subtracting one.
     out_wall_clock = _nan_to_none(out_wall_clock)
@@ -324,10 +315,9 @@ def trajectory_result_to_legacy_dict(
         "error_message": result.error_message,
         # Runtime facts (CPU / memory / GPU / host) captured by the
         # parser from the file's header.  Same keys for every engine
-        # so /results' inspector renders uniformly.  Empty dict for
-        # logs from before the header emission landed.
+        # so /results' inspector renders uniformly.
         "runtime_info":  dict(result.runtime_info or {}),
-        # Level-3 fail-soft warnings (2026-05-28).  Per-line parser
+        # Level-3 fail-soft warnings.  Per-line parser
         # issues that did NOT abort the parse but the user should see.
         "parse_warnings": [
             {
@@ -346,10 +336,10 @@ def trajectory_to_legacy_dict(traj) -> Dict[str, Any]:
 
     Convenience wrapper that lifts a legacy ``Trajectory`` into a
     minimal :class:`TrajectoryResult` envelope and routes through
-    :func:`trajectory_result_to_legacy_dict`.  Used by tests that
-    build a :class:`Trajectory` directly (via
+    :func:`trajectory_result_to_legacy_dict`.  Used where a
+    :class:`Trajectory` is built directly (via
     :class:`SiestaParser`/:class:`PySCFParser`/:class:`MolwatchLogParser`
-    body parsers) and need the JSON-friendly dict shape without
+    body parsers) and needs the JSON-friendly dict shape without
     materialising a full :class:`TrajectoryResult`.
     """
     return trajectory_result_to_legacy_dict(TrajectoryResult(

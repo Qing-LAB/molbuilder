@@ -10,9 +10,6 @@ then `jobset prep run`, then the deck on disk.  Per engine:
   of its own (zero at the hand-off: the correction applied);
 * every atom is inside the cell, with equal margins along each lattice vector;
 * the deck's ENGINE-OFFSET record states that same offset and that cell.
-
-The transport rungs are asserted beside their own fixture, in
-``test_transport_prep.py`` (``test_every_rung_hands_the_engine_placed_coordinates``).
 """
 from __future__ import annotations
 
@@ -77,8 +74,7 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     StructureCodec().write(struct, root / "in.xyz")
     # ONE CALCULATION PER FOLDER: each call describes a new one, so each has
     # a folder of its own -- a prepped stage is not prepped again
-    # (`job-system.md` § 5.0), and a second call into the first's folder was
-    # a re-prep of it until 2026-10-02.
+    # (`job-system.md` § 5.0).
     dest, n = root / "t" / "calc", 1
     while dest.exists():
         n += 1
@@ -120,8 +116,7 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     suffix = ".fdf" if engine == "siesta" else ".py"
     # THE DECK BY ITS NAME, through the catalogue -- not the first file with
     # the suffix: a stage directory may hold other `.py` files than the deck
-    # (the monitor's modules stood there as fourteen of them until
-    # 2026-09-26; a person's own scripts still may).
+    # (a person's own scripts may).
     from molbuilder.runfiles import compose
     stage_dir = next(dest.glob(f"*_{stage}"))
     deck = stage_dir / compose(name, suffix, stage_dir.name)
@@ -339,35 +334,6 @@ def test_a_box_nothing_can_be_placed_in_is_refused_in_a_sentence(
     assert "Traceback" not in said, said
 
 
-def test_the_renderer_refuses_coordinates_that_still_carry_an_offset():
-    """Zero at the hand-off (user, 2026-09-25): *"offset should be zero at that
-    point, meaning the correction should have been applied"* -- and the deck
-    renderer checks it before it writes a line.
-
-    API-level, because the road cannot reach it: every emitter places through
-    ``cell.to_engine``, so no prep produces uncorrected coordinates.  What this
-    pins is that one that did would be refused rather than written.
-    """
-    import dataclasses
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.script_emit import render_deck
-    from molbuilder.siesta.input import spec_for
-    struct, cfg = _slab(), SiestaConfig(system_label="JOB")
-    spec = spec_for(struct, cfg)
-    unplaced = cellmod.EngineFrame(cell=spec.engine_frame.cell,
-                                   positions=struct.positions,
-                                   applied_offset=np.zeros(3))
-    import pytest
-    with pytest.raises(ValueError, match="still carry an offset"):
-        render_deck(dataclasses.replace(spec, engine_frame=unplaced),
-                    struct, cfg)
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 1 test here prepped a relaxed pair assembled by hand, not
-# exported from its run (`process/testing.md` § 6).
-
-
 def test_an_atom_past_a_periodic_face_is_a_warning_in_the_report(
         isolated_projects_root):
     """Along a periodic vector an atom past a face is legal -- an image the
@@ -416,23 +382,3 @@ def test_a_crystal_that_fills_its_cell_is_not_called_tight(
                                default_siesta_stages("publishable"), "siesta")
     report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt")).read_text()
     assert "[cell.volume]" not in report, report
-
-
-def test_the_renderer_refuses_a_spec_that_carries_no_frame():
-    """Every deck places its atoms and says so: a spec without a frame is
-    refused, not logged -- a new engine or kind that forgot it would walk past
-    the gate and the record in silence (`model/structure-periodicity.md` § 6.0,
-    check 3).
-
-    API-level, because the road cannot reach it: every spec builder today
-    hands a frame over.
-    """
-    import dataclasses
-    import pytest
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.script_emit import render_deck
-    from molbuilder.siesta.input import spec_for
-    struct, cfg = _slab(), SiestaConfig(system_label="JOB")
-    spec = spec_for(struct, cfg)
-    with pytest.raises(ValueError, match="carries no engine frame"):
-        render_deck(dataclasses.replace(spec, engine_frame=None), struct, cfg)

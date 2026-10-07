@@ -1,37 +1,21 @@
 """/molbuilder end-to-end — the contract's promise, driven the way a user drives it.
 
-WHAT REPLACED WHAT, AND WHY IT MATTERS
---------------------------------------
-The file that stood here had 139 tests and drove the page through
-``window.molbuilder.molview.data``.  MolView publishes nothing to
-``window.molbuilder`` (molview.md § 4) and has not since it was rebuilt, so on
-2026-08-02 106 of those 139 failed with ``Cannot read properties of undefined``.
-They were not testing the page; they were testing an architecture that no longer
-exists.
-
 **A test may not reach past the seal, and this is why.**  § 4 exports exactly
 ``mount`` and ``formula``; § 5.6 says a viewer belongs to whoever mounted it and
 there is no registry.  A test that reaches the model is asserting on a thing the
 page's own controls do not use — so it can pass while every control is dead.
-That is not hypothetical: a browser walk of this tab on 2026-08-02 found SEVEN
-defects the old suite was green on, including ``getState().indices`` — a key on
-no snapshot, throwing on the first line of every UI refresh, swallowed by both
-subscriber paths.  Every button, every readout and the whole state timeline sat
-frozen at its template state, and 139 passing tests said nothing.
 
 So every assertion below is something a user can see: DOM in, DOM out.  The
 tests are the six steps of the browser walk in
-``docs/web/molview.md`` § 6.5, and each one would have caught
-at least one of those seven.
+``docs/archive/2026-08-16-molview-integration-plan.md`` § 6.5.
 
 WHAT IS DELIBERATELY NOT HERE
 -----------------------------
-Coverage the retired file had that is NOT reproduced yet, recorded so its
+Coverage NOT reproduced here, recorded so its
 absence is a known hole rather than a silent one: the electrode/junction ops,
 the transform sub-tab (translate / rotate / centre), the by-residue and by-label
 filters, the measurement readout, DNA/RNA/peptide generators, and the narrow-
-viewport layout.  Each needs writing from the contract the same way; none of it
-can come back by un-deleting, because all of it drove the dead global.
+viewport layout.  Each needs writing from the contract the same way.
 """
 from __future__ import annotations
 
@@ -76,23 +60,14 @@ def _a_session_that_did_not_happen(tmp_path, monkeypatch):
     """Each test starts as a browser that has never opened this tab.
 
     MolView's sequence is PERSISTENT — it outlives the page (molview.md § 11.2)
-    — so from the moment `load(0)` learned to adopt one, a test inherited
-    whatever the test before it left on the canvas, unsaved badge and all.  The
-    symptom was not a wrong assertion: the next test's Load hit the
-    discard-unsaved gate and its click waited on a modal nobody answered.
+    — so without isolation a test inherits whatever the test before it left on
+    the canvas, unsaved badge and all, and its Load hits the discard-unsaved
+    gate and waits on a modal nobody answers.
 
     The isolation comes from giving the test server a projects root of its own.
     ``tmp_path`` is already per-test, so "no state from the last test" is not
     something this fixture has to arrange — it is true by construction, and the
     directory is thrown away with the test.
-
-    This replaced a fixture that reached into the DEVELOPER'S real ``projects/``
-    and unlinked ``ws-modify*.wc.json`` before and after every test.  It got the
-    isolation by deleting files it did not own — including, if the developer had
-    a live server on the same tree, their parked Modify-tab session.  The state
-    landed there because ``workspace_storage`` resolves ``projects_root()`` =
-    ``Path.cwd()/projects``, and pytest's cwd is the repo.  A test that wants a
-    different root should say so, which is all this does.
 
     Patched on ``workspace_storage`` rather than on ``molbuilder.projects``
     because the name is bound at import (``from ... import projects_root``), so
@@ -182,9 +157,7 @@ def _load(page, path: Path):
     before = _atom_count_or_zero(page)
     btn.click()
     # WAIT FOR THE CHANGE, not for a pattern the PREVIOUS state already
-    # satisfies.  The old condition was `/\d+ of [1-9]\d* selected/`, which
-    # after one load already reads "0 of 3 selected" -- so the second load
-    # returned instantly and the assertion read the stale count (2026-09-10).
+    # satisfies.
     page.wait_for_function(
         "(n) => { const t = document.querySelector("
         "  '.molviewer-selection-count')?.textContent || '';"
@@ -273,12 +246,9 @@ def test_a_second_load_adds_to_the_first_instead_of_replacing_it(
     _load(page, water)
     _load(page, pair)
 
-    # WHICH ATOMS ARE THERE, not how many.  `assert _atom_count(page) == 3`
-    # then `== 5` stood here: appending concatenates two lists, so the sum is
-    # `len(a) + len(b)` -- Python's arithmetic, not ours -- and any five-atom
-    # structure satisfies it, including the second file loaded twice.  What
-    # separates an APPEND from a REPLACE is that the first fragment is still
-    # identifiable, which is what the two labels below say (2026-09-10).
+    # WHICH ATOMS ARE THERE, not how many: what separates an APPEND from a
+    # REPLACE is that the first fragment is still identifiable, which is what
+    # the two labels below say.
     rows = page.locator(_CARD).inner_text()
     assert "FRAG" in rows, "the first structure's label did not survive"
     assert "FRAG2" in rows, (
@@ -305,10 +275,7 @@ def test_the_status_line_says_a_load_was_added(
 
 def test_start_empty_then_load_is_how_you_replace(
         page, flask_server, two_files):
-    """Replacing did not disappear -- it became a separate gesture, and this is
-    it.  "Clear structure" now stands beside "Save to project" precisely because it
-    is the whole-model action that append made load-bearing.
-    """
+    """Replacing is a separate gesture: Clear structure, then Load."""
     water, pair = two_files
     _open(page, flask_server)
     _load(page, water)
@@ -333,8 +300,7 @@ def test_each_append_is_a_point_the_timeline_can_come_back_to(
     that the user always can retract back"* (user, 2026-09-07).
 
     An append is an edit, so it records a point (§ 11.2).  Retract therefore
-    steps back exactly ONE load -- with Save state never pressed, which is the
-    whole difference from the rule this replaced.
+    steps back exactly ONE load -- with Save state never pressed.
     """
     water, pair = two_files
     _open(page, flask_server)
@@ -411,13 +377,9 @@ def test_the_loader_readout_tells_picked_from_loaded(
     no snapshot has ever carried — so the readout said "Picked" with that very
     file on screen.
 
-    **The button's state is NOT part of this**, since 2026-09-02.  It also
-    asserted that Load goes dead once the pick matches what is loaded, and
-    that veto is gone: loading the same file again is a real action — it is
-    how you throw your edits away and go back to what is on disk (user:
-    *"why do we have this guard of not allowing to pick the same file
-    again?"*).  The readout still SAYS which it is, which is the part that
-    was ever about telling a no-op from a real click.
+    Loading the same file again is a real action — it is how you throw your
+    edits away and go back to what is on disk (user: *"why do we have this
+    guard of not allowing to pick the same file again?"*).
     """
     _open(page, flask_server)
     page.evaluate(
@@ -486,8 +448,7 @@ def test_committing_a_vacuum_changes_the_box_and_drops_the_default_mark(
 
     for box in ("#pv-vac-a", "#pv-vac-b", "#pv-vac-c"):
         page.fill(box, "5")
-    # ONE COMMIT for the whole cell (§ 6.2).  "Update vacuum" was one of four
-    # buttons that each wrote one field of a fact that travels together.
+    # ONE COMMIT for the whole cell (§ 6.2).
     page.locator("#pv-apply").click()
 
     page.wait_for_function(
@@ -506,9 +467,7 @@ def _cell_explicit(page):
     """Choose the EXPLICIT regime, which is what shows the 3x3 and the origin.
 
     The panel asks WHICH BOX first and then shows that regime's fields (user,
-    2026-09-07).  It used to show all of them at once and dim the inert ones,
-    so these tests could reach the matrix straight away; now the regime is the
-    first thing a person picks, and so it is the first thing they do here.
+    2026-09-07).
     """
     page.locator('input[name="pv-regime"][value="explicit"]').check()
     page.wait_for_selector("#pv-cell-grid input", state="visible",
@@ -568,12 +527,8 @@ def test_the_click_order_is_the_axis_direction(page, flask_server, labelled_xyz)
     That is not a nicety — it is the stated way out of the left-handed refusal
     below, so it has to be true rather than approximately true.
 
-    **THIS BECAME PROVABLE ON 2026-08-31**, and the note it replaces said the
-    opposite: the panel used to read `selection`'s `pickOrder` shadow, and the
-    two fields could not be made to disagree through the UI, so a mutation
-    reading the wrong one passed.  The gesture now reads the RULER, whose list
-    is ordered by construction and is a different track from the selection
-    (`molview.md` §§ 9.5, 11.6) — so this test drives the thing it asserts.
+    The gesture reads the RULER, whose list is ordered by construction and is
+    a different track from the selection (`molview.md` §§ 9.5, 11.6).
 
     Opening the Cell tab turns the ruler on, which is why the picks below land
     in it: `pickAtom` routes by whether measuring is on, so the same click that
@@ -792,15 +747,6 @@ def test_the_edit_survives_a_page_reload(
     """§ 11.2a: "the sequence outlives the page" — a fresh viewer ADOPTS the
     draft already in storage, and what comes back is the DRAFT, not the point.
 
-    NOTHING IN THIS SUITE RELOADED A PAGE until 2026-08-04 — thirteen e2e files,
-    zero ``page.reload()``.  So the whole of #44 was unguarded: the write half
-    (history.js called a two-call door no workspace has ever had, so nothing was
-    saved and every stub satisfied it perfectly) and the read half (``load(0)``
-    refused on a fresh viewer, so the bytes were on disk and nothing could reach
-    them).  A GENERATED structure — SMILES, DNA, peptide, no file behind it —
-    was simply gone on leaving the tab.  It was verified once by hand and never
-    since.
-
     Three things must come back, and they are the three a reopened page cannot
     infer: the atoms as EDITED (not as loaded), the unsaved badge, and the
     position in the sequence.  Asserting only the atom count would pass on a
@@ -820,8 +766,7 @@ def test_the_edit_survives_a_page_reload(
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
         timeout=_ACT_MS)
     # The edit is ON the sequence now, so this is where it put us -- and it is
-    # the fact the reopened page below has to bring back.  It waited for the
-    # unsaved badge until 2026-09-07, when an edit recorded nothing.
+    # the fact the reopened page below has to bring back.
     page.wait_for_function(
         "() => /saved #1/.test("
         "  document.getElementById('timeline-status').textContent)",
@@ -854,11 +799,8 @@ def test_an_edit_changes_the_structure_and_records_itself(
     (§ 11.2) — not by the page afterwards — so the sequence advancing proves the
     edit reached the model rather than only the screen.
 
-    THIS ASKED THE BADGE until 2026-09-07, when an edit only rewrote the draft
-    and the badge going up was the only record it had.  Now the edit records
-    itself and the badge goes back DOWN when that lands — so the badge answers
-    the same for a recorded edit and a refused one, and the position is what
-    tells them apart.
+    The badge answers the same for a recorded edit and a refused one, so the
+    position is what tells them apart.
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
@@ -897,11 +839,6 @@ def test_retract_puts_the_atom_back_with_no_save_state_pressed(
     *"all operation should automatically call state save timeline api, such
     that the user always can retract back"* (user, 2026-09-07).  The delete lays
     down its own point, so one Retract restores the atom.
-
-    IT PRESSED "Save state" FIRST until then, because it had to: an edit
-    recorded nothing, so a point to come back to only existed if the user had
-    made one.  That press is gone from this test on purpose — it is the whole
-    difference, and leaving it in would let the old behaviour pass.
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
@@ -960,8 +897,7 @@ def test_retract_says_so_when_the_point_it_wanted_is_gone(
         "() => !document.getElementById('delete-apply').disabled",
         timeout=_ACT_MS)
     page.locator("#delete-apply").click()
-    # The EDIT lays down #1 (§ 11.2, 2026-09-07); this pressed "Save state" to
-    # get there until then.  Either way we stand at #1 and Retract wants #0.
+    # The EDIT lays down #1 (§ 11.2); Retract wants #0.
     page.wait_for_function(
         "() => /saved #1/.test("
         "  document.getElementById('timeline-status').textContent)",
@@ -1013,8 +949,7 @@ def test_the_timeline_indicator_says_where_you_are(
         timeout=_ACT_MS)
     page.locator("#delete-apply").click()
     # THE EDIT IS ON THE SEQUENCE, so the indicator says where that put you and
-    # which point Retract goes back to.  It waited for "unsaved" until
-    # 2026-09-07, when an edit left work off the sequence by design.
+    # which point Retract goes back to.
     page.wait_for_function(
         "() => /saved #1/.test("
         "  document.getElementById('timeline-status').textContent)",
@@ -1040,15 +975,13 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
     _open(page, flask_server)
     _load(page, labelled_xyz)
 
-    # TWO QUESTIONS NOW, in this order: WHERE, then what to call it
-    # (`tabs.md` § 6 -- the door owns the destination).  It was one dialog of
-    # the panel's own, which forced the sidebar's current directory; that went
-    # with `save-dialog.js` on 2026-09-02.
+    # TWO QUESTIONS, in this order: WHERE, then what to call it
+    # (`tabs.md` § 6 -- the door owns the destination).
     page.locator("#save-to-source-btn").click()
 
     # 1. WHERE.  The picker's Choose stays disabled until a folder is
     #    selected -- clicking a row is the selection, which is what a person
-    #    does and what the old single-dialog flow never asked.
+    #    does.
     row = page.locator("dialog .tp-row:not(.tp-row--inert)").first
     row.wait_for(state="visible", timeout=_ACT_MS)
     row.click()
@@ -1086,11 +1019,6 @@ def test_the_page_remembers_which_file_it_is_showing_across_a_reload(
     viewer's restore instead — now the normal case — it was empty while a
     structure was plainly on the canvas, so the readout fell back to
     "Picked:" after a reload that had lost nothing.
-
-    It also checked that the Load button came back DISABLED.  That half is
-    retired with the veto it pinned (2026-09-02): the button stays live
-    because re-loading is a real action, and the readout is what carries the
-    fact across the reload.
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
@@ -1163,20 +1091,7 @@ def test_a_generated_structure_claims_no_file(page, flask_server, labelled_xyz):
 #  `align-items: stretch` widened the <input> to the full row (measured  #
 #  384.5px), painting a tick centred in empty space.                     #
 #                                                                       #
-#  WHAT USED TO STAND HERE, in tests/test_modify_css_residue.py.  Two    #
-#  text checks: one read `.modify-edit-panel .modify-check-row {` out of #
-#  the stylesheet and looked for the strings `flex-direction: row` and   #
-#  `align-items: center`; the other did `html.rfind("<label", 0, i)`     #
-#  from the checkbox's id and asked whether "modify-check-row" appeared  #
-#  in the slice.  The second was GREEN BY COINCIDENCE: `#slab-orthogonal`#
-#  has no wrapping <label> at all -- its label is a SIBLING -- so the    #
-#  rfind landed on `<label for="slab-m">`, an unrelated field 15 lines   #
-#  up, and the class matched only because the <div> happens to sit       #
-#  between the two.  It would have passed with the checkbox anywhere     #
-#  after any `.modify-check-row` opening tag, and its own failure        #
-#  message described a DOM that does not exist.  Neither check could     #
-#  see the cascade, which is where the bug was.  This one measures the   #
-#  painted result.                                                       #
+#  The bug is in the cascade, so this test measures the painted result. #
 # --------------------------------------------------------------------- #
 
 def test_a_checkbox_sits_beside_its_own_text(page, flask_server):
@@ -1216,10 +1131,7 @@ def test_a_checkbox_sits_beside_its_own_text(page, flask_server):
 #  "From a bulk run…" -- the measurement's notes are findings           #
 #                                                                       #
 #  Contract: docs/science/validation.md § 4.1 R2a (a notice is a        #
-#  finding, drawn by the one renderer).  Until 2026-09-27 the panel     #
-#  joined the route's notes into its status line with `·`, in the worst #
-#  one's tone, so "not the bulk crystal you meant" read as one clause   #
-#  of a run-on line beside the comparisons (plan W19).                  #
+#  finding, drawn by the one renderer).                                 #
 # --------------------------------------------------------------------- #
 
 @pytest.fixture

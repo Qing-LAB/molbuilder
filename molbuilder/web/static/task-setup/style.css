@@ -9,7 +9,7 @@
  * `var(--token)` and never write a raw palette colour, and the rhythm comes
  * from the `--space-*` / `--text-*` / `--radius*` scales.  The tab's own
  * semantics live in the `--ts-*` block of `lib/tokens.css` — retuning this tab
- * is editing those thirteen lines, not hunting literals in here.
+ * is editing those lines, not hunting literals in here.
  *
  * The one thing this sheet is really for: making the tab's central idea
  * visible.  A setting with ONE point is a choice you made; with SEVERAL it is
@@ -47,9 +47,7 @@
 /* THE RAIL TRAVELS, AND IS CAPPED (task-setup.md 9a.1).  Everything about
  * the whole calculation lives here -- what gets written, and what it says
  * while it runs -- so it stays on screen while the main column is worked
- * through.  Sticky was already true; what was missing was a grid that ran
- * the whole way down, which is what folding the editor into the column
- * bought.
+ * through.
  *
  * The cap is not decoration: a five-rung ladder's per-stage list is taller
  * than the viewport, and a sticky element taller than its viewport pins its
@@ -171,13 +169,7 @@
  * is unbounded prose -- so the row is sized the same content-driven way as
  * `.ts-facts` below: the name asks for its natural width, the description
  * takes what is left and drops to a line of its own when that is not
- * enough.
- *
- * Was `justify-content: space-between` with the description right-aligned.
- * Two faults in one rule: `space-between` set the gap from what was LEFT
- * OVER rather than from the content, and right-aligning prose ragged its
- * left edge into three-word lines in a 227px column.  Alignment is not a
- * layout. */
+ * enough. */
 .ts-files li {
     display: flex;
     flex-wrap: wrap;
@@ -190,7 +182,7 @@
  * beats the UA's `[hidden] { display: none }` on origin precedence --
  * without this line, viewer.js hiding a row (`li.hidden = true`, the
  * transport folder's template/structure rows) changes nothing on
- * screen.  Shipped missing 2026-08-29 and found in a browser. */
+ * screen. */
 .ts-files li[hidden] { display: none; }
 .ts-file-name { flex: 0 0 auto; }
 .ts-files li:last-child { border-bottom: 0; }
@@ -517,15 +509,7 @@
  * length.  So the track structure is decided by the content, never by a
  * constant: each pair asks for its NATURAL width and takes a row of its
  * own when that will not fit, which makes short facts share a line and a
- * long path get the full width.
- *
- * This replaced an auto-fit grid whose track floor was a bare 9rem constant
- * (2026-08-22) -- the only one in the tree, and measurably the worst
- * overflow in the app: `source /home/…/conda.sh` is ~380px of unbreakable
- * text, and the constant had declared 9rem sufficient, so the rest was
- * simply clipped off the card.  Everywhere else already sizes label->value
- * pairs by their content (`max-content 1fr` in the spectra, molview and
- * trajectory sheets) or guards the floor with `min(…, 100%)`. */
+ * long path get the full width. */
 .ts-facts {
     display: flex;
     flex-wrap: wrap;
@@ -533,7 +517,7 @@
     margin: 0;
 }
 /* Same [hidden]-precedence guard as `.ts-state`: the rule above sets
- * `display: grid`, which ties with the browser's `[hidden] { display: none }`
+ * `display: flex`, which ties with the browser's `[hidden] { display: none }`
  * and wins on source order.  The came-over facts are always shown; the
  * resolved-config list is hidden until a folder is open. */
 .ts-facts[hidden] { display: none; }
@@ -616,17 +600,13 @@
  * ===================================================================== */
 /* The asks block carries its OWN class, and that class sets NO `display`
    -- so the UA's `[hidden] { display: none }` wins with nothing to
-   override.  It wore `.ts-rows` (display:flex) first, which defeats
-   `el.hidden = true` on specificity and would have left the fields on
-   screen before a machine was picked; `test_css_hidden_attribute_audit`
-   caught it.  Fixed by not colliding rather than by out-specifying --
-   an override is a second rule to keep true. */
+   override.  Not colliding rather than out-specifying: an override is a
+   second rule to keep true. */
 .ts-asks > * + * { margin-top: var(--space-sm); }
 /* The asks reflow on THEIR OWN width, not the viewport's -- ui-contract.md
    § 3.  These rows live in a card in a column beside a sidebar, so at a
    1024px viewport the block itself is only ~318px wide; a viewport media
-   query cannot see that and left the three-column layout in force where it
-   did not fit.  Naming the block a container is what lets the query below
+   query cannot see that.  Naming the block a container is what lets the query below
    ask the question that actually matters. */
 .ts-asks { container-type: inline-size; }
 
@@ -635,11 +615,9 @@
     /* minmax(0, ...) on the note, not a bare 1fr: `1fr` is
        `minmax(auto, 1fr)`, and `auto` floors the track at the note's
        MIN-CONTENT, so a long word holds the track open instead of wrapping.
-       The same call .ts-cols and .ts-row above already make.
-       It is NOT what fixed the 1024px overflow, though -- measured, the
-       container query below is (with `1fr` restored the test still passes;
-       with the media query back it fails either way).  This is the
-       three-column state's own guard, not the fix. */
+       The same call .ts-cols and .ts-row above already make.  This is the
+       three-column state's own guard; the container query below is what
+       reflows the block. */
     grid-template-columns: var(--ts-ask-label-w) minmax(7rem, 12rem) minmax(0, 1fr);
     align-items: center;
     gap: var(--space-sm);
@@ -757,12 +735,6 @@
     font: inherit;
     font-variant-numeric: tabular-nums;
 }
-/* `.ts-notify-where` was here and matched nothing -- no markup ever carried
-   it, in this revision or in any before it, and no code composes the name
-   (`ui-contract.md` § 8's traps 1 and 4 both checked).  What it described --
-   a quiet pointer to where the messages go -- is the This-machine tab now,
-   and lives in that tab's own sheet.  Removed 2026-09-01. */
-
 /* ---------- one tab per rung (task-setup.md 11) ---------- */
 /* The alternative grows the page by one block per stage; a five-rung ladder
    becomes a page nobody scrolls to the bottom of. */
@@ -795,8 +767,7 @@
 }
 /* `display:flex` on the class outranks the `hidden` attribute's own
    `display:none`, so a closed panel would stay in the layout while the code
-   believed it was gone -- the failure `test_css_hidden_attribute_audit.py`
-   existed for (retired 2026-09-10, `082ba979`; the guard is review's now). */
+   believed it was gone. */
 .ts-next-step[hidden] { display: none; }
 
 /* ---------- what a prep will write, per stage (task-setup.md 7.1) --- */
@@ -850,8 +821,7 @@
     max-width: 16ch;
     font-variant-numeric: tabular-nums;
 }
-/* An unstated row is not an error -- it is the state every description was
-   in before this card existed.  Quieter, never struck. */
+/* An unstated row is not an error.  Quieter, never struck. */
 .ts-row[data-kind="unstated"] .ts-row-name { color: var(--text-secondary); }
 /* NOR IS AN INHERITED ONE.  A blank field on this rung means "no
    disagreement", and the value it takes is in the field's own placeholder --
@@ -888,11 +858,7 @@
 }
 
 /* ---------- which channels this calculation reports to ---------- */
-/* NAMES ONLY.  The address-and-key form that used to sit here moved to the
-   This-machine tab on 2026-08-31, with its `.ts-reports-{path,state,form,
-   row,label,input,cmd}` rules -- deleted rather than left behind, because a
-   sheet that still styles a control the page no longer has is a sheet
-   nobody can read the page from. */
+/* NAMES ONLY.  The address-and-key form lives on the This-machine tab. */
 
 .ts-notify-channels {
     display: flex;
@@ -911,12 +877,9 @@
    answer the row exists to give. */
 .ts-notify-channels input:disabled + span { opacity: 0.7; }
 
-/* The divider inside the notify card: WHEN above, WHERE below.  It used to
-   separate two FILES -- the ticks into task.json and the address+key into
-   this machine's own -- and the comment still said so after the second half
-   moved to the This-machine tab on 2026-08-31.  Both halves write task.json
-   now; the divider stays because "when should it speak" and "which channels"
-   are still two questions. */
+/* The divider inside the notify card: WHEN above, WHERE below.  Both halves
+   write task.json; the divider stays because "when should it speak" and
+   "which channels" are two questions. */
 .ts-notify-rule {
     margin: var(--space-md) 0 var(--space-sm);
     border: 0;
@@ -934,10 +897,8 @@
  * viewer's theme like the rows above it -- a literal here would read as
  * one theme's ink on the other's paper. */
 /* `display:flex` beats the UA's `[hidden] { display:none }`, so the block
- * the JS hides would have stayed in the layout while the code believed it
- * was gone -- shipped that way on 2026-08-30 and caught by the CSS audit
- * only after the audit itself was fixed to attribute `host.hidden = ` to
- * the nearest declaration rather than the last one in the file. */
+ * the JS hides would stay in the layout while the code believed it was
+ * gone. */
 .ts-fit[hidden] { display: none; }
 .ts-fit {
     display: flex;

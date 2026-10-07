@@ -1,10 +1,7 @@
 """Versioned-document helpers — the shared ``molbuilder/<name>@<major>``
 schema convention + JSON IO (`execution/job-contracts.md` § 6).
 
-The major-version check was hand-rolled identically in three persisted
-artifacts (``scheduler/record.py``, ``bench/result.py``, ``jobset/model.py``),
-with a subtle inconsistency in how a missing ``@`` was handled.  This is the
-one place that logic lives now.
+The one place the major-version check lives, for every persisted artifact.
 
 L1: pure stdlib, no molbuilder deps -- any layer may use it.
 """
@@ -26,13 +23,7 @@ def schema_major(schema: str) -> str:
     A dotted version keeps only what precedes the first dot, so ``@1.4``
     has major ``1``.  ``job-contracts.md`` § 6.1 states the rule the whole
     convention rests on -- *"checked major-only, tolerating same-major minor
-    bumps, rejecting a different major"* -- and until 2026-08-07 this
-    function did not implement its first half: it compared the entire token,
-    so ``@1.4`` was rejected against ``@1`` with a message saying the major
-    differed when it did not.  Nothing shipped had a minor, so nothing had
-    exercised it; ``task@1`` is the first artifact whose reader tests the
-    claim.  The change only ever widens acceptance -- no string that passed
-    before can fail now.
+    bumps, rejecting a different major"*.
     """
     s = str(schema or "")
     if "@" not in s:
@@ -56,15 +47,10 @@ def check_schema(got: str, want: str, *, label: str = "") -> None:
     different major).  ``label`` prefixes the message so the artifact is
     obvious.
 
-    The single enforcement point for the schema convention -- adopted by
-    ``environment@1`` / ``bench-result@1`` / ``job-set@1`` (was duplicated).
-
-    *Named ``check_schema_major`` until U9 (2026-08-12), and the name was
-    the bug's alibi: it compared ONLY the majors, so any ``@1`` artifact
-    parsed as any other -- ``task.json`` handed to the Environment reader
-    sailed through the schema gate and failed later, somewhere the message
-    named the wrong thing.  The NAME half is what says which artifact this
-    is; a version check that ignores it checks nothing worth the word.*"""
+    The single enforcement point for the schema convention.  The NAME half
+    is what says which artifact this is: comparing majors alone, any ``@1``
+    artifact would parse as any other, and ``task.json`` handed to the
+    Environment reader would sail through the gate and fail later."""
     if (schema_name(got) != schema_name(want)
             or schema_major(got) != schema_major(want)):
         prefix = f"{label} " if label else ""
@@ -82,13 +68,11 @@ def read_json(path) -> Any:
 def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None,
                 mode: Optional[int] = None,
                 exclusive: bool = False) -> Path:
-    """Write via a **unique** temp + ``os.replace`` — the checkpoint's shape
-    (`checkpoint._atomic_write_bytes` carried it first and now delegates
-    here), adopted package-wide at U8 (2026-08-12).
+    """Write via a **unique** temp + ``os.replace`` — the one writer
+    (`checkpoint._atomic_write_bytes` delegates here).
 
-    Two properties, and ``write_json`` used to have only the first: a reader
-    never sees a partial file, and **two writers never collide**.  The old
-    DERIVED temp name (``<target>.tmp``) is the trap `checkpointing.md` § 6
+    Two properties: a reader never sees a partial file, and **two writers
+    never collide**.  A DERIVED temp name (``<target>.tmp``) is the trap `checkpointing.md` § 6
     names: two concurrent writers agree on one temp path, one renames it into
     place, and the other's ``os.replace`` either fails on a file that is no
     longer there or — worse — installs the other writer's half-written bytes.
@@ -96,7 +80,7 @@ def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None,
     atomic and where last-writer-wins is the right answer.
 
     A crash between write and rename leaves the unique temp behind as inert
-    litter; with the derived name it also poisoned the NEXT writer.  For a
+    litter (a derived name would also poison the NEXT writer).  For a
     target inside a folder a checkpoint save will store, pass ``tmp_dir``
     pointing somewhere never stored (the checkpoint passes ``.git``), so the
     litter cannot be committed into history.
@@ -110,10 +94,7 @@ def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None,
     the file owner-only, so there is no moment at any other mode at all, the
     target is never opened for writing — a crash cannot leave a truncated
     secret — and a symlink planted at the path is REPLACED rather than
-    followed.  Until 2026-09-12 this package had an atomic writer that widened
-    and a private writer (``auth_setup.write_secret_file``) that truncated the
-    target in place, and every secret went through the second one; § 2.3 has
-    the measurement.
+    followed.
 
     **``exclusive`` is for a file that must never be REPLACED** -- it creates
     the name or raises ``FileExistsError``, and the caller reads back what is
@@ -188,11 +169,8 @@ def write_json(path, obj: Any, *, tmp_dir: Optional[Path] = None,
 
     ``mode`` is :func:`write_bytes`'s own: how a JSON file that carries a
     credential is written ``0600`` from its first byte (`configuration.md`
-    § 2.3, *"privacy is a PARAMETER of the one writer"*).  This function did
-    not take it until 2026-09-13, and the one caller that needed it -- the
-    seeded ``molbuilder.json`` -- worked around the gap by ``touch``-ing the
-    target ``0600`` first so the preserve-the-mode branch would do the job
-    sideways.  A parameter the rule names has to exist on every door.
+    § 2.3, *"privacy is a PARAMETER of the one writer"*).  A parameter the
+    rule names has to exist on every door.
     """
     data = json_text(obj).encode("utf-8")
     return write_bytes(path, data, tmp_dir=tmp_dir, mode=mode)

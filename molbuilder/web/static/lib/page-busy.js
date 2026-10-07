@@ -2,10 +2,7 @@
  * Page busy fence — the ONE full-window cover for heavy user-triggered
  * operations.  Contract: docs/web/ui-contract.md § 10.
  *
- * Replaces the sidebar-scoped lock of 2026-05-27 (state.js), which built
- * the banner, the Cancel and the three-layer recovery — and never gained
- * a production caller.  The semantics here are that lock's, verbatim;
- * only the coverage grew from one sidebar to the whole window, because
+ * It covers the whole window, because
  * covering the window blocks tab switching, sidebar clicks and every
  * form at once — nothing is guarded per-control (user, 2026-08-28:
  * "blocking the window is going to block switching so make it simple").

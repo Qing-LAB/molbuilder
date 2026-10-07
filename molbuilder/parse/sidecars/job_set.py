@@ -1,25 +1,15 @@
 """The benchmark sweep's plan, read back — ``job-set.json`` with ``kind: sweep``.
 
 WHY THIS EXISTS.  `/api/results/dir` asks the registry *what reads this
-file*, and the Results picker drops anything the answer is ``None`` for.
-The answer for a sweep's plan was nothing, so the whole bench-summary
-viewer became unreachable from the tab on 2026-09-18 — measured on
-``projects/AuSlab/optimization/slab_op1/01_coarse/bench``, whose only two
-files are ``job-set.json`` and ``STAGE-PLAN.md`` and which therefore
-listed as *"no result files yet"*.  This is the same gap
-``TransportRecordFileParser`` closed for ``.transport.json`` on
-2026-09-17, and for the same stated reason: a result kind whose format
-was understood only in JavaScript.
+file*, and the Results picker drops anything the answer is ``None`` for,
+so a sweep's plan needs a reader to be offered.
 
 WHY IT CLAIMS ONLY SWEEPS, AND WHY THAT IS NOT A HEURISTIC.  Two
 different documents share the name ``job-set.json``: a benchmark sweep
 and an ordinary calculation's stage ladder.  They are the same schema and
 differ in one declared field, ``kind`` — so the discriminator is read,
-never guessed.  That distinction is the whole of the objection that
-justified dropping the file in the first place (*"a `job-set.json` whose
-own route then answers 400"*): the 400 belongs to the LADDER, whose
-`/api/bench/summary` correctly refuses, and this parser declines it for
-that reason rather than by accident.  `TransportRecordFileParser` states
+never guessed.  A LADDER's `/api/bench/summary` answers 400, and this
+parser declines it for that reason.  `TransportRecordFileParser` states
 the rule: **the schema, not the suffix alone.**
 
 THE IMPORTS ARE LAZY ON PURPOSE.  ``jobset`` and ``parse`` are both L2
@@ -58,19 +48,7 @@ def _load_sweep(path: Path) -> dict:
     """The payload, or :class:`JobSetReadError` saying why not.
 
     One reader for both halves of the parser, so ``can_parse`` and
-    ``parse`` cannot come to disagree about what they are looking at --
-    the failure `sidecars/__init__` records for the deleted
-    ``TransportSidecarFileParser``, which claimed a shape nothing wrote.
-
-    IT RETURNED ``None`` FOR EVERYTHING until 2026-09-19, and `parse`
-    turned every one of those into the same sentence: *"an ordinary
-    calculation's ladder says `kind: ladder`"*.  So a sweep plan
-    truncated by a killed write, or one that could not be opened,
-    reported as a perfectly healthy ladder -- and the bench directory
-    listed as *"no result files yet"*, the exact symptom this parser
-    exists to remove, with nothing saying the file was damaged.
-    `sidecars/transport.py`, the model for this file, carries the real
-    cause in a `TransportRecordError`; that half was not copied.
+    ``parse`` cannot come to disagree about what they are looking at.
 
     WHAT THIS DOES NOT FIX.  `detect()` fans a boolean `can_parse` over
     every registered parser, so it cannot attribute a refusal to one and
@@ -85,9 +63,7 @@ def _load_sweep(path: Path) -> dict:
     if p.name != FILENAME:
         raise JobSetReadError(f"{p.name} is not {FILENAME}")
     # THROUGH THE ONE DOOR, `JobSet.load` (`persist`, the schema by name and
-    # major -- `execution/architecture.md` § 3.2): this read the file raw and
-    # compared the schema exactly until 2026-10-03, a second answer to what
-    # a job set is.
+    # major -- `execution/architecture.md` § 3.2).
     try:
         js = JobSet.load(p)
     except OSError as exc:

@@ -26,10 +26,7 @@ from molbuilder.scheduler.record import Domain
 #: the logic below is asked about, as a probed record holds it (the shape of
 #: Sol's `htc`, `debug`, `general`, `highmem`, `lightwork`).  No scheduler
 #: text: what the probe makes of a real machine's answers is the field test's
-#: (`tests/field/`), read from a record probed on that machine.  *(These were
-#: parsed from scheduler text typed into the suite until 2026-10-06 -- user:
-#: "there should be no assumption what so ever about the text returned by
-#: slurm".)*
+#: (`tests/field/`), read from a record probed on that machine.
 _ROWS = [
     {"name": "debug", "partition": "htc", "qos": "debug",
      "max_time": "00:15:00", "max_cores": 128, "max_submit_jobs": 2,
@@ -59,12 +56,6 @@ _ROWS = [
 
 def _domains():
     return {r["name"]: Domain.from_row(r) for r in _ROWS}
-
-
-# Three tests of what the probe makes of `sinfo`'s rows -- every machine
-# group listed, a one-shape queue listed once, two QoS over one partition
-# seeing its machines -- retired 2026-10-06 with the scheduler text they
-# parsed: the probe's reading of a real machine is the field test's.
 
 
 # --------------------------------------------------------------------- #
@@ -123,9 +114,8 @@ def test_the_refusal_names_the_MACHINE_not_just_the_number():
 
 
 def test_a_record_that_lists_no_machines_never_bars():
-    """R3 — *an unstated limit never bars.* Every record written before
-    2026-08-27 has no `node_types`, and must keep working from
-    `max_cores`."""
+    """R3 — *an unstated limit never bars.* A record with no `node_types`
+    keeps working from `max_cores`."""
     old = Domain(name="htc", partition="htc", qos="public", max_cores=48)
     assert old.node_types is None
     assert admits(old, Request(ranks=48)) == []
@@ -304,9 +294,8 @@ def test_the_range_has_ONE_spelling():
 
 
 def test_an_older_record_still_reads_its_one_figure():
-    """**R3, and the reason this fix is safe to ship before anyone
-    re-probes.** Every record on disk predates `node_types`; the card must
-    fall back to what it does have rather than going blank."""
+    """**R3.** For a record with no `node_types` the card must fall back to
+    what it does have rather than going blank."""
     from molbuilder.scheduler.quantities import core_range, machine_sizes
     from molbuilder.scheduler.record import Domain
     old = [Domain(name="htc", partition="htc", qos="public", max_cores=48)]

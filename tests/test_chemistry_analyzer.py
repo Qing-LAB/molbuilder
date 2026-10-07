@@ -5,9 +5,7 @@ structure IS (its elements, its electron count, the metals that bear on its
 spin and their common spin states), purely and deterministically.  It
 decides nothing: which charge and spin a calculation carries is the
 electronic-state class's, pinned through ``jobset prep`` in
-``tests/test_electronic_state.py``.  Until 2026-09-28 this file pinned the
-analyzer's own SUGGESTIONS (judged at charge 0, blind to the cell); those
-rows now live in that road test.
+``tests/test_electronic_state.py``.
 """
 from __future__ import annotations
 
@@ -121,10 +119,9 @@ def test_unknown_element_raises_keyerror():
 
 
 def test_spin_upper_bound_and_electron_sanity():
-    """SCIENTIFIC-AUDIT FIX: check_spin_charge_parity validated PARITY only;
-    2S cannot exceed the electron count (n_beta = (n_e - spin)/2 >= 0), and an
-    over-ionised system (charge > sum Z) has no electrons.  Both are exact and
-    were previously unflagged (e.g. spin=10 on H2 passed)."""
+    """Beyond parity: 2S cannot exceed the electron count
+    (n_beta = (n_e - spin)/2 >= 0), and an over-ionised system
+    (charge > sum Z) has no electrons."""
     import numpy as np
     from molbuilder.chemistry import check_spin_charge_parity
     from molbuilder.structure import Structure

@@ -2,10 +2,6 @@
 
 Routes (no url_prefix; each carries its own full path):
 
-    (``POST /api/modify/load`` was retired in commit ``7105ae8``;
-     XYZ canonicalisation is now part of ``/api/build/load``'s
-     `_struct_from_body` path so both tabs share one validator.)
-
     POST /api/modify/delete                delete_atoms(indices)
     POST /api/modify/append                append_structure -- add one
                                                     structure into another
@@ -27,30 +23,8 @@ Routes (no url_prefix; each carries its own full path):
                                             single-source-of-truth
                                             tuples in molbuilder.modify.
 
-**The electrode routes are gone.**  ``symmetric_electrodes`` (the pair)
-went with the Junction panel, and ``electrode`` (per-side, centred on a
-selection) went on 2026-09-01 once nothing in the browser called it --
-`add_slab` had replaced it and been proven (`modify-redesign-plan.md`
-3.4a).  Deleting the pair left four orphaned continuation lines in this
-very list, describing two routes that no longer existed; they are the
-reason this list is now written out rather than patched.
-
-JSON body shape (shared by every op):
-
-    {
-      "xyz":            "<xyz string>",
-      "atom_names":     [...],   # optional; len == n_atoms
-      "residue_ids":    [...],   # optional
-      "residue_names":  [...],   # optional
-      "chain_ids":      [...],   # optional
-      ...op-specific args...
-    }
-
-The metadata fields are optional: when present, they override the
-defaults that ``Structure.from_xyz`` populates.  Sending them lets a
-chain of ops preserve PDB-style atom names / residue ids across
-round-trips through XYZ (per the spec's "Per-atom metadata is
-preserved" invariant in `docs/web/tabs.md` § 5).
+JSON body shape (shared by every op): the structure envelope
+(`web-api.md` § 1) plus the op-specific args.
 
 JSON response shape (shared):
 
@@ -72,10 +46,8 @@ This matches `/api/build/load` so the front end can keep one
 modify-op responses.
 
 Body parsing, response building, validation, and the error
-response shape all live in ``_shared.py`` so the build, modify,
-and (future) any electrode-handoff blueprints share one wire
-contract.  If a wire shape changes here, both blueprints' tests
-catch it.
+response shape all live in ``_shared.py`` so the build and modify
+blueprints share one wire contract.
 """
 
 from __future__ import annotations
@@ -135,10 +107,7 @@ def api_modify_meta():
     ``molbuilder.modify`` reaches the UI automatically.
     """
     # Lattice table: per-element `a_experimental` + `a_pbe`, so the panel can
-    # offer the two literature references without carrying the numbers.  The
-    # third column this comment used to name (`a_pbe_siesta_psml`) went with
-    # schema v3 -- nothing in the codebase could ever write it, so the "your
-    # bulk run" control it fed greyed itself out from the day it shipped; a
+    # offer the two literature references without carrying the numbers.  A
     # constant measured in the user's own setup belongs to ONE run and is
     # read from there instead (`POST /api/modify/lattice-from-run`).  The
     # panel's third radio is "Custom", a typed number, not a table column.
@@ -184,11 +153,8 @@ def api_modify_spacings():
     ``{ok, element, plane, system, reference, a, d_interlayer,
     nearest_neighbour}``.
 
-    **The crystallography is the backend's.**  The Slab panel computed this
-    itself -- `a/sqrt(3)`, `a/2` and a nearest-neighbour line, three literals
-    in JavaScript -- and was short `d(110)` entirely, so a person building
-    fcc(110) was shown two spacings, neither of them the number the Cell page
-    asks them to type.  `cell.interplanar_spacing` derives all of them from
+    **The crystallography is the backend's.**  `cell.interplanar_spacing`
+    derives every spacing from
     one rule (the first allowed reflection for the lattice's centring), and
     this is the door it reaches the browser through.
 
@@ -228,14 +194,12 @@ def api_modify_spacings():
                      f"{', '.join(SUPPORTED_FCC_PLANES)}"}), 400
 
     # AND THE SAME METALS.  The element list is CLOSED and the lattice table
-    # is user-overridable, so the two are not the same question: adding an
-    # `Fe` entry with `"system": "bcc"` to `$MOLBUILDER_DATA_DIR`'s copy --
-    # a documented customization -- made this door answer `d(110) = 2.0269`
-    # from the bcc rule for a metal `/api/modify/slab` refuses outright
-    # ("supported FCC metals are: Au, Ag, Cu, Ni, Pt, Pd").  A spacing for a
-    # slab that cannot be built is a plausible number with nothing to use it
-    # on, which is worse than a refusal.  The plane was already asked this;
-    # the element was not.
+    # is user-overridable, so the two are not the same question: an `Fe`
+    # entry with `"system": "bcc"` in `$MOLBUILDER_DATA_DIR`'s copy -- a
+    # documented customization -- would get a spacing from the bcc rule for
+    # a metal `/api/modify/slab` refuses outright.  A spacing for a slab that
+    # cannot be built is a plausible number with nothing to use it on, which
+    # is worse than a refusal.
     if element not in SUPPORTED_FCC_ELEMENTS:
         return jsonify({
             "ok": False,
@@ -298,7 +262,7 @@ def api_modify_spacings():
 def api_modify_delete():
     """Drop the named atom indices from the structure.
 
-    Body: ``{xyz, [...metadata...], indices: List[int]}``.
+    Body: ``{structure, indices: List[int]}``.
     Out-of-range indices are silently ignored (matches
     :func:`molbuilder.modify.delete_atoms` behaviour) so the UI can
     fire the op even when its selection model is briefly stale.
@@ -441,9 +405,7 @@ def api_modify_append():
     # a receipt is for.
     # THROUGH THE ONE DOOR (`periodicity_gate._notice`), like every other
     # notice: `level` is validated by `issues.Issue` on the way and `about` is
-    # derived from `where`.  This spelled all four keys by hand until
-    # 2026-09-09, which is how the same concept came to ride the wire as
-    # `level` here and `severity` from `issues_to_json`.
+    # derived from `where`.
     from ...periodicity_gate import _notice
     return _ok_response(new_struct, extra={"notices": [
         _notice("info", m, "append.merge") for m in notes
@@ -460,8 +422,7 @@ def api_modify_orient():
     """Rotate the structure so the anchor-pair vector forms ``angle``
     degrees with the chosen target axis.
 
-    Body: ``{xyz, [...metadata...], anchors: [a0, a1], axis?, angle?,
-             center?}``.
+    Body: ``{structure, anchors: [a0, a1], axis?, angle?, center?}``.
 
     Defaults match :func:`molbuilder.modify.orient_along_axis`:
     ``axis="z"`` (transport-DFT convention), ``angle=0.0`` (anchor
@@ -523,7 +484,7 @@ def api_modify_orient():
 def api_modify_rotate():
     """Rotate by ``angle`` degrees (right-hand rule) about the named axis.
 
-    Body: ``{xyz, [...metadata...], axis, angle, center?, indices?}``.
+    Body: ``{structure, axis, angle, center?, indices?}``.
 
     ``center`` picks what the axis passes through -- ``"origin"``
     (default) or ``"centroid"``.  ``indices`` turns ONLY those atoms,
@@ -613,13 +574,10 @@ def api_modify_translate():
     # takes the atoms so the caller sends the WHOLE structure either way
     # (molview.md § 11.7: one path in, one path out).
     #
-    # READ BEFORE THE RECENTER BRANCH, and that placement is the whole fix.
-    # The browser sends the selection for Center exactly as it does for
-    # Translate -- `applyOp` injects it from `OPERATIONS.translate.group` one
-    # layer below either call site, so both bodies carry `indices`.  The
-    # recenter branch used to return above this line, so the key was never
-    # read and Center silently centred the whole structure while every other
-    # op on the tab honoured the group.
+    # READ BEFORE THE RECENTER BRANCH.  The browser sends the selection for
+    # Center exactly as it does for Translate -- `applyOp` injects it from
+    # `OPERATIONS.translate.group` one layer below either call site, so both
+    # bodies carry `indices`, and Center honours the group like every other op.
     indices = body.get("indices")
     if indices is not None and not isinstance(indices, list):
         return _err("'indices' must be a list of atom indices", 400)
@@ -671,11 +629,6 @@ def api_modify_slab():
     same numbers place the same slab whatever the user happens to have
     picked.  The client's OPERATIONS table says so too (`molview.md` § 11.1),
     which is why no `indices` key reaches here.
-
-    **It replaced ``/api/modify/electrode``**, which placed a slab relative
-    to a selection.  Built beside it under the user's build-then-replace
-    rule; the old route went on 2026-09-01, once nothing in the browser
-    called it (`modify-redesign-plan.md` § 3.4a).
     """
     body = request.get_json(silent=True) or {}
     try:
@@ -744,16 +697,6 @@ def api_modify_slab():
                                                         plane)})
 
 
-#: The seam's subject.  NOT ``"cell"``: that routes to the Cell page, and a
-#: seam is not fixed there -- it is fixed by changing the layer count or the
-#: placement, both of which are in this panel.  Saying its own subject is what
-#: `periodicity_gate._notice` prescribes for a notice from another module, and
-#: any subject but ``"cell"`` lands in the general place, which is visible from
-#: either page.
-# `_SEAM_ABOUT = "slab"` stood here.  `about` is derived from `where` now
-# (`periodicity_gate._wire`), so the subject cannot disagree with the id.
-
-
 def _seam_notice(level: str, verdict: str, message: str):
     """One seam receipt, in the wire shape every notice uses.
 
@@ -782,13 +725,10 @@ def _seam_notices(struct, element: str, plane: str):
     same split `_lattice_notes` uses.
 
     **It travels in the RECEIPTS slot**, which `ok_structure_response`
-    documents as "what the edit did first, what is now true after it" and
-    which had no caller until this one -- so the warning reaches the screen
-    through `applyOp`'s existing handoff (`model-jobs.js`: "the structure AND
-    what the server found true of it, in one handoff") and needs no display
-    code of its own.  A second `notes` key beside it, which is what this
-    returned at first, would have been a second door onto the same fact -- and
-    the panel dropped it on the floor, because nothing was reading that door.
+    documents as "what the edit did first, what is now true after it" -- so
+    the warning reaches the screen through `applyOp`'s existing handoff
+    (`model-jobs.js`: "the structure AND what the server found true of it, in
+    one handoff") and needs no display code of its own.
     """
     cell = getattr(struct, "cell", None)
     if cell is None:
@@ -832,10 +772,8 @@ def _seam_notices(struct, element: str, plane: str):
     # boundary where the molecule's own periodic image is already touching.
     #
     # That collision is the fact `junction-cell.md` § 6 leans on to make the
-    # un-set `c` visible in the tab you are already in, and it was invisible:
-    # measured on a 3x3x3 Au(111) slab at z=2.4 over a molecule spanning
-    # z=-1..1, this said "the crystal continues, layers 3.400 Å apart" for a
-    # boundary with 0.00 Å of room.  Two atom sets, two facts, both said.
+    # un-set `c` visible in the tab you are already in.  Two atom sets, two
+    # facts, both said.
     #
     # A NOTICE, NEVER A REFUSAL -- the box is the user's to set, and a
     # collision is legitimate in a relaxation whose outer layers are frozen.
@@ -934,7 +872,7 @@ def api_modify_lattice_from_run():
         # A malformed sidecar, a truncated deck, a Z this build has no symbol
         # for: the readers raise their own kinds, and the ones they do not
         # name still have to reach the user as JSON.  The house pattern in
-        # this file (the electrode routes) logs and answers, rather than
+        # this file (the slab route) logs and answers, rather than
         # letting Flask render an HTML 500 into a fetch() that expects JSON.
         current_app.logger.exception("lattice-from-run: unexpected read error")
         return _err(
@@ -989,8 +927,8 @@ def api_modify_lattice_from_run():
 def _read_relaxed_result(path):
     """``(elements, positions_ang, cell_ang_or_None)`` from a result file.
 
-    Two readers, and both already existed (§ 3.3): SIESTA's ``.XV`` through
-    ``transport.compose.read_xv``, and everything else through
+    Two readers (§ 3.3): SIESTA's ``.XV`` through
+    ``parse.coords.siesta_xv.read_xv_with_cell``, and everything else through
     ``StructureCodec``, which is the ONE authority on the ``.xyz`` +
     ``.molstruct.json`` pair.  Nothing here parses a file itself.
     """
@@ -998,13 +936,6 @@ def _read_relaxed_result(path):
         # THE PARSE MODULE'S READER, not `transport.compose`'s.  Reading files
         # is the parse module's job, and this one returns the cell as a
         # first-class field, which is the thing being measured against.
-        #
-        # Choosing between them used to matter for a second reason: the two
-        # carried DIFFERENT Bohr radii, so the same file gave coordinates 4e-7
-        # apart depending on which was asked.  That is fixed -- every
-        # conversion in the tree now reads `molbuilder/constants.py` -- and is
-        # recorded here because this route is where it surfaced, as a test
-        # comparing the two answers and failing by 1.6e-6 Å.
         from molbuilder.parse.coords.siesta_xv import (
             SiestaXVError, read_xv_with_cell,
         )

@@ -5,10 +5,6 @@ reader; so do the cheap ending scan (`_run_ending`), the benchmark reader, the
 TBtrans reader and the monitor, which imports this module from beside the job
 (`runwrap.MONITOR_COMPANIONS`, `execution/run-reports.md` § 2.3); the
 wrapper's SCF-timing tee, being shell, gets its pattern rendered from here.
-Three hand-kept regexes for the one `scf:` row were how TranSIESTA's
-`ts-scf:` loop went unseen by all three readers at once -- a device that ran
-1000 NEGF iterations was timed as 7, and the monitor reported *"no SCF
-progress"* for 7.6 hours (2026-09-25).
 
 Every pattern is read off SIESTA 5.4.2's own writer, named beside it.  The
 one older spelling kept, the 5.0 betas' ``Siesta Version``, is off that
@@ -88,9 +84,7 @@ def scf_row(line: str) -> Optional[ScfRow]:
 
 
 # ---- The SCF row's values -----------------------------------------------------
-# The row's ONE value reader, the parser's (`siesta_reader`).  It stood inside
-# `siesta.py` until 2026-09-26, where the reading pass that runs beside a job
-# with no numpy could not reach it.
+# The row's ONE value reader, the parser's (`siesta_reader`).
 
 # Defensive separator-inserter for SIESTA's fixed-width SCF columns.
 # When two adjacent columns pack so tight that no whitespace separates
@@ -98,14 +92,12 @@ def scf_row(line: str) -> Optional[ScfRow]:
 # cases the regex catches:
 #
 #   * column NEXT to a fine column -- e.g. ``-1.929956131.029438`` --
-#     both values fine, fields just touched (dHmax-and-Ef_dn case
-#     fixed 2026-05-28).
+#     both values fine, fields just touched.
 #   * column NEXT to an overflowed column -- e.g. ``6.401317**********``
 #     -- fine value glued to a Fortran field-width overflow (the
 #     all-asterisks indicator).  Without splitting here, the joint
 #     token fails ``float()`` AND ``fortran_float`` (which
-#     only matches all-asterisks), nuking the row.  Added 2026-06-14
-#     after the BDT-stage-2 divergent-SCF report.
+#     only matches all-asterisks), nuking the row.
 #
 # SIESTA's SCF data row uses Fortran format ``(3F16.6, 3F10.6)`` for
 # closed-shell or ``(3F16.6, 4F10.6)`` for spin-polarized.  Every
@@ -116,15 +108,10 @@ def scf_row(line: str) -> Optional[ScfRow]:
 # a stray ``.`` from a value too long for its width.  Insert a
 # separator there.
 #
-# Why the lookahead is ``\S`` and not the narrower ``[-+\d*]``:
-# unconverged early SCF iters can chain together arbitrarily.  The
-# original ``[\d*]`` missed the ``-`` case (BDT-Au stage3 iter 1
-# regression, 2026-06-15: ``45.787763-15.068303410.273625`` -- Ef
-# = -15.068 left no padding so the minus sign of the next field was
-# the only separator).  Widening to ``[-+\d*]`` fixed that but is
-# enumerative; ``\S`` is structurally exhaustive -- the ``.6``
-# signature itself IS the field boundary, anything past it must
-# be the next column.  No false positives are possible: Fortran
+# Why the lookahead is ``\S``: unconverged early SCF iters can chain
+# together arbitrarily (``45.787763-15.068303410.273625``), and the ``.6``
+# signature itself IS the field boundary, so anything past it must be the
+# next column.  No false positives are possible: Fortran
 # F-format always ends a field at ``.NNNNNN``, never mid-value.
 _SCF_TIGHT_PACK = re.compile(r"(\.\d{6})(?=\S)")
 
@@ -310,7 +297,7 @@ def scf_floats(
 # are mapped by name, not by position -- a future SIESTA version
 # that adds / reorders columns adapts automatically.
 #
-# Robustness policy (2026-05-28): all string matching here is
+# Robustness policy: all string matching here is
 # case-insensitive AND tolerates the ``(unit)`` suffix being absent.
 # So ``DHMAX``, ``dhmax``, ``dHmax(eV)``, and ``dhmax`` all map to
 # the same canonical key.  This is the "names should be immune to
@@ -349,11 +336,8 @@ SCF_COLUMN_KEYS = {
     "e_ks":     "energy",
     "freeeng":  None,
     "ddmax":    "dDmax",
-    # KEPT, not discarded (2026-09-18).  These read `None` -- "valid
-    # bookkeeping column we don't extract" -- since the parser was written.
-    # For an ORDINARY run that was right: nothing plotted E_F.
-    #
-    # For a TRANSPORT lead it is the one number that matters.  An electrode
+    # KEPT, not discarded: for a TRANSPORT lead it is the one number that
+    # matters.  An electrode
     # is a periodic BULK run and `engines/transport.md` says what it is for:
     # *"its E_F is the reference energy"*, the thing T(E) is measured
     # relative to and `G = G0 * T(E_F)` is evaluated at.  `electrode_kz`
@@ -487,8 +471,7 @@ SNIFF_MARKERS = (
 #: input data file ***``) -- comments included.  NOTHING INSIDE IS THE RUN
 #: SPEAKING: a marker matched there is the deck's own text.  molbuilder's decks
 #: name the failures they guard against (``# 'propor: ERROR: IMAX = 0' on
-#: parallel run: ...``), so until 2026-09-26 a relaxation that ran out of moves
-#: read as stopped by ``propor``.  PySCF's reader anchors its end lines at
+#: parallel run: ...``).  PySCF's reader anchors its end lines at
 #: column 0 for the same reason: PySCF echoes the deck's source too.
 INPUT_ECHO_BEGIN = re.compile(r"^\*+\s*Dump of input data file\s*\*+\s*$",
                               re.IGNORECASE)
@@ -663,9 +646,7 @@ BUILD_COMPILER = re.compile(r"^\s*Compiler version\s*:\s*(.+?)\s*$",
 BUILD_PARALLEL = re.compile(r"^\s*Parallelisations?\s*:\s*(.+?)\s*$",
                             re.IGNORECASE)
 #: One line per compiled-in component, and not always the bare name: 5.4.2
-#: writes ``ELSI support. Solvers:`` and ``Native PEXSI support``, which a
-#: bare-name pattern read as absent -- the packaged SIESTA's ELSI, the road
-#: its ELPA takes, was recorded as missing until 2026-09-26.  ``ELPA`` and
+#: writes ``ELSI support. Solvers:`` and ``Native PEXSI support``.  ``ELPA`` and
 #: ``FLOOK`` are older builds' spellings, kept.
 BUILD_FEATURE = re.compile(
     r"^\s*(?:Native\s+)?(GEMM3M|NetCDF-4 MPI-IO|NetCDF-4|NetCDF|"
@@ -711,9 +692,7 @@ def read_build_line(line: str, build: dict) -> Optional[str]:
 #: prints what it RESOLVED, as ``diag: <label>  = <value>`` -- the algorithm,
 #: the ELPA GPU string, the block size, the process grid.  It is the only
 #: account 5.4.2 gives of its solver: its ``Src/`` writes no ``redata:`` line
-#: for the algorithm and no GPU-detected banner, which is what the parser's
-#: half of the reader this replaced matched (``_diag.py``, 2026-09-18 to
-#: 2026-09-26) -- so no real run had a solver on record.  The diagonalizer's
+#: for the algorithm and no GPU-detected banner.  The diagonalizer's
 #: block size here is its own (``Diag.BlockSize``); the orbital distribution's
 #: is the launch line :data:`PROCESS_GRID`.
 DIAG_LINE = re.compile(r"^\s*diag:\s*([A-Za-z][^=]*?)\s*=\s*(.+?)\s*$",
@@ -861,8 +840,7 @@ def negf_criteria(options: dict, periodic: dict) -> dict:
 #: cross-engine names its convergence targets carry (the molwatch header's
 #: leaves, `trajectory_log.emitter`): the relaxation's force tolerance and
 #: largest step, and the SCF's and the relaxation's iteration caps.  The
-#: optimization cap is echoed whatever ``MD.TypeOfRun`` produced it.  These
-#: stood as four private regexes in the parser until 2026-09-26.
+#: optimization cap is echoed whatever ``MD.TypeOfRun`` produced it.
 TARGET_LINES: Tuple[Tuple[str, "re.Pattern", type], ...] = (
     ("max_force_tol_eV_per_A", re.compile(
         r"^\s*redata:\s+Force tolerance\s+=\s+([0-9.eE+-]+)\s+eV/Ang",

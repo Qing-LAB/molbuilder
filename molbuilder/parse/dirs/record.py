@@ -24,10 +24,8 @@ are organized"); none is composed from this one.
 builds a trajectory.  The Results tab's Run panel shows it
 (`web/results.md` § 3a).
 
-**Which run** (§ 5d.1): the one the directory's status speaks for --
-`run_status`'s ``active_source``, picked by stage then time (§ 5.1), so the
-record and the status can never describe two different runs -- at its latest
-``-runN``, with each earlier one and how it ended; the `fdf` log paired with
+**Which run** (§ 5d.1): the one its caller names (:func:`run_files`), at
+its latest ``-runN``, with each earlier one and how it ended; the `fdf` log paired with
 the ``.out`` by its stamp; the wrapper log whose FIRST section is run N.
 """
 from __future__ import annotations
@@ -36,6 +34,7 @@ import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
+from ..errors import ParseError
 
 #: How much of a ``.out`` the launch, build, solver and pseudopotential lines
 #: can sit in -- the solver is printed after the basis report, ~49 KB into a
@@ -57,8 +56,9 @@ class RunFiles:
     engine: str
     status: Any = None                     # the directory's `RunStatus`
     deck: Optional[Path] = None
-    label: Optional[str] = None
-    stage: Optional[str] = None
+    #: The names of the run's stage's files (`runfiles.RunNames`), the
+    #: caller's -- the run door's.
+    names: Any = None
     run: Optional[int] = None
     out: Optional[Path] = None             # SIESTA family's stdout, run N
     pyscf_log: Optional[Path] = None       # PySCF's stdout, run N
@@ -98,32 +98,31 @@ def _read(path: Optional[Path], *, head: Optional[int] = None,
         return ""
 
 
-def run_files(directory, *, label: str, stage: Optional[str],
-              status=None, engine: Optional[str] = None,
+def run_files(directory, *, names, status=None,
+              engine: Optional[str] = None,
               calculation: Optional[str] = None,
               stage_deck: Optional[Path] = None) -> Optional[RunFiles]:
-    """What the run ``label`` / ``stage`` left in ``directory``, found
-    through the doors that own each name -- or ``None`` when no deck of it
-    is here.
+    """What the run of the stage ``names`` names (`runfiles.RunNames`) left
+    in ``directory``, found through the doors that own each name -- or
+    ``None`` when no deck of it is here.
 
     **The caller says which run** -- the run door (`runs.run_of`,
     `execution/architecture.md` § 3.2), which reads the label from the
     description and decides the run a folder speaks for: the highest stage
     launched, then its newest run index (`model/parse.md` § 5.1).
-    This floor knows no calculation (§ 2.1): it read the label off the
-    folder's decks, and the stage off the status's chosen file, until
-    2026-10-04 (plan B11).
+    This floor knows no calculation (§ 2.1).
 
     ``status`` and ``engine`` are the run's `run_status` and engine, passed
     by a caller that already has them; asked here otherwise.
     """
     from ..contract import engine_of
-    from ...runfiles import deck_roles, find, stem
+    from ...runfiles import deck_roles, find
     from .job import run_status
 
     d = Path(directory)
+    label, stage = names.label, names.stage
     if status is None:
-        status = run_status(d, stem(label, stage))
+        status = run_status(d, names.stem)
     engine = engine or engine_of(str(d))
     # ONE LISTING of this run's files, filtered below -- `find` lists and
     # reads every name in the directory on each call, and a flat directory
@@ -141,8 +140,16 @@ def run_files(directory, *, label: str, stage: Optional[str],
 
     runs = sorted({rf.run for _p, rf in listing if rf.run is not None})
     n = runs[-1] if runs else None
-    out = one(".out", n) if n is not None else one(".out", None)
-    pyscf_log = one(".pyscf.log", n) if n is not None else None
+
+    def this_run(role: str) -> Optional[Path]:
+        """Run ``n``'s file in ``role`` -- the folder's own where the
+        stage's names say the name carries no run's number here."""
+        if not names.numbered(role):
+            return one(role, None)
+        return one(role, n) if n is not None else None
+
+    out = this_run(".out")
+    pyscf_log = this_run(".pyscf.log")
 
     out_head = _read(out, head=_HEAD)
     fdf_log = _fdf_log_of(d, out_head) if out is not None else None
@@ -165,14 +172,13 @@ def run_files(directory, *, label: str, stage: Optional[str],
                     for k in runs[:-1])
     return RunFiles(
         directory=d, engine=engine, status=status,
-        deck=deck, label=label,
-        stage=stage, run=n, out=out, out_head=out_head, pyscf_log=pyscf_log,
-        engine_log=one(".log", None), fdf_log=fdf_log,
+        deck=deck, names=names, run=n, out=out, out_head=out_head,
+        pyscf_log=pyscf_log, engine_log=this_run(".log"), fdf_log=fdf_log,
         wrapper_section=section, wrapper_text=section_text,
-        timing=one(".scf-timing.log", n) if n is not None else None,
-        progress_log=one(".molwatch.log", None),
-        monitor_log=one(".monitor.log", n) if n is not None else None,
-        util_csv=one(".util.csv", n) if n is not None else None,
+        timing=this_run(".scf-timing.log"),
+        progress_log=this_run(".molwatch.log"),
+        monitor_log=this_run(".monitor.log"),
+        util_csv=this_run(".util.csv"),
         earlier=earlier, calculation=calculation, stage_deck=stage_deck)
 
 
@@ -414,21 +420,24 @@ def _pyscf_sys(f: RunFiles) -> Dict[str, Any]:
 
 
 def _launch_record(f: RunFiles) -> Dict[str, Any]:
-    """``run.json`` -- how the attempt was launched (`materialize`)."""
+    """``run.json`` -- how the run was launched: its own record, named by
+    its stage's names (`runrecord.launch_record`)."""
     from ...runrecord import launch_record
-    rec = launch_record(f.directory,
-                          basename=f.deck.stem if f.deck else None) or {}
+    rec = launch_record(f.directory, f.names, f.run) or {}
     # `continued_from`: the run this attempt continued from, as prep took it
     # (`job-system.md` § 5.4, plan W37) -- written by the launch from the
     # attempt's `.continued-from`.  EVERY KEY AS THE RECORD STATES IT: its
     # nulls are answers -- no job id for a run here, no queue, started from
-    # the structure (`job-contracts.md` § 6.1) -- not "could not check"
-    # (they were dropped until 2026-10-06).
+    # the structure (`job-contracts.md` § 6.1) -- not "could not check".
     if not rec:
         return {}
-    return {"computation": {"launch": {
-        k: rec.get(k) for k in ("mode", "command", "job_id", "launched_at",
-                                "placed_on", "continued_from")}}}
+    keys = ["mode", "command", "job_id", "launched_at", "placed_on"]
+    # A folder of the run's own has one record, its launch's: where to
+    # continue from and which run is retried are run 0's, so a later run
+    # in it -- a warm retry -- is not given them.
+    if f.names.numbered(".run.json") or not f.run:
+        keys += ["continued_from", "retry_of"]
+    return {"computation": {"launch": {k: rec.get(k) for k in keys}}}
 
 
 def _concluded(f: RunFiles) -> Dict[str, Any]:
@@ -458,9 +467,7 @@ def _deck(f: RunFiles) -> Dict[str, Any]:
         "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
     # THE STAGE'S OWN DECK, where the run door places it (`runs.Run.
     # stage_deck`): in the stage's folder in the hierarchy; in the flat shape
-    # it is the run's own, one file, with nothing to compare.  *(This looked
-    # one folder up from the run's -- outside a flat calculation -- until
-    # 2026-10-04, plan D25.)*
+    # it is the run's own, one file, with nothing to compare.
     stage_deck = f.stage_deck
     if (stage_deck is not None and stage_deck.is_file()
             and stage_deck.resolve() != f.deck.resolve()):
@@ -531,7 +538,8 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                 ("computation.launch.mode", "computation.launch.command",
                  "computation.launch.job_id", "computation.launch.launched_at",
                  "computation.launch.placed_on",
-                 "computation.launch.continued_from"),
+                 "computation.launch.continued_from",
+                 "computation.launch.retry_of"),
                 (), _launch_record),
     Contributor("concluded", ("computation.exit",), (), _concluded),
     Contributor("deck", ("deck",), (), _deck),
@@ -588,15 +596,16 @@ def _merge(into: Dict[str, Any], part: Dict[str, Any]) -> None:
             into[key] = val
 
 
-def run_record(directory, *, label: str, stage: Optional[str],
-               status=None, engine: Optional[str] = None,
+def run_record(directory, *, names, status=None,
+               engine: Optional[str] = None,
                calculation: Optional[str] = None,
                stage_deck: Optional[Path] = None
                ) -> Optional[Dict[str, Any]]:
-    """The record of the run ``label`` / ``stage`` in ``directory`` -- the
-    one its caller names, through the run door -- or ``None`` when no deck of
-    it is here (§ 5d).  The rest as :func:`run_files` takes them."""
-    f = run_files(directory, label=label, stage=stage, status=status,
+    """The record of the run of the stage ``names`` names in ``directory``
+    -- the one its caller names, through the run door -- or ``None`` when
+    no deck of it is here (§ 5d).  The rest as :func:`run_files` takes
+    them."""
+    f = run_files(directory, names=names, status=status,
                   engine=engine, calculation=calculation,
                   stage_deck=stage_deck)
     if f is None:
@@ -609,9 +618,9 @@ def run_record(directory, *, label: str, stage: Optional[str],
             continue
         try:
             part = _declared(row.read(f), row.fields)
-        except Exception:                                  # noqa: BLE001
+        except (OSError, ValueError, ParseError):
             # A reporter degrades: one unreadable file costs its own fields,
-            # never the record.
+            # never the record.  A defect in a reader is not caught.
             continue
         _merge(record, part)
     return record or None

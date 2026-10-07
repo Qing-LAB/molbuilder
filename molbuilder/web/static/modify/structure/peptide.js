@@ -12,18 +12,17 @@
  *   1. Read the sequence input; refuse empty / illegal codes.
  *   2. POST {kind: "peptide", input: <sequence>} to
  *      /api/build/molecule.
- *   3. Route through ``structurePage.loadIntoCanvas`` — installs +
- *      renders via the MolView door (``molview.data.installMolecule``).
+ *   3. Route through ``structurePage.loadIntoCanvas``, which installs
+ *      into an empty viewer or appends to the open structure.
  *
  * Errors surface in #peptide-status (illegal codes server-side,
- * tleap failure, network drop).  Cancellation on the dirty-
- * canvas warning modal surfaces as "Kept existing workspace."
+ * tleap failure, network drop).  A load the gate did not apply
+ * surfaces as "Kept existing workspace."
  *
  * Test seam: ``configure(opts)`` lets tests inject a fake
- * fetch + structurePage + viewer-loader.
+ * fetch + structurePage.
  *
- * Design ref: docs/web/tabs.md (panel 4: peptide
- * builder).
+ * Design ref: docs/web/tabs.md § 2 (Creating a structure — the in-gate).
  */
 
 (function (root) {
@@ -38,8 +37,7 @@
 
     // The panel's dependency slots, wired once for all five panels
     // (`panel-deps.js`): `configure` is the test door, `_lazyResolve` the
-    // production re-read that LANDMINE-2 needs.  This was eighty lines of
-    // byte-identical copy across smiles/name/peptide/rna/dna.
+    // production re-read.
     var _deps = root.molbuilder.panelDeps.make(root);
     var configure = _deps.configure;
     var _lazyResolve = _deps.resolve;
@@ -70,7 +68,7 @@
             });
         }
         // Lazy-resolve dependencies in case the script-load
-        // order put us above page.js / lib/* (LANDMINE-2 fix).
+        // order put us above page.js / lib/*.
         _lazyResolve();
         if (!_deps.fetch) {
             return Promise.reject(new Error(
@@ -109,8 +107,8 @@
                 if (!gate.ok) {
                     return { ok: false, cancelled: true };
                 }
-                // loadIntoCanvas routes through molview.data.installMolecule
-                // (the MODEL primitive for generated text; the FILE door is
+                // loadIntoCanvas installs into an empty viewer or appends to
+                // the open structure (the MODEL door; the FILE door is
                 // projects.parser.openMolecule -- not used here).
                 return { ok: true, n_atoms: body.n_atoms };
             });
@@ -137,18 +135,9 @@
         var status = doc.getElementById("peptide-status");
         if (!input || !button) return;
 
-        /* The shared `.status` writer (lib/status.js).
-         *
-         * These seven panels each spelled this out, writing `.muted` with
-         * `is-error` / `is-generating` / `is-loading` -- modifiers NO
-         * stylesheet defined.  So a refused SMILES reported itself in the
-         * same muted grey as a hint, on every builder panel, and had done
-         * since they were written.  `.status` is the app's one severity
-         * surface and its `error` IS red.
-         *
-         * The busy state maps to the neutral line: it had no appearance
-         * before either (its class answered nothing), so this is the same
-         * rendering with one fewer class that means nothing. */
+        /* The shared `.status` writer (lib/status.js): `.status` is the
+         * app's one severity surface and its `error` IS red; the busy state
+         * is the neutral line. */
         function setStatus(msg, kind) {
             window.molbuilder.status.set(
                 status, msg, kind === "error" ? "error" : null);

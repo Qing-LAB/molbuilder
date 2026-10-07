@@ -9,8 +9,8 @@ from the wire envelope (``_shared.struct_from_body``) and writes the pair via
 ``StructureCodec.write`` -- Python owns the pairing AND stamps the sidecar schema.
 
 These tests pin:
-  1. a BROWSER-shaped payload (no schema_version, empty hash) saved through the
-     endpoint lands on disk as a VALID pair the load door reads back without error, with
+  1. what the browser hands the save door -- the STRUCTURE -- lands on disk
+     as a VALID pair the load door reads back without error, with
      the metadata (frozen / regions / an assigned origin) preserved --
      ``test_a_saved_browser_payload_reads_back_whole``;
   2. the overwrite gate (409 -> needsOverwrite);

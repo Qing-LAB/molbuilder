@@ -204,9 +204,8 @@ class TestErrorPaths:
         assert "PubChem" in out["error"]
 
     def test_canvas_cancel_passes_through_as_cancelled(self):
-        """User cancels the dirty-canvas warning modal (load door
-        returns cancelled) → envelope carries cancelled, called
-        through the single load door exactly once."""
+        """The load door returns cancelled → envelope carries
+        cancelled, called through the single load door exactly once."""
         out = _run_node('''
             let loadCalls = 0;
             nm.configure({

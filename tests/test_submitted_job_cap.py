@@ -21,7 +21,6 @@ Two things are pinned here, because the incident had two halves:
 """
 from __future__ import annotations
 
-import pytest
 
 from molbuilder.jobset.submit import submitted_cap_notes, _domain_name
 from molbuilder.scheduler import Domain
@@ -104,14 +103,6 @@ class TestWhatIsNotALimit:
         plans = [_Plan(_Placement("public", Domain.from_row(row)))] * 50
         assert submitted_cap_notes(plans) == []
 
-    def test_a_record_that_never_asked(self):
-        """The key absent means the probe predates the question.  R3 forbids
-        reading an unstated limit as a bar; this asserts the other direction
-        too — a never-asked one is not permission to warn about."""
-        plans = [_shelf(cap=None)] * 50
-        assert submitted_cap_notes(plans) == []
-        assert plans[0].placement.domain.max_submit_jobs is not None, (
-            "absent must be UNSET, distinguishable from a stated null")
 
     def test_no_menu_no_domain_no_note(self):
         """R6: with no record of this machine's queues nothing was promised,

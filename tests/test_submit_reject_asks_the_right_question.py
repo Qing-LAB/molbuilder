@@ -50,19 +50,8 @@ _SOL = {
 def workstation_with_a_named_target(tmp_path, monkeypatch):
     """Exactly the reported shape: a named target exists, this machine has
     no probe of its own.  (conftest's `config_root_is_never_the_developers`
-    gives this test its own config root.)
-
-    **A second isolation gap, found writing this test (2026-08-23).**  That
-    fixture never touched cwd, and ``molbuilder.json``'s lookup then tried
-    ``./molbuilder.json`` FIRST -- so a test calling `get_routing` from the
-    repo root read the real, gitignored dev server config, not nothing; the
-    first draft asserted `get_routing(...) == []` and got back THREE real
-    domain names.  The cwd step went 2026-08-31 (`configuration.md` § 2.1a);
-    the chdir stays as plain isolation.
-    Chdir'd here, narrowly, rather than folded into the autouse fixture:
-    `isolated_projects_root`'s own docstring records a prior blanket cwd
-    override breaking 13 unrelated tests, so widening this needs its own
-    look before it becomes automatic for every test in the suite.
+    gives this test its own config root.)  The chdir is plain isolation,
+    kept narrow rather than folded into the autouse fixture.
     """
     monkeypatch.chdir(tmp_path)
     from molbuilder.config_dir import ensure_private_dir
@@ -70,7 +59,7 @@ def workstation_with_a_named_target(tmp_path, monkeypatch):
                                       named_environment_path)
     # THIS MACHINE HAS NO PROBE OF ITS OWN -- which is the whole subject.
     # The suite writes one for every test (a probed box is prep's
-    # precondition since 2026-09-02), so this fixture takes it away again
+    # precondition), so this fixture takes it away again
     # rather than test a shape that is not the reported one.
     machine_scope_path().unlink(missing_ok=True)
     d = ensure_private_dir(environments_dir())

@@ -1,7 +1,7 @@
 """Parse-activity log sidecar.
 
-Every parser (SIESTA .out, .molwatch.log, .transport.json, ...)
-writes a ``<input-stem>.parse.log`` file in the same directory as
+The SIESTA .out and .molwatch.log parsers write a
+``<input-stem>.parse.log`` file in the same directory as
 its input, recording what it did and any problems it hit during
 the scan.  The file is the on-disk counterpart of
 :class:`Trajectory.parse_warnings` -- the in-memory list goes
@@ -10,17 +10,6 @@ sessions and is greppable from CLI / SSH.
 
 **Default: OFF, opt-IN via ``MOLBUILDER_PARSE_LOG=1``** (user ruling,
 2026-09-18: *"Let's keep it default off. There is no reader."*).
-
-It shipped default-ON and stayed that way for its whole life -- this
-module has one commit, the one that created it.  What that cost:
-merely READING a run directory wrote a file into it, so a `jobset
-status`, a Watch poll or a sweep created and grew a sidecar inside the
-user's own project folder.  Measured 2026-09-18 across `projects/`:
-**108 files, 145 KB -- and 76 of them recorded nothing but a successful
-scan.**  Nothing in the tree reads one back; grep confirms two writers
-(`engines/siesta.py`, `engines/molwatch.py`) and zero readers in Python
-or JS.  Its stated consumer is a person with `grep`, and a person with
-grep does not need the 76.
 
 TURNING IT ON.  ``MOLBUILDER_PARSE_LOG=1`` in the environment of
 whatever does the parsing -- the CLI verb for a one-off, or `serve`'s

@@ -1,10 +1,6 @@
 """Run-directory ``info`` composition — what a run says ABOUT itself.
 
-Module: ``parse/dirs`` (directory-level composers — the ONE parse layer
-allowed to touch the filesystem).
-
-``info`` is a structure's free store (`archive/2026-09-01-structure-info-plan.md`,
-`web/molview.md` § 8.4a): a dict of key -> value that DESCRIBES a
+``info`` is a structure's free store (`web/molview.md` § 8.4a): a dict of key -> value that DESCRIBES a
 structure without being part of it.  The tab a viewer sits in is the one
 that knows what describes the run it is showing (user, 2026-08-30: *"it
 is always the tab it resides in that provides that information"*), and
@@ -22,8 +18,7 @@ Two keys:
 * ``calculation`` — the electronic contract the run's own deck records
   (``parse.contract.contract_of``), in the catalogue's own names
   (``parse.contract.RECORDED_FIELDS``),
-  so a cited pair defaults a transport calculation's template
-  (`transport-design.md` § 4.1b).
+  so a cited pair defaults a transport calculation's template.
 * ``relaxation`` — what the run did to the geometry it left, read from
   the output the viewer has open, which the caller hands down
   (``parse.contract.relaxation_of``, `model/parse.md` § 5b.1): its force
@@ -58,9 +53,7 @@ def run_info(*, deck: Union[str, Path, None] = None,
     the run door's choice for a folder, or the file a person pointed at --
     whose record is ``relaxation`` (`contract.relaxation_of`), ``traj`` its
     parse when the caller holds one -- the viewer's load -- so the file is
-    not parsed again.  *(This was ``run_info_for_dir(directory)`` until
-    2026-10-04, and took ``calculation`` from the one ``.fdf`` in the
-    folder, or none.)*
+    not parsed again.
 
     ``None`` rather than ``{}`` when the run says nothing, so this reads
     exactly like its two siblings on the same load response

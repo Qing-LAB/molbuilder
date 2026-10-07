@@ -26,8 +26,8 @@ the executor for source builds.  Other modules run subprocesses too -- the
 installer's steps, the audit's probes, the manager reads -- but every one that
 ENTERS an env comes through here.
 
-The 2026-06-14 Decisions log entry locks the design; the companion
-engineering doc lives at :doc:`docs/engines/siesta-gpu`.
+The 2026-06-14 Decisions log entry locks the design; ``docs/ops/installation.md``
+§ 6 is the engineering reference.
 """
 from __future__ import annotations
 
@@ -67,8 +67,7 @@ PHASES: Tuple[str, ...] = ("clone", "configure", "build", "install", "verify")
 # Per-(component, phase) human-readable description + estimated cost.
 # These are user-visible in the CLI so the user knows what's happening
 # and why a phase taking N minutes is normal.  Tuned for an 8-core
-# machine + broadband; the executor will print scaled estimates if the
-# detected `jobs` value differs.
+# machine + broadband.
 _PHASE_ESTIMATES: Mapping[Tuple[str, str], Tuple[str, str]] = {
     # (component, phase) -> (action description, expected cost label)
     ("elpa", "clone"):     ("download + extract ELPA tarball from MPCDF",
@@ -124,14 +123,7 @@ _PHASE_ESTIMATES: Mapping[Tuple[str, str], Tuple[str, str]] = {
 # I wouldn't really bother that.  We just remind user that you need to make sure
 # you have enough free space."*)
 #
-# THERE WERE TWO CONSTANTS HERE, 30.0 and 50.0 GB, and the only thing ever
-# written about them was the word "Rough".  No measurement, no derivation, and
-# the 30 was promoted to a HARD ERROR that refused the build -- so a person with
-# 20 GB free was stopped by a number nobody had checked.  A third literal,
-# "~12 GB", lived in the shim's help and in bootstrap's next-steps banner and
-# disagreed with the gate by a factor of two and a half.
-#
-# They cannot be made right, because the quantity is not stable: the package set
+# A fixed requirement cannot be made right, because the quantity is not stable: the package set
 # a solve returns depends on when you run it, and a compile's peak -- tarballs,
 # a git clone, object files, ninja running -jN at once -- is larger than
 # anything that survives in the finished env.  So molbuilder states the free
@@ -226,9 +218,7 @@ _LEAKAGE_ENV_PREFIXES: Tuple[str, ...] = (
 
 
 #: What every streamed line is prefixed with, so a subprocess's output is
-#: visibly nested under the step that produced it.  It was a `run_streaming`
-#: parameter that no caller in the tree ever overrode -- a knob reads as a
-#: policy surface, and this is one value.
+#: visibly nested under the step that produced it.
 _STREAM_INDENT = "    "
 
 
@@ -275,11 +265,8 @@ def run_streaming(
     sink
         Where to stream lines as they arrive, for a person watching.
         ``None`` means CAPTURED ONLY: nothing is written anywhere and the
-        caller reads the returned transcript.  It defaulted to
-        ``sys.stderr`` until 2026-09-13, so a caller that passed nothing --
-        `doctor`'s verify probe, whose own comment said "captured rather
-        than streamed" -- had its subprocess output streamed into the
-        middle of the report.  A caller that wants streaming says so.
+        caller reads the returned transcript.  A caller that wants
+        streaming says so.
     timeout
         Optional seconds; ``Popen.wait(timeout=...)`` raises
         :class:`subprocess.TimeoutExpired` on overrun.  ``None``
@@ -288,10 +275,7 @@ def run_streaming(
         **NO PIPE AND NO CAPTURE**: the child writes straight to the file
         descriptors this process already has.  It CHANGES WHAT THREE OTHER
         PARAMETERS MEAN, which is why it is documented here and not only in
-        the body (the flag shipped 2026-09-15 documented at
-        `dispatch_into_env` and nowhere at this door, so a caller reading
-        this contract and passing ``sink=`` with it got silence and no
-        error -- `plan.md` § 5n.8):
+        the body:
 
         * ``sink`` is IGNORED -- there is nothing to stream, the child owns
           the descriptor;
@@ -467,14 +451,12 @@ def build_subprocess_env(base_env: Optional[Mapping[str, str]] = None
 # `run_streaming` and `build_subprocess_env` are here and three layers sit
 # above them and all three must enter an env the same way: the step runner
 # (`install.run_step`), the build executor (`_run_build_phase`, below) and the
-# tool router (`_dispatch.run_in_env`).  The third had no workaround at all
-# until now -- recorded as S17 -- because the workaround lived in the first.
+# tool router (`_dispatch.run_in_env`).
 
 #: How much of a command's output is kept on a step or a build phase.  ONE
-#: value: `_run_build_phase` had its own bare ``combined[-4096:]`` literal, in
-#: the module whose results are adapted into `InstallStep`s -- so a build step's
-#: output obeyed a different constant from every other step's, which is the H9
-#: finding.  It lives here because this is the layer that produces the output.
+#: value, so a build step's output obeys the same constant as every other
+#: step's (H9).  It lives here because this is the layer that produces the
+#: output.
 OUTPUT_LIMIT = 4096
 
 #: What mamba 1.x's `run` stub produces.  Its generated shell does
@@ -503,10 +485,8 @@ def _run_argv(conda: str, address: Tuple[str, str],
               cmd: Sequence[str]) -> Tuple[str, ...]:
     """ONE place writes the ``<mgr> run`` command line (env-framework 5).
 
-    It was written out four times: `pip_argv`, `verify_step_for`, the planner's
-    extra-steps loop, and `_dispatch.run_in_env`.  It sits beside the dispatch
-    it feeds so that a caller cannot reach the spelling without reaching the
-    door (which is how the fourth site ended up without the workaround).
+    It sits beside the dispatch it feeds so that a caller cannot reach the
+    spelling without reaching the door.
     """
     return (conda, "run", address[0], address[1], "--no-capture-output",
             *(str(c) for c in cmd))
@@ -544,11 +524,10 @@ def _is_addressable(argv: Sequence[str]) -> bool:
 def addressed_by_prefix(argv: Sequence[str], prefix: str) -> Tuple[str, ...]:
     """Re-address a ``<mgr> ... -n NAME`` argv at the PREFIX we resolved.
 
-    ``run``, ``install`` and ``env remove`` alike (see `_is_addressable`):
-    until 2026-09-14 only ``run`` was re-addressed, so `repair`'s ``conda
-    install -n`` and ``--clean``'s ``env remove -n`` failed on a healthy env
-    created with ``--prefix`` outside ``envs_dirs`` -- the case the contract
-    names as supported (review B-L2).
+    ``run``, ``install`` and ``env remove`` alike (see `_is_addressable`), so
+    `repair`'s ``conda install -n`` and ``--clean``'s ``env remove -n`` reach
+    a healthy env created with ``--prefix`` outside ``envs_dirs`` -- the case
+    the contract names as supported.
 
     `installation.md` M2, and the reason is not taste: conda resolves ``-n``
     against ``envs_dirs`` ONLY (`conda/base/context.py`'s
@@ -562,9 +541,8 @@ def addressed_by_prefix(argv: Sequence[str], prefix: str) -> Tuple[str, ...]:
     # POSITIONAL, never a scan: the address sits right after the verb
     # (``run``/``install``: index 2; ``env remove``: index 3), and an argv
     # already addressed by ``--prefix`` is left alone.  A scan for the first
-    # ``-n`` walked into the INNER command of a prefix-addressed `run` and
-    # rewrote ``mpirun -n 2`` to ``mpirun --prefix ...`` (review A-1.2,
-    # measured 2026-09-14).
+    # ``-n`` would walk into the INNER command of a prefix-addressed `run` and
+    # rewrite ``mpirun -n 2`` to ``mpirun --prefix ...``.
     at = 3 if out[1:3] == ["env", "remove"] else 2
     if len(out) > at + 1 and out[at] == "-n":
         out[at] = "--prefix"
@@ -607,8 +585,7 @@ def activation_wrapper(argv: Sequence[str], env_prefix: str) -> Tuple[str, ...]:
 
     **Environment policy is NOT here.**  TMPDIR, the pip cache, ccache, host
     leakage -- those are the caller's ``env`` dict, identical on both paths, so
-    the fallback cannot drift from the route it stands in for.  That drift is
-    exactly what made two copies of this wrapper disagree four ways.
+    the fallback cannot drift from the route it stands in for.
     """
     cmd = _inner_command(argv)
     env_q = shlex.quote(env_prefix)
@@ -633,14 +610,11 @@ def env_for_step(env_prefix: Optional[str],
                  *, make_dirs: bool = True) -> Dict[str, str]:
     """The environment a step runs in -- clean slate plus the env's own temp.
 
-    Two things, and both used to live inside a shell string that only the
-    install path had:
+    Two things:
 
-    * **host leakage stripped** (`build_subprocess_env`).  Until 2026-09-12 no
-      pip step got this: `run_step`'s ``env`` parameter existed and no caller
-      passed it, so every pip install ran with the user's ``CPATH`` /
-      ``CFLAGS`` / ``CUDA_HOME`` / ``OMPI_*`` visible -- the exact leakage
-      `builds.py` strips two functions away.
+    * **host leakage stripped** (`build_subprocess_env`), so a pip install
+      never sees the user's ``CPATH`` / ``CFLAGS`` / ``CUDA_HOME`` /
+      ``OMPI_*``.
     * **temp and cache under the prefix**, so that removing the env really
       does clean up after an install and a small ``/tmp`` on a cluster cannot
       fail a wheel build.
@@ -649,9 +623,8 @@ def env_for_step(env_prefix: Optional[str],
     if env_prefix:
         tmp = f"{env_prefix}/var/tmp"
         pip_cache = f"{env_prefix}/var/cache/pip"
-        # ``make_dirs=False`` for a step that only READS the env -- `doctor`'s
-        # verify went through here and created ``var/tmp`` in every env it
-        # audited (review B-Y2, 2026-09-14).
+        # ``make_dirs=False`` for a step that only READS the env, so
+        # `doctor`'s verify creates nothing in an env it audits.
         for d in ((tmp, pip_cache) if make_dirs else ()):
             try:
                 os.makedirs(d, exist_ok=True)
@@ -677,6 +650,10 @@ def dispatch_into_env(argv: Sequence[str],
     The manager's own ``run`` is the route.  A manager whose ``run`` is broken
     -- mamba 1.x, still common on clusters -- is MEASURED, not guessed from a
     version number: the first attempt that fails with
+    `MANAGER_RUN_STUB_SIGNATURE` switches this process to
+    `activation_wrapper` and says so once.  The stub dies before the inner
+    command starts, so that retry cannot half-run anything.
+
     **`inherit_stdio=True` GIVES UP THE AUTOMATIC FALLBACK**, and says so
     here because the caller is choosing it: with no pipe there is no output
     to scan, so a broken `mamba run` is not detected and not worked around.
@@ -684,10 +661,6 @@ def dispatch_into_env(argv: Sequence[str],
     runs for days and the log file is already its stdout -- and where the
     failure is loud rather than silent: the manager's own error lands in the
     notebook log, and the tab says a notebook was asked for and none started.
-
-    `MANAGER_RUN_STUB_SIGNATURE` switches this process to
-    `activation_wrapper` and says so once.  The stub dies before the inner
-    command starts, so that retry cannot half-run anything.
 
     Not a step outcome.  A broken manager is a property of the machine, and
     reporting every step on such a machine as ``RECOVERED`` would say the
@@ -714,8 +687,8 @@ def dispatch_into_env(argv: Sequence[str],
         _MANAGER_RUN_UNUSABLE["seen"] = True
         # SAID ONCE, TO STDERR, whoever asked: M4 promises the switch is
         # reported, and a quiet dispatch (`doctor`'s verify, the presence
-        # gate, a tool call) passed no sink and so never said it (review
-        # A-1.3, 2026-09-14).  Once per process, because the flag is.
+        # gate, a tool call) passes no sink.  Once per process, because the
+        # flag is.
         sys.stderr.write(
             f"    note: this manager's `run` is unusable on this machine "
             f"({MANAGER_RUN_STUB_SIGNATURE!r}; mamba 1.x).  Entering the "
@@ -728,9 +701,8 @@ def dispatch_into_env(argv: Sequence[str],
                          timeout=timeout, inherit_stdio=inherit_stdio)
 
 
-# Phases that wipe their build directory when re-run (everything from
-# configure forward; clone wipes its src dir; verify is a read-only
-# probe).
+# Phases that wipe their build directory when re-run (configure; clone
+# wipes its src dir; verify is a read-only probe).
 _PHASES_WIPING_BUILD = frozenset({"configure"})
 
 
@@ -787,24 +759,16 @@ def _detect_cuda_home(env_prefix: Optional[str],
     Per the molbuilder design (2026-06-15), the CUDA TOOLKIT lives
     inside the conda env (cuda-nvcc + cuda-cudart-dev + ... from
     conda-forge).  The host provides only the NVIDIA driver +
-    nvidia-smi.  Search order:
-
-      1. ``<env_prefix>/bin/nvcc``  -- the conda-installed toolkit
-      2. ``$CUDA_HOME`` env var      -- legacy/manual override
-      3. ``/usr/local/cuda``, ``/opt/cuda``  -- legacy system installs
-      4. ``which nvcc``              -- whatever's on PATH
-
-    The env path wins because that's where the build should be
-    looking.  System CUDA at /usr/local/cuda is no longer the
-    canonical source for this recipe.
+    nvidia-smi.  The env prefix, when ``<env_prefix>/bin/nvcc`` exists;
+    otherwise ``None``.
     """
     if env_prefix and Path(env_prefix, "bin", "nvcc").exists():
         return env_prefix
     # NOTHING FROM THE HOST.  The build runs under `build_subprocess_env`,
     # which strips $CUDA_HOME and PATH's nvcc, and the recipe says host CUDA
-    # is not consulted -- so a host toolkit reported here was one the build
-    # would never see, and it hid the "env has no nvcc" error behind a
-    # gcc-pairing message about the wrong toolkit (review B-L8).
+    # is not consulted -- so a host toolkit reported here would be one the
+    # build never sees, hiding the "env has no nvcc" error behind a
+    # gcc-pairing message about the wrong toolkit.
     return None
 
 
@@ -847,11 +811,8 @@ def _detect_compute_cap() -> Optional[str]:
 
     ``MOLBUILDER_CUDA_CC`` forces a build target even on a host with no
     visible GPU -- which is what the preflight message tells the user to set
-    when detection fails, and what `install-env.sh` documents.  It was read
-    NOWHERE until 2026-09-12: the only path that could carry it was a
-    `cuda_cc_override` parameter no caller ever passed, so a user on a
-    Hopper/Ada host set it, was not told otherwise, and still got an sm_80
-    binary.  Read here, beside `_default_jobs`'s own override, so every
+    when detection fails, and what `install-env.sh` documents.  Read here,
+    beside `_default_jobs`'s own override, so every
     caller gets it.
     """
     env_cc = os.environ.get("MOLBUILDER_CUDA_CC", "").strip()
@@ -1025,8 +986,7 @@ def env_size_reference_gb(envs_dir: str) -> Optional[float]:
 
 def tree_bytes(root: Path) -> int:
     """Apparent bytes of every regular file under ``root``, symlinks skipped;
-    ``0`` for a missing or unreadable tree.  The one walk -- `envs clean`
-    kept its own ``rglob`` copy until 2026-09-13 (K-D10)."""
+    ``0`` for a missing or unreadable tree.  The one walk."""
     total = 0
     for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
         for name in filenames:
@@ -1046,9 +1006,8 @@ def check_disk(path: str, *, reference_gb: Optional[float] = None
 
     **Never an error, and there is no threshold.**  It reports what it measured
     and, when a reference is available, what that suggests -- then the person
-    decides.  It refused below a hard-coded 30 GB until 2026-09-12; see the note
-    on `_REFERENCE_HEADROOM_FACTOR` for why that number could not be defended
-    and why no replacement is coming.
+    decides.  See the note on `_REFERENCE_HEADROOM_FACTOR` for why no threshold
+    can be defended.
 
     ``reference_gb`` is the scale from :func:`env_size_reference_gb`.  Without
     one the reminder still goes out, just without a figure beside it -- "make
@@ -1063,10 +1022,8 @@ def check_disk(path: str, *, reference_gb: Optional[float] = None
         )
     if reference_gb:
         suggested = reference_gb * _REFERENCE_HEADROOM_FACTOR
-        # NO THRESHOLD.  This used to return `None` above `suggested`, which is
-        # a threshold however it is worded -- and the message it did return
-        # went into `warnings`, so a derived number gated the install behind
-        # "Proceed despite warnings?".  The user's instruction (2026-09-12):
+        # NO THRESHOLD: returning nothing above `suggested` would be a
+        # threshold however it is worded.  The user's instruction (2026-09-12):
         # *"I wouldn't really bother that.  We just remind user that you need
         # to make sure you have enough free space... that's not really our job
         # to get it."*  So: always report, never gate.
@@ -1169,10 +1126,7 @@ def _cuda_tuple(cuda_version: Optional[str]) -> Optional[Tuple[int, int]]:
 
 
 def check_cuda_gcc_compat(probe: ToolchainProbe) -> Optional[str]:
-    """Return an error string if CUDA + gcc don't pair, else ``None``.
-
-    See :doc:`docs/engines/siesta-gpu` § 6 for the matrix.
-    """
+    """Return an error string if CUDA + gcc don't pair, else ``None``."""
     cuda = _cuda_tuple(probe.cuda_version)
     gcc = _gcc_major(probe.gcc_version)
     if cuda is None or gcc is None:
@@ -1184,8 +1138,7 @@ def check_cuda_gcc_compat(probe: ToolchainProbe) -> Optional[str]:
             if gcc <= max_gcc:
                 return None
             # The CUDA that pairs with the gcc the env HAS, from the same
-            # table -- this said "12.4+" with a table whose 12.4 row still
-            # needed gcc 13 (review B-L7).
+            # table.
             newer = [t for t, mg in _GCC_FOR_CUDA if mg >= gcc]
             return (
                 f"CUDA {cuda_str} pairs with gcc <= {max_gcc}, but the env "
@@ -1211,13 +1164,13 @@ class PreflightReport:
     ----------
     errors
         Conditions that MUST be fixed before the build can proceed
-        (missing CUDA when cuda_required, insufficient disk, etc.).
+        (missing CUDA when cuda_required, etc.).
         Non-empty errors short-circuit the install with no filesystem
         side effects.
     warnings
         Conditions the user should know about but that don't block
-        progress (sm_80 fallback because no GPU detected, disk
-        somewhat tight, etc.).  Surfaced + the user is asked to
+        progress (sm_80 fallback because no GPU detected, etc.).
+        Surfaced + the user is asked to
         confirm.
     info
         Purely informational lines for the report (detected GPU name,
@@ -1242,10 +1195,9 @@ class PreflightReport:
 #: auditor cannot disagree: the three scratch dirs are created by
 #: `_run_build_phase`'s wrapper (which pins TMPDIR / CCACHE_DIR /
 #: XDG_CACHE_HOME under the artifact root so a single `conda env remove`
-#: cleans everything up) and were missing from the expected set -- so EVERY
-#: resume of a source build reported them as "stale entries from a prior
-#: failed install", and the remedy that warning prints, `--rebuild=all`,
-#: deletes the ccache that makes a rebuild cheap.
+#: cleans everything up).  Reported as "stale entries from a prior failed
+#: install", they would draw the remedy that warning prints, `--rebuild=all`,
+#: which deletes the ccache that makes a rebuild cheap.
 _ARTIFACT_ROOT_ENTRIES = frozenset({
     "src", "build", "logs", ".sentinels",
     # written by every install before 2026-09-13 and read by nothing since
@@ -1300,9 +1252,7 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
     """Run every preflight check and return a structured report.
 
     Errors are hard-stops; warnings are user-confirmable; info is
-    detected state for the user to see.  The legacy "list of error
-    strings" return shape is preserved by callers reading
-    ``report.errors`` only.
+    detected state for the user to see.
     """
     errors: List[str] = []
     warnings: List[str] = []
@@ -1385,10 +1335,9 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
                     f"it; start over: "
                     f"{_hints.fix_cmd('install', '<recipe>', '--clean', '--yes')}"
                 )
-        # NO VERSION FLOOR HERE, and that is deliberate (2026-09-14).  The
-        # toolkit comes from conda INTO THE ENV and this project pins it
-        # (`recipes.py`'s `cuda-version=`), so a floor gated a number we set
-        # ourselves.  The one it held (12.4) was never ELPA's requirement:
+        # NO VERSION FLOOR HERE, deliberately.  The toolkit comes from conda
+        # INTO THE ENV and this project pins it (`recipes.py`'s
+        # `cuda-version=`), so a floor would gate a number we set ourselves.
         # ELPA 2024.05.001 documents no minimum CUDA, and the only version
         # its changelog names is a workaround FOR versions below 12.1.  What
         # genuinely constrains the pair is whether nvcc accepts the chosen
@@ -1445,16 +1394,14 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
 
     # Disk
     if env_prefix:
-        # A REMINDER, NEVER AN ERROR.  This appended to `errors` below a
-        # hard-coded 30 GB until 2026-09-12, refusing the build on a number
-        # nobody had measured.  How much a source build needs is not
+        # A REMINDER, NEVER AN ERROR.  How much a source build needs is not
         # computable here (see `_REFERENCE_HEADROOM_FACTOR`), so molbuilder
         # reports what it measured, offers this machine's own envs as a scale,
         # and leaves the decision where it belongs.
         # The scale walks every env beside this one, so only where the
-        # neighbours ARE envs -- one of the manager's ``envs_dirs``.  An env
-        # created with ``--prefix /scratch/<user>/x`` made this a walk of the
-        # person's whole scratch on a login node (review B-L6, 2026-09-14).
+        # neighbours ARE envs -- one of the manager's ``envs_dirs``: for an env
+        # created with ``--prefix /scratch/<user>/x`` it would otherwise walk
+        # the person's whole scratch on a login node.
         parent = Path(env_prefix).parent
         reference = (env_size_reference_gb(str(parent))
                      if any(parent == Path(d) for d in envs_dirs) else None)
@@ -1603,13 +1550,9 @@ def resolve_paths(spec: BuildSpec, env_prefix: str) -> BuildPaths:
 def write_sentinel(sentinel_path: Path) -> None:
     """Mark a phase done.  The file's EXISTENCE is the whole record.
 
-    Until 2026-09-13 it carried a toolchain fingerprint -- a SHA over the
-    CUDA, gcc and OpenMPI versions and each component's resolved git commit,
-    costing a ``git rev-parse`` per component per install -- and a
-    timestamp.  Nothing read either: the fingerprint's reader was retired on
-    2026-06-15 when artifact presence became the trust source
-    (`component_install_valid`), and `run_build_spec` asks only whether the
-    file exists.  The timestamp is the file's own mtime.  The record of which
+    Artifact presence is the trust source (`component_install_valid`), and
+    `run_build_spec` asks only whether the file exists.  The timestamp is the
+    file's own mtime.  The record of which
     toolchain a build used is the preflight report, printed and teed into the
     install log.
     """
@@ -1649,10 +1592,8 @@ def component_install_valid(
     except ValueError:
         return False
     # THROUGH THE DOOR, under the build's own environment -- the same way
-    # the verify PHASE runs this same command.  It ran bare until
-    # 2026-09-13, on the reasoning that an install dir is self-contained; a
-    # source-built binary is exactly the one that may not be (no RPATH yet,
-    # MPI wanting its tmpdir), and a gate that measures "installed and
+    # the verify PHASE runs this same command.  A source-built binary may not
+    # be self-contained (no RPATH yet, MPI wanting its tmpdir), and a gate that measures "installed and
     # working" under different conditions from the phase that verified it
     # can only disagree with it (M1, K-L4).  Quiet: a gate is read, not
     # watched.
@@ -1816,9 +1757,7 @@ def plan_build_spec(spec: BuildSpec,
                     probe: ToolchainProbe) -> List[BuildStep]:
     """Build the step list (does NOT execute or touch the filesystem).
 
-    ``paths`` is the layout the caller already resolved; this used to resolve
-    it again and hand it back, and `run_build_spec` bound that copy to a
-    name that said ``_unused``.
+    ``paths`` is the layout the caller already resolved.
     """
     steps: List[BuildStep] = []
     for comp in spec.components:
@@ -1835,7 +1774,7 @@ def plan_build_spec(spec: BuildSpec,
             #   2. downloads via curl with -fL (fail on HTTP error, follow redirects)
             #   3. verifies SHA256 if the recipe pinned one
             #   4. extracts via tar
-            #   5. renames inner dir (e.g. "elpa-2021.11.001/") to {src}
+            #   5. renames inner dir (e.g. "elpa-<tag>/") to {src}
             tar_path = src_dir.parent / f"{comp.name}.tar.gz"
             sha_check = ""
             if comp.tarball_sha256:
@@ -1920,12 +1859,11 @@ def _build_env(env_prefix: str, paths: BuildPaths) -> Dict[str, str]:
     the env is the single directory an admin has to clean up.  Otherwise
     cmake's temp probes go to /tmp (size-limited on most clusters), ccache
     writes to ~/.ccache and meson scribbles in ~/.cache -- all outside the
-    env.  The root comes from ``paths``, which the caller holds; until
-    2026-09-13 it was climbed out of the step's log path (A11).
+    env.  The root comes from ``paths``, which the caller holds.
 
     Straight from `build_subprocess_env`, not `env_for_step`: that one puts
     the temp and pip cache under ``<prefix>/var`` -- right for a pip step --
-    and every build phase then overrode both, having created the directories
+    and a build phase would override both, having created the directories
     for nothing.
     """
     tmp = paths.root / ".tmp"
@@ -1970,11 +1908,7 @@ def _run_build_phase(step: BuildStep,
     written to ``step.log_file`` for post-hoc inspection.
 
     **It enters the env through `dispatch_into_env`, like every other step**
-    (`installation.md` M1).  Until 2026-09-12 it held its own copy of the
-    activation wrapper and the two copies had drifted four ways -- and the copy
-    here was the only one passing `build_subprocess_env()`, so the installer's
-    pip steps ran with exactly the host leakage this module exists to strip.
-    What a build needs BEYOND activation is `_build_env`'s dict, not a
+    (`installation.md` M1).  What a build needs BEYOND activation is `_build_env`'s dict, not a
     shell string, so the route and the fallback cannot differ.
     """
     step.log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -2094,9 +2028,7 @@ def run_build_spec(spec: BuildSpec,
     plan = plan_build_spec(spec, paths, probe)
 
     # Artifact-presence reconciliation -- the trust source for "is
-    # this component installed".  Replaces the old global-fingerprint
-    # sentinel check (which invalidated ELPA whenever SIESTA's ref
-    # shifted, causing wasteful rebuilds).  Two cases per component:
+    # this component installed".  Two cases per component:
     #
     # 1. install dir present + ``verify_argv`` exits 0
     #    --> fast-forward ALL phase sentinels so the loop skips this
@@ -2154,12 +2086,7 @@ def run_build_spec(spec: BuildSpec,
             if src_dir.exists():
                 shutil.rmtree(src_dir, ignore_errors=True)
             src_dir.parent.mkdir(parents=True, exist_ok=True)
-        # `conda_binary` is what addresses the manager's `run` (M1); the
-        # phase once entered the env with a hand-written bash wrapper and this
-        # argument was dropped as dead -- from the callee only, so every
-        # source build died here with a TypeError for four commits.  The test
-        # that crosses this line (`test_run_build_actually_REACHES_a_phase`)
-        # exists because of that.
+        # `conda_binary` is what addresses the manager's `run` (M1).
         result = _run_build_phase(step, env_prefix=env_prefix,
                                   conda_binary=conda_binary, paths=paths)
         executed.append(result)
@@ -2203,8 +2130,7 @@ def _total_time_estimate(spec: BuildSpec) -> Tuple[int, int]:
     """``(low, high)`` minutes, summed from the per-phase estimates.
 
     Parsed out of the same strings the rows above print, so the total cannot
-    drift from its own parts -- which is exactly what the literal it replaced
-    had done.  Sub-minute phases round up into the high end only, because a
+    drift from its own parts.  Sub-minute phases round up into the high end only, because a
     stack of "~30s" rows should not inflate the optimistic figure.
     """
     lo_s = hi_s = 0
@@ -2265,14 +2191,10 @@ def format_install_summary(spec: BuildSpec, probe: ToolchainProbe,
     lines.append("  Resume model:       sentinel-based (re-running is safe)")
     # TIME IS DERIVED; DISK IS NOT STATED AS A TOTAL AT ALL.
     #
-    # Both were literals once, and both were wrong about the thing they
-    # summarised: "~45 min" against rows that sum to about half that, and
-    # "~12 GB" against a preflight that refused below 30.  Summing the rows
-    # fixed the first for good.  The second had no honest version -- the
-    # quantity is not stable (see `_REFERENCE_HEADROOM_FACTOR`) -- so this line
-    # no longer claims a total.  The preflight reports measured free space and
-    # this machine's own env sizes as a scale; a banner that invents a
-    # requirement is the thing being removed, not replaced.
+    # Time is summed from the rows, so it cannot drift from them.  Disk has no
+    # honest total -- the quantity is not stable (see
+    # `_REFERENCE_HEADROOM_FACTOR`) -- so the preflight reports measured free
+    # space and this machine's own env sizes as a scale.
     lo, hi = _total_time_estimate(spec)
     lines.append(f"  Total est. time:    ~{lo}-{hi} min at -j{probe.jobs}, "
                  f"broadband")

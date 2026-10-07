@@ -1,5 +1,13 @@
 """Rewrite a calculation an older molbuilder wrote: its records written whole
-(2026-10-06), and its template's electronic-state items (2026-09-28).
+(2026-10-06), a flat calculation's run files numbered (2026-10-06), and its
+template's electronic-state items (2026-09-28).
+
+**The run files** (`_migrate_run_numbers`): in the flat shape each run's
+trajectory log, launch record and `.continued-from` -- every row the
+catalogue numbers where a stage's runs share a folder -- carry the run's
+number since 2026-10-06 (plan W57 decisions 2 and 6), and the launch
+record's door refuses a stage whose still do not, naming this command.  Each
+is renamed for its stage's newest run, and said.
 
 **The records** (`_migrate_records`): `task.json` states its `calculation`
 and a notify block its four values, and every job in a `job-set.json` its
@@ -42,8 +50,8 @@ from typing import Any, Dict, List, Tuple
 
 
 class MigrateError(ValueError):
-    """The template cannot be migrated as it stands -- the message says why
-    and what to do."""
+    """The calculation cannot be migrated as it stands -- the message says
+    why and what to do."""
 
 
 #: PySCF's old ``method`` was the SCF class: (method, spin treatment).
@@ -65,9 +73,7 @@ _SIESTA_TREATMENT = {
 #: The items the electronic state RETIRED -- the only names a template may
 #: no longer carry.  ``method``, ``spin_treatment`` and ``net_charge`` are
 #: current items: an OLD VALUE in one is rewritten, a current value is the
-#: file's own statement and is kept.  (All five stood here until the M6
-#: review, so a half-migrated file lost what it already said: a stated
-#: ``HF`` became DFT, a new count was overwritten.)
+#: file's own statement and is kept.
 _OLD_NAMES = ("spin", "spin_total")
 
 
@@ -226,38 +232,90 @@ def _migrate_records(base: Path):
     return said, writes, task
 
 
+def _migrate_run_numbers(base: Path, task) -> Tuple[List[str],
+                                                     List[Tuple[Path, Path]]]:
+    """A flat calculation's run files written before each carried its run's
+    number (plan W57 decisions 2 and 6): every file of a stage whose role
+    the catalogue numbers where a stage's runs share a folder
+    (`runfiles.shared_numbered_roles`), still unnumbered, given the number
+    of its stage's newest run -- 0 for a stage never launched.  A rename
+    keeps every byte, so nothing is kept beside it.  Decided, never done
+    here: returns what it says (a line each) and the moves.
+
+    **What it cannot fix is said too**: such a stage was prepped before
+    launch gave each run its number, so its run script takes no ``--run`` --
+    to launch it again, it is prepped anew, from the state saved before its
+    prep (`project-layout.md` § 1.6.1)."""
+    if task.shape != "flat":
+        return [], []
+    from ..runfiles import (FIRST_ATTEMPT, RunNames, latest_run,
+                            shared_numbered_roles)
+    from .commands import rollback
+    from .materialize import ladder_homes
+    said: List[str] = []
+    moves: List[Tuple[Path, Path]] = []
+    for home in ladder_homes(base, task):
+        names = RunNames.of(task.label, home.token, task.shape)
+        newest = latest_run(base, task.label, stage=home.token)
+        n = FIRST_ATTEMPT if newest is None else newest
+        stage_moves = [(base / (names.stem + role),
+                        base / names.name(role, n))
+                       for role in shared_numbered_roles()
+                       if (base / (names.stem + role)).is_file()]
+        if not stage_moves:
+            continue
+        moves += stage_moves
+        said += [f"{old.name} -> {new.name} (run {n}, the stage's newest)"
+                 for old, new in stage_moves]
+        said.append(f"{home.name}: its run script was written before launch "
+                    f"gave each run its number (--run N) -- to launch it "
+                    f"again, prep it anew: " + rollback("its prep",
+                                                        base=base))
+    return said, moves
+
+
 def migrate_state(base) -> List[str]:
     """Rewrite the calculation in ``base``; return what changed, line by line
     -- its records (:func:`_migrate_records`: the readers refuse a file
-    written before they were whole) and its template's electronic-state
-    items, both decided before either is written.  Each old file is kept
-    beside its new one.
+    written before they were whole), a flat calculation's run files numbered
+    (:func:`_migrate_run_numbers`) and its template's electronic-state
+    items, all decided before any is written.  Each old file rewritten is
+    kept beside its new one; a renamed one is its new one.
 
     Raises :class:`MigrateError` when there is nothing to migrate or it cannot
     be migrated as it stands.
     """
     base = Path(base)
-    # EVERY DECISION BEFORE ANY WRITE: a refusal of either step leaves the
+    # EVERY DECISION BEFORE ANY WRITE: a refusal of any step leaves the
     # calculation as it was, never half rewritten.
     said, writes, task = _migrate_records(base)
+    n_said, moves = _migrate_run_numbers(base, task)
     try:
         t_said, t_writes = _migrate_template(base, task)
     except _NothingInTheTemplate:
-        if not said:
+        if not said and not moves:
             raise MigrateError(
                 f"{base} holds nothing an older molbuilder wrote -- its "
-                f"records are whole and its template carries no item written "
-                f"before the electronic state's.") from None
+                f"records are whole, its run files carry their run's "
+                f"number, and its template carries no item written before "
+                f"the electronic state's.") from None
         t_said, t_writes = [], []
+    taken = [new for _old, new in moves if new.exists()]
+    if taken:
+        raise MigrateError(
+            f"{', '.join(p.name for p in taken)} already exist -- a run file "
+            f"cannot be numbered over another; nothing was written.")
     for path, text, keep in ([(p, x, ".pre-w57") for p, x in writes]
                              + t_writes):
         kept = path.with_name(path.name + keep)
         kept.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
         path.write_text(text, encoding="utf-8")
-    said += t_said
+    for old, new in moves:
+        old.rename(new)
+    said += n_said + t_said
     from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "
-                  "wrote, rewritten (plan W57 decision 7; "
+                  "wrote, rewritten (plan W57 decisions 2, 6 and 7; "
                   "science/chemistry-correctness.md § 2a)", changes=said)
     return said
 
@@ -290,9 +348,8 @@ def _migrate_template(base: Path, task):
     vals = {it.name: it.value for it in mine if it.is_set}
     # A RENAMED ITEM KEEPS ITS VALUE, under its new name and said as such --
     # the table the template reader refuses the old name by
-    # (`template.RENAMED_ITEMS`).  Filtering on today's schema alone dropped
-    # it and wrote the default in its place, which is the opposite of this
-    # module's promise: what the run was is kept.
+    # (`template.RENAMED_ITEMS`).  Filtering on today's schema alone would
+    # drop it and write the default in its place: what the run was is kept.
     renamed: List[str] = []
     for old_name, (new_name, _why) in _T.RENAMED_ITEMS.items():
         if old_name in vals and new_name not in vals:
@@ -341,8 +398,7 @@ def _migrate_template(base: Path, task):
     # WHERE EACH VALUE CAME FROM, as the old file says it (§ 6.6 obligation
     # 2): a file written before sources were recorded says nothing, so every
     # value carried out of it -- renamed or mapped into the electronic state
-    # included -- is *not recorded*, never *not chosen* (the K7 review: the
-    # writer's default called the person's own values nobody's).  An item
+    # included -- is *not recorded*, never *not chosen*.  An item
     # the old file never had is nobody's choice.
     recorded = {it.name: it.source for it in mine if it.source}
     new_text = _T.template_with_values(cfg, engine=engine, calculation=kind,

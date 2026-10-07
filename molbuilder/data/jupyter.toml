@@ -14,7 +14,7 @@
 #
 #   ServerApp.ip                a CLI argument
 #   ServerApp.port              derived -- `jupyter_port(serve_port)`
-#   ServerApp.token             NOT emitted since 2026-09-20.  It rides
+#   ServerApp.token             NOT emitted: it rides
 #                               JUPYTER_TOKEN in the child's environment
 #                               instead -- /proc keeps environ owner-only and
 #                               cmdline world-readable.  A token row here
@@ -25,13 +25,6 @@
 #                               stays a computation with its reasoning
 #                               beside it
 #   ServerApp.certfile/keyfile  present only when `serve` has TLS
-#
-# Before 2026-09-15 the rows below were three different mechanisms inside
-# one function -- f-strings in a list literal, module constants interpolated
-# into two of them, and a dict looped into `--{k}={v}` twelve lines lower.
-# All of them were `--<Class>.<trait>=<value>`.  A dropped row is now
-# visibly missing from a table instead of invisibly absent from a list,
-# which is how `port_retries` came to be missing for a week.
 
 schema = "molbuilder/jupyter@1"
 
@@ -113,9 +106,9 @@ schema = "molbuilder/jupyter@1"
 # ---------------------------------------------------------------------------
 
 # MULTI-DOCUMENT MODE -- Lab's document TAB BAR, so several notebooks are open
-# at once.  Single-document mode was tried first, to be rid of Lab's file
-# browser; it takes the tab bar with it, and reading two notebooks side by side
-# is worth more than losing the panel is (decided with the user 2026-09-14).
+# at once.  Single-document mode takes the tab bar with it, and reading two
+# notebooks side by side is worth more than losing the panel is (decided with
+# the user 2026-09-14).
 [lab.overrides."@jupyterlab/application-extension:shell"]
 startMode = "multiple"
 

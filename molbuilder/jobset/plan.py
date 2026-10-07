@@ -14,9 +14,9 @@ from __future__ import annotations
 
 #: The plan's filename.  A constant so the name has ONE home: spelled at
 #: each call site it is free to drift, which is the same shape the run-file
-#: grammar exists to end, one level up.  Not named on the label, and still
-#: the catalogue's (`runfiles.WRITTEN`, `job-contracts.md` § 2.2, 2026-10-04):
-#: every file molbuilder writes is a row there.
+#: grammar exists to end, one level up.  Not named on the label, and the
+#: catalogue's (`runfiles.WRITTEN`, `job-contracts.md` § 2.2): every file
+#: molbuilder writes is a row there.
 from ..runfiles import PLAN_FILE as FILENAME  # noqa: E402
 
 from typing import List, Optional
@@ -55,9 +55,7 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
 
     Nothing here orders anything, so no column claims an order: a carry is
     a COPY a hand-over makes, recorded in the attempt's marker, not a
-    relation between rows.  *(The column was headed "warm files" until
-    2026-10-05 and read as what was copied -- D28: `medium` listed `H2.CG`,
-    which its carry withheld.)*"""
+    relation between rows."""
     js = jobset
     lines: List[str] = [
         f"JOB-SET PLAN -- {js.name} ({js.engine}, {js.kind})",
@@ -105,8 +103,7 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
         # infer that unrelated jobs may all be started at once.
         # WHAT EACH BUILDS ON is its kind's -- the stage before it in an
         # optimization's ladder, `relax` for a force-constant stage, the
-        # rungs upstream for transport -- and this prep's is said above; the
-        # first stood here for every kind until 2026-10-05.
+        # rungs upstream for transport -- and this prep's is said above.
         lines.append(f"Order: {len(js.jobs)} stage(s), run ONE AT A TIME -- "
                      "prep a stage, launch it, look at it, then the next "
                      "(project-layout.md § 1.6); what each builds on is "

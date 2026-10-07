@@ -14,9 +14,6 @@ that the chain isn't pre-coiled.
 If you actually need canonical B-form / A-form geometry, use the
 ``threedna`` backend, which shells out to 3DNA's ``fiber``.
 
-This backend is registered as ``"amber"`` for backwards compatibility
-with code/UI that already says ``backend="amber"``.
-
 Install:
     See ``docs/ops/installation.md`` § ``molbuilder-MDtools`` -- the
     canonical place for ``tleap`` in the four-env model.  A

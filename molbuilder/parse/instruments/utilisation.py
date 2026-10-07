@@ -19,10 +19,8 @@ percent while the csv reconstruction carries one decimal — but a
 change-gated subset can be biased by several percent, where rounding
 costs at most half of one.  The better basis wins.
 
-**One resolver, not two readers.**  The pair was collapsed into the csv
-alone on 2026-08-19 after two readers of one fact diverged.  That lesson
-holds; the answer is that the choice lives HERE rather than at each call
-site, so there is still exactly one thing to be wrong.  Neither parser
+**One resolver, not two readers.**  The choice lives HERE rather than at
+each call site, so there is exactly one thing to be wrong.  Neither parser
 reads the other's file (`parse.md` § 5a).
 """
 from __future__ import annotations
@@ -46,10 +44,9 @@ def utilisation(monitor: Dict[str, Any], csv: Dict[str, Any]) -> Dict[str, Any]:
     mean=`` bit independently, so a ``[UTIL-SUMMARY]`` truncated
     mid-write -- a partial flush when a trial is killed, and a killed
     trial is the one a benchmark most needs to read -- states the CPU
-    and not the GPU.  This stamped ``"monitor-summary"`` over a GPU
-    figure it had taken from the change-gated csv, which is precisely
-    the mistake the field exists to prevent (`plan` § E2: "a
-    reconstruction is never mistaken for an exact figure").
+    and not the GPU, and ``"monitor-summary"`` over a GPU figure taken
+    from the change-gated csv is the mistake the field exists to
+    prevent.
     """
     out = dict(csv or {})
     mon = monitor or {}

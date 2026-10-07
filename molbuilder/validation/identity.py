@@ -1,7 +1,7 @@
 """Editing an id after something has run — the one case that is not a rename.
 
-**Module:** L2, inside the ``validation`` package. Imports ``issues`` (L1) and
-``runwrap`` (L2) for the warm-file inventory. To be called by the web Build
+**Module:** L2, inside the ``validation`` package. Imports ``identity``,
+``issues`` and ``warmfiles`` (the warm-file inventory). To be called by the web Build
 route (P10) and by the shared Task Setup tab (P11), which are the two surfaces
 where a person can retype an id.
 
@@ -50,25 +50,12 @@ from ..warmfiles import warm_list as _warm_list
 
 
 #: engine -> the shipped warm-restart SUFFIXES an id keys.
-#:
-#: Still ``runwrap``'s own tuples, not a copy: a new warm hook lands in one
-#: list there (with its ``--cold`` glob entry, per § 4.2's pinned lesson) and
-#: this sees it without being edited.
-#:
-#: **It asked for filenames until 2026-08-10** — ``_SIESTA_WARM_SUFFIX_FILES``
-#: and ``_PYSCF_WARM_FILES``, two helpers that interpolated a basename into the
-#: tuples — and :func:`_foreign_state` then stripped the id back off to recover
-#: the suffixes it actually wanted. Building a name in order to undo the
-#: construction is a re-derivation with extra steps; those helpers existed for
-#: the shell attempt-directory block, which P7 unit 1 retired, and this reads
-#: the tuples directly now.
 def _engine_inventory(engine: str) -> Optional[Sequence[str]]:
     """The engine's warm vocabulary from the one door (`warmfiles.warm_list`,
     asked with no folder: a stranger's restart file is the engine's, not
-    this calculation's list) — resolved AT USE, never at import (C-b,
-    2026-08-13): the module-level dict that stood here loaded both engines'
-    TOMLs the moment anything imported ``validation``, so one malformed file
-    broke every entry point.  ``None`` for an engine with no rules file — the
+    this calculation's list) — resolved AT USE, never at import, so one
+    malformed rules file cannot break every entry point that imports
+    ``validation``.  ``None`` for an engine with no rules file — the
     caller already treats unknown engines as *not refused twice*."""
     try:
         return _warm_list(engine).suffixes
@@ -91,18 +78,7 @@ def warm_files_present(directory, label: str, engine: str = "") -> List[str]:
     and ``[]`` here means *nothing has run*, which is the one answer that makes
     the caller destroy a geometry without asking.
 
-    > **This replaced a per-engine list, and the reasoning behind that list was
-    > wrong in a way worth keeping visible.** It named thirteen SIESTA suffixes
-    > and I chose it over a shorter one *deliberately*, on the grounds that a
-    > directory holding only a `.TSHS` has state the id keys. That was true. The
-    > premise underneath it was not: **completeness was never purchasable**,
-    > because the file set depends on the engine's version and options. A list
-    > can only ever be a snapshot of one build's behaviour, and the failure is
-    > silent — a file nobody listed is a file nobody sees.
-
-    ``engine`` is accepted and ignored, kept only so callers need not change;
-    the question stopped being per-engine when it stopped being a list. It is
-    scheduled for removal with the last caller that passes it.
+    ``engine`` is accepted and ignored: the question is not per-engine.
 
     Symlinks are followed and a dangling one is not counted: a carried restart
     file that does not resolve is not state to continue from, and ``runstatus``
@@ -275,18 +251,6 @@ def _foreign_state(directory, run_id: str, engine: str) -> List[str]:
             if stem and stem != run_id and p.is_file():
                 found.add(p.name)
     return sorted(found)
-
-
-# ``check_overwrite`` stood here until U14 (2026-08-12) -- RETIRED, not
-# rehomed.  It implemented "§ 6 -- refuse unless the user says overwrite",
-# a rule run-identity.md softened away on 2026-08-08 ("Warn, do not
-# refuse"), which is why it had zero callers: the design had moved and the
-# function pinned the old one.  § 6 then asked before re-rendering over a
-# run that had happened, with :func:`warm_files_present` as evidence, until
-# 2026-10-02: a prepped stage is refused now, and a redo is a rollback to the
-# state prep saves first, always (`checkpoint.save_before`).
-
-
 
 
 __all__ = ["check_id_change", "check_prior_state", "warm_files_present"]

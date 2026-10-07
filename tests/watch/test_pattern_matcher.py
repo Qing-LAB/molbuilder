@@ -1,16 +1,10 @@
-"""Unit tests for the _PatternMatcher + matches_regex_ci abstraction
-(introduced 2026-05-31, Commit 1 of the combined-regex dispatch
-refactor).
-
-This file covers the SETUP commit: matcher helpers return
-``_PatternMatcher`` instances; SectionRule accepts both pattern-
-backed matchers and plain callables; ``compile_rules`` builds a
-:class:`CompiledRules` dispatch table.
+"""Unit tests for the _PatternMatcher + matches_regex_ci abstraction:
+matcher helpers return ``_PatternMatcher`` instances; SectionRule accepts
+both pattern-backed matchers and plain callables; ``compile_rules`` builds
+a :class:`CompiledRules` dispatch table.
 
 What the parser reads from a real output is asked of runs made on the road
-with the real SIESTA (`tests/test_siesta_flat_run_e2e.py`); the second
-commit's parse-equivalence check against saved signatures of the parser's
-own output was retired 2026-10-06 (`process/testing.md` § 6).
+with the real SIESTA (`tests/test_siesta_flat_run_e2e.py`).
 """
 from __future__ import annotations
 
@@ -50,13 +44,12 @@ class TestStartsWithCiShape:
 
     def test_pattern_has_no_inline_ignorecase_flag(self):
         """The combined-regex driver applies re.IGNORECASE once.
-        An inline ``(?i)`` in a sub-pattern would double-apply and
-        was the source of subtle behaviour drift in early drafts."""
+        An inline ``(?i)`` in a sub-pattern would double-apply."""
         m = starts_with_ci("OutCoor:")
         assert "(?i)" not in m.pattern
 
     def test_matcher_still_callable_directly(self):
-        """Old code calling ``rule.start(line)`` keeps working."""
+        """Calling ``rule.start(line)`` directly works."""
         m = starts_with_ci("outcoor:")
         assert m("OUTCOOR: Atomic coords") is True
         assert m("# outcoor: comment") is False
@@ -405,18 +398,14 @@ class TestFindMatchFastFilter:
 
 
 # --------------------------------------------------------------------
-# Regression: ALL existing matcher behaviour preserved
+# Calling a matcher directly
 # --------------------------------------------------------------------
 
 
 class TestExistingTestsStillWork:
-    """The existing test_section_rule.py + test_siesta_parser*.py
-    suites should keep passing after this commit's API change.  This
-    file just adds explicit checks that the OLD matcher calling
-    pattern still works (calling matcher(line) directly)."""
+    """Calling ``matcher(line)`` directly works."""
 
     def test_old_style_match_call_works(self):
         m = starts_with_ci("outcoor:")
-        # Old code: ``if rule.start(line): ...`` -- this is the
-        # same thing.
+        # ``if rule.start(line): ...`` is the same call.
         assert m("OUTCOOR: foo") is True

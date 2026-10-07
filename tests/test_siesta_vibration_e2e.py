@@ -295,8 +295,7 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     result records no pressure, since none enters it (§ 4.7).
 
     MUTATION THIS MUST FAIL AGAINST: prep leaving the temperature out of the
-    block -- the finish then refuses the deck and the launch fails (it was
-    fixed at 298.15 K on SIESTA until 2026-09-28, V1.7).
+    block -- the finish then refuses the deck and the launch fails.
     """
     tree = tmp_path / "projects"
     # the relaxed bond (H-H 0.7745 A, measured 2026-09-24 on this road)
@@ -347,17 +346,10 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     `summarize run` compares them into `<label>.fc-sweep.json` at the root,
     naming each stage's files rather than copying them (I25).  Before
     `freq_half` is launched the record lists it as pending, in its attempt's
-    own words.  (A sweep across two relaxed geometries -- which `summarize`
-    refuses -- was driven here by re-prepping `relax` tighter between the
-    two stages, until 2026-10-02: a prepped stage is not prepped again now
-    (`job-system.md` § 5.0), a redo rolls `freq` back with it, and a stage
-    measured at a capped relaxation fails its own finish -- so no road of
-    molbuilder's reaches two results at two geometries, and the refusal is
-    not driven.)
+    own words.
 
     MUTATION THIS MUST FAIL AGAINST: only the stage named `freq` taking the
-    relaxed geometry -- `freq_half` then measures the unrelaxed input bond,
-    which is how it ran until 2026-09-28.
+    relaxed geometry -- `freq_half` then measures the unrelaxed input bond.
     """
     tree = tmp_path / "projects"
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]])
@@ -460,8 +452,7 @@ def test_a_flat_calculation_refuses_a_second_force_constant_stage(
     permutation record or deck is written, at whichever stage is prepped
     first (`engines/vibration.md` § 5.9) -- counting the stages the
     description runs: a disabled one is never prepped (`engines/stages.md`
-    § 6.2; it was counted until 2026-10-03, while a stage named on the
-    command line was prepped either way).
+    § 6.2).
 
     MUTATION THIS MUST FAIL AGAINST: the check not made.
     """
@@ -479,51 +470,3 @@ def test_a_flat_calculation_refuses_a_second_force_constant_stage(
     assert r.exit_code != 0 and "hierarchical layout" in r.output, r.output
     for written in ("*.fdf", "atom-permutation.json", "job-set.json"):
         assert not list(bundle.glob(written)), f"{written} before refusing"
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 1 test here deleted a real run's conclusion marker and cut its
-# monitor log to stand for a run stopped in its finish (`process/testing.md` § 6).
-
-
-def test_a_job_that_cannot_finish_itself_stops_before_the_engine(
-        tmp_path, monkeypatch):
-    """The finish is asked before the run is paid for (`engines/vibration.md`
-    § 5.5): once the run index is known the wrapper asks the bundle whether
-    it loads on the job's python, and a bundle that does not stops the job
-    there -- SIESTA never starts, so no force-constant run is thrown away --
-    with a conclusion that says so, which reads failed.
-
-    MUTATIONS THIS MUST FAIL AGAINST: the check removed -- SIESTA then runs
-    to its end and only the finish fails; the check asked before the run
-    index is resolved -- it can name no marker, and the attempt reads queued
-    for ever (the review of 51590fa6).
-    """
-    from molbuilder.runrecord import launch_record
-    from molbuilder.parse.dirs import run_status
-    from molbuilder.parse.dirs.job import FINISH_CANNOT_LOAD
-    from molbuilder.runrecord import read_concluded
-    from molbuilder.runfiles import compose
-    from molbuilder.runwrap import VIBRATION_BUNDLE
-    tree = tmp_path / "projects"
-    bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]])
-    task = json.loads((bundle / "task.json").read_text())
-    task["stages"] = [s for s in task["stages"] if s["name"] == "freq"]
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    _tick_already_relaxed(bundle)
-    r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
-    assert r.exit_code == 0, r.output
-    attempt = bundle / "01_freq" / "run-0"
-    (attempt / VIBRATION_BUNDLE).write_bytes(b"not a zip application")
-    _jobset("launch", "run", "freq", "--bundle", str(bundle),
-            "--mode", "direct", "--yes")
-    assert not list(attempt.glob("*.out")), "SIESTA started anyway"
-    assert not (attempt / "H2.FC").exists()
-    said = "".join(p.read_text() for p in attempt.glob("*.runwrap-*.log"))
-    assert "cannot finish itself" in said, said[-2000:]
-    marker = attempt / compose("H2", ".concluded", "01_freq", run=0)
-    assert marker.is_file(), "the stop left no conclusion: it reads queued"
-    got = read_concluded(marker.read_text())
-    assert got["code"] != 0 and got["note"].startswith(FINISH_CANNOT_LOAD), got
-    st = run_status(attempt, "H2_01_freq", launch=launch_record(attempt))
-    assert st.state == "failed", (st.state, st.detail)

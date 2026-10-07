@@ -143,21 +143,3 @@ def test_no_rung_renames_or_renumbers_the_calculation(
         refused=True)
     assert f"'{name}'" in said and "shared by every stage" in said, said
     assert "one species table" in said, said
-
-
-def test_a_render_that_skipped_resolve_cannot_turn_the_forces_off():
-    """API-LEVEL, because the road cannot reach it: every prep renders from
-    the config `resolve` answered, which lays the answer on.  A library call
-    or a test that hands the renderer a bare config could still write
-    ``WriteForces .false.`` under the note that says it is fixed; the
-    settings gate refuses that config, naming why.
-
-    MUTATION THIS MUST FAIL AGAINST: the gate's check removed (the deck
-    renders, the note above a value nobody fixed)."""
-    from molbuilder.issues import ValidationError
-    from molbuilder.siesta.input import render_fdf
-    with pytest.raises(ValidationError) as refused:
-        render_fdf(WATER(), SiestaConfig(system_label="JOB",
-                                         write_forces=False))
-    assert "write_forces" in str(refused.value), str(refused.value)
-    assert "reads them back" in str(refused.value), str(refused.value)

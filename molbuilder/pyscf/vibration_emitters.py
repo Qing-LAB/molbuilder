@@ -1,18 +1,13 @@
 """The vibration deck's emission library -- PySCF block emitters.
 
-MOVED 2026-08-21 (spectra-migration plan P3) from
-``spectra/pyscf_script.py``, where these emitters were the old
-standalone generator's body; the P1 lift composed them into
-:func:`molbuilder.pyscf.vibration_deck.vibration_spec` call-for-call,
-and P3 retired the old generator (``render_spectra_script``) around
-them.  The lift is a move, not a rewrite -- the science below is the
-2026-05 validated code.
+Composed by :func:`molbuilder.pyscf.vibration_deck.vibration_spec`; the
+science below is the 2026-05 validated code.
 
 Each ``_emit_*`` function returns lines of the runnable deck.  The
 deck writes ``<job>.spectra.json`` incrementally, atomically replacing
 the file at each phase boundary so a live-watch poller never sees a
-torn document (spec § 6.1).  The wire format is the engine-agnostic
-:class:`SpectraResults` shape (spec § 5 / § 6).
+torn document.  The wire format is the engine-agnostic
+:class:`SpectraResults` shape.
 
 This module is the only place where the actual scientific choices
 land in code form:
@@ -37,7 +32,7 @@ The emitted deck's header docstring is the Methods paragraph from
 :func:`spectra.methods.render_methods_md` (the engine-specific
 fragment is :func:`pyscf_methods_fragment` below) plus a bibliography
 listing -- so a user reading the file can distil a Methods section
-verbatim (spec § 11.2).
+verbatim.
 
 Every molbuilder function the deck runs is imported from ``mb_pyscf.pyz``
 beside it -- ``engines/pyscf.md`` § 3 lists them, and what stays written as
@@ -67,17 +62,15 @@ grows a branch, it moves.  That rule is stated once in
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:            # annotation only -- importing
     # vibration_deck at run time would cycle (it imports this).
     from .vibration_deck import VibrationConfigView
-from ..runfiles import tail as _rf_tail
 from ..structure import Structure
 
-#: The engine display string for deck headers -- was
-#: ``PySCFSpectraEngine.label`` until P3 retired that class.
+#: The engine display string for deck headers.
 PYSCF_ENGINE_LABEL = "PySCF (analytic Hessian + dα/dR)"
 
 #: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- the spectrum
@@ -115,7 +108,7 @@ def _emit_header_docstring(struct: Structure,
                            cfg: "VibrationConfigView",
                            *,
                            methods_md: str,
-                           stage_token: Optional[str] = None) -> List[str]:
+                           names) -> List[str]:
     """Triple-quoted Methods + Outputs + Dependencies block.
 
     The Methods paragraph is the same prose the Results panel
@@ -147,7 +140,7 @@ def _emit_header_docstring(struct: Structure,
     out.append("")
     # The stage by its NAME, through the one printer (`job-system.md` § 5.3).
     from ..identity import LAUNCH_MODE_NOTE, deck_launch
-    _launch = deck_launch(stage_token)
+    _launch = deck_launch(names.stage)
     if _launch:
         out.append("Run it the way it was prepared (the described route), "
                    "from the calculation's folder:")
@@ -155,17 +148,19 @@ def _emit_header_docstring(struct: Structure,
         out.append(f"    {LAUNCH_MODE_NOTE}")
         out.append("    -- the wrapper beside this deck activates the env and "
                    "logs the run.")
-    out.append("A bare `python <this file>` also works from this directory for a")
-    out.append("manual run -- with mb_pyscf.pyz beside it, the molbuilder code it")
-    out.append("imports -- but nothing records it.")
-    out.append("Layout: one job per directory (docs/execution/job-contracts.md);")
-    out.append("this deck was written into its own by `prep`.")
+    from .input import PYSCF_STDOUT_ROLE
+    out.append("By hand, the same wrapper with its run's number, 0 for the first:")
+    out.append(f"    bash {names.name('.run.sh')} --run 0")
+    out.append("or PySCF directly, with the bundles beside this deck -- then")
+    out.append("nothing records the run:")
+    out.append(f"    python {names.name('.py')} --run 0 > "
+               f"{names.name(PYSCF_STDOUT_ROLE, 0)} 2>&1")
     out.append("")
     # THE OUTPUTS, the one list both decks write (`input.emit_outputs_block`).
     from .input import emit_outputs_block
     _relaxes = not bool(getattr(cfg, "already_relaxed", False))
     out += emit_outputs_block(
-        cfg.job_name, stage_token or None, spectra=True,
+        names, spectra=True,
         log=bool(getattr(cfg, "log_file", False)),
         chk=bool(getattr(cfg, "chkfile", False)),
         initial=bool(getattr(cfg, "save_initial_xyz", False)),
@@ -188,10 +183,7 @@ def _emit_header_docstring(struct: Structure,
         out.append("    no PyPI release of pyscf-properties carries.")
         out.append("    Band-level validation 2026-08-20: water at")
         out.append("    B3LYP/def2-SVP lands in the literature windows with")
-        # Both pointers must NAME a document that exists.  A prior wording
-        # cited "§ 13.1" with no document after the 2026-07 docs migration
-        # retired the spec that owned that section -- so a scientist told to
-        # check the validation status had nowhere to go.
+        # Both pointers must NAME a document that exists.
         out.append("    the right band ordering (docs/archive/2026-09-01-roadmap.md § 5 records")
         out.append("    the closure; docs/web/spectra.md holds the Raman")
         out.append("    validation).  A mode-by-mode cross-check against an")
@@ -258,8 +250,7 @@ def _emit_constants(struct: Structure,
     out.append(f"JOB            = {cfg.job_name!r}")
     # _mb_outfile is emitted ONCE, by the deck's own block from the one
     # definition every PySCF deck carries (`input.emit_outfile_helper`,
-    # beside the script): the lifted resolve(__file__) form that stood
-    # here wrote artifacts one level up through the bundle-root link.
+    # beside the script).
     out.append("")
     out.append("# Phase status vocabulary -- matches molbuilder.spectra.results")
     out.append("# so the on-disk JSON round-trips into the typed SpectraResults.")
@@ -284,16 +275,13 @@ def _emit_constants(struct: Structure,
     out.append(f"DENSITY_FIT                = {bool(cfg.density_fit)!r}")
     out.append("")
     out.append("# SCF knobs.")
-    out.append(f"SCF_CONV_TOL               = {float(cfg.scf_conv_tol)!r}  "
-               f"# Hartree (energy)")
     out.append(f"SCF_MAX_CYCLE              = {int(cfg.scf_max_cycle)!r}")
     # No grid under Hartree-Fock either -- the same rule as FUNCTIONAL's.
     out.append(f"GRID_LEVEL                 = "
                f"{(int(cfg.grid_level) if cfg.is_dft else None)!r}")
     # A CAP LEFT UNSET IS NO CAP (`template.md` § 2), and the deck says so:
     # `None`, which PySCF's `Mole.build` reads as not given, keeping its own
-    # setting.  4000 stood in for the blank until 2026-10-06, and the run's
-    # recorded facts said it was asked for.
+    # setting.
     out.append(f"MAX_MEMORY_MB              = "
                f"{(int(cfg.max_memory_mb) if cfg.max_memory_mb else None)!r}"
                + ("" if cfg.max_memory_mb else
@@ -330,9 +318,8 @@ def _emit_constants(struct: Structure,
     out.append(f"ES_MODE_SELECTION          = {cfg.es_mode_selection!r}  "
                f"# skip / all / explicit")
     # The modes as numbers, read by the config's one reader (the item is
-    # text, "3-7, 12"); `list()` of that text was its characters, and the
-    # selector's `int(',')` stopped Phase 4 (vibration.md § 4.8).  Only
-    # `explicit` reads the list, so only `explicit` has one.
+    # text, "3-7, 12"; vibration.md § 4.8).  Only `explicit` reads the
+    # list, so only `explicit` has one.
     _explicit = (cfg.explicit_modes if cfg.es_mode_selection == "explicit"
                  else [])
     out.append(f"ES_EXPLICIT_INDICES        = {_explicit!r}  "
@@ -397,14 +384,14 @@ def _config_to_jsonable_dict(cfg: "VibrationConfigView") -> dict:
 # --------------------------------------------------------------------- #
 
 
-def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
-                    stage_token: str = "", *, positions) -> List[str]:
+def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView", *,
+                    names, positions) -> List[str]:
     """gto.M(...) molecule construction.  The atom geometry is
     inlined as a Python list-of-lists rather than a multi-line
     string so a user can scroll the script and read coordinates
-    in Å directly.  ``stage_token`` suffixes the engine log's name
+    in Å directly.  ``names`` (`runfiles.RunNames`) name the engine log
     (stages.md § 1.1a consequence 1), exactly as the optimization
-    deck's rungs do."""
+    deck's rungs do (`input.run_file_expr`)."""
     out: List[str] = []
     out.append("# ============================================================")
     out.append("#  Build molecule")
@@ -418,20 +405,13 @@ def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
         out.append(f"    ({el!r:>4s}, {x:14.8f}, {y:14.8f}, {z:14.8f}),")
     out.append("]")
     out.append("")
-    # ECP: shared resolver with Build's PySCF generator
+    # ECP: shared resolver with the optimization deck
     # (chemistry.resolve_pyscf_ecp).  ``cfg.ecp`` names the ECP and
     # ``cfg.ecp_atoms`` names which elements get it; anything empty on
     # either side means no ECP.  Nothing is auto-picked.
     from ..chemistry import resolve_pyscf_ecp
     ecp_chosen = resolve_pyscf_ecp(struct, cfg.ecp, cfg.ecp_atoms)
     # ECP is resolved ONCE above (`ecp_chosen`) and emitted once below.
-    # A second resolution+emission landed here 2026-08-21 when the
-    # render-probe honesty gate flagged the fields "silent" -- they were
-    # silent only because the water probe holds no ECP candidate; the
-    # gold-dimer probe then saw MY added lines change the text while the
-    # original pair emitted too, and `gto.M(ecp=..., ecp=...)` is a
-    # SyntaxError in every ECP deck.  Caught by the full-text review's
-    # compile probe the same day; the gate now compiles every render.
     # symmetry (category 2, probed 2026-08-21): honored ONLY on the
     # already-relaxed path.  The equilibrium Hessian runs fine under
     # the point group (with PCM too), but a geomeTRIC step or an FD
@@ -450,24 +430,19 @@ def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
         # ONE shape: the resolver returns ``{element: name}``, emitted as
         # a Python dict-literal so PySCF sees a per-element mapping and
         # not a string containing braces (which it rejects as an unknown
-        # ECP name).  The str branch retired with the field, 2026-08-13.
+        # ECP name).
         out.append(f"    ecp        = {dict(ecp_chosen)!r},")
     if getattr(cfg, "log_file", False):
         # The engine's own verbose log, named like the optimization
         # deck names its rungs' (stages.md § 1.1a consequence 1) --
         # the token rides the name, so two rungs in one folder cannot
-        # overwrite each other's log.  (The comment claimed this while
-        # the emission stayed unsuffixed until 2026-08-21.)
-        # RE-APPLIED 2026-08-21: the first landing of this branch was
-        # wiped by a baseline restore the same day; the honesty gate
-        # (render-probe, config echo stripped) is what caught the loss.
-        # `or None` is the caller saying WHICH CASE it is: this signature
-        # spells "no ladder" as "" and the grammar spells it as None, and
-        # the grammar refuses the empty string rather than reading it as
-        # None -- the two produce different filenames.
-        from .input import ROLE_LOG
-        _logsuf = _rf_tail(ROLE_LOG, stage_token or None)
-        out.append(f"    output     = str(_mb_outfile(JOB + {_logsuf!r})),")
+        # overwrite each other's log.
+        # THE STAGE'S NAMES NAME IT (`input.run_file_expr`): the run's own
+        # where the stage's runs share a folder, its number filled when the
+        # script runs (plan W57 decision 2).
+        from .input import ROLE_LOG, run_file_expr
+        out.append(f"    output     = str(_mb_outfile("
+                   f"{run_file_expr(names, ROLE_LOG)})),")
     out.append("    verbose    = VERBOSE,")
     out.append("    max_memory = MAX_MEMORY_MB,")
     out.append("    unit       = 'Angstrom',")
@@ -485,9 +460,8 @@ def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
     out.append("# preference -- `atom_mass_list()` DEFAULTS to integer mass")
     out.append("# NUMBERS (H=1, Cl=35), while PySCF's own harmonic_analysis")
     out.append("# and thermo.thermo() both use the isotope-averaged masses")
-    out.append("# (H=1.008, Cl=35.45).  The deck took the default and the")
-    out.append("# all-free path took PySCF's, so freezing an atom silently")
-    out.append("# moved every C-H stretch by ~12 cm-1 (2026-09-21).")
+    out.append("# (H=1.008, Cl=35.45); the integer default would move every")
+    out.append("# C-H stretch by ~12 cm-1 against the all-free path.")
     out.append("# thermo.thermo() hardcodes it and takes no mass argument,")
     out.append("# so this is the only convention that agrees with itself.")
     out.append("MASSES_AMU  = np.asarray(mol.atom_mass_list(isotope_avg=True),")
@@ -506,9 +480,7 @@ def _emit_frozen_mask() -> List[str]:
 
     Indices are the ONE selector: the /modify panel resolves element and
     residue picks to indices before they reach the structure's label
-    store, so the union machinery that stood here (a loop over an
-    always-empty FROZEN_ELEMENTS, a comment-only residue arm) computed
-    nothing and retired 2026-08-21."""
+    store."""
     out: List[str] = []
     out.append("# ============================================================")
     out.append("#  Frozen-atom mask")
@@ -656,15 +628,15 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     # THE RECORD, before the equilibrium SCF runs (`model/parse.md` § 5d.3a):
     # every item this kind carries, what it was set to and what the live
     # objects hold -- the optimization deck's own emitter, so the two decks
-    # cannot record differently.  This deck printed none until 2026-09-26.
+    # cannot record differently.
     from .input import _emit_effective_parameters
     out.extend(_emit_effective_parameters(cfg, cfg.is_dft,
                                           calculation="vibration",
                                           state=cfg.state))
     out.append("E_eq = mf.kernel()")
     out.append("if not mf.converged:")
-    # The equilibrium SCF halts UNCONDITIONALLY on non-convergence --
-    # restored 2026-08-21 after a same-day mis-wiring: on_nonconvergence
+    # The equilibrium SCF halts UNCONDITIONALLY on non-convergence:
+    # on_nonconvergence
     # is the RELAXATION's policy (its catalogue help says so: what to do
     # when geomeTRIC's criteria are not met), and no policy makes an
     # unconverged equilibrium density acceptable HERE -- the Hessian,
@@ -675,8 +647,8 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     out.append("        f'the input geometry'")
     out.append("    )")
     out.append("MO_ENERGIES_EQ = _mb_as_numpy(mf.mo_energy).copy()")
-    # THE HOMO RULE IS IMPORTED, NOT RETYPED (2026-09-09; from mb_pyscf.pyz
-    # since 2026-10-05).  It has a branch -- RHF/RKS gives a 1-D mo_occ,
+    # THE HOMO RULE IS IMPORTED, NOT RETYPED (from mb_pyscf.pyz).  It has a
+    # branch -- RHF/RKS gives a 1-D mo_occ,
     # UHF/UKS a 2-D (alpha, beta) that must be summed -- and a second copy of
     # a branch is a second thing to get wrong.  `spectra.pyscf_vibration.
     # homo_index` is the one implementation and the one the tests call.
@@ -993,10 +965,8 @@ def _emit_displaced_scf_helpers(cfg: "VibrationConfigView") -> List[str]:
     out.append("    _mol_new.unit = 'Angstrom'")
     out.append("    _mol_new.build(dump_input=False)   # engines/pyscf.md § 3, (2)")
     # THE METHOD IS A RENDER-TIME FACT, so only the live arm is
-    # emitted (the E-M4.7 shape, taken one step further at the U6
-    # close): an HF deck used to carry the DFT arm as dead text, with
-    # a reference -- `dft` -- that exists only on DFT decks.  Dead text
-    # with dead names is exactly where that NameError class hides.
+    # emitted: the DFT arm references `dft`, which exists only on DFT
+    # decks.
     if cfg.is_dft:
         out.append("    # _dft is gpu4pyscf when _USING_GPU else stock pyscf;")
         out.append("    # force_cpu overrides to stock pyscf regardless.")
@@ -1167,9 +1137,6 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("    new[atom_idx, direction] += delta")
     out.append("    return new")
     out.append("")
-    # (An equilibrium polarizability was computed here and never read -- one
-    # non-density-fitted SCF and a CPHF solve per Raman run, for nothing;
-    # removed 2026-10-05, the M11 review's C21.)
     out.append("# Build dα/dR_kα by central difference for each free-atom Cartesian.")
     out.append("# Each displaced mean field is built on the CPU (gpu4pyscf exposes")
     out.append("# no analytic CPHF polarizability) and without density fitting")
@@ -1224,9 +1191,7 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("#")
     out.append("# (Note: using the *display* form (max|L|=1) instead of the")
     out.append("# canonical mass-weighted L_cart would additionally shift")
-    out.append("# activities by a mass-distribution-dependent factor PER MODE")
-    out.append("# -- that was the partial-Hessian-path bug fixed by the v2")
-    out.append("# canonical/display split.)")
+    out.append("# activities by a mass-distribution-dependent factor PER MODE.)")
     out.append("#")
     out.append("# Placzek (isotropic Raman) activity for plane-polarised light,")
     out.append("# averaged over molecular orientation:")
@@ -1317,8 +1282,7 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     out.append("")
     # Which modes: molbuilder's own selector, imported from mb_pyscf.pyz at
-    # the top of the deck (`engines/pyscf.md` § 3) -- a hand-written copy of
-    # it stood here until 2026-10-05, held equal to it by a test.
+    # the top of the deck (`engines/pyscf.md` § 3).
     out.append("# Which modes get the probe (vibration.md 4.8): molbuilder's")
     out.append("# own selector, imported at the top of this script.")
     out.append("_selected = _mb_select_modes(")
@@ -1419,9 +1383,7 @@ def _emit_final_summary() -> List[str]:
 
 # The module's one public name: the deck composes the private
 # emitters via explicit imports, and the Methods paragraph is what
-# spectra/methods.py documents as this engine's fragment.  (The old
-# generator's render_spectra_script died with the class; its name
-# in __all__ made `import *` raise.)
+# spectra/methods.py documents as this engine's fragment.
 __all__ = ["pyscf_methods_fragment"]
 
 # --------------------------------------------------------------------- #
@@ -1432,9 +1394,7 @@ __all__ = ["pyscf_methods_fragment"]
 def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
     """Engine-specific paragraph for the Methods section.
 
-    MOVED at P3 from ``PySCFSpectraEngine.methods_fragment`` (the class
-    retired with the old generator); the unused ``modes`` parameter was
-    dropped.  Names PySCF + the specific Hessian /
+    Names PySCF + the specific Hessian /
     polarizability-derivative APIs used, with citation keys that
     resolve against ``docs/science/references.bib`` and bubble up into
     the trailing bibliography of the full Methods text
@@ -1509,7 +1469,7 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
 
     # Raman path: α is analytic (CPHF) at each displaced point; the
     # DERIVATIVE dα/dR is central finite differences over those
-    # points -- claiming an analytic derivative overstated the method.
+    # points.
     if cfg.compute_raman:
         parts.append(
             f"Polarizability derivatives dα/dR were computed by "
@@ -1551,9 +1511,7 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
     if cfg.is_dft:
         parts.append(
             f"DFT integration used PySCF's grid level "
-            f"{cfg.grid_level} (production setting for hybrid "
-            f"functionals; the v1 spec § 11.4 sets level 4 as "
-            f"the recommended minimum)."
+            f"{cfg.grid_level}."
         )
 
     return " ".join(parts)

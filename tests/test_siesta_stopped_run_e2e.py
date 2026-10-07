@@ -16,10 +16,6 @@ SCF's, not the cascade's; the viewer's stop reason is that cause in the
 table's words; and the run's session log is found as the run's.  The Results
 tab's Run panel (`web/results.md` § 3a) says the same, from the run's record,
 in a browser.
-
-They replace two checks that read frozen outputs of older runs -- the
-viewer's stop reason on a hemeC stage, and the setup's ``in_deck`` on a
-TranSIESTA device's fdf log: this run is made here, by the road.
 """
 from __future__ import annotations
 
@@ -221,11 +217,6 @@ def test_each_run_is_paired_with_its_own_session_log(stopped):
         "not show why the FIRST section decides")
     assert log_of_run(stopped, "H2", 2, "01_coarse") is None
     assert log_of_run(stopped, "H2", 0, None) is None
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 1 test here copied the real stopped run and cut its output to
-# stand for a rank whose output was never flushed (`process/testing.md` § 6).
 
 
 def test_the_setup_tells_a_key_the_engine_read_alone_from_the_decks(stopped):

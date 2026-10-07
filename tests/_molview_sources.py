@@ -51,10 +51,7 @@ def _walk() -> tuple[dict[str, Path], dict[str, Path]]:
             continue
         seen.add(path)
         inside = MODULE_DIR in path.parents
-        # `setdefault`, so a name reached twice keeps its FIRST answer.  The
-        # dict has always been keyed by filename; keying `seen` by full path
-        # (which is what lets a dependency be recorded without being walked)
-        # would otherwise let a later visit overwrite an earlier one.
+        # `setdefault`, so a name reached twice keeps its FIRST answer.
         (layers if inside else deps).setdefault(path.name, path)
         # A DEPENDENCY IS NOT WALKED THROUGH.  What it imports is its own
         # module's business; following it would drag a third module's files
@@ -75,9 +72,8 @@ def module_files() -> dict[str, Path]:
     inside the module directory.
 
     **A reachable file outside the directory is a DEPENDENCY, not a layer**
-    (added 2026-09-11, when `ui.js` began importing
-    `lib/validation-findings.js` -- the one renderer for a finding, which
-    MolView reuses rather than copying).  The rules these tests enforce are
+    (`ui.js` imports `lib/validation-findings.js`, the one renderer for a
+    finding).  The rules these tests enforce are
     MolView's own: which drawing library is named, whose stylesheet defines a
     class, what may touch the app namespace.  A module MolView depends on
     answers to its OWN owner for all of those, and holding it to MolView's is
@@ -109,8 +105,7 @@ def module_dependencies() -> dict[str, Path]:
 def module_code() -> dict[str, str]:
     """The module's layers with comments stripped.
 
-    A rule about what the code DOES must not fire on prose explaining what was
-    deleted and why — several headers describe the very things being banned.
+    A rule about what the code DOES must not fire on prose in a comment.
     """
     out = {}
     for name, path in module_files().items():

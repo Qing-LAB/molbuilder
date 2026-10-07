@@ -8,7 +8,7 @@ Two layers:
 
 Privacy contract under test:
   * Flask session key + Google client_secret never appear in
-    ``molbuilder.json`` (only file paths do).
+    ``molbuilder.json``, nor a path to them.
   * Every secret file is mode 0600.
   * ``molbuilder.json`` itself is mode 0600.
   * The system user (``getpass.getuser()``) is the only identifier
@@ -20,7 +20,6 @@ import json
 import os
 import stat
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -28,21 +27,6 @@ from click.testing import CliRunner
 from molbuilder import auth_setup as _as
 from molbuilder.cli import cli
 from molbuilder.runtime_config import _validate_provider
-
-
-# --------------------------------------------------------------------- #
-#  Pure helpers                                                          #
-# --------------------------------------------------------------------- #
-
-
-# RETIRED 2026-09-13 (I8): `test_default_secret_dir_follows_the_one_override`
-# and `test_default_secret_dir_honors_xdg` stood here.  Both asserted
-# `config_dir()`'s behaviour through `auth_setup.default_secret_dir`, a
-# one-line pass-through with no production caller -- so the alias existed
-# because these tests asserted it, and they asserted `config_dir` through it.
-# `test_config_dir_has_one_home.py` owns both facts against the real door:
-# `TestTheRootCanBeNamedOutright::test_it_is_used_exactly_as_given` for the
-# override, `test_empty_is_not_set` for the XDG fallback.  The alias is gone.
 
 
 # --------------------------------------------------------------------- #
@@ -179,11 +163,8 @@ def test_cli_asu_only_writes_the_config_and_keeps_the_session_key(
     that called itself idempotent -- so the key a server already made must
     come out of the wizard byte for byte as it went in."""
     out = _machine_file(isolated_home)
-    # ASK THE DOOR.  This was `out.parent / "secret_key"`, and when the key
-    # moved into `secrets/` the test went VACUOUS rather than red: it wrote a
-    # file the wizard no longer touches and asserted nobody had changed it,
-    # which nobody would.  Through `session_key()` it again pins the thing it
-    # was written for -- that `auth-setup` preserves a key the server made.
+    # ASK THE DOOR: through `session_key()` this pins the thing it was
+    # written for -- that `auth-setup` preserves a key the server made.
     from molbuilder.config_dir import session_key
     sk = session_key()
     sk.parent.mkdir(parents=True, exist_ok=True)
@@ -202,26 +183,10 @@ def test_cli_asu_only_writes_the_config_and_keeps_the_session_key(
 
 
 class TestTheWizardWritesWhereTheReaderReads:
-    """Where ``auth-setup`` puts ``molbuilder.json`` (2026-08-30).
-
-    It defaulted to ``./molbuilder.json`` -- wherever the wizard happened to
-    be launched from, which for anyone running it inside a checkout is the
-    git root.  Wrong twice over: the same command already writes both SECRETS
-    into the per-user config directory, so one command split its output across
-    two conventions; and on a machine that already has a ``./molbuilder.json``,
-    writing a fresh per-user file would have produced a config **the reader
-    never looks at**, with the wizard reporting success while sign-in stayed
-    off.
-
-    So the default is the reader's own answer -- ``machine_config_path()``.
-
-    **That answer had two branches until 2026-08-31 and now has one**: the
-    machine scope lives in the config directory, and a `./molbuilder.json` is
-    not read at all (`configuration.md` § 2.1a).  The pair of tests below used
-    to drive both branches; the second now asserts the opposite of what it once
-    did, because "always write the per-user file" -- the rule this class was
-    written to disprove -- became correct when the other place stopped being
-    read.
+    """Where ``auth-setup`` puts ``molbuilder.json``: the reader's own
+    answer, ``machine_config_path()`` -- the machine scope lives in the config
+    directory, and a `./molbuilder.json` is not read at all
+    (`configuration.md` § 2.1a).
     """
 
     def _run(self, extra=()):
@@ -229,15 +194,13 @@ class TestTheWizardWritesWhereTheReaderReads:
             "auth-setup", "--provider", "asu", "--asurite", "jdoe", *extra,
         ], catch_exceptions=False)
 
-    # `test_with_no_cwd_config_it_writes_the_per_user_one` retired 2026-10-02 (W54): `test_cli_asu_only_writes_the_config_and_keeps_the_session_key` writes and checks the same file; `test_a_cwd_config_does_not_attract_it` the launch directory.
 
     def test_a_cwd_config_does_not_attract_it(
             self, isolated_home, monkeypatch, tmp_path):
-        """The inverted half: a file in the launch directory is not the target.
+        """A file in the launch directory is not the target.
 
-        It once was -- the reader took it, so writing anywhere else would have
-        left the auth block where nothing looks.  Now the reader never opens
-        it, and writing there would be the mistake instead.  The stray file is
+        The reader never opens it, so writing there would be the mistake.  The
+        stray file is
         left untouched, because the wizard has no business editing a file the
         program does not read.
         """
@@ -258,7 +221,6 @@ class TestTheWizardWritesWhereTheReaderReads:
             "env_init": {"activation": "conda activate"}}, (
             "the wizard edited a file the program does not read")
 
-    # `test_it_merges_into_what_is_already_at_the_one_location` retired 2026-10-02 (W54): it equals `test_cli_merges_into_a_config_that_has_no_auth_block` -- `--force` does nothing without an auth block.
 
 def test_cli_asurite_defaults_to_system_user(isolated_home, monkeypatch):
     """When --asurite is not passed, the wizard prompts with the
@@ -285,13 +247,9 @@ def test_cli_refuses_to_clobber_without_force(isolated_home):
     *"overwrite an existing molbuilder.json's auth block.  Other top-level
     sections (envs, tls, ...) survive."*
 
-    This asserted refusal on ANY existing file until 2026-09-08 -- stricter
-    than the flag's own help, and stricter than the writer it guarded, whose
-    docstring promises that "an install that already has e.g. ``envs`` or
-    ``tls`` sections stays intact".  That promise described a path only
-    --force could reach.  It went unnoticed while a fresh machine had no
-    molbuilder.json; `envs bootstrap` now seeds one, so the old rule would
-    have refused this wizard on every fresh install.
+    A fresh machine already has a molbuilder.json (`envs bootstrap` seeds
+    one), so refusing on ANY existing file would refuse this wizard on every
+    fresh install.
     """
     out = _machine_file(isolated_home)
     # A REAL block: the wizard reads the file through the server's reader
@@ -334,9 +292,8 @@ def test_cli_merges_into_a_config_that_has_no_auth_block(isolated_home):
 
 
 def test_cli_force_replaces_the_providers_and_nothing_else(isolated_home):
-    """--force replaces the providers LIST.  The wizard's own writer replaced
-    `auth` wholesale until 2026-09-13, so re-running it to add a provider
-    dropped `auth.trust_proxy`; through the door the write is a merge."""
+    """--force replaces the providers LIST.  Through the door the write is a
+    merge, so re-running it to add a provider keeps `auth.trust_proxy`."""
     out = _machine_file(isolated_home)
     out.write_text(json.dumps({
         "envs": {"siesta": "molbuilder-siesta"},
@@ -383,9 +340,7 @@ def test_cli_secrets_never_appear_in_emitted_json(isolated_home,
     assert sentinel_secret not in rendered, (
         "client_secret leaked into molbuilder.json"
     )
-    # Sanity: the secret IS at its kind's home, intact.  ASK THE RESOLVER --
-    # this spelled ".config/molbuilder/google_client_secret" by hand until
-    # 2026-09-20 and broke the day every credential moved into `secrets/`.
+    # Sanity: the secret IS at its kind's home, intact.  ASK THE RESOLVER.
     from molbuilder.config_dir import client_secret
     google_sk = client_secret("google")
     # And the file names no path to it either (configuration.md 3.1, user

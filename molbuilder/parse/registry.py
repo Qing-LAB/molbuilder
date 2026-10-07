@@ -1,10 +1,6 @@
 """Parser registry + dispatch.
 
-Per ``docs/model/parse.md`` § 3.  ONE flat list, of FileParsers.  *(A
-second held DirParsers until 2026-10-04, when the one directory door moved
-up to the run door, `molbuilder.runs.folder_answer` -- it read the
-description, which this floor must not (plan B11, B14); a third held
-TextParsers until 2026-09-05.)*
+Per ``docs/model/parse.md`` § 3.  ONE flat list, of FileParsers.
 
 The dispatch functions :func:`detect` and :func:`parse` are the only public
 entry points.  Callers MUST NOT import a parser class directly + call
@@ -54,13 +50,10 @@ def detect(path: Path) -> Type[FileParser]:
     match and raises :exc:`AmbiguousFormatError` when more than one
     parser claims the path -- registration order confers no
     precedence, and a parser added later cannot quietly shadow one
-    added earlier.  (This said "the first parser" until 2026-09-04,
-    which described a first-wins dispatch the code has never had;
-    `model/parse.md` § 3's table had it right.)
+    added earlier.
 
     A DIRECTORY is not a file, and is refused by name: a run folder is the
-    run door's (`molbuilder.runs.folder_answer`).  *(DirParsers answered one
-    here until 2026-10-04, and a ``TextParser`` tier before 2026-09-05.)*
+    run door's (`molbuilder.runs.folder_answer`).
 
     Raises :exc:`UnknownFormatError` when no parser matches, with
     a tailored error message listing every registered parser of
@@ -138,17 +131,6 @@ def parse(path: Path) -> ParseResult:
     class.  Equivalent to ``detect(path).parse(path)``.
     """
     return detect(path).parse(Path(path))
-
-
-# `parse_dir(path)` stood here until 2026-10-04: force-detect among
-# DirParsers.  Its one parser, `JobDirParser`, read the description -- which
-# floor 1 must not -- and moved up to the run door
-# (`molbuilder.runs.folder_answer`, plan B11, B14).
-
-
-# `parse_text(text, parser)` stood here until 2026-09-05, with the
-# `TextParser` ABC it dispatched to.  It had no production caller:
-# every use was a test or the docstring example.  See `base.py`.
 
 
 # Test helpers --------------------------------------------------------- #

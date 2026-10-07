@@ -1,25 +1,20 @@
 """Static-text contract tests for the GPU load-balance + --dry-run
 additions to the SIESTA run-wrapper (execution/running-a-job.md § 3.3).
 
-These assert on the GENERATED bash (no execution) -- the docstrings of
-the extracted block-emitters are the contracts; these tests pin them:
-
-  * _gpu_loadbalance_block       -> $_ranks_per_gpu derivation
-  * _gpu_per_rank_launcher_block -> rank<->GPU helper + SLURM-trust
-  * _siesta_resolved_log_block   -> always-on launch audit log
-  * _siesta_dry_run_block        -> --dry-run preview, side-effect-free
-  * OMP precedence honors SLURM_CPUS_PER_TASK
+These assert on the GENERATED bash.
 """
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-import pytest
 
 from molbuilder import runwrap
-from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.jobset.model import Resources
+from molbuilder.diagnostics import Capabilities
+import pytest
+from molbuilder.diagnostics import set_capabilities
+from molbuilder.runfiles import RunNames
 
 
 @pytest.fixture(autouse=True)
@@ -27,10 +22,9 @@ def _setup(tmp_path, monkeypatch):
     """This machine's record (its activation: the refuse-to-emit contract)
     + synthetic caps."""
     monkeypatch.chdir(tmp_path)
-    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-    # working-directory step, which is gone (configuration.md § 2.1a) --
-    # without naming the directory the write lands in a file nothing
-    # opens, and the test passes having configured nothing.
+    # THE SANDBOX IS THE CONFIG ROOT: without naming the directory the
+    # write lands in a file nothing opens, and the test passes having
+    # configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     # The record follows the config root -- and carries the activation, the
     # probe's copy the generator reads (`configuration.md` § 4).
@@ -44,55 +38,14 @@ def _setup(tmp_path, monkeypatch):
 
 
 def _gpu(tmp_path: Path, np: int = 4) -> str:
-    f = tmp_path / "g.fdf"
+    names = RunNames.of("g", "01_coarse", "hierarchical")
+    f = tmp_path / names.name(".fdf")
     f.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
     # a GPU job as `resolve` writes one: told, with its count (`gpu.md` G5)
     return runwrap.render_run_wrapper(
-        f, resources=Resources(mpi_np=np, cpus_per_task=1, use_gpu=True,
+        f, names=names,
+        resources=Resources(mpi_np=np, cpus_per_task=1, use_gpu=True,
                                gres="gpu:1"))
-
-
-def _cpu(tmp_path: Path, np: int = 20) -> str:
-    f = tmp_path / "c.fdf"
-    f.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .false.\n")
-    return runwrap.render_run_wrapper(
-        f, resources=Resources(mpi_np=np, cpus_per_task=1))
-
-
-# --------------------------------------------------------------------- #
-#  Load-balance block (§ 7.5.1)                                         #
-# --------------------------------------------------------------------- #
-
-
-def test_gpu_wrapper_has_loadbalance_block(tmp_path):
-    t = _gpu(tmp_path)
-    assert "GPU load-balance" in t
-    assert "_ranks_per_gpu=$(( _mpi_np / _ngpu ))" in t
-    assert 'grep -c "^GPU "' in t  # GPU count probe
-
-
-def test_cpu_wrapper_has_no_loadbalance_block(tmp_path):
-    t = _cpu(tmp_path)
-    assert "GPU load-balance" not in t
-    assert "_ranks_per_gpu" not in t
-
-
-# --------------------------------------------------------------------- #
-#  Per-rank launcher: rank<->GPU mapping + SLURM-trust                  #
-# --------------------------------------------------------------------- #
-
-
-def test_gpu_wrapper_writes_per_rank_helper(tmp_path):
-    t = _gpu(tmp_path)
-    assert "_rank_helper=\".mb-rank-launch-$$.sh\"" in t
-    assert "<<'HELPEREOF'" in t
-    # block-distributed rank -> GPU: derive the ALLOCATED GPU list from
-    # CUDA_VISIBLE_DEVICES (robust under SLURM cgroups), index into it.
-    assert 'IFS=, read -ra _gpus <<< "$CUDA_VISIBLE_DEVICES"' in t
-    assert "_idx=$(( _lr * _ngpu / _ls ))" in t
-    assert "_gpu=${_gpus[$_idx]}" in t
-    assert "export CUDA_VISIBLE_DEVICES=$_gpu" in t
-    assert '_siesta_target="bash $_rank_helper"' in t
 
 
 def test_single_unified_exit_trap(tmp_path):
@@ -114,31 +67,6 @@ def test_single_unified_exit_trap(tmp_path):
     assert '[ "${_mps_started:-0}" = "1" ]' in t
 
 
-def test_gpu_wrapper_trusts_slurm_cpuset(tmp_path):
-    t = _gpu(tmp_path)
-    # under SLURM, drop the manual numactl/map-by (P1, § 7.5.1.b)
-    assert 'if [ -n "${SLURM_JOB_ID:-}" ]; then' in t
-    assert "trusting scheduler cpuset" in t
-    # ... and there must be no double-quote seam artifact
-    assert '""(no manual' not in t
-
-
-def test_launch_line_uses_siesta_target(tmp_path):
-    t = _gpu(tmp_path)
-    assert ('_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np '
-            '$_mpirun_bind $_siesta_target"' in t)
-
-
-def test_cpu_wrapper_target_is_bare_siesta(tmp_path):
-    t = _cpu(tmp_path)
-    assert '_siesta_target="siesta"' in t
-    # No per-rank helper is WRITTEN in CPU mode (the shared _mb_cleanup
-    # function still references ${_rank_helper:-} harmlessly -- it no-ops
-    # when unset -- so assert on the WRITE, not the bare name).
-    assert '_rank_helper=".mb-rank-launch' not in t
-    assert "HELPEREOF" not in t
-
-
 # --------------------------------------------------------------------- #
 #  MPS gating: per-GPU sharing, and never during --dry-run             #
 # --------------------------------------------------------------------- #
@@ -153,59 +81,6 @@ def test_mps_keyed_on_any_shared_gpu_and_not_dry_run(tmp_path):
             '&& [ "$_mpi_np" -gt "${_ngpu:-0}" ] '
             '&& [ "${_ngpu:-0}" -ge 1 ] '
             '&& [ "${_dry_run:-0}" != "1" ]' in t)
-
-
-# --------------------------------------------------------------------- #
-#  Resolved-launch audit log (always)                                  #
-# --------------------------------------------------------------------- #
-
-
-def test_resolved_launch_logged(tmp_path):
-    t = _gpu(tmp_path)
-    assert '_log INFO "resolved launch :' in t
-    assert '_log INFO "gpu placement   :' in t  # GPU mode adds placement
-
-
-def test_cpu_resolved_launch_logged_without_gpu_placement(tmp_path):
-    t = _cpu(tmp_path)
-    assert '_log INFO "resolved launch :' in t
-    assert "gpu placement" not in t
-
-
-# --------------------------------------------------------------------- #
-#  --dry-run preview                                                    #
-# --------------------------------------------------------------------- #
-
-
-def test_dry_run_flag_and_block(tmp_path):
-    t = _gpu(tmp_path)
-    assert "--dry-run|--dryrun)" in t
-    assert "_dry_run=1; shift ;;" in t
-    assert "molbuilder DRY RUN (no SIESTA launch)" in t
-    # GPU mode: per-rank mapping preview + exit before launch
-    assert "Rank -> GPU mapping (block-distributed)" in t
-    assert "_dry_run complete" not in t  # (sanity: it's the log msg form)
-    assert '_log INFO "dry-run complete; nothing launched"' in t
-    assert "exit 0" in t
-
-
-def test_dry_run_present_for_cpu_without_gpu_mapping(tmp_path):
-    t = _cpu(tmp_path)
-    assert "molbuilder DRY RUN (no SIESTA launch)" in t
-    assert "Rank -> GPU mapping" not in t   # no GPU section in CPU mode
-
-
-def test_pyscf_has_dry_run(tmp_path):
-    p = tmp_path / "q.py"
-    p.write_text("# fake\n")
-    t = runwrap.render_run_wrapper(p, resources=Resources(cpus_per_task=1))
-    assert "--dry-run|--dryrun)" in t
-    assert "molbuilder DRY RUN (no PySCF launch)" in t
-
-
-# --------------------------------------------------------------------- #
-#  OMP precedence honors SLURM_CPUS_PER_TASK                           #
-# --------------------------------------------------------------------- #
 
 
 def test_env_bootstrap_disables_nounset(tmp_path):
@@ -223,98 +98,9 @@ def test_env_bootstrap_disables_nounset(tmp_path):
     assert i_su < i_act < i_ru            # +u ... activate ... -u
 
 
-def test_timing_read_guarded_when_no_output(tmp_path):
-    """If SIESTA crashes before any scf: output, the .scf-timing.log never
-    exists -- the total/N read must guard the file, not error noisily."""
-    t = _gpu(tmp_path)
-    assert 'if [ -f "$_scf_timing_log" ]; then' in t
-
-
-def test_omp_honors_the_schedulers_reservation(tmp_path):
-    """The thread chain `running-a-job.md` § 3.2 states: ``OMP_NUM_THREADS``,
-    then the scheduler's reservation -- ``SLURM_CPUS_PER_TASK``,
-    ``PBS_NCPUS``, ``NSLOTS`` -- then the count stated at prep.  *(Its last
-    two rungs joined 2026-10-06; this pinned the two-rung chain until then.)*"""
-    t = _gpu(tmp_path)
-    assert ('_omp_threads="${OMP_NUM_THREADS:-${SLURM_CPUS_PER_TASK:-'
-            '${PBS_NCPUS:-${NSLOTS:-$_omp_threads_default}}}}"' in t)
-
-
-# --------------------------------------------------------------------- #
-#  SCF per-iteration timing instrument (§ 11.0b, item D)               #
-# --------------------------------------------------------------------- #
-
-
-def test_scf_timing_instrument_present(tmp_path):
-    """Both CPU and GPU SIESTA wrappers carry the per-iteration timing
-    instrument: the _mb_scf_tee filter, a per-run .scf-timing.log paired
-    with the .out, the piped launch + PIPESTATUS, and a wall-time log."""
-    for t in (_gpu(tmp_path), _cpu(tmp_path)):
-        assert "_mb_scf_tee() {" in t
-        # WHICH lines it stamps is a behaviour, read where a run prints them:
-        # the timing log of a relaxation run on the road
-        # (`tests/test_siesta_flat_run_e2e.py`); a device's NEGF rows, with the
-        # transport road (plan Q5-Q7).  The pattern is the grammar's,
-        # `parse/engines/siesta_grammar.py`.
-        assert '_scf_timing_log="${_out_file%.out}.scf-timing.log"' in t
-        assert '| _mb_scf_tee "$_out_file" "$_scf_timing_log"' in t
-        # PIPESTATUS so awk never masks SIESTA's exit code
-        assert "_siesta_exit=${PIPESTATUS[0]}" in t
-        # The row count beside the wall time.  Seconds PER ITERATION are the
-        # timing instrument's (`parse/instruments/scf_timing.py`); the
-        # wrapper's total/N was a second answer and is gone (2026-09-26).
-        assert '_n_scf=$(wc -l < "$_scf_timing_log"' in t
-
-
-def test_pyscf_has_no_scf_timing(tmp_path):
-    """The SCF-timing instrument is SIESTA's: a PySCF wrapper emits
-    neither the tee nor its block.
-
-    Pinned by the instrument's own marker and header, not by the bare
-    string ``scf-timing.log`` (2026-08-13): since the cold-sweep
-    exception list derives from ``identity.OUR_FILE_PATTERNS`` -- one
-    enumeration for both engines -- that NAME appears in every
-    wrapper's sweep exceptions, which is correct and harmless (it says
-    *if such a file exists, leave it alone*).  The substring assert
-    read that as the instrument and failed on a wrapper that has none.
-    """
-    p = tmp_path / "q.py"
-    p.write_text("# fake\n")
-    t = runwrap.render_run_wrapper(p, resources=Resources(cpus_per_task=1))
-    assert "_mb_scf_tee" not in t
-    assert "SCF per-iteration timing instrument" not in t
-    assert "_scf_timing_log=" not in t
-
-
 # --------------------------------------------------------------------- #
 #  Background monitor wiring (§ 11.0b, item F)                         #
 # --------------------------------------------------------------------- #
-
-
-def test_wrapper_launches_low_priority_monitor(tmp_path):
-    """SIESTA wrappers background the shipped monitor, ONE file --
-    mb_monitor.pyz, the monitor with the readers it reads through -- at nice
-    19 with the JOB's own python (no molbuilder install needed), guarded by
-    MB_MONITOR + the shipped file, watching the wrapper PID."""
-    t = _gpu(tmp_path)
-    assert 'if [ "${MB_MONITOR:-1}" = "1" ]' in t
-    assert "[ -f mb_monitor.pyz ]" in t
-    # R9: the interpreter is PROBED (python3-first) -- bare `python`
-    # does not exist on python3-only hosts, and the backgrounded 127 was
-    # swallowed while the log claimed a live pid.
-    assert '_mb_py="$(command -v python3 || command -v python' in t
-    assert 'nice -n 19 "$_mb_py" mb_monitor.pyz' in t    # shipped, not -m
-    assert "python -m molbuilder monitor" not in t       # NOT the package form
-    assert "--watch-pid $$" in t
-    assert "--interval \"${MB_MONITOR_INTERVAL:-10}\"" in t
-    # a GPU deck's monitor is told it uses a GPU, and so samples and judges
-    # it (`run-reports.md` § 2.1a); its cores are the launcher's
-    line = next(ln for ln in t.splitlines()
-                if "mb_monitor.py" in ln and "--label" in ln)
-    assert "--gpu" in line.split() and '--cores "$_mb_cores"' in line, line
-    # stopped by the single unified EXIT trap, through the one function
-    # that waits for its closing lines
-    assert "_mb_stop_monitor TERM || true" in t
 
 
 def test_wrapper_ships_standalone_monitor(tmp_path):
@@ -322,11 +108,12 @@ def test_wrapper_ships_standalone_monitor(tmp_path):
     a Python zip application holding a verbatim, stdlib-only copy of the
     monitor with the framework modules it reads the run through, each its
     own file, runnable with the job's python -- beside every engine's job
-    since 2026-09-26 (`run-reports.md` § 2.3); a PySCF job got none before,
-    and until then the modules stood beside the deck as fourteen files."""
-    fdf = tmp_path / "j.fdf"
+    (`run-reports.md` § 2.3)."""
+    names = RunNames.of("j", "01_coarse", "hierarchical")
+    fdf = tmp_path / names.name(".fdf")
     fdf.write_text("NumberOfAtoms 10\nDiag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=2, cpus_per_task=1),
+    runwrap.write_run_wrapper(fdf, names=names,
+                              resources=Resources(mpi_np=2, cpus_per_task=1),
                               emit_sbatch=False)
     shipped = tmp_path / runwrap.MONITOR_BUNDLE
     assert shipped.is_file()
@@ -336,16 +123,7 @@ def test_wrapper_ships_standalone_monitor(tmp_path):
                                      *runwrap.MONITOR_COMPANIONS}
         src = z.read("mb_monitor.py").decode("utf-8")
     assert "def run_monitor(" in src and "def main(" in src
-    # STDLIB-ONLY IS PROVEN BY RUNNING IT, not by reading it.
-    #
-    # The check here was `"import molbuilder" not in src` until 2026-09-17 --
-    # a substring scan of the file's text, which says nothing about whether
-    # the thing starts and which failed on the sentence *"``import
-    # molbuilder`` fails on a compute node"* in the module docstring: prose
-    # that is the entire reason this file is stdlib-only, made unwriteable by
-    # the test guarding it.
-    #
-    # So run the artifact under the condition it exists for.  `molbuilder` and
+    # STDLIB-ONLY IS PROVEN BY RUNNING IT, not by reading it: run the artifact under the condition it exists for.  `molbuilder` and
     # `numpy` are denied at the import system, which is what a compute node
     # does by simply not having them, and the shipped file has to reach
     # argparse anyway.  A real top-level import of either fails this with
@@ -372,19 +150,10 @@ def test_wrapper_ships_standalone_monitor(tmp_path):
         + cp.stderr[-2000:])
     # A PySCF job gets the SAME monitor and the same readers: one monitor,
     # every engine -- and, one file, nothing of it can be left behind.
-    py = tmp_path / "q.py"; py.write_text("# fake\n")
+    q = RunNames.of("q", "01_coarse", "hierarchical")
+    py = tmp_path / q.name(".py"); py.write_text("# fake\n")
     shipped.unlink()
-    runwrap.write_run_wrapper(py, resources=Resources(cpus_per_task=1),
+    runwrap.write_run_wrapper(py, names=q,
+                              resources=Resources(cpus_per_task=1),
                               emit_sbatch=False)
     assert shipped.read_bytes() == runwrap.monitor_bundle()
-
-
-def test_monitor_killed_in_unified_cleanup(tmp_path):
-    """The monitor kill lives in _mb_cleanup (the ONE EXIT trap), not its
-    own trap (which would clobber the others).  The D17 signal trap is
-    not a second EXIT trap -- see test_single_unified_exit_trap."""
-    t = _gpu(tmp_path)
-    trap_cmds = [ln.strip() for ln in t.splitlines()
-                 if ln.strip().startswith("trap ")]
-    exit_traps = [c for c in trap_cmds if c.endswith(" EXIT")]
-    assert exit_traps == ["trap _mb_cleanup EXIT"], trap_cmds

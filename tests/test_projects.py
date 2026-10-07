@@ -73,16 +73,14 @@ def test_projects_root_comes_from_the_one_door(tmp_path, monkeypatch):
     """`projects_root` is the ONE door, and it is not the working
     directory (user, 2026-08-22).
 
-    It used to return ``Path.cwd()/"projects"``, which made the tree a
-    property of where you happened to stand.  It now resolves in a
-    declared order -- ``base=``, ``$MOLBUILDER_PROJECTS``,
+    It resolves in a declared order -- ``base=``, ``$MOLBUILDER_PROJECTS``,
     ``molbuilder.json``'s ``paths.projects``, then ``repo_root()/projects``
     -- so one setting moves the tree for every surface at once.
     """
     from molbuilder.projects import PROJECTS_ROOT_ENV, projects_root
     import molbuilder
 
-    # cwd does NOT decide it any more (this is the behaviour change).
+    # cwd does NOT decide it.
     elsewhere = tmp_path / "somewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
@@ -198,12 +196,6 @@ def test_list_structures_empty_when_topic_missing(tmp_path):
     assert list_structures("p", "spectrum", base=tmp_path) == []
 
 
-# `find_geom_candidates` went 2026-10-05 with the function: no surface
-# called it.  Its five name-pattern tests had gone the day before (they
-# offered empty files named as an engine's converged geometry), the
-# empty-tree one with it.
-
-
 class TestTheProjectsRootIsOneConfigurableDoor:
     """`projects_root` is the ONE door every surface resolves the tree
     through, and it is settable (user, 2026-08-22).
@@ -264,8 +256,7 @@ class TestTheProjectsRootIsOneConfigurableDoor:
     def test_a_malformed_setting_is_refused_not_ignored(
             self, tmp_path, monkeypatch):
         """A config the user wrote and molbuilder silently ignored is the
-        worst of both.  A blanket `except Exception` did exactly that for
-        one revision."""
+        worst of both."""
         import json
         import pytest as _pytest
         from molbuilder.runtime_config import RuntimeConfigError

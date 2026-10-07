@@ -1,19 +1,11 @@
 {#- molbuilder shared spectra-inspector scaffolding.
 
-    Included by:
-      * spectra.html  -- the legacy /spectra page (still inline today;
-                         once step 2.5 of the tab-merge lift drops the
-                         inspect-side from /spectra, only /results
-                         will use this partial)
-      * results.html  -- the /results tab via the inspector registry,
-                         fetched from GET /partials/spectra-inspector
-                         and assigned to ``#inspector-host``'s innerHTML
+    Used by results.html -- the /results tab via the inspector
+    registry, fetched from GET /partials/spectra-inspector and assigned
+    to ``#inspector-host``'s innerHTML.
 
     This partial is the DOM contract for what the spectra inspector
-    JavaScript queries.  Adding an id here means the JS can $() it
-    on EITHER consumer; the partial-id test
-    (tests/spectra/test_partial_integrity.py once it lands) pins
-    parity between this file and ``lib/spectra/core.js``'s lookups.
+    JavaScript (``lib/spectra/core.js``) queries.
 
     Inspector scope:
       * the run's progress  -- one status line + one dot per phase; the
@@ -25,27 +17,17 @@
       * "Mode visualisation" -- 3D mode-eigenvector animation
       * "Electronic structure" -- HOMO/LUMO bar diagram for the
                                   selected mode
-
-    Generate-side surfaces (parameter form, methods modal, "Generate
-    script" buttons, script preview, generate-time issues panel) stay
-    in the /spectra page; they are NOT part of this partial.
 -#}
 
   {#- ONE ROOT, AND IT IS A CARD: page-shell's `.card` is the surface every
       Results-tab viewer sits on, and `.card-section` blocks divide a card
-      (lib/inspectors/spectra.css).  The sections were dropped straight into
-      the host until 2026-09-28, so this viewer alone had no surface once the
-      host stopped drawing one. -#}
+      (lib/inspectors/spectra.css). -#}
   <div class="card spectra-inspector">
     <!-- ── The run's progress ───────────────────── -->
     {#- The file is the one the Results tab's dropdown picked -- the only
-        route (web/results.md § 2.1).  A path box with "Load once", "Start
-        watching" and "Stop" stood here until 2026-09-28: a second way to
-        name a file, and a live run was shown as a snapshot unless someone
-        pressed "Start watching".  Now a run still going is followed by
+        route (web/results.md § 2.1).  A run still going is followed by
         itself, every 2 s, until every phase its description asked for is
-        done (web/spectra.md § 7).  What stays is what the controls
-        reported: one status line, and the phase dots. -#}
+        done (web/spectra.md § 7): one status line, and the phase dots. -#}
     <div class="card-section run-progress">
       <p id="watch-status" class="status" role="status" aria-live="polite"></p>
 
@@ -89,9 +71,7 @@
 
       <!-- Methods text.  The run already composes a citable Methods
            paragraph into the sidecar (`methods_text` + the bibliography
-           keys it actually cited); before this it had no surface at all,
-           so the one artifact a user needs for a paper was the one
-           thing the viewer would not show them.  Collapsed by default:
+           keys it actually cited).  Collapsed by default:
            it is reference material, not something you read every time
            you open a result. -->
       <details id="methods-block" class="methods-block" hidden>
@@ -115,11 +95,8 @@
       <p id="spectrum-absent" class="status muted spectrum-absent" hidden></p>
       <!-- Spectrum controls.  Each control is a BLOCK carrying its own
            label and its own hint, and the blocks lay out side by side
-           when there is room.  They were four siblings in one flex row
-           until 2026-09-11, where the two hints each claimed `flex: 1`
-           and squeezed the labels between them until "Hide bands below"
-           broke across three lines.  A control and its explanation are
-           one thing; the layout says so now. -->
+           when there is room.  A control and its explanation are one
+           thing. -->
       <div id="spectrum-controls" class="spectrum-controls">
         <div class="spectrum-control">
           <label class="inline-label">
@@ -163,32 +140,18 @@
            with a broadened envelope overlay.  Click a stick to
            select the mode (synchronises with the table below and
            the ES panel). -->
-      {#- THE SPECTRUM AND THE MODE, SIDE BY SIDE when there is room.
-
-          They are one act: you click a stick or a row and watch that mode move.
-          Stacking the animation below the modes table put the two ends of that
-          act a scroll apart, and gave the viewer the full column width for a
-          molecule that needs a fraction of it.
-
-          The split is a CONTAINER query, not a page-width one: this partial is
-          mounted into the /results inspector panel as well as its own page, and
-          what matters is how wide THIS box is, not the window. -#}
       {#- The spectrum, full width: every mode at once, and the place you
-          pick one from.  It used to share its row with the mode viewer,
-          which took two fifths of the width for one molecule.  Named by
-          the section's heading, which says which picture is drawn -- the
-          spectrum or the mode positions (web/spectra.md § 2); a label of
-          its own said "Raman spectrum" over every picture. -#}
+          pick one from.  Named by the section's heading, which says which
+          picture is drawn -- the spectrum or the mode positions
+          (web/spectra.md § 2). -#}
         <div id="spectrum-chart" class="spectrum-chart"
              aria-labelledby="spectrum-heading"></div>
       </div>
 
       {#- ONE SELECTION, THREE VIEWS.
           The modes table, the 3-D animation and the electronic structure all
-          describe the SAME selected mode, and each used to occupy its own band
-          down the page -- so comparing what a mode looks like against what its
-          levels do meant scrolling between two places.  As tabs directly under
-          the spectrum they share one position on the page and one selection.
+          describe the SAME selected mode.  As tabs directly under the
+          spectrum they share one position on the page and one selection.
           Clicking a stick never switches tab: it updates all three underneath,
           and the reader stays where they were looking.
           Pattern: lib/page-shell.css `.panel-tabs` (see the note there). -#}
@@ -234,12 +197,7 @@
                 <th data-col="raman_activity_a4_amu" data-numeric="1" class="raman-col">Raman (Å⁴/amu)</th>
                 {#- IR SITS BESIDE RAMAN because they are two readings of ONE
                     mode, not two spectra: one Hessian, two property
-                    derivatives on the same eigenvectors.  The run has written
-                    `ir_intensity_km_mol` per mode since the IR add-on landed
-                    and this table never showed it -- the viewer read the field
-                    in exactly one place, a change-detection fingerprint, so a
-                    person who ticked "Compute IR intensities" got correct
-                    physics they could only see by opening the JSON (W21). -#}
+                    derivatives on the same eigenvectors. -#}
                 <th data-col="ir_intensity_km_mol"   data-numeric="1" class="ir-col">IR (km/mol)</th>
                 <th data-col="has_imag">imag?</th>
                 <th data-col="has_es" class="es-col">ES?</th>
@@ -252,15 +210,6 @@
             <tbody id="modes-tbody"></tbody>
           </table>
         </div>
-        <!-- 3D structure + per-mode animation.  Visible whenever a
-             mode is selected AND the geometry is available (either
-             from the loaded spectra.json's equilibrium.elements/
-             positions_ang or from the structure text -- XYZ or PDB --
-             pasted in step 1).  -->
-        <!-- ES panel sits inside results-summary so it shares the
-             hidden-until-loaded state.  Internally toggles whether
-             the bar diagram or a "no ES for this mode" placeholder
-             is rendered. -->
       </div>
 
       {#- A 3-D canvas and a chart both size themselves from a box, and a box
@@ -316,14 +265,11 @@
                   eigenvector entries are small.  Step at 0.05 keeps
                   the slider easy to land on round numbers.
 
-                  Default 0.15 Å (halved from the earlier 0.30 on
-                  2026-05-19): 0.30 Å produced visibly "broken" bonds
-                  on stretching modes (the displacement was ~20% of a
-                  typical bond length), which is unphysical even for
-                  a cartoon.  0.15 Å (~10% of a bond) reads as a
-                  clear vibration without distorting the molecular
-                  topology; users who want a bigger swing can drag
-                  the slider. -#}
+                  Default 0.15 Å (~10% of a bond) reads as a clear
+                  vibration without distorting the molecular topology;
+                  0.30 Å (~20% of a typical bond length) produces
+                  visibly "broken" bonds on stretching modes.  Users
+                  who want a bigger swing can drag the slider. -#}
               <input id="anim-amplitude" type="range"
                      min="0.05" max="3.0" step="0.05" value="0.15">
               <span id="anim-amplitude-val" class="unit">0.15 Å</span>
@@ -340,12 +286,9 @@
                aria-label="3D structure with vibrational mode animation">
           </div>
           {#- HOW BIG what you are watching is, in a sentence, directly under the
-              picture it describes.  It sat up in the header beside the title,
-              where a squeezed flex row left room for a fragment like "max
-              ±0.173 Å" -- a quantity with nothing to say what it measured.  Given
-              its own line it can name the atom, the distance from rest, the bond
-              it is a fraction of, and whether that is real or exaggerated, which
-              is what the number is FOR.  Written by _reportSwing in
+              picture it describes: its own line names the atom, the distance
+              from rest, the bond it is a fraction of, and whether that is real
+              or exaggerated, which is what the number is FOR.  Written by _reportSwing in
               lib/spectra/core.js; the science is docs/web/spectra.md § 4.2. -#}
           <p id="viewer-status" class="status muted viewer-readout"
              aria-live="polite"></p>
@@ -425,9 +368,8 @@
             <h3>Mode <span id="es-mode-idx">?</span></h3>
             <span id="es-mode-freq" class="status muted"></span>
           </header>
-          {#- THE PICTURE AND ITS NUMBERS, side by side.  Stacked, "the gap opens
-              by 12 meV" sat a scroll away from the diagram showing it open.
-              One figure, two halves. -#}
+          {#- THE PICTURE AND ITS NUMBERS, side by side.  One figure, two
+              halves. -#}
           <div class="es-body">
             <div id="es-bar-diagram" class="es-bar-diagram"
                  aria-label="Molecular-orbital energies at -A, equilibrium and +A
@@ -445,7 +387,7 @@
 
       <div id="mode-tab-thermo" class="panel-tabpanel" role="tabpanel"
            aria-labelledby="mode-tabbtn-thermo" hidden>
-        {#- v5 `thermo` (spectra-migration-plan.md § 2b): the DECK computes
+        {#- v5 `thermo`: the DECK computes
             the headline numbers and the T-grid; this panel only draws
             them.  Two figures: G/H/T·S over the grid, and the
             free-energy decomposition at the headline temperature. -#}

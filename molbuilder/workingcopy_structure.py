@@ -26,17 +26,7 @@ the question gets asked rather than answered by counting callers.
 USED BY: ``/api/structure/save`` -> ``write`` · ``/api/structure/export`` ->
 ``files`` · ``/api/build/load`` -> ``read`` (web/blueprints/build.py) · and
 the task hand-over doors -> ``files``/``write`` · the PySCF script, from
-inside its run -> ``write_moved`` (imported from ``mb_pyscf.pyz``).  NOT
-yet by the CLI, which still writes geometry alone -- the last surface not
-obeying the rule (task #73).
-
-RETIRED 2026-07-31: ``scratch_blob`` / ``from_scratch``, which round-tripped a
-structure through an in-memory ``{xyz, sidecar}`` TEXT blob.  Their last caller
-was ``/api/structure/periodicity`` before it took the envelope; a blob means a
-coordinate document is written in order to ask a question about coordinates,
-which is what web/molview.md § 11.7 forbids.  (This codec also used to back the
-retired ``molbuilder.workingcopy`` core + the ``/api/workingcopy/*`` door; it is
-the survivor of both.)
+inside its run -> ``write_moved`` (imported from ``mb_pyscf.pyz``).
 
 Layer: L2 — reuses `structure` (L1) + the `sidecars.molstruct` write/read stack.
 """
@@ -74,14 +64,11 @@ class StructurePair(NamedTuple):
     the format follows the frame count while the NAME does not have to, and
     that choice is never asked as a question.  The CONTAINER is a different
     axis and the caller does name it -- ``write`` reads it off the target's
-    suffix, which is the same suffix ``read`` dispatches on.  (Until
-    2026-09-07 this really was always ``.xyz``, and ``write(struct, "x.pdb")``
-    therefore put XYZ bytes under a ``.pdb`` name that ``load`` then refused.)
+    suffix, which is the same suffix ``read`` dispatches on.
 
     Either way it is carried here rather than assumed by each caller, because
     the pairing rule is the codec's -- a caller that appends its own extension
-    is keeping a second copy of a rule it does not own, which is how the
-    sidecar's name came to be derived in two places.
+    is keeping a second copy of a rule it does not own.
     """
     document: str
     sidecar: dict
@@ -105,17 +92,7 @@ def _metadata_is_default(meta: dict) -> bool:
     ``.molstruct.json`` half of the pair exists at all
     (``no .json == empty metadata``).
 
-    ASKED OF THE AUTHORITY, not re-enumerated.  This used to walk the field
-    set by hand -- and drifted on the one field with three states: it tested
-    ``any(float(v) != 0.0 for v in vacuum)``, so a deliberate ``[0, 0, 0]``
-    and an unset ``null`` both read as "nothing stated".  No sidecar was
-    written, and the reload turned *no gap, deliberately* into *nobody chose*
-    -- which on an isolated axis is the 3 Å default, i.e. a different box in
-    the emitted deck than the one on screen.  ``structure-periodicity.md``
-    § 2 states the three states explicitly: *"``[0,0,0]`` means no gap,
-    deliberately, and is used verbatim"*.
-
-    Comparing against the authority's own empty output cannot drift, and a
+    ASKED OF THE AUTHORITY, not re-enumerated.  Comparing against the authority's own empty output cannot drift, and a
     field added to ``METADATA_FIELDS`` is covered without touching this.
     """
     global _DEFAULT_METADATA
@@ -163,8 +140,7 @@ class StructureCodec:
         # Parse the SOURCE in ITS OWN format (dispatch on the extension) -- the
         # file picker accepts .xyz AND .pdb, and each needs its own parser: a
         # .pdb read as XYZ chokes on its "HEADER ..." first line.  An unknown
-        # extension is an EXPLICIT error, not a silent from_xyz attempt.  (The
-        # working copy is then maintained as .xyz + sidecar via files().)
+        # extension is an EXPLICIT error, not a silent from_xyz attempt.
         suffix = src.suffix.lower()
         if suffix not in (".xyz", ".pdb"):
             raise ValueError(
@@ -215,19 +191,15 @@ class StructureCodec:
         # left-handed cell, or one too small for any origin -- OPENS, and what
         # is wrong with it is reported by whoever hands the structure on.
         #
-        # It used to raise here, and that made such a file unopenable and
-        # therefore UNFIXABLE: the Cell page is the one place the box can be
-        # corrected, and it cannot be reached without the structure on screen.
-        # The load door answered "could not load <file>" and the only way out
-        # was to hand-edit the .molstruct.json outside molbuilder, or delete it
-        # and lose the labels with it.
+        # Raising here would make such a file unopenable and therefore
+        # UNFIXABLE: the Cell page is the one place the box can be corrected,
+        # and it cannot be reached without the structure on screen.
         #
         # NOTHING IS LEFT UNGUARDED BY THIS.  What must not happen is a
         # CALCULATION built on an impossible box, and that is refused where it
-        # belongs: `validate()` reports a left-handed cell as an ERROR, and both
-        # emitters run `report(validate(...))` before writing anything
-        # (siesta/input.py, and the PySCF renderer).  The web's emitting doors
-        # refuse it a second time at the request seam.  So the box is stopped at
+        # belongs: `validate()` reports a left-handed cell as an ERROR, and
+        # every deck runs `report(validate(...))` before writing anything
+        # (`script_emit.render_deck`).  So the box is stopped at
         # every door that would ACT on it, and at none that would merely show it.
         return struct
 
@@ -241,11 +213,7 @@ class StructureCodec:
         THE ONE PLACE either is produced.  :meth:`write` puts this on disk and
         :meth:`files` hands it over as named bytes (which is what the export
         route returns) -- so a structure saved to a project and the same
-        structure downloaded cannot differ.  They used to be three code paths
-        computing the same three calls, agreeing by coincidence rather than by
-        construction; ``files`` even serialised the JSON with different settings
-        from ``save``, so a non-ASCII region label came out escaped on one path
-        and literal on the other.
+        structure downloaded cannot differ.
 
         ``keep_sidecar`` is False when the metadata is all default -- a plain
         molecule with no cell, labels, frozen atoms or annotations.  Then the
@@ -272,17 +240,12 @@ class StructureCodec:
         # in the comment line, which a plain reader skips -- so both are written
         # under ``.xyz``.  That is the ordinary convention (ASE, where the
         # format's modern use comes from, writes extended XYZ to ``.xyz`` by
-        # default), and it is the only extension :meth:`load` accepts: a range
-        # named ``.extxyz`` was a file THIS CODEC COULD NOT REOPEN, so a
-        # trajectory saved into a project could never be loaded again.
+        # default), and it is the only extension :meth:`load` accepts.
         # WHICH CONTAINER.  `fmt` is the format the DESTINATION names, not a
         # preference: `write` reads it off the target's suffix and `read`
-        # already dispatches the same way.  Until 2026-09-07 this always
-        # produced XYZ, so `write(struct, "x.pdb")` put XYZ bytes under a .pdb
-        # name and `load("x.pdb")` then answered *"no ATOM/HETATM records found
-        # in PDB input"* -- the door could not read back what it had just
-        # written.  (This is a different axis from plain-vs-extended XYZ, which
-        # follows the frame count and is still never asked as a question.)
+        # dispatches the same way.  (This is a different axis from
+        # plain-vs-extended XYZ, which follows the frame count and is never
+        # asked as a question.)
         if fmt not in ("xyz", "pdb"):
             raise ValueError(
                 f"StructureCodec.pair: unsupported format {fmt!r}; "
@@ -356,10 +319,7 @@ class StructureCodec:
         ``<label>.source.xyz`` and its sidecar -- the catalogue's name
         (`runfiles.WRITTEN`, `job-contracts.md` § 6.3), for :meth:`files` to
         give the format's suffix.  Both writers of a calculation's structure
-        ask it: the hand-over and `jobset init`.  *(Until 2026-10-04 init named
-        the pair after the structure FILE -- ``h2.source.xyz`` beside the label
-        ``H2`` -- and a ``.pdb`` source was recorded under a name nothing
-        wrote.)*"""
+        ask it: the hand-over and `jobset init`."""
         from .runfiles import compose
         return self.files(struct, compose(label, ".source.xyz"))
 
@@ -388,9 +348,6 @@ class StructureCodec:
         persisting AND a stale sidecar exists, it is removed so the pair can't
         disagree (``no .json == empty metadata``, matching :meth:`load`)."""
         target = Path(target)
-        # The caller named the file, so the caller named the format.  `read`
-        # dispatches on this same suffix, which is what makes write->read a
-        # round trip rather than a coincidence.
         # `fmt` names the container.  Default: read it off the name the caller
         # chose, because `read` dispatches on that same suffix -- which is what
         # makes write->read a round trip rather than a coincidence.  A caller
@@ -419,9 +376,7 @@ class StructureCodec:
         document, ``created_at`` the moment it is written.
         It is always written: it states the engine's origin
         (``engine_offset`` 0), which a document alone cannot.  Written
-        through :meth:`write`'s own path: same order, same atomicity.  Until
-        2026-10-05 the script wrote its pairs with a copy of its own -- its
-        own number format and its own JSON settings (`plans/plan.md` V1.10).
+        through :meth:`write`'s own path: same order, same atomicity.
         """
         document = Structure(elements=list(elements),
                              positions=positions).to_xyz(comment=comment)

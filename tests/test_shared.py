@@ -1,27 +1,14 @@
 """Tests for ``molbuilder/web/blueprints/_shared.py``.
 
 The unifier helpers (``atoms_list``, ``structure_to_dict``,
-``ok_structure_response``, and the 2026-06-07 ``workspace_payload``
-addition) are the single source of truth for "how a Structure
+``ok_structure_response`` and ``workspace_payload``) are the single source of truth for "how a Structure
 becomes JSON" across every Flask blueprint.  Pin the canonical
 shape here so a future refactor that touches one endpoint can't
 silently drift the schema.
-
-Workspace-state protocol:
-``docs/web/workspace.md`` § 4.4 + § 5.
-
-Migration phase tracking: this file is gated against Phase 1 of
-the workspace-state migration plan (§ 6).  Phase 2 will pin the
-endpoint-level migration (build/load + build/molecule + modify/*
-emit ``workspace_payload`` directly).  (Phase 3's ``selection_remap``
-was later retired: the client clears the selection on any atom-count
-change, web/molview.md § 11.)  Later phases extend this file
-rather than replacing it.
 """
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from molbuilder.structure import Structure
 from molbuilder.web.blueprints._shared import (
@@ -62,17 +49,14 @@ def _h2o_with_regions() -> Structure:
 
 
 # --------------------------------------------------------------------- #
-#  workspace_payload — Phase 1 canonical-shape pins                     #
+#  workspace_payload — canonical-shape pins                             #
 # --------------------------------------------------------------------- #
 
 
 class TestWorkspacePayloadCanonicalKeys:
     """Pin the exact key set + types of the canonical shape.
 
-    Any future field addition must update both the protocol doc
-    (§ 4.4) AND this test class.  Removals require the migration
-    table in protocol § 6 to advance to a phase that retires the
-    field.
+    Any future field addition must update this test class.
     """
 
     def test_has_canonical_keys(self):
@@ -97,7 +81,7 @@ class TestWorkspacePayloadCanonicalKeys:
         assert first == "3"
 
     def test_source_format_defaults_to_xyz(self):
-        """Phase 1 default — PDB callers override via extra (Phase 2)."""
+        """The default — PDB callers override via extra."""
         assert workspace_payload(_h2o())["source_format"] == "xyz"
 
     def test_title_falls_back_to_empty_string_not_none(self):
@@ -111,8 +95,7 @@ class TestWorkspacePayloadCanonicalKeys:
 
 
     def test_atoms_carry_coordinates_on_the_atom(self):
-        """web/workspace.md § 5 (MANDATORY): each atom row carries its own
-        x/y/z as numbers -- the atom is the geometric truth, not a re-parsed xyz
+        """Each atom row carries its own x/y/z as numbers -- the atom is the geometric truth, not a re-parsed xyz
         string."""
         s = _h2o()
         atoms = workspace_payload(s)["atoms"]
@@ -131,12 +114,7 @@ class TestWorkspacePayloadCanonicalKeys:
         assert workspace_payload(s)["atoms"] == atoms_list(s)
 
     def test_lattice_is_none_for_non_periodic_structure(self):
-        """Structure carries no lattice today; helper returns None.
-
-        When Structure grows a periodic-cell field (currently lives
-        on Frame / Trajectory instead), this assertion becomes a
-        positive shape check.  Pinning the current contract makes
-        the future extension visible in the diff."""
+        """A non-periodic structure: the helper returns None."""
         assert workspace_payload(_h2o())["lattice"] is None
 
     def test_issues_array_is_present_and_a_list(self):
@@ -172,22 +150,12 @@ class TestWorkspacePayloadCanonicalKeys:
         assert payload["extra"]["backend_used"] == "rdkit"
 
 
-# A ``TestWorkspacePayloadRegionsAndFrozen`` class stood here with a
-# docstring and no test methods.  The rule it named -- the per-atom payload
-# carries regions + is_frozen -- is pinned where a run's block is applied:
-# the Results load of a measured run (`test_structure_info_bridge.py`).
-
-
 class TestStructureToDictLegacyShim:
-    """Phase 1 of the migration retains structure_to_dict as a
-    legacy shim — same wire shape as before, now routed through
-    workspace_payload internally.  Pin that:
+    """structure_to_dict keeps the legacy wire shape, routed through
+    workspace_payload.  Pin that:
 
-      1. Existing legacy keys still emit (no breakage for the
-         modify-tab front-end).
-      2. The canonical keys are ALSO emitted, so a Phase-2-ready
-         consumer can read them today without waiting for the
-         endpoint-level migration.
+      1. Legacy keys still emit (the modify-tab front-end reads them).
+      2. The canonical keys are ALSO emitted.
       3. ``atoms`` is the same list workspace_payload exposes
          (single source of truth across both helpers).
     """
@@ -228,18 +196,15 @@ class TestStructureToDictLegacyShim:
 
 
 # --------------------------------------------------------------------- #
-#  Phase 2: structure_to_dict accepts extra + threads it everywhere     #
+#  structure_to_dict accepts extra + threads it everywhere              #
 # --------------------------------------------------------------------- #
 
 
 class TestStructureToDictExtraThreading:
-    """Phase 2 (2026-06-07) — ``structure_to_dict`` accepts an
-    optional ``extra`` dict for endpoint-specific keys.  The
-    helper threads each key BOTH into the top level of the
-    returned dict (so existing JS consumers reading off the
-    response root keep working) AND into the canonical ``extra``
-    sub-dict (where the Phase 4+ workspace dispatcher reads
-    them).
+    """``structure_to_dict`` accepts an optional ``extra`` dict for
+    endpoint-specific keys.  The helper threads each key BOTH into the
+    top level of the returned dict (where JS consumers read off the
+    response root) AND into the canonical ``extra`` sub-dict.
     """
 
     def test_extras_appear_at_top_level(self):
@@ -322,8 +287,8 @@ class TestOkStructureResponse:
         assert isinstance(body["issues"], list)
 
     def test_phase_2_extras_at_top_level_and_in_extra_subdict(self):
-        """Phase 2 contract — endpoint extras land at BOTH the
-        response root AND the canonical ``extra`` sub-dict."""
+        """Endpoint extras land at BOTH the response root AND the
+        canonical ``extra`` sub-dict."""
         from flask import Flask
         app = Flask(__name__)
         with app.app_context():
@@ -347,14 +312,7 @@ class TestOkStructureResponse:
 
 
 # --------------------------------------------------------------------- #
-#  Sanity: every helper that returns a Structure shape carries atoms    #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
-#  helpers that outlived the companion/sidecar-file family              #
-#  (the family retired 2026-08-21; its doc, handoff-bundle.md, retired  #
-#   2026-08-29 with the bundle machinery)                               #
+#  The atoms list, through every helper                                #
 # --------------------------------------------------------------------- #
 
 
@@ -367,17 +325,6 @@ def _h2o_structure_path(tmp_path):
     p = tmp_path / "water.xyz"
     p.write_text(_h2o_xyz_text())
     return p
-
-
-
-# (test_apply_companion_labels_returns_none_when_no_companion retired
-#  2026-08-21 with its subject: the companion/sidecar-file family lost
-#  its last production caller when the emitting doors moved to the
-#  envelope -- C-shared.  Pattern B's re-homed check is pinned in
-#  tests/validation/.)
-
-
-
 
 
 def test_every_helper_carries_atoms_for_three_atom_water():

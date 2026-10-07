@@ -10,17 +10,10 @@ name". Everything else about it is an ordinary label: it arrives in the same
 list, groups through the same walk, filters through the same rule, and leaves in
 the same field.
 
-WHAT THESE TESTS EXIST TO PREVENT. This module used to carry two translators,
-one at each boundary, because the server kept the fact in a field of its own:
-
-  * inbound  — an `is_frozen` flag on the atom was turned into a label, so that
-               downstream code could have the one mechanism § 6.6 promises;
-  * outbound — the label was pulled back out into a `frozen_atoms` field, so the
-               server would recognise it.
-
-Both are gone with the server's second store (2026-07-31). A translator that
-comes back is a second storage that came back, so the tests below assert the
-absence directly: the label crosses BOTH boundaries as a label, untouched.
+WHAT THESE TESTS EXIST TO PREVENT: a translator at either boundary (an
+`is_frozen` flag turned into a label inbound, the label pulled out into a
+`frozen_atoms` field outbound) is a second storage, so the tests below assert
+the absence directly: the label crosses BOTH boundaries as a label, untouched.
 
 THE STAND-IN (§ 13.1) speaks the server's names. Its atom rows carry `regions`
 and nothing else — no `is_frozen` — because that is what `/api/selection/atoms`
@@ -175,7 +168,7 @@ def test_no_atom_carries_the_fact_twice():
 # ---------------------------------------------------------------------------
 
 def test_what_leaves_carries_the_reserved_label_in_the_label_field():
-    """The outbound half. There is no split at this boundary any more: the
+    """The outbound half. There is no split at this boundary: the
     server's shape IS the label store, so what leaves is what was held -- in
     `metadata`, where the envelope keeps it (web-api.md § 1)."""
     out = _run(
@@ -276,9 +269,8 @@ def test_an_op_sends_its_arguments_where_the_route_reads_them():
 
 
 def test_the_selection_lands_under_the_key_its_operation_names():
-    """The column § 11.1's table never had: WHERE the resolved selection goes.
-    Knowing how many atoms an op needs and not where to put them is why the
-    rebuilt code could not build a body."""
+    """§ 11.1's table names WHERE the resolved selection goes: knowing how many
+    atoms an op needs and not where to put them cannot build a body."""
     out = _run(
         """
         const m = await labelled();

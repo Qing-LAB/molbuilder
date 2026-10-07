@@ -19,22 +19,6 @@
  *     the PAGE's note, because the viewer tracks contents and not files
  *     (`molview.md` § 6.7).
  *
- * WHAT WENT, AND WHY (2026-09-02).  This file was written before the front
- * end had modules.  It could not `import`, so it took its collaborators off
- * globals and grew its own copy of the save flow: its own name dialog, its
- * own overwrite confirm, its own sidebar refresh, and a destination forced
- * to the sidebar's current directory.  `molviewFiles` landed in 2026-08 on
- * the modern path with the destination as a QUESTION, and this tab has
- * mounted it into the viewer ever since -- so two implementations reached
- * the same route with the same body by two roads that were free to drift,
- * and had.  ~300 lines here and the whole of `save-dialog.js` were that
- * second road.
- *
- * The user-visible change: Save now asks which folder, instead of writing
- * into whichever one the sidebar happened to be showing -- and the button is
- * no longer greyed out for want of a sidebar selection, which was a refusal
- * the screen could not explain.
- *
  * Surface (``window.molbuilder.structureSave``):
  *
  *   save()        -> Promise<{ok, path?, error?, cancelled?}>
@@ -61,10 +45,7 @@
      * AND IT (RE)ATTACHES THE SUBSCRIPTION.  `wirePanel` runs from
      * DOMContentLoaded; the viewer arrives later, after an `await
      * MV.mount(...)` in `selection-bootstrap.js`.  Whichever lands first is a
-     * race the page does not control -- and when the panel wired first, there
-     * was no model to subscribe to, `_wired` stopped a second attempt, and the
-     * readout never moved again: edit the structure and it went on saying
-     * "Target: x.xyz" with no "Unsaved".  So the arrival of a viewer is
+     * race the page does not control, so the arrival of a viewer is
      * treated as the moment to (re)subscribe, not the wiring. */
     function useViewer(viewer) {
         _handle = (viewer && viewer.ok) ? viewer : null;
@@ -106,8 +87,7 @@
      * THE PAGE'S OWN NOTE.  The viewer tracks contents, not files
      * (`molview.md` § 6.7) -- it never knew where anything came from or went
      * to.  `structurePage` keeps it because `structurePage` is what performed
-     * the save.  It drives the readout; it is NOT a destination, and has not
-     * been since the destination became a question. */
+     * the save.  It drives the readout; it is NOT a destination. */
     function targetPath() {
         _lazyResolve();
         var snap = (_structurePage && _structurePage.getCanvasSnapshot)
@@ -205,10 +185,8 @@
             var hasContent = !!(_model
                                 && _model.getStructure
                                 && _model.getStructure() !== null);
-            /* CONTENT IS THE ONLY PRECONDITION.  It also required a sidebar
-             * directory, because that used to BE the destination -- so Save
-             * sat greyed out for a reason nothing on screen stated.  The
-             * destination is part of the question the dialog asks now. */
+            /* CONTENT IS THE ONLY PRECONDITION: the destination is part of
+             * the question the dialog asks. */
             button.disabled = _inFlight || !hasContent;
 
             if (!readout) return;
@@ -225,8 +203,7 @@
         }
 
         /* The app's one severity surface (`lib/status.js`); its `error` IS
-         * red, unlike the `.muted` + undefined-modifier spelling seven panels
-         * shared before it. */
+         * red. */
         function setStatus(msg, kind) {
             root.molbuilder.status.set(
                 status, msg, kind === "error" ? "error" : null);

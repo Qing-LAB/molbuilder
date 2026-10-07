@@ -11,8 +11,7 @@ what it states at each, is read off the run's own output here: the SCF rows,
 the moves SIESTA began, the ``Max`` force it printed, the criteria its
 ``redata:`` lines state.
 
-These replace the monitor's tests on a relaxation saved under
-``tests/fixtures/siesta_relax`` (user, 2026-10-06: "when a test need siesta's
+The run is made, never saved (user, 2026-10-06: "when a test need siesta's
 output why is it not part of a e2e test?").
 """
 from __future__ import annotations
@@ -31,6 +30,7 @@ from _road import (conda_hook, env_available, h2_relaxed_for_vibration,
                    live_siesta)
 from molbuilder import monitor
 from molbuilder.monitor import NotifyPolicy
+from molbuilder.runfiles import RunNames
 
 pytestmark = [
     pytest.mark.engine,
@@ -135,8 +135,9 @@ def _replay(run: Path, tmp_path: Path, upto: int):
         with out.open("a") as fh:
             fh.write("".join(lines[at["n"]:to]))
         at["n"] = to
-    return there, monitor.WatchedRun(label="H2", stage="01_relax", run=0,
-                                     directory=there), grow
+    return there, monitor.WatchedRun(
+        names=RunNames.of("H2", "01_relax", "hierarchical"), run=0,
+        directory=there), grow
 
 
 def _statuses(there: Path):
@@ -473,7 +474,8 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
         "                      ('grammar', P._G), ('rules', P.compile_rules),\n"
         "                      ('names', M._rf))}\n"
         "where['from'] = os.path.basename(os.path.dirname(M.__file__))\n"
-        f"w = M.WatchedRun(label='H2', stage='01_relax', run=0)\n"
+        f"w = M.WatchedRun(names=M._rf.RunNames.of('H2', '01_relax', "
+        f"'hierarchical'), run=0)\n"
         "st = w.conclude(w.read(0.0, 1.0))\n"
         "print(json.dumps({'where': where, 'state': st.state,\n"
         "                  'detail': st.detail, 'converged': st.converged,\n"

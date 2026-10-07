@@ -29,8 +29,7 @@ The fix:
   * ``fetch(..., { cache: "no-store" })`` on the directory listing so
     the rescan actually reaches the server.
 
-These tests exercise both fixes end-to-end.  Each reads the menu only after
-the scan has landed (``_open_results``): the picker bar is always visible, so
+Each test reads the menu only after the scan has landed (``_open_results``): the picker bar is always visible, so
 its visibility says nothing about the scan.
 """
 from __future__ import annotations
@@ -126,9 +125,8 @@ def _open_results(page, base_url):
     handled -- and its scan has LANDED: the picker's announcement, which it
     makes once per scan.  What follows reads the menu that scan built.
 
-    Not the picker bar's visibility: the bar is always visible (since
-    2026-06-15), so waiting for it returned at once and the tests read the
-    menu mid-scan.  Needs `_WATCH_THE_PICKER`, which `_setup_modify_dir`
+    Not the picker bar's visibility: the bar is always visible, so waiting
+    for it would return at once, mid-scan.  Needs `_WATCH_THE_PICKER`, which `_setup_modify_dir`
     installs."""
     page.goto(f"{base_url}/results")
     page.wait_for_function(
@@ -153,13 +151,6 @@ def _setup_modify_dir(page, base_url, dir_path):
 # --------------------------------------------------------------------- #
 #  Tests                                                                #
 # --------------------------------------------------------------------- #
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 12 tests here listed SIESTA outputs invented as text -- five classes whole
-# (`TestStaleResultsRefresh`, `TestPageshowForcesRescan`, `TestOneScanPerVisit`,
-# `TestResultsDecoupledFromSidebar`, `TestThePanelOwnsItsFolder`) and one test
-# beside the test kept below (`process/testing.md` § 6).
 
 
 class TestVisibilityChangeForcesRescan:
@@ -209,5 +200,3 @@ class TestVisibilityChangeForcesRescan:
                      text: m.textContent }; }""")
         assert any("Scanning" in t for t in state["seen"]), state  # it rescanned
         assert not state["busy"], state
-
-

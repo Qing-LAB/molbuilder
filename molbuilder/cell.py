@@ -19,29 +19,11 @@ Contract: docs/model/structure-periodicity.md § 6.0 (where the atoms sit) and
 § 6.1 / § 6.1a (what is true of the box), and the finding contract in
 docs/science/validation.md § 4.1 (R1–R6).
 
-WHY THIS MODULE EXISTS (decided 2026-08-03 — cell-plan.md § 6a).  Two jobs had
-grown many hands, and the hands disagreed.
-
-**Working the box out** was spread over six methods on ``Structure`` that call
-each other -- a corner resolver → its expected corner → ``effective_vacuum``,
-and ``resolve_cell`` → ``effective_vacuum`` again.  One box computed its
-effective vacuum three or four times, and a caller could enter at any of the
-six and get a partial view of the answer.  The box's size is still
-``Structure``'s arithmetic; **where it sits is the engine offset**
-(:func:`engine_offset`, 2026-09-25), and the corner resolvers are gone with the
-stored corner they served.  Nobody outside composes them: they compose here,
-once, into a :class:`ResolvedCell`.
-
-**Judging the box** was worse, because it was TWO systems.  The gate emitted
-``{level, message, about}`` notices; the validators emitted ``Issue``s with a
-``where``; and three call sites raised bare ``ValueError``.  The same fact --
-*this box has no volume* -- was decided in FOUR places at TWO thresholds
-(``structure.py`` 1e-8, the gate 1e-8, the gate's reset path 1e-6, the emitter
-1e-6).  Only the delivery contract held it together, by hand.
-
-So: one resolver, one checker, one vocabulary.  ``where`` is the stable id, as
-R1–R6 already require, which is why the Cell page and the Generate preflight can
-finally show the same finding.
+WHY THIS MODULE EXISTS: one resolver, one checker, one vocabulary.  The box's
+size is ``Structure``'s arithmetic; **where it sits is the engine offset**
+(:func:`engine_offset`).  Nobody outside composes them: they compose here,
+once, into a :class:`ResolvedCell`.  ``where`` is the stable id, as R1–R6
+require.
 
 WHAT IS NOT HERE, DELIBERATELY.
 
@@ -70,16 +52,12 @@ import numpy as np
 from .issues import Issue, ValidationError
 from .structure import Structure
 
-#: THE zero-volume threshold, in Å³.  One constant, where there were two.
+#: THE zero-volume threshold, in Å³.
 #:
-#: 1e-6 rather than 1e-8: it was the value the EMITTER used, and the emitter is
-#: the last line of defence before a cell reaches SIESTA, which builds
-#: reciprocal vectors from it and fails outright on a singular one.  Unifying
-#: downward would have loosened the guard that matters most.  The difference is
-#: academic in Å³ -- a real cell is 10²–10⁴, and even a deliberately tiny one is
-#: ~1 -- so both values only ever catch true degeneracy.
+#: SIESTA builds reciprocal vectors from the cell and fails outright on a
+#: singular one.  A real cell is 10²–10⁴ Å³, and even a deliberately tiny one
+#: is ~1, so this only ever catches true degeneracy.
 ZERO_VOLUME_TOL = 1e-6
-
 
 
 @dataclass(frozen=True)
@@ -152,9 +130,8 @@ def resolve(struct: Structure, *,
             box: Optional[np.ndarray] = None) -> ResolvedCell:
     """Work the box out, once, and say everything that is true of it.
 
-    ``box`` overrides what the structure resolves to -- for the one caller that
-    has a different one: a generator emitting a lattice it chose itself
-    (``render_fdf`` passes ``cell=`` into ``validate``).  The checker must judge
+    ``box`` overrides what the structure resolves to -- for a caller judging
+    the box it will write (``validate``'s ``cell``).  The checker must judge
     the box that will ACTUALLY be used, or it is answering about a box nobody
     will run.  Omitting it is the normal case and asks the structure.
 
@@ -174,9 +151,6 @@ def resolve(struct: Structure, *,
 
     # NOTE the regime is NOT touched by ``box``.  A box handed in changes WHICH
     # box is measured; it says nothing about whether the USER typed a cell.
-    # Conflating the two made `cell.vacuum_ignored` tell a user "your vacuum is
-    # not being used: you typed a cell" when they had typed no cell at all and
-    # the generator had merely passed the derived box in for checking.
     common = dict(
         vacuum=eff,
         stated_vacuum=stated,
@@ -365,8 +339,7 @@ def check(rc: ResolvedCell) -> List[Issue]:
             f"round (left-handed, det = {det:.6g}). Fix it by swapping any two "
             f"of the three rows, or by flipping the sign of one.",
             "cell.left_handed"))
-        # SHORT-CIRCUIT, as the gate's `_require_right_handed` did by raising:
-        # in a mirrored frame the fractional coordinates run backwards, so
+        # SHORT-CIRCUIT: in a mirrored frame the fractional coordinates run backwards, so
         # containment and clearances describe a box nobody has.  Fix the
         # handedness and the rest can be asked honestly.
         return out
@@ -393,7 +366,7 @@ def check(rc: ResolvedCell) -> List[Issue]:
             "cell.no_volume"))
 
     # YOUR VACUUM IS DOING NOTHING -- said whenever it is true, which is the
-    # point (cell-plan.md § 3c).  A condition, not a receipt: it is true until
+    # point.  A condition, not a receipt: it is true until
     # the regime changes, so it belongs here and is answered on every
     # hand-over, whatever else the box has wrong with it.
     #
@@ -401,8 +374,7 @@ def check(rc: ResolvedCell) -> List[Issue]:
     #
     # ALSO SILENT WHEN THE STORED VACUUM IS ALL ZEROS.  A zero vacuum being
     # ignored changes nothing about the box, so the sentence is true and
-    # useless -- it corrects an expectation nobody has, and it was firing on the
-    # commonest state a typed cell is in.  What earns the interruption is a
+    # useless -- it corrects an expectation nobody has.  What earns the interruption is a
     # NUMBER THE USER CHOSE that has stopped counting.
     if (rc.is_manual and rc.stated_vacuum is not None
             and any(float(v) != 0.0 for v in rc.stated_vacuum)):
@@ -420,7 +392,7 @@ def check(rc: ResolvedCell) -> List[Issue]:
     # reference-only (§ 6.2), so announcing a default gap would describe a
     # number that never reaches the calculation -- a molecule in a hand-typed
     # 30 Å box would be told the box came from a 3 Å default.  Same trap as
-    # ``cell.vacuum_thin``, which had to learn the same lesson.
+    # ``cell.vacuum_thin``.
     if rc.defaulted_axes and not rc.is_manual:
         gap = rc.vacuum[rc.defaulted_axes[0]]
         where = ", ".join("abc"[i] for i in rc.defaulted_axes)
@@ -685,8 +657,7 @@ ATOMS_OUTSIDE = "cell.atoms_outside"
 #: the structure's cell: PySCF's ``gto.M`` is gas phase.  Such an engine
 #: computes a cluster -- isolated on all three axes, no cell -- so its
 #: electron count is a molecule's, a vibration removes a free cluster's
-#: motions, and it has no box to judge.  Moved here from
-#: ``electronic_state`` (where it decided *finite* alone) on 2026-10-01.
+#: motions, and it has no box to judge.
 MOLECULAR = frozenset({"pyscf"})
 
 _CLUSTER = ("isolated", "isolated", "isolated")
@@ -716,8 +687,7 @@ def box_findings_for(engine: str, findings: Sequence[Issue]) -> List[Issue]:
     impossible box is a broken structure, refused on every road -- and the
     forecast of the hand-off's refusal (:data:`ATOMS_OUTSIDE`), since its
     atoms are placed in the box too; the rest is advice about a calculation
-    in the box (the K8 review: the forecast was dropped with the advice, and
-    PySCF's prep refused what its live check no longer said)."""
+    in the box."""
     if computes_in_cell(engine):
         return list(findings)
     return [i for i in findings
@@ -768,8 +738,7 @@ def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
 #: spacings agreeing to 4e-16.  The builder contributes nothing.
 #: (`modify.py`'s `round(float(z), 6)` picks which layers to keep; the
 #: stored coordinates come from `all_pos` unrounded, so it is not a
-#: source of error here.  Reading it as one cost a wrong version of
-#: this comment on 2026-09-21.)
+#: source of error here.)
 #:
 #: So this is the noise floor of the FILE ROUND TRIP and nothing else,
 #: DERIVED FROM THE WRITER rather than from any file on disk: a lead
@@ -832,7 +801,6 @@ def bulk_z_period(
 
 # --------------------------------------------------------------------- #
 #  Reading a lattice constant back OUT of a relaxed result                #
-#  (archive/2026-09-01-modify-redesign-plan.md § 3.3)                                  #
 # --------------------------------------------------------------------- #
 
 #: Fractional width of the nearest-neighbour shell.  6% holds a relaxed
@@ -901,13 +869,9 @@ def measure_fcc(positions, cell) -> FccMeasurement:
     box = np.asarray(cell, dtype=float).reshape(3, 3)
     n = int(pos.shape[0])
     if n < 1:
-        # ONE ATOM IS ENOUGH, and the first version of this guard said
-        # `n < 2`.  A primitive fcc cell holds exactly one atom whose twelve
-        # nearest neighbours are its own periodic images -- precisely the
-        # case the image handling below exists for -- so refusing it hid a
-        # real bug in that handling behind a plausible sentence.  The
-        # comment two blocks up already promised the opposite; a test
-        # settled which of the two was the mistake.
+        # ONE ATOM IS ENOUGH: a primitive fcc cell holds exactly one atom
+        # whose twelve nearest neighbours are its own periodic images --
+        # precisely the case the image handling below exists for.
         raise ValueError("there are no atoms of that element to measure")
     if abs(float(np.linalg.det(box))) < ZERO_VOLUME_TOL:
         raise ValueError(
@@ -932,7 +896,7 @@ def measure_fcc(positions, cell) -> FccMeasurement:
         # minimum over the 27 images first would have dropped an atom's own
         # images WITH it -- and on a one-atom primitive cell those are the only
         # neighbours there are, so the function would have had nothing to
-        # measure and said so, wrongly.  (Caught on the first run, 2026-08-30.)
+        # measure and said so, wrongly.
         d = d[d > _SAME_POINT_ANG]
         if d.size:
             per_atom.append(d)
@@ -961,7 +925,6 @@ def measure_fcc(positions, cell) -> FccMeasurement:
 
 # --------------------------------------------------------------------- #
 #  Does the boundary continue the crystal?                                #
-#  (archive/2026-09-01-bench-and-junction-plan.md § 2.4)                               #
 # --------------------------------------------------------------------- #
 
 #: Two atoms closer than this across the boundary are colliding, not bonded.
@@ -969,10 +932,10 @@ SEAM_COLLISION_ANG = 0.5
 
 #: How far a lateral offset may sit from a reference and still be called it.
 #: 0.3 A is well under the smallest real registry step -- a/sqrt(6) = 1.67 A
-#: on fcc(111), the tightest of the three (fcc(100) a/2 = 2.04, fcc(110) 2.50).
+#: on fcc(111), the tightest of the three (fcc(100) a/2 = 2.04, fcc(110) 2.50)
+#: -- and well over any relaxation jitter in a frozen outer layer.
 #: (1.44 A = a/(2*sqrt(2)) is the fcc(110) INTERLAYER spacing, measured along
 #: z; it is not a registry step, and it is not (111)'s.)
-#: and well over any relaxation jitter in a frozen outer layer.
 SEAM_STEP_TOL_ANG = 0.3
 
 #: How many interlayer spacings of room mean the boundary is VACUUM rather
@@ -1058,8 +1021,7 @@ def _failing_condition(n_layers: int, period: Optional[int]) -> str:
     The contract requires the warning to NAME the failing condition, and the
     condition does not follow from the verdict -- the real `Au-BDT-Au`
     junction is `eclipsed` with 6 layers per side, which is a whole number of
-    periods, so § 3.1 HOLDS there and only the mirror is wrong.  Reading the
-    condition off the verdict called that one backwards.
+    periods, so § 3.1 HOLDS there and only the mirror is wrong.
 
     So it is measured: the layer count is the one that fails when the layers
     are not a whole number of stacking periods; otherwise the placement is.
@@ -1094,13 +1056,11 @@ def classify_seam(positions, cell) -> SeamVerdict:
     has the correct bulk bond length, so a distance check passes it.  Only the
     registry separates continuation from a twin.
 
-    **AND THE REGISTRY IS NOT TESTED BY ARITHMETIC.**  Two earlier versions
-    compared the seam's lateral step against the in-slab step -- first
-    directly, then reduced modulo the cell -- and both were wrong for the same
-    reason the slab builder hit: consecutive layers step by `period` DIFFERENT
-    vectors that agree only modulo the PRIMITIVE lattice, while the cell on
-    hand is the SUPERCELL's, m times larger.  A perfectly continuous 3-layer
-    Au(111) boundary came back `unknown`.
+    **AND THE REGISTRY IS NOT TESTED BY ARITHMETIC.**  Comparing the seam's
+    lateral step against the in-slab step fails, directly or reduced modulo
+    the cell: consecutive layers step by `period` DIFFERENT vectors that agree
+    only modulo the PRIMITIVE lattice, while the cell on hand is the
+    SUPERCELL's, m times larger.
 
     So this asks the question that has an answer without any lattice
     arithmetic: **which layer of this slab does the imaged one coincide
@@ -1152,12 +1112,9 @@ def classify_seam(positions, cell) -> SeamVerdict:
         up[None, :, :] - top[:, None, :], axis=2).min())
     # THE ROOM AT THE BOUNDARY IS VERTICAL, and the two are not the same
     # number: where consecutive layers sit laterally offset, the nearest atom
-    # ACROSS the boundary is further than the layers are apart.  Measuring
-    # room with the 3-D distance called a perfectly padded fcc(110) boundary
-    # vacuum (2.04 Å of reach across a 1.44 Å spacing), and called a box with
-    # its padding removed -- layers at the SAME z, 1.66 Å apart sideways -- a
-    # continuation.  So room is measured up, and `gap` is reported as the
-    # closest approach it is.
+    # ACROSS the boundary is further than the layers are apart (on a padded
+    # fcc(110) boundary, 2.04 Å of reach across a 1.44 Å spacing).  So room is
+    # measured up, and `gap` is reported as the closest approach it is.
     z_room = float(up[:, 2].min() - top[:, 2].max())
     seam = _shortest_lateral(top[:, :2], up[:, :2])
     slab = _shortest_lateral(sets[-2][:, :2], top[:, :2])
@@ -1187,9 +1144,7 @@ def classify_seam(positions, cell) -> SeamVerdict:
     #
     # The search runs over the slab's layers PLUS the imaged one, because a
     # slab exactly one period tall has no repeat inside it -- layer 0 comes
-    # back only across the boundary.  Leaving the image out found no period
-    # for exactly the three slabs that continue most perfectly (3-layer (111),
-    # 2-layer (100) and (110)) and called all three wrong.
+    # back only across the boundary.
     stack = sets + [up]
     period = next((p for p in range(1, N + 1)
                    if _coincide(stack[0][:, :2], stack[p][:, :2])
@@ -1334,12 +1289,7 @@ def interplanar_spacing(system: str, plane: str, a: float) -> float:
     """Distance (Å) between adjacent ATOMIC layers of *plane*, for a cubic
     crystal of type *system* with lattice constant *a*.
 
-    **One rule, not a table of surfaces.**  This lived as three literals in
-    `modify/slab-panel.js` -- `a/sqrt(3)`, `a/2`, and a nearest-neighbour
-    line -- which is the layer that should not know crystallography.  It was
-    also short one row: `d(110)` was missing, so a person building fcc(110)
-    was shown two spacings, neither of them the one the Cell page asks them
-    to type.
+    **One rule, not a table of surfaces.**
 
     *a* is stated by the caller and never defaulted: which reference a
     number came from (experimental, PBE, measured) changes it by ~2%, and a

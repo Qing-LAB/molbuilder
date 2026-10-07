@@ -238,7 +238,7 @@ Every adjacent pair is a data dependency, not a convention.
 
 | this must precede this | because |
 |---|---|
-| 1 → 2 | a value can be derived from the rank count — a block size is |
+| 1 → 2 | a value can be bounded by the rank count — a block size's window is |
 | **step 2 → identity** | the stage token and the trial coordinate that name a file come from the resolved set |
 | **load → data files** | the structure's elements are what say which data files are needed |
 | **validate → structure** | refuse an unsound calculation before writing a line of it |
@@ -362,7 +362,7 @@ a gap visible:
 | **3.13** declare | what the wrapper must route on | `traits_for` | no |
 
 **Everything marked `spec.` arrives through ONE seam member** — `spec_for`,
-*(structure, config, stage_token) → DeckSpec* — because they are all the engine
+*(structure, config, names=…) → DeckSpec* — because they are all the engine
 describing its deck. The rest are per-job facts the conductor needs before or
 after the deck exists.
 
@@ -721,7 +721,7 @@ sequenceDiagram
     participant D as the deck<br/>in the plan
 
     C->>C: resolve the values for THIS rung<br/>(template ⊕ the stage's overrides)
-    C->>E: spec_for(structure, config, stage_token=…)
+    C->>E: spec_for(structure, config, names=…)
     E->>E: derive what the LAYOUT depends on<br/>(run mode · solver · is the spin pinned)
     E-->>C: a DeckSpec — the layout, and how to spell a setting
     C->>F: prepare_deck(spec, structure, config, path)
@@ -974,11 +974,14 @@ The rule that binds the two axes:
 
 Two rules make that table readable.
 
-> **W7 · Floor 3 returns text. It does not touch the disk.** `render_fdf` and
-> `render_script` hand back a string; **the conductor writes it**, through the one
-> writer W4 names. That is what keeps *"one deck, one writer"* true no matter
-> how many engines exist, and it is why the *writes* column above belongs to the
-> step rather than to the floor.
+> **W7 · Floor 3 returns text. It does not touch the disk.**
+> `script_emit.render_deck` hands back a string — the deck's text, from the
+> `DeckSpec` the engine's `spec_for` describes; **the conductor writes it**,
+> through the one writer W4 names: `prepare_deck` passes the text to
+> `write_script`, which puts it in the conductor's plan, and the conductor
+> writes the plan once every step has passed (§ 3.0). That is what keeps
+> *"one deck, one writer"* true no matter how many engines exist, and it is why
+> the *writes* column above belongs to the step rather than to the floor.
 >
 > **Step 4 follows it too** *(2026-08-18)*. `render_wrappers` returns the set of
 > texts a run needs — the wrapper, the `.sbatch` when the machine has a queue,
@@ -1074,17 +1077,18 @@ for. Under W2 those cannot drift, because the note was read from the same
 declaration the value came from — and the wording carries no number that competes
 with the emitted one.
 
-`tight`'s deck differs exactly where step 2 said it would, including the three
-restart keys that make it warm:
+`tight`'s deck differs exactly where step 2 said it would, including the two
+restart keys that make it warm (`MD.UseSaveCG` is written only for a CG
+relaxation):
 
 ```
 MD.TypeOfRun      Broyden          DM.UseSaveDM      .true.
 MD.MaxForceTol    0.01 eV/Ang      MD.UseSaveXV      .true.
-                                   MD.UseSaveCG      .true.
 ```
 
-**Step 4** renders `bdt-e2e_01_coarse.run.sh` from the *finished* deck, reading it
-for which environment to activate and how many ranks to ask for. **Step 5** opens
+**Step 4** renders `bdt-e2e_01_coarse.run.sh` beside the *finished* deck: the
+environment and the rank count are handed to it, and it reads the deck for its
+restart keys and atom count. **Step 5** opens
 the attempt and copies into it what the run needs:
 
 ```

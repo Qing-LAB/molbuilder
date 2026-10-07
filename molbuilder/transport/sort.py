@@ -47,9 +47,7 @@ from ..structure import Structure, remap_annotations
 # The labels a transport junction's atoms carry in the `.molstruct.json`
 # sidecar's `regions`.  Here because this module owns the partition they
 # make; everything that reads a region label -- the emitter, compose,
-# validation -- asks here, so a rename happens once.  (They lived in
-# `config/transport.py` beside `TransportConfig` until that class retired,
-# M5 step 3, 2026-10-02.)
+# validation -- asks here, so a rename happens once.
 
 REGION_LEFT_ELECTRODE  = "L-electrode"
 REGION_RIGHT_ELECTRODE = "R-electrode"
@@ -76,10 +74,9 @@ PARTITION_LABELS = (*ELECTRODE_LABELS, REGION_BRIDGE, REGION_BUFFER)
 TRANSPORT_AXIS = 2
 
 #: How the two electrode blocks sit along transport, as one word.
-#: ONE door for the fact, because four places need it and they must not
-#: disagree: the sort's note, the engine preflight's warning, the web
-#: describe (which offers the swap when the answer is ``inverted``),
-#: and the swap itself.
+#: ONE door for the fact, because three places need it and they must not
+#: disagree: the sort's note, the web describe (which offers the swap when
+#: the answer is ``inverted``), and the swap itself.
 ORDER_CANONICAL = "canonical"        # L below R -- the usual convention
 ORDER_INVERTED = "inverted"          # L above R -- runs; a swap flips it
 ORDER_INTERLEAVED = "interleaved"    # no two ends -- nothing to build
@@ -117,7 +114,7 @@ def electrode_orientation(struct: Structure) -> Optional[str]:
 
 def inverted_note(struct: Structure) -> str:
     """The one sentence every surface says about an inverted pair —
-    the sort's note, the engine preflight's warning, the tab's offer.
+    the sort's note, the tab's offer.
 
     It states the measurement and the CONSEQUENCE, and stops: which
     end carries +V/2 is the author's call about their own experiment
@@ -299,15 +296,6 @@ def categorical_sort(struct: Structure) -> SortResult:
     # blocks, excluded from the NEGF region -- so "below the lower
     # block" IS the low end, "above the upper block" IS the high end,
     # and anything else is not outside anything.
-    #
-    # It used to be two rules: the side came from the midpoint of the
-    # WHOLE structure and the legality was then checked against the
-    # electrodes.  They agree on ordinary junctions and part company on
-    # lopsided ones -- padding at one end taller than everything below
-    # it puts the midpoint above the upper electrode, files real
-    # top-buffer atoms at the bottom, and refuses a correctly labeled
-    # structure for "buffer inside the electrode".  One rule cannot
-    # disagree with itself.
     z_lo_min = min(float(z[j]) for j in lo)
     z_hi_max = max(float(z[j]) for j in hi)
     buf_lo, buf_hi, misplaced = [], [], []
@@ -407,16 +395,12 @@ def apply_order(struct: Structure, order: List[int],
     def _take(seq):
         return None if seq is None else [seq[i] for i in order]
 
-    # A REORDER STATES THE PER-ATOM FIELDS AND NOTHING ELSE.  This was a
-    # hand-list of fourteen, and the two it did not name were `cell_origin`
-    # and `info`: the junction's stored corner was lost, so `render_fdf`
-    # DERIVED one instead of reading it and wrote the atoms displaced along
-    # the transport axis, and the recorded contract the citation warnings
-    # read was deleted (`model/structure.md` § 2.2a -- a strip is explicit,
-    # never a field a rebuild forgot).
+    # A REORDER STATES THE PER-ATOM FIELDS AND NOTHING ELSE: every other field
+    # rides `replace` whole (`model/structure.md` § 2.2a -- a strip is
+    # explicit, never a field a rebuild forgot).
     #
     # `frozen_atoms` is not passed: `regions` is the whole label store and
-    # the remap above already carries the reserved label, which is the trap
+    # the `regions` remap below already carries the reserved label, which is the trap
     # `replace` documents.
     sorted_struct = struct.replace(
         elements=[struct.elements[i] for i in order],

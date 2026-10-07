@@ -96,15 +96,3 @@ launch = []
 launch_mode = "direct"
 launch_sends = true
 listing = ["G0K1C1", "skipped -- already launched", "[ran]"]
-
-# ---- ...ON A QUEUE: one job per resource shelf (`generator.md` § 4.3a)
-
-# Retired 2026-10-06 (W57 T1, user: "the whole default test set should never
-# be based on fabricated text"): a row whose `before_launch` sent every trial to
-# a queue so that none was left (the direct row above passes launched trials
-# over by name), and the two rows that SENT a benchmark's
-# shelves to a queue -- every shelf written before any is sent, one the
-# scheduler refuses keeping its trials pending; the shelf's walk running
-# each trial in its attempt.  Both read what a stand-in `sbatch` answered,
-# in SLURM's words.  A send to a real scheduler is the field tier's
-# (`tests/field/`, testing.md § 0).

@@ -71,14 +71,7 @@
     }
 
     /**
-     * The header, which since 2026-09-19 answers WHERE rather than WHAT.
-     *
-     * It was the filename alone, and hidden by CSS as "redundant -- the
-     * selected option carries the same filename".  Both halves were true and
-     * together they were the 2026-08-04 defect: the panel rendered a run from
-     * another folder and the option said only `siesta.out`, so every number
-     * was plausible and every number was wrong, "with nothing on screen
-     * saying so".
+     * The header answers WHERE rather than WHAT.
      *
      * The dropdown owns the filename.  This owns the folder, which is the
      * thing that can now differ from where the sidebar is pointing -- and it
@@ -87,11 +80,8 @@
      */
     function _renderStatus(file, inspectorName, scope) {
         /* THE LAST SCOPE STICKS.  Callers that know nothing about the folder
-         * -- `_showFallback`, and `init`'s first paint -- used to pass none,
-         * and this reset the readout to "No folder selected" over a panel
-         * that was bound.  On a page load into a folder whose scan then
-         * failed, that was the final state: no folder named anywhere, and an
-         * error in the menu. */
+         * -- `_showFallback`, and `init`'s first paint -- pass none, and the
+         * readout keeps the bound folder rather than "No folder selected". */
         if (scope) _scope = scope;
         const sc = _scope || { dir: "", diverged: false };
         if (els.fileReadout) {
@@ -106,7 +96,7 @@
             } else {
                 /* THE FILE IS NOT IN THE BOUND FOLDER, so do not write it as
                  * if it were.  `<bound>/<basename>` is a path that does not
-                 * exist, and printing it is exactly the 2026-08-04 failure --
+                 * exist, and printing it would put
                  * a plausible name over another run's numbers.  It happens
                  * for one round-trip after every Reload, and permanently
                  * when that Reload's scan fails. */
@@ -136,8 +126,7 @@
     //: WHAT A DIRECTORY IS -> what the empty state should say about it.
     //: `project-layout.md` § 1.4a's vocabulary, and the only copy of it in
     //: the browser: the server answers `place.role` in the same response the
-    //: menu is built from, so the page states that answer instead of the one
-    //: generic sentence it used to show for every case.  `null` is not
+    //: menu is built from, so the page states that answer.  `null` is not
     //: "neither" -- it is *unknown*, and says so.
     const PLACE_NOTE = {
         container:
@@ -419,24 +408,15 @@
             return;
         }
 
-        // SIDEBAR-DRIVEN dispatch RETIRED 2026-06-09 (task #301).
-        // Pre-301: every sidebar pick fired _onSelectionChange on
-        // /results, dispose-then-mount-ing an inspector — single-
-        // clicking around the sidebar was hijacking the Results
-        // tab mid-read.  Post-301, /results listens for an
+        // /results listens for an
         // explicit ``molbuilder:results:fileSelected`` event that
         // the dropdown picker dispatches when the user picks a
         // file from #results-file-picker-select (or when the
         // picker auto-picks on first rescan).  Sidebar single-
-        // clicks no longer steer the inspector; the user gets
-        // back full control of what's mounted.
+        // clicks do not steer the inspector.
         document.addEventListener(
             window.molbuilder.constants.EVENT_FILE_SELECTED,
-            /* THE DETAIL IS PASSED THROUGH, NOT RE-LISTED.  This copied
-             * `file` / `meta` / `place` into a fresh object by hand, so the
-             * picker gained `dir` and `diverged` on 2026-09-19 and the header
-             * went on showing a bare filename -- the listener was silently
-             * dropping the two fields the folder readout is made of.  A
+            /* THE DETAIL IS PASSED THROUGH, NOT RE-LISTED.  A
              * hand-kept field list between two halves of one contract is a
              * second shape of the same record; `_onSelectionChange` already
              * guards every field it reads. */
@@ -457,7 +437,7 @@
             }
         );
 
-        // Tab-level result-file picker (2026-06-01).  Owns its own
+        // Tab-level result-file picker.  Owns its own
         // directory rescan + dropdown population.  Dispatches
         // ``molbuilder:results:fileSelected`` when the user picks
         // (or the auto-pick fires on a fresh dir); the event
@@ -469,15 +449,12 @@
 
         /* A DOUBLE-CLICK SHOWS THE FILE -- and still does not touch this
          * panel.  The interaction model (2026-06-07) says a commit runs the
-         * active tab's "use this file" action, and every other tab has one:
-         * Molbuilder loads the structure onto the canvas, spectra loads the
-         * file.  /results had none, so a double-click here did nothing at
-         * all -- the only tab that ignored the gesture.
+         * active tab's "use this file" action: Molbuilder loads the structure
+         * onto the canvas, spectra loads the file.
          *
          * Its action is the sidebar's own viewer, NOT a mount.  The panel is
          * built from the list and the list is re-read only when you ask
-         * (user, 2026-09-19), so letting a sidebar gesture mount something
-         * would put back exactly the coupling the Reload button replaced.
+         * (user, 2026-09-19), so a sidebar gesture never mounts anything.
          * Showing the file answers "what is in this one?" without disturbing
          * what you are reading.
          *
@@ -491,20 +468,10 @@
             proj.onCommit((sel) => proj.showPreview(sel && sel.file));
         }
 
-        /* NOTHING IS MOUNTED FROM OUTSIDE THE LIST (2026-09-19).
-         *
-         * A direct `_onSelectionChange({file: projects.getCurrentFile()})`
-         * stood here, to show a remembered file without waiting for the scan.
-         * It was a second source for what the panel displays, and it beat the
-         * scan to the host every time -- so on the commonest page load the
-         * viewer was chosen by FILENAME, with no `meta` and no `place`, which
-         * is the guessing the server door replaced.  It could also mount a
-         * file this directory does not offer, or one no parser can read.
-         *
-         * The picker announces its choice on every scan now, including the
-         * "we kept what you had" arm that used to stay silent -- which is
-         * exactly the case this bootstrap existed to cover.  So the wait is
-         * one round-trip, and what lands is the answer rather than a guess.
+        /* NOTHING IS MOUNTED FROM OUTSIDE THE LIST (2026-09-19): the picker
+         * announces its choice on every scan, including the "we kept what you
+         * had" arm, so the wait is one round-trip and what lands is the
+         * server's answer rather than a filename guess.
          */
         _showFallback("");
     }

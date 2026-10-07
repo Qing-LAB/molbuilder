@@ -4,8 +4,7 @@ Format-blind indexed session snapshots (`workspace.md` § 9, the state files on
 the server and their two ordering rules): ``state/write``
 stores an OPAQUE blob under ``<workspace_id>.<state_index>.wc.json``; ``state/read``
 round-trips the exact JSON (NOT through the {xyz,sidecar} codec); ``state/prune``
-tail-deletes above an index (-1 clears the whole timeline).  Extracted from the
-retired ``/api/workingcopy/*`` door.
+tail-deletes above an index (-1 clears the whole timeline).
 """
 import json
 
@@ -49,11 +48,9 @@ def test_workspace_storage_roundtrip_and_prune(client_project):
     r = _json(client.post("/api/workspace-storage/read",
                           json={"workspace_id": ws, "state_index": 1}))
     assert r["data"] == dict(snap, idx=1)
-    # NOTHING SAVED THERE IS A NORMAL ANSWER: 200, data null.  It was a 404,
-    # which a browser logs as a console error -- so a tab asking "did I leave
-    # anything here?" on arrival printed one on every clean load -- and which
-    # the rate limiter counts as 4xx, so the page built a case against its own
-    # user once per page view.  4xx is for a request that is wrong.
+    # NOTHING SAVED THERE IS A NORMAL ANSWER: 200, data null.  A 404 is logged
+    # by a browser as a console error on every clean load, and the rate
+    # limiter counts it against the user.  4xx is for a request that is wrong.
     r = client.post("/api/workspace-storage/read",
                     json={"workspace_id": ws, "state_index": 9})
     assert r.status_code == 200 and _json(r)["data"] is None

@@ -1,8 +1,8 @@
 """Sidecar JSON write-side helpers.
 
 Per ``docs/model/parse.md`` H2: this package hosts
-the write-side of the ``.molstruct.json`` / ``.spectra.json`` /
-``.transport.json`` sidecars.  The read-side lives in
+the write-side of the ``.molstruct.json`` / ``.spectra.json``
+sidecars.  The read-side lives in
 ``molbuilder.parse.sidecars``.
 
 The two halves are intentionally split:
@@ -26,6 +26,4 @@ Per-format modules:
   frozen_atoms metadata that rides next to a structure file.
 * :mod:`molbuilder.sidecars.spectra` — spectrum-results envelope
   (peaks, dipole strengths, …).
-* :mod:`molbuilder.sidecars.transport` — transport-results
-  envelope (T(E), I-V, …).
 """

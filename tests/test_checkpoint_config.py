@@ -10,13 +10,6 @@ Every assertion here is derived from that section, not from
 caller*, so a rename inside the module that keeps the promise does not fail
 these, and a change that breaks the promise does.
 
-**S1c is asserted as a closed door, not as an absent file.** The old test here
-checked that reading the config created nothing in the calculation folder and
-that a file under the *previous* name was absent — both true while a file under
-the *current* name sat in that folder deciding where every byte was stored. A
-rule about where something may live is only tested by putting it in the wrong
-place and requiring a refusal.
-
 Real files, real config scopes, no mocks — § 13.3 bans mocking the layer under
 test, and a config reader whose file-reading is faked is a config reader nothing
 has checked.
@@ -37,18 +30,15 @@ from molbuilder.runtime_config import (
 def _own_scope(checkpoint_config):
     """Every test in this file gets its own server-wide config directory.
 
-    Without it these read whatever `molbuilder.json` happens to sit in the
-    directory the suite was launched from, which is how a config test comes to
-    pass for a reason nobody chose.
+    Without it these read a `molbuilder.json` nobody wrote for them, which is
+    how a config test comes to pass for a reason nobody chose.
     """
     return checkpoint_config
 
 
 def _write_config(section) -> None:
     """Put a ``checkpoint`` section where the contract says it lives -- this
-    machine's one config file, asked of its door (it was written into the
-    working directory, read only because the fixture had changed into the
-    config directory first, until 2026-10-02)."""
+    machine's one config file, asked of its door."""
     from molbuilder.runtime_config import machine_config_path
     machine_config_path().write_text(json.dumps({"checkpoint": section}),
                                      encoding="utf-8")
@@ -73,9 +63,6 @@ def test_size_limit_is_changeable():
 # ------------------------------------------------------------------ #
 #  § 4 — three entries, and an engine is only ever a hint             #
 # ------------------------------------------------------------------ #
-
-
-# `test_the_three_named_entries_exist` retired 2026-10-02 (W54): it could not fail -- a missing engine falls back to generic's list; `test_an_engine_hint_selects_that_engines_families` holds the entries.
 
 
 def test_generic_names_nothing_so_everything_is_measured():

@@ -8,9 +8,7 @@ graph, in one walk:
     the job names none on a menu        -> refuse: a job names its own queue
 
 **Nothing here chooses a queue** *(user, 2026-10-02: "explicit job config is
-the only way allowed"; `architecture.md` § 5.2)*.  Until then an unnamed job
-was given the cheapest ceiling that fits -- ordered by a `placement_priority`
-from `molbuilder.json` -- which was a queue nobody named for it.
+the only way allowed"; `architecture.md` § 5.2)*.
 
 **This module takes the menu; it does not fetch it.**  Reading configuration
 belongs to a higher layer.
@@ -48,10 +46,9 @@ class Unplaceable(Exception):
     """
 
     def __init__(self, reasons: "Sequence[Refusal]", *, gpu_side: bool):
-        # FINDINGS, not prose (2026-09-09).  Each carries `where` --
-        # `admit.cores`, `admit.gpus` -- so a caller can say WHICH limit
-        # bit without parsing the sentence, which is what the scheduler tests
-        # were doing with `"64" in why[0]`.
+        # FINDINGS, not prose.  Each carries `where` -- `admit.cores`,
+        # `admit.gpus` -- so a caller can say WHICH limit bit without
+        # parsing the sentence.
         self.reasons = list(reasons)
         self.gpu_side = gpu_side
         super().__init__("; ".join(i.message for i in self.reasons)
@@ -112,11 +109,9 @@ def place(routing, request: Request, *, prefer_gpu: bool,
             why = admits(d, request)
             if why:
                 raise Unplaceable(why, gpu_side=prefer_gpu)
-            # The queue's own partition, GPU work included (a record's
-            # `gpu_partition` could send GPU work elsewhere until 2026-10-02,
-            # `scheduler.md` § 4).
+            # The queue's own partition, GPU work included (`scheduler.md` § 4).
             return Placement(domain=d, partition=d.partition, qos=d.qos)
-    # A finding like every other refusal (`admit._refusal`), so
+    # A finding like every other refusal (`admit.Refusal`), so
     # `Unplaceable` carries ONE shape rather than two.
     raise Unplaceable(
         [Refusal("no_domain", named,

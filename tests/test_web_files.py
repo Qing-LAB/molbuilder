@@ -122,11 +122,7 @@ class TestFilesList:
         -- the folders a user is looking for scroll off under a long file list.
 
         `web-api.md` § 4 (`GET /api/files/list`) and `projects.md` § 4:
-        directories first, then files by name. Honest note (2026-09-09): the
-        hidden-entry assertion at the end of this test cannot fail -- the
-        fixture plants no dotfile at this level -- so
-        `test_list_filters_hidden_entries` is where that rule is actually
-        exercised.
+        directories first, then files by name.
         """
         r = web.get(f"/api/files/list?path={picker_root}")
         assert r.status_code == 200
@@ -446,10 +442,6 @@ class TestFilesReadRange:
         paginator asking for the same offset forever.
 
         `web-api.md` § 4 (`GET /api/files/read_range`, task #119, 2026-06-02).
-        Honest note (2026-09-09):
-        `test_read_range_default_returns_start_of_file` reaches the same `eof`
-        computation with the same relation (requested span larger than the
-        file), so this is raised as a cut candidate.
         """
         small = picker_root / "small.log"
         small.write_text("hello world\n")
@@ -654,9 +646,7 @@ class TestPathTraversalDefense:
         it.
 
         `web-api.md` § 2.1 (a path from the browser is fenced at the ROUTE).
-        This is the DOOR test for `files._resolve_within_roots`;
-        `test-audit-findings.md` § 5 names it as the coverer that let other
-        routes' thin traversal wrappers be cut.
+        This is the DOOR test for `files._resolve_within_roots`.
         """
         # Even before resolution, a path with .. is rejected.  This
         # avoids ambiguity for users who type '..' assuming it would
@@ -701,18 +691,10 @@ class TestPathTraversalDefense:
         resolves to the process CWD -- the caller would get a listing of
         wherever the server was launched.
 
-        `web-api.md` § 2.1 and § 1 status table. It is also the only test in
-        this file that drives `/api/files/stat` through the fence at all: the
-        audit of 2026-09-09 records that stat / read / read_range have no
-        outside-root test of their own.
+        `web-api.md` § 2.1 and § 1 status table.
         """
         r = web.get("/api/files/stat?path=")
         assert r.status_code == 400
-
-
-# --------------------------------------------------------------------- #
-#  Roots from molbuilder.json                                           #
-# --------------------------------------------------------------------- #
 
 
 class TestSidebarPartialAndShim:
@@ -725,10 +707,7 @@ class TestSidebarPartialAndShim:
         and the two would disagree about what is selected.
 
         `projects.md` § 1 (the one door) -- the standalone tab was retired for
-        the persistent sidebar. Honest note (2026-09-09): no document records
-        the removal (`web-api.md` § 7's removed-routes table does not carry
-        it), so this test is the only record of it, which is the weakness
-        rather than the strength; raised as a cut candidate.
+        the persistent sidebar.
         """
         # The standalone /projects tab was retired in favour of the
         # persistent sidebar.  Make sure the old route is gone so a
@@ -751,9 +730,6 @@ class TestSidebarPartialAndShim:
 
         ``projects-sidebar.js`` (entry) imports the modules and is
         the only file allowed to.
-
-        2026-06-12: ``forms.js`` was renamed to ``mutation-bar.js``
-        after the v2 buttons-not-inline-forms refactor.
         """
         def imports_from_projects(body):
             import re
@@ -813,7 +789,7 @@ class TestSidebarPartialAndShim:
             f"found {list_}"
         )
 
-        # mutation-bar (renamed from forms 2026-06-12) is the top of
+        # mutation-bar is the top of
         # the per-module stack (besides the entry).  Can depend on
         # state, api, list, preview, dialogs.
         assert mutation_bar <= {"state", "api", "list", "preview", "dialogs"}, (
@@ -833,9 +809,7 @@ class TestSidebarPartialAndShim:
         on the selection, so a picked file loads twice -- and, when the two
         disagree, into two different viewers.
 
-        `projects.md` § 3 (opening a molecule -- one door). Like the
-        `/projects` route pin above, the retirement is recorded nowhere but
-        here; raised as a cut candidate.
+        `projects.md` § 3 (opening a molecule -- one door).
         """
         # The per-tab projects-selection shim was retired -- the sidebar
         # actions section took over (no more "Use this file" banner).
@@ -880,10 +854,7 @@ class TestSidebarPartialAndShim:
         window. This bit users under the since-retired `has-projects-sidebar`
         shim.
 
-        `projects.md` § 4. Honest note (2026-09-09): the second half of this
-        test -- that the JS does not spell `setAttribute(data-sidebars)` -- is
-        a `testing.md` § 3a source pin on shipped text rather than a behaviour,
-        and is raised for redesign, not deletion.
+        `projects.md` § 4.
         """
         # The app-shell layout opt-in -- ``<body data-sidebars="projects">``
         # -- must be in the SERVER-rendered markup, not added later by the
@@ -927,14 +898,8 @@ class TestSidebarPartialAndShim:
         # forwards changes to the selection store, which loads the
         # file.
         #
-        # The legacy "Load from current selection" button (page.js)
-        # was retired 2026-05-20 -- the auto-load via the store
-        # made it redundant.
-        #
-        # /spectra is generate-only (no subscriber); /results
-        # auto-mounts via the registry dispatch.  /modify is the
-        # only remaining subscriber tab; parametrize keeps the seam
-        # open for a future tab that adopts the same affordance.
+        # /molbuilder is the only subscriber tab; parametrize keeps the
+        # seam open for a future tab that adopts the same affordance.
         r = web.get(path)
         assert r.status_code == 200
         body = r.get_data(as_text=True)
@@ -956,9 +921,7 @@ class TestSidebarPartialAndShim:
         so it is an artifact lint over the whole class rather than one link --
         the kind `testing.md` § 3b keeps.
         """
-        # The "Projects" app-tab entry was removed from _app_header.html
-        # when we pivoted to the sidebar (otherwise users get a dead
-        # tab link).  The sidebar's own <h2>Projects</h2> title
+        # The sidebar's own <h2>Projects</h2> title
         # legitimately contains the word "Projects", so the actual
         # invariants are: (a) no /projects href anywhere, and (b)
         # every visible app-tab link points at a route we actually
@@ -988,18 +951,6 @@ class TestSidebarPartialAndShim:
                 f"app-tab link {h!r} points at an unserved route; "
                 f"served routes: {sorted(SERVED)}"
             )
-
-
-# TestNoLocalFileInputs retired 2026-06-10: the class parametrized
-# over /spectra (now /spectrum-calculation, but routed via tabs.py)
-# and /modify (renamed to /molbuilder in Phase B.5).  After B.5
-# the legacy paths /spectra and /modify return 404 by design — the
-# tests' ``assert <id> not in body`` checks were silently passing
-# against the Flask 404 error page, pinning nothing.  The sidebar-
-# is-the-only-file-loader contract still holds at the page level
-# (no tab currently emits an <input type=file>); a future tab that
-# regressed would be caught by the per-tab Playwright assertions
-# in test_molbuilder_e2e / test_build_e2e instead.
 
 
 class TestFilesMkdir:
@@ -1056,11 +1007,7 @@ class TestFilesMkdir:
         beside `spectrum/` means the 'same analysis across structures'
         comparison no longer finds anything.
 
-        `job-contracts.md` § 2.5 (the fixed topic vocabulary). Honest note
-        (2026-09-09): the message asserted here says 'canonical six' while the
-        set holds NINE topics (`projects.py:115`; the doc corrected six to nine
-        on 2026-07-27), so this test currently pins the stale wording --
-        reported as a code defect.
+        `job-contracts.md` § 2.5 (the fixed topic vocabulary).
         """
         # Set up projects/<project>/ then try to create a non-canonical
         # topic underneath.  The picker_root acts as projects/.
@@ -1074,10 +1021,8 @@ class TestFilesMkdir:
         )
         assert r.status_code == 400
         body = r.get_json()
-        # ASSERT THE VOCABULARY, NOT A COUNT.  This said "the canonical six"
-        # until 2026-09-09 and so PINNED a drift: the set has been nine since
-        # 2026-07-27.  What a person needs from the refusal is the list they
-        # may pick from, which is what is asserted now.
+        # ASSERT THE VOCABULARY, NOT A COUNT: what a person needs from the
+        # refusal is the list they may pick from.
         from molbuilder.projects import CANONICAL_TOPICS
         assert "not one of the canonical topics" in body["error"]
         for _t in CANONICAL_TOPICS:
@@ -1150,11 +1095,7 @@ class TestFilesMkdir:
     def test_mkdir_400_for_dot_dot_in_parent(self, web, picker_root):
         """A raw `..` in `parent` reaching resolution.
 
-        `web-api.md` § 2.1. Honest note (2026-09-09): the parent used here
-        (`<root>/..`) resolves OUTSIDE the root, so containment refuses it even
-        with the string check removed, and
-        `test_mkdir_400_for_parent_outside_root` already proves this route
-        reaches the fence -- raised as a cut candidate.
+        `web-api.md` § 2.1.
         """
         r = web.post(
             "/api/files/mkdir",
@@ -1303,10 +1244,7 @@ class TestProjectsCreate:
         filesystem: a directory the user made in a shell would be
         indistinguishable from free space, and create would write into it.
 
-        `web-api.md` § 1 status table. Honest note (2026-09-09): this is close
-        to the test above and the audit records it as UNSURE rather than a cut
-        -- it is the only case where the pre-existing directory was not made by
-        the route.
+        `web-api.md` § 1 status table.
         """
         # Same 409 path applies when the dir already exists outside
         # the /api/projects/create flow (e.g., user mkdir'd by hand).
@@ -1339,20 +1277,14 @@ class TestProjectsCreate:
 
 class TestSidebarCreateUI:
     """2026-06-12 (v2): three SEPARATE buttons (New project / New
-    folder / Upload) in the sidebar header.  Replaces the earlier
-    v1 single "+" dropdown which hid the actions behind an extra
-    click.  Each button opens its modal dialog directly.  See
-    web/projects.md § Mutation UX."""
+    folder / Upload) in the sidebar header.  Each button opens its
+    modal dialog directly.  See web/projects.md § Mutation UX."""
 
     def test_create_bar_in_partial(self, web, picker_root):
         """The create bar disappearing from the sidebar header, which is where
         all three mutation actions live.
 
-        `projects.md` § 4. Honest note (2026-09-09): if the bar were removed
-        `test_three_action_buttons_visible` fails too, so what only this test
-        holds is the CONTAINER class that `projects-sidebar.css:232` styles --
-        a rename would silently unstyle the header. Raised as a cut candidate
-        with that loss stated.
+        `projects.md` § 4.
         """
         body = web.get("/spectrum-calculation").get_data(as_text=True)
         assert 'class="ps-create-bar"' in body
@@ -1380,9 +1312,6 @@ class TestSidebarCreateUI:
 
 
 class TestSidebarMkdirUI:
-    """Retired class kept as a marker so future readers can find
-    the 2026-06-12 retirement history.  The mkdir form's role
-    moved to the + dropdown menu — see TestSidebarCreateUI."""
     pass
 
 class TestFilesWrite:
@@ -1577,21 +1506,7 @@ class TestFilesWrite:
         assert "string" in r.get_json()["error"]
 
 
-# A ``TestGenerateWritesToWorkspace`` class stood here saying "Tests pin
-# both layers" and holding no tests.  Both layers are pinned in
-# `test_projects_public_surface_js.py`: ``saveToWorkspace`` on the sidebar
-# surface, and ``safeSave`` wrapping it with the three terminal outcomes.
-
 class TestFileOperationStubs:
-    """All three previously-stubbed endpoints (upload, write, delete)
-    are now functional.  See TestFilesUpload + TestFilesWrite +
-    TestFilesDelete for the real-behaviour tests."""
-
-    # (test_upload_returns_501 / test_write_returns_501 /
-    #  test_delete_returns_501 all retired in v5.4: every formerly
-    #  stub endpoint is live now.  This class is kept as a marker
-    #  so future readers can find the retirement history; remove
-    #  when the docstring no longer needs to explain it.)
     pass
 
 
@@ -1895,8 +1810,7 @@ class TestFilesMove:
         -- a typo in `dest_dir` scatters files into new folders -- or by a 500.
 
         `web-api.md` § 1 status table. Honest note: the assertion accepts 400
-        or 404, so it does not pin WHICH refusal; recorded as a design weakness
-        on 2026-09-09.
+        or 404, so it does not pin WHICH refusal.
         """
         src = picker_root / "config.json"
         r = self._move(web, src, picker_root / "does-not-exist")
@@ -2261,10 +2175,7 @@ class TestFilesDelete:
     def test_delete_dot_dot_in_path_rejected(self, web, picker_root):
         """A raw `..` in a delete path.
 
-        `web-api.md` § 2.1. Honest note (2026-09-09): the path used here
-        resolves outside the root, so containment refuses it without the string
-        check, and `test_delete_outside_root_rejected` already proves this
-        route reaches the fence -- raised as a cut candidate. The distinct case
+        `web-api.md` § 2.1. The distinct case
         (a `..` that cancels back inside the root) is pinned on `write`, not
         here.
         """
@@ -2526,15 +2437,6 @@ class TestFilesUpload:
         """An upload whose `target_dir` is outside the picker root is refused.
 
         `web-api.md` § 2.1 -- a path from the browser is fenced at the ROUTE.
-        Upload is the one mutating route whose fence had no working test.
-
-        REPAIRED 2026-09-09.  It took `tmp_path`, which the `picker_root`
-        fixture aliases to the SAME directory, so `tmp_path / 'elsewhere'` was
-        INSIDE the fence and the 400 came from "target_dir does not exist".
-        The assertion `"outside" in err or "root" in err` then passed on the
-        echoed path, because pytest names its temp directory after the test:
-        `.../test_upload_outside_root_rejec0/elsewhere` carries both words.
-        A test named for the fence that never reached it.
         """
         # A sibling tree the picker root has never heard of -- built ABOVE it
         # for the reason `test_delete_outside_root_rejected` records: anything
@@ -2543,8 +2445,9 @@ class TestFilesUpload:
         r = self._post(web, outside, "file.txt")
         assert r.status_code == 400
         err = r.get_json()["error"]
-        # The path is NOT allowed to be the evidence -- that is what made the
-        # old assertion unfalsifiable.  The refusal must be the fence's.
+        # The path is NOT allowed to be the evidence: pytest names its temp
+        # directory after the test, so the echoed path can carry the word.
+        # The refusal must be the fence's.
         assert "outside" in err.replace(str(outside), ""), err
 
     def test_upload_dot_dot_in_target_rejected(self, web, picker_root):
@@ -2553,13 +2456,6 @@ class TestFilesUpload:
         `web-api.md` § 2.1. This target resolves outside the root, so
         containment refuses it without the string check -- the `..` test is
         defence in depth over the resolution step.
-
-        *(An honest note here said this was "the ONLY test proving upload
-        reaches the fence at all", because the sibling outside-root test could
-        not fail. That sibling was repaired -- it builds its path outside the
-        picker root and excludes the echoed path from the match -- so this
-        note described a gap that had been closed, and told a reader to keep a
-        test "until that one is repaired".)*
         """
         # Defense in depth: '..' in raw target_dir string is rejected
         # even though the resolution step would also catch it.
@@ -2736,16 +2632,11 @@ class TestFilesUpload:
         space.txt'; separators are stripped by `os.path.basename` before
         validation and are covered by `test_upload_strips_client_path_prefix`.
 
-        `web-api.md` § 4 (`POST /api/files/upload`, the filename regex). The
-        audit of 2026-09-09 records the name / body mismatch as a design
-        defect: nothing in the suite drives a separator that survives
-        `basename`, and the space case is already carried by
-        `test_write_upload_filename_parity`.
+        `web-api.md` § 4 (`POST /api/files/upload`, the filename regex).
         """
         # ``file.filename`` may carry the client's full path on some
-        # browsers; we basename it server-side.  This test sends a
-        # bare slash to confirm the validator catches what slips
-        # through.  (Browsers normally send just the basename.)
+        # browsers; we basename it server-side.  (Browsers normally send
+        # just the basename.)
         import io
         target = picker_root / "proj" / "spectrum"
         target.mkdir(parents=True)
@@ -3034,18 +2925,13 @@ class TestFilesWriteAutoRename:
 
 class TestSidebarStubsUI:
     """The stub features ship with their full UI surface so the design
-    is reviewable.  Markup checks here; behaviour is exercised at the
-    E2E layer (deferred Playwright suite)."""
+    is reviewable.  Markup checks here."""
 
     def test_preview_modal_starts_hidden(self, web, picker_root):
         """The preview modal painting over the page for one frame on every
         load, before the JS hides it.
 
-        `projects.md` § 4. Honest note (2026-09-09): the class docstring says
-        the behaviour is exercised by 'the deferred Playwright suite' -- a
-        suite that does not exist -- which `testing.md` § 3a.1 reads as a
-        verdict rather than a caveat: write the e2e that visits the page, then
-        retire this markup pin.
+        `projects.md` § 4.
         """
         # The hidden attribute ensures it doesn't flash on first paint
         # before JS runs.
@@ -3054,9 +2940,9 @@ class TestSidebarStubsUI:
 
 class TestRootsContract:
     """Single-root contract: Capabilities.file_picker_roots() returns
-    exactly the projects/ entry.  file_picker.roots in molbuilder.json
-    was removed; a config still naming it is refused, like any section the
-    registry does not list (`configuration.md` § 4)."""
+    exactly the projects/ entry.  A config naming file_picker.roots is
+    refused, like any section the registry does not list
+    (`configuration.md` § 4)."""
 
     def test_capabilities_returns_only_projects_root(self):
         """A second root re-entering at the SOURCE -- the CWD, or an operator-
@@ -3073,22 +2959,6 @@ class TestRootsContract:
         path, label = roots[0]
         assert label == "projects"
         assert str(path).endswith("/projects")
-
-    # `test_stale_file_picker_section_is_refused_by_name` retired 2026-10-02 (W54): the generic unknown-section refusal is a row of `tests/data/molbuilder_json.toml`.
-
-# RETIRED 2026-09-09 -- `TestTheDownloadButtonSaysWhatItIsDoing` held a
-# user-dated contract (2026-08-29: the message lives INSIDE the button while the
-# server compresses, and the button is unclickable until the save has started)
-# and ZERO tests: only a `_src()` helper reading `mutation-bar.js` that nothing
-# called, residue of the eleven source pins removed from this file.
-#
-# `testing.md` § 3a.1's rule is "write the e2e, THEN retire" -- and it applies
-# when the class is the only thing holding the rule.  It was not.  The contract
-# is stated in `web/projects.md` (the two-phase button) and `web/web-api.md`
-# (why the route is split), the JS carries it at `mutation-bar.js:95`, and the
-# SERVER half it exists for is tested by `TestDownloadZip` directly below.  What
-# was left was `§ 3a.1`'s load-bearing misinformation: a reader saw coverage
-# that was not there, and an auditor counted it.  #72.
 
 
 class TestDownloadZip:
@@ -3192,14 +3062,9 @@ class TestDownloadZip:
         an arbitrary directory as a downloadable archive -- the most complete
         exfiltration available in this file.
 
-        `web-api.md` § 2.1, and § 1's status table for the code.
-
-        It accepted `in (400, 403)` until 2026-09-09, because the table said a
-        path escape was 403 while the fence has always raised 400. RESOLVED IN
-        THE DOCUMENT (the code was right and consistent across eight routes; a
-        path outside the roots is a malformed REQUEST, where 403 is the admin
-        gate, which is genuinely authorization). A hedged status is how that
-        disagreement stayed invisible for as long as it did.
+        `web-api.md` § 2.1, and § 1's status table for the code: a path
+        outside the roots is a malformed REQUEST, where 403 is the admin gate,
+        which is genuinely authorization.
         """
         r = self._prepare(web, "/etc")
         assert r.status_code == 400
@@ -3346,7 +3211,7 @@ def _fence_probe(web, kind, outside, inside):
 ])
 def test_every_path_route_is_fenced(web, picker_root, kind):
     """Every route that takes a path from the browser refuses one outside the
-    picker roots — and this asks ALL of them, not the four that had a test.
+    picker roots — and this asks ALL of them.
 
     THE FAILURE THIS CATCHES.  `web-api.md` § 2.1: the fence at the route is the
     only thing standing between a path in a JSON body and the filesystem. A
@@ -3356,17 +3221,13 @@ def test_every_path_route_is_fenced(web, picker_root, kind):
     WHY A LINT AND NOT EIGHT TESTS.  This is `testing.md` § 3b's artifact-lint
     category: a property over every member of a class, which replaces the manual
     sweep. A new path-taking route joins the list here rather than shipping
-    unfenced and waiting for someone to write its test — which is precisely what
-    happened to the six below.
+    unfenced and waiting for someone to write its test.
 
-    MEASURED (#70, 2026-09-09): genuine outside-root tests existed for `list`,
-    `mkdir`, `write`, `delete` and `zip_prepare`. There were NONE for `stat`,
-    `read`, `read_range`, `rename`, `move` or `copy`, and `upload`'s could not
-    fail (#74). Three of those six are mutations. Both the source AND the
+    Both the source AND the
     destination are probed for `move`/`copy`: a fence on one is not a fence.
     """
     # Above the root for `test_delete_outside_root_rejected`'s reason: anything
-    # under it resolves INSIDE, which is how #74 came to pass on its own name.
+    # under it resolves INSIDE.
     outside = picker_root.parent.parent / "molbuilder_test_outside" / "loot.txt"
     r = _fence_probe(web, kind, outside, picker_root)
     assert r.status_code == 400, (

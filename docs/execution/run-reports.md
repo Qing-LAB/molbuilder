@@ -218,6 +218,7 @@ directory of decks.
 | SCF iterations so far, and seconds per iteration, in the current SCF phase | the timing rule, `scf_timing_rows.timing_of`, over the run's stamped SCF rows: a SIESTA run's `.scf-timing.log`, a PySCF run's progress log, whose deck stamps each `scf_history` row ([`model/parse.md`](?doc=model/parse.md) § 5c) — the rule the Results tab states them by | `scf_timing_rows.py` · `molwatch_grammar.py` |
 | how it ended: `state`, `detail`, each SCF phase's convergence, whether a relaxation relaxed, the exit code | `run_status` over this run's files (`parse/dirs/job.py`) — the Results tab's own answer, with its own order of evidence ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2), built on the one door that says whether the run ended on its own (`runrecord.ending`); a SIESTA run's stderr from the session log whose first section is the run (`wrapper_log`) | `job.py` · `_run_ending.py` · `end_lines.py` · `wrapper_log.py` · `runrecord.py` |
 | which fields a report may carry | the one declaration, `report_fields` (§ 4.1a) | `report_fields.py` |
+| *not a report — what the run script records through it*: a flat run's warm retry, its own launch record (`mb_monitor.pyz retried`) | the one writer, `runrecord.record_retry` → `write_launch`, through `persist` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) | `runrecord.py` · `persist.py` |
 | where the channels are | `config_dir` (§ 1) | `config_dir.py` |
 
 **What stays the monitor's is what no file states**: the watched PID — *when*
@@ -263,7 +264,7 @@ sequenceDiagram
     alt a warm retry
         W->>M: SIGUSR1
         M->>M: log MONITOR stopped, ask run_status, then STATUS, UTIL-SUMMARY, UTIL-BASIS - no finish
-        W->>W: exec itself with --continue as the next run index, which starts its own monitor
+        W->>W: exec itself with --continue --run N+1 (flat: that run's launch record first), which starts its own monitor
     else the job ends
         W->>W: write -runN.concluded with the return code, on its main line
         W->>M: SIGTERM from its EXIT trap, then wait up to 10 s
@@ -390,7 +391,7 @@ Nothing else reaches stderr in a healthy run.
 
 | flag | from | meaning |
 |---|---|---|
-| `--label` · `--stage` · `--run` | the deck's label, its stage token, the run index the wrapper chose | which run; every file named through `runfiles` |
+| `--label` · `--stage` · `--run` | the deck's label, its stage token, the run index `launch` gave the wrapper (`--run N`) | which run; every file named through `runfiles` |
 | `--watch-pid` | `$$`, the wrapper's own PID | stop when it goes; `0` watches none |
 | `--dir` | not passed: the wrapper starts it in the run's directory | the run's directory, for `molbuilder monitor` pointed at a run from elsewhere |
 | `--util` | always | sample into `util.csv` |

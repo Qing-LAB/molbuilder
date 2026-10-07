@@ -278,12 +278,7 @@ class TestRenderSidebarSubscriber:
         """The status line names the picked file, in bold, with the full
         path as its tooltip -- what the person reads.
 
-        This asserted the ``"Selected: <strong></strong>"`` innerHTML scaffold
-        until 2026-09-25, and was blind: the stub cannot find a ``<strong>``
-        inside a string, so ``querySelector("strong").textContent = filename``
-        threw, ``state.js`` swallowed the subscriber's error, and the test
-        passed on a line that never showed the name.  The line is built from
-        elements now, so the name itself is asserted -- as the text a person
+        The line is built from elements, so the name itself is asserted -- as the text a person
         reads, the line's own words and the bold name after them.  (The stub
         knows ``appendChild``; a rewrite using ``append`` would need the stub
         to learn it, and fails loudly until it does.)"""
@@ -321,7 +316,7 @@ class TestRenderSidebarSubscriber:
         assert out["b_selected"] is False
 
     def test_busy_setShared_does_not_update_dom(self):
-        """The busy guard (#177, page-wide since 2026-08-28) rejects
+        """The busy guard (#177, page-wide) rejects
         programmatic setShared while the fence is claimed; subscriber
         must NOT fire so the DOM stays synced to the prior state."""
         out = _run_node('''

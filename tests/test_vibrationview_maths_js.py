@@ -7,10 +7,7 @@ implementation to decide what to expect.
 Two things about the shape of this file are the point rather than an accident:
 
   * **No stubs.**  Not a fake ``requestAnimationFrame``, not a fake clock, not a
-    stand-in viewer.  Level 2 is pure (§ 7), so a scatter is a function call.  The
-    module this replaces could not be tested this way — its maths and its clock
-    were the same object, so the old suite hand-rolled a rAF queue and pumped it
-    by hand just to check an eigenvector.
+    stand-in viewer.  Level 2 is pure (§ 7), so a scatter is a function call.
 
   * **Reached by import, through the path the browser serves.**  Nothing is
     published to a global for a test to find, because a seam a test can reach is a

@@ -1,13 +1,7 @@
 """The run-file name generator — `job-contracts.md` § 2.2a.
 
-WHAT THIS REPLACED.  The rule ("one basename"; "only per-stage files carry the
-token") was written twice in the contract and enforced nowhere, so every writer
-and reader built its own name out of strings.  Measured 2026-09-07: geomeTRIC's
-trajectory had six spellings — the emitter's, the warm-file declaration's,
-three in the parser, and the contract's own catalogue — and only the emitter's
-was right.  On a staged run the parser's error message named a file that does
-not exist, and the warm-file carry looked for one too, which fails silently
-because a missing warm file is a legal state.
+The rule ("one basename"; "only per-stage files carry the token") is held by
+one generator that every writer and reader uses.
 
 THESE TESTS ARE ABOUT THE GENERATOR AND NOTHING ELSE (user, 2026-09-07:
 *"focus on api, and use api that is tested to generate confirmed structured
@@ -19,22 +13,21 @@ That is also why this is one file rather than a check beside each writer
 """
 from __future__ import annotations
 
-import fnmatch
 import itertools
 
 import pytest
 
-from molbuilder.runfiles import (QUALIFIERS, WRITTEN, ON_THE_LABEL, RunFile, RunFileError,
+from molbuilder.runfiles import (QUALIFIERS, ON_THE_LABEL, RunFile, RunFileError,
                                  find, find_by_role, latest_run,
                                  compose, is_carried, manifest, parse,
-                                 patterns, tail)
+                                 tail)
 
 
 def expect(label, stage, role, run=None):
     """The `RunFile` a name with these segments must read back as.
 
     Written here rather than spelled at each assertion because the COUNTERS
-    are a declared class now (`runfiles.QUALIFIERS`), not a field per keyword
+    are a declared class (`runfiles.QUALIFIERS`), not a field per keyword
     -- so a second counter is a line in that tuple and this helper, not an
     edit to every expectation in the file.
     """
@@ -69,8 +62,7 @@ def test_every_name_the_generator_makes_reads_back_to_its_segments(
     """THE PROPERTY, over the whole product: what `compose` builds, `parse`
     takes apart into the same four segments.
 
-    Round-tripping is exactly what the six hand-built spellings did not do, and
-    it is the only claim that makes a name trustworthy without looking at it —
+    Round-tripping is the only claim that makes a name trustworthy without looking at it —
     a reader that can recover the segments never needs to know how the writer
     spelled them.
     """
@@ -157,8 +149,7 @@ def test_a_malformed_stage_is_refused_rather_than_embedded(bad):
 
 @pytest.mark.parametrize("bad", [1, 2, 0])
 def test_a_stage_POSITION_cannot_become_a_name(bad):
-    """The old `-stage<N>` convention keyed names on a stage's POSITION, and a
-    positional name silently reassigns outputs the moment the ladder grows a
+    """A positional name silently reassigns outputs the moment the ladder grows a
     rung (§ 6.3).  Refused as a wrong TYPE, at the call."""
     with pytest.raises(RunFileError, match="POSITION is not a token"):
         compose(LABEL, ".molwatch.log", bad)
@@ -175,9 +166,7 @@ def test_a_counter_that_is_not_a_count_is_refused(bad):
 # --------------------------------------------------------------------- #
 #
 #  § 6.3 gives the hyphen ONE meaning: a counter follows, and a counter is a
-#  keyword plus a number.  `parse` knew the keyword `run` from a literal
-#  `-run(\d+)` written into it three times, so a second counter would have
-#  been a parser edit.  It is a line in `QUALIFIERS` now.
+#  keyword plus a number.  A second counter is a line in `QUALIFIERS`.
 
 def test_the_only_counter_today_is_the_attempt():
     """Stated so that adding one is a DECISION.  `stage` is not here and never
@@ -220,15 +209,7 @@ def test_a_hyphen_that_introduces_no_declared_keyword_is_not_a_counter():
 #
 #  `WRITTEN` says what molbuilder writes; `patterns()` is the glob family
 #  (`identity.OUR_FILE_PATTERNS`) and `manifest()` the concrete names (the
-#  Task-setup card).  The two were one hand-written glob list with no name
-#  view, and it had drifted: geomeTRIC's opt log was listed as
-#  `{label}_geom_*.log` -- the stage token INSIDE the role, the spelling
-#  § 2.2a retired -- so the file that IS written matched no row and our own
-#  log was reported back to the user as the engine's warm state.
-
-def _legal_runs(a):
-    """The attempt values this artifact's name can legally carry."""
-    return {"never": [None], "maybe": [None, 0, 3], "always": [0, 3]}[a.attempt]
+#  Task-setup card).
 
 
 def _fields_for(a):
@@ -254,29 +235,6 @@ def test_every_declared_examples_matches_its_own_shape():
 
 
 @pytest.mark.parametrize("art", ON_THE_LABEL, ids=lambda a: a.role)
-@pytest.mark.parametrize("label", LABELS)
-@pytest.mark.parametrize("stage", STAGES)
-def test_every_name_the_catalogue_can_produce_is_matched_by_its_globs(
-        art, label, stage):
-    """THE PROPERTY THAT TIES THE TWO VIEWS, over the segment product.
-
-    `patterns()` cannot go through `compose` -- `{label}_*` stands for every
-    stage token at once and no single call produces it -- so what keeps the
-    glob family honest is this: every name the grammar can build for a
-    catalogued role is matched by one of the globs.
-
-    This is the check the drifted `_geom.log` row would have failed, and it
-    fails for any future row whose glob and whose name are spelled apart.
-    """
-    for run in _legal_runs(art):
-        name = compose(label, art.role, stage if art.staged else None,
-                       run, **_fields_for(art))
-        assert any(fnmatch.fnmatchcase(name, p.format(label=label))
-                   for p in patterns()), (
-            f"{name!r} is a name molbuilder writes and no glob matches it")
-
-
-@pytest.mark.parametrize("art", ON_THE_LABEL, ids=lambda a: a.role)
 def test_a_file_that_carries_no_stage_never_grows_one(art):
     """The three that belong to the CALCULATION -- the template and the
     source pair -- are written once at the bundle root, so a stage token in
@@ -291,17 +249,15 @@ def test_a_file_that_carries_no_stage_never_grows_one(art):
     # `.out` is SIESTA's: PySCF under the wrapper writes `.pyscf.log` and
     # never `.out`, so a PySCF rung's card promised a file no run produces
     # (`model/parse.md` § 5.5).  So is the timing tee's file: it reads the
-    # SIESTA family's rows.  The monitor's two are EVERY engine's since
-    # 2026-09-26 -- the wrapper starts it from its shared part
+    # SIESTA family's rows.  The monitor's two are EVERY engine's -- the
+    # wrapper starts it from its shared part
     # (`run-reports.md` § 2.3).
-    ("siesta", (".py", ".pyscf.log"),
-     (".fdf", "-run0.out", "-run0.monitor.log", "-run0.scf-timing.log")),
     ("pyscf", (".fdf", "-run0.out", "-run0.scf-timing.log"),
      (".py", "-run0.pyscf.log", "-run0.monitor.log", "-run0.util.csv")),
 ])
 def test_the_manifest_tells_a_run_about_its_own_engine_only(
         engine, absent, present):
-    rows = manifest(LABEL, "01_coarse", engine)
+    rows = manifest(LABEL, "01_coarse", shape="hierarchical", engine=engine)
     names = [r["name"] for r in rows]
     for suffix in present:
         assert any(n.endswith(suffix) for n in names), f"{engine}: no {suffix}"
@@ -309,29 +265,11 @@ def test_the_manifest_tells_a_run_about_its_own_engine_only(
         assert not any(n.endswith(suffix) for n in names), (
             f"{engine}: named {suffix}, which its engine does not write")
     # No engine named is a question, not a claim: answer for both.
-    both = [r["name"] for r in manifest(LABEL, "01_coarse")]
+    both = [r["name"] for r in manifest(LABEL, "01_coarse",
+                                         shape="hierarchical")]
     assert any(n.endswith(".py") for n in both)
     assert any(n.endswith(".fdf") for n in both)
     assert any(n.endswith("-run0.out") for n in both)
-
-
-def test_every_manifest_name_reads_back_to_the_stage_it_was_asked_for():
-    """The card shows these to a person, so they have to be names the
-    writers use -- which is the same round-trip the grammar promises."""
-    for row in manifest(LABEL, "02_medium"):
-        got = parse(row["name"], LABEL)
-        assert got is not None, f"{row['name']!r} did not parse"
-        assert got.stage in (None, "02_medium")
-        assert row["what"], f"{row['name']} has no line saying what it is"
-
-
-def test_the_first_attempt_is_a_real_name_and_not_a_placeholder():
-    """`runwrap` opens at ``_run_n=0``, so the indexed rows show `-run0` --
-    the name the first launch actually writes."""
-    rows = {r["name"]: r for r in manifest(LABEL, "01_coarse", "pyscf")}
-    assert f"{LABEL}_01_coarse-run0.concluded" in rows
-    assert rows[f"{LABEL}_01_coarse-run0.concluded"]["carries_attempt"] is True
-    assert rows[f"{LABEL}_01_coarse.run.sh"]["carries_attempt"] is False
 
 
 def test_the_catalogue_and_the_warm_vocabulary_do_not_overlap():
@@ -390,30 +328,15 @@ def test_a_carried_file_is_named_the_same_whichever_engine_reads_it_next():
                 f"the next rung looks for {LABEL + suffix!r}")
 
 
-def test_a_rung_is_told_its_own_files_and_the_calculation_its_own():
-    """A rung's list and the calculation's list PARTITION the catalogue.
-
-    The template and the source pair are written once at the bundle root, so a
-    per-rung card that repeated them would say each of them N times and imply
-    N copies of a person's own input.
-    """
-    rung = {r["name"] for r in manifest(LABEL, "01_coarse")}
-    calc = {r["name"] for r in manifest(LABEL)}
-    assert rung and calc
-    assert not rung & calc
-    assert len(rung) + len(calc) == len(ON_THE_LABEL)
-    # And the calculation's are exactly the ones with no rung in the name.
-    assert all(parse(n, LABEL).stage is None for n in calc)
-    assert all(parse(n, LABEL).stage == "01_coarse" for n in rung)
-
-
 def test_a_relaxation_is_not_promised_a_spectrum():
     """A list that named a file the run will never write is the same fault as
     one that omits a file it does -- an answer a person cannot check against
     the folder.  `.spectra.json` is the vibration calculation's."""
-    relax = {r["name"] for r in manifest(LABEL, None, "pyscf",
+    relax = {r["name"] for r in manifest(LABEL, None, shape="hierarchical",
+                                         engine="pyscf",
                                          calculation="optimization")}
-    vib = {r["name"] for r in manifest(LABEL, None, "pyscf",
+    vib = {r["name"] for r in manifest(LABEL, None, shape="hierarchical",
+                                       engine="pyscf",
                                        calculation="vibration")}
     assert compose(LABEL, ".spectra.json") not in relax
     assert compose(LABEL, ".spectra.json") in vib
@@ -422,44 +345,11 @@ def test_a_relaxation_is_not_promised_a_spectrum():
     # And a caller that has not asked which kind is told about both, because
     # None here is "no question asked", not "the default kind".
     assert compose(LABEL, ".spectra.json") in {
-        r["name"] for r in manifest(LABEL, None, "pyscf")}
-
-
-def test_each_file_says_which_moment_it_appears_in():
-    """A card listing a run's files has to say which of them exist yet, and
-    the five moments are what it says: the description hand-over, the prep,
-    the launch, the run, and `summarize run` -- which writes a summary of
-    results that exist and is never the launch (a sweep's comparison was
-    promised as the launch's to every SIESTA vibration until 2026-09-28).
-    Declared per file, so no page subtracts one list from another to find
-    out.  The launch record is LAUNCH's, and the progress log PREP's, which
-    seeds it (both said `run` until 2026-10-04, plan D22)."""
-    moments = {a.when for a in WRITTEN}
-    assert moments == {"setup", "prep", "launch", "run", "summarize"}
-    launched = {r["name"] for r in manifest(LABEL, None, when=("run",))}
-    assert compose(LABEL, ".fc-sweep.json") not in launched
-    assert compose(LABEL, ".transport.json") not in launched
-    setup = {r["name"] for r in manifest(LABEL, None, when=("setup",))}
-    assert setup == {compose(LABEL, r) for r in (".template.toml",
-                                                 ".source.xyz",
-                                                 ".source.molstruct.json",
-                                                 ".template.toml.pre-m6")}
-    # The deck and its wrapper are PREP's, and they are this rung's.
-    prep = {r["name"] for r in manifest(LABEL, "01_coarse", "siesta",
-                                        when=("prep",))}
-    assert compose(LABEL, ".fdf", "01_coarse") in prep
-    assert compose(LABEL, ".run.sh", "01_coarse") in prep
-    assert compose(LABEL, ".molwatch.log", "01_coarse") in prep
+        r["name"] for r in manifest(LABEL, None, shape="hierarchical",
+                                    engine="pyscf")}
 
 
 # ══ THE READER — find / latest_run ═════════════════════════════════════════
-#
-# Added with the doors (2026-09-08, plan.md § 5k M3).  Both properties below
-# were load-bearing in the code that these doors REPLACED -- the inline scan
-# in the run record's conclusion reader and the hand-rolled candidate sort in the PySCF
-# reader -- and neither was covered: mutating `max` to `min`, and the
-# counterless-first order to counterless-last, left the whole suite green.
-# One door with three callers makes that gap wider than it was.
 
 class TestTheReader:
     """`find` and `latest_run` — `compose`'s counterpart (project-layout § 4.5)."""

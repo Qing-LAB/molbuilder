@@ -1,22 +1,18 @@
 /* Shared page-shell styles -- the cross-tab chrome.
  *
- * Linked from every full-page tab: /, /modify, /spectra, /results,
- * /watch (each via an explicit <link> in the template).  Each page's
+ * Linked from every full-page tab (each via an explicit <link> in the
+ * template).  Each page's
  * own ``style.css`` adds tab-specific rules ON TOP of what's here;
  * this file owns the rules that should look the same regardless of
  * which tab you're on.
  *
- * Cascade discipline (2026-05-19 cleanup):
- *   * ``body { ... }`` -- canonical here.  Per-tab duplicates were
- *     removed; every page inherits these rules.
- *   * ``.card { ... }`` -- canonical here, and the only definition:
- *     index/build dropped its identical duplicate, and the copies modify
- *     and spectra once kept went on 2026-08-24 (modify keeps a
- *     ``.card[hidden]`` guard, which restyles nothing).
+ * Cascade discipline:
+ *   * ``body { ... }`` -- canonical here; every page inherits these rules.
+ *   * ``.card { ... }`` -- canonical here, and the only definition
+ *     (modify keeps a ``.card[hidden]`` guard, which restyles nothing).
  *   * ``.app-header { ... }`` -- canonical here.  Modify and the Spectrum
  *     page restyle its padding and border in their own sheets, naming the
- *     banner by its class (a bare ``header`` dressed every section header
- *     until 2026-09-28).
+ *     banner by its class.
  *
  * Do NOT add NEW rules to per-tab stylesheets that page-shell.css
  * already covers -- they'd silently override the canonical version.
@@ -30,10 +26,6 @@
  * Out of scope (lives in per-tab / per-inspector stylesheets):
  *   * any class specific to a tab (.viewer-card, .modes-table,
  *     .results-fallback, ...)
- *   * /watch's .loader-bar + .workflow-card -- those live in
- *     lib/trajectory/trajectory-inspector.css for now (the file /watch already
- *     loads); they're tab-specific even though the file name says
- *     "trajectory-inspector".  Future cleanup may break those out.
  *
  * Tokens come from lib/tokens.css; this file references them via
  * var(--...).  Pages MUST link tokens.css EXPLICITLY before this
@@ -45,22 +37,13 @@
  *   2. lib/tabs.css          (the cross-tab nav)
  *   3. lib/page-shell.css    (THIS FILE -- shared body / form defaults)
  *   4. ...page-specific stylesheets...
- *
- * Without this file (its previous home was lib/trajectory/trajectory-inspector.css),
- * /results used to get its body theme by side-effect from linking the
- * trajectory CSS -- a documented hidden dependency from the 2026-05-18
- * audit.  Splitting fixes that: every page links page-shell.css
- * explicitly + the trajectory CSS gets to be just about the inspector.
  */
 
 * { box-sizing: border-box; }
 
 body {
     margin: 0;
-    /* ONE FAMILY (ui-contract.md § 4).  This hand-written stack was one of
-       five spellings of the same typeface in the page layer; they agreed only
-       because every name before `system-ui` misses on Linux.  --font-sans is
-       the owner now. */
+    /* ONE FAMILY (ui-contract.md § 4): --font-sans is the owner. */
     font-family: var(--font-sans);
     color: var(--text-primary);
     background: var(--bg-page);
@@ -71,11 +54,10 @@ body {
 
 /* ---- Page header (banner above the tabs nav) -------------------- */
 
-/* THE BANNER, BY ITS CLASS -- never the bare element.  Every rule here was
- * `header { ... }` until 2026-09-28, and a card's own <header> (a Results
- * inspector card, a spectra section, the trajectory's convergence summary,
- * the sidebar's checkpoint row) took the banner's padding, rule and gradient
- * with it, against ui-contract.md § 4's one-inset rule. */
+/* THE BANNER, BY ITS CLASS -- never the bare element: a card's own <header>
+ * (a Results inspector card, a spectra section, the trajectory's convergence
+ * summary, the sidebar's checkpoint row) would take the banner's padding,
+ * rule and gradient with it, against ui-contract.md § 4's one-inset rule. */
 .app-header {
     padding: var(--space-md) 22px 12px;
     border-bottom: 1px solid var(--border-strong);
@@ -83,8 +65,7 @@ body {
                                 var(--header-gradient-top) 0%,
                                 var(--header-gradient-bottom) 100%),
                 var(--bg-card);
-    /* Hero on the left, account menu on the right (2026-07-25: the
-       account strip moved here out of the tabs nav). */
+    /* Hero on the left, account menu on the right. */
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -103,10 +84,9 @@ body {
     font-size: var(--text-base);
 }
 
-/* Account menu (moved from the tabs nav into the hero banner).  Owner
-   of this element is the header, so its styling lives here.  Colours
-   use the page palette (header is a card-ish surface), not the dark
-   sidebar palette the old nav placement used. */
+/* Account menu, in the hero banner.  Owner of this element is the
+   header, so its styling lives here.  Colours use the page palette
+   (header is a card-ish surface). */
 .app-header .app-account {
     display: flex;
     align-items: center;
@@ -155,9 +135,7 @@ body {
 }
 /* [hidden] must win over the display the rule above implies -- the button is
  * drawn hidden and revealed only when the server says this session may use it
- * (a `display` rule beats the attribute in the author cascade; the audit that
- * hunted this class, test_css_hidden_attribute_audit.py, was retired on
- * 2026-09-10, so the guard is review's). */
+ * (a `display` rule beats the attribute in the author cascade). */
 .app-header .app-account__reload[hidden] { display: none; }
 
 /* ---- Main layout container -------------------------------------- */
@@ -252,10 +230,8 @@ body[data-sidebars][data-sidebars-hidden] .sidebar-rail {
 /* ---- Dock panel — the shared rail-child geometry (§4.2) --------------------
  * A ``.dock-panel`` is a full-height flex COLUMN that scrolls internally;
  * an instance sets only its own WIDTH + palette (projects: var(--ps-w)).
- * The rail held two of them (projects + checkpoint) from 2026-07-25 to
- * 2026-08-19; the checkpoint UI now lives INSIDE the projects sidebar as a
- * view of the file-list space, so the projects aside is the one dock panel
- * left -- the geometry stays shared here for the next panel that docks.
+ * The projects aside is the one dock panel; the geometry stays shared here
+ * for the next panel that docks.
  *
  * Desktop (>=786px, derived below) is where panels dock IN-FLOW side by side; the geometry is
  * scoped there so the narrow-viewport projects DRAWER (position:fixed, its own
@@ -268,13 +244,12 @@ body[data-sidebars][data-sidebars-hidden] .sidebar-rail {
     min-height: 0;
     overflow: hidden;            /* the panel's own content scrolls, not the rail */
 }
-/* A hidden panel (checkpoint starts ``hidden``, JS unhides it when a run dir
- * with git history is selected) must take ZERO width.  The class ``display:flex``
+/* A hidden panel must take ZERO width.  The class ``display:flex``
  * would otherwise beat the UA ``[hidden]{display:none}`` and force it visible. */
 .dock-panel[hidden] {
     display: none;
 }
-/* THE DOCK THRESHOLD, DERIVED (2026-08-23).
+/* THE DOCK THRESHOLD, DERIVED.
  *
  *   sidebar        18rem            = 288px   (--ps-w)
  *   shell insets   main padding + scrollbar   = 130px  (measured)
@@ -285,10 +260,9 @@ body[data-sidebars][data-sidebars-hidden] .sidebar-rail {
  *
  * Below that, docking the sidebar leaves the page less width than its content
  * declares it needs, and the 3-D viewer card -- which correctly refuses to
- * shrink past its own floor -- overflowed its host by exactly the shortfall
- * (18px at 768px, measured).  The shell already has the answer for a narrow
- * viewport: the sidebar becomes a slide-in DRAWER.  It was simply doing it
- * too late, at 641px, a number that predates the viewer having a floor.
+ * shrink past its own floor -- overflows its host by exactly the shortfall
+ * (18px at 768px, measured).  The shell's answer for a narrow viewport: the
+ * sidebar becomes a slide-in DRAWER.
  *
  * A media query cannot read a custom property, so this is a literal -- but it
  * is a DERIVED one, and the arithmetic above is the reason it is 786 and not
@@ -328,19 +302,14 @@ body[data-sidebars][data-sidebars-hidden] .sidebar-rail {
  * have not all been reviewed: /documents sets its own link colour and relies
  * on the UA underline, so an unconditional `text-decoration: none` silently
  * strips it there.  A tab opts in when someone has looked -- /transport-
- * calculation, and /results since its design review of 2026-09-28 (its one
- * bare link, the amplitude help in the spectra partial, drew in the UA's
- * blue at 1.9:1; its card links carry their own accent).
+ * calculation and /results.
  *
  * Underline on hover only: in a card full of `--accent` legends and badges
  * colour alone is not enough to find a link, but a permanently underlined
  * one turns a paragraph into a fence.
  *
  * BARE LINKS ONLY (`:not([class])`): a link that carries a class is a
- * component styled by its owner, and this rule outranks a single class --
- * on /results it underlined the structure viewer's button-like "Open in
- * Molbuilder" on hover, whose own rule says no underline (the Results-tab
- * review, 2026-09-28).
+ * component styled by its owner, and this rule outranks a single class.
  */
 body[data-content-links="accent"] main a:not([class]) {
     color: var(--accent);
@@ -362,11 +331,7 @@ body[data-content-links="accent"] main a:focus-visible {
 input[type="text"],
 input[type="number"],
 input[type="file"],
-/* `url` and `password` joined the list 2026-08-31, when the This-machine tab
-   needed both.  They were missing rather than excluded: the Task-setup
-   destination form used them and its own sheet had quietly re-declared the
-   font and size to compensate, which is the second-owner shape this file
-   exists to prevent.  A control the app uses belongs in the app's one list. */
+/* A control the app uses belongs in the app's one list. */
 input[type="url"],
 input[type="password"],
 select,
@@ -448,8 +413,7 @@ button:disabled {
  * palette tokens.  Do NOT re-declare these in a page/module sheet. */
 .status.error { color: var(--error); }
 /* Muted helper text -- shared vocabulary (used by index, spectra, modify,
- * transport); lived in modify's page sheet until 2026-08-29, so three
- * pages used it unstyled. */
+ * transport). */
 .muted {
     color: var(--text-muted);
     font-size: var(--text-sm);
@@ -468,9 +432,7 @@ button:disabled {
  * Declared here rather than in a component sheet because this is the second
  * instance of the pattern: the Modify tab's init-source strip
  * (`.modify-init-tab`, modify/style.css) is the same control with its own
- * copy of the rules.  A third copy would have made it a habit.  Migrating
- * Modify onto these names belongs to the CSS-system pass, not to the change
- * that noticed it.
+ * copy of the rules.
  *
  * The markup contract: a `role="tablist"` of `<button role="tab">` carrying
  * `is-active` + `aria-selected`, and panels with `role="tabpanel"` shown and
@@ -522,8 +484,7 @@ button:disabled {
 
 /* Visually-hidden but still announced by screen readers.  Standard
  * "sr-only" recipe.  Single home in this file so every page that
- * loads page-shell.css gets it; previously duplicated across
- * lib/selection-panel.css and spectra/style.css. */
+ * loads page-shell.css gets it. */
 .sr-only {
     position: absolute;
     width: 1px;
@@ -577,7 +538,7 @@ button:disabled {
 /* ---- Spinner — the ONE global loading indicator (§2.1 shared primitive) ------
  * A small border-spinner used by any busy affordance (results loading lock-down,
  * inspector action rows, …).  Size tunes via --spinner-size so a caller
- * doesn't re-declare the rule.  Consolidates the former per-component copies. */
+ * doesn't re-declare the rule. */
 .spinner {
     display: inline-block;
     width: var(--spinner-size, 14px);
@@ -655,12 +616,10 @@ button:disabled {
 
 /* ---- The findings row — one shape for every surface ----
  *
- * MOVED HERE FROM form-components.css, 2026-09-11.  `science/validation.md`
- * § 4.1 R2 makes `lib/validation-findings.js` the one renderer of a finding
- * and § 5.1 of this contract says the row looks the same on every tab -- but
- * the rules lived in a sheet only the FORM pages load, and /results mounts
- * MolView, which draws its notices (R2a: a notice is a finding) through that
- * same module.  The rows would have rendered with no design at all.
+ * `science/validation.md` § 4.1 R2 makes `lib/validation-findings.js` the
+ * one renderer of a finding and § 5.1 of this contract says the row looks the
+ * same on every tab -- and /results mounts MolView, which draws its notices
+ * (R2a: a notice is a finding) through that same module.
  *
  * This is § 5's own argument one layer up: `.status.error` is defined only in
  * page-shell "and every page loads page-shell -- so the same red appears
@@ -735,10 +694,8 @@ button:disabled {
     padding-left: var(--space-sm2);
 }
 
-/* The message text of a finding.  Previously written by every renderer and
- * styled by NONE -- it inherited whatever the panel gave it, which differed
- * per page because two sheets owned .issues-panel.  One owner now
- * (lib/validation-findings.js writes it, this rule styles it). */
+/* The message text of a finding.  One owner (lib/validation-findings.js
+ * writes it, this rule styles it). */
 .issues-panel .issue-msg {
     flex: 1 1 auto;
     min-width: 0;

@@ -30,8 +30,7 @@ def sandbox(tmp_path, monkeypatch):
     the config root, so read_config + write_config_scope land there.
 
     Yields the tmp_path."""
-    # THE SANDBOX IS THE CONFIG ROOT (§ 2.1c).  (It was the working directory
-    # too, for a cwd step retired 2026-08-31; W54 T7.)
+    # THE SANDBOX IS THE CONFIG ROOT (§ 2.1c).
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
@@ -75,14 +74,7 @@ def test_the_xdg_branch_is_read(xdg_branch, monkeypatch):
 
 
 def test_the_bare_default_read_honours_the_same_fallback(xdg_branch):
-    """A-7 (final review, 2026-08-13): the bare ``read_config()`` was
-    cwd-only while the section getters honoured the XDG file too, so an
-    operator with an XDG-only config got a no-auth, no-TLS server while
-    `jobset` honoured the very same file.
-
-    The cwd step is gone (2026-08-31) and the split-brain it enabled with it,
-    but the property this pins is the one that outlived it: the default read
-    and the section getters share ONE lookup."""
+    """The default read and the section getters share ONE lookup."""
     sandbox = xdg_branch
     from molbuilder.runtime_config import get_tls, read_config
     xdg_dir = sandbox / "home" / ".config" / "molbuilder"
@@ -100,8 +92,7 @@ def test_the_bare_default_read_honours_the_same_fallback(xdg_branch):
 def test_the_write_lands_in_the_one_location_private(xdg_branch):
     """With no file yet, the one writer creates it where the reader looks --
     here the XDG branch of the one location -- at 0600 (`configuration.md`
-    § 2.1b, § 2.3).  *(This read "the highest-precedence existing location",
-    from when there were several; W54 T7.)*"""
+    § 2.1b, § 2.3)."""
     sandbox = xdg_branch
     target = write_config_scope({
         "paths": {"projects": "/srv/projects"},
@@ -115,9 +106,6 @@ def test_the_write_lands_in_the_one_location_private(xdg_branch):
 def test_write_preserves_existing_unrelated_keys(sandbox):
     """A patch only touches the keys it carries.  Sister sections
     survive."""
-    # `secret_key_file` was the second sister section here until 2026-08-31.
-    # A config carrying it is now REFUSED, so seeding one would test the
-    # refusal rather than the merge (`configuration.md` § 2.1e).
     (sandbox / "molbuilder.json").write_text(json.dumps({
         "envs": {"siesta": "molbuilder-siesta"},
         "launch": {"mode": "direct"},
@@ -135,8 +123,7 @@ def test_a_file_that_was_already_refused_is_named_not_the_patch(sandbox):
     """The merge fails validation because the patch is bad -- or because the
     file already was.  The message says which: a person sent to fix "the
     patch" for a section it never touched fixes the wrong thing.  (The auth
-    wizard blamed itself for a bad `envs` entry, measured 2026-09-10; the
-    diagnosis lived in its private writer until 2026-09-13.)"""
+    wizard blamed itself for a bad `envs` entry, measured 2026-09-10.)"""
     (sandbox / "molbuilder.json").write_text(json.dumps({"envs": {"siesta": 5}}))
     with pytest.raises(RuntimeConfigError, match="ALREADY") as e:
         write_config_scope({
@@ -161,12 +148,9 @@ def test_write_validates_before_writing(sandbox):
 
 
 def test_write_refuses_to_overwrite_a_corrupt_file(sandbox):
-    """R10 (review-4 G7): this test pinned the OPPOSITE -- 'overwrites
-    it with the patch... documented behaviour' -- and that tolerance
-    silently destroyed whatever a hand-edit broke: a config carrying
-    auth providers and TLS paths is exactly the file a user cannot
-    afford to lose to a typo plus any later --write.  Corrupt now
-    REFUSES, naming the path and the way out."""
+    """A corrupt file REFUSES, naming the path and the way out: a config
+    carrying auth providers and TLS paths is exactly the file a user cannot
+    afford to lose to a typo plus any later --write."""
     import pytest
     from molbuilder.runtime_config import RuntimeConfigError
     (sandbox / "molbuilder.json").write_text("not valid json {{{")

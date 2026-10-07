@@ -770,8 +770,8 @@ the end-to-end runs on both engines — are mapped in
 buckets), `test_spectra_phase_indicator_js.py` (the phase indicator, the
 relaxation dot included), `test_task_setup_tab.py` (the send flow: the shared
 door, the kind, and the browser-vs-CLI byte-compat pin),
-`test_vibration_render_gate.py` (the deck runs the science gate — and it
-refuses), `tests/test_vibration_e2e.py` (the live water runs),
+`test_vibration_render_gate.py` (the deck runs the science gate),
+`tests/test_vibration_e2e.py` (the live water runs),
 `tests/test_siesta_vibration_results_e2e.py` (a SIESTA result on the Results
 tab: the modes without a spectrum, the columns and dots by route, the
 vibrational-only thermochemistry and its bars),

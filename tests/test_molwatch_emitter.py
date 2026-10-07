@@ -1,19 +1,14 @@
 """Unit tests for molbuilder.trajectory_log.emitter.MolwatchEmitter.
 
 The class is the source-of-truth for the streaming ``<JOB>.molwatch.log``
-emitter, and the PySCF script imports it (from ``mb_pyscf.pyz``).  Until
-this extraction (review-fix N), behaviour could only be verified by
-subprocess-running a generated script with PySCF installed.
+emitter, and the PySCF script imports it (from ``mb_pyscf.pyz``).
 
 These tests exercise the class directly with a minimal fake-mol stub
 and a hand-built ``envs`` dict, so format invariants (header lines,
 preview-block shape, opt-step block shape, scf_history table) are
 pinned at unit-test time without needing PySCF.
 
-The cross-format round-trip
-(``MolwatchEmitter -> file -> MolwatchLogParser``) is covered in
-``tests/test_molwatch_preview.py``; this file focuses on the writer's
-output bytes."""
+This file focuses on the writer's output bytes."""
 
 from __future__ import annotations
 
@@ -224,8 +219,7 @@ def test_emitted_lines_exact_for_zero_force_step(tmp_path, h2_mol):
 def test_scf_cycle_hook_snapshots_wall_time(tmp_path, h2_mol):
     """Each scf_cycle_hook call records a 'wall_time' (epoch seconds)
     on the per-cycle buffer dict.  Surfaces per-SCF-cycle timing all
-    the way through to the parser without any client-side stitching.
-    Added 2026-06-20."""
+    the way through to the parser without any client-side stitching."""
     p = tmp_path / "wt.molwatch.log"
     em = MolwatchEmitter(str(p), "h2", h2_mol)
     em.scf_cycle_hook({"cycle": 0, "e_tot": -1.10, "last_hf_e": None,

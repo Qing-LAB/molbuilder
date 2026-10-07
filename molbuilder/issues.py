@@ -16,9 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Literal, Optional
 
 # The closed set of severities a validator may emit.  Pinned in one
-# place so the runtime check + the static type stay in lock-step
-# (previously the docstring promised a Literal but the annotation
-# was a bare str -- static analysers couldn't catch typos).
+# place so the runtime check + the static type stay in lock-step.
 Severity = Literal["error", "warn", "info"]
 _SEVERITIES: tuple = ("error", "warn", "info")
 
@@ -30,7 +28,7 @@ class Issue:
     Fields
     ------
     severity : "error" | "warn" | "info"
-        Errors block emission (render_fdf / render_script raise);
+        Errors block emission (``script_emit.render_deck`` raises);
         warnings print to stderr but the run proceeds; info entries
         are advisory (e.g. "Fe with 2S = 4: high-spin Fe(II)") and
         don't add to the warn count.
@@ -89,16 +87,10 @@ class Issue:
     def to_json(self) -> "Dict[str, Any]":
         """This finding as the wire object.
 
-        THE key set, in one place.  Four sites spelled it by hand
-        (`cli.py`, two blueprints, `_shared.issues_to_json`) and two tests
-        asserted `set(d) == {"severity","message","where"}` to hold them
-        together -- `_shared`'s own docstring said so: *"Schema duplicated
-        literally in both blueprints' tests; if a key changes here, those
-        tests catch it."*  That is a type's job.
+        THE key set, in one place.
 
         `stage` rides beside `where`, never inside it (`engines/stages.md`
-        § 4 R2), and is omitted when absent so a single-run response is
-        byte-identical to what it was before ladders existed.
+        § 4 R2), and is omitted when absent.
         `workflow_group` is resolved from a config the web layer holds, so
         `_shared.issues_to_json` adds it on top of this.
         """
@@ -167,9 +159,7 @@ def calling(hook: str, *, engine: str = "", where: str = ""):
     re-raise is unconditional -- the only thing gained here is knowing who.
 
     The note is the whole record: a prep that raised writes nothing, its
-    pipeline log included (`script-preparation.md` § 4.5).  *(Until
-    2026-10-05 the failure was also written into that log, with its
-    traceback -- into a file a refused prep no longer leaves.)*
+    pipeline log included (`script-preparation.md` § 4.5).
     """
     try:
         yield

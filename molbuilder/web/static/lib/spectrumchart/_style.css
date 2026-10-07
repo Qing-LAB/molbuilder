@@ -22,10 +22,7 @@
     --spectrumchart-chosen:    #7cc4a4;   /* the selected mode */
     --spectrumchart-curve:     #9aa6b8;
     /* strength not computed (§ 6.2).  TEXT as well as marks -- the note
-       inside the plot -- so it clears 4.5:1 on the chart's ground: 5.8.  It
-       was #6b7280 (3.3:1) until 2026-09-28, when the app's muted text was
-       raised to this value and the chart, matching the app by choice
-       (§ 11), followed in this one block. */
+       inside the plot -- so it clears 4.5:1 on the chart's ground: 5.8. */
     --spectrumchart-pending:   #959ba7;
     --spectrumchart-imaginary: #d98c7a;   /* not at rest (§ 6.4) */
     --spectrumchart-hovered:   #b9c8dc;   /* the mode a click would pick right now */
@@ -48,16 +45,12 @@
     --spectrumchart-rug-ir:      #d2a06a;
     --spectrumchart-rug-raman:   #7aa6d2;
     /* MEASURED against the chart's own background, 2026-09-11.  The
-       channel colours land at 5.2-6.9:1; these two were at 3.01:1 and
-       1.70:1 -- the silent tick sitting exactly ON the 3:1 floor for a
-       non-text UI component, and `partial` below it.  Both are raised
-       to clear it while staying visibly dimmer than a channel colour,
-       which is the ordering the rug reads by.
+       channel colours land at 5.2-6.9:1; these two clear the 3:1 floor
+       for a non-text UI component while staying visibly dimmer than a
+       channel colour, which is the ordering the rug reads by.
 
-       `partial` mattered more than its faintness suggested: it means a
-       channel was never computed, so on a frequencies-only or
-       Raman-only run EVERY tick takes it, and the whole rug was
-       near-invisible exactly when it is the only thing on the axis. */
+       `partial` means a channel was never computed, so on a
+       frequencies-only or Raman-only run EVERY tick takes it. */
     --spectrumchart-rug-silent:  #7b8290;   /* 4.18:1 */
     --spectrumchart-rug-partial: #646b77;   /* 3.01:1 */
 

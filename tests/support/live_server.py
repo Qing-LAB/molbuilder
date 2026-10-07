@@ -1,10 +1,5 @@
 """THE way a test starts a real HTTP server for the app.
 
-Twenty test modules each defined a ``flask_server`` fixture, and sixteen of
-them were byte-identical in two groups: make a `werkzeug` server on an
-ephemeral port, run it in a daemon thread, yield ``http://127.0.0.1:<port>``,
-shut it down.  The other four differed only in spelling.
-
 **One implementation, and each module keeps its own fixture scope.**  The
 scopes are not uniform today — most are ``module``, a few are function — and a
 scope is a decision about how much state a file's tests share, not something a
@@ -16,7 +11,7 @@ rather than a fixture: a module writes
         with serve() as base_url:
             yield base_url
 
-and the fourteen lines that used to sit under it are here, once.
+and the server itself is here, once.
 """
 from __future__ import annotations
 

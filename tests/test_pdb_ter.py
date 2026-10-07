@@ -57,8 +57,8 @@ def test_blank_chain_id_column_disambiguated(data_dir):
 
 def test_single_chain_no_ter_is_back_compat():
     """A simple PDB with one chain ID 'A' and no TER must still parse
-    to a single chain 'A' (i.e. the new logic doesn't introduce
-    segment suffixes when the input was unambiguous)."""
+    to a single chain 'A' (no segment suffixes when the input is
+    unambiguous)."""
     pdb = (
         "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N\n"
         "ATOM      2  CA  ALA A   1       1.460   0.000   0.000  1.00  0.00           C\n"
@@ -70,8 +70,7 @@ def test_single_chain_no_ter_is_back_compat():
 
 
 def test_blank_chain_id_no_ter_uses_legacy_a():
-    """No TER + blank chain id column -> all atoms map to 'A'
-    (preserves the previous parser's `or "A"` fallback)."""
+    """No TER + blank chain id column -> all atoms map to 'A'."""
     pdb = (
         "ATOM      1  N   ALA     1       0.000   0.000   0.000  1.00  0.00           N\n"
         "ATOM      2  CA  ALA     1       1.460   0.000   0.000  1.00  0.00           C\n"

@@ -1,6 +1,6 @@
 """Electronic transport — the COMPOSITE calculation's engine layer.
 
-The front door of `archive/2026-09-01-transport-design.md` § 4.1: one calculation
+One calculation
 cites a finished junction attempt and derives five stages.  What lives
 here:
 
@@ -18,25 +18,12 @@ here:
   * :mod:`.transiesta` — the TranSIESTA **emission library**: the
     geometry table every rung writes and the electrode and reservoir
     declarations the device and transmission rungs write, reused by
-    :mod:`.deck` (their VALUES are catalogue items since 2026-09-29,
+    :mod:`.deck` (their VALUES are catalogue items,
     `engines/transport.md` § 6.1b); :mod:`.wizard` — the bulk-electrode
     derivation;
     :mod:`.sort` — the categorical atom sort.
 
-**THERE IS NO ENGINE REGISTRY, and this paragraph used to say there was.**
-Until 2026-09-18 the list above also named ``.preflight``, ``.engine_base``
-and ``.results`` — *three modules that no longer exist on disk* — described
-``.transiesta`` as a "registered engine", and told a reader that a backend
-registers itself with ``@register_engine``, a decorator that exists
-nowhere.  Transport's registry went on 2026-09-17 with ``TransiestaEngine``;
-the sweep that day corrected the same claim in ``transiesta.py`` and
-``spectra/methods.py`` and missed this file, whose whole docstring was the
-claim.  A new engine is **described and rendered through ``spec_for``**
+**THERE IS NO ENGINE REGISTRY.**  A new engine is **described and rendered through ``spec_for``**
 (`engines/overview.md` § 5); it does not register.
 """
-
-# NOT a side-effect import any more.  ``from . import transiesta`` stood
-# here to "guarantee the registry is populated" -- there is no registry, and
-# every user of the emission library imports it directly (`deck.py`,
-# `wizard.py`, `stages.py`, `jobset/prep.py`).
 

@@ -215,8 +215,7 @@
 
         const won = data.choice.label;
         const traces = [];
-        // ONE key entry per group across the WHOLE figure.  Keying per
-        // panel put the same two names up three times.
+        // ONE key entry per group across the WHOLE figure.
         const legended = new Set();
         const layout = {
             margin: { l: 64, r: 20, t: 34, b: 52 },
@@ -306,10 +305,8 @@
                     textfont: { size: 13 },
                     cliponaxis: false,
                     customdata: pts.map((t) => t.label),
-                    // ONE LEGEND ENTRY PER GROUP, NOT PER TRACE.  Naming
-                    // every trace put ten entries above a three-panel chart
-                    // and buried the panels under their own key.  Colour
-                    // carries the group, dash carries the series within a
+                    // ONE LEGEND ENTRY PER GROUP, NOT PER TRACE.  Colour
+                    // carries the group, a hatch carries the series within a
                     // panel, and the y-axis title already says which
                     // quantity a panel is -- so the legend only has to
                     // answer "which line is which run".
@@ -405,9 +402,8 @@
             + ((t.machine || {}).node ? ` (${t.machine.node})` : "")));
 
         /* WHAT IT ACTUALLY USED.  `summarize` already measures all of this
-         * from the monitor's `<label>.util.csv` -- and until 2026-08-25
-         * this card threw every field away, showing s/iter and nothing
-         * else.  These are the numbers a person writes the RUN script
+         * from the monitor's `<label>.util.csv`.  These are the numbers a
+         * person writes the RUN script
          * from: how much memory to ask for (peak, not the request), and
          * whether the accelerator paid for itself.  A 256 G ask that
          * peaked at 101 G with the GPU at 23% is a different script.
@@ -435,8 +431,7 @@
          * wrapper log.  `mismatch` below shows only the DISAGREEMENTS;
          * this shows the settled truth -- the block size SIESTA chose,
          * the ELPA build that answered.  A sweep over solvers is largely
-         * a question about these values, and they were being carried
-         * across the wire and dropped. */
+         * a question about these values. */
         /* Only what the knob line ABOVE did not already say.  `effective`
          * repeats the ranks and threads it was asked for, and printing
          * "np 48 · thr 1" and then "mpi_np 48 · omp_threads 1" one line
@@ -505,13 +500,9 @@
             + (data.complete === false ? " · still running" : "")));
         wrap.appendChild(head);
 
-        /* WHAT IT IS A BENCHMARK OF, AND WHERE IT RAN.  Both arrive in
-         * every payload and neither was drawn until 2026-08-25 -- so the
-         * page reported "62.6 s/iter" with no way to know it was 444
-         * atoms on 2x64 slurm cores.  A number per iteration means
-         * nothing without the system it iterated over: that is the first
-         * question anyone asks of a benchmark, and the answer was already
-         * in the response. */
+        /* WHAT IT IS A BENCHMARK OF, AND WHERE IT RAN.  A number per
+         * iteration means nothing without the system it iterated over:
+         * that is the first question anyone asks of a benchmark. */
         const ctx = [];
         const sys = data.system || {};
         if (sys.n_atoms) ctx.push(`${sys.n_atoms} atoms`);
@@ -524,8 +515,7 @@
          *
          * The `effective.node_phys_cores` path is the FALLBACK for sweeps
          * recorded before the [MACHINE] line existed -- it measured cores
-         * only.  (It replaced `environment.topology` on 2026-08-25, which
-         * described a node the sweep never necessarily saw.) */
+         * only. */
         const machines = data.machines || [];
         if (machines.length === 1) {
             ctx.push(machines[0].brief);
@@ -557,8 +547,7 @@
         }
 
         /* The verdict, whole -- the winner, or the server's one sentence
-         * saying why there is none (`choice.none`, `choose_winner`).  This
-         * guessed the reason from `n_done` until 2026-10-06. */
+         * saying why there is none (`choice.none`, `choose_winner`). */
         const choice = data.choice;
         const verdict = el("div", "bench-verdict");
         if (choice.label) {
@@ -605,8 +594,8 @@
         }
         wrap.appendChild(list);
 
-        /* B4: the page says WHEN IT LAST LOOKED -- and, since 2026-08-25,
-         * ALSO when the data it is showing was measured.
+        /* B4: the page says WHEN IT LAST LOOKED -- and ALSO when the data
+         * it is showing was measured.
          *
          * They answer different staleness questions and only together
          * cover both.  The browser clock says the poll is still running;
@@ -693,7 +682,7 @@
     root.molbuilder.inspectors = root.molbuilder.inspectors || {};
     root.molbuilder.inspectors.benchSummaryInspector = inspector;
     // THE ONE STATE CHIP, lent to the Results page's ladder view
-    // (results.md § 2.4): the same eight words and seven tones, so the
+    // (results.md § 2.4): the same words and tones, so the
     // ladder is not a third copy of this vocabulary (plan.md § 5c.3).
     root.molbuilder.inspectors.stateChip = (state) =>
         el("span", "bench-state is-" + (TONE[state] || "idle"), String(state));

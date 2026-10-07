@@ -1,8 +1,6 @@
 /* Task hand-over sender -- THE one door from a parameter tab to Task setup.
  *
- * Extracted 2026-08-20 from structure-optimization/viewer.js's
- * `_sendToTaskSetup` when the spectra tab became the second sender
- * (spectra-migration-plan.md P2): the guards, the write order and the
+ * The guards, the write order and the
  * notice handling are CONTRACT (`job-contracts.md` SS 2.1, SS 2.5;
  * `handover-procedure.md` SS 2), and two copies of a contract drift.
  *
@@ -54,17 +52,15 @@
         const projects = o.projects;
         const say = (typeof o.say === "function") ? o.say : function () {};
         /* THE FINDINGS GO TO THE ONE RENDERER, never into the status line:
-         * this module listed each notice as a bullet in `say` until
-         * 2026-09-30 -- a second renderer, which R2 forbids and R2a names
+         * a second renderer is what R2 forbids and R2a names
          * (a notice is a finding).  A consumer that hands no renderer is
          * told so, rather than having its findings dropped in silence
          * (R3). */
         const showFindings = (typeof o.showFindings === "function")
             ? o.showFindings : null;
         /* BESIDE WHAT THE LIVE CHECK ALREADY SAYS: its findings are still
-         * true of the form just sent, so a send adds its own and clears none
-         * -- the K3 review found a send replacing them, so a refusal the
-         * live check was showing left the page at the send.  One the live check
+         * true of the form just sent, so a send adds its own and clears none.
+         * One the live check
          * and the send both carry (the cell gate runs in each for a stated
          * box) is shown once. */
         const standing = Array.isArray(o.standing) ? o.standing : [];
@@ -128,9 +124,7 @@
          * just browsed to cite, so this is the easy mistake to make.
          *
          * "Inside" means inside, not "equal to": a subfolder of the
-         * citation buries the calculation just as thoroughly.  The check
-         * used to compare only equality, which enforced something
-         * narrower than the rule it quoted. */
+         * citation buries the calculation just as thoroughly. */
         const relNorm = rel.replace(/\/+$/, "");
         const citeNorm = String(o.junction || "").replace(/\/+$/, "");
         const inside = citeNorm && relNorm
@@ -151,18 +145,13 @@
          * another calculation's template.  The check goes through the file
          * layer like every other read -- `missingOk` makes "no description
          * here" a 200 rather than a logged 404, which is the normal case.
-         *
-         * This guard EXISTED as a 409 in the hand-over endpoint and was lost
-         * on 2026-08-16 when that endpoint stopped resolving the destination
-         * to become render-only.  Restored on the side that chooses where to
-         * write, which is where it belongs. */
+         * It lives on the side that chooses where to write. */
         /* readFile never throws (projects/api.js: every failure is an
          * {ok:false, error} envelope), so with missingOk a genuine
          * absence is {ok:true, exists:false} and ok===false is ALWAYS a
-         * real failure -- a 403/500/network drop.  The guard used to
-         * fall through on exactly those and send anyway: a one-job-per-
-         * folder check that fails OPEN overwrites the folder it could
-         * not read.  It refuses now; the dead catch went with it. */
+         * real failure -- a 403/500/network drop, and it refuses: a
+         * one-job-per-folder check that fails OPEN overwrites the folder
+         * it could not read. */
         const prior = await projects.readFile(dest + "/task.json",
                                               { missingOk: true });
         if (prior && prior.ok === false) {
@@ -184,17 +173,14 @@
         const req = {
             engine:    o.engine,
             name:      (dest.split("/").filter(Boolean).pop() || ""),
-            // No `structure_path`.  It used to send the projects
-            // sidebar's selected file, which is a SECOND fact read at a
-            // second moment -- `molview.md` § 9.3a's rule is that the
-            // facts which leave together were read together, and this
-            // one was read from a cursor rather than from the
-            // structure.  The server names the files it writes from the
-            // structure that is right here in this body.
+            // No `structure_path`: the projects sidebar's selected file
+            // would be a SECOND fact read at a second moment --
+            // `molview.md` § 9.3a's rule is that the facts which leave
+            // together were read together.  The server names the files
+            // it writes from the structure that is right here in this body.
         };
         /* THE KIND RIDES EVERY HAND-OVER, stated by the tab that sends it
-         * -- the server refuses one with none (2026-10-06; an optimization's
-         * was left out, read back by a default on both sides, until then). */
+         * -- the server refuses one with none (2026-10-06). */
         if (!o.calculation) {
             throw new Error("task-handover.send: the tab states its "
                             + "calculation kind (optimization, vibration, "
@@ -279,19 +265,14 @@
         /* WHAT THE CELL GATE SAID.  The same gate every structure door runs
          * answers with notices as well as refusals: a refusal is the 400 above,
          * but a notice is a box it accepted and wants read — an axis it could
-         * not tell was periodic, a vacuum thinner than it expects.  These came
-         * back on every send and were dropped on the floor, so a person whose
-         * cell was questioned found out from the run.
+         * not tell was periodic, a vacuum thinner than it expects.
          *
          * A notice does NOT hold the write back: the files are the person's own
-         * parameters and refusing to save them helps nobody.  It holds back the
-         * NAVIGATION, because a page that jumps away is a page whose warning
-         * was never read (`tabs.md` — a tab does not decide for its user). */
+         * parameters and refusing to save them helps nobody. */
         const notices = Array.isArray(out.notices) ? out.notices : [];
         if (showFindings) showFindings(beside(notices));
         // THE ROAD FROM A DESCRIBED TRANSPORT CALCULATION, said whether or
-        // not something came back: a notice is read, not a stop.  The
-        // notices branch below returned before it until the K3 review.
+        // not something came back: a notice is read, not a stop.
         const transportNext = "Next: prep run seed "
             + "(the CLI, or Task setup's prep buttons on this "
             + "folder), then launch stage by stage; summarize run "
@@ -307,9 +288,7 @@
             // be: whatever came back, the line's job is "go and read it", so
             // the quiet tone would be the wrong one even if it existed.  The
             // findings themselves keep their own severities wherever they are
-            // rendered.  (Written down 2026-09-11 after I "fixed" this to
-            // error/warn/info and gave the page a class the stylesheet has no
-            // rule for -- same word, different layer.)
+            // rendered.
             const worst = notices.some((n) => n && n.severity === "error")
                 ? "error" : "warn";
             // WHO SPOKE is the door's: the cell gate on a hand-over, the
@@ -337,21 +316,10 @@
             say("ok", described + "  " + transportNext);
             return;
         }
-        /* NO NAVIGATION -- the same rule the transport arm has kept since
-         * 2026-08-29, now the only rule (user, 2026-09-19: *"we just skip
+        /* NO NAVIGATION (user, 2026-09-19: *"we just skip
          * the fancy tab to tab jump connection to avoid implicit
          * coupling"*).  This tab's job ends when the files are on disk;
          * which tab you open next is yours.
-         *
-         * WHAT THE JUMP COST.  It relied on the sidebar's selection being
-         * shared -- and sessionStorage slots are PER PAGE, where a page's
-         * own slot SHADOWS the shared fallback (`projects/state.js`,
-         * `handOffSelection`).  So Task setup opened on whatever folder IT
-         * last showed, not the one just written to: measured 2026-09-19,
-         * the hand-over landed correctly in `optimization/junction6-hier`
-         * and Task setup opened `spectrum/bridge-hier`, ready to edit the
-         * wrong calculation.  Handing the slot over would have fixed that
-         * one path and left the coupling; not jumping removes it.
          *
          * `web/tabs.md` § 1 already forbids an in-memory hand-off, for
          * costs that are all about hidden state.  A jump that depends on

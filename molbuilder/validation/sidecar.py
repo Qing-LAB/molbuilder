@@ -5,10 +5,6 @@ a structure via a ``.molstruct.json`` sidecar: regions, frozen-atom
 indices, generator-input echo.  Engines that don't consume one of
 these labels MUST surface an INFO Issue so the user can see the
 absorption was noticed but not silently dropped.
-
-Split from the pre-2026-06-13 flat ``molbuilder/validation.py`` per
-docs/science/validation.md  Function body +
-signature are identical to the pre-split version.
 """
 
 from __future__ import annotations
@@ -123,7 +119,7 @@ def check_electrode_labels_are_frozen(struct: Structure, *,
 
 def check_unconsumed_region_labels(struct: Structure, *, engine: str,
                                    calculation: str = "") -> List[Issue]:
-    """Pattern B, re-homed (validation.md § 5; C-shared 2026-08-21): every
+    """Pattern B (validation.md § 5): every
     region label this calculation does NOT consume is named explicitly.
 
     The /modify selection panel writes ``regions`` for transport workflows
@@ -131,29 +127,18 @@ def check_unconsumed_region_labels(struct: Structure, *, engine: str,
     and silence would let a user believe their labels shaped the run.  The
     reserved frozen label is EXCLUDED: both engines consume it (SIESTA's
     ``Geometry.Constraints``, PySCF's geomeTRIC ``$freeze``), so warning
-    about it would be the same false alarm E-M7.1 fixed on the vibration
-    route.  This ran in two web endpoints until they were deleted; living
-    HERE puts it on every deck route through the one settings gate.
+    about it would be a false alarm.  Living HERE puts it on every deck
+    route through the one settings gate.
 
-    **WHAT IS CONSUMED DEPENDS ON THE KIND, and asking only the ENGINE got
-    it exactly backwards for transport.**  This took ``engine`` alone, so
-    every transport deck's ``.validation.txt`` said its
-    ``L-electrode``/``bridge``/``R-electrode`` labels *"do NOT consume ...
-    do not shape this calculation"* -- about the partition the entire
-    five-rung ladder is built from (`engines/transport.md` § 4).  The
-    warning that exists to stop a person believing their labels mattered
-    was telling them the opposite of the truth.  `engines/transport.md`
-    § 3.6a recorded it as a known wrong warning on 2026-09-16; the kind was
-    already being passed to every validator (`validation/__init__` sets
-    ``engine_kw["calculation"]``) and this function simply never asked.
+    **WHAT IS CONSUMED DEPENDS ON THE KIND**: for transport the
+    ``L-electrode``/``bridge``/``R-electrode`` labels are the partition the
+    entire five-rung ladder is built from (`engines/transport.md` § 4).
 
     For transport the consumed set is `sort.PARTITION_LABELS` -- asked of
     the module that owns the partition, never re-listed here.  Anything
     else is genuinely unread and is still named, which is § 4's own rule:
     *"a label this engine does not consume is WARNED about, never dropped
-    in silence."*  (Until 2026-10-02 any ``*-electrode`` name was consumed
-    too, as a lead; the leads are two exact names now, `engines/transport.md`
-    § 4.)
+    in silence."*
     """
     from ..structure import FROZEN_LABEL
     regions = getattr(struct, "regions", None) or {}
@@ -167,8 +152,7 @@ def check_unconsumed_region_labels(struct: Structure, *, engine: str,
         # AND THE ADVICE IS THE KIND'S TOO.  Telling a transport calculation
         # its labels "stay in the sidecar for /transport" is nonsense -- this
         # IS /transport -- and offering `frozen_atoms` is the wrong remedy
-        # for a stray label on a junction.  Fixing WHICH labels are named and
-        # leaving this sentence would have been half the defect.
+        # for a stray label on a junction.
         advice = ("The partition it reads is "
                   "L-electrode / R-electrode / bridge / buffer; anything "
                   "else rides along untouched. "
@@ -252,8 +236,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
     """
     # THE one remedy for a structure stated relaxed that is not stationary
     # here -- the text the finish and the PySCF deck write too
-    # (`vibrational_analysis.nonstationary_remedy`); four wordings of it stood
-    # in this function until 2026-09-29 (the K6 review, R11).
+    # (`vibrational_analysis.nonstationary_remedy`).
     from ..spectra.vibrational_analysis import nonstationary_remedy
     _remedy = nonstationary_remedy(None, engine)
     if relaxed_by is not None:

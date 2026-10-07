@@ -1,18 +1,8 @@
 """Unit tests for ``lib/molbuilder-runtime.js`` driven via Node.
 
-Task #191 (audit follow-up, 2026-06-02).  The runtime registry
-(``window.molbuilder.runtime.register / whenReady / get /
-listRegistered / listPending``) is the load-bearing init contract
-every other module relies on -- but until this commit it had NO
-direct unit tests.  Consumers (test_molbuilder_e2e.py and friends)
-exercised it indirectly by virtue of the tab's other modules
-self-registering, which means:
-
-  * A regression in ``register`` (e.g. forgetting to drain
-    ``_waiters``) would surface as "the next tab refresh hangs",
-    not as a test failure with a clear name.
-  * Edge cases (re-registration, error in a resolver, list*
-    snapshot stability) were entirely untested.
+The runtime registry (``window.molbuilder.runtime.register / whenReady /
+get / listRegistered / listPending``) is the load-bearing init contract
+every other module relies on.
 
 This file is the lowest test layer for the registry per
 ``docs/process/testing.md`` § 1: pure JS unit tests in
@@ -74,8 +64,8 @@ def _run_node(snippet: str) -> object:
 class TestSurfacePresence:
 
     def test_runtime_object_exposes_documented_methods(self):
-        """The five public methods named in the module's docstring
-        MUST all be callable functions on ``window.molbuilder.runtime``.
+        """The five public methods MUST all be callable functions on
+        ``window.molbuilder.runtime``.
         """
         out = _run_node('''
             const rt = window.molbuilder.runtime;
@@ -137,7 +127,7 @@ class TestRegister:
             rt.register("c", {z: 3});
             console.log(JSON.stringify(rt.listRegistered()));
         ''')
-        # listRegistered is documented as sorted -- pin the contract.
+        # listRegistered is sorted -- pin the contract.
         assert out == ["a", "b", "c"]
 
     def test_register_rejects_empty_name(self):

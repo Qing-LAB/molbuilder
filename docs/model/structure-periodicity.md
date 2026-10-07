@@ -310,7 +310,7 @@ masquerade as a user-chosen lattice and defeat the override hatch).
 | `engine_offset()` / `to_engine()` | `cell.py` | § 6.0 — where the atoms sit: the offset the structure states, else the rule's centring; the coordinates every engine gets |
 | **Capture at construction** | `modify.py` — `add_slab` through `_finish_slab`. That helper was extracted so **two** builders could share it; `add_electrode_slab` was the other and went on 2026-09-01, `add_symmetric_electrodes` before it | sets `Structure.cell` (in-plane lattice + the z length below) **and** `axis_kind=(periodic,periodic,transport)` (defined `:1043`, passed to the constructor `:1063`) — no more electrode discard |
 | **The captured z length** | `modify.py` (inside `_finish_slab`) | **the atoms' z extent, verbatim**: `c` is measured and set on the Cell page — span plus one layer spacing — never invented by the builder ([`science/junction-cell.md`](?doc=science/junction-cell.md) § 6) |
-| Emit | `siesta/input.py:render_fdf` (and every other deck) | emits `LatticeVectors` from the resolved cell and the coordinates `cell.to_engine` places — the design plus `engine_offset`; `script_emit.render_deck` refuses a frame with an atom outside along a non-periodic axis and writes the ENGINE-OFFSET record (§ 6.0) |
+| Emit | `siesta/input.py::spec_for` (and every other deck's spec), rendered by `script_emit.render_deck` | emits `LatticeVectors` from the resolved cell and the coordinates `cell.to_engine` places — the design plus `engine_offset`; `script_emit.render_deck` refuses a frame with an atom outside along a non-periodic axis and writes the ENGINE-OFFSET record (§ 6.0) |
 | Transport | `transport/compose.py` | the cited relaxation's cell — the `.XV`'s (form A) or the pair's sidecar (form B); a citation whose cell is missing or unusable is refused at the citation door, naming the cited file |
 
 > **Rewritten for § 6.0** *(2026-09-25)*: the `resolve_cell_origin()` row and
@@ -662,14 +662,13 @@ convention. The box would sit at the origin with half the atoms outside it (the
    the authoring sidecar's corner → the junction emitted translated, far-face
    atoms wrapping into the leads). A cell is a **shape** and survives a change
    of frame; an origin is a **position** and does not.
-3. **SIESTA correctness is applied at generation, not while editing.**
-   `render_fdf`'s default path (`cell=None`, the one the web build uses)
-   translates atoms by `−resolve_cell_origin()`, so SIESTA always receives
-   atoms inside `[0,cell)` with the cell at `(0,0,0)`. (An explicit `cell=`
-   override argument instead fractional-wraps atoms into that cell — same end
-   state, different mechanism.) **The viewer ≡ render_fdf invariant:** the viewer's box (cell at
-   `cell_origin`, atoms where they are) and SIESTA's cell (at `(0,0,0)`, atoms
-   translated by `−cell_origin`) are the SAME relative geometry.
+3. **Engine correctness is applied at the hand-off, not while editing.**
+   Every deck receives the design coordinates plus `engine_offset` — one rigid
+   translation, never a wrap atom by atom — with the cell at `(0,0,0)` and every
+   atom inside it (`cell.to_engine`, § 6.0). **The viewer ≡ engine invariant:**
+   the viewer's box (drawn at `−engine_offset`, atoms where they are) and the
+   engine's cell (at `(0,0,0)`, atoms translated by `+engine_offset`) are the
+   SAME relative geometry.
 4. *(Retired 2026-09-25 with its code: `calibrate_to_cell`, the optional last
    step that baked the generation-time shift into the stored coordinates.
    § 6.0's assigned origin is what it was for.)*
@@ -680,19 +679,11 @@ convention. The box would sit at the origin with half the atoms outside it (the
 ```mermaid
 flowchart LR
     subgraph EDIT["EDIT — molecule pinned at origin (convenience)"]
-        M["molecule @ origin"] --> E["add electrodes<br/>atoms straddle origin<br/>cell captured + cell_origin = bbox low corner"]
+        M["molecule @ origin"] --> E["add electrodes<br/>atoms straddle origin<br/>cell captured"]
     end
-    E -->|viewer| V["box drawn at cell_origin<br/>WRAPS the structure (no jump)"]
-    E -->|render_fdf always| S["atoms translated by −cell_origin<br/>cell @ (0,0,0), atoms in [0,cell)  ✓ SIESTA"]
+    E -->|viewer| V["box drawn at −engine_offset<br/>WRAPS the structure (no jump)"]
+    E -->|every deck| S["atoms translated by +engine_offset<br/>cell @ (0,0,0), atoms inside  ✓ engine"]
 ```
-
-**The resolve table, completed:**
-
-| Cell state | `resolve_cell()` | `resolve_cell_origin()` | `render_fdf` translates atoms by |
-|---|---|---|---|
-| derived (no explicit cell) | per-axis `bbox + 2·vacuum` / bbox (§ 4) | `bbox_min − vacuum` (isolated) / `bbox_min` (transport) | `−origin` (centres in the box) |
-| explicit, `cell_origin` set (junction) | the explicit cell | `cell_origin` | `−cell_origin` (into `[0,cell)`) |
-| explicit, `cell_origin` null (imported crystal) | the explicit cell | `null` → `(0,0,0)` | `0` (already in `[0,cell)`) |
 
 **"Use default" is invalid for a `periodic`/`transport` axis.** Clearing the
 explicit cell falls back to `resolve_cell()`, which **raises** on a `periodic`
@@ -1227,7 +1218,7 @@ and that is refused at every door that would act on one:
 | Door | What it does with a left-handed cell |
 |---|---|
 | `StructureCodec.read` — opening a file | opens it; says nothing (the answer reports, at seam 2) |
-| `render_fdf` / the PySCF renderer | **refuses** — `validate()` calls it an `error`, and both emitters run `report(validate(…))` before writing a byte |
+| `script_emit.render_deck` — every deck, SIESTA's and PySCF's | **refuses** — `validate()` calls it an `error`, and `render_deck` runs `report(validate(…))` before a line of the deck exists |
 | `/api/build/preflight` · the hand-over to Task setup · transport · export | **refuses** — 400, at the request seam |
 
 So the CLI is protected too, by the validator rather than by the reader: a

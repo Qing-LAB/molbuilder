@@ -1,20 +1,17 @@
 """Sidebar sensor refresh-contract tests (docs/web/projects.md;
 test design: docs/execution/checkpointing.md § 13).
 
-This file pins the *refresh model* the checkpoint sensor depends on,
-after the 2026-06-26 decision to replace background polling with
-explicit refresh (docs/web/projects.md).  Three
+This file pins the *refresh model* the checkpoint sensor depends on --
+explicit refresh, not background polling (docs/web/projects.md).  Three
 guarantees, the last two about the panel's own source and behaviour:
 
   1. ``/api/checkpoint/state`` is CHEAP: it returns the documented
      fields and does NOT read a big file it can rule out by size and
-     timestamp.  It reports no archive total **at all** -- this used to
-     say "archive size stays at its ``0`` default", describing a field
-     that has since been removed rather than defaulted (checkpointing.md
+     timestamp.  It reports no archive total **at all** (checkpointing.md
      § 12: the number was never true, since hard links counted in full,
      and it fed no decision because nothing prunes).  The two assertions
      below are therefore *the file is never opened* and *the field is
-     absent*, which is what the section now claims.
+     absent*.
   2. A git failure inside ``state()`` surfaces as a structured
      ``{ok:false, error}`` envelope (HTTP 500, web-api.md bucket D)
      that the JS sensor renders as a 🔴 error pill -- NOT an unhandled
@@ -23,14 +20,10 @@ guarantees, the last two about the panel's own source and behaviour:
      Node against a stub DOM and a stub ``fetch``, drives it, and
      asserts on the requests it made and the DOM it wrote.
 
-That third part replaces a claim this file used to make: that the
-refresh behaviour "is browser-scope and belongs to the Playwright
-E2E".  It does not, entirely -- which requests fire on
-directory-enter, whether re-entering the same directory re-reads it,
-and whether a refusal the user can answer actually gets a question,
-are all decidable in Node in milliseconds.  Deferring them to an E2E
-meant deferring them indefinitely, and § 13.3 is explicit: *run the
-thing and look at what moved*, because a grep passes for a panel that
+Which requests fire on directory-enter, whether re-entering the same
+directory re-reads it, and whether a refusal the user can answer
+actually gets a question, are all decidable in Node in milliseconds,
+and § 13.3 is explicit: *run the thing and look at what moved*, because a grep passes for a panel that
 contains the right words in the wrong order or throws on first click.
 
 What genuinely does need a browser -- layout, the lazy @gitgraph
@@ -73,13 +66,9 @@ def client():
 
 
 def _seed_with_archive(tmp_path: Path) -> Path:
-    """A plain run dir: an .fdf and a 2048-byte .DM beside it.
-
-    The name is historical and the old docstring claimed ``init()``
-    archived the .DM -- neither is true of its one caller, which stubs
-    ``Repo.status`` to raise and never initialises anything.  What the
-    test needs is a directory that exists and is not a checkpoint
-    folder; nothing here is saved, tracked or archived.
+    """A plain run dir: an .fdf and a 2048-byte .DM beside it -- a
+    directory that exists and is not a checkpoint folder; nothing here is
+    saved, tracked or archived.
     """
     (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\n")
     (tmp_path / "siesta-test.DM").write_bytes(b"\x00" * 2048)
@@ -158,14 +147,11 @@ def test_a_calculation_is_named_by_its_description_not_by_its_depth(
     button exists for is *a calculation with no repository yet* — and
     `initialized` is exactly False there.
 
-    THE PANEL COUNTED PATH SEGMENTS until 2026-09-19 (`RUN_DIR_DEPTH = 3`,
-    `projects/PROJECT/TOPIC/RUN`), which is the same shape as the
-    `_CALC_SEARCH_DEPTH` walk deleted in 76282e71 — a number standing in for
-    a fact the tree states.  It was wrong in both directions: one extra
-    grouping folder put a real calculation out of reach with no message, and
-    loose files at the right depth were offered a repository.  A description
-    is the answer at any depth, so this test uses two folders SIDE BY SIDE
-    at the same one.
+    A count of path segments is a number standing in for a fact the tree
+    states, and wrong in both directions: one extra grouping folder puts a
+    real calculation out of reach, and loose files at the right depth are
+    offered a repository.  A description is the answer at any depth, so this
+    test uses two folders SIDE BY SIDE at the same one.
     """
     import json as _json
     from molbuilder.task import FILENAME as TASK_FILENAME
@@ -260,14 +246,12 @@ def _js(name: str) -> Path:
 
 @pytest.mark.parametrize("name", ["checkpoint.js", "projects-sidebar.js"])
 def test_the_panel_and_its_importer_actually_parse(name):
-    """The cheapest test in the file, and it would have caught a dead sidebar.
+    """The cheapest test in the file.
 
-    A stray brace made `checkpoint.js` a SyntaxError.  `projects-sidebar.js`
-    imports it STATICALLY, so the failure took the importer down too -- and
-    that module is loaded by five page templates, which means the whole
-    projects sidebar was gone from every page.  Every other test here reads
-    this file as *text* and greps it, and text greps cannot tell you a file
-    does not parse.
+    `projects-sidebar.js` imports `checkpoint.js` STATICALLY, so a
+    SyntaxError in it takes the importer down too -- and with it the
+    projects sidebar on every page.  A text grep cannot tell you a file does
+    not parse.
     """
     node = shutil.which("node")
     if not node:
@@ -296,11 +280,9 @@ def test_the_panel_and_its_importer_actually_parse(name):
 #  The panel RUN, not grepped                                        #
 #                                                                    #
 #  § 13.3 rules out "asserting on emitted text where the end result  #
-#  is what matters -- run the thing and look at what moved."  Every  #
-#  test above this line reads checkpoint.js as a STRING: they would  #
-#  pass for a panel that contains the right words in the wrong       #
-#  order, or that throws on the first click.  These import the       #
-#  module into Node against a stub DOM and a stub fetch, drive it,   #
+#  is what matters -- run the thing and look at what moved."  These  #
+#  import the module into Node against a stub DOM and a stub fetch,  #
+#  drive it,                                                         #
 #  and assert on the requests it made and the DOM it wrote.          #
 # ================================================================== #
 
@@ -519,21 +501,17 @@ def test_leaving_the_run_dir_hides_the_toggle_and_restores_the_files():
 
 def test_a_folder_that_is_not_a_calculation_shows_no_panel():
     """The activation gate, executed rather than described — and the gate is
-    now the DOOR'S ANSWER, not a count of path segments.
+    the DOOR'S ANSWER, not a count of path segments.
 
     A project or topic directory is not a calculation, so the panel hides.
-    What changed on 2026-09-19 is how it knows: `is_calculation` comes back
-    from `/api/checkpoint/state` (`task.json` is here — `project-layout.md`
-    invariant 2) rather than from `RUN_DIR_DEPTH = 3`.  This test asserted
-    ZERO requests for those directories, which was true only because the
-    client was guessing; guessing is what put a real calculation one folder
-    deeper out of reach with no message.
+    It knows from `is_calculation`, which comes back from
+    `/api/checkpoint/state` (`task.json` is here — `project-layout.md`
+    invariant 2).
 
     ONE request per distinct directory is the cost, and it is the same
     request that fills the panel — measured at 1.3–1.7 ms against a
     non-repository folder, no subprocess on that path.  What must not
-    happen is a storm, so the count is still asserted; it is just no longer
-    zero.  `null` asks nothing: there is no directory to ask about.
+    happen is a storm, so the count is asserted.  `null` asks nothing: there is no directory to ask about.
     """
     out = run_node([_PANEL], r"""
       const m = await import(process.env.PANEL_URL);
@@ -610,11 +588,9 @@ def test_re_entering_the_same_directory_does_not_re_fetch():
 def test_setup_asks_for_a_name_only_when_a_name_is_what_is_missing():
     """The refusal→prompt→retry path, executed end to end.
 
-    The grep above proves the branch is *written*.  This proves it *works*:
-    the first POST carries no name, the server refuses with
+    The first POST carries no name, the server refuses with
     `where: "calculation"`, the panel asks, and the SECOND POST carries what
-    the person typed.  Nothing above this line would notice if the retry sent
-    the name under the wrong key, or never sent it at all.
+    the person typed -- under the right key.
     """
     out = run_node([_PANEL], r"""
       let seen = 0;
@@ -691,8 +667,8 @@ def test_setup_does_not_ask_for_a_name_when_a_name_would_not_help():
 
 def test_wiring_the_panel_twice_does_not_double_every_click():
     """`initCheckpointPanel` says it is safe to call from several bootstrap
-    paths; before the guard, a second call double-bound every listener and one
-    click on Set-up posted twice.  One caller exists today — the docstring
+    paths; a second call that double-bound every listener would make one
+    click on Set-up post twice.  One caller exists today — the docstring
     invites the second."""
     out = run_node([_PANEL], r"""
       __replies = [{match: "/", body: {ok: true, initialized: false}}];

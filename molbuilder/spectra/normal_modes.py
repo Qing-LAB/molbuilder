@@ -22,10 +22,8 @@ from ``mb_pyscf.pyz`` and runs the projection inside its run
 (`runwrap.PYSCF_COMPANIONS`, `engines/pyscf.md` § 3), and a SIESTA
 force-constant job's finish runs it from ``mb_vibration.pyz``
 (`runwrap.VIBRATION_COMPANIONS`, `engines/vibration.md` § 5.5) -- both where
-this package is not installed, so it imports nothing of molbuilder.  Until
-2026-10-05 the PySCF deck carried its functions as source text, which is why
-each still imports numpy under its own roof and takes everything else as an
-argument.
+this package is not installed, so it imports only the ``constants`` that
+travel beside it.
 """
 from __future__ import annotations
 

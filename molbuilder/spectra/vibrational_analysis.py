@@ -259,9 +259,7 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
     ``None`` when the person stated it relaxed.  ``engine`` says what "relax
     first" is: on SIESTA the ladder's `relax` stage before this one (`prep`
     refuses a force-constant stage without one while the box is unticked),
-    on PySCF the deck's own relaxation phase.  Until 2026-09-29 the finish
-    told a laddered run to untick ``already_relaxed``, which the ladder had
-    already done (the M11 review, plan § 5w K6)."""
+    on PySCF the deck's own relaxation phase."""
     if relaxation_stage:
         # THE LAUNCH AS A TEXT READ LATER SAYS IT (`identity.launch_as_typed`,
         # the decks' own wording): this remedy is written into a result and
@@ -270,11 +268,9 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
         # IN THE ORDER IT CAN BE DONE: a prepped stage is not prepped again
         # -- a redo is the state saved before its prep, restored
         # (`job-system.md` § 5.0) -- and restoring it after `relax`'s new
-        # attempt would take that attempt away, so the restore comes first
-        # (it said "launch, then prep this stage again" until 2026-10-05).
+        # attempt would take that attempt away, so the restore comes first.
         # The words are `identity`'s, imported the module's two ways: this
-        # runs beside the job too, in the finish's `_stationarity` -- a
-        # package-only import here failed there until 2026-10-06.
+        # runs beside the job too, in the finish's `_stationarity`.
         s = str(relaxation_stage)
         return (f"If this stage is prepped, first go back to the state saved "
                 f"before its prep{_RESTORE}; launch the `{s}` stage again "
@@ -295,9 +291,7 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
 #: How the state saved before a prep is restored -- the words both remedies
 #: say, a text read later naming no folder.  A prepped stage is not prepped
 #: again (`job-system.md` § 5.0), and a preview of one has not been: so the
-#: restore is said conditionally (it led unconditionally until 2026-10-05,
-#: and a preview's findings told a person to restore a state that did not
-#: exist yet).
+#: restore is said conditionally.
 _RESTORE = f" ({checkpoint_words()})"
 
 

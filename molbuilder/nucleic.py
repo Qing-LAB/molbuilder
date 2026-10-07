@@ -5,7 +5,7 @@ Public API:
     build_rna(sequence, *, backend='auto', form='A', terminal='OH')
 
 All backends return the same :class:`molbuilder.structure.Structure`
-type, so file writers, the FDF generator, and the web UI don't care
+type, so file writers, the deck writers, and the web UI don't care
 which backend produced the geometry.  See :mod:`molbuilder.builders.backends`
 for backend capabilities and install requirements.
 """
@@ -32,16 +32,8 @@ def _strip_direction(s: str) -> str:
       * ``5'-ATGC-3'`` -> ``ATGC`` (bare == explicit);
       * ``3'-ATGC-5'`` -> reversed to ``CGTA`` (internal 5'->3');
       * a one-sided (``5'-ATGC``) or self-contradictory (``3'-ATGC-3'``)
-        label RAISES ``ValueError``.
-
-    Before 2026-07-27 this used a permissive local regex that required BOTH
-    ends labelled and never checked they differed, so it silently kept a
-    one-sided label and silently reversed ``3'-ATGC-3'`` -- a real trap: a
-    duplex strand quietly built in the wrong 5'->3' order pairs the wrong
-    bases with no error.  ``build_rna``/``parse_dna_sequence`` already
-    rejected these; ``build_dna`` now matches (its earlier ``_strip_direction``
-    pass had stripped the markers before ``parse_dna_sequence``'s strict
-    check could see them).
+        label RAISES ``ValueError``: a duplex strand quietly built in the
+        wrong 5'->3' order pairs the wrong bases with no error.
     """
     body, direction = _strip_directionality(s.strip())
     core = "".join(c for c in body if c.isalpha()).upper()
@@ -142,19 +134,16 @@ def build_dna(
           * ``"off"`` -- never add.  Use when you want to inspect the
             heavy-atom skeleton or hand off to an external protonator.
 
-        ``True`` (legacy) is normalised to ``"auto"``; ``False`` to
-        ``"off"``.  No silent change of behaviour for callers using
-        the previous bool API.
+        ``True`` is read as ``"auto"``; ``False`` as ``"off"``.
     protonate_phosphates
         If True (default), add an H to each deprotonated non-bridging
         phosphate oxygen so the molecule is formally **neutral**.
-        This is the easier starting point for DFT (no NetCharge to
-        set, no oversized vacuum needed for charged-cell electrostatic
-        compensation).  Set False to keep tleap's deprotonated state
-        (more chemically realistic for solution-phase DNA, but the
-        molecule then carries -(N-1) electrons and you must set
-        ``NetCharge`` explicitly in the FDF -- ``render_fdf`` will
-        emit it for you when it sees a non-zero charge).
+        This is the easier starting point for DFT (no oversized vacuum
+        needed for charged-cell electrostatic compensation).  Set False
+        to keep tleap's deprotonated state (more chemically realistic
+        for solution-phase DNA, but the molecule then carries -(N-1)
+        electrons: a blank ``net_charge`` is read from the deprotonated
+        phosphates, the phosphate rule, and the deck states it).
     title
         Optional title written into XYZ comment / PDB TITLE.
     """
@@ -170,10 +159,8 @@ def build_dna(
             # `BackendUnavailable`, not `ValueError`: this is the same
             # condition `_threedna` raises when 3DNA is absent -- the
             # machine cannot do it -- and one condition wants one type, so
-            # one handler at the route covers both (`web-api.md` § 1).  It
-            # was a bare ValueError, which fell into the generic
-            # `except Exception` and answered HTTP 500: a tool the person
-            # chose not to install, reported as a crash.
+            # one handler at the route covers both (`web-api.md` § 1): a
+            # tool the person chose not to install is not a crash.
             from .chemistry import BackendUnavailable
             raise BackendUnavailable(
                 "double-strand DNA requires X3DNA (the 'threedna' backend, which "
@@ -314,10 +301,8 @@ def build_rna(
 def _normalise_h_mode(value: "bool | str") -> str:
     """Map the user's ``add_hydrogens`` argument to {auto, on, off}.
 
-    Accepts the modern string API (``"auto"`` / ``"on"`` / ``"off"``)
-    plus the legacy bool API (True -> "auto", False -> "off") for
-    back-compat with callers written before the tri-state landed.
-    Raises ValueError on anything else.
+    Accepts ``"auto"`` / ``"on"`` / ``"off"`` and a bool (True -> "auto",
+    False -> "off").  Raises ValueError on anything else.
     """
     if value is True:
         return "auto"

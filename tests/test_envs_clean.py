@@ -46,7 +46,7 @@ def test_unknown_recipe_lists_registered():
 
 
 def test_conda_only_recipe_rejected():
-    """conda-only recipes (siesta, MDtools, tests, host, pySCF) have
+    """conda-only recipes (siesta, MDtools, host, pySCF) have
     no build_spec; ``clean`` is meaningful only for source-build envs."""
     r = _run("clean", "molbuilder-siesta", "--yes")
     assert r.exit_code != 0

@@ -1,7 +1,6 @@
 """End-to-end runtime tests for the v2 paginated source inspector.
 
-The 2026-06-02 (task #119) rewrite replaced the single-shot 16 MB
-``ctx.readFile`` with chunked ``/api/files/read_range`` fetches:
+The inspector reads a file in chunked ``/api/files/read_range`` fetches:
 
   * initial mount loads ``PAGE_BYTES`` (256 KB) of the head.
   * scrolling within ``NEXT_PAGE_TRIGGER_PX`` of the bottom triggers
@@ -145,9 +144,7 @@ def _mount_source(page, path):
 def _wait_loaded(page, *, eof=None, mode=None, timeout_ms=5000):
     """Wait for the inspector to finish its in-flight fetch.
 
-    Pre-2026-06-02 there was no client-observable "is the fetch done"
-    signal except via the status text -- now we read the live state
-    off the DOM: ``.source-status`` flips from "Loading..." to
+    Reads the live state off the DOM: ``.source-status`` flips from "Loading..." to
     "Showing head/tail: ... KB of ... KB (...%)" once the chunk
     lands.  Optionally also gate on the eof/mode contract.
     """

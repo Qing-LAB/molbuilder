@@ -1,14 +1,11 @@
 """The TranSIESTA emitters — the transport composite's deck layer.
 
-**THIS MODULE NO LONGER WRITES A DECK OF ITS OWN** (2026-09-17).  It is a
-set of emitters the two live writers reach into, plus the engine preflight:
+The TranSIESTA emitters `transport/deck.py` (and `wizard.py`, for the lead's
+box) reach into:
 
 * :func:`emit_electrode_declarations` and :func:`_emit_geometry` — reused by
   `transport/deck.py`, the pipeline every one of the five rungs renders
-  through.  *(The first was `_emit_transiesta_block` until 2026-09-29, which
-  also wrote every TranSIESTA and TBtrans VALUE as an f-string; those are
-  catalogue items now, written by the section walk with their notes —
-  `engines/transport.md` § 6.1b.)*
+  through.
 * :func:`_compute_cell_from_extents` and
   :func:`_find_electrode_regions` — reused by `transport/wizard.py`, whose
   `extract_electrode_model` derives the lead `compose.py` hands to prep.
@@ -18,20 +15,11 @@ set of emitters the two live writers reach into, plus the engine preflight:
 * :func:`pole_count` — TranSIESTA's rule for how many poles an equilibrium
   pole ENERGY gives, written once for the settings gate's refusal and the
   count the device deck states beside the energy.
-This module emits NO deck of its own and holds NO gate.  ``TransiestaEngine``
-and its ``preflight`` were deleted 2026-09-17 (the tombstone at the foot of the
-file lists every check and where it lives now), as were the ``TransportEngine``
-Protocol and its registry before them.  Transport's science is the KIND's —
-``_KIND_VALIDATORS["transport"]`` — and its decks are written by
-``transport/deck.py`` through ``spec_for`` → ``prepare_deck``.
-
-``render_script``, ``_emit_header`` and ``_emit_k_mesh`` were a SECOND
-device-deck writer and are deleted; so are ``parse_output`` (which raised
-``NotImplementedError``) and ``methods_fragment`` (a placeholder paragraph),
-neither of which anything called.  The tombstones below say why each went.
-The record a future transmission inspector will read already exists —
-`transport/record.py` writes ``<label>.transport.json`` — and needs no stub
-here to wait for it.
+This module emits NO deck of its own and holds NO gate.  Transport's science
+is the KIND's — ``_KIND_VALIDATORS["transport"]`` — and its decks are written
+by ``transport/deck.py`` through ``spec_for`` → ``prepare_deck``.  The record
+a transmission inspector reads is `transport/record.py`'s,
+``<label>.transport.json``.
 """
 
 from __future__ import annotations
@@ -69,7 +57,7 @@ from ..structure import Structure
 #: (`engines/transport.md` § 2a.7).  What it is NOT is a second home for the
 #: value: a structure that STATES a vacuum is obeyed verbatim, because
 #: `vacuum` is already the person's control (Modify → Cell, carried in the
-#: sidecar) and this emitter ignored it until 2026-09-23.
+#: sidecar).
 _ISOLATED_ELECTRODE_VACUUM_ANG = 15.0
 
 
@@ -84,10 +72,10 @@ def electrode_hs_stem(job_name: str, label: str) -> str:
     and therefore the stem of the ``.TSHS`` the device deck references.
 
     Two writers need it to agree byte-for-byte: the device deck's
-    ``TS.Elec.<name> HS`` line (below) and the transport ladder's
-    electrode-stage renderer (`transport/stages.py`), which sets the
-    electrode deck's ``SystemLabel`` so SIESTA writes exactly the file
-    the device will ask for.
+    ``TS.Elec.<name> HS`` line (below) and `jobset/prep.py`, which names
+    the electrode rung's ``SystemLabel`` with it so SIESTA writes exactly
+    the file the device will ask for (and `stages.stage_inputs` names the
+    ``.TSHS`` a rung consumes).
     """
     return f"{job_name}_{label}"
 
@@ -194,11 +182,10 @@ def _compute_cell_from_extents(struct: Structure) -> Tuple[float, float, float]:
         periodic gold)"* — a rectangle cannot tile Au(111), so there is no
         honest number and none is invented.
 
-    THE VACUUM IS THE PERSON'S, and it was ignored until 2026-09-23.  Three
-    states (`structure-periodicity.md` § 2): a number used verbatim,
-    ``[0,0,0]`` meaning no gap DELIBERATELY and also used, and unset -- the
-    only one :data:`_ISOLATED_ELECTRODE_VACUUM_ANG` answers.  Someone who
-    typed 8 A on the Cell page got 15 A in the deck and nothing said so.
+    THE VACUUM IS THE PERSON'S.  Three states
+    (`structure-periodicity.md` § 2): a number used verbatim, ``[0,0,0]``
+    meaning no gap DELIBERATELY and also used, and unset -- the only one
+    :data:`_ISOLATED_ELECTRODE_VACUUM_ANG` answers.
 
     **Why not just call `resolve_cell`?**  Because its default where nobody
     chose is 3 A -- right for a molecule in a box and five times too thin
@@ -206,10 +193,6 @@ def _compute_cell_from_extents(struct: Structure) -> Tuple[float, float, float]:
     images must be electrostatically isolated.  The RULE is shared; only the
     default differs, the way the electrode's dense transport-axis k is a
     transport default rather than something to discover (§ 2a.7).
-
-    *(This padded 15 A onto both transverse axes whatever their kind and
-    answered the third with ``int(bbox_z + 2) + 1`` -- a rounding that
-    honoured nothing and had no source.)*
     """
     pos = struct.positions
     extent = pos.max(axis=0) - pos.min(axis=0)
@@ -230,17 +213,11 @@ def _compute_cell_from_extents(struct: Structure) -> Tuple[float, float, float]:
 
 
 # --------------------------------------------------------------------- #
-#  .fdf emission helpers — kept as small private functions so each      #
-#  block is independently testable.  Each returns a list of lines;      #
-#  ``render_script`` concatenates them.                                 #
+#  .fdf emission helpers -- the geometry and electrode blocks           #
+#  `transport/deck.py` lays into the deck (`_emit_geometry`,            #
+#  `emit_electrode_declarations`: lists of lines) and the box and       #
+#  frame they are written in.                                           #
 # --------------------------------------------------------------------- #
-
-
-# `_emit_header` DELETED 2026-09-17 with `render_script`, its only caller.
-# The live deck gets its banner, its SystemLabel and the `# runtime.<key>:`
-# echo lines from `script_emit`, shared with the SIESTA emitter -- which is
-# what made one reader (`molwatch.parse_runtime_line`) serve both engines in
-# the first place.
 
 
 def axis_vacuum(cell: np.ndarray,
@@ -303,28 +280,15 @@ def _lattice_block(struct: Structure, cell: np.ndarray, *,
     gold)"* -- a rectangle cannot tile Au(111).  That case never reaches
     here: the citation door refuses a junction stating no cell, and I6 is
     held by copying the device's lateral vectors (§ 5).
-
-    *(Two 2026-09-22 reviews read the § 7 sentence as a verdict on this
-    function and concluded it was residue -- one attempted a deletion,
-    which was reverted.  The sentence is about the OTHER case.)*
     """
     lines = ["LatticeConstant        1.0 Ang"]
     cell = np.asarray(cell, dtype=float)
     if not fabricated:
-        # THE KIND, NOT THE BOOLEAN.  This read `struct.pbc`, which flattens
-        # `transport` and `periodic` to the same True -- so the per-axis line
-        # below labelled every transport axis "periodic", and the warning
-        # further down ("the transport axis has vacuum / is not periodic")
-        # could never fire on a transport axis at all.  `axis_kind` is the
-        # field that distinguishes them, and it is what this was asking for.
-        # The fallback AGREES WITH ITS TEN NEIGHBOURS.  It arrived as the
-        # literal swap for the old `struct.pbc or (True,)*3` field read and
-        # said `("periodic",) * 3`, while every other `axis_kind or ...` in
-        # the tree -- including `Structure.pbc()` itself -- answers
-        # `("isolated",) * 3`.  All eleven are unreachable (`__post_init__`
-        # always fills the kinds), but this is the one whose waking would
-        # relabel every axis in an emitted deck and silence the warning
-        # below, so it is the one that must not disagree.
+        # THE KIND, NOT THE BOOLEAN: `struct.pbc` flattens `transport` and
+        # `periodic` to the same True, and the per-axis line and the warning
+        # below need them apart.  The fallback answers `("isolated",) * 3`,
+        # as every other `axis_kind or ...` in the tree does (`__post_init__`
+        # always fills the kinds).
         kinds = struct.axis_kind or ("isolated",) * 3
         vac = axis_vacuum(cell, struct.positions)
         lines += [
@@ -416,26 +380,15 @@ def _emit_geometry(struct: Structure,
     # includes transport).  The index this fixes is the orbital ordering
     # inside `.DM` and `.TSHS`, a value § 2a.13 binds to every stage, so a
     # second rule here is not a variation -- it is the defect.
-    #
-    # This sorted ALPHABETICALLY until 2026-09-23 while `siesta/input.py`
-    # sorted by atomic number, so one structure was declared `Au, C, H, S`
-    # here and `H, C, S, Au` there.  And `cfg.species_order` -- a catalogue
-    # row a person can fill in -- was honoured there and unreachable here,
-    # because this block took no `cfg`.  **The config was already in scope
-    # at the call site and simply not passed** (`deck.py`), so the "seam
-    # change" that gap looked like was one argument.
     from ..chemistry import species_order as _species_order
     species = _species_order(
         struct.elements,
         getattr(cfg, "species_order", None) if cfg is not None else None)
     species_idx = {sp: i + 1 for i, sp in enumerate(species)}
-    # AN OVERRIDE THAT OMITS A SPECIES REFUSES HERE, and it used to crash.
-    # `species_order` is honoured verbatim, so a list missing an element the
-    # structure contains left `species_idx[el]` to raise a bare
-    # `KeyError('Au')` while writing the coordinate block.  The SIESTA
-    # emitter has always refused this in words; transport could not reach it
-    # at all until `cfg` began arriving here on 2026-09-23, so the exposure
-    # is as new as the control.
+    # AN OVERRIDE THAT OMITS A SPECIES REFUSES HERE: `species_order` is
+    # honoured verbatim, so a list missing an element the structure contains
+    # would leave `species_idx[el]` to raise a bare `KeyError` while writing
+    # the coordinate block.
     missing = sorted(set(struct.elements) - set(species_idx))
     if missing:
         raise ValueError(
@@ -445,9 +398,7 @@ def _emit_geometry(struct: Structure,
             f"default rule orders them (model/chemistry.md 3a)")
 
     # THE BOX, THEN ONE PLACEMENT (`engine_frame_for`).  A deck passes the
-    # frame it records; a direct call gets the same answer computed here.  The
-    # fabricated box used to take the atoms untranslated: a box at the origin
-    # around coordinates that were not.
+    # frame it records; a direct call gets the same answer computed here.
     fabricated = cell is None and struct.cell is None
     if frame is None:
         frame = engine_frame_for(struct, cell)
@@ -460,7 +411,7 @@ def _emit_geometry(struct: Structure,
     for sp in species:
         # ``atomic_number`` raises rather than defaulting: a species with
         # no element cannot be calculated, and Z=0 in this block is a
-        # ghost atom SIESTA would silently accept (fixed 2026-09-09).
+        # ghost atom SIESTA would silently accept.
         z = atomic_number(sp)
         lines.append(f"  {species_idx[sp]:>3}  {z:>3}  {sp}")
     lines.append("%endblock ChemicalSpeciesLabel")
@@ -476,25 +427,6 @@ def _emit_geometry(struct: Structure,
     lines.append("%endblock AtomicCoordinatesAndAtomicSpecies")
     lines.append("")
     return lines
-
-
-# `_emit_basis_and_xc` DELETED 2026-09-18 -- ZERO call sites, and it could
-# never gain one.  `deck.py`'s header states why: "its six keywords are
-# exactly `BASIS_SECTION` + `XC_SECTION` + `electronic_temperature`, and
-# lifting it beside them would write each twice -- which `layout.check_rules`
-# now catches."  The composite takes basis/XC from the catalogue sections.
-#
-# It outlived its caller (`render_electrode_fdf`, deleted 2026-09-17) by a
-# day in code and longer in prose: `wizard.py` imported it without calling
-# it, this module's header called it "reused by transport/wizard.py", the
-# tombstone below listed it among symbols with "real callers", and
-# `plan.md` listed it under "NOT redundant, so not deleted by association".
-# Four statements, one dead function.
-
-# `_emit_k_mesh` DELETED 2026-09-17 with `render_script`, its only caller.
-# Every rung's k-point mesh is written by the one writer now (`kmesh.write`,
-# through `siesta.layout.k_mesh_lines`; `engines/siesta.md` § 6.1) -- the
-# `deck.py` block that replaced this one went the same way on 2026-09-30.
 
 
 def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
@@ -581,13 +513,6 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
         # `%block TS.Elec.<name>` MUST carry -- HS, semi-inf-dir,
         # electrode-pos, chem-pot (SIESTA 5.4.0 manual).
         #
-        # This sat inside `if buffer_idx:` until 2026-09-15, so an ORDINARY
-        # junction -- no buffer atoms -- got two electrode blocks without
-        # it.  Probably harmless, and that is the problem: molbuilder sorts
-        # the junction so the electrodes ARE the first and last atoms, which
-        # is where an omitted position would land anyway, so the deck relied
-        # on an undocumented default agreeing with the truth.
-        #
         # `begin` / `end` are the binary's own tokens (it accepts
         # elec-pos | start | begin | end), which is more permissive than the
         # manual documents.
@@ -600,8 +525,7 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
             # -(n_total - max).
             lines.append(f"  elec-pos end       "
                          f"{-(n_total - max(idxs))}")
-        # `bloch 1 1 1`, FIXED, not a control (the field was withdrawn
-        # 2026-09-15).  molbuilder derives
+        # `bloch 1 1 1`, FIXED, not a control.  molbuilder derives
         # the electrode from the junction's own labelled atoms, so the
         # electrode cell IS the device cross-section and no expansion
         # applies.
@@ -680,68 +604,3 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
         lines.append("%endblock TS.Atoms.Buffer")
         lines.append("")
     return lines
-
-
-# --------------------------------------------------------------------- #
-#  The engine                                                            #
-# --------------------------------------------------------------------- #
-
-
-# `TransiestaEngine` DELETED 2026-09-17 -- the last of the June 2026 era.
-#
-# The class ended as one classmethod, `preflight`, reached only through
-# `_ENGINE_VALIDATORS[TransportConfig]` in `validation/__init__.py`.  **Nothing
-# validated a `TransportConfig`.**  Every rung resolves a `SiestaConfig`
-# (`engines/transport.md` 2a.14), and the two sites that built a
-# `TransportConfig` then -- `deck.py::_legacy_view` and
-# `stages.py::config_for` -- built it as a projection to feed the lifted
-# NEGF block emitter and never validated it.  So the registration
-# dispatched for nothing.  (`_legacy_view` went on 2026-09-29, when the
-# block's values moved to the catalogue; `config_for`, with no production
-# caller, went with the class on 2026-10-02.)
-#
-# It was kept after that became true because one surface still built a
-# `TransportConfig` and validated it: `POST /api/transport/render`.  That route
-# was deleted 2026-09-17, and with it the last reason.
-#
-# EVERY CHECK IT CARRIED HAS A NAMED LIVE HOLDER, verified one by one before
-# this deletion (`engines/transport.md` 5 names them, and none named this):
-#
-#   device kz = 1 ................. the k-point mesh: a component a
-#                                   transport calculation fixes, refused on
-#                                   every door (I8; `_validate_transport_kind`
-#                                   until 2026-09-30)
-#   unknown region labels ......... `validation/sidecar.py::
-#                                   check_unconsumed_region_labels`, run by
-#                                   `_validate_siesta` -- which every rung
-#                                   reaches, because every rung IS a SiestaConfig
-#   missing / empty L, bridge, R .. `sort.py::categorical_sort` REFUSES
-#   unlabeled or double-labeled ... `sort.py::_partition_of` REFUSES
-#   interleaved electrodes ........ `sort.py::categorical_sort` REFUSES
-#   atom order [lower][bridge][upper]
-#                                   held by CONSTRUCTION -- `compose` runs the
-#                                   categorical sort before any deck is
-#                                   rendered, and the extracted lead inherits
-#                                   that order
-#   |V| > 2 V advisory ............ `_validate_transport_kind`, warn on
-#                                   `config.bias_voltage_v` (re-homed 2026-09-16)
-#
-# What the module still exports is the emission library the live deck path
-# reuses.  MEASURED 2026-09-18, because this list used to assert callers that
-# do not exist:
-#
-#   `_emit_geometry` ............. `deck.py` (all four deck shapes, so every
-#                                  one of the five rungs)
-#   `emit_electrode_declarations`  `deck.py`, the device and transmission
-#                                  shapes (`_emit_transiesta_block` until
-#                                  2026-09-29, when its values left it)
-#   `electrode_hs_stem` .......... `stages.py` x2 and `jobset/prep.py` -- NOT
-#                                  `deck.py`/`wizard.py`, which the old list
-#                                  claimed
-#   `_find_electrode_regions` .... `wizard.py`, plus internal
-#   `_compute_cell_from_extents` . `wizard.py`, plus internal
-#   `axis_vacuum`, `_lattice_block` . INTERNAL ONLY -- reached through
-#                                  `_emit_geometry`, never imported out
-#
-# (`_emit_basis_and_xc` was in this list too, with zero callers anywhere.
-# Deleted 2026-09-18; see the note where it stood.)

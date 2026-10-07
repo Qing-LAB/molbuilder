@@ -6,12 +6,7 @@ Pins the routing contract from `docs/web/tabs.md` § 3:
     `/spectrum-calculation`, `/transport-calculation`, `/results`
     each render their tab's template and return 200.
 
-  * `/` is also bound to the Molbuilder page so the bare host
-    lands on the interactive workspace.
-
-  * No other route aliases — pre-1.0 cleanup dropped every
-    legacy-path 301; renamed paths break by design (commit + push,
-    bookmark updates, move on).
+  * `/` redirects to the first tab in `TABS`.
 
   * The nav bar on every canonical page shows every tab in the
     documented order with the correct active-tab marker.
@@ -73,11 +68,6 @@ def test_root_redirects_to_first_tab(web):
 
 
 # --------------------------------------------------------------------- #
-#  No legacy aliases                                                    #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
 #  Nav bar — every canonical page shows the whole nav, in order         #
 # --------------------------------------------------------------------- #
 
@@ -98,10 +88,6 @@ def test_nav_bar_lists_every_tab_in_order(web, page_path):
     """Every tab page renders the same bar, in the same order, with the
     same labels.  A regression that drops a tab or reorders them surfaces
     here.
-
-    It said "5-tab" in its own name until 2026-08-31, when the eighth tab
-    arrived -- the count was never asserted (it comes from `TABS`), so the
-    name was decoration that had been wrong since the sixth.
 
     NOTE: the regex relies on each ``<a class="app-tab">`` containing
     only plain-text label content (no nested ``<svg>`` icons etc.).

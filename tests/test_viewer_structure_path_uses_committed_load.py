@@ -1,7 +1,6 @@
-"""L2 source-text invariant: the optimization-tab Generate handlers
-must read ``_sidebarLastFile`` (the committed load) when populating
-``structure_path``, NOT ``_proj.getCurrentFile()`` (the live sidebar
-pick).
+"""L2 source-text invariant: the optimization tab's record of its structure
+is ``_sidebarLastFile`` (the committed load), NOT
+``_proj.getCurrentFile()`` (the live sidebar pick).
 
 Why this matters (2026-06-14 BDT incident): user loaded an .xyz with
 a paired ``.molstruct.json`` sidecar carrying 25 frozen atoms, then
@@ -15,13 +14,6 @@ file -> found none -> emitted stage-2 .fdf with NO
 (including the Au surface that was meant to be frozen) -> the
 Results-tab "constrained" force trace was identical to the
 unconstrained trace (no fixed-atom plot).
-
-The fix is one-line: read ``_sidebarLastFile`` instead, which stays
-pinned to the file the user committed via Load / dblclick.  This
-test pins both call sites against the bug by source-text
-inspection — cheap (no browser) and catches the regression at
-the file-source level the next time someone refactors the click
-handler.
 """
 from __future__ import annotations
 
@@ -40,20 +32,12 @@ def viewer_src() -> str:
     return VIEWER_JS.read_text(encoding="utf-8")
 
 
-# --------------------------------------------------------------------- #
-#  SIESTA: /api/build/fdf handler                                        #
-# --------------------------------------------------------------------- #
-
-
 def test_the_committed_file_is_what_the_tab_records(viewer_src):
-    """``_sidebarLastFile`` is still the tab's record of what was COMMITTED.
+    """``_sidebarLastFile`` is the tab's record of what was COMMITTED.
 
-    This file pinned the two Generate POSTs until 2026-08-15.  Those are gone
-    -- the tab collects parameters and hands them on rather than producing a
-    deck -- so ``_structPath`` has no subject.  The INCIDENT the module
-    docstring describes is not gone, though: it was never really about
-    Generate, it was about which file the tab believes it is holding.  So the
-    guard is restated on that, endpoint-independently.
+    The INCIDENT the module docstring describes is about which file the tab
+    believes it is holding, so the guard is stated on that,
+    endpoint-independently.
     """
     assert "_sidebarLastFile" in viewer_src, (
         "viewer.js no longer tracks _sidebarLastFile.  Something has to hold "

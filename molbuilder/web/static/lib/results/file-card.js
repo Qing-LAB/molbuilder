@@ -101,8 +101,7 @@ if (C.EVENT_SCOPE_CHANGED) {
  * SUBSCRIBED AT DOMContentLoaded, reading the namespace then: the sidebar's
  * module comes after this one on the page, so `molbuilder.projects` does not
  * exist while this module runs -- the picker mounts at the same moment for the
- * same reason.  *(Checked at load until 2026-10-04, which found no sidebar and
- * so never followed a click: seen on the dev server.)* */
+ * same reason. */
 function followTheSidebar() {
     const projects = (window.molbuilder || {}).projects;
     if (!projects || typeof projects.onChange !== "function") return;

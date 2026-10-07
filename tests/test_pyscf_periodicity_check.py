@@ -85,18 +85,6 @@ def test_the_message_names_what_is_dropped():
     )
 
 
-def test_the_script_is_still_written():
-    """The other half of 'warn, not error'."""
-    from molbuilder.pyscf import render_script
-    script = render_script(_struct(("periodic",) * 3), PySCFConfig())
-    assert len(script.splitlines()) > 100, "the script was not generated"
-    # ...and it really is the gas-phase builder, which is why the warning
-    # exists.  If this ever becomes a periodic emitter, this test is the
-    # record of what changed.
-    assert "gto.M(" in script
-    assert "pbc.gto" not in script and "Cell(" not in script
-
-
 def test_it_reaches_the_tab_before_generate():
     """A finding nobody sees is not a check.
 
@@ -108,8 +96,7 @@ def test_it_reaches_the_tab_before_generate():
     from molbuilder.web.app import create_app
 
     client = create_app(config={}).test_client()
-    # The structure's own canonical dict -- the envelope the browser sends --
-    # rather than one typed here, which had kept a retired key alive.
+    # The structure's own canonical dict -- the envelope the browser sends.
     envelope = _struct(("periodic",) * 3).to_dict()
     r = client.post("/api/build/preflight",
                     json={"structure": envelope, "engine": "pyscf",

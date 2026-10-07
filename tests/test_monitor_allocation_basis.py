@@ -144,12 +144,6 @@ def test_memory_is_the_jobs_own_not_the_nodes(sol):
     assert gb == round(1736704 / 1073741824.0, 2)
 
 
-# RETIRED 2026-09-14 (review D): `test_the_kernels_own_peak_file_is_the_one_read`
-# asserted the Sol bytes, which its own docstring admits round to 0.0 for BOTH
-# peak and current -- so a reader that returned `memory.current` passed it.
-# `test_the_peak_is_not_a_copy_of_current` below is the test that can fail.
-
-
 def test_the_peak_is_not_a_copy_of_current(tmp_path, monkeypatch):
     """At the scale a real calculation runs at, the two are different
     numbers -- which is what makes the kernel counter worth reading."""

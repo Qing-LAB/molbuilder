@@ -6,9 +6,7 @@ run ended, over plain Python records.  `siesta.py` builds its Frames from what
 this reads; the monitor reads a running job with it, fed line by line as the
 output grows (`execution/run-reports.md` § 2.3) -- one reader, so the Results
 tab and the report a person gets at 3am cannot say different things about one
-file.  It was the inside of `SiestaParser._parse_impl` until 2026-09-26, where
-nothing that runs beside a job -- with the job's python and no numpy -- could
-reach it, and a second reader of the same lines had started to grow.
+file.
 
 **Stdlib only, and it travels beside every job** (`runwrap.MONITOR_COMPANIONS`):
 its imports -- the SIESTA family's table, the rule engine, the runtime-header
@@ -163,7 +161,7 @@ class SiestaReader:
         # The ``siesta: Etot`` of the energy decomposition SIESTA prints after
         # the initial DM and before the first SCF cycle of each step: where
         # the SCF started, kept for display (``runtime_info["initial_etot"]``),
-        # never a frame energy (results-state-contract § 6).
+        # never a frame energy.
         self._step_initial_etot: Optional[float] = None
         #: The step SIESTA said it began last: ``(what a step is, its
         #: number)``, in its own words (`siesta_grammar.STEP_BEGIN`).
@@ -216,9 +214,7 @@ class SiestaReader:
         # THE DECK'S ECHO IS NOT THE RUN SPEAKING
         # (`siesta_grammar.INPUT_ECHO_BEGIN`): SIESTA copies the deck into its
         # output, comments included, and molbuilder's decks name the failures
-        # they guard against -- so a rule matched there read a relaxation that
-        # ran out of moves as stopped by `propor` until 2026-09-26.  The
-        # runtime-info probes above still read the echo: its `# runtime.`
+        # they guard against.  The runtime-info probes above still read the echo: its `# runtime.`
         # comments are the deck's on purpose.
         edge = _G.input_echo_edge(line)
         if edge is not None:
@@ -272,7 +268,7 @@ class SiestaReader:
              cycles are other quantities, and reporting the periodic one is
              how a device 584 electrons short read as a sound -437,029 eV
              (§ 5d).  No finite NEGF energy is ``None``.
-        No preamble-Etot fallback (results-state-contract § 6): a run
+        No preamble-Etot fallback: a run
         without a finite energy is diverging, and a plausible number would
         hide it.
         """
@@ -778,7 +774,7 @@ class SiestaReader:
         more specific matchers before more general ones; the fatal markers
         first so they win over any section that might eat the line.
         Case-insensitive matching + alias lists give the small-spelling /
-        capitalisation tolerance asked for (2026-05-28)."""
+        capitalisation tolerance asked for."""
         return [
             # FATAL MARKERS, FROM THE ONE TABLE (`siesta_grammar.FATAL_MARKERS`,
             # `model/parse.md` § 2b), substring matches because SIESTA
@@ -1129,9 +1125,7 @@ def read_output(path, *, warn: Optional[Callable[[int, str, str, str], None]]
     :meth:`SiestaReader.finish`.  The registered parser and the ending reader
     (`_run_ending`) both read through it, so the two readings of one version
     of a file are the same reading -- which is what lets the ending reuse a
-    parse's (`_run_ending.keep_reading`).  *(The parser iterated the file and
-    the ending split its text, two spellings of one read, until
-    2026-10-03.)*"""
+    parse's (`_run_ending.keep_reading`)."""
     reader = SiestaReader(warn=warn)
     with open(path, "r", errors="replace") as fh:
         for line_no, raw in enumerate(fh, start=1):

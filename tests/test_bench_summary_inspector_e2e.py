@@ -10,8 +10,7 @@ sweep's ``job-set.json`` polls it, says when it last looked, keeps the
 trajectory viewer's cadence and stops when it is disposed of.
 
 So this file builds a REAL sweep with the real ``prep`` machinery and reads
-the page.  Its tests of a drawn verdict stood on a trial finished by hand and
-were retired 2026-10-04 (`process/testing.md` § 6).
+the page.
 """
 from __future__ import annotations
 
@@ -84,10 +83,6 @@ def sweep(tmp_path, monkeypatch):
     bench = calc / "01_coarse" / "bench"
     js = json.loads((bench / "job-set.json").read_text())
     winner = js["jobs"][0]["name"]
-    # A trial finished by hand -- its `.out` and SCF-timing log written here
-    # -- stood here until 2026-10-04 (user: "any fucking faking tests should
-    # be retired"; `process/testing.md` § 6): nothing has run, and the page's
-    # tests below read nothing a run would write.
 
     # The server may read this tree, and nothing else.
     caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
@@ -140,11 +135,6 @@ def _mount(page, base, path):
     return name, errors
 
 
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 3 tests here drew trials whose output and SCF-timing log were
-# written by hand (`process/testing.md` § 6).
-
-
 def test_dispose_stops_the_polling_and_clears_the_host(page, server, sweep):
     """B4 polls every 15 s; a viewer that keeps polling after it is put
     away is the leak the registry's dispose contract exists to prevent."""
@@ -160,9 +150,7 @@ def test_dispose_stops_the_polling_and_clears_the_host(page, server, sweep):
 def test_the_page_says_when_it_last_looked(page, server, sweep):
     """B4's other half.  "The page is live, AND SAYS WHEN IT LAST LOOKED" --
     a sweep is watched precisely while it runs, so a silently stale verdict
-    is worse than none.  Until this test, B4 was cited in five docstrings
-    while only its teardown was pinned: nothing checked that the readout
-    exists at all."""
+    is worse than none."""
     jpath, _winner, _n = sweep
     _mount(page, server, jpath)
     page.wait_for_selector(".bench-summary", timeout=10000)

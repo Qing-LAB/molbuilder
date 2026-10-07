@@ -21,7 +21,7 @@ three ways, and the third hides the other two:
 
 THE RULE: build what you need.  ``tests/support/junction.py`` is the pattern --
 an Au-BDT-Au junction defined in source, written through the application's own
-writers (``render_fdf``, ``dump_spectra_json``) and read back through its own
+writers (``dump_spectra_json``) and read back through its own
 readers.  A constructed fixture cannot go stale, its relevance is not a guess,
 and it proves the emit and parse halves agree TODAY rather than agreeing with a
 number captured once.
@@ -29,8 +29,7 @@ number captured once.
 Engine OUTPUT is the one thing that cannot be constructed honestly -- a
 hand-written ``.out`` tests a guess at SIESTA's format rather than SIESTA's.
 A test that needs it makes the run, on the road with the real engine, in the
-e2e tier (`process/testing.md` § 6; frozen copies of older runs' outputs
-stood under ``tests/watch/fixtures`` until 2026-10-06).
+e2e tier (`process/testing.md` § 6).
 """
 from __future__ import annotations
 
@@ -100,17 +99,10 @@ def _div_chain(node):
 def _offending_lines(path: Path):
     """Every expression in *path* that builds a path into the repo's tree.
 
-    **AST, not text** (2026-09-06).  This was a regex over the file, and it
-    was wrong three separate ways at once -- it read one LINE at a time so a
-    path split across two was invisible; it required the literal
-    ``"projects"`` so the ``"projects/_t_..."`` spelling that thirteen sites
-    actually used never matched; and once those were fixed it flagged
-    DOCSTRINGS that quote the rule, which made the rule unwriteable in its own
-    words.  Each fix was a patch on a symptom.  A path is a syntax tree, so
-    the check reads one: a division chain whose base is the checkout and whose
-    first string segment is ``projects``.  All three problems stop existing --
-    line breaks are not a concept here, a segment's value is its value, and a
-    docstring is an ``Expr``, not a ``BinOp``.
+    **AST, not text.**  A path is a syntax tree, so the check reads one: a
+    division chain whose base is the checkout and whose first string segment
+    is ``projects``.  Line breaks are not a concept here, a segment's value is
+    its value, and a docstring is an ``Expr``, not a ``BinOp``.
     """
     raw = path.read_text(encoding="utf-8", errors="replace")
     lines = raw.splitlines()
@@ -211,18 +203,6 @@ def test_the_shared_junction_fixture_builds():
     assert s.regions["frozen_atoms"] == sorted(frozen())
 
 
-# `test_a_built_run_directory_round_trips_its_labels` retired 2026-10-04
-# (W56 4b, plan B12): it read the labels of a deck rendered into a bare
-# folder by searching that folder (`parse/dirs/atom_metadata.py`, deleted).
-# A run's labels are its own deck's, read through the run door: pinned on
-# the road (`test_one_door_reads_a_structure.py`) and on a measured run
-# (`test_structure_info_bridge.py`).
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 1 test here parsed a .XV written by a hand-rolled writer (`process/testing.md` § 6).
-
-
 def test_the_built_spectra_sidecar_round_trips(tmp_path):
     import sys
     sys.path.insert(0, str(TESTS))
@@ -239,10 +219,7 @@ def test_the_built_spectra_sidecar_round_trips(tmp_path):
 # ---------------------------------------------------------------------------
 #
 #  Not "a test for a test": this file IS a static check, and a checker with no
-#  known-good and known-bad inputs is how this one came to be wrong three ways
-#  at once while reading green -- blind to a line break, blind to the
-#  `"projects/_t_..."` spelling that thirteen sites actually used, and (once
-#  those were fixed) flagging the docstrings that explain the rule.  Every row
+#  known-good and known-bad inputs can read green while blind.  Every row
 #  below is a shape that really occurred in this repository.
 
 _MUST_FIRE = [

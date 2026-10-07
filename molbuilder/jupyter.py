@@ -8,8 +8,7 @@ THE LIFECYCLE IS THE HARD HALF.  Three layers, because no single one covers
 every way a parent can die -- and **this module owns the first two.**  The
 third is `serve_daemon`'s, deliberately: it is layer 1 and may import nothing
 of the application, so it reconciles with its OWN helpers rather than calling
-anything here (`serve_daemon.stop_by_pidfile`).  This docstring claimed all
-three until 2026-09-14.
+anything here (`serve_daemon.stop_by_pidfile`).
 
 1. **`PR_SET_PDEATHSIG`** -- the only mechanism that survives `kill -9` of the
    parent, which runs no handler.  The shepherd asks the kernel to signal IT
@@ -30,15 +29,12 @@ three until 2026-09-14.
    about a second, with nothing orphaned.
 
    So what layer 2 guarantees is that **the server dies**, and the server
-   dying is what collects the kernels.  This block claimed the group reached
-   the kernels directly; a `/proc`-walking reaper was drafted to make that
-   true and then dropped, because it would have been a third copy of a
-   backstop Jupyter already provides and passes.
+   dying is what collects the kernels; a reaper of our own would be a third
+   copy of a backstop Jupyter already provides.
 3. **Reconciliation at startup** -- a machine crash, and a survivor that was
    re-parented before the signal landed, are outside layers 1 and 2.  The next
    `supervise()` reads the pidfile and, only if the pid is alive and really
-   is a shepherd of ours, stops it.  **`serve start` ONLY** -- this said
-   "AND `serve foreground`" until 2026-09-15 and that was false: `supervise`
+   is a shepherd of ours, stops it.  **`serve start` ONLY**: `supervise`
    has one call site, `cli.cmd_serve_start`, and `serve foreground` goes to
    `cli._supervise_forever`, which reconciles nothing.  A notebook that
    outlived a crash is collected by the next `serve start`, and a
@@ -93,11 +89,10 @@ _PR_SET_PDEATHSIG = 1
 #: hold a GPU indefinitely.  It sits inside the supervisor's own 10 s wait for
 #: the shepherd (`serve_daemon._stop_jupyter`), so the polite phase always
 #: finishes first there.  It must also stay strictly BELOW
-#: `serve_daemon.stop_by_pidfile`'s own grace, which reconciliation uses: the
-#: two were both 5.0, so the reconciliation poll timed out at the same instant
-#: the shepherd would have exited and reported "(forced)" for every perfectly
-#: polite stop.  **Used by `_stop_own_group`** -- it was a constant nothing
-#: read until 2026-09-14, while the code slept a hardcoded 1.0 beside it.
+#: `serve_daemon.stop_by_pidfile`'s own grace, which reconciliation uses:
+#: equal, the reconciliation poll would time out at the same instant the
+#: shepherd exits and report "(forced)" for every polite stop.  Used by
+#: `_stop_own_group`.
 _STOP_GRACE_S = 4.0
 
 #: The schema this module's data file must stamp itself with.  Gated by
@@ -121,9 +116,9 @@ def serve_port_of(notebook_port: int) -> int:
     """The serve port a notebook port belongs to -- `jupyter_port` inverted.
 
     One home for the pairing, in both directions.  The CSP grant in
-    `notebook_argv` needs to name molbuilder's own port and had its own
-    `port - 1` until 2026-09-14; a security header is the last place two
-    copies of one derivation should be allowed to disagree.
+    `notebook_argv` names molbuilder's own port through this; a security
+    header is the last place two copies of one derivation should be allowed
+    to disagree.
     """
     return notebook_port - 1
 
@@ -169,8 +164,7 @@ def port_clash(serve_port: int) -> Optional[str]:
     # DIRECTION 2 FIRST, because it is the one that stops `serve start` dead.
     # Is OUR OWN web port some other molbuilder's NOTEBOOK port?  Then this
     # server cannot bind at all, and the failure lands in the serve log after
-    # the terminal is gone.  The docstring named both directions from the
-    # start and the code asked only the first (found in review 2026-09-15).
+    # the terminal is gone.
     for other in ports_with_pidfile("jupyter"):
         if (jupyter_port(other) == serve_port
                 and pid_state(read_pid(other)) == "ours"):
@@ -185,10 +179,7 @@ def port_clash(serve_port: int) -> Optional[str]:
         return None
 
     # DIRECTION 1: is our notebook's port another molbuilder's WEB port?
-    # Asked directly rather than by scanning the runtime directory -- the
-    # old loop could only ever fire on `other == nb`, so the glob answered a
-    # question `read_pid(nb)` answers on its own (a missing pidfile reads as
-    # "dead", which is exactly what the scan was looking for).
+    # Asked directly of `read_pid(nb)`: a missing pidfile reads as "dead".
     if serve_pid_state(serve_pid(nb)) == "ours":
         return (f"port {nb} is the WEB port of another molbuilder, and it is "
                 f"the port this one's notebook needs ({serve_port} + 1).  "
@@ -224,18 +215,7 @@ def shepherd_argv(serve_port: int, *, host: str,
     return argv
 
 
-# WHERE THE FILES ARE: `config_dir`, asked directly.
-#
-# `pid_path`, `log_path` and `runtime_path` stood here as one-line forwards
-# to `jupyter_pidfile` / `jupyter_log` / `jupyter_runtime` until 2026-09-15
-# (`plan.md` § 5n, J17).  That is the pattern `serve_daemon` deleted as K-D3
-# -- its own import comment says so: *"Four one-line pass-throughs … stood
-# between this module and those doors until 2026-09-13."*
-#
-# They were worse than plain forwards, because they RENAMED: the notebook
-# log was `jupyter_log` where `serve_daemon` opened it and `log_path` where
-# `cli` printed it, so grepping for either name found half the callers.  Two
-# of the three had no caller outside this module at all.
+# WHERE THE FILES ARE: `config_dir`, asked directly (`plan.md` § 5n, J17).
 
 
 # --------------------------------------------------------------------- #
@@ -276,11 +256,6 @@ def pid_state(pid: Optional[int]) -> str:
 
 def read_runtime(serve_port: int) -> Dict[str, object]:
     """``{"url": ..., "base": ..., "token": ...}``, or ``{}``.
-
-    *(It advertised ``port`` -- which nothing read, `status` computes it from
-    `jupyter_port` -- and omitted ``base``, which `open_notebooks` does read.
-    The docstring named the dead key and hid the live one, found in review
-    2026-09-15; the key is gone with it.)*
 
     The token is a CREDENTIAL -- it authenticates a browser to a live kernel --
     so this is read server-side and handed to the page, never published.
@@ -601,25 +576,17 @@ _WORKSPACE_OPT = "LabApp.workspaces_dir"
 def _workspace_dir(serve_port: int) -> Optional[Path]:
     """Where Lab saves THIS server's workspace, or ``None`` if none declared.
 
-    **PER SERVER, under a Lab home that is otherwise shared** -- found in
-    review 2026-09-15, hours after J13 shipped, and it re-created the very
-    bug J13 was written for.
-
-    `config_dir.jupyter_lab_home()` is deliberately not port-keyed, and its
-    reason was sound while the directory held only DEFAULTS: *"the defaults
-    do not differ between servers."*  J13 then put per-server SESSION state
-    -- the saved workspace, emptied at every notebook start -- into that
-    same shared directory, and the reason stopped covering it.  Two
-    molbuilders and it fails in both directions: starting B's notebook wipes
-    A's layout, so A's next tab switch loses the notebook whose kernel is
-    still running (J13, verbatim); and B's saved workspace makes A's first
+    **PER SERVER, under a Lab home that is otherwise shared.**  The saved
+    workspace is per-server SESSION state, emptied at every notebook start
+    (J13).  Shared, two molbuilders fail in both directions: starting B's
+    notebook wipes A's layout, so A's next tab switch loses the notebook
+    whose kernel is still running; and B's saved workspace makes A's first
     framing report `workspace_saved` true, so A opens at the projects root
     instead of the selected folder -- the `projects/Untitled.ipynb` failure
-    state 3 exists to prevent.  Both Labs also wrote the same
-    `default.jupyterlab-workspace`, so A could restore B's layout.
+    state 3 exists to prevent.
 
-    Only the workspace moves.  `settings/` and `user-settings/` stay shared,
-    because the original reasoning is still exactly right for them: the
+    Only the workspace is per server.  `settings/` and `user-settings/` stay
+    shared, because the reasoning is right for them: the
     defaults do not differ between servers, and a person's own change inside
     Lab should follow them to whichever molbuilder they open next.
     """
@@ -664,13 +631,9 @@ def _forget_workspace(home: Path, rules: "JupyterRules",
     2026-09-15: *"we would like to have this persistent when switching tab,
     but do not need this when server get shutdown and restarted."*
 
-    This SUPERSEDES the decision taken with the user on 2026-09-14, which put
-    Jupyter's `?reset` on every page load (`jupyter.md` § 4.1).  That reset
-    was aimed at a real problem -- a restored workspace argued with the
-    folder the projects sidebar had selected -- but it was applied at the
-    wrong moment: every LOAD, when what was meant was every START.  A tab
-    switch is a load, so switching away and back threw away the notebook you
-    had open while its kernel was still running.
+    Every START, never every page LOAD (`jupyter.md` § 4.1): a tab switch is
+    a load, and a reset there would throw away the notebook you had open
+    while its kernel is still running.
 
     Doing it here instead of in the browser is what makes the two halves
     impossible to disagree: one directory, emptied by the process that owns
@@ -690,13 +653,9 @@ def _forget_workspace(home: Path, rules: "JupyterRules",
     # data file; this refuses a name that ESCAPES the Lab home -- a
     # separator, a `..`, an absolute path.
     #
-    # **RESOLVED, because the unresolved form let the one spelling this
-    # comment named walk straight through** (found in review 2026-09-15,
-    # hours after it was written).  `home / ".."` is a real directory whose
-    # `.parent` IS `home`, so `ws.parent != home` was False and the loop
-    # below would have emptied the Lab home's PARENT -- the whole state
-    # directory: logs, reports, run/.  `../../../escape` was refused and
-    # `..` was not, and the comment claimed both.
+    # **RESOLVED**: unresolved, `home / ".."` is a real directory whose
+    # `.parent` IS `home`, and the loop below would empty the Lab home's
+    # PARENT -- the whole state directory: logs, reports, run/.
     #
     # It still does NOT catch a wrong but well-formed name: point the row at
     # `user-settings` and that is what gets emptied.  What catches THAT is
@@ -747,7 +706,7 @@ def prepare_lab_home(serve_port: int) -> Dict[str, str]:
     out = {}
     for opt, name in rules.lab_home.items():
         # THE WORKSPACE IS THIS SERVER'S; everything else is shared
-        # (`_workspace_dir` says why, and what it cost to find out).
+        # (`_workspace_dir` says why).
         d = home / name / str(serve_port) if opt == _WORKSPACE_OPT \
             else home / name
         out[opt] = str(ensure_private_dir(d))
@@ -790,7 +749,7 @@ def notebook_argv(conda: str, env_name: str, *, host: str, port: int,
     what it needs and re-implements none of it.  **One map, one emitter** --
     the authored rows from `data/jupyter.toml` and the computed rows below go
     out through `option_argv` together, because they are the same kind of
-    fact and were three different mechanisms until 2026-09-15.
+    fact.
 
     The computed half is here because each row needs something only this
     process knows, which is the file's own admission rule read backwards:
@@ -821,7 +780,7 @@ def notebook_argv(conda: str, env_name: str, *, host: str, port: int,
     # port, both schemes.  An attacker would have to be serving on that exact
     # port of some host the victim visits, and the notebook still refuses
     # every request without the token.  Naming a single host here instead
-    # broke the frame for every browser that was not on this machine.
+    # would break the frame for every browser that is not on this machine.
     # THE INVERSE OF `jupyter_port`, asked of it rather than re-derived.  A
     # second `port - 1` here would let the two drift the day the derivation
     # changes, and the drift would land in a SECURITY header -- the grant
@@ -878,14 +837,9 @@ def run_shepherd(serve_port: int, *, host: str,
     recipe = recipe_by_name("molbuilder-jupyternb")
     env_name = effective_name(recipe, caps)
     if not caps.env_available(env_name):
-        # THE REMEDY HAS ONE HOME (`envs.hints`), and this hand-copied it.
-        # That module's own docstring records the incident it was created by:
-        # `recipes.py` copied `_cli._fix_cmd`'s output, the copy drifted to a
-        # recipe name `recipe_by_name` does not accept, and the remedy printed
-        # was itself a usage error.  This copy had the same two seeds -- a
-        # hardcoded recipe name beside an `{env_name}` config may have
-        # renamed.  `hints` is stdlib-only and floor 1, so there was never a
-        # layering reason not to call it.
+        # THE REMEDY HAS ONE HOME (`envs.hints`): a hand-copied remedy drifts
+        # to a recipe name `recipe_by_name` does not accept, and the remedy
+        # printed is itself a usage error.
         from .envs.hints import fix_cmd
         sys.stderr.write(
             f"molbuilder jupyter: env `{env_name}` is not installed.  It is "
@@ -894,28 +848,23 @@ def run_shepherd(serve_port: int, *, host: str,
 
     port = jupyter_port(serve_port)
     token = secrets.token_urlsafe(32)
-    # EVERYTHING THAT CAN RAISE HAPPENS BEFORE THE PIDFILE EXISTS.
-    # `prepare_lab_home` creates three directories and writes two files; a
-    # read-only or full state dir raised out of `run_shepherd` with the
-    # pidfile and the 0600 runtime file already on disk, because it sat
-    # between the write and the `try`.  The next `serve start` then reported
-    # a stale pidfile for a notebook that had never run.
+    # EVERYTHING THAT CAN RAISE HAPPENS BEFORE THE PIDFILE EXISTS: a failure
+    # after it would leave the pidfile and the 0600 runtime file on disk, and
+    # the next `serve start` would report a stale pidfile for a notebook that
+    # never ran.  `prepare_lab_home` creates three directories and writes two
+    # files.
     lab_dirs = prepare_lab_home(serve_port)
     # AND THE REST OF IT.  `projects_root()` reads `molbuilder.json` and
-    # `notebook_argv` reads `data/jupyter.toml` (through `load_rules`, whose
-    # own error message anticipates a wheel that shipped without it) -- both
-    # can raise, and both sat BELOW the pidfile write until 2026-09-15 while
-    # the comment above claimed everything that can raise happens first.
-    # Hoisting `prepare_lab_home` had fixed the measured case and left the
-    # invariant false (found in review 2026-09-15).
+    # `notebook_argv` reads `data/jupyter.toml` (through `load_rules`) --
+    # both can raise.
     argv = notebook_argv(caps.conda_binary, env_name, host=host, port=port,
                          root_dir=str(projects_root()),
                          cert=cert, key=key, lab_dirs=lab_dirs)
     scheme = "https" if (cert and key) else "http"
-    # BRACKET AN IPv6 LITERAL.  `--host ::1` produced `http://::1:8001/lab`,
-    # which `urlopen` cannot parse -- so `answering()` reported down forever
-    # and the tab stuck on "Starting...".  (The browser was unaffected: the
-    # tab rebuilds the base from `location.hostname`.)
+    # BRACKET AN IPv6 LITERAL.  Unbracketed, `--host ::1` gives
+    # `http://::1:8001/lab`, which `urlopen` cannot parse, and `answering()`
+    # would report down forever.  (The browser rebuilds the base from
+    # `location.hostname`.)
     _hostpart = f"[{host}]" if ":" in host else host
     ensure_private_dir(jupyter_pidfile(serve_port).parent, tighten=True)
     jupyter_pidfile(serve_port).write_text(f"{os.getpid()}\n")
@@ -931,10 +880,7 @@ def run_shepherd(serve_port: int, *, host: str,
         # SIGKILLing our own process group -- which contains us -- so nothing
         # after it runs and `run_shepherd`'s `finally` never fires on this
         # path.  That is the ONLY path `jupyter stop`, `serve stop` and
-        # supervisor exit take, so every clean stop used to leave the pidfile
-        # and the 0600 token file behind, and the next `serve start` then
-        # reported a stale pidfile for a notebook that had stopped cleanly
-        # (measured 2026-09-14).
+        # supervisor exit take.
         _forget(serve_port)
         _stop_own_group()
 
@@ -944,12 +890,10 @@ def run_shepherd(serve_port: int, *, host: str,
     # NO `JUPYTER_PATH`.  The kernel lives in the SAME prefix the server runs
     # in, so jupyter finds it through `sys.prefix` with no search path at all
     # (verified 2026-09-14: `jupyter kernelspec list` with the variable unset
-    # resolves `python3` in this env).  A `kernel_search_path()` stood here
-    # until then, from the design where every env offered itself as a kernel;
-    # once that was removed it contributed ZERO kernels and one cross-env
-    # leak -- the host env's `share/jupyter` went on the path FIRST, handing
-    # the framed Lab a `jupyterlab-plotly` labextension built against a
-    # `plotly` this env does not have.
+    # resolves `python3` in this env).  A search path would also be a
+    # cross-env leak: the host env's `share/jupyter` first on it hands the
+    # framed Lab a `jupyterlab-plotly` labextension built against a `plotly`
+    # this env does not have.
     env = dict(os.environ)
     # The token travels here rather than on the command line: `environ` is
     # owner-only, `cmdline` is not.  Verified end to end 2026-09-20 -- the
@@ -961,12 +905,11 @@ def run_shepherd(serve_port: int, *, host: str,
         # notebook log -- the supervisor opened it and handed it over -- so
         # the child inheriting them writes straight into that file.
         #
-        # It used to be streamed through `sink=sys.stderr`, which copied
-        # every line through Python into the same file it was already bound
-        # for, and kept a copy of all of it in memory for the life of the
-        # server (`run_streaming` accumulates, for the tail-on-failure a
-        # BUILD wants; this return value is discarded).  A server is not a
-        # build: it runs for days and Jupyter logs every request.
+        # A `sink` would copy every line through Python into the same file
+        # it is already bound for, and keep a copy of all of it in memory for
+        # the life of the server (`run_streaming` accumulates, for the
+        # tail-on-failure a BUILD wants).  A server is not a build: it runs
+        # for days and Jupyter logs every request.
         #
         # The cost is stated at `dispatch_into_env`: no pipe means no
         # automatic fallback for a broken `mamba run`.  Here that is the

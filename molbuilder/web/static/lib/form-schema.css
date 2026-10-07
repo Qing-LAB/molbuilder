@@ -1,7 +1,6 @@
 /* Shared stylesheet for the schema-driven form renderer.
  *
- * Used by Build (/) and Spectra (/spectra) -- any page that renders
- * a SiestaConfig / PySCFConfig / SpectraConfig form via
+ * Used by any page that renders a schema form via
  * `molbuilder.formSchema.renderForm()`.  This file is the single
  * source of truth for the form's visual layout; per-page
  * stylesheets pull in the page chrome only (cards, headers,
@@ -9,11 +8,6 @@
  *
  * Depends on the design tokens in lib/tokens.css.  Include
  * tokens.css BEFORE this file.
- *
- * Rules below mirror what the Build tab's style.css already
- * applies via the global `fieldset` selector; this file extracts
- * them so other pages (Spectra, future Transport tab) can pick up
- * the same layout without re-importing the whole Build stylesheet.
  */
 
 /* ---- Fieldsets in parameter forms ---- */
@@ -26,11 +20,8 @@ fieldset {
     background: var(--bg-fieldset);
     min-width: 0;     /* allow grid items to shrink below content width */
 }
-/* Canonical legend + stacked-label rules live HERE (moved 2026-07 from the
- * structure-opt page sheet): after the #58 split that page sheet loads on
- * index ONLY, so "defer to style.css" left /spectra + /transport legends
- * and labels unstyled.  ONE owner -- page sheets carry page-specific
- * overrides only (e.g. #generate-card legend). */
+/* Canonical legend + stacked-label rules live HERE: ONE owner -- page
+ * sheets carry page-specific overrides only (e.g. #generate-card legend). */
 fieldset legend {
     font-weight: 600;
     padding: 0 var(--space-sm);
@@ -74,7 +65,7 @@ fieldset label > .schema-int-triple {
  * affordance reads unambiguously as "you can click this".  Without
  * explicit sizing browsers fall back to the system default (~13 px
  * in Chromium) which on a dark theme reads as a small dot and gets
- * confused with a bullet — the 2026-06-12 user report.  The
+ * confused with a bullet.  The
  * accent-color in page-shell.css drives the checked-state fill. */
 fieldset label > input[type="checkbox"] {
     width: 16px;
@@ -86,12 +77,7 @@ fieldset label > input[type="checkbox"] {
 fieldset label:has(> input[type="checkbox"]) {
     /* TWO COLUMNS: the box in column one, everything else -- caption,
      * engine-key badge, help disclosure, the findings about this field --
-     * stacked under each other in column two.  One flex line shared by
-     * all of them was measured twice: on the transport form a caption
-     * wrapped to three lines beside a broken badge (2026-09-15), and on
-     * the Spectrum tab a finding appended beside the `already_relaxed`
-     * box was squeezed to 11px wide and ran 3400px tall, one letter per
-     * line, with the whole card behind it (2026-09-24). */
+     * stacked under each other in column two. */
     display: grid;
     grid-template-columns: auto 1fr;
     align-items: center;
@@ -146,44 +132,21 @@ fieldset select:disabled {
  * Single source of truth for the responsive form grid used by
  * #generate-card on /structure-optimization, the spectra form on
  * /spectrum-calculation, and the transport form on
- * /transport-calculation.  The earlier 190px / 220px values were
- * cramped — each field carries a label (``min-width: 8em`` → ~128px)
- * + the input + a per-field engine_key badge, so anything below
- * ~300px squeezed the input down to icon size.
- *
- * Cell-min selection: 320px gives ~128px label + ~170px input + 22px
- * breathing room, comfortable for "spin = [   2 ]" + the badge.
- * auto-fit + 1fr lets columns grow on wide screens; the
- * ``#generate-card`` max-width below caps the overall card so a
- * 27" monitor doesn't stretch each field to two-thirds of a screen
- * (which hurts scannability more than it helps).
- *
- * Responsive breakpoints below kick in at common laptop / tablet
- * widths so the layout shifts predictably from 3-col → 2-col → 1-col
- * instead of jumping unpredictably.
+ * /transport-calculation.  auto-fit + 1fr lets columns grow on wide
+ * screens.
  */
 .param-grid {
     display: grid;
     /* ``min(<N>, 100%)`` floor lets a track shrink below <N> when the
      * container itself is narrower (a workspace panel in a 280px slot).
-     * Required by tests/test_css_responsive_grid_lint.py, and the reason
-     * is the container -- which is also why the breakpoints that used to
-     * sit here are gone: they asked the VIEWPORT a question about a
-     * parent.  ``container-type`` lets the children ask the parent. */
+     * ``container-type`` lets the children ask the parent, not the
+     * viewport. */
     container-type: inline-size;
     grid-template-columns:
         repeat(auto-fit, minmax(min(var(--param-col-min), 100%), 1fr));
     gap: var(--space-md);
 
     /* THE TWO FLOORS, in typographic units and owned by this module.
-     *
-     * They were 340px / 300px / 280px across three breakpoints, and the
-     * comment derived 340 from "a label (min-width: 8em -> ~128px) + the
-     * input + a badge" -- a SIDE-BY-SIDE label.  The label has been
-     * stacked above its input since the long-label overflow fix, and that
-     * 8em rule is gone; only the comment still cited it.  So the number
-     * was arithmetic for a layout that no longer existed, and the two
-     * breakpoints existed to walk it back down.
      *
      * In rem they track the user's font size and zoom, which pixels never
      * did.  Re-derive them from the controls, not by taste:
@@ -196,12 +159,7 @@ fieldset select:disabled {
 
 /* ---- Cards span; their FIELDS tile ----------------------------------
  *
- * Until 2026-08-15 the ``.workflow-group`` cards were the grid items, so
- * each card was ~1/3 wide and every field inside it stacked -- a card
- * with 16 fields was 16 rows tall in a narrow column.  The grid was
- * tiling CARDS when the thing worth tiling is FIELDS.
- *
- * So a card takes the full row and becomes a grid of its own; its header,
+ * The thing worth tiling is FIELDS, not cards: a card takes the full row and becomes a grid of its own; its header,
  * subtitle and issues panel span every track, and its fieldsets tile.
  * "SCF" then reads as its fields in 3 columns rather than 8 stacked rows,
  * and each legend still owns a visible block.
@@ -359,18 +317,15 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 /* Advanced-tier fields: keep visible but slightly dimmed so the
  * "advanced knob" status reads without hiding the control.  The
  * leading bullet conveys "advanced" for text/select/number inputs.
- * Checkboxes get the dim only — adding ::before to a checkbox row
- * inserts the bullet INTO the flex layout right next to the
- * checkbox box, making the box look like just another bullet.
- * (2026-06-12 user report: "the 'Raman' and 'IR' option does not
+ * Checkboxes get the dim only, so the box never reads as just another
+ * bullet (user, 2026-06-12: "the 'Raman' and 'IR' option does not
  * look like a check box and i am not sure what i can/should do
  * with them. it seems like a bullet point …".) */
 .schema-field.is-advanced {
     opacity: 0.85;
 }
 /* The marker is a mark on the caption's first word, not an item of the
- * label's column layout: as a ::before on the label it drew "•" alone on
- * the line above the caption (measured seven times on one form). */
+ * label's column layout. */
 .schema-field.is-advanced:not(.schema-field-checkbox) > .schema-field-text::before {
     content: "•";
     color: var(--accent);
@@ -422,10 +377,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
  * an ``engine_key`` schema metadata.  The badge displays the exact
  * keyword (or "(molbuilder …)" marker) the field writes into the
  * generated input file, so the user has a direct UI -> generated
- * script -> engine-manual mapping.  Replaces the inline ``style.cssText``
- * the JS used to set (which used undefined tokens like --bg-subtle
- * and silently fell through to hardcoded hex, breaking the dark
- * theme).  Use the real tokens.css names below.
+ * script -> engine-manual mapping.
  */
 .schema-engine-key {
     margin-left: var(--space-sm);
@@ -439,7 +391,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     /* Long engine_key strings (e.g. PySCF's ``gto.M(spin=...) # 2S,
      * # of unpaired electrons``) would push the .param-grid column
      * out under nowrap.  Allow breaks anywhere instead so a 60-char
-     * badge wraps cleanly inside the 220px-min grid cell. */
+     * badge wraps cleanly inside its grid cell. */
     overflow-wrap: anywhere;
     /* `break-word` hyphenated keywords early -- `TS.Elecs.Bul` / `k` on a
      * checkbox row -- and a keyword a reader is meant to look up in the
@@ -469,7 +421,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 /* Native title= tooltips clip multi-line help (psml_lib at ~39 lines,
  * mesh_cutoff convergence advice, etc.) -- the browser shows one OS-
  * truncated line and the paragraph contents become unreadable.  Long
- * help now renders as a click-to-expand <details> below the input
+ * help renders as a click-to-expand <details> below the input
  * with monospace preserve-whitespace body. */
 .schema-help {
     margin-top: var(--space-xs);
@@ -488,10 +440,8 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     opacity: 1;
     text-decoration: underline;
 }
-/* The references under a help panel — title, then a DOI link.  Written by
- * `form-schema.js` and answered by no rule at all until 2026-08-23, so it
- * rendered with the browser's own list chrome: disc bullets and 40px of
- * indent inside a 12px help box. */
+/* The references under a help panel — title, then a DOI link, written by
+ * `form-schema.js`. */
 .schema-help-refs {
     margin: var(--space-xs) 0 0;
     padding-left: var(--space-md);
@@ -536,10 +486,8 @@ details.workflow-group[open] > summary.workflow-group-header::before {
  * mouseenter normally.  Inline-flex so the wrapper sits in the
  * action-row layout the same way a bare button does.
  *
- * Lives here (form-schema.css) rather than style.css because
- * /spectra doesn't load style.css -- the wrapper would fall back
- * to ``display: inline`` and break baseline alignment.  Loaded by
- * any page that has a form schema (Build / Spectra).
+ * Lives here (form-schema.css), loaded by any page that has a form
+ * schema.
  *
  * Use ``title`` text that makes sense in BOTH states (e.g. "Saves
  * .fdf + .run.sh"; not "DISABLED UNTIL ...") so the tooltip stays
@@ -610,8 +558,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 
 /* One-line italic explanation under the header.  Carries the
  * load-bearing "what does switching the stage selector touch?"
- * answer for this group.  Hidden on narrow viewports if it
- * would crowd the chip; that case the chip wins. */
+ * answer for this group. */
 .workflow-group-subtitle {
     margin: 0 0 var(--space-sm);
     font-size: var(--text-sm);
@@ -647,13 +594,8 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 .workflow-group--stage   { --workflow-group-accent: var(--group-stage-accent); }
 .workflow-group--budget  { --workflow-group-accent: var(--group-budget-accent); }
 
-/* (stage-table widget CSS retired at the U6 close with its JS --
- * see lib/form-schema.js's tombstone.) */
-
 /* ---- Per-card issues UL (form-schema.js emits .issues-panel.card-issues
- * inside each workflow card on every schema-driven page; moved 2026-07 from
- * the structure-opt page sheet -- same stranded-shared-rule class as the
- * legend/label move above). ---- */
+ * inside each workflow card on every schema-driven page). ---- */
 .workflow-group .card-issues {
     margin-top: var(--space-sm2);
     padding-top: var(--space-sm);
@@ -725,13 +667,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 /* ═══════════════════════════════════════════════════════════════════════
  * ONE LABEL LAYOUT FOR EVERY FORM PAGE
  *
- * Six rendering defects were measured on the transport form on 2026-09-15
- * and fixed behind a per-page body attribute, because the other two form
- * tabs had not been read.  They were read on 2026-09-24 (user: check every
- * element, card and panel for consistent use of the CSS system) and showed
- * the same defects plus one of their own -- a finding beside a checkbox
- * squeezed into an 11px column -- so the attribute is gone and each rule
- * stands where it belongs: the label column above, the checkbox grid, the
+ * Each rule stands where it belongs: the label column above, the checkbox grid, the
  * caption's marker, the badge's wrapping, and the two below.  A page
  * contributes no attribute; the module owns the layout (`ui-contract.md`
  * § 1).
@@ -741,8 +677,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 .param-grid > .workflow-group {
     align-items: stretch;
 }
-/* Prose obeys the measure: a subtitle ran the full content column, about
- * 150 characters a line. */
+/* Prose obeys the measure. */
 .workflow-group-subtitle {
     max-width: var(--measure-prose);
 }

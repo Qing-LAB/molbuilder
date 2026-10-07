@@ -159,11 +159,10 @@ class TestTheWarningReachesTheUser:
     """A measurement nobody is told about is not a warning.
 
     It travels in the RECEIPTS slot -- `ok_structure_response`'s `notices`,
-    "what the edit did first, what is now true after it".  That channel had no
-    caller until this one, and using it is what puts the message on screen
-    without any display code: `applyOp` already hands `payload.notices` to the
-    viewer.  A private `notes` key, which is what this shipped with first, is
-    a second door onto the same fact and the panel dropped it on the floor.
+    "what the edit did first, what is now true after it".  Using it is what
+    puts the message on screen without any display code: `applyOp` already
+    hands `payload.notices` to the viewer.  A private `notes` key would be a
+    second door onto the same fact.
     """
 
     @pytest.fixture()
@@ -183,8 +182,7 @@ class TestTheWarningReachesTheUser:
         fresh slab collides with its own image -- and is TOLD SO, on the build,
         rather than the person discovering it at the engine.
 
-        This asserted `eclipsed` on a bad layer count until 2026-08-31.  With
-        no padding the boundary is a collision first, and the stacking question
+        With no padding the boundary is a collision first, and the stacking question
         cannot be asked of a box whose faces are on top of each other."""
         j = self._slab(client, layers=4)
         assert j["ok"] is True, "a warning, never a refusal (§ 4.1)"

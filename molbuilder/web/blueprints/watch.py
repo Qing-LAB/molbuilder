@@ -1,7 +1,5 @@
 """Trajectory-loader API endpoints (live-update polling + parser
-auto-detection).  Filename + module name kept as ``watch`` for
-git-history continuity; the page route (``/watch``) was retired
-2026-05-19 -- this module now exposes ONLY the JSON API endpoints
+auto-detection).  This module exposes ONLY the JSON API endpoints
 consumed by the /results trajectory inspector (see
 ``lib/inspectors/trajectory.js`` + ``lib/trajectory/core.js``).
 
@@ -19,9 +17,7 @@ core POSTs to /api/watch/load with the absolute path, then polls
 /api/watch/data every ~15 s while the mtime advances.  The directory
 branch of /api/watch/load ASKS the run door's `runs.openable` -- *what
 should a viewer load here* -- and does not restate its rule, which is
-`model/parse.md` § 5.1-§ 5.2.  *(A copy of the search this held until
-2026-09-18 had drifted from its owner: it omitted a pass that found a
-staged trajectory.)*
+`model/parse.md` § 5.1-§ 5.2.
 
 Format support is plugin-style: see ``molbuilder/parse/`` for the
 registered parsers and the auto-detection registry
@@ -68,24 +64,13 @@ _state: Dict[str, Any] = {
     "parser":   None,    # the TrajectoryParser class chosen for this file
     "uploaded": False,   # True when the active file was uploaded via
                          # the file-picker (one-shot, no live watching)
-
-    # (No multi-stage merge keys.  A "> 1 molwatch log means merge them"
-    # branch held some here from 2026-05-10 until 2026-09-05, when it was
-    # deleted rather than moved -- STAGES ARE SEPARATE RUNS, and the person
-    # picks one rung and judges it.  The comment describing those keys
-    # outlived them by two weeks.)
-
-    # (No per-iteration wall-time samples.  `_attach_iter_walltime` kept
-    # the output's mtimes here to estimate seconds per iteration until
-    # 2026-09-27; the rate is the SCF-timing instrument's now, read with
-    # the file -- `parse.dirs.record.scf_timing_of`.)
 }
 
 # Track the last temp file we created from a file-picker upload so
 # we can clean it up when a new upload comes in.  An atexit hook
 # also clears it on clean process exit (Ctrl-C of the dev server),
-# so a workflow of "spin up dev server, drop one upload, Ctrl-C" no
-# longer leaves a /tmp/molwatch_* file behind.  SIGKILL / power loss
+# so a workflow of "spin up dev server, drop one upload, Ctrl-C" does
+# not leave a /tmp/molwatch_* file behind.  SIGKILL / power loss
 # can't be caught; /tmp self-cleans on reboot.
 import atexit as _atexit
 _last_temp_upload: Optional[str] = None
@@ -131,60 +116,13 @@ def _remove_temp_quietly(path: str) -> None:
               f"{type(exc).__name__}: {exc}", file=sys.stderr)
 
 
-# --------------------------------------------------------------------- #
-#  Directory-aware path resolution -- ASKED, not done here                      #
-#                                                                       #
-#  See ``docs/execution/job-contracts.md`` for the full contract.  When the     #
-#  user gives Watch a directory instead of a file, scan it for the      #
-#  canonical artefacts in the protocol's preferred order; first hit     #
-#  wins.  The fallbacks parse the molbuilder-generated input files      #
-#  (.fdf / .py) to recover the basename.                                #
-# --------------------------------------------------------------------- #
-
-
-# THE TWO LABEL READERS ARE NOT HERE ANY MORE (2026-09-17).
-#
-# This module carried a regex for each: `SystemLabel` bounded to the basename
-# charset, and `JOB = "..."` anchored on the LHS.  Both were hand-rolled, both
-# were narrower than the formats they read -- the fdf one matched `SystemLabel`
-# and `SystemLabel.` but NOT `System.Label` or `system_label`, which fdf treats
-# as the same keyword and SIESTA accepts.  A deck spelled either way resolved
-# to nothing here and the tab found no trajectory.
-#
-# They became one call each to the reader that owns each format --
-# `parse.fdf.system_label` and `pyscf.input.job_name` -- and on 2026-09-18
-# those calls LEFT THIS FILE with the chain that made them, into
-# `parse/dirs/rundir.py::openable_in` -- and on 2026-10-04 out of the search
-# altogether: a run's label is its description's (`runs`, plan B11).
-# Nothing here reads a deck.
-#
-# Eight readers of deck content were measured across the tree on 2026-09-17;
-# this pair was two of them.
-
-
-# `_resolve_run_directory` STOOD HERE until 2026-09-18 -- 132 lines, and with
-# the five helpers above it the whole four-rung discovery chain.  It moved to
-# `parse.dirs.rundir.openable_in` (`plan.md` § 5c step 2) VERBATIM, proved
-# identical on all 141 run directories in the checkout before this deletion
-# was allowed -- the same gate the `run_status` split passed.  Since
-# 2026-10-04 a run of ours is answered by the run door, `runs.openable`, by
-# its description's label (`model/parse.md` § 5.2, plan B11).
-#
-# WHY IT HAD TO MOVE RATHER THAN BE CALLED: it answers *what should a viewer
-# load in this directory*, which `jobset` and the Results tab need too, and
-# nothing below the web layer may import the web layer.  A private copy here is
-# a copy only this blueprint can ask.
-
-
 def _refuse_if_not_a_trajectory(parser_cls):
     """``None`` if this parser answers a trajectory, else a 400 body.
 
     `/api/watch/*` is the TRAJECTORY route: everything after detection
-    reads ``.frames``.  It never checked what the detected parser
-    actually produces, so handing it a single-geometry file raised
-    ``AttributeError: 'StructureResult' object has no attribute
-    'frames'`` -- a 500 for a file the app itself writes and the parser
-    reads perfectly.
+    reads ``.frames``, so a single-geometry file -- one the app itself
+    writes and the parser reads perfectly -- is refused here by name
+    rather than failing as a 500.
 
     Measured on ``<job>_optimized.xyz``, PySCF's final geometry.  It is
     normally ABSORBED into the run's ``.molwatch.log`` entry
@@ -219,22 +157,15 @@ def _engine_of(search_dir, payload, parser_cls) -> str:
 
     Two different facts, and `web-api.md` (the `/api/watch/*` row) states
     the rule: *"`format` names the ENGINE that ran; `label` names the
-    PARSER that read the file."*  The route sent the parser's name for
-    both until 2026-09-04.  They coincide for an engine-native file -- a
-    SIESTA `.out` is read by the parser called `siesta` -- and diverge
-    for the canonical `.molwatch.log`, read by the parser called
-    `molwatch` whatever wrote it, so every molbuilder-generated run
-    arrived as "molwatch" and the viewer's engine-specific SCF banner
-    ("SIESTA DFT SCF progress / CG/MD step") fell through to its neutral
-    branch.
+    PARSER that read the file."*  They coincide for an engine-native
+    file -- a SIESTA `.out` is read by the parser called `siesta` -- and
+    diverge for the canonical `.molwatch.log`, read by the parser called
+    `molwatch` whatever wrote it.
 
     NOTHING IS COMPUTED HERE.  The engine is a property of the RUN
     DIRECTORY, declared when its deck was generated, and
     `running-a-job.md` § 4.2 owns the resolution order;
-    `parse.contract.engine_of` is its one implementation.  It is asked
-    about the same directory the neighbouring `_run_metadata` searches,
-    so both facts this response carries about the run come from one
-    place.
+    `parse.contract.engine_of` is its one implementation.
 
     **`source_format` is the fallback, and only an upload reaches it.**
     A posted file has no run directory, so what the parser found is the
@@ -260,16 +191,8 @@ def _frame0_structure(
     -- ``meta``, the block the same load answers with (:func:`_run_metadata`),
     so the directory is read once per load, not once per consumer.
 
-    The Results trajectory tab used to build this itself: it took the frames,
-    serialised frame 0 back into an XYZ document **in the browser**
-    (``framesToMultiXyz``), posted that to ``/api/build/load`` to be parsed,
-    and handed the labels, the cell and the ``info`` store back alongside as
-    three separate blocks -- because a coordinate document has no room for
-    them. So a structure the server had already parsed was flattened, shipped,
-    re-parsed, and then repaired from parcels.
-
-    `web-api.md` § 1 is the rule that forbids it: *"the browser sends what it
-    holds; it never sends a document it wrote"*. The pieces were all here --
+    `web-api.md` § 1: *"the browser sends what it holds; it never sends a
+    document it wrote"*. The pieces are all here --
     the frames from the parsed logs, the labels from the run's input script,
     the box from its output logs -- so the assembly belongs here too.
 
@@ -315,14 +238,10 @@ def _run_metadata(
 ) -> Dict[str, Any]:
     """The metadata block EVERY ``/api/watch/load`` answer carries.
 
-    Three builders answer this route -- multi-log, single-file, upload --
-    and each used to compose the block itself: two of them from two
-    DIFFERENT directory rules, and the upload one not at all.  What a
-    load carried therefore depended on which branch had built it.  One
-    composer, keyed by the directory to search, is the whole fix: a
-    builder spreads it, and the upload branch (which has no run
-    directory) answers "nothing available" DELIBERATELY -- ``None`` in
-    every field -- rather than by omission.
+    One composer for every builder of a load answer: a builder spreads
+    it, and the upload branch (which has no run directory) answers
+    "nothing available" DELIBERATELY -- ``None`` in every field --
+    rather than by omission.
 
     Omission means something else on this route.  The browser's APPLY
     rule is keep-on-``undefined`` (`web/trajectory.md` § 5.1), which is
@@ -383,10 +302,11 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     Locking strategy: snapshot path/mtime/parser under the lock, then
     drop the lock during the actual parse.  After parsing we re-acquire
     and only commit the result if the active file hasn't changed under us
-    (defensive against a /api/load racing with a /api/data poll).
+    (defensive against a /api/watch/load racing with a /api/watch/data
+    poll).
 
-    **Dropping the lock does NOT stop this blocking other requests, and
-    the sentence here used to claim it did** (measured 2026-09-03).  The
+    **Dropping the lock does NOT stop this blocking other requests**
+    (measured 2026-09-03).  The
     parse is pure Python, so it holds the GIL: with a 25 MB ``.out`` it
     runs 4.7 s and every other request in the process drops to about 8%
     of full speed for the whole of it; 51 MB is 9.6 s.  Releasing the
@@ -444,8 +364,7 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     #      already swapped to a different file under us) ---------
     #
     # Parser comparison by ``.name``: ``is`` works today but is fragile to
-    # future detection refactors.  *(This cited "the multi-stage branch
-    # above", which was deleted 2026-09-05 -- see the note at ``_state``.)*
+    # future detection refactors.
     with _lock:
         if (_state["path"] == path
                 and _parser_name(_state["parser"]) == parser_cls.name):
@@ -472,15 +391,6 @@ def _stop_reason(traj) -> Optional[str]:
     return CAUSE_WORDS.get(cause) if cause else None
 
 
-# /watch page route removed 2026-05-19: the trajectory inspector is
-# now served by /results via the registry adapter, which fetches
-# _trajectory_inspector.html from GET /partials/trajectory-inspector
-# (in web/blueprints/results.py).  This module retains the
-# /api/watch/* endpoints below -- those are the canonical API for
-# loading + polling a trajectory file and are consumed by the
-# /results adapter.  KEEP the API; the page is gone.
-
-
 @bp.route("/api/watch/load", methods=["POST"])
 def api_load():
     """Two body shapes:
@@ -502,26 +412,18 @@ def api_load():
     raw_path = (body.get("path") or "").strip()
     if not raw_path:
         return jsonify({"ok": False, "error": "Empty path."}), 400
-    # 2026-06-18 security fix (audit B1): the JSON-path mode now
-    # routes through the canonical ``_resolve_within_roots`` helper
-    # like every other path-taking endpoint, per web-api.md § 2.1.
-    # Pre-fix this site used ``os.path.realpath(expanduser(...))``
-    # with an OPTIONAL ``MOLBUILDER_WATCH_ROOT`` gate that was unset
-    # in the default deployment — a logged-in user could POST
-    # ``{"path": "/etc/shadow"}`` and the parser would read it.
-    # ``_resolve_within_roots`` constrains to picker roots
-    # (Capabilities.file_picker_roots(); today: <cwd>/projects);
-    # the per-endpoint MOLBUILDER_WATCH_ROOT env var is retired in
-    # favour of the deployment-wide picker roots configuration.
+    # The JSON-path mode routes through the canonical
+    # ``_resolve_within_roots`` helper like every other path-taking
+    # endpoint, per web-api.md § 2.1: it constrains to the picker roots
+    # (Capabilities.file_picker_roots()).
     from .files import _resolve_within_roots, _PickerError
     try:
         raw_path = str(_resolve_within_roots(raw_path))
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
 
-    # Directory-aware resolution per docs/execution/job-contracts.md.  If the
-    # user passed a directory, scan it for the canonical artefacts
-    # and load the best match; if a regular file, behave like before.
+    # If the user passed a directory, the run door picks the file to load
+    # (`runs.openable`); a regular file is loaded as it is.
     resolved_from_dir: Optional[str] = None
     if os.path.isdir(raw_path):
         # A DIRECTORY RESOLVES TO ONE FILE.  The generated deck tells the
@@ -529,9 +431,7 @@ def api_load():
         # "the loader resolves it to <job>.molwatch.log".  That is this
         # chain, and it is the whole of it.
         #
-        # A "> 1 molwatch log means merge them" branch stood here from
-        # 2026-05-10 until 2026-09-05 and is deleted, not moved: STAGES ARE
-        # SEPARATE RUNS.  A ladder is separated by filename in a flat
+        # STAGES ARE SEPARATE RUNS.  A ladder is separated by filename in a flat
         # directory or by directory name in a hierarchical one, and the
         # person picks one stage and judges it.  Stitching them into one
         # trajectory is not a view this project offers -- that is what the
@@ -567,13 +467,8 @@ def api_load():
         # ParseError, NOT just UnknownFormatError.  `detect()` also
         # raises AmbiguousFormatError when two parsers claim one
         # file, and that is its SIBLING, not its subclass
-        # (`parse/errors.py`).  Catching only the one turned a
-        # registry overlap into an unhandled exception -- an HTTP
-        # 500 with an HTML body -- for a file both parsers could
-        # read.  Measured on `<job>_optimized.xyz`, which PySCF
-        # writes for every optimization.  The message names the
-        # clashing parsers, so a 400 carrying it is useful where a
-        # 500 was not.
+        # (`parse/errors.py`).  The message names the clashing
+        # parsers, so a 400 carrying it is useful.
         return jsonify({"ok": False, "error": str(exc)}), 400
 
     refusal = _refuse_if_not_a_trajectory(parser_cls)
@@ -593,13 +488,9 @@ def api_load():
     run, state, err = _with_the_run(state)
     if err:
         return jsonify({"ok": False, "error": err}), 500
-    # Metadata search dir: the resolved run directory, else the parent of
-    # the file we loaded (Watch was pointed straight at a log inside a run
-    # dir).  The directory the resolved log sits in.  ONCE per load, for
-    # the structure envelope and the answer alike, with the file this load
-    # opened and its parse handed on: the relaxation record is of the file
-    # on screen, and composing the block per consumer parsed it twice more.
-    # The parse rides only when it is of that file -- a load racing this
+    # The run's metadata, ONCE per load, for the structure envelope and the
+    # answer alike, with the file this load opened and its parse handed on:
+    # the relaxation record is of the file on screen.  The parse rides only when it is of that file -- a load racing this
     # one can swap the state between the parse and here.
     _parsed = state.get("parsed")
     meta = _run_metadata(state["data"], output=path,
@@ -620,8 +511,7 @@ def api_load():
         # which the viewer follows (`web/results.md` § 4.1).
         "run":              run,
         # FRAME 0 AS AN ENVELOPE -- what the viewer installs.  The parcels below
-        # stay because the Cell page reads them directly; what changed is that
-        # the browser no longer rebuilds a structure out of them.
+        # stay because the Cell page reads them directly.
         "structure":        _frame0_structure(state["data"], meta),
         **meta,
     })
@@ -629,7 +519,7 @@ def api_load():
 
 def _api_load_multipart(uploaded_file):
     """Save the uploaded file to a tempdir, parse, and stash the temp
-    path on _state.  Future /api/data polls work like always but the
+    path on _state.  Future /api/watch/data polls work like always but the
     mtime never advances (we don't write to the temp file again), so
     the data effectively snapshots at upload time.
 
@@ -646,11 +536,9 @@ def _api_load_multipart(uploaded_file):
     # names.  Sanitise the basename to dodge path-traversal in the
     # temp filename itself.
     #
-    # Use NamedTemporaryFile (R6): the previous filename construction
-    # was ``molwatch_{int(time.time())}_{name}`` which collides at
-    # second-resolution -- two uploads in the same second overwrote
-    # each other while a parser was reading the file.
-    # NamedTemporaryFile reserves a unique inode atomically.
+    # mkstemp (R6) reserves a unique filename atomically, so two uploads
+    # in the same second cannot overwrite each other while a parser is
+    # reading the file.
     safe_name = os.path.basename(uploaded_file.filename) or "upload"
     safe_stem = os.path.splitext(safe_name)[0]
     safe_suffix = os.path.splitext(safe_name)[1] or ""
@@ -718,7 +606,7 @@ def _api_load_multipart(uploaded_file):
         "structure":        _frame0_structure(state["data"], meta),
         # An upload is one file with no run directory behind it, so it
         # has nothing to say about itself -- and it SAYS so, in the same
-        # fields the other two builders answer.  One route, one response
+        # fields the path builder answers.  One route, one response
         # shape: a reader learns what a load answers from one place, and
         # "nothing available" is a stated answer rather than a field a
         # caller has to notice is missing.
@@ -733,12 +621,10 @@ def api_data():
     state, err = _refresh_if_changed()
     if err:
         # web-api.md § 1, *Status codes* -- server fault: parse / IO error on a
-        # user-selected trajectory file.  The sibling /api/watch/load
-        # returns 500 on the same failure class (line 725); aligning
-        # this site closes the inconsistency that motivated that rule's
-        # codification.  JS poll-loop reads body.ok so its behaviour
-        # is unchanged; external consumers (curl / CI / monitoring)
-        # gating on HTTP status now see the actual failure.
+        # user-selected trajectory file, the same 500 the sibling
+        # /api/watch/load returns.  The JS poll-loop reads body.ok; external
+        # consumers (curl / CI / monitoring) gating on HTTP status see the
+        # actual failure.
         return jsonify({"ok": False, "error": err}), 500
     if client_mtime is not None and client_mtime == state["mtime"]:
         # NOTHING NEW FOR THIS VIEWER: how the run is doing is the news
@@ -790,9 +676,7 @@ def _changed(state: Dict[str, Any]) -> Dict[str, Any]:
         "mtime":    state["mtime"],
         # An UPLOAD has no run directory, and `os.path.dirname` of its
         # temp path is the system temp dir -- shared, and full of other
-        # people's files.  Asking it produced an engine decided by
-        # unrelated litter (and read every `*.py`/`*.fdf`/`*.run.sh` in
-        # /tmp on every poll).  The load path passes None here for the
+        # people's files, which must not decide the engine.  The load path passes None here for the
         # same reason; the poll must agree with it or one file gets two
         # answers.
         "format":   _engine_of(
@@ -803,15 +687,3 @@ def _changed(state: Dict[str, Any]) -> Dict[str, Any]:
         "data":     state["data"],
         "uploaded": state.get("uploaded", False),
     }
-
-
-# ``warn_if_remote()`` + ``_LOCAL_HOSTS`` (legacy helpers that printed a
-# stderr warning when --host bound a non-loopback interface) were
-# removed 2026-05-19 along with the ``molbuilder watch serve`` CLI
-# subcommand: ``molbuilder serve`` is the canonical entry point now,
-# and its ``_enforce_tls_for_remote_bind`` guard (in cli.py) already
-# refuses a non-loopback bind without TLS or
-# ``--allow-insecure-binding``.  The arbitrary-file-read concern
-# documented here applies to /api/watch/* regardless of which CLI
-# command started the server -- see docs/ops/deployment.md for the
-# recommended reverse-proxy + auth shape.

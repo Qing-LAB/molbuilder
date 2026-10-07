@@ -134,9 +134,7 @@ PKG = Path(__file__).resolve().parents[1] / "molbuilder"
 def test_no_definition_in_the_package_is_shadowed():
     """The rule above is about paste artefacts, not about tests.
 
-    This file was written on 2026-09-02 for a duplicated TEST and scanned
-    only `tests/`.  On 2026-09-04 the identical artefact landed in the
-    PRODUCT: a botched revert left `parse/contract.py` with two
+    On 2026-09-04 the identical artefact landed in the PRODUCT: a botched revert left `parse/contract.py` with two
     `_siesta_contract`, two `_ENGINES`, two `_STDOUT_SUFFIX` and two
     `engine_of` -- 74 dead lines, one of them an `engine_of` carrying
     `contract_of`'s body under `engine_of`'s docstring.  Every test passed,

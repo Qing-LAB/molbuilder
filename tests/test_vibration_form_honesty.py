@@ -21,16 +21,22 @@ from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.pyscf.input import spec_for
 from molbuilder.script_emit import render_deck
 from molbuilder.structure import Structure
+from molbuilder.runfiles import RunNames
+
+
+def _names(cfg):
+    """The names prep gives this stage's deck (`runfiles.RunNames`),
+    under the config's own label."""
+    label = getattr(cfg, "system_label", None) or cfg.job_name
+    return RunNames.of(label, '01_freq', "hierarchical")
 
 #: Still awaiting their phase of the integration plan.  Each row names
 #: the category that owns it; deleting a row is the proof its knob
 #: landed.  (Category 2 = the physical model, pending the PySCF
 #: support-matrix investigation; category 3 = workflow knobs.)
 #: EMPTY -- and the emptiness is the point: every parameter the
-#: vibration form shows is now read by the render or refused by name
-#: with the reason and references (category 2 landed 2026-08-21 on the
-#: probed PySCF support matrix; PCM honored end to end, SMD/ddCOSMO
-#: informed refusals, symmetry honored on the already-relaxed path).
+#: vibration form shows is read by the render or refused by name
+#: with the reason and references.
 STILL_OPEN = {}
 
 _PROBES = {
@@ -111,15 +117,20 @@ def _strip_config_echo(text: str) -> str:
         elif c == "}":
             depth -= 1
             if depth == 0:
-                return text[:i] + "CONFIG = {…}" + text[k + 1:]
+                text = text[:i] + "CONFIG = {…}" + text[k + 1:]
+                # ...and the parameters record, the other report of what
+                # was asked: `_MB_PARAMS[name] = (default, asked, read)`.
+                return "".join(ln for ln in text.splitlines(keepends=True)
+                               if not ln.startswith("_MB_PARAMS["))
     raise AssertionError("CONFIG echo never closed -- the emitter changed")
 
 
 def _render(_struct: str = "water", **over) -> str:
     # density_fit ON in the baseline so auxbasis's ride is probeable.
-    cfg = PySCFConfig(density_fit=True, **over)
+    cfg = PySCFConfig(**{"density_fit": True, **over})
     s = _gold() if _struct == "gold" else _water()
-    text = render_deck(spec_for(s, cfg, calculation="vibration"),
+    text = render_deck(spec_for(s, cfg, calculation="vibration",
+                                names=_names(cfg)),
                        s, cfg, verbose=False)
     # Every probe render must be RUNNABLE python -- a knob that changes
     # the text into a SyntaxError is not honored, it is broken (the
@@ -143,11 +154,6 @@ def _vibration_items():
 #: field with one legal choice has no non-default value, so the measurement
 #: does not exist to fail.  Nor can such a field lie: the form shows one
 #: option and that option is what runs.
-#:
-#: `engine` (`config/pyscf.py`) is the case -- `choices=("pyscf",)`, deliberate,
-#: so the selection is VISIBLE and a second engine has somewhere to be chosen
-#: rather than inferred.  It was reported as "extend _PROBES", which no probe
-#: generator can satisfy (found 2026-09-14, failing on main since 3aaec645).
 _ONE_CHOICE = object()
 
 
@@ -192,17 +198,14 @@ def test_every_shown_parameter_changes_the_deck_or_is_openly_pending():
             text = _render(which,
                            **{item.name: probe,
                               **_COMPANIONS.get(item.name, {})})
-        except Exception:
+        except ValueError:
             # A REFUSAL is an honored parameter: the deck reacted.
             continue
         if _strip_config_echo(text) == baselines[which]:
             silent.append(item.name)
     # A single-choice field is exempt from the honesty measurement, but not
     # from being NOTICED: the day one grows a second choice it leaves this
-    # list and must then change the deck like everything else.  (`engine`
-    # was the one such field until 2026-09-24; the engine is the page's
-    # strip and the description's, not a parameter -- engines/vibration.md
-    # § 3.1.)
+    # list and must then change the deck like everything else.
     assert one_choice == [], (
         f"the set of single-choice vibration parameters changed: "
         f"{one_choice}.  A field that GAINED a second choice now owes the "

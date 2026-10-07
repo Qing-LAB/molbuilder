@@ -31,8 +31,7 @@ async function _fetchEnvelope(url, fetchInit) {
   // Default to ``cache: "no-store"`` so two GETs to the same URL during
   // one browser session BOTH reach the server.  Without this, the
   // browser HTTP cache happily serves the previous response for the
-  // same URL -- the exact second-half of the 2026-06-02 /results
-  // stale-dropdown bug (#192).  ``/api/files/list`` and ``/api/files/
+  // same URL.  ``/api/files/list`` and ``/api/files/
   // read_range`` return live data that changes between requests for
   // the SAME URL (new files, mtime drift, file appended on disk), so
   // browser caching is correctness-breaking, not perf-helping, here.
@@ -135,9 +134,7 @@ export async function apiRead(path, opts) {
  *  last N bytes, clamped to file size).  Server contract:
  *  ``{ok, path, offset, length, file_size, mtime, text, eof}`` on
  *  success; ``{ok:false, error}`` on bounds / picker-root / non-UTF8
- *  failure.  Powers the v2 paginated source inspector (task #119,
- *  2026-06-02); promoted here in #189 so the inspector goes through
- *  the uniform envelope instead of raw ``fetch``.  ``opts.signal``
+ *  failure.  Powers the paginated source inspector.  ``opts.signal``
  *  honoured for abort.
  */
 export async function apiReadRange(path, offset, maxBytes, opts) {
@@ -172,20 +169,15 @@ export async function apiCreateProject(name, opts) {
   });
 }
 
-/* Every endpoint accepts an ``opts.signal`` AbortSignal.  The
- * lock's three-layer recovery (timeout + Cancel button +
- * try/finally) relies on this -- without a signal threaded all
- * the way to fetch, clicking Cancel during a slow read OR write
- * would unlock the UI but leave the request running.  Read
- * endpoints (list / stat / read) added signal support 2026-05-31
- * to close the design § C3 + § C5 contract (#175 follow-up).
- * (See docs/web/projects.md Layer B + #174.) */
+/* Every endpoint accepts an ``opts.signal`` AbortSignal: without a
+ * signal threaded all the way to fetch, clicking Cancel during a slow
+ * read OR write would unlock the UI but leave the request running. */
 
 export async function apiUpload(targetDir, file, opts) {
   opts = opts || {};
   const fd = new FormData();
   fd.append("target_dir", targetDir);
-  // Phase 6e: optional filename override.  Used by writeFile(Blob)
+  // Optional filename override.  Used by writeFile(Blob)
   // to set the destination filename when the Blob has no .name
   // (Blobs assembled from a stream / encoder don't carry one).
   if (opts.filename) {
@@ -268,7 +260,7 @@ export async function apiWrite(path, text, opts) {
   opts = opts || {};
   const body = {path: path, text: text};
   if (opts.overwrite) body.overwrite = true;
-  // Phase 6e second-review BOMB #11: auto_rename parity with
+  // auto_rename parity with
   // /api/files/upload so the export dialog's promise of
   // "auto-renamed to <name>-2 …" is honored for text writes too.
   if (opts.auto_rename) body.auto_rename = true;

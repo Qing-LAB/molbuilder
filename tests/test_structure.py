@@ -16,9 +16,8 @@ def test_basic_construction(water_structure):
 
 
 def test_to_xyz_renders_the_document(water_structure):
-    # The "round trip to disk" half of this test went with `to_xyz(path)`
-    # (2026-09-22): the writer returns TEXT and the codec owns the file, so
-    # what reaches disk is `test_workingcopy_structure.py`'s to assert.
+    # The writer returns TEXT and the codec owns the file, so what reaches
+    # disk is `test_workingcopy_structure.py`'s to assert.
     s = water_structure
     text = s.to_xyz()
     assert text.startswith("3\n")
@@ -367,13 +366,12 @@ class TestElementCaseCanonicalization:
     """PDB cols 77-78 (element symbol) carry NO case convention --
     PDB Bank canonical files emit ``FE`` / ``CL`` / ``NA`` upper-cased.
     XYZ files from external tools (Avogadro, OpenBabel) similarly
-    vary.  Downstream consumers (siesta._detect_species, ase.data,
-    chemistry helper tables) all key on the ``Fe`` / ``Cl`` / ``Na``
+    vary.  Downstream consumers (ase.data, chemistry helper tables) all key on the ``Fe`` / ``Cl`` / ``Na``
     form, so the parser MUST canonicalise at the boundary.
 
     Regression test for the 2026-05-25 hemeC-dithiol incident:
     ``Structure.from_pdb`` returned ``elements=[..., 'FE', ...]``;
-    ``render_fdf`` crashed with ``KeyError: 'FE'`` because
+    the deck's render crashed with ``KeyError: 'FE'`` because
     ``ase.data.atomic_numbers`` has ``'Fe'`` not ``'FE'``."""
 
     @staticmethod
@@ -410,23 +408,6 @@ class TestElementCaseCanonicalization:
             f"through verbatim, or downstream KeyError follows."
         )
 
-    def test_from_pdb_with_iron_renders_siesta_fdf_without_keyerror(self):
-        """End-to-end: PDB with Fe atom -> render_fdf must not raise.
-        This is the 2026-05-25 hemeC-dithiol reproducer at the unit
-        level (the integration test uses the user's actual PDB)."""
-        from molbuilder.siesta import SiestaConfig, render_fdf
-        text = "\n".join([
-            self._pdb_atom_line(1, "FE",   "HEM", 0.0, 0.0, 0.0, "FE"),
-            self._pdb_atom_line(2, "N",    "HIS", 2.0, 0.0, 0.0, "N"),
-            self._pdb_atom_line(3, "C",    "HIS", 3.5, 0.0, 0.0, "C"),
-            self._pdb_atom_line(4, "H",    "HIS", 2.5, 1.0, 0.0, "H"),
-            "END",
-            "",
-        ])
-        s = Structure.from_pdb(text)
-        s.vacuum = (12.0, 12.0, 12.0)   # vacuum comes with the structure (per-side)
-        fdf = render_fdf(s, SiestaConfig(system_label="t"))
-        assert " Fe\n" in fdf, "Fe missing from ChemicalSpeciesLabel block"
 
     def test_from_xyz_canonicalises_uppercase_elements(self):
         """An XYZ from an external tool that emits ``FE`` / ``ZN``

@@ -9,12 +9,7 @@ writes what the field is read from (`run-reports.md` § 2.3).  A description
 all read this table; none keeps a list.
 
 **Stdlib only, and it travels beside every job** (`runwrap.MONITOR_COMPANIONS`):
-the monitor reads it there, as `config_dir` has always travelled.  Until
-2026-09-26 the list stood in four hand-kept copies -- `task.py`, `monitor.py`,
-the listener's field filter and the Task-setup card -- two of them pinned equal
-by a test and called *"written twice, and it has to be"*, because nothing but
-the monitor itself then travelled; and the card offered every field to every
-calculation.
+the monitor reads it there, as `config_dir` travels.
 """
 from __future__ import annotations
 
@@ -66,7 +61,7 @@ FIELDS: Tuple[ReportField, ...] = (
     ReportField("max_force", "The largest force", "max force", " eV/Ang"),
     # Each engine's stamped SCF rows, timed by one rule (`run-reports.md`
     # § 2.3, `scf_timing_rows.timing_of`): the SIESTA wrapper's tee, a PySCF
-    # deck's progress log.  Offered to PySCF since 2026-09-27.
+    # deck's progress log.
     ReportField("per_iter_s", "Seconds per SCF iteration", "per iter", " s"),
 )
 

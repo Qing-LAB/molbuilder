@@ -533,14 +533,9 @@ class TestApplyToStructure:
         assert s.frozen_atoms == []
 
 
-# --------------------------------------------------------------------- #
-#  Hash invariant                                                       #
-# --------------------------------------------------------------------- #
-
-
 class TestSchemaVersioning:
     """``READABLE_VERSIONS`` is the single source of truth for which on-disk
-    schemas this build accepts: {7, 8, 9, 10} since 2026-09-25.  v8 only ADDED
+    schemas this build accepts: {7, 8, 9, 10}.  v8 only ADDED
     the optional identity columns and v9 only added the optional `info`
     block, so a v7 or v8 file reads whole (an absent addition IS its
     default, which is exactly what the older version meant); v10 retired
@@ -560,12 +555,6 @@ class TestSchemaVersioning:
                                                         version, why):
         """One gate, one answer: this build reads the current schema and refuses
         everything else, whether it is older or newer.
-
-        RETIRED (2026-07-31) the separate `test_v2_fails_to_load` /
-        `test_unknown_version_raises` pair. While several versions were readable
-        those described different code paths; under a strict gate they are one
-        refusal, and keeping two tests of it implied a distinction that no longer
-        exists. What each version MEANT is kept above, as the reason it is here.
         """
         payload = {
             "n_atoms_total":  3,
@@ -601,7 +590,7 @@ class TestSchemaVersioning:
         assert "atom_names" not in loaded
 
     def test_writes_the_reserved_label_into_the_one_label_store(self, tmp_path):
-        """Canonical write (schema 7): the reserved label is a label. Neither
+        """Canonical write: the reserved label is a label. Neither
         the schema-6 top-level `frozen_atoms` key nor the older `fixed_atoms`
         one is written -- both were second homes for the same fact."""
         d = msj.to_dict(
@@ -876,11 +865,6 @@ class TestInfoBlock:
 class TestAnUnknownKeyIsRefused:
     """The complement of `TestARetiredKeyPassesEveryGate` below: a key this
     project RETIRED is tolerated, a key it never wrote is refused.
-
-    `test_a_sidecar_written_before_the_retirement_still_loads` and
-    `test_the_retired_key_is_no_longer_written` stood here for `pbc` alone and
-    were RETIRED 2026-09-25 into that class, which checks all three gates --
-    tolerated, never applied, dropped on rewrite -- for every retired key.
     """
 
     @staticmethod
@@ -995,10 +979,7 @@ class TestARetiredKeyPassesEveryGate:
             assert s.regions == {"L": [0]}, \
                 f"gate 2 took {key!r} but dropped the rest of the sidecar"
 
-            # GATE 3 -- THE REAL REWRITE PATH, through the codec.  An
-            # earlier draft asserted on a hand-built `to_dict` call, which
-            # nothing could have made fail: `identity_to_dict` never produces
-            # a retired key, so the filter dropped it whatever the gate did.
+            # GATE 3 -- THE REAL REWRITE PATH, through the codec.
             # What the contract actually claims (§ 2.2c: "a stale value
             # self-heals the next time the pair is written") is this round
             # trip, so this is the one that has to hold.

@@ -1,13 +1,10 @@
 """Unit tests for the Structure-tab discard-unsaved warning modal.
 
-Pins the public API of ``molbuilder/web/static/modify/structure/
-warning-modal.js`` — the single-source-of-truth dialog for "you
-have unsaved canvas modifications, continuing will discard them"
-across the Structure tab.
+Pins the public API of ``molbuilder/web/static/lib/warning-modal.js``
+— the single-source-of-truth dialog for "you have unsaved canvas
+modifications, continuing will discard them".
 
-The actual <dialog> rendering is exercised by Playwright e2e
-once the Structure tab UI lands; these tests cover the contract
-the tab UI depends on:
+These tests cover the contract the tab UI depends on:
 
   * confirmDiscardUnsaved returns a Promise<boolean>.
   * Cancel resolves false; Discard resolves true; ESC resolves

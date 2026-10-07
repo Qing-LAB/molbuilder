@@ -1,11 +1,7 @@
 /* form-components.css — the shared form-PAGE component vocabulary.
  *
- * `web/ui-contract.md` § 1 + § 1.1: these classes were stranded in the
- * index page's ``style.css`` (headed "Build page styles") even though the
- * Build, Spectra and Transport pages all use them.  Extracted here as a
- * NAMED shared sheet so each form page links ONE component library instead
- * of importing the whole index sheet (with its inert #generate-*
- * rules).  The element BASE (button/input/select/header/scrollbar/.card)
+ * `web/ui-contract.md` § 1 + § 1.1: a NAMED shared sheet, so each form page
+ * links ONE component library.  The element BASE (button/input/select/header/scrollbar/.card)
  * lives in ``page-shell.css`` (loaded everywhere) — this file holds only the
  * form-page CLASS components layered on top.
  *
@@ -66,10 +62,9 @@ button.primary:disabled {
     color: var(--text-muted);
 }
 
-/* The DESTRUCTIVE choice, beside its sibling above.  Discarding unsaved work
- * and deleting a folder are the same kind of answer and looked like ordinary
- * buttons everywhere -- the confirm dialogs let each caller pass whatever
- * class it liked, which is the same as none.  Marked, but NOT the default: a
+/* The DESTRUCTIVE choice, beside its sibling above: discarding unsaved work
+ * and deleting a folder are the same kind of answer.  Marked, but NOT the
+ * default: a
  * dialog's cancel comes first, so the key that closes it is the one that
  * keeps your work. */
 button.danger {
@@ -107,8 +102,7 @@ button.danger:disabled {
  * (science/chemistry-correctness.md § 2.5, § 2a; `lib/chemistry.js`).  Each
  * engine's answer is a short list: the value, then where it came from, in
  * the secondary colour so the number reads first.  The card's own box is
- * here too, so the one partial looks the same on all three tabs (its
- * padding and heading lived in the Build page's sheet until the M6 review). */
+ * here too, so the one partial looks the same on all three tabs. */
 #chemistry-card {
     padding: var(--space-lg2) var(--space-lg2);
 }
@@ -172,19 +166,14 @@ button.danger:disabled {
 
 /* ---- A finding BESIDE its control ----
  *
- * THE REST OF THE FINDINGS VOCABULARY MOVED TO page-shell.css on 2026-09-11.
- * `science/validation.md` § 4.1 R2 makes one module the renderer of a finding
- * and `ui-contract.md` § 5.1 says the row looks the same on every tab -- but
- * these rules lived in a sheet only the FORM pages load, and /results mounts
- * MolView, which draws its notices (R2a: a notice is a finding) through that
- * same module.  The rows would have rendered with no design at all.
+ * THE REST OF THE FINDINGS VOCABULARY is in page-shell.css, which every
+ * page loads: `ui-contract.md` § 5.1 says the row looks the same on every tab.
  *
  * What stays here is what only a FORM has: the wrapper is a
  * <label class="schema-field">, which lays its children out for
  * "Label: <input>", so the list has to break that flow or it lands on the same
  * line as the box it is about.  Tighter type and a flush left edge keep it
- * reading as an annotation ON the field, not as a second panel inside it
- * (2026-08-15). */
+ * reading as an annotation ON the field, not as a second panel inside it. */
 .schema-field > .field-issues {
     flex-basis: 100%;
     width: 100%;
@@ -231,13 +220,6 @@ button.danger:disabled {
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-soft);
 }
-/* ``.viewer-wrap`` sizing + chrome moved to lib/molview/molview.css (2026-07-17):
- * ``.viewer-wrap`` is BUILT BY the MolView module (mount.js), so the module owns its
- * dimensions + chrome.  This shared sheet used to re-size it here with its OWN magic
- * (aspect-ratio, min-height:320px, max-height:56vh) that duplicated -- and drifted from
- * (56vh vs the module's 60vh --viewer-edge) -- the square the module already defines.
- * A concealed component sizes itself; no external sheet gets a say. */
-
 /* ---- Hint / helper text ---- */
 .hint {
     color: var(--text-secondary);
@@ -272,9 +254,7 @@ button.danger:disabled {
 }
 
 /* ---- Full-width primary action button (shared: Modify + Transport) ----
- * Moved 2026-07 from the modify page sheet: transport_calculation.html used
- * the class cross-page with no owner, so its Generate button rendered as a
- * bare default button.  ONE shared class per repeated pattern. */
+ * ONE shared class per repeated pattern. */
 .full-btn {
     width: 100%;
     background: var(--accent);
@@ -293,8 +273,7 @@ button.danger:disabled {
 
 /* ---- Anchor styled as a button (downloads etc.) ----
  * Mirrors page-shell's base button schema so a download <a> sits visually
- * level with its sibling <button>s (transport's Download link was an
- * ownerless class rendering as a bare underlined link). */
+ * level with its sibling <button>s. */
 a.btn-like {
     display: inline-block;
     font: inherit;
@@ -317,8 +296,7 @@ a.btn-like:hover {
  * The tab row a describing card uses to offer two engines' forms at once,
  * one panel each, both mounted so switching loses nothing.  Used on
  * /structure-optimization and /spectrum-calculation, so it lives here
- * (ui-contract.md § 1: a widget on more than one page has one shared owner);
- * it stood in structure-optimization/style.css until 2026-09-24. */
+ * (ui-contract.md § 1: a widget on more than one page has one shared owner). */
 .tabs {
     display: flex;
     gap: var(--space-xs);

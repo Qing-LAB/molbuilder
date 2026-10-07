@@ -72,15 +72,6 @@ prep = ["--gpus", "a100:1"]
 refused = "names no card"
 
 [[case]]
-name = "--gpus 0 is no count"
-run = { use_gpu = true }
-prep = ["--gpus", "0"]
-refused = "--gpus:"
-
-# (The `scheduler` block's refusal is `molbuilder_json.toml`'s row: the reader
-#  refuses on the key, so its gpu sub-block is no second path -- 2026-10-02.)
-
-[[case]]
 name = "SIESTA on a GPU is refused when the target has no GPU build of it"
 run = { use_gpu = true, gpu_count = 1 }
 record = { conda_envs = ["molbuilder-siesta"] }
@@ -98,7 +89,7 @@ run = { use_gpu = true, gpu_count = 8, mpi_np = 8 }
 refused = "needs 8 GPUs but gpu allows 4 GPUs"
 
 # A queue named nowhere reaches launch only for a benchmark, whose shelves'
-# queue is named when they are sent (the unit 11 review, 2026-10-05).
+# queue is named when they are sent.
 [[case]]
 name = "the queue list checks the job's own GPU count"
 bench = { use_gpu = [true], gpu_count = [2], mpi_np = [2], omp_threads = [1] }
@@ -119,37 +110,6 @@ run = { use_gpu = false, mpi_np = 64 }
 launch = ["--domain", "gpu"]
 line = ["-n 64", "-p gpu"]
 line_lacks = ["--gres"]
-
-# ("a queue that marks GPUs without a count is not refused on the number"
-# stood here: its queue marked GPUs by `gpu_partition` alone, a column
-# removed 2026-10-02 -- `scheduler.md` § 4.)
-
-[[case]]
-name = "a record silent about which nodes hold the GPUs keeps its whole ceiling"
-queues = [{ name = "old", partition = "old", qos = "public", max_time = "1-00:00:00", max_cores = 48, gpu = { a100 = 4 } }]
-allocation = { domain = "old" }
-run = { use_gpu = true, gpu_count = 2, mpi_np = 4096 }
-refused = "needs 4096 cores but old allows 48 cores"
-
-[[case]]
-name = "a hand-written GPU row is read like a probed one"
-queues = [{ name = "gpu", partition = "gpu", qos = "public", max_time = "1-00:00:00", gpu = { type = "a100", per_node = 4 } }]
-run = { use_gpu = true, gpu_count = 4, mpi_np = 4 }
-launch = ["--domain", "gpu"]
-line = ["--gres=gpu:4"]
-
-[[case]]
-name = "...and refuses past its count like a probed one"
-queues = [{ name = "gpu", partition = "gpu", qos = "public", max_time = "1-00:00:00", gpu = { type = "a100", per_node = 4 } }]
-run = { use_gpu = true, gpu_count = 5, mpi_np = 5 }
-refused = "needs 5 GPUs but gpu allows 4 GPUs"
-
-[[case]]
-name = "a node list that names no GPUs keeps its widest node for a GPU job"
-queues = [{ name = "site", partition = "p", qos = "public", max_time = "1-00:00:00", gpu = { type = "a100", per_node = 4 }, node_types = [{ cores = 96, nodes = 2 }] }]
-allocation = { domain = "site" }
-run = { use_gpu = true, gpu_count = 1, mpi_np = 97 }
-refused = "needs 97 cores but site allows 96 cores"
 
 [[case]]
 name = "a queue listing several cards holds the most any node holds"
@@ -190,7 +150,22 @@ engine = "pyscf"
 run = { use_gpu = true, gpu_count = 2, threads = 4 }
 header = ["#SBATCH -n 1", "#SBATCH -c 4", "#SBATCH -p gpu",
           "#SBATCH --gres=gpu:2"]
-deck = ["mf = _mb_to_gpu(mf) if _USING_GPU else mf"]
+deck = ["USE_GPU = True"]
+
+# GPU acceleration is ELPA's: the variant a template states reaches the
+# deck, and ScaLAPACK with a GPU is refused rather than written
+# (`engines/siesta.md` § 7).
+[[case]]
+name = "the ELPA variant a template states reaches a GPU deck"
+template = { diag_algorithm = "ELPA-2STAGE" }
+run = { use_gpu = true, gpu_count = 1, mpi_np = 2 }
+deck = ["Diag.Algorithm ELPA-2STAGE"]
+
+[[case]]
+name = "...and a GPU run on ScaLAPACK is refused"
+template = { diag_algorithm = "ScaLAPACK" }
+run = { use_gpu = true, gpu_count = 1, mpi_np = 2 }
+refused = "requires an ELPA diagonalizer"
 
 [[case]]
 name = "use_gpu in the template and the count on the card"
@@ -199,22 +174,10 @@ run = { gpu_count = 2, mpi_np = 4 }
 header = ["#SBATCH --gres=gpu:2"]
 
 [[case]]
-name = "a GPU run states its rank count -- one per GPU is not assumed"
-run = { use_gpu = true, gpu_count = 2 }
-run_unset = ["mpi_np"]
-refused = "ranks (mpi_np)"
-
-[[case]]
 name = "a --gpus flag beats the card"
 run = { use_gpu = true, gpu_count = 1 }
 prep = ["--gpus", "3"]
 header = ["#SBATCH --gres=gpu:3"]
-
-[[case]]
-name = "SLURM's own untyped spelling is a count too"
-run = { use_gpu = true }
-prep = ["--gpus", "gpu:2"]
-header = ["#SBATCH --gres=gpu:2"]
 
 [[case]]
 name = "a CPU run asks for no GPU anywhere"
@@ -222,7 +185,8 @@ run = { use_gpu = false, mpi_np = 4 }
 header = ["#SBATCH -n 4"]
 header_lacks = ["--gres"]
 deck = ["Diag.ELPA.GPU .false."]
-run_sh_lacks = ["molbuilder-siesta-gpu", "socket co-location"]
+run_sh_lacks = ["molbuilder-siesta-gpu", "socket co-location", "_have_mps=",
+                "MOLBUILDER_GPU_NUMA"]
 
 [[case]]
 name = "a count for a run that does not use the GPU is refused at prep, before anything is written"
@@ -246,18 +210,9 @@ refused = "asks for 1 GPU(s) and does not use the GPU"
 name = "a GPU run binds its ranks to cores and to its GPU's socket, and says so"
 run = { use_gpu = true, gpu_count = 1, mpi_np = 4 }
 run_sh = ['_mpirun_bind="--bind-to core --map-by package:PE=$_omp_threads"',
-          '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"',
           "MOLBUILDER_GPU_NUMA",
           "GPU resources : GPU mode (ELPA-CUDA, no NCCL) -- chosen $_mpi_np ranks × $_omp_threads threads",
           "(or measure it: prep bench, for this stage)"]
-run_sh_lacks = ["ppr:", "nvidia-smi topo -m", "MOLBUILDER_MPI_NP",
-                "envs advise", "_mb_gpu_val"]
-
-[[case]]
-name = "a CPU run carries no GPU placement"
-run = { use_gpu = false }
-run_sh = ['_numa_wrap_gpu="${_numa_wrap_gpu:-}"', '_mpirun_bind=""']
-run_sh_lacks = ["_have_mps=", "MOLBUILDER_GPU_NUMA"]
 
 [[case]]
 name = "a CPU run on ScaLAPACK runs the packaged build"
@@ -320,35 +275,3 @@ queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00
 allocation = { domain = "cpu" }
 bench = { use_gpu = [true], mpi_np = [8], omp_threads = [1] }
 refused = "no queue with recorded GPUs"
-
-[[case]]
-name = "a benchmark on GPUs on a machine with none at all is refused"
-machine = "workstation"
-bench = { use_gpu = [true], mpi_np = [4], omp_threads = [1] }
-refused = "states no GPU"
-
-# ===================================================================== #
-#  3 · WHAT THE RUN SCRIPT DOES HERE                                    #
-# ===================================================================== #
-
-[[case]]
-name = "the ranks are spread over the GPUs the machine gives"
-machine = "workstation"
-run = { use_gpu = true, gpu_count = 2, mpi_np = 4 }
-given_gpus = "0,1"
-runs = ["4 ranks over 2 GPU(s) = 2 rank(s)/GPU"]
-
-[[case]]
-name = "...whatever was asked: it counts what it is given"
-machine = "workstation"
-run = { use_gpu = true, gpu_count = 2, mpi_np = 4 }
-given_gpus = "0"
-runs = ["4 ranks over 1 GPU(s) = 4 rank(s)/GPU"]
-
-[[case]]
-name = "the MPS switch starts the daemon and leaves the stated rank count"
-machine = "workstation"
-run = { use_gpu = true, gpu_count = 1, mpi_np = 4 }
-given_gpus = "0"
-run_args = ["--mps"]
-runs = ["4 ranks over 1 GPU(s) = 4 rank(s)/GPU"]

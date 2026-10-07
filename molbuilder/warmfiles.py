@@ -5,8 +5,7 @@ Each engine ships ONE schema-stamped ``<engine>/warm-files.toml``:
 ``[base]`` — what every calculation of that engine shares — plus one
 section per calculation type, extending it.  This module is the ONE
 reader; every consumer (the declaration builder, the wrapper inventory,
-validation, the guards) derives from what it returns, which is what
-retires the three hard-coded copies § 4.2a's history records drifting.
+validation, the guards) derives from what it returns.
 
 LAYER.  L1: stdlib (``tomllib``) plus ``persist`` for the schema gate —
 the same leaf posture as ``task``, and load-bearing the same way: the
@@ -21,10 +20,6 @@ kind BY NAMING THE SECTIONS THAT EXIST), or every section (*"what might
 warm-start here at all?"* -- a HINT, safe to over-include where a carry is
 not).  Every reader asks it with the calculation's folder and takes one of
 its two views, :attr:`WarmList.carry` and :attr:`WarmList.suffixes`.
-*(There were two doors until 2026-10-03: ``rules_for`` was told the
-calculation's folder, ``inventory`` / ``carry_inventory`` were not, so the
-run script, status and the prior-state check read the engine's file while
-prep followed the calculation's copy.)*
 
 THE CLOSED VOCABULARY — three keys, and it stays three (§ 4.2a):
 ``carry`` (``"when-continuing"`` or absent = inventory-only),

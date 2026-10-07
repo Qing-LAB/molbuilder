@@ -27,15 +27,11 @@ Schema (all sections optional)::
                   "mdtools": "molbuilder-MDtools" }
     }
 
-The flat shape shipped before the 2026-05-14 four-env design -- top-level
-``cert`` and ``key`` -- is **refused by name** with the ``tls`` spelling
-shown (``_RETIRED_FLAT_TLS``); this header said "honoured (folded into
-tls)" until 2026-09-13, a year after that stopped being so.  **An
-unknown top-level key is REFUSED with the known sections named** (U7,
-2026-08-12; ``_``-prefixed keys are comments) — this header taught
-"ignored silently so the file can grow" until R8, the exact tolerance
-that silently ate ``admin``/``rate_limit``; the one total list of
-sections is the ``_SECTIONS`` registry below (architecture § 8.2a).
+A top-level ``cert`` / ``key`` is **refused by name** with the ``tls``
+spelling shown (``_RETIRED_FLAT_TLS``).  **An unknown top-level key is
+REFUSED with the known sections named** (U7; ``_``-prefixed keys are
+comments); the one total list of sections is the ``_SECTIONS`` registry
+below (architecture § 8.2a).
 
 This reader is intentionally stateless: it reads the file each time
 it's called, parses, validates.  Callers that want a single
@@ -59,9 +55,8 @@ from .config_dir import PRIVATE_FILE_MODE, config_dir
 if TYPE_CHECKING:                      # pragma: no cover - typing only
     # `get_routing` is annotated `List["Domain"]` and imports the real class
     # inside its body, because a module-level import would close a cycle:
-    # `scheduler.record` imports `config_dir`, as this module does.  The name
-    # had no binding at all until now, so every static reader called it
-    # undefined; this is the binding they read.  It is NOT evaluated at run
+    # `scheduler.record` imports `config_dir`, as this module does.  This is
+    # the binding static readers read.  It is NOT evaluated at run
     # time, so `typing.get_type_hints(get_routing)` still raises -- that is
     # the known cost of the idiom, and nothing calls it.
     from .scheduler.record import Domain
@@ -95,7 +90,7 @@ _SCHEDULER_RETIRED = (
     "(docs/configuration.md § 4; docs/execution/architecture.md § 5.2)")
 
 #: The section is named for what it holds -- how a shell on THIS machine
-#: initialises a conda environment -- since 2026-10-02 (user: the old name was
+#: initialises a conda environment (user, 2026-10-02: the old name was
 #: "deceiving").  The machine record carries it under the same name.
 _SCRIPT_GENERATION_RENAMED = (
     "{path}: 'script_generation' is now 'env_init' (renamed 2026-10-02) -- "
@@ -140,11 +135,7 @@ def _naming(path: Path, exc: Exception) -> str:
 
     The validators speak in terms of the schema and spell the generic
     ``molbuilder.json``; the reader and the writer know which file refused.
-    A malformed file used to refuse naming 'molbuilder.json' with no path
-    (R10, 2026-08-12) -- and, after the path was put in front, a retired-key
-    refusal read "<path>: molbuilder.json: 'paths.logs' ..." (two names;
-    review C-L6, 2026-09-14).  The generic name is dropped when the real one
-    is supplied.
+    The generic name is dropped when the real one is supplied.
     """
     msg = str(exc)
     if str(path) in msg:
@@ -160,13 +151,6 @@ def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
     machine scope lives.
 
     **The location is asked of :func:`machine_config_path`, never re-derived.**
-    This function kept its own copy of the lookup until 2026-08-31, and the
-    copy is what let the working-directory step survive its own deletion: the
-    door stopped returning a cwd path and this reader went on loading one, so
-    a file that every message called unread was still being applied.  There had
-    already been a split-brain here once -- until 2026-08-13 this read was
-    cwd-only while the section getters honoured both, so an operator with an
-    XDG-only config got a server with no auth and no TLS (final review A-7).
 
     Returns the normalised dict (see :func:`_normalise`).  Returns
     ``{}`` if no file exists (not an error -- the file is optional).
@@ -186,13 +170,9 @@ def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
 def _load_raw(path: Path) -> Dict[str, Any]:
     """The file's JSON object, unvalidated -- ``{}`` when there is no file.
 
-    THE ONE PARSE of ``molbuilder.json`` (W54 C19).  `read_config`, the
-    provenance display and the one writer each parsed it, with three error
-    policies: a refusal naming the path, an ``OSError`` escaping raw, a
-    silent ``{}`` that showed a broken file as found with no values, and a
-    third wording in the writer.  `configuration.md` § 2.2: a malformed file
-    is refused by the command that reads it, in the resolved path's words --
-    once, here."""
+    THE ONE PARSE of ``molbuilder.json`` (W54 C19).  `configuration.md`
+    § 2.2: a malformed file is refused by the command that reads it, in the
+    resolved path's words -- once, here."""
     if not path.is_file():
         return {}
     try:
@@ -288,8 +268,7 @@ def _refuse_a_named_secret(entry: Mapping[str, Any], idx: int) -> None:
 
     The secret's home is its kind's, :func:`config_dir.client_secret`.  The
     bytes (``client_secret``) and the path (``client_secret_file``) are both
-    refused by name since 2026-10-02, when the kind took over naming the
-    file, each saying where the secret goes."""
+    refused by name, each saying where the secret goes."""
     from .config_dir import client_secret, relative_home
     for key in ("client_secret", "client_secret_file"):
         if key in entry:
@@ -307,11 +286,8 @@ def provider_client_secret(entry: Mapping[str, Any]) -> str:
     2026-09-20: "the api should return the secret/key ... how to read and what
     to find out is concealed")*.
 
-    `oauth.py` used to branch on the two shapes itself, expand ``~``, open the
-    file, strip it and decide what an empty one meant: five decisions about
-    what a secret IS, in a module about OAuth.  Worse, it had to know WHICH
-    shape the operator chose.  Both belong here, because this module owns the
-    provider entry's schema.
+    What a secret IS belongs here, because this module owns the provider
+    entry's schema.
 
     **The kind names the file** *(user, 2026-10-02)*: the secret is read from
     :func:`config_dir.client_secret`, and the entry names no path
@@ -521,34 +497,23 @@ def _validate_provider(entry: Any, idx: int) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------- #
-#  Top-level normaliser                                                 #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
 #  The SECTION REGISTRY -- one row per top-level section (U7,           #
 #  2026-08-12).  Everything the loader knows about a section is in its  #
 #  row: how it is read (its validator) and whether provenance may      #
 #  print its VALUES.  `_normalise`, `config_provenance` and             #
 #  `write_config_scope` all consult THIS table and nothing else.        #
 #                                                                       #
-#  Why a table: until it existed each of those four sites kept its own  #
-#  partial list, and the gaps were live bugs -- `_normalise` never      #
-#  learned `admin` or `rate_limit`, so it silently DROPPED them and     #
-#  `get_admin_emails` read post-strip config: nobody could be admin,    #
-#  and nothing said why.  A section is either in this table or its      #
-#  presence is an ERROR; there is no third state in which it looks      #
-#  configured and does nothing.                                         #
+#  A section is either in this table or its presence is an ERROR;       #
+#  there is no third state in which it looks configured and does        #
+#  nothing.                                                             #
 # --------------------------------------------------------------------- #
 
 def _read_tls(raw: Mapping[str, Any]):
     """The ``tls`` section, and only it.
 
-    A flat top-level ``cert``/``key`` used to fold in here, with the nested
-    value winning.  There is ONE spelling now (2026-09-02): a second one is a
-    second place to look, and a reader that quietly accepted either could not
-    tell a migrated file from an un-migrated one.  ``_normalise`` refuses the
-    flat keys by name and says what to write instead.
+    There is ONE spelling: a second one is a second place to look.
+    ``_normalise`` refuses the flat keys by name and says what to write
+    instead.
     """
     tls = _require_object_section(raw, "tls") or {}
     _refuse_unknown(tls, ("cert", "key"), "tls")
@@ -572,9 +537,8 @@ def _read_envs(raw: Mapping[str, Any]):
     """``envs`` -- the conda environment each category runs in when it is not
     the default name, and the conda-compatible command (`configuration.md`
     § 4).  The categories are `diagnostics`'s own table, asked rather than
-    re-listed; another key is refused (``envs.siseta`` was accepted and read
-    by nothing until 2026-10-02), and ``envs.host`` by name: the host env is
-    always ``molbuilder``."""
+    re-listed; another key is refused, and ``envs.host`` by name: the host
+    env is always ``molbuilder``."""
     envs = _require_object_section(raw, "envs") or {}
     if "host" in envs:
         raise RuntimeConfigError(_HOST_ENV_FIXED.format(path=CONFIG_FILENAME))
@@ -611,8 +575,8 @@ def _read_auth(raw: Mapping[str, Any]):
     if "auth" not in raw:
         return None
     auth = _require_object_section(raw, "auth") or {}
-    # The wizard wrote the session key's path INSIDE `auth` until 2026-08-31
-    # (`build_auth_block`); its one home is `secrets/secret_key` (§ 2.1e).
+    # A session key's path INSIDE `auth` is refused by name: its one home is
+    # `secrets/secret_key` (§ 2.1e).
     if "secret_key_file" in auth:
         raise RuntimeConfigError(
             _SECRET_KEY_MOVED.format(path=CONFIG_FILENAME))
@@ -803,7 +767,7 @@ def _refuse_unknown(section: Mapping[str, Any], allowed, where: str,
     reads looks effective and is not: a misspelled ``admin.emails`` made every
     signed-in user an admin, and ``rate_limit``'s typos were dropped.  A
     ``_``-prefixed key is a comment, as at the top level.  ONE sentence for
-    every section; it was written by hand three times, each worded apart.
+    every section.
     """
     unknown = sorted(str(k) for k in section
                      if k not in allowed and not str(k).startswith("_"))
@@ -846,9 +810,8 @@ def _read_admin(raw: Mapping[str, Any]):
 #: would look effective and do nothing, which is the argument behind every
 #: refusal in `configuration.md`.
 #:
-#: ``logs``, ``run`` and ``reports`` were here between 2026-08-31 and the same
-#: day, and retiring them is what removed a dependency inversion rather than
-#: working around one -- see :data:`_OPERATIONAL_PATHS_MOVED`.
+#: ``logs``, ``run`` and ``reports`` are refused by name -- see
+#: :data:`_OPERATIONAL_PATHS_MOVED`.
 _PATH_KEYS = ("projects",)
 
 #: Same shape as `_SCHEDULER_RETIRED` and `_SECRET_KEY_MOVED`: a retired key
@@ -878,28 +841,14 @@ def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     A relative value is resolved against the molbuilder root, so the
     setting means the same thing whatever directory you run from.
 
-    ``projects`` IS THE ONLY KEY.  ``logs``, ``run`` and ``reports`` were
-    added on 2026-08-31 and retired the same day, and a config naming one is
-    **refused** -- `_OPERATIONAL_PATHS_MOVED` carries the message, and
-    `configuration.md` § 2.1d carries the reasoning: the `serve` supervisor is
+    ``projects`` IS THE ONLY KEY.  A config naming ``logs``, ``run`` or
+    ``reports`` is **refused** -- `_OPERATIONAL_PATHS_MOVED` carries the
+    message, and `configuration.md` § 2.1d carries the reasoning: the `serve` supervisor is
     L1 and this reader is L2, so the supervisor could never reach a
     config-derived answer, leaving two answers to one question.
     ``$XDG_STATE_HOME`` and ``$XDG_RUNTIME_DIR`` move those directories, and
     they answer before any config is read -- which is what a log has to do
     when the thing that failed is the config parse.
-
-    This docstring described all four as live until 2026-09-12, as did the
-    comment block `envs init-config` writes into the user's own
-    ``molbuilder.json``.  A person with a small ``$HOME`` who followed either
-    one set ``paths.logs`` and then every read of their config raised.
-
-    **Added here rather than in a section of their own** (2026-08-31), because
-    this section already answers *"where does molbuilder keep things that are
-    not its own code"* and a second block asking the same question is the
-    fragmentation this change exists to end.  The first attempt DID add a
-    second ``paths`` reader and registry entry: the duplicate dict key
-    silently won, and ``paths.projects`` -- a live setting that moves the whole
-    project tree -- began being refused as unknown.
     """
     if "paths" not in raw:
         return None
@@ -941,11 +890,7 @@ _RATE_LIMIT_KEYS = {
 def _read_rate_limit(raw: Mapping[str, Any]):
     """``rate_limit`` -- the web server's request limiter, every key typed.
 
-    It was validated by its consumer until 2026-10-02, which coerced:
-    ``"enabled": "false"`` read as on, and ``"cooldown_s": "1h"`` passed the
-    config read that `serve restart` and the browser's Reload make first, so
-    the fresh server died in `RateLimiter` and the supervisor did not respawn
-    it.  Read here, a wrong value is refused before any server is touched.
+    Read here, so a wrong value is refused before any server is touched.
     """
     import ipaddress
     section = _require_object_section(raw, "rate_limit")
@@ -1034,8 +979,7 @@ _SECTIONS: Dict[str, Dict[str, Any]] = {
                           "provenance_safe": True},
 }
 
-#: The flat spelling of ``tls`` that this loader used to accept.  Kept ONLY
-#: to be refused by name: a person whose file says ``"cert"`` at the top
+#: The flat spelling of ``tls``, ONLY to be refused by name: a person whose file says ``"cert"`` at the top
 #: level has to be told the nested spelling, not handed the generic
 #: unknown-key list and left to guess which of the sections it belongs in.
 _RETIRED_FLAT_TLS = ("cert", "key")
@@ -1052,19 +996,13 @@ _FLAT_TLS_RETIRED = (
 def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
     """Read every registered section + validate values; refuse the rest.
 
-    ``tls`` is a SECTION.  The flat top-level ``cert``/``key`` spelling
-    was removed 2026-09-02 and is now refused BY NAME, showing the
-    section to write -- those two were legal until that date, so the
-    person who wrote them wrote a file that worked and is owed the new
-    spelling rather than "unknown top-level key". 
+    ``tls`` is a SECTION.  The flat top-level ``cert``/``key`` spelling is
+    refused BY NAME, showing the section to write, rather than as an
+    "unknown top-level key".
 
-    **An unknown top-level key is an ERROR, not tolerance** (U7,
-    2026-08-12; running-a-job.md § 5 amended).  "Ignored silently" was the
-    documented behaviour, and it is exactly how `admin` and `rate_limit`
-    -- sections with live getters -- were dropped before they reached the
-    web layer: the file looked configured and nobody could be admin.  The
-    same hole swallows every typo'd section name.  The registry makes
-    "known" one total list, so refusing is precise and the message can
+    **An unknown top-level key is an ERROR, not tolerance** (U7;
+    running-a-job.md § 5): ignoring one would swallow every typo'd section
+    name.  The registry makes "known" one total list, so refusing is precise and the message can
     name what IS known.
 
     Value-type validation lives in each section's ``read`` (see
@@ -1078,9 +1016,8 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
                      if k not in _SECTIONS and not k.startswith("_"))
     if "secret_key_file" in unknown:
         raise RuntimeConfigError(_SECRET_KEY_MOVED.format(path=CONFIG_FILENAME))
-    # NAMED BEFORE THE GENERIC LIST.  These two were legal here until
-    # 2026-09-02, so the person who wrote them wrote a file that worked --
-    # they are owed the new spelling, not "unknown top-level key(s) 'cert'".
+    # NAMED BEFORE THE GENERIC LIST: whoever wrote them is owed the
+    # section's spelling, not "unknown top-level key(s) 'cert'".
     flat = [k for k in _RETIRED_FLAT_TLS if k in raw]
     if flat:
         raise RuntimeConfigError(_FLAT_TLS_RETIRED.format(
@@ -1156,7 +1093,7 @@ def get_env_manager(cfg: Mapping[str, Any]) -> str:
     cluster where the manager arrives via ``module load``, the probe's
     PATH answer changes with the shell's module state, which is how
     "the script did not follow the correct pathway" happens (ASU Sol,
-    2026-08-21).  Absent means "probe" -- the historical behavior.
+    2026-08-21).  Absent means "probe".
     """
     return str(dict(cfg.get("envs", {})).get("manager", "") or "")
 
@@ -1177,19 +1114,9 @@ def get_admin_emails(cfg: Mapping[str, Any]) -> frozenset:
     written every person down by hand.  Naming addresses here narrows it.
     Anonymous is never an admin.
 
-    *(Until 2026-10-02 this said the restart route is not registered unless
-    this set is non-empty.  It is registered whenever the server is
-    supervised, and asks the same rule -- the docstring described a design
-    that was considered and is not what shipped.)*
-
-    IT LIVED UNDER ``rate_limit.admin_emails`` UNTIL 2026-08-03.  What moved was
-    the key's HOME, and one real defect travelled with it: the value was reached
-    through the rate limiter's own object, so turning the limiter off silently
-    changed who was an admin -- a connection nothing in the names would suggest.
-    The empty-set reading is not what was wrong and did not change; § 5 argues
-    for it, because a second list repeating the allow-list is two lists to keep
-    in step for one question, and on a single-operator server it is the same
-    address written twice.
+    The empty-set reading is § 5's: a second list repeating the allow-list is
+    two lists to keep in step for one question, and on a single-operator
+    server it is the same address written twice.
 
     Emails are lowercased and blanks dropped, matching how the auth layer
     stores ``session["user"]["email"]``, so membership is case-stable -- the
@@ -1377,10 +1304,6 @@ def _machine_config_file() -> Path:
     which is why :func:`molbuilder.config_dir.config_dir` takes its override
     from the ENVIRONMENT (``MOLBUILDER_CONFIG_DIR``) rather than from a config
     key, which would be circular.
-
-    It was called ``_per_user_fallback_path`` while there was a
-    working-directory step to fall back FROM; there is not, so the name said
-    something untrue about the only location there is.
     """
     return config_dir() / CONFIG_FILENAME
 
@@ -1398,19 +1321,11 @@ _PROVENANCE_SECTIONS = tuple(
 def machine_config_path() -> Path:
     """Which ``molbuilder.json`` the MACHINE scope resolves to.
 
-    Split out 2026-08-17 so a refusal can name the file it is refusing.  This
-    lookup was computed inline in :func:`config_provenance` and re-derived
-    inside :func:`read_config`, so the display that exists to answer *"which
-    file said this"* and the reader that raises about it could describe
-    different files.  It returned ``(path, "config-dir")`` until 2026-09-13;
-    the second element had been a constant since the working-directory step
-    was deleted, and fourteen callers indexed ``[0]`` past it.
+    The one lookup, so a refusal can name the file it is refusing, and the
+    display that answers *"which file said this"* and the reader that raises
+    about it describe one file.
     """
-    # ONE LOCATION (`archive/2026-09-01-config-access-plan.md` § 3.3).  A working-directory
-    # `molbuilder.json` was step 1 of a first-found-wins search until
-    # 2026-08-31, and it is gone: it was the entire source of one setting
-    # living in two files with nothing saying which won.  Nothing stops now,
-    # because there is nothing to stop at.
+    # ONE LOCATION (`archive/2026-09-01-config-access-plan.md` § 3.3).
     return _machine_config_file().resolve()
 
 
@@ -1418,10 +1333,9 @@ def machine_config_shadow() -> Optional[str]:
     """A warning when a ``./molbuilder.json`` is sitting there UNREAD.
 
     `configuration.md` § 2.1a.  The machine scope has ONE location, the
-    per-user config directory.  A working-directory file is **no longer read
-    at all** -- so the danger inverts: it used to win silently, and now it
-    loses silently, and a person editing it would watch their changes do
-    nothing (user, 2026-08-31: *"I had instances where information are saved in
+    per-user config directory.  A working-directory file is **not read at
+    all** -- so it loses silently, and a person editing it would watch their
+    changes do nothing (user, 2026-08-31: *"I had instances where information are saved in
     two places and I did not realize which one was the effective one"*).
 
     THE PHRASING LIVES HERE, in one place, so every surface says the same
@@ -1440,8 +1354,7 @@ def machine_config_shadow() -> Optional[str]:
     home = machine_config_path()
     if here == home:
         # The working directory IS the config directory (`cd ~/.config/
-        # molbuilder`): the file here is the one that is read.  This warned
-        # about it anyway, naming the same path on both lines (C-L3).
+        # molbuilder`): the file here is the one that is read.
         return None
     return "\n".join([
         f"{CONFIG_FILENAME} in the working directory is NOT READ: {here}",
@@ -1491,11 +1404,8 @@ def config_provenance(project_dir: Optional[Path] = None, *,
     mode_warning = machine_config_finding()
 
 
-    # RAW file bytes decide what a file "supplied" (R10, 2026-08-12: the
-    # normalized scopes injected validator defaults, and provenance then
-    # showed them as file-supplied values -- the display existing to
-    # answer "which file said this" answered it about keys no file
-    # said).
+    # RAW file bytes decide what a file "supplied" (R10): the normalised
+    # scopes carry validator defaults no file said.
     machine_file = _load_raw(machine_path)
     effective: Dict[str, Dict[str, Any]] = {}
     for section in _PROVENANCE_SECTIONS:
@@ -1505,18 +1415,12 @@ def config_provenance(project_dir: Optional[Path] = None, *,
         for key, value in block.items():
             effective[f"{section}.{key}"] = {"value": value,
                                              "from": "machine"}
-    # Domains come from the MACHINE RECORD since N4, not from these files, so
-    # provenance follows them there -- a display that kept reporting the old
-    # home would say "(none)" on a correctly-probed cluster.  The record's own
-    # scopes join `sources`, because "which file supplied this" is the question
-    # this function exists to answer and environment.json now answers part of
-    # it (`configuration.md` § 5, M-3).
-    # The scopes, and their order, are the record's OWN list (`record_scopes`,
-    # whose paths come from its resolvers -- the calculation scope was a
-    # `Path(project_dir) / FILENAME` join here once, A11 I2) -- a named
-    # target's included: the calculation's and this machine's alone were
-    # listed until 2026-10-05, so a first `prep --target sol` named a record
-    # that had not answered.
+    # Domains come from the MACHINE RECORD (N4), not from these files, so
+    # provenance follows them there: the record's own scopes join `sources`,
+    # because "which file supplied this" is the question this function exists
+    # to answer and environment.json answers part of it (`configuration.md`
+    # § 5, M-3).  The scopes, and their order, are the record's OWN list
+    # (`record_scopes`) -- a named target's included.
     from .scheduler.record import (AmbiguousTarget, UnknownTarget,
                                    record_scopes)
     for via, path in record_scopes(project_dir, target):
@@ -1540,10 +1444,7 @@ def format_provenance(prov: Mapping[str, Any]) -> str:
     """The ONE rendering of :func:`config_provenance` — the CLI echo and
     STAGE-PLAN.md both use it, so they cannot drift."""
     lines = ["config:"]
-    # Width from the WIDEST scope name present, not a literal: "environment"
-    # (11 chars) arrived on 2026-08-17 and ran straight into the hardcoded 8,
-    # printing `environment/home/...` with no gap -- a display whose whole job
-    # is to make the source legible.
+    # Width from the WIDEST scope name present, not a literal.
     width = max([len(s["scope"]) for s in prov["sources"]] + [8]) + 1
     for s in prov["sources"]:
         state = "found" if s["found"] else "absent"
@@ -1553,9 +1454,7 @@ def format_provenance(prov: Mapping[str, Any]) -> str:
         e = prov["effective"][key]
         lines.append(f"  {key} = {e['value']!r}   <- {e['from']}")
     if prov["domains"]:
-        # Named for where they LIVE.  This said "scheduler.routing domains"
-        # until N4 moved them out of the scheduler block, and a label pointing
-        # at a key that no longer exists is worse than no label.
+        # Named for where they LIVE.
         lines.append(f"  environment.domains: "
                      f"{', '.join(prov['domains'])}")
     return "\n".join(lines)
@@ -1591,9 +1490,7 @@ def get_launch_mode() -> Optional[str]:
     (`running-a-job.md` § 5.4).  ``None`` is UNSET, and `launch` then refuses
     rather than derive one: deciding ``submit`` from a DETECTED scheduler
     would gate submission on detection.  It arrives validated
-    (:func:`_read_launch`), so nothing is checked here.  *(It was
-    ``get_launch()``, handing back ``{"mode": ...}`` for both callers to
-    index, until 2026-10-02 -- W54 C17.)*"""
+    (:func:`_read_launch`), so nothing is checked here."""
     return (read_config().get("launch") or {}).get("mode")
 
 
@@ -1619,16 +1516,9 @@ def get_routing(
     2026-08-17).  A domain is a MEASUREMENT -- ``jobset probe`` reads it from
     live ``sinfo``/``sacctmgr`` -- and `configuration.md` § 5 M-1 puts
     measurements in the machine record and preferences in ``molbuilder.json``.
-    It lived under ``scheduler.routing`` here until the prober stopped writing
-    into a person's config file.
 
-    Each entry is a :class:`~molbuilder.scheduler.record.Domain` -- **typed
-    since 2026-08-23**, phase 3 of `execution/scheduler.md` § 8.  This function
-    always built them and then flattened them with ``to_row()`` on its last
-    line, so every caller reached for ``row.max_time`` against a plain
-    dict and nothing could tell a real column from a typo.  That is how
-    ``gpu_partition`` (removed 2026-10-02) came to redirect GPU work from
-    inside ``extra``, the bag the record documents as uninterpreted.
+    Each entry is a :class:`~molbuilder.scheduler.record.Domain` (phase 3 of
+    `execution/scheduler.md` § 8).
 
     Returns ``[]`` when there is no record, or on a workstation: no queue to
     name.  Order is the record's; nothing here chooses among them -- a job
@@ -1653,9 +1543,7 @@ def routing_of(env) -> List["Domain"]:
     before the calculation has snapshotted it).  :func:`get_routing` is this,
     asked of the record ``machine_for`` answers.
 
-    **The record's queues and nothing else** *(user, 2026-10-02)*.  A queue
-    list typed into ``molbuilder.json`` (``scheduler.routing``) stood in when
-    a record had none, and it described a machine its author was not on; a
+    **The record's queues and nothing else** *(user, 2026-10-02)*: a
     target's queues are probed on that machine and its record copied here
     (`configuration.md` § 5)."""
     return list(env.domains) if env is not None else []
@@ -1668,13 +1556,12 @@ def write_config_scope(patch: Mapping[str, Any]) -> Path:
 
     The patch is deep-merged ONTO the existing file's contents (per
     :func:`_deep_merge`), preserving keys outside the patch.  A corrupt
-    existing file REFUSES rather than being overwritten (R10,
-    2026-08-12 -- the documented 'log nothing, overwrite' destroyed
-    whatever a hand-edit broke).  Files are written atomically
+    existing file REFUSES rather than being overwritten (R10).
+    Files are written atomically
     (persist.write_bytes) at mode 0600 -- a config file may carry
     the TLS key's path, deploy context, or per-cluster setup commands
     that aren't meant for casual inspection.  THE ONE WRITER of this
-    file: the auth wizard had its own until 2026-09-13.
+    file.
 
     Returns the resolved target path.
     """
@@ -1686,10 +1573,9 @@ def write_config_scope(patch: Mapping[str, Any]) -> Path:
     try:
         existing = _load_raw(target)
     except RuntimeConfigError as exc:
-        # REFUSED, not overwritten (R10, 2026-08-12: 'log nothing,
-        # overwrite' silently destroyed whatever a hand-edit broke -- a
-        # config carrying auth providers and TLS paths is exactly the file a
-        # user cannot afford to lose to a typo).
+        # REFUSED, not overwritten (R10): a config carrying auth providers
+        # and TLS paths is exactly the file a user cannot afford to lose to
+        # a typo.
         raise RuntimeConfigError(
             f"{exc}  Nothing was written: a corrupt config is refused, never "
             f"overwritten -- fix it (or move it aside) and retry.") from None
@@ -1705,8 +1591,7 @@ def write_config_scope(patch: Mapping[str, Any]) -> Path:
         # bad `envs` entry, measured 2026-09-10 through the auth wizard,
         # which then blamed itself).  Ask the existing file alone: a person
         # sent to fix "the patch" for a section it never touched fixes the
-        # wrong thing.  This diagnosis lived in the wizard's private writer
-        # until 2026-09-13; here every caller gets it.
+        # wrong thing.
         if existing:
             try:
                 _normalise(existing)
@@ -1717,22 +1602,19 @@ def write_config_scope(patch: Mapping[str, Any]) -> Path:
                     f"that section and retry.") from None
         raise RuntimeConfigError(_naming(target, exc)) from None
 
-    # 0700 through the one creator when this call is what makes the directory
-    # -- a bare `mkdir` here left the config root at the umask default around
-    # every secret later written into it (A4's sibling).  It does not TIGHTEN
+    # 0700 through the one creator when this call is what makes the
+    # directory.  It does not TIGHTEN
     # one that is already there: a writer is not the place that polices what
     # the operator set up (`envs doctor` is).
     from .config_dir import ensure_private_dir
     ensure_private_dir(target.parent)
     rendered = json.dumps(merged, indent=2, sort_keys=False) + "\n"
-    # Through the ONE atomic writer (U8's shape; R10 aligned this last
-    # in-place O_TRUNC write with it -- a crash mid-write left a
-    # truncated config for every later read to refuse).
+    # Through the ONE atomic writer (U8's shape): a crash mid-write must not
+    # leave a truncated config for every later read to refuse.
     #
-    # `mode=` rather than a chmod afterwards (D11): `write_bytes` widened the
-    # temp to 0644 WITH THE CONTENT IN IT and the chmod then closed it, which
-    # is the loose window `write_bytes`' own `mode=` parameter exists to make
-    # impossible -- and this is the one in-package caller that should pass it.
+    # `mode=` rather than a chmod afterwards (D11): a chmod afterwards leaves
+    # the temp loose with the content in it, the window `write_bytes`' own
+    # `mode=` parameter exists to close.
     from .persist import write_bytes
     write_bytes(target, rendered.encode("utf-8"), mode=PRIVATE_FILE_MODE)
     return target

@@ -233,42 +233,6 @@ def test_the_panel_resets_through_setvalues(page=None):
         "setValues, which handles every field kind")
 
 
-# `test_both_engine_forms_carry_the_panel` stood here.  It read index.html
-# for `id="siesta-recommend"` and sliced viewer.js to check two host ids
-# appeared before `mountRecommended(engine, host`.  All of that is true of a
-# page where `mountRecommended` returns at its first line -- which it does,
-# by `return` rather than by throwing, whenever the schema is missing.  The
-# rest of this file mounts form-schema.js against a synthetic one-div page
-# and never loads index.html or viewer.js at all, so nothing here could have
-# noticed.  Driven per engine now, on the real page:
-# tests/test_build_e2e.py::test_a_field_off_its_recommended_value_raises_the
-# _panel.  Mutation-checked by dropping pyscf from the mount loop -- which
-# fails the pyscf arm and leaves siesta green, the distinction the text
-# check could not make.
-
-
-# `test_the_panel_is_mounted_AFTER_the_session_restore` stood here, RETIRED
-# 2026-09-30 (plan § 5w K7) with the mechanism it guarded: `restoreFormState`
-# assigned `el.value` by id and dispatched nothing, so a panel mounted before
-# it never heard the saved values arrive, and the ORDER was the only defence.
-# The restore writes through `setValues` now, which fires `input` and
-# `change` on everything it writes -- the panel hears a restore like any edit,
-# whichever came first.  The restore's round trip is driven on the real page:
-# tests/test_build_e2e.py::test_the_form_holds_only_what_the_person_gave_and
-# _keeps_it_over_a_reload.
-
-
-# `test_the_panel_follows_the_form_rather_than_only_typing` stood here.  It
-# sliced `mountRecommended`'s body out of viewer.js and looked for two
-# `container.addEventListener(...)` spellings -- which say nothing about
-# whether either listener reaches a panel that is mounted at all.  The claim
-# is the same and it is driven now: tests/test_build_e2e.py::
-# test_a_field_off_its_recommended_value_raises_the_panel dispatches `input`
-# ALONE to raise the panel and `change` ALONE to put it away, so each writer
-# the claim is about -- a person typing, and the compatibility engine or the
-# session restore writing without a keystroke -- is proved separately.
-
-
 def test_the_panel_sheet_has_one_owner_and_no_literals():
     """`ui-contract.md` § 1: a shared element has exactly one owner.  The
     widget is generic — it works off `diffFromDefaults` — so it lives in
@@ -295,8 +259,6 @@ def test_the_flag_tone_is_passive_not_a_call_to_action():
     assert m, "--rec-flag is not defined as a token reference"
     assert m.group(1) == "--warn-soft", (
         f"--rec-flag borrows {m.group(1)}; a difference is not an error")
-
-
 
 
 def test_the_contract_says_the_argument_is_a_path():

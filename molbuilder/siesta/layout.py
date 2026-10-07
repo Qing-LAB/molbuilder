@@ -28,18 +28,14 @@ XC_SECTION = Section(
     ("xc_functional", "xc_authors"),
 )
 
-#: The SCF settings above the free-energy pair.  The pair itself carries a
-#: long explanation of how SIESTA ANDs its enabled convergence tests together,
-#: which is method guidance rather than either value's reason, so it stays in
-#: the body until it has a home in the declaration.
+#: The SCF settings above the free-energy pair.
 SCF_SECTION = Section(
     "SCF",
     ("solution_method", "mixing_weight", "pulay_history", "dm_tolerance"),
 )
 
 #: What the run writes out.  All booleans, and **all emitted in both states**
-#: -- a keyword left out hands the decision to SIESTA's own default, which is
-#: how decks came to have no `.ANI` while the form said otherwise.  Under the
+#: -- a keyword left out hands the decision to SIESTA's own default.  Under the
 #: door that is not a discipline anybody has to remember: `line` returns a
 #: value for False as readily as for True.
 OUTPUT_SECTION = Section(
@@ -58,9 +54,7 @@ FC_SECTION = Section(
 
 #: The free-energy criterion and the switch that arms it.  **Two items, one
 #: decision**: the tolerance alone does nothing -- SIESTA loads it either way
-#: and installs it as a criterion only when the switch is on -- so molbuilder
-#: wrote a live-looking control that could not change a result until the switch
-#: was emitted too.  Both are written, in both states, so a person reading the
+#: and installs it as a criterion only when the switch is on.  Both are written, in both states, so a person reading the
 #: deck without the form sees the gate as well as the number.
 FREE_ENERGY_SECTION = Section(
     "SCF free-energy convergence (a PAIR: the value + its switch)",
@@ -69,12 +63,9 @@ FREE_ENERGY_SECTION = Section(
 
 #: The SCF settings that follow the free-energy pair.
 SCF_TAIL_SECTION = Section(
-    # NAMED 2026-08-19.  It carried "" -- *continues under the SCF heading
-    # already written* -- which was true of the deck and left these two
-    # keywords under no heading at all, between the free-energy pair above
-    # them and the restart group below.  A nameless section is also a layout
-    # that stops saying what that part of the deck IS, which is the one thing
-    # a layout is for (`script-preparation.md` § 4.1).
+    # NAMED: a nameless section is a layout that stops saying what that part
+    # of the deck IS, which is the one thing a layout is for
+    # (`script-preparation.md` § 4.1).
     "SCF iteration limit and smearing",
     ("max_scf_iter", "scf_must_converge", "electronic_temperature"),
 )
@@ -103,10 +94,9 @@ def spin_section(*, fixed: bool) -> Section:
     pinned count.  Built **per render**, because the second depends on the
     answer.
 
-    Written in every state since 2026-09-28: a non-polarized run wrote
-    nothing and left SIESTA's default to answer, which `template.md` § 6.6
-    rules out -- nothing reaches the engine by omission, and a spin decided
-    from the structure is a decision the deck should state.
+    Written in every state: `template.md` § 6.6 rules out leaving SIESTA's
+    default to answer -- nothing reaches the engine by omission, and a spin
+    decided from the structure is a decision the deck should state.
     """
     return Section("Spin", ("spin_treatment",)
                    + (("unpaired_electrons",) if fixed else ()))
@@ -140,12 +130,12 @@ def mpi_section(*, block_size, algorithm) -> Section:
         "#",
         "# BlockSize: ScaLAPACK orbital-distribution block.  Affects",
         "# cache efficiency for the diagonaliser; does NOT fix the",
-        "# propor IMAX=0 crash (an earlier claim was wrong -- an",
-        "# empirical sweep confirmed BlockSize = 1, 2, 4 all crash",
-        "# at the same mpi_np; propor is a matel_table proportionality",
-        "# check, not a BLACS distribution check).  If your run dies",
-        "# at startup with ``propor: ERROR: IMAX = 0``: lower mpi_np",
-        "# via the wrapper's ``-np`` flag, not BlockSize.  Larger",
+        "# propor IMAX=0 crash (a sweep: BlockSize = 1, 2, 4 all",
+        "# crash at the same mpi_np; propor is a matel_table",
+        "# proportionality check, not a BLACS distribution check).",
+        "# If your run dies at startup with ``propor: ERROR: IMAX =",
+        "# 0``, follow the run script's hint: restore the stage's",
+        "# checkpoint and prep it again with another --np.  Larger",
         "# BlockSize gives marginally better diag throughput on big",
         "# systems (>1000 atoms / >=16 ranks); for smaller jobs the",
         "# default is fine.  Override only for hand-tuned perf work.",
@@ -232,8 +222,7 @@ _PAD = {
     "use_gpu": 19,
     "md_target_temperature": 22,
     "max_scf_iter": 18, "spin_treatment": 18,
-    # The NEGF and transmission settings read as one column, as the block that
-    # wrote them by hand did.
+    # The NEGF and transmission settings read as one column.
     "bias_voltage_v": 23, "electrodes_bulk": 23, "negf_eq_pole_ev": 23,
     "negf_neq_eta_ev": 23, "tbt_elecs_eta_ev": 23,
     "tbt_contours_eta_ev": 23, "tbt_spin": 23, "tbt_dos_gf": 23,
@@ -243,7 +232,7 @@ _PAD = {
 
 #: Items SIESTA wants in scientific notation.  Formatting is spelling, so it
 #: is the engine's business and lives beside the rest of the spelling.
-_FMT = {"dm_tolerance": ".0e", "dm_energy_tolerance": ".0e",
+_FMT = {"dm_tolerance": ".1e", "dm_energy_tolerance": ".1e",
         "bias_voltage_v": ".4f", "negf_eq_pole_ev": ".4f",
         "negf_neq_eta_ev": ".6f", "tbt_elecs_eta_ev": ".6f",
         "tbt_contours_eta_ev": ".6f"}
@@ -257,8 +246,7 @@ _FMT = {"dm_tolerance": ".0e", "dm_energy_tolerance": ".0e",
 #: Where the default IS a number, the item writes it: `TBT.Spin 0` is
 #: tbtrans's own default, all channels (`m_tbt_hs.F90`).
 #:
-#: THE POLE ENERGY LEFT THIS SET on 2026-09-29 (M5 step 2, § 6.1c).
-#: TranSIESTA's own choice for it -- about 42 poles at 300 K -- lost the
+#: THE POLE ENERGY IS NOT IN THIS SET (§ 6.1c).  TranSIESTA's own choice for it -- about 42 poles at 300 K -- lost the
 #: charge on a real device where a stated 10 eV held it, so the energy is
 #: always written, and the settings gate refuses one under 20 poles.
 _ZERO_LEAVES_IT_TO_THE_ENGINE = frozenset({
@@ -303,18 +291,12 @@ def line(derived: dict):
 
     Returns ``(Parameter) -> str | None`` for every item this engine lays out.
 
-    **It takes the deck's context whole, not a keyword per derived value**
-    *(2026-08-19)*.  Seven keyword parameters meant every caller had to
-    keep a list in step with this signature, and the context dict the
-    writer already keeps had to be spread into it -- so the context could
-    carry nothing this door did not also accept.  One argument, one
-    channel: what this deck derived.
-    Most are the catalogue's ``anchor`` and its value; three groups are not,
-    and they are the keyword arguments above:
+    **It takes the deck's context whole, not a keyword per derived value**:
+    one argument, one channel -- what this deck derived.
+    Most are the catalogue's ``anchor`` and its value; three groups are not:
 
-    * **the MPI block's four are DERIVED** -- the block size from the atom and
-      rank counts, ``Diag.ParallelOverK`` from whether the k-mesh is more than
-      Gamma, the algorithm normalised.  They reach the door through
+    * **the MPI block's four are DERIVED** -- ``Diag.ParallelOverK`` from
+      whether the k-mesh is more than Gamma, the algorithm normalised.  They reach the door through
       ``parameter(..., value=)``, so a computed number still arrives with its
       declaration, its range and its note;
     * **two geometry keywords are chosen by the run mode** -- SIESTA spells the
@@ -329,12 +311,6 @@ def line(derived: dict):
       as given a value, and SIESTA ignores the number without ``Spin.Fix`` --
       and the pair comes from the declaration's ``expands``, so the deck
       cannot write one without the other.
-
-    **It was four functions until 2026-08-18** -- ``line``, ``spin_line``,
-    ``mpi_line`` and ``geometry_line`` -- and that is why the writer built a
-    separate ``DeckSpec`` per section: a spec carries ONE ``line``, so sections
-    needing different syntax could not share one.  The framework was being
-    worked around rather than used.
     """
     # A DERIVED FACT SAID BESIDE A VALUE: the deck writer works it out and
     # this door writes it after the value as an fdf comment -- libfdf ends a
@@ -420,9 +396,8 @@ def line(derived: dict):
         unit = _UNIT.get(param.name)
         value = f"{shown} {unit}" if unit else shown
         # One space unless the item is half of an aligned pair.  fdf does not
-        # care, but the deck this replaces wrote it this way and a reader
-        # diffing two generations should see the values change, not the
-        # whitespace.
+        # care, but a reader diffing two generations should see the values
+        # change, not the whitespace.
         pad = _PAD.get(param.name)
         return f"{key:<{pad}}{value}" if pad else f"{key} {value}"
 
@@ -485,7 +460,7 @@ def check_rules(text: str, struct=None, cfg=None):
     a writer bug -- every other validator in this tree takes ``(struct, cfg)``
     and runs before emission.
 
-    **No keyword twice.**  libfdf takes the FIRST match and ignores the rest
+    **No keyword twice with different values.**  libfdf takes the FIRST match and ignores the rest
     (``fdf_locate`` walks from the top and stops), so a duplicate does not
     conflict loudly -- it silently wins, and the later line a person edited is
     the one being ignored.  That is the worst kind of wrong: the deck reads as
@@ -520,10 +495,7 @@ def check_rules(text: str, struct=None, cfg=None):
         if in_block or not ln.strip():
             continue
         key = ln.split()[0]
-        # fdf's keyword rule, from the one module that owns it.  This spelled
-        # `.lower().replace(".","").replace("_","").replace("-","")` inline --
-        # a third copy of a rule that also lived in `parse/fdf._norm` and in
-        # each of the hand-rolled deck readers retired on 2026-09-17.  A gate
+        # fdf's keyword rule, from the one module that owns it.  A gate
         # that enforces "one keyword, one line" must agree with the reader
         # about what ONE KEYWORD means, or it polices a different rule.
         norm = _fdf_norm(key)

@@ -1,13 +1,13 @@
 /* style.css — the INDEX (Build) page's OWN styles.
  *
- * Shared vocabulary moved out (`web/ui-contract.md` § 1, CSS-migration step 2):
+ * Shared vocabulary lives elsewhere (`web/ui-contract.md` § 1):
  *   - global base (header / button / input / .card / .status / scrollbar) →
  *     lib/page-shell.css (loaded on every page)
  *   - form-page COMPONENTS (.app-grid, the chemistry card, .viewer-*,
  *     .issues-panel, .hint, .fdf-*, button.primary, .card h2) →
  *     lib/form-components.css
  * What remains here is genuinely index-only: the #generate card, the
- * SIESTA/PySCF .tabs, the index fieldset forms, #viewer, the footer, tooltips.
+ * index fieldset forms, the footer, tooltips.
  * Design tokens live in lib/tokens.css; use them via var(--…).
  */
 
@@ -36,12 +36,7 @@ html, body { height: 100%; }
 }
 /* ARRANGEMENT ONLY (ui-contract.md § 9): how far apart the fieldsets sit on
  * this page.  Their border, inset, legend and label layout are the form
- * module's (`lib/form-schema.css`); this sheet restated them until
- * 2026-09-24 -- a block-flow label with an 8em inline caption, a softer
- * border, a larger legend -- so the same field rendered differently here
- * and on the Spectrum tab (measured: a checkbox glued to its caption with
- * the badge on the next line, against the grid row every other form page
- * draws). */
+ * module's (`lib/form-schema.css`). */
 #generate-card fieldset {
     margin: var(--space-lg) 0;
 }
@@ -58,14 +53,6 @@ html, body { height: 100%; }
     #generate-card { padding: 0.9rem 1rem; }
 }
 
-/* (The #generate-fdf / #generate-pyscf button styling was deleted
- * 2026-08-15.)  Three rules -- base, :hover and :disabled -- for two buttons
- * that no longer exist in the markup or the script: this tab collects
- * parameters and hands them to the staging surface, so it has no
- * "generate the script" action to style.  CSS for an absent element is the
- * quietest kind of dead code, because nothing renders differently and no
- * test looks at it. */
-
 /* ---- Status base (index variant; severity modifiers live in page-shell) ---- */
 /* Structure-opt layout tweak ONLY.  The base .status (color / font-size /
  * line-height / severity modifiers) is owned by lib/page-shell.css, which this
@@ -75,11 +62,6 @@ html, body { height: 100%; }
     min-height: 1.2em;
 }
 
-/* The old ``#viewer { width/height:100% }`` mount rule was removed 2026-07-17: the page
- * hands MolView an empty ``#viewer-host`` and the module builds + sizes its own viewer
- * (``.viewer`` is a CLASS, inside the fused card).  Viewer sizing is owned end-to-end by
- * lib/molview/molview.css -- no page rule sizes it. */
-
 /* Disabled compatibility-locked inputs inside index fieldsets. */
 fieldset input:disabled,
 fieldset select:disabled {
@@ -87,17 +69,6 @@ fieldset select:disabled {
     background: var(--bg-fieldset);
     color: var(--text-muted);
 }
-
-/* ---- Tabs (SIESTA / PySCF) — index only ---- */
-/* (The SIESTA / PySCF engine strip -- .tabs, .tab-btn, .tab-panel -- moved to
- * lib/form-components.css on 2026-09-24: the Spectrum tab offers two engines
- * the same way, and a widget on two pages has one owner.  Only the
- * #generate-card spacing above is this page's.) */
-
-/* (Fieldset/legend/label form rules moved to lib/form-schema.css 2026-07 --
- * the shared owner for every schema-driven form.  This sheet keeps only the
- * page-specific overrides: #generate-card fieldset spacing + the disabled
- * compatibility-locked inputs below.) */
 
 /* ---- Footer — index only ---- */
 footer {
@@ -134,8 +105,3 @@ label[title] > select { cursor: auto; }
     overflow-wrap: anywhere;
 }
 
-
-/* The viewer host's overflow rule lives with the module that needs it
-   (`lib/molview/molview.css`, `.molviewer-host`) -- it was this same 18-line
-   comment and one declaration in TWO tab sheets, differing only in the id.
-   `ui-contract.md` § 1: a widget used on more than one page has one owner. */

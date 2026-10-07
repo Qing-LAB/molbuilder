@@ -17,8 +17,6 @@ Three facts, all stated by the monitor and by nothing else:
 monitor's terminal branch, so a trial the scheduler KILLED leaves a csv
 and no summary.  That is the trial a benchmark most needs to read, which
 is why nothing here raises on its absence.
-
-*(Moved from `bench/result.py` on 2026-09-04 -- `parse.md` § 5c.)*
 """
 from __future__ import annotations
 
@@ -43,7 +41,7 @@ _SUMMARY_GPU = re.compile(r"gpu\d+ sm mean=(\d+(?:\.\d+)?)%")
 #: The closing ``[UTIL-BASIS]`` line (`monitor.measurement_provenance`):
 #: ``...; mem [<source>]; peak <X> GB (kernel counter); limit <Y> GB`` -- what
 #: the memory figures are fractions of, the kernel's own peak where it keeps
-#: one, and the limit.  Read since 2026-09-26 (`model/parse.md` § 5c.1).
+#: one, and the limit (`model/parse.md` § 5c.1).
 _BASIS_MEM = re.compile(r"mem \[([^\]]+)\]")
 _BASIS_PEAK = re.compile(r"peak ([0-9.]+) GB \(kernel counter\)")
 _BASIS_LIMIT = re.compile(r"limit ([0-9.]+) GB")

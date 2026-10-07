@@ -1,8 +1,5 @@
 """Routing tables, Capabilities snapshot, singleton lifecycle.
 
-# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
-# CPython refuses a non-frozen subclass of a frozen one on its own.
-# A test that mutates an instance to watch Python raise tests Python.
 
 The module under test exposes three small dicts (``DEFAULT_ENV_NAMES``,
 ``TOOL_TO_CATEGORY``, ``EXTENSION_TO_CATEGORY``), one frozen dataclass
@@ -16,13 +13,10 @@ reset.
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import subprocess
 from typing import Any, Dict, List
 from unittest.mock import MagicMock
-
-import pytest
 
 from molbuilder import diagnostics
 from molbuilder.diagnostics import (Capabilities, DEFAULT_ENV_NAMES,
@@ -38,12 +32,7 @@ from molbuilder.diagnostics import (Capabilities, DEFAULT_ENV_NAMES,
 
 
 def test_every_routed_tool_has_an_env_to_be_routed_to():
-    """The rule, in place of two tests that re-typed the name list
-    (retired 2026-09-14 with the notebook env, which broke them by
-    existing -- a list is edited whenever the data is, which is not a
-    defect being caught).
-
-    What matters is that the two tables AGREE: a tool routed to a category
+    """What matters is that the two tables AGREE: a tool routed to a category
     with no env name resolves to nothing, and `run_tool` would dispatch into
     an env that cannot exist.  `molbuilder-jupyternb` is deliberately absent
     from the routing table -- nothing dispatches a command into it; the
@@ -71,8 +60,7 @@ def test_every_extension_routes_to_a_known_category():
 
 
 def test_known_tools_present():
-    """Spot-check the README-documented entries -- these are the four-env
-    contract surface."""
+    """Spot-check the README-documented entries."""
     assert TOOL_TO_CATEGORY["tleap"]      == "mdtools"
     assert TOOL_TO_CATEGORY["siesta"]     == "siesta"
     # playwright is NOT routed: browser E2E runs under the host env.
@@ -225,8 +213,8 @@ def test_detect_assembles_capabilities(monkeypatch):
     assert caps.conda_binary == "/usr/bin/conda"
     # The installation root is excluded by the manager's own `base` flag;
     # only true named envs make it into the snapshot.
-    # `{name: prefix}` since 2026-09-12: the snapshot carries WHERE each env is,
-    # so `install._env_prefix` stops paying a 1.2 s registry read per recipe.
+    # `{name: prefix}`: the snapshot carries WHERE each env is, so
+    # `install._env_prefix` does not pay a 1.2 s registry read per recipe.
     # Membership -- which is what every gate asks -- reads a mapping unchanged.
     assert caps.conda_envs == {
         "molbuilder-MDtools": "/home/u/miniconda3/envs/molbuilder-MDtools",
@@ -377,8 +365,7 @@ class TestEnvManagerAutodetect:
     def _exe(tmp_path, name):
         """A real executable file -- the env-var fallback checks, as
         ``shutil.which`` does for PATH and as install-env.sh's probe
-        already did (``[[ -n "${v}" && -x "${v}" ]]``).  Fictional paths
-        no longer stand in for one."""
+        already did (``[[ -n "${v}" && -x "${v}" ]]``)."""
         p = tmp_path / name
         p.write_text("#!/bin/sh\n")
         p.chmod(0o755)

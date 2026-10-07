@@ -1,5 +1,4 @@
-"""Phase 2 (model/structure-annotations.md § 3): .molstruct.json v4 annotations --
-round-trip + v3 back-read + dual-write."""
+""".molstruct.json annotations (model/structure-annotations.md § 3)."""
 import json
 import numpy as np
 
@@ -19,8 +18,7 @@ def test_to_dict_v4_dual_writes_annotations_and_builtins():
         n_atoms_total=5, structure_hash=_hash())
     assert d["schema_version"] == molstruct.SCHEMA_VERSION
     # ONE label store: the reserved label is in `regions` with the others, and
-    # there is no second key beside it (the input still accepts the old key --
-    # that is how a schema-6 payload keeps loading).
+    # there is no second key beside it.
     assert d["regions"] == {"L-electrode": [0, 1], "frozen_atoms": [4]}
     assert "frozen_atoms" not in d
     assert d["annotations"]["charge"] == {
@@ -46,26 +44,9 @@ def test_save_load_apply_roundtrips_annotations(tmp_path):
     assert back.get_channel("tail").data == [3, 4]
 
 
-# `test_cell_origin_survives_the_disk_roundtrip` and
-# `test_cell_origin_dropped_without_a_cell` RETIRED 2026-09-25 with the field
-# (`cell_origin` is a retired key, read and ignored -- plan § 5q.8, D2).  What
-# the first protected -- a stored placement survives the read normaliser -- is
-# held for the stated `engine_offset` by the pair round-trip in
-# `test_structure_authority_roundtrip.py`, which reads the file back through
-# the same path.  The second pinned a dataclass rule that is gone: "typed cell
-# only" is the periodicity gate's now (`box_corner` is refused without one).
-
-
 def test_the_annotations_key_is_optional(tmp_path):
     """A sidecar carrying no extensible channels loads with an empty set, its
-    labels intact.
-
-    RETIRED WHAT THIS USED TO BE (2026-07-31): it was
-    `test_v3_sidecar_back_reads_with_empty_annotations`, and it existed to prove
-    an OLD file still loaded. It does not -- there is one readable schema and
-    anything else is refused. The property underneath was never about v3
-    though: `annotations` is simply an optional key, and that is what is pinned
-    here."""
+    labels intact."""
     p = tmp_path / "old.molstruct.json"
     p.write_text(json.dumps({
         "schema_version": 7, "n_atoms_total": 3, "structure_hash": _hash(),

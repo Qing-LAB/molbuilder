@@ -424,59 +424,28 @@ Three qualifiers the `pow2` type dropped:
 > success is the silent-wrong-answer class this project refuses everywhere else.
 
 **When the GPU is on AND the diagonaliser is ELPA, `BlockSize` must be a power of
-two — and it is `bench` / `prep` that makes it one.**
+two, and nothing makes it one.** A set value is written verbatim under every
+target (`siesta/input.py` `_parallel_facts`), so under GPU-ELPA a
+non-power-of-two value runs ELPA on the CPU. The decision that `prep` realign it
+— *"that's why this blocksize, if explicit set, needs to be realigned at
+bench/prep stage"* (user, 2026-08-15) — is open as plan K17 SO-C3.
 
-> **Decided 2026-08-15 (user): *"that's why this blocksize, if explicit set,
-> needs to be realigned at bench/prep stage."***
-
-**The alignment happens where the target is known, and that is not this form.**
-`use_gpu` and `mpi_np` are both answered on the **staging** surface rather
-than beside the physics — which is all this argument needs from them. A form
-that no longer holds the GPU flag cannot check a rule about the GPU, and a rule
-checked in the wrong place is a rule that will be wrong. So:
-
-> **Corrected 2026-08-23: they are not the same kind of answer.** This read
-> *"they are machine facts and bench axes"*, which is true of `mpi_np` and
-> false of `use_gpu`. **`use_gpu` is the person's** — an ordinary
-> explicit option with a real default, chosen at the Job Prep UI
-> ([`task-setup.md`](?doc=web/task-setup.md) § 6.2, user ruling 2026-08-16),
-> and nothing derives it from the machine. The machine-answered set is a flag
-> on the catalogue item read through one door, and it holds exactly `mpi_np`,
-> `gpu_count`, `omp_threads`, `max_memory_mb`, `threads`.
->
-> [`stages.md`](?doc=engines/stages.md) § 4 already carries a dated
-> 2026-08-07 clarification against precisely this reading — *"the wording
-> invited the other reading"* — so the correction had been made once, in one
-> document, and this restatement was never swept. That is the argument for
-> [`execution/gpu.md`](?doc=execution/gpu.md)'s single graph: nine places
-> stating one fact is nine places for it to drift.
+`use_gpu` and `mpi_np` are both answered on the **staging** surface rather than
+beside the physics, and they are not the same kind of answer. **`use_gpu` is the
+person's** — an ordinary explicit option with a real default, chosen at the Job
+Prep UI ([`task-setup.md`](?doc=web/task-setup.md) § 6.2, user ruling
+2026-08-16), and nothing derives it from the machine. The machine-answered set
+is a flag on the catalogue item read through one door, and it holds exactly
+`mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads`.
 
 | where | what happens to `BlockSize` |
 |---|---|
 | **the parameter form** | auto by default; an explicit value taken at face value. The rule is not enforced here because the hardware is not chosen here |
-| **`bench`** | sweeps powers of two anyway, so what it hands back is already aligned. `script_emit.py`'s BENCH-MARKS declares `BlockSize` as `pow2` — a constraint the *benchmark* puts on its own sweep, which is where that type belongs and where it stays |
-| **`prep`** | knows the GPU flag, the rank count and the value. If GPU-ELPA is the target and the value is not a power of two, **prep realigns it and records that it did** |
-
-**Realigned, not silently coerced — the difference is the record.** The retired
-`pow2` type rewrote a value inside the form with nothing to show for it, so a
-benchmarked 24 became 16 and no artifact said why. `prep` writes what it
-resolved and what it resolved it *from* (PROVENANCE), so an aligned block is a
-visible decision that can be read back off the run months later.
-
-**Why realign rather than refuse.** Refusing would make the user carry a rule
-that only exists because of a hardware choice made on another surface — they set
-a good value, then a later GPU selection invalidates it. Realignment keeps the
-two surfaces independent: the physics form says what you want, the staging
-surface says what you are running on, and prep reconciles them where both are
-finally in hand.
+| **`bench`** | sweeps the points the description's `bench` block declares. `script_emit.py`'s BENCH-MARKS declares `BlockSize` as `pow2`, with a window derived from the deck's rank count (`_block_size_bounds`) |
+| **`prep`** | writes the value verbatim, or no `BlockSize` line when it is unset |
 
 The plain guidance in the table above (16 · 32 · 64 · 128) remains *guidance* for
-CPU runs: powers of two align with cache lines whatever the solver. Advice and
-enforcement are different things, and only one of them may edit a value — under
-GPU-ELPA that one is `prep`, which realigns a non-power-of-two to the nearest
-power of two **and records that it did** (the rule stated earlier in this
-subsection; a silent ELPA fallback to the CPU, not a refusal, is what an
-unaligned value would otherwise buy).
+CPU runs: powers of two align with cache lines whatever the solver.
 
 #### Why it is worth benchmarking rather than deriving
 
@@ -484,8 +453,9 @@ unaligned value would otherwise buy).
 and no formula reaches it: the right block depends on the matrix, the rank count,
 the interconnect and the node's memory layout at once. So `BlockSize` joins the
 benchmark's swept axes — `bench-result.json`'s `choice` carries the measured
-value alongside the rank and GPU counts, and `prep` uses it the same way it uses
-those ([`job-system.md § 7`](?doc=execution/job-system.md)).
+value alongside the rank and GPU counts, and, like them, it reaches a run when
+the person writes it into `task.json`'s `execution` block, where `prep` reads
+it ([`job-system.md § 7`](?doc=execution/job-system.md)).
 
 > **This is the same trade as the rest of this document, one level down.** A tier
 > table tells you what value to *start* from; a measurement tells you what value
@@ -974,7 +944,7 @@ rung of each — the same tier, in each engine's own syntax:
 
 ```python
 # PySCF: <label>_02_medium.py -- this rung's targets, handed to geomeTRIC
-mf.conv_tol = 1e-09
+mf.conv_tol = 1.0e-09
 mol_eq = optimize(mf, maxsteps=200,
                   convergence_gmax=0.00045, convergence_grms=0.0003,
                   convergence_dmax=0.0018,  convergence_drms=0.0012,

@@ -30,9 +30,7 @@ announces a counter follows... a stage is not a counter -- it is a name"*.  So
 ``_`` introduces the stage and ``-run`` the attempt, and neither can be read as
 the other.
 
-The token sits IMMEDIATELY AFTER THE LABEL and never inside the role.  Five of
-the six per-stage files already did that; the geomeTRIC pair was the one
-exception, so the grammar moves one file rather than five (user, 2026-09-07).
+The token sits IMMEDIATELY AFTER THE LABEL and never inside the role.
 
 A CARRIED FILE HAS NO TOKEN, and that is what carrying means: SIESTA's `.XV` /
 `.DM` / `.CG` and PySCF's `.chk` / `_optimized.xyz` are how one rung hands the
@@ -51,12 +49,6 @@ from typing import Optional
 #: ``STAGE_NAME_RE`` and ``stage_token``, which own the word itself; this
 #: is only the shape a NAME may carry, so a token that module would reject
 #: cannot reach a filename through here either.
-#:
-#: IT WAS `[0-9]{2}_[A-Za-z0-9]+` FOR A DAY, and that is a lesson about
-#: re-deriving instead of consulting: a transport ladder's rungs are
-#: `02_electrode_L` and `03_device`, so `compose` refused to name any of the
-#: transport decks.  The narrow pattern also made `parse` easy, and the real
-#: one does not -- see :data:`_ENGINE_ROLES`.
 _STAGE = re.compile(r"[0-9]{2,}_[A-Za-z0-9_]+")
 
 #: The underscore-introduced roles of the files an ENGINE itself writes: what
@@ -93,8 +85,7 @@ _LABEL = re.compile(r"[A-Za-z0-9_-]+")
 #: follows... a stage is not a counter, it is a name"* -- and a counter is a
 #: keyword plus a number.  ``run`` is the wrapper's attempt and is the only one
 #: today; the point of naming the class is that the SECOND one is a line here
-#: rather than an edit to the parser, which is where a hand-written
-#: ``-run(\d+)`` had put it.
+#: rather than an edit to the parser.
 #:
 #: A benchmark point is deliberately NOT one.  It is a whole LABEL
 #: (``bdt-G1K4C6``), because a trial's warm files must never meet the run's
@@ -109,10 +100,7 @@ QUALIFIERS: "tuple[str, ...]" = ("run",)
 #:
 #: **A field is the bounded flexibility** (`plans/plan.md` § 5l.1). A role names
 #: what a file IS; a field carries a value that varies per file and belongs to
-#: the NAME rather than to the vocabulary. Before 2026-09-08 the wrapper's
-#: session log was declared as ``.runwrap-*.log`` -- a glob stored AS a role --
-#: and the module grew `role_matches` to compare one, because a role with a
-#: wildcard in it is a coordinate that escaped into the vocabulary.
+#: the NAME rather than to the vocabulary.
 #:
 #: **Why not a counter.** § 6.3's separator rule is that a hyphen announces a
 #: COUNTER and an underscore a NAME; a counter is a declared keyword followed
@@ -205,9 +193,7 @@ def canonical_role(concrete: str) -> "tuple[str, dict]":
     ``(".runwrap-20260908-120000.log")`` -> ``(".runwrap-{stamp}.log",
     {"stamp": "20260908-120000"})``, and anything that matches no template comes
     back unchanged with no fields. This is what lets every comparison in this
-    module stay an EQUALITY on the declared role -- which is why
-    `role_matches`, and the pattern-matching it forced into `find` and
-    `find_by_role`, are gone.
+    module stay an EQUALITY on the declared role.
     """
     for a in ON_THE_LABEL:
         if not a.fields:
@@ -296,9 +282,7 @@ def stem(label: str, stage: Optional[str] = None) -> str:
 
     The half of :func:`compose` a caller needs on its own when the tail is not
     a role at all: the prep log appends ``.<engine>.<shape>.log``, and a deck's
-    directory is named from the stem before any suffix exists.  Five call sites
-    spelled ``f"{label}_{token}" if token else label`` until 2026-09-07, which
-    is the same rule written five times and free to drift four ways.
+    directory is named from the stem before any suffix exists.
 
     ``stage`` is None for a file that CARRIES between rungs.  An empty string
     is refused rather than read as None: a caller holding ``token = ""`` for
@@ -315,8 +299,7 @@ def stem(label: str, stage: Optional[str] = None) -> str:
         return label
     if not isinstance(stage, str):
         # A POSITION IS NOT A TOKEN, and this is the one wrong type worth
-        # naming: passing `1` is how the old `-stage<N>` convention was built,
-        # and a name keyed on a stage's POSITION silently reassigns outputs the
+        # naming: a name keyed on a stage's POSITION silently reassigns outputs the
         # moment the ladder grows a rung (`job-contracts.md` § 6.3).  Caught
         # here rather than formatted in, so the caller hears about it at the
         # call and not in a directory of misfiled results.
@@ -372,6 +355,10 @@ def compose(label: str, role: str, stage: Optional[str] = None,
                 f"template cannot be composed without them.  Pass "
                 f"{missing[0]}=... , or ask `patterns()` if you want the glob.")
         for k, v in _given.items():
+            # A FIELD LEFT AS ITS PLACEHOLDER is a template's
+            # (`RunNames.template`): the script it is rendered into fills it.
+            if v == "{" + k + "}":
+                continue
             if not re.fullmatch(FIELDS[k].shape, str(v)):
                 raise RunFileError(
                     f"{k}={v!r} does not match the declared shape "
@@ -385,6 +372,8 @@ def compose(label: str, role: str, stage: Optional[str] = None,
                 f"({', '.join(QUALIFIERS)}).  A hyphen announces a COUNTER "
                 f"(job-contracts.md § 6.3); declare the keyword in "
                 f"`runfiles.QUALIFIERS` rather than spelling it at a call.")
+        if key == "run" and value == RUN_FIELD:
+            continue                    # a template's: its run fills it
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise RunFileError(
                 f"{key} must be a non-negative counter, not {value!r}.")
@@ -418,27 +407,13 @@ def tail(role: str, stage: Optional[str] = None,
 
         output = _mb_outfile(JOB + '_01_coarse.log')
 
-    That tail was assembled by hand at five emit sites, and one of them put the
-    stage token in the wrong place -- geomeTRIC's prefix, giving
-    ``<JOB>_geom_<stage>_optim.xyz`` where the declared role is
-    ``_geom_optim.xyz``.  Cutting the tail off a real :func:`compose` result
-    makes that impossible: whatever `compose` would produce, this is its end.
+    Cut off a real :func:`compose` result: whatever `compose` would produce,
+    this is its end.
 
     For geomeTRIC, which takes a PREFIX and appends its own suffix, ask for the
     trajectory's tail and drop what geomeTRIC will add.
 
     **:func:`compose` when you own the label; this when you were handed a stem.**
-    That is the same distinction from the reading side, and it decided a real
-    case: the run record's conclusion reader is given whatever the DECK is
-    called, and a cited transport relaxation may be a person's own
-    ``my.relaxation.fdf``.  :func:`compose` refuses that, correctly -- § 2.1, a
-    label carrying a dot cannot be read back out of a filename -- but the
-    caller's job there is to answer *"no record"*, not to raise at somebody who
-    used a dot.  Asking for the tail keeps the GRAMMAR's half in the grammar
-    and leaves the stem to the caller who received it (both sites measured
-    2026-09-08, when composing turned a report into a crash; the reader,
-    `runrecord.ending` since 2026-10-03, now finds the marker by reading names
-    back, :func:`parse`, which takes any stem).
     """
     return compose(_PLACEHOLDER, role, stage, run,
                    **counters)[len(_PLACEHOLDER):]
@@ -463,9 +438,6 @@ def parse(filename: str, label: str,
     ``label`` is required, and that is the whole reason this can be exact: a
     role may contain underscores (``_geom_optim.xyz``) and a label may too, so
     nothing can find the boundary between them by looking at the string alone.
-    Splitting on ``_`` is what several call sites did, and it is why
-    ``my-job_01_coarse_geom_optim.xyz`` was read as a label of ``my-job`` and a
-    stage of ``01`` at one site and ``01_coarse_geom`` at another.
 
     ``roles`` is the caller's own vocabulary, added to the one this module
     knows (:data:`WRITTEN` plus :data:`_ENGINE_ROLES`).  It only matters for
@@ -550,14 +522,7 @@ def role_of(name) -> Optional[str]:
 
     **THE LONGEST DECLARED ROLE WINS**, and that is not a tie-break — it is
     what the file IS.  ``job-run0.pyscf.log`` ends with `.pyscf.log` AND with
-    `.log`, and only the first says which file this is.  Taking the shorter
-    is what `find_by_role` did by comparing against the role it was HANDED:
-    ``find_by_role(d, ".log")`` returned every `.pyscf.log`, `.molwatch.log`
-    and `.parse.log` in the directory, contradicting its own promise of
-    *"EQUALITY on the canonical role"*.  Latent rather than live -- measured
-    2026-09-18, no caller passes `.log` -- and it is the door both this and
-    the run-output readers stand on, so it is fixed here rather than worked
-    around twice.
+    `.log`, and only the first says which file this is.
     """
     base = str(name).rsplit("/", 1)[-1]
     best: Optional[str] = None
@@ -583,15 +548,10 @@ def find(directory, label: str, *,
     them molbuilder wrote is the catalogue's question (:func:`row_for`, the
     run door's `about`): what molbuilder did not write, under the run's
     name, is the engine's -- found by that name, never by a list of what an
-    engine writes (§ 4.2).  *(This line said "our files" until 2026-10-04,
-    and read as if the engine's were left out: plan D24.)*
+    engine writes (§ 4.2).
 
     **`project-layout.md` § 4.5: for every name it composes, the framework
-    owns the search.**  Two callers spelled ``glob(f"{basename}-run*.{suffix}")``
-    for the ``-run<N>`` counter whose one home is this module — `materialize`
-    and `summarize` — and each carried its OWN regex to pull ``N`` back out, so
-    the counter grammar was written three times to be composed once.  They
-    bypassed this module because it offered nothing to bypass it WITH.
+    owns the search.**
 
     Returns ``(path, RunFile)`` pairs, sorted by run index then name, so a
     caller that wants the latest takes the last and one that wants them all
@@ -619,12 +579,7 @@ def find(directory, label: str, *,
     d = Path(directory)
     try:
         # FILES, which is what the first line of this docstring says and what
-        # every caller wants.  It iterated everything and checked nothing, so
-        # a DIRECTORY whose name happened to parse would have come back as a
-        # run file -- unreachable in today's layouts (a stage directory
-        # carries no label prefix) and still a claim the function was not
-        # keeping.  `find_by_role` below has always checked; the two halves
-        # of one door disagreed.
+        # every caller wants.
         #
         # Not sorted here: the sort at the end orders by run index and
         # replaces any order this produced.
@@ -654,8 +609,7 @@ def find_by_role(directory, role: str) -> "list[Path]":
     The label-less half of :func:`find`, and it exists because two callers
     genuinely have no label: *"which deck is in this directory"* and *"which
     molwatch logs are here"* are asked of a folder before anything has said
-    whose it is.  They globbed ``"*.fdf"`` and ``"*.molwatch.log"``, which is
-    the role vocabulary spelled outside the module that declares it.
+    whose it is.
 
     **Only a DOTTED role, and that is this module's own rule** rather than a
     limitation invented here — :func:`parse` states it: the vocabulary
@@ -683,10 +637,7 @@ def find_by_role(directory, role: str) -> "list[Path]":
         # EQUALITY on the canonical role, through :func:`role_of` -- which
         # reads each NAME's own role rather than testing it against the one
         # asked for.  The difference is the `.log` case that function
-        # records: testing against the asked-for role made every longer
-        # `.log` role answer to the shorter one.  `role_matches` and
-        # `_tail_of` stood here until 2026-09-08 (§ 5l.3), and the inline
-        # `canonical_role(_tail(...))` they left until 2026-09-18.
+        # records.
         return sorted(p for p in d.iterdir()
                       if p.is_file() and role_of(p.name) == role)
     except OSError:
@@ -697,14 +648,7 @@ def latest_run(directory, label: str, *,
                roles: "tuple[str, ...]" = (),
                stage: Optional[str] = None,
                role: Optional[str] = None) -> Optional[int]:
-    """The highest ``-run<N>`` present here, or ``None`` when nothing carries one.
-
-    The question both callers actually asked.  `materialize` asked it across
-    three roles at once to find the newest attempt's marker; `summarize` asked
-    it per role to read the newest log.  Neither wanted the files — they wanted
-    the number — and asking for it by name is what stops the next caller
-    writing a fourth ``-run*`` glob.
-    """
+    """The highest ``-run<N>`` present here, or ``None`` when nothing carries one."""
     runs = [rf.run for _p, rf in
             find(directory, label, role=role, roles=roles, stage=stage)
             if rf.run is not None]
@@ -725,9 +669,6 @@ def at_latest_run(directory, files, stem: str) -> "list[Path]":
     ``stem`` is the run's own, ``<label>[_<stage>]`` -- its caller's, who
     knows which run it asks about (`execution/architecture.md` § 3.2).  The
     run index orders; a file's time does not (`model/parse.md` § 5.1).
-    *(The stem was cut off each name, everything before ``-run``, by
-    `label_of_run_file`, and file times broke ties, until 2026-10-04: plan
-    B11.)*
     """
     d = Path(directory)
     newest = latest_run(d, stem)
@@ -772,14 +713,6 @@ def is_carried(f: "RunFile | str", label: str = "") -> bool:
 #   * :func:`manifest` -- the concrete names, for a person being told what a
 #     prep is about to write (user, 2026-09-07: *"a card that list all the
 #     generated data file from the setup"*).
-#
-# The two used to be one hand-written glob list with no name view at all, and
-# it had drifted: `{label}_geom_*.log` was geomeTRIC's opt log spelled the way
-# the OLD name put the stage token INSIDE the role.  Since the token moved to
-# its one position (§ 2.2a) nothing writes that, and the file that IS written
-# -- `<label>_<stage>_geom.log` -- matched no row, so molbuilder's own log was
-# reported back to the user as the engine's warm state and `--cold` counted it
-# among what it would clobber.  Measured 2026-09-07.
 
 
 @dataclass(frozen=True)
@@ -804,8 +737,12 @@ class Artifact:
     #: the calculation rather than to a rung -- the template and the source
     #: pair are written once, at the bundle root.
     staged: bool = True
-    #: The wrapper's attempt counter: "never", "maybe" (both spellings exist --
-    #: the wrapper indexes, a hand-run does not) or "always".
+    #: The run's number in the name: "never", "maybe" (both spellings exist
+    #: -- the wrapper indexes, a hand-run does not), "always", or "shared":
+    #: where a stage's runs share one folder -- a flat calculation's stage --
+    #: and not where each run has a folder of its own, which names the run
+    #: (`project-layout.md` § 1.5a, plan W57 decision 2).  Read by
+    #: :class:`RunNames`, the one composer of a stage's names.
     attempt: str = "never"
     #: Which engine writes it, or None for both.
     engine: Optional[str] = None
@@ -839,7 +776,7 @@ class Artifact:
     #: rule -- *an engine's stdout speaks before it ends; a seeded log does
     #: not*.  A boolean would force :func:`run_output_roles` to append
     #: `.molwatch.log` as a literal, putting membership back in a function
-    #: while the row says nothing, which is the split that caused this.
+    #: while the row says nothing.
     output: Optional[str] = None
     # ---- the rest of the row (B13, `job-contracts.md` § 2.2, 2026-10-04):
     # the catalogue is the ONE source of what each file is, and the
@@ -856,8 +793,8 @@ class Artifact:
     #: (a launch group's folder), or ``transient`` (only while a write runs).
     level: str = "run"
     #: Its name in the HIERARCHY where that differs from the label's
-    #: spelling: an attempt's ``run.json``, a flat stage's
-    #: ``<base>.run.json`` -- one file, two spellings, one row.
+    #: spelling: an attempt's ``run.json`` -- one file, two spellings, one
+    #: row.
     hierarchical: str = ""
     #: Who writes it, and when -- one line.
     writer: str = ""
@@ -921,13 +858,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # THE SUFFIX IS SPELLED, NOT IMPORTED, and that is the LAYERING rule
     # rather than a lapse: this module is L1 and `template` is L2, so
     # importing it here is the upward import review refuses
-    # (`process/code-audit.md` § 1c (e); tried 2026-08-17 in `identity`, and
-    # reverted).  The cost is real --
+    # (`process/code-audit.md` § 1c (e)).  The cost is real --
     # the glob view answers *"did the engine leave this, or did we write
     # it"* by subtraction, so a suffix that silently stops matching hands a
-    # person their own input back as engine state.  What guards it instead
-    # is `test_doc_claims.py`'s template-path test, which exempts this one
-    # module BY NAME.
+    # person their own input back as engine state.
     Artifact(".template.toml", "every parameter, with the value it was given",
              staged=False,
              when="setup", level="calculation", kind="source",
@@ -936,12 +870,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "naming it with `template.template_path`",
              door="template.find_template"),
     # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
-    # hand-over (`web/handover-procedure.md`).  Added 2026-08-16, the same
-    # day molbuilder started writing them: before that the pair did not
-    # exist in a bundle, so the subtraction never saw it -- and the moment
-    # it did, `prep` announced a fresh calculation as *"already under way --
-    # warm files at the root"* and offered a person's own input back to them
-    # as engine state.
+    # hand-over (`web/handover-procedure.md`).
     #
     # `.source` is the RESERVATION (`job-contracts.md` § 6.3): identities are
     # validated dot-free, so this is a name no engine output can take, in any
@@ -968,11 +897,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="setup", level="calculation", kind="record",
              writer="`jobset migrate`",
              only="a template migrated"),
-    # THE DECK'S COMPANION REPORT (`script_emit.VALIDATION_SUFFIX`, added
-    # 2026-08-23 with the file itself).  Here for the reason the `.source`
-    # pair records: a file molbuilder writes and does not declare reads as
-    # ENGINE OUTPUT, and `prep` then greets a fresh calculation with *"already
-    # under way"*, offering the user their own report back as run state.
+    # THE DECK'S COMPANION REPORT (`script_emit.VALIDATION_SUFFIX`): a file
+    # molbuilder writes and does not declare reads as ENGINE OUTPUT.
     Artifact(".validation.txt", "what the generator checked before it wrote "
                                 "the deck",
              when="prep", level="stage", kind="record",
@@ -980,20 +906,12 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "the deck"),
     # ---- what the DECK writes for itself ------------------------------
     # A file the generated script writes is molbuilder's too -- it is our
-    # deck that writes it -- and the three below were on NEITHER list until
-    # 2026-09-07 (measured by rendering both PySCF decks and asking `is_ours`
-    # of every name they choose).  So the subtraction called them the
-    # engine's restart state: `--cold` offered to clobber a run's own
-    # spectrum, and `prep` greeted a fresh calculation by naming the input
-    # geometry it had written itself.  None of them is warm -- nothing reads
-    # them back -- which is why declaring them here is the whole fix.
+    # deck that writes it.
     Artifact("_initial.xyz", "the input geometry, echoed back before "
                              "anything ran", staged=False, engine="pyscf",
              kind="result", writer="the PySCF deck"),
     # ITS SIDECAR, the pair's other half -- written by the deck through the
-    # codec (`StructureCodec.write_moved`, imported from `mb_pyscf.pyz`), and
-    # on no list until 2026-10-04 (plan D23): undeclared, `--cold` named it
-    # as engine state it would overwrite.
+    # codec (`StructureCodec.write_moved`, imported from `mb_pyscf.pyz`).
     Artifact("_initial.molstruct.json", "the input geometry's cell and "
                                         "labels",
              staged=False, engine="pyscf", kind="result",
@@ -1024,8 +942,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "a copy in each attempt"),
     # ON A MACHINE WITH A QUEUE, whether the run is then submitted or not:
     # the header is written whenever the target's record names a scheduler
-    # (`runwrap`).  This said "written only when the run is submitted" until
-    # 2026-10-04 (plan D22).
+    # (`runwrap`).
     Artifact(".sbatch", "the queue header — `sbatch` reads it",
              when="prep", level="stage", kind="derived",
              writer="prep (`runwrap.write_run_wrapper`), beside the run "
@@ -1036,64 +953,51 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # SEEDED AT PREP, which is why it is `progress` and not `stdout`: it
     # exists before the engine does, so an empty one is a prep and says
     # nothing about a run.  It speaks only once its footer concludes.
-    # PREP SEEDS IT, so its moment is prep's: this row said `run` until
-    # 2026-10-04 (plan D22), and the card promised a seed prep had written.
+    # PREP SEEDS IT, so its moment is prep's.
+    # EACH FLAT RUN'S OWN (plan W57 decision 2), so a flat stage launched
+    # again does not truncate an earlier run's PySCF trajectory.
     Artifact(".molwatch.log", "the run as it happens — coordinates, "
                               "energy and forces, one block per step",
-             output="progress", when="prep", kind="record",
-             writer="prep seeds it in the attempt; PySCF's deck writes "
-                    "each step into it, SIESTA never does",
+             attempt="shared", output="progress", when="prep", kind="record",
+             writer="prep seeds the first run's, in the attempt -- in "
+                    "the flat shape numbered for run 0; PySCF's deck "
+                    "writes each step into its run's own, SIESTA never "
+                    "does",
              door="parse.engines.molwatch.MolwatchLogFileParser"),
     # ---- history: stdout and the logs ---------------------------------
     # ALL OF THIS IS HISTORY AND NOT STATE -- it is what a person goes back
-    # to read, and nothing may treat it as leftovers.  The rows were missing
-    # until 2026-08-13 (final review E-2) and the run's own stdout was being
-    # offered back as the ENGINE's restart state, while the `--cold` sweep
-    # moved a prior stage's logs aside.
+    # to read, and nothing may treat it as leftovers.
     #
     # `attempt="maybe"` is two real spellings, not indecision: the wrapper
     # indexes its redirect (`-run0.out`) and a hand-started run does not.
     #
-    # `.out` IS SIESTA'S, and carried no engine until 2026-09-18.  The row
-    # below already said PySCF "writes here and not to .out", so the pair
-    # contradicted each other: `manifest(engine="pyscf")` promised a PySCF
-    # rung a `-run0.out` no PySCF run has ever written (`model/parse.md`
-    # § 5.5).
+    # `.out` IS SIESTA'S (`model/parse.md` § 5.5).
     Artifact(".out", "the run's output as the engine printed it",
              attempt="maybe", engine="siesta", output="stdout",
              kind="result", writer="the run script, from the engine's "
                                    "stdout",
              door="parse.engines._run_ending.ending_of"),
-    # `attempt="maybe"` for the SAME reason `.out` above has it, and it
-    # became true on 2026-09-18: the deck's own banner told a person to run
-    # `python <deck>.py > <label>.out`, so the one unindexed spelling that
-    # existed was SIESTA'S FILENAME.  The banner now names this role, which
-    # makes the unindexed name real -- and undeclared it would have read as
-    # ENGINE state, the fault three rows in this table already record.
+    # `attempt="maybe"` for the SAME reason `.out` above has it.
     Artifact(".pyscf.log", "the same, for PySCF — it writes here and not "
                            "to .out", attempt="maybe",
              engine="pyscf", output="stdout",
              kind="result", writer="the run script, from the engine's "
                                    "stdout",
              door="parse.engines._run_ending.ending_of"),
-    # PYSCF'S OWN LOG (`mol.output`, `model/parse.md` § 5.5).  The row named
-    # no engine until 2026-10-04 (plan D22), so every SIESTA rung's card
-    # promised a `<base>.log` no SIESTA run writes.
-    Artifact(".log", "PySCF's own log", engine="pyscf", kind="result",
-             writer="the PySCF deck",
+    # PYSCF'S OWN LOG (`mol.output`, `model/parse.md` § 5.5).
+    # PySCF OPENS IT WITH 'w', so a flat run's own (plan W57 decision 2): a
+    # flat stage launched again would truncate the last run's.
+    Artifact(".log", "PySCF's own log", attempt="shared", engine="pyscf",
+             kind="result", writer="the PySCF deck",
              door="parse.dirs.record.run_record"),
-    # GEOMETRIC'S OPT LOG, and the row that recorded the drift this catalogue
-    # exists to end.  It was spelled `{label}_geom_*.log` -- the token INSIDE
-    # the role, which is how the name read before § 2.2a fixed the token's
-    # position.  Nothing has written that since; what IS written,
-    # `<label>_<stage>_geom.log`, matched no row, so our own log came back to
-    # the user as the engine's warm state (measured 2026-09-07).
-    Artifact("_geom.log", "geomeTRIC's optimizer log", engine="pyscf",
-             kind="result",
+    # GEOMETRIC'S OPT LOG, `<label>_<stage>_geom.log`.
+    # A FLAT RUN'S OWN with the prefix that names it, which carries the run's
+    # number there: otherwise geomeTRIC moves the last run's aside as
+    # `<prefix>_1.log`, a name nothing declares.
+    Artifact("_geom.log", "geomeTRIC's optimizer log", attempt="shared",
+             engine="pyscf", kind="result",
              writer="geomeTRIC, under the prefix the deck hands it"),
-    # A TEMPLATE, NOT A GLOB.  This was `.runwrap-*.log` until 2026-09-08 -- a
-    # wildcard stored as a role -- and the module had to grow `role_matches` to
-    # compare one.  The stamp is a FIELD: the file it names is real and
+    # A TEMPLATE, NOT A GLOB.  The stamp is a FIELD: the file it names is real and
     # concrete, and what varies is a value the name carries (§ 5l.1).
     Artifact(".runwrap-{stamp}.log", "the wrapper's own session log — one per "
                                      "launch, stamped with the clock",
@@ -1101,15 +1005,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="the run script, at each start",
              door="wrapper_log.log_of_run"),
     # The monitor's two files carry the wrapper's run index, always: the run
-    # script starts the monitor with `--run "$_run_n"`.  The unnumbered
-    # spelling, from before 2026-08-27, was listed beside it until
-    # 2026-10-06 -- old runs are not a design input.
+    # script starts the monitor with `--run "$_run_n"`.
     #
     # EVERY ENGINE'S, the monitor's two: the wrapper starts it from its shared
-    # part since 2026-09-26 (`run-reports.md` § 2.3).  The timing tee is
+    # part (`run-reports.md` § 2.3).  The timing tee is
     # SIESTA's alone -- it reads the SIESTA family's rows -- so its row names
     # the engine: a PySCF rung's card must not promise a file no PySCF run
-    # writes (the `.out` row's fault, found 2026-09-26).  `patterns()` ignores
+    # writes.  `patterns()` ignores
     # the column, so the cold sweep still knows them in any directory.
     Artifact(".monitor.log", "the monitor's rolling status", attempt="always",
              kind="record", writer="the monitor",
@@ -1124,49 +1026,24 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="the run script's tee of the output's SCF lines",
              door="parse.instruments.scf_timing_rows.timing_of",
              # THE TEE OPENS IT AT THE FIRST SCF ROW (`runwrap._mb_scf_tee`):
-             # a run that stops before one has none -- found by the card's
-             # own road check, 2026-10-04.
+             # a run that stops before one has none.
              only="the engine printed an SCF iteration"),
-    # MOLBUILDER'S OWN READING LOG, and the THIRD time this table has been
-    # missing a row for a file we write ourselves (`.out` in 2026-08-13,
-    # `_geom.log` above in 2026-09-07).  The parser opens one beside whatever
-    # it reads, on by default, so merely LOOKING at a folder -- one `jobset
-    # status`, one Watch-tab poll -- creates it.  Undeclared, `is_ours` said
-    # no, and `warm_files_present` answers by subtraction, so a folder where
-    # nothing had ever run reported that the engine had left state in it.
-    #
-    # Three spellings because the name is built off the file being read, not
-    # off the label: `job.out` gives `job.parse.log`, and the two sidecars
-    # keep their own middle segment.
+    # MOLBUILDER'S OWN READING LOG.
     # NAMED OFF THE FILE READ, so the output's `-run<N>` rides it:
-    # `<base>-run0.out` gives `<base>-run0.parse.log` (`parse/_log.py`).  The
-    # row said no run index until 2026-10-04, and a third row named a
-    # `.transport.parse.log` nothing writes (plan D22).  Off unless asked.
+    # `<base>-run0.out` gives `<base>-run0.parse.log` (`parse/_log.py`).
+    # Off unless asked.
     Artifact(".parse.log", "molbuilder's log of reading the run's output",
              attempt="always", kind="record",
              writer="molbuilder's parser, reading the output "
                     "(`parse._log.ParseLogger`)",
              only="`MOLBUILDER_PARSE_LOG` set"),
     Artifact(".molwatch.parse.log",
-             "the same, for the trajectory log", kind="record",
+             "the same, for the trajectory log", attempt="shared",
+             kind="record",
              writer="molbuilder's parser, reading the trajectory log "
                     "(`parse._log.ParseLogger`)",
              only="`MOLBUILDER_PARSE_LOG` set"),
-    # The summary `jobset summarize run` writes.  Ours, and undeclared until
-    # 2026-09-17: it never produced a false "something ran here" because it
-    # only exists after a run, but `--cold` builds its keep-list from the same
-    # table, so the wrapper named this file as engine state it was about to
-    # destroy and refused until --force.
-    # `staged=False` since 2026-09-18, and it was wrong in the direction this
-    # table's own comments keep recording.  `jobset/_cli.py` writes ONE record
-    # at the bundle root (`write_record(bundle, rec)`), so as a staged row the
-    # Task-setup card promised `<label>_<stage>.transport.json` on every rung
-    # of every SIESTA calculation -- a name nothing has ever written -- while
-    # the calculation-level card for a transport run listed nothing at all.
-    # `calculation="transport"` completes the row, and without it the half
-    # done on 2026-09-18 was inert: `result_roles("transport")` answered
-    # `('.molwatch.log',)`, so the DOOR could never offer a transport
-    # calculation its own result.  It is the deliverable of the ladder
+    # The summary `jobset summarize run` writes.  It is the deliverable of the ladder
     # (`engines/transport.md` § 2a.12: "the transmission stage's output ...
     # everything else in the tree exists to make it trustworthy"), written
     # once at the calculation root -- which is what `staged=False` says.
@@ -1206,20 +1083,27 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # stage of a flat calculation shares one directory, so each names its
     # record as it names every other file of it.  Written at launch.
     # AND AN ATTEMPT'S, `run.json`: one file, two spellings, one row
-    # (`hierarchical`) -- the card named the flat spelling for a hierarchical
-    # stage until 2026-10-04 (plan D22).
+    # (`hierarchical`).
+    # ONE PER FLAT RUN, its number in the name (plan W57 decisions 2 and 6),
+    # so a warm retry -- a second run of one launch -- has its own.
     Artifact(".run.json", "the launch record: how, where and when the run "
-                          "was sent, and what it continued from",
-             hierarchical=LAUNCH_RECORD_FILE, when="launch", kind="record",
-             writer="launch (`runrecord.write_launch`)",
+                          "was sent, what it continued from, and the run a "
+                          "warm retry retries",
+             attempt="shared", hierarchical=LAUNCH_RECORD_FILE, when="launch",
+             kind="record",
+             writer="launch (`runrecord.write_launch`); a flat run's warm "
+                    "retry, the run script through the monitor's bundle "
+                    "(`runrecord.record_retry`)",
              door="runrecord.launch_record"),
     # AND THE RUN IT CONTINUES FROM, left by `prep` for `launch` to write into
     # that record -- an attempt's `.continued-from`, for a stage with none of
-    # its own (user, 2026-10-01: the flat layout records it too).
+    # its own (user, 2026-10-01: the flat layout records it too), named for
+    # the run that continues.
     Artifact(".continued-from", "the run whose restart files were carried "
                                 "in, for launch's record",
-             hierarchical=CONTINUED_FROM_FILE, when="prep", kind="record",
-             writer="prep and launch, on a re-launch, through "
+             attempt="shared", hierarchical=CONTINUED_FROM_FILE, when="prep",
+             kind="record",
+             writer="prep, and launch when it runs a stage again, through "
                     "`runrecord.write_continued_from`",
              door="runrecord.read_continued_from",
              only="it continues from an earlier run"),
@@ -1420,11 +1304,188 @@ ON_THE_LABEL: "tuple[Artifact, ...]" = tuple(a for a in WRITTEN if a.role)
 
 #: The attempt counter as a GLOB, per :attr:`Artifact.attempt`.  Empty string
 #: means the unindexed spelling; ``-run*`` the wrapper's.
-_ATTEMPT_GLOBS = {"never": ("",), "maybe": ("", "-run*"), "always": ("-run*",)}
+_ATTEMPT_GLOBS = {"never": ("",), "maybe": ("", "-run*"), "always": ("-run*",),
+                  "shared": ("", "-run*")}
 
-#: THE FIRST ATTEMPT IS ZERO (`runwrap`: ``_run_n=0   # first run``), so this
-#: is the real name the first launch writes -- not a placeholder.
+#: THE FIRST RUN IS ZERO -- the number `launch` gives a stage's first run
+#: (`runrecord.next_run`) -- so this is the real name the first launch
+#: writes, not a placeholder.
 FIRST_ATTEMPT = 0
+
+#: The two shapes, by name (`paths.SHAPES`, restated: this module is L1 and
+#: travels beside jobs, so it imports nothing of molbuilder's).
+_SHAPES = ("flat", "hierarchical")
+
+#: THE RUN'S NUMBER IN A NAME TEMPLATE (:meth:`RunNames.template`): the
+#: placeholder a rendered script fills when it runs -- the number `launch`
+#: gives it (`--run N`).  A role's fields stay ``{field}`` the same way.
+RUN_FIELD = "{run}"
+
+
+def runs_share_folder(shape: str, trial: bool = False) -> bool:
+    """WHETHER A STAGE'S RUNS SHARE ONE FOLDER -- the one rule every name of
+    a run's own files follows (`project-layout.md` § 1.5a, § 1.6.1): a flat
+    calculation's stage runs again in the folder it ran in, so each run's
+    records and logs carry its number; a hierarchical stage opens a folder
+    per launch, and a benchmark trial has its own folder in either shape,
+    launched once -- the folder is the run."""
+    if shape not in _SHAPES:
+        raise RunFileError(f"shape {shape!r} is not one of "
+                           f"{' / '.join(_SHAPES)}.")
+    return shape == "flat" and not trial
+
+
+def _row(role: str) -> "Artifact":
+    """The catalogue's row for ``role`` -- or refused: a name nothing
+    declares is a name nothing may compose."""
+    for a in ON_THE_LABEL:
+        if a.role == role:
+            return a
+    raise RunFileError(f"{role!r} is no role of the catalogue "
+                       f"(`runfiles.WRITTEN`).")
+
+
+def _numbered(a: "Artifact", shared: bool) -> bool:
+    """Whether a file of row ``a`` carries the run's number, its runs
+    sharing a folder or not (:attr:`Artifact.attempt`)."""
+    return {"never": False, "maybe": True, "always": True,
+            "shared": shared}[a.attempt]
+
+
+def _template(a: "Artifact", label: str, stage: Optional[str],
+              shared: bool) -> str:
+    """Row ``a``'s name on ``label`` with :data:`RUN_FIELD` where the run's
+    number goes and each of its fields as ``{field}``; the hierarchy's fixed
+    name where the row has one and the run has a folder of its own (an
+    attempt's ``run.json``).  ``stage`` names a staged row's stage; an
+    unstaged row is the calculation's and carries none.  Read by
+    :meth:`RunNames.template` and :func:`manifest`."""
+    if a.hierarchical and not shared:
+        return a.hierarchical
+    return compose(label, a.role, stage if a.staged else None,
+                   run=RUN_FIELD if _numbered(a, shared) else None,
+                   **{f: "{" + f + "}" for f in _fields_in(a.role)})
+
+
+def shared_numbered_roles() -> "tuple[str, ...]":
+    """The roles whose names carry the run's number only where a stage's
+    runs share a folder (``attempt="shared"``) -- read off the rows, so
+    whatever asks which names an older shared folder held unnumbered
+    (`runrecord`'s refusal, `jobset migrate`) asks the catalogue, never a
+    list of its own."""
+    return tuple(a.role for a in ON_THE_LABEL if a.attempt == "shared")
+
+
+@dataclass(frozen=True)
+class RunNames:
+    """THE NAMES OF ONE STAGE'S FILES -- the catalogue (:data:`WRITTEN`) read
+    for one stage of one calculation (`job-contracts.md` § 2.2a).  Every
+    writer of a stage's files, and every script rendered to write them,
+    names them through this: prep and launch, the run records, the run
+    script and the deck, the readers -- so no two can spell one name two
+    ways.  The row decides every part of a name: its stage token
+    (``staged``), the run's number (``attempt``), the hierarchy's fixed name
+    (``hierarchical``); this object only supplies the stage it names.
+
+    ``shared`` is whether the stage's runs share one folder
+    (:func:`runs_share_folder`, :meth:`of`): then a run's own records and
+    logs carry its number; else its folder names the run.
+
+    The stage is required: every calculation has at least one, and every
+    file of a run carries its token (`stages.md` § 6.5)."""
+    label: str
+    stage: str
+    shared: bool
+
+    def __post_init__(self):
+        if self.stage is None:
+            raise RunFileError(
+                f"{self.label!r}: a run's files are named by its stage, and "
+                f"no stage was given -- every calculation has at least one "
+                f"(`stages.md` § 6.5).")
+        stem(self.label, self.stage)    # a malformed label or token, refused
+
+    @classmethod
+    def of(cls, label: str, stage: str, shape: str,
+           trial: bool = False) -> "RunNames":
+        """The names of ``stage``'s files in a calculation of ``shape`` --
+        a benchmark trial's (``trial``) in its own folder."""
+        return cls(label, stage, runs_share_folder(shape, trial))
+
+    @property
+    def stem(self) -> str:
+        """``<label>_<stage>`` -- what every staged role attaches to."""
+        return stem(self.label, self.stage)
+
+    def numbered(self, role: str) -> bool:
+        """Whether a file in ``role`` carries the run's number here."""
+        return _numbered(_row(role), self.shared)
+
+    def template(self, role: str) -> str:
+        """``role``'s name with :data:`RUN_FIELD` where the run's number
+        goes and each of its fields as ``{field}`` -- what a rendered script
+        fills in when it runs; the hierarchy's fixed name where the row has
+        one and the run has a folder of its own (an attempt's ``run.json``).
+        """
+        return _template(_row(role), self.label, self.stage, self.shared)
+
+    def tail(self, role: str) -> str:
+        """:meth:`template` after the label -- for a script that names its
+        files from its own ``JOB`` / ``SystemLabel`` (:func:`tail`)."""
+        name = self.template(role)
+        if not name.startswith(self.label):
+            raise RunFileError(
+                f"{role!r} is named {name!r} here, not on the label: a "
+                f"script cannot spell it from its own label.")
+        return name[len(self.label):]
+
+    def name(self, role: str, run: Optional[int] = None, **fields) -> str:
+        """``role``'s name for run ``run``, the run the file belongs to --
+        the row says whether the name carries its number here (then it is
+        required), or is the folder's for every run in it."""
+        a = _row(role)
+        if a.hierarchical and not self.shared:
+            return a.hierarchical
+        numbered = _numbered(a, self.shared)
+        if numbered and run is None:
+            raise RunFileError(
+                f"{role!r} is named {self.template(role)!r} here, and no "
+                f"run was named to fill it.")
+        return compose(self.label, role, self.stage if a.staged else None,
+                       run=run if numbered else None, **fields)
+
+    def run_name(self, run: int) -> str:
+        """``<label>_<stage>-run<N>`` -- the name every file of run ``run``
+        carries (:func:`run_name`)."""
+        return run_name(self.label, self.stage, run)
+
+
+@dataclass(frozen=True)
+class GroupNames:
+    """A LAUNCH GROUP'S FILES -- a benchmark's walk or a bias scan's chain:
+    the catalogue's launch-level rows ``{group}.run.sh``, ``{group}.sbatch``
+    and ``{group}.log``, filled with the group's name (`project-layout.md`
+    § 5).  The same two questions :class:`RunNames` answers -- :attr:`stem`
+    and :meth:`name` -- so a header is rendered alike for a stage's run and
+    a group's (`runwrap.render_sbatch`)."""
+    group: str
+
+    def __post_init__(self):
+        stem(self.group)                # one [A-Za-z0-9_-]+ token, refused
+
+    @property
+    def stem(self) -> str:
+        return self.group
+
+    def name(self, tail: str) -> str:
+        """The group's file ending ``tail``, from its catalogue row."""
+        template = "{group}" + tail
+        if not any(a.level == "launch" and a.name == template
+                   for a in WRITTEN):
+            raise RunFileError(
+                f"no launch-level row {template!r} in runfiles.WRITTEN -- a "
+                f"group's files are the catalogue's")
+        return template.format(group=self.group)
 
 
 def roles(*, engines: bool = True) -> "tuple[str, ...]":
@@ -1487,7 +1548,7 @@ def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
     viewer open here* — answered from a column rather than a ladder, which is
     what the other two already do.
 
-    Two kinds of row answer it, and the order between them is the whole rule:
+    Three kinds of row answer it, and the order between them is the whole rule:
 
     * a role naming this CALCULATION is what the run is **for**.
       `.spectra.json` for a vibration: the deck rewrites it atomically at
@@ -1507,14 +1568,10 @@ def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
       comes AFTER the stdout roles -- offered first, the seed outranked the
       real result, which is the trap § 5.5 names.
 
-    ``calculation`` unknown — a directory molbuilder did not write, or one
-    whose `task.json` predates the key — answers with the output roles
-    alone, and the caller falls back to searching.
+    ``calculation`` None answers with the output roles alone.
 
     **This is not a preference order to tune.**  Whichever file the
-    calculation produces is the one to open, during the run and after it;
-    the "concluded vs unconcluded" switch that stood in the discovery chain
-    was an optimization-shaped rule generalised to everything.
+    calculation produces is the one to open, during the run and after it.
     """
     named = [a.role for a in ON_THE_LABEL
              if calculation and a.calculation == calculation]
@@ -1539,11 +1596,9 @@ def engine_of_role(role: str) -> Optional[str]:
 
     The mirror of :func:`stdout_roles`, and what a WRITER asks: the wrapper
     holds a deck suffix (`.py`, `.fdf`) and needs the role its run will write
-    its stdout to.  Composing the two is the whole derivation, and it replaces
-    `runwrap`'s ``".pyscf.log" if suffix == ".py" else ".out"`` -- an
-    engine-to-role map written a third time, one layer below the two in
-    `parse/contract.py` that quoted it (`model/parse.md` § 5.5, R-RO1: the
-    vocabulary binds writers as well as readers).
+    its stdout to.  Composing the two is the whole derivation
+    (`model/parse.md` § 5.5, R-RO1: the vocabulary binds writers as well as
+    readers).
     """
     for a in WRITTEN:
         if a.role == role:
@@ -1574,9 +1629,7 @@ def patterns(artifacts: "Optional[tuple[Artifact, ...]]" = None
     out = []
     for a in artifacts if artifacts is not None else ON_THE_LABEL:
         # A FIELD BECOMES A STAR HERE, and only here.  `.runwrap-{stamp}.log`
-        # yields `.runwrap-*.log` -- the same string this function produced when
-        # the glob WAS the role, so `identity.OUR_FILE_PATTERNS` and `runwrap`'s
-        # `--cold` sweep see no change.  A glob belongs in the glob view, not in
+        # yields `.runwrap-*.log`.  A glob belongs in the glob view, not in
         # the vocabulary (§ 5l.3).
         role = _FIELD_RE.sub("*", a.role)
         stems = ["{label}"] + (["{label}_*"] if a.staged else [])
@@ -1588,15 +1641,14 @@ def patterns(artifacts: "Optional[tuple[Artifact, ...]]" = None
     return tuple(out)
 
 
-def manifest(label: str, stage: Optional[str] = None,
+def manifest(label: str, stage: Optional[str], *, shape: str,
              engine: Optional[str] = None,
              when: "Optional[tuple]" = None,
-             calculation: Optional[str] = None,
-             shape: Optional[str] = None) -> "list[dict]":
+             calculation: Optional[str] = None) -> "list[dict]":
     """The names one rung writes, each with a line saying what the file is.
 
     ``stage`` given answers for THAT RUNG and lists only what carries its
-    token.  ``stage`` omitted answers for the CALCULATION and lists only what
+    token.  ``stage`` None answers for the CALCULATION and lists only what
     does not -- the template and the source pair, written once at the bundle
     root.  The two sets do not overlap, which is the point: a rung's card that
     repeated the calculation's files would say each of them N times and imply
@@ -1612,9 +1664,9 @@ def manifest(label: str, stage: Optional[str] = None,
     one list from the other.
 
     ``shape`` names each file as that shape spells it: an attempt's
-    ``run.json`` in the hierarchy where a flat stage writes
-    ``<base>.run.json`` (:attr:`Artifact.hierarchical`).  *(The card named the
-    flat spelling for every calculation until 2026-10-04, plan D22.)*  A
+    ``run.json`` in the hierarchy where a flat stage's first run writes
+    ``<base>-run0.run.json`` (:attr:`Artifact.hierarchical`);
+    a rung's card cannot be drawn without it.  A
     file written only sometimes carries its condition, ``only``; each row
     says the folder it lands in, ``level`` -- a rung's pipeline log is the
     calculation's, at its root.
@@ -1622,6 +1674,7 @@ def manifest(label: str, stage: Optional[str] = None,
     Every name comes out of :func:`compose`, so a card cannot show a spelling
     the writers do not use -- which is the failure this module exists for.
     """
+    shared = runs_share_folder(shape)
     rows = []
     for a in ON_THE_LABEL:
         if a.staged != (stage is not None):
@@ -1632,19 +1685,19 @@ def manifest(label: str, stage: Optional[str] = None,
             continue
         if calculation and a.calculation and a.calculation != calculation:
             continue
-        run = None if a.attempt == "never" else FIRST_ATTEMPT
-        # A FIELD HAS NO VALUE UNTIL THE FILE IS WRITTEN, so the card shows the
-        # field's NAME: `<label>_<stage>.runwrap-<stamp>.log`.  It showed
-        # `...runwrap-*.log` until 2026-09-08 -- a glob, in a list telling a
-        # person which files a prep is about to write.
-        _role = _FIELD_RE.sub(lambda m: f"<{m.group(1)}>", a.role)
-        name = (a.hierarchical if shape == "hierarchical" and a.hierarchical
-                else compose(label, _role, stage, run))
+        # EACH ROW'S NAME as the stage's names spell it (:func:`_template`,
+        # what :class:`RunNames` reads), the first run's where the name
+        # carries the run's number.  A FIELD HAS NO VALUE UNTIL THE FILE
+        # IS WRITTEN, so the card shows the field's NAME:
+        # `<label>_<stage>.runwrap-<stamp>.log`.
+        run = FIRST_ATTEMPT if _numbered(a, shared) else None
+        name = _FIELD_RE.sub(lambda m: f"<{m.group(1)}>",
+                             _template(a, label, stage, shared).replace(
+                                 RUN_FIELD, str(run)))
         rows.append({"name": name,
                      "what": a.what,
                      "when": a.when,
                      "level": a.level,
-                     "carries_attempt": a.attempt != "never",
                      "only": a.only})
     return rows
 

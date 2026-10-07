@@ -6,11 +6,10 @@ builder returns one of these; every output format is just a method on
 it.  Adding a new format means adding one method here, not touching the
 builders.
 
-Loading external geometry into the package goes through the inverse
-``from_xyz`` / ``from_pdb`` classmethods (or the top-level
-``molbuilder.load`` convenience function), which means an XYZ or PDB
-exported by a different tool can be fed straight into the SIESTA
-pipeline without re-building it from scratch.
+Loading a stored structure goes through ``StructureCodec().load(path)``,
+which reads the pair; ``from_xyz`` / ``from_pdb`` take a document's text, so
+an XYZ or PDB exported by a different tool can be fed straight in without
+re-building it from scratch.
 
 TRAVELS beside every PySCF script, in ``mb_pyscf.pyz``
 (``runwrap.PYSCF_COMPANIONS``, ``engines/pyscf.md`` § 3): the script saves its
@@ -67,14 +66,7 @@ import numpy as np
 def _require_text(source: object, fmt: str) -> str:
     """The readers take a DOCUMENT, never a path.
 
-    A guesser stood here.  It tried ``os.path.isfile`` first and fell through
-    to "treat it as text", so a mistyped path was diagnosed as a malformed
-    document -- ``from_xyz("/no/such.xyz")`` reported *"Expected xyz header but
-    got: invalid literal for int()"*.  Worse, it gave the project two ways to
-    read a structure file, and the one that skipped the ``.molstruct.json``
-    was the one most callers reached for.
-
-    `model/parse.md` § 7 states the rule these readers now follow: a reader
+    `model/parse.md` § 7 states the rule these readers follow: a reader
     takes a path or it takes text, never both, and a caller holding a path
     reads the file itself.  The one door for a STORED structure is
     ``StructureCodec().load(path)`` -- which reads the pair.
@@ -89,25 +81,15 @@ def _require_text(source: object, fmt: str) -> str:
         raise TypeError(
             f"Structure.from_{fmt}() takes {fmt.upper()} text as str, got "
             f"{type(source).__name__}")
-    # A `str` PATH is the same mistake in a different type, and it is the one
-    # that produced the nonsense error -- `str(tmp_path / "pep.xyz")` reached
-    # the parser and came back "Expected xyz header but got: invalid literal
-    # for int()".  A document has line breaks; a one-liner ending in a
-    # structure suffix is a filename.
+    # A `str` PATH is the same mistake in a different type.  A document has
+    # line breaks; a one-liner ending in a structure suffix is a filename.
     #
-    # Judged by the SHAPE OF THE ARGUMENT, never by touching the disk.  Asking
-    # the filesystem is precisely what the guesser did, and it is what made "a
-    # path" and "a document" the same parameter -- so the same string means the
-    # same thing here whether or not the file happens to exist.
+    # Judged by the SHAPE OF THE ARGUMENT, never by touching the disk, so the
+    # same string means the same thing here whether or not the file happens
+    # to exist.
     if "\n" not in source and source.strip().lower().endswith((".xyz", ".pdb")):
         raise TypeError(not_a_path)
     return source
-
-
-# ---------------------------------------------------------------------- #
-#  Atomic-mass table (used only when callers ask for an ASE Atoms        #
-#  object; ase has its own tables but we don't want a hard dep here).   #
-# ---------------------------------------------------------------------- #
 
 
 # ---------------------------------------------------------------------- #
@@ -240,7 +222,6 @@ def _vacuum_from_stored(raw) -> Optional[Tuple[float, float, float]]:
     return values
 
 
-
 @dataclass
 class AtomChannel:
     """One named per-atom metadata channel (``model/structure-annotations.md`` § 2).
@@ -343,9 +324,8 @@ def copy_annotations(ann: "dict[str, AtomChannel]") -> "dict[str, AtomChannel]":
 
 def remap_annotations(ann: "dict[str, AtomChannel]",
                       old_to_new: "dict[int, int]") -> "dict[str, AtomChannel]":
-    """Remap every channel's atom indices through ``old_to_new`` (the
-    all-channel generalization of ``modify.remap_frozen_and_regions``,
-    ``model/structure-annotations.md`` § 2.1).  Channels that end up empty are dropped."""
+    """Remap every channel's atom indices through ``old_to_new``
+    (``model/structure-annotations.md`` § 2.1).  Channels that end up empty are dropped."""
     out: "dict[str, AtomChannel]" = {}
     for name, ch in ann.items():
         remapped = ch.remapped(old_to_new)
@@ -400,7 +380,7 @@ class Structure:
                       regions.
 
     Some labels are RESERVED -- something downstream acts on the
-    name.  ``frozen`` (:data:`FROZEN_LABEL`) marks atoms whose
+    name.  ``frozen_atoms`` (:data:`FROZEN_LABEL`) marks atoms whose
     positions stay fixed during relaxations and Hessian builds;
     it is consumed by the vibration deck (relax + Hessian), the
     relaxation decks, and the transport lead gate (a lead's atoms must
@@ -453,17 +433,13 @@ class Structure:
     # when a cell is stated, "isolated" otherwise; `transport` is never
     # guessed, a builder states it.
     #
-    # There was a second field, ``pbc``, holding the boolean view of this one
-    # (periodic|transport -> True, isolated -> False).  It could not hold a
-    # fact this does not -- the mapping is onto, not one-to-one -- so it was a
-    # duplicate that `__post_init__` recomputed on every construction, and the
-    # two declarations each claimed to be the source of truth.  The boolean is
-    # now :meth:`pbc`, an accessor for the two outside formats that need one.
+    # The boolean view is :meth:`pbc`, an accessor for the two outside
+    # formats that need one.
     axis_kind:     Optional[Tuple[str, str, str]] = None
     # Isolation padding (Å) on isolated axes -- the PER-SIDE vacuum gap.
     # (k-grid is NOT here: it's a reciprocal-space SAMPLING knob, a CALCULATION
     # parameter that lives on SiestaConfig, not the geometry.
-    # structure-periodicity.md.)  Default 0 keeps existing call sites unchanged.
+    # structure-periodicity.md.)
     vacuum:        Optional[Tuple[float, float, float]] = None
     # THE OFFSET THIS STRUCTURE STATES (Angstrom), or None -- then the rule
     # computes it (`model/structure-periodicity.md` § 6.0, *A stated
@@ -474,12 +450,11 @@ class Structure:
     # (``metadata_to_dict``), and ``None`` there means the rule.
     engine_offset: Optional[np.ndarray]            = None
     # Extensible per-atom annotations (model/structure-annotations.md).  Holds
-    # channels BEYOND the two built-ins (regions -> tag channels,
-    # frozen_atoms -> the "frozen" flag channel), e.g. future per-atom
-    # value channels (charge / spin / basis-override).  The unified read
-    # API is ``channels()`` / ``get_channel()`` / ``atom_annotations()``,
-    # which present regions + frozen + these together.  Empty default so
-    # every existing call site is unchanged.
+    # channels BEYOND the labels (regions -> tag channels, reserved ones
+    # included), e.g. future per-atom value channels (charge / spin /
+    # basis-override).  The unified read API is ``channels()`` /
+    # ``get_channel()`` / ``atom_annotations()``, which present the labels
+    # and these together.
     annotations:   Dict[str, AtomChannel] = field(default_factory=dict)
     #: METADATA (model/structure.md § 2.2a) -- what the MolView Metadata
     #: pane shows -- that is NOT part of the structure: no emitter reads
@@ -503,11 +478,9 @@ class Structure:
     #: further non-structural metadata goes beside it under its own name
     #: rather than being flattened in with it.
     #:
-    #: That shape was already decided on the browser side, where
-    #: `molview.data.info` has offered `set(key, value)` / `remove(key)`
-    #: since it shipped.  Python had no equivalent, which is exactly why
-    #: three callers assigned the whole store by hand; :meth:`set_info`,
-    #: :meth:`drop_info` and :meth:`apply_info_dict` are that half.
+    #: That shape is the browser's too, where `molview.data.info` offers
+    #: `set(key, value)` / `remove(key)`; :meth:`set_info`,
+    #: :meth:`drop_info` and :meth:`apply_info_dict` are the Python half.
     info:          Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -559,12 +532,10 @@ class Structure:
         # ONE PERIODICITY FIELD.  ``axis_kind`` is it, and there is nothing to
         # reconcile: a second boolean field would be redundant by construction,
         # because ``pbc`` is ``axis_kind`` with `transport` and
-        # `periodic` both flattened to True, so it never held a fact
-        # ``axis_kind`` did not, and could never legally disagree.  Storing it
-        # bought a duplicate to keep in step, and the declaration carried two
-        # adjacent comments each claiming to be the source of truth.
+        # `periodic` both flattened to True, so it never holds a fact
+        # ``axis_kind`` does not.
         #
-        # The boolean view survives as :meth:`pbc`, which is an INTEROP
+        # The boolean view is :meth:`pbc`, which is an INTEROP
         # accessor and nothing more -- ASE takes booleans and the extxyz
         # header writes `pbc="T T F"`.  Nothing inside molbuilder reads it.
         _KINDS = ("periodic", "isolated", "transport")
@@ -602,9 +573,7 @@ class Structure:
             if len(self.vacuum) != 3:
                 raise ValueError("Structure.vacuum must have exactly 3 entries")
 
-        # Validate transport metadata.  Both fields default to empty,
-        # so a caller that doesn't care about regions / frozen atoms
-        # sees no behaviour change.
+        # Validate transport metadata.
         self._validate_regions(n)
         self._validate_annotations(n)
 
@@ -648,9 +617,8 @@ class Structure:
         ``vacuum[i]`` is the **per-side gap** (Angstrom): the box gets ``vacuum``
         of empty space on EACH face of an isolated axis, so the cell length is
         ``bbox[i] + 2*vacuum[i]`` and the molecule sits centred with ``vacuum`` of
-        clearance on both sides.  This matches the SIESTA FDF vacuum box
-        (``render_fdf``: ``extent + 2*cell_padding``, centred) so the displayed
-        cell reflects what the calculation actually uses.  Where the box sits
+        clearance on both sides.  This is the box the
+        SIESTA deck states, so the displayed cell is the one the calculation uses.  Where the box sits
         is the engine offset's (``cell.engine_offset``, § 6.0).
 
         Assumes a block-orthogonal cell (per-axis diagonal); a general triclinic
@@ -763,8 +731,7 @@ class Structure:
         ``__post_init__``; this is a pure conversion to JSON types."""
         return {
             # Every label, reserved ones included -- ONE key, because there is
-            # one store.  A `frozen_atoms` key beside this one is what schema 6
-            # wrote; `apply_metadata_dict` still reads it, nothing writes it.
+            # one store.
             "regions":      {k: list(v)
                              for k, v in (self.regions or {}).items()},
             "cell":         self.cell.tolist() if self.cell is not None else None,
@@ -917,15 +884,11 @@ class Structure:
         )
         # Full-replace + revalidate the metadata block through the ONE codec.
         s.apply_metadata_dict(data.get("metadata"))
-        # THROUGH THE SAME DOOR AS EVERY OTHER WRITER.  This checked only
-        # that the block was a dict and then assigned it, so `from_dict` was
-        # a WEAKER door than `set_info` / `apply_info_dict` -- which also
-        # refuse an empty cluster name and JSON-round-trip the value.  It is
-        # the one the browser reaches: `_shared.struct_from_body` builds
-        # every edited structure through here, so `info: {"": ...}` posted
-        # to any modify route comes back at HTTP 200 and reaches the sidecar
-        # on disk if this door does not refuse it.  One door, one set of
-        # rules, whichever direction the store arrives from.
+        # THROUGH THE SAME DOOR AS EVERY OTHER WRITER: the browser reaches
+        # this one -- `_shared.struct_from_body` builds every edited structure
+        # through here -- so `info: {"": ...}` posted to any modify route is
+        # refused here.  One door, one set of rules, whichever direction the
+        # store arrives from.
         if data.get("info") is not None:
             s.apply_info_dict(data.get("info"))
         return s
@@ -944,8 +907,7 @@ class Structure:
         re-list any periodicity / metadata field.  Not round-tripped by
         :meth:`from_dict` -- ``resolved_*`` are derived, read-only fields."""
         # The ONE resolver (structure-periodicity.md §§ 4, 6), run once, here.
-        # A periodic axis without a lattice raises -> no resolved box (None),
-        # matching the previous hand-rolled behaviour in _shared.
+        # A periodic axis without a lattice raises -> no resolved box (None).
         try:
             _rc = self.resolve_cell()
             resolved_cell = _rc.tolist() if _rc is not None else None
@@ -1160,10 +1122,9 @@ class Structure:
         use it.  ``dataclasses.replace`` re-passes the mutable fields BY
         REFERENCE: the derived structure shared ``positions``, ``cell`` and
         the ``info`` dict with its source, so writing to one wrote to the
-        other — measured, including through ``info.calculation``.  That is
-        what every hand-listed rebuild in the tree was working around with its
-        own ``.copy()`` calls, and enumerating fields to copy them is how
-        fields came to be forgotten (§ 2.2a).  Deriving through here copies, so a caller states
+        other — measured, including through ``info.calculation`` -- and
+        enumerating fields to copy them is how fields come to be forgotten
+        (§ 2.2a).  Deriving through here copies, so a caller states
         only what CHANGES and nothing it did not name can alias or vanish.
 
         ``frozen_atoms`` is never re-passed at all: a copied ``regions`` is the
@@ -1328,16 +1289,6 @@ class Structure:
         dependency of this project **for exactly this** (``pyproject.toml``:
         *"XYZ I/O + atomic-number table"*).
 
-        WHY THIS IS NOT HAND-ROLLED ANY MORE.  It was, and the hand-rolled
-        parser read the atoms out of the first block and nothing else -- so a
-        file this class had itself written with ``to_extxyz`` came back with
-        **no cell, no pbc and one frame**.  The project already knew: a second
-        reader had been built at ``siesta/input.py`` whose comment said *"Use
-        ASE for XYZ -- it understands extended-XYZ headers and gives us the
-        lattice when present, which our hand-rolled parser doesn't."*  Two
-        readers of one format is two answers to "what is in this file", and the
-        one that lost data was the one every other caller used.
-
         XYZ stores no atom names / residues, so all atoms come back tagged as
         residue 1 ("MOL", chain "A") and atom names default to the element
         symbol.
@@ -1445,8 +1396,7 @@ class Structure:
 
         We track a segment counter (incremented on each TER) and tag
         every atom with `(chain_letter, segment)`.  After the parse:
-          - a chain letter unique to one segment passes through as-is,
-            preserving back-compat for well-formed PDBs;
+          - a chain letter unique to one segment passes through as-is;
           - a chain letter spanning multiple segments is disambiguated
             by appending the segment index, so the resulting chain ids
             are unique;
@@ -1559,13 +1509,12 @@ class Structure:
                 #
                 # We try the two-letter form first against the known
                 # symbol set (ase.data.atomic_numbers); fall through to
-                # the single-letter form if not matched.  This fixes
-                # the previous bug where "FE", "ZN", "MG", "NA", ...
-                # silently degraded to "F", "Z", "M", "N", which are
-                # the wrong elements (or invalid symbols).
+                # the single-letter form if not matched, so "FE", "ZN",
+                # "MG", "NA", ... do not degrade to "F", "Z", "M", "N",
+                # which are the wrong elements (or invalid symbols).
                 #
-                # NO FALLBACK: without the table "FE" reads as "F" again,
-                # silently -- the bug above -- so a missing ASE (a declared
+                # NO FALLBACK: without the table "FE" reads as "F",
+                # silently, so a missing ASE (a declared
                 # dependency) raises here.  It is the table
                 # `chemistry.atomic_number` reads too; this module sits
                 # below `chemistry` and asks the table itself.
@@ -1592,11 +1541,10 @@ class Structure:
             raise ValueError("no ATOM/HETATM records found in PDB input")
 
         # Disambiguation pass.  A chain letter that appears in only one
-        # segment passes through unchanged (preserves back-compat with
-        # well-formed PDBs); a letter that spans multiple segments has
-        # the segment index appended so the resulting ids are unique.
-        # Empty chain-id columns ('_' placeholder) map to 'A' in the
-        # unambiguous case (matches the previous parser's behaviour).
+        # segment passes through unchanged; a letter that spans multiple
+        # segments has the segment index appended so the resulting ids are
+        # unique.  Empty chain-id columns ('_' placeholder) map to 'A' in the
+        # unambiguous case.
         letter_segments: dict = {}
         for letter, seg in zip(raw_chain_letters, atom_segments):
             letter_segments.setdefault(letter, set()).add(seg)
@@ -1634,17 +1582,12 @@ class Structure:
         ``%block AtomicCoordinatesAndAtomicSpecies`` once you map symbols
         to species indices, or into any other code that reads .xyz.
 
-        WHY THERE IS NO ``path`` ARGUMENT.  The read side is
-        closed deliberately -- ``from_xyz`` refuses a path and points at the
-        codec, because the one door for a STORED structure reads the
-        ``.molstruct.json`` beside it.  The write side was left open, and it
-        is the half that loses data: a lone ``.xyz`` written here drops the
-        frozen atoms, the region labels and the explicit cell on the floor,
-        silently and at exit 0.  `model/structure.md` § 2.4 states the rule
-        both halves now keep -- *every structure-to-bytes translation goes
-        through this codec* -- and a writer that cannot be handed a path is
-        how the violation stops being representable rather than being fixed
-        again each time it reappears.
+        WHY THERE IS NO ``path`` ARGUMENT.  ``from_xyz`` refuses a path and
+        points at the codec, because the one door for a STORED structure
+        reads the ``.molstruct.json`` beside it; a lone ``.xyz`` written here
+        would drop the frozen atoms, the region labels and the explicit cell.
+        `model/structure.md` § 2.4 states the rule both halves keep -- *every
+        structure-to-bytes translation goes through this codec*.
         """
         buf = StringIO()
         buf.write(f"{self.n_atoms}\n")
@@ -1665,8 +1608,8 @@ class Structure:
     ) -> str:
         """Return extended-XYZ TEXT for this structure, or for *frames* of it.
         Not a file: ``StructureCodec().write(struct, path, frames=...)``
-        writes one, and :meth:`to_xyz` records why the ``path`` argument is
-        gone.
+        writes one, and :meth:`to_xyz` records why there is no ``path``
+        argument.
 
         Extended XYZ is plain XYZ with the per-frame comment line carrying
         key=value metadata -- the convention ASE reads and writes, and what
@@ -1747,7 +1690,7 @@ class Structure:
     def to_pdb(self) -> str:
         """Standard PDB TEXT. Hydrogens included, single MODEL, no CONECT.
         Not a file: ``StructureCodec().write(struct, path)`` writes one, and
-        :meth:`to_xyz` records why the ``path`` argument is gone."""
+        :meth:`to_xyz` records why there is no ``path`` argument."""
         buf = StringIO()
         if self.title:
             buf.write(f"TITLE     {self.title:<70s}\n")
@@ -1809,8 +1752,7 @@ class Structure:
     def to_ase(self):
         """Return an :class:`ase.Atoms` instance.
 
-        Raises ImportError if ASE isn't installed -- this is the only
-        method with an optional dep.
+        Raises ImportError if ASE isn't installed.
         """
         try:
             from ase import Atoms
@@ -1820,11 +1762,8 @@ class Structure:
                 "`pip install ase`"
             ) from exc
         # WITH THE BOX, because `pbc` exists precisely as the ASE-interop view
-        # of `axis_kind` (§ 1) and this is the one ASE door.  Handing over
-        # atoms alone described a crystal as a gas-phase cluster: an `Atoms`
-        # with a zero cell and `pbc = [F,F,F]`, so anything the caller did
-        # with it -- a neighbour list, a symmetry search, a write -- answered
-        # the wrong question and said nothing.  `resolve_cell()` rather than
+        # of `axis_kind` (§ 1) and this is the one ASE door: atoms alone
+        # would describe a crystal as a gas-phase cluster.  `resolve_cell()` rather than
         # the raw field, so a derived box travels too; `None` stays unset.
         resolved = self.resolve_cell()
         return Atoms(symbols=self.elements, positions=self.positions,
@@ -1844,7 +1783,7 @@ class Structure:
         carries them verbatim.  Dropping any of them silently reverts a
         periodic or transport cell to isolated defaults -- ``axis_kind`` falls
         back to ``isolated`` on every axis when no cell is carried either, and
-        ``vacuum`` to 0.  Deleting a stray atom would then wipe a transport
+        ``vacuum`` to unset.  Deleting a stray atom would then wipe a transport
         cell, and the emitted SIESTA FDF would omit ``LatticeVectors``.
 
         ``pbc`` is not carried: it is :meth:`pbc`, computed from
@@ -1907,9 +1846,8 @@ class Structure:
         recorded calculation contract with it unless it happened to copy that
         across too.
 
-        The browser has had this since MolView shipped
-        (``molview.data.info.set``); this is the Python half, which was
-        missing, which is why three callers assigned the attribute directly.
+        The browser's half is ``molview.data.info.set``; this is the Python
+        half.
         """
         if not isinstance(key, str) or not key:
             raise ValueError(
@@ -1938,9 +1876,7 @@ class Structure:
         The in-place sibling of ``replace(info=...)``, and the door the three
         whole-store writers needed: a sidecar load, a caller-stated block,
         and the Results tab's run record each adopt an entire store rather
-        than one cluster.  They assigned ``struct.info`` directly for want of
-        this, so nothing checked the shape and a non-dict or an
-        unserialisable value travelled until it reached the sidecar writer.
+        than one cluster.
 
         ``None`` or ``{}`` clears it -- which is what "this pair records
         nothing" means, and is why absence and emptiness are the same here.

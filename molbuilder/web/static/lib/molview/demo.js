@@ -36,14 +36,12 @@ const SAMPLES = {
  * unchanged, so it is obvious at a glance whether the frames are moving on
  * screen — the failure a stand-in test cannot see (§ 13.2).
  *
- * It moves as a rigid body ON PURPOSE. The first version of this fixture slid
- * the oxygen away and left the hydrogens behind, which pulls the water apart:
- * by frame 2 the O–H distances are past bonding range, the drawing library
- * assigns NO BONDS, and the default `stick` representation — which draws bonds
- * and nothing else — renders an empty window. Every layer was correct, the
- * frame count was right, and both of the seal's self-checks reported healthy
- * (§ 10.10 asks HOW MANY frames, so a full drawing of unbondable atoms is
- * exactly what it cannot see). It read as a broken viewer for a long time.
+ * It moves as a rigid body ON PURPOSE. A fixture that pulls the water apart
+ * puts the O–H distances past bonding range, the drawing library assigns NO
+ * BONDS, and the default `stick` representation — which draws bonds and
+ * nothing else — renders an empty window while both of the seal's
+ * self-checks report healthy (§ 10.10 asks HOW MANY frames, so a full drawing
+ * of unbondable atoms is exactly what it cannot see).
  *
  * A demo fixture has to fail VISIBLY when the code is wrong and not otherwise;
  * one that dissociates cannot tell the two apart. */
@@ -56,11 +54,9 @@ const FORCES = FRAMES.map((_, f) => ([
 
 /* A STAND-IN WORKSPACE — the calls of workspace.md § 5, answered from memory.
  *
- * IT IMPLEMENTS THE REAL DOOR, and that is the whole point of it. The first
- * version was a `Map` with `read(step)` / `write(step, bytes)`, which the module
- * asked for and no workspace has ever had: so the demo passed, every test passed,
- * and nothing on any tab could save. A stand-in shaped like a wish proves the
- * wish; a stand-in shaped like the dependency fails the moment the two disagree.
+ * IT IMPLEMENTS THE REAL DOOR, and that is the whole point of it. A stand-in
+ * shaped like a wish proves the wish; a stand-in shaped like the dependency
+ * fails the moment the two disagree.
  *
  * It keeps one slot per tag, as the real one does — different tag, different
  * place — so a second viewer on this page would be isolated here too.
@@ -75,10 +71,6 @@ function memoryWorkspace() {
             return ids.get(tag);
         },
         // THE REAL SIGNATURE (dispatcher.js): persist(tag, bytes, identity).
-        // The four-arg shape this carried until 2026-08-19 was the
-        // pre-2026-08-02 surface -- `identity` landed in the third slot, the
-        // guard never fired, no point was ever stored, and the demo timeline
-        // was silently dead.  A stand-in shaped like a wish proves the wish.
         persist(tag, bytes, identity) {
             if (bytes) sessions.set(tag, bytes);
             if (identity) {
@@ -151,9 +143,7 @@ function demoFiles(say) {
             /* THE FILES COME BACK NAMED, and that is the whole of what this
              * page does with them. It appends no extension and serialises no
              * JSON: doing either would be a second answer to a question the
-             * codec has already answered -- and when this page did append one,
-             * a multi-frame download went out named ".xyz" with extended-XYZ
-             * inside it. The .json rides along when there is metadata worth
+             * codec has already answered. The .json rides along when there is metadata worth
              * keeping (§ 11.3); when there is none the server sends one file,
              * which is exactly when a save writes one. */
             const files = answer.files || [];
@@ -278,8 +268,7 @@ async function start() {
 
     /* The console surface the page header advertises (__molview.…) —
      * the handle itself, published for hands-in-the-guts poking on THIS
-     * page only.  It was advertised without being published for a
-     * while, so every console instruction on the page failed. */
+     * page only. */
     window.__molview = viewer.data;
 
     say("ready — pick a sample");

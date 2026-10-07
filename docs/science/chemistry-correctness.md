@@ -36,7 +36,7 @@ flowchart TB
     end
     C["3 · Chemistry primitives — chemistry.py<br/>add_hydrogens (OpenBabel→RDKit) · formal_charge_from_phosphates"]
     AN["4 · Facts, the electronic state, the checks — chemistry.py / electronic_state.py / validation/<br/>analyze_structure() → facts · electronic_state() → the one state · check_electronic_state()"]
-    E["5 · Engine emission — siesta/input.py · pyscf/input.py<br/>render_fdf / render_script — preflight validate() first"]
+    E["5 · Engine emission — siesta/input.py · pyscf/input.py · script_emit.py<br/>spec_for → DeckSpec · render_deck — validate() first"]
     U --> D --> B --> C --> AN --> E
 ```
 
@@ -46,7 +46,7 @@ flowchart TB
 | 2 | Backend dispatcher | `builders/backends/__init__.py` | `engines/builders.md` |
 | 3 | Chemistry primitives (H + charge) | `chemistry.py` | [`model/chemistry.md`](?doc=model/chemistry.md) |
 | 4 | Facts, the electronic state, the checks | `chemistry.py` · `electronic_state.py` · `validation/` | § 2a · [`validation.md`](?doc=science/validation.md) |
-| 5 | Engine emission + pre-emit validate | `siesta/input.py` · `pyscf/input.py` | `engines/{siesta,pyscf}.md` |
+| 5 | Engine emission + pre-emit validate | `siesta/input.py` · `pyscf/input.py` · `script_emit.py` | `engines/{siesta,pyscf}.md` |
 
 The user doesn't pick a backend — they choose `--backend auto` (or accept the
 form default) and `dispatch(kind, sequence, *, backend="auto", …)`
@@ -188,8 +188,7 @@ flowchart TD
 - **Symptom** — forces ~10 eV/Å on a structure already near experimental
   equilibrium.
 - **Root cause** — `SpectraConfig` had no `charge` / `spin` fields, so the
-  spectra script's `gto.M(...)` (PySCF's molecule constructor, emitted by
-  `_emit_build_mol`, `spectra/pyscf_script.py:532`) silently used PySCF's `(0, 0)`
+  spectra script's `gto.M(...)` (PySCF's molecule constructor) silently used PySCF's `(0, 0)`
   default. Fe(II) in
   a 4-coordinate porphyrin (no axial ligands within bonding distance in the
   user's geometry) is intermediate-spin S=1 (`spin=2`), not closed-shell S=0. The
@@ -197,12 +196,11 @@ flowchart TD
   occupancies — hence the enormous gradient.
 - **What enabled the silent failure** — three compounding gaps: (1) the config
   field didn't exist; (2) the spectra engine's preflight had its *own* check list
-  that omitted the open-shell-metal rule (it ran only from Build's
-  `render_script`); (3) the user had no form field to specify spin. Silent wrong
+  that omitted the open-shell-metal rule (it ran only from the Build tab's
+  PySCF emitter); (3) the user had no form field to specify spin. Silent wrong
   default + no input surface + no surfaced advisory = the worst combination.
-- **Fixes that landed** — `charge` + `spin` added to `SpectraConfig`
-  (`config/spectra.py:190`, `:204`) with help text that enumerates the common
-  Fe(II) / Fe(III) spin combinations (`:210-218`) so the user has a starting
+- **Fixes that landed** — `charge` + `spin` added to `SpectraConfig` with help
+  text that enumerates the common Fe(II) / Fe(III) spin combinations, so the user has a starting
   point without reading the literature; emitted in the script's `gto.M(...)`; the
   open-shell-metal check added to **both** `_validate_pyscf` and `_validate_siesta`
   (via the shared `check_open_shell_metal` — since 2026-09-28 the electronic

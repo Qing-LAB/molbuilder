@@ -437,8 +437,9 @@ sources recommend, and how to design a benchmark matrix around it — is
 
 | Flag | Engines | Effect |
 |---|---|---|
-| `--continue` / `-c` | both | advance the run index and warm-restart from `.DM`/`.CG`/`.XV` (SIESTA) or `.chk` (PySCF) |
-| `--force` / `-f` | both | reset the run index to `-run0` (overwrite it); does **not** touch warm-start files. Also what says *yes, overwrite* to `--cold`'s refusal |
+| `--run N` | both | **the run's number**, which `launch` decides and gives every run script it starts ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1, § 5.5 below); every file of the run carries it as `-run<N>`. Without one the script refuses to start, naming the launch command — `-h` answers without one |
+| `--continue` / `-c` | both | this start continues the run before it — a warm retry's (§ 3.5) — and the banner says so; whether the engine reads the warm files (`.DM`/`.CG`/`.XV`, `.chk`) is the deck's to say. It advanced the run index too until 2026-10-06: the number is `launch`'s |
+| `--force` / `-f` | both | what says *yes, overwrite* to `--cold`'s refusal. It reset the run index to `-run0` until 2026-10-06 |
 | `--cold` / `--from-scratch` | both | start the engine from the deck alone, **overwriting** the prior state it names (§ `job-contracts § 4`). Names the files and **refuses**; `--force` proceeds |
 | `-np` / `--np N` | both | SIESTA: override MPI ranks. PySCF: accepted, and anything but 1 is said to be ignored — PySCF is OpenMP-only |
 | `-omp` / `--omp N` | both | override OMP threads (SIESTA also takes `-t` / `--threads N`) |
@@ -463,8 +464,9 @@ above are accepted, for either engine. The `.sbatch` outer file forwards
 
 ### 3.5 SIESTA auto-retry on non-convergence
 
-A SIESTA wrapper **re-runs itself warm**, with `--continue`, when its run ended
-in one of two ways a warm restart can fix. The budget is the template's
+A SIESTA wrapper **re-runs itself warm**, with `--continue` and the next
+run's number (`--run N+1`), when its run ended in one of two ways a warm
+restart can fix. The budget is the template's
 `continue_retries` (*Warm-retry budget*, 0–5, default 1), carried on
 `Resources` (`job-contracts.md` § 6.2) and bounded by the exported
 `MB_RETRY_N`; a benchmark trial's is `0`, one run whatever happens.
@@ -510,15 +512,27 @@ flowchart LR
     Q -->|"a clean exit"| F{"a finish to run?<br/>(Job.finish)"}
     F -->|"no"| C
     F -->|"yes: its exit status is the job's"| C
-    B -->|"yes"| R["re-exec with --continue"]
+    B -->|"yes"| R["re-exec with --continue --run N+1<br/>(flat: its launch record first)"]
     B -->|"no: say so"| C
 ```
 
 **A retry stays in its attempt**: the wrapper re-execs itself in the same
-process and directory, with the same `-np`/`--omp`, so the run index advances
-in place (`-run0` → `-run1`, [`project-layout.md`](?doc=execution/project-layout.md)
-§ 1.6.1) and only the last run writes the conclusion marker. The monitor is
-stopped with SIGUSR1, not an ending (§ 4.1).
+process and directory, with the same `-np`/`--omp` and the next run's number,
+so the run index advances in place (`-run0` → `-run1`,
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1) and only the
+last run writes the conclusion marker. The monitor is stopped with SIGUSR1,
+not an ending (§ 4.1).
+
+**In the flat shape the retry is a run with its own launch record.** Before
+it re-execs, the wrapper writes `<base>-run<N+1>.run.json` through the
+monitor's bundle — `mb_monitor.pyz retried`, whose writer is the one writer
+(`runrecord.record_retry` → `write_launch`): the same job, so the launch's
+mode, command, job id and queue; its own start; `continued_from` the run it
+retries, and `retry_of` that run's number (`project-layout.md` § 1.6.3,
+plan W57 decision 6). A record it cannot write is said in its log, and the
+run concludes without the retry: a run with no launch record is one no reader
+could place. In the hierarchy the attempt's `run.json` answers for every run
+in it, and nothing is written.
 
 ---
 
@@ -929,7 +943,10 @@ and the request admitted on it — then **shows the exact `sbatch` line
 and asks** ([`submission.md`](?doc=execution/submission.md) S4; `--yes` skips
 the question, never the output), records the attempt, and launches **one job
 per invocation** — a grouped bench one per resource shelf
-([`job-system.md`](?doc=execution/job-system.md) § 7). The single-stage door
+([`job-system.md`](?doc=execution/job-system.md) § 7). **It hands each run
+script its run's number**, `--run N`, decided in the plan with everything
+else ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): a run
+script refuses to start without one, naming this door. The single-stage door
 asks too *(ruled 2026-10-01)*: a launch flag may still change the queue, the
 wall or the memory after `prep`'s printout, so the line as sent is seen only
 here. A flag the launch would
@@ -1004,8 +1021,9 @@ instead of dying under `set -e` with no verdict; `-h`/`--help` is scanned
 **before** the gate and runs none of the bootstrap — asking what a script
 does needs neither a claim nor a working activation; and the refusal
 reaches the runwrap log as above. The deliberate manual form
-is `MB_LAUNCHED_BY=manual bash JOB.run.sh` (backgroundable), and the value is
-logged so the choice is on record. *(`bench-runner` was the transitional
+is `MB_LAUNCHED_BY=manual bash JOB.run.sh --run N` (backgroundable) — the
+script needs its run's number by hand as well — and the value is logged so
+the choice is on record. *(`bench-runner` was the transitional
 claim of the old bench launchers; they died at step 6 u5, 2026-08-12, and no
 shipped script emits it any more.)*
 

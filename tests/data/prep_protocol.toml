@@ -175,9 +175,7 @@ saved_states = ["set up"]
 # One door answers it (`materialize.stage_home`): a stage that has files
 # keeps the number they carry; one that has none takes its place in the
 # description when no folder holds that number, else the next after every
-# one in use.  It was the place in the description everywhere until
-# 2026-10-03, so a stage removed after its prep renumbered every stage
-# after it.
+# one in use.
 
 [[case]]
 name = "a stage removed after its prep leaves every later number as it was -- #2 is still the folder 02_medium"

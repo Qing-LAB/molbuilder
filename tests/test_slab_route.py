@@ -2,15 +2,8 @@
 fcc slab, placed from absolute coordinates rather than relative to a picked
 group"*).
 
-It was built **beside** `/api/modify/electrode` under the user's
-build-then-replace rule, and replaced it: that route placed a slab relative to
-a picked group, and went on 2026-09-01 once nothing in the browser called it
-(`archive/2026-09-01-modify-redesign-plan.md` § 3.4a, for the history).
-
-**The door reads no selection**, and that is asserted here rather than assumed,
-because it is the whole difference the redesign turned on: the old op placed
-relative to a picked group, this one from absolute coordinates.  Sending
-`indices` must change nothing.
+**The door reads no selection**, and that is asserted here rather than assumed:
+it places from absolute coordinates.  Sending `indices` must change nothing.
 """
 from __future__ import annotations
 
@@ -66,10 +59,7 @@ class TestItBuildsWhatItWasTold:
     def test_dx_dy_are_absolute(self, client):
         """Moving `dx, dy` moves the slab by exactly that, and nothing else.
 
-        This asserted the SLICE's centroid landed on `(dx, dy)`, which pinned
-        the reference that made `start_registry` wrong at any layer count that
-        is not a whole stacking period (`tests/test_add_slab.py`,
-        `TestTheRegistryIsNotContaminatedByTheTrim`).  Which point realises
+        Which point realises
         the placement is the builder's business; that the numbers translate
         it rigidly is the contract.
         """
@@ -87,8 +77,7 @@ class TestItBuildsWhatItWasTold:
 class TestItReadsNoSelection:
 
     def test_sending_indices_changes_nothing(self, client):
-        """The difference the redesign turned on, asserted as behaviour:
-        placement is absolute, so a selection is not merely ignored by the
+        """Asserted as behaviour: placement is absolute, so a selection is not merely ignored by the
         client — it cannot reach the answer even if sent."""
         plain = _post(client).get_json()["xyz"]
         with_sel = _post(client, indices=[0], center_indices=[0, 1]).get_json()["xyz"]
@@ -131,9 +120,4 @@ class TestWhatItRefuses:
     def test_zero_layers_is_a_no_op_not_an_error(self, client):
         d = _post(client, layers=0).get_json()
         assert d["ok"] is True and d["n_atoms"] == 2
-
-
-# ---------------------------------------------------------------------------
-# "From a bulk run…" reaches its route — the door it calls must exist
-# ---------------------------------------------------------------------------
 

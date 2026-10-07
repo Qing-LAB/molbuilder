@@ -199,9 +199,8 @@ def test_the_archive_directory_is_the_digest():
 def test_an_archive_name_that_is_not_a_digest_is_refused(name):
     """Including a 40-character commit sha.
 
-    Naming an archive after the state it belongs to is the scheme content
-    addressing replaced (§ 3); accepting one would reintroduce an archive whose
-    name does not prove its content.
+    Naming an archive after the state it belongs to (§ 3) would make an
+    archive whose name does not prove its content.
     """
     with pytest.raises(CheckpointError):
         archive_dir(Path("/calc"), name)

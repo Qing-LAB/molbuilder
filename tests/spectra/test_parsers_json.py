@@ -89,8 +89,7 @@ def _make_minimal_results(complete: bool = True) -> SpectraResults:
 
 def _write_json(tmp_path: Path, results, name: str = "spectra.json") -> Path:
     """The result as a run's file: through our ONE writer,
-    `dump_spectra_json` -- a payload dumped by hand stood here until
-    2026-10-06 (W57 T2: our own file through our own writer)."""
+    `dump_spectra_json`."""
     p = tmp_path / name
     dump_spectra_json(results, p)
     return p
@@ -194,11 +193,6 @@ class TestParseSpectraJsonMissing:
         assert str(bad) in str(exc_info.value)
 
 
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 47 tests here read a .spectra.json typed or edited by hand --
-# every one a file our writer never writes, most of them only refused (`process/testing.md` § 6).
-
-
 # --------------------------------------------------------------------- #
 #  Forward-compatibility                                                #
 # --------------------------------------------------------------------- #
@@ -209,10 +203,7 @@ class TestParseSpectraJsonForwardCompat:
     anything in it and it round-trips intact.  Every OTHER key is gated --
     an unknown top-level, mode, equilibrium or electronic-structure key is
     refused by name (`engines/vibration.md` § 6.7; the gate test is
-    `test_types.py::test_the_reader_refuses_a_key_it_does_not_know_by_name`).
-    The forward-compat rule this class was written under (the archived
-    spec's § 5: unknown keys ignored) was reversed on 2026-09-24, because a
-    misspelled key used to serve a chart with every number thrown away."""
+    `test_types.py::test_the_reader_refuses_a_key_it_does_not_know_by_name`)."""
 
     def test_extra_engine_metadata_keys_round_trip(self, tmp_path):
         """``engine_metadata`` is a free-form dict -- engines can
@@ -495,8 +486,8 @@ class TestDumpSpectraJson:
 #                                                                       #
 #  Robustness against the wire shapes the engine ACTUALLY writes:       #
 #  compute_raman=False -> raman_activity_a4_amu=null on every mode;     #
-#  selector=none -> every mode has electronic_structure=null;           #
-#  in-progress writes -> modes=[] until L2 finishes (archived-spec § 6.1).       #
+#  selector=skip -> every mode has electronic_structure=null;           #
+#  in-progress writes -> modes=[] until L2 finishes.                    #
 # --------------------------------------------------------------------- #
 
 
@@ -534,8 +525,7 @@ class TestOptionalNullFields:
         assert loaded.modes[0].raman_activity_a4_amu is None
 
     def test_ir_intensity_null_round_trips(self, tmp_path):
-        """ir_intensity_km_mol is always None in v1 (reserved for
-        v1.2 IR add-on)."""
+        """ir_intensity_km_mol=None round-trips."""
         results = _make_minimal_results()
         p = tmp_path / "ir_null.spectra.json"
         dump_spectra_json(results, p)
@@ -543,7 +533,7 @@ class TestOptionalNullFields:
         assert all(m.ir_intensity_km_mol is None for m in loaded.modes)
 
     def test_electronic_structure_null_round_trips(self, tmp_path):
-        """When selector=none (or a mode wasn't picked) the mode
+        """When selector=skip (or a mode wasn't picked) the mode
         has electronic_structure=None.  Wire form is the literal
         null at that key."""
         results = _make_minimal_results()
@@ -557,7 +547,7 @@ class TestOptionalNullFields:
 
 class TestImaginaryModeRoundTrip:
     """Saddle-point / spurious modes show up as negative
-    frequencies with has_imag=True (archived-spec § 5).  The wire shape
+    frequencies with has_imag=True.  The wire shape
     must preserve sign + flag faithfully."""
 
     def test_negative_frequency_with_has_imag(self, tmp_path):
@@ -573,8 +563,7 @@ class TestImaginaryModeRoundTrip:
         enough and the sign alone is not enough: both travel, and the mixed-mode
         file is what makes a per-mode rather than per-file handling visible.
 
-        Contract: the wire format's imaginary-mode rule,
-        `archive/old_docs/tabs/spectra/spec.md` § 5, enforced in
+        Contract: the wire format's imaginary-mode rule, enforced in
         `spectra/results.py::ModeData`.
         """
         from molbuilder.spectra.results import PHASE_COMPLETE, SCHEMA_VERSION
@@ -638,7 +627,7 @@ class TestImaginaryModeRoundTrip:
 
 
 class TestEmptyModesList:
-    """In-progress wire state per archived-spec § 6.1: between phase
+    """In-progress wire state: between phase
     Setup-complete and L2-complete the file can carry an empty
     modes list with phase_frequencies=running.  Parser must
     accept this without barfing."""
@@ -653,8 +642,7 @@ class TestEmptyModesList:
         demanded at least one mode would make the progress display fail exactly
         while there is progress to display.
 
-        Contract: `web/spectra.md` § 7 (live updating) + the phase model in
-        `archive/old_docs/tabs/spectra/spec.md` § 6.1.
+        Contract: `web/spectra.md` § 7 (live updating).
         """
         from molbuilder.spectra.results import PHASE_RUNNING, SCHEMA_VERSION
         results = SpectraResults(
@@ -765,7 +753,7 @@ class TestFilesystemEdgeCases:
 
 class TestGeometryRoundTrip:
     """The optional ``equilibrium.elements`` + ``equilibrium.
-    positions_ang`` fields (added late in the schema) round-trip
+    positions_ang`` fields round-trip
     cleanly and remain backward-compatible: older JSON without
     these keys still loads."""
 
@@ -1001,24 +989,6 @@ class TestComprehensiveRoundTrip:
         # Engine metadata (mixed types).
         assert loaded.engine_metadata["pyscf_grid_angular"] == 302
         assert loaded.engine_metadata["wall_time_seconds"] == pytest.approx(1234.567)
-
-
-# --------------------------------------------------------------------- #
-#  Numeric format edge cases                                            #
-#                                                                       #
-#  JSON accepts decimal and scientific-notation numbers; it rejects     #
-#  Fortran D-exponent, hex floats, and symbolic NaN/Inf tokens.  In     #
-#  addition, valid-syntax numbers like "1e500" silently overflow to     #
-#  ``float('inf')`` in stock json -- the parser must catch that too.    #
-# --------------------------------------------------------------------- #
-
-
-# `TestNumericFormats` retired 2026-10-06 (W57 T2): it tested "the numeric-
-# literal flavors that engines or hand-edited files might produce" -- a
-# `.spectra.json` written by hand.  The file is our writer's
-# (`dump_spectra_json`), read back by our reader; handcrafted input is not
-# molbuilder's to support (MEMORY: build molbuilder, don't clean up
-# handcrafted input).
 
 
 class TestComplexNumbersNotInWireFormat:

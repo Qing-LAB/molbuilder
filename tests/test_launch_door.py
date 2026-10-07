@@ -8,12 +8,8 @@ launch value is stated -- the queue, the wall, the memory -- and a launch
 flag overrides what prep baked, never fills what nobody stated);
 ``docs/execution/submission.md`` S4 (nothing is submitted unseen -- every
 door; a judgement only the person can make takes "no" as Enter's answer);
-``docs/execution/running-a-job.md`` § 5.5 (*`--mode ask` walks the identical
-path `--mode submit` walks ... the line asked about is the line that would be
-sent*; a flag the launch would not read is refused) and § 5.3.1 (`--mem 0` is
-the whole node); ``docs/execution/project-layout.md`` § 1.6.4 (a stage
-launched before is launched again by continuing it; one that never concluded
-only on the person's judgement); plan W52.
+``docs/execution/running-a-job.md`` § 5.5 (a flag the launch would not read
+is refused) and § 5.3.1 (`--mem 0` is the whole node); plan W52.
 
 PREVENTS, each read in the code before 2026-10-01 (the W52 review):
 
@@ -22,18 +18,10 @@ PREVENTS, each read in the code before 2026-10-01 (the W52 review):
   stage killed at `debug`'s fifteen minutes -- and sent with no question,
   while the grouped bench and the bias chain asked;
 * the queue one stage's prep baked routing every stage of the ladder;
-* `--mode ask` asking about a line with no queue on it, while `submit` would
-  have sent the baked one;
-* `launch --mem 0` refused, though the help it shares with prep offers it;
-* a GPU ask sent as typed (`--gres=a100:1`, a resource called `a100`), and
-  a card in the ask sent to the queue at all (`scheduler.md` R2a:
-  molbuilder names no card);
-* a re-launch that could not continue leaving a fresh attempt behind, and a
-  flat stage still in the queue launched again without a word.
+* `launch --mem 0` refused, though the help it shares with prep offers it.
 
 The scheduler is a stub on PATH that queues nothing and writes every call
-down (`support.road`); a finished run is the measured H2 relaxation.  Nothing
-here launches an engine.
+down (`support.road`).  Nothing here launches an engine.
 """
 from __future__ import annotations
 
@@ -41,7 +29,7 @@ import json
 
 import pytest
 
-from support.road import a_machine_with_queues, calls_made, describe_h2, jobset
+from support.road import a_machine_with_queues, calls_made, describe_calculation, jobset
 
 
 def _queues(gpu: bool = False):
@@ -76,7 +64,7 @@ def cluster(tmp_path, monkeypatch):
     it (no scheduler text in the basic tests), and the H2 ladder described
     on it, stating its wall and memory: ``(bundle, calls)``."""
     calls = a_machine_with_queues(tmp_path, monkeypatch, _queues())
-    return _states_its_wall_and_memory(describe_h2(tmp_path, monkeypatch)), \
+    return _states_its_wall_and_memory(describe_calculation(tmp_path, monkeypatch)), \
         calls
 
 
@@ -98,15 +86,6 @@ def _ledger(bundle):
     from molbuilder.jobset.ledger import LEDGER_FILE
     return [json.loads(ln) for ln in
             (bundle / LEDGER_FILE).read_text().splitlines()]
-
-
-# Retired 2026-10-06 (W57 T1, user: "the whole default test set should never
-# be based on fabricated text"): four tests that needed a stand-in `sbatch`
-# to answer in SLURM's words -- a stage shown, asked and SENT (its record's
-# job id 4242); `--mode ask` reading Sol's copied prediction; a relaunch and
-# a flat stage still in the queue, each reached through a first send that
-# 'succeeded'.  A real scheduler's answer is the field tier's
-# (`tests/field/`, testing.md § 0).
 
 
 def test_the_queue_prep_baked_belongs_to_its_own_stage(cluster):
@@ -231,6 +210,3 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     assert deck.name in said and "Launch again" in said, said
     assert calls_made(calls) == [] and not (attempt / "run.json").exists()
     assert _ledger(bundle)[-1]["decision"] == "refused"
-    # (Its second half -- the stage launched since by another launch, reached
-    # through a send a stand-in `sbatch` answered with a job id -- retired
-    # 2026-10-06, W57 T1: no scheduler text in the basic tests.)

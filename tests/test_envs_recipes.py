@@ -1,8 +1,5 @@
 """L1 tests for ``molbuilder.envs.recipes``.
 
-# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
-# CPython refuses a non-frozen subclass of a frozen one on its own.
-# A test that mutates an instance to watch Python raise tests Python.
 
 Pins the registry shape: every built-in recipe must have non-empty
 required fields, every routed recipe must reference a valid category
@@ -22,7 +19,6 @@ from molbuilder.diagnostics import DEFAULT_ENV_NAMES
 from molbuilder.envs.recipes import (
     _PYTHON_SPEC,
     builtin_recipes,
-    Recipe,
     recipe_by_name,
     recipe_for_category,
 )
@@ -103,12 +99,9 @@ def test_recipe_names_are_unique():
     )
 
 
-# `test_routed_recipes_match_default_env_names` stood here.  A routed recipe
-# takes its name FROM the table now (`name=DEFAULT_ENV_NAMES["pyscf"]`), so
-# both halves it asserted are structural: the names agree by construction, and
-# an unknown category is a `KeyError` at import -- demonstrated, not argued.
-#
-# The reverse direction below is NOT covered by that and stays: a category
+# A routed recipe takes its name FROM the table (`name=DEFAULT_ENV_NAMES[...]`),
+# so the names agree by construction and an unknown category is a `KeyError`
+# at import.  The reverse direction below is not covered by that: a category
 # added to `DEFAULT_ENV_NAMES` with no recipe is still writable.
 
 def test_default_env_names_all_have_recipes():
@@ -141,18 +134,3 @@ def test_recipe_for_category_finds_every_routed_recipe():
 
 def test_recipe_for_category_returns_none_for_unknown():
     assert recipe_for_category("not-a-category") is None
-
-
-# The CUDA version the GPU recipes carry, at each of its three tiers, is
-# `test_the_machine_is_probed_on_first_use.py`'s: read off what `envs install
-# --dry-run` would run, the resolution included (plan W36 ⑥).  Three API-level
-# tests of `_resolve_cuda_version` and the registry stood here until
-# 2026-09-29; the command line shows every fact they asserted, and the probe's
-# own tier, which none of them reached.
-
-
-# `test_extra_steps_are_tuples_of_tuples` stood here.  Its docstring called
-# itself a "defensive shape check" and named the mistake --
-# `extra_steps=("python","-m","x")` instead of `(("python","-m","x"),)`,
-# which the installer runs as one command per character.  The constructor
-# refuses both that and a non-str argument now.

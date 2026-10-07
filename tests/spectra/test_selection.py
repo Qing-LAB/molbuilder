@@ -3,9 +3,7 @@
 `engines/vibration.md` § 4.8 -- the three selectors and the frequency window
 that filters `all`.  The PySCF vibration script imports this function from
 `mb_pyscf.pyz` (`engines/pyscf.md` § 3), so these test the selector a run
-uses.  Its hand-written copy in the script, and the test that held the two
-equal, went on 2026-10-05; so did the `prior` argument, which no caller
-passed, with its two tests.  The listed modes' TEXT is read by
+uses.  The listed modes' TEXT is read by
 `PySCFConfig.explicit_modes` before it gets here, and is tested where it is
 read (`test_methods.py`, the end-to-end probe run).
 """

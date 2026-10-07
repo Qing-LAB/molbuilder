@@ -6,13 +6,6 @@ Contract: `model/parse.md` § 5.  Floor 1 (`execution/architecture.md` § 2.1):
 **this module knows no calculation.**  What a folder IS, the description it
 belongs to, the label its files are named on and the run it speaks for are the
 run door's (`molbuilder.runs`, floor 2), which asks these with what it read.
-
-*Until 2026-10-04 this module also held `JobDirParser` -- the directory door,
-which composed these with the folder's place and the calculation's kind, read
-from `task.json` raw, and with labels guessed from the folder's decks
-(`labels_in`, `read_back`).  It moved up to `molbuilder.runs.folder_answer`
-(plan B11, B14): the label is the description's, and only `read_task` opens
-the description.*
 """
 from __future__ import annotations
 
@@ -23,11 +16,7 @@ from typing import List, Optional, Tuple
 def _claimed(path: str) -> bool:
     """Does a registered parser claim this file? — the REGISTRY's question.
 
-    The door never offers a file `detect()` refuses.  It did until
-    2026-09-18: pointed at a finished spectrum directory with no molwatch
-    log, the chain returned `<job>_<stage>.log` — PySCF's own verbose
-    logger, which no parser claims — and the caller's very next step was
-    `detect()`, which refused it.  *What is a run's output* and *what can a
+    The door never offers a file `detect()` refuses.  *What is a run's output* and *what can a
     person open* are different questions with different owners
     (`model/parse.md` § 5.5); this is the second one, and the registry owns
     it.
@@ -66,9 +55,7 @@ def openable_in(directory: str, calculation: Optional[str] = None
     run door instead (`runs.folder_answer`): its speaking run's own file,
     read back with its label -- this floor knows no label, so it can only
     ask by a dotted role, and among one role's files it can only take the
-    newest.  *(The search read a label off the folder's decks, and tried
-    generic names for a folder nobody described, until 2026-10-04 -- a
-    search for a run molbuilder's wrapper did not run: plan B11.)*
+    newest.
 
     ``attempts`` is not decoration: it is the BODY of the refusal a person
     reads when nothing matched, and it moves with the search so the message
@@ -106,22 +93,21 @@ def openable_in(directory: str, calculation: Optional[str] = None
     return None, attempts
 
 
-def run_state_of(directory, basename: str):
+def run_state_of(directory, names):
     """The run's state through the one door (`job.run_status`), asked with
-    its launch record (`runrecord.launch_record`) as every reader asks it.
-    A launch record that does not read is the state ``unreadable``, the file
-    named in its detail -- never read as launched or not launched, and
-    never followed.  *(It was a ``problem`` beside the state the files gave
-    without the record until 2026-10-06: ``running`` where nothing else was
-    written, and a viewer followed it forever.)*  The run door (`runs`)
-    asks it, with the run's own stem."""
+    its launch record (`runrecord.launch_record`) as every reader asks it --
+    the stage's newest run's, named by its stage's names
+    (`runfiles.RunNames`).  A launch record that does not read is the state
+    ``unreadable``, the file named in its detail -- never read as launched
+    or not launched, and never followed.
+    The run door (`runs`) asks it, with the run's names."""
     from molbuilder.runrecord import LaunchRecordError, launch_record
     from .job import RunStatus, run_status
     try:
-        launch = launch_record(directory, basename)
+        launch = launch_record(directory, names)
     except LaunchRecordError as e:
         return RunStatus(state="unreadable", detail=str(e))
-    return run_status(directory, basename, launch=launch)
+    return run_status(directory, names.stem, launch=launch)
 
 
 __all__ = ["openable_in", "run_state_of"]

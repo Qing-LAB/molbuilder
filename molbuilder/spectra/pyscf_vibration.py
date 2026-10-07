@@ -6,9 +6,7 @@ The script imports them from ``mb_pyscf.pyz`` beside it
 not installed: this file travels as itself, so it imports the standard library,
 numpy and ``constants`` at load -- the last the two ways a travelling module
 does -- and PySCF only inside the functions that drive it, under the job's own
-env.  Until 2026-10-05 the first two lived in ``pyscf/vibration_emitters.py``
-and were pasted into the script by ``inspect.getsource``; the third was
-written out as script lines.  The SIESTA route's counterpart is
+env.  The SIESTA route's counterpart is
 ``spectra/siesta_vibration.py``.
 """
 from __future__ import annotations
@@ -21,8 +19,7 @@ except ImportError:                         # beside a job, in mb_pyscf.pyz
 
 #: The HOMO rule, as a REAL FUNCTION so it can be called and tested.
 #:
-#: It lived only as emitted script text until 2026-09-09, and it has a BRANCH:
-#: PySCF gives `mo_occ` as a 1-D array for RHF/RKS and a 2-D (alpha, beta) array
+#: It has a BRANCH: PySCF gives `mo_occ` as a 1-D array for RHF/RKS and a 2-D (alpha, beta) array
 #: for UHF/UKS, which must be summed before the highest occupied level can be
 #: found.  Get that wrong and every OPEN-SHELL calculation reports the wrong
 #: HOMO -- and `web/spectra.md` § 3.1 records the level diagram, the gap and the
@@ -218,8 +215,7 @@ def mo_window(mo_energy, homo, n_below, n_above):
     § 4.8): the HOMO and ``n_below`` levels under it, the LUMO and ``n_above``
     over it -- symmetric by contract, so the slice ends at
     ``homo + 2 + n_above``, one past the last kept -- and the HOMO's place in
-    it.  Returns ``(energies, homo_in_window)``.  The window read one level
-    short on the LUMO side until 2026-09-24, while it was script text."""
+    it.  Returns ``(energies, homo_in_window)``."""
     import numpy as np
     e = np.asarray(mo_energy)
     lo = max(0, int(homo) - int(n_below))

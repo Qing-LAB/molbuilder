@@ -2,8 +2,7 @@
 
 Pins the contract of the schema endpoint + the page template + the
 static JS module the page depends on.  The page is the COMPOSITE's
-describe surface since P7b (cite -> bias -> send); the engine-backed
-render endpoint stays as the registry's validation surface.
+describe surface (cite -> bias -> send).
 """
 from __future__ import annotations
 
@@ -110,7 +109,6 @@ class TestTransportSchemaEndpoint:
         r = web.get("/api/transport/schema?surface=lane")
         assert r.status_code == 400
 
-    # `test_engine_choices_are_registered_engines` deleted 2026-09-17 with the engine registry.
 
     def test_schema_carries_field_metadata_for_render(self, web):
         """Every field must carry the metadata form-schema.js needs
@@ -139,8 +137,7 @@ class TestTransportPageRendering:
         assert r.status_code == 200
         body = r.data.decode()
         assert 'id="transport-form-container"' in body
-        # the composite card (P7b): cite + bias + send -- the Generate
-        # button retired with the bundle road
+        # the composite card: cite + bias + send
         assert 'id="transport-junction-btn"' in body
         assert 'id="transport-send-btn"' in body
         assert 'transport-generate-btn' not in body

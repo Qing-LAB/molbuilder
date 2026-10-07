@@ -65,14 +65,6 @@ const FOLD   = "molviewer-panel-fold-btn";
  *                   freezes the master copy (§ 9.4); `files` is the door bytes
  *                   leave through (§ 6.7), handed in the same way the workspace
  *                   is, because MolView never reaches a file itself.
- *
- *                   There is no `reservedLabels` here any more. The names
- *                   MolView offers before anyone has used them are MolView's
- *                   own (model-jobs.js): they are conveniences, and asking five
- *                   pages to hand in the same four names meant five copies of
- *                   one list — of which only the demo page ever passed it, so
- *                   every label chip on every real page came out the same
- *                   colour.
  */
 export async function mount(hostEl, workspace, opts) {
     opts = opts || {};
@@ -128,22 +120,15 @@ export async function mount(hostEl, workspace, opts) {
         embed = createEmbed(card.canvas, {});
         parts.push(() => embed.dispose());
     } catch (e) {
-        /* NAME THE CAUSE ON THE CARD.  This said only "The 3D viewer could
-         * not start." for BOTH failures, which are unrelated and have
-         * unrelated fixes -- the vendor script missing (a deployment
+        /* NAME THE CAUSE ON THE CARD.  The two failures are unrelated and
+         * have unrelated fixes -- the vendor script missing (a deployment
          * problem, on the server) and no WebGL context (a browser problem,
-         * on the machine looking at it).  A person reading the card could
-         * not tell which, and neither could anyone they reported it to.
-         * Reported 2026-09-02, after the ambiguity cost a debugging session
-         * on the wrong machine. */
+         * on the machine looking at it). */
         const why = String((e && e.message) || e || "");
         let said;
         /* THE LIBRARY IS NOT NAMED HERE (§ 5.3).  Only the sealed layer may
          * name it, and it does: its own refusal carries the script's name,
-         * and that message is shown verbatim below.  Naming it here made the
-         * name appear in two files, which is the one thing § 5.3 forbids --
-         * caught by `test_the_graphics_library_is_named_in_exactly_one_file`
-         * the same day the message was written (2026-09-02). */
+         * and that message is shown verbatim below. */
         if (/must be loaded first/i.test(why)) {
             said = "The 3D viewer could not start: its drawing library did "
                  + "not load. That is a SERVER problem \u2014 the viewer's "
@@ -181,11 +166,7 @@ export async function mount(hostEl, workspace, opts) {
     const engine = createRenderEngine(embed);
     model._attachRenderer(engine);
 
-    /* The drawing settings reach the drawing (§ 10.1). Until this line existed
-     * the View menu changed a store NOBODY READ: the buttons took their pressed
-     * state, the store fired, its only subscriber was the menu updating itself,
-     * and the picture never changed. A door the module owns but never opens is
-     * indistinguishable from a broken one.
+    /* The drawing settings reach the drawing (§ 10.1).
      *
      * Seeded once with the store's current value so the drawing starts on the
      * store's defaults rather than the seal's own — two sets of defaults that
@@ -212,10 +193,8 @@ export async function mount(hostEl, workspace, opts) {
      * THE INDEX IS TRANSLATED HERE, because this is the only entry where a
      * drawn index exists -- the atom rows already carry real ones (§ 11.6).
      * Under isolate the drawn numbering no longer matches the real one
-     * (§ 6.5), and this used to drop the click entirely for that reason.  But
-     * the answer to a numbering problem is the map, not a closed door: the
-     * renderer owns one and `drawnToOriginal` asks it, so what reaches
-     * `pickAtom` is an atom rather than a seat.
+     * (§ 6.5): the renderer owns the map and `drawnToOriginal` asks it, so
+     * what reaches `pickAtom` is an atom rather than a seat.
      *
      * WHAT STAYS SHUT under isolate is SELECTING by window click, and for its
      * own reason rather than a numbering one: isolate draws only the selected
@@ -225,11 +204,9 @@ export async function mount(hostEl, workspace, opts) {
      * is already exempt from isolate on the way OUT, so this makes the two
      * directions agree (user, 2026-08-31). */
     embed.onPick((drawnIndex) => {
-        /* THE SAME ANSWER THE DRAWING USES.  This read the raw `isolate`
-         * switch until 2026-09-07, so with nothing selected -- isolate on,
-         * nothing to hide, the whole structure drawn -- every click here was
-         * dropped and the 3-D view silently stopped selecting.  `isolate` on
-         * is not `isolate` in effect; the renderer has always known that. */
+        /* THE SAME ANSWER THE DRAWING USES: `isolate` on is not `isolate` in
+         * effect -- with nothing selected the whole structure is drawn, and
+         * a click must still select. */
         const sel = model.selection.getState();
         if (isolateInEffect(sel, sel.selection)
                 && !model.measurement.getState().active) return;
@@ -289,12 +266,10 @@ export async function mount(hostEl, workspace, opts) {
      * doors a consumer legitimately needs and nothing more.
      *
      * WHY (user, 2026-08-31: "why would you expose all internal when there is
-     * no need for outside user to have them?").  `selection` alone has eighteen
-     * doors; outside code uses three.  Among the fifteen it does not use is
-     * `toggle` -- and a consumer calling `selection.toggle(i)` writes a pick
-     * without going through `pickAtom`, so the rule that decides
-     * measuring-vs-selecting never runs.  That is not hypothetical: it is
-     * exactly the defect the measurement track had until this was written.
+     * no need for outside user to have them?").  A consumer calling
+     * `selection.toggle(i)` would write a pick without going through
+     * `pickAtom`, so the rule that decides measuring-vs-selecting would never
+     * run.
      *
      * The line is: READS ARE OPEN, and the only writes that leave are the ones
      * a consumer was found to need.  Everything else -- adding, removing,
@@ -313,9 +288,8 @@ export async function mount(hostEl, workspace, opts) {
          * Everything here is an honest selection operation a consumer may ask
          * for.  `toggle` is not, and it is the only one left out: a pick is
          * routed by `pickAtom`, which decides whether a click means measuring
-         * or selecting.  A consumer calling `toggle` writes straight past that
-         * -- which is the defect the measurement track had, one store over.
-         * Anything wanting to toggle an atom calls `pickAtom`. */
+         * or selecting.  A consumer calling `toggle` would write straight past
+         * that.  Anything wanting to toggle an atom calls `pickAtom`. */
         selection: { enumerable: true, value: {
             get:           () => model.selection.get(),
             getState:      () => model.selection.getState(),

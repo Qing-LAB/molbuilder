@@ -1,8 +1,5 @@
 """L2 tests for molbuilder.parse — the unified parse module.
 
-# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
-# CPython refuses a non-frozen subclass of a frozen one on its own.
-# A test that mutates an instance to watch Python raise tests Python.
 
 Pins docs/model/parse.md (registry + dispatch) and
 § 3 (ParseResult discriminators).  A SIESTA output's detection and parse are
@@ -20,29 +17,19 @@ from molbuilder.parse.registry import _registered_file_parsers
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-# The SIESTA output's detection and parse moved to the e2e tier 2026-10-06:
-# they read a run made on the road with the real SIESTA,
-# `tests/test_siesta_flat_run_e2e.py` (`process/testing.md` § 6).
 
 
 # Registration --------------------------------------------------------- #
 
 
 def test_engine_parsers_registered():
-    """All three Phase-C engine wrappers land in the FileParser
+    """All three engine parsers land in the FileParser
     registry at import time."""
     file_parsers = _registered_file_parsers()
     names = {p.name for p in file_parsers}
     assert "siesta" in names
     assert "pyscf" in names
     assert "molwatch" in names
-
-
-# A directory is not a file: the registry holds FileParsers only, and a run
-# folder is the run door's (`molbuilder.runs.folder_answer`, `model/parse.md`
-# § 5).  `JobDirParser` and `parse_dir` stood here until 2026-10-04: the
-# directory door read the description, which this floor must not (plan B11,
-# B14).
 
 
 # Detection + dispatch ------------------------------------------------- #
@@ -68,18 +55,7 @@ def test_detect_refuses_a_directory_by_name(tmp_path):
         detect(tmp_path)
 
 
-# Result discriminators ----------------------------------------------- #
-
-
-# Frozen invariant ---------------------------------------------------- #
-
-
 # ---- a parser must not claim what it cannot read ---------------------- #
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 2 tests here detected a SIESTA .FA or a geomeTRIC trajectory
-# typed by hand (`process/testing.md` § 6).
 
 
 def test_nothing_shipped_beside_a_job_is_claimed_as_its_output(tmp_path):

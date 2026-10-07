@@ -113,9 +113,9 @@ export async function mount(host, options = {}) {
     const onSelect = typeof options.onSelect === "function" ? options.onSelect : null;
 
     /* Declared once, at mount: the channels this chart draws, in order.
-     * A chart with no channels declared still works -- it draws the one
-     * generic lane the module had before channels existed, which is what
-     * a caller that only has "an activity" still means. */
+     * A chart with no channels declared still works -- it draws one
+     * generic lane, which is what a caller that only has "an activity"
+     * means. */
     const channels = (Array.isArray(options.channels) && options.channels.length
         ? options.channels
         : [{ key: "activity", label: "activity", unit: "", direction: "up" }]
@@ -172,9 +172,7 @@ export async function mount(host, options = {}) {
 
         /* The strongest REAL band in a channel, which two different
          * things need: the display floor is a fraction of it, and a
-         * relative lane divides by it.  Computed once per lane -- it was
-         * written out twice, identically, which is one edit away from
-         * two lanes disagreeing about their own peak. */
+         * relative lane divides by it.  Computed once per lane. */
         const peakIn = (key) => Math.max(0, ...modes
             .filter((m) => !m.imaginary)
             .map((m) => Math.abs(valueIn(m, key) ?? 0)));
@@ -255,10 +253,7 @@ export async function mount(host, options = {}) {
                 key: c.key,
                 direction: c.direction,
                 /* The unit belongs to the CHANNEL, so it is named by
-                 * whoever declared it.  The y-title used to be the
-                 * string "Raman activity (Å⁴/amu)" hardcoded here --
-                 * which is how a chart that was otherwise
-                 * quantity-agnostic came to be a Raman viewer.  A lane
+                 * whoever declared it.  A lane
                  * with no numbers yet still names itself: an anonymous
                  * axis beside a named one reads as a second unit nobody
                  * declared. */
@@ -355,9 +350,7 @@ export async function mount(host, options = {}) {
         if (!near) return "";
         const { mode } = near;
         /* EVERY channel that has a number for this mode, each with its
-         * own unit.  The readout used to name one quantity in one
-         * hardcoded unit, which on a mirror plot would describe half of
-         * what is on screen and silently mislabel the other half. */
+         * own unit. */
         const strengths = channels
             .map((c) => {
                 const v = valueIn(mode, c.key);

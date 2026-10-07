@@ -12,15 +12,10 @@ enumerated, checked cell by cell against the target's queues, and reported
 (`_cells_this_machine_holds`, `_rank_reasons`, `_local_refusals`, `_cell_*`).
 
 **The conductor's own assembly, beside it** (`architecture.md` § 2.1's note:
-only a surface imports the conductor, and its own modules).  This sat in
-`jobset/_cli.py` -- floor 7 -- until 2026-09-29, so the Task setup tab reached
-ACROSS to the command line for it (A7), and the one prep entry both doors now
-call (`prep.prep_stage`, plan W38 F7) could not have called it.  The move
-changed two things and nothing else: a refusal is a `PrepError`, which each
-surface shows as it is, and what a person is TOLD comes back through the
-``notes`` list a caller hands in -- the command line prints it, the tab shows
-it -- rather than being printed here.  `_bench_inputs` became `bench_inputs`:
-two modules call it now.
+only a surface imports the conductor, and its own modules).  A refusal is a
+`PrepError`, which each surface shows as it is, and what a person is TOLD
+comes back through the ``notes`` list a caller hands in -- the command line
+prints it, the tab shows it -- rather than being printed here.
 """
 from __future__ import annotations
 
@@ -34,8 +29,7 @@ def _declared_execution_pins(task, bench_override=None):
     2026-08-20; `generator.md` § 4.3a): every non-machine entry overrides
     the template -- several points = an axis to try, ONE point = the value
     the bench's trials run with, applied at prep as a pin for them alone
-    (trials only since 2026-09-30: the run's values are its own card's,
-    `stages.md` § 6.8d).  Nothing migrates between files: the description
+    (the run's values are its own card's, `stages.md` § 6.8d).  Nothing migrates between files: the description
     stays exactly as edited, and prep is where a declaration is resolved.
     The run's condition is handed through here too (:func:`run_inputs`), so
     the two lanes split a name by one rule.
@@ -45,16 +39,12 @@ def _declared_execution_pins(task, bench_override=None):
     axes), and the MULTI-point non-machine entries as value axes --
     ``{name: [points...]}`` -- which `bench_inputs` crosses with the
     machine grid so every trial's deck carries its coordinates
-    (§ 4.3a's built rule, 2026-08-21; refused by name until then).
+    (§ 4.3a's built rule).
 
     Refused BY NAME, never repaired -- through the ONE shape checker
-    (`validation/task.py::_bench_points_fit_their_items`, R2-5 dedup
-    2026-08-21): an enum value outside the item's choices, a non-bool on
-    a bool item, a repeated point.  This function carried its own copy
-    of those rules; the copies had already diverged (a duplicated
-    allocation point -- ``mpi_np: [8, 8, 16]`` -- was refused at
-    describe and accepted here, because the local copy classified
-    allocation entries before checking them).  The dispatch runs the
+    (`validation/task.py::_bench_points_fit_their_items`): an enum value
+    outside the item's choices, a non-bool on a bool item, a repeated
+    point.  The dispatch runs the
     full preflight BEFORE this helper, so on either door of the one prep
     entry the refusal normally lands there with every finding listed; the
     call here is the backstop for direct callers, first-refusal shaped as
@@ -69,7 +59,7 @@ def _declared_execution_pins(task, bench_override=None):
     arms exist here.
 
     ``task`` is the description its caller holds -- read once by the prep
-    that asks (W55 B1); this read it again until 2026-10-05.
+    that asks (W55 B1).
     """
     from ..validation.task import _bench_points_fit_their_items
     from .. import template as _T
@@ -124,13 +114,11 @@ def _declared_execution_pins(task, bench_override=None):
 #: value AXIS naming one of these is refused -- its trials would be one
 #: measurement under many labels.  One spelling for both uses (the pins
 #: and that refusal); the per-key whys sit at the application site.
-#: ``max_scf_iter: 3`` since 2026-08-21 (user, from measured experience:
+#: ``max_scf_iter: 3`` (user, 2026-08-21, from measured experience:
 #: iterations 3-5 agree within seconds on a 444-atom junction, and the
 #: bench reads SCALING and DEPENDENCY -- the knee -- not tight rankings):
 #: iteration 1 never forms a timing delta, the iter-2 delta is dropped as
-#: warm-up-adjacent, iteration 3 is the one clean sample.  It was 5 (a
-#: three-sample mean) from 2026-08-19; older 5-iteration records still
-#: average, the reader is shape-blind (tuning.md § 2.12).
+#: warm-up-adjacent, iteration 3 is the one clean sample (tuning.md § 2.12).
 _MEASUREMENT_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
                      "continue_retries": 0, "scf_must_converge": False}
 
@@ -142,9 +130,7 @@ def _gpus_per_node(base, routing=None) -> "int | None":
     caller holds its record; else the folder's.
 
     A COUNT, and no card: which card a node carries is the machine's
-    business (`scheduler.md` R2a; user, 2026-10-01).  This returned a card
-    beside the count until then, refused a queue listing several, and took
-    a card stated in `molbuilder.json` over the queue's own.
+    business (`scheduler.md` R2a; user, 2026-10-01).
     """
     from ..runtime_config import get_routing
     from ..scheduler.place import candidates
@@ -166,32 +152,20 @@ def _cells_this_machine_holds(base, plan, *,
     non-empty, so ``why`` alone decides kept-vs-crossed.
 
     **Enumerate everything, then cross out what the machine cannot hold,
-    then show what is left** (user, 2026-08-30).  What this replaces was a
-    single ``max_cores`` number (`_gpu_core_cap`) compared against the GPU
-    family only, and it was wrong three ways at once: it read
-    ``candidates()[0]`` -- on Sol the *debug* queue, whose 15-minute wall
-    this bench can never use -- it read ``max_cores``, which since
-    2026-08-27 is the widest machine OF ANY KIND rather than the widest
-    with a device, and it never looked at the device TYPE.  So it answered
-    128 for a grid whose GPU cells can only land on 48- and 64-core nodes,
-    dropped nothing, and left the disagreement to be discovered by sbatch.
+    then show what is left** (user, 2026-08-30).
 
     The check is `scheduler.admits` over `scheduler.place.candidates` --
     the same pair `place` itself walks, so "some queue admits it" here and
     "placeable" at launch are one verdict, not two.  What is NOT done here
     is CHOOSING one: the queue each of a benchmark's sides goes to is named
-    at its launch (`--domain`, `--gpu-domain`; `scheduler.md` R7).  Naming
-    a winner here put ``-> debug`` beside every GPU cell -- the queue with
-    the tightest ceiling wins when no wall is stated, and debug's ceiling is
-    fifteen minutes.  So the row lists WHERE IT COULD GO.
+    at its launch (`--domain`, `--gpu-domain`; `scheduler.md` R7).  So the
+    row lists WHERE IT COULD GO.
 
     A machine with no queue menu at all is answered by ``local_cores`` /
     ``local_gpus`` -- the probed topology of the box this runs on, which
     IS the machine when nothing schedules for it.  That is the ONLY place
     topology may bound a cell: on a cluster it measures whichever node the
-    probe happened to land on, and R0 says a queue holds many kinds.  A
-    declared 128-rank point was refused outright against it until
-    2026-08-30, on a cluster whose `public` holds 107 nodes of 128 cores.
+    probe happened to land on, and R0 says a queue holds many kinds.
     """
     from ..runtime_config import get_routing
     from ..scheduler.admit import Request, admits
@@ -270,15 +244,10 @@ def _local_refusals(cell, fam, cores_total, gpus_per_node):
     against: an unmeasured topology is silence, and silence never bars
     (R3).  Reasons name their numbers (R4).
     """
-    # FINDINGS, NOT SENTENCES -- the same conversion `admits` had on
-    # 2026-09-09 and this function did not get.  Everything downstream reads
-    # the FIELDS: `_rank_reasons` dedups on `(limit, message)`, and the
-    # task-setup card renders `.message` per cell.  Handed strings, both
-    # raise -- and the browser showed the
-    # raise: `'str' object has no attribute 'message'` in the machine-fit
-    # panel, on the ONE path that reaches here, a box with no scheduler
-    # (found 2026-09-11 by walking the UI).  The numbers stay numbers; the
-    # sentence is rendered at the edge, once.
+    # FINDINGS, NOT SENTENCES, as `admits` returns.  Everything downstream
+    # reads the FIELDS: `_rank_reasons` dedups on `(limit, message)`, and
+    # the task-setup card renders `.message` per cell.  The numbers stay
+    # numbers; the sentence is rendered at the edge, once.
     from ..scheduler.admit import Refusal
     g, k, c = cell
     ranks = _cell_ranks(fam, g, k)
@@ -321,11 +290,7 @@ def _cell_ranks(fam, g, k) -> int:
     """How many ranks a cell runs -- ``G x K`` on the GPU family, ``K`` on
     the CPU one.
 
-    ONE SPELLING.  It was written three times -- in the fit check, in the
-    shape line, and in the report -- and the three agreed only because the
-    CPU family always holds ``G=0``.  Three copies of one arithmetic is how
-    the ceilings in this very file came to disagree; this is the same fault
-    at a smaller scale, fixed before it could grow one.
+    ONE SPELLING, for the fit check, the shape line and the report.
     """
     return g * k if (fam and g) else k
 
@@ -336,8 +301,7 @@ def _cell_label(g, k, c) -> str:
     nothing else"), ``G0`` for a CPU cell on every machine.  A sweep with
     value axes crosses each cell with them, so its trials' names go on past
     this one (``G0K48C1ELPA1stage``): the fit list names the cell, the
-    directories its trials.  *(Spelled by hand here until 2026-10-06, its
-    docstring saying the two names were one.)*"""
+    directories its trials."""
     from ..resolve import point_token
     return point_token({"G": g, "K": k, "C": c})
 
@@ -367,24 +331,12 @@ def declared_run_shape(base, task, stage=None):
     **A DIRECT MAP, because there is nothing to work out.** The template
     carries the physics and the deck knobs (`template.md` § 5); a launch
     value this block does not name is stated as a flag, or prep refuses the
-    run (`architecture.md` § 5.2) -- nothing fills one in.  *(An unnamed
-    field was "resolved by the wrapper at run time" until 2026-10-02.)*
-
-    > **This went through the grid enumerator for one afternoon**
-    > (2026-09-02) on the argument that a run is a sweep of length one. It is
-    > — *below* `resolve()`, which is where the shared pipeline actually is.
-    > `bench_inputs` sits ABOVE that and is a sweep's own machinery: it must
-    > invent the axes a condition does not mention. So `{omp_threads: 4}`
-    > came back as a **single-rank job** (its `mpi_np or [1]` default),
-    > `{use_gpu: true, mpi_np: 8}` came back **empty** because G enumerated
-    > three cells and "not one cell" was read as "nothing decided", and
-    > `max_memory_mb` was refused as a bench axis the translation did not
-    > know. Reusing a wheel is right; reusing the wrong wheel invents the
-    > problem it then solves.
+    run (`architecture.md` § 5.2) -- nothing fills one in.  Not the grid
+    enumerator: `bench_inputs` is a sweep's own machinery and must invent the
+    axes a condition does not mention.
 
     The device ask is a COUNT -- ``gpu:N`` -- and names no card: which card
-    a node carries is the machine's business (`scheduler.md` R2a; a card was
-    looked up here, 2026-09-30 to 2026-10-01).  The count is the run card's
+    a node carries is the machine's business (`scheduler.md` R2a).  The count is the run card's
     own ``gpu_count``, on every engine, carried as stated: whether the run
     uses the GPU is its resolved ``use_gpu``, and the two are asked together
     by the prep entry, of the job it resolves (`prep._resolve_stage`,
@@ -437,8 +389,7 @@ def run_inputs(base, task, stage=None):
     # THE SHAPE EVEN WHEN THE CARD IS EMPTY: a template whose `use_gpu` is on
     # is a device run with nothing on its card, and its count is asked for
     # like any other's (`gpu.md` G5 -- refused, unstated, by the prep entry
-    # of the job it resolves).  It returned before this, so that run
-    # reached the header with no ask (the K5 review's B1).
+    # of the job it resolves).
     return declared_run_shape(base, task, stage), dict(pins or {})
 
 
@@ -462,18 +413,9 @@ def prep_run_inputs(base, task, stage, allocation=None):
     run (`stages.md` § 6.8d, plan § 5w K5): ``execution``, the calculation's
     block with the rung's over it -- what the person ASKED for.  Its machine
     items are the launch shape, the rest are pins over the template.  The
-    two sources that stood beside it are gone: the benchmark's verdict
-    (2026-09-02), and the bench's one-point non-machine declarations, which
-    pin the trials alone since 2026-09-30 -- each was a second home for a
-    value the run card states.
+    bench's one-point non-machine declarations pin the trials alone.
 
     A flag beats it and is already in ``allocation`` when it arrives.
-
-    **It was three branches for an hour on 2026-09-02** and each divergence
-    was a different run: the browser had no verdict, no bench pins, and at
-    first no condition pins -- so a solver chosen on the run card reached the
-    sbatch's neighbour and not the deck.  That is the class of bug one
-    assembly makes impossible rather than merely unlikely.
     """
     from .model import Resources
 
@@ -486,8 +428,7 @@ def prep_run_inputs(base, task, stage, allocation=None):
     # 1 · THE CONDITION -- the run card, the launch-shape ladder's first rung,
     #     under a flag (`architecture.md` § 5.2) -- folded where the rest of
     #     the allocation is, once, at step 2 (`prep._fold_allocation`: a
-    #     flag, then the run card, then the description).  *(It was folded
-    #     here too until 2026-10-05, the same answer twice.)*
+    #     flag, then the run card, then the description).
     chosen, cond_pins = run_inputs(base, task, stage)
     # WHETHER A GPU RUN STATES HOW MANY, AND A CPU RUN NONE (`execution/
     # gpu.md` G5) is the prep entry's to ask, of the job it resolves from
@@ -496,14 +437,10 @@ def prep_run_inputs(base, task, stage, allocation=None):
 
     # 1b · THE CALCULATION'S SCHEDULER ASK is folded where the stage is
     #      resolved, once (`prep._resolve_stage`, `prep._fold_allocation`:
-    #      a flag, then the run card, then the description).  *(It was folded
-    #      here too until 2026-10-05 -- a second home of that rule, kept for
-    #      the Task setup card's rows; the card shows the entry's preview
-    #      now.)*
+    #      a flag, then the run card, then the description).
 
-    # 2 · THERE IS NO SECOND RUNG.  A benchmark's verdict was folded in here
-    #     until 2026-09-02, from an editable `run-config.toml`.  It is now a
-    #     REPORT a person reads (printed by `summarize`), and what the
+    # 2 · THERE IS NO SECOND RUNG.  A benchmark's verdict is a REPORT a
+    #     person reads (printed by `summarize`), and what the
     #     run uses is what that person then wrote in `execution`
     #     (`architecture.md` § 5.2, user ruling: "the run parameter needs to
     #     be explicitly decided/written").  A measurement that reaches the
@@ -512,14 +449,13 @@ def prep_run_inputs(base, task, stage, allocation=None):
 
     # 3 · THE PINS -- the condition's alone (5.2's deck/speed ladder).  The
     #     bench's one-point declarations pin its trials, never the run
-    #     (`stages.md` § 6.8d's "and nowhere else", 2026-09-30).
+    #     (`stages.md` § 6.8d's "and nowhere else").
     pins = dict(cond_pins) or None
 
     # 4 · NOTHING IS WORKED OUT FOR WHAT NOBODY STATED.  An unstated rank or
     #     thread count is refused by `launch_refusal`, which the entry asks
     #     with the whole assembly in hand (`architecture.md` § 5.2; user,
-    #     2026-10-02: "explicit job config is the only way allowed").  It
-    #     was sized from the target's width here until then.
+    #     2026-10-02: "explicit job config is the only way allowed").
 
     # `chosen` is returned for the PREVIEW to name; it is already folded in.
     return allocation, pins, chosen
@@ -536,15 +472,11 @@ def bench_refusal(task):
                 "parameters come from its own template and each rung's run "
                 "card, and its one axis is the bias list in task.json "
                 "(engines/transport.md 2a.10).")
-    # THE SEAM REFUSAL, BY NAME (E-J1, restored 2026-08-21).  The bench
-    # lane speaks SIESTA's vocabulary today: the measurement pins name
-    # SiestaConfig fields (`max_scf_iter`, `restart`, ...), and the GPU
-    # question is read under SIESTA's `use_gpu`.  A PySCF description
-    # used to be stopped only by ACCIDENT -- those pins failing resolve
-    # with a message blaming settings the user never wrote -- and the
-    # accident evaporates the day PySCFConfig grows any same-named
-    # field, after which a `use_gpu` sweep silently enumerates a CPU
-    # grid (`engines/stages.md` § 6.8's recorded hazard).
+    # THE SEAM REFUSAL, BY NAME (E-J1).  The bench lane speaks SIESTA's
+    # vocabulary today: the measurement pins name SiestaConfig fields
+    # (`max_scf_iter`, `restart`, ...), and the GPU question is read under
+    # SIESTA's `use_gpu`, so another engine's sweep could silently
+    # enumerate a CPU grid (`engines/stages.md` § 6.8's recorded hazard).
     if str(task.engine) != "siesta":
         return (f"this description's engine is {task.engine!r}, and the "
                 f"benchmark lane only speaks SIESTA today: its measurement "
@@ -561,15 +493,8 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                  template_text=None, ask=None):
     """The benchmark specialisation's three inputs — `project-layout.md`
 
-    ``target`` is REQUIRED, and that is the point (2026-08-24).  It read
-    ``target=None`` until a caller forgot it: the browser's prep door called
-    ``bench_inputs(dest)``, Python filled the default, and the grid was
-    enumerated against "no machine named" -- which is a MEANINGFUL state
-    (one record, no ambiguity) so nothing raised, and it failed only on a
-    machine holding two records, only on the write path.  This function
-    exists to read a SPECIFIC machine's hardware; letting that be omitted
-    made the one fact it needs the one fact a caller could forget.  Pass
-    ``None`` deliberately to mean "this machine".
+    ``target`` is REQUIRED: this function exists to read a SPECIFIC
+    machine's hardware.  Pass ``None`` deliberately to mean "this machine".
 
     § 2.3.1a's split, stated as data: WHERE the values come from (the grid,
     enumerated from THIS machine's probed topology, as explicit points), the
@@ -578,30 +503,22 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     (`generator.md` § 2).
 
     **The grid is RESOLVED here, at prep — and the description may DECLARE
-    it** (`generator.md` § 4.3a, user-settled 2026-08-17, wired 2026-08-19).
+    it** (`generator.md` § 4.3a, user-settled 2026-08-17).
     ``task.json``'s ``bench`` names the points to try — *"try 4, 8 and 16
     ranks"* is true on every cluster, so it is portable and belongs with the
     calculation; what those points MEAN on this machine is resolved here.
     With no declaration the machine proposes: the grid is enumerated from
-    the probed topology, exactly as before.  (Until 2026-08-19 the
-    declaration was read by nothing — this function always enumerated, so
-    declaring ``{mpi_np: [1,2,3]}`` produced eleven machine-chosen K×C
-    trials, and the user had no say in what was measured.)
+    the probed topology.
 
     **Whether this is a GPU grid is the DESCRIPTION's answer, not this
     function's assumption** (2026-08-17).  `web/task-setup.md` § 6.2 —
     *"use GPU or not is set up only at the Job Prep UI"* — makes ``use_gpu``
     a value the person chose, carried in the template like any other; and
     § 6.2 is equally explicit that the eigensolver is NOT the same question
-    (``diag_algorithm`` is a `budget` item on the parameter tab).  This
-    function pinned ``use_gpu=True`` and ``diag_algorithm='ELPA-1STAGE'``
-    flat, so every trial measured a GPU regardless of what was asked for —
-    and on a machine with no GPU the whole verb refused, which made a
-    CPU benchmark impossible to run at all.  Both pins are gone: the
+    (``diag_algorithm`` is a `budget` item on the parameter tab).  The
     description answers, and the grid follows its answer.
 
-    **A multi-point non-machine entry is a VALUE AXIS** (§ 4.3a, built
-    2026-08-21): its points multiply the machine grid, each point carries
+    **A multi-point non-machine entry is a VALUE AXIS** (§ 4.3a): its points multiply the machine grid, each point carries
     its coordinates (the resolver's parameter lane applies them per
     trial), and ``use_gpu`` with two points is the grid-FAMILY axis --
     the grid enumerates once per flag, G=0 holding the CPU family's
@@ -638,24 +555,21 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     if why:
         raise PrepError(why)
     # The grid is enumerated from the TARGET's topology, not from whatever
-    # box you happen to be typing on (P2, 2026-08-17).  Without this a
-    # benchmark prepped on a workstation for a cluster measured the
-    # workstation -- 20 cores, no GPU -- and said nothing.
+    # box you happen to be typing on (P2, 2026-08-17).
     # READ, NOT SNAPSHOTTED: the bench card asks this on every edit, and
     # `prep bench` writes its snapshot at step 1 of the five, after the
-    # under-way question (W52: every edit tied the calculation to the
-    # machine on the picker).
+    # under-way question (W52).
     if environment is None:
         environment = machine_record(base, target)
     # THE TARGET'S MENU, from the record in hand -- its probed queues -- for
-    # every check below (`runtime_config.routing_of`;
-    # W52: the cells read the folder's menu, which a calculation not yet
-    # prepped cannot name when several machines are on file).
+    # every check below (`runtime_config.routing_of`): a calculation not
+    # yet prepped cannot name the folder's menu when several machines are on
+    # file.
     from ..runtime_config import routing_of
     menu = routing_of(environment)
     topo = getattr(environment, "topology", None)
     # GPUs per node as the record states them -- None when it does not say,
-    # never read as 0 (it was until 2026-10-06; `configuration.md` M-2).
+    # never read as 0 (`configuration.md` M-2).
     node_gpus = getattr(topo, "gpus_per_node", None)
     gpn = node_gpus or 0
     cps = getattr(topo, "cores_per_socket", None)
@@ -671,16 +585,13 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                             f"values from the template.")
         template_text = _tpl.read_text(encoding="utf-8")
     tmpl = read_template(template_text)
-    # Through `select` -- `template.md` § 8.0 owns the rule.  What it cost
-    # HERE: the hand-rolled comprehension ignored ``engines``, so on a PySCF
-    # description it read the GPU flag as absent and enumerated a CPU grid,
-    # silently -- § 2.2's predicted failure exactly.
+    # Through `select` -- `template.md` § 8.0 owns the rule.
     #
     # ``select`` rather than ``one`` because the question is *is it on?*: a
     # template that never carried the item answers "no", while ``one`` RAISES
     # on a name the file never had -- right for a caller that NEEDS the item,
     # wrong for one asking whether it exists.  One name for both engines
-    # since 2026-08-23 (`execution/gpu.md` § 4).
+    # (`execution/gpu.md` § 4).
     # THE DECLARED OVERRIDE LANE, split before anything is decided (user
     # rule, 2026-08-20): one-point non-machine entries are pins -- values
     # in force for every trial -- and the machine-answered entries are the
@@ -746,20 +657,15 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
 
     # The axes come from the split above -- the value entries already left
     # as pins or value axes, so what remains is machine-answered by
-    # construction.  (The
-    # raw read + unknown-axes refusal that stood here moved into
-    # `_declared_execution_pins`, which refuses by name with the § 4.3a
-    # story: non-execution items, bad enum/bool values, and the
-    # multi-point value axis that is recorded rather than built.)
+    # construction.
     declared = {k: list(v) for k, v in declared_axes.items()}
     _KNOWN_AXES = ("mpi_np", "omp_threads", "gpu_count")
     _unresolvable = sorted(k for k in declared if k not in _KNOWN_AXES)
     if _unresolvable:
         # `max_memory_mb` (and PySCF's `threads`) are machine-answered
         # execution items TOO -- the helper hands every allocation item
-        # through as an axis, and the grid resolves exactly these two.
-        # Without this refusal a declared memory axis was silently ignored
-        # (the static review's catch; the pre-split code refused it here).
+        # through as an axis, and the grid resolves exactly these; without
+        # this refusal a declared memory axis would be silently ignored.
         raise PrepError(
             f"task.json declares bench axes this machine translation does "
             f"not know: {', '.join(_unresolvable)}.  The axes a sweep can "
@@ -768,8 +674,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     sockets = getattr(topo, "sockets", None)
     #: What the LOCAL box holds -- the ceiling only when this machine has
     #: no queues to answer for it (`_cells_this_machine_holds`).  Unknown
-    #: when the record does not say both -- never a smaller limit (R3: an
-    #: unknown socket count read as one until 2026-10-06).
+    #: when the record does not say both -- never a smaller limit (R3).
     cores_total = (sockets * cps) if (sockets and cps) else None
     # gpu_count alone does not declare a RANK grid: without mpi_np /
     # omp_threads the K x C half stays the machine's proposal, filtered
@@ -778,8 +683,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     if grid_declared and not (declared.get("mpi_np")
                               and declared.get("omp_threads")):
         # BOTH OR NEITHER: a declared grid states its ranks and its cores
-        # per rank -- the one left out was filled with [1] until
-        # 2026-10-06, points nobody declared.
+        # per rank.
         said, left = (("mpi_np", "omp_threads")
                       if declared.get("mpi_np") else ("omp_threads", "mpi_np"))
         raise PrepError(
@@ -795,18 +699,9 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
         # measure a configuration nobody declared.
         ranks = [int(v) for v in declared["mpi_np"]]
         cores = [int(v) for v in declared["omp_threads"]]
-        # A DECLARED POINT IS NOT REFUSED HERE ANY MORE (2026-08-30).  It
-        # was, against ``topology.sockets x cores_per_socket`` -- ONE
-        # machine's measurement, taken wherever the probe happened to run.
-        # R0 is the whole reason the scheduler subsystem exists: a
-        # partition is a QUEUE holding many machine kinds, and on Sol the
-        # probe lands on a 64-core GPU node while `public` holds 107
-        # nodes of 128.  So a declared 128-rank point -- which those 107
-        # nodes run happily -- was refused outright, and the person was
-        # told to "benchmark on the machine it is meant to measure" while
-        # standing on it.
-        #
-        # The queues answer instead, cell by cell, in
+        # A DECLARED POINT IS NOT REFUSED HERE against the probed topology:
+        # a partition is a QUEUE holding many machine kinds (R0).  The
+        # queues answer instead, cell by cell, in
         # `_cells_this_machine_holds` -- which falls back to this same
         # topology when there is no queue menu at all, because a
         # workstation IS its own machine.
@@ -859,8 +754,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                 return cells
             return [(0, r, c) for r in ranks for c in cores]
         # THE MACHINE PROPOSES FROM WHAT ITS RECORD SAYS: no cores per
-        # socket, no proposal -- a grid of constants stood in until
-        # 2026-10-06, the machine's word for numbers it never gave.
+        # socket, no proposal.
         ks = sweep_K(topo)
         if not ks:
             raise PrepError(
@@ -883,19 +777,13 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # with what language we use to indicate error, but present the correct
     # outcome").  The grid is a proposal; the machine record is the thing
     # that decides; and what the person needs on screen is the surviving
-    # list, not a sentence about a number.
-    #
-    # Both families go through it.  The CPU family was never checked at
-    # all -- the old cap applied to GPU cells only -- so a rank count no
-    # queue here can hold was carried all the way to `launch`.
+    # list, not a sentence about a number.  Both families go through it.
     plan = [(fam, cell) for fam in families for cell in _family_cells(fam)]
     checked = _cells_this_machine_holds(base, plan,
                                         local_cores=cores_total,
                                         local_gpus=gpn, routing=menu)
     # ...AND WHAT THIS PREP DOES NOT ALLOW: a cell past the person's own ask
-    # is crossed out by name, beside the ones no queue holds.  Until
-    # 2026-10-05 the ask bounded the trials in `resolve` alone, which
-    # refused the whole prep over a cell the machine had proposed.
+    # is crossed out by name, beside the ones no queue holds.
     marked = []
     for fam, cell, doms, why in checked:
         past = _past_the_ask(fam, cell, ask)
@@ -906,10 +794,8 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     crossed = [(f, cell, why) for f, cell, doms, why in checked if why]
 
     # THE SAME REPORT THE TERMINAL PRINTS, AS DATA.  The task-setup card
-    # shows this list live beside the axes being edited, and a browser that
-    # enumerated it a second way would be exactly the drifting second
-    # decider this grid was rebuilt to remove.  One enumerator, two
-    # renderings.
+    # shows this list live beside the axes being edited.  One enumerator,
+    # two renderings.
     if report is not None:
         report.extend(
             {"label": _cell_label(g, k, c),
@@ -923,8 +809,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
              "fits": list(doms), "why": [i.message for i in why]}
             for fam, (g, k, c), doms, why in checked)
 
-    # "THIS MACHINE" WAS THE WRONG WORD.  The menu these cells are checked
-    # against is the TARGET's -- `prep --target sol` on a workstation reads
+    # The menu these cells are checked against is the TARGET's -- `prep --target sol` on a workstation reads
     # the record for Sol, a cluster you are not standing on at all
     # (`preparing-for-another-machine.md`).  So the count is about the
     # QUEUES, and says so.
@@ -942,14 +827,9 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
         note(f"  crossed out ({len(crossed)}) -- no queue takes them, or "
              f"this prep's ask does not allow them:")
         for fam, (g, k, c), why in crossed:
-            # `.message`, NOT the Refusal itself.  These became findings on
-            # 2026-09-11 (`_local_refusals`, so the task-setup card could stop
-            # printing a Python AttributeError) and this line still
-            # interpolated the object -- which prints its repr,
-            # `Refusal(limit='cores', ..., asked=8192, ...)`, where the
-            # terminal wants "needs 8192 cores but this machine allows 4".
-            # The numbers are fields so callers can read them; the SENTENCE is
-            # what a person is shown.
+            # `.message`, NOT the Refusal itself, whose repr is not a
+            # sentence.  The numbers are fields so callers can read them; the
+            # SENTENCE is what a person is shown.
             note(f"    {_cell_label(g, k, c):<11} "
                  f"{_cell_shape(g, k, c):<37}  "
                  f"{why[0].message if hasattr(why[0], 'message') else why[0]}")
@@ -1010,8 +890,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     points = []
     for fam, (g, k, c) in cells:
         # EVERY TRIAL CARRIES G -- ``G0`` for a CPU trial, on every
-        # machine: a machine with no GPU left it out from 2026-08-21 until
-        # 2026-10-06, a naming change nobody asked for.
+        # machine.
         if mixed:
             coord = {"G": g, "K": k, "C": c, "use_gpu": fam}
         else:
@@ -1040,15 +919,10 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
             axes=("G", "K", "C"),
             to_resources=lambda p, _env: {
                 "mpi_np": p["K"], "cpus_per_task": p["C"]})
-    # The trial pins -- what `transform_fdf` used to SPLICE into a finished
-    # deck, now schema values resolved like any other (`template.md` § 8.1:
-    # rebuild and render, never splice): capped SCF, single point, forced
-    # cold -- and ``scf_must_converge: False``, the switch that makes the
-    # cap CLEAN (item added 2026-08-19: until then the keyword had no
-    # schema field, the retired splicer used to invent the line, and every
-    # properly-capped trial ended ABNORMAL_TERMINATION, classified
-    # incomplete, and could never win -- `choose_winner` ranks only
-    # completed points, so a sweep could not produce a verdict at all).
+    # The trial pins -- schema values resolved like any other (`template.md`
+    # § 8.1: rebuild and render, never splice): capped SCF, single point,
+    # forced cold -- and ``scf_must_converge: False``, the switch that makes
+    # the cap CLEAN (`choose_winner` ranks only completed points).
     #
     # What is pinned here is what makes a trial a MEASUREMENT rather than a
     # run.  What the calculation IS -- the GPU, the eigensolver, the block
@@ -1060,10 +934,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # budget reads that as a failure and re-runs, and `summarize` reads the
     # HIGHEST run index -- so every trial that retried was timed on its second
     # run and every trial that did not was timed on its first.  Those are not
-    # comparable, which is the one thing a sweep exists to be.  (Until the
-    # `restart: clean` group was written out rather than omitted, the second
-    # run was also WARM, so the second measurement was of a different
-    # calculation as well as a different run.)
+    # comparable, which is the one thing a sweep exists to be.
     # The declared values ride UNDER the measurement pins: what makes a
     # trial a measurement (capped SCF, forced cold, run-once) must win
     # over any declaration -- one-point declarations and value-axis

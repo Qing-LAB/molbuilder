@@ -3,8 +3,6 @@
 `model/parse.md` § 5d.2 and § 5d.5: its build, its ranks, its k-points,
 how long each spin pass took, the voltage it applied and the current and
 power it reports -- and which transmission files it wrote, per spin channel.
-No parser claimed a TBtrans ``.out`` until 2026-09-26, so a transmission run
-was labelled *SIESTA* by the wrapper and reached no record at all.
 
 The patterns are ``siesta_grammar``'s, the family's one table.  Not a
 registered viewer file: the transmission rung's result is the transport

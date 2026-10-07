@@ -216,9 +216,6 @@ def test_drop_overlapping_hydrogens_no_overlap_returns_struct_unchanged():
 
 # --------------------------------------------------------------------- #
 #  Spin/charge parity + open-shell metal detection                      #
-#  (2026-05-22 hemeC-dithiol incident -- both helpers added to surface  #
-#  the silent-default failures.  Tests pin the contracts shared by      #
-#  _validate_pyscf, _validate_siesta, and the spectra preflight.)       #
 # --------------------------------------------------------------------- #
 
 
@@ -252,11 +249,6 @@ class TestAPdbMetalArrivesDecoded:
         READER decodes that, because uppercase IS the field's convention.  So
         the chemistry facts never see `FE` and have no reason to
         capitalize-match; folding downstream is what turns `CA` into calcium.
-
-        The old test asserted the fold against a hand-built
-        `Structure(["FE"])` -- a state the reader cannot produce.  This one
-        goes through the reader, so it pins the boundary instead of a
-        hypothetical.
 
         Contract: `model/chemistry.md` § 3 -- a file is authoritative and is
         decoded at the format; a person's label is gated at create/add/modify;
@@ -330,15 +322,6 @@ class TestResolvePyscfEcp:
                          positions=np.array([[0, 0, 0], [1, 0, 0],
                                              [-1, 0, 0], [0, 1, 0], [0, -1, 0]]))
 
-    # REDESIGNED 2026-08-13.  Six tests stood here pinning a rule that
-    # is retired: ``None`` meant *auto* -- add lanl2dz when any element
-    # had Z > 36 and the basis was not def2 -- and ``""`` / ``"none"``
-    # were two spellings of off, beside a dict form.  The user's ruling:
-    # *"there is no point to limit matching to heavy -- who defines
-    # heavy? there is no clear reasoning or standard"*, *"empty means
-    # empty"*, *"one choice, one explicit format"*.  Replaced rather
-    # than patched: a test pinning a retired rule makes it harder to
-    # remove and reads later as policy.
 
     def test_a_name_and_a_selector_produce_a_per_element_map(self):
         """The only output shape: ``{element: ecp}`` for what matched."""
@@ -404,9 +387,8 @@ class TestResolvePyscfEcp:
         assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["Xe"]) is None
 
     def test_nothing_is_added_for_a_structure_that_declared_none(self):
-        """The retired auto-rule would have put lanl2dz on this Pt for
-        being Z > 36 on a non-def2 basis.  Now the user gets what they
-        asked for, which is nothing."""
+        """No Z threshold adds an ECP: the user gets what they asked for,
+        which is nothing."""
         from molbuilder.chemistry import resolve_pyscf_ecp
         assert resolve_pyscf_ecp(self._pt(), "", []) is None
 
@@ -416,10 +398,7 @@ class TestResolvePyscfEcp:
 #                                                                       #
 #  `Au1`/`Au2` -- two gold species with different basis or pseudo -- is #
 #  ordinary input.  SIESTA's `%block ChemicalSpeciesLabel` is           #
-#  `index Z label` for exactly that reason.  Until 2026-09-09 our layer #
-#  was the only one that conflated the two: the SIESTA emitter raised   #
-#  `KeyError: 'Au1'`, and BOTH transport emitters wrote `Z=0` into the  #
-#  block and carried on.                                                #
+#  `index Z label` for exactly that reason.                            #
 #                                                                       #
 #  Contract: `chemistry.resolve_element`.                               #
 # --------------------------------------------------------------------- #
@@ -493,9 +472,7 @@ class TestSpeciesLabel:
         calcium again.  Both failures are silent, so the question needs one
         door.
 
-        Every element comparison in `molbuilder/` goes through this; the
-        phosphate finder, the hydrogen sweep and the amber CH2 fixer all
-        used a bare `==` until 2026-09-09.
+        Every element comparison in `molbuilder/` goes through this.
 
         Contract: `model/chemistry.md` § 3.
         """
@@ -531,10 +508,9 @@ class TestSpeciesLabel:
     def test_a_labelled_heavy_element_still_earns_its_ECP_warning(self):
         """The same conflation, in the check that most needed not to have it.
 
-        The ECP hint asks "is this element past Kr", and it used to ask a
-        hand-copied 118-entry table with `.get(sym, 0)`.  A gold atom labelled
-        `Au1` scored 0, so the warning that all-electron gold is wrong twice
-        over -- cost and missing scalar relativity -- silently did not fire.
+        The ECP hint asks "is this element past Kr"; a gold atom labelled
+        `Au1` must still get the warning that all-electron gold is wrong twice
+        over -- cost and missing scalar relativity.
         """
         from molbuilder.validation.chemistry import (
             _check_ecp_declared_for_the_atoms_that_usually_want_one as _ecp)

@@ -1,11 +1,8 @@
-"""The sweep reader's pure units — ``parse_point``, the winner, the text.
+"""The sweep reader's pure units.
 
-The bundle-walking half this file used to exercise (``discover_points``'
-directory regex, ``summarize_bundle``/``run_summarize``) was DELETED
-2026-08-12 (u5) with the shipped-bundle lifecycle; the LIVE, data-keyed
-path — ``discover_points_from_jobset`` / ``run_summarize_jobset`` — is
-covered end-to-end in tests/test_prep_bench_fold.py.  What remains here
-are the parsing units both paths share.
+The data-keyed path — ``discover_points_from_jobset`` /
+``run_summarize_jobset`` — is covered end-to-end in
+tests/test_prep_bench_fold.py.
 """
 from __future__ import annotations
 
@@ -15,12 +12,6 @@ from __future__ import annotations
 # --------------------------------------------------------------------- #
 #  What the trial actually ran -- the WIRING, not the parsers            #
 # --------------------------------------------------------------------- #
-#
-# The parsers themselves are pinned in test_bench_result.py.  What these
-# pin is that `parse_point` actually READS a trial's artifacts and fills
-# `effective` / `mismatch` -- a mutation blanking the readback passed the
-# whole bench suite before these existed, which is the shape of the
-# original defect: the check can be absent and everything stays green.
 
 
 def test_one_deck_reader_and_it_takes_the_first_match(tmp_path):

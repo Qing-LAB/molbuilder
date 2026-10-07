@@ -297,7 +297,8 @@ Two rules keep this from hiding anything:
 > and geomeTRIC's two per-stage trajectories. The generator was right; the menu
 > was reading it at the wrong granularity.
 >
-> Note the naming: a staged run's master is `<label>_<stage>.molwatch.log`
+> Note the naming: a staged run's master is `<label>_<stage>.molwatch.log` —
+> in the flat shape `<label>_<stage>-run<N>.molwatch.log`, each run's own —
 > while its carried satellites are plain `<label>_*`, so matching a master to
 > its satellites means stripping the stage token first
 > (`execution/job-contracts.md § 2.2a`).
@@ -354,8 +355,8 @@ Two rules keep this from hiding anything:
 
 > **✅ That rename landed on 2026-08-10 and this section was not updated
 > until 2026-09-08.** The trajectory log is named for **the deck that produced
-> it** — `<label>_<stage>.molwatch.log`, the same name whether stages share a
-> directory or each has its own — and the `-stage<N>` infix is gone
+> it** — `<label>_<stage>.molwatch.log`, and where stages share a directory
+> each run's own, `-run<N>` (since 2026-10-06) — and the `-stage<N>` infix is gone
 > ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a).
 > The consumer has already moved with it: `lib/inspectors/trajectory.js`'s
 > `absorbs()` matches the current grammar. Read the rest of this note as

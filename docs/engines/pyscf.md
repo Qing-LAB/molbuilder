@@ -11,9 +11,11 @@ emission); [`model/chemistry.md`](?doc=model/chemistry.md) (charge / ECP resolut
 
 This is how molbuilder turns a `Structure` + a `PySCFConfig` into a **runnable
 Python script**. Unlike SIESTA (a compiled binary reading an `.fdf`), PySCF is a
-Python library, so the emitter writes a `.py` file you run directly — which lets
-molbuilder put the whole staged-optimization loop *inside* the script. The one
-entry point is `render_script(struct, config) -> str` (`pyscf/input.py`).
+Python library, so the emitter writes a `.py` file you run directly. The
+engine describes the deck — `spec_for(struct, config=None, *, names,
+calculation="optimization") -> DeckSpec` (`pyscf/input.py`) — and `jobset prep`
+hands that spec to `script_emit.prepare_deck`, which validates, renders
+(`script_emit.render_deck`), writes and checks it.
 
 > **Vocabulary.** Cross-cutting terms (DFT, SCF, open/closed-shell, RKS/UKS, ECP)
 > are in the [`science/overview.md` glossary](?doc=science/overview.md). Key PySCF
@@ -42,14 +44,15 @@ flowchart LR
     end
     PREP["CLI: molbuilder jobset prep<br/>(via the template)"]
     WEB["web Structure-optimization tab<br/><i>collects parameters only —<br/>renders no script</i>"]
-    R["render_script(struct, config)<br/>pyscf/input.py"]
+    R["spec_for(struct, config, *, names) → DeckSpec<br/>pyscf/input.py"]
+    P["prepare_deck(spec, …)<br/>script_emit.py<br/><i>validate → render_deck → write → check</i>"]
     PY["job.py — a runnable script"]
     RUN["running it → job.log · job.chk ·<br/>*_optimized.xyz · job.molwatch.log · …"]
     S --> R
     C --> R
     PREP --> R
     WEB -.->|"the parameters it collected,<br/>via the template"| PREP
-    R --> PY --> RUN
+    R --> P --> PY --> RUN
 ```
 
 
@@ -74,19 +77,24 @@ flowchart LR
 > `prepare_deck`, the same three steps with the description in front of them
 > instead of a command line; `prep.py:651` already builds a full `EngineSeam`
 > for PySCF, so nothing had to be built to replace the verb.
-> **`render_script` stays**: it is a thin call over `spec_for` and it is this
-> emitter's public surface, named as such by this contract. *(It stays for that
-> reason and not because 43 test files call it — a test never justifies code.)*
 
-- **Backend.** `render_script(struct, config)` returns the `.py` text, and
-  that is the whole public surface. Verbose comments are on by default so the
-  script reads as documentation of its own choices. A deck reaches disk one
-  way — `jobset prep`, which calls `spec_for` → `prepare_deck` on the machine
-  that will run it:
+- **Backend.** `spec_for(struct, config, *, names, calculation=…)` returns the
+  `.py` deck's `script_emit.DeckSpec` — its layout, how each setting is
+  spelled, the values its record carries and the rules the finished deck must
+  satisfy — and the framework renders it (`script_emit.render_deck`). The
+  public surface is `spec_for` and `PySCFConfig`, which `molbuilder.pyscf`
+  exports. Verbose comments are on by default so the script reads as
+  documentation of its own choices. A deck reaches disk one way —
+  `jobset prep`, which calls `spec_for` → `script_emit.prepare_deck` (validate
+  → render → write → check) on the machine that will run it; a PySCF run
+  states the cores it runs on and no rank count, and on a machine with a queue
+  its queue, wall and memory too (`--domain`, `--time`, `--mem`):
 
   ```bash
-  molbuilder jobset init --engine pyscf --stage-strategy single-point
-  molbuilder jobset prep <job-set-dir>
+  molbuilder jobset init --structure P/structure/water.xyz --bundle P/optimization/water \
+      --engine pyscf --calculation optimization --shape flat
+  molbuilder jobset prep run coarse --bundle P/optimization/water --target this \
+      --cpus-per-task 4
   ```
 
   **A ladder is N decks** (§ 1.1a), declared in `task.json` and built by
@@ -138,6 +146,18 @@ by the config flag in column 2):
 > it writes the placeholder as `<stage>` rather than the `*` that sweep
 > searched for. Build the name with `runfiles.compose`, never by hand.
 
+**In the flat shape the four per-run files carry the run's number** after the
+stage token — `<job>_<NN>_<stage>-run<N>.log`, `…-run<N>_geom_optim.xyz`,
+`…-run<N>_geom.log`, `…-run<N>.molwatch.log`. Prep renders each name from the
+stage's names (`runfiles.RunNames`) as a template, `{run}` where the number
+goes, and the script fills it with the number its run script gives it,
+`python <script>.py --run N` — every PySCF script takes `--run N`, and in the
+hierarchy its templates have nothing to fill. A flat stage launched again is
+a second run in the same folder, and PySCF opens its log with `'w'` — the
+next run truncated the last's *(until 2026-10-06, plan W57 decision 2;
+`execution/job-contracts.md` § 2.2)*. The hierarchy's run folder is its run,
+and names them as the table does.
+
 The script's header `Outputs:` block lists **exactly** this set for the active
 config — no under- or over-promising. `job_name` stays unsuffixed so
 `.chk`/`.log`/`_optimized.xyz` transfer across stages.
@@ -158,10 +178,9 @@ config — no under- or over-promising. `job_name` stays unsuffixed so
 > was right, and it is now true of both engines.
 >
 > **The stage token is a RENDER ARGUMENT, not a config field.**
-> `spec_for(struct, config, *, stage_token=…)` carries it; the deck's log
-> name and molwatch suffix resolve through the same
-> `trajectory_log.format::molwatch_log_basename` helper SIESTA's emitter
-> uses, so there is one rule and not two.
+> `spec_for(struct, config, *, names=…)` carries it, in the stage's names
+> (`runfiles.RunNames`); the deck's log name and molwatch name resolve
+> through them, as every writer's do, so there is one rule and not two.
 >
 > *(A `cfg.stage` field held the token transitionally, and this note called
 > it "a live catalogue item … safe to build on" until the U6 close — by
@@ -274,7 +293,8 @@ end lines at exit; the structure codec — every geometry the run saves is a
 pair written by it (`StructureCodec.write_moved`,
 [`model/structure.md`](?doc=model/structure.md) § 2.4), and a run that continues
 reads the last one back through molbuilder's one XYZ reader
-(`Structure.from_xyz`); and the relaxation (`relax_policy.relax`, below). A
+(`Structure.from_xyz`); the relaxation (`relax_policy.relax`, below); and the
+run's number its run script gives it (`runtime_info.run_given`, § 2). A
 vibration script imports, besides ([`vibration.md`](?doc=engines/vibration.md)
 § 4): the HOMO rule and its orbital window, the Hessian with dμ/dR and the GPU
 array bridge (`spectra/pyscf_vibration.py`); the harmonic path, the
@@ -678,6 +698,11 @@ PySCF stops the SCF when **both** of these hold:
 | energy change | how much the total energy moved on the last cycle | `mf.conv_tol` | `scf_conv_tol` (default `1e-9` Ha) |
 | orbital gradient | how far the orbitals still are from stationary | `mf.conv_tol_grad` | `scf_conv_tol_grad` (default `0` → PySCF derives it) |
 
+Both are written with **two significant figures** — `mf.conv_tol  = 1.0e-09`,
+`mf.conv_tol_grad = 2.5e-06` — so a requested value reaches PySCF as asked;
+a value given with more figures is rounded to two (user, 2026-10-07; SIESTA's
+`DM.Tolerance` and `DM.EnergyTolerance` the same, [`siesta.md`](?doc=engines/siesta.md) § 3).
+
 When you leave `conv_tol_grad` unset, PySCF derives it — `scf/hf.py`, verified
 against the installed 2.13.0 source:
 
@@ -898,9 +923,11 @@ PySCF "converged" structure generally stops later than a SIESTA one.
 renaming a promised output file is a **major** bump. Purely additive changes (a new
 optional field or output) are minor.
 
-**Tests:** `tests/test_pyscf.py` — behavioural assertions over the generated script
-(output-file set, the one relaxation call, molwatch blocks; the
-in-script stage loop retired with § 1.1a).  The method is an enum, so a value
+**Tests:** the PySCF rows of `tests/data/the_deck.toml`, run by
+`tests/test_the_deck.py` — assertions over the deck `prep` writes (*"a PySCF
+relaxation is one call, carrying the rung's six geomeTRIC targets"*, and the rows
+after it).  The
+method is an enum, so a value
 outside `DFT` / `HF` is refused by the settings gate; the class composed from the
 state, and the spin refusals, are pinned through prep in
 `tests/test_electronic_state.py`.

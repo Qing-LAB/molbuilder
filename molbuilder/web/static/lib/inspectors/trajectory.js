@@ -10,7 +10,7 @@
  *     trajectory XYZ (the geom-opt wrapper writes
  *     ``<job>_geom_optim.xyz``; older PySCF runs may use
  *     ``<job>_optim.xyz``).  PySCFParser handles both shapes via
- *     ``can_parse`` content-sniff in ``parsers/pyscf.py``.
+ *     ``can_parse`` content-sniff in ``parse/engines/pyscf.py``.
  *
  * Registration order in results.html puts this BEFORE the
  * structure inspector (which matches all ``.xyz`` / ``.pdb``), so
@@ -27,9 +27,7 @@
  *   * Plain ``.log`` — too generic.
  *
  * Mount flow + error-card rendering live in
- * lib/inspectors/_partial_inspector_factory.js (DRY'd 2026-06-09,
- * task #308; pre-fix this wrapper carried a ~150-LoC scaffold
- * identical to spectra.js's).
+ * lib/inspectors/_partial_inspector_factory.js.
  */
 (function (root) {
     "use strict";
@@ -56,7 +54,7 @@
      * declared in `WRITTEN` (`_initial.xyz`) and two an engine writes
      * (`_optimized.xyz`, `_geom_optim.xyz`, `runfiles._ENGINE_ROLES`).
      *
-     * KNOWN GAP, and it is not this change's to close: the same vocabulary
+     * KNOWN GAP: the same vocabulary
      * is spelled in `runfiles._ENGINE_ROLES` and in `pyscf/input.py`'s
      * `ROLE_*` constants as well, so the browser's copy is the fourth of
      * four rather than a lone offender.  `/api/results/dir` is the place a
@@ -98,21 +96,10 @@
         //   ``*_optim.xyz`` (incl. ``_geom_optim.xyz``)
         //                            → PySCF / geomeTRIC multi-frame XYZ
         resultCategory: (file, meta) => {
-            /* THE ENGINE COMES FROM THE SERVER NOW, and that lifts the
-             * constraint this function was built around.  It used to read:
-             * "The browser cannot know the engine: it is a fact about the
-             * run DIRECTORY, and the picker has only a filename."  True
-             * until 2026-09-18 -- `/api/results/dir` answers `engine` for
-             * the directory (`plans/plan.md` N9), so the heading can name
-             * it instead of guessing from the suffix.
-             *
-             * What the guess cost: `.out` was hardcoded "SIESTA" and
-             * `_geom_optim.xyz` "PySCF".  Both are right for the two engines
-             * that exist and wrong by construction for a third -- a VASP
-             * directory's trajectory was labelled "PySCF optimization"
-             * (demonstrated 2026-09-18).  And `.molwatch.log`, which every
-             * engine writes, had to stay engine-LESS for exactly this
-             * reason; now it need not.
+            /* THE ENGINE COMES FROM THE SERVER: `/api/results/dir` answers
+             * `engine` for the directory (`plans/plan.md` N9), so the
+             * heading names it instead of guessing from the suffix, a guess
+             * wrong by construction for a third engine.
              */
             const engine = (meta && meta.engine
                             && meta.engine !== "unknown") ? meta.engine : "";
@@ -128,9 +115,7 @@
               : "trajectory";
             if (!engine) {
                 // No directory answer (a caller outside the Results tab).
-                // Name what the file IS and leave the engine unclaimed --
-                // which is what the 2026-09-04 fix established for
-                // `.molwatch.log` and is now the rule for all of them.
+                // Name what the file IS and leave the engine unclaimed.
                 return what === "trajectory" ? "Trajectory" : "Optimization";
             }
             const label = engine === "siesta" ? "SIESTA"
@@ -153,28 +138,15 @@
          *                                geomeTRIC's per-stage stream, the
          *                                same steps the master log reports
          *
-         * Listing them as peers turned one PySCF relaxation into five menu
-         * entries (2026-08-04).
-         *
          * SAME RUN IS ONE EQUALITY, because the server reads each name back
          * with the label the deck states (`/api/results/dir` -> `label`,
          * `stage`, `role`; `runfiles.parse`).  The carried files stem on the
          * bare job label and this rung's stream on the same label with a
          * stage, so `label` is the thing they share and the test is `===`.
          *
-         * WHAT THIS REPLACES, and why it had to go: this function used to
-         * cut the master's stem itself --
-         *
-         *     const job = stem.replace(/_\d+_[A-Za-z0-9_]+$/, "");
-         *
-         * -- which is the label/stage boundary that `runfiles.parse`'s own
-         * docstring says CANNOT be found from the string alone, because a
-         * role may contain `_` and so may a label.  It matches leftmost, so
-         * `au_2_bdt_02_fine` read as a label of `au`: the run's own
-         * satellites were not absorbed (four menu entries for one run), and
-         * a different job literally named `au` would have had its files
-         * absorbed into this one and vanish from the picker.  Measured
-         * 2026-09-19.
+         * The stem is never cut here: the label/stage boundary CANNOT be
+         * found from the string alone (`runfiles.parse`), because a role may
+         * contain `_` and so may a label.
          *
          * The name test stays as the fallback for a caller with no directory
          * answer, which is the same shape `match` and `resultCategory` use.

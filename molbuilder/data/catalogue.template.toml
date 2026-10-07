@@ -462,8 +462,8 @@ label = "Max geometry-optimisation steps"
 tier = "advanced"
 help = """
 Outer loop: the most geometry steps the optimiser is allowed, each step being a full SCF plus forces plus one move of the atoms.
-Which keyword carries it is decided by MD.TypeOfRun: CG / Broyden / FIRE relax and bound the loop with ``MD.Steps``; Verlet / Nose integrate and bound it with ``MD.FinalTimeStep`` instead (SIESTA 5.4.2, siesta_init.F -- idyn 0 uses MD.Steps, idyn 1-5 use MD.InitialTimeStep..MD.FinalTimeStep). ``MD.Steps`` deprecates the older ``MD.NumCGsteps``, whose CG-prefixed name hid that it was never CG-only.
-Per-tier: loose warm-up ~50, publishable ~200, tight (vib/IR) ~100 -- a small displacement cap is slow per step but needs few steps from a publishable-converged starting geometry.
+Which keyword carries it is decided by MD.TypeOfRun: CG / Broyden / FIRE relax and bound the loop with ``MD.Steps``; Verlet / Nose integrate and bound it with ``MD.FinalTimeStep`` instead (SIESTA 5.4.2, siesta_init.F -- idyn 0 uses MD.Steps, idyn 1-5 use MD.InitialTimeStep..MD.FinalTimeStep).
+The shipped ladder: coarse 600, medium 200, tight 100 -- a small displacement cap is slow per step but needs few steps from a publishable-converged starting geometry.
 A well-behaved relaxation converges in 30-150 steps, so 200 is a safety cap, not a target. For molecular dynamics it is a duration instead: steps x timestep is the timescale you sample, so pick it from the physics you want to see.
 """
 
@@ -513,7 +513,7 @@ group = "stage"
 label = "Max displacement per step"
 tier = "advanced"
 help = """
-A hard ceiling on how far any atom may move in one optimiser step, in Å -- it catches line-search over-shoot. Applies across CG, Broyden AND FIRE. ``MD.MaxDispl`` deprecates the older ``MD.MaxCGDispl`` (SIESTA 5.4.2); same meaning, same 0.2 Bohr default, and the CG-prefixed name was never CG-only.
+A hard ceiling on how far any atom may move in one optimiser step, in Å -- it catches line-search over-shoot. Applies across CG, Broyden AND FIRE, as ``MD.MaxDispl`` (SIESTA 5.4.2; its own default is 0.2 Bohr).
 Per-tier (Å): screening 0.30, loose preopt 0.20, publishable 0.05, tight (vib/IR) 0.02.
 That engine default of 0.2 Bohr is 0.106 Å; this catalogue starts at 0.05 Å, about half. The cap only ever limits a step, so a smaller one costs steps and never accuracy. Raise it toward the loose-preopt 0.20 Å for a cheap first pass on a structure that starts far from its minimum.
 Symptom of a cap set too large: max force oscillates rather than descends (e.g. 0.09 -> 0.44 -> 0.13 -> 0.31 -> ...). Halve the cap.
@@ -819,9 +819,8 @@ For a run by hand the run script takes ``bash run.sh -np N``, to try another cou
 """
 
 [item.gpu_count]
-# BOTH ENGINES since 2026-10-01 (`execution/gpu.md` § 1.1): how many GPUs a
-# run asks for is stated, on every engine, and has no default -- PySCF had
-# no item for it, so a PySCF GPU run could only be given one GPU, unsaid.
+# BOTH ENGINES (`execution/gpu.md` § 1.1): how many GPUs a run asks for is
+# stated, on every engine, and has no default.
 kind = "wrapper"
 category = ["execution"]
 engine_key = "(molbuilder: scheduler ``--gres=gpu:G``; not in the deck)"
@@ -853,7 +852,7 @@ help = """
 How many consecutive orbitals go to one MPI rank before the distribution moves to the next -- the ScaLAPACK block. It cannot change the answer, only how evenly the ranks are fed and therefore how long the run takes.
 It has two states. Left as (auto) the keyword is not written and SIESTA uses its own automatic, which is what its manual declares as the default. Set to a number, that number is written verbatim -- which is what you want after benchmarking, and a benchmark is the only thing that really answers this: the best block depends on the matrix size, the rank count, the interconnect and the node's memory layout at once.
 If you set one by hand: powers of two (16, 32, 64, 128); smaller for few orbitals, larger for thousands. Stay under n_orbitals / ranks or some rank gets no block at all.
-On GPU, an ELPA diagonaliser needs a power of two or ELPA silently runs on the CPU. prep realigns it there -- that is the layer that knows the GPU flag and the rank count.
+On GPU, an ELPA diagonaliser needs a power of two or ELPA silently runs on the CPU.
 It does not fix ``propor: ERROR: IMAX = 0``. BS = 1, 2 and 4 all crash at the same mpi_np; propor is a vector-proportionality check in matel_table's MPI-deduplication step. Lower the rank count to clear it.
 """
 
@@ -887,7 +886,7 @@ optional = true
 help = """
 How many OpenMP threads each MPI process gets -- the cores per rank.
 Every run states it -- on its run card, or with ``prep --cpus-per-task N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in.  The deck records it (``# runtime.omp_threads_requested``) and the run script exports it as OMP_NUM_THREADS; for a run by hand, ``bash run.sh -omp N`` overrides it.
-The run script pins BLAS to 1 thread per rank so OMP x BLAS doesn't oversubscribe the node -- the same recipe /spectra and Build PySCF use.
+The run script pins BLAS to 1 thread per rank so OMP x BLAS doesn't oversubscribe the node.
 """
 
 [item.max_memory_mb]
@@ -909,23 +908,15 @@ How much memory this run may use.  Left blank -- the normal state -- there is no
 Each engine applies a number its own way: SIESTA's run script caps the run with `ulimit -v` (the deck records the number in a comment); PySCF's deck passes it to mol.max_memory, which PySCF consults to choose in-core versus out-of-core.  Blank, the PySCF deck writes `max_memory = None` and PySCF keeps its own setting (PYSCF_MAX_MEMORY, else 4000 MB).
 """
 [item.use_gpu]
-# MERGED 2026-08-23, following `net_charge`'s worked example (2026-08-19).
-# This was two items -- `enable_gpu` (SIESTA) and `use_gpu` (PySCF) -- two
-# names for one question: DOES THIS RUN USE A GPU?  The merge was ruled
-# 2026-08-13, restated 08-14 and marked do-not-re-open (template.md 6.3);
-# what had not landed was the rename, and it could not land separately
-# because TOML cannot hold the key twice.  `use_gpu` is the survivor per
-# that ruling.
+# ONE item for both engines' one question: DOES THIS RUN USE A GPU?
+# (ruled 2026-08-13, template.md 6.3).
 #
 # `kind = "deck"` with no anchor is what a merged item becomes.  `expands`
 # names BOTH reaches and the check gate demands only the keyword the
 # emitted line actually names -- so SIESTA is asked for `Diag.ELPA.GPU`
 # and PySCF for `gpu4pyscf`, never each other's.  The one imprecise row
 # (PySCF carries an `expands` entry it does not honour as a keyword) is
-# the cost 6.3 states out loud for `restart`, and it is deliberate: a
-# per-engine `expands` was considered and rejected 2026-08-18, because
-# `section` was that per-engine key and was retired at @2 for the drift
-# such a key invites.
+# the cost 6.3 states out loud for `restart`.
 kind = "deck"
 category = ["execution"]
 expands = ["Diag.ELPA.GPU", "gpu4pyscf"]
@@ -1026,11 +1017,6 @@ The order the species are listed in, comma-separated (e.g. 'C,H,S,Au').  It fixe
 """
 
 [item.net_charge]
-# MERGED 2026-08-19.  This was two items -- `net_charge` (SIESTA) and `charge`
-# (PySCF) -- two names for one question, which is the defect § 6.3's merge rule
-# was rewritten to end and named as its own worked example.  All seven fields
-# rule 4 gates on already agreed; only the spellings differed.
-#
 # `kind = "deck"` with no anchor is what § 6.3 says a merged item becomes, and
 # it is not a new shape: `relax_steps` and `unpaired_electrons` declare several
 # keywords and let the writer pick which one this run calls for.  The check
@@ -1047,12 +1033,7 @@ The order the species are listed in, comma-separated (e.g. 'C,H,S,Au').  It fixe
 # chemical potentials, so for a neutral junction it is moot; a gated or
 # electrochemical junction is separate work."*
 #
-# The ruling was written and the declaration was not changed, so a transport
-# template carried this row, a person could answer it, and no rung wrote it
-# (measured 2026-09-16: `NetCharge -2` in an optimization deck, absent from all
-# five transport decks, while the validation report BESIDE the deck asserted
-# the charge was there).  `calculations` is how the catalogue states a ruling
-# like this one.
+# `calculations` is how the catalogue states a ruling like this one.
 kind = "deck"
 category = ["system"]
 engines = ["siesta", "pyscf"]
@@ -1118,8 +1099,7 @@ Left blank it is worked out from the structure: unrestricted for an open-d metal
 # WHAT EACH ENGINE RUNS, PER KIND (`engines/template.md` § 6.3a; read from
 # each engine's source, `science/chemistry-correctness.md` § 2a.3) -- the
 # form offers only these, and `resolve` and the settings gate refuse the rest
-# by name (`template.why_not_offered`).  `electronic_state.CAPABILITY` held
-# this in code until 2026-09-30.
+# by name (`template.why_not_offered`).
 [item.spin_treatment.offered]
 siesta.optimization = ["restricted", "unrestricted", "non-collinear", "spin-orbit"]
 siesta.vibration    = ["restricted", "unrestricted", "non-collinear", "spin-orbit"]
@@ -1131,10 +1111,8 @@ pyscf.vibration     = ["restricted"]
 # 2S = N-up - N-down, and NOT the multiplicity 2S+1 -- or `free`, a moment that
 # floats to whatever the SCF finds (M6, 2026-09-28).  An enum whose members are
 # whole numbers and one word (`engines/template.md` § 5), so a template reads
-# `unpaired_electrons = 2` or `unpaired_electrons = "free"`.  It replaced
-# SIESTA's `spin_total` (a float in mu_B, blank meaning "the moment floats")
-# and PySCF's `spin` (always pinned): one question, one item, and a blank that
-# means AUTO like every other state item.
+# `unpaired_electrons = 2` or `unpaired_electrons = "free"`.  One question,
+# one item, and a blank that means AUTO like every other state item.
 kind = "deck"
 category = ["system"]
 engines = ["siesta", "pyscf"]
@@ -1201,9 +1179,8 @@ Leave it off unless you know the geometry is exact.
 """
 
 [item.method]
-# WHICH THEORY, and nothing else (M6, 2026-09-28).  It was the SCF class --
-# RKS / UKS / RHF / UHF -- which fused this question with the spin treatment's;
-# the class is now COMPOSED from the two and written explicitly (`dft.UKS`,
+# WHICH THEORY, and nothing else (M6, 2026-09-28).  The SCF class is
+# COMPOSED from this and the spin treatment and written explicitly (`dft.UKS`,
 # `scf.ROHF`, ...), never left to PySCF to re-rule (`dft.RKS` with a nonzero
 # spin silently becomes ROKS inside PySCF).  Never worked out from the
 # structure: a theory is a choice, not a property of the molecule.
@@ -1346,7 +1323,7 @@ label = "Effective core potential"
 null_label = "(none)"
 help = """
 Replaces the inert core electrons of heavy atoms with a potential, so fewer electrons are treated explicitly -- an effective core potential, named like a basis, e.g. 'lanl2dz'. Empty means no ECP.
-It applies only to the atoms named by --ecp-atoms; with no atoms selected it does nothing.
+It applies only to the atoms named by ECP atoms; with no atoms selected it does nothing.
 """
 
 [item.ecp_atoms]
@@ -1575,7 +1552,6 @@ group = "profile"
 label = "Optimize geometry"
 help = """
 Whether to relax the geometry.  On, the optimizer moves the atoms until the convergence criteria are met; off, the run is a single point -- one SCF at the geometry you gave, with no atom moved.
-On the command line, --no-optimize is the spelling for off.
 """
 
 [item.solvent]

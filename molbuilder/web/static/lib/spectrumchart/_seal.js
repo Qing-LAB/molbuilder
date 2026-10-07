@@ -161,14 +161,10 @@ export async function openSurface(host) {
         font: { color: palette.ink, size: 11 },
         /* `t` is room above the plot for the two lines that live there:
          * the note on the left, the pointer's readout on the right
-         * (§ 6.2).  At the 12px it used to be, both sat in the margin's
-         * edge and were clipped -- which is why the pending note had
-         * never once been seen.
+         * (§ 6.2).  With less, both would sit in the margin's edge and
+         * be clipped.
          *
-         * `r` is bare, because both axes are on the LEFT.  It briefly
-         * needed 56px for a right-hand axis, whose ticks rendered "60"
-         * as "6C" at 12px -- kept as the reason this number is a
-         * decision rather than a default. */
+         * `r` is bare, because both axes are on the LEFT. */
         margin: { l: 58, r: 14, t: 30, b: 40 },
         showlegend: false,
         /* No hover labels from the library. The chart carries its own readout,
@@ -177,10 +173,7 @@ export async function openSurface(host) {
          * less, and would need the aim the bands exist to make unnecessary. */
         hovermode: false,
         /* Every axis comes from `axesFor` -- including x, which it must
-         * own because the anchor depends on how many panels there are.
-         * A second `xaxis` literal here was dead for exactly that
-         * reason: the spread below overrode it silently, so editing it
-         * changed nothing. */
+         * own because the anchor depends on how many panels there are. */
         ...axesFor(picture),
         shapes: darkModeLines(picture),
         annotations: annotationsFor(picture.note, picture.readout),
@@ -235,8 +228,8 @@ export async function openSurface(host) {
      * reads as one plot with a trick in it.
      *
      * The panels are stacked in lane order, so a lane declared "down"
-     * sits below -- the direction still decides position, it is just no
-     * longer a sign on the numbers.
+     * sits below -- the direction decides position, and is not a sign on
+     * the numbers.
      *
      * Plotly's domain runs bottom-to-top, so the FIRST lane takes the
      * upper band and the last takes the lower one. */
@@ -314,9 +307,9 @@ export async function openSurface(host) {
         let firstSticks = -1;
 
         lanes.forEach((lane, laneIndex) => {
-            /* Each lane draws in its own panel, upright.  The mirror's
-             * sign is gone with the mirror: a channel is placed by which
-             * panel it is in, not by pointing its numbers downward, and
+            /* Each lane draws in its own panel, upright: a channel is
+             * placed by which panel it is in, not by pointing its
+             * numbers downward, and
              * an axis that reads 0 upward is one less thing between a
              * reader and the value. */
             const axis = axisRefFor(laneIndex);
@@ -333,8 +326,7 @@ export async function openSurface(host) {
                     line: { color: laneColour, width: 1.5 },
                     /* A filled envelope is what lets two channels overlap
                      * and still be read apart -- the plan's "transparency
-                     * fill".  Against the axis, not against each other,
-                     * because they live in opposite half-planes. */
+                     * fill".  Against its own panel's axis. */
                     fill: "tozeroy",
                     fillcolor: withAlpha(laneColour, 0.16),
                     hoverinfo: "skip",
@@ -351,7 +343,7 @@ export async function openSurface(host) {
                 /* The FIRST lane keeps the selection colours -- it is the
                  * one `recolour` can reach, and the one the mode table is
                  * ordered by.  A second lane is drawn in its channel's own
-                 * colour so the mirror stays legible; selection is shown
+                 * colour so the panels stay legible; selection is shown
                  * once, not twice. */
                 drawn.colour.push(firstSticks < 0
                     ? colourFor(lane.sticks.state[i], palette)
@@ -405,10 +397,7 @@ export async function openSurface(host) {
                  * `marker.line.color`.  An open symbol is stroked, so
                  * `marker.line` looks like the right home -- but Plotly
                  * ignores a per-point ARRAY there and falls back to the
-                 * trace's automatic colour, which painted all four CO2
-                 * ticks the same violet while the data underneath was
-                 * correct.  Caught in the browser; no test asserts a
-                 * rendered stroke. */
+                 * trace's automatic colour. */
                 marker: {
                     symbol: "line-ns-open",
                     size: 11,
@@ -550,7 +539,7 @@ export async function openSurface(host) {
             if (disposed) return;
             // `tracesFor` records which trace holds the selectable
             // sticks as it builds them -- with lanes, a rug and optional
-            // curves the position is no longer guessable from outside.
+            // curves the position is not guessable from outside.
             const traces = tracesFor(picture);
             readoutIndex = picture.note ? 1 : 0;
             lastReadout = picture.readout || "";

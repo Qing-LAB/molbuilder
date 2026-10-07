@@ -16,7 +16,7 @@ file ops).  Path handling mirrors the files blueprint's defence-in-depth
 
 Routes:
 
-    GET /api/docs/list              grouped list of every docs/*.md
+    GET /api/docs/toc               document tree for the sidebar
     GET /api/docs/read?path=<rel>   one doc's raw markdown text
 """
 from __future__ import annotations
@@ -52,10 +52,7 @@ def _resolve_doc(raw_path: str, root: Path) -> Path:
     ``root``, raising ``ValueError`` on any rejection.
 
     Containment is `projects.contain` -- the SAME fence the file picker and
-    the `jobset` CLI use, just with a different root.  This said it
-    "mirrors files._resolve_within_roots" and implemented the rule a second
-    way (``os.path.commonpath`` against an unresolved root, where the other
-    compared resolved paths).  A security rule with two implementations is
+    the `jobset` CLI use, just with a different root.  A security rule with two implementations is
     a rule that can be true in one place and false in the other; the tree
     it guards differs, the question does not.
 
@@ -153,9 +150,6 @@ def _build_toc_tree(root: Path) -> List[Dict]:
     def _is_document_path(path: object) -> bool:
         # Containment is `projects.contain`, the same fence `_resolve_doc`
         # uses -- see its docstring for why one implementation and not two.
-        # This hand-rolled `os.path.commonpath` survived the 2026-08-22 sweep
-        # that moved `_resolve_doc` onto the fence, in the same file, so the
-        # rule was fixed in one function and left standing in its neighbour.
         from molbuilder.projects import OutsideRoot, contain
         if not isinstance(path, str) or not path.endswith(".md"):
             return False
@@ -227,18 +221,8 @@ def _build_toc_tree(root: Path) -> List[Dict]:
         # listed in toc.json and append them as unlisted children.
         domain_dir = node.get("_dir")
         if not domain_dir:
-            # Derive from the first child's OWN DIRECTORY.
-            #
-            # It took `path.split("/")[0]` -- the first component -- until
-            # 2026-09-08, so every nested group resolved to its top-level
-            # ANCESTOR: the `old_docs` node concluded its directory was
-            # `archive` and globbed `docs/archive/*.md` instead of
-            # `docs/archive/old_docs/*.md`.  Ten sidebar groups resolved to
-            # `archive` that way, which is the multiplier in the duplication
-            # this pairs with (see `_toc_paths` below).  Measured
-            # behaviour-neutral on the shipped tree: nine nodes change the
-            # directory they scan and zero new entries surface, because
-            # everything in those subdirectories is already listed.
+            # Derive from the first child's OWN DIRECTORY, so a nested group
+            # scans its own directory rather than its top-level ancestor's.
             for c in children:
                 if "path" in c and "/" in c["path"]:
                     parent = str(_PurePosixPath(c["path"]).parent)
@@ -273,14 +257,9 @@ def _build_toc_tree(root: Path) -> List[Dict]:
                 if new:
                     _new_paths[label] = new
                     children.extend(new)
-                    # AND THE GUARD SET GROWS WITH THEM.  `_toc_paths` was
-                    # built once from the original tree and never updated, so
-                    # any two directory nodes resolving to the same directory
-                    # each appended the same unlisted file -- a new
-                    # `docs/archive/*.md` rendered TEN times (measured
-                    # 2026-09-08).  The persist below then wrote the entry into
-                    # the explicit tree, so every later render was clean and
-                    # the bug erased its own evidence.
+                    # AND THE GUARD SET GROWS WITH THEM, so two directory
+                    # nodes resolving to the same directory do not each
+                    # append the same unlisted file.
                     _toc_paths.update(e["path"] for e in new)
 
         # Resolve children, nesting sub-documents (R5 prefix convention)
@@ -448,16 +427,11 @@ def api_docs_img(img_path: str):
     if root is None:
         return jsonify({"ok": False, "error": "docs/ not available"}), 404
     # Containment is to docs/img/ itself, NOT docs/ -- this route's
-    # contract is "serve an image", and containing only to docs/ let
+    # contract is "serve an image", and containing only to docs/ would let
     # ``../<any-doc>`` fetch arbitrary docs files with a guessed MIME
     # (an .svg/.html ever added under docs/ would render same-origin
     # as a live document).  Extension allowlist as the second belt.
-    # Containment is `projects.contain` -- one fence, a different root.  The
-    # `..` reject the fence performs on the RAW spelling matters here: this
-    # route used to rely on `resolve()` normalising `..` away, which reaches
-    # the same verdict but leaves the question "did the writer think `..` was
-    # harmless?" unanswered, and that is the ambiguity the shared primitive
-    # exists to remove.
+    # Containment is `projects.contain` -- one fence, a different root.
     from molbuilder.projects import OutsideRoot, contain
     img_root = root / "img"
     try:
@@ -475,7 +449,7 @@ def api_docs_img(img_path: str):
 def api_docs_read():
     """One doc's raw Markdown text (rendered client-side).
 
-    Query: ``path`` -- relative to ``docs/`` (from ``/api/docs/list``).
+    Query: ``path`` -- relative to ``docs/`` (from ``/api/docs/toc``).
     Special: ``path=../README.md`` and ``path=../LICENSE`` read the project
     root README and license. They are the only paths allowed outside ``docs/``.
     Response: ``{ok, path, title, text}`` or ``{ok:false, error}`` (400/404).

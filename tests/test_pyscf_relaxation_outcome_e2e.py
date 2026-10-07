@@ -253,11 +253,6 @@ def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
     assert state == "finished", said[-3000:]
 
 
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 1 test here gave the input structure the record of a SIESTA
-# relaxation nothing ran (`process/testing.md` § 6).
-
-
 def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,
                                                            monkeypatch):
     """A PySCF vibration whose structure is stated relaxed runs no relaxation
@@ -268,8 +263,7 @@ def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,
     § 5.5).
 
     MUTATION THIS MUST FAIL AGAINST: the relaxation escaping its
-    ``if not ALREADY_RELAXED`` guard (the rule the retired text test pinned),
-    a gradient check that records no verdict (before 2026-09-29), and a
+    ``if not ALREADY_RELAXED`` guard, a gradient check that records no verdict (before 2026-09-29), and a
     remedy worded apart from the one text.
     """
     from molbuilder.parse.registry import parse

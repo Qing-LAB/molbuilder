@@ -1,17 +1,7 @@
 """`parse/fdf.py` — the one reader of SIESTA's input format.
 
-**Why this file exists.** Until 2026-09-17 there were eight readers of deck
-content across the tree and only one implemented fdf's actual keyword rule.
-The others were hand-rolled regexes and awk that each got part of it, and two
-of them disagreed about the same file.  The survivors all ask this module now,
+**Why this file exists.** The readers of deck content all ask this module,
 so its rules are worth stating once, here.
-
-The two cases below came FROM the wrapper's tests: they pinned an awk that read
-`SystemLabel` out of a deck at launch.  That awk is deleted — the wrapper is
-told its label (`gpu.md` G7) — but the behaviours it was pinned for are real
-and still needed, because `web/blueprints/watch.py` reads a directory a person
-points at, where there is no description to ask and the deck is all there is.
-So the coverage moved rather than went.
 """
 from __future__ import annotations
 
@@ -25,10 +15,7 @@ from molbuilder.parse.fdf import (_norm, _parse_fdf, parse_fdf_params,
 class TestTheKeywordRuleIsTheFormatS:
     """fdf matches a keyword ignoring case AND `.`, `-`, `_`.
 
-    All four spellings below are one keyword and SIESTA accepts each.  A regex
-    anchored on the literal word matches the first and last only, which is what
-    every hand-rolled reader did — `web/blueprints/watch.py` resolved a deck
-    spelled `System.Label` to nothing, so the Results tab found no trajectory.
+    All the spellings below are one keyword and SIESTA accepts each.
     """
 
     @pytest.mark.parametrize("spelling", [
@@ -45,9 +32,7 @@ class TestTheKeywordRuleIsTheFormatS:
 class TestAQuotedValueReadsAsSIESTAReadsIt:
     """`SystemLabel "foo"` is legal fdf and SIESTA then writes `foo.DM`.
 
-    A reader that keeps the quotes looks for files that do not exist.  Measured
-    when this landed: the wrapper's cold sweep missed the warm files entirely
-    and would have overwritten them without a word.
+    A reader that keeps the quotes looks for files that do not exist.
     """
 
     @pytest.mark.parametrize("line,expect", [
@@ -92,10 +77,6 @@ class TestRepeatedKeywords:
         assert system_label("SystemLabel bdt  # the junction\n") == "bdt"
 
 
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 3 tests here read SCF tables typed by hand (`TestTheFermiLevelIsKept`) (`process/testing.md` § 6).
-
-
 class TestTheCoordinateFormatsAreConverted:
     """``coords_ang`` is the frozen gate's baseline.
 
@@ -105,8 +86,7 @@ class TestTheCoordinateFormatsAreConverted:
     parse error -- it looks like a lead that moved, so a correct junction
     is refused and the person is told to re-relax something that is fine.
 
-    All six formats SIESTA accepts here, plus the refusal: nothing
-    referenced ``coords_ang`` from a test before this.
+    All six formats SIESTA accepts here, plus the refusal.
     """
 
     CELL = ("%block LatticeVectors\n 10.0 0 0\n 0 10.0 0\n 0 0 20.0\n"
@@ -164,9 +144,7 @@ class TestTheCoordinateFormatsAreConverted:
 class TestTheUnitPolicyIsThisFormatS:
     """`molbuilder.units` owns the WORDS; the ENGINE owns the default.
 
-    These were invented once -- "a bare energy is Ry", "a bare length is
-    Ang" -- and pinned here as though the format said so. It does not:
-    libfdf refuses a physical value with no unit. The rule now comes
+    libfdf refuses a physical value with no unit. The rule comes
     from the binary, in `tests/test_siesta_keyword_smoke.py`, which
     measures SIESTA's answer AND asserts this reader follows it. What
     stays here is the behaviour given a unit that IS stated.
@@ -199,8 +177,7 @@ class TestTheUnitPolicyIsThisFormatS:
             "ElectronicTemperature 300\n").electronic_temperature_k is None
 
     def test_a_temperature_written_as_an_ENERGY_is_converted(self):
-        """SIESTA accepts either; both had to be read, and `Ry` was
-        silently dropped before."""
+        """SIESTA accepts either, so both are read."""
         for spelling in ("0.0019 Ry", "25.85 meV", "0.02585 eV"):
             p = parse_fdf_params(f"ElectronicTemperature {spelling}\n")
             assert p.electronic_temperature_k == pytest.approx(300.0, abs=0.5), \

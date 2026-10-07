@@ -2,14 +2,9 @@
 
 `_validate_transport_kind` is registered in ``_KIND_VALIDATORS`` and keyed on
 ``task.calculation``, so it fires for whatever config class the deck renders
-from. That matters here: its sibling ``_validate_transport`` was keyed on
-``TransportConfig`` in ``_ENGINE_VALIDATORS``, and every rung has resolved a
-``SiestaConfig`` since the seam migration — so the engine-keyed one dispatched
-for no rung (both are deleted), and this is the only transport science that
-runs on a prep.
+from, and it is the only transport science that runs on a prep.
 
-**It carried three rules and none of them had a test** (found 2026-09-16). Each
-one below is a case where being wrong costs a queue wait and produces a
+Each rule below is a case where being wrong costs a queue wait and produces a
 plausible number rather than a crash, which is `engines/transport.md` § 0.4's
 whole argument for guards over advice.
 
@@ -19,10 +14,10 @@ makes it discriminating: the same value must be *accepted* where it is
 legitimate, or the rule would be satisfied by a validator that refuses
 everything.
 
-**The k-point sampling left this file on 2026-09-30**: the transport axis's
-one point, a lead's own count and the transmission's grid are the k-point
-mesh's (`engines/siesta.md` § 6.1), refused on every door and tested through
-the road in `tests/test_k_point_mesh_e2e.py`.
+The k-point sampling -- the transport axis's one point, a lead's own count
+and the transmission's grid -- is the k-point mesh's (`engines/siesta.md`
+§ 6.1), refused on every door and tested through the road in
+`tests/test_k_point_mesh_e2e.py`.
 """
 from __future__ import annotations
 
@@ -129,18 +124,11 @@ class TestThePoleEnergyIsTiedToTheTemperature:
         assert not _find(validate(junction, cfg, calculation="transport"),
                          "config.negf_eq_pole_ev", "error")
 
-    # `test_zero_means_the_engine_chooses_and_is_never_refused` retired
-    # 2026-09-29 with its rule (M5 step 2): 0 is refused now, through the
-    # road -- `test_transport_prep.py::TestBeforeAnyDeviceRuns`.
-
 
 class TestTheLinearResponseAdvisory:
     """|V| > 2 V is outside the Landauer regime — a warn, never a refusal.
 
-    Its old home (`TransiestaEngine.preflight`) was keyed on
-    ``TransportConfig`` and fired for no rung, so a person could describe a
-    3 V scan and be told nothing on the road that runs. Bias is the one axis a transport
-    calculation exists to sweep.
+    Bias is the one axis a transport calculation exists to sweep.
     """
 
     def test_a_high_bias_point_is_advised(self, junction):
@@ -162,7 +150,7 @@ class TestTheLinearResponseAdvisory:
 
 
 class TestTheCellWrapsAlongTransport:
-    """I12, re-homed 2026-09-17 from `transport preflight`.
+    """I12.
 
     A junction's leads continue into the periodic image, so empty space along
     z is a SEVERED lead rather than padding. This is the reverse of what an
@@ -179,9 +167,6 @@ class TestTheCellWrapsAlongTransport:
                       regions=dict(junction.regions))
         return s
 
-    # `test_a_gap_along_transport_is_flagged` retired 2026-09-29 (M5 step 2):
-    # the gap is refused now, measured from the lead, through the road --
-    # `test_transport_prep.py::TestBeforeAnyDeviceRuns`.
 
     def test_a_seamless_cell_says_nothing(self, junction):
         """The discriminating half -- and the number is derived from the

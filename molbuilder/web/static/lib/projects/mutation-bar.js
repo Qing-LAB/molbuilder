@@ -17,12 +17,6 @@
  *                       it too)
  *
  * Spec: docs/web/projects.md § Mutation UX.
- *
- * 2026-06-12: renamed from ``forms.js`` after the v2 buttons-not-
- * inline-forms refactor (commit c929a28).  The historical name no
- * longer reflected the content; the file's only role now is the
- * mutation bar wiring.  Pre-1.0 repo policy [[no_backward_compat]]
- * — no module-name redirect kept around.
  */
 
 import {
@@ -42,13 +36,10 @@ let elProjBtn, elFolderBtn, elUploadBtn, elZipBtn;
  * are INPUTS to `_updateButtonEnablement`, which is the only function
  * that touches the button's label, tooltip or disabled flag.
  *
- * Two bugs came from having a second writer.  `projects.onChange`
- * fires the enablement pass on every sidebar navigation, so browsing
- * during a build handed the button back and a second click started a
- * second archive; and the busy reset set `disabled = false`
- * unconditionally, so a person who had navigated to the projects root
- * meanwhile was left with a lit button that does nothing.  With one
- * writer the state cannot contradict itself. */
+ * `projects.onChange` fires the enablement pass on every sidebar
+ * navigation, so a second writer would hand the button back mid-build
+ * or light it at the projects root.  With one writer the state cannot
+ * contradict itself. */
 let zipBusy = false;
 let zipBusyLabel = "";
 let zipReport = "";
@@ -105,9 +96,8 @@ function _setZipBusy(busy, label) {
 }
 
 /* WHAT THE ARCHIVE TURNED OUT TO BE.  The server counts the files, the
- * bytes and anything it had to leave behind, and answers all three --
- * saying none of it was the original complaint ("nothing happens until
- * several minutes later") only half addressed.  `skipped` matters
+ * bytes and anything it had to leave behind, and answers all three.
+ * `skipped` matters
  * most: those are symlinks pointing out of the projects tree, dropped
  * on purpose, and silently dropping a file is not an option. */
 function _describeArchive(out) {
@@ -122,9 +112,9 @@ function _describeArchive(out) {
   return text;
 }
 
-/* The last path segment -- what the button is about to zip.  The
- * control used to name no target at all, which is exactly how a person
- * ends up downloading a whole project by accident (user, 2026-08-29). */
+/* The last path segment -- what the button is about to zip.  Naming the
+ * target keeps a person from downloading a whole project by accident
+ * (user, 2026-08-29). */
 function _dirName(dir) {
   const parts = String(dir || "").split("/").filter(Boolean);
   return parts.length ? parts[parts.length - 1] : "this folder";

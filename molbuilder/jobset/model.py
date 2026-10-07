@@ -15,13 +15,9 @@ Shared information is modeled in exactly two sanctioned channels:
     (`project-layout.md` § 1.6).
 Nothing reaches across jobs outside these two.
 
-There used to be a third, ``Carry``: *take file X from job Y*.  It named the
-producer, so it was only expressible once the producer was known at produce
-time — which is a **chain**.  Deleted 2026-08-10 (user) along with
-``depends_on``, ``dep_kind`` and the wrapper's ``carry_deref``: **a JobSet has
-no edges**.  Whether a later stage should pick up an earlier one cannot be
-settled without reviewing the earlier one's result, so no field is allowed to
-settle it (`job-system.md` § 2, decision 6).
+**A JobSet has no edges**: whether a later stage should pick up an earlier
+one cannot be settled without reviewing the earlier one's result, so no field
+is allowed to settle it (`job-system.md` § 2, decision 6).
 """
 
 from __future__ import annotations
@@ -33,17 +29,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # Matches the molbuilder/<name>@<major> convention used by
 # scheduler/record.py and bench/result.py (the same check_schema gate --
-# name AND major since U9).
+# name AND major).
 SCHEMA = "molbuilder/job-set@1"
 
 #: The file a JobSet is written to.  **A11: one spelling per name molbuilder
-#: writes** -- this was a bare literal in `prep` (three times), in `_cli` (as a
-#: private `_JOBSET_FILE` nobody could import) and in `checkpoint`'s bundle
-#: descriptors, so the name of the file this module defines was spelled
-#: everywhere except here.  The pattern is `task.FILENAME` and
-#: `environment.FILENAME`: one home -- the catalogue's since 2026-10-04
-#: (`runfiles.WRITTEN`, `job-contracts.md` § 2.2: every file molbuilder
-#: writes is a row there, and a fixed name's owner takes it from the row).
+#: writes** -- one home, the catalogue's (`runfiles.WRITTEN`,
+#: `job-contracts.md` § 2.2: every file molbuilder writes is a row there, and
+#: a fixed name's owner takes it from the row).
 from ..runfiles import JOBSET_FILE as FILENAME  # noqa: E402
 
 #: The two kinds, each a name with ONE home.  `KIND_SWEEP` is exported
@@ -62,9 +54,7 @@ _KINDS = (KIND_SWEEP, KIND_LADDER)
 #: ``omp_threads``, the cores one process runs on; ``gpu_count`` is the count
 #: in ``gres``; a name missing here is the field's own.  Read by the run
 #: card's assembly, the placement's check and `resolve`'s hand-over to the
-#: deck writer -- one map, the three of them (it lived in
-#: `jobset.placement` until 2026-10-06, and the deck writer matched names
-#: alone, so a run's cores per rank never reached its deck).
+#: deck writer -- one map, the three of them.
 AS_RESOURCE = {
     "omp_threads": "cpus_per_task",
     "threads": "cpus_per_task",
@@ -79,17 +69,11 @@ class Resources:
     launch value stated nowhere (`architecture.md` § 5.2; user, 2026-10-02:
     *"explicit job config is the only way allowed"*).
 
-    *It said "inherit the job-level default / per-job estimate" until
-    2026-08-24.  There is no per-job estimate: every one was deleted in the
-    estimation purge, and a field whose docstring still offers one invites
-    the next reader to go looking for it.*
-
     Field names match the EXCHANGE vocabulary used by the other persisted
     artifacts (bench-manifest, scheduler config) so the system speaks one
     language on files: ``mpi_np`` / ``cpus_per_task`` / ``time`` / ``mem`` /
     ``exclusive`` (NOT ``omp`` / ``walltime``).  ``domain`` is a
-    probed domain name (`configuration.md` § 5 -- it was
-    ``scheduler.routing`` until 2026-08-17) the submit engine
+    probed domain name (`configuration.md` § 5) the submit engine
     resolves to ``-p``/``-q``; ``gres`` is SLURM's GPU ask, a count
     (``"gpu:1"``; no card -- `scheduler.md` R2a) or None.
 
@@ -100,13 +84,13 @@ class Resources:
     road every *"field the deck never carries"* already rides
     (engines/stages.md § 5, the row that groups it with ``mpi_np`` and
     ``omp_threads``); the alternative was a second, hand-maintained road
-    from a job to its wrapper.  Decided 2026-08-07, and written here as
+    from a job to its wrapper.  Written here as
     well as in job-contracts.md § 6.2 because a field sitting in a class
     called *a per-job scheduler ask* is otherwise an invitation to render
     it into a directive.  **Do not emit it as one.**
     """
     domain:        Optional[str]   = None
-    time:          Optional[str]   = None    # SLURM -t (D-HH:MM:SS); == scheduler defaults.time
+    time:          Optional[str]   = None    # SLURM -t (D-HH:MM:SS)
     exclusive:     Optional[bool]  = None
     mem:           Optional[str]   = None    # SLURM --mem (e.g. "120G", "0")
     gres:          Optional[str]   = None    # SLURM --gres, a count: "gpu:1"
@@ -118,11 +102,7 @@ class Resources:
     gpu_binding:   Optional[bool]  = None
     #: Whether this run uses a GPU -- the ANSWER, carried rather than
     #: re-derived.  `read_by = ["wrapper"]` on the catalogue item says the
-    #: wrapper depends on it (`engines/template.md` § 6.1), and until
-    #: 2026-08-23 the wrapper satisfied that by grepping the rendered deck
-    #: for `Diag.ELPA.GPU` at four sites -- a layer re-deriving what another
-    #: layer already held, and doing it by matching a SIESTA keyword, so a
-    #: PySCF GPU run could not route at all.  `resolve` sets it on every job
+    #: wrapper depends on it (`engines/template.md` § 6.1).  `resolve` sets it on every job
     #: from the job's own values; :func:`gpu_request` reads it, with the
     #: count, for every reader.
     use_gpu:       Optional[bool] = field(default=None, metadata={"axis": "rider"})
@@ -146,10 +126,9 @@ class Resources:
     #: label the person chose on the machine that runs the job; the address
     #: and the key it resolves to stay in that machine's own file.
     #:
-    #: ``None`` is unset AND "every channel that machine has" -- the two
-    #: coincide, so an unset field renders no flag and behaves exactly as it
-    #: did before this existed.  An empty tuple is a real value meaning
-    #: none, and it renders a flag (`run-reports.md` 3.0).
+    #: ``None`` is unset: no flag is rendered and the monitor sends
+    #: nothing.  ``("*",)`` is every channel that machine has, and an empty
+    #: tuple is none at all (`run-reports.md` 3.0).
     notify_channels: Optional[Tuple[str, ...]] = field(default=None, metadata={"axis": "rider"})
 
     #: WHAT each report carries beyond the name (`stages.md` § 6.9).  `None`
@@ -167,13 +146,9 @@ class Resources:
     #: read by a different program.
     program:          Optional[str] = None
     max_memory_mb:    Optional[int] = None   # NOT a SLURM flag either -- `ulimit -v`
-    #  ^ added 2026-08-11.  It is a MACHINE fact (how much memory one rank may
-    #  take on this node), so it belongs to the allocation -- and until it lived
-    #  here it reached the wrapper from `cli.py` and `web/blueprints/build.py`
-    #  but NOT from `jobset/prep.py`, so a staged run silently dropped a cap the
-    #  user had set.  Three call sites building one wrapper from loose keyword
-    #  arguments, and one forgot a field; carried on the allocation, it cannot
-    #  be forgotten by one of them (generator.md § 5).
+    #  ^ a MACHINE fact (how much memory one rank may take on this node), so
+    #  it belongs to the allocation: carried on it, no call site building a
+    #  wrapper can forget it (generator.md § 5).
 
     def __post_init__(self) -> None:
         """``time`` and ``mem`` hold the RECORD's spelling, always, and a
@@ -206,10 +181,7 @@ class Resources:
         # A TUPLE OUT, A TUPLE BACK.  `to_dict` is `asdict`, so a job-set
         # file stores the names as a JSON array and `from_dict` hands them
         # back as a LIST -- and a list never equals the tuple it was written
-        # from.  Every value this class holds was a scalar until 2026-08-31,
-        # so nothing here had to think about it; the first sequence field
-        # broke round-tripping the moment it landed, and quietly: the names
-        # still reach the wrapper, and only equality lies.
+        # from.
         #
         # Normalising HERE for the reason the paragraph above gives -- four
         # roads reach this class, and a fix at one of them leaves three.
@@ -225,12 +197,9 @@ class Resources:
     def from_dict(cls, d: Optional[Dict[str, Any]]) -> "Resources":
         """A key this class does not know is REFUSED, not dropped.
 
-        It filtered silently until 2026-08-24, so a hand-edited
-        ``job-set.json`` saying ``"memory": "256G"`` or ``"walltime": "4h"``
-        -- both plausible, neither a field name -- lost the ask with no
-        complaint and the job ran with whatever the scheduler defaults to.
-        That is the same failure as the `--domain` one: a value a person
-        stated, that never arrived.
+        A hand-edited ``job-set.json`` saying ``"memory": "256G"`` or
+        ``"walltime": "4h"`` -- both plausible, neither a field name -- would
+        otherwise lose the ask with no complaint.
 
         `task.py`'s allocation reader has always refused an unknown key and
         named the known ones (`_check_keys`).  Two readers of one concept
@@ -307,11 +276,6 @@ def gpu_request(resources) -> GpuRequest:
     (`gpu.md` § 1.1).  Raises :class:`GpuRequestError` when the two
     disagree; prep asks, of the job its stage resolves to, before anything
     is written (`prep._resolve_stage`), so a job it wrote never does.
-
-    *Until 2026-10-03 the header counted a GPU job by its count OR by
-    ``use_gpu``, launch the same, and the run script by ``use_gpu`` alone
-    -- else by a scan of the SIESTA deck -- so ``--gpus 2`` on a CPU run
-    asked the queue for two GPUs its deck never used.*
     """
     from ..scheduler.quantities import parse_gres_flag
     gres = getattr(resources, "gres", None)
@@ -324,8 +288,8 @@ def gpu_request(resources) -> GpuRequest:
 class WarmFile:
     """One file this job continues **from**, and what makes it safe to take.
 
-    **Not an edge.**  The deleted ``Carry`` said *take X from job Y* and was
-    only answerable once you had decided who Y is.  Stages do not chain
+    **Not an edge.**  An edge -- *take X from job Y* -- is only answerable
+    once you have decided who Y is.  Stages do not chain
     (`project-layout.md` § 1.6), so at produce time nobody knows: the run a
     stage continues from is named at `prep`, by a person who has just looked
     at it, and it may be any finished attempt -- ``02_medium/run-1``,
@@ -371,9 +335,7 @@ class Job:
     job directory (``bench-<name>/``) and the SLURM ``-J`` name.  ``script``
     is the per-job input filename (e.g. the rendered ``.fdf``).
 
-    **A Job names no other Job.**  There is no ``depends_on``, no ``dep_kind``
-    and no ``carry`` -- all three were deleted 2026-08-10 (user).  What a job
-    declares instead is ``warm``: *what would this job take from a run it
+    **A Job names no other Job.**  What a job declares instead is ``warm``: *what would this job take from a run it
     continues, whichever run that turns out to be* -- which is what `prep`
     reads, because `--from` names the source and a produce-time edge cannot
     (see :class:`WarmFile`).  ``traits`` are the opaque per-job values a
@@ -387,7 +349,7 @@ class Job:
     traits:     Dict[str, str]  = field(default_factory=dict)
     #: A TRIAL's sweep coordinate, as data (`job-contracts.md` § 6.3: the
     #: name is an identifier, never a parser target -- what varied travels
-    #: here).  ``{}`` for a rung or a whole calculation.  `summarize` reads
+    #: here).  ``{}`` for a rung.  `summarize` reads
     #: it to table value coordinates and to carry the winner's value pins
     #: into the benchmark's report (`generator.md` § 4.3a).
     point:      Dict[str, Any]  = field(default_factory=dict)
@@ -426,10 +388,7 @@ class Job:
     def to_dict(self) -> Dict[str, Any]:
         # EVERY KEY, EVERY JOB (`job-contracts.md` § 6.1): `point` empty for
         # a job that is no trial, `finish` and `placement` null where there
-        # is none, `resumes` true or false.  Until 2026-10-06 those four were
-        # left out when empty or true, beside `resources` writing every
-        # field -- two conventions in one job, and an absent `placement`
-        # read two ways.
+        # is none, `resumes` true or false.
         return {
             "name": self.name,
             "script": self.script,
@@ -479,9 +438,6 @@ class Job:
 #: the file silently rather than failing.  The rules files are data and say it
 #: for themselves; this is the one Python spelling, and it lives beside
 #: :func:`warm_carry` because that is the only place the comparison happens.
-#:
-#: Declared twice until 2026-08-18 -- once per engine, each with a comment
-#: explaining that it had to match the other.  A comment is not a mechanism.
 OPTIMIZER_TRAIT = "optimizer"
 
 
@@ -502,12 +458,6 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
     and it need not be the ladder's next-door neighbour — continuing `tight`
     from `01_coarse` skips `medium` entirely, and comparing `tight` against
     `medium` would then answer a question nobody asked.
-
-    That was the shape until 2026-08-10: the set came off ``Job.carry``, whose
-    ``from_job`` is the **immediate predecessor**, fixed at produce time. So a
-    ladder that skipped a rung carried `.CG` on the strength of a comparison
-    with a stage that never ran — § 9's diagnosis in its second form, *a caller
-    reads a field computed for a different question.*
 
     ``source is None`` (an attempt this JobSet cannot place — a hand-made path,
     or one naming a stage that is not here) drops **every** conditional file.
@@ -592,8 +542,7 @@ class JobSet:
     def write(self, path, *, plan=None) -> Path:
         """Persist to ``job-set.json`` -- the bundle's plan, carried
         host->target (the exchange vocabulary, `job-contracts.md` § 6.2;
-        the persisted-artifacts registry is that document's § 6, absorbed
-        from a doc retired in the 2026-07 migration).  Pretty JSON so a
+        the persisted-artifacts registry is that document's § 6).  Pretty JSON so a
         human can read/diff the plan in the bundle.  ``plan``
         (`jobset.planned.Plan`) receives it instead of the disk."""
         from ..persist import json_text, write_json
@@ -631,17 +580,14 @@ class JobSet:
     def validate(self) -> List[str]:
         """Return human-readable structural errors (empty == OK).  Checks
         the invariants the engines can't recover from -- exactly the same
-        discipline the description's own stage validation applies.  (It used
-        to name a per-engine stage validator alongside it; those went with the
-        engine-config stage lists, and the ladder-level checks they made live
-        in ``task.py``, where a description's ladder is read and refused.)
+        discipline the description's own stage validation applies.
 
           * non-empty; ``kind`` known;
           * unique job names (the dir + ``-J`` collide otherwise);
           * every ``warm.requires_same`` names a trait this job HAS.
 
-        The acyclic/ordered checks went with the edges on 2026-08-10: with no
-        job naming another, there is no graph left to be cyclic.
+        No acyclic/ordered check: with no job naming another, there is no
+        graph to be cyclic.
         """
         errors: List[str] = []
         if self.kind not in _KINDS:

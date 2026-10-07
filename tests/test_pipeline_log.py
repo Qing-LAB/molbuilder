@@ -94,22 +94,9 @@ def _the_log(dest):
     return found[0].read_text(encoding="utf-8")
 
 
-# Retired 2026-10-05, when every prep began writing the log (M2e): two tests
-# of the switch that turned it on -- that a prep without it wrote none, and
-# that a prep with it wrote every other file byte for byte as one without.
-# There is no prep without it now; W13, that it decides nothing, is held by
-# its one writer (`script-preparation.md` § 4.5).
-
-
 # --------------------------------------------------------------------- #
 #  2. The flat layout's own rule                                         #
 # --------------------------------------------------------------------- #
-
-# `test_two_rungs_in_a_flat_calculation_get_two_logs` retired 2026-10-06,
-# when its two preps below the entry went: through the entry a flat stage
-# builds on the run before it, and each stage's log, named by its token, is
-# there beside the other's -- `tests/data/the_catalogue.toml`'s flat row,
-# every name the card gives a stage (the pipeline log among them).
 
 
 def test_the_name_says_engine_and_shape(tmp_path):
@@ -117,9 +104,6 @@ def test_the_name_says_engine_and_shape(tmp_path):
     directory it came from no longer says what it was."""
     assert log_name("BDT", "01_coarse", "siesta", "flat") == \
         "BDT_01_coarse.siesta.flat.pipeline.log"
-    # (a stageless name, "BDT.pyscf.hierarchical.pipeline.log", was pinned
-    # here until 2026-10-06: every description has a stage, and an empty
-    # token is refused)
 
 
 # --------------------------------------------------------------------- #
@@ -151,8 +135,8 @@ def test_the_engines_derived_context_is_in_the_log(tmp_path):
     """**W10's one per-render context**, which no other record carries.
 
     ``block_size`` and the diagonaliser are worked out from
-    ``(struct, cfg)`` and are nobody's config field; before the spec carried
-    the context, a reader outside the engine had no way to see them at all.
+    ``(struct, cfg)`` and are nobody's config field; the log is where a
+    reader outside the engine sees them.
     """
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     _prep(dest, stages[0])
@@ -249,12 +233,6 @@ def test_both_gates_report_their_verdict(tmp_path):
     assert re.search(r"out  compared\s+\d+ distinct lines", text), text
 
 
-# `test_a_settings_refusal_is_in_the_log_with_its_reason` retired 2026-10-05
-# with the rule it held (*logged before reported*): a refused prep writes no
-# log (`script-preparation.md` § 4.5, `job-system.md` § 5.0 rule 3) -- what
-# it leaves is the prep protocol's case table (`tests/data/prep_protocol.toml`).
-
-
 # --------------------------------------------------------------------- #
 #  6. The hook boundary — W16                                            #
 # --------------------------------------------------------------------- #
@@ -286,8 +264,7 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
 
     API-level: the hook is swapped in-process, and the prep goes through
     the one entry `jobset prep run` calls; the CLI adds nothing between them
-    for an exception that is not a refusal.  (Whether every hook was wrapped was
-    read out of `script_emit.py` and `jobset/prep.py` until 2026-09-26.)
+    for an exception that is not a refusal.
 
     MUTATION THIS MUST FAIL AGAINST: any one hook called bare, outside its
     ``_calling(...)`` boundary.
@@ -340,10 +317,7 @@ def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
     that into ``HookError`` and broken every caller matching ``ValueError``
     -- which is why the boundary annotates instead of replacing.
 
-    **Driven THROUGH the boundary**, both ways.  The first version of this
-    test called ``spec_for`` directly, where nothing wraps it -- so it asserted
-    the property without exercising it, and a mutation that replaced the
-    exception with a ``RuntimeError`` passed it. Found by that mutation.
+    **Driven THROUGH the boundary**, both ways.
     """
     from molbuilder.issues import calling
     from molbuilder.jobset.errors import PrepError
@@ -369,11 +343,6 @@ def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
     with pytest.raises((ValueError, PrepError)) as real:
         _prep(dest, stages[0], gres="gpu:1")    # a GPU run states its GPUs
     assert "ELPA" in str(real.value), real.value
-
-
-# `test_a_hook_failure_lands_in_the_log_with_its_traceback` retired
-# 2026-10-05 with the log's `!!` column: a hook that raised ends the prep,
-# which then writes nothing (`script-preparation.md` § 4.5).
 
 
 def test_the_attribution_reaches_the_person_running_the_command(tmp_path):
@@ -407,7 +376,7 @@ def test_every_line_is_a_banner_a_column_or_an_indented_note(tmp_path, engine):
     **Both engines**, because each engine's prep leaves its own file and W13
     promises one format across them: the framework and the conductor write
     it, and an engine only answers.  Which modules may write is review's to
-    hold (an import scan asked it until 2026-09-26); what a test can see is
+    hold; what a test can see is
     the file each engine's prep actually left, and that is held here.
     """
     dest, stages = _calculation(tmp_path, engine, "flat")
@@ -424,9 +393,8 @@ def test_every_line_is_a_banner_a_column_or_an_indented_note(tmp_path, engine):
             continue
         if ln.startswith("       "):                # an indented note / block
             continue
-        # A BANNER'S TITLE, and ONLY directly under a rule.  Accepting any
-        # two-space-indented line here made this test unfalsifiable: a verb
-        # writing `  note ...` passed it.  Found by mutation, 2026-08-19.
+        # A BANNER'S TITLE, and ONLY directly under a rule: accepting any
+        # two-space-indented line would let a verb writing `  note ...` pass.
         if was_rule and re.match(r"^  \S", ln):
             continue
         stray.append(ln)
@@ -465,10 +433,7 @@ def test_nothing_reaches_a_deck_until_the_last_refusal(tmp_path):
     **SIESTA only, and the reason is worth stating rather than hiding in a
     parametrize list.**  PySCF ships its basis sets inside the library, so it
     has no data-files step to refuse at -- that is W5's *nothing*, a recorded
-    answer.  And its settings gate cannot refuse either: measured 2026-08-19,
-    `validation/pyscf.py` emits no error-severity issue at all, so every
-    PySCF refusal today comes from somewhere other than the two gates.  A
-    parametrised arm here would assert a refusal the code cannot produce.
+    answer.
     """
     from molbuilder.jobset.errors import PrepError
 
@@ -486,9 +451,9 @@ def test_both_engines_traverse_the_same_sequence(tmp_path):
     never brings its own.
 
     *"Two engines that each run their own order cannot be compared, and a
-    rule proved of one says nothing about the other."*  Until the log existed
-    there was nothing that recorded the order actually taken; now the step
-    banners ARE that record, so the claim is checkable rather than asserted.
+    rule proved of one says nothing about the other."*  The step banners
+    record the order actually taken, so the claim is checkable rather than
+    asserted.
 
     The engines differ in what they answer at each stop -- PySCF has no bench
     anchors and no ``validate_subject`` -- and that is W5's *nothing*, not a
@@ -506,8 +471,3 @@ def test_both_engines_traverse_the_same_sequence(tmp_path):
         f"the engines ran different sequences:\n"
         f"  siesta: {seqs['siesta']}\n  pyscf : {seqs['pyscf']}")
     assert seqs["siesta"], "no step banners at all"
-
-
-# `test_an_unwritable_log_does_not_break_the_prep` retired 2026-10-05: the
-# log writes no file of its own -- its text is one of the plan's files,
-# written with the rest (`pipeline_log.PipelineLog`).

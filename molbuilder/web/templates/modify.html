@@ -18,10 +18,6 @@
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 </head>
-{#- No `data-workspace-owner`: it existed so a read happening before any mount was
-    still namespaced, back when the workspace held one active namespace that had to
-    be set beforehand. Every save and load now names its tag in the call
-    (workspace.md § 4), so there is no pre-mount window to cover. -#}
 <body data-sidebars="projects">
 
 {% set active_tab = "molbuilder" %}
@@ -35,23 +31,19 @@
 
 <!-- ============================================================ -->
 <!--  Layout:                                                       -->
-<!--    LOADER ROW: file picker + status                           -->
-<!--    THREE COLUMNS:                                             -->
-<!--      LEFT   atom list (click-to-highlight; shift-click for    -->
-<!--             multi-select / anchor-pair selection)             -->
-<!--      MIDDLE 3Dmol viewer (click atom -> select; xyz axes      -->
-<!--             toggle drawn at world origin)                     -->
-<!--      RIGHT  edit panel: Atom (delete + add); Transform        -->
-<!--             (translate / center / rotate / orient); Junction   -->
-<!--             (electrode placement); Cell.                       -->
+<!--    INIT STRUCTURE card: every path that brings a structure in  -->
+<!--    THE WORKSPACE ROW:                                          -->
+<!--      the fused MolView card (viewer + selection/Cell panel)    -->
+<!--      the Modify card: Atom (delete + add); Transform           -->
+<!--             (translate / center / rotate / orient); Slab;      -->
+<!--             Cell.                                              -->
 <!--             All ops wired via molview.data.applyOp.            -->
 <!-- ============================================================ -->
 
 <!-- 1. Init structure — every path that brings a structure INTO
-     the workspace.  Tab-bar (instead of accordion) so only one
-     generator's form is visible at a time, eliminating the
-     accordion's vertical sprawl + keeping the workflow visually
-     compact.  Order matches docs/web/tabs.md -->
+     the workspace.  Tab-bar so only one generator's form is
+     visible at a time, keeping the workflow visually compact.
+     Order matches docs/web/tabs.md -->
 <main class="modify-main">
 
   <section class="modify-init-card card">
@@ -265,18 +257,13 @@
        View menu inside the fused card; selection Clear lives in the
        selection panel.  "Save to project" lives in the Modify card's
        header row (.modify-actions--header), NOT here. -->
-  {#- 2026-06-12 layout v3: three panels — viewer, selection,
-      modify — each in its own card.  Wide viewports stack them
-      side-by-side via .workspace-grid (3 columns); medium drops
-      modify below (2 + 1); narrow stacks everything vertically.
-      The previous v2 layout glued selection into modify-section
-      which forced "tweak filter then apply op" to alternate
-      between two physically adjacent panels — clean separation
-      lets the user keep the viewer steady while editing
-      filters or applying ops. -#}
+  {#- The workspace row: the fused MolView card (viewer + selection) beside
+      the Modify card, laid out by the shared .card-row (page-shell.css) --
+      the user keeps the viewer steady while editing filters or applying
+      ops. -#}
   <div class="modify-grid card-row">
   {#- 2+3. Structure & selection — the FUSED molview card: the viewer and the
-      selection panel share ONE card with a foldable panel (fused-layout.css,
+      selection panel share ONE card with a foldable panel (lib/molview/molview.css,
       web/molview.md § 8.1 + § 8.3).  Same composition as the Results structure inspector
       (lib/inspectors/structure.js): molviewer-card> molviewer-card-body>
       (molviewer-window | molviewer-panel-fold-btn | molviewer-panel). -#}
@@ -291,12 +278,12 @@
     {#- EMPTY host -> molview.mount BUILDS the whole fused card (viewer + View-menu
         toggles incl. "Reset view" = focus-molecule + selection halos + measurement chip
         + fold + selection/Cell panel), exactly like the molview demo and the Results
-        inspector.  Modify no longer hand-builds ANY viewer chrome; selection-bootstrap.js
+        inspector.  Modify hand-builds no viewer chrome; selection-bootstrap.js
         mounts the concealed module into this div.  See web/molview.md § 8.1. -#}
     <div id="molview-host"></div>
   </section>
 
-  <!-- 4. Modify — atom/transform/slab/cell op-tabs.  Now its own
+  <!-- 4. Modify — atom/transform/slab/cell op-tabs.  Its own
        card so the user can keep the viewer + selection panels
        fixed while applying ops.  "Save to project" is in the card
        header row (all cross-tab transfer is via saved project files). -->
@@ -319,9 +306,9 @@
       </span>
     </header>
 
-    {#- "Save to project" — the structure write, relocated here (right under the
-        title line) so the primary way to get the geometry OUT is prominent.  All
-        cross-tab transfer now goes THROUGH a saved project file (no in-memory
+    {#- "Save to project" — the structure write, right under the title line
+        so the primary way to get the geometry OUT is prominent.  All
+        cross-tab transfer goes THROUGH a saved project file (no in-memory
         "send to"): save here, then "Load from project" in the target tab.  Wired
         in modify/viewer.js. -#}
     <div class="modify-actions modify-actions--header">
@@ -329,12 +316,8 @@
         Save to project
       </button>
       {#- ONE SLOT FOR WHAT THE ROW HAS TO SAY, so the two buttons keep their
-          places whatever it says.  Both spans sat directly in the flex row
-          until 2026-09-11, between the two buttons: "Not saved yet" and
-          "saved #1 - Retract -> #0" are different widths, so the row re-flowed
-          as you worked and "Start empty" moved -- sometimes onto a second
-          line.  A control that moves when a MESSAGE changes is one you have
-          to re-find before every click. -#}
+          places whatever it says: a control that moves when a MESSAGE
+          changes is one you have to re-find before every click. -#}
       <span class="modify-actions__say">
         <span id="save-readout" class="muted"></span>
         <span id="save-status" class="status" role="status"></span>
@@ -343,9 +326,7 @@
           2026-09-07: "it clears the molbuilder modify content").  Delete acts
           on a selection and belongs to the Atom tab; this acts on the WHOLE
           model -- it takes the structure, its metadata, its cell and the
-          timeline -- which is the same scope Save has.  Sitting inside the
-          Atom tab it was both invisible from the other three tabs and read as
-          a per-atom edit, which is the one thing it is not.
+          timeline -- which is the same scope Save has.
           Pushed to the row's far end (.modify-actions__reset) so the write
           action keeps the reading position and the discarding one is not
           adjacent to it. -#}
@@ -364,26 +345,17 @@
     {#- WHAT THE LAST OP DID -- one line, and only that.  What the SERVER says
         about the structure is MolView's to show, in its own panel (molview.md
         § 6.8): a cell notice under the Cell rows it is about, everything else on
-        one line above the tabs.  An advisory list stood here too and drew the
-        same facts a second time, from a key the modify routes never answer with.
-        Wired in modify/viewer.js. -#}
+        one line above the tabs.  Wired in modify/viewer.js. -#}
     <div class="modify-messages" role="status" aria-live="polite">
       <p id="edit-status" class="modify-status"></p>
     </div>
 
     <div class="modify-body">
       <!-- Edit (op-tabs) — Atom / Transform / Slab / Cell
-           sub-tabs.  Selection is now in its own panel above so
+           sub-tabs.  Selection is in the fused MolView card, so
            this column gets the full width. -->
       <aside class="modify-edit modify-edit-card">
     <div class="modify-edit-panel">
-      <!-- The "Selection" summary that used to sit at the top of
-           this panel was retired 2026-05-20.  The selection panel
-           inside the fused molview card (built by molview.mount into
-           #molview-host) renders the per-atom list with checkboxes +
-           region labels; the per-op anchor readouts below populate
-           themselves from the live selection store. -->
-
       <!-- Sub-tabs split the op fieldsets by workflow phase.
            Default-open is "Atom" (the most common starting point:
            load, then delete H caps or add a substituent).  Transform
@@ -401,8 +373,6 @@
                 role="tab" type="button"
                 id="optab-btn-transform" aria-controls="optab-panel-transform"
                 aria-selected="false">Transform</button>
-        {#- § 3: BESIDE the Junction tab, not replacing it.  The old panel and
-            its backend are untouched and go only once this is proven (§ 3.4). -#}
         <button class="modify-optab" data-op-tab="slab"
                 role="tab" type="button"
                 id="optab-btn-slab" aria-controls="optab-panel-slab"
@@ -612,10 +582,6 @@
 
       </div><!-- /.optab-panel data-op-panel="transform" -->
 
-      <!-- Junction: electrode placement (M5).  Place metal slabs around
-           the anchor(s); Save to project, then load that file in the
-           Structure optimization / Transport tab to generate FDF/PySCF. -->
-
       {#- Cell: the periodicity editor.  MolView only DISPLAYS periodicity; the edits
           live here and are sent by one Apply as the gate's `block` op
           (structure-periodicity.md § 4.1), wired by modify/periodicity.js.  k-grid is
@@ -637,14 +603,10 @@
             <label>Plane</label>
             <span id="slab-plane-radios" class="modify-axis-radios"></span>
           </div>
-          {#- WHICH PUBLISHED VALUE `a` STARTS FROM.  This row was in the
-              template with nothing building it -- no code anywhere populated
-              the span, so the label named a control that never appeared
-              (found 2026-09-07).  It is built now from /api/modify/meta's
-              `lattice_table`, and picking one FILLS the box below, so the
-              number that will be used is on screen from the first paint
-              instead of the box sitting blank while the server quietly used
-              the experimental value anyway. -#}
+          {#- WHICH PUBLISHED VALUE `a` STARTS FROM.  Built from
+              /api/modify/meta's `lattice_table`, and picking one FILLS the box
+              below, so the number that will be used is on screen from the
+              first paint. -#}
           <div class="modify-op-row">
             <label>Lattice ref</label>
             <span id="slab-lattice-ref-radios" class="modify-axis-radios"></span>
@@ -710,12 +672,9 @@
         {#-    growing toward -z, with that first layer at z = 0,         -#}
         {#-    the whole thing offset (dx, dy) from the origin.           -#}
         {#-                                                               -#}
-        {#-  The row this replaced -- "Stacking below it" -- said what the -#}
-        {#-  registry did WHEN GROWING DOWNWARD, so its meaning depended   -#}
-        {#-  on another control's value and it had to hide itself half the -#}
-        {#-  time.  Said as a walk direction it always means the same      -#}
-        {#-  thing, and it hides only where the arithmetic makes the two   -#}
-        {#-  walks the same slab (a 2-layer stacking period).              -#}
+        {#-  Said as a walk direction it always means the same thing, and -#}
+        {#-  it hides only where the arithmetic makes the two walks the   -#}
+        {#-  same slab (a 2-layer stacking period).                       -#}
         {#- ============================================================ -#}
         <fieldset class="modify-op-block">
           <legend>Where it starts, and how it grows</legend>
@@ -802,13 +761,9 @@
         {#-  (user, 2026-09-07: "the cell setup is very unintuitive ...   -#}
         {#-  too many buttons interacting with each other").              -#}
         {#-                                                               -#}
-        {#-  It was always the fact that decided what every other control -#}
-        {#-  did, and it was the one thing the panel never showed: you    -#}
-        {#-  entered "explicit" by typing a cell and left it by pressing  -#}
-        {#-  a button called "Update vacuum", each with a modal to        -#}
-        {#-  explain the side effect afterwards.  Stated as a choice, the -#}
-        {#-  side effects stop existing: the panel shows the fields the   -#}
-        {#-  chosen regime actually uses, and Apply sends that regime.    -#}
+        {#-  It is the fact that decides what every other control does.   -#}
+        {#-  Stated as a choice, the panel shows the fields the chosen    -#}
+        {#-  regime actually uses, and Apply sends that regime.           -#}
         {#- ============================================================ -#}
         <fieldset class="modify-op-block">
           <legend>The box is</legend>
@@ -870,8 +825,8 @@
                    step="0.01" min="0" aria-label="length of the chosen axis" />
             <button id="pv-cell-set-len" class="modify-ghost" type="button">Set</button>
           </div>
-          {#- § 6.1: `c` is MEASURED AND SET, never invented.  The builder no
-              longer pads, so this is where the box gets its length along the
+          {#- § 6.1: `c` is MEASURED AND SET, never invented.  The builder does
+              not pad, so this is where the box gets its length along the
               transport axis.  Two conveniences, no decisions: the atoms' span
               is a fact nobody should be recomputing, and the gap is added to
               it.  For a boundary meant to continue the crystal the gap IS the
@@ -894,10 +849,10 @@
               gate still decides; this only says it before the request, with the
               way out the gate cannot know about. -#}
           <p id="pv-cell-hand" class="modify-op-hint" hidden></p>
-          {#- NO "Update cell" AND NO "Use default" HERE.  Both were commits
-              onto one field of a fact § 6.2 says travels together, and "Use
-              default" was the way back to the derived regime -- which is now
-              the switch at the top of the panel.  One Apply, at the bottom. -#}
+          {#- NO "Update cell" AND NO "Use default" HERE: the cell is a fact
+              § 6.2 says travels together, and the way back to the derived
+              regime is the switch at the top of the panel.  One Apply, at
+              the bottom. -#}
           <p>
             Every engine receives this box anchored at (0,0,0), with the
             coordinates shifted into it — automatically, at generation.
@@ -940,21 +895,15 @@
         {#- ============================================================ -#}
         {#-  ONE COMMIT, for a fact that travels together (§ 6.2).        -#}
         {#-                                                               -#}
-        {#-  Four "Update ..." buttons stood here, one per field, and the -#}
-        {#-  cell is not four facts: changing two of them meant two       -#}
-        {#-  requests, the second of which could be refused after the     -#}
-        {#-  first had landed.  Some pairs were unreachable in EITHER     -#}
-        {#-  order -- an axis cannot become periodic until the explicit   -#}
-        {#-  cell is stored, and that cell cannot be cleared until the    -#}
-        {#-  axis is not periodic -- so the panel had modals apologising  -#}
-        {#-  for side effects the ordering forced.  `op: "block"` takes   -#}
-        {#-  the whole thing and checks once.                             -#}
+        {#-  The cell is not four facts: changing two of them in two      -#}
+        {#-  requests could have the second refused after the first had   -#}
+        {#-  landed, and some pairs are reachable in NEITHER order.       -#}
+        {#-  `op: "block"` takes the whole thing and checks once.         -#}
         {#-                                                               -#}
         {#-  Revert is not a server call: it redraws the fields from the  -#}
         {#-  structure, throwing away what has been typed but not sent.   -#}
-        {#-  Undoing an APPLIED cell is Retract's job, which since        -#}
-        {#-  2026-09-07 works here too (a cell edit records a timeline    -#}
-        {#-  point like every other edit).                                -#}
+        {#-  Undoing an APPLIED cell is Retract's job (a cell edit        -#}
+        {#-  records a timeline point like every other edit).             -#}
         {#- ============================================================ -#}
         <div class="modify-op-row modify-cell-actions">
           <button id="pv-apply" class="full-btn" type="button">Apply cell</button>
@@ -971,7 +920,7 @@
     </div><!-- /.modify-body -->
 
   </section>
-  </div><!-- /.workspace-grid -->
+  </div><!-- /.modify-grid -->
 
 </main>
 
@@ -982,31 +931,16 @@
 </div>{#- /.app-content -#}
 </div>{#- /.app-body -#}
 
-<!-- Shared lib helpers used by every viewer (Build / Watch / Modify).
-     mol-style.js: 3Dmol style-spec builder.  mol-format.js: chemical-
-     formula renderer (Hill order with C+H first). -->
-{#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js (below). -#}
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
 {#- NO TAGS for modify/viewer.js or modify/periodicity.js.
 
     They are IMPORTED by modify/selection-bootstrap.js, which is this page's
-    owner: it mounts the one viewer the page has and starts them with it.
-
-    They used to be loaded here and wake on DOMContentLoaded, each finding the
-    viewer by name in a global. MolView publishes nothing there, and the load
-    order put both of them BEFORE the file that mounts — so even a global would
-    have been empty when they ran. Being started by the owner replaces both
-    problems with one line. -#}
+    owner: it mounts the one viewer the page has and starts them with it:
+    MolView publishes no global to find the viewer by. -#}
 {# The shared MolView + workspace stack -- ONE include, not a pasted copy
    (_molview_scripts.html: vendor 3Dmol + molview/index.js + workspace/dispatcher.js +
-   warning-modal + region-label-definitions). #}
+   warning-modal). #}
 {% include "_molview_scripts.html" %}
-{# Inline script for popover init lifted out to its own JS file
-   so the CSP `script-src 'self'` contract holds.  Pre-fix the
-   inline block was silently dropped in production and the
-   popover never wired up. #}
-{# molview.mount's build path also wires the trajectory bar (mountFrameControls);
-   load it before mount.js. #}
 <script type="module" src="{{ url_for('static', filename='modify/selection-bootstrap.js') }}"></script>
 {# Molbuilder-tab Sources panel + generators.  page.js binds ws.*
    + the warning modal; the generators (smiles/name/dna/rna/...)

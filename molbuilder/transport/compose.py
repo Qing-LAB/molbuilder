@@ -67,15 +67,6 @@ def record_files(form: str = "relaxation") -> Tuple[str, ...]:
     write and by the load, so they cannot disagree about whether a copy
     is complete.
 
-    It used to be spelled three times (what ``write_compose_record``
-    puts down, what it *says* it put down, and what
-    ``load_compose_record`` requires), and the three disagreed: the
-    codec writes the geometry as a PAIR, and the file carrying the
-    region labels was in none of the lists.  A record whose labels had
-    been deleted therefore passed the completeness check and loaded a
-    junction with no electrodes -- dying inside the lead gates instead
-    of answering "incomplete, compose again".
-
     The geometry's label file is not named literally: it is whatever
     the codec pairs with :data:`JUNCTION_GEOMETRY`, asked of the codec's
     own rule (`sidecars.molstruct.sidecar_path_for`).
@@ -92,29 +83,15 @@ def record_files(form: str = "relaxation") -> Tuple[str, ...]:
 def _unusable_cell(struct) -> Optional[str]:
     """Why this structure's cell cannot carry a junction — or ``None``.
 
-    ONE QUESTION, BOTH FORMS.  Form A spelled this out and form B asked only
-    *"is the cell None?"*, which was enough for as long as
-    ``Structure.__post_init__`` refused a zero-volume lattice outright.  That
-    refusal was removed on 2026-09-21 so a pair holding a bad box could be
-    OPENED and corrected on the Cell page (§ 8.2, *"reading does not judge"*)
-    -- and form B had been relying on it without saying so.  Measured: a
-    form-B sidecar whose ``cell`` is a row of zeros loads and passes the
+    ONE QUESTION, BOTH FORMS.  ``Structure`` reads a zero-volume lattice
+    without refusing it (§ 8.2, *"reading does not judge"*), so a form-B
+    sidecar whose ``cell`` is a row of zeros loads and passes an
     ``is None`` guard.
 
-    **It does not crash, and the first telling of this said it did.**
-    ``transiesta.axis_vacuum`` inverts the cell unguarded and does raise
-    ``LinAlgError`` when called directly -- but nothing reaches it with a
-    bad box: the spec builder places the atoms through ``cell.to_engine``,
-    which refuses a box it cannot place them in with the one checker's own
-    finding, so the deck path answers *"[cell.no_volume] This box is flat
-    (8 x 8 x 0 A)"*.  Both the original review and its cross-check
-    asserted the traceback from the function in isolation without tracing the
-    call, which is the § 1d step-0 mistake in miniature.
-
-    What this guard is actually worth is WHERE and IN WHOSE WORDS the refusal
-    lands: at the citation door, naming the cited pair, the way form A has
-    always done -- rather than surviving to the deck writer to be described
-    as a problem with a box, several steps from the file that holds it.
+    What this guard is worth is WHERE and IN WHOSE WORDS the refusal
+    lands: at the citation door, naming the cited pair -- rather than
+    surviving to the deck writer to be described as a problem with a box,
+    several steps from the file that holds it.
 
     A junction needs a real box (`science/junction-cell.md`): the transverse
     vectors set the k-mesh and the image separation, and the transport vector
@@ -125,8 +102,7 @@ def _unusable_cell(struct) -> Optional[str]:
     c = np.asarray(struct.cell, dtype=float)
     if c.shape != (3, 3) or not np.all(np.isfinite(c)):
         return "states a cell that is not three finite vectors"
-    # The ONE threshold, from the module that owns the question -- not a
-    # fourth literal (`cell.py`'s header records the era of four).
+    # The ONE threshold, from the module that owns the question.
     from ..cell import ZERO_VOLUME_TOL
     if abs(float(np.linalg.det(c))) < ZERO_VOLUME_TOL:
         return ("states a cell with no volume (its vectors are not "
@@ -173,14 +149,8 @@ def _cells_agree_or_refuse(a_name: str, a, b_name: str, b) -> None:
 def read_xv(path) -> Tuple[np.ndarray, List[str], np.ndarray]:
     """SIESTA's ``.XV`` → ``(cell_ang (3,3), elements, positions_ang)``.
 
-    THE PARSE MODULE'S READER, reshaped.  This used to be a second, complete
-    `.XV` parser -- same name, different return type, sitting beside
-    `parse/coords/siesta_xv.py`, whose own first paragraph says "this is the
-    only `.XV` reader".  `constants.py` records what the pair already cost:
-    the two carried different Bohr radii, so "the same file gave coordinates
-    4e-7 apart depending on which reader was asked".  Unifying the constant
-    fixed that number and left both parsers standing; this removes the
-    second one.
+    THE PARSE MODULE'S READER, reshaped: `parse/coords/siesta_xv.py` is the
+    only `.XV` reader.
 
     The TUPLE SHAPE stays, because `compose_junction`'s overlay wants the
     three arrays positionally and the atom ORDER is the deck's order -- that
@@ -281,9 +251,7 @@ def classify_citation(cite_dir: Path) -> CitedDir:
     xyzs = sorted(p for p in cite_dir.glob("*.xyz") if p.is_file())
     # THE PAIR IS COMPOSED BY THE MODULE THAT OWNS THE SUFFIX
     # (`sidecars.molstruct.sidecar_path_for`), not by slicing `.xyz` off a
-    # name here -- and the slice was subtly its own rule: it stripped exactly
-    # ``.xyz`` where the composer strips the LAST suffix, so the two agreed
-    # only for names ending in `.xyz`, which is the only case reached.
+    # name here.
     from ..sidecars.molstruct import sidecar_path_for
     pairs = [x for x in xyzs if sidecar_path_for(x).is_file()]
 
@@ -303,30 +271,27 @@ def classify_citation(cite_dir: Path) -> CitedDir:
         deck = decks[0]
         # HOW THE CITED RUN ENDED, asked of the one door (`runrecord.ending`,
         # `execution/architecture.md` § 3.2) about THIS deck: molbuilder's own
-        # marker -- a cited relaxation is a run of ours.  *(SIESTA's
-        # `0_NORMAL_EXIT` answered too, for a relaxation run by hand, until
-        # 2026-10-03: input molbuilder does not take.)*
+        # marker -- a cited relaxation is a run of ours.
         #
-        # DECK-SCOPED, never the directory's `run_status`: measured
-        # 2026-09-18, a directory answer reported a neighbour rung's `rc=1`
-        # for a citation whose own run concluded `rc=0`, cost 3,000x the
-        # runtime and appended a `.parse.log` into the person's folder on
-        # every browse.
+        # DECK-SCOPED, never the directory's `run_status`, which can answer
+        # for a neighbour rung's run.
         concluded = ending(cite_dir, deck.stem).line
-        # A molbuilder attempt mid-run HAS record files that do not
-        # conclude; `ending` answers "not concluded" for both that and
-        # no-record-at-all.  This third clause is LOAD-BEARING, not
-        # decoration: it is what separates "still running" from "no run
-        # record", and `compose_junction` gates on the difference.  Tell them apart by the files themselves --
-        # classification only RECORDS the state (describing ahead of a
-        # running relax is legal); COMPOSING from it refuses (strict
-        # composition, ruling Q2 -- compose_junction).
-        # LAUNCHED is the one door's answer (`runrecord.launch_record`), and
-        # a record that does not read is refused by name -- never "launched"
-        # or "not".  `.concluded` is the catalogue's, so the catalogue finds
-        # it.
+        # `ending` answers "not concluded" both for a run still going and for
+        # no run record at all; `has_record` tells them apart, and
+        # `compose_junction` refuses to compose from a run still going
+        # (strict composition, ruling Q2).  LAUNCHED is the one door's answer
+        # (`runrecord.launch_record`), asked of the cited run by its stage's
+        # names (`runs.Run.names`); a description or a record that does not
+        # read is refused by name -- never "launched" or "not".  A folder no
+        # calculation claims holds no run of ours, and so no record.
+        from ..runs import place_of, run_of
+        place = place_of(cite_dir)
+        if place.problem:
+            raise ComposeError(place.problem)
+        cited = run_of(deck)
         try:
-            launched = launch_record(cite_dir) is not None
+            launched = (cited is not None and cited.stage is not None
+                        and launch_record(cite_dir, cited.names) is not None)
         except LaunchRecordError as e:
             raise ComposeError(str(e)) from e
         has_record = (concluded is not None or launched
@@ -368,11 +333,9 @@ def recorded_contract_of(cited: CitedDir) -> Optional[Dict[str, object]]:
     disagree about what counts as recorded."""
     if cited.form != "structure" or cited.sidecar is None:
         return None
-    # THROUGH THE DOOR.  `labeled_structure_from` in this same module reads
-    # sidecars with `molstruct.load`; this one hand-parsed, twenty lines away,
-    # under a docstring promising "ONE reader".  `load` validates the envelope
-    # and reads `utf-8-sig`.  `MolstructJsonError` is a ValueError, so "else
-    # None" is unchanged for a sidecar that is missing or malformed.
+    # THROUGH THE DOOR: `molstruct.load` validates the envelope and reads
+    # `utf-8-sig`.  `MolstructJsonError` is a ValueError, so "else None"
+    # holds for a sidecar that is missing or malformed.
     from ..sidecars import molstruct as _molstruct
     try:
         raw = _molstruct.load(cited.sidecar)
@@ -417,12 +380,6 @@ def _warn_about_edits_since_the_contract_was_recorded(
     non-empty ``contract`` — so a structure that never came from a run
     (SMILES, a plain `.xyz`, anything built in Modify) reaches neither end
     of this. Nothing to inherit, nothing to be stale about.
-
-    *(Written 2026-09-07. The flag had been set since 2026-08-29 and read by
-    NOTHING -- its only consumer in the tree was a test grepping the JS
-    source for its own name. Splitting it in two was the precondition: one
-    flag covered label writes as well, so acting on it meant warning that a
-    mesh cutoff might not apply because someone renamed a region.)*
     """
     if not recorded:
         return
@@ -458,7 +415,7 @@ def _warn_about_edits_since_the_contract_was_recorded(
 def resolve_citation(citation: str, tree_root: Path
                      ) -> Tuple[Path, CitedDir]:
     """The citation's directory, fenced to the tree and classified
-    against the § 4.1b file condition.  Public since P7b: the web
+    against the § 4.1b file condition.  Public: the web
     hand-over validates a citation through the SAME door prep composes
     through."""
     from ..projects import OutsideRoot, contain
@@ -483,9 +440,8 @@ def _junction_axis_kind(deck_text: str) -> Tuple[str, str, str]:
     The relaxation's deck records its structure's kinds in its ENGINE-OFFSET
     block (`script_emit.emit_engine_offset`), so a person who built a wire or
     chain junction -- isolated across, `engines/transport.md` § 6.1c -- keeps
-    that declaration through the composition.  A deck written before that
-    record (plan § 5q D7) states none, and its junction is read the way every
-    junction was until 2026-09-29: periodic across.
+    that declaration through the composition.  A deck that records none is
+    read periodic across.
     """
     from ..deck_record import extract_engine_offset
     from ..kmesh import TRANSPORT_AXIS
@@ -546,22 +502,17 @@ def labeled_citation_structure(cited: CitedDir):
     # ENGINE-OFFSET block carries the structure's `axis_kind`
     # (`_junction_axis_kind`).  A slab junction is periodic across; a wire or
     # chain junction is isolated across, and stating it periodic here made
-    # its vacuum a contradiction the settings gate refuses (§ 6.1c).  *(Until
-    # 2026-09-29 x and y were stated periodic for every junction.)*
+    # its vacuum a contradiction the settings gate refuses (§ 6.1c).
     #
-    # Assigning `.cell` afterwards instead skipped `__post_init__`, so the
-    # box arrived unvalidated and every axis stayed `isolated`: the emitted
-    # electrode deck then read `pbc` and printed "the transport axis (c) has
-    # vacuum / is not periodic; the electrode .TSHS cannot attach seamlessly"
-    # on a junction that is periodic in-plane and open along z by design.
+    # Stated at construction, not assigned afterwards, so `__post_init__`
+    # validates the box and reconciles the axes.
     deck_text = cited.deck.read_text()
     kinds = _junction_axis_kind(deck_text)
     # ...and the `.XV` is the engine's frame, so it states an offset of 0 on
-    # either label lane -- WHEN THE DECK RECORDED ITS PLACEMENT (§ 6.0, plan
-    # § 5q D7): every rung composed from it then applies nothing.  A deck
-    # with no `engine-offset` record was prepped before the rule and left its
-    # atoms flush against a face, so its junction states none and the rule
-    # centres it -- a rigid shift, and the relaxation stays citable.
+    # either label lane -- WHEN THE DECK RECORDED ITS PLACEMENT (§ 6.0):
+    # every rung composed from it then applies nothing.  A deck with no
+    # `engine-offset` record states none, and the rule centres its junction
+    # -- a rigid shift, and the relaxation stays citable.
     from ..deck_record import extract_engine_offset
     stated = (np.zeros(3) if extract_engine_offset(deck_text) is not None
               else None)
@@ -570,8 +521,7 @@ def labeled_citation_structure(cited: CitedDir):
                            cell=cell, axis_kind=kinds,
                            engine_offset=stated)
     except ValueError as exc:
-        # Live now that the cell goes through the constructor: `prep` catches
-        # only ComposeError/SortError, so a bare ValueError would surface as
+        # `prep` catches only ComposeError/SortError, so a bare ValueError would surface as
         # a traceback.
         raise ComposeError(
             f"{cited.xv.name} states a cell transport cannot use: {exc}")
@@ -603,7 +553,7 @@ def labeled_citation_structure(cited: CitedDir):
             f"the deck {cited.deck.name} and {cited.xv.name} do not describe "
             f"the same relaxation: {exc}")
 
-    # Through the finder (§ 4.5); this globbed the suffix a second time.
+    # Through the finder (§ 4.5).
     from ..sidecars.molstruct import sidecars_in
     sidecars = sidecars_in(cited.path)
     if len(sidecars) > 1:
@@ -622,11 +572,7 @@ def labeled_citation_structure(cited: CitedDir):
                                cited.xv.name, cell)
         # COMPLETE THE BLOCK, DO NOT PATCH THE RESULT.  `apply_metadata_dict`
         # is a full replace and `model/structure.md` § 2.2 says what an absent
-        # key means: absent `cell` -> non-periodic.  So a sidecar that records
-        # labels but no box was applied as "no box", `__post_init__` reconciled
-        # every axis to isolated, and setting `.cell` back afterwards restored
-        # the box but not the periodicity -- a junction emitted with an
-        # explicit cell and `pbc = (False, False, False)`.
+        # key means: absent `cell` -> non-periodic.
         #
         # The relaxation's own box is the box, and z is transport
         # (`engines/transport.md` § 5 I8), so both are stated here and the one
@@ -638,29 +584,17 @@ def labeled_citation_structure(cited: CitedDir):
         # stated: 0 when the deck recorded its placement, else none, for the
         # rule (`model/structure-periodicity.md` § 6.0).  The cell above is a
         # SHAPE and survives the change of frame; the authoring pair's
-        # placement belonged to different coordinates and does not travel --
-        # a junction saved from `add_slab` once came out translated by its
-        # whole authoring corner, far-face atoms wrapping into the leads.
+        # placement belonged to different coordinates and does not travel.
         apply_to_structure(struct, {
             **_side,
             "cell": _side.get("cell") or [[float(x) for x in row]
                                           for row in cell],
             "engine_offset": (None if stated is None
                               else [float(v) for v in stated]),
-            # STATED, NOT DEFAULTED.  This read `_side.get("axis_kind") or
-            # [...]`, and the `or` could never fire: `load_sidecar`
-            # normalises the payload through a scratch `Structure`, whose
-            # `__post_init__` always fills the kinds -- so a sidecar that
-            # states none arrives as `["isolated"] * 3`, which is truthy.
-            # The sidecar's kinds therefore won every time, and an authoring
-            # pair saved before a box was committed carries `isolated`.
-            #
-            # Measured 2026-09-22: the emitted deck then read
-            # `c (transport)  isolated` and shipped "the transport axis (c)
-            # has vacuum / is not periodic; the electrode .TSHS cannot attach
-            # seamlessly" about a junction that is periodic in-plane and open
-            # along z BY CONSTRUCTION -- the regression the comment above
-            # says was fixed, live again through the sidecar branch.
+            # STATED, NOT DEFAULTED: `load_sidecar` normalises the payload
+            # through a scratch `Structure`, whose `__post_init__` always
+            # fills the kinds -- so a sidecar that states none arrives as
+            # `["isolated"] * 3`.
             #
             # A cited relaxation being composed into a junction has exactly
             # one answer here -- the construction's above: transport along z
@@ -722,14 +656,9 @@ def swap_electrode_labels(cited: CitedDir) -> str:
     # accepts either an in-body block OR a sidecar beside the deck).
     from ..sidecars.molstruct import is_sidecar
     if is_sidecar(source):
-        # THE SIDECAR'S OWN READER AND WRITER, AND ITS LOCK.  This was a raw
-        # `json.loads` / `json.dumps` pair: no envelope validation, no
-        # `encoding=` on the read, and -- the one that bites silently --
-        # `json.dumps` without `ensure_ascii=False`, which `molstruct.dumps`
-        # documents as "what keeps a non-ASCII region label a literal instead
-        # of an escape, so a second writer without it produces a different
-        # file for the same structure".  Swapping the electrodes of a junction
-        # labelled `α-helix` rewrote that label escaped.
+        # THE SIDECAR'S OWN READER AND WRITER, AND ITS LOCK: the envelope
+        # validated, and a non-ASCII region label kept a literal
+        # (`molstruct.dumps`).
         #
         # And it is a read-modify-write, which `save` says must hold the lock:
         # "if you're doing a read-modify-write cycle, wrap the entire cycle in
@@ -823,10 +752,8 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     place in TranSIESTA's deck order (`engine_atom_index`).
     """
     from ..parse.ion import max_orbital_rc_ang
-    # BOTH BLOCKS, THEN RAISE.  A generator here short-circuited on the
-    # first bad lead, so a junction with two broken blocks was fixed and
-    # re-relaxed once per block.  The loop this consolidated accumulated
-    # across both regions before raising, and that is worth keeping.
+    # BOTH BLOCKS, THEN RAISE, so a junction with two broken blocks is
+    # fixed and re-relaxed once, not once per block.
     models, refusals = [], []
     for region in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE):
         try:
@@ -1123,12 +1050,10 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     The `frames_out` pattern (`workingcopy_structure.StructureCodec.load`):
     the happy path is unchanged and the caller that needs more asks for it.
 
-    Without it, all three read as *"there is no record"* and prep's refusal
-    said exactly that — while the likeliest cause, on a folder that has
-    travelled somewhere the citation cannot be re-resolved, is that the
-    record is sitting right there and was composed from a DIFFERENT
-    attempt.  Re-point a slot after re-relaxing, prep on a cluster, and you
-    are sent looking for a file you are standing on.
+    Without it, all three read as *"there is no record"* -- while the
+    likeliest cause, on a folder that has travelled somewhere the citation
+    cannot be re-resolved, is that the record is sitting right there and
+    was composed from a DIFFERENT attempt.
 
     The record answers for the citation it was made from: a
     ``task.json`` re-pointed at a different attempt must NOT keep
@@ -1138,9 +1063,7 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     UNMOVED comparison does not re-run: it measures against the geometry
     the relaxation started from, which is exactly what a travelled folder
     no longer carries, and the provenance records that it passed when the
-    copy was made.  *(This said "the frozen gate does not", before
-    2026-09-20 split the declaration from the movement and gave them
-    separate names; only the second half was ever meant.)*
+    copy was made.
 
     *tree_root* is what keeps the principal-layer half of those gates
     working here: the orbital ranges live in the CITED directory's

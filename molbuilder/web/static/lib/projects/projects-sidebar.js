@@ -8,10 +8,9 @@
  *                   (window.molbuilder.projects.*)
  *   list.js      -- breadcrumb + entry list + per-entry buttons +
  *                   openDir
- *   mutation-bar.js -- New project / New folder / Upload action bar
+ *   mutation-bar.js -- New project / New folder / Upload / Download action bar
  *   preview.js   -- file-preview modal
- *   parser.js    -- format-aware structure doors (openMolecule /
- *                   saveMolecule)
+ *   parser.js    -- format-aware structure door (openMolecule)
  *   checkpoint.js -- run-history panel (checkpoint-domain consumer)
  *
  * This entry file imports each module, mounts the public API on
@@ -39,8 +38,8 @@ import { initCheckpointPanel,
     from "./checkpoint.js";
 
 window.molbuilder = window.molbuilder || {};
-// The format-aware sub-namespace: projects.parser.openMolecule / saveMolecule (the
-// structure-file DOORS).  Attached alongside the format-blind readFile/writeFile so the
+// The format-aware sub-namespace: projects.parser.openMolecule (the
+// structure-file DOOR).  Attached alongside the format-blind readFile/writeFile so the
 // whole file-handling surface lives under ONE `projects` namespace
 // (docs/model/structure.md).
 projects.parser = parser;
@@ -70,7 +69,7 @@ projects.checkpoint = {
 // `projects` for the reason `parser` and `checkpoint` are: one namespace.
 projects.showPreview = showPreview;
 window.molbuilder.projects = projects;
-// Module-init contract (design.md "Module init contract"): also
+// Module-init contract (lib/molbuilder-runtime.js): also
 // register with the runtime so consumers can ``whenReady("projects")``
 // instead of polling for ``window.molbuilder.projects`` (which is
 // undefined when classic-script consumers run before this
@@ -81,7 +80,7 @@ if (window.molbuilder.runtime
 }
 
 /**
- * Narrow-viewport drawer toggle (task #182, 2026-06-02).
+ * Narrow-viewport drawer toggle.
  *
  * Wires the hamburger button + backdrop in
  * ``templates/_projects_sidebar.html`` to a ``has-mobile-sidebar-open``
@@ -169,7 +168,7 @@ function _restoreCollapsedState() {
 }
 
 /**
- * Sidebar width resize (2026-06-12).
+ * Sidebar width resize.
  *
  * Drag the .ps-resize-handle to change --ps-w live.  Width persists
  * to localStorage so it survives reloads + new tabs from the same
@@ -330,7 +329,7 @@ async function init() {
   // paint and make layout-sensitive widgets (Plotly, 3Dmol) measure a wrong
   // geometry until the next resize.
   // Resolve projects/ root from the backend's single-root contract.
-  // 2026-05-30: apiRoots now returns the uniform envelope
+  // apiRoots returns the uniform envelope
   // ``{ok, roots, error?}`` -- failure cases (network drop, server
   // misconfig) surface here instead of throwing.
   const rootsResp = await apiRoots();
@@ -353,7 +352,7 @@ async function init() {
     }
     return;
   }
-  // 2026-05-31 design § C7: wire navigateTo's public impl from
+  // Wire navigateTo's public impl from
   // list.js's openDir so projects.navigateTo(absPath, opts) returns
   // the documented {ok, path, entries} envelope (or {ok:false,
   // error} on failure).
@@ -374,7 +373,7 @@ async function init() {
   initList();
   initForms();
   initPreview();
-  // Run-history panel (PR-B Phase 2/3).  Idempotent; no-ops on pages
+  // Run-history panel.  Idempotent; no-ops on pages
   // that don't include the projects sidebar template.
   initCheckpointPanel();
 

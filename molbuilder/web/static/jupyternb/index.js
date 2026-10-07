@@ -16,22 +16,12 @@
  *     message is the whole of what the tab says, so each state's text has to
  *     carry what you can do from here, not just what is true.
  *
- * THE STATES ARE A TABLE, AND WAITING HAS ONE RULE (`plan.md` § 5n, J6/J7).
- * Until 2026-09-15 this file had five independent waiting mechanisms, each
- * added after its own incident: a poll timer, a `startPollsLeft` counter at
- * 1200 ms, a `wedgePolls` counter at 1500 ms, a `rootGaveUp` flag on a raw
- * `setTimeout`, and three bare `pollSoon(...)` calls.  Each
- * had its own clearing rule scattered through `render` -- one cleared in a
- * branch, one at the top of the function, and `rootGaveUp` never cleared at
- * all.  They are now ONE rule: a state is entered, and `STATES` says how
- * long it may last and what it becomes when that runs out.  The document
- * listed four states while this function had thirteen `return`s; the table
- * below and `jupyter.md` § 4 are now the same list.
+ * THE STATES ARE A TABLE, AND WAITING HAS ONE RULE (`plan.md` § 5n, J6/J7):
+ * a state is entered, and `STATES` says how long it may last and what it
+ * becomes when that runs out.  The table below and `jupyter.md` § 4 are the
+ * same list.
  *
- * AND EVERY STATE EITHER POLLS OR OFFERS A BUTTON.  Four of them did
- * neither until 2026-09-15, so a notebook started from a terminal was
- * invisible to an open tab, and a budget that ran out was a dead end a page
- * reload was the only way out of (`plan.md` § 5n.8).
+ * AND EVERY STATE EITHER POLLS OR OFFERS A BUTTON (`plan.md` § 5n.8).
  */
 const $ = (id) => document.getElementById(id);
 
@@ -43,8 +33,7 @@ const frame   = $("nb-frame");
 
 /** Set the one message.  Strings become TEXT NODES and never markup: a path
  *  in the running state is chosen by the person, so a folder called
- *  `<img onerror=...>` would run through innerHTML -- caught by the XSS audit
- *  on 2026-09-14, which is what that audit is for. */
+ *  `<img onerror=...>` would run through innerHTML. */
 function say(...parts) {
   state.className = "status nb-msg";
   state.replaceChildren(...parts.map((p) =>
@@ -72,19 +61,8 @@ function button(label, onClick, opts = {}) {
   return b;
 }
 
-/** WHAT IS IN THE FRAME, by identity -- port and token, and only those.
- *
- *  It carried the selected folder too, and that swallowed a second decision:
- *  the folder was in the key, so a selection change made the key differ and
- *  the frame was RE-POINTED -- tearing Lab down with anything unsaved in it.
- *  Port and token are what "is the frame pointing at a live server?" means.
- *
- *  Keying on the folder ALONE was a third bug: a notebook that went away by
- *  any route the tab did not perform (its own idle shutdown, `molbuilder
- *  jupyter stop`, a Stop in another browser tab) left the key set and
- *  `frame.src` non-empty, so the next Start -- a new shepherd with a NEW
- *  TOKEN -- found the guard satisfied and re-revealed a dead document under
- *  a message saying all was well. */
+/** WHAT IS IN THE FRAME, by identity -- port and token, and only those:
+ *  they are what "is the frame pointing at a live server?" means. */
 let framedKey = null;
 
 /** Set when the person clicks Start, cleared the moment something is running.
@@ -98,7 +76,7 @@ let framedKey = null;
 let startAsked = false;
 
 /** Set when THIS BROWSER cannot reach the notebook's port, whatever the
- *  server says about it.  Read by state 4b's `when`. */
+ *  server says about it.  Read by state 4a's `when`. */
 let frameUnreachable = false;
 /** The `port|token` the reachability probe has already answered for, so it
  *  runs once per server and not once per poll. */
@@ -112,9 +90,7 @@ let probedKey = null;
  *  tunnel or behind a reverse proxy.  The tab builds the frame URL from
  *  `location.hostname` and `st.port` -- this page's host, one port up --
  *  and through `ssh -L 8000:server:8000` that is the LAPTOP's 8001, which
- *  nothing is listening on.  The iframe then showed the browser's
- *  connection-refused page inside a tab whose message said all was well,
- *  and NO state covered it: there is no load or error detection on an
+ *  nothing is listening on.  There is no load or error detection on an
  *  iframe that can be relied on cross-origin.
  *
  *  So the page asks the network directly.  A `no-cors` fetch cannot read
@@ -145,8 +121,7 @@ let rootIsLost = false;
 /** Is there a projects-root door on this page at all?  In `opening`'s `when`
  *  rather than inside it: with no door there is nothing to wait FOR, so the
  *  honest answer is that this is not the waiting state -- `framed` takes it
- *  and opens at the root.  Handling it inside `enter` meant a state that had
- *  entered and immediately had to undo itself. */
+ *  and opens at the root. */
 function hasRootDoor() {
   const p = (window.molbuilder && window.molbuilder.projects) || null;
   return !!(p && typeof p.onProjectsRootResolved === "function");
@@ -162,12 +137,9 @@ function hasRootDoor() {
  *  `getCurrentDir` reads sessionStorage and answers immediately, but
  *  `getProjectsRoot` returns "" until the sidebar has resolved
  *  `/api/files/roots` -- an async bootstrap that is usually still in flight
- *  when this page first renders.  Folding that into "" meant the frame opened
- *  at the ROOT on almost every load, and Lab's Launcher creates a notebook in
- *  the folder the frame is showing: every new notebook landed in `projects/`
- *  however carefully the person had picked a folder first (reported
- *  2026-09-14, `projects/Untitled.ipynb` was the evidence).  Waiting is the
- *  whole fix; guessing the root is what was wrong.
+ *  when this page first renders.  Answering "" then would open the frame at
+ *  the ROOT, and Lab's Launcher creates a notebook in the folder the frame is
+ *  showing, so the caller waits instead (reported 2026-09-14).
  */
 function selectedRelative() {
   const p = (window.molbuilder && window.molbuilder.projects) || null;
@@ -201,15 +173,9 @@ function labUrl(st, rel) {
   //
   // CLEAN ON A NEW SERVER, PERSISTENT WHILE ONE RUNS (user, 2026-09-15).
   //
-  // `?reset` used to be on EVERY load.  It was aimed at a real problem -- a
-  // restored workspace argues with the folder this tab selects -- but at the
-  // wrong moment: every LOAD, when what was meant was every START.  Leaving
-  // /jupyternb destroys the iframe, so a tab switch is a load, and switching
-  // away and back therefore threw away the notebook you had open while its
-  // kernel was still running.
-  //
-  // The reset now happens once, server-side, when the notebook server
-  // starts (`jupyter.prepare_lab_home`).  So there is nothing to reset here
+  // The reset happens once, server-side, when the notebook server starts
+  // (`jupyter.prepare_lab_home`), because leaving /jupyternb destroys the
+  // iframe and a tab switch is a load.  So there is nothing to reset here
   // and exactly one thing to decide: does Lab have a workspace to restore?
   //
   //   * NO  -- first framing since the server started, so carry the folder
@@ -242,14 +208,11 @@ async function post(path) {
 
 /** Run `fn` once the projects root is known.  Idempotent: a second call
  *  before the root lands replaces nothing and subscribes nothing twice --
- *  `onChange`-style subscribers throw if registered twice.  Returns false
- *  when the page has no such door at all. */
+ *  `onChange`-style subscribers throw if registered twice. */
 let rootWaiter = null;
 function whenRootKnown(fn) {
   // NO DOOR CHECK HERE.  `hasRootDoor()` is that question's one home and
-  // `opening.when` already asks it, so the copy this function carried --
-  // with a `false` return nobody read -- could not fire (found in review
-  // 2026-09-15, the residue of moving the check out of `enter`).
+  // `opening.when` already asks it.
   if (rootWaiter) return;
   rootWaiter = window.molbuilder.projects.onProjectsRootResolved(() => {
     if (rootWaiter) { rootWaiter(); rootWaiter = null; }
@@ -261,19 +224,10 @@ function whenRootKnown(fn) {
  *
  * A state may declare `budgetMs`, and when the tab has been in it for that
  * long without leaving, it renders `expired` instead.  MILLISECONDS, not a
- * poll count, because the three budgets this replaced did not all wake the
- * same way: two polled (at two different intervals) and one waited on an
- * event.  Time is what they actually meant, and expressing it as time lets
- * each state keep the wake-up that suits it -- a poll where there is nothing
- * to subscribe to, the projects-root door where there is.
+ * poll count, so each state keeps the wake-up that suits it -- a poll where
+ * there is nothing to subscribe to, the projects-root door where there is.
  *
- * ENTERING resets the clock, and that is the ONLY reset.  Three scattered
- * ones are gone with it: `startPollsLeft` was cleared inside a branch and
- * left stale everywhere else, so a notebook going away later spent twelve
- * seconds showing a stale message and then printed a red error about a start
- * that had worked; `wedgePolls` was cleared at the top of `render`; and
- * `rootGaveUp` was never cleared, so one slow bootstrap disabled the wait for
- * the life of the page. */
+ * ENTERING resets the clock, and that is the ONLY reset. */
 let currentState = null;
 let enteredAt = 0;
 let pollTimer = null;
@@ -338,24 +292,16 @@ const STATES = [
     //
     // WAIT ON THE DOOR, NOT A TIMER.  `onProjectsRootResolved` fires the
     // moment the root lands (and immediately if it already has), so there is
-    // nothing to poll for -- a 200 ms `pollSoon` stood here until 2026-09-14
-    // and never stopped, because the sidebar publishes nothing when
-    // `/api/files/roots` FAILS, and each of those polls cost the server two
-    // blocking round-trips to Jupyter.
+    // nothing to poll for.
     //
     // THE DOOR CAN NEVER FIRE, which is why this state has a budget at all:
-    // a failed bootstrap leaves it silent, and the first version of this wait
-    // had no terminal state -- no message change, no button, no retry, and a
-    // page reload the only way out.  Opening at the projects root is a worse
-    // default than the selected folder and a far better one than a dead tab.
+    // a failed bootstrap leaves it silent.  Opening at the projects root is a
+    // worse default than the selected folder and a far better one than a
+    // dead tab.
     name: "opening",
     // `!st.workspace_saved` BECAUSE THE FOLDER IS ONLY USED WHEN THERE IS
-    // NOTHING TO RESTORE (`labUrl`).  Without this term the tab hid the
-    // frame for the full 8 s budget waiting for a value it was about to
-    // throw away -- and it did so on the headline case J13 was written
-    // for: switch away, come back, the sidebar's bootstrap is slow or has
-    // failed, and the notebook you left open is behind "Opening
-    // JupyterLab…" (found in review 2026-09-15).
+    // NOTHING TO RESTORE (`labUrl`), so a notebook left open is never hidden
+    // behind a wait for a value that would be thrown away.
     when: (st) => st.running && st.answering && !rootIsLost
                   && !st.workspace_saved
                   && hasRootDoor() && selectedRelative() === null,
@@ -376,9 +322,8 @@ const STATES = [
     // server's.  It exists because the frame URL is `this page's host, one
     // port up` -- true on the machine, false through a tunnel that forwards
     // only molbuilder's port, and false behind a reverse proxy that
-    // terminates TLS and proxies one port.  Before 2026-09-15 every one of
-    // those landed in state 4 with a message saying all was well
-    // (`plan.md` § 5n.8, and `jupyter.md` § 2.1a).
+    // terminates TLS and proxies one port (`plan.md` § 5n.8, and
+    // `jupyter.md` § 2.1a).
     name: "frame-unreachable",
     when: (st) => st.running && st.answering && frameUnreachable,
     enter: (st) => {
@@ -399,11 +344,9 @@ const STATES = [
     name: "framed",
     when: (st) => st.running && st.answering,
     frame: true,
-    // A SLOW HEARTBEAT, not silence.  This stopped polling once framed, so
-    // the tab asked nothing ever again -- and Jupyter's own idle shutdown
-    // (an hour) would take the server out from under a frame still claiming
-    // all was well.  Thirty seconds is two probes, and is what lets the row
-    // and the frame both notice.
+    // A SLOW HEARTBEAT, not silence: Jupyter's own idle shutdown (an hour)
+    // can take the server out from under the frame, and this is what lets
+    // the row and the frame both notice.
     pollMs: 30000,
     enter: (st) => {
       // `selectedRelative()` is null only while the root is unknown, and
@@ -420,13 +363,8 @@ const STATES = [
       // If it fails, `frameUnreachable` flips and state 4a takes over.
       probeFrameReachable(frameBase(st), key);
       // WHAT IS OPEN, AND WHERE -- Jupyter's own answer (`open_notebooks`),
-      // not a guess.  The tab used to claim "new notebooks are saved in <the
-      // folder molbuilder selected>", which is true for exactly as long as
-      // it takes to click a folder in Lab's own file browser: with several
-      // notebooks open at once (multi-document mode) that claim is usually
-      // wrong.  So the row states the fact it can know -- the full path of
-      // every notebook Lab has open -- and names the control that decides
-      // the next one instead of pretending to be it.
+      // not a guess: the row states the full path of every notebook Lab has
+      // open and names the control that decides where the next one lands.
       const open = Array.isArray(st.open) ? st.open : [];
       const said = ["The kernel is the notebook env's own python — numpy, "
                     + "scipy, pandas and matplotlib. "];
@@ -487,7 +425,7 @@ const STATES = [
       // feature), the log could not be opened, the spawn raised -- is in the
       // SERVE log, because the notebook log is the thing that could not be
       // started.  Everything jupyter-server itself refuses is in the
-      // NOTEBOOK log.  Naming only one sent people to the wrong file.
+      // NOTEBOOK log.
       sayError("Asked for a notebook and none started. The supervisor may "
                + "predate this feature — it survives a code reload, so "
                + "`molbuilder serve stop` then `serve start` gives it one. "
@@ -526,11 +464,9 @@ const STATES = [
     // (9) Installed, nothing running, and the person may ask.
     name: "idle",
     when: () => true,
-    // A HEARTBEAT, for the reason `framed` got one: four of the ten states
-    // declared neither a poll nor a budget, so a notebook started from a
-    // TERMINAL left the Start button sitting over a running, answering
-    // server until somebody reloaded the page (`plan.md` § 5n.8).  Cheap
-    // here -- with nothing running, `status` makes no HTTP call at all.
+    // A HEARTBEAT, so a notebook started from a TERMINAL replaces the Start
+    // button without a page reload (`plan.md` § 5n.8).  Cheap here -- with
+    // nothing running, `status` makes no HTTP call at all.
     pollMs: 15000,
     enter: () => {
       say("Start JupyterLab to write notebooks under your projects tree. Its "
@@ -542,9 +478,8 @@ const STATES = [
         actions.replaceChildren();
         const res = await post("/api/jupyter/start");
         if (!res.ok) {
-          // AND A WAY FORWARD.  The click emptied the action row and
-          // `render` had already stopped polling, so this used to leave a
-          // red sentence, no button and no timer.
+          // AND A WAY FORWARD: the click emptied the action row and
+          // `render` had already stopped polling.
           sayError(`Could not start it: ${res.body.error || res.body.message
                    || ("HTTP " + res.status)}`);
           actions.appendChild(recheckButton());
@@ -552,10 +487,7 @@ const STATES = [
         }
         startAsked = true;
         // Leave `asked` a clean entry, so its budget starts now, and let
-        // the TABLE say how soon to look -- `pollSoon(1200)` stood here and
-        // was a second spelling of `asked`'s own `pollMs`, which is exactly
-        // the drift the table was built to end (found in review
-        // 2026-09-15).
+        // the TABLE say how soon to look.
         currentState = null;
         refresh();
       }, { primary: true }));
@@ -565,10 +497,7 @@ const STATES = [
 
 /** (10) The status endpoint could not be asked.  Not in `STATES` because it
  *  is reached without a payload -- there is nothing to match `when` against.
- *  A HICCUP MUST NOT BE TERMINAL: this used to stop polling, print an error
- *  and leave `actions` as it found it, which on the start path is EMPTY
- *  because the click cleared it.  One dropped fetch mid-start therefore left
- *  no message that helps, no button, no retry and no poll: reload only. */
+ *  A HICCUP MUST NOT BE TERMINAL, so it always offers a retry. */
 function unreachable(err) {
   stopPolling();
   currentState = "unreachable";
@@ -585,14 +514,8 @@ function unreachable(err) {
 
 /** A way out of any state that has stopped polling.
  *
- *  EVERY GIVE-UP MUST OFFER ONE (`plan.md` § 5n.8).  `render` returns right
- *  after `expired`, before it schedules anything, so a budget that runs out
- *  used to leave a red sentence and no timer -- and `asked`'s give-up left an
- *  EMPTY action row, because the Start click had cleared it, so after a
- *  failed start there was not even a Start button to press again.  A page
- *  reload was the only way out of four states, and nothing on screen said
- *  so.  `unreachable()` already had this button for exactly this reason; the
- *  other paths did not. */
+ *  EVERY GIVE-UP MUST OFFER ONE (`plan.md` § 5n.8): `render` returns right
+ *  after `expired`, before it schedules anything. */
 function recheckButton(label = "Check again") {
   return button(label, () => {
     say("Checking…");
@@ -608,10 +531,9 @@ function stopButton() {
     say("Stopping…");
     const res = await post("/api/jupyter/stop");
     if (!res.ok) {
-      // REFUSED, so change nothing.  Blanking the frame here tore Lab down
-      // -- layout, open documents and any unsaved editor state -- and the
-      // next poll then re-framed it from scratch, for a stop that never
-      // happened.  Start checked its answer; this did not.
+      // REFUSED, so change nothing: blanking the frame would tear Lab down
+      // -- layout, open documents and any unsaved editor state -- for a stop
+      // that never happened.
       sayError(`Could not stop it: ${res.body.error || res.body.message
                || ("HTTP " + res.status)}`);
       actions.appendChild(recheckButton());
@@ -670,10 +592,8 @@ async function refresh() {
   }
 }
 
-// NO SELECTION SUBSCRIPTION.  One stood here to re-render when the projects
-// sidebar's selection moved -- but the sidebar is mounted and NOT SHOWN on
-// this tab (`jupyternb.html`), so nothing here can move it, and the only
-// thing the re-render offered was a button that could never appear.  The
+// NO SELECTION SUBSCRIPTION: the projects sidebar is mounted and NOT SHOWN
+// on this tab (`jupyternb.html`), so nothing here can move it.  The
 // selection is read ONCE, when the frame is first pointed.
 
 refresh();

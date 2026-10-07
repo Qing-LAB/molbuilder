@@ -11,10 +11,7 @@ true:
      it, hide it or delete it, whichever of you saved first, and reading under
      one tag never gives you another's.
 
-There used to be a second copy in the browser's own storage. Nothing ever
-restored from it — every restore went to the server anyway — so it cost a write
-on every edit and bought nothing. It is gone, and these tests are written against
-what is left: the files.
+These tests are written against the files the server keeps.
 """
 from __future__ import annotations
 
@@ -227,10 +224,8 @@ def test_the_workspace_does_not_open_what_it_was_given():
 
 
 def test_there_is_no_second_way_to_save():
-    """Everything that saves goes through this one set of calls. The
-    browser-storage half used to be published beside it, so anything could write
-    bytes carrying no tag — and the tag is the only thing keeping two savers
-    apart. It is gone, along with the copy it wrote.
+    """Everything that saves goes through this one set of calls: bytes written
+    without a tag would defeat the only thing keeping two savers apart.
     """
     out = _run(
         """
@@ -278,10 +273,6 @@ def test_a_call_without_a_tag_is_refused_rather_than_defaulted():
 def test_what_molview_saves_can_be_read_back():
     """The real MolView model against the real workspace: open a molecule, press
     Save state, then ask for it back the way a reopening page does.
-
-    Nothing like this existed, and that is why saving stayed broken — the write
-    was checked against a fake that stored anything, the read against a fake that
-    returned anything, and the two halves were never put together.
     """
     out = run_node(
         [],
@@ -334,12 +325,10 @@ def test_an_edit_and_a_saved_point_go_to_different_files():
     would take you back to something that had been quietly rewritten. Two file
     names, one directory.
 
-    What the edit does BESIDES that changed on 2026-09-07 (§ 11.2): it also
-    lays down a point of its own, at the next index, so Retract steps back one
-    edit rather than as far back as the last time somebody pressed the button.
-    The badge therefore goes back DOWN — the work is on the sequence — where
-    this used to assert it stayed up, which was the only record an edit had
-    while edits recorded nothing.
+    The edit also lays down a point of its own, at the next index (§ 11.2), so
+    Retract steps back one edit rather than as far back as the last time
+    somebody pressed the button.  The badge therefore goes back DOWN — the work
+    is on the sequence.
     """
     out = run_node(
         [],

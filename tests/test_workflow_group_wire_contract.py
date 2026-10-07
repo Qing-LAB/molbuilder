@@ -1,64 +1,11 @@
-"""Wire-shape contract test: every issue-emitting render endpoint
+"""Wire-shape contract test: every issue-emitting endpoint
 MUST enrich the issues response with ``workflow_group`` when the
 field carries that metadata.
 
-History
-=======
-
-2026-06-13 task #373 shipped per-card issue routing for SIESTA +
-PySCF Build forms.  The renderer iterates Issue objects + reads
-``issue.workflow_group`` to pick which ``.card-issues[data-
-workflow-group="<role>"]`` UL to write to.  This works because
-``web/blueprints/build.py`` passes ``cfg=cfg`` to
-``_issues_to_json``, which calls ``resolve_workflow_group(where,
-cfg)`` to look up the field metadata and enrich each Issue.
-
-2026-06-14 batch F4b extended the client renderer to spectra +
-transport tabs (added the same ``.card-issues`` fan-out in
-``lib/spectra/core.js::renderIssues`` and
-``lib/transport/core.js::_renderIssues``).
-
-The audit-driven follow-up (this commit) caught a BLOCKER: the
-SERVER side never received the same treatment.  Spectra +
-transport's render endpoints called
-``_issues_to_json(issues)`` *without* the ``cfg`` kwarg, so
-``resolve_workflow_group`` short-circuited to ``None`` and every
-issue went out the wire un-tagged.  The client fanout had no
-data to route — every issue landed in the residual panel, the
-per-card UL stayed empty, and the entire F4b feature was DEAD
-on those two tabs.
-
-The 6 e2e tests we already had (``test_build_form_live_preflight_
-fires_on_field_edit`` etc.) only covered SIESTA, where the
-server WAS correct.  No test asserted on the wire shape for
-spectra / transport, so the drift slipped through.
-
-What this file pins
-===================
-
-For every issue-emitting render endpoint:
-
-  1. POST a payload that triggers at least one validator warning
-     on a field that DOES carry ``workflow_group`` metadata
-     (mesh_cutoff < 100 Ry for SIESTA, scf_max_iter > 5000 for
-     PySCF, low-N integration mesh for spectra, vibration mode
-     for transport).
-
-  2. Assert the response shape:
-     - ``ok`` is True OR there are non-empty ``issues``
-     - At least one ``issue.workflow_group`` field is present + non-null.
-     - The field equals one of the three valid roles
-       (profile / stage / budget) — confirms the enrichment path
-       resolved the metadata correctly.
-
-A regression that drops ``cfg=cfg`` from any future
-``_issues_to_json`` call fails this test loudly.
-
-This is L3 (web client + dataclass + validator) — not L5 — so it
-runs in <0.5 s and doesn't depend on a browser.  The L5 layer is
-covered by ``test_build_form_live_preflight_fires_on_field_edit``
-for SIESTA and would be parametrised over spectra + transport in
-a future pass.
+Called *without* the ``cfg`` kwarg, ``_issues_to_json`` short-circuits
+``resolve_workflow_group`` to ``None``: every issue goes out the wire
+un-tagged and lands in the residual panel.  A regression that drops
+``cfg=cfg`` from any ``_issues_to_json`` call fails this test loudly.
 """
 from __future__ import annotations
 
@@ -68,9 +15,7 @@ import pytest
 
 import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
-from support.envelope import (from_xyz as _env,
-                             from_xyz_with_periodicity as _env_per)
-
+from support.envelope import from_xyz as _env
 
 
 pytest.importorskip("flask")
@@ -81,9 +26,6 @@ pytest.importorskip("flask")
 # --------------------------------------------------------------------- #
 
 
-# A tiny benzene structure -- enough atoms that the spectra +
-# transport engines accept it without "system too small" failures
-# but small enough that the render is fast.
 # Benzene puckered slightly out of plane (alternating C/H z) so the derived
 # vacuum cell isn't degenerate at vacuum=0 (a perfectly planar molecule has a
 # zero-thickness axis -- structure-periodicity.md).  These tests exercise the
@@ -116,10 +58,7 @@ Au   1.443   0.833   2.357
 """
 
 
-#: DERIVED from the closed vocabulary, never listed.  This was the literal
-#: {"profile", "stage", "budget"} until 2026-08-15 and had been wrong since
-#: `output` landed: a finding whose card was a newer group failed the wire
-#: contract for naming a card that is perfectly valid.  The contract here is
+#: DERIVED from the closed vocabulary, never listed.  The contract here is
 #: *"a role on the wire is one the vocabulary knows"*, and the vocabulary is
 #: `template.GROUPS` -- so ask it.
 from molbuilder.template import GROUPS as _GROUPS      # noqa: E402
@@ -178,15 +117,6 @@ def _assert_workflow_group_enrichment(
 
 
 # --------------------------------------------------------------------- #
-#  SIESTA build  (already correct; regression-pin)                       #
-# --------------------------------------------------------------------- #
-
-
-
-
-
-
-# --------------------------------------------------------------------- #
 #  /api/build/preflight                                                  #
 # --------------------------------------------------------------------- #
 
@@ -216,17 +146,6 @@ def test_pyscf_preflight_issues_carry_workflow_group(web_client):
         "/api/build/preflight (pyscf)",
     )
 
-
-# The /api/spectra/render section retired with the route (P3).
-# It was the blocker that motivated this file; the contract it
-# forced now lives on every preflight door (tested above).
-
-# --------------------------------------------------------------------- #
-#  /api/transport/render  (the OTHER BLOCKER)                            #
-# --------------------------------------------------------------------- #
-
-
-# `test_transport_render_issues_carry_workflow_group` deleted 2026-09-17 with the render route.
 
 def test_cfg_none_path_correctly_omits_workflow_group():
     """The other half of the contract: when ``_issues_to_json`` is
@@ -268,7 +187,7 @@ def test_cfg_present_does_resolve_workflow_group():
     the field metadata and propagates ``workflow_group`` onto the
     Issue dict.  Pin the producer side directly (no Flask client)
     so a regression in ``resolve_workflow_group`` doesn't require
-    re-running the 6 endpoint tests above to surface.
+    re-running the endpoint tests above to surface.
     """
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.issues import Issue
@@ -286,7 +205,7 @@ def test_cfg_present_does_resolve_workflow_group():
     )
 
 
-# ── #64: the two task-setup sites the route tests above never reached ────────
+# ── #64: the task-setup save ────────────────────────────────────────────────
 
 def _cfg_field_with_a_group():
     """A SiestaConfig field that declares a `workflow_group`, and a value of
@@ -308,14 +227,6 @@ def test_the_task_setup_save_findings_carry_their_workflow_group(
     `web/ui-contract.md` Rule 2. MEASURED DEFECT (#64, 2026-09-09):
     `build.py:1760` and `:1805` called `_issues_to_json(_pf)` with no `cfg`, so
     `workflow_group` was omitted and the page had nowhere to put the finding.
-    THIS FILE EXISTS TO PREVENT EXACTLY THAT -- its own docstring names
-    "`_issues_to_json(issues)` without the `cfg` kwarg" as the defect -- and its
-    route tests covered the siesta / pyscf / transport PREFLIGHT endpoints and
-    neither of these two. A guard that names a defect and does not cover the
-    site is the § 3a.1 shape: it reads as coverage that is not there.
-
-    Both save-route arms are asserted: the refusal (a preflight ERROR, 400) and
-    the success arm's advisory findings.
     """
     import json as _json
     from support.envelope import envelope

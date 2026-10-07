@@ -17,20 +17,8 @@
  * run it (`project-layout.md` § 2.2) — never here.  What this tab produces is
  * a DESCRIPTION, and step 5 is where it leaves.
  *
- * TWO THINGS THIS HEADER GOT WRONG, both fixed 2026-08-17, and the pattern is
- * worth naming because it will happen again.  It said *"IT PRODUCES NO
- * ARTIFACT … hands nothing to `prep`"* and *"those two POSTs are the only
- * calls it makes"* — while step 5 had been here and writing files.  A header
- * is maintained when a feature is REMOVED and forgotten when one is ADDED, so
- * it drifts in one direction only: it describes a smaller tab than exists.
- * This header already carried that lesson about a removed `/api/build/fdf`
- * call — *"the worst kind of stale, because it is the first thing a reader
- * trusts"* — and was wrong in the other direction at the same time.  Those
- * two deck-rendering routes were deleted outright on 2026-08-17.
- *
  * MolView is consumed through its ONE public door (web/molview.md § 9.1): the ES-module
- * import below.  No `window.molbuilder.molview` / `.fmt` global reads — those are the transitional
- * shims we are dumping.  Workspace (`window.molbuilder.workspace`) is a SEPARATE module, still a
+ * import below, no global reads.  Workspace (`window.molbuilder.workspace`) is a SEPARATE module, still a
  * classic global, read at call time.
  */
 import { mount as mvMount, formula as mvFormula }
@@ -46,12 +34,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
     const $ = (id) => document.getElementById(id);
 
-    /** The one fetch-failure sentence (lib/fetch-error.js).
-
-     * Was spelled out here until 2026-08-22; the SyntaxError arm --
-     * "the SERVER returned an error page, check its log" rather than
-     * "Network error: Unexpected token <" -- is a rule about what a
-     * failure MEANS, and a rule cannot live in two files.
+    /** The one fetch-failure sentence (lib/fetch-error.js): what a failure
+     * MEANS is a rule, and a rule cannot live in two files.
      */
     function _formatFetchError(e) {
         return window.molbuilder.fetchError.format(e);
@@ -66,54 +50,21 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         pyscf: null,
         // NOTHING structural is held here.  Coordinates, labels and periodicity
         // are read LIVE off the viewer at request time, in ONE read
-        // (getStructure) -- contract F1 (docs/science/validation.md 4.1).  ``state.xyz`` used to live here,
-        // filled once at load, so a request could carry fresh labels + fresh
-        // periodicity + STALE coordinates and validation judged a structure the
-        // viewer was not showing.  There is no mirror to desync now.
+        // (getStructure) -- contract F1 (docs/science/validation.md 4.1).
     };
-
-    /* (`_facts()` was deleted 2026-08-15.)  A one-line wrapper over
-     * `_data().getStructure()` with no callers left.  Its own comment records
-     * how it got here: it replaced `factsForRequest()`, *"a second door whose
-     * only job was to hand back the same facts in a different shape"* — and
-     * then `_structureForRequest()` below became the one door, leaving this
-     * as a third.  The rule it stated is worth keeping and now lives where it
-     * is used: read the structure ONCE, so the facts that leave together were
-     * read together (F1, docs/science/validation.md § 4.1). */
 
     /* THE STRUCTURE AS THE SERVER TAKES IT — ASKED FOR, NOT ASSEMBLED.
      *
      * `exportFile()` is the viewer's own producer: the atoms, their positions
      * at the frame on screen, and the facts beside them, in the one envelope
      * every structure door reads (molview.md § 9.3 — the facts that leave
-     * together were read together).
-     *
-     * IT USED TO BE BUILT HERE, by hand, and got the shape wrong: the cell went
-     * in as `metadata: {periodicity: …}`, a key the envelope does not define,
-     * so the receiver refused the whole body. That was invisible while the
-     * doors still read the legacy `xyz` text field and ignored the envelope
-     * entirely — the moment they started reading it, every Generate and every
-     * preflight on this tab answered 400.
-     *
-     * Before that it was an XYZ DOCUMENT, asked of a viewer that has none and
-     * writes none (§ 11.7), so every request carried an empty string. Three
-     * shapes, one door: the door's own producer is the answer. */
+     * together were read together). */
     function _structureForRequest() {
         const d = _data();
         const out = d ? d.exportFile() : null;
         return (out && out.structure) ? out.structure : null;
     }
 
-    // Embedded MolViewer (#198, 2026-06-02; contract:
-    // docs/web/molview.md).  Site migration #202
-    // landed 2026-06-03 — Build now uses the standard knob bar
-    // (Style / Labels / Axes / Reset / PNG / Background / Export)
-    // owned by the embed.  The bespoke <details> Style block in
-    // index.html is gone; getCamera/setCamera handle the cross-
-    // session camera persistence (was raw viewer.getView/setView);
-    // the embed's internal ResizeObserver tracks #viewer's
-    // resizable container box (was a bespoke RO + window-resize
-    // listener).  The handle is the only viewer touchpoint.
     // The FULL concealed MolView component — the SAME rich card Modify (/molbuilder)
     // mounts (fused viewer + selection/cell panel + view toggles) — but mode:"readonly"
     // because this tab READS the structure (to generate SIESTA/PySCF scripts), it does
@@ -150,11 +101,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
      * replace what you had; the structure comes back as you left it, and the
      * Load button is what goes and gets the new bytes.
      */
-    /* Under the tab's OWN tag (the modify:panel pattern, workspace.md § 4;
-     * hardened 2026-08-19): the bare-tag identity at state_index 0 is the
-     * exact key MolView's history writes point 0 to, so this note was safe
-     * only while the viewer stayed read-only -- one accident away from two
-     * writers on one file. */
+    /* Under the tab's OWN tag (the modify:panel pattern, workspace.md § 4):
+     * the bare-tag identity at state_index 0 is the exact key MolView's
+     * history writes point 0 to, and two writers on one file is how one
+     * drops the other's. */
     const PANEL_TAG = WORKSPACE_TAG + ":panel";
     const _SAVED = () => ({ workspace_id: _ws().workspaceId(PANEL_TAG),
                             state_index:  0 });
@@ -195,22 +145,15 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     }
 
     // ----- Status helpers --------------------------------------------
-    /** The shared `.status` writer (lib/status.js).  The null-guard and the
-     *  console warning that used to live here are its -- they are why it is
-     *  loud: a silent return once turned a MolView mount failure completely
-     *  invisible, because the catch handler died on a phantom id. */
+    /** The shared `.status` writer (lib/status.js). */
     function setStatus(elId, msg, kind) {
         window.molbuilder.status.set(elId, msg, kind);
     }
 
     // Findings rendering lives in ONE module for the whole app
     // (lib/validation-findings.js, contract R2 in
-    // docs/science/validation.md 4.1).  The three per-tab copies this
-    // page used to own each silently dropped a finding whose
-    // workflow_group named a card the schema had not rendered; the
-    // shared module iterates the FINDINGS instead of the panels, so
-    // an unroutable one lands in the residual panel (R3).  These two
-    // thin wrappers keep the existing call sites readable.
+    // docs/science/validation.md 4.1).  These two
+    // thin wrappers keep the call sites readable.
     /* {field name -> the DOM id the form gave it}, from the schema this page
      * actually rendered.  Read from the schema rather than derived, because
      * the schema is where that rule lives; a copy of it here would be a
@@ -297,8 +240,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             }).then(x => x.json());
             /* Rendered whenever issues came back, ok or not (E-A3): the
              * endpoint's bad-params branch answers ok:false WITH the parse
-             * error as an issue precisely so this panel can show it (the
-             * 2026-06-14 change) — gating on ok dropped exactly those.
+             * error as an issue precisely so this panel can show it.
              * Same rule as the Spectrum tab (lib/spectra/core.js). */
             if (Array.isArray(r.issues)) {
                 _live[engine] = r.issues;
@@ -306,9 +248,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             }
         } catch (e) {
             // Network error during preflight is not surfaced -- the
-            // panel stays in its previous state.  The Generate path
-            // (which gets the same issues from the render endpoint)
-            // is the canonical source of truth.
+            // panel stays in its previous state.
         }
     }
     
@@ -316,39 +256,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         siesta: debounce(() => refreshPreflight("siesta"), 250),
         pyscf:  debounce(() => refreshPreflight("pyscf"),  250),
     };
-
-    // The Build form (kind / input-text / backend / form / terminal /
-    // add-hydrogens / source-mode toggle) was retired on 2026-06-08
-    // with task #295 — the Optimization tab is file-driven now, and
-    // structures arrive via the Projects sidebar (the "Load from
-    // sidebar selection" button + mount-time sessionStorage handoff
-    // wired further below).  The placeholderFor / toggleNucleicOptions
-    // / applySourceMode / BACKEND_LABEL / build click / load-file
-    // upload helpers that lived in this block were deleted in the
-    // same pass; the Molbuilder tab carries the equivalent generators
-    // (see molbuilder/web/static/modify/viewer.js).
-
-    // Take a structure response from /api/build/load and populate
-    // the viewer + info panel + enable the FDF section.
-    // A new structure invalidates any previously-generated FDF / PySCF
-    // outputs -- we clear those and disable their download buttons so
-    // the user can't accidentally download stale text from the prior
-    // structure.
-    /* Compute the BlockSize molbuilder's backend would auto-pick for a
-       structure of n_atoms.  Mirrors the SIZE-ONLY branch of
-       `_auto_block_size` in molbuilder/siesta/input.py (the one taken
-       when no rank count is set) -- if either side changes the rule,
-       the other must follow.  Used only to label the BlockSize
-       textbox's placeholder; the actual value still comes from the
-       backend, which also knows mpi_np and the GPU toggle. */
-    /* (autoBlockSize deleted 2026-08-15.)  It hand-copied the size-only
-       branch of `_auto_block_size` in molbuilder/siesta/input.py to label
-       the BlockSize placeholder, and its own comment conceded the cost:
-       "if either side changes the rule, the other must follow."  It never
-       knew the rank count -- and since the rank count moved to the staging
-       surface it never could -- so the number it showed was not the one the
-       backend would pick.  The placeholder is the catalogue's "(auto)" now,
-       and the rule has one home again. */
 
     function clearStructureInfo(reason) {
         // Wipe the info readout when a load attempt FAILS or when
@@ -378,12 +285,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     function _applyLoadedModel(filename) {
         const d = _data();
         /* THE COUNT COMES OFF THE ELEMENTS, because that is what the structure
-         * carries. This read `s.atoms` — a key the envelope has never had
-         * (`elements`, `annotations`, `periodicity`, `frames`, `forcesPerFrame`)
-         * — so it was `undefined`, the count fell to the empty array, and the
-         * header said "0 atoms" beside a drawn molecule. The FORMULA was right
-         * the whole time, because it took the `getElements()` branch: one line
-         * reading the master copy properly, one line guessing at it. */
+         * carries (`elements`, `annotations`, `periodicity`, `frames`,
+         * `forcesPerFrame`). */
         const elements = (d && typeof d.getElements === "function")
             ? (d.getElements() || []) : [];
         const n_atoms = elements.length;
@@ -396,12 +299,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         $("info-residues").textContent  = "—";
         $("info-formula").textContent   = formula(elements);
         // The BlockSize placeholder is left as the catalogue's own
-        // ``null_label`` -- "(auto)".  It read
-        // ``auto (<size>, n=<atoms>)`` until 2026-08-15, and the parenthesis
-        // told the user nothing they could act on: ``n`` was the ATOM COUNT,
-        // which in a parallel-execution field reads as a rank count, and the
-        // size shown was only the no-ranks branch of the backend rule -- so
-        // on any real run it was not the number that would be used.  A
+        // ``null_label`` -- "(auto)": a
         // prediction that is usually wrong is worse than no prediction
         // (user, 2026-08-15).
         // A new structure invalidates the previous run's issue panels;
@@ -462,11 +360,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
     // ---- PySCF rules -------------------------------------------------
     function applyPyscfCompatibility() {
-        // (The method <-> spin lock went with the fused `method` field,
-        // 2026-09-28: which spin treatment goes with which count is the
-        // electronic state's rule, judged once by the server's gate and
-        // shown live on the chemistry card -- never a second copy here.)
-
         // Solvent <-> solvent_method: method only meaningful when a
         // solvent is selected.
         const solv = $("py-solvent") && $("py-solvent").value;
@@ -478,11 +371,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
     // ---- SIESTA rules ------------------------------------------------
     function applySiestaCompatibility() {
-        // (The spin_total lock went with the item, 2026-09-28: the count and
-        // the treatment are the electronic state's, judged once by the
-        // server's gate -- `restricted` with a count is refused there, and
-        // the chemistry card shows what a blank resolves to.)
-
         // Relaxation type "none" -> per-step relaxation params moot.
         const relax = $("p-relax-type") && $("p-relax-type").value;
         const noneReason =
@@ -491,24 +379,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                 : null;
         ["p-relax-steps", "p-relax-force-tol", "p-relax-max-displ"]
             .forEach(id => setLock(id, noneReason));
-
-        // (The GPU/diagonaliser auto-switch was deleted 2026-08-15.)
-        //
-        // It read ``$("p-enable-gpu").checked`` and, if ScaLAPACK was
-        // selected, silently rewrote the user's diagonaliser to
-        // ELPA-1STAGE.  Three things were wrong with keeping it:
-        //
-        //   * ``p-enable-gpu`` is not on this form any more -- the GPU flag
-        //     is a bench axis answered on the staging surface -- so the gate
-        //     was dead code that could never fire;
-        //   * its stated reason, "ScaLAPACK has no GPU path (siesta.md
-        //     § 13)", is an obsolete citation.  ELPA runs on CPU *and* GPU,
-        //     and ScaLAPACK here is SIESTA's built-in Divide-and-Conquer;
-        //     the corrected account is in the `diag_algorithm` help;
-        //   * it silently changed a value the user chose.  Reconciling a
-        //     solver with the hardware belongs to `prep`, which is the layer
-        //     that knows the hardware -- and which records what it changed
-        //     (tuning.md § 2.11's realignment rule).
     }
 
     function applyCompatibility() {
@@ -528,9 +398,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             "py-optimize", "py-solvent",
             // A listener on a dead id is silent -- it simply never
             // attaches, so the gate it drives stops updating and nothing
-            // says so.  The spin fields left this list with their locks,
-            // and `p-diag-algorithm` with the rule that read it
-            // (2026-08-15).
+            // says so.
             "p-relax-type",
         ].forEach(id => {
             const el = $(id);
@@ -552,8 +420,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // the same door as the preflight and Generate -- on every load and
     // restore, and on every edit to a charge or spin field (the module
     // listens).  It fills nothing in: a blank field is already the
-    // instruction "work it out".  It replaced an Auto-detect button that
-    // copied a suggestion into both forms, overwriting them.
+    // instruction "work it out".
     const _chemistry = window.molbuilder.chemistry.attach({
         kind: "optimization",
         forms: () => ({
@@ -737,11 +604,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // its .molstruct.json sidecar and installs the model -- so picking a
     // structure in the sidebar auto-loads it without a re-upload.
     //
-    // The previous behaviour was "Build doesn't listen to the
-    // sidebar at all" -- which broke the natural workflow of
-    // "navigate to my project, click my .pdb, see it in Build".
-    // /modify already had this wiring; this brings Build to parity.
-    //
     // Race safety: every subscribe fire takes a monotonic seq; if a
     // later pick supersedes this one before the two-step fetch
     // finishes, we discard the older response.  ``lastLoadedFile``
@@ -750,14 +612,11 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     let _sidebarLoadSeq = 0;
     let _sidebarLastFile = "";
 
-    // Subscribe via the module-init contract (design.md "Module init
-    // contract"): the projects-sidebar module loads as
-    // ``<script type="module">`` (deferred), so it's NOT available
-    // when this classic-script viewer.js's IIFE runs.  We wait for
-    // ``runtime.whenReady("projects")`` to resolve -- replaces the
-    // earlier polling hack with a structural answer.  If the runtime
-    // isn't loaded (legacy / test-isolation path), fall back to a
-    // simple "skip the wiring" so the rest of viewer.js still works.
+    // Subscribe via ``runtime.whenReady("projects")``: the projects-sidebar
+    // module loads as ``<script type="module">`` (deferred), so it's NOT
+    // available when this classic-script viewer.js's IIFE runs.  If the
+    // runtime isn't loaded, the wiring is skipped so the rest of viewer.js
+    // still works.
     // ----- Form-dirty tracking (B.5.3) ------------------------------
     //
     // Per the universal sidebar interaction model: sidebar commit
@@ -801,12 +660,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         // be treated as a commit; the user picked it on another tab
         // and navigated here to configure SIESTA / PySCF for it).
         async function _commitStructure(sel) {
-            /* A commit carries the file's FULL path.  A caller that passed a
-             * bare name got it resolved against the server process's own
-             * directory and refused as "outside every configured root" — a
-             * message that names neither the caller nor which argument was
-             * wrong.  The commit also carries the directory, so the one case
-             * that used to fail is the one case we can simply complete. */
+            /* A commit carries the file's FULL path.  A bare name is completed
+             * from the commit's directory: the server would resolve it against
+             * its own process directory and refuse it as "outside every
+             * configured root". */
             let f = (sel && sel.file) ? String(sel.file) : "";
             if (f && !f.includes("/") && sel && sel.dir) {
                 f = String(sel.dir).replace(/\/+$/, "") + "/" + f;
@@ -829,9 +686,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                 // Same file as the last commit: the structure on screen
                 // stays (the Load button is what fetches new bytes), and so
                 // does the card's answer, which is about that structure.
-                // It re-read the FILE here until the M6 review, so an
-                // on-disk edit changed the card while the viewer -- and
-                // the deck Generate would send -- kept the old atoms.
                 return;
             }
             // Form-dirty gate: if the user has typed parameter
@@ -852,9 +706,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             // ONE load door (web/molview.md § 9.3 + model/structure.md § 2.4): read the .xyz + its
             // .molstruct.json sidecar via the concealed projects parser and install the
             // MODEL -- labels/regions/frozen ride along, so the read-only viewer shows
-            // them.  This replaces the old SECOND load path (hand-rolled /api/files/read
-            // + /api/build/load with NO sidecar + a separate sidecarLabels.fetch), which
-            // dropped the labels the Molbuilder tab shows -- the exact inconsistency.
+            // them.
             const _proj2 = window.molbuilder && window.molbuilder.projects;
             if (!_proj2 || !_proj2.parser
                     || typeof _proj2.parser.openMolecule !== "function") {
@@ -933,26 +785,14 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
          * (workspace.md § 4: several savers on one page, each deciding what and
          * when).
          *
-         * TWO DEAD RESTORES STOOD HERE BEFORE, and both looked convincing.  The
-         * first read the saved bytes back out of the workspace and opened them
-         * (`readPersistedSnapshot`, a door the workspace no longer has, behind
-         * a `typeof` guard, so it answered "nothing saved" every visit).  The
-         * second called `data.load(0)`, copied from the Modify tab -- which is
-         * EDITABLE, and where that call IS the restore.  Here it is a gate that
-         * returns null.  Neither was measured against this viewer's mode.
-         *
          * THE VIEWER IS MOUNTED FIRST, because a structure needs somewhere to
-         * go.  That was a real defect on its own: this block used to run
-         * against whatever `_data()` happened to answer, and on a fresh page
-         * that was null -- nothing had mounted yet, so the restore branch could
-         * never be taken and the sidebar seeded over the session every time.
+         * go.
          *
          * THE SIDEBAR ONLY SEEDS AN EMPTY CANVAS.  A pick left highlighted from
          * last time is not an instruction to load it: loading a file is the
          * Load button or a double-click, never a side effect of arriving.  What
          * is asked is "did anything come back?", never "does the sidebar's file
-         * match" -- a generated structure has atoms and no file at all, and the
-         * file comparison read that as empty and wiped it.
+         * match" -- a generated structure has atoms and no file at all.
          */
         const _initialFile = (typeof _proj.getCurrentFile === "function")
             ? _proj.getCurrentFile() : "";
@@ -977,9 +817,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                     `Restored ${_name} — ${saved.structure.elements.length} atoms.`,
                     "ok");
                 if (typeof _refreshLoadButton === "function") _refreshLoadButton();
-                // ...and the chemistry card, which a restore left empty until
-                // 2026-09-28: the tab came back with atoms and no answer.
-                // About the RESTORED structure, which is the one on screen
+                // ...and the chemistry card,
+                // about the RESTORED structure, which is the one on screen
                 // -- not the file it once came from, which may have moved
                 // on (or be none).
                 _chemistry.refresh();
@@ -1003,7 +842,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             return false;
         });
 
-        // ----- Load-from-sidebar button (task #295, 2026-06-08) ---- //
+        // ----- Load-from-sidebar button ------------------------------ //
         //
         // The structure-optimization tab's sole structure entry
         // point.  Reads the current Projects-sidebar pick and
@@ -1049,10 +888,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                     readout.textContent =
                         `Selected: ${_basename(_candidatePath)}`;
                 } else if (_candidatePath) {
-                    // SAY WHY, not just that.  The reason used to exist only
-                    // on the commit path (double-click), so a single click
-                    // left "not loadable" standing alone with no way to find
-                    // out what would be loadable.
+                    // SAY WHY, not just that: a single click names what
+                    // would be loadable.
                     readout.textContent =
                         `Selected: ${_basename(_candidatePath)} `
                         + `(not loadable — .xyz / .pdb only)`;
@@ -1100,8 +937,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     }
 
     // formula() is imported from MolView's door (mvFormula, top of file).  Imported,
-    // so it is always the real function (no global-read, no load-order fallback,
-    // no "OHH" full-expansion bug).
+    // so it is always the real function.
     const formula = mvFormula;
 
     // ----- 2. Render --------------------------------------------------
@@ -1109,25 +945,20 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // reset / background / export) owns all the per-viewer chrome;
     // the Optimization tab's host page only owns its tab-specific
     // controls (Load-from-sidebar button, Generate buttons,
-    // Download row).  The bespoke <details> Style block that used
-    // to live in index.html is gone; rep / radius / background /
+    // Download row).  Rep / radius / background /
     // labels are reached via the knob bar so every consumer site
     // shares the same UX.
 
     // The model is loaded by the ONE door (projects.parser.openMolecule); this ONLY
     // ensures the read-only MolView card is mounted on first load.  The mounted render
-    // reacts to the model on its own -- we must NOT re-install bare text here (that was
-    // the old second load path, and it would drop the sidecar labels the door loaded).
+    // reacts to the model on its own -- we must NOT re-install bare text here: it
+    // would drop the sidecar labels the door loaded.
     /* AWAITABLE, because the load door needs a viewer to put the file into and
      * this is what makes one. A viewer mounts before it has a structure
-     * (molview.md § 8), so this runs first and the load follows.
-     *
-     * It used to be fire-and-forget, called AFTER the load — which worked only
-     * while the load door could find a viewer by name in a global. */
+     * (molview.md § 8), so this runs first and the load follows. */
     async function _ensureMounted() {
         const ws = _ws();
-        // NOT gated on a viewer existing: this IS what creates it, and testing
-        // for one first is what stopped three pages mounting at all.
+        // NOT gated on a viewer existing: this IS what creates it.
         if (!ws) return null;
         if (_mvHandle) return _mvHandle;
         return mvMount($("viewer-host"), ws,
@@ -1135,13 +966,9 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                   files: molviewFiles })
             .then(function (h) { _mvHandle = (h && h.ok) ? h : null; return _mvHandle; })
             .catch(function (e) {
-                // #load-status is the page's real load/viewer status slot (there is
-                // no #status element -- the old id was a phantom that made this
-                // handler throw into its own catch, hiding every mount failure).
-                // "error", not "err": the severity is a CSS class
-                // (.status.ok/.error/.warn/.muted, page-shell.css), and "err"
-                // matches none of them -- so the one message that says the
-                // viewer is not there was drawn in ordinary body text.
+                // #load-status is the page's load/viewer status slot (there is
+                // no #status element).  The severity is a CSS class
+                // (.status.ok/.error/.warn/.muted, page-shell.css).
                 setStatus("load-status",
                     "Viewer failed to mount: " + ((e && e.message) || "render failed"),
                     "error");
@@ -1174,9 +1001,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         // wherever the field lives in the DOM.
         const cap = document.createElement("small");
         // .schema-field-hint is styled in lib/form-schema.css using the
-        // real --text-muted token (replaces the prior inline --muted
-        // fallback which silently used #888 because --muted isn't a
-        // defined token).
+        // --text-muted token.
         cap.className = "schema-field-hint";
         cap.id = "p-psml-lib-resolved";
         const parent = input.parentElement || input;
@@ -1227,25 +1052,13 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         }
     }(40));   // ~6s budget
 
-    /* ONE collector, both engines (2026-08-17).
-     *
-     * There were two — `collectFdfParams` and `collectPyscfParams` — and by
-     * the time they were read side by side the SIESTA one was a PURE
-     * PASS-THROUGH carrying an eight-line comment about a stage number it no
-     * longer layered, a `params.stages` lookup that had been deleted with
-     * `SiestaStageSpec`, and a `"section"` metadata key retired for both
-     * engines on 2026-08-15 when the forms moved onto the catalogue.  The
-     * PySCF one differed by a container id and two normalisations.
-     *
-     * Comments describing removed behaviour are worse than none: they are
-     * read as the reason the function exists.
+    /* ONE collector, both engines.
      *
      * A blank is sent as `null`, for both engines: not chosen, which the
      * server's one door reads as "what lies under it" for every field
      * (`_shared.config_from_params`, form-schema.md § 1.1) -- a blank charge
      * or spin among them, whose blank is "work it out"
-     * (`science/chemistry-correctness.md` § 2a).  PySCF's own null-dropping
-     * stood here for the same rule until 2026-09-30.  `dispersion = "none"`
+     * (`science/chemistry-correctness.md` § 2a).  `dispersion = "none"`
      * is sent as itself: it is the value for no correction.  Throws, naming
      * the field, on a value that will not read as its type.
      */
@@ -1262,10 +1075,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // typed parameter values aren't lost.
 
     // Every persistent ID is derived at save/restore time by walking
-    // the rendered schemas.  (A STATIC_FORM_IDS list stood here for
-    // ids outside the schema forms; its last member -- the old
-    // relaxation-stage preset selector -- left with task-295, and the
-    // empty list rode on under a comment still claiming a survivor.)
+    // the rendered schemas.
     function getFormIds() {
         const ids = [];
         for (const sch of [formSchemas.siesta, formSchemas.pyscf]) {
@@ -1290,11 +1100,9 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
     /* What each engine's form HOLDS, through the form's own reader and
      * writer (`heldValues` / `setValues`): a blank stays blank -- a box
-     * nobody answered stays unanswered, where reading `.checked` by id
-     * turned it into "off" on the way back.  Field by field: a field that
+     * nobody answered stays unanswered.  Field by field: a field that
      * will not read keeps what it was last saved with, so a half-typed
-     * field at `pagehide` no longer wipes its engine's whole saved form
-     * (the K7 review). */
+     * field at `pagehide` does not wipe its engine's whole saved form. */
     function saveFormState() {
         const fs = (window.molbuilder || {}).formSchema;
         if (!fs) return;
@@ -1320,7 +1128,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         if (!saved || !fs) return;
         // A RESTORE IS NOT AN EDIT: `setValues` fires `input` and `change`
         // (so each field's caption follows), and the form-dirty gate would
-        // read them as the person's -- the next structure load then stopped
+        // read them as the person's -- the next structure load would stop
         // at "discard unsaved changes?" over values nobody had touched.
         _ignoreFormChanges = true;
         try {
@@ -1338,9 +1146,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
     // No synchronous first restore: every persistent id is
     // schema-derived, and before the schemas load getFormIds() is
-    // empty -- the call that stood here restored nothing, under a
-    // comment justifying it with the static selector that left in
-    // task-295.  The real restore runs inside initFormsFromSchema()
+    // empty.  The real restore runs inside initFormsFromSchema()
     // after the renderer fills the containers.
     window.addEventListener("pagehide", saveFormState);
 
@@ -1349,19 +1155,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // change listeners, full restoreFormState walk) happens inside
     // this function once the renderer has populated the DOM.
     initFormsFromSchema();
-
-    // ----- Cross-tab structure handoff (post-task-#295) --------------
-    //
-    // The legacy "builder-structure" sessionStorage save/restore that
-    // used to live here was retired 2026-06-09 (task #306): post-task
-    // #295 the Optimization tab is file-driven, so the cross-tab
-    // structure handoff goes through the Projects-sidebar pointer
-    // (``sessionStorage.molbuilder.current_file``) + the mount-time
-    // auto-load in the runtime.whenReady("projects") block above.
-    // That path also re-reads bytes from disk on every restore, so
-    // the snapshot-the-XYZ-into-sessionStorage approach was both
-    // redundant and a quota-pressure liability on large structures.
-    // No saveStructureState / pagehide listener is needed any more.
 
     // Wire each engine-scoped form input to the debounced preflight
     // refresh so the issues panel updates live as the user adjusts
@@ -1382,10 +1175,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                         : id.startsWith("py-") ? "pyscf"
                                                : null;
             if (!which) return;
-            // Skip the static stage-preset selector -- it has its own
-            // change handler that bulk-fills sibling inputs (each of
-            // which fires their own change event and gets caught
-            // below).
             const event = (el.type === "checkbox" || el.tagName === "SELECT")
                 ? "change" : "input";
             el.addEventListener(event, () => refreshPreflightDebounced[which]());
@@ -1394,12 +1183,9 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     /* ---------------------------------------------------------------- *
      *  Send to Task setup — the hand-off                                *
      * ---------------------------------------------------------------- *
-     * This tab collects parameters and produces no artifact, so until this
-     * existed the form's work had nowhere to go at all.  The button writes
+     * The button writes
      * the files into the folder the projects sidebar has selected, and
-     * stops there -- opening Task setup is the person's move (2026-09-19;
-     * the jump depended on the other tab's remembered folder, and opened
-     * the wrong calculation).
+     * stops there -- opening Task setup is the person's move (2026-09-19).
      *
      * THROUGH DISK, NEVER IN MEMORY.  `web/tabs.md` § 1 forbids an in-memory
      * "send to tab" hand-off and lists four costs: a result depending on
@@ -1408,7 +1194,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
      * the files first keeps all four bought.
      *
      * It lives HERE rather than in its own module because the two things it
-     * needs -- `_structureForRequest()` and the collect*Params() pair -- are
+     * needs -- `_structureForRequest()` and `collectParams()` -- are
      * private to this file.  A separate module would have to re-derive them,
      * which is the duplication this codebase keeps paying for.
      */

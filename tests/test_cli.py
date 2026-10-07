@@ -8,11 +8,9 @@ roles:
   * subcommand routing (``main(["X", ...]) -> proper handler``) works
     for the build verbs without hitting heavy external deps
 
-Heavy dispatches (smiles needs RDKit, name needs PubChem, watch serve
-binds a port) are tested via mocks where reasonable and via ``--help``
-only otherwise.  ``molbuilder fdf`` was DELETED 2026-08-11 (C1+C2): a
-deck is rendered by `jobset prep` from a description, so SiestaConfig
-no longer meets click at all.  The rendered deck is the prep road's
+Heavy dispatches (smiles needs RDKit, name needs PubChem) are tested via
+mocks where reasonable and via ``--help`` only otherwise.  A deck is
+rendered by `jobset prep` from a description; the rendered deck is the prep road's
 (``tests/data/prep_protocol.toml``), value fidelity by the template
 round-trip (``tests/test_template_roundtrip.py``).
 """
@@ -33,10 +31,6 @@ from molbuilder import cli
 
 _SUBCOMMANDS = [
     "peptide", "dna", "rna", "smiles", "name",
-    # "fdf" left with the verb (C2, 2026-08-11), and "pyscf" followed it on
-    # 2026-09-17 -- this line said it would stay "until decision 34 reworks the
-    # emitted-script path the same way", and that is what happened: a deck is
-    # written by `jobset prep` from a description, on both engines.
     "modify",
     "serve", "watch",
 ]
@@ -150,8 +144,7 @@ def test_build_rna_default_form_is_a(monkeypatch, tmp_path):
     cli.main(["rna", "AUGC", "--out", str(tmp_path / "r.xyz")])
     _seq, kwargs = captured[0]
     # When --form isn't passed, cli should not inject a default form
-    # kwarg; the builder picks one.  See cli.py:_add_build_parser
-    # form=None default + the dispatch's `if args.form is not None`.
+    # kwarg; the builder picks one.
     assert "form" not in kwargs
 
 
@@ -176,13 +169,6 @@ def test_pyscf_atom_block_emits_to_stdout(monkeypatch, capsys, tmp_path):
     # PySCF atom block format: "<element> <x> <y> <z>" per line.
     assert "C" in out
     assert "0.1" in out and "0.2" in out and "0.3" in out
-
-
-# --------------------------------------------------------------------- #
-#  Phase 5b: stdin support (`pyscf - out.py`)                           #
-# --------------------------------------------------------------------- #
-#  The fdf twin of these tests went with the verb (C2, 2026-08-11).
-#  The stdin helper is shared, so the sniff stays gated through pyscf.
 
 
 # --------------------------------------------------------------------- #
@@ -239,18 +225,6 @@ def test_validate_exit_on_error_returns_2(monkeypatch, capsys, tmp_path):
     assert body["n_errors"] >= 1
 
 
-def test_validate_engine_siesta_runs_config_checks(capsys, tmp_path):
-    """--engine siesta runs the SIESTA-side validators (the same set
-    render_fdf would run before emitting), not just geometry checks."""
-    import json
-    xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
-    rc = cli.main(["validate", _write_xyz(tmp_path / "h2o.xyz", xyz),
-                   "--engine", "siesta"])
-    assert rc == 0
-    body = json.loads(capsys.readouterr().out)
-    assert body["engine"] == "siesta"
-
-
 def test_validate_pretty_json_indents(capsys, tmp_path):
     xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
     rc = cli.main(["validate", _write_xyz(tmp_path / "h2o.xyz", xyz),
@@ -261,30 +235,12 @@ def test_validate_pretty_json_indents(capsys, tmp_path):
     assert "\n  " in out
 
 
-# The 20-case "each default renders in the FDF" sweep that sat here was
-# retired 2026-08-19.  Every case re-ran the section walk the deck-runner
-# tests already pin, over values that are DECLARED DATA in the catalogue;
-# the failure it feared -- a field wired to the CLI that the generator
-# ignores -- is caught, for every field including tomorrow's, by
-# tests/test_every_form_field_reaches_the_deck.py, which fails NAMING the
-# field whenever changing it cannot change the deck.
-
-# (`test_real_subcommand_choice_validation_rejects_typos` was retired
-#  2026-10-02: `molbuilder pyscf` was deleted on 2026-09-17 with the
-#  dataclass -> click bridge, so click's "No such command" exit 2 passed it
-#  -- the vacuous green its own comment had retired the `fdf` rows for.)
-
-
 # ---- Modify electrode-spec parser is case-insensitive on key ----- #
 
 def test_modify_electrode_spec_key_case_insensitive():
     """``@CONTACT=`` / ``@Contact=`` are accepted (R3 fix: the parser
     lowercases the key).  Catches a regression where the ``.lower()`` call in
-    ``_parse_electrode_spec`` is dropped -- earlier mutation testing showed 0
-    test failures when this was silently removed.
-
-    The ``@GAP=`` half went with pair mode (redesign plan § 3.4); the
-    lowercasing it also exercised is covered by the remaining key."""
+    ``_parse_electrode_spec`` is dropped."""
     upper_contact = cli._parse_electrode_spec("Au:111:3x3x2@CONTACT=2.4:+z=3")
     assert upper_contact["mode"] == "single"
     assert upper_contact["contact_distance"] == 2.4
@@ -299,25 +255,12 @@ def test_modify_electrode_spec_key_case_insensitive():
 # --------------------------------------------------------------------- #
 
 
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 3 tests here read a progress log or a PySCF product typed by
-# hand (`process/testing.md` § 6).
-
-
 def test_watch_tail_rejects_stdin(capsys):
     """`watch tail` needs a real file to poll -- stdin can't be
     re-read.  Reject with an explicit error rather than hanging."""
     with pytest.raises(SystemExit) as exc:
         cli.main(["watch", "tail", "-"])
     assert exc.value.code == 2
-
-
-# --------------------------------------------------------------------- #
-# ``molbuilder watch serve`` removed 2026-05-19 along with the
-# /watch page route; ``molbuilder serve`` is now the canonical
-# entry point.  Test coverage for the unified entry point lives in
-# tests/test_cli_tls.py (TLS precedence + readability) and in this
-# file's bootstrap test that pins the registered CLI groups.
 
 
 # --------------------------------------------------------------------- #
@@ -371,7 +314,7 @@ def test_modify_delete_only(tmp_path):
 
 
 def test_modify_orient_only(tmp_path):
-    """Default --center='midpoint' since the redesign."""
+    """Default --center='midpoint'."""
     inp  = tmp_path / "in.xyz"
     outp = tmp_path / "out.xyz"
     inp.write_text(_bdt_stub_xyz())
@@ -507,11 +450,10 @@ def test_serve_no_auth_loopback_uses_config_empty(monkeypatch):
     calls = {}
 
     class _FakeApp:
-        # `config` because a Flask app has one, and `cmd_serve` now records
-        # THIS PROCESS's port on it (`web.app.serve_port` -- the port used to
-        # be parsed back out of the Host header, which is the wrong answer
-        # behind a proxy).  A stub that stands in for a Flask app has to
-        # carry the parts of a Flask app the caller uses.
+        # `config` because a Flask app has one, and `cmd_serve` records
+        # THIS PROCESS's port on it (`web.app.serve_port`).  A stub that
+        # stands in for a Flask app has to carry the parts of a Flask app
+        # the caller uses.
         config: dict = {}
 
         def run(self, **kw):
@@ -566,13 +508,9 @@ def _closest_metal_z(struct, above):
 
 
 def test_the_centroid_rule_moved_here_with_the_placement(tmp_path):
-    """**The rule survived its builder, so its test moved with it.**
-
-    `--electrode ...:+z=I,J` centres on the CENTROID of the trailing index
-    list — 1 index is that atom, 2 their midpoint, N their centroid. That
-    arithmetic lived in `modify.add_electrode_slab` until 2026-09-01, when
-    the second slab builder was deleted (`archive/2026-09-01-modify-redesign-plan.md` § 3.4b).
-    It is the CLI's now, because the convenience is the CLI's; `add_slab`
+    """`--electrode ...:+z=I,J` centres on the CENTROID of the trailing index
+    list — 1 index is that atom, 2 their midpoint, N their centroid.
+    It is the CLI's, because the convenience is the CLI's; `add_slab`
     takes an absolute `start_z` and reads no selection at all.
     """
     from molbuilder.structure import Structure
@@ -589,8 +527,8 @@ def test_the_centroid_rule_moved_here_with_the_placement(tmp_path):
 
 
 def test_a_centre_index_off_the_end_is_refused_by_the_flag(tmp_path):
-    """It was an `IndexError` out of the builder; with the builder gone the
-    flag checks it, and says which index and how many atoms there are."""
+    """The flag checks it, and says which index and how many atoms there
+    are."""
     from molbuilder.structure import Structure
     st = Structure(elements=["S"], positions=np.array([[0., 0., 0.]]))
     inp = tmp_path / "in.xyz"

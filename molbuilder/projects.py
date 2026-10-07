@@ -109,12 +109,8 @@ def validate_topic(topic: str) -> str:
     validate_name(topic, kind="topic")
     if topic not in CANONICAL_TOPICS:
         raise InvalidName(
-            # NO COUNT IN THE MESSAGE.  It said "the canonical six" for a set
-            # that has been NINE since 2026-07-27 -- `job-contracts.md` § 2.5
-            # corrected itself and this did not, and a test asserted the stale
-            # wording, so the drift was pinned rather than caught.  The list is
-            # right there; a number beside it is a second thing to keep in step
-            # and buys nothing.
+            # NO COUNT IN THE MESSAGE: the list is right there, and a number
+            # beside it is a second thing to keep in step and buys nothing.
             f"topic {topic!r} is not one of the canonical topics: "
             f"{', '.join(CANONICAL_TOPICS)}.  Pick the closest match "
             f"or extend molbuilder.projects.CANONICAL_TOPICS."
@@ -150,12 +146,10 @@ def projects_root(base: Optional[Path] = None) -> Path:
          run from)
       4. ``repo_root()/projects`` — the default
 
-    **It is no longer the working directory, and that is the fix.**  This
-    returned ``Path.cwd()/"projects"``, which made the tree a property of
-    where the user happened to stand: the same command meant different
-    trees in different shells, and `python -m molbuilder` wanting to run
-    from the checkout fought `--bundle .` wanting to run from the
-    calculation.  The default now comes from the molbuilder root, which is
+    **Never the working directory**: that would make the tree a property of
+    where the user happened to stand, the same command meaning different
+    trees in different shells.  The default comes from the molbuilder root,
+    which is
     a fact the package knows about itself (`job-contracts.md` § 2.5), and
     steps 2–3 exist because the default is not always writable — a cluster
     home with a quota, a scratch filesystem, a shared tree.
@@ -210,10 +204,7 @@ def projects_root_with_source(base: Optional[Path] = None) -> ProjectsRoot:
     # NOTHING IS CAUGHT.  `runtime_config` imports only `config_dir`, so there
     # is no cycle to guard, and a RuntimeConfigError -- a typo in `paths` --
     # reaches the caller as the refusal it is, with the known keys named
-    # (architecture.md § 8.2a).  A `except ImportError` "cycle guard" stood
-    # here until 2026-09-28 that could not fire -- and that, had it fired,
-    # would have ignored `paths.projects` and reported it unset (plan W36
-    # ⑨); a blanket `except Exception` before it swallowed the refusal too.
+    # (architecture.md § 8.2a).
     from .runtime_config import get_paths
     configured = (get_paths() or {}).get("projects")
     if configured:
@@ -242,21 +233,17 @@ class OutsideRoot(ValueError):
 def contain(candidate, root) -> Path:
     """Resolve ``candidate`` and require that it lies inside ``root``.
 
-    **THE fence — there is one, and this is it.**  It lived only in the web
-    layer (`files.py::_resolve_within_roots`) until 2026-08-22, when the
-    `jobset` CLI grew its own copy for ``--bundle``: two fences around one
-    tree, which is one too many, and the CLI's copy was already the weaker
-    of the two (no early ``..`` reject).  Both call this now.
+    **THE fence — there is one, and this is it**: two fences around one tree
+    is one too many.
 
     Three steps, and each is here for a reason paid for in advance:
 
       * ``..`` in the RAW spelling is refused before anything else.
         Resolution would normalise it away, but refusing early removes the
         ambiguity of *"did the writer think `..` was harmless?"*.
-      * ``expanduser`` only — never ``expandvars``.  A 2026-06-14 security
-        fix: with variable expansion, ``/etc/$SECRET_KEY/foo`` resolved to
-        a path that then got echoed back in the "outside the root" error,
-        leaking the value.  ``~`` stays because that leak is symmetric.
+      * ``expanduser`` only — never ``expandvars``: with variable
+        expansion, ``/etc/$SECRET_KEY/foo`` would resolve to a path echoed
+        back in the "outside the root" error, leaking the value.  ``~`` stays because that leak is symmetric.
       * **both sides are resolved before comparing**, so a symlinked root
         or a relative working directory cannot make the fence decorative.
 
@@ -286,13 +273,12 @@ def find_projects_root(start: Path) -> Optional[Path]:
     ``start`` is not inside one.
 
     **Why the tree is found from the calculation, not from the process.**
-    ``projects_root()`` answers *"where would a NEW project go?"* and its
-    answer is the working directory -- correct for the server, which is
-    started at a declared root, and wrong for a calculation, which is a folder
-    that already knows where it lives.  A user on a cluster runs
-    a verb from inside the calculation; anchoring on their working
-    directory made a template that worked on the workstation resolve to a
-    folder that does not exist on the cluster (2026-08-21).
+    ``projects_root()`` answers *"where would a NEW project go?"* from this
+    machine's declarations -- correct for the server, and wrong for a
+    calculation, which is a folder that already knows where it lives.  A
+    user on a cluster runs a verb from inside the calculation; anchoring
+    anywhere else would make a template that worked on the workstation
+    resolve to a folder that does not exist on the cluster.
 
     **The NEAREST ancestor wins, and the walk stops there.**  A tree inside a
     tree is somebody else's tree: continuing past the first match would let a
@@ -551,13 +537,6 @@ def list_structures(project: str, topic: str, *,
         return []
     return sorted(p.name for p in td.iterdir()
                    if p.is_dir() and _NAME_PATTERN.fullmatch(p.name))
-
-
-# `find_geom_candidates` -- a scan of the tree for files NAMED like a
-# converged geometry (`*_optimized.xyz`, `*.STRUCT_OUT`,
-# `*_geom_optim.xyz`), newest first -- stood here until 2026-10-05: no
-# surface called it.  A run's files are read through its run door
-# (`runs.run_of`), never by name across the tree.
 
 
 __all__ = [

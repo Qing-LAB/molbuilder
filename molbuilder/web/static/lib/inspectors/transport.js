@@ -2,20 +2,9 @@
  *
  * A finished junction writes `<label>.transport.json` (`transport/record.py`):
  * one entry per bias point, each carrying the transmission curve, the
- * conductance at the Fermi level, and the current.  Until this presenter
- * existed the Results picker matched NOTHING against that file, so
- * `pickResult` returned null and the picker dropped it — the deliverable of a
- * five-rung run was invisible on the tab that exists to show results, while
- * the rungs' own `.out` files listed as five unrelated "SIESTA optimization"
- * entries (`plans/plan.md` § 5p.3p.3, items 1–2).
+ * conductance at the Fermi level, and the current.
  *
- * WHAT THIS IS AND IS NOT.  It is the table the record already carries — bias,
- * G(E_F), current — and the honest statement of what is not drawn.  It is NOT
- * the transmission chart: each point holds `energy_ev` and `transmission`, so
- * the DATA is here and only the plot is missing, and this says exactly that
- * rather than the broader claim the step originally called for.
- *
- * It also does NOT make a five-directory ladder read as one run.  `absorbs`
+ * It does NOT make a five-directory ladder read as one run.  `absorbs`
  * collapses siblings within ONE directory and cannot express it; that is
  * § 5c.1's open question and not a presenter's to answer.
  *
@@ -90,7 +79,7 @@
         });
 
         /* THE LADDER, in order.  A transport result is FIVE calculations and
-         * the record now says so (`transport/record.py::_stage_facts`); this
+         * the record says so (`transport/record.py::_stage_facts`); this
          * renders that structure rather than only its last rung.  Sequential
          * dependence means an unfinished rung explains the ones after it, so
          * the honest statement per rung is enough -- no inference, no

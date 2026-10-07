@@ -10,9 +10,7 @@ the pages -- and must be a 400 that says why, never a 500.
 
 The ANSWER is pinned where it is made and where it is read: the class through
 prep in ``tests/test_electronic_state.py``, and the card, driven the way a
-person drives it, in ``tests/test_chemistry_card_e2e.py``.  (Until the M6
-review this file pinned the answers too, and a ``structure_path`` door the
-server re-read the file through.)
+person drives it, in ``tests/test_chemistry_card_e2e.py``.
 """
 from __future__ import annotations
 

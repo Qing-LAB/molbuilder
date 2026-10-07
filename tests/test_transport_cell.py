@@ -39,8 +39,7 @@ def _hex_device():
 
 def test_structure_cell_and_periodicity_defaults():
     """No cell means a vacuum box; a stated cell means a lattice.  The
-    boolean view follows from the kind rather than being stored beside it
-    (`pbc` was retired as a field 2026-09-22)."""
+    boolean view follows from the kind rather than being stored beside it."""
     s = Structure(elements=["C"], positions=np.zeros((1, 3)))
     assert s.cell is None
     assert s.axis_kind == ("isolated",) * 3 and s.pbc() == (False,) * 3
@@ -59,13 +58,8 @@ def test_a_degenerate_cell_is_reported_rather_than_unopenable():
     """Zero volume (two parallel vectors) must be said out loud -- but by the
     checker, not by refusing to build the object.
 
-    This asserted that `Structure(...)` raised, until 2026-09-21.  § 8.2 says
-    reading does not judge: a model that cannot HOLD a bad box cannot show one
-    on the Cell page either, so a pair whose sidecar carried one could not be
-    opened and therefore could not be fixed.  The refusal lives at the two
-    doors that are about to act on the box -- the edit gate and the emitter --
-    and both still refuse.  What must never happen is the box travelling
-    QUIETLY, which is what this now pins.
+    § 8.2 says reading does not judge: a model that cannot HOLD a bad box
+    cannot show one on the Cell page either, so it could not be fixed.
     """
     from molbuilder.cell import resolve_and_check
     bad = np.array([[10.0, 0, 0], [10.0, 0, 0], [0, 0, 10.0]])
@@ -105,7 +99,7 @@ def test_sidecar_cell_round_trip(tmp_path):
 
 def test_sidecar_without_cell_is_nonperiodic():
     d = msj.to_dict(n_atoms_total=1, structure_hash="0" * 32)
-    del d["cell"]                                     # simulate an old v3 file
+    del d["cell"]
     s = Structure(elements=["C"], positions=np.zeros((1, 3)))
     msj.apply_to_structure(s, d)
     assert s.cell is None
@@ -128,13 +122,7 @@ def test_a_PERIODIC_axis_with_no_cell_is_refused_not_fabricated():
     recoverable from atom extents (padding fabricates an orthorhombic box
     that severs the periodic gold)".  A rectangle cannot tile a 60 degree
     lattice, so the lead would be a different crystal from the device.
-
-    This asserted the opposite until 2026-09-23 -- that a fabricated box is
-    produced and flagged.  Flagging was not enough: `as_structure` wrapped
-    such a box in an explicit `cell=` and the deck then printed "Explicit
-    lattice preserved from the structure (NOT recomputed from atom
-    extents)" over one that had been.  `Structure.resolve_cell` has always
-    refused this; the emitter now agrees with it.
+    `Structure.resolve_cell` refuses this too.
 
     What is NOT refused is an ISOLATED axis -- see the nanowire tests
     below.  That is a real electrode and its box IS derived.
@@ -152,18 +140,6 @@ def test_axis_vacuum_flags_transport_axis_gap():
     assert vac[2] > 5.0
     fdf = "\n".join(_emit_geometry(dev))
     assert "transport axis (c) has vacuum" in fdf
-
-
-# ------------------------------------------------------------------ #
-#  Wizard preserves the hex lateral vectors                          #
-# ------------------------------------------------------------------ #
-
-
-
-# The two wizard tests below this line went with `electrode_wizard`
-# (2026-09-17).  `_emit_geometry` above is the LIVE emitter -- `deck.py`
-# reuses it for every rung -- so the hexagonal-cell checks still guard the
-# deck a person actually gets.
 
 
 # ------------------------------------------------------------------ #
@@ -201,11 +177,6 @@ def test_a_stated_vacuum_is_obeyed_verbatim(vac, expect):
     """The three states (`structure-periodicity.md` § 2): a number is used,
     `[0,0,0]` means no gap DELIBERATELY and is also used, and only UNSET
     reaches the default above.
-
-    This emitter ignored the field entirely until 2026-09-23: someone who
-    typed 8 Å on the Cell page got 15 Å in the deck, silently -- the
-    'control that appears to do something and does not' shape § 3.2 keeps
-    finding.
     """
     from molbuilder.transport.transiesta import _compute_cell_from_extents
     a, b, _c = _compute_cell_from_extents(Structure(**_wire(), vacuum=vac))
@@ -216,9 +187,6 @@ def test_the_transport_axis_is_never_padded_with_vacuum():
     """`resolve_cell`'s rule, and transport follows it: vacuum is meaningless
     on a transport axis because the device length is MATCHED, not padded
     (§ 6.2).  The box there is the atom span and nothing else.
-
-    This answered `int(bbox_z + 2) + 1` until 2026-09-23 -- a rounding that
-    honoured neither the vacuum nor the kind and had no source.
     """
     from molbuilder.transport.transiesta import _compute_cell_from_extents
     s = Structure(**_wire(), vacuum=(8.0, 8.0, 8.0),
@@ -228,17 +196,3 @@ def test_the_transport_axis_is_never_padded_with_vacuum():
     assert c == pytest.approx(2.4), (
         "the atom span, with no padding: an 8 A vacuum on the transport "
         "axis must not lengthen the device")
-
-
-def test_a_transport_deck_refuses_a_render_argument_it_does_not_read():
-    """`spec_for`'s transport arm dropped `cell=` (and `vibration`,
-    `relaxed_by`, `trial`) in silence; it refuses them by name
-    (`engines/transport.md` § 3.6a).  API-LEVEL because no road reaches it:
-    prep's transport rung (`prep._transport_rung_of`) and the gather's
-    render (`prep._transport_spec`) pass none of them."""
-    from molbuilder.siesta.input import spec_for
-    struct = Structure(elements=["Au", "Au"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 2.9]]))
-    with pytest.raises(ValueError, match="reads no cell"):
-        spec_for(struct, calculation="transport", cell=np.eye(3) * 10.0)

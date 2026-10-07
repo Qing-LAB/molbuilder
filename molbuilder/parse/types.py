@@ -19,10 +19,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-# Forward-declared types — Frame and Structure live elsewhere; we
-# only need the references for typing.  The actual types are
-# imported lazily where needed to avoid circularity at package
-# import.
+# Frame and Structure live elsewhere; the result types reference them.
 from molbuilder.frame import Frame
 from molbuilder.structure import Structure
 
@@ -34,12 +31,7 @@ from molbuilder.structure import Structure
 
 @dataclass(frozen=True)
 class ParseWarning:
-    """Level-3 fail-soft warning emitted by any parser.
-
-    Mirrors the legacy ``parsers.base.ParseWarning`` shape so the
-    existing renderer in Results can consume both during the
-    migration window.
-    """
+    """Level-3 fail-soft warning emitted by any parser."""
     source:   str
     line_no:  Optional[int]
     snippet:  Optional[str]
@@ -58,17 +50,9 @@ def _source_str(source) -> str:
     WHERE it came from -- the answer is in hand and the envelope is
     decoration.
 
-    **Catches ``RuntimeError`` as well as ``OSError``, because the case
-    the guard is for raises the first.**  The four builders this replaced
-    all wrote ``except OSError``, and this docstring named "a broken
-    symlink loop or an unreadable parent" as the reason.  Measured
-    2026-09-05 on python 3.12: a symlink loop makes ``resolve()`` raise
-    ``RuntimeError`` ("Symlink loop"), which is not an ``OSError``, so
-    the guard never fired on its own example; and an unreadable parent
-    raises nothing at all, because ``resolve()`` defaults to
-    ``strict=False`` and does not stat.  The guard was written for a
-    failure it could not catch and justified by one that does not
-    happen.
+    **Catches ``RuntimeError`` as well as ``OSError``**: measured on
+    python 3.12, a symlink loop makes ``resolve()`` raise ``RuntimeError``
+    ("Symlink loop"), which is not an ``OSError``.
     """
     from pathlib import Path as _P
     try:
@@ -87,24 +71,15 @@ class ParseResult:
     schema_version: int
     parsed_at:      str               # ISO-8601 UTC string
     parser_name:    str               # name of the parser class that produced this
-    source:         str               # path str OR "<text>" for TextParsers
+    source:         str               # path str, or "<text>" with no file
     result_kind:    str = "abstract"  # discriminator; subclasses override
 
     @staticmethod
     def envelope(parser_name: str, source=None) -> Dict[str, Any]:
         """The four fields every result carries, spread by each builder.
 
-        ``source`` is resolved to an absolute path; ``None`` means a
-        ``TextParser``, which has no file and says ``"<text>"``.
-
-        **One home, because there were five.**  Each sub-package's
-        ``_helpers.py`` filled these four by hand and carried its own
-        copy of the timestamp helper -- four identical ``_iso_z``
-        definitions, and `parse/instruments/` added a fifth on
-        2026-09-04 without noticing the other four.  They agreed, which
-        is the only reason nothing had broken: four copies of a format
-        string is four chances for one of them to drift, and the version
-        in `dirs/job.py` already takes a different argument.
+        ``source`` is resolved to an absolute path; ``None`` means no
+        file, and says ``"<text>"``.
         """
         from datetime import datetime, timezone
         return {
@@ -126,8 +101,7 @@ class ParseResult:
 class TrajectoryResult(ParseResult):
     """Per-step physics from an engine .out / .log.
 
-    Mirrors the legacy ``Trajectory`` dataclass in ``frame.py``
-    so the migration in Phase C is a thin wrapper.
+    Mirrors the ``Trajectory`` dataclass in ``frame.py``.
     """
     frames:        List[Frame] = field(default_factory=list)
     lattice:       Optional[np.ndarray] = None
@@ -151,12 +125,10 @@ class TrajectoryResult(ParseResult):
 
 @dataclass(frozen=True)
 class StructureResult(ParseResult):
-    """Geometry from .XV / .STRUCT_OUT / .xyz / .fdf coords block /
-    PySCF final geometry.
+    """Geometry from .XV / .pdb / PySCF final geometry.
 
-    Carries ``cell`` separately because :class:`Structure` is
-    geometry-only by historical design.  Phase E (migrating
-    siesta_struct) populates it from the file's lattice block.
+    Carries ``cell`` beside the structure, from the file's lattice block
+    where it has one.
     """
     structure:      Optional[Structure] = None
     cell:           Optional[np.ndarray] = None
@@ -177,15 +149,6 @@ class SidecarResult(ParseResult):
     payload: Dict[str, Any] = field(default_factory=dict)
     schema:  str = "unknown/v0"
     result_kind: str = "sidecar"
-
-
-# `ScriptResult` stood here until 2026-09-05.
-#
-# One field per reserved block, produced by six `TextParser` classes that
-# each filled ONE of them and left the rest None.  Nothing ever read the
-# type: `result_kind == "script"` was never checked anywhere, and the
-# blocks are now read by `script_emit`'s `_extract_*_dict` extractors
-# -- beside the emitters that write them.  `plans/plan.md` § 5d.
 
 
 @dataclass(frozen=True)
@@ -220,26 +183,11 @@ class EngineParamsResult(ParseResult):
     result_kind: str = "engine-params"
 
 
-# ``JobResult`` stood here until 2026-09-04 -- the directory decoder's
-# eleven-field summary.  Ten fields had no reader anywhere in the tree;
-# the eleventh, ``status``, is now ``parse.dirs.job.run_status`` and is
-# built from the parsers' own ``run_state`` instead of from plot data
-# that was thrown away.  See ``parse/dirs/__init__.py``.
-
-
-# (BundleResult stood here until 2026-08-29 -- the run-dir -> next-stage
-#  handoff shape retired with the bundle parser; the composite CITES a
-#  finished attempt and `transport/compose.py` fuses at prep.)
-
-
 def answers_a_trajectory(parser_cls) -> bool:
     """Whether this parser's own declared ``output`` is a trajectory.
 
     Every route that reads ``.frames`` after detection has to ask this:
-    ``/api/watch/*`` and the three trajectory CLI verbs.  Both hand-rolled
-    it, and the CLI's copy asked ``is_dir()`` instead -- so a single-geometry
-    file the parser reads perfectly still reached trajectory code and raised
-    ``AttributeError: 'StructureResult' object has no attribute 'frames'``.
+    ``/api/watch/*`` and the three trajectory CLI verbs.
 
     A parser declares its answer, so this asks rather than guesses.
     """

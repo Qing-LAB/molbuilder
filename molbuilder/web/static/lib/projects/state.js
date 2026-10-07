@@ -40,7 +40,7 @@ export const SS_FILE = "molbuilder.current_file";
  * while Modify stays in structure/.  The bare key doubles as the shared
  * "most recent place anywhere" -- written on every set, read only when a
  * page has no slot of its own yet (a first visit starts where you last
- * were, which is the pre-2026-08-19 behaviour, demoted to fallback).
+ * were).
  *
  * ONE reader and ONE writer, exported for the module's own files -- a
  * second site touching the raw keys is how the keying would silently
@@ -62,8 +62,8 @@ function _routeKey(route) {
  * Hand the selection to ANOTHER tab (docs/web/projects.md § 5): write the
  * TARGET page's own slots, so its per-tab memory shows `dir`/`file` when
  * it next opens.  The cross-tab "Open in Molbuilder" link is the caller;
- * writing the raw keys stopped working the day the slots became per-tab,
- * because a page's own slot shadows the shared fallback.
+ * writing the raw keys alone would not do, because a page's own slot
+ * shadows the shared fallback.
  */
 export function handOffSelection(route, dir, file) {
   const key = _routeKey(route);
@@ -106,7 +106,7 @@ const selectionSubscribers = new Set();
 const commitSubscribers = new Set();
 
 /* "The files under this folder changed UNDERNEATH you" -- a fourth kind of
- * event, and the one nothing had.  `onChange` says the SELECTION moved and
+ * event.  `onChange` says the SELECTION moved and
  * `onCommit` says the user chose a file; neither fires when the same folder
  * suddenly holds different bytes, which is exactly what a checkpoint restore
  * does: it can swap `task.json` for `task.1st.json` while a tab is showing
@@ -119,18 +119,13 @@ const folderSubscribers = new Set();
 // because there's exactly one list view per page.
 let refreshHandler = null;
 
-// The sidebar-scoped lock that lived here (2026-05-27) is GONE --
-// replaced by the page-wide busy fence, ``lib/page-busy.js``
-// (ui-contract.md § 10, user design 2026-08-28: covering the window
-// blocks switching everywhere at once, so nothing is guarded
-// per-control).  Its three-layer recovery contract carried over
-// verbatim; ``navigateTo`` below still refuses while the fence is
-// claimed (§ 8.5 defense-in-depth for programmatic callers).
+// ``navigateTo`` below refuses while the page-wide busy fence
+// (``lib/page-busy.js``, ui-contract.md § 10) is claimed (§ 8.5
+// defense-in-depth for programmatic callers).
 
 // ----- shared subscriber helpers --------------------------------- //
 //
-// Two contracts driven by docs/web/projects.md (per
-// the 2026-05-31 design decisions A1/A1b/A2):
+// Two contracts driven by docs/web/projects.md:
 //
 //   * Registration is idempotent intent.  Re-registering the same
 //     callback (by reference) is a programming error and THROWS.
@@ -206,8 +201,7 @@ function publishFolderChanged(dir) {
 // Single-click on a file still goes through ``setShared`` ->
 // ``publishSelectionChange`` (preview/candidate); commit is a
 // distinct event that requires deliberate user intent.  See
-// docs/web/tabs.md and the design memo at
-// memory/project_sidebar_interaction_model.md.
+// docs/web/tabs.md.
 //
 // Also updates the global pick (``setShared``) so cross-tab
 // handoff via sessionStorage works without the publisher
@@ -221,29 +215,18 @@ function publishFolderChanged(dir) {
 // THE SECOND ARGUMENT IS A FULL PATH, not a bare name.  `list.js` publishes
 // `publishCommit(currentPath, fullPath)`, and every subscriber uses it as a
 // path -- `structure-optimization` does `f.split("/").pop()` to get a name back
-// out of it.  It was called `file` for a long time, which reads as a filename:
-// a caller that passed one got a path resolved against the process's own
-// directory and a "outside every configured root" refusal, with nothing in the
-// message to say which of the two arguments was wrong.
+// out of it.
 export function publishCommit(dir, path) {
   const file = path;
   // Update sessionStorage + onChange subscribers FIRST so a
   // subscriber that gates on getCurrentFile() inside its
   // onCommit handler sees the new pick already in place.
   //
-  // BOMB-4 fix (2026-06-07): skip setShared when the current
-  // pick already matches.  A real-user dblclick goes through
-  // list.js as TWO click events + one dblclick: the first click
-  // calls setShared (file), the second click calls setShared
-  // (file) again (no-op against sessionStorage but it DOES
-  // re-fire onChange), then publishCommit's inner setShared
-  // would fire onChange a THIRD time.  save.js's refreshState
-  // (subscriber on onChange) ran 3× per dblclick; Spectra's
-  // schema-reload fallback (when onCommit fallback is taken)
-  // re-fetched the schema 3× per dblclick.  With the dedup,
-  // publishCommit fires onChange once via the explicit caller
-  // path (e.g. list.js's first click) — the inner setShared
-  // here is a no-op when the pick hasn't changed.
+  // Skip setShared when the current pick already matches.  A
+  // real-user dblclick goes through list.js as TWO click events +
+  // one dblclick, and each click already called setShared; a third
+  // onChange fan-out here would re-run every selection subscriber
+  // for nothing.
   const dirSafe  = dir  || "";
   const fileSafe = file || "";
   let currentDir  = "";
@@ -264,16 +247,13 @@ export function publishCommit(dir, path) {
 // ----- exposed to other modules ---------------------------------- //
 
 export function setShared(dir, file) {
-  // Defense-in-depth busy guard (2026-05-30, #177; page-wide since
-  // 2026-08-28).  The cover already blocks clicks while the fence is
-  // claimed; this rejects programmatic mutations too so a tab-level
-  // navigator (e.g. the /results file-picker dropdown in
-  // ``lib/results/file-picker.js``) can't slip a directory change
-  // past an active operation.
-  // Returns {ok, error?} so callers can branch -- the previous
-  // void-return contract is preserved for the success path
-  // (most callers don't check the return value).  See
-  // docs/web/projects.md
+  // Defense-in-depth busy guard.  The cover already blocks clicks
+  // while the fence is claimed; this rejects programmatic mutations
+  // too so a tab-level navigator (e.g. the /results file-picker
+  // dropdown in ``lib/results/file-picker.js``) can't slip a
+  // directory change past an active operation.
+  // Returns {ok, error?} so callers can branch (most callers don't
+  // check the return value).  See docs/web/projects.md
   if (pageBusy.isClaimed()) {
     return {
       ok:    false,
@@ -301,7 +281,7 @@ export function setShared(dir, file) {
   return { ok: true };
 }
 
-// Projects-root subscribers (sidebar gap M8 / design § C2, 2026-05-31).
+// Projects-root subscribers.
 // Tabs that depend on the projects-root being resolved (e.g. Build's
 // psml_lib live-resolution caption) need a one-shot notification so
 // they don't have to poll ``getProjectsRoot()``.  Single-fire-ish:
@@ -366,9 +346,9 @@ async function readCurrentFile(opts) {
 }
 
 async function refresh(opts) {
-  // Per design § C6: returns {ok:true} | {ok:false, error}.  The
-  // earlier void-return contract violated Principle 6 (every async
-  // public method returns an envelope or null).
+  // Per design § C6: returns {ok:true} | {ok:false, error}
+  // (Principle 6: every async public method returns an envelope or
+  // null).
   const dir = readSelectionSlot(SS_DIR) || projectsRoot;
   if (!dir) {
     return { ok: false, error: "no current directory to refresh" };
@@ -401,7 +381,7 @@ async function refresh(opts) {
  * /api/files/write as JSON; the backend validates (inside an
  * allowed root, depth >= 1, parent exists, etc.).
  *
- * For a Blob argument (Phase 6e: viewer animation / image export
+ * For a Blob argument (viewer animation / image export
  * save-to-project) the call is routed to /api/files/upload as a
  * multipart POST with ``overwrite=true`` (the write-text path
  * supports clobber; uploads now do too).  Same envelope shape on
@@ -416,20 +396,18 @@ async function refresh(opts) {
  *     ``error`` verbatim to the user; backend messages already
  *     say what to do.
  *
- * Use this when you have the *exact* path to write -- the future
- * edit-and-save flow (Preview modal Save), derive-job (Phase 2),
- * pseudo-prep, etc.  For the "write into current_dir/<filename>"
+ * Use this when you have the *exact* path to write.  For the
+ * "write into current_dir/<filename>"
  * pattern, use :func:`saveToWorkspace` instead.
  */
 export async function writeFile(path, text, opts) {
-  // Phase 6e: binary path.  Blob | File only — TypedArray /
+  // Binary path.  Blob | File only — TypedArray /
   // ArrayBuffer fall through to the text path and the server
   // 400's with "text must be a string" (callers needing raw
   // bytes should wrap in ``new Blob([typedArray])`` first).
   // We split path into parent dir + filename so the upload
   // endpoint (which takes target_dir + filename) gets the right
-  // pieces without a second roundtrip.  The text path stays
-  // bit-identical to its prior behaviour.
+  // pieces without a second roundtrip.
   const isBlob = (typeof Blob !== "undefined" && text instanceof Blob)
               || (typeof File !== "undefined" && text instanceof File);
   if (isBlob) {
@@ -440,13 +418,11 @@ export async function writeFile(path, text, opts) {
     }
     const dir = path.slice(0, ix);
     const filename = path.slice(ix + 1);
-    // Phase 6e: opts.autoRename (camelCase from the embed) maps to
-    // the server's auto_rename form field.  When set, overwrite is
+    // opts.autoRename (camelCase from the embed) maps to the
+    // server's auto_rename form field.  When set, overwrite is
     // intentionally omitted so the server falls through to the
-    // suffix-picker path rather than clobbering.  Both falsy →
-    // default to overwrite=true (the original 6e behaviour) so the
-    // text-write callers that don't know about the new knob keep
-    // working unchanged.
+    // suffix-picker path rather than clobbering; otherwise the
+    // default is overwrite=true.
     const useAutoRename = opts && opts.autoRename;
     const w = await apiUpload(dir, text, {
       filename:    filename,
@@ -474,7 +450,7 @@ export async function writeFile(path, text, opts) {
       mtime:   w.mtime,
     };
   }
-  // Phase 6e second-review BOMB #11: forward camelCase
+  // Forward camelCase
   // ``autoRename`` from the embed caller as snake_case
   // ``auto_rename`` to the server.  ``opts.signal`` already
   // works because apiWrite forwards it unchanged.
@@ -557,21 +533,18 @@ function isCancelError(err) {
   return false;
 }
 
-// ---- Public mutator wrappers (sidebar gap M4, #175, 2026-05-31) //
+// ---- Public mutator wrappers ------------------------------------ //
 //
 // Thin pass-throughs over api.js that ALSO trigger a sidebar
-// listing refresh on success.  These promote previously-internal
-// operations onto the public ``window.molbuilder.projects.*``
-// surface so tab-level code (the /results file-picker dropdown at
-// ``lib/results/file-picker.js``, future programmatic file
-// managers) can call them without reaching into ``projects/api.js``
-// directly.
+// listing refresh on success, on the public
+// ``window.molbuilder.projects.*`` surface so tab-level code (the
+// /results file-picker dropdown at ``lib/results/file-picker.js``)
+// can call them without reaching into ``projects/api.js`` directly.
 //
-// NONE of these take the lock guard (#177).  The Save pipeline
-// holds the lock while calling these as its own steps; guarding
-// them would deadlock the very flow the lock was added to protect.
-// User-initiated calls (CSS pointer-events:none in the sidebar)
-// can't reach them while the user-visible lock UI is up.
+// NONE of these refuse while the page busy fence is claimed: an
+// operation holding the fence calls them as its own steps, and
+// guarding them would deadlock it.  The cover keeps user clicks
+// from reaching them meanwhile.
 //
 // Each wrapper:
 //   1. Calls the underlying api function.
@@ -606,12 +579,9 @@ export async function readFile(path, opts) {
  *  text, eof}`` on success or ``{ok:false, error}`` on failure --
  *  same envelope shape as every other projects.* read.
  *
- *  Used by the v2 paginated source inspector so large logs page in
- *  chunks instead of crashing the 16 MB single-shot read.  Promoted
- *  to the public surface in #189 (2026-06-02) so other inspectors
- *  (a future log-tail viewer, etc.) can use the same range mechanic
- *  WITHOUT reaching into ./api.js directly.  ``opts.signal``
- *  honoured. */
+ *  Used by the paginated source inspector so large logs page in
+ *  chunks instead of crashing the 16 MB single-shot read.
+ *  ``opts.signal`` honoured. */
 async function readRange(path, offset, maxBytes, opts) {
   return await apiReadRange(path, offset, maxBytes, opts);
 }
@@ -852,15 +822,13 @@ export const projects = {
   refresh,
   writeFile,
   saveToWorkspace,
-  // Phase 6e fifth-review follow-up: Cancel-aware save helpers.
+  // Cancel-aware save helpers.
   safeSave,
   isCancelError,
-  // ---- Public mutator + navigation surface (#175, 2026-05-31) -- //
-  // Promoted from internal api.js consumers so external callers
-  // (the /results tab-level file-picker dropdown at
-  // ``lib/results/file-picker.js``, future programmatic file
-  // managers) can use them WITHOUT reaching into ./api.js
-  // directly.  Each method auto-fires a sidebar listing refresh on
+  // ---- Public mutator + navigation surface ---------------------- //
+  // External callers (the /results tab-level file-picker dropdown at
+  // ``lib/results/file-picker.js``) use these WITHOUT reaching into
+  // ./api.js directly.  Each method auto-fires a sidebar listing refresh on
   // success so the tree stays in sync.
   readFile,
   readRange,
@@ -874,12 +842,7 @@ export const projects = {
   upload,
   setShared,
   navigateTo,
-  // The sidebar-scoped lock API that lived here (lock / unlock /
-  // isLocked / getLockReason / onLockChange, 2026-05-27) is GONE --
-  // heavy operations claim the page-wide busy fence instead
-  // (``lib/page-busy.js``, ui-contract.md § 10).  navigateTo and
-  // setShared above still refuse while the fence is claimed.
-  // Projects-root resolution subscriber (design § C2, 2026-05-31).
+  // Projects-root resolution subscriber.
   // Fires AT MOST ONCE per page lifetime when the sidebar's init
   // resolves the root from apiRoots().  Subscribers that register
   // BEFORE resolution receive the call when resolution lands; those

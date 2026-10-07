@@ -65,7 +65,7 @@ var window = { document: doc };
 def _run(script: str) -> dict:
     """Run the REAL module body against the stub DOM.
 
-    The file became an ES module on 2026-09-11 (it exports `render`/`clear` so
+    The file is an ES module (it exports `render`/`clear` so
     `lib/molview/` can import it, and a separate entry point publishes the
     namespace for the classic scripts).  This harness inlines the source into a
     plain eval, so the two `export` lines are stripped and the module's own
@@ -278,7 +278,7 @@ class TestOneRendererOnly:
     UI) — enforced STRUCTURALLY, by source inspection, because behaviour tests
     cannot catch a fourth renderer appearing next to the third.
 
-    INVARIANT: the three consumer surfaces delegate to
+    INVARIANT: the consumer surfaces delegate to
     ``molbuilder.validationFindings`` and build no finding rows of their own; the
     second row vocabulary and its stylesheet are gone; and every page that shows
     findings actually loads the module (a page that forgets it would silently
@@ -287,11 +287,7 @@ class TestOneRendererOnly:
 
     _CONSUMERS = (
         "molbuilder/web/static/structure-optimization/viewer.js",
-        # lib/transport/core.js left this list 2026-08-29: the issues
-        # panel died with the Generate lane (the composite validates at
-        # the describe door and at prep, not in the tab).
-        # lib/spectra/core.js left this list at P3 and RETURNED the
-        # same day: the live-preflight panel (gate ① for the
+        # lib/spectra/core.js: the live-preflight panel (gate ① for the
         # vibration kind) renders through the shared module.
         "molbuilder/web/static/lib/spectra/core.js",
     )
@@ -303,7 +299,7 @@ class TestOneRendererOnly:
         import re
         css = (REPO / "molbuilder/web/static/spectra/style.css").read_text(
             encoding="utf-8")
-        # Strip comments first: the replacement comment NAMES the removed
+        # Strip comments first: a comment may NAME the removed
         # declarations, so a raw substring search would match its own prose.
         rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
         for dead in (".issue .badge", ".issue.error", ".issue.warn",
@@ -313,8 +309,7 @@ class TestOneRendererOnly:
                 f"has re-grown its own findings vocabulary")
 
     def test_every_page_that_renders_findings_loads_the_module(self):
-        # The Transport tab's load is its browser test's to prove
-        # (`test_transport_tab_e2e.py`); Task setup imports the module
+        # Task setup imports the module
         # itself (an ES module needs no namespace).
         tpl = REPO / "molbuilder/web/templates"
         for name in ("index.html", "spectra.html", "results.html"):
@@ -333,9 +328,8 @@ class TestNoSecondRendererAnywhere:
     by SEARCHING for a renderer instead of asking two named files whether they
     delegate.
 
-    `TestOneRendererOnly` above checks a hardcoded pair of filenames, so it can
-    answer "do these two delegate?" and never "has a third appeared?". One had:
-    `lib/molview/ui.js` grew its own `drawNotices` for the same channel under a
+    A hardcoded list of filenames can answer "do these delegate?" and never
+    "has another appeared?". One had: `lib/molview/ui.js` grew its own `drawNotices` for the same channel under a
     different word — *notices*, not *issues* — with its own two-word severity
     map, so an error was drawn in the grey of a remark. Six weeks, and nothing
     asked.
@@ -364,9 +358,8 @@ class TestNoSecondRendererAnywhere:
             # A severity reaching an element: as an attribute, or spliced into
             # a class name.  Reading one to count, filter or pick a page tone
             # is not rendering and does not match.
-            # TWO SHAPES, because a renderer can be written either way and the
-            # one-line form was the only one caught until the third review
-            # pass: `li.className = "row--" + n.severity` on one line, and the
+            # TWO SHAPES, because a renderer can be written either way:
+            # `li.className = "row--" + n.severity` on one line, and the
             # same thing split across two (`const c = "row--" + n.severity;`).
             # Matching any string built from a severity catches both.  It can
             # fire on a log line that interpolates one, which is the right way
@@ -398,10 +391,6 @@ class TestNoSecondRendererAnywhere:
         Declaring `color`, a border COLOUR or a background is a second owner,
         "illegal, however sincere": it is how `modify/style.css` came to render
         every status on that page dimmer than every other page for months.
-
-        The existing guard for this names the one page that did it and the four
-        rules it used. This asks the question of every sheet instead, which is
-        the lesson of the renderer guard one class up.
         """
         import re
         root = REPO / "molbuilder/web/static"
@@ -438,11 +427,9 @@ class TestNoSecondRendererAnywhere:
         """One renderer for every surface needs one STYLESHEET on every
         surface, and the vocabulary is three words (R4).
 
-        These rules lived in `form-components.css` until 2026-09-11 — a sheet
-        only the form pages load. `/results` mounts MolView, which draws its
-        notices through the same module, so the rows would have arrived there
-        with no design at all: the row shape was shared and its appearance was
-        not. `ui-contract.md` § 5 makes the same argument for `.status.error`,
+        `form-components.css` is a sheet only the form pages load, and
+        `/results` mounts MolView, which draws its notices through the same
+        module. `ui-contract.md` § 5 makes the same argument for `.status.error`,
         which only page-shell defines *because* every page loads page-shell.
         """
         shell = (REPO / "molbuilder/web/static/lib/page-shell.css").read_text(
@@ -466,8 +453,7 @@ class TestNoSecondRendererAnywhere:
         # them itself, or it mounts MolView, which draws its notices through
         # the same module -- and `molview.css` is the tell for the second.
         # Naming three files here would repeat the fault this class exists to
-        # fix: R2's old guard checked a hardcoded pair and could not see the
-        # third renderer when it appeared.
+        # fix.
         tpl = REPO / "molbuilder/web/templates"
         for path in sorted(tpl.glob("*.html")):
             html = path.read_text(encoding="utf-8")

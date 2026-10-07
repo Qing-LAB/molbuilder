@@ -5,11 +5,6 @@
                                     typed results; typed error shapes
                                     (404 missing / 422 wrong schema /
                                     400 malformed)
-
-(The generate-side routes -- /api/spectra/render and
-GET /api/build/schema/spectra -- retired at the spectra migration's P3;
-the page's form now comes from the pyscf schema narrowed to the
-vibration kind, tested with the form plumbing.)
 """
 
 from __future__ import annotations
@@ -109,21 +104,13 @@ class TestSpectraPage:
         # inspect-side surface lives in _spectra_inspector.html and
         # is served only to /results).
         assert 'id="spectra-form-container"' in body
-        # The Inspect-structure card (task #296) is the sole
-        # entry point for the structure; the hidden
-        # ``<textarea id="structure-text">`` that pre-#309 backed
-        # the schema's structure_text was retired in favour of
-        # spectraInspector.setStructureText() + an in-memory
-        # holder.  Pin the new entry-point ids instead.
-        #
-        # task #62: the inspect card migrated to the concealed MolView
-        # module -- an EMPTY ``#spectra-molview-host`` that molview.mount
-        # builds the read-only fused card into (the old ``#viewer`` id-based
-        # 3Dmol mount is gone; the module builds a ``.viewer`` CLASS inside).
+        # The Inspect-structure card is the sole entry point for the
+        # structure: an EMPTY ``#spectra-molview-host`` that molview.mount
+        # builds the read-only fused card into.
         assert 'id="spectra-molview-host"'      in body
         assert 'id="load-from-sidebar-btn"'     in body
         assert 'id="send-to-task-setup"'        in body
-        # P2 substitution: the tab hands over, it renders no script.
+        # The tab hands over, it renders no script.
         assert 'id="send-status"'             in body
         # Gate ① -- the live science panel beside the form.
         assert 'id="spectra-issues"'          in body
@@ -175,7 +162,7 @@ class TestSpectraPage:
             "anim-toggle",
             "es-panel",                # ES bar diagram panel
             "es-bar-diagram",
-            "workspace-indicator",     # workspace readout (was in partial)
+            "workspace-indicator",     # workspace readout
         ):
             needle = f'id="{inspect_only_id}"'
             assert needle not in body, (
@@ -187,7 +174,7 @@ class TestSpectraPage:
 
     def test_app_header_includes_spectrum_tab(self, web_client):
         """The shared header lists Spectrum calculation among the
-        canonical 5 tabs -- regression check against a future header
+        canonical tabs -- regression check against a future header
         refactor dropping the entry."""
         # /molbuilder is one of the canonical landing pages; reuse
         # it to fetch a header-rendered body.
@@ -254,9 +241,7 @@ class TestSpectraPage:
     def test_no_cdn_fallback_in_spectrum_page(self, web_client):
         """The 3Dmol script tag on /spectrum-calculation must point
         at the vendored copy (``/static/vendor/3Dmol-min.js``) —
-        never a CDN.  Pre-task #296 the generator carried no 3Dmol
-        at all; #296 added the inspect-structure card and pulled in
-        the same vendored stack as /structure-optimization.  Pin so
+        never a CDN.  Pin so
         a future refactor that "just adds a CDN fallback" silently
         introducing a third-party load surfaces."""
         r = web_client.get("/spectrum-calculation")
@@ -276,11 +261,6 @@ class TestSpectraPage:
 
     def test_the_tab_reaches_the_mode_viewer_by_injection(self, web_client):
         """The Spectrum tab is HANDED the mode viewer; it does not go looking.
-
-        REPLACES a test that listed six private function names in core.js.  Four
-        of them changed when the viewer was rebuilt, and the test failed for a
-        rename that broke nothing — which is what a transcription does instead of
-        guarding a contract (vibrationview.md § 14, § 13.1 of molview.md).
 
         What is actually load-bearing is the DIRECTION of the dependency.  The
         core is a classic script and cannot import a module; the module publishes
@@ -306,9 +286,6 @@ class TestSpectraPage:
     def test_the_tab_does_not_name_the_drawing_library(self, web_client):
         """A 3-D viewer is a module now, so the tab has no business knowing what
         draws it (vibrationview.md § 5.4).
-
-        The core used to check for the library itself and render its own "failed
-        to load" message, which meant two places knew the module was built on it.
         """
         core = web_client.get("/static/lib/spectra/core.js").data.decode()
         assert "$3Dmol" not in core
@@ -316,9 +293,8 @@ class TestSpectraPage:
     def test_the_tab_hands_over_one_partition_not_two(self, web_client):
         """§ 6.3: which atoms move is ONE fact, as far as the VIEWER is concerned.
 
-        The core used to hand `showMode` both a free set and a frozen set — two
-        lists that must partition the atoms, with nothing checking they did, so an
-        atom named in both would be greyed as frozen while being moved as free.
+        Two lists that must partition the atoms, with nothing checking they do,
+        let an atom named in both be greyed as frozen while being moved as free.
         The viewer derives the held-still set from the basis it is given.
 
         Narrowly about the handoff: the page still READS the frozen list, to show
@@ -367,16 +343,6 @@ class TestSpectraDisposeContract:
     and counts what is left.
     """
 
-    # RETIRED 2026-09-03 — test_the_listener_scope_and_on_helper_exist.
-    # It greped for "inspectorLifecycle.listeners()" and the _on() helper
-    # by name, and its own docstring ended "The behaviour is pinned in
-    # tests/test_inspector_lifecycle_teardown.py" — which is true: that
-    # file drives disposeAll() through the node harness.  The docstring
-    # also recorded this pin staying GREEN through a total teardown leak
-    # (the named array survived; every listener sat in the scope it no
-    # longer drained).  A pin that names its own replacement is the worst
-    # kind: the next reader sees coverage and stops looking.  testing.md
-    # § 3a.1.
 
     def test_all_element_listeners_route_through_on_helper(
             self, web_client):
@@ -386,11 +352,8 @@ class TestSpectraDisposeContract:
         and leaks past dispose — the same class of bug the
         2026-05-18 review surfaced.
 
-        The claim got STRONGER on 2026-08-23.  ``_on()`` used to hold the
-        one legitimate ``addEventListener`` in this file; the helper is now
-        shared with the trajectory core (`lib/inspectors/lifecycle.js`,
-        which both inspectors spelled out byte-identically), so this file
-        should contain **none at all** and the single call site lives in the
+        The helper is shared with the trajectory core
+        (`lib/inspectors/lifecycle.js`), so this file should contain **none at all** and the single call site lives in the
         shared scope.
         """
         import re
@@ -406,10 +369,8 @@ class TestSpectraDisposeContract:
         assert len(re.findall(r"\.addEventListener\(", shared)) == 1, (
             "the shared listener scope should hold exactly one registration "
             "site — that is what makes the cleanup provably complete")
-        # Sanity: the _on() helper actually gets used a lot.  Today
-        # the wiring block calls _on() ~17 times across the generate-
-        # and inspect-side gates.  Pinning a floor (rather than the
-        # exact count) so reordering the wiring doesn't break the
+        # Sanity: the _on() helper actually gets used a lot.  Pinning a
+        # floor (rather than the exact count) so reordering the wiring doesn't break the
         # test, but a wholesale revert to direct addEventListener
         # does.
         on_calls = re.findall(r"\b_on\(", js)
@@ -423,11 +384,6 @@ class TestSpectraDisposeContract:
 # --------------------------------------------------------------------- #
 #  Dead-controls test: every interactive element in the partial must    #
 #  have a handler bound somewhere in loaded JS.                         #
-#                                                                       #
-#  Today's button-stays-gray bug: ``#load-from-selection-btn`` lived in #
-#  the partial but its wiring lived in static/spectra/page.js, which    #
-#  was deleted in step 2.5 of the lift.  On /results the button         #
-#  rendered disabled forever.  This test catches that class of bug.     #
 # --------------------------------------------------------------------- #
 
 
@@ -574,17 +530,6 @@ class TestSpectraPartialHasNoDeadControls:
         )
 
 
-# --------------------------------------------------------------------- #
-#  Schema endpoint                                                      #
-# --------------------------------------------------------------------- #
-
-
-# The Schema/Render endpoint classes retired with their routes
-# (spectra-migration plan P3, 2026-08-21): the tab renders the
-# CATALOGUE vibration form and hands over; the deck is written by
-# `prep`.  The load endpoint below is the surviving artifact door.
-
-
 class TestLoadEndpoint:
 
     def test_multipart_upload_round_trip(self, web_client, tmp_path):
@@ -716,10 +661,6 @@ class TestLoadEndpoint:
         assert r.status_code == 404
         body = r.get_json()
         assert body["kind"] == "not_found"
-
-    # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-    # 4 tests here loaded a .spectra.json edited by hand into a shape
-    # our writer never writes (`process/testing.md` § 6).
 
 
 # ===================================================================== #

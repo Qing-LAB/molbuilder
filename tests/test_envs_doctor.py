@@ -84,9 +84,7 @@ def test_report_all_skip_verify_dispatches_nothing(monkeypatch):
 #
 # The accept rule -- is this output a pass? -- lives in ONE place,
 # `InstallStep.accepts`, and both `install` and `doctor` ask it.  So it is
-# tested ONCE, here, as a table; five near-identical tests used to drive
-# the same rule through `report_all` with different stub outputs, back
-# when doctor carried its own copy of it.
+# tested ONCE, here, as a table.
 #
 # What still needs its own test is the WIRING: that doctor's verdict
 # really comes from the rule rather than from a local re-derivation.  One
@@ -117,8 +115,8 @@ def test_accept_rule(expect, rc, output, accepted):
 
 def test_doctor_verify_uses_the_accept_rule(monkeypatch):
     """MDtools expects "LEaP" in the output, so exit 0 WITHOUT the banner is
-    a FAIL.  A doctor that decided on the exit code itself -- as it did
-    while it carried its own copy of the rule -- reports True here."""
+    a FAIL.  A doctor that decided on the exit code itself reports True
+    here."""
     _bind(conda_envs=("molbuilder-MDtools",))
     monkeypatch.setattr(_install, "_env_prefix",
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
@@ -131,7 +129,7 @@ def test_doctor_verify_uses_the_accept_rule(monkeypatch):
 
 def test_verify_output_trimmed_to_2k(monkeypatch):
     """The installer keeps 4 KiB; this report keeps 2 KiB, because it
-    prints one block per env and there are a dozen envs."""
+    prints one block per env."""
     _bind(conda_envs=("molbuilder-siesta",))
     monkeypatch.setattr(_install, "_env_prefix",
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")

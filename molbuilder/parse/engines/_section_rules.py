@@ -1,9 +1,5 @@
 """Section-rule primitives for free-form text-output parsers.
 
-Absorbed from the legacy ``molbuilder.parsers._rules``, deleted with
-that package on 2026-06-21 -- this is the only copy (provenance:
-`docs/archive/old_docs/protocols/parse-module.md` § 8).
-
 The model: a parser is a list of :class:`SectionRule` objects + a
 tiny state-machine driver.  In the SCAN state, each rule's ``start``
 matcher gets a chance to claim the current line; when one matches,
@@ -12,7 +8,7 @@ enters that rule's section state.  While in a section the rule's
 ``consume`` receives each subsequent line and returns a sentinel
 deciding whether to stay, leave, or leave-and-re-feed.
 
-Scope (locked 2026-05-29):
+Scope:
 
   * **Case-insensitive matching only** -- no Levenshtein fuzz.
   * **Per-rule alias list** via :func:`any_of`.

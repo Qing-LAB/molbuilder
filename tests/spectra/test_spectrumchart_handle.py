@@ -186,8 +186,8 @@ def test_selecting_recolours_and_does_not_redraw():
 def _stick_colours(react):
     """The selectable sticks' colours, found rather than assumed.
 
-    They used to be the last trace; with a rug drawn on top of every mode
-    they are not, and an index would silently read the rug's marker.  The
+    With a rug drawn on top of every mode they are not the last trace, and
+    an index would silently read the rug's marker.  The
     sticks are the bar trace that carries a per-point colour list.
     """
     for t in react["traces"]:
@@ -286,8 +286,6 @@ def test_with_no_strengths_anywhere_the_modes_are_drawn_as_positions():
     one lane per channel.  An imaginary mode is a position like any other,
     marked apart (§ 6.4).  And the picture is the DATA's: once strengths
     land, the same chart draws its two lanes with heights and a curve.
-    Until that day every stick stood at height one under a broadened curve,
-    a frequency distribution that read as an intensity spectrum.
 
     MUTATIONS THIS MUST FAIL AGAINST: the curve kept (a width draws a
     distribution again); one lane per channel (the same lines twice read as

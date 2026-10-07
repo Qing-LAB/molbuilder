@@ -14,8 +14,6 @@ membership is ``layout.SCF_SECTION`` and the spelling is ``layout.line``
 ``auxbasis`` rides ``density_fit``'s call as its argument — the deck's
 density-fit sites all unpack the ONE ``_MB_DF_KW`` it defines, so the
 auxiliary basis cannot be honored at one site and dropped at another.
-(A ``density_fit_line`` helper was added beside it 2026-08-21 and died
-the same day with zero callers.)
 """
 from __future__ import annotations
 
@@ -70,11 +68,8 @@ def emit_theory_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
     SCF dresser's symmetric sibling (M1.2, 2026-08-21): the level of
     theory above the SCF class.
 
-    The trio (functional / grid level / dispersion) had two spellings:
-    the optimization deck's through ``THEORY_SECTION`` + ``layout.line``,
-    and hand-written constants inside the vibration deck's constructions
-    -- the same drift class § 7a closed for SCF, one section over.  This
-    body is generated from the SAME section and the SAME ``line``, minus
+    The body is generated from the optimization deck's SAME section
+    (``THEORY_SECTION``) and the SAME ``layout.line``, minus
     ``density_fit``: the fitting call REBINDS ``mf`` and is per-site
     conditional (the Raman polarizability path forces non-DF), so it
     stays at the construction sites.
@@ -83,9 +78,7 @@ def emit_theory_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
     Hartree-Fock deck ``line`` spells no functional and no grid -- HF has
     neither -- and the dispersion correction, which HF takes like any
     method (`engines/pyscf.md` § 7a); with dispersion "none" too, the
-    body is an explicit ``pass``.  It was ``_mb_configure_dft``, emitted
-    for DFT alone, until 2026-09-28, when that left an HF run without the
-    dispersion its template asked for.  Ordering note, MEASURED 2026-08-22
+    body is an explicit ``pass``.  Ordering note, MEASURED 2026-08-22
     (molbuilder-pySCF, pyscf 2.13): ``density_fit()`` carries ``disp``
     across the rebind in both directions, so dressing before the fitting
     call is safe.
@@ -143,9 +136,8 @@ def emit_density_fit_kw(cfg) -> List[str]:
     ]
 
 
-#: Dielectric constants for the PCM continuum -- MOVED here 2026-08-21
-#: from input.py's module table so both decks read one home (input.py
-#: aliases it).  Values are the standard PCM defaults.
+#: Dielectric constants for the PCM continuum -- one home both decks read
+#: (input.py aliases it).  Values are the standard PCM defaults.
 SOLVENTS = {
     "water":      78.3553,
     "methanol":   32.613,

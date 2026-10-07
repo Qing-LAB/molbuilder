@@ -3,10 +3,7 @@
 The rule: **every problem the doctor detects ends with the exact command
 that fixes it**, in the ONE spelling that works from a bare shell
 (``bash scripts/install-env.sh ...``) -- a person looking at a broken env
-must never have to tour the docs to learn the verb.  Until this landed the
-report listed the problems and closed with "See above +
-docs/ops/installation.md", and its missing-env hint used the other
-spelling (``molbuilder envs install``).
+must never have to tour the docs to learn the verb.
 
 The hints are KIND-PRECISE because bare ``repair`` skips version/build
 mismatches by design: a version-only failure hinted at bare repair would
@@ -26,7 +23,7 @@ from molbuilder.envs.recipes import builtin_recipes
 # many commands `doctor` prints -- so the fixtures ask for the property
 # rather than trusting a position in the registry to keep it.
 # `extra_set()`, not `extra_steps`: the DEFAULT set is what decides how many
-# commands doctor prints, and since 2026-09-18 the two differ -- `_HOST`
+# commands doctor prints, and the two differ -- `_HOST`
 # declares an opt-in chromium step that a default install never dispatches.
 RECIPE = next(r for r in builtin_recipes() if not r.extra_set())
 NAME = RECIPE.name
@@ -58,8 +55,7 @@ def _issue(kind, spec="somepkg=1.0"):
 def _render(capsys, rep):
     code = _render_doctor([rep])
     # ONE readouterr: a second call reads streams the first already
-    # drained, so `.err` was always "" and the closing-line pin below
-    # passed vacuously (this review's own catch).
+    # drained.
     cap = capsys.readouterr()
     return code, cap.out + cap.err
 
@@ -95,8 +91,7 @@ def test_an_opt_in_row_never_silences_a_required_failure(capsys):
     assert code == 1, "an opt-in absence must not turn a failure into a pass"
     assert "audit:   FAILED" in out
     assert "next:    " + _fix_cmd("repair", NAME) in out
-    # ...and the opt-in row is still there, with the command that adds it
-    # the command that adds it.
+    # ...and the opt-in row is still there, with the command that adds it.
     assert "opt-in:" in out
     assert "add:     " + _fix_cmd("install", NAME, "--with-dev-tools",
                                   "--yes") in out
@@ -117,12 +112,8 @@ def test_a_recipe_with_post_install_steps_needs_both_verbs(capsys):
     an env that already exists -- and conda packages enter a plan only through
     create, so it adds no missing package.
 
-    This printed `install` ALONE until 2026-09-14, justified by a worked
-    example (the host env's `ipykernel` kernelspec) that no longer exists.
-    The only recipe with post-install steps left is the GPU env, and a missing
-    conda package there was being answered with the one command that provably
-    cannot install it -- measured the same day: `install` on a present env goes
-    from "conda create: SKIPPED" straight to verify, having installed nothing.
+    Measured 2026-09-14: `install` on a present env goes from "conda create:
+    SKIPPED" straight to verify, having installed nothing.
     """
     rep = _report(recipe=RECIPE_WITH_STEPS,
                   effective_name=RECIPE_WITH_STEPS.name,

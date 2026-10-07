@@ -118,13 +118,9 @@ def _ms(**kw):
 #: refusal must contain.  ONE LIST, so "is this case covered?" is answered by
 #: READING IT -- which is the whole reason it exists.
 #:
-#: It replaced twenty-two separate tests on 2026-09-09, each feeding one
-#: malformed value to `_normalise(dict)`.  That shape cost a full day: an
-#: auditor read two of them, saw they reached the same LINE, and called one a
-#: duplicate -- but the line is `not isinstance(x, T) or not x` and they reach
-#: ONE CLAUSE EACH.  Three real guards were an approval away from deletion,
-#: including the two marked below, and no amount of mutation testing found it
-#: because the harness mutated per line too.  In a list you can see both rows.
+#: Two cases reaching the same LINE are not duplicates when the line is
+#: `not isinstance(x, T) or not x` and they reach ONE CLAUSE EACH; in a list
+#: you can see both rows.
 MALFORMED_AUTH = [
     # ---- the providers list itself -- `deployment.md` § 3 ----------------
     ("providers-absent",      {"auth": {}},                                  "auth.providers"),
@@ -177,8 +173,8 @@ MALFORMED_AUTH = [
     ("oauth-secret-file",     _wrap(_gh(client_secret_file="/etc/gh.secret")),
                                               ["'client_secret_file' is refused",
                                                "secrets/github_client_secret"]),
-    # A key the kind does not hold: a typo in `hosted_domain` dropped that
-    # restriction in silence until 2026-10-02.
+    # A key the kind does not hold: a typo in `hosted_domain` would drop that
+    # restriction in silence.
     ("provider-unknown-key",  _wrap(_google_entry(hosted_domains=["asu.edu"])),
                                               "got 'hosted_domains'"),
 
@@ -192,10 +188,9 @@ MALFORMED_AUTH = [
     ("microsoft-tenant-a-number", _wrap(_ms(tenant_id=42)),                  "tenant_id"),
 
     # ---- CAS -- `deployment.md` § 3 --------------------------------------
-    # `service_validate_url` left this list 2026-09-12: it is no longer
-    # required, because nothing ever read it -- python-cas derives the validate
-    # endpoint from the login URL's root and takes no parameter for an explicit
-    # one.  `login_url` IS required and still checked here.
+    # `service_validate_url` is not configured: python-cas derives the
+    # validate endpoint from the login URL's root and takes no parameter for an
+    # explicit one.  `login_url` IS required and checked here.
     *[(f"cas-missing-{k}", _wrap(_without(_cas_entry(), k)), k)
       for k in ("login_url",)],
     ("cas-service_validate_url-retired",
@@ -271,21 +266,16 @@ class TestTheConfigFileIsRefusedAtTheDoor:
     top level, runs the schema checks, and **re-raises naming WHICH FILE
     refused**.
 
-    The tests here used to call `_normalise` with a hand-built dict, which is
-    the middle step only -- so three things the door does were untested, and
-    one of them is a RECORDED DEFECT.  `runtime_config.py:133` exists because
-    *"a malformed file used to refuse naming 'molbuilder.json' with no path
-    (R10, 2026-08-12)"*: an operator got an error that did not say which file
-    was broken.  A dict-level
-    test sits below that layer and cannot see it come back.
+    `_normalise` with a hand-built dict is the middle step only, and the file
+    step carries a RECORDED DEFECT: *"a malformed file used to refuse naming
+    'molbuilder.json' with no path (R10, 2026-08-12)"*.  A dict-level test sits
+    below that layer and cannot see it come back.
 
     Contract: `deployment.md` § 3 (what `auth` must contain) and § 7 (this file
     owns `molbuilder.json` auth validation); `access-control.md` § 3.1.
     """
 
     # (bad file contents, fragments the refusal must contain)
-    # (The four `auth` rows that stood first here were MALFORMED_AUTH's own,
-    # through the same door, until 2026-10-02.)
     BAD = [
         ('{"auth": {"providers": [', ["invalid JSON", "line"]),
         ('[]', ["top-level", "object"]),
@@ -299,13 +289,9 @@ class TestTheConfigFileIsRefusedAtTheDoor:
         """A hand-edited `molbuilder.json` that is wrong is refused, and the
         refusal says BOTH what is wrong and which file it was.
 
-        Every row is a slip somebody makes editing JSON by hand: an `auth`
-        section started and abandoned, a providers list left empty, one object
-        where a list belongs, a bare string in the list, a truncated file, and a
-        top level that is not an object at all. Each must stop startup rather
-        than configure the server wrongly -- an empty providers list is a login
-        page with no buttons, and a half-written `auth` section is a gate with
-        nothing behind it.
+        Every row is a slip somebody makes editing JSON by hand: a truncated
+        file, and a top level that is not an object at all. Each must stop
+        startup rather than configure the server wrongly.
         """
         cfg = tmp_path / "molbuilder.json"
         cfg.write_text(text, encoding="utf-8")
@@ -348,7 +334,6 @@ class TestTheConfigFileIsRefusedAtTheDoor:
 class TestProvidersListShape:
 
 
-
     def test_two_providers_with_distinct_ids_ok(self):
         """A uniqueness check that rejects two DIFFERENT providers: the real
         deployment shape -- institutional CAS plus Google for outside
@@ -370,9 +355,6 @@ class TestProvidersListShape:
 class TestCommonFields:
 
 
-
-
-
     def test_id_good_slugs_accepted(self):
         """The slug regex tightening under maintenance until a working config
         stops loading: digits and hyphens are legal, and an operator's
@@ -385,15 +367,12 @@ class TestCommonFields:
             assert get_providers(cfg)[0]["id"] == good_id
 
 
-
 # --------------------------------------------------------------------- #
 #  allowed_users (per-provider, required)                               #
 # --------------------------------------------------------------------- #
 
 
 class TestAllowedUsers:
-
-
 
 
     def test_empty_list_accepted_fail_closed(self):
@@ -434,12 +413,6 @@ class TestAllowedUsers:
 class TestOAuthSharedFields:
 
 
-
-
-    # `test_literal_secret_accepted` retired 2026-10-02: a literal
-    # `client_secret` is refused by name (MALFORMED_AUTH's
-    # `oauth-literal-secret`).
-
     @pytest.mark.parametrize("kind", ["google", "github", "microsoft", "orcid"])
     def test_an_entry_naming_no_secret_is_accepted(self, kind):
         """Every OAuth kind is accepted with no secret key at all -- and no
@@ -467,10 +440,6 @@ class TestARotatedSecretIsTakenUp:
         would see different clients).
       * A failed re-read (file deleted / emptied) keeps the previously-loaded
         secret rather than crashing or zeroing-out the client.
-
-    (It watched the file's mtime until 2026-10-02, through a path computed
-    beside the door; two tests of that mechanism -- the mtime recorded, a
-    preserved mtime ignored -- retired with it.)
     """
 
     def _entry(self, kind="google"):
@@ -567,8 +536,8 @@ class TestSetupSessionSecurity:
          session cookie HTTPS-only, JS-unreadable, and CSRF-safer.
       2. ProxyFix middleware -- ONLY when ``auth.trust_proxy=True``.
          Gating matters: enabling ProxyFix unconditionally lets a
-         direct-TLS deploy spoof X-Forwarded-Host (see auth review
-         P1 #7 in docs/protocols).  Default off is correct for the
+         direct-TLS deploy spoof X-Forwarded-Host (auth review
+         P1 #7).  Default off is correct for the
          most common deploy shape and must NOT silently change.
     """
 
@@ -645,12 +614,11 @@ class TestAuthlibNamespaceCollisionProtection:
          -- every registration uses the mangled name, no collisions
          possible with attributes of the ``OAuth`` class.
       2. The schema validator REJECTS any ``id`` matching ``^mb_``
-         (tested in ``TestCommonFields::test_id_reserved_mb_prefix_rejected``)
+         (the ``id-reserved-*`` rows of ``MALFORMED_AUTH``)
          -- an operator can't pick ``id="mb_register"`` and unwind
          the prefix.
 
-    This test pins half (1); ``test_id_reserved_mb_prefix_rejected``
-    pins half (2).  Together they prove no operator-chosen ``id``
+    This test pins half (1); those rows pin half (2).  Together they prove no operator-chosen ``id``
     can ever resolve to an authlib instance attribute.
     """
 
@@ -662,11 +630,7 @@ class TestAuthlibNamespaceCollisionProtection:
         object at login.
 
         `deployment.md` § 3. This is half one of the protection; half two is
-        `TestCommonFields::test_id_reserved_mb_prefix_rejected`. Honest note
-        (2026-09-09): the sibling
-        `test_authlib_name_prefix_constant_is_mb_underscore` asserts the same
-        `mb_` literal this test already hard-codes, and is raised as a cut
-        candidate.
+        the `id-reserved-*` rows of `MALFORMED_AUTH`.
         """
         from molbuilder.web.auth_providers.oauth import _authlib_name
         # Operator ids -- valid slugs per the schema regex.  The
@@ -678,7 +642,6 @@ class TestAuthlibNamespaceCollisionProtection:
                 f"mb_-prefixed name; the authlib-namespace collision "
                 f"protection is broken"
             )
-
 
 
 # --------------------------------------------------------------------- #
@@ -713,7 +676,6 @@ class TestGoogleSpecific:
         assert get_providers(cfg)[0]["hosted_domain"] == [
             "asu.edu", "anothersite.org",
         ]
-
 
 
 # --------------------------------------------------------------------- #
@@ -751,7 +713,6 @@ class TestGitHubSpecific:
         ]
 
 
-
 # --------------------------------------------------------------------- #
 #  Microsoft-specific                                                   #
 # --------------------------------------------------------------------- #
@@ -784,8 +745,6 @@ class TestMicrosoftSpecific:
         """
         cfg = _normalise(_wrap(self._entry(tenant_id="asu.onmicrosoft.com")))
         assert get_providers(cfg)[0]["tenant_id"] == "asu.onmicrosoft.com"
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -873,7 +832,6 @@ class TestCASSpecific:
         assert p["email_attribute"] == "mail"
 
 
-
     def test_attribute_only_accepted(self):
         """The two-way requirement read as 'both required': a CAS server that
         DOES release an email attribute would be forced to declare a synthesis
@@ -943,12 +901,6 @@ class TestMixedConfig:
         assert kinds == ["google", "github", "microsoft", "orcid", "cas"]
 
 
-# `TestSecretKeyFileIsRetired` retired 2026-10-02 (W54 T6, T8): its first
-# check was met by the refused key's own quoted name, and its second
-# repeated a row; the top-level key is a `molbuilder_json.toml` row, the
-# key inside `auth` a MALFORMED_AUTH row.
-
-
 # --------------------------------------------------------------------- #
 #  auth.trust_proxy (ProxyFix opt-in flag)                              #
 # --------------------------------------------------------------------- #
@@ -984,8 +936,6 @@ class TestTrustProxy:
         raw["auth"]["trust_proxy"] = True
         cfg = _normalise(raw)
         assert cfg["auth"]["trust_proxy"] is True
-
-
 
 
 # --------------------------------------------------------------------- #

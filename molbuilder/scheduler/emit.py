@@ -4,22 +4,12 @@ The contract is ``docs/execution/scheduler.md`` **R1**: the ``#SBATCH`` header
 and the ``sbatch`` command line are two RENDERINGS of one placement, never two
 decisions.  They cannot disagree, because there is nothing to disagree about.
 
-Until 2026-08-23 they were two writers -- ``runwrap.render_sbatch`` built the
-header and ``jobset.submit._sbatch_resource_flags`` built the flags -- and
-each decided for itself what queue and what wall to name.  Both Sol failures
-are that split seen from opposite sides:
-
-  * the header named ``htc/debug`` while the command line asked for 38
-    minutes, and the scheduler refused the combination;
-  * the header named a queue and stated **no** wall at all, so ``sbatch`` by
-    hand inherited a partition default the named QOS forbids.
-
 A ``Directives`` renders the facts BOTH spellings carry.  Everything else in
 the header -- the job name, the account, mail, output paths, the body -- is
 the header's own and stays where it is: those are not decisions the command
 line also makes, so they cannot drift from it.
 
-Stdlib-only, like the rest of the package.
+Stdlib-only.
 """
 from __future__ import annotations
 
@@ -53,15 +43,11 @@ class Directives:
         """Bind a :class:`~molbuilder.scheduler.place.Placement` to the
         resources it was placed for.
 
-        **Both objects travel whole** (`architecture.md` § 3.1, A8).  An
-        earlier draft took ``Resources`` apart into six keyword arguments at
-        the call site, which is the destructure A8 exists to prevent: the
-        caller re-assembles what the callee should have been handed, and the
-        seventh field is the one that gets forgotten.  The fields are read
-        HERE instead, by the thing that needs them.
+        **Both objects travel whole** (`architecture.md` § 3.1, A8).  The
+        fields are read HERE, by the thing that needs them.
 
-        ``resources`` is duck-typed rather than imported: this package is
-        stdlib-only and sits below the layer that defines ``Resources``, so
+        ``resources`` is duck-typed rather than imported: this package
+        sits below the layer that defines ``Resources``, so
         it reads the attributes it needs and names none of the type.
 
         ``placement`` may be ``None`` on a machine with no menu, where the
@@ -136,12 +122,9 @@ class Directives:
     def _gres_lines(self, prefix: str) -> List[str]:
         """The GPU ask, and the binding that goes with it.
 
-        ``--gres-flags=enforce-binding`` was emitted by the HEADER ALONE,
-        from `runwrap` (2026-08-24) -- a resource directive carried by one
-        of the two renderings.  R1 says they are two spellings of one
-        placement, and this module's own note lists what legitimately
-        belongs to the header only: ``-J``, ``-N``, the account, mail and
-        the output paths.  A gres flag is not one of those.
+        Both spellings carry ``--gres-flags=enforce-binding`` (R1): it is not
+        one of the header-only facts (``-J``, ``-N``, the account, mail and
+        the output paths).
 
         It rides WITH the gres because it is meaningless without one: it
         asks the scheduler to put the task on the socket its GPU is
@@ -161,9 +144,7 @@ class Directives:
 
         Whole-node ownership already grants all the node's memory, so a
         ``--mem`` beside it is meaningless and some sites reject the pair
-        (`running-a-job.md` § 5.3.1).  One rule, both spellings -- it was
-        written twice, and two copies of a mutual exclusion is how one of
-        them comes to allow the pair.
+        (`running-a-job.md` § 5.3.1).  One rule, both spellings.
 
         ``spell_all`` is the one place the two renderings legitimately
         differ, and they differ in VERBOSITY, not in meaning: the header adds

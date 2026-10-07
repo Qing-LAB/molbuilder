@@ -2,12 +2,9 @@
  * sessionStorage keys + custom event names that span multiple
  * classic-script modules.
  *
- * Pre-task-#309 (2026-06-09) the same literals were duplicated
- * across 9+ files; a typo in any one of them silently broke a
- * round-trip without surfacing in tests until someone exercised
- * the exact path.  Centralising them here means a typo is a
- * compile-error (ReferenceError on the missing constant), not a
- * silent listener mismatch.
+ * Centralising them here means a typo is a compile-error
+ * (ReferenceError on the missing constant), not a silent listener
+ * mismatch.
  *
  * Loaded FIRST in every page template that consumes these
  * strings so ``window.molbuilder.constants`` is available when
@@ -16,10 +13,7 @@
  * named exports for direct ``import { SS_FILE } from
  * "./state.js"``; this module is the classic-script equivalent.
  * Both surfaces hold the same literal values — the convention
- * here is "if you change a string, change it in BOTH places";
- * a tiny e2e test
- * (tests/test_constants_module_consistency.py) pins the two
- * surfaces in lock-step.
+ * here is "if you change a string, change it in BOTH places".
  */
 (function (root) {
     "use strict";

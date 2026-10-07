@@ -199,13 +199,10 @@ def test_every_id_this_makes_is_accepted_by_every_shipped_validator(raw):
     patterns. If any of the three spellings drifts apart, this fails."""
     out = normalise_id(raw)
     assert _NAME_PATTERN.match(out), f"{out!r} fails projects._NAME_PATTERN"
-    # The PUBLIC gate, not the private regex behind it.  This line read
-    # ``_REF_SAFE_ID.match(out)`` until 2026-08-09, and cf7c1ea1 renamed that
-    # constant to ``_CALC_NAME_RE`` -- which did not fail this assertion, it
-    # stopped the whole module from IMPORTING, so every test in this file went
-    # quiet for a day.  Reaching for a private name is what made a rename able
-    # to do that; ``check_calculation_name`` is the seam checkpoint actually
-    # offers, and it raises rather than returning a match.
+    # The PUBLIC gate, not the private regex behind it: a private name lets a
+    # rename stop this module importing.  ``check_calculation_name`` is the
+    # seam checkpoint actually offers, and it raises rather than returning a
+    # match.
     check_calculation_name(out)
 
 

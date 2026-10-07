@@ -13,11 +13,6 @@ reads what an earlier step will write reads it through the plan -- the
 wrapper the deck's text, the attempt the stage's files, the screening the
 pseudopotentials -- and the plan answers with what it holds, the disk with
 the rest (:meth:`Plan.is_file`, :meth:`Plan.read_bytes`, :meth:`Plan.glob`).
-
-*(Until 2026-10-05 prep wrote as it went and put three files back when it
-refused -- the plan, `STAGE-PLAN.md` and the calculation's copy of its
-machine's record -- while the decks, wrappers, data files and the attempt it
-had opened stayed behind; W55 D16.)*
 """
 from __future__ import annotations
 

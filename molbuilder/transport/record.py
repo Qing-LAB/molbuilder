@@ -5,8 +5,7 @@ TBtrans's own outputs are the truth this module reads: the k-averaged
 transmission file (``<label>.TBT.AVTRANS_<L>-<R>``, two columns E vs T)
 and the current line its ``.out`` prints (the binary's own Landauer
 integral — parsed, never recomputed).  Both formats were pinned against
-a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29; the frozen
-fixtures in ``tests/data/`` are that run's files).
+a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
 ``<label>.transport.json`` (``molbuilder/transport-result@2``): T(E)
@@ -30,12 +29,11 @@ from typing import Dict, List, Optional, Tuple
 
 from ..atom_permutation import PERMUTATION_FILE
 
-#: ``@2`` since 2026-10-03: ``current_a`` became the junction's TOTAL current
-#: -- both spin channels -- with TBtrans's printed figure beside it
-#: (``current_a_printed``).  A MAJOR bump because an ``@1`` record's
-#: ``current_a`` IS the printed figure, one spin channel's, and a reader of
-#: the new meaning must not read it as the total: an old record is refused by
-#: its version, and `summarize run` writes it again.
+#: ``@2``: ``current_a`` is the junction's TOTAL current -- both spin
+#: channels -- with TBtrans's printed figure beside it
+#: (``current_a_printed``).  An ``@1`` record's ``current_a`` is the printed
+#: figure, one spin channel's, so it is refused by its version, and
+#: `summarize run` writes it again.
 TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@2"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
@@ -74,11 +72,10 @@ class RecordError(Exception):
 def record_path(base_dir, label: str) -> Path:
     """The ONE spelling of the record's location -- composed, not concatenated.
 
-    It was an f-string until 2026-09-18, which made the docstring above false:
     `runfiles.WRITTEN` declares `.transport.json` and its module docstring says
     *"Nothing composes or splits a run-file name inline."*  Composing also
-    inherits the label rule -- `compose` refuses `my.relax`, where the
-    f-string built a name `runfiles.parse` cannot read back.
+    inherits the label rule -- `compose` refuses `my.relax`, a name
+    `runfiles.parse` cannot read back.
     """
     from ..runfiles import compose as _rf
     return Path(base_dir) / _rf(label, ".transport.json")
@@ -90,21 +87,11 @@ def parse_avtrans(text: str) -> Tuple[List[float], List[float]]:
     The format (pinned live, 5.4.2): ``#`` comment lines, then two
     columns — E in eV, and the k-averaged T(E).
 
-    **THE OBSERVATION STANDS; ITS ATTRIBUTION WAS WRONG.**  This said E
-    was relative to E_F *"when the deck said ``TS.TBT.Erange.RelToEF T``,
-    which the composite's deck does"* — and that keyword is one the 5.4.2
-    tbtrans cannot read (`plan.md` § 5o), so it can never have caused
-    anything.  Whatever was observed in the live file was tbtrans's OWN
-    default behaviour.
-
-    That makes this docstring the best evidence bearing on § 5o's one open
-    question — whether a ``%block TBT.Contour`` line's energies are
-    absolute or E_F-relative — and it points at *relative by default*,
-    which would mean the retired switch was never needed rather than
-    merely mis-spelled.  **Recorded as evidence, not settled:** this is a
-    docstring's recollection of a run whose artifact does not survive in
-    the tree, and the question is closed by reading one real
-    ``AVTRANS`` file beside its device ``.fdf``, not by this sentence.
+    E is read as relative to E_F, tbtrans's OWN default behaviour as a live
+    file showed it -- the evidence bearing on `plan.md` § 5o's open
+    question, whether a ``%block TBT.Contour`` line's energies are absolute
+    or E_F-relative.  **Recorded as evidence, not settled:** the question is
+    closed by reading one real ``AVTRANS`` file beside its device ``.fdf``.
     """
     energies: List[float] = []
     trans: List[float] = []
@@ -130,12 +117,11 @@ def parse_avtrans(text: str) -> Tuple[List[float], List[float]]:
 def deck_spin(run_dir) -> str:
     """The spin the run's own deck states -- ``non-polarized`` or
     ``polarized`` -- read from the deck in its run directory, the input the
-    run used (every SIESTA deck molbuilder writes states ``Spin``, since
-    2026-09-28).  No ``Spin`` line is SIESTA's own default, non-polarized."""
+    run used (every SIESTA deck molbuilder writes states ``Spin``).  No ``Spin`` line is SIESTA's own default, non-polarized."""
     from ..parse.fdf import _parse_fdf
     from ..runfiles import find_by_role
     # THE FRAMEWORK'S SEARCH for the deck (`project-layout.md` § 4.5), not a
-    # glob of its suffix here (it globbed `*.fdf` until 2026-10-03).
+    # glob of its suffix here.
     for deck in find_by_role(run_dir, ".fdf"):
         scalars, _blocks = _parse_fdf(deck.read_text(encoding="utf-8",
                                                      errors="replace"))
@@ -202,10 +188,9 @@ def _point_dirs(base: Path, task) -> List[Tuple[float, Path]]:
 def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     """One entry per rung of the ladder: where it stands, and its own answer.
 
-    **A transport result is FIVE calculations, and the record says so.**  It
-    used to describe only the last one -- the transmission points -- so a
-    reader could see the deliverable or nothing, with no way to tell a run
-    that had not started from one stalled at the device.  The ladder is the
+    **A transport result is FIVE calculations, and the record says so**, so
+    a reader can tell a run that has not started from one stalled at the
+    device.  The ladder is the
     structure of the result (`engines/transport.md` § 1), and a parser that
     understands the format reports that structure rather than its final line.
 
@@ -229,7 +214,6 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     """
     from ..jobset.materialize import latest_attempt, run_dir
     from ..parse import detect
-    from ..runfiles import stem as rf_stem
     from .stages import STAGE_FACT, TRANSPORT_STAGES
 
     from ..jobset.materialize import ladder_homes
@@ -242,12 +226,9 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             fact["state"] = "not_described"
             out.append(fact)
             continue
-        # WHERE THIS RUNG RAN -- the one door's answer (`rung_containers`,
-        # plan § 5w K10).  A bias SCAN puts the device and the transmission
-        # under one v-dir per point (`<token>/v<V>/run-<n>`, § 4.2/4.3); a
-        # look at `base / token` found no `run-<n>` there and reported a
-        # FINISHED scan as `not_run` -- the transmission's until 2026-09-24,
-        # the device's until K10 (the M11 review's T-F27).
+        # WHERE THIS RUNG RAN -- the one door's answer (`rung_containers`).
+        # A bias SCAN puts the device and the transmission under one v-dir
+        # per point (`<token>/v<V>/run-<n>`, § 4.2/4.3).
         from .stages import rung_containers
         containers = [d for d, _v in rung_containers(base, task, name)]
         cand = [(c, latest_attempt(c)) for c in containers]
@@ -259,10 +240,11 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         # A SCAN'S RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED, in the
         # scan's order, and from its last once every point has -- status's
         # rule (`runstatus._job_status`), each point asked the one door
-        # (`runrecord.ending`).  The newest attempt by file time spoke until
-        # 2026-10-03 (plan W38 M4).
+        # (`runrecord.ending`).
+        from ..runfiles import RunNames
         from ..runrecord import ending
-        basename = rf_stem(label, token)
+        names = RunNames.of(label, token, task.shape)
+        basename = names.stem
         container, att = next(
             ((c, a) for c, a in cand
              if not ending(run_dir(c), basename).ok), cand[-1])
@@ -273,8 +255,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         # name (`stages.STAGE_FACT`).  A rung whose fact is its own PRODUCT
         # is not an SCF and is not asked one: TBtrans converges nothing and
         # reports no total energy, so parsing its `.out` for either could
-        # only ever fail -- and did, as two hundred words of the registry's
-        # format list in the cell where its state belongs.
+        # only ever fail.
         answers = STAGE_FACT.get(name, "scf")
         outs = _outs_newest_first(run_dir(container), token)
         # PRODUCED ANYTHING AT ALL is asked of every rung the same way, and
@@ -297,7 +278,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             from ..runrecord import LaunchRecordError, launch_record
             where = run_dir(container)
             try:
-                launch = launch_record(where, basename)
+                launch = launch_record(where, names)
             except LaunchRecordError as exc:
                 fact["state"] = "unreadable"
                 fact["why"] = str(exc)
@@ -328,8 +309,8 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         if frames:
             fact["energy_ev"] = frames[-1].energy
             # THE LEAD'S FERMI LEVEL, from the last SCF cycle of the last
-            # frame -- the converged one.  Kept by the SIESTA parser since
-            # 2026-09-18 for exactly this.  Asked by the COLUMN, so adding a
+            # frame -- the converged one.  Kept by the SIESTA parser for
+            # exactly this.  Asked by the COLUMN, so adding a
             # third lead one day is a table row and not a third name here.
             if answers == "fermi":
                 hist = frames[-1].scf_history or []
@@ -391,9 +372,8 @@ def collect_record(base_dir, task) -> Dict:
         })
     if not points_out:
         # THE WAY ON, by what the stage's state says: prepped (an attempt is
-        # open), it is launched or let finish; else prepped, then launched.
-        # It printed the prep either way until 2026-10-05, which a prepped
-        # stage refuses (`job-system.md` § 5.0).
+        # open), it is launched or let finish -- a prepped stage refuses a
+        # second prep (`job-system.md` § 5.0); else prepped, then launched.
         from ..jobset.commands import block, launch_lines, run_first
         raise RecordError(
             "no transmission point has produced output yet -- "

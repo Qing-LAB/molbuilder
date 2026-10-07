@@ -242,9 +242,7 @@ def test_the_survey_derives_its_vocabulary_from_the_catalogue():
     """Every role in `runfiles.WRITTEN` is a name the survey recognises --
     the rows named on the label; a fixed name's row has no role.
 
-    The table was hand-copied beside the catalogue until 2026-09-08 and had
-    already drifted -- it claimed `.XV` was ours, and `.XV` is SIESTA's own
-    restart file, which `WRITTEN` deliberately excludes.  A survey with its own
+    A survey with its own
     copy of the vocabulary is the very habit it exists to find, so the check is
     that adding a row to the catalogue is enough.
     """
@@ -260,7 +258,7 @@ def test_the_survey_derives_its_vocabulary_from_the_catalogue():
 def test_the_survey_does_not_claim_an_engines_files():
     """`.XV` and `.STRUCT_OUT` are not in the survey's owned vocabulary.
 
-    The other half of the same drift: a survey that claims an engine's output
+    The other half: a survey that claims an engine's output
     sends the next person looking for a door that cannot exist, because
     `job-contracts.md` § 4.2 is explicit that what an engine writes is not
     enumerable -- *"a snapshot pretending to be a rule."*
@@ -397,13 +395,8 @@ def test_no_third_hierarchy_segment_is_invented():
     Shrinking the set is the goal, so this asserts equality rather than
     membership: closing one is a deliberate edit here, not a quiet pass.
 
-    *(Two were guarded when this was written, and the docstring said "ten sites
-    build `launch/` and `pseudos/` today and § 5l.6 step N5 takes them to
-    zero".  § 5l.6 was retired and deleted 2026-09-17, so the follow-through it
-    named stopped existing.  `pseudos` was closed anyway on 2026-09-19 — the
-    name got one home in `pseudos.PSEUDO_DIRNAME` and its five callers import
-    it — which is what closing one looks like without the plan row.  `launch`,
-    five sites in `jobset/submit.py`, is the one left.)*
+    The set is empty: each segment has one home its callers import
+    (`pseudos.PSEUDO_DIRNAME`, `runfiles.LAUNCH_DIR`).
 
     **WHAT THIS AXIS DOES NOT CATCH, and it is the price of closing one.**  A
     segment that is DECLARED is no longer in the guarded set, so a caller who
@@ -469,9 +462,7 @@ def test_the_segment_guard_catches_an_invented_container(tmp_path, source,
                                                         expect_hit):
     """Shown to fail — and shown NOT to fail on a URL.
 
-    The third case is the one that matters: the throwaway version of this pass
-    flagged `/api/structure/analyze`, `/api/bench/summary` and
-    `/api/task-setup/attempts` as hierarchy segments. A route starts with `/`,
+    The third case is the one that matters: a route starts with `/`,
     so its first path component is empty, which is exactly what the rule uses to
     tell a path from a URL.
     """

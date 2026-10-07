@@ -1,36 +1,15 @@
 """End-to-end PDB workflow integration test.
 
-The user can pick a ``.pdb`` in the Projects sidebar, mark atoms as
-frozen via the /modify selection panel, and then generate a /spectra
-script that respects those boundary conditions.  This test pins the
-WHOLE chain in one pytest, hitting the real Flask endpoints in the
-real order a browser would.  No mocks, no per-endpoint shortcuts --
-if any link in the chain regresses, this test fails.
+The real Flask endpoints, hit in the real order a browser would.  No mocks,
+no per-endpoint shortcuts.
 
 What it pins (in order):
 
-  1.  /api/selection/atoms reads the PDB and returns the per-atom
-      metadata table (element, residue_name, chain_id, ...).
-  2.  A v4 sidecar with ``frozen_atoms`` + ``regions`` is written
-      directly via the molstruct codec (keyed by the PDB's stem) --
-      formerly seeded via /api/selection/save-sidecar before that
-      endpoint was removed.
-  3.  /api/selection/atoms re-read picks up the sidecar (atoms now
-      carry the new region tags + is_frozen flags).
-  (4-5 retired at P3: the spectra schema/render routes are gone;
-      the form's ``frozen_indices`` default from the sidecar.
-  5.  POST /api/spectra/render with the PDB content + structure_path
-      emits a script + surfaces Pattern A (sidecar's frozen atoms
-      don't all appear in cfg.frozen_indices) and Pattern B
-      (sidecar regions ignored by the spectra engine) as WARN-
-      severity Issues.
-  6.  The generated script's ``FROZEN_INDICES_USER`` reflects what
-      the FORM said (not the sidecar) -- the form is authoritative
-      per the three-stage contract in design.md.
-
-If any of these assertions fires, something concrete is broken
-in the cross-tab boundary-condition flow.  This is the test you
-can run instead of trusting any "deep review" claim.
+  1.  /api/build/load reads the PDB and returns the per-atom rows.
+  2.  A sidecar with ``frozen_atoms`` + a region is written directly via
+      the molstruct codec (keyed by the PDB's stem).
+  3.  /api/build/load re-read picks up the sidecar (atoms carry the
+      labels in ``regions``).
 
 Run::
 
@@ -38,28 +17,12 @@ Run::
 """
 from __future__ import annotations
 
-import hashlib
 import json
-from pathlib import Path
 
 import pytest
 
-import sys as _sys, pathlib as _pl
-_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
-from support.envelope import (from_xyz as _env,
-                             from_xyz_with_periodicity as _env_per)
 
-
-
-# ONE PDB, BUILT HERE (2026-08-03).
-#
-# This preferred a real file from the user's projects tree
-# (hemeC-dithiol/structure/1c75.pdb) and fell back to the synthetic one only
-# when that was absent -- the worst of both.  The test then meant something
-# DIFFERENT on each machine, so every assertion had to be weak enough to hold
-# for a 3-residue peptide and a real protein at once, and a failure here could
-# not be read without first asking which file had been used.  The user's file
-# is also their scientific record, and nobody had confirmed it was relevant.
+# ONE PDB, BUILT HERE, so the test means the same thing on every machine.
 _SYNTHETIC_PDB = (
     "HEADER    SYNTHETIC TRIPEPTIDE\n"
     "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N\n"
@@ -83,10 +46,7 @@ _SYNTHETIC_PDB = (
 
 def _seed_sidecar_for(struct_path, *, n_atoms, regions=None, frozen=None):
     """Write a ``.molstruct.json`` sidecar next to ``struct_path`` DIRECTLY
-    via the codec.  Formerly seeded with a ``POST /api/selection/save-sidecar``
-    before that endpoint was removed (the save is now the projects.parser door →
-    ``/api/files/write``).  ``save-sidecar`` was REPLACE-all, so one
-    ``to_dict`` mirrors a single endpoint call."""
+    via the codec."""
     from molbuilder.sidecars import molstruct as _msj
     from molbuilder.structure import FROZEN_LABEL
     labels = dict(regions or {})
@@ -103,9 +63,7 @@ def _seed_sidecar_for(struct_path, *, n_atoms, regions=None, frozen=None):
 @pytest.fixture
 def pdb_under_root(tmp_path, monkeypatch):
     """Place a PDB inside tmp_path AND make tmp_path the picker root
-    so the selection endpoints accept it.  Uses the user's real
-    1c75.pdb when available; the tiny synthetic above otherwise.
-    Returns ``(pdb_path, n_atoms, n_residues)``."""
+    so the selection endpoints accept it.  Returns ``(pdb_path, n_atoms, n_residues)``."""
     pdb_text = _SYNTHETIC_PDB
     dest = tmp_path / "test_workflow.pdb"
     dest.write_text(pdb_text)
@@ -155,29 +113,18 @@ def web(pdb_under_root):
 
 
 class TestPdbWorkflowEndToEnd:
-    """One test class, one structure picked, six steps walked in
-    order.  Each step depends on the previous step's outputs --
-    if step 2's sidecar write fails, step 3's pre-fill assertion
-    catches it; etc.  The class shares fixture state via attributes."""
+    """One test class, one structure picked, three steps walked in
+    order."""
 
     @staticmethod
     def _envelope(pdb_path, regions=None):
         """The structure AS DATA, which is how every structure door takes it
         (web-api.md § 1).
-
-        These three tests posted ``structure_text`` until 2026-08-03 and got a
-        flat 400 -- the field was retired from ``/api/spectra/render`` because
-        the viewer holds no coordinate document and writes none (molview.md
-        § 11.7), so the route's only caller could never have sent it.  The
-        SUBJECTS below (Pattern A/B warnings, form-vs-sidecar precedence,
-        clearing a prefill) are unaffected; only the delivery moved.
         """
         from molbuilder.structure import Structure
         struct = Structure.from_pdb(pdb_path.read_text())
         if regions:
-            # INSIDE the structure.  A top-level `regions` beside the envelope
-            # was the second source, applied by a second applier; both are gone
-            # (2026-08-03) and labels now ride with the atoms they describe.
+            # INSIDE the structure: labels ride with the atoms they describe.
             struct.regions = dict(regions)
             struct.__post_init__()
         return struct.to_dict()
@@ -190,10 +137,7 @@ class TestPdbWorkflowEndToEnd:
     def test_step_1_the_load_door_reads_pdb(
         self, web, pdb_under_root,
     ):
-        """Asked `/api/selection/atoms` until 2026-09-07, which read the file
-        with its own reader and had drifted to applying only the sidecar's
-        `regions`.  That route is deleted; `/api/build/load` is the door, and
-        the ROWS are the same object either way (`_shared.atoms_list`)."""
+        """`/api/build/load` is the door; its rows are `_shared.atoms_list`."""
         pdb_path, n_atoms, n_residues = pdb_under_root
         r = web.post("/api/build/load", json={"path": self._path(pdb_path)})
         assert r.status_code == 200, r.data
@@ -205,8 +149,7 @@ class TestPdbWorkflowEndToEnd:
         assert "element" in body["atoms"][0]
         # THE PDB's IDENTITY COLUMNS SURVIVE THE LOAD, at the top level --
         # `structure.py::IDENTITY_FIELDS` carries them "beside `metadata`",
-        # not on the atom row.  They were asserted on the row until
-        # 2026-09-07, a second copy the browser never read.
+        # not on the atom row.
         assert body.get("residue_names"), f"PDB residue names lost: {sorted(body)}"
         assert body["residue_names"][0], body["residue_names"][:3]
         assert len(body["residue_names"]) == n_atoms
@@ -217,8 +160,7 @@ class TestPdbWorkflowEndToEnd:
         self, web, pdb_under_root,
     ):
         pdb_path, n_atoms, _ = pdb_under_root
-        # Pick a few atom indices that are valid for any structure
-        # we'd test against (synthetic = 15 atoms; user's = 1184).
+        # Pick a few atom indices valid for the synthetic PDB (15 atoms).
         frozen_indices = [0, 1, 2]
         region_indices = [3, 4]
 
@@ -234,7 +176,6 @@ class TestPdbWorkflowEndToEnd:
             f"the codec sidecar seed didn't write the sidecar at {sidecar}"
         )
         on_disk = json.loads(sidecar.read_text())
-        from molbuilder.sidecars import molstruct as _msj
         assert on_disk["n_atoms_total"] == n_atoms
         # ONE label store on disk: the reserved label is a member of `regions`,
         # not a key beside it.
@@ -267,76 +208,4 @@ class TestPdbWorkflowEndToEnd:
             assert "frozen_atoms" not in atom10["regions"], atom10
         if atom10["index"] not in (3, 4):
             assert "L-electrode" not in atom10["regions"], atom10
-
-    # ----- Step 4: /spectra schema pre-fills frozen_indices ----- #
-
-    # Steps 4-7 (schema pre-fill -> render -> prefill-clear)
-    # retired with their routes (spectra-migration plan P3,
-    # 2026-08-21): frozen atoms are STRUCTURE-side facts now --
-    # they ride the sidecar into the hand-over's codec pair
-    # (pinned by test_task_setup_tab.py's byte-compat test and
-    # TestBuildSiestaHonorsSidecarFrozenAtoms below), never a
-    # form field.
-
-
-# --------------------------------------------------------------------- #
-# Build (SIESTA + PySCF) sidecar-honouring integration test             #
-#                                                                       #
-# 2026-05-25 regression: the engine emitters knew how to handle         #
-# struct.frozen_atoms, but /api/build/fdf + /api/build/pyscf never      #
-# applied the sidecar -- the user's /modify freeze list silently        #
-# never reached render_fdf / render_script.  This class catches the     #
-# wiring end-to-end: write a sidecar, POST to /api/build/fdf with       #
-# structure_path, assert %block Geometry.Constraints appears in the     #
-# emitted FDF with the right 1-based indices.                           #
-# --------------------------------------------------------------------- #
-
-
-@pytest.fixture
-def simple_pdb_under_root(tmp_path, monkeypatch):
-    """A 10-atom CHON-only PDB the SIESTA + PySCF emitters can both
-    render cleanly (no Fe / S / exotic-element edge cases tripping
-    up the species table).  We need a structure WHERE THE ENGINE
-    RENDERERS SUCCEED so the test isolates the sidecar-wiring
-    regression from emitter bugs.
-
-    Repoints picker root at tmp_path so the build/spectra endpoints
-    accept the path under the security gate."""
-    pdb_text = (
-        "REMARK 1 synthetic chon for sidecar wiring test\n"
-        "ATOM      1  C   MOL A   1       0.000   0.000   0.000  1.00  0.00           C\n"
-        "ATOM      2  C   MOL A   1       1.500   0.000   0.000  1.00  0.00           C\n"
-        "ATOM      3  N   MOL A   1       2.250   1.300   0.000  1.00  0.00           N\n"
-        "ATOM      4  C   MOL A   1       3.750   1.300   0.000  1.00  0.00           C\n"
-        "ATOM      5  O   MOL A   1       4.500   2.600   0.000  1.00  0.00           O\n"
-        "ATOM      6  H   MOL A   1      -0.520   0.900   0.700  1.00  0.00           H\n"
-        "ATOM      7  H   MOL A   1      -0.520  -0.900  -0.700  1.00  0.00           H\n"
-        "ATOM      8  H   MOL A   1       2.020  -0.900   0.000  1.00  0.00           H\n"
-        "ATOM      9  H   MOL A   1       1.750   2.200   0.000  1.00  0.00           H\n"
-        "ATOM     10  H   MOL A   1       4.270   0.400   0.000  1.00  0.00           H\n"
-        "END\n"
-    )
-    p = tmp_path / "ten_atom_chon.pdb"
-    p.write_text(pdb_text)
-    from molbuilder import diagnostics
-    orig = diagnostics.get_capabilities()
-    caps = diagnostics.Capabilities(runtime_config={},
-                                      conda_binary=None,
-                                      conda_envs=frozenset())
-    cls = type(caps)
-    monkeypatch.setattr(cls, "file_picker_roots",
-                         lambda self: ((tmp_path.resolve(), "projects"),))
-    diagnostics.set_capabilities(caps)
-    monkeypatch.setattr(diagnostics, "_snapshot", orig)
-    return p
-
-
-# A ``TestBuildSiestaHonorsSidecarFrozenAtoms`` class stood here with a
-# docstring and no test methods -- a promise of coverage that collected
-# nothing, which reads as "yes, that is checked" to anyone scanning.  The
-# coverage exists: `test_fdf_generator_roundtrip.py` walks a frozen atom
-# from the sidecar into ``%block Geometry.Constraints`` (the only thing
-# that actually holds an atom still), and the three-step walk it said it
-# mirrored is TestPdbWorkflowEndToEnd, above.
-
 

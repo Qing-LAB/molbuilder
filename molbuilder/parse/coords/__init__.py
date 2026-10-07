@@ -4,13 +4,8 @@ Each module here defines exactly one :class:`FileParser` subclass
 returning a :class:`StructureResult`.  Adding a new geometry-file
 format is two steps: new module here, import + ``register`` below.
 
-These replaced the legacy ``parsers.{siesta,pyscf}_struct`` modules
-(deleted 2026-06-21; provenance: `docs/archive/old_docs/protocols/parse-module.md` § 8).  What they add is that
-:class:`StructureResult` carries
-``cell`` (3x3 ndarray in Å) as a first-class field, fixing the
-"Structure is geometry-only, cell got dropped" gap that
-originally surfaced as the Phase 1 lattice-extraction bug in
-``parse/dirs/job.py``.
+:class:`StructureResult` carries ``cell`` (3x3 ndarray in Å) as a
+first-class field.
 """
 
 from molbuilder.parse.registry import register

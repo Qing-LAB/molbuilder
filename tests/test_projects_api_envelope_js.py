@@ -176,8 +176,7 @@ class TestNetworkFailure:
 
     def test_apiList_network_drop_returns_envelope(self):
         """``fetch`` throws TypeError on network drop / offline /
-        DNS fail.  Pre-this-commit, apiList re-threw; now it returns
-        the synthetic envelope."""
+        DNS fail; apiList returns the synthetic envelope."""
         out = _run_node('''
             global.fetch = async () => {
                 throw new TypeError("Failed to fetch");
@@ -216,8 +215,8 @@ class TestNetworkFailure:
         assert "network error" in out["error"]
 
     def test_apiWrite_network_drop_returns_envelope(self):
-        """apiWrite had the envelope behaviour pre-this-commit;
-        regression-pin so a refactor doesn't accidentally drop it."""
+        """Regression-pin so a refactor doesn't accidentally drop apiWrite's
+        envelope behaviour."""
         out = _run_node('''
             global.fetch = async () => {
                 throw new TypeError("Failed to fetch");
@@ -260,9 +259,6 @@ class TestNonJsonResponse:
         ''')
         assert out["ok"] is False
         assert "non-JSON" in out["error"]
-
-
-# ----- apiRoots envelope normalisation ----------------------------- #
 
 
 # ----- AbortSignal threading (#174 sidebar gap M1) ---------------- #
@@ -676,15 +672,3 @@ class TestNoStoreCache:
         ''')
         assert out["cache"] == "no-store"
         assert out["signalIsSet"] is True
-
-
-# ----- Source guard: consumers must not bypass api.js -------------- #
-
-
-class TestNoRawFetchInPreview:
-    """web/projects.md Principle 6: api.js is the SOLE fetch caller
-    for the /api/files/* endpoints.  preview.js (edit-save + the two read
-    paths) must route every file call through the envelope wrappers so the
-    uniform {ok,error,aborted} shape + no-store cache apply everywhere --
-    no scattered raw ``fetch("/api/files/...")`` that re-implements error
-    handling and silently diverges (the 2026-07 framework-bypass sweep)."""

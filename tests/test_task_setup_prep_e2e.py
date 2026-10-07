@@ -23,11 +23,10 @@ WHAT ELSE THIS FILE DRIVES, and why it is here rather than in a file of its
 own: the fixtures.  `two_stage_dir` + `_open` give a real folder with a real
 description, open in a real browser against a real server, and every claim
 below needs exactly that.  A second copy of them elsewhere would be the
-duplication worth more than a tidier filename.  Added 2026-09-06 while
-converting source-text pins (`plans/plan.md` § 5h): the machine choice
-reaching the copied command and the resolved-facts block, the notify card
-offering this machine's channels, and the bench grid dropping a reply that
-arrives after the axes have moved on.
+duplication worth more than a tidier filename: the machine choice reaching
+the copied command and the resolved-facts block, the notify card offering
+this machine's channels, and the bench grid dropping a reply that arrives
+after the axes have moved on.
 """
 from __future__ import annotations
 
@@ -50,8 +49,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def calc_dir(isolated_projects_root_module):
     """A described calculation, with a probed machine record beside it.
 
-    The record is not scenery: since 2026-09-02 a rank count is read from one
-    and nowhere else, so a folder without it cannot be prepped at all
+    The record is not scenery: a rank count is read from one and nowhere
+    else, so a folder without it cannot be prepped at all
     (`running-a-job.md` § 3.1)."""
     yield _a_described_probe(isolated_projects_root_module / "prep_e2e")
 
@@ -92,9 +91,7 @@ def _a_described_probe(root, execution=None):
         # hand.  A hand-built `StructureRef` carries the DEFAULT witness --
         # formula "" and 0 atoms -- and prep refuses a description whose
         # witness disagrees with the file beside it ("the structure has
-        # changed since this calculation was described").  So the first
-        # version of this fixture could not be prepped at all, and the
-        # refusal it earned was the fixture's own, not the tab's.
+        # changed since this calculation was described").
         D.write_description(
             D.build_description(struct,
                                 SiestaConfig(system_label="probe"),
@@ -108,7 +105,7 @@ def _a_described_probe(root, execution=None):
         write_pseudos(d, ["H"])
 
         # The probe's answer, pre-seeded: a rank count is read from a machine
-        # record and nowhere else since 2026-09-02, so a folder without one
+        # record and nowhere else, so a folder without one
         # cannot be prepped at all (`running-a-job.md` § 3.1).
         # `env_init` rides ON THE RECORD -- the probe's copy of it:
         # a wrapper generated here would otherwise carry THIS machine's way
@@ -138,8 +135,7 @@ def _a_described_probe(root, execution=None):
         return d
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
-        # removes.  It used to sit in the developer's real `projects/`, so a
-        # crashed run left a folder behind in their own data.
+        # removes.
         pass
 
 
@@ -292,8 +288,7 @@ def test_the_tab_saves_the_folder_first_and_says_so(
     task.json prep reads, so Prep refuses it first (§ 7a).  The stage,
     prepped, is not prepped again (`job-system.md` § 5.0): opened again, it
     shows the prep entry's own sentence, offers neither button, and its
-    lines are its launch (W55 B4).  (It replaced the save the tab offered,
-    2026-10-03, which replaced its *already under way* Confirm, 2026-10-02.)"""
+    lines are its launch (W55 B4)."""
     import re
     from molbuilder.checkpoint import Repo
     calc = unprepped_dir
@@ -367,7 +362,7 @@ def test_a_stage_with_no_axes_offers_the_machines_proposal(
     """`generator.md` § 4.3a, on this door too: with no bench axes declared
     the target machine proposes the grid -- as `prep bench` does at the
     terminal -- so the measure block and its Prep bench button are offered,
-    saying so.  Until 2026-09-29 both needed a declared axis."""
+    saying so."""
     _open(page, flask_server, calc_dir)
     panel = "[id^=ts-steppanel]"
     page.wait_for_selector(f"{panel} .ts-prep", state="attached",
@@ -488,8 +483,7 @@ def filled_dir(isolated_projects_root_module):
         yield d
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
-        # removes.  It used to sit in the developer's real `projects/`, so a
-        # crashed run left a folder behind in their own data.
+        # removes.
         pass
 
 
@@ -701,22 +695,6 @@ def test_what_you_typed_is_still_there_when_you_come_back(
         "the value did not survive a page reload")
 
 
-# NOT tested here: that a bool still renders as a chooser on the SECOND load
-# (the 2026-08-24 defect).  A test for it was written and then deleted, and
-# the reason is worth keeping.
-#
-# The defect was a vocabulary loader returning from its cache before it
-# published into `_meta`.  Both loaders now refill on BOTH paths, and because
-# `_fillSweepMeta` fills any name `_meta` is missing, EITHER ONE alone
-# restores what the other dropped.  Reverting the documented fix in
-# `loadColumnChoices` -- the literal original bug -- leaves every dropdown a
-# dropdown.  Only mutating both publishers at once reproduces it, and that is
-# two regressions, not one.
-#
-# So there is no single break for such a test to catch: the invariant is held
-# by the shape of the code, not by a check.  A test that cannot fail for the
-# reason it names is the thing this whole sweep is retiring, and writing a new
-# one would have been the same mistake in the other direction.
 def test_a_row_added_on_one_folder_does_not_follow_you_to_the_next(
         page, flask_server, filled_dir, calc_dir):
     """**§ 2.1: the page holds no state of its own** -- *"no in-progress
@@ -886,8 +864,8 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
     *this feature is gone*, and the one thing it never says is the true one
     — that the check could not run *(user, 2026-09-02: "we can't have a fit
     on. I just said, I don't know. Lack of information.")*.  Asked of the
-    bench grid card's panel -- the run card's went on 2026-10-05: whether a
-    run fits is the preview's to say (W55 B3).
+    bench grid card's panel: whether a run fits is the preview's to say
+    (W55 B3).
 
     Driven by making the door fail, which is the only honest way to reach
     the branch: the server is what decides it cannot answer.
@@ -932,17 +910,11 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
 def two_stage_dir(isolated_projects_root):
     """A described calculation with TWO stages and a declared bench axis.
 
-    **Built under a TMP projects root, not the developer's real tree**
-    (2026-09-06). `isolated_projects_root` points `$MOLBUILDER_PROJECTS` at
+    **Built under a TMP projects root, not the developer's real tree.**
+    `isolated_projects_root` points `$MOLBUILDER_PROJECTS` at
     `tmp_path/projects`, and `file_picker_roots()` calls `projects_root()` at
     CALL time -- nothing caches it -- so the live server serves the tmp tree
     and the page opens a folder inside it. Measured, not assumed.
-
-    The sibling fixtures here still build `ROOT / "projects/_t_..."` inside
-    the real tree; `plans/plan.md` § 5i carries that, and the reason it looked
-    impossible: a *blanket* autouse override breaks those tests because the
-    tree they hand-build sits outside the guard afterwards. Opting in and
-    building under the fixture's root -- as this one does -- works today.
 
     Two, because the claim under test is *per stage, not only the first* --
     the card once offered `prep bench` for `enabled[0]` alone, which a
@@ -1012,14 +984,8 @@ def two_stage_dir(isolated_projects_root):
 
 
 def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
-    """The commands a person copies, READ FROM THE PAGE.
-
-    CONVERTED 2026-09-06 (`plans/plan.md` § 5h, cluster 4).  Nine assertions
-    in `test_task_setup_tab.py` read `viewer.js` as text and checked for
-    concatenation expressions -- `'prep bench " + name + _bundleArg() +
-    _targetArg()' in src`.  That pins one spelling of one line: reorder the
-    operands harmlessly and it fails; render the block for the wrong stage,
-    or in the wrong order, and it passes.  This reads what the card renders.
+    """The commands a person copies, READ FROM THE PAGE: this reads what
+    the card renders.
 
     The claims, all of them about what a person is TOLD:
       * every enabled stage offers both things you can do with it -- the card
@@ -1065,9 +1031,7 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
         "the per-stage blocks do not explain themselves")
     # A person who filled the card and then wants something else for ONE prep
     # needs to know a flag wins -- otherwise the only visible path is editing
-    # `task.json` again.  *(The hint also named `run-config.toml` until
-    # 2026-09-02.  That file is a report now and the UI does not name it: a
-    # benchmark reports, and what the run uses is this card.)*
+    # `task.json` again.
     # The flags named are `jobset prep run`'s own (`--omp` is not one).
     assert "--np / --cpus-per-task / --time" in hints, (
         "a person who filled the card is not told a flag still overrides it")
@@ -1078,7 +1042,7 @@ def a_named_machine(two_stage_dir):
     """A second, NAMED machine beside "(this machine)", written where the
     server looks.
 
-    This is the fixture the `--target` claim was waiting for.  The chain, all
+    The chain, all
     of it in this process because `support.live_server.serve()` runs the app
     on a THREAD -- so the env the test sets is the env the route reads:
 
@@ -1107,21 +1071,10 @@ def test_choosing_a_machine_puts_it_in_the_command_you_copy(
         page, flask_server, two_stage_dir, a_named_machine):
     """Pick a remote machine; the prep commands gain `--target`, launch does not.
 
-    WHAT THIS REPLACES, AND WHY THE OLD ONE COULD NOT SEE THE BUG.
-    `test_task_setup_tab.py` asserted `"_targetArg()" in src` and
-    `"_targetArg()" not in src.split("jobset launch")[1][:80]` -- reading
-    `viewer.js` as text.  That is true of the source whatever the page does,
-    and it stayed true through the defect this test found: `setMachine()`
-    updates `_machine` and re-syncs the prep BUTTONS, but never re-runs
-    `renderNext()`, so the `pre.ts-cmd` blocks a person actually copies were
-    built before the machine existed and kept a command with no `--target` in
-    it.  The pin read the concatenation; nobody read the card.
-
-    The comment that stood in the test above -- "this page can only be driven
-    to '(this machine)' without a named record in the server's config root"
-    -- was wrong about the mechanism, not just pessimistic: the server runs
-    on a thread in this process, so `$MOLBUILDER_CONFIG_DIR` is shared and a
-    record written here is a record the route serves.  See `a_named_machine`.
+    The defect this test found: `setMachine()` updated `_machine` and
+    re-synced the prep BUTTONS, but never re-ran `renderNext()`, so the
+    `pre.ts-cmd` blocks a person actually copies were built before the
+    machine existed and kept a command with no `--target` in it.
     """
     _open(page, flask_server, two_stage_dir)
     opt = page.locator(f'#ts-target-choice .opt[data-machine="{a_named_machine}"]')
@@ -1156,9 +1109,8 @@ def test_a_calculation_set_to_its_machine_is_shown_so(
     """W55 D12, the page's half: a calculation is set to the machine of its
     first prep, which does not change (`configuration.md` M-3), so once a
     stage is prepped the card shows that machine chosen, offers no other,
-    and says why -- the folder's own answer, `set_to`.  It offered every
-    machine until 2026-10-03, and Prep refused all but one.  The answer's
-    half is `test_printed_commands_run.py`'s."""
+    and says why -- the folder's own answer, `set_to`.  The answer's half
+    is `test_printed_commands_run.py`'s."""
     _open(page, flask_server, two_stage_dir)
     this = page.locator('#ts-target-choice .opt[data-machine="(this machine)"]')
     this.wait_for(state="visible", timeout=20000)
@@ -1193,13 +1145,7 @@ def test_the_notify_card_offers_this_machines_channels(
     of sending -- and nothing else notices, because `task.json` is valid
     either way.
 
-    WHAT THIS REPLACES.  Two assertions in `test_task_setup_notify_js.py`
-    read `id="ts-notify-card"` out of the template and `/api/notify/channels`
-    out of viewer.js.  Both stay true of a card that never unhides and a
-    fetch that never fires.
-
-    WHY THE SECRET IS NOT CHECKED HERE, though the rule is the reason the
-    card was rebuilt.  It cannot reach this page: `_row` in
+    WHY THE SECRET IS NOT CHECKED HERE.  It cannot reach this page: `_row` in
     `notify_setup.py` is the one door out and emits no `url` and no `key` at
     all -- `where` is already masked when it leaves the process.  A DOM scan
     for the key would pass on any painter whatsoever, which is a vacuous
@@ -1208,12 +1154,8 @@ def test_the_notify_card_offers_this_machines_channels(
     scan stay green.  The claim is owned where it can fail:
     `test_notify_setup_api.py::test_a_webhook_address_is_masked_because_it_IS
     _the_credential` and `::test_every_address_is_masked_even_a_listeners`.
-    The absence lints in `test_task_setup_notify_js.py` -- no
-    `type="password"` in the template, no `saveDestination` in any source --
-    also stay: those quantify over a class, which is what text is for.
     """
-    # The monitor's own door, not `config_dir() / "notify"` -- joining it
-    # here put the file where nothing reads once credentials moved.
+    # The monitor's own door, not `config_dir() / "notify"`.
     from molbuilder.monitor import default_notify_path
     _n = default_notify_path(); _n.parent.mkdir(parents=True, exist_ok=True)
     _n.write_text(json.dumps({"channels": {
@@ -1245,12 +1187,7 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
     it would look authoritative, because the panel says how many
     combinations fit.
 
-    WHAT THIS REPLACES.  `test_bench_grid_card.py::test_a_stale_answer_is_
-    dropped` asserted `"_fitSeq" in src and "seq !== _fitSeq" in src` -- two
-    substrings of a private variable's name.  Rename the variable and it
-    fails on working code; write the guard where it can never be true, or
-    compare against the wrong thing, and it passes.  The claim is about
-    ORDER, so this test controls the order.
+    The claim is about ORDER, so this test controls the order.
 
     `window.fetch` is stubbed rather than the responses routed, because the
     ordering has to be exact: the first call is parked on a promise this
@@ -1331,10 +1268,7 @@ def test_no_rung_is_taught_a_from_by_default(
     card says it continues: which run a stage continues from is then prep's
     answer -- the newest attempt of the stage before it, which must have
     concluded (`job-system.md` § 5.4, plan W37) -- and a `--from` is taken
-    as said, unchecked, so it appears only when a person chooses a run
-    (the next test).  (It taught one from the card until W37: the newest
-    attempt by count, concluded or not; and before the K5 review's A1, to
-    every transport rung, which prep refused.)
+    as said, unchecked, so it appears only when a person chooses a run.
 
     MUTATION THIS MUST FAIL AGAINST: the page composing a `--from` again.
     """

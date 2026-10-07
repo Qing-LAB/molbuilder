@@ -1,24 +1,21 @@
 /* molbuilder shared app-tabs nav styling.
  *
- * Every page in the app shares a top-of-page navigation strip with
- * five tabs in a fixed order: Molbuilder (/molbuilder), Structure
- * optimization (/structure-optimization), Spectrum calculation
- * (/spectrum-calculation), Transport calculation
- * (/transport-calculation), Results (/results).  Each page marks
+ * Every page in the app shares a top-of-page navigation strip, its
+ * tabs in the order ``molbuilder/web/tabs.py`` gives.  Each page marks
  * its current tab with ``class="app-tab is-active"``.  The markup
  * itself lives in ``templates/_app_header.html`` (a Jinja partial
  * included by every page).
  *
  * If you change the visual treatment of a tab, change it here and
  * every page picks it up.  If you add or remove a tab, update
- * ``_app_header.html`` (the canonical link list) AND the route
+ * ``molbuilder/web/tabs.py`` (the canonical list) AND the route
  * contract pinned in
- * ``tests/test_tab_routes.py::test_nav_bar_lists_all_five_tabs_in_order``.
+ * ``tests/test_tab_routes.py::test_nav_bar_lists_every_tab_in_order``.
  */
 
 /* The nav is a distinct, slightly-RAISED bar, not text floating on the page:
  *  - --ps-bg-tile lifts the whole strip off the near-black page + the darker content
- *    below it (the nav bg used to equal the page bg, so the banner blended in);
+ *    below it;
  *  - a top highlight + a strong bottom border draw the bar's two edges, so it reads
  *    as its own toolbar region -- "here are your sections".
  * The lift comes from a token (--ps-border-strong) via box-shadow, not a raw literal. */
@@ -35,7 +32,7 @@
 
 /* Each tab reads as a CLICKABLE option: a legible (not dimmed-to-disabled) label, a
  * divider from its neighbour so the set looks like separate choices, and a clear
- * hover lift. --ps-fg-muted replaces the near-invisible --ps-fg-dim. */
+ * hover lift. */
 .app-tab {
     padding: var(--space-sm2) var(--space-lg2);
     color: var(--ps-fg-muted);
@@ -61,7 +58,6 @@
     font-weight: 700;
 }
 
-/* NOTE: the account strip (.app-account) moved OUT of the tabs nav into
- * the hero banner (2026-07-25); its styling now lives with its owner in
- * page-shell.css (``header .app-account``).  Kept out of tabs.css so the
- * nav sheet owns only navigation. */
+/* NOTE: the account strip (.app-account) sits in the hero banner; its
+ * styling lives with its owner in page-shell.css (``.app-header
+ * .app-account``), so the nav sheet owns only navigation. */

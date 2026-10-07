@@ -2,9 +2,8 @@
 DOM scaffolding the trajectory inspector reaches via getElementById.
 
 The partial is the ONE source of the inspector ids.  /results is
-the sole consumer today (fetches the partial via
-``GET /partials/trajectory-inspector``); /watch was retired
-2026-05-19 so the legacy ``{% include %}`` path is gone.
+its consumer (fetches the partial via
+``GET /partials/trajectory-inspector``).
 
 Invariants pinned here:
 
@@ -12,9 +11,8 @@ Invariants pinned here:
     (lib/trajectory/core.js) reaches via $();
   * the partial carries NO page chrome (no <html>/<body>/<head>) so
     its innerHTML-injection on /results doesn't double-up;
-  * the partial does NOT carry the deleted /watch loader-bar +
-    workflow-guide ids -- those were /watch.html-only and would be
-    UX noise if they crept into /results' inspector body.
+  * the partial carries no page-level loader-bar or workflow-guide
+    ids -- they would be UX noise in /results' inspector body.
 
 If any of these break, the trajectory inspector silently stops
 working in a way that the smoke tests wouldn't notice -- this
@@ -57,28 +55,16 @@ def partial_ids(partial_path) -> set[str]:
 class TestPartialIntegrity:
 
     # ------------------------------------------------------------- #
-    # Partial-vs-embed boundary (post-#205 architecture).
+    # Partial-vs-embed boundary.
     #
-    # When the standard knob bar moved into the embedded MolViewer
-    # in #205, the trajectory partial stopped owning chrome controls
-    # (style.rep, style.radiusScale, style.colorScheme,
-    # style.background — formerly the ``rep``, ``radius``,
-    # ``colorscheme``, ``bg`` IDs).  The embed's knob bar (see
-    # docs/web/molview.md) now owns those, and
-    # the appearance contract is pinned in tests/test_molview_mount.py
-    # (`test_the_handle_refuses_appearance` and its neighbours), which
-    # drives the real mount under node.
-    #
-    # Corrected 2026-09-03: this named `test_mol_viewer_embed_e2e.py`,
-    # which has never existed -- the same dead citation this file's own
-    # retired mount-contract class carried, found by grepping every test
-    # filename mentioned in a comment against the files on disk.
+    # The embed's knob bar (see docs/web/molview.md) owns the chrome
+    # controls (style.rep, style.radiusScale, style.colorScheme,
+    # style.background); the trajectory partial owns none of them.
     #
     # The boundary is encoded below as two explicit sets so a future
     # accidental re-introduction of chrome IDs into the partial
     # fails the build, AND a missing trajectory-specific ID also
-    # fails.  This replaces the pre-#205 EXPECTED set that mixed
-    # both responsibilities.
+    # fails.
     # ------------------------------------------------------------- #
 
     # IDs the trajectory partial MUST declare.  These are
@@ -90,7 +76,7 @@ class TestPartialIntegrity:
         # MolView mount target (task #34): an EMPTY host div that
         # molview.mount fills with the whole fused card (viewer +
         # selection/Cell panel + view toggles + frame bar).  The
-        # trajectory inspector no longer declares a #viewer div, a
+        # trajectory inspector declares no #viewer div, no
         # frame strip, playback knobs (#speed / #loop), a unit-cell
         # toggle (#show-cell), an atom-list Inspect panel, or a
         # per-frame Save-XYZ button — MolView owns all of that.  The
@@ -148,11 +134,10 @@ class TestPartialIntegrity:
     }
 
     # IDs the partial MUST NOT declare — they belong to the embed.
-    # Chrome IDs (rep / radius / colorscheme / bg) moved to the
-    # standard knob bar in #205; frame-strip IDs (prev / play /
-    # pause / next / frame-slider / frame-idx / frame-tot) moved
-    # to the embed's auto-mounted frame strip in #246 A1.  A
-    # re-introduction here means a consumer hand-rolled chrome
+    # Chrome IDs (rep / radius / colorscheme / bg) are the standard
+    # knob bar's; frame-strip IDs (prev / play / pause / next /
+    # frame-slider / frame-idx / frame-tot) are the embed's
+    # auto-mounted frame strip's.  A re-introduction here means a consumer hand-rolled chrome
     # or duplicated frame-strip UI that should go through the
     # embed APIs (setStyle / setBackground / setAnimation +
     # frame-strip auto-mount per § 6.3).
@@ -184,7 +169,7 @@ class TestPartialIntegrity:
         )
 
     def test_partial_does_not_redeclare_embed_chrome_ids(self, partial_ids):
-        """Post-#205 the embed's standard knob bar owns the style /
+        """The embed's standard knob bar owns the style /
         background controls.  Re-introducing ``rep`` / ``radius`` /
         ``colorscheme`` / ``bg`` in the trajectory partial would
         be a double-UI bug: the partial's input would fight (or
@@ -203,8 +188,8 @@ class TestPartialIntegrity:
     def test_partial_has_no_page_specific_markup(self, partial_path):
         """Page-specific bits (the path-input loader bar, the workflow
         guide, the per-page <head> / <body>) must NOT live in the
-        partial.  The partial is reused by /results in step 4 and
-        carrying /watch-specific markup would break that.
+        partial.  The partial is mounted by /results, and
+        page-specific markup would break that.
 
         Comments inside the partial may legitimately mention these
         names (the partial's docstring explains what's intentionally
@@ -234,17 +219,14 @@ class TestPartialIntegrity:
 
 
 # --------------------------------------------------------------------- #
-#  watch.html include                                                   #
+#  The rendered partial                                                 #
 # --------------------------------------------------------------------- #
 
 
 class TestRenderedPartial:
     """Render the partial via the canonical endpoint
     ``GET /partials/trajectory-inspector`` and verify the rendered
-    HTML carries every id the partial declares + no duplicates.
-    Replaces the legacy ``TestWatchHtmlUsesPartial`` +
-    ``TestRenderedWatchPage`` suites that rendered ``/watch``
-    directly; /watch was removed 2026-05-19."""
+    HTML carries every id the partial declares + no duplicates."""
 
     def test_partial_endpoint_renders(self, web):
         r = web.get("/partials/trajectory-inspector")
@@ -280,18 +262,15 @@ class TestRenderedPartial:
 
 
 # --------------------------------------------------------------------- #
-#  Stage 1B: viewer.js DOM queries are scoped to a rootEl argument      #
+#  core.js DOM queries are scoped to a rootEl argument                  #
 # --------------------------------------------------------------------- #
 
 
 class TestViewerJsRootScoping:
-    """Post-lift (task #76 / docs/web/results.md): the
-    inspector body lives in ``static/lib/trajectory/core.js`` (the
-    shared core that both /watch and /results call into).  Every
-    DOM lookup inside the inspector body must be either (a) scoped
-    to ``rootEl`` (the partial-resident ids -- 38 of them) or
-    (b) document-wide via ``$doc()`` (the page-level loader-bar
-    ids -- 4 of them, visible only on /watch).
+    """The inspector body lives in ``static/lib/trajectory/core.js``
+    (docs/web/results.md).  Every DOM lookup inside the inspector body
+    is scoped to ``rootEl`` (the partial-resident ids); the one
+    page-level lookup is ``setStatus``'s ``document.getElementById``.
 
     Pinning these invariants in the SHARED module catches a
     regression the moment someone accidentally bypasses the
@@ -301,10 +280,6 @@ class TestViewerJsRootScoping:
 
     @pytest.fixture(scope="class")
     def viewer_js_path(self):
-        # Post-stage-1.2: the inspector body lives in the shared
-        # core, NOT in watch/viewer.js (which is now just a 48-line
-        # /watch-page bootstrap).  The watch/viewer.js shape is
-        # pinned separately in test_web.py::test_watch_viewer_js_is_only_the_bootstrap.
         p = (Path(__file__).resolve().parent.parent
              / "molbuilder" / "web" / "static" / "lib" / "trajectory" / "core.js")
         assert p.is_file(), f"missing {p}"
@@ -328,32 +303,22 @@ class TestViewerJsRootScoping:
         )
 
     def test_core_module_does_NOT_auto_bootstrap(self, viewer_js):
-        """POSITIVE PIN of the post-stage-1.2 design: the SHARED
-        core module must NOT call ``mountInspector(document)`` (or
-        register a DOMContentLoaded handler that does so) on its
-        own.
+        """The SHARED core module must NOT call
+        ``mountInspector(document)`` (or register a DOMContentLoaded
+        handler that does so) on its own.
 
-        Why this is a feature, not a missing one: ``core.js`` is
-        loaded by /watch AND /results.  If it self-mounted on page
-        load, /results would try to mount the inspector against
-        the ``document`` -- finding loader-bar ids (path-input,
-        load-btn) that don't exist on /results, and racing the
-        registry-side mount that's about to inject the partial
-        into ``#inspector-host``.  The mount trigger belongs in
-        the per-consumer bootstrap:
-
-          * /watch:    static/watch/viewer.js (the 48-line
-                       bootstrap file; tested in test_web.py)
-          * /results:  static/lib/inspectors/trajectory.js (the
-                       registry adapter; mounts on file-pick, not
-                       on page load)
+        If it self-mounted on page load, /results would try to mount
+        the inspector against the ``document``, racing the
+        registry-side mount that's about to inject the partial into
+        ``#inspector-host``.  The mount trigger belongs in the
+        consumer's bootstrap, static/lib/inspectors/trajectory.js
+        (the registry adapter; mounts on file-pick, not on page
+        load).
 
         A regression that re-introduces an auto-bootstrap here
         would silently break /results.  Pinning the negative
         keeps the boundary visible."""
-        # The previous design had `mountInspector(document)` and
-        # a DOMContentLoaded handler around it.  Both must be absent
-        # from core.js after the lift.
+        # Both must be absent from core.js.
         for forbidden in (
             r'\bmountInspector\s*\(\s*document\s*\)',
             r'addEventListener\s*\(\s*["\']DOMContentLoaded',
@@ -383,13 +348,11 @@ class TestViewerJsRootScoping:
     def test_no_direct_getElementById_inside_inspector(self, viewer_js):
         """Any ``document.getElementById`` call inside the inspector
         body bypasses the scoping helpers.  The ONLY allowed
-        ``document.getElementById`` is inside the ``$doc`` helper
-        itself."""
+        ``document.getElementById`` is ``setStatus``'s page-level
+        lookup."""
         # Find every document.getElementById call site.
         sites = re.findall(r'document\.getElementById\([^)]*\)', viewer_js)
-        # Allow exactly one occurrence: the $doc helper's body.
-        # Stage 1C may also add one inside _trajectory_core's
-        # default $doc.  Either way, more than 1 means a leak.
+        # Allow exactly one occurrence; more than 1 means a leak.
         assert len(sites) == 1, (
             f"viewer.js has {len(sites)} document.getElementById "
             f"call(s); expected exactly one (the $doc helper "
@@ -410,53 +373,9 @@ class TestViewerJsRootScoping:
             f"be added to the partial."
         )
 
-    # Phase 5i retired the ``$doc`` helper.  At the time it existed
-    # to keep page-level loader-bar ids (path-input / load-btn /
-    # status / file-picker) addressable from inside the inspector
-    # mount via document-scoped lookups, while the inspector's own
-    # ids went through the rootEl-scoped ``$``.  After the /watch
-    # retirement and the structure-inspector cleanup, the only
-    # page-level lookup left was the ``status`` banner, and that
-    # single call is now inlined as ``document.getElementById`` in
-    # ``setStatus`` (see ``lib/trajectory/core.js``).  The three
-    # tests this block used to host (``$doc`` helper exists,
-    # page-level ids use ``$doc``, no-unguarded-deref) all enforced
-    # an invariant the code no longer needs.  Removed in the same
-    # commit that lands the transport + Makov-Payne items, where
-    # the test sweep first surfaced the stale assertion.
     pass
 
 
-# --------------------------------------------------------------------- #
-#  Public contract of lib/trajectory/core.js's mount() function.        #
-#  Changes here require updating BOTH consumers (watch/viewer.js for    #
-#  /watch and lib/inspectors/trajectory.js for /results).               #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
-#  RETIRED 2026-09-03 — TestTrajectoryCoreMountContract (9 tests)       #
-#                                                                       #
-#  Its own docstring said "These are static / string-pin checks; the    #
-#  runtime behaviour is exercised by Playwright E2E tests in            #
-#  tests/test_inspector_registry_e2e".  Per testing.md § 3a.1 that      #
-#  admission is the verdict: the author knew what would verify the      #
-#  contract and wrote something else.                                   #
-#                                                                       #
-#  Checked before deleting, because a cited replacement is a claim:     #
-#    * handle shape, dispose clearing the host, listener add/remove     #
-#      balance   -> already covered there, so those pins were pure      #
-#      duplicates;                                                      #
-#    * TIMER teardown -> NOT covered.  The listener spy watches         #
-#      EventTarget, which a setInterval never touches, so the one       #
-#      resource that leaks silently was the one nothing watched.        #
-#      test_no_trajectory_poll_survives_dispose now drives it: mount an #
-#      ongoing run, confirm the poll is live, dispose, assert cleared.  #
-#      Mutation-verified against stopPolling().                         #
-#                                                                       #
-#  Two pins had no behaviour to move at all: one asserted the IIFE's    #
-#  exact formatting, one asserted a deleted feature was still deleted.  #
-# --------------------------------------------------------------------- #
 # --------------------------------------------------------------------- #
 #  Inspector placeholder XSS safety                                     #
 # --------------------------------------------------------------------- #
@@ -465,9 +384,8 @@ class TestViewerJsRootScoping:
 class TestRegistryInspectorsNoStringConcatInInnerHTML:
     """The registry-side inspector modules MUST NOT build
     ``innerHTML`` via string concat or template-literal
-    interpolation of the file path.  Why this remains a guard
-    even after the trajectory inspector stopped being a
-    placeholder: it now does ``host.innerHTML = partialHtml``
+    interpolation of the file path.  The trajectory inspector
+    does ``host.innerHTML = partialHtml``
     where ``partialHtml`` is the trusted response of
     ``GET /partials/trajectory-inspector`` (a same-origin Jinja
     render).  That single trusted assignment is fine; what we
@@ -475,8 +393,7 @@ class TestRegistryInspectorsNoStringConcatInInnerHTML:
     which would re-introduce DOM XSS if a bad file path slipped
     past upstream validation.
 
-    Spectra is still the placeholder shape and is also covered
-    here.  Both inspectors get the same invariant pinned.
+    Both inspectors get the same invariant pinned.
     """
 
     @pytest.fixture(scope="class")

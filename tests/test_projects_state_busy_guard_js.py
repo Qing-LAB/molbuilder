@@ -4,8 +4,7 @@
 Per docs/web/projects.md, programmatic state
 mutators (setShared, future navigateTo) MUST early-return
 ``{ok:false, error:"page is busy"}`` while the page busy fence
-(``lib/page-busy.js``, ui-contract.md § 10 -- page-wide since
-2026-08-28, replacing the sidebar-scoped lock) is claimed.  The
+(``lib/page-busy.js``, ui-contract.md § 10 -- page-wide) is claimed.  The
 full-window cover blocks user clicks but
 tab-level navigators (the /results file-picker dropdown at
 ``lib/results/file-picker.js``) could otherwise sneak a directory
@@ -201,7 +200,7 @@ def test_each_tab_keeps_its_own_place_and_a_fresh_tab_inherits():
     """The user's 2026-08-19 ask, executed: Results keeps its run folder
     while Modify keeps structure/, switching back returns each to its own
     place — and a tab never visited starts at the most recent place
-    anywhere (the old shared behaviour, demoted to fallback)."""
+    anywhere."""
     out = _run_node(
         """
         global.location = { pathname: "/results" };

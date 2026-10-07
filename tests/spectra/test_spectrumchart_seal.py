@@ -3,10 +3,10 @@
 
 Two kinds of check, and the split is deliberate:
 
-  * what can be read off the files — the library is named in one place, the
-    stylesheet keeps to its own names and holds no loose values (§ 4, § 11).
+  * what can be read off the files — the module imports nothing from outside
+    it, the stylesheet keeps to its own names and holds no loose values (§ 4, § 11).
     These are static facts, so they are checked statically rather than mimed;
-  * what the seal DOES with a drawing library — the five doors, the palette, the
+  * what the seal DOES with a drawing library — the six doors, the palette, the
     click that comes up as a position (§ 8.4). Run in node against a stand-in
     that takes Plotly's place, per § 12's middle level: the stand-in replaces the
     LIBRARY, never a file of this module.
@@ -148,7 +148,7 @@ def seal(snippet: str):
     return run_node([], program, globals_js=BROWSER)
 
 
-# --- § 4  the library is named once, and nothing above the seal names it -----
+# --- § 4  the module is self-contained ---------------------------------------
 
 
 
@@ -189,17 +189,9 @@ def test_values_are_declared_once_and_read_by_name():
                 pytest.fail(f"loose length: {line}")
 
 
-# `test_the_frame_states_a_height_and_the_surface_carries_no_padding` stood
-# here and matched four regexes against `_style.css`.  A stylesheet is not a
-# file, it is a CASCADE: a page sheet, a reset, or a later rule in this very
-# file can put the padding back, and the regex goes on finding the
-# declaration it was told to look for.  Measured 2026-09-07 -- appending
-# `.spectrumchart .spectrumchart-surface { padding: 6px; }` to the bottom of
-# this same stylesheet left every one of those four green.
-#
-# All three § 11 box traps are read off the painted chart now, in
-# test_spectrumchart_box_e2e.py, each mutation-checked: `height: auto`,
-# `overflow: visible`, and padding moved from the frame to the surface.
+# The three § 11 box traps are read off the painted chart, in
+# test_spectrumchart_box_e2e.py: a stylesheet is a CASCADE, so a regex on
+# this file cannot see them.
 
 
 # --- § 8.4  commands down, one number up ------------------------------------

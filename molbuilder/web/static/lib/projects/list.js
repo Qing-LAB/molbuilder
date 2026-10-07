@@ -85,8 +85,8 @@ function _isProjectDirAtDepth0(entry, currentPath) {
  * item: "Delete directory") for these entries -- the regular
  * file-oriented actions don't apply, and the regular Delete is
  * gated out by _isDeletableEntry's depth-1 carve-out.  Keep in
- * sync with the backend's _UNDELETABLE_AT_DEPTH_1 set + the
- * server's depth-2 canonical-topic refusal in
+ * sync with the backend's CANONICAL_TOPICS (molbuilder/projects.py)
+ * + the server's canonical-topic refusal in
  * web/blueprints/files.py.
  */
 function _isCanonicalTopicDirAtDepth1(entry, currentPath) {
@@ -147,11 +147,10 @@ function _renderBreadcrumb(currentPath) {
   const projectsRoot = getProjectsRoot();
   elCrumb.innerHTML = "";
   if (!projectsRoot) return;
-  // 2026-06-12 (breadcrumb pill upgrade):
+  // The breadcrumb pills:
   //   * root chip gets a small home glyph so it reads as the tree's
   //     anchor instead of an arbitrary path segment
-  //   * separator changes from "/" (looks like a literal path) to
-  //     "›" (reads as navigation, not a path delimiter)
+  //   * separator is "›" (reads as navigation, not a path delimiter)
   //   * current segment is styled by CSS (.is-current) with an
   //     accent fill so the user can find it at a glance — see the
   //     pill-block in projects-sidebar.css.
@@ -212,7 +211,7 @@ function _renderBreadcrumb(currentPath) {
  * ``setShared`` / ``navigateTo`` call automatically syncs the
  * sidebar -- no inline DOM-mutation calls from click handlers.
  *
- * Scope (M2 / #166, 2026-05-31):
+ * Scope:
  *   * Mark the matching entry as ``.is-selected`` (or clear when
  *     ``file`` is blank).
  *   * Render the "Selected: <basename>" status line.
@@ -234,7 +233,7 @@ function renderSidebar(payload) {
   const file = payload && payload.file ? payload.file : "";
   // Mark the entry in the list, if it exists.  The list may not
   // contain the file (if the file is in a different dir than the
-  // currently-listed one); _markSelectedByPath silently clears
+  // currently-listed one); _markSelected(null) silently clears
   // any prior selection in that case.
   if (file) {
     const li = elList.querySelector(
@@ -265,10 +264,9 @@ function _renderSelectionStatus(filename, fullPath) {
   }
 }
 
-// ─── Per-entry kebab menu (2026-06-12) ─────────────────────────────── //
+// ─── Per-entry kebab menu ──────────────────────────────────────────── //
 //
-// Replaces the prior pair of inline ``view`` + ``×`` buttons with a
-// single ⋯ trigger that drops a small per-entry context menu.  The
+// A single ⋯ trigger drops a small per-entry context menu.  The
 // menu is built lazily on first click to keep the entry-list render
 // cheap; menus auto-dismiss on outside click + ESC + scroll.  Only
 // one menu is open at a time (the global ``_kebabActive`` reference
@@ -475,7 +473,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
     });
   }
   // Download: file-only.  Triggers a browser-level file save via
-  // ``<a download>`` pointing at the new ``/api/files/download``
+  // ``<a download>`` pointing at the ``/api/files/download``
   // endpoint.  Works for any file kind (text, binary, multi-MB).
   // No size cap — the server streams the file via send_file.
   if (entry.kind === "file") {
@@ -560,7 +558,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
       }
     });
   }
-  // Delete: eligibility-gated as before.
+  // Delete: eligibility-gated.
   if (_isDeletableEntry(entry, currentPath)) {
     _addItem("Delete", async () => {
       const ok = await confirmDestructive({
@@ -649,22 +647,11 @@ function _renderList(entries, currentPath) {
       li.appendChild(meta);
     }
 
-    // 2026-06-12: per-entry kebab menu.  Replaces the prior pair of
-    // inline "view" + "×" buttons with a single ⋯ trigger that
-    // drops a context menu (View / Rename / Move / Copy / Delete).
-    // Each item runs the same eligibility checks the inline buttons
-    // had; ineligible items are omitted from the menu rather than
-    // shown disabled (avoids confusing the user with greyed-out
-    // options that wouldn't work).
-    //
-    // 2026-06-24 fix: skip the kebab entirely when zero actions
-    // would apply.  Previously the kebab still rendered even when
-    // every action was gated out -- clicking it opened an empty
-    // "tiny box with nothing in it".  This hits canonical-topic
-    // directories (structure / optimization / spectrum / transport
-    // dirs inside a project) and projects/ root entries -- both
-    // routed false through _isDeletableEntry AND aren't files, so
-    // every _addItem branch in _openKebab skipped.
+    // Per-entry kebab menu: ineligible items are omitted from the
+    // menu rather than shown disabled (avoids confusing the user with
+    // greyed-out options that wouldn't work), and the kebab is skipped
+    // entirely when zero actions would apply, so it never opens an
+    // empty box.
     if (_kebabHasActions(e, currentPath)) {
       const kebab = _buildEntryKebab(e, fullPath, currentPath);
       li.appendChild(kebab);
@@ -677,8 +664,7 @@ function _renderList(entries, currentPath) {
         // setShared fires the renderSidebar onChange subscriber
         // synchronously, which marks the entry + renders the
         // selection-status line.  No inline DOM mutation here.
-        // Per the sidebar interaction model (memory/
-        // project_sidebar_interaction_model.md): single-click is
+        // Single-click is
         // PREVIEW only — sets the global pick.  Commit happens
         // on dblclick (handler below) which fires
         // ``publishCommit`` for tabs that subscribe via
@@ -725,8 +711,7 @@ function _renderList(entries, currentPath) {
  * ``projects.navigateTo`` public API (in state.js) returns it
  * verbatim per the design contract.
  *
- * Public so forms.js can call it after a successful mkdir / create-
- * project / etc., and so state.js can call it via the refreshHandler
+ * Public so state.js can call it via the refreshHandler
  * registration below.
  */
 export async function openDir(absPath) {
@@ -735,9 +720,9 @@ export async function openDir(absPath) {
   // -> openDir() after every successful write -- which means every
   // "Generate script + Save", every "Modify + Save", and every project-
   // tree mutation re-runs this function with absPath = parent_dir.
-  // The pre-2026-05-18 behaviour was to always ``setShared(resp.path, "")``
-  // at the bottom -- which wiped the user's selection out of sessionStorage
-  // on every save, silently breaking every load-from-selection downstream.
+  // Always blanking the selection here would wipe it out of
+  // sessionStorage on every save, silently breaking every
+  // load-from-selection downstream.
   //
   // Preservation rule: if the previously-selected file STILL appears in
   // the new listing (same parent dir, file still exists), keep it
@@ -768,8 +753,7 @@ export async function openDir(absPath) {
     elList.appendChild(li);
     // Listing failed -- we don't know the new state of resp.path's
     // children, so we can't decide whether to keep prevFile.  Blank
-    // it (same as the pre-fix behaviour for the error path).
-    // 2026-05-31 #166: renderSidebar subscriber wired in initList()
+    // it.  The renderSidebar subscriber wired in initList()
     // picks up setShared synchronously and clears the selection
     // status; no inline call needed here.
     setShared(absPath, "");
@@ -799,7 +783,7 @@ export async function openDir(absPath) {
     // else: prevFile is inside a different directory -- the user
     // navigated away.  Drop it.
   }
-  // 2026-05-31 #166: the renderSidebar onChange subscriber
+  // The renderSidebar onChange subscriber
   // (registered in initList) handles entry marking + status line
   // in response to this setShared.  The subscriber's DOM lookup
   // for the kept-file's <li> runs AFTER _renderList has populated
@@ -811,16 +795,14 @@ export async function openDir(absPath) {
 /**
  * Re-mark the current file selection + show its status, called after
  * the initial directory listing so THIS tab's own selection survives a
- * page navigation (projects.md § 2: both slots are per-tab; until
- * 2026-08-20 the file half read the shared most-recent key, so a
- * returning tab restored its own folder but another tab's file).
+ * page navigation (projects.md § 2: both slots are per-tab).
  */
 export function restoreSelection() {
   const projectsRoot = getProjectsRoot();
   const file = readSelectionSlot(SS_FILE);
   const dir  = readSelectionSlot(SS_DIR);
   if (!file || !projectsRoot || !file.startsWith(projectsRoot)) return;
-  // 2026-05-31 #166: render via the shared subscriber so the
+  // Render via the shared subscriber so the
   // entry-marker + status-line code lives in exactly one place.
   // The initial onChange fire ran before the list was populated;
   // this re-fires renderSidebar now that the list has rows.
@@ -831,10 +813,6 @@ function _cssEscape(s) {
   if (typeof CSS !== "undefined" && CSS.escape) return CSS.escape(s);
   return s.replace(/["\\]/g, "\\$&");
 }
-
-// The sidebar lock visual (banner + is-locked fade, 2026-05-27) is
-// GONE -- the page-wide busy fence (lib/page-busy.js, ui-contract.md
-// § 10) covers the whole window instead, sidebar included.
 
 // Filter state (B.5.5).  Free-text filter that hides non-matching
 // FILES from the rendered entry list — folders always stay visible
@@ -933,9 +911,8 @@ export function initList() {
 
   // AND WHEN THE FOLDER'S FILES CHANGE UNDERNEATH US.  A checkpoint
   // restore rewrites what is in the directory while the SELECTION sits
-  // still, so `onChange` never fires and the list kept showing files the
-  // folder no longer had -- and hiding ones it now did (reported
-  // 2026-08-24, the same restore that stranded the Task-setup tab).
+  // still, so `onChange` never fires and the list would keep showing
+  // files the folder no longer has (reported 2026-08-24).
   // `refresh()` re-lists through the handler this module registered, so
   // there is no second re-paint path to keep in step.
   if (typeof _projectsApi.onFolderChanged === "function") {

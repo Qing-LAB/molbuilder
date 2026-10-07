@@ -73,13 +73,9 @@ def _get_oauth(app):
 def _read_secret(entry: Mapping) -> str:
     """The provider's client secret, from the one door that owns it.
 
-    This branched on `client_secret_file` vs `client_secret`, expanded ``~``,
-    opened the file, stripped it and judged an empty one -- five decisions
-    about what a secret IS, inside a module about OAuth, and it had to know
-    which shape the operator had chosen.  (Both keys are refused now; the
-    secret's home is its kind's, 2026-10-02.)  `runtime_config` owns the provider
-    entry's schema and now answers the only question this module actually
-    has: *what is the secret for this provider*.  Nothing here learns whether
+    `runtime_config` owns the provider entry's schema and answers the only
+    question this module actually has: *what is the secret for this
+    provider*.  Nothing here learns whether
     a file was involved (`configuration.md` § 2.3).
     """
     from ...runtime_config import provider_client_secret
@@ -94,19 +90,13 @@ def _ensure_client(app, entry: Mapping):
     ``mb_`` prefix so that operator-chosen ids (``"register"``,
     ``"cache"``, ...) can never shadow Authlib's own attributes.
 
-    A rotated secret is taken up without a restart (added 2026-05-18, task
-    #100): on every call AFTER the first registration the secret is read
+    A rotated secret is taken up without a restart: on every call AFTER the first registration the secret is read
     again, through the one door, and when it differs it is assigned to
     ``client.client_secret`` in place so the next token exchange uses it --
     the operator can rotate the ``GOCSPX-`` secret WITHOUT bouncing
     molbuilder.  If the read fails (file deleted, empty, permission denied),
     this logs and keeps the previously-loaded secret so an unrelated edit
     doesn't break sign-in mid-session.
-
-    *(It compared the file's mtime until 2026-10-02, which meant computing
-    the secret's path here -- a second resolver beside the door, reading
-    ``client_secret_file`` itself.  A sign-in is rare enough that reading a
-    one-line file is the cheaper rule.)*
     """
     import logging
 

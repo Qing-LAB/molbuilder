@@ -1,9 +1,8 @@
-"""The new slab builder — one slab, placed absolutely (redesign plan § 3).
+"""The slab builder — one slab, placed absolutely (redesign plan § 3).
 
-The deleted `add_electrode_slab` placed a slab RELATIVE to a selection and, on
-`side="-z"`, mirrors it unconditionally — which reverses the layer order and
-breaks the seam (`junction-cell.md` § 3.2).  This one is told everything:
-which registry the layer at `start_z` sits on, what z that is, which way the
+A slab placed RELATIVE to a selection and mirrored on `-z` reverses the layer
+order and breaks the seam (`junction-cell.md` § 3.2).  This one is told
+everything: which registry the layer at `start_z` sits on, what z that is, which way the
 rest grow, and whether growing down continues the crystal or mirrors it.
 
 **Build tall, trim, then move as one piece** (user, 2026-08-30).  Superset
@@ -12,7 +11,7 @@ so the registry is *which slice you take* and nothing moves sideways at all.
 The result is a contiguous slice of a real crystal by construction, and every
 later operation is rigid — a rigid motion of a crystal is a crystal.
 
-**Why not a lateral shift**, which two earlier attempts used: there is no such
+**Why not a lateral shift**: there is no such
 thing as "the" step from one layer to the next.  Measured on ASE's own
 untouched Au(111) slab, consecutive layer centroids walk by three DIFFERENT
 vectors repeating with period 3, because each layer is wrapped into the cell.
@@ -268,12 +267,9 @@ class TestPlacementIsAbsolute:
         """§ 3: the panel reads no selection at all.  A base atom parked far
         from the origin must not drag the slab with it.
 
-        **What this no longer asserts, and why.**  It used to require the
-        SLICE's own lateral centroid to land exactly on `(dx, dy)`.  That
-        pinned the reference that made `start_registry` wrong: a slice's
-        centroid depends on which layers the trim kept, so at any layer count
-        that is not a whole stacking period the correction differed per
-        registry and moved the slab off-lattice (see
+        The SLICE's own lateral centroid is not the reference: it depends on
+        which layers the trim kept, so at any layer count that is not a whole
+        stacking period it differs per registry (see
         `TestTheRegistryIsNotContaminatedByTheTrim`).  The property this test
         exists for is that placement is ABSOLUTE and RIGID -- which reference
         point realises it is the builder's business, not the contract's.
@@ -289,24 +285,15 @@ class TestPlacementIsAbsolute:
 
 
 class TestTheSequenceWalk:
-    """`sequence` replaced `stacking` (user, 2026-09-07).
-
-    The old control said what the registry did *when growing downward*, so its
-    meaning depended on `grow`: growing up it did nothing and the panel hid the
-    row.  `sequence` says which way the registry cycle is walked, read along
-    the growth direction, which means the same thing in both directions and
-    makes the fourth combination -- a backward walk growing `+z` -- reachable
-    for the first time.
+    """`sequence` (user, 2026-09-07) says which way the registry cycle is
+    walked, read along the growth direction, which means the same thing in
+    both directions and makes a backward walk growing `+z` reachable.
     """
 
     def test_the_walk_reads_the_same_outward_whichever_way_it_grows(self):
-        """THE PROPERTY THE REDESIGN BUYS, and the one the old control could
-        not have: read outward from the starting surface, a given `sequence`
-        lays down the same registries whether the slab grows up or down.
-
-        Under `stacking` this was false by construction -- `"continue"` and
-        `"mirror"` named downward behaviour and had no upward meaning -- which
-        is why the panel had to hide the row half the time.
+        """THE PROPERTY THE REDESIGN BUYS: read outward from the starting
+        surface, a given `sequence` lays down the same registries whether the
+        slab grows up or down.
         """
         for sequence in ("ABC", "ACB"):
             up = _offsets(_metal(_slab(start_z=0.0, grow="+z",
@@ -321,12 +308,8 @@ class TestTheSequenceWalk:
                 f"growing up and growing down")
 
     def test_the_two_walks_differ_growing_up(self):
-        """The combination that did not exist before: on a 3-period surface a
-        backward walk growing `+z` is a different slab from a forward one.
-
-        Under `stacking` both `"continue"` and `"mirror"` gave the forward
-        walk here, so this slab could not be built at all.
-        """
+        """On a 3-period surface a backward walk growing `+z` is a different
+        slab from a forward one."""
         kw = dict(start_z=0.0, grow="+z", start_registry=0)
         fwd = _offsets(_metal(_slab(sequence="ABC", **kw)))
         bwd = _offsets(_metal(_slab(sequence="ACB", **kw)))
@@ -365,12 +348,6 @@ class TestTheBoxItCaptures:
     vectors -- and leaves `c` as the atoms' extent.  That is a `collision`
     until a person sets it on the Cell page, and it is meant to be: the
     missing step is visible where it is taken.
-
-    **This pinned the opposite until 2026-08-31**: `c == span + d`, one
-    interlayer spacing added by the builder.  The switch that was supposed to
-    expose that decision made it instead -- default on, with a note that
-    deliberately withheld the number -- so the value deciding whether a
-    junction was a crystal was computed out of sight.
     """
 
     @pytest.mark.parametrize("n_layers", (1, 2, 3))
@@ -518,19 +495,14 @@ class TestTheRegistryIsNotContaminatedByTheTrim:
         distance to the molecule is wrong -- the 1.249 Å defect this class
         exists for, on the two faces whose stacking period is 2.
 
-        THE EXPECTED STEP IS MEASURED FROM ASE, NOT DERIVED HERE (2026-09-09).
-        It briefly asserted `a/2` and `a√6/4`, which are correct for these two
-        faces -- but they are ASE's crystallography, and this layer does not
-        compute a distance: `_build_ase_slab` is `builder(element, size=, a=)`
+        THE EXPECTED STEP IS MEASURED FROM ASE, NOT DERIVED HERE.  `a/2` and
+        `a√6/4` are correct for these two faces -- but they are ASE's
+        crystallography, and this layer does not compute a distance: `_build_ase_slab` is `builder(element, size=, a=)`
         and the rest of `add_slab` keeps a WINDOW of what comes back. A test
         that retypes the crystal's own numbers asserts ASE's arithmetic back at
         itself and goes red when ASE is right and we are wrong about it. So the
         superset is built here and its own consecutive-layer step is the
         expectation.
-
-        (It asserted `moved > 0.1` before that, with the message "the registry
-        did nothing" -- which separated *moved* from *did not move* and nothing
-        else. Recorded at `science/test-design-findings.md` § 2.)
 
         Contract: `science/junction-cell.md` § 3.1.
         """

@@ -4,11 +4,6 @@ The wrapper tees every SCF row of either phase -- SIESTA's ``scf:`` and
 TranSIESTA's ``ts-scf:`` -- into this file with an epoch stamp in front
 (`running-a-job.md` § 4.1), so consecutive deltas of one phase ARE its
 per-iteration durations.  Nothing else in the run states that number.
-
-*(This logic lived in `bench/result.py::parse_scf_timing` until
-2026-09-04, where it opened the file and read bytes directly.  It moves
-here for `parse.md` § 5c's reason: being the wrapper's output rather
-than the engine's is not a reason to read it a different way.)*
 """
 from __future__ import annotations
 

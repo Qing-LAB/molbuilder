@@ -4,20 +4,16 @@ Pinned by docs/web/spectra.md  Three dataclasses:
 
   * :class:`ModeElectronicStructure` -- the per-mode displaced-SCF
     block: equilibrium / ±A·Q_i MO energies + SCF energies.  Populated
-    only when the user selected a mode for electronic-structure analysis
-    (see spec § 8 / Model 2 selectors).
+    only when the user selected a mode for electronic-structure analysis.
   * :class:`ModeData` -- one vibrational mode: frequency, eigenvector
-    (free atoms only), Raman activity, optional IR intensity (1c
-    reserved), and the optional :class:`ModeElectronicStructure`.
+    (free atoms only), Raman activity, optional IR intensity, and the optional :class:`ModeElectronicStructure`.
   * :class:`SpectraResults` -- the complete result of a Spectra run:
     metadata, equilibrium reference, list of modes, methods text,
-    bibliography keys, and the ``complete`` flag (False during a
-    live-watched in-progress run, True after the final phase).
+    bibliography keys, and the per-phase status flags.
 
 These are the **engine-agnostic** result shape -- the parser
 populates them from a ``.spectra.json`` regardless of which engine
-produced it.  Adding a future engine (SIESTA, ...) does not change
-this surface.
+produced it.
 
 All three carry ``to_dict()`` / ``from_dict()`` for JSON round-trip
 because the on-disk format (``<job>.spectra.json``), the
@@ -41,9 +37,8 @@ X cm⁻¹?".  None of those are bool-valued.  A future
 caller needs it) will return structured deltas instead.  Until
 then, accidental ``==`` raises with a pointer at the right API.
 
-Schema version: pinned at 1 on :data:`SpectraResults.schema_version`.
-Bumping the version requires the parser to grow a per-version
-branch; see spec § 6.
+Schema version: :data:`SCHEMA_VERSION`; the reader accepts
+:data:`READABLE_SCHEMA_VERSIONS`.
 """
 
 from __future__ import annotations
@@ -56,41 +51,15 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 
-# SCHEMA_VERSION history (incremented when the on-disk JSON shape changes):
+# SCHEMA_VERSION (incremented when the on-disk JSON shape changes):
 #
-#   v1  -- initial release.  Single mode-eigenvector field
-#          ``eigenvector_free`` (used ambiguously for both 3D animation
-#          and Raman-projection in different code paths -- correctness
-#          bug, see decisions-log entry 2026-05-15).
-#   v2  -- two explicit eigenvector forms per mode:
-#            * eigenvector_canonical  -- Cartesian normal mode in the
-#                canonical mass-weighted convention sum_k m_k|L_k|^2 = 1
-#                (use for Placzek Raman, IR, electron-phonon...).
-#            * eigenvector_display    -- max(|L_k|) = 1 per mode
-#                (use for 3D animation, fixed-amplitude ES probe).
-#          Old ``eigenvector_free`` field is dropped from the wire
-#          format; ``from_dict`` continues to accept v1 documents as a
-#          best-effort fallback (both new arrays populated from the
-#          single legacy field, since the canonical normalisation is
-#          not recoverable from v1).
-#  v3 (2026-05-21): rename ``fixed_atom_idxs`` -> ``frozen_atom_idxs``
-#          (terminology unification, design.md 2026-05-21).  No
-#          backward compatibility: v1/v2 documents fail to load
-#          with a clear schema-version error rather than silently
-#          coercing.  Re-run / re-export the spectra.json to land
-#          on v3.
-#  v4 (2026-05-22): add ``runtime_info`` dict carrying CPU/thread
-#          and GPU facts the running script collected.  Lets the
-#          /results page show "20 threads, BLAS=1, GPU ON (RTX 4090,
-#          CC 8.9)" so a user can verify the run matched their
-#          configuration intent.  No backward compatibility: v3
-#          documents fail with a clear schema-version error.
-#  v5 (2026-08-20, spectra-migration plan D4): + the OPTIONAL
-#          `phase_relaxation` + `relaxation` progress block (the in-deck
-#          relaxation is a TRACKED step) and the OPTIONAL `thermo` block
-#          (RRHO re-homed from the retiring thermo.txt path; D2).
-#          ADDITIVE -- a v4 file lacks them and reads whole, which is why
-#          the reader accepts a SET (the molstruct sidecar's own rule).
+#  v4: ``runtime_info`` dict carrying CPU/thread and GPU facts the running
+#          script collected.  v3 documents fail with a clear
+#          schema-version error.
+#  v5: + the OPTIONAL `phase_relaxation` + `relaxation` progress block (the
+#          in-deck relaxation is a TRACKED step) and the OPTIONAL `thermo`
+#          block.  ADDITIVE -- a v4 file lacks them and reads whole, which is
+#          why the reader accepts a SET (the molstruct sidecar's own rule).
 SCHEMA_VERSION = 6   # 6: + the OPTIONAL `removed_motions` block -- how many
 #                    whole-body motions the harmonic analysis projected out
 #                    before diagonalising, and their Cartesian patterns over
@@ -102,7 +71,7 @@ READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6})
 # Phase status vocabulary -- per-layer flag carried on
 # :class:`SpectraResults` and emitted in the on-disk JSON.  Pinned
 # here as a module constant so the engine, the parser, and the UI
-# all read from one source.  Spec § 5 + § 6.1 describe transitions.
+# all read from one source.
 
 PHASE_EMPTY    = "empty"     # not yet computed
 PHASE_RUNNING  = "running"   # script is mid-way through this phase
@@ -169,9 +138,7 @@ def _no_equality(self, other):  # noqa: ARG001
 
 
 #: THE KEYS EACH BLOCK MAY CARRY -- the rows of `engines/vibration.md` § 6.2-6.4, and
-#: nothing else.  The reader refuses a key outside them BY NAME (design
-#: § 16.4): a misspelled `ir_intesity_km_mol` used to serve a chart titled
-#: "not computed" with every number present and thrown away, silently.
+#: nothing else.  The reader refuses a key outside them BY NAME.
 #: A key that starts being written is a row in § 9b first, then here.
 _ES_KEYS = frozenset({
     "amplitude_ang", "mo_energies_eq_eh", "mo_energies_minus_eh",
@@ -344,7 +311,7 @@ class ModeData:
     real number for plotting purposes.
 
     The optional :attr:`electronic_structure` is populated only for
-    modes the user selected via the Model 2 selector (spec § 8).
+    modes the user selected via the Model 2 selector.
     Unselected modes have ``electronic_structure = None`` -- the UI
     renders an empty cell + "—" in the mode-list ES columns.
 
@@ -569,21 +536,12 @@ def motion_share_by_element(elements: List[str],
 class SpectraResults:
     """Engine-agnostic result of a Spectra run.
 
-    ``complete`` is the live-watch flag (spec § 6, Option B
-    "phase-checkpoint with atomic file replace"):
-
-      * ``False`` while the run is mid-way -- some modes may have
-        ``electronic_structure = None`` not because the user
-        de-selected them but because their displaced SCFs haven't
-        run yet.  The ``selected_mode_idxs_1based`` field tells the
-        UI which modes WILL get ES data so it can show progress
-        ("3 of 10 modes done").
-      * ``True`` after the final phase -- ``methods_text`` and
-        ``bibliography_keys`` are populated; the Results panel shows
-        its "Methods text" block.  (It said "the Methods-preview
-        button" until 2026-09-11: that modal left with the Generate
-        lane at P3, and the paragraph had no surface at all in
-        between.)
+    Progress is carried by the per-phase ``phase_*`` flags.  While the
+    run is mid-way some modes may have ``electronic_structure = None``
+    not because the user de-selected them but because their displaced
+    SCFs haven't run yet.  The ``selected_mode_idxs_1based`` field tells
+    the UI which modes WILL get ES data so it can show progress
+    ("3 of 10 modes done").
 
     Run identity is captured by ``structure_hash`` (SHA-256 of the
     canonical XYZ of the input structure) so the parser can refuse
@@ -593,8 +551,8 @@ class SpectraResults:
     """
 
     # Provenance
-    schema_version:       int                    # = 1 for v1; bumps need a parser branch
-    engine:               str                    # "pyscf" today
+    schema_version:       int
+    engine:               str
     engine_version:       str
     molbuilder_version:   str
     timestamp:            str                    # ISO-8601 UTC
@@ -629,10 +587,9 @@ class SpectraResults:
     methods_text:              str
     bibliography_keys:         List[str]
 
-    # Per-layer status flags (spec § 5 + § 6.1).  Replaces the
-    # older single `complete: bool` because the four-layer linear-
-    # chain model needs per-phase granularity for the stepper UI
-    # and the live-watch state machine.
+    # Per-layer status flags: the four-layer linear-chain model needs
+    # per-phase granularity for the stepper UI and the live-watch state
+    # machine.
     #
     # Each one of PHASE_EMPTY / PHASE_RUNNING / PHASE_COMPLETE
     # (validated at __post_init__).  L1 (Setup) has no flag of its
@@ -683,7 +640,7 @@ class SpectraResults:
     #: n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning?}.  Written live so the
     #: chip can show "step 14, max force 0.0042" ticking down.
     relaxation:                Dict[str, Any] = field(default_factory=dict)
-    #: v5: RRHO thermochemistry (D2's re-homing) -- headline numbers at
+    #: v5: RRHO thermochemistry -- headline numbers at
     #: temperature_K (and pressure_atm for "rrho"; null for
     #: "vibrational-only", which no pressure enters), the T-grid arrays the
     #: viewer's curves draw, and `regime`: "rrho" for a free molecule,
@@ -713,9 +670,7 @@ class SpectraResults:
     hessian_density_fit:       Optional[bool] = None
 
     # Equilibrium geometry -- element symbols + Cartesian positions
-    # in Å.  Optional in the wire format (older results from
-    # SCHEMA_VERSION=1 won't have this) so reading an older JSON
-    # still works.  When present, the UI animates modes directly
+    # in Å.  Optional in the wire format.  When present, the UI animates modes directly
     # from the loaded results without needing the user to keep the
     # XYZ in the input form.
     equilibrium_elements:      Optional[List[str]]  = None
@@ -728,8 +683,7 @@ class SpectraResults:
 
     # Runtime facts captured by the emitted script when it ran.  The
     # canonical key list is molbuilder.runtime_info.RUNTIME_INFO_KEYS --
-    # NOT restated here.  It used to be, and the copy silently lost
-    # ``max_memory_mb``; a list repeated in prose is a list that drifts.
+    # NOT restated here: a list repeated in prose is a list that drifts.
     # Engines may also record keys beyond the canonical set (the PySCF
     # script adds scf_conv_tol, scf_solver_class, ...), so treat this as
     # an open dict whose canonical members are documented there.  Lets the
@@ -798,13 +752,11 @@ class SpectraResults:
                 f"SpectraResults: free_atom_idxs and frozen_atom_idxs overlap "
                 f"at indices {sorted(free_set & frozen_set)}"
             )
-        # True partition: the union must be EXACTLY range(n_atoms_total).  A
-        # count-only check passed an out-of-range index (e.g. free=[0,1,5],
-        # frozen=[], n=3) -- which would then silently drop that atom's
+        # True partition: the union must be EXACTLY range(n_atoms_total) --
+        # an out-of-range index would silently drop that atom's
         # displacement in the frontend scatter (`web/spectra.md` § 8).
         # Without materialising range(n_atoms_total): a file claiming 1e12
-        # atoms must be refused, not answered with a MemoryError (design
-        # § 16.4).  A set of n distinct indices all inside [0, n) IS
+        # atoms must be refused, not answered with a MemoryError.  A set of n distinct indices all inside [0, n) IS
         # range(n); the listing of what is missing stops after twenty.
         n = int(self.n_atoms_total)
         union = free_set | frozen_set
@@ -976,8 +928,7 @@ class SpectraResults:
             # a whole-run judgement -- "active" means "above a fraction
             # of the strongest band in this channel" -- so it cannot be
             # a property of a mode in isolation, and it must not be
-            # re-derived as an epsilon in the viewer (plan W21: one
-            # home, stored, never a magic epsilon downstream).
+            # re-derived as an epsilon in the viewer.
             "modes":                self._modes_with_activity(),
             "selected_mode_idxs_1based": [int(i) for i in self.selected_mode_idxs_1based],
 
@@ -1011,9 +962,9 @@ class SpectraResults:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "SpectraResults":
-        # Strict version gate (2026-06-26): the decoder self-enforces
+        # Strict version gate: the decoder self-enforces
         # the schema version rather than trusting the outer sidecar
-        # reader.  Missing or non-current versions raise instead of
+        # reader.  Missing or unreadable versions raise instead of
         # being silently reconstituted at whatever version the payload
         # claims.
         sv = d.get("schema_version")
@@ -1048,9 +999,7 @@ class SpectraResults:
             equilibrium_homo_idx       = (None if eq.get("homo_idx") is None
                                           else int(eq["homo_idx"])),
 
-            # Optional geometry (added late in the schema; older
-            # JSON files don't have these keys, so .get() with None
-            # falls through cleanly).
+            # Optional geometry: absent keys read as None.
             equilibrium_elements       = (
                 [str(e) for e in eq["elements"]]
                 if "elements" in eq else None

@@ -28,10 +28,7 @@ so :math:`E_\\text{isolated} = E_\\text{supercell} + q^2\\alpha/(2\\varepsilon L
 The charged periodic cell carries a compensating uniform background;
 the point-charge-in-jellium (Wigner-lattice) Madelung self-energy is
 NEGATIVE (stabilizing), so the raw periodic energy is spuriously *too
-low* and the correction must *raise* it.  [SIGN FIX 2026-07: this was
-previously subtracted, which moved the energy the wrong way by
-2·ΔE_MP — worse than no correction for the redox/pKa/EA/IP energy
-differences the feature targets.]
+low* and the correction must *raise* it.
 
 This module gives molbuilder two related artefacts when the user
 emits a SIESTA input deck with ``NetCharge != 0``:
@@ -40,14 +37,13 @@ emits a SIESTA input deck with ``NetCharge != 0``:
    :mod:`molbuilder.validation` so the warn message can quote a
    numeric estimate alongside the qualitative caveat.
 2. :func:`render_correction_script` — a small self-contained Python
-   script the wrapper writes next to the FDF.  Once SIESTA has run
+   script `prep` writes next to the FDF.  Once SIESTA has run
    the script reads the ``.out``, extracts the converged total
    energy, computes :math:`\\Delta E_{MP}` for the *actual* cell
    that SIESTA used (read back from the ``.out`` so the correction
-   is robust to any manual cell edit -- molbuilder itself no longer
-   mutates the box: the emitter warns on thin vacuum but never
-   auto-pads, so the emitted LatticeVectors == structure bbox +
-   2*vacuum), and prints the corrected value.
+   is robust to any manual cell edit -- the emitter warns on thin
+   vacuum but never auto-pads, so the emitted LatticeVectors ==
+   structure bbox + 2*vacuum), and prints the corrected value.
 
 Why a post-process script rather than an in-FDF tweak?  SIESTA has
 no Makov-Payne keyword: it applies the monopole term ITSELF, but only
@@ -55,8 +51,7 @@ when it sees a molecule in a simple, face- or body-centred cubic cell
 (``madelung.f``; printed as ``siesta: Emadel`` and already summed into
 E_KS), and otherwise prints "Energy correction terms can not be
 applied" and adds nothing.  So the script reads ``Emadel`` first and
-adds only what SIESTA did not -- it added its own term on top of
-SIESTA's until the M6 review, a double count for every cubic box.  The
+adds only what SIESTA did not.  The
 correction is a single-number energy shift with no effect on geometry
 or density, so a separate script keeps the SIESTA input standard while
 giving the user a one-command way to the corrected number.  It is
@@ -178,7 +173,7 @@ def render_correction_script(
     Returns
     -------
     str
-        The complete script text.  The wrapper writes this to
+        The complete script text.  `prep` writes this to
         ``makov_payne_correction.py`` next to the ``.fdf``.
     """
     # The script is deliberately self-contained — it doesn't import
@@ -186,11 +181,10 @@ def render_correction_script(
     # the SIESTA bundle to a cluster without molbuilder installed
     # can still run it.  All physical constants are inlined.
     #
-    # SO THE FORMULA IS WRITTEN TWICE, ON PURPOSE, and this note exists
-    # because nothing said so and an hour went into treating it as a possible
-    # bug (2026-09-09).  `compute_correction` at line 126 is the one molbuilder
-    # calls; the copy below is the one that runs beside a finished job.  They
-    # were MEASURED to agree that day, to the six decimals the script prints.
+    # SO THE FORMULA IS WRITTEN TWICE, ON PURPOSE.  `compute_correction`
+    # above is the one molbuilder calls; the copy below is the one that runs
+    # beside a finished job.  They were MEASURED to agree (2026-09-09), to
+    # the six decimals the script prints.
     #
     # WHAT IS NOT DUPLICATED: the constants.  `MADELUNG_CUBIC`, `HARTREE_EV` and
     # `BOHR_ANGSTROM` are interpolated in from their one home, so the copy
@@ -298,7 +292,7 @@ def parse_lattice_vectors_angstrom(text):
     (``outcell`` / ``OUTCELL``) and skips blank/comment lines
     between the marker and the lattice rows — molbuilder's
     first-class SIESTA parser already handles both
-    (``parsers/siesta.py``); the post-process script mirrors that
+    (``parse/engines/siesta.py``); the post-process script mirrors that
     leniency so it doesn't fail on a perfectly-good .out from a
     build that prints a blank line after the marker.
     """
@@ -430,7 +424,7 @@ def main():
                   file=sys.stderr)
     # ADD the (positive) correction: the raw charged-periodic energy is
     # spuriously too low (Makov-Payne Eq. 15; compensating-background
-    # Madelung self-energy is stabilizing).  [SIGN FIX 2026-07.]
+    # Madelung self-energy is stabilizing).
     E_corr = E_raw + dE
 
     print(f"# Makov-Payne post-process correction")
@@ -477,8 +471,7 @@ def emit_correction_script(
         return None
     # THROUGH THE ONE WRITER (`script-preparation.md` § 3.2, W4).  This is a
     # generated script like any other -- the deck's own text tells a person to
-    # run it -- and a plain ``write_text`` here was the last generated artifact
-    # in the tree written by a second hand.
+    # run it.
     from .. import script_emit as _sc
     from ..runfiles import MAKOV_PAYNE_SCRIPT
     return _sc.write_script(parent / MAKOV_PAYNE_SCRIPT,

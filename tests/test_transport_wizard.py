@@ -2,8 +2,7 @@
 
 What the composite rests on: `compose.py` calls
 `extract_electrode_model` and prep renders the result through the
-framework (`as_structure` -> `spec_for`).  The rendering tests that
-used to sit below went with `render_electrode_fdf` on 2026-09-17."""
+framework (`as_structure` -> `spec_for`)."""
 from __future__ import annotations
 
 import numpy as np
@@ -42,11 +41,6 @@ def _au_device():
 
 
 # --------------------------------------------------------------------- #
-#  layer detection + bulk period                                        #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
 #  extraction: the clone guarantees                                     #
 # --------------------------------------------------------------------- #
 
@@ -75,20 +69,6 @@ def test_extract_thin_electrode_notes_warning():
     m = extract_electrode_model(dev, "L-electrode", min_thickness_ang=12.0)
     # 4 layers * 2.35 span ~7 Å < 12 -> a note is emitted
     assert any("principal layer" in n for n in m.notes)
-
-
-# --------------------------------------------------------------------- #
-#  the invariants hold by construction (device <-> electrode preflight)  #
-# --------------------------------------------------------------------- #
-
-
-
-# The four tests below this line went with `render_electrode_fdf` and
-# `electrode_wizard` on 2026-09-17.  They rendered a lead deck and checked
-# it against a device deck rendered by `TransiestaEngine.render_script` --
-# two writers, both deleted.  What EXTRACTION does is still checked above,
-# and that is the part `compose.py` uses: prep renders the extracted lead
-# through the framework (`prep.py` -> `as_structure` -> `spec_for`).
 
 
 # --------------------------------------------------------------------- #
@@ -153,8 +133,7 @@ def test_an_unmoved_lead_passes_with_a_starting_geometry():
 def test_without_a_starting_geometry_the_frozen_DECLARATION_still_holds():
     """Compose's form B — a labelled pair handed in as the finished
     structure — has nothing to compare against, and that is precisely why
-    the declaration is asked separately.  It was the route with no frozen
-    check at all before 2026-09-20."""
+    the declaration is asked separately."""
     dev = _au_device()
     dev.frozen_atoms = []
     with pytest.raises(ValueError, match="NOT FROZEN"):
@@ -205,10 +184,7 @@ def test_frozen_is_asked_before_moved():
 # NOT A REFUSAL, on the same line the electrode ORIENTATION is drawn on
 # (`blueprints/transport.py`: "THE CONVENTION IS CHECKED AND REPORTED,
 # NEVER ENFORCED", user ruling 2026-08-29).  The person owns the science;
-# what they are owed is the measurement.  Until 2026-09-20 they were
-# owed it and did not get it: the note said "VERIFY ... a multiple of 3
-# for FCC(111) ABC" -- homework about a quantity `cell.classify_seam`
-# already measures and this module already imports.
+# what they are owed is the measurement.
 
 
 def _au111_lead(n_layers):
@@ -266,13 +242,9 @@ def test_the_lead_states_the_DEVICE_s_transverse_periodicity():
     """A lead changes ONE axis: transport.  Across the wire it is whatever
     the device is.
 
-    `as_structure` asserted `("periodic",) * 3` with the note "A LEAD IS
-    PERIODIC IN ALL THREE" -- true of the transport axis, and an assertion
-    about the other two the structure already knew the answer to.  It is
-    wrong for a real electrode: a nanowire or chain lead is
-    vacuum-surrounded across the wire, and declaring those directions
-    periodic has the shared transverse k-mesh sample vacuum (user,
-    2026-09-23).
+    A nanowire or chain lead is vacuum-surrounded across the wire, and
+    declaring those directions periodic has the shared transverse k-mesh
+    sample vacuum (user, 2026-09-23).
     """
     def _lead_of(cell, kinds):
         """Both devices stated outright rather than taken from the module
@@ -296,4 +268,3 @@ def test_the_lead_states_the_DEVICE_s_transverse_periodicity():
     assert wire.axis_kind == ("isolated", "isolated", "periodic"), (
         "the lead is periodic along transport -- that is what makes it a "
         "lead -- and isolated across, because the device is")
-

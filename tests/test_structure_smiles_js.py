@@ -352,8 +352,7 @@ class TestErrorPaths:
 class TestCanvasGate:
 
     def test_canvas_cancel_passes_through_as_cancelled(self):
-        """If the user cancels the dirty-canvas warning modal (the
-        load door returns ``cancelled: true``), the result envelope
+        """If the load door returns ``cancelled: true``, the result envelope
         carries ``cancelled: true`` — no ``ok`` success."""
         out = _run_node('''
             smiles.configure({
@@ -406,12 +405,9 @@ class TestConfigurationErrors:
     def test_generate_rejects_when_fetch_unconfigured(self):
         """No fetch at all -- stated, rather than relied on.
 
-        This used to work by accident: the panel's resolver bails early when
-        the app namespace is absent, and requiring only this module left it
-        absent, so nothing picked up Node's global fetch.  Loading the shared
-        `panel-deps` (which the browser loads too) creates that namespace, and
-        the accident stopped happening.  The condition the test MEANS is "the
-        host has no fetch", so it says so.
+        The shared `panel-deps` creates the app namespace, so the panel's
+        resolver would pick up Node's global fetch.  The condition the test
+        MEANS is "the host has no fetch", so it says so.
         """
         out = _run_node('''
             delete globalThis.fetch;          // the condition under test

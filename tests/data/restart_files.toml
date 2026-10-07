@@ -6,8 +6,7 @@
 # engine's file and editing it -- and then EVERY reader follows its own: what
 # the next stage takes, `jobset status`'s warm-files column, and the run
 # script's restart check (plan W36 ⑧; user: "keep customization, make every
-# reader use it").  Until 2026-10-03 only prep's carry read the calculation's
-# copy; the run script and status read the engine's file.
+# reader use it").
 #
 # `tests/test_restart_files.py` runs every case down the road a person runs,
 # through the one runner every contract table shares (`tests/support/road.py`,
@@ -27,9 +26,41 @@ own_warm_files = { add = [".NEWSTATE"] }
 run_sh = ["NEWSTATE"]
 
 [[case]]
-name = "...and one molbuilder's list does not have, its run script does not"
-run_sh_lacks = ["NEWSTATE"]
-
-[[case]]
 name = "a run script says what its deck does with the state a run leaves, read off the deck as prep writes it -- a stage that continues (`running-a-job.md` § 3.5)"
 run_sh = ["This deck says 'start from: continue'"]
+
+# EVERY KEY ITS RUN READS, ANSWERED (`run-identity.md` § 4 rule 2): SIESTA
+# 5.4.2 reads a .DM it finds unless told `.false.`, and an .XV or .CG only
+# when told `.true.`, so the deck states each answer.  `MD.UseSaveCG` is read in a CG
+# relaxation alone (`read_options.F90`'s cg branch), so only a CG deck
+# writes it.
+[[case]]
+name = "a stage set restart: clean answers .false. to every restart key its run reads, the CG one with them"
+template = { restart = "clean" }
+deck = ["DM.UseSaveDM .false.", "MD.UseSaveXV .false.", "MD.UseSaveCG .false."]
+
+[[case]]
+name = "...a stage that continues answers .true. -- and a Broyden stage writes no CG key"
+template = { restart = "continue" }
+stand_in = { leaves_restart = true }
+before = [["prep", "run", "coarse"],
+          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+stage = "medium"
+deck = ["DM.UseSaveDM .true.", "MD.UseSaveXV .true."]
+deck_lacks = ["MD.UseSaveCG"]
+
+# A stage that relaxes nothing -- an SCF at the geometry the ladder reached --
+# continues from that geometry: `MD.UseSaveXV` is read at initialisation in
+# every run mode.
+[[case]]
+name = "...a continuing stage that relaxes nothing still reads the geometry it continues from"
+template = { relax_type = "none", restart = "continue" }
+stand_in = { leaves_restart = true }
+before = [["prep", "run", "coarse"],
+          ["launch", "run", "coarse", "--mode", "direct", "--yes"],
+          ["prep", "run", "medium"],
+          ["launch", "run", "medium", "--mode", "direct", "--yes"]]
+added = [{ name = "finish" }]
+stage = "finish"
+deck = ["DM.UseSaveDM .true.", "MD.UseSaveXV .true."]
+deck_lacks = ["MD.UseSaveCG"]

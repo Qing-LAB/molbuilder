@@ -18,17 +18,13 @@ any env, so ``import molbuilder`` fails on a compute node whatever
 interpreter is found.  That is why this module is stdlib-only, and it is a
 constraint rather than a preference.
 
-**WHICH python it gets is the ENV's, and only since 2026-09-17.**  The
-wrapper probes ``command -v python3`` after the env is activated, so an env
-declaring no python of its own hands this file to the compute node's
-interpreter -- whatever the image ships, unprobed at prep time and absent
-on a node that ships none, where the wrapper logs *"monitor: not started"*
-and the calculation runs unwatched.  ``molbuilder-siesta`` declared none;
-measured inside it, ``python3`` resolved to ``/usr/bin/python3``.  Every
-recipe now pins ``_PYTHON_SPEC``, so the version parsing this file is one
-the registry names.  *(This paragraph said "run it inside the job's activated env
-so molbuilder is importable" until 2026-08-26 -- the exact opposite of the
-arrangement the wrapper has always used.)*
+**WHICH python it gets is the ENV's.**  The wrapper probes ``command -v
+python3`` after the env is activated, so an env declaring no python of its
+own would hand this file to the compute node's interpreter -- whatever the
+image ships, unprobed at prep time and absent on a node that ships none,
+where the wrapper logs *"monitor: not started"* and the calculation runs
+unwatched.  Every recipe pins ``_PYTHON_SPEC``, so the version parsing this
+file is one the registry names.
 
 The run-wrapper backgrounds it at low OS priority (``nice -n 19``) so it
 never competes with the compute ranks on the same node: it sleeps almost
@@ -38,11 +34,11 @@ far below any benchmark's measurement noise.
 **Looking and telling are separate.**  It looks often, because
 ``util.csv`` is the diagnostic record.  It tells rarely, because a message
 per wake is a message every ten seconds for the length of a run -- which
-is what a notifier registered here received until 2026-08-26.  When to
+is what a notifier registered on every wake would receive.  When to
 tell is the calculation's, carried from `task.json`'s ``notify`` block:
 ``--notify-on-scf``, ``--notify-every-hours``, and a run ending, always.
-So is WHICH CHANNELS, by name -- ``--notify-channels``, absent for all of
-them and ``""`` for none (`run-reports.md` 3.0).
+So is WHICH CHANNELS, by name -- ``--notify-channels``, ``*`` for every
+channel this machine has, absent or ``""`` for none (`run-reports.md` 3.0).
 
 CLI (also available as ``molbuilder monitor``)::
 
@@ -111,12 +107,12 @@ from typing import (Any, Callable, Dict, List, Optional, Sequence,
 # report may carry, from the one declaration of it -- and those
 # modules travel beside the job (`runwrap.MONITOR_COMPANIONS`): imported from
 # the package here, from the copies beside the job there, as `config_dir`
-# always has been.  Until 2026-09-26 it kept a reader of its own, fed the
-# grammar's patterns as command-line flags, and ran only beside SIESTA.
+# always has been.
 try:                                        # inside molbuilder
     from .parse.engines import _run_ending as _ending
     from . import report_fields as _fields
     from . import runfiles as _rf
+    from . import runrecord as _rr
     from .parse.dirs.job import MONITOR_ENDED, run_status
     from .parse.engines.molwatch_reader import MolwatchReader
     from .parse.engines.siesta_reader import SiestaReader
@@ -125,6 +121,7 @@ except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_fields as _fields
     import runfiles as _rf
+    import runrecord as _rr
     from job import MONITOR_ENDED, run_status
     from molwatch_reader import MolwatchReader
     from siesta_reader import SiestaReader
@@ -220,10 +217,9 @@ class JobStatus:
 
 # NO COMPLETION MARKERS DECIDE ANYTHING HERE.  `job-contracts.md` states the
 # rule: the monitor "follows the launcher's PID -- so it knows authoritatively
-# when the run ended, rather than guessing from output markers".  A private
-# marker tuple lived here until 2026-08-26 and did exactly the guessing the
-# contract forbids: `siesta: Final energy` prints BEFORE a run is over, so the
-# loop could return while the job was still holding CPUs and GPUs.  HOW the
+# when the run ended, rather than guessing from output markers":
+# `siesta: Final energy` prints BEFORE a run is over, so a loop that read it
+# could return while the job was still holding CPUs and GPUs.  HOW the
 # run ended is reported the way the Results tab reads it -- `run_status`,
 # asked once the PID has said it is over (`run-reports.md` § 2.2).
 
@@ -298,33 +294,42 @@ class _Growth:
 
 @dataclass
 class WatchedRun:
-    """The run this monitor watches, as the wrapper names it -- the label,
-    the stage token, the run index -- in the directory the job runs in.
+    """The run this monitor watches, as the wrapper names it -- its stage's
+    names (`runfiles.RunNames`) and the run's number launch gave it -- in
+    the directory the job runs in.
 
     Every file is named and found through `runfiles` (`run-reports.md`
     § 2.3), the way `project-layout.md` § 4.5 has every caller ask for our
     names; the wrapper passes no paths.
     """
-    label: str
-    stage: Optional[str] = None
-    run: Optional[int] = None
+    names: "_rf.RunNames"
+    run: int
     directory: Path = field(default_factory=lambda: Path("."))
     #: Each live output, and the reader fed from it.
     _growth: Dict[Path, "_Growth"] = field(default_factory=dict)
 
     @property
+    def label(self) -> str:
+        return self.names.label
+
+    @property
+    def stage(self) -> str:
+        return self.names.stage
+
+    @property
     def stem(self) -> str:
-        """``<label>[_<stage>]`` -- the rung's files all begin with it."""
-        return _rf.stem(self.label, self.stage)
+        """``<label>_<stage>`` -- the rung's files all begin with it."""
+        return self.names.stem
 
     def path(self, role: str) -> Path:
-        """This run's file in ``role`` -- the one run index's."""
-        return self.directory / _rf.compose(self.label, role, self.stage,
-                                            run=self.run)
+        """This run's file in ``role``, by its stage's names."""
+        return self.directory / self.names.name(role, self.run)
 
     def files(self) -> Dict[str, Path]:
-        """This run's files by role: its own run index's, and the rung's
-        carried ones -- the progress log carries no index."""
+        """This run's files by role: its own run index's, and those the
+        folder holds for every run -- a progress log carries the run's
+        number only where the stage's runs share a folder
+        (`runfiles.RunNames`), so in either shape it is one of the two."""
         out: Dict[str, Path] = {}
         for p, rf in _rf.find(self.directory, self.label, stage=self.stage):
             if rf.run is None or rf.run == self.run:
@@ -577,9 +582,9 @@ def _alloc_cores() -> Tuple[int, str]:
 def _read_mem_used_gb() -> Optional[Tuple[float, str]]:
     """``(GB this job's cgroup holds, which rung)``, else the node's.
 
-    ``MemTotal - MemAvailable`` -- the previous reading -- is every process
-    on the machine, so on a shared node it was measuring other people's
-    jobs as much as this one's.
+    ``MemTotal - MemAvailable`` is every process on the machine -- on a
+    shared node, other people's jobs as much as this one's -- so it is the
+    last resort and labels itself ``node``.
     """
     cg = _cgroup_paths()
     p = cg.get("memory")
@@ -1082,16 +1087,7 @@ def _secrets_dir():
 
     Restating the rule here -- joining ``config_dir() / "secrets"`` -- would
     be another copy of it, which review exists to refuse
-    (`process/code-audit.md` § 1c): three modules once computed it
-    independently and two of them said so in prose, *"a comment is not a
-    mechanism"*.
-
-    THIS REPLACED `_config_dir()` on 2026-09-20, when the credentials moved
-    into `secrets/` and both path functions below started asking for that
-    directory instead.  `_config_dir` was left behind for a few hours with no
-    callers -- and `test_machine_identity` was patching it to simulate the
-    missing companion, so the test went on passing while testing nothing.  A
-    dead function is worse than no function when something patches it.
+    (`process/code-audit.md` § 1c): *"a comment is not a mechanism"*.
 
     Raises `ModuleNotFoundError` when the companion is absent, which
     `load_channels` catches: absent is reports-off, never a dead monitor.
@@ -1120,9 +1116,7 @@ def notify_keys_path():
     """The operator's run-report signing keys.
 
     Beside :func:`default_notify_path` because this module owns the format of
-    the exchange they belong to.  `cli` spelled the filename itself and joined
-    it -- one more place to edit when a name changes, and the one that gets
-    missed (A11).
+    the exchange they belong to (A11).
     """
     return _secrets_dir() / NOTIFY_KEYS_FILENAME
 
@@ -1133,13 +1127,10 @@ def notify_keys_path():
 # the notify_route twice, with one in the file and one in the molbuilder.json
 # which has its own pointer to that same file"*).
 #
-# It was `{user: key}`, with the route in `molbuilder.json` beside a path
-# pointing back at this very file.  Two places for one fact, and the cost is
-# written down in `run-reports.md` § 4.3 as a procedure to follow carefully:
-# `notify-token` "cannot read molbuilder.json", so issuing a second key
-# generated a NEW segment, and pasting it moved the route out from under
-# everyone already set up -- silently, because a notifier swallows failures.
-# That hazard was the duplication, not a step people kept getting wrong.
+# One place for one fact (`run-reports.md` § 4.3): `notify-token` cannot read
+# molbuilder.json, so a route kept there would let a second key generate a
+# NEW segment and move the route out from under everyone already set up --
+# silently, because a notifier swallows failures.
 #
 # With the route in here the command reads what it already issued, the server
 # reads the same file, and `molbuilder.json` needs nothing at all.
@@ -1147,8 +1138,8 @@ def notify_keys_path():
 #: One URL segment: letters, digits, '-' or '_'.  A value with a slash in it
 #: would silently mean a different path than the one written down, and the
 #: destination file's url is built from this -- so the two ends would disagree
-#: about where reports go.  The rule lived on the retired `notify_route`
-#: config key; it belongs with the file that now carries the value.
+#: about where reports go.  The rule belongs with the file that carries the
+#: value.
 _ROUTE_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
@@ -1198,7 +1189,7 @@ class NotifyPolicy:
     them as two loose arguments is the shape `architecture.md` § 3.1's rule
     A8 forbids, and for a measured reason -- a caller re-assembling an
     object the callee should have been handed is how a third field gets
-    forgotten.  It has cost this codebase two fields already.
+    forgotten.
 
     Not imported from `task.Notify`: this module ships to a compute node as
     a standalone file with no molbuilder importable (see the module
@@ -1214,8 +1205,7 @@ class NotifyPolicy:
     on_scf: bool = False
     every_hours: float = 0.0
     #: WHICH channels, by name.  ``None`` means every channel this machine
-    #: has -- the reading of a description that names none, which is every
-    #: description written before 2026-08-31 and every one written by hand.
+    #: has (``--notify-channels *``, :func:`_channels_from_flag`).
     #: An EMPTY tuple is the opposite and is not the same state: reports off
     #: for this calculation on a machine where they are set up.  The two
     #: spellings exist because they are two intentions (`run-reports.md`
@@ -1235,11 +1225,8 @@ def _notify_say(msg: str, log: Optional[Path] = None) -> None:
     caller that has no log yet -- an interactive `molbuilder monitor`, or a
     test.
 
-    **One writer**, because it was two: `load_channels` had a closure and
-    `_install_env_notifiers` had a copy that stamped the timestamp and then
-    printed it under a second prefix -- `[monitor] [2026-...] [NOTIFY] ...`
-    on stdout and the bare form in the log.  One function written twice is
-    two places for a fix to miss.
+    **One writer**: one function written twice is two places for a fix to
+    miss.
     """
     line = f"[{_iso(time.time())}] [NOTIFY] {msg}"
     if log is not None:
@@ -1251,15 +1238,12 @@ def _notify_say(msg: str, log: Optional[Path] = None) -> None:
 def is_route_segment(route) -> bool:
     """Is this a usable run-report route segment?  One home for the rule.
 
-    **It has to be asked at BOTH ends, and until 2026-09-12 it was asked at
-    one.**  :func:`read_notify_keys` applied `_ROUTE_RE` on the way IN and
-    returned ``(None, {})`` for anything failing it -- correct, and invisible:
-    `auth_setup.issue_notify_key` validated the *user* and never the *route*,
-    so ``notify-token --route a/b`` was accepted, written, and reported as a
-    success, after which the reader refused the whole file.  Measured: one
-    working key plus one bad ``--route`` leaves the server with no route and
+    **It has to be asked at BOTH ends.**  :func:`read_notify_keys` applies
+    `_ROUTE_RE` on the way IN and returns ``(None, {})`` for anything failing
+    it, so a bad route written unchecked leaves the server with no route and
     NO KEYS AT ALL -- every key already issued stops working, and silently,
     because a notifier swallows failures by design.
+    `auth_setup.issue_notify_key` asks it on the way OUT.
 
     This module ships to a compute node as a standalone stdlib-only file,
     so it owns the rules for the exchange it defines and nobody restates
@@ -1278,8 +1262,7 @@ def is_notify_user(user) -> bool:
     both ends: when a key is issued (`auth_setup.issue_notify_key` -- a key
     that authenticates and then cannot be recorded is worse than none) and
     when a report arrives (`web/blueprints/notify.py`, which writes the log
-    file it names).  The pattern stood in both modules until 2026-10-02
-    (W54 C18)."""
+    file it names)."""
     return bool(isinstance(user, str) and _USER_RE.fullmatch(user))
 
 
@@ -1375,9 +1358,8 @@ def webhook_request(dest: Dict[str, Any],
     The report is one thing; the ENVELOPE it travels in is the
     destination's, and the three destinations do not read the same one
     (`run-reports.md` § 4.1b).  Every sender calls this -- the monitor's
-    notifier and the setup page's *Test* button both.  They built the pair
-    separately until 2026-09-02, which meant the button that exists to prove
-    the path could pass while the path failed.
+    notifier and the setup page's *Test* button both: built separately, the
+    button that exists to prove the path could pass while the path failed.
     """
     kind = channel_kind(dest)
     head = {"Content-Type": "application/json", "User-Agent": USER_AGENT}
@@ -1460,13 +1442,11 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
         _notify_say(msg, log)
 
     try:
-        # ONE RESOLVER, no `path=` (2026-09-14).  For Slack and Discord the
-        # URL in this file IS the credential, so it is reached the way every
-        # other credential in this tree is: through the door that owns it.
-        # A `path=` had no production caller and an `expanduser` the resolver
-        # never applies -- the same shape retired from `read_notify_keys` and
-        # `issue_notify_key`, and for the same reason: a second way to name a
-        # file with one home is how a file gets written where nothing reads it.
+        # ONE RESOLVER, no `path=`.  For Slack and Discord the URL in this
+        # file IS the credential, so it is reached the way every other
+        # credential in this tree is: through the door that owns it.  A second
+        # way to name a file with one home is how a file gets written where
+        # nothing reads it.
         p = default_notify_path()
         try:
             from .config_dir import is_channel_name   # inside the package
@@ -1476,9 +1456,8 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
         # The shipped monitor could not find `config_dir.py` beside it, so
         # WHERE the channels live cannot be answered.  Absent is off
         # (`run-reports.md` § 3): a monitor that cannot report must still
-        # MONITOR -- dying here cost every status line, the util series
-        # and the [MACHINE] record, silently, when a staging defect
-        # shipped the monitor without its companion (2026-08-28).
+        # MONITOR -- dying here would cost every status line, the util
+        # series and the [MACHINE] record, silently.
         _say("no config_dir.py beside the monitor -- reports off")
         return {}
     try:
@@ -1495,8 +1474,7 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
         return {}
     chans = obj.get("channels")
     if not isinstance(chans, dict):
-        # NAMED SINCE 2026-08-31, and the old single-destination file is not
-        # read.  Saying which is the whole point: `{"url": ...}` is a valid
+        # NAMED: the single-destination file is not read.  Saying which is the whole point: `{"url": ...}` is a valid
         # JSON object, so a silent skip here is indistinguishable from never
         # having set anything up -- the exact failure `run-reports.md` 3.1
         # exists to stop.
@@ -1616,8 +1594,7 @@ def sign_report(key: str, timestamp: str, body: bytes) -> str:
     are kept in step by `web/blueprints/notify.py::sign` and a test that
     feeds this notifier's own output to the real route.
 
-    Why a signature rather than a bearer token (which this sent until
-    2026-08-27): a token is on the wire every time, so one capture yields a
+    Why a signature rather than a bearer token: a token is on the wire every time, so one capture yields a
     credential good forever and for any body.  This key never leaves the
     cluster, and what travels is valid for one exact body.
     """
@@ -1643,11 +1620,9 @@ def make_webhook_notifier(url: str, *,
     a third party that has no other way to be told who is calling -- Slack
     and Discord put the credential in the URL itself, so they need neither.
 
-    **Both are keyword-only, deliberately.**  They were briefly two
-    positionals, and a call site written for the old signature passed its
-    headers dict where the key now goes -- binding silently, and failing
-    only later inside the signing.  Two optional parameters of different
-    types in a row is exactly the shape that invites it.
+    **Both are keyword-only, deliberately**: two optional parameters of
+    different types in a row invite a call site to pass one where the other
+    goes -- binding silently, and failing only later inside the signing.
     """
     def _hook(status: JobStatus, event: str) -> None:
         record = {
@@ -1688,19 +1663,17 @@ def make_webhook_notifier(url: str, *,
 def run_identity(watched: Optional["WatchedRun"] = None) -> Dict[str, str]:
     """Who this report is ABOUT — gathered once, sent on every line.
 
-    **A report with no identity is a result you cannot use.**  Until
-    2026-08-27 a line read *"scf_converged, energy -1740.2"* and nothing
-    said which calculation, on which machine, or when it was sent.  With
-    two jobs running, the lines were indistinguishable; with two clusters,
-    worse.  These reports are a record of COMPUTATION, not of molbuilder's
+    **A report with no identity is a result you cannot use**: with two jobs
+    running, or two clusters, a line that does not say which calculation,
+    on which machine, or when it was sent is indistinguishable.  These
+    reports are a record of COMPUTATION, not of molbuilder's
     own health, so every line has to stand on its own -- somebody will
     parse this file a year from now with no session to ask.
 
     ``run`` is the rung's **stem** -- the label and the stage token, *"the
     stem of every file"* (`run-identity.md`) -- as `runfiles` composes it
-    for the run the wrapper named.  It was cut off the ``.out``'s name by a
-    regex of its own until 2026-09-26: our filename grammar read outside
-    `runfiles` (`project-layout.md` § 4.5).  The run index is left out
+    for the run the wrapper named (`project-layout.md` § 4.5).  The run
+    index is left out
     because the stem names the calculation and not the attempt.
 
     Everything is best-effort: an identity that cannot be gathered must
@@ -1742,8 +1715,7 @@ def _install_env_notifiers(log: Optional[Path] = None,
     ``channels`` is the description's own selection, straight from
     :class:`NotifyPolicy`; :func:`channels_for` owns what its three states
     mean.  **One notifier per chosen channel**, so a run can reach a Slack
-    and a listener at once -- which the single destination this replaced
-    could not, and pointing it at one silently replaced the other.
+    and a listener at once.
 
     **Registers once per process.**  :data:`_NOTIFIERS` is module state and
     ``run_monitor`` calls this every time, so without the guard a second
@@ -1760,9 +1732,7 @@ def _install_env_notifiers(log: Optional[Path] = None,
         # override could not reach OUR OWN listener at all: an unsigned
         # report is refused there, and refused with a 404 that this
         # notifier swallows -- so the one destination you most want to test
-        # once would have failed in total silence.  (Found reviewing,
-        # 2026-08-27; the override was written when the listener took a
-        # bearer token in a header.)
+        # once would fail in total silence.
         register_notifier(make_webhook_notifier(
             url, key=os.environ.get("MB_NOTIFY_KEY") or None, ident=ident,
             report=report))
@@ -1851,9 +1821,7 @@ def run_monitor(watched: "WatchedRun", *,
     It wakes every ``interval`` seconds and writes a ``[STATUS]`` line
     whenever the job advanced -- that is the record, and it stays dense.
     Notifying is separate and rare, set by ``notify``
-    (`execution/run-reports.md` § 2).  Until
-    2026-08-26 they were the same thing: a webhook configured against this
-    fired on every changed sample, which for a running job is every wake.
+    (`execution/run-reports.md` § 2).
 
     Wakes every ``interval`` seconds but is QUIET when nothing changed: a
     ``[STATUS]`` line is written only when the job advanced (SCF iteration
@@ -1938,9 +1906,7 @@ def run_monitor(watched: "WatchedRun", *,
         now = clock()
         # STOPPED IS OVER -- for this process.  The wrapper stops it when the
         # job ends (its EXIT trap) and when it retries an attempt in place,
-        # and until 2026-09-26 both happened while the watched pid was still
-        # alive -- so the closing lines below were never written and no run
-        # recorded its means (0 of 9 monitor logs).  Asked BEFORE sampling:
+        # both while the watched pid is still alive.  Asked BEFORE sampling:
         # a sample taken after the stop is not the run's.
         alive = _pid_alive(watch_pid) and _STOPPED_BY is None
         if alive:
@@ -1993,8 +1959,7 @@ def run_monitor(watched: "WatchedRun", *,
         # (`Begin <CG|Broyden|FIRE> opt. move = N`, `Begin FC step = N`), and
         # a PySCF block is written when its step ends -- the parser counts
         # them (`JobStatus.steps_done`).  Read that way rather than by
-        # scanning for a convergence phrase: a marker table here once decided
-        # the run was over and was wrong about it.  A single point states no
+        # scanning for a convergence phrase.  A single point states no
         # step, so nothing fires and the finish message is the whole report.
         if (notify.on_scf and st.steps_done is not None
                 and st.steps_done > (prev.steps_done or 0)):
@@ -2067,8 +2032,8 @@ def _make_default_sampler(clock: Callable[[], float],
 
     **GPUs are sampled only for a run that uses one** (``gpu``, the wrapper's
     to say): a CPU run on a GPU node holds no GPU, and what the node's GPUs
-    are doing is somebody else's -- it was sampled anyway until 2026-09-26,
-    and a CPU-only relaxation closed on *"GPU starved"*.  Presence is probed
+    are doing is somebody else's -- sampled, a CPU-only relaxation would
+    close on *"GPU starved"*.  Presence is probed
     once (no per-tick ``nvidia-smi -L``).
     """
     b = basis if basis is not None else _basis()
@@ -2171,7 +2136,9 @@ def main(argv=None) -> int:
     """The entry of the SHIPPED bundle, ``mb_monitor.pyz``
     (`runwrap.MONITOR_BUNDLE`): argparse for the monitor, and ``ending ...``
     handed to `_run_ending`'s door, which travels in the same file -- the
-    wrapper asks how a run ended with ``mb_monitor.pyz ending OUTPUT ...``.
+    wrapper asks how a run ended with ``mb_monitor.pyz ending OUTPUT ...``
+    -- and ``retried ...`` to the run records' (`runrecord.retried_main`),
+    with which a warm retry records itself.
 
     ONE command line: ``molbuilder monitor`` hands its arguments here, so
     the monitor a person starts from the package is the one the job runs.
@@ -2182,6 +2149,10 @@ def main(argv=None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if args[:1] == ["ending"]:
         return _ending.main(args[1:])
+    if args[:1] == ["retried"]:
+        # A WARM RETRY'S OWN LAUNCH RECORD, by the one writer, which travels
+        # in this file (`runrecord.retried_main`; `running-a-job.md` § 3.5).
+        return _rr.retried_main(args[1:])
     import argparse
     p = argparse.ArgumentParser(
         prog="mb_monitor",
@@ -2193,13 +2164,15 @@ def main(argv=None) -> int:
     # (`run-reports.md` § 2.3), from the identity the wrapper was rendered for.
     p.add_argument("--label", required=True,
                    help="the run's label -- the stem every file begins with")
-    p.add_argument("--stage", default=None,
-                   help="the stage token (e.g. 01_coarse); omit for none")
+    p.add_argument("--stage", required=True,
+                   help="the stage token (e.g. 01_coarse)")
+    p.add_argument("--shared", action="store_true",
+                   help="the stage's runs share this folder")
     p.add_argument("--dir", default=".", dest="directory",
                    help="the directory the run is in (default: here, where "
                         "the wrapper starts it)")
-    p.add_argument("--run", type=int, default=None, dest="run_index",
-                   help="the run index the wrapper resolved (-runN)")
+    p.add_argument("--run", type=int, required=True, dest="run_index",
+                   help="the run's number, as launch gave it (-runN)")
     p.add_argument("--interval", type=float, default=10.0,
                    help="seconds between wakes (default 10; this is the "
                         "utilization sample rate -- status lines stay "
@@ -2236,15 +2209,15 @@ def main(argv=None) -> int:
     p.add_argument("--notify-every-hours", type=float, default=0.0,
                    dest="notify_every_hours",
                    help="notify every N hours; 0 = never (default)")
-    # WHICH channels -- names only, never an address and never a key.  The
-    # flag is absent for a description that names none, which means every
-    # channel this machine has; `--notify-channels ""` is the other state
-    # and means none at all (`run-reports.md` 3.0).  A default of None is
-    # what keeps those two apart on the command line.
+    # WHICH channels -- names only, never an address and never a key.  `*`
+    # is every channel this machine has; a description that names none
+    # renders no flag, or `--notify-channels ""`, and both mean none at
+    # all (`run-reports.md` 3.0, `_channels_from_flag`).
     p.add_argument("--notify-channels", type=str, default=None,
                    dest="notify_channels",
                    help="comma-separated channel names to report to; "
-                        "omit for all of them, pass '' for none")
+                        "'*' for every channel; omit it, or pass '', "
+                        "for none")
     # WHAT each report carries.  Same two-state shape as the channels above:
     # absent is every field this monitor can determine, `""` is the summary
     # line alone (`stages.md` 6.9).  The calculation's own name is always
@@ -2255,7 +2228,7 @@ def main(argv=None) -> int:
                         + ", ".join(_fields.NAMES)
                         + "); omit for all of them, pass '' for none")
     a = p.parse_args(args)
-    watched = WatchedRun(label=a.label, stage=a.stage or None,
+    watched = WatchedRun(names=_rf.RunNames(a.label, a.stage, a.shared),
                          run=a.run_index, directory=Path(a.directory))
     signal.signal(signal.SIGTERM, _on_stop_signal)
     if hasattr(signal, "SIGUSR1"):

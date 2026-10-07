@@ -1,23 +1,10 @@
 /* dialog.css — the ONE modal component.
  *
  * `ui-contract.md` § 1: a widget used on more than one page lives in a shared
- * sheet, and a shared element has exactly one owner.  There were three
- * scaffolds (audit-2026-08-05-tab-ui.md § C8), and only one of them was
- * styled at all:
+ * sheet, and a shared element has exactly one owner.
  *
- *   * the projects dialogs had a full vocabulary, written against the
- *     projects sidebar's PRIVATE `--ps-*` tokens;
- *   * `lib/warning-modal.js` and the since-retired
- *     `modify/structure/save-dialog.js` wrote ten
- *     class names between them that NO stylesheet defined, so the browser
- *     painted its own chrome -- a white box with default buttons, in an app
- *     that has no light theme at all.  Every unsaved-changes prompt and every
- *     Save-as looked like a different application.
- *
- * One component now, on the global tokens, so a dialog cannot be
- * half-designed by accident: a class that nothing answers is visible the
- * moment it renders, and `test_dialog_component.py` fails if a `<dialog>`
- * ships without it.
+ * One component, on the global tokens, so a dialog cannot be half-designed
+ * by accident: a class that nothing answers is visible the moment it renders.
  *
  * Vocabulary — the parts a modal actually has:
  *   .mb-dialog            the surface (and its ::backdrop)
@@ -118,7 +105,7 @@
 }
 
 /* ---- tree-picker (lib/tree-picker.js) — the ONE pop-out path picker.
- * Promoted 2026-08-28 from the projects dest-tree; shared by the
+ * Shared by the
  * sidebar's Move/Copy, form file fields, and the Transport tab's slot
  * selection, so its rules live in the ONE modal sheet (§ 1's shared-
  * widget rule).  Hierarchy reads through indent GUIDES (a border on
@@ -136,8 +123,7 @@
     padding: var(--space-xs);
 }
 /* One selector level for both lists, so the reset cannot outgun the
- * indent below (`.tp-tree ul` did exactly that -- (0,1,1) vs (0,1,0),
- * and every nesting level rendered flush with its parent). */
+ * indent below. */
 .tp-root,
 .tp-children {
     list-style: none;

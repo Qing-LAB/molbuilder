@@ -1,48 +1,14 @@
-"""The SIESTA GPU toggle's two lower layers.
+"""The SIESTA GPU toggle's fields: ``SiestaConfig.use_gpu`` and
+``diag_algorithm``, with their form metadata.
 
-  * ``SiestaConfig.use_gpu``: dataclass field + form metadata.
-  * ``render_fdf``: emits ``Diag.ELPA.GPU .true.`` iff the toggle is on.
-
-What a GPU run's wrapper and header carry -- the env it activates, the
-binding, the placement -- is the GPU contract's table, run down the road
-(`tests/data/gpu_contract.toml`).  The wrapper-text tests that stood here
-until 2026-10-02 retired into its rows, or with the rank and thread policy
-they pinned (`architecture.md` § 5.2: every launch value is stated).  *(The
-deck reader's own table, ``runwrap._fdf_requests_gpu``, went with the reader
-on 2026-10-03: whether a run uses the GPU is its request, never read back
-off the deck -- `execution/gpu.md` G7.)*
+What a GPU deck says, and what its wrapper and header carry -- the env it
+activates, the binding, the placement -- is the GPU contract's table, run
+down the road (`tests/data/gpu_contract.toml`).
 """
 from __future__ import annotations
 
-from _deck import assert_fdf
-
-
-import numpy as np
-import pytest
 
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.siesta.input import render_fdf
-from molbuilder.structure import Structure
-
-
-# --------------------------------------------------------------------- #
-#  Fixtures                                                              #
-# --------------------------------------------------------------------- #
-
-
-def _mk_struct() -> Structure:
-    """Minimal 1-atom water-stub: enough for render_fdf to succeed.  A per-side
-    vacuum gives the derived cell a non-zero volume (a single atom's bbox is a
-    point; vacuum=0 would be a degenerate box -- structure-periodicity.md)."""
-    return Structure(
-        elements      = ["H"],
-        positions     = np.zeros((1, 3)),
-        atom_names    = ["H1"],
-        residue_ids   = [1],
-        residue_names = ["UNL"],
-        chain_ids     = ["A"],
-        vacuum        = (12.0, 12.0, 12.0),
-    )
 
 
 # --------------------------------------------------------------------- #
@@ -60,13 +26,11 @@ def test_use_gpu_default_is_off():
 
 
 def test_use_gpu_metadata_is_present():
-    """The metadata a live reader still takes off this field.
+    """The metadata a live reader takes off this field.
 
-    The docstring said *"the form schema is auto-built from dataclass
-    metadata"* until 2026-08-17.  That direction was retired on 2026-08-15:
-    the SIESTA form is built from the CATALOGUE, and what still reads this
-    class is finding-placement (`workflow_group`) and the catalogue-agreement
-    mirror (`engine_key`, `choices`, ...).
+    The SIESTA form is built from the CATALOGUE; what reads this class is
+    finding-placement (`workflow_group`) and the catalogue-agreement mirror
+    (`engine_key`, `choices`, ...).
     """
     field = SiestaConfig.__dataclass_fields__["use_gpu"]
     md = field.metadata
@@ -81,87 +45,6 @@ def test_use_gpu_metadata_is_present():
     # methods-text generator can cite it; an empty value would let
     # the field silently drift from the keyword the generator emits.
     assert "Diag.ELPA.GPU" in md["engine_key"]
-
-
-# --------------------------------------------------------------------- #
-#  L1: render_fdf emission                                               #
-# --------------------------------------------------------------------- #
-
-
-def test_render_fdf_omits_gpu_keyword_by_default():
-    """Off by default: the rendered .fdf must NOT contain the keyword
-    when use_gpu=False, so a job rendered for a CPU-only host
-    never accidentally routes to GPU on a different machine."""
-    fdf = render_fdf(_mk_struct(), SiestaConfig())
-    assert "Diag.ELPA.GPU" not in fdf
-
-
-def test_render_fdf_emits_gpu_keyword_when_enabled():
-    """``Diag.ELPA.GPU .true.`` is the modern (5.4.2) spelling per
-    Src/diag_option.F90:139.  Asserting the literal value catches a
-    typo like ``T``, ``Yes``, etc. -- they're ACCEPTED by fdf_get
-    but the run-wrapper detector also has to accept them, and pinning
-    one form keeps the contract simple."""
-    cfg = SiestaConfig(use_gpu=True, diag_algorithm="ELPA-1STAGE")
-    fdf = render_fdf(_mk_struct(), cfg)
-    assert_fdf(fdf, "Diag.ELPA.GPU", ".true.")
-
-
-def test_render_fdf_emits_diag_algorithm_with_gpu():
-    """When GPU is on, the generator MUST also emit ``Diag.Algorithm
-    ELPA-1STAGE`` -- the GPU keyword alone is silently ignored unless
-    SIESTA is routing through ELPA.  Confirmed against SIESTA source
-    at Src/diag_option.F90:213-225 (default ScaLAPACK path) and the
-    user-visible failure: nvidia-smi at 0% utilisation while SCF is
-    iterating happily on CPU."""
-    cfg = SiestaConfig(use_gpu=True, diag_algorithm="ELPA-1STAGE")
-    fdf = render_fdf(_mk_struct(), cfg)
-    assert_fdf(fdf, "Diag.Algorithm", "ELPA-1STAGE")
-
-
-def test_render_fdf_diag_algorithm_choice_propagates():
-    """The ELPA variant is chosen via ``diag_algorithm`` (1STAGE/2STAGE).
-    Pin that the choice flows through to the rendered keyword."""
-    cfg = SiestaConfig(use_gpu=True, diag_algorithm="ELPA-2STAGE")
-    fdf = render_fdf(_mk_struct(), cfg)
-    assert_fdf(fdf, "Diag.Algorithm", "ELPA-2STAGE")
-    assert "Diag.Algorithm     ELPA-1STAGE" not in fdf
-
-
-def test_render_fdf_scalapack_default_omits_diag_keywords():
-    """ScaLAPACK (the default) emits NEITHER Diag.Algorithm nor
-    Diag.ELPA.GPU -- SIESTA falls through to its built-in Divide-and-
-    Conquer path.  (Comment lines in the BENCH-MARKS block don't count.)"""
-    fdf = render_fdf(_mk_struct(), SiestaConfig())   # default = ScaLAPACK, CPU
-    engine_lines = [
-        ln for ln in fdf.splitlines()
-        if ("Diag.Algorithm" in ln or "Diag.ELPA.GPU" in ln)
-        and not ln.lstrip().startswith("#")
-    ]
-    assert engine_lines == [], (
-        f"ScaLAPACK should emit no diag keywords, got: {engine_lines!r}"
-    )
-
-
-def test_render_fdf_cpu_elpa_emits_algorithm_and_gpu_false():
-    """CPU-ELPA (engines/siesta.md § 7): selecting an ELPA algorithm
-    WITHOUT GPU must emit ``Diag.Algorithm`` AND an EXPLICIT
-    ``Diag.ELPA.GPU .false.`` -- the source ELPA build defaults to the
-    GPU codepath, so an omitted flag crashes a CPU run (Sol job 57852378).
-    This is the behavior the old 'ELPA only when GPU' model wrongly denied."""
-    cfg = SiestaConfig(use_gpu=False, diag_algorithm="ELPA-2STAGE")
-    fdf = render_fdf(_mk_struct(), cfg)
-    assert_fdf(fdf, "Diag.Algorithm", "ELPA-2STAGE")
-    assert_fdf(fdf, "Diag.ELPA.GPU", ".false.")
-    assert "Diag.ELPA.GPU      .true." not in fdf
-
-
-def test_render_fdf_gpu_with_scalapack_is_rejected():
-    """GPU acceleration only applies to ELPA; GPU + ScaLAPACK is a
-    contradiction and must raise rather than emit a nonsensical .fdf."""
-    cfg = SiestaConfig(use_gpu=True, diag_algorithm="ScaLAPACK")
-    with pytest.raises(ValueError, match="requires an ELPA diagonalizer"):
-        render_fdf(_mk_struct(), cfg)
 
 
 def test_diag_algorithm_field_metadata():

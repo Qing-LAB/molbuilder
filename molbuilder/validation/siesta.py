@@ -1,13 +1,7 @@
 """SIESTA-specific validators + the SiestaConfig aggregator.
 
 The aggregator ``_validate_siesta`` is what gets registered against
-``SiestaConfig`` in the engine-validator registry; its CALL ORDER is
-the public contract (every test that counts issues by position
-depends on it).  This module preserves that order verbatim from the
-pre-2026-06-13 flat ``molbuilder/validation.py``.
-
-Split per docs/science/validation.md  No logic
-changes; relocation only.
+``SiestaConfig`` in the engine-validator registry.
 """
 
 from __future__ import annotations
@@ -27,7 +21,7 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
                                     relativistic: str = "scalar"
                                     ) -> List[Issue]:
     """Run molbuilder.pseudos.check_coverage on the pseudopotentials THIS RUN
-    WILL OPEN, so the SIESTA Build->Generate preflight catches:
+    WILL OPEN, so the SIESTA preflight catches:
       * missing .psml files (SIESTA's ``pseudo_read: ERROR: Pseudopotential
         file not found`` after 5 minutes of MPI init -- we surface
         at click-time instead);
@@ -38,22 +32,17 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
 
     WHICH FILES those are is prep's rule, asked through the one function that
     states it (`pseudos.psml_sources`): the calculation's own folder first,
-    then the library ``cfg.psml_lib`` names, for what the folder lacks.  This
-    gate read the library alone until 2026-09-25, and prep never told it the
-    folder -- so every rung of a transport ladder, whose pseudopotentials come
-    with the citation and never from a library, was told "cfg.psml_lib is not
-    set".
+    then the library ``cfg.psml_lib`` names, for what the folder lacks.
 
     With no folder (the Build tab, before a save) only the library can
     answer, and an unset one is a WARN; with a folder, a species in neither
-    place is an ERROR.  Suggests projects/pseudopotential/ as the convention
-    since that's where the new-project skeleton creates one.
+    place is an ERROR.  Suggests ``CONVENTIONAL_LIBRARY`` as the
+    convention.
 
     ``relativistic`` is what the run needs of each file -- ``spin-orbit`` for
     a spin-orbit treatment, which needs fully-relativistic pseudopotentials
     (`science/chemistry-correctness.md` § 2a.3), ``scalar`` otherwise.  The
-    caller reads it off the electronic state; until 2026-09-28 nothing passed
-    it, so a spin-orbit run was screened as scalar.
+    caller reads it off the electronic state.
     """
     from ..pseudos import (CONVENTIONAL_LIBRARY, PsmlLibError, check_coverage,
                            ERROR_STATUSES, expected_xc_family, psml_sources,
@@ -142,8 +131,6 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
             )]
         read_from.setdefault(psml_dir, []).extend(lacking)
     # The expected XC family, from the ONE table (`pseudos.expected_xc_family`).
-    # It was spelled out here and again in `cli.py`, and the two disagreed --
-    # the CLI copy had no VDW arm.
     xc_authors = (getattr(cfg, "xc_authors", "") or "").strip()
     expected_family = expected_xc_family(xc_authors)
     out: List[Issue] = []
@@ -264,9 +251,7 @@ def _declared_cutoff_ry(struct, cfg, *, dest_dir=None):
     reports — a missing directory is an INTEGRITY finding, and layer 2 has
     nothing to add to it.
 
-    Read from the files the run will open (`_psml_files`): until 2026-09-25
-    this read the library alone, so a calculation whose pseudopotentials sat
-    in its own folder -- every transport rung -- had its hints ignored.
+    Read from the files the run will open (`_psml_files`).
     """
     try:
         from ..pseudos import parse_psml_header
@@ -297,7 +282,7 @@ def _check_siesta_mesh_cutoff(cfg, struct=None, *, dest_dir=None) -> List[Issue]
     because it is what tight and vibrational work wants (`tuning.md` § 1) and
     that is a decision, not a bar everyone must clear.
 
-    Below, the original floor, unchanged and now scoped to its real case:
+    Below, the literature floor, scoped to its real case:
 
     Why 150 Ry as the warn threshold (vs. the slider's hard floor of
     100 Ry):
@@ -313,9 +298,6 @@ def _check_siesta_mesh_cutoff(cfg, struct=None, *, dest_dir=None) -> List[Issue]
     sanity check" floor; below 150 we add a soft nudge so the user
     sees the trade-off before they hit Save.  WARN severity (not
     ERROR) -- the user may genuinely want a screening calc.
-
-    This rule was deferred from the 2026-05-27 holistic-math audit
-    and landed 2026-05-28 alongside the cell-volume tightening.
     """
     mc = getattr(cfg, "mesh_cutoff", None)
     if mc is None:
@@ -401,8 +383,7 @@ def _check_siesta_charged_makov_payne_notice(struct: Structure,
     ``state`` is the electronic state the deck carries
     (`science/chemistry-correctness.md` § 2a): its charge -- stated, the
     run's, or the phosphate rule's; 0 on a transport rung, whose junction is
-    neutral by rule (this fired on every rung of a charged citation until
-    2026-09-28) -- and whether its system is finite.  Skipped at charge 0.
+    neutral by rule -- and whether its system is finite.  Skipped at charge 0.
 
     KEYED ON THE SYSTEM (§ 2b, the M6 review): a charged MOLECULE gets the
     estimate, and the word that SIESTA applies the leading term itself in a
@@ -410,7 +391,7 @@ def _check_siesta_charged_makov_payne_notice(struct: Structure,
     script reads first.  A charged REPEATING cell -- a slab, a defect in a
     crystal -- gets no formula, because the point-charge correction is the
     wrong one there; it is told its energy needs a defect-specific
-    treatment.  Both got the molecule's message until then.
+    treatment.
     """
     from ..siesta.makov_payne import compute_correction
     q = int(state.net_charge.value)
@@ -471,15 +452,11 @@ def _check_siesta_vacuum_adequacy(struct: Structure,
     """Too little vacuum on an ISOLATED axis lets the molecule interact with
     its own periodic images.
 
-    Lives HERE, in the validator, rather than in the emitter: it used to be a
-    Python ``warnings.warn`` inside ``render_fdf``, which reached the server's
-    stderr and therefore never reached a web user at all -- a 2.5 A vacuum box
-    went to SIESTA with nothing said, and the user learnt of it only from
-    SIESTA's own "multiply-connected orbital pairs" message (2026-07-29).
-    Clause R5 of the delivery contract (science/validation.md 4.1): a finding
-    never travels as a warning.  As an Issue it reaches BOTH surfaces -- the
-    web panel through the endpoint's ``issues[]``, and the CLI through
-    ``render_fdf``'s own ``report(validate(...))``.
+    Lives HERE, in the validator, rather than in the emitter: a finding never
+    travels as a warning (science/validation.md 4.1, clause R5).  As an Issue
+    it reaches BOTH surfaces -- the web panel through the endpoint's
+    ``issues[]``, and `jobset prep` through ``script_emit.render_deck``'s
+    ``report(validate(...))``.
 
     Periodic / transport axes are skipped: a crystal or a device sets the box
     there, not the vacuum.  Never mutates -- the structure is the truth.
@@ -539,10 +516,7 @@ def _validate_siesta(struct: Structure, cfg,
                      **_) -> List[Issue]:
     """SIESTA-specific checks.
 
-    Registered with the engine-validator dispatch at module bottom
-    (the decorator is applied after the SiestaConfig type is
-    importable -- avoids the import cycle between validation.py and
-    siesta/input.py at definition time).
+    Registered in `validation/__init__.py`'s ``_ENGINE_VALIDATORS``.
 
     ``dest_dir`` (keyword-only) is passed through to the pseudo-
     coverage check so dest-relative ``cfg.psml_lib`` paths resolve
@@ -557,12 +531,10 @@ def _validate_siesta(struct: Structure, cfg,
     # ONE FACT, ONE FINDING (science/validation.md § 7): the vibration kind
     # names the unconsumed region labels and states the held atoms itself,
     # from the rank rule, so this validator defers both families on that
-    # kind -- the same deferral the PySCF validator makes.  A second copy
-    # here spoke of "relaxation" on a run that relaxes nothing.
+    # kind -- the same deferral the PySCF validator makes.
     vibration = calculation == "vibration"
 
-    # Pattern B, re-homed here from the deleted web endpoints (C-shared
-    # 2026-08-21): region labels this run does not consume are named --
+    # Pattern B: region labels this run does not consume are named --
     # the frozen label is excluded (SIESTA consumes it as
     # Geometry.Constraints).
     from .sidecar import check_unconsumed_region_labels
@@ -616,15 +588,13 @@ def _validate_siesta(struct: Structure, cfg,
 
     # The checks that read the CHARGE the deck carries.  With no state -- a
     # label naming no element, the label check's finding above -- they stand
-    # down rather than judge the structure as neutral: this took 0 there
-    # until the M6 review, whatever charge the template stated.
+    # down rather than judge the structure as neutral.
     if state is not None:
         # Makov-Payne notice: charged-supercell image-charge bias.  We DON'T
-        # auto-apply the correction (see function docstring + design.md
-        # decisions log); we surface it so the user knows what's missing.
+        # auto-apply the correction (see function docstring); we surface it
+        # so the user knows what's missing.
         issues += _check_siesta_charged_makov_payne_notice(struct, state)
-        # Vacuum adequacy on isolated axes (R5: was a warnings.warn in the
-        # emitter, invisible to the web; now a finding on every surface).
+        # Vacuum adequacy on isolated axes (R5: a finding on every surface).
         issues += _check_siesta_vacuum_adequacy(struct,
                                                 state.net_charge.value)
 
@@ -636,9 +606,6 @@ def _validate_siesta(struct: Structure, cfg,
     # NOT ON A TRANSPORT RUNG, which writes no MD block at all: the junction
     # was relaxed upstream and every rung computes at that geometry
     # (engines/transport.md § 1), so the frozen set holds nothing there.
-    # Reasoned from `relax_type`'s catalogue default, this said "held fixed
-    # during SIESTA relaxation" on every junction rung (2026-09-25) -- the
-    # vibration kind's failure (science/validation.md § 7) on a second kind.
     relax = (getattr(cfg, "relax_type", "") or "").lower()
     if not vibration and calculation != "transport":
         issues += _check_frozen_atoms_consumed(
@@ -650,25 +617,6 @@ def _validate_siesta(struct: Structure, cfg,
                 f"is emitted, so Geometry.Constraints would be a no-op)"
             ),
         )
-
-    # NOTE (2026-08-07, P2 unit 2): this validator used to walk ``cfg.stages``
-    # here and re-check every stage's relax knobs.  It does not any more, and
-    # nothing replaced it in this function -- BY DESIGN, not by omission.
-    #
-    # A config has no stage list (engines/stages.md § 1.1), and § 4 R2 says a
-    # stage is validated as a RESOLVED WHOLE, never as a diff: the caller
-    # resolves each stage through ``effective_config`` and calls THIS
-    # function on the result, once per stage.  So each stage's relax_type,
-    # steps, force tol and displacement cap are checked by the ordinary
-    # single-config rules above -- the same rules, not a parallel copy of
-    # them, which is what made the old block drift from them.
-    #
-    # The two checks that were genuinely about the LADDER rather than about
-    # any one stage moved to where the ladder is: an empty / all-disabled
-    # list and duplicate names are refused by ``task.py``, where a
-    # description's ladder is read (the render-time copy in
-    # ``_enabled_stages`` died with its producers, step 6 u5).  Cross-stage findings -- a ladder that loosens -- are
-    # P2 unit 6 and carry no stage label (§ 4).
 
     # A VALUE THAT CANNOT MATTER, said out loud.  The free-energy tolerance is
     # loaded by SIESTA either way and installed as a criterion only when
@@ -694,11 +642,7 @@ def _validate_siesta(struct: Structure, cfg,
     # § 6.1): the spec hands the gate the mesh(es) it built -- a transport
     # rung's open or lead axis, a transmission's own grid -- and a caller
     # that hands none gets the one this configuration writes on its own.
-    # ONE derivation, `kmesh.mesh_for`: this block re-derived the axes from
-    # `cfg.kgrid` until 2026-09-30 -- so on a transport rung it warned about
-    # the transport axis the kind's validator refused (one fact, two
-    # severities), and on a lead it judged the template's grid, not the
-    # forty points the lead writes.
+    # ONE derivation, `kmesh.mesh_for`.
     from .. import kmesh as _kmesh
     meshes = tuple(m for m in (k_meshes if k_meshes is not None else (
         _kmesh.mesh_for(cfg, getattr(struct, "axis_kind", None),
@@ -720,10 +664,7 @@ def _validate_siesta(struct: Structure, cfg,
     #
     # Triggered only for a box of vacuum on every axis -- an isolated
     # molecule: the axes SIESTA computes on (`cell.engine_axis_kinds`,
-    # `model/structure-periodicity.md` § 2.1), never the k-point count.  It
-    # asked whether the mesh had one point until 2026-10-01 (the K3 review),
-    # so a crystal or a junction sampled at Gamma alone -- which carries its
-    # images by design -- was told it sat in a 3-D vacuum cell.
+    # `model/structure-periodicity.md` § 2.1), never the k-point count.
     from ..cell import engine_axis_kinds
     from ..template import engine_name
     vacuum_box = all(k == "isolated" for k in
@@ -731,8 +672,7 @@ def _validate_siesta(struct: Structure, cfg,
     if state is not None and vacuum_box and len(struct.positions) > 0:
         try:
             from ..chemistry import estimate_dipole_moment_debye
-            # The state's charge -- this spelled the charge rule out inline
-            # until 2026-09-28, a second copy of it.
+            # The state's charge.
             dipole = estimate_dipole_moment_debye(
                 struct, total_charge=float(state.net_charge.value))
         except Exception:

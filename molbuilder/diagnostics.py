@@ -8,17 +8,15 @@ The snapshot answers three questions:
 
 It does NOT pre-probe host PATH for individual tools -- ``shutil.which``
 is sub-millisecond and runs on demand in :meth:`Capabilities.tool_available`.
-The snapshot is therefore small: three fields, three methods, plus the
-singleton lifecycle.
+The snapshot is therefore small, plus the singleton lifecycle.
 
 Routing tables
 --------------
 
 The routing data lives at module scope as three small
-dicts, hand-written for clarity.  (It read "the four-env model" until
-2026-09-18; the registry has grown past any count worth writing down --
-`builtin_recipes()` is the list, and these dicts route the subset that
-needs routing.)  Renames go in ``molbuilder.json``;
+dicts, hand-written for clarity: `builtin_recipes()` is the list of envs,
+and these dicts route the subset that needs routing.  Renames go in
+``molbuilder.json``;
 new categories require a code change here AND a documentation change
 in ``docs/ops/installation.md`` and ``docs/execution/job-contracts.md``, so
 they're rare.
@@ -298,12 +296,10 @@ def _find_conda_binary() -> "tuple[Optional[str], Optional[str]]":
             return path, f"PATH ({candidate})"
     # The env-var fallback must check the path is EXECUTABLE, the way
     # ``shutil.which`` does above and the way install-env.sh's probe
-    # already did (``[[ -n "${v}" && -x "${v}" ]]``).  Returning an
-    # unvalidated value let a stale ``MAMBA_EXE`` -- pointing at a
-    # removed or renamed install -- beat a correct ``CONDA_EXE`` that
-    # the shim had just exported, because MAMBA_EXE is consulted first.
-    # The shell rejected that path and Python accepted it, which is the
-    # two-probes-disagreeing failure this whole seam exists to end.
+    # does (``[[ -n "${v}" && -x "${v}" ]]``).  An unvalidated value
+    # would let a stale ``MAMBA_EXE`` -- pointing at a removed or renamed
+    # install -- beat a correct ``CONDA_EXE`` that the shim had just
+    # exported, because MAMBA_EXE is consulted first.
     for var in ("MAMBA_EXE", "CONDA_EXE"):
         val = os.environ.get(var)
         if val and os.path.isfile(val) and os.access(val, os.X_OK):
@@ -314,11 +310,7 @@ def _find_conda_binary() -> "tuple[Optional[str], Optional[str]]":
 def manager_info(conda: str) -> Dict[str, Any]:
     """``<mgr> info --json`` as a dict, or ``{}`` when the manager will not say.
 
-    THE ONE READER of that document.  Three callers parsed it themselves
-    until 2026-09-13 -- the prefix resolver (for ``envs`` and ``envs_dirs``),
-    the state probe (``envs_dirs`` again) and `init-config` (``root_prefix``)
-    -- each with its own timeout and its own list of failures to swallow
-    (K-D6).  An empty dict is every failure: the callers ask ``.get`` and
+    THE ONE READER of that document.  An empty dict is every failure: the callers ask ``.get`` and
     read "the manager does not know".
     """
     try:
@@ -350,8 +342,7 @@ def conda_env_prefixes(conda: str) -> Dict[str, str]:
 
     THE ONE READER of the registry.  It answers with the PREFIX, not just the
     name, because the prefix is what a command is addressed by
-    (`installation.md` M2) and because answering with names alone is what made
-    three readers of one document necessary.
+    (`installation.md` M2).
 
     **The manager names its own envs.**  ``env list --json`` carries
     ``envs_details`` -- ``{prefix: {"name": ..., "base": true/false, ...}}`` --
@@ -360,22 +351,16 @@ def conda_env_prefixes(conda: str) -> Dict[str, str]:
     ``base``, and its prefix's basename (``miniconda3``, ``anaconda3``) is not a
     name at all.  Keying it by basename would invent one.
 
-    **The previous rule was "keep only envs whose parent directory is called
-    `envs`"**, which excluded the base installation (the point) and every env
-    created with ``--prefix`` somewhere else (not the point).  Those are listed
-    by the registry and perfectly usable -- since 2026-09-12 a step is addressed
-    by prefix, not by ``-n`` -- yet `caps.env_available` said **no** about an env
-    `probe_env_state` reported **PRESENT**, and `repair` then said *"env does not
-    exist.  Install it first"* about a healthy env.
+    An env created with ``--prefix`` somewhere else is listed by the registry
+    and perfectly usable -- a step is addressed by prefix, not by ``-n`` -- so
+    it is reported like any other.
 
     **A manager that reports no ``envs_details`` gets every listed prefix keyed
     by basename, with nothing excluded.**  That is deliberate and it is the
-    safer of two wrong answers: keeping the old ``envs``-parent filter there
-    hides an env created with ``--prefix``, and an env the registry lists but
-    this map does not report reads as FRESH to `probe_env_state` -- whereupon
-    ``conda create -n <name>`` makes a SECOND env beside the real one.  Measured:
-    that filter broke three tests of the state machine the moment the probe
-    started asking this function.  An installation root listed under its
+    safer of two wrong answers: a filter there would hide an env created with
+    ``--prefix``, and an env the registry lists but this map does not report
+    reads as FRESH to `probe_env_state` -- whereupon ``conda create -n
+    <name>`` makes a SECOND env beside the real one.  An installation root listed under its
     directory's basename is, by contrast, a name nothing ever asks about.
 
     Asking `info --json` for ``root_prefix`` would settle the degenerate case

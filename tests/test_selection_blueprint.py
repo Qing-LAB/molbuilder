@@ -2,26 +2,8 @@
 
 **The browser sends the atoms it is looking at.** MolView holds the structure;
 a filter is answered by handing the server that atom list plus the rule
-(`lib/molview/model-jobs.js:962`, the single call site). No file is opened,
+(`lib/molview/model-jobs.js`, the single call site). No file is opened,
 because the file on disk may not be what is on screen.
-
-**WHAT STOOD HERE UNTIL 2026-09-07.** This file had 38 tests. One drove the
-door above; the other 37 drove `/api/selection/atoms` and a `structure_path`
-branch of `eval` that read a structure from disk. Both were deleted with the
-code they tested, and the code was deleted because of `71729ff9` — the commit
-that introduced this door, titled *"filter evaluates against in-memory
-workspace atoms, not disk (BUG FIX)"*:
-
-> *Fixes the user bug: assign "L-electrode" in the panel (in-memory), filter
-> by it → "no region labelled L-electrode". The filter read the stale saved
-> file; now it reads the workspace (memory).*
-
-That commit kept the disk path beside its own replacement, for a case
-("Results viewing a saved file") that Results never used — it loads through
-MolView like every other tab. So the wrong code outlived its fix by four
-months and drifted further: its private reader applied only the sidecar's
-`regions`, dropping the identity columns, so `by_residue_name`, `by_chain_id`
-and `by_atom_name` returned nothing through it. Measured, not inferred.
 
 The rule operators themselves are pure and live in `molbuilder/selection.py`;
 they are covered at that layer by `tests/test_atom_selection.py`. What this
@@ -97,12 +79,7 @@ class TestTheDoor:
 
 
 class TestWhatItRefuses:
-    """The refusals, which had NO coverage at all before 2026-09-07.
-
-    Every one of these lines was live code with zero tests: the only door the
-    browser uses was covered by a single test, while 37 covered the two that
-    nothing called.
-    """
+    """The refusals."""
 
     def test_a_body_with_neither_atoms_nor_a_rule_is_refused(self, web):
         r = web.post("/api/selection/eval", json={})

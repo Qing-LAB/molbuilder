@@ -16,7 +16,7 @@ everywhere).
 **Why this is a second file and not more of `task.py`.** § 6.6's eight checks
 split cleanly: four are answerable from the description alone and live in the
 codec, and four need the engine's field schema -- one of those four being the
-DECLARED-TYPE row (added 2026-08-25), which needs the schema for the same
+DECLARED-TYPE row, which needs the schema for the same
 reason the bounds row does: only the field knows what it can hold. ``task.py`` is L1 — it imports
 ``persist`` and the standard library — and importing an engine into it is
 the upward import the layer rule forbids (`architecture.md` § 3, kept by
@@ -27,9 +27,7 @@ there.**
 **Why this returns findings rather than raising.** § 6.6's refusal rows
 become ``error`` Issues, and the sequence checks (§ 6.4 / § 6.6a) are
 ``warn`` — a function that raises could not express *"proceed, and say
-so"* at all.  (The schema-fingerprint row — the original non-refusal —
-retired 2026-08-14 with the fingerprint itself; `stages.md` § 6.6 records
-the deletion.)  :func:`refuse_on_error` is the caller's one line when it
+so"* at all.  :func:`refuse_on_error` is the caller's one line when it
 wants the exception. That also puts these on the one channel into the UI
 (§ 4.1 R2), which is the point: a check nobody sees is worse than no check.
 
@@ -65,10 +63,7 @@ def preflight(task, config_cls=None, *,
     § 6.4's loosening ladder and § 6.6a's identical-and-clean recompute.
     Both compare RESOLVED stages, so they need the template, and both are
     *"a warning, not a preflight row"* (§ 6.6a): they proceed.  Optional
-    because half of § 6.6 is answerable from the description alone; but
-    until 2026-08-13 NO production surface ran the sequence checks at all —
-    `stages.md` :884 said "implemented" over a function only tests called
-    (final review A-8).
+    because half of § 6.6 is answerable from the description alone.
 
     Every finding names what it refused (§ 6.6's right-hand column) — this is a
     file people edit by hand, so a refusal owes them the offending key, the
@@ -102,9 +97,6 @@ def preflight(task, config_cls=None, *,
     out.extend(_bench_points_fit_their_items(task))
     out.extend(_described_values_may_stand(task))
 
-    # (step 2 -- the schema fingerprint -- retired 2026-08-14 with the
-    # fingerprint itself; stages.md § 6.6 records the deletion)
-
     # -- 3. every named field exists in the schema ------------------------
     fields = {f.name: f for f in dataclasses.fields(cls)}
     out.extend(_names_exist(task, cls, fields))
@@ -137,9 +129,9 @@ def preflight(task, config_cls=None, *,
                                                kind=_kind)
 
     # -- 4. every value is inside the schema's bounds ---------------------
-    #  ...which begins with being a value that field can HOLD.  Found by the
-    #  M2 seam walk (2026-08-07): `relax_steps: 100.7` is inside its range and
-    #  is not an integer, and reached the deck as `MD.NumCGsteps 100.7`.
+    #  ...which begins with being a value that field can HOLD: `relax_steps:
+    #  100.7` is inside its range and is not an integer, and would reach the
+    #  deck as `MD.Steps 100.7` (the M2 seam walk, 2026-08-07).
     out.extend(_values_are_the_declared_type(task, cls, fields))
     out.extend(_values_in_bounds(
         task, fields,
@@ -209,8 +201,7 @@ def _execution_names_a_speed_knob(task) -> List[Issue]:
     every = {i.name for i in select(catalogue(), engine=task.engine)
              if "execution" in (i.category or ())}
     # ...THAT THIS KIND CARRIES: a run card's value is read by the kind's
-    # decks or by nothing (`template.md` § 6.3), as an override is (K4) --
-    # `restart` on a vibration's card was pinned into a deck that ignores it.
+    # decks or by nothing (`template.md` § 6.3), as an override is (K4).
     known = {i.name for i in select(catalogue(), engine=task.engine,
                                      calculation=kind)
              if "execution" in (i.category or ())} | set(LANE_ASKS)
@@ -243,9 +234,7 @@ def _described_values_may_stand(task) -> List[Issue]:
     """The values a description holds OUTSIDE its stages' overrides -- an
     ``execution`` block's, the calculation's or a stage's, and a bench's
     points -- asked of the one per-value door as a stage's value is
-    (`engines/template.md` § 5.3): they become pins and sweep points, and
-    `resolve` refused them first at prep, on the machine that runs it,
-    until 2026-09-30 (the K3 review).  A name the other checks refuse
+    (`engines/template.md` § 5.3): they become pins and sweep points.  A name the other checks refuse
     (not an execution item, not a speed knob) is theirs; this asks only
     whether the value may stand."""
     out: List[Issue] = []
@@ -274,15 +263,10 @@ def _bench_points_fit_their_items(task) -> List[Issue]:
     """`generator.md` § 4.3a's shape half at DESCRIBE time: every declared
     point must fit its item -- a bool item takes true/false, an enum point
     must be one of the item's choices, and a repeated point would measure
-    one configuration twice.  THE ONE HOME of those rules (R2-5 dedup,
-    2026-08-21): `jobset/prep_inputs.py::_declared_execution_pins` calls this
-    same function as its backstop instead of carrying a copy -- the copies
-    had diverged (allocation-item duplicates were caught only here).
-    Surfaced at save so a typo'd declaration fails there, not after a
-    queue on the cluster.  (Found
-    live 2026-08-21: a matrix saved through the pre-U1 UI spelled
-    'ELPA-1Stage' where the catalogue's choice is 'ELPA-1STAGE', and the
-    first surface to say so was `prep bench` on Sol.)
+    one configuration twice.  THE ONE HOME of those rules:
+    `jobset/prep_inputs.py::_declared_execution_pins` calls this same
+    function as its backstop.  Surfaced at save so a typo'd declaration
+    fails there, not after a queue on the cluster.
 
     Membership is the sibling's question; an unknown name is skipped here
     because `_bench_names_a_speed_knob` already reported it.
@@ -336,13 +320,12 @@ def _shipped() -> Dict[str, Any]:
 def config_class_for(task, generators=None):
     """The engine-config dataclass *task*'s engine is generated from, or None.
 
-    ONE OWNER for the engine -> config resolution, because there are two
-    callers and the second one used to do without.  `web/blueprints/build.py`
+    ONE OWNER for the engine -> config resolution.  `web/blueprints/build.py`
     renders this task's preflight findings for the browser, and
     `issues_to_json` needs the dataclass to resolve each finding's
     ``workflow_group`` -- without it the key is OMITTED and the page cannot
     attach the finding to its workflow-group card (`web/ui-contract.md`
-    Rule 2).  The route had nothing to ask, so it passed nothing.
+    Rule 2).
 
     Returns the CLASS, not an instance: `resolve_workflow_group` reads
     ``metadata["workflow_group"]`` off the field declarations, so no values are
@@ -369,12 +352,7 @@ def _names_exist(task, cls, fields) -> List[Issue]:
     ``execution`` items, the machine's answers (``mpi_np``) and a person's
     (``use_gpu``, ``restart``) alike -- refuses too, with the run card's
     story rather than the typo story: a rung states it in its ``execution``
-    and nowhere else (`engines/stages.md` § 6.8d, plan § 5w K5).  The
-    machine's answers were refused here since 2026-08-13 (a description
-    varying ``mpi_np`` rendered a deck for a rank count the allocation never
-    granted, final review A-9); the rest were columns until 2026-09-30, a
-    second home through which a rung's ``use_gpu`` reached its deck and not
-    the scheduler's device ask (SO-C1).
+    and nowhere else (`engines/stages.md` § 6.8d, plan § 5w K5).
     """
     from ..template import run_settings, why_run_setting
     on_the_card = run_settings(str(task.engine))
@@ -420,24 +398,11 @@ def _values_are_the_declared_type(task, cls, fields) -> List[Issue]:
     run a different calculation from the one described, and parsing ``"150"``
     would make a quoting slip invisible.
 
-    **The annotation is RESOLVED, never sniffed as source text**
-    *(2026-08-25)*. This read ``f.type`` and compared it against the literal
-    strings ``"int"`` / ``"float"`` / ``"bool"``, so under ``from __future__
-    import annotations`` — where a field's ``type`` IS its source text — it
-    recognised those three spellings and nothing else. Every ``Optional[…]``
-    field and every sequence field went unchecked: ``kgrid``,
-    ``kgrid_displacement``, ``species_order``, ``ecp_atoms``. A description
-    carrying ``"kgrid": "4,4,1"`` therefore passed this gate, saved cleanly,
-    resolved into a config holding a string where a triple belongs, and died
-    at ``prep`` inside the metadata range check as *"this is a programmer
-    bug"* — a message that names neither the stage nor the key, because at
-    that depth neither is still in hand (found live 2026-08-25). It is the
-    same trick one file over that ``resolve._declares_float`` records itself
-    getting wrong, for the same reason.
-
-    Found by the M2 seam walk. Neither side could see it alone — ``task.py``
-    has no schema to check a type against, and ``effective_config`` had no
-    reason to think a value might not be one.
+    **The annotation is RESOLVED, never sniffed as source text**: under
+    ``from __future__ import annotations`` a field's ``type`` IS its source
+    text, so a literal-string comparison would leave every ``Optional[…]``
+    field and every sequence field (``kgrid``, ``kgrid_displacement``,
+    ``species_order``, ``ecp_atoms``) unchecked.
     """
     hints = typing.get_type_hints(cls)
     out: List[Issue] = []
@@ -608,9 +573,7 @@ def _overrides_a_rung_reads(task) -> List[Issue]:
     run's relaxation settings, a seed's transmission window, an item the
     kind does not carry at all -- each is refused by name where the
     description is written, never written into a deck that ignores it.  The
-    one door ``resolve`` asks too (``template.unread_overrides``); it was
-    transport's alone, at its describe door and its prep, until
-    2026-09-30."""
+    one door ``resolve`` asks too (``template.unread_overrides``)."""
     from ..template import unread_overrides, why_unread
     engine, kind = str(task.engine), _kind_of(task)
     out: List[Issue] = []
@@ -633,9 +596,7 @@ def _values_in_bounds(task, fields, *, refused=frozenset()) -> List[Issue]:
     (``template.why_not``) -- are refusals in § 6.6's sense: a description
     carrying anything else renders a deck the engine will reject or, worse,
     quietly reinterpret.  A numeric ``range`` is a RECOMMENDATION, warned
-    here as on every surface (`engines/template.md` § 5.3) -- it refused here
-    while the settings gate warned about the same value in the template until
-    2026-09-30 (one range, two severities).
+    here as on every surface (`engines/template.md` § 5.3).
 
     A field with neither is unbounded on purpose and is not checked — the
     schema is the authority on what a bound is, and inventing one here would
@@ -679,8 +640,7 @@ def _values_in_bounds(task, fields, *, refused=frozenset()) -> List[Issue]:
             # THE RECOMMENDED RANGE, per component for a triple, through the
             # helper the settings gate asks too (`metadata.outside_range`,
             # which leaves a bool and any other non-number to the type
-            # check) -- a scalar alone was checked here until 2026-09-30, so
-            # a triple's range was warned at prep and silent at save.  (An
+            # check).  (An
             # item this kind does not carry is refused above, by the rung
             # check, and never reaches here.)
             if rng:

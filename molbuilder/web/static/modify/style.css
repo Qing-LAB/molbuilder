@@ -11,36 +11,19 @@
  * scale (`--space-xs … --space-xl`), the type scale (`--text-2xs … --text-xl`),
  * the radii and the palette.  A raw number in a rule below is a bug: it is a
  * second scale, and two scales drift.
- *
- * The two things tokens.css cannot answer are named HERE, because they are
- * facts about THIS page rather than about the design system:
- *
- *   --page-max-width   how wide this tab's content is allowed to get.  Not a
- *                      shared token: /results caps at 1200 and the form pages
- *                      at 1400, and reconciling those three is a design
- *                      decision about the whole app, not a tidy-up.
- *   --focus-ring       the keyboard-focus halo.  It was written out three times
- *                      inline, so "make the ring thicker" was three edits and
- *                      the third was the one you forget.
  */
-/* `--page-max-width` and `--focus-ring` were defined here, in a `:root`
- * block that is global wherever this sheet loads.  They live in
- * `lib/tokens.css` now -- the one palette file (`ui-contract.md` § 2). */
 
 
-/* No `*` reset here: `lib/page-shell.css` owns the document tier and its rule is
- * byte-identical to the one that stood here. Two identical copies in two sheets
- * means the winner is decided by <link> order rather than by anyone -- and the
- * day they stop being identical, nothing says which was meant. */
+/* No `*` reset here: `lib/page-shell.css` owns the document tier. Two copies in
+ * two sheets would mean the winner is decided by <link> order rather than by
+ * anyone. */
 
 
 html, body { height: 100%; }
 
-/* ``body { ... }`` removed 2026-05-19; the canonical rules (margin,
- * font-family, color, bg, line-height, font-smoothing) live in
- * lib/page-shell.css.  Header rules below stay per-page (the modify
- * header uses different padding + border treatment than the shared
- * default). */
+/* The canonical body rules live in lib/page-shell.css.  Header rules
+ * below stay per-page (the modify header uses different padding +
+ * border treatment than the shared default). */
 
 /* ---- Header ---- */
 .app-header {
@@ -59,9 +42,7 @@ html, body { height: 100%; }
  * SMILES, Name, DNA, RNA, Peptide) wraps its inputs in
  * ``.modify-source-body``; the spacing rules below shape that body.
  * The Init-tab bar above the panels is themed by ``.modify-init-tabs`` /
- * ``.modify-init-tab`` further down.  The pre-task-293 design used a
- * ``<details>`` accordion for the same UI; those marker / panel
- * rules were removed as orphan CSS in task #297 (2026-06-08). */
+ * ``.modify-init-tab`` further down. */
 .modify-source-body {
     padding: var(--space-sm) 0 var(--space-sm) 1.2em;
 }
@@ -96,34 +77,21 @@ html, body { height: 100%; }
     flex-wrap: wrap;
 }
 
-/* Status text inside the Sources card header — reused from the
- * legacy loader-bar so modify/viewer.js's setStatus() still works
- * without touching the JS.  Both .status and the severity
- * variants below match the conventions in Build (style.css) and
- * the trajectory inspector (lib/trajectory/trajectory-inspector.css) so a
- * future "add a severity" change is a single CSS edit. */
+/* Status text on this page. */
 .status {
-    /* COMPOSITION ONLY (`ui-contract.md` § 5).  This also set
-       `color: var(--text-muted)` and `font-size: var(--text-base)` until
-       2026-08-25 -- re-picking two things page-shell owns, which is the one
-       thing § 5 forbids a page sheet: *"may nudge WHERE the status sits ...
-       but never re-picks the color"*.  Measured, it made every status
-       message on this page #6c7280/15.2px where every other page renders
-       #a8aebb/14px -- dimmer, on the page that shows the most of them.
-       `font-weight: normal` went with them: 400 is already the default. */
+    /* COMPOSITION ONLY (`ui-contract.md` § 5): a page sheet *"may nudge WHERE
+       the status sits ... but never re-picks the color"*. */
     margin-left: auto;   /* right-aligns the status in the Modify action row */
 }
 /* Severity modifiers (.status.ok/.error/.warn/.muted) live ONCE in
  * page-shell.css (`web/ui-contract.md` § 1.1) — the "single CSS edit" home. */
 
-/* ---- Vertical workflow (2026-06-08 restructure) ----
+/* ---- Vertical workflow ----
  *
- * The Molbuilder tab is now a vertical scroll: Init structure
- * (sources card) → Viewer → Modify (selection + edit side-by-
- * side + Save footer).  The previous 3-column grid (selection |
- * viewer | edit) was retired — visually heavy + forced the user
- * to track three columns at once.  The new flow matches the
- * actual workflow: pick/generate → inspect → edit → save.
+ * The Molbuilder tab is a vertical scroll: Init structure (sources
+ * card) → the workspace row (the viewer card beside the Modify card).
+ * The flow matches the actual workflow: pick/generate → inspect →
+ * edit → save.
  */
 .modify-main {
     display: flex;
@@ -132,50 +100,40 @@ html, body { height: 100%; }
     padding: var(--gap);
     /* ONE GUTTER PER TAB (ui-contract.md § 4).  The cap and the centring live
        here, on the container every top-level block sits in -- not on the
-       workspace row alone.  Until 2026-08-30 the Init-structure card was a
-       SIBLING of this element rather than a child, so it rendered flush with
-       the content column while everything below it was inset by this padding:
-       a 16px step at a narrow window and a 506px one at a wide one, where only
-       .modify-grid carried the max-width. */
+       workspace row alone. */
     max-width: var(--page-max-width);
     margin-inline: auto;
     width: 100%;
 }
 /* Page COMPOSITION only: the fused molview card sits in a flex column in the workspace grid.
- * Everything about the VIEWER's dimensions -- the square (--viewer-extent), the fill-to-canvas
- * chain, and the card's own content-width cap -- lives in the module (lib/molview/fused-
- * layout.css), driven by the module's own --viewer-* vars.  This tab says NOTHING about the
- * viewer's size; the concealed MolView card sizes itself in any host.  (The old
- * .viewer-wrap / .viewer / .molviewer-window-frame sizing rules that used to live here -- with copied
- * 560 / 320 / 342 magic mirroring fused-layout.css -- were the module's job leaking into the
- * tab; they moved into fused-layout.css so every consumer fits identically.) */
+ * Everything about the VIEWER's dimensions lives in the module (lib/molview/molview.css).
+ * This tab says NOTHING about the viewer's size; the concealed MolView card sizes itself in
+ * any host. */
 .modify-viewer-section {
     display: flex;
     flex-direction: column;
 }
 
-/* Workspace layout (v5, 2026-07-08): the fused molview card (viewer + selection/cell
+/* Workspace layout: the fused molview card (viewer + selection/cell
  * panel) beside the Modify op-controls card.  The reflow is the shared, content-driven
  * `.card-row` primitive (page-shell.css) -- NO page-specific media breakpoint.  This rule
  * only adds the page's own max-width/centring; each card declares its width policy via the
  * three --card-* vars, so the row wraps the modify card below the instant both min-widths
  * stop fitting (never crushing one card into the other).  See docs/web/ui-contract.md. */
 .modify-grid {
-    /* the cap and the centring moved to .modify-main (2026-08-30), which is
-       now the one container both top-level blocks share. */
+    /* the cap and the centring are .modify-main's, the one container both
+       top-level blocks share. */
 }
 /* Primary card: wide + heavy grow; min == the fused card's own stacked min-width.
- * Targets .modify-viewer-section -- the direct grid child that now WRAPS molview.mount's built
- * .molviewer-card (Track B: the module builds its own card into the section's bare host, so
- * the grid weight lives on the section, not the nested card). */
+ * Targets .modify-viewer-section -- the direct grid child that wraps molview.mount's built
+ * .molviewer-card (the module builds its own card into the section's bare host, so the grid
+ * weight lives on the section, not the nested card). */
 .modify-grid > .modify-viewer-section  { --card-weight: 2.4; --card-basis: 640px; --card-min: 340px; }
 /* Secondary card: keeps the op controls at a usable width. */
 .modify-grid > .modify-section { --card-weight: 1;   --card-basis: 320px; --card-min: 300px; }
 
-/* Modify section: hosts the "Save to project" header row + the op-tabs (the
- * selection panel moved to its own workspace card in layout v3, 2026-06-12).
- * The old bottom footer + the Send-to-Optimization handoff were removed;
- * Save-to-project now lives in the card header (.modify-actions--header). */
+/* Modify section: hosts the "Save to project" header row
+ * (.modify-actions--header) + the op-tabs. */
 .modify-section { display: flex; flex-direction: column; }
 
 /* ---- Dedicated message region -------------------------------------- */
@@ -206,10 +164,8 @@ html, body { height: 100%; }
 
 /* NO ADVISORY ROWS HERE. What the server says about a structure is shown by
  * MolView, in its own panel (molview.md § 6.8) -- a cell notice under the Cell
- * rows it is about, everything else on one line above the tabs. This page had a
- * second set of rows with a severity vocabulary of its own, fed from a key the
- * modify routes never answer with; drawing the same facts twice is what the
- * one-place rule exists to stop. */
+ * rows it is about, everything else on one line above the tabs; drawing the
+ * same facts twice is what the one-place rule exists to stop. */
 
 .modify-body {
     display: block;       /* single column: op-tabs only */
@@ -217,9 +173,8 @@ html, body { height: 100%; }
 }
 .modify-edit      { min-width: 0; }
 
-/* "Save to project" action row.  Relocated under the Modify title (item 5); the
- * Send-to-Optimization handoff + the bottom footer were removed (item 1) -- all
- * cross-tab transfer goes through a saved project file. */
+/* "Save to project" action row, under the Modify title -- all cross-tab
+ * transfer goes through a saved project file. */
 .modify-actions {
     display: flex;
     align-items: center;
@@ -228,14 +183,10 @@ html, body { height: 100%; }
 }
 /* THE TWO BUTTONS KEEP THEIR PLACES, whatever the row has to say.
  *
- * Three columns rather than a wrapping flex row: write action, message,
- * discard action.  The middle column is the only elastic one and it may not
- * push -- `minmax(0, 1fr)` plus the ellipsis below -- so neither button moves
- * when "Not saved yet" becomes "saved #1 - Retract -> #0" (user, 2026-09-11:
- * "should be better aligned and placed without being affected by displayed
- * message/text").  As a flex row with `flex-wrap: wrap` the message's width
- * decided whether the discard button fitted, so it changed places as you
- * worked. */
+ * A grid: the write and the discard action in one row, the message in a row
+ * of its own under them, so neither button moves when the message changes
+ * (user, 2026-09-11: "should be better aligned and placed without being
+ * affected by displayed message/text"). */
 .modify-actions--header {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -249,14 +200,10 @@ html, body { height: 100%; }
     border-bottom: 1px solid var(--border-soft);
     margin-bottom: var(--space-sm);
 }
-/* The message slot: one column, and it TRUNCATES rather than growing.  The
- * two spans inside it keep their own owners -- `.muted` and `.status` are
+/* The message sits UNDER the pair, across the full width; wrapping is
+ * allowed, because a message that cannot be read is the same as no message.
+ * The two spans inside it keep their own owners -- `.muted` and `.status` are
  * page-shell's, and this says only where they sit (`ui-contract.md` § 5). */
-/* The message sits UNDER the pair, across the full width.  It had a column of
- * its own between the buttons for one revision and was crushed to 29px --
- * "Not saved yet" reduced to an ellipsis.  A row of its own costs one line and
- * lets the sentence be read; wrapping is allowed, because a message that
- * cannot be read is the same as no message. */
 .modify-actions__say {
     grid-area: say;
     display: flex;
@@ -274,13 +221,10 @@ html, body { height: 100%; }
     width: 100%;
     min-width: 0;
 }
-/* THE DISCARDING ACTION SITS AT THE FAR END of the same row.  "Clear structure" has
- * the same scope as Save -- both act on the whole model, which is why it moved
- * out of the Atom tab (user, 2026-09-07) -- but putting them shoulder to
- * shoulder puts a discard one slip away from a write.  The grid's third
- * column holds that end; the `margin-inline-start: auto` that did it while
- * this was a flex row is gone with the row -- in a grid it would push the
- * button out of its own column. */
+/* THE DISCARDING ACTION SITS AT THE OTHER END of the same row.  "Clear
+ * structure" has the same scope as Save -- both act on the whole model (user,
+ * 2026-09-07) -- but putting them shoulder to shoulder puts a discard one slip
+ * away from a write. */
 .modify-actions__reset { grid-area: reset; width: 100%; }
 
 @media (max-width: 785px) {
@@ -289,27 +233,19 @@ html, body { height: 100%; }
     .app-header          { padding: var(--space-md) var(--space-lg) var(--space-sm); }
 }
 
-/* ---- Init structure card (was Sources) ----
- * Sits at the top of ``.modify-main`` flex column.  Pre-
- * task-303 the card carried its own ``margin: var(--space-lg) var(--space-xl) 0`` that
- * floated it above the main padding-driven rhythm; now it
- * inherits the parent's ``gap: var(--gap)`` + ``padding:
- * var(--gap)`` so it aligns flush with the Viewer + Modify cards
- * below it. */
+/* ---- Init structure card ----
+ * Sits at the top of ``.modify-main`` flex column and inherits the
+ * parent's ``gap: var(--gap)`` + ``padding: var(--gap)`` so it aligns
+ * flush with the Viewer + Modify cards below it. */
 .modify-init-card {
     margin: 0;
     /* No padding here.  ONE INSET PER CARD (ui-contract.md § 4): the inset is
-       `.card`'s and this element does not get a second opinion.  It carried
-       `var(--space-sm) var(--space-lg) var(--space-sm)` until 2026-08-30,
-       which is why its title sat at 20.8px while the Modify card's sat at
-       38.8 and the viewer's at 20.0 -- three cards, three left edges.
-       The two `.card-header` overrides that stood here are gone too: they said
-       what `.modify-card-header` now says for every card on the page. */
+       `.card`'s and this element does not get a second opinion. */
     display: flex;
     flex-direction: column;
 }
 
-/* Tab bar that replaced the <details> accordion (one panel
+/* Tab bar (one panel
  * visible at a time keeps the card compact regardless of how
  * many generators land).  Wraps onto multiple lines when the
  * window is narrow rather than horizontally scrolling.       */
@@ -332,7 +268,7 @@ html, body { height: 100%; }
 .modify-init-tab:hover { color: var(--text-primary); border-color: var(--border-strong); }
 .modify-init-tab.is-active {
     color: var(--text-primary);
-    background: var(--bg-card-hover);   /* was the phantom --bg-card-emphasis (never defined) */
+    background: var(--bg-card-hover);
     border-color: var(--accent);
 }
 
@@ -344,31 +280,11 @@ html, body { height: 100%; }
 /* ---- Cards ---- */
 /* `display` on a class ties with the browser's own `[hidden] { display: none }`
    and wins on source order, so `element.hidden = true` stops hiding a `.card`.
-   The Transport tab's "Generated script" panel is written `hidden` and un-hidden
-   by JS once a script exists -- without this guard it was visible, and empty,
-   from page load.  docs/process/code-audit.md. */
+   docs/process/code-audit.md. */
 .card[hidden] { display: none; }
-/* `.card` IS THE SHELL'S, AND ONLY THE SHELL'S (2026-08-24).
- *
- * A copy lived here restating the shell's background / radius / shadow
- * verbatim and then differing in one value -- `--border-soft` where
- * `lib/page-shell.css` says `--border-strong`.  This file loads after the
- * shell (modify.html:12 vs :7), so the drift won on source order and this
- * tab's cards had a visibly softer border than every other tab's, with
- * nothing saying why.  `spectra/style.css` carried a third variant.
- *
- * What the copy legitimately added was column layout -- and it did not
- * need `.card` to say it.  BOTH elements on this page that carry `.card`
- * already carry a class of their own (`.modify-init-card` at modify.html:55,
- * `.modify-section` at :322), so the layout attaches to those and the
- * surface stays in one home (`process/code-audit.md` -- a module owns its
- * CSS).  `tests/test_css_no_duplicate_selectors.py` enforced it, the `.card`
- * allowlist entry retired with this change, until the test itself was
- * retired on 2026-09-10 (`082ba979`); the rule is held by review.
- *
- * The planned fix recorded in that allowlist was to scope the copies as
- * `.modify-tab .card`.  That would have preserved the divergence with
- * better specificity; deleting them was the actual fix. */
+/* `.card` IS THE SHELL'S, AND ONLY THE SHELL'S.  The layout attaches to this
+ * page's own classes (`.modify-init-card`, `.modify-section`) and the surface
+ * stays in one home (`process/code-audit.md` -- a module owns its CSS). */
 .modify-init-card,
 .modify-section {
     min-height: 0;          /* let inner flex children scroll */
@@ -376,24 +292,17 @@ html, body { height: 100%; }
 /* A card's top row.  ONE INSET PER CARD (ui-contract.md § 4): NO horizontal
    padding here, so the title starts exactly where the card's own inset puts
    every other thing in it -- the rule under it, the action row, the tab strip,
-   the form rows.  It carried `var(--space-md) var(--space-lg)` until
-   2026-08-30, which pushed the Modify card's title 20px past its own rule and
-   left the viewer's, whose parent is not a `.card`, 20px in from nothing.
-   One component, two parents: only a rule that reads the PARENT's inset can
-   serve both, and the way to read it is not to add one.
+   the form rows.  One component, two parents: only a rule that reads the
+   PARENT's inset can serve both, and the way to read it is not to add one.
 
-   Renamed from the shared-looking `.card-header` at the same time: it is
-   written by modify.html and by nothing else in the app (css-system-plan.md
+   Written by modify.html and by nothing else in the app (css-system-plan.md
    § 3 -- a page sheet may contain only its own vocabulary). */
 .modify-card-header {
     display: flex;
     /* Centred in a row of a STATED height, not baselined against whatever
-       else is in it.  With `align-items: baseline` the row's first baseline
-       came from its tallest control, so a card whose title line carries
-       buttons sat its title lower than a card whose title line does not --
-       the Modify and Structure titles, side by side, were 9px apart with
-       nothing on screen to explain the step.  The min-height is what makes
-       the two rows the same size in the first place. */
+       else is in it: a baseline would come from the row's tallest control,
+       so a card whose title line carries buttons would sit its title lower.
+       The min-height is what makes the two rows the same size. */
     align-items: center;
     justify-content: space-between;
     gap: var(--space-md);
@@ -408,10 +317,8 @@ html, body { height: 100%; }
     color: var(--text-primary);
 }
 /* The viewer section is NOT a `.card` -- MolView paints its own surface inside
-   `#molview-host`, with its own border and radius.  So this header was a
-   card-coloured strip with square corners sitting on a page-coloured rounded
-   box: two surfaces failing to join, which is what the seam under the title
-   was.  It becomes a LABEL for the card below it instead -- no background of
+   `#molview-host`, with its own border and radius.  So this header is a
+   LABEL for the card below it -- no background of
    its own, no rule (the module's card draws its own top edge a few pixels
    down) -- and keeps the card's top inset so its baseline matches the title
    of the Modify card beside it. */
@@ -419,23 +326,16 @@ html, body { height: 100%; }
     /* Only the rule differs.  The box is a card header's, so its title sits at
        the same height as the Modify card's beside it -- the section supplies
        the top inset a `.card` would have given it (see .modify-viewer-section
-       below), instead of this modifier growing its own box and landing the two
-       column titles 6px apart. */
+       below). */
     border-bottom: 0;
     background: transparent;
 }
-
-/* (Atom-list styles retired 2026-05-20 along with the left-column
- * atoms card -- the selection panel above the grid renders the
- * per-atom list now.  See lib/selection-panel.css.) */
 
 /* ---- Viewer section ---- */
 /* The top inset a `.card` gives its header.  This section is not a card --
    MolView paints its own surface below -- so the inset is stated here rather
    than borrowed from a surface that is not there. */
 .modify-viewer-section { gap: 0; padding-top: var(--space-md); }
-/* Renamed from `.ghost` 2026-08-30 -- ten buttons, all in modify.html,
-   none anywhere else in the app.  Page vocabulary wearing a shared name. */
 .modify-ghost {
     background: transparent;
     color: var(--text-secondary);
@@ -443,11 +343,9 @@ html, body { height: 100%; }
     border-radius: var(--radius-sm);
     padding: var(--space-xs) var(--space-md);
     cursor: pointer;
-    /* A CONTROL's type, not the document's.  `font: inherit` -- the usual way
-       to undo the UA's button font -- handed these buttons the BODY size, so
-       Save state and Retract rendered at 16px beside 14px op-tabs and a
-       14.7px Save-to-project, and read as the largest thing on the card after
-       its title.  Measured 2026-08-30: 33.6px tall against 31.6 and 30.7. */
+    /* A CONTROL's type, not the document's: `font: inherit` -- the usual way
+       to undo the UA's button font -- would hand these buttons the BODY
+       size. */
     font: var(--weight-medium) var(--text-sm)/var(--line-normal) var(--font-sans);
     transition: border-color 0.12s, color 0.12s;
 }
@@ -483,9 +381,8 @@ html, body { height: 100%; }
     flex: 1 1 auto;
     overflow: auto;
     /* Vertical only.  This element draws nothing -- no background, no border --
-       so a horizontal inset here is indentation with no reason a reader can
-       see, and it stacked on the card's: every op row sat 34.8px in while the
-       rule above it sat at 18.8.  ONE INSET PER CARD (ui-contract.md § 4). */
+       so a horizontal inset here would be indentation with no reason a reader
+       can see.  ONE INSET PER CARD (ui-contract.md § 4). */
     padding: var(--space-sm) 0;
 }
 .modify-edit-panel .hint {
@@ -497,22 +394,9 @@ html, body { height: 100%; }
 
 /* Sub-tabs (Atom / Pose / Junction) split the op fieldsets into
    the three workflow phases so only one panel is visible at a
-   time.  Mirrors the .control-tabs / .ctab pattern in the Watch
-   stylesheet. */
+   time. */
 /* The tab strip sits on the card's inset, and its rule is the same width as
-   the header's rule above it -- two ruled bands, one edge.
-   
-   What stood here was `margin: var(--space-sm) -var(--space-md) var(--space-sm)`
-   with the comment "bleed to card edges".  **A minus glued to `var()` is not
-   valid CSS**, so the browser dropped the whole declaration: no bleed, and the
-   vertical margins the same line asked for were lost with it (computed
-   `margin: 0px`, measured 2026-08-30 -- it is the only occurrence of the
-   pattern in the tree).  Nothing errored and the comment kept describing a
-   layout that never shipped.  The negation, had it been wanted, is
-   `calc(-1 * var(--space-md))`; the bleed itself is not wanted -- it would put
-   this strip's edges 16px outside every other edge on the card.
-   `background: var(--bg-card)` went too: it painted the card's own colour onto
-   the card. */
+   the header's rule above it -- two ruled bands, one edge. */
 .modify-edit-panel .modify-op-tabs {
     display: flex;
     border-bottom: 1px solid var(--border-soft);
@@ -657,16 +541,6 @@ html, body { height: 100%; }
     padding: var(--space-xs) var(--space-sm);
     font: inherit;
 }
-/* (.full-btn base moved to lib/form-components.css 2026-07 -- shared with
- * Transport.  This sheet keeps only the header-row width override below.) */
-
-/* ---- Junction subtab: legibility ----
- *
- * Three small int inputs (m / n / layers) live in a single op-row
- * with ``justify-content: space-between``.  Default styling crams
- * them up against the edges with the labels touching the inputs.
- * Lay them out as an even three-column grid with breathing room so
- * each labelled input stays readable. */
 /* A checkbox sits INLINE, before its text -- the box is a fixed-size glyph,
    never a stretched row.  Carried by the Slab panel's "Orthogonal cell"
    switch; page-shell already owns how the box itself is painted, so this is
@@ -700,13 +574,9 @@ html, body { height: 100%; }
     gap: var(--space-xs);
     font-size: var(--text-sm);
 }
-/* COMPOSITION ONLY (ui-contract.md 1 and 5).  page-shell.css:295 owns what a
+/* COMPOSITION ONLY (ui-contract.md 1 and 5).  page-shell.css owns what a
    number box LOOKS like on every page; this rule owns only how much room it
-   takes in the row.  The appearance half used to be restated here and had
-   drifted from the shell -- a softer border (--border-soft for the shell's
-   --border-strong), a different focus ring, and no focus background -- so
-   these three boxes were the only number inputs in the app that looked
-   slightly unlike the rest. */
+   takes in the row. */
 .modify-edit-panel .modify-translate-row input[type="number"] {
     width: 100%;
 }
@@ -754,9 +624,8 @@ footer a:hover { color: var(--accent-hover); }
 /* THE LATTICE BOX IS SIZED TO ITS CONTENT.  `a` is written to four decimals
    (step="0.0001"), so the longest value a table entry produces is two integer
    digits, a point and four decimals -- 7 characters -- and the number input's
-   spinner takes a further ~2.  At the row's shared 9ch the digits were being
-   clipped, which is half of why the field read as empty even once it was
-   filled (user, 2026-09-07).  Stated in `ch` -- the width of a "0" -- so the
+   spinner takes a further ~2.  At the row's shared 9ch the digits would be
+   clipped (user, 2026-09-07).  Stated in `ch` -- the width of a "0" -- so the
    size is in the content's own unit rather than a pixel guess, and fixed
    rather than shrinkable so a narrow card wraps the row instead of eating
    the decimals. */
@@ -836,7 +705,7 @@ footer a:hover { color: var(--accent-hover); }
 
 
 /* The banner shown when the selection layer cannot start.  It is an error
- * and now reads as one — `.status.error`'s colour, on the shared severity
+ * and reads as one — `.status.error`'s colour, on the shared severity
  * token, rather than plain body text a user scrolls past. */
 .selection-bootstrap-error {
     margin: var(--space-sm) 0;

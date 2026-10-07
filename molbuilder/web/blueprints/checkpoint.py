@@ -71,11 +71,6 @@ def _resolve_path(raw: Optional[str]) -> Path:
     the CLI -- which legitimately runs outside them -- would have to argue
     with it.  So the check happens at the boundary the untrusted path
     arrives at, which is this route layer, BEFORE the module is called.
-
-    This used to accept "any path the host filesystem grants read to the
-    user running molbuilder", citing web-api.md § 1 -- a section about the
-    response envelope, which said nothing either way.  `watch.py` cited the
-    same document for the opposite rule.  § 2.1 now states it once.
     """
     if not raw:
         raise ValueError("missing required parameter: path")
@@ -167,8 +162,8 @@ def api_checkpoint_state():
     try:
         status = repo.status(deep=deep)
         # `status` already read where the folder stands -- it cannot say what
-        # is unsaved without it -- so asking git again was two more subprocesses
-        # per directory-enter for a value already in hand.
+        # is unsaved without it -- so that value is taken rather than asking
+        # git again.
         here = status.standing_at
         return jsonify({
             "ok":            True,
@@ -179,10 +174,7 @@ def api_checkpoint_state():
             # is exactly the case the Set-up button exists for).  A
             # calculation root is declared by `task.json`
             # (`project-layout.md` invariant 2), which is what `calcdirs`
-            # reads.  The panel counted path segments until 2026-09-19 --
-            # `RUN_DIR_DEPTH = 3` -- so one extra grouping folder hid the
-            # panel with no message, and three loose `.xyz` files at the
-            # right depth got offered a `git init`.
+            # reads.
             "is_calculation": calcdirs.root_of(path) == path,
             "initialized":   status.initialized,
             "standing_at":   _state_json(here) if here else None,
@@ -220,8 +212,8 @@ def api_checkpoint_list():
         except (TypeError, ValueError):
             return _protocol_error(f"invalid limit: {limit_raw!r}")
         if limit < 0:
-            # Reached git as `-n-5`, which fails there and surfaced as a 500 --
-            # the server reporting its own fault for the caller's typo.
+            # It would reach git as `-n-5` and fail there as a 500 -- the
+            # server reporting its own fault for the caller's typo.
             return _protocol_error(
                 f"invalid limit: {limit} (a count cannot be negative)")
     repo = Repo(str(path))
@@ -233,9 +225,8 @@ def api_checkpoint_list():
         return jsonify({
             "ok":          True,
             "path":        str(path),
-            # The SAME shape `/state` returns.  One field name meant a state
-            # object on one route and a bare id on the other, so every reader
-            # had to know which route it came from to know what it held.
+            # The SAME shape `/state` returns, so no reader has to know which
+            # route it came from to know what it holds.
             "standing_at": _state_json(here) if here else None,
             "states":      [_state_json(s) for s in repo.states(limit=limit)],
             "tags":        [{"name": t.name, "state": t.state, "note": t.note}
@@ -257,13 +248,10 @@ def api_checkpoint_init():
     except ValueError as exc:
         return _protocol_error(str(exc))
     repo = Repo(str(path))
-    # `init` IS THE REPAIR VERB, so this no longer answers before calling it.
-    #
-    # It used to return `already: true` here and stop -- which silently DROPPED
-    # the `calculation` the caller sent, so the panel had no way to name a
-    # folder somebody `git init`-ed by hand.  A save refuses such a folder (L3)
-    # and the only remedy is a name; answering "ok, already done" to the request
-    # that would supply one is a dead end with a success code on it.
+    # `init` IS THE REPAIR VERB, so this does not answer before calling it: a
+    # folder somebody `git init`-ed by hand is named by the `calculation` the
+    # caller sends.  A save refuses such a folder (L3) and the only remedy is a
+    # name.
     already = repo.initialized
     try:
         state = repo.init(engine=body.get("engine"),
@@ -271,9 +259,8 @@ def api_checkpoint_init():
                           calculation=body.get("calculation"))
     # TWO advisories, named by class rather than caught as a group.  These are
     # the only two failures here a person resolves -- the folder holds several
-    # calculations, or the name needs repair.  A blanket `except
-    # CheckpointError` also caught git missing from PATH and a corrupt archive,
-    # and answered HTTP 200 "please fix your input" for a broken machine.
+    # calculations, or the name needs repair.  Git missing from PATH or a
+    # corrupt archive is a server fault.
     except NestedRepoRefusedError as exc:
         return _advisory(str(exc), where="path")
     except CalculationNameError as exc:
@@ -320,10 +307,7 @@ def api_checkpoint_save():
     except CalculationNameError as exc:
         # A save validates the calculation's name too (L3), because a folder
         # somebody `git init`-ed by hand never passed through `init`'s gate.
-        # That is the SECOND thing here a person can fix, and it arrived after
-        # the comment below was written: without this clause a name needing
-        # repair -- one command to fix -- was reported as a server fault, which
-        # is the exact inversion § 15 warns about, pointed the other way.
+        # A name needing repair is the person's to fix, not a server fault.
         return _advisory(str(exc), where="calculation")
     except CheckpointError as exc:
         # Everything else here is the machine: git gone, a corrupt copy, an
@@ -362,11 +346,8 @@ def api_checkpoint_tag():
     except NoSuchRefError as exc:
         return _protocol_error(str(exc), code=404)
     except GitNotInstalledError as exc:
-        # The one fault that reaches this route.  The blanket advisory below is
-        # right for the failure that actually happens here -- a tag name already
-        # in use, which the person fixes by choosing another -- but it also
-        # caught a machine with no git and answered "please pick a different
-        # name" for it.  Named separately rather than by widening the comment.
+        # A machine with no git is a server fault.  The advisory below is for
+        # the failure a person fixes -- a tag name already in use.
         return _server_fault(str(exc))
     except CheckpointError as exc:
         return _advisory(str(exc), where="tag")
@@ -383,9 +364,7 @@ def api_checkpoint_restore():
 
     **There is no partial restore on this surface either.**  Text and big files
     are one state; returning half of one and half of another produces a folder
-    no save ever held.  The old ``include_binaries`` flag did exactly that and
-    skipped the archive verification on the way, so it is gone rather than
-    defaulted.
+    no save ever held.
 
     Unsaved work is refused as an advisory naming every file, and ``force``
     accepts the loss -- the decision is the user's, and the surface's job is to
@@ -396,9 +375,7 @@ def api_checkpoint_restore():
         path = _resolve_path(body.get("path"))
     except ValueError as exc:
         return _protocol_error(str(exc))
-    # `state`, and only `state`.  Accepting the old `ref` key as well would be
-    # a compatibility shim for a vocabulary this contract removed, and there is
-    # no deployed caller to be compatible with.
+    # `state`, and only `state`.
     state = (body.get("state") or "").strip()
     if not state:
         return _protocol_error("missing required parameter: state")

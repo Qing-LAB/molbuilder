@@ -42,9 +42,8 @@ def _all_js_files() -> list[Path]:
 #  Reading JavaScript -- tokens, not text                               #
 # --------------------------------------------------------------------- #
 #
-# WHY A TOKENIZER.  This file matched ``.innerHTML = ([^;]+);`` over the source
-# with its comments stripped, and reading text failed three ways at once, all
-# measured 2026-09-25: the value stopped at the first ``;`` even inside a
+# WHY A TOKENIZER.  Matching ``.innerHTML = ([^;]+);`` over the source with its
+# comments stripped fails three ways at once, all measured 2026-09-25: the value stopped at the first ``;`` even inside a
 # string (``'&amp;'``, ``padding:0.7rem;``), so a site passed or failed on a
 # fragment of itself; ``+=`` and ``$("x").innerHTML`` were not seen at all; and
 # the stripper had no regex state, so a quote inside ``/["']/g`` opened a
@@ -52,9 +51,7 @@ def _all_js_files() -> list[Path]:
 # the code after it was dropped.  Here a string, a template literal, a comment
 # and a regex literal are each ONE token, so what follows an ``=`` is known
 # exactly -- and the expression inside a template's ``${...}`` is read by the
-# SAME scanner.  A second one without regex state stood here for a day, and a
-# review found it lost its place at `lib/tree-picker.js:112` (a regex inside
-# ``${}``), reading the next 140 lines as template text (2026-09-25).
+# SAME scanner.
 
 class _Tok(NamedTuple):
     kind: str            # ident | num | str | tmpl | regex | punct | comment
@@ -451,9 +448,8 @@ CASES = [
     ('frame.srcdoc = name;', 1),
     ('el.insertAdjacentHTML("beforeend", "<p>x</p>");', 1),
     ('document.write(name);', 1),
-    # The stripper this replaced had no regex state: the quote inside the
-    # regex opened a "string", the URL's `//` was then read as a comment, and
-    # the sink after it vanished.
+    # A stripper with no regex state reads the quote inside the regex as a
+    # "string", the URL's `//` then as a comment, and loses the sink after it.
     ('const re = /["\']/g; const u = "http://x"; el.innerHTML = name;', 1),
     ('x = a / b; el.innerHTML = name; y = c / d;', 1),
     ('x = 1e-3 / y; el.innerHTML = name;', 1),
@@ -461,7 +457,7 @@ CASES = [
     ('i++ / n; el.innerHTML = name;', 1),
     ('if (ok) /["\']/.test(s); el.innerHTML = name;', 1),
     ('function f() {}\n/["\']/.test(s); el.innerHTML = name;', 1),
-    # The form that derailed the reader's first interpolation scanner.
+    # A regex inside a template's ``${...}``.
     (r'''const q = `[a="${p.replace(/"/g, '\\"')}"]`; el.innerHTML = name;''', 1),
     ('const t = `a ${`b ${c}`} d`; el.innerHTML = name;', 1),
     ('`${el.innerHTML = name}`;', 1),
@@ -498,8 +494,8 @@ UNCLOSED = [
 def test_the_reader_says_where_it_lost_its_place(src, kind):
     """A string, regex, template or comment the reader never closes is how a
     lost place shows, and the per-file lint fails on one -- so each row here
-    must leave exactly its kind open, and the tree-picker line (the form that
-    derailed the first scanner) none (`testing.md` § 2a)."""
+    must leave exactly its kind open, and the tree-picker line (a regex inside
+    a template's ``${...}``) none (`testing.md` § 2a)."""
     lost = [t.kind for t in _tokens(src) if not t.closed]
     assert lost == ([kind] if kind else []), lost
 
@@ -509,19 +505,6 @@ def test_the_reader_flags_every_form_and_only_those(src, expected):
     """The lint above is only as good as its reader: each row is a statement
     it must flag or must pass, and a text match gets at least one wrong."""
     assert len(html_writes(src)) == expected, html_writes(src)
-
-
-# RETIRED 2026-09-25, with the (file, spelling) allowlist they served:
-#   * `TestNoUnsafeInnerHTML` and `test_every_allowlist_entry_names_a_real_site`
-#     -- the text-matching lint and its allowlist's liveness check, replaced by
-#     `test_markup_is_written_only_from_literals` above.  Of the allowlist's 11
-#     entries, 3 exempted nothing (one could never match: the text it keyed on
-#     began before the match did), and 3 hid raw splices behind comments that
-#     called them static.
-#   * `TestRecentAdditionsArePure` and `TestNoTemplateLiteralInnerHTMLInterp`
-#     -- subsumed, by mutant: a spliced write in `results/viewer.js` and a
-#     `${}` template write in `lib/form-schema.js` each turned the candidate
-#     AND the lint above red.
 
 
 # --------------------------------------------------------------------- #

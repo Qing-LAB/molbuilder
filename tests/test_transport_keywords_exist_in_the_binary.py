@@ -21,14 +21,11 @@ fdf matches labels through `fdf_utils::packlabel`, which drops `.`, `-` and
 recognised as the `Write.Forces` the binary compiles. And a label assembled at
 runtime from a prefix does not appear whole, so the four such forms are listed
 below WITH the literal the binary must carry (`TS.ChemPots` counts zero while
-`ChemPots` is present) rather than excused by a stem rule — which used to be
-this file's answer and let `TS.TBT.Emin`, `TS.TBT.Emax`, `TS.TBT.NumE` and
-`TS.ComplexContour.Emin` through, four of the seven it exists to catch,
-because `Emin` and `NumE` occur inside other keywords SIESTA does know.
+`ChemPots` is present) rather than excused by a stem rule, which would let
+`TS.TBT.Emin`, `TS.TBT.Emax`, `TS.TBT.NumE` and `TS.ComplexContour.Emin`
+through, because `Emin` and `NumE` occur inside other keywords SIESTA does know.
 
-**What it covers.** Both the standalone `render_script` deck and, since
-2026-09-16, one case per deck SHAPE of the ladder that actually runs — which
-had never been checked against a binary at all.
+**What it covers.** One case per deck SHAPE of the ladder that actually runs.
 
 **WHAT IT CANNOT DO, and the example is worth keeping.** A label being in the
 binary means SIESTA can read it SOMEWHERE -- not that it reads it in the deck
@@ -54,6 +51,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from molbuilder.runfiles import RunNames
 
 #: Labels that are NOT fdf keywords and must not be looked up: block
 #: delimiters, block-interior grammar words, and comments.  Each is read by
@@ -157,20 +155,12 @@ def _packed(text: str) -> str:
     return re.sub(r"[.\-_]", "", text).lower()
 
 
-# deleted 2026-09-17 with `render_script`; the PREPPED-RUNG sibling below covers the decks that run.
-
 def _refuse_unknown_labels(deck: str, binary_text: str, where: str) -> None:
     """Every label WHOLE, not by its last word.
 
-    The check compared only the label's stem until 2026-09-16 — `Emin` for
-    `TS.TBT.Emin` — on the reasoning that a runtime-assembled label does not
-    appear whole. Measured against the seven keywords in `plan.md` § 5o that
-    this file exists to catch, **the stem rule catches three of them**: `Emin`,
-    `Emax` and `NumE` all occur inside OTHER keywords the binary does know, so
-    `TS.TBT.Emin` — the one that silently put T(E) on the wrong energy grid —
-    sailed through the guard written for it. The whole-label rule catches all
-    seven, and on the five real rungs it flags exactly the four assembled
-    forms above.
+    A stem rule (`Emin` for `TS.TBT.Emin`) is blind to the keywords in
+    `plan.md` § 5o, because `Emin`, `Emax` and `NumE` all occur inside OTHER
+    keywords the binary does know.
     """
     packed = _packed(binary_text)
     missing = []
@@ -194,24 +184,11 @@ def _refuse_unknown_labels(deck: str, binary_text: str, where: str) -> None:
                                         ("05_transmission", "transmission")])
 def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
         binary_text, token, rung):
-    """THE DECKS THAT ACTUALLY RUN — the gap this file had until 2026-09-16.
-
-    The test above renders through ``TransiestaEngine.render_script``, and
-    **no rung uses it**: since the seam migration all five render through
-    ``spec_for`` -> ``DeckSpec`` -> ``prepare_deck`` (`engines/transport.md`
-    § 6.1a), and `render_script` survives only behind `molbuilder transport
-    electrodes` and `/api/transport/render`.
-
-    So the guard written because seven keywords shipped that SIESTA silently
-    ignores was watching the one deck nobody runs, while the ~30 keywords the
-    seam brought to every rung -- `MaxSCFIterations`, `DM.Tolerance`, the
-    `SCF.Mixer` pair, the restart group, `Diag.ParallelOverK`, the whole
-    output section, `TS.Contours.Eq.Pole.N` -- had never been checked against
-    a binary at all.
+    """THE DECKS THAT ACTUALLY RUN.
 
     One case per deck SHAPE rather than per rung: `SHAPE_OF_RUNG` maps the
-    five rungs onto four texts -- the device and the transmission became two
-    on 2026-09-29, because two programs read them (`transport.md` § 6.1b).
+    five rungs onto four texts -- the device and the transmission are two,
+    because two programs read them (`transport.md` § 6.1b).
     """
     import numpy as np
 
@@ -223,7 +200,8 @@ def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
     struct = _toy_junction()
     cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
     deck = sc.render_deck(
-        spec_for(struct, cfg, stage_token=token, calculation="transport"),
+        spec_for(struct, cfg, calculation="transport",
+                 names=RunNames.of("kwcheck", token, "hierarchical")),
         struct, cfg)
     assert "MaxSCFIterations" in deck, (
         "this rung carries none of the engine's section set -- the test "
@@ -252,8 +230,9 @@ def test_the_device_deck_holds_no_label_siesta_cannot_read():
     struct = _toy_junction()
     cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
     deck = sc.render_deck(
-        spec_for(struct, cfg, stage_token="04_device",
-                 calculation="transport"), struct, cfg)
+        spec_for(struct, cfg, calculation="transport",
+                 names=RunNames.of("kwcheck", "04_device", "hierarchical")),
+        struct, cfg)
     _refuse_unknown_labels(deck, _strings(siesta), "device (siesta alone)")
 
 
@@ -320,15 +299,13 @@ def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
         positions=np.array([[0, 0, 2.0 * i] for i in range(n)], dtype=float),
         regions=regions)
     # THE LIVE DECK.  `emit_electrode_declarations` -- the emitter this
-    # checks (`_emit_transiesta_block` until 2026-09-29) -- is reached through
-    # `transport/deck.py`; what went on 2026-09-17 is the second writer that
-    # used to call it here.  The
+    # checks -- is reached through `transport/deck.py`.  The
     # `elec-pos begin` / `elec-pos end` pairing below is real science
     # (an off-by-one computes transmission through the wrong region and
-    # converges while doing it), so the check follows the emitter rather
-    # than the deleted route.
+    # converges while doing it).
     cfg = SiestaConfig(system_label="J")
-    spec = spec_for(struct, cfg, stage_token="device", calculation="transport")
+    spec = spec_for(struct, cfg, calculation="transport",
+                    names=RunNames.of("J", "04_device", "hierarchical"))
     deck = _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
     blocks = re.findall(r"%block TS\.Elec\.(\w+)(.*?)%endblock", deck, re.S)
@@ -340,12 +317,8 @@ def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
             f"manual lists as lines that MUST be present "
             f"(`engines/transport.md` § 3.3):\n{body}")
 
-    # AND THE RIGHT ONE, NOT MERELY ONE.  Checking only that `elec-pos` is
-    # PRESENT was too weak, and the first mutation test proved it: moving the
-    # left electrode's line back inside the buffer branch made the `else`
-    # fire, so L got `elec-pos end` -- a WRONG position that a
-    # presence-check cannot see, and the guard stayed green (caught
-    # 2026-09-15 while mutation-testing this very test).
+    # AND THE RIGHT ONE, NOT MERELY ONE: a presence-check cannot see an
+    # electrode anchored at the WRONG end.
     #
     # The pairing is the fact worth pinning: the z-min electrode is anchored
     # by its FIRST atom (`begin`) and the z-max one by its LAST (`end`,

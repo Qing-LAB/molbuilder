@@ -54,8 +54,7 @@ def _py(fn, raw):
 def _same(a, b) -> bool:
     """Agreement is about the VALUE, not its JSON type: JS hands back `128`
     where Python hands back `128.0`, and a float round-trip differs in the
-    ninth decimal.  Comparing the printed forms called those a disagreement
-    -- a defect in the first version of this test, not in either parser."""
+    ninth decimal."""
     if a is None or b is None or a == "ERR" or b == "ERR":
         return a == b
     return abs(float(a) - float(b)) <= 1e-6 * max(1.0, abs(float(b)))
@@ -93,7 +92,7 @@ def _js_canon(raws_t, raws_m):
     decide what the browser WRITES into `task.json`, and
     `canonical_time`/`canonical_mem` decide what the CLI writes.  One
     record, one spelling -- so if these two drift, the file gets whichever
-    surface last touched it, which is the state this whole rule replaced.
+    surface last touched it.
     """
     node = shutil.which("node")
     if node is None:
@@ -172,8 +171,7 @@ def test_the_two_memory_writers_agree_on_every_spelling(both_canon):
 
 
 def test_canonical_is_what_sbatch_takes():
-    """The point of the whole rule: `-t 4h` is not a thing SLURM accepts,
-    and it is what the browser used to write.  2026-08-24."""
+    """The point of the whole rule: `-t 4h` is not a thing SLURM accepts."""
     import re
     assert canonical_time("4h") == "0-04:00:00"
     assert re.fullmatch(r"(?:\d+-)?\d+(?::\d{2}){0,2}",

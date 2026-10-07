@@ -2,22 +2,6 @@
 
 The contract is ``docs/execution/scheduler.md`` § 3 (the rules) and § 5 (the
 graph this is the innermost branch of).
-
-**The check the record was always missing.**  :class:`~molbuilder.scheduler.record.Domain`
-has carried ``max_time``, ``max_cores``, ``max_mem_gb`` and ``gpu`` since it
-was written, and nothing compared a REQUEST against them in one place.  Each
-was instead handled wherever somebody noticed it: ``gpu`` got a selector,
-``max_cores`` a single call site in `prep`, ``max_time`` nothing until a
-grouped submission was routed into ASU Sol's 15-minute ``debug`` queue on
-2026-08-23, and ``max_mem_gb`` was declared, serialised, round-tripped -- and
-read by no code at all.
-
-Four facts, four treatments, three moments, one never implemented.  That is
-one missing function, and it lives here.
-
-Split out of ``record.py`` at phase 2 (2026-08-23) so the CHECK cannot drift
-away from the record it checks -- which is exactly what happened while they
-shared a general-purpose module.
 """
 from __future__ import annotations
 
@@ -35,8 +19,7 @@ def domain_serves_gpu(row: Mapping[str, Any]) -> bool:
     the GPU check (`scheduler.md` R2a), the count being the other.
 
     True when the row records a GPU inventory -- the probe writes each
-    partition's gres types onto its row.  (A hand-curated ``gpu_partition``
-    counted too until 2026-10-02, when the column was removed.)
+    partition's gres types onto its row.
     """
     return bool(row.gpu)
 
@@ -45,9 +28,7 @@ def domain_serves_gpu(row: Mapping[str, Any]) -> bool:
 class Refusal:
     """One limit, what was asked, what is allowed.
 
-    `admits` returned sentences until 2026-09-09, so callers and tests read
-    numbers back out of prose (`"64" in why[0]`).  The numbers are the answer;
-    the sentence is a rendering of them.
+    The numbers are the answer; the sentence is a rendering of them.
     """
     limit:   str          # "walltime" | "cores" | "cpus_per_job" | "mem"
                           # | "gpus" | "no_queue" | "no_domain"
@@ -64,11 +45,8 @@ class Refusal:
     @property
     def message(self) -> str:
         if self.asked is None and self.allowed is None:
-            # THE DOMAIN STAYS IN THE SENTENCE.  Returning the bare note lost
-            # it: `--domain typo` read "this machine offers public, general,
-            # htc" and never said which name had been typed, and the no-queue
-            # refusal read "no gpu-capable queue" without "this machine".
-            # Numbers are what `Refusal` renders; the subject is not optional.
+            # THE DOMAIN STAYS IN THE SENTENCE.  Numbers are what `Refusal`
+            # renders; the subject is not optional.
             if not self.note:
                 return f"{self.domain} refuses this"
             return (self.note if self.note.startswith(self.domain)
@@ -85,25 +63,14 @@ class Refusal:
 def _compare(row, *, cores: Optional[int] = None,
                   walltime_s: Optional[int] = None,
                   mem_gb: Optional[float] = None,
-                  gpus: Optional[int] = None) -> List[str]:
+                  gpus: Optional[int] = None) -> "List[Refusal]":
     """The comparison itself -- private; `admits` is the door.
 
     Kept as keywords rather than folded into :func:`admits` so each limit's
     branch reads beside the field it tests.  Callers do not reach it: one
     question gets one public door, or the two drift.
 
-    **The check the record was always missing.**  :class:`Domain` has carried
-    ``max_time``, ``max_cores``, ``max_mem_gb`` and ``gpu`` since it was
-    written, but nothing ever compared a REQUEST against them in one place.
-    Each constraint was instead handled wherever somebody noticed it: ``gpu``
-    got a selector, ``max_cores`` got a single call site in `prep`,
-    ``max_time`` got nothing until a grouped submission was routed into ASU
-    Sol's 15-minute ``debug`` queue on 2026-08-23, and ``max_mem_gb`` was
-    declared, serialised, round-tripped — and read by no code at all.
-
-    Four facts, four different treatments, three different moments, one never
-    implemented.  That is not four bugs; it is one missing function, and this
-    is it.  Callers ask what they know and leave the rest ``None``
+    Callers ask what they know and leave the rest ``None``
     (`scheduler.md` R7): `prep` what a job states, `launch` all of it, and a
     caller asking about capability alone passes nothing.
 
@@ -133,9 +100,7 @@ def _compare(row, *, cores: Optional[int] = None,
         # nodes under one name, and SLURM will not place a job on a node
         # too small -- it waits for one that fits.  So the ceiling is the
         # WIDEST node, and refusing on a floor would deny work the wide
-        # nodes would run happily (caught 2026-08-27, when a floor refused
-        # a declared 64-rank CPU trial on a partition whose CPU nodes have
-        # 128 cores).
+        # nodes would run happily.
         #
         # R10 -- name what WOULD fit -- so the reason says which machine
         # is the biggest, not just that the ask is too large.
@@ -159,9 +124,7 @@ def _compare(row, *, cores: Optional[int] = None,
                                      f"{where}").strip()))
         # THE POLICY CEILINGS, beside the hardware one (R13).  What the
         # widest machine HAS and what policy LETS one job take are two
-        # facts; both are read and the smaller governs.  `lightwork` is
-        # why: `max_cores: 128` (the nodes) beside a suspected 8-core cap
-        # (the policy) with nothing able to compare either.
+        # facts; both are read and the smaller governs.
         for cap_field, phrase in (("max_cpus_per_job", "per job"),
                                   ("max_cpus_per_node", "per node")):
             pol = getattr(row, cap_field, None)
@@ -189,8 +152,7 @@ def _compare(row, *, cores: Optional[int] = None,
         # as requested"): the queue's record CLAIMS GPUs -- its `gpu` column
         # (`domain_serves_gpu`) -- and a node there holds
         # as many as were asked.  Both halves here, so a queue NAMED with
-        # `--domain` meets the check a queue `place.candidates` picked does:
-        # the named path skipped the first half until 2026-10-01.  No card
+        # `--domain` meets the check a queue `place.candidates` picked does.  No card
         # is compared: a GPU ask names none, and which card a node carries
         # is the machine's business.
         if not domain_serves_gpu(row):
@@ -200,8 +162,7 @@ def _compare(row, *, cores: Optional[int] = None,
             # R3 FOR THE COUNT.  A queue that claims GPUs without saying how
             # many is silent about the number, not claiming none -- and
             # refusing on that silence made an explicitly named domain
-            # unusable the moment its record was terse (caught 2026-08-23,
-            # when R9 started admitting the named path).
+            # unusable the moment its record was terse.
             most = _devices_offered(row)
             if most is not None and most < gpus:
                 why.append(Refusal("gpus", row.name, unit="GPUs", asked=gpus,
@@ -214,8 +175,7 @@ def _widest_node(row, *, needs_device: bool = False
     """``(cores of the largest machine, how it is described)``.
 
     From ``node_types`` when the record lists them -- the measurement --
-    and from ``max_cores`` otherwise, which is what every record written
-    before 2026-08-27 carries.  ``None`` means the record does not say, and
+    and from ``max_cores`` otherwise.  ``None`` means the record does not say, and
     R3 then applies: an unstated limit never bars.
 
     ``needs_device`` narrows the search to machines that carry one (R3's
@@ -274,9 +234,7 @@ def _devices_offered(row) -> Optional[int]:
     record positively rules out.
 
     The two spellings the ``gpu`` column arrives in are `Domain.devices`'
-    business, not this function's; it used to parse them here, which is how the
-    descriptor form's key names came to be read as device names elsewhere
-    (`scheduler/record._read_devices`).  Where several types are offered the
+    business, not this function's.  Where several types are offered the
     largest count wins: the ask is *can this domain hold N devices*, and the
     richest node is the one that answers it.
     """
@@ -289,9 +247,7 @@ def domain_ceiling_s(row) -> Optional[int]:
 
     The one place ``max_time`` is parsed for a caller that needs the NUMBER
     rather than a verdict — the machine listing and the launch's queue
-    table, which show each queue's ceiling.  *(It named the header emitter
-    until 2026-10-05; the header states the run's own wall since
-    2026-10-02, never a queue's ceiling.)*
+    table, which show each queue's ceiling.
     """
     from .quantities import parse_walltime
     if not row or not row.max_time:
@@ -302,11 +258,6 @@ def domain_ceiling_s(row) -> Optional[int]:
         return None
 
 
-#: SLURM memory suffixes, in gigabytes.
-# `parse_mem_gb` moved to `quantities.py` (2026-08-24): it is a reader of
-# a dialect, not a rule about admission, and its human-dialect sibling
-# `parse_memory` disagrees with it by 1024x on a bare number.  One object,
-# one module (`docs/design.md`, "Architecture").
 from .quantities import parse_mem_gb            # noqa: F401
 
 
@@ -326,8 +277,7 @@ class Request:
     ranks:      Optional[int] = None
     cpus_per_task: Optional[int] = None
     #: How many GPUs -- a count, and no card: which card a node carries is
-    #: the machine's business (`scheduler.md` R2a; a ``gpu_type`` field
-    #: stood here 2026-08-30 to 2026-10-01).
+    #: the machine's business (`scheduler.md` R2a).
     gpus:       Optional[int] = None
     mem_gb:     Optional[float] = None
     walltime_s: Optional[int] = None
@@ -336,9 +286,7 @@ class Request:
     def cores(self) -> Optional[int]:
         """Cores this ask occupies on a node -- ranks x cpus-per-task.
 
-        The number a domain's ``max_cores`` is stated against.  `prep`'s
-        per-family cap already computed it as ``g * k * c``; stating it once
-        here is what stops the two disagreeing about what "cores" means.
+        The number a domain's ``max_cores`` is stated against.
         """
         if self.ranks is None:
             return None

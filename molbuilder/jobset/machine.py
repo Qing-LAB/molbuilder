@@ -2,9 +2,6 @@
 first prep (`configuration.md` M-3).  Floor 1 (`execution/architecture.md`
 § 2.1): plain facts about a machine and the one refusal of a machine with no
 record, which the conductor, the prep assembly and launch each ask.
-
-A module of its own since 2026-10-03 (W55 B7): the record read lived in the
-conductor, so the bench's assembly imported the conductor to read a machine.
 """
 from __future__ import annotations
 
@@ -39,22 +36,6 @@ def set_machine(base_dir, target: Optional[str] = None, *,
     environment), as the prep entry read it, snapshotted as
     ``environment.json`` beside the bundle.
 
-    **This step existed only inside the benchmark until 2026-08-10.**
-    `bench/prep.py` did it; `prep_jobset` did not do it at all, so a staged
-    calculation went straight to rendering wrappers on a machine nobody had
-    asked about. § 2.3.1a is explicit about how to read that: *"`bench prep`
-    is the one place this framework is already built, and it was built inside
-    the benchmark because that is where the need appeared first … the general
-    part needs lifting out of it"* — and *"stating it the other way round
-    would make the general case look like a special case of the special
-    case."*
-
-    So the module moved out of `bench/` and became ``molbuilder/environment``.
-    Its persisted artifact was **already** registered then, as
-    ``molbuilder/environment@1`` (`job-contracts.md` § 6.1; ``@2`` since
-    2026-08-17), which is the schema saying it was never the benchmark's to
-    own.
-
     Written once per bundle and **not** overwritten on a later prep: the file
     records what this machine is, and re-reading on every stage would make two
     stages of one calculation disagree about their own target for no reason a
@@ -70,20 +51,14 @@ def set_machine(base_dir, target: Optional[str] = None, *,
     fixes it -- the refusal of the record's one reader, :func:`machine_record`,
     which the prep entry asks before this is called.
 
-    This step used to run a fresh probe and write the answer down whenever no
-    scope answered — which read as helpful and is the guess
-    `running-a-job.md` § 3.1 forbids: the numbers a wrapper carries would
-    then come from *whichever box happened to run prep*, and for a bundle
-    described at a desk and run on a cluster that is the wrong machine, with
-    a number that looks exactly like a right one.  Probing is one command and
-    it is the user's to run, so the record is always something they can point
-    at and say where it came from.
+    A probe here would be the guess `running-a-job.md` § 3.1 forbids: the
+    numbers a wrapper carries would come from *whichever box happened to run
+    prep*.  Probing is one command and it is the user's to run, so the record
+    is always something they can point at and say where it came from.
 
     ``environment`` is the record the prep entry read, once, at its
     checkpoint 4, and checked the activation of there (`job-system.md`
-    § 5.0); the copy is made from it.  *(With none it was read here until
-    2026-10-06, for the library door below the entry -- which only tests
-    called.)*
+    § 5.0); the copy is made from it.
 
     ``plan`` (`jobset.planned.Plan`) receives the copy, and is read for
     one it already holds: `prep` decides everything before it writes
@@ -115,8 +90,7 @@ def _no_record() -> PrepError:
     """The refusal of THIS machine with no record, naming the probe that
     writes one (`scheduler.record.probe_line`, W52).  Only this machine can
     have none: a named target's record is there, or `machine_for` refuses
-    the name itself (W54 R10 -- a branch for a named target stood here, and
-    could not be reached)."""
+    the name itself."""
     from ..scheduler.record import probe_line
     return PrepError(_NO_RECORD.format(cmd=probe_line(None)))
 
@@ -124,11 +98,8 @@ def _no_record() -> PrepError:
 def machine_record(base: Path, target: Optional[str] = None):
     """Step 1's ANSWER, read -- the record `prep` snapshots
     (:func:`set_machine` writes it, after this is checked), and all a
-    preview asks, which writes nothing (`web/task-setup.md` § 11.1).  The
-    bench card snapshotted on every edit until 2026-10-01, so looking at a
-    calculation with the picker on one machine tied it to that machine
-    before anything was prepped (W52).  Refuses as step 1 does when no
-    record answers."""
+    preview asks, which writes nothing (`web/task-setup.md` § 11.1).
+    Refuses as step 1 does when no record answers."""
     from ..scheduler import machine_for
     env = machine_for(base, target=target)
     if env is None:

@@ -1,9 +1,9 @@
 """Cross-engine chemistry helpers.
 
 L1 module shared by SIESTA + PySCF + Spectra emitters and the
-validation pass.  Grew from the original "two phosphate functions"
-into a small library of inferences that work on a bare ``Structure``
-(no explicit bond orders required) using heavy-atom adjacency.
+validation pass: a small library of inferences that work on a bare
+``Structure`` (no explicit bond orders required) using heavy-atom
+adjacency.
 
 Public surface (grouped by purpose):
 
@@ -27,9 +27,8 @@ Public surface (grouped by purpose):
     `electronic_state.py`'s (science/chemistry-correctness.md § 2a).
 
   ECP selection (PySCF):
-    resolve_pyscf_ecp(struct, ecp, basis) -> ECP-or-None
-        Cross-engine helper used by both Build PySCF and Spectra so
-        the heuristic stays in one place.
+    resolve_pyscf_ecp(struct, ecp, ecp_atoms) -> {label: ecp} or None
+        Used by both PySCF generators so the rule stays in one place.
 
   Hydrogen placement:
     add_hydrogens(struct, ...) -> struct
@@ -67,8 +66,6 @@ class BackendUnavailable(RuntimeError):
     DEFINED HERE, the lowest layer that raises it (`chemistry` is L1,
     `architecture.md` § 3): `builders/` (L2) raises it for its backends and
     reaches it downward, and :func:`add_hydrogens` raises it for its engines.
-    It lived in `builders.backends` until 2026-09-28, which made the hydrogen
-    refusal an upward import (M2b's review).
     """
 
     def __init__(self, message: str, *, missing: Optional[str] = None):
@@ -80,14 +77,9 @@ class BackendUnavailable(RuntimeError):
 #  The periodic table, Z-indexed                                        #
 # --------------------------------------------------------------------- #
 #
-# ONE home, here, because two callers now need it and they sit in
-# different packages: ``siesta/memory.py`` maps a symbol to Z for its
-# per-species orbital estimate, and ``parse/engines/siesta_mdnc.py``
-# maps the OTHER way -- SIESTA's netCDF MD history stores ``iza``
-# (atomic numbers), never symbols, so a reader must name the elements
-# itself.  It lived privately in ``siesta/memory.py`` until 2026-08-15;
-# leaving it there would have meant either a duplicate table or a new
-# ``parse -> siesta`` import edge that this package has never had.
+# ONE home, here: SIESTA's outputs (``parse/engines/siesta_mdnc.py``,
+# ``parse/coords/siesta_xv.py``) store ``iza`` (atomic numbers), never
+# symbols, so a reader must name the elements itself.
 #
 # ``chemistry`` is the right layer for it: it imports only
 # ``structure``, so nothing gains a dependency by reaching for this.
@@ -175,9 +167,7 @@ _AMINO_ACID_RESIDUE_NAMES = frozenset({
 # Source: ground-state electron configurations from NIST atomic
 # spectra database.
 #
-# 2026-06-13 split (replaces the prior flat ``OPEN_SHELL_METALS``).
-# The unified set treated Au-BDT-Au junctions as open-shell and
-# silently produced wrong spin suggestions.  Three physical categories:
+# Three physical categories:
 #
 #   1. OPEN_D_TRANSITION_METALS — incomplete d-shell in the atomic
 #      ground state AND extended phases.  Stoner criterion satisfied
@@ -209,8 +199,7 @@ _AMINO_ACID_RESIDUE_NAMES = frozenset({
 #
 #   3. CLOSED_D10_METALS — Zn, Cd, Hg (always nd¹⁰ (n+1)s² in
 #      common oxidation states) PLUS Pd (4d¹⁰ 5s⁰ atomic ground state
-#      per NIST — the prior flat set incorrectly classified Pd as
-#      open-shell) AND Pt (5d⁹ 6s¹ atom but 5d¹⁰-like in metallic
+#      per NIST) AND Pt (5d⁹ 6s¹ atom but 5d¹⁰-like in metallic
 #      bonding; same logic as the noble metals but conventionally
 #      treated as closed-shell in catalysis surface DFT).
 OPEN_D_TRANSITION_METALS = frozenset({
@@ -237,15 +226,6 @@ CLOSED_D10_METALS = frozenset({
                                 # DFT.  Catalysis lit. treats Pt(111)
                                 # as RKS unless studying magnetism.
 })
-
-# The flat pre-2026-06-13 union is GONE (2026-09-16).  It survived the split
-# as a "backward-compat alias for the deprecation window", and the only thing
-# that ever read it was a second open-shell detector -- the one caller the
-# split existed to correct.  So the window kept the bug alive rather than a
-# caller: the analyzer called an Au junction closed-shell for three months
-# while the validator refused to generate it.  That detector is gone too
-# (2026-09-28): the one open-shell decision is the electronic-state class's.
-
 
 #: A species label is a name plus an optional trailing index: ``Au1`` is
 #: ``Au`` + 1.  The ONLY thing read off a label -- see
@@ -291,10 +271,7 @@ def resolve_element(label: str) -> str:
     **Callers emitting an engine input MUST let that propagate.**  A species
     with no element is not something a calculation can run, and the
     alternative -- quietly writing ``Z=0`` into ``ChemicalSpeciesLabel`` --
-    is the defect this function exists to end (``transport/transiesta.py``
-    and ``transport/wizard.py``, both fixed 2026-09-09).  The identical
-    ``KeyError -> 0`` shape was caught once already in ``pyscf/input.py``
-    on 2026-05-26; one door is what stops it recurring a third time.
+    is the defect this function exists to end.
 
     NOT for PDB atom names or residue names.  ``CA`` is an alpha carbon in
     the atom-name namespace and calcium in this one; the two share strings
@@ -386,14 +363,9 @@ def species_order(elements: "Iterable[str]",
     *override* is the person's own answer -- the ``species_order`` catalogue
     row.  Non-empty, it is honoured VERBATIM and the rule below does not
     run; an override that omits an element the structure uses is refused BY
-    THE EMITTER, before a deck exists -- `siesta/input.py` and, since
-    2026-09-23, `transport/transiesta.py`, each naming the missing species.
-    *(This said the deck GATE catches it.  It does not: `siesta/layout.py`
-    compares indices in an ALREADY-RENDERED deck, so the emitter dies first
-    -- and on the transport path it died with a bare `KeyError` until the
-    refusal was added.)*  Resolving the override here rather than at each
-    call site is the point: it was spelled in two emitters and honoured by
-    one.
+    THE EMITTER, before a deck exists -- `siesta/input.py` and
+    `transport/transiesta.py`, each naming the missing species.  Resolving
+    the override here rather than at each call site is the point.
 
     THE DEFAULT, when nobody has said otherwise.
 
@@ -403,11 +375,6 @@ def species_order(elements: "Iterable[str]",
     ordering inside SIESTA's ``.DM`` and ``.TSHS`` -- two runs that order
     species differently write files the next stage cannot read correctly
     (`engines/transport.md` § 2a.13).
-
-    There were TWO rules until this existed: `siesta/input.py` sorted by
-    atomic number and `transport/transiesta.py` sorted alphabetically, so one
-    structure got ``H, C, S, Au`` from one emitter and ``Au, C, H, S`` from
-    the other.
 
     Start from atomic number, then place hydrogen the way a chemist writes
     it.  Three cases, in this order:
@@ -582,8 +549,8 @@ def check_spin_charge_parity(struct: Structure, charge: int,
 
 
 # Common spin-state -> (oxidation state, name) mapping for first-row
-# transition metals.  Keyed by (element, spin = 2S).  Used by the
-# preflight to explain to the user what their (charge, spin) input
+# transition metals.  Keyed by (element, spin = 2S).  Used to explain
+# to the user what their (charge, spin) input
 # IMPLIES about the metal centre.
 #
 # Source: standard ligand-field theory; ground-state d-electron counts
@@ -635,8 +602,9 @@ def resolve_pyscf_ecp(struct: Structure,
                       ecp_atoms: "Sequence[str]") -> "Optional[Dict[str, str]]":
     """Which elements get which ECP -- the ONE place the rule lives.
 
-    Called from BOTH Build (``pyscf/input.py::_resolve_ecp``) and Spectra
-    (``pyscf/vibration_emitters.py::_emit_build_mol``) so the two generators
+    Called from BOTH the PySCF deck (``pyscf/input.py::_resolve_ecp``) and
+    the vibration deck (``pyscf/vibration_emitters.py::_emit_build_mol``) so
+    the two generators
     cannot drift.
 
     Inputs:
@@ -650,18 +618,12 @@ def resolve_pyscf_ecp(struct: Structure,
     ``struct`` that match, or ``None`` when nothing does -- which is the
     signal to omit the ``gto.M(ecp=...)`` kwarg entirely.
 
-    **Empty means empty, and nothing is chosen for the user.**  Until
-    2026-08-13 this function had three branches: ``""``/``"none"`` meant
-    off, a str or dict passed through, and ``None`` meant *auto* -- add
-    ``lanl2dz`` when any element had Z > 36 and the basis was not def2.
-    Both halves of that heuristic were deleted on the user's ruling:
-    *"there is no point to limit matching to heavy -- who defines heavy?
-    there is no clear reasoning or standard ... explicit is better than
-    implicit."*  ``basis`` left the signature with the def2 special case,
-    and an ECP named on a def2 basis is written as named.  *(This said "a
-    def2 basis brings its own ECP"; it does not -- PySCF applies a core
-    potential only when ``ecp`` names it, and a def2 basis's own is named
-    like any other: ``ecp = "def2-SVP"``, 2026-09-29.)*
+    **Empty means empty, and nothing is chosen for the user** (user's
+    ruling: *"there is no point to limit matching to heavy -- who defines
+    heavy?  there is no clear reasoning or standard ... explicit is better
+    than implicit."*).  An ECP named on a def2 basis is written as named:
+    PySCF applies a core potential only when ``ecp`` names it, and a def2
+    basis's own is named like any other: ``ecp = "def2-SVP"``.
 
     ``validation`` still HINTS when a structure looks like it wants an ECP
     and none is declared.  A hint is confirmed by a person; it is not this
@@ -768,10 +730,7 @@ class ChemistryAnalysis:
 
     The electronic-state class (`electronic_state.py`) decides the charge and
     the spin from these, at the calculation's own charge and periodicity; the
-    chemistry card shows the metal hints beside its answer.  Until 2026-09-28
-    this also carried a *suggested* charge, spin and treatment, judged at
-    charge 0 on the neutral structure whatever the cell -- which is how a
-    formate ion and a gold lead were both told to go open-shell.
+    chemistry card shows the metal hints beside its answer.
     """
     n_atoms:              int
     elements:             List[str]      # unique element symbols, sorted
@@ -1074,7 +1033,7 @@ def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
 #    - peptide.build_peptide        (PeptideBuilder emits heavy-only)   #
 #    - nucleic.build_dna/build_rna  (X3DNA's `fiber` is heavy-only;     #
 #                                    amber/rdkit produce H themselves   #
-#                                    and skip this via the H/heavy>=0.3 #
+#                                    and skip this via the H/heavy>=0.5 #
 #                                    gate in nucleic._maybe_add_hydrogens)
 #                                                                       #
 #  Why two engines, in this order                                       #
@@ -1108,8 +1067,8 @@ def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
 #      out of 50 on an ATGC chain pre-OpenBabel -- the bug that         #
 #      motivated the fallback ordering).                                #
 #    - SMILES-construct path doesn't have this issue; only PDB-parse    #
-#      then AddHs has it.  build_peptide and the rdkit nucleic backend  #
-#      reach the SMILES path; the X3DNA path lands here.                #
+#      then AddHs has it.  The rdkit nucleic backend reaches the SMILES #
+#      path; build_peptide and the X3DNA path land here.                #
 #                                                                       #
 #  Why not AmberTools `reduce`                                          #
 #    - It's the gold standard for protein protonation (His tautomers,   #
@@ -1150,12 +1109,9 @@ def add_hydrogens(struct: Structure) -> Structure:
          coordinates.  See module-header comment for the full caveat.
       3. Neither: REFUSED, with ``BackendUnavailable`` -- the door every
          builder already uses for a dependency this install lacks, which the
-         Build page answers as advice rather than a server fault.  It
-         returned the heavy-atom-only structure with a Python warning until
-         2026-09-28 (plan W36 ⑨), and a warning reaches no web user
-         (`science/validation.md` § 4.1 R5): the peptide path of the Build
-         page showed a structure with no hydrogens, and nothing else, and
-         DFT then ran with the wrong electron count.
+         Build page answers as advice rather than a server fault.  A
+         warning reaches no web user (`science/validation.md` § 4.1 R5), and
+         a structure with no hydrogens gives DFT the wrong electron count.
 
     Both engines emit a final pass through ``_drop_overlapping_hydrogens``
     to strip any H that ended up sitting on another atom (the addCoords
@@ -1464,7 +1420,7 @@ def estimate_partial_charges(struct: Structure,
         CO2    -> 0.0 D   (vs 0)
         CH3OH  -> 1.5 D   (vs 1.69 D)
 
-    Not a substitute for QM partial charges.  Used by validation.py
+    Not a substitute for QM partial charges.  Used by validation
     for the "polar molecule in vacuum" dipole warning, where the
     question is "is the dipole 0.5 D or 5 D?", not precise-to-decimal.
     """

@@ -6,13 +6,9 @@ $HOME and we pin TMPDIR inside the env), every shmem write becomes a
 network round-trip and OpenMPI prints a multi-line warning at every
 mpirun.
 
-Two fixes regression-tested here:
-  1. The siesta-gpu activate hook exports ``OMPI_MCA_orte_tmpdir_base``
-     defaulting to ``$TMPDIR`` (SLURM/PBS per-job dir) or ``/tmp``.
-  2. The build wrapper (envs/builds.py) pins
-     ``OMPI_MCA_orte_tmpdir_base=/tmp`` so the build's ``.verify``
-     phase (which runs ``siesta --version`` -> OpenMPI init) doesn't
-     warn either.
+The fix regression-tested here: the siesta-gpu activate hook exports
+``OMPI_MCA_orte_tmpdir_base`` defaulting to ``$TMPDIR`` (SLURM/PBS per-job
+dir) or ``/tmp``.
 
 Plus a regression for the unrelated ``psutil`` host-env gap surfaced
 the same day -- the web blueprint at ``molbuilder/web/blueprints/
@@ -47,11 +43,6 @@ def test_activate_hook_sets_ompi_tmpdir_base():
     assert "OMPI_MCA_orte_tmpdir_base" in hook
     # Default must honour scheduler $TMPDIR first, /tmp as fallback.
     assert '${TMPDIR:-/tmp}' in hook
-
-
-# --------------------------------------------------------------------- #
-#  Build wrapper contract                                                #
-# --------------------------------------------------------------------- #
 
 
 # --------------------------------------------------------------------- #

@@ -19,19 +19,7 @@ creates no job**, which is what makes it safe to run in a loop while tuning.
 from __future__ import annotations
 
 from molbuilder.jobset.ask import Prediction, prediction_table
-
-
-# --------------------------------------------------------------------- #
-#  reading what the scheduler said                                       #
-# --------------------------------------------------------------------- #
-
-# Retired 2026-10-06 (W57 T1, user: "there should be no assumption what so
-# ever about the text returned by slurm"): the six tests that read SLURM's
-# `--test-only` text -- two lines copied from Sol, the rest written by hand
-# -- and the stand-in `sbatch` that answered with them.  Reading a real
-# scheduler's answer is the field tier's
-# (`tests/field/test_ask_the_target.py`).  The table below is molbuilder's
-# own rendering of what was read, and stays.
+from molbuilder.runfiles import RunNames
 
 
 # --------------------------------------------------------------------- #
@@ -57,8 +45,7 @@ def test_an_unknown_is_shown_as_unknown_with_its_reason():
 
 
 def test_no_scheduler_is_its_own_ANSWER_not_an_empty_table(): 
-    """The workstation path, and it had no test at all until 2026-08-27 —
-    the wording could be changed freely and nothing noticed.
+    """The workstation path.
 
     A missing scheduler is not "the queue could not say"; it is "there is
     no queue". Rendering the normal table would head it *asked the
@@ -115,11 +102,6 @@ def test_the_table_names_the_next_move():
 
 def test_an_empty_ask_says_so_rather_than_printing_a_header():
     assert prediction_table([]) == "nothing to ask about."
-
-
-# --------------------------------------------------------------------- #
-#  the mode itself                                                       #
-# --------------------------------------------------------------------- #
 
 
 # --------------------------------------------------------------------- #
@@ -186,10 +168,8 @@ def test_ask_on_a_machine_with_no_scheduler_launches_nothing(tmp_path,
 
     Contract: `execution/running-a-job.md` § 5.5 -- *"no job is created,
     nothing is recorded, and `status` sees nothing"*.  Driven through
-    `init` -> `prep` -> `launch`.  *(Its other half -- a scheduler that
-    answers, a stand-in replaying Sol's `--test-only` line -- retired
-    2026-10-06, W57 T1; a real scheduler's answer is the field tier's,
-    `tests/field/test_ask_the_target.py`.)*
+    `init` -> `prep` -> `launch`.  *(A real scheduler's answer is the field
+    tier's, `tests/field/test_ask_the_target.py`.)*
 
     MUTATION THIS MUST FAIL AGAINST: the ask recording the launch
     (`_record_launch`); the CLI's `would send:` preview printed without its
@@ -205,7 +185,8 @@ def test_ask_on_a_machine_with_no_scheduler_launches_nothing(tmp_path,
     assert r.exit_code == 0, r.output
     out = r.output
 
-    assert launch_record(attempt) is None, (
+    assert launch_record(
+            attempt, RunNames.of("H2", "01_coarse", "hierarchical")) is None, (
         f"asking recorded a launch in {attempt.name}: `status` would now "
         f"report a job nobody submitted\n{out}")
     assert "no scheduler on this machine" in out, out

@@ -1,11 +1,6 @@
 """Where every configured file sits, and what mode it has when we made it.
 
-`configuration.md` § 3.1 draws the tree and § 2.1b states the mode rule, and
-until 2026-09-13 both were prose a reviewer had to re-verify.  Three of that
-page's own statements were measured false: the config root was said to be 0700
-and nothing created it that way, the serve log was said to be 0600 and `serve
-status` made it 0664, and a row claimed the page owned "the mode and the
-durability of every file listed here" while several had no stated mode at all.
+`configuration.md` § 3.1 draws the tree and § 2.1b states the mode rule.
 
 `placement.places()` is the same facts as a table, and `placement.findings()`
 audits them.  These tests hold the two properties that matter:
@@ -14,10 +9,8 @@ audits them.  These tests hold the two properties that matter:
     the real doors, not by checking that a helper was called;
   * something that ARRIVES loose is reported, with the exact `chmod`.
 
-The audit found seven real ones on the developer's own machine the first time
-it ran, including four serve logs at 0664 that carry a provider's
-`client_secret` (`web/auth_providers/oauth.py` routes one there deliberately,
-to keep it out of a user-visible response).
+A serve log carries a provider's `client_secret` (`web/auth_providers/oauth.py`
+routes one there deliberately, to keep it out of a user-visible response).
 """
 from __future__ import annotations
 
@@ -54,7 +47,7 @@ def test_every_row_of_the_table_resolves(isolated_tree):
 
 
 def test_every_credential_door_in_config_dir_has_a_row(isolated_tree):
-    """THE TABLE MUST NOT HAVE A HOLE, and nothing checked that until now.
+    """THE TABLE MUST NOT HAVE A HOLE.
 
     `placement` is the audit for a file that **arrives** loose -- restored
     from a backup, copied off another machine, or left by an older
@@ -130,16 +123,6 @@ def test_a_tree_this_program_creates_is_never_loose(isolated_tree):
     assert CD.serve_log(9999).is_file()
 
 
-# `test_the_probe_makes_the_config_directory_private` retired 2026-10-03: it
-# ran `jobset probe --write` as the first command on a machine, which made the
-# config directory.  The probe requires the `env_init` this machine's
-# molbuilder.json states (`configuration.md` § 4; user: "error when no
-# env_init is present"), so `envs init-config` -- which makes the config
-# directory and `environments/` -- has always run first, and the test above
-# checks the tree it makes.  The refusal is a row of
-# `tests/data/machine_record.toml`.
-
-
 def test_what_arrives_loose_is_reported_with_its_chmod(isolated_tree):
     """The case no writer can control: copied from another machine, restored
     from a backup, unpacked from an archive that dropped its modes.  A warning,
@@ -149,8 +132,7 @@ def test_what_arrives_loose_is_reported_with_its_chmod(isolated_tree):
     initconfig.init_config("conda activate", probe=False)
     # A KEY YOU NAMED AND KEEP HERE is yours and the system's
     # (`configuration.md` § 3.1): a letsencrypt key at its own 0640 is not a
-    # finding.  The audit told the operator to chmod it until 2026-10-02
-    # (W54 C9).
+    # finding.
     (CD.secrets_dir() / "privkey.pem").write_text("k")
     os.chmod(CD.secrets_dir() / "privkey.pem", 0o640)
     assert P.findings() == []
@@ -172,8 +154,7 @@ def test_the_config_write_is_private_when_it_is_the_first_writer(isolated_tree):
     and its docstring already claimed the property.
 
     First writer, deliberately: when `init-config` has already made the file
-    0600, a rewrite PRESERVES that mode and the defect is invisible.  It was
-    invisible to the first version of this test, which is how it got here.
+    0600, a rewrite PRESERVES that mode and the defect is invisible.
     """
     from molbuilder.runtime_config import write_config_scope
 

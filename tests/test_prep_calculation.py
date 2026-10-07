@@ -6,11 +6,7 @@ Contract: ``docs/execution/project-layout.md`` § 2.3.1 (the five steps) ·
 `job-system.md` § 5.0 (the entry).
 
 Every prep here goes through the one entry, `prep.prep_stage` -- what
-`jobset prep` and the Task setup tab call.  **These tests drove
-`prep_calculation` directly until 2026-10-06**, the five steps below the
-entry, which then read and resolved the calculation on its own; that door
-went (`job-system.md` § 5.0), and with it the tests whose rule a road row
-holds:
+`jobset prep` and the Task setup tab call.  The rules a road row holds:
 
 * the deck, its run script, the machine's copy, the plan -- every file the
   Task setup card names for a stage, `tests/data/the_catalogue.toml`;
@@ -153,9 +149,8 @@ def test_a_structure_that_changed_since_describing_is_refused(calc):
     caught rather than discovered in the results.
 
     The mutated file is the CALCULATION'S OWN copy — `describe` copies the
-    structure in since 2026-08-12 (M9's walk found nothing made "beside the
-    calculation first" true), and that copy is what `prep` reads: the one
-    `task.json` records, named for the label since 2026-10-04 (plan D20).
+    structure in, and that copy is what `prep` reads: the one `task.json`
+    records.
 
     API-LEVEL: a refusal the road cannot reach -- nothing molbuilder does
     writes another structure over the calculation's copy; a hand does."""
@@ -174,7 +169,7 @@ def test_a_structure_that_changed_since_describing_is_refused(calc):
 # --------------------------------------------------------------------- #
 
 def test_the_decision_log_prints_channel_names_readably():
-    """The ledger's whole value is that a person can read it, which is what
+    """The pipeline log's whole value is that a person can read it, which is what
     `_flat_resources`' own docstring says.
 
     Every field it renders was a scalar until `notify_channels` (2026-08-31),

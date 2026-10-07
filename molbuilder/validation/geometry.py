@@ -1,10 +1,4 @@
-"""Generic, engine-agnostic geometry validators.
-
-Split from the pre-2026-06-13 flat ``molbuilder/validation.py`` per
-docs/science/validation.md  The function bodies
-+ public signatures are identical to the pre-split versions; this
-file is an organizational move, not a behaviour change.
-"""
+"""Generic, engine-agnostic geometry validators."""
 
 from __future__ import annotations
 
@@ -76,9 +70,7 @@ def validate_geometry(struct: Structure,
     #
     # **CONDITIONED, NOT GATED** (2026-08-19).  The ratio fires on any
     # structure with few hydrogens, so it also fires on every metal, oxide
-    # and semiconductor -- and it used to tell a gold slab that "DFT will
-    # compute the wrong electron count without explicit H", which is false:
-    # Au12 has no hydrogens to be missing.  The fix is the SENTENCE, not a
+    # and semiconductor -- and Au12 has no hydrogens to be missing.  The fix is the SENTENCE, not a
     # molecule/crystal test: we cannot categorise reliably (a periodic
     # organic crystal is molecular; C60 and graphene are hydrogen-free by
     # construction), and a gate we get wrong silently drops the warning for
@@ -108,14 +100,9 @@ def validate_geometry(struct: Structure,
         return issues
 
     # A BROKEN CELL STOPS HERE, and says nothing -- `cell.check` owns the
-    # verdict (molbuilder/cell.py, cell-plan.md § 6a).
-    #
-    # This used to emit `cell.determinant`: "degenerate or left-handed".  Two
-    # different faults with two different repairs, conflated in one message and
-    # one id, so a flat molecule was told to swap its lattice vectors.  They are
-    # `cell.no_volume` and `cell.left_handed` now, reported once each by the one
-    # checker -- which validate() runs just above this call.  Emitting here as
-    # well gave every degenerate box TWO errors.
+    # verdict (molbuilder/cell.py): `cell.no_volume` and `cell.left_handed`,
+    # reported once each by the one checker, which validate() runs just above
+    # this call.
     #
     # The early return stays: the volume and image measurements below are
     # meaningless on a cell with no volume or a mirrored frame.
@@ -201,9 +188,8 @@ def _min_image_distance(positions: np.ndarray,
     permitted non-identity lattice translations and over all atoms j (including
     j == i, which is "this atom seeing its own copy").
 
-    (``inv`` is vestigial -- the distances are computed in Cartesian space, so
-    no inverse is needed.  Kept as an optional positional so existing callers
-    keep working.)
+    (``inv`` is unused: the distances are computed in Cartesian space, so
+    no inverse is needed.)
     """
     n = positions.shape[0]
     if n == 0:

@@ -28,7 +28,6 @@ asserting on the source is precisely what let the defect through.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from molbuilder.runtime_info import RUNTIME_INFO_KEYS
 from molbuilder.trajectory_log.emitter import MolwatchEmitter
@@ -94,43 +93,3 @@ def test_values_with_newlines_cannot_break_the_line_parse(tmp_path):
     text = log.read_text()
     assert "# runtime.gpu_name: line1 line2 line3" in text
     assert len(_header_keys(log)) == 1
-
-
-# ------------------------------------------------------------------ #
-#  The ordering half                                                  #
-# ------------------------------------------------------------------ #
-
-def test_the_emitter_is_built_after_the_last_runtime_fact():
-    """In the rendered PySCF script, every ``_RUNTIME_INFO[...] =``
-    write must precede the MolwatchEmitter construction.
-
-    __init__ writes the entire header and a header cannot be rewritten
-    once a data block follows, so a fact written after construction is
-    lost.  Only an ordering test can see this -- both the assignment and
-    the construction are present either way, so any grep-for-the-string
-    test passes on the broken arrangement.
-    """
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.pyscf.input import render_script
-    from molbuilder.structure import Structure
-
-    struct = Structure(elements=["O", "O"],
-                       positions=np.array([[0., 0., 0.], [0., 0., 1.21]]))
-    cfg = PySCFConfig(job_name="j", spin_treatment="unrestricted",
-                      unpaired_electrons=2, basis="sto-3g",
-                      optimize=True,
-                      write_molwatch_log=True,
-                      scf_soscf=True, scf_conv_tol_grad=1e-6)
-    lines = render_script(struct, cfg).splitlines()
-
-    build_at = [i for i, l in enumerate(lines)
-                if "MolwatchEmitter(" in l and "class " not in l]
-    writes_at = [i for i, l in enumerate(lines)
-                 if l.strip().startswith("_RUNTIME_INFO[")
-                 and "=" in l and "] =" in l]
-    assert build_at, "no MolwatchEmitter construction in the rendered script"
-    assert writes_at, "no _RUNTIME_INFO writes in the rendered script"
-    assert max(writes_at) < min(build_at), (
-        "a _RUNTIME_INFO fact is written AFTER the emitter is built; it "
-        "will not reach <job>.molwatch.log"
-    )

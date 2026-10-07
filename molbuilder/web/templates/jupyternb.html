@@ -9,9 +9,8 @@
    projects sidebar opens dialogs from this page like any other
    (`test_css_classes_are_defined.py`). #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
-{# form-components carries `button.primary` -- the Start button wore that class
-   with this sheet unloaded, so the one action on the page rendered as an
-   ordinary button (2026-09-14). #}
+{# form-components carries `button.primary`, the class the Start button
+   wears. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
@@ -21,15 +20,13 @@
 {# NOT lib/status.js.  The shared writer sets `el.className = "status" +
    severity`, which would wipe `nb-msg` (the class carrying the row's flex
    basis), and it takes a STRING while this row inserts `<code>` element
-   nodes for notebook paths.  Loading it and not calling it was a false
-   signal that this page used it, so the tag is gone and the reason is
-   here; `index.js`'s `say`/`sayError` are the local writer. #}
+   nodes for notebook paths; `index.js`'s `say`/`sayError` are the local
+   writer. #}
 </head>
 {# THE APP SHELL's own shape (page-shell.css "App shell", ui-contract.md):
    a tab with the projects sidebar opts in on <body> and wraps
    [sidebar | content] in .app-body / .app-content.  Without it the sidebar
-   is a rail the content sits UNDER, which is what this page did until it was
-   looked at in a browser. #}
+   is a rail the content sits UNDER. #}
 {# MOUNTED, NOT SHOWN.  `data-sidebars="projects"` still mounts the sidebar --
    this page needs the projects ROOT resolved and the selected folder known,
    because that is what decides where Lab OPENS.  `data-sidebars-hidden` drops

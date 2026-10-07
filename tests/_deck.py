@@ -1,13 +1,9 @@
 """Reading a generated deck the way its ENGINE reads it.
 
-**Why this exists.** Tests asserted on exact substrings of the emitted text --
-``assert "DM.Tolerance      1e-05" in fdf`` -- which pins the COLUMN PADDING
-into the assertion.  Widening one field's padding by a single space, a change
-libfdf cannot even perceive, failed 45 tests across eight files (measured
-2026-08-19).  None of them was testing spacing on purpose; each meant *this
-deck sets this keyword to this value*, and said it in a way that breaks on any
-reformatting of the emitter.  That is a tax on exactly the refactoring this
-layer keeps needing.
+**Why this exists.** An exact substring of the emitted text --
+``assert "DM.Tolerance      1e-05" in fdf`` -- pins the COLUMN PADDING, which
+libfdf cannot even perceive, into an assertion that means *this deck sets this
+keyword to this value*.
 
 **How fdf itself compares.** ``fdf_get`` normalises through ``labeleq``: case
 is ignored, and so are ``.``, ``_`` and ``-``.  So ``MD.MaxForceTol``,

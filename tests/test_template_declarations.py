@@ -1,10 +1,8 @@
 """The schema behind a template: what every parameter must declare, and the
 shape they declare.
 
-**Every test here is derived from a live contract**, and the ones that were not
-were removed on 2026-08-11 rather than updated (see the retirement note at the
-foot of this file). The rule that decided each: *a guard asserts what the
-contract says. It must never assert what the contract says should NOT be true* —
+**Every test here is derived from a live contract.** The rule that decides
+each: *a guard asserts what the contract says. It must never assert what the contract says should NOT be true* —
 a test pinning a retired format makes replacing it harder and reads to the next
 person as policy.
 
@@ -13,23 +11,11 @@ Contracts:
 * ``docs/engines/template.md`` — what a template **is**. § 3 (the required keys,
   and *a missing* ``value`` *means explicitly unset*), § 5 (the `type`
   vocabulary and where every key comes from), § 7 (membership is **total**, and
-  the three things that are not items), § 10 (complete, lossless, and the
-  the fingerprint, retired 2026-08-14).
+  the three things that are not items), § 10 (complete, lossless).
 * ``docs/execution/job-contracts.md`` § 3.1 (the reserved blocks of a generated
   script, which the shared marker finds) · § 3.3 (BENCH-MARKS, whose
   declarations come from the **same** field metadata — so the two cannot drift).
-* ``docs/engines/stages.md`` § 6.6 — the preflight rows.  Its one
-  *reports-rather-than-refuses* row was the schema fingerprint, retired
-  2026-08-14 (§ 10): one writer, one reader, and a warning weaker than the
-  per-field rows that ran right after it.
-
-**What this file does NOT guard, deliberately.** The template's *file format* is
-one TOML file (``template.md`` § 4), and nothing here asserts its serialization:
-``molbuilder/template.py`` still emits the retired ``.fdf`` shape, and the
-replacement is the plan's **P12 unit 6b**. Tests for the TOML writer are
-designed from ``template.md`` when that lands — not patched out of these.
-
-P2 unit 4a.
+* ``docs/engines/stages.md`` § 6.6 — the preflight rows.
 """
 from __future__ import annotations
 
@@ -46,27 +32,7 @@ from molbuilder.script_emit import benchmark_declarable_types
 from molbuilder.template import declarations_for
 
 
-# SIESTA only (U16, 2026-08-12): membership went TOTAL (§ 7 -- the
-# section gate was a fourth, unlisted exclusion), and under the total rule
-# declarations_for(PySCFConfig) refuses LOUDLY on that schema's known
-# vocabulary gaps -- which is § 7 working, pinned by name in
-# test_pyscfs_vocabulary_gaps_refuse_loudly below.  PySCF rejoins this
-# list when its template lands (it has no producer today; describe is
-# SIESTA-only) and the gaps are modelled.
 ENGINES = [SiestaConfig]
-
-
-def _decls(cls):
-    """Items as the CONFIG CLASS declares them.
-
-    ⚠ **This is the direction the catalogue replaced** (`template.md` § 2.1).
-    It survives because ``declarations_for`` is how the catalogue was built and
-    how the live Build form is still fed; the tests that ask about a
-    PARAMETER's facts use :func:`_cat` instead, because the catalogue is where
-    a parameter is defined.  ``tests/test_catalogue_agreement.py`` proves the
-    two agree until the form moves and this one can go.
-    """
-    return {d.name: d for d in declarations_for(cls)}
 
 
 def _cat(engine="siesta"):
@@ -74,18 +40,6 @@ def _cat(engine="siesta"):
     from molbuilder import template as _T
     return {i.name: i for i in _T.select(
         _T.read_template(_T.load_catalogue()), engine=engine)}
-
-
-# --------------------------------------------------------------------- #
-#  § 3.7 property 4 — every allowed item has a place in the file        #
-# --------------------------------------------------------------------- #
-
-
-def _is_ladder(cls, f) -> bool:
-    ann = typing.get_type_hints(cls)[f.name]
-    args = typing.get_args(ann)
-    return (typing.get_origin(ann) in (list, tuple)
-            and bool(args) and dataclasses.is_dataclass(args[0]))
 
 
 # --------------------------------------------------------------------- #
@@ -103,21 +57,10 @@ def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
     an intention there rather than a mechanism -- this test is the mechanism.
     Matched by ANCHOR, which is what a BENCH-MARKS line and a template item
     have in common.
-
-    **Replaces a rule whose premise was false** (2026-08-14).  It read *every*
-    engine-kind anchored item must have a type a BENCH-MARKS line may
-    carry, on the
-    reasoning that such an item could reach a BENCH-MARKS line.  It cannot:
-    the block declares the five hand-listed fields below and nothing else --
-    ``kgrid`` has been engine-kind and anchored all along and appears in no
-    block.  The false premise had a cost: it made the BENCH-MARKS grammar
-    the gate on
-    the TEMPLATE's vocabulary, so ``float3`` (audit § 54) could not be added to
-    one without widening the other for a type no benchmark will ever turn.
     """
     from molbuilder.script_emit import SIESTA_BENCH_FIELDS
     # A keyword reaches the deck two ways: an ``engine`` item's ``anchor``, or
-    # a ``deck`` item's ``expands`` -- ``MD.NumCGsteps`` is the second, one of
+    # a ``deck`` item's ``expands`` -- ``MD.Steps`` is the second, one of
     # the two keywords ``relax_steps`` becomes depending on ``relax_type``.
     # Both are the keyword a BENCH-MARKS anchor greps for.
     by_keyword = {}
@@ -132,10 +75,8 @@ def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
             f"describe (job-contracts.md § 3.3).")
         # THE BENCH MAY BE NARROWER THAN THE DECK, NEVER WIDER.
         #
-        # Exact equality was the rule until 2026-08-15, when ``BlockSize``
-        # became a plain ``int`` on the template while BENCH-MARKS kept
-        # ``pow2``.  That is deliberate and the asymmetry is the point: the
-        # DECK honours any positive integer (SIESTA's own manual gives no
+        # ``BlockSize`` is a plain ``int`` on the template and ``pow2`` on
+        # BENCH-MARKS, and the asymmetry is the point: the DECK honours any positive integer (SIESTA's own manual gives no
         # power-of-two rule for ``BlockSize``), while the BENCHMARK sweeps
         # powers of two because that is a sensible sweep, not a validity
         # constraint (`engines/tuning.md` § 2.11).
@@ -201,10 +142,6 @@ def test_range_unit_and_group_come_from_the_CATALOGUE():
     """§ 4.3: a surface holding the file needs nothing else to bound the
     control, label it, and decide whether its *vary per stage* box starts
     ticked — and it reads all three from the catalogue.
-
-    **Renamed 2026-08-14.** It was ``..._come_from_the_field_metadata``, which
-    stated the direction § 2.1 retired: the config classes were the master and
-    the file their printout.  The property is unchanged; the source is not.
     """
     d = _cat()["mesh_cutoff"]
     assert d.range == (100.0, 1000.0)
@@ -246,13 +183,7 @@ def test_a_misspelled_kind_is_refused_by_name(table):
 
 
 def test_pyscf_has_no_vocabulary_gaps_left():
-    """§ 7's total rule, now SATISFIED for PySCF (T5, 2026-08-13).
-
-    This test used to assert the gaps were NAMED rather than skipped,
-    and listed six: ecp, save_optimized_xyz, save_initial_xyz,
-    write_trajectory, write_molwatch_log, stage.  Its own docstring said
-    *"this list shrinking is progress"*.  It shrank to zero, so the test
-    now guards the state that replaced it -- every PySCF field either
+    """§ 7's total rule, satisfied for PySCF: every PySCF field either
     renders or is a machine fact § 7 deliberately excludes, and nothing
     falls through unnamed.
 
@@ -275,27 +206,12 @@ def test_pyscf_has_no_vocabulary_gaps_left():
 
 
 def test_pyscf_renders_a_template_at_all():
-    """The thing T5 existed to make true.  Three of four engines could
-    not produce a template; a plan that called the template the single
-    source of truth had no source for PySCF at all."""
+    """The template is the single source of truth, so PySCF must produce
+    one."""
     from molbuilder.template import template_with_values, read_template
     t = read_template(template_with_values(PySCFConfig(), engine="pyscf"))
     assert len(t.items) > 30
     assert all(i.category for i in t.items)
-
-
-def _variant(*, meta=None, ann=int, default=3):
-    """A tiny config whose schema can be perturbed one axis at a time.
-
-    Built with ``make_dataclass`` rather than a class body: this module has
-    ``from __future__ import annotations``, so a class-body annotation is
-    stored as a *string* and a computed one ("whatever ``ann`` holds") cannot
-    be resolved back to a type at all."""
-    md = {"category": ("method",), "workflow_group": "stage",
-          "range": (1, 10), "help": "a", "label": "A", "unit": "Ry"}
-    md.update(meta or {})
-    return dataclasses.make_dataclass(
-        "C", [("x", ann, dc_field(default=default, metadata=md))])
 
 
 # --------------------------------------------------------------------- #
@@ -313,56 +229,6 @@ def test_the_marker_rejects_what_is_not_a_block_marker(line):
     """A block's payload is copied verbatim, so a payload line that matched
     the marker would silently truncate the block."""
     assert MARKER_RE.match(line) is None
-
-
-# --------------------------------------------------------------------- #
-#  RETIRED 2026-10-03 — the wrapper's deck reads, audited against read_by #
-# --------------------------------------------------------------------- #
-#
-#  Two tests stood here: every ``runwrap._fdf_requests_*`` scanner had to be
-#  claimed by an item declaring ``read_by = ("wrapper",)``, and a mutation
-#  guard showed ``_fdf_requests_gpu`` orphaned without ``use_gpu``'s
-#  declaration.  The last scanner went on 2026-10-03: the wrapper reads no
-#  deck keyword for what it is told -- whether a run uses the GPU is the
-#  job's request (`jobset.model.gpu_request`, `execution/gpu.md` G7) -- so
-#  there is nothing left for the audit to walk, and a guard over an empty
-#  set passes whatever happens.  That the wrapper is told is the GPU table's
-#  to show: a PySCF run, whose deck carries no SIESTA keyword, routes to the
-#  GPU by its request alone (`tests/data/gpu_contract.toml`).
-
-
-# --------------------------------------------------------------------- #
-#  RETIRED 2026-08-11 — the item-block template format                  #
-# --------------------------------------------------------------------- #
-#
-#  Three tests stood here and were deleted rather than updated:
-#
-#    test_the_marker_accepts_an_item_block_naming_its_field
-#    test_the_marker_still_rejects_what_it_rejected   (the `item one two
-#        three` case only — the rest survives above)
-#    test_an_internal_field_gets_no_declaration
-#
-#  They asserted that the marker admits `# === molbuilder item <field> ===`
-#  and that a field without a `section` gets no declaration.  BOTH ARE NOW
-#  THINGS THE CONTRACT SAYS MUST **NOT** BE TRUE:
-#
-#    * `engines/template.md` D2/D3 retires the `.fdf`-with-item-blocks
-#      template outright (archive/2026-08-11-template-item-blocks.md).  A
-#      template is ONE TOML FILE; there is no item block to mark, and the
-#      value is stored once so it cannot disagree with a payload line.
-#    * membership is TOTAL and reads `kind`, not `section` (§ 7, and the
-#      plan's P12 unit 6b).  `species_order`, `write_forces`,
-#      `write_coor_step` and `write_molwatch_log` are items precisely
-#      BECAUSE `section` went back to answering only *where on the form*.
-#      The retired test asserted the opposite and would fail the correct
-#      implementation.
-#
-#  Kept as a comment rather than deleted silently: a guard removed with no
-#  record reads later as a guard nobody wrote.  `molbuilder/template.py`
-#  still implements the old format, and P12 unit 6b replaces it — until then
-#  that code is simply unguarded here, which is the honest state.  A test
-#  that pins a format the contract rejects makes the replacement harder and
-#  states policy that is not policy.
 
 
 def test_both_spellings_of_optional_are_understood():
@@ -476,10 +342,6 @@ def test_help_prose_is_authored_one_paragraph_per_line():
         # the machine's maximum, resolved at prep on the node that granted
         # it; set a
 
-    This went unseen while nothing emitted those particular items' notes. It
-    stopped being invisible when PySCF started reading the catalogue, which is
-    the point of a convention having a test rather than a docstring.
-
     A line is a soft wrap when **both it and the next line are prose** -- neither
     indented -- and it does not end a thought.  A ladder row is exempt on either
     side: `deck_note` copies indented lines verbatim to keep a hand-aligned tier
@@ -566,7 +428,6 @@ def test_a_recommended_value_on_a_tier_field_is_the_engines_tight_tier():
         "relax_type", "relax_steps", "relax_force_tol", "relax_max_displ",
         "geom_gmax", "geom_grms", "geom_dmax", "geom_drms", "geom_etol",
         "geom_max_steps"}
-
 
 
 @pytest.mark.parametrize("start, what", [

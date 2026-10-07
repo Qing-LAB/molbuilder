@@ -65,11 +65,7 @@ def fresh(tmp_path, monkeypatch):
 def test_a_fresh_machine_has_no_record_to_prep_against(fresh):
     """The baseline.  Without this failing first, nothing below means anything:
     a machine that never ran molbuilder has no record, so every prep refuses
-    at its first step, naming the probe (`jobset/prep.py::_no_record`).
-
-    *(This asserted the activation refusal, through `machine.require_activation`
-    called on no record -- a refusal the road never gives a fresh machine,
-    which stops one step earlier; W54 T22.)*"""
+    at its first step, naming the probe (`jobset/prep.py::_no_record`)."""
     from molbuilder.scheduler import machine_for
     assert machine_for() is None
 
@@ -98,8 +94,6 @@ def test_the_seeded_file_is_read_by_the_real_reader(fresh):
     read_config(fresh / CONFIG_FILENAME)            # refuses -> raises
     assert _the_gate().env_init == {
         "activation": "conda activate", "preamble": "module load mamba"}
-
-
 
 
 # ══ IT NEVER OVERWRITES ════════════════════════════════════════════════════
@@ -150,12 +144,6 @@ def test_a_config_without_env_init_gets_the_one_asked_and_nothing_else(fresh):
     doc = json.loads((fresh / CONFIG_FILENAME).read_text())
     assert doc["env_init"] == {"activation": "source activate"}, doc
     assert doc["launch"] == {"mode": "direct"}, doc
-
-
-# `test_a_seed_the_loader_would_refuse_is_not_written` retired 2026-10-02 (W54
-# T22): it monkeypatched `seed_document` to prove the seed goes through the one
-# writer -- a test of a call site, which review holds.
-
 
 
 # ══ WHAT IT WRITES, AND WHAT IT REFUSES TO WRITE ═══════════════════════════
@@ -403,12 +391,6 @@ def test_no_declared_projects_root_leaves_the_default_and_says_so(fresh):
     assert "default" in projects_root_with_source().source
 
 
-# RETIRED 2026-09-14 (review D): `test_the_environments_readme_says_the_probe
-# _runs_on_the_target` grepped a README this program writes for a phrase.  The
-# README that earns a test is the one below, whose mock channels are handed to
-# the real reader.
-
-
 def test_the_secrets_readme_mock_channels_are_a_shape_that_parses(fresh):
     """The notify examples must be the real shape, or they teach a wrong one.
 
@@ -426,10 +408,8 @@ def test_the_secrets_readme_mock_channels_are_a_shape_that_parses(fresh):
     block = re.search(r"(\{\n        \"channels\".*?\n      \})", readme, re.S)
     assert block, "the mock channel block should be in the README"
     doc = json.loads(block.group(1))
-    # AT THE FILE'S ONE HOME: `load_channels` took a `path=` until
-    # 2026-09-14 and this handed it a temp file.  `fresh` is the config
-    # directory, so the documented example is read exactly where a real one
-    # would be.
+    # AT THE FILE'S ONE HOME: `fresh` is the config directory, so the
+    # documented example is read exactly where a real one would be.
     default_notify_path().write_text(json.dumps(doc), encoding="utf-8")
     got = load_channels()
 
@@ -445,15 +425,9 @@ def test_the_secrets_readme_mock_channels_are_a_shape_that_parses(fresh):
 def test_the_secrets_directory_is_tight_and_explains_itself(fresh):
     """0700, with a README that does not tell a lie.
 
-    THE SECOND HALF OF THIS TEST WAS RETIRED 2026-09-20 rather than repaired.
-    It asserted the README carried `../secret_key`, `../google_client_secret`,
-    `../notify` and `../notify_keys` -- and said why: *"the `../` form is the
-    point: it says the file is one level UP, not here."*  Those four moved
-    INTO this directory, so the rule that assertion existed to protect no
-    longer exists.  A test kept alive by rewriting its expected strings would
-    assert nothing; what it now checks is the rule that replaced it -- the
-    README names the files that really are here, and names the FUNCTION each
-    is reached through, since the whole point is that nobody builds the path.
+    The README names the files that really are here, and names the FUNCTION
+    each is reached through, since the whole point is that nobody builds the
+    path.
     """
     from molbuilder.config_dir import secrets_dir
 
@@ -464,10 +438,8 @@ def test_the_secrets_directory_is_tight_and_explains_itself(fresh):
     assert oct(d.stat().st_mode)[-3:] == "700", "it holds every credential"
     readme = (d / "README").read_text(encoding="utf-8")
     assert "0600" in readme, "the mode rule is the point"
-    # `"secret_key" in readme` passed on the SUBSTRING of `secret_key_file`,
-    # which the README carries in an unrelated sentence -- measured
-    # 2026-09-20 by deleting the whole `secret_key` row and watching 25 tests
-    # stay green.  The rows are what must be there, so match the row.
+    # Match the ROW: `secret_key` is also a substring of `secret_key_file`,
+    # which the README carries in an unrelated sentence.
     for here in ("secret_key ", "google_client_secret ", "notify_keys "):
         assert here in readme, (
             f"the README has no row for {here.strip()}, so a reader opening "
@@ -480,12 +452,6 @@ def test_the_secrets_directory_is_tight_and_explains_itself(fresh):
         assert door in readme, (
             f"the README must name {door} -- a reader who cannot see the "
             f"resolver will build the path by hand, which is the defect")
-    # `assert "may be empty" in readme` stood here and was RETIRED with the
-    # rest, 2026-09-20.  That reassurance existed because the directory
-    # normally WAS empty -- it held only what `molbuilder.json` named, and a
-    # workstation with no HTTPS and no sign-in named nothing.  The session key
-    # now appears here on first server run, so the sentence would be false and
-    # the assertion was protecting it.
 
 
 def test_environments_is_not_looser_than_its_parent(fresh):
@@ -505,11 +471,8 @@ def test_the_sign_in_wizard_runs_on_a_seeded_config(fresh):
     assert result.exit_code == 0, result.output
     doc = json.loads((fresh / CONFIG_FILENAME).read_text())
     assert doc["auth"]["providers"], "the wizard wrote its block"
-    # THE RULE, not one key's name.  This asserted `_comment_signin`
-    # specifically and broke when the seeded template was rewritten
-    # 2026-09-12 -- the subject was always "the wizard preserves what the
-    # seed wrote", so assert that: every key the seed wrote, the `_`-prefixed
-    # guidance and the sections alike, is still there.
+    # THE RULE, not one key's name: the wizard preserves what the seed
+    # wrote -- every key, the `_`-prefixed guidance and the sections alike.
     seeded = set(initconfig.seed_document("conda activate"))
     assert {k for k in seeded if k.startswith("_")}, (
         "the seed writes guidance keys")

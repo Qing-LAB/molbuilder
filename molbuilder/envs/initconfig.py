@@ -6,10 +6,6 @@
     has **no default**: a target whose record carries none is refused at
     prep ... On a fresh install that would bite a workstation first.
 
-Nothing created the config directory or this machine's record, so on a fresh
-machine every prep refused a target whose record could not say how to enter an
-environment -- and the record could not say it, because nobody had been asked.
-
 **Install time is when the answer is known and nowhere else is.**  The
 installer has just located the env manager and asked the person to confirm it;
 that is the one moment in the program's life where "how does this machine enter
@@ -19,10 +15,8 @@ report that nobody ever said.  The answer goes into ``molbuilder.json``'s
 enters an environment there -- and the probe copies it into this machine's
 record, which is what every prep reads (`configuration.md` § 4).
 
-**Asked, not sniffed.**  ``activation`` is DECLARED, never detected --
-``detect_conda_activation`` was deleted 2026-08-13 (V22) for having zero
-callers, and `running-a-job.md` § 5 is why.  This module does not restore it:
-the value arrives as an ARGUMENT, from a person answering a prompt (or from
+**Asked, not sniffed.**  ``activation`` is DECLARED, never detected
+(`running-a-job.md` § 5): the value arrives as an ARGUMENT, from a person answering a prompt (or from
 ``--yes`` taking the recommendation, printed).  A declaration made by the
 operator at install time is what the rule asks for; what it forbids is a
 generator guessing at emit time.
@@ -38,11 +32,9 @@ Re-running is a no-op that prints what is already there, which is what makes it
 safe to call from ``bootstrap`` unconditionally.
 
 **The two READMEs are the exception** *(user, 2026-09-20: "always overwrite")*.
-They are MOLBUILDER'S OWN TEXT, not the operator's, and the rule above was
-protecting the wrong thing: when the credentials moved into ``secrets/`` the
-seeded README went on telling every pre-existing install that they sit beside
-``molbuilder.json``, and it is the file an operator opens precisely when they
-do not already know. A wrong map is worse than no map. They report
+They are MOLBUILDER'S OWN TEXT, not the operator's, and a README is the file
+an operator opens precisely when they do not already know. A wrong map is
+worse than no map. They report
 ``rewritten`` when the text on disk differs and ``kept`` when it does not, so
 re-running is still a no-op -- the CONTENT is compared, which is what keeps
 that true while making a stale one impossible.
@@ -50,10 +42,7 @@ that true while making a stale one impossible.
 **No new writer.**  The record goes through ``resolve_environment`` ->
 ``diagnostics.local_facts`` -> ``record.probe_queues`` -> ``write_environment``,
 the same steps in the same order ``jobset probe --write`` takes, so the two
-cannot disagree about what this machine is.  ``local_facts`` and the queue
-probe were inline in that command until this module became their second
-caller -- the queues not until 2026-10-02, so a cluster was seeded with none
-(R4).  This module contributes the DIRECTORY, the CONFIG and the ANSWER it
+cannot disagree about what this machine is.  This module contributes the DIRECTORY, the CONFIG and the ANSWER it
 asked for; the record it delegates.
 """
 from __future__ import annotations
@@ -114,12 +103,9 @@ def conda_hook(conda_binary: Optional[str]) -> Optional[str]:
     the cluster, inside a job.  **Checked, not assumed.**
 
     **The root comes from the MANAGER, not from its binary's path**
-    (`installation.md` M2).  This used to be
-    ``Path(conda_binary).resolve().parent.parent`` -- which is the install root
-    for ``<root>/bin/conda`` and for ``<root>/condabin/conda``, is ``/usr`` for a
-    distro-packaged ``/usr/bin/conda``, and says nothing at all when the thing on
-    PATH is the shell wrapper a cluster module provides.  `<mgr> info --json`
-    answers with ``root_prefix`` outright, and the value this function returns is
+    (`installation.md` M2): a binary's path is ``/usr`` for a distro-packaged
+    ``/usr/bin/conda``, and says nothing at all when the thing on PATH is the
+    shell wrapper a cluster module provides.  `<mgr> info --json` answers with ``root_prefix`` outright, and the value this function returns is
     WRITTEN INTO THE USER'S ``molbuilder.json`` -- so a guess here does not fail
     here: it fails in a job, on a cluster, weeks later.
     """
@@ -211,14 +197,10 @@ def seed_document(activation: str, preamble: Optional[str] = None,
         ],
         "env_init": {"activation": activation},
         # THE USER READS THIS BLOCK, so it says what to do and not what we
-        # learned.  It invited `logs`, `run` and `reports` until 2026-09-12 --
-        # keys retired on 2026-08-31 and REFUSED since, so a person with a
-        # quota'd $HOME who followed the advice in their own seeded config made
-        # every later read of it raise.  The file molbuilder generates was
-        # telling them how to brick it.  `configuration.md` 2.1d owns the rule
-        # (the `serve` supervisor is L1 and the config reader L2, so a
-        # config-derived answer was unreachable); `runtime_config._read_paths`
-        # states it at the reader.  Three places said it, one was right.
+        # learned.  `configuration.md` 2.1d owns the rule (the `serve`
+        # supervisor is L1 and the config reader L2, so a config-derived
+        # answer is unreachable); `runtime_config._read_paths` states it at
+        # the reader.
         "_paths": [
             "Where molbuilder keeps things that are not its own code.",
             "`projects` is the project tree.  Every surface resolves it",
@@ -341,13 +323,13 @@ def _ensure_root() -> bool:
     """Make the config directory if it is not there.  ``True`` if it made it.
 
     Through `config_dir.ensure_private_dir`, which is the ONE creator for a
-    directory in this tree and states the mode once (2026-09-13).  It does not
+    directory in this tree and states the mode once.  It does not
     tighten a directory that is already there, which is this function's own
     rule: seeding seeds, `envs doctor` reports what arrived loose.
 
     Private, and shared by both doors, because ``seed_machine_config`` is
     reachable on its own -- a public function that works only if you happened
-    to call a different one first is a trap, and it caught its own test.
+    to call a different one first is a trap.
     """
     root = config_dir()
     if root.is_dir():
@@ -363,8 +345,8 @@ def ensure_dirs() -> List[Step]:
     client secret and the notify keys, and `configuration.md` § 2.1b already
     requires ``0600`` on those files -- a world-readable directory around them
     is the same mistake one level up.  An EXISTING directory's mode is left
-    alone; this seeds, it does not police (``envs doctor`` is where a
-    permissions audit would belong).
+    alone; this seeds, it does not police (``envs doctor`` reports what
+    arrived loose).
 
     ``environments/`` is created empty and that is not pointless: it is the
     answer to *"where do I put the record my colleague sent me from the
@@ -383,8 +365,7 @@ def ensure_dirs() -> List[Step]:
     else:
         # 0700 like its parent.  It sits inside a directory that holds the
         # session key and the OAuth client secret, and a looser mode on a
-        # child of that is the same mistake one level down.  (It was created
-        # at the umask default until 2026-09-12, so 0775 on most systems.)
+        # child of that is the same mistake one level down.
         ensure_private_dir(envs)
         steps.append(Step(envs, "created",
                           "mode 0700; drop a colleague's "
@@ -406,23 +387,18 @@ def _readme(directory: Path, text: str, note: str) -> List[Step]:
     """Write ``<directory>/README``, or rewrite it when its text is out of
     date.  One writer for both.
 
-    **Overwritten when it is out of date** *(user, 2026-09-20)*.  It used to be
-    left alone like everything else here, on the reason that a person may have
-    added notes -- but this is molbuilder's own text, and on 2026-09-20 the
-    credentials moved into `secrets/` while every install seeded before that
-    kept a README saying they live one level up.  That file is what an operator
-    opens when they do NOT already know where their credentials are, so a stale
-    one sends them to the wrong place with full confidence.  The write is
+    **Overwritten when it is out of date** *(user, 2026-09-20)*: this is
+    molbuilder's own text, and it is what an operator opens when they do NOT
+    already know where their credentials are, so a stale one sends them to the
+    wrong place with full confidence.  The write is
     conditional on the CONTENT differing, not on a timestamp, so a second run
     is still a no-op and still reports ``kept``.
 
-    **Written 0600 when it lands in `secrets/`** *(2026-09-20)*.  A plain
-    `write_text` takes the umask, which here meant 0664 -- inside a directory
-    whose own README says every file molbuilder keeps there is 0600, and
-    which the placement audit checks (its row for this README).  So `envs
-    init-config` seeded a file that `envs doctor` would immediately report.
-    It is only a README, but a seeder that trips its own audit teaches an
-    operator to ignore the audit, which is the expensive part.
+    **Written 0600 when it lands in `secrets/`**: a plain `write_text` takes
+    the umask, inside a directory whose own README says every file molbuilder
+    keeps there is 0600, and which the placement audit checks (its row for
+    this README).  A seeder that trips its own audit teaches an operator to
+    ignore the audit.
     `environments/README`
     keeps the umask: that directory holds machine records, not credentials.
     """
@@ -445,7 +421,7 @@ def _readme(directory: Path, text: str, note: str) -> List[Step]:
 #: What ``secrets/README`` says.  It is a FILE rather than a docstring because
 #: the person who needs it is looking at the directory, not at the source --
 #: and because a conda-only install has no checkout to read docs from.
-_SECRETS_README = 'molbuilder — secrets\n====================\n\nThis directory holds EVERY credential molbuilder keeps.\nIt is created mode 0700 (owner only), and every file molbuilder keeps here\nis 0600.  A file you name in molbuilder.json and keep here -- a TLS key -- is\nyours and the system\'s: molbuilder reads it and says nothing of its mode.\nNothing here is ever printed: `config_provenance` logs only the sections\nflagged safe, and any section holding a secret — or a path to one — is\nexcluded by construction.\n\nWHY THE MODES MATTER\n    0700 on this directory, 0600 on each file molbuilder keeps.  `molbuilder.json` is itself\n    checked for 0600 and WARNS (never refuses — refusing would lock you out\n    of your own server).  A world-readable directory around 0600 files is the\n    same mistake one level up, so this one is tight from the start.\n\n        ls -l ~/.config/molbuilder ~/.config/molbuilder/secrets\n        chmod 700 ~/.config/molbuilder/secrets\n        molbuilder envs doctor     # names each of molbuilder\'s own files\n                                   # that arrived looser, with its chmod\n\nWHAT BELONGS HERE — everything sensitive\n    Two kinds, differing in WHO NAMES them, not in where they sit:\n\n  1. FIXED HOME.  molbuilder resolves these itself and molbuilder.json\n     CANNOT name them — one function each, so a reader and a writer can\n     never mean different files:\n\n      secret_key           the Flask session key.  Created on FIRST SERVER\n                           RUN at 0600.  Do not make it by hand; deleting it\n                           logs everyone out and a new one appears.\n                           (`secret_key_file` in config is REFUSED.)\n      notify               the run-report CHANNELS file — see below.\n      notify_keys          the operator\'s run-report signing keys.\n                           (`notify_keys_file` in config is REFUSED.)\n      <kind>_client_secret an OAuth provider\'s client secret, one per kind:\n                           google_client_secret (`molbuilder auth-setup`\n                           writes it), github_client_secret,\n                           microsoft_client_secret, orcid_client_secret.\n                           (`client_secret_file` in config is REFUSED.)\n\n  2. OPERATOR-NAMED.  Referenced by a PATH in molbuilder.json, so the name\n     is yours and this is their suggested home:\n\n      the TLS private key (and cert, if not system-managed)\n          "tls": {"cert": "~/.config/molbuilder/secrets/fullchain.pem",\n                  "key":  "~/.config/molbuilder/secrets/privkey.pem"}\n\nHOW ANYTHING REACHES A FILE IN HERE\n    Through the one function that owns it, never by building the path:\n\n      config_dir.secrets_dir()            this directory\n      config_dir.session_key()            secret_key\n      config_dir.client_secret(kind)      <kind>_client_secret\n      monitor.default_notify_path()       notify\n      monitor.notify_keys_path()          notify_keys\n\n    Review keeps each name in its one home: a module that joined one of\n    these names into a path itself would be a second answer to where the\n    file lives.  `tests/test_config_dir_has_one_home.py` fails if any door\n    stops moving with MOLBUILDER_CONFIG_DIR.  Set that variable and the\n    whole directory relocates — which is how you keep credentials off an\n    NFS-mounted $HOME on a login node.\n\n    THE FOUR ABOVE MOVED HERE ON 2026-09-20 (user).  They used to sit beside\n    molbuilder.json, one level up, on the rule "this directory is for what\n    the config NAMES".  A directory called `secrets` that did not hold the\n    secrets misled everyone who opened it.  What mattered was never WHICH\n    directory — only that each file has exactly one home and one resolver,\n    and that is unchanged.\n\nRUN-REPORT CHANNELS — the `notify` file in this directory\n    Shape: {"channels": {"<name>": {"url": ..., "kind"?: ..., "key"?: ...}}}\n    `kind` is "molbuilder" | "slack" | "discord"; omitted, it is read off the\n    URL\'s host.  Absent file means no notifier and the run proceeds exactly as\n    with the feature off; a malformed file says so in the monitor log and\n    carries on, and one bad channel does not cost the others.\n\n    THE EASY WAY is the web UI (Settings → run reports), which writes this\n    file at 0600 for you.  `molbuilder notify-token` is for the OTHER side:\n    it writes notify_keys and PRINTS the JSON to paste on the machine that\n    runs the job.  The shapes below are for reading and for testing.\n\n    EXAMPLES.  The URLs are <ANGLE-BRACKET> placeholders rather than\n    realistic fakes, deliberately: a fake that LOOKS real IS a credential as\n    far as a secret scanner is concerned -- GitHub\'s push protection rejected\n    an earlier draft of THIS FILE for carrying a "Slack Incoming Webhook\n    URL".  Which is the clearest demonstration of the point below: for Slack\n    and Discord the URL *is* the secret.  Substitute the bracketed parts:\n\n      {\n        "channels": {\n          "local": {\n            "kind": "molbuilder",\n            "url":  "http://127.0.0.1:8765/hook",\n            "key":  "mock-local-key-not-a-real-secret"\n          },\n          "team-slack": {\n            "kind": "slack",\n            "url":  "https://hooks.slack.com/services/<TEAM-ID>/<CHANNEL-ID>/<TOKEN>"\n          },\n          "team-discord": {\n            "kind": "discord",\n            "url":  "https://discord.com/api/webhooks/<CHANNEL-ID>/<TOKEN>"\n          }\n        }\n      }\n\n    NOTE THE TWO SHAPES, because they differ in where the credential is:\n      * Slack and Discord put the credential IN THE URL.  A third party hands\n        you nothing but a URL, so the URL *is* the secret — which is why this\n        file is 0600 even when it looks like it holds no key.\n      * a molbuilder listener takes a plain url plus a `key` that SIGNS the\n        body and NEVER TRAVELS.  That is the shape to prefer when you control\n        the receiver: a leaked URL cannot be used to post as you.\n\n    A LOCAL LISTENER is the way to try this without a third party.  Point a\n    "molbuilder" channel at 127.0.0.1 and run anything that answers — the\n    signature is computed over the body with `key`, so a listener that does\n    not check it will still receive the report and show you the shape.\n\nIF YOU BACK THIS UP\n    Back up the whole config directory, not just this folder, and treat the\n    copy with the same care.  `secret_key` is the one file whose loss is\n    harmless (sessions end, a new key appears).  A leaked webhook URL, OAuth\n    client secret or TLS key is not.\n\nReference: docs/configuration.md § 2.1b (the mode rule), § 2.3 (how a secret\nis written -- atomically, so an interrupted write cannot destroy the one it\nreplaces), § 3.1 (the whole directory tree), § 2.1e (the session\nkey\'s one home), docs/execution/run-reports.md § 4.1b (channel kinds),\ndocs/ops/access-control.md (what sign-in exposes).\n'
+_SECRETS_README = 'molbuilder — secrets\n====================\n\nThis directory holds EVERY credential molbuilder keeps.\nIt is created mode 0700 (owner only), and every file molbuilder keeps here\nis 0600.  A file you name in molbuilder.json and keep here -- a TLS key -- is\nyours and the system\'s: molbuilder reads it and says nothing of its mode.\nNothing here is ever printed: `config_provenance` logs only the sections\nflagged safe, and any section holding a secret — or a path to one — is\nexcluded by construction.\n\nWHY THE MODES MATTER\n    0700 on this directory, 0600 on each file molbuilder keeps.  `molbuilder.json` is itself\n    checked for 0600 and WARNS (never refuses — refusing would lock you out\n    of your own server).  A world-readable directory around 0600 files is the\n    same mistake one level up, so this one is tight from the start.\n\n        ls -l ~/.config/molbuilder ~/.config/molbuilder/secrets\n        chmod 700 ~/.config/molbuilder/secrets\n        molbuilder envs doctor     # names each of molbuilder\'s own files\n                                   # that arrived looser, with its chmod\n\nWHAT BELONGS HERE — everything sensitive\n    Two kinds, differing in WHO NAMES them, not in where they sit:\n\n  1. FIXED HOME.  molbuilder resolves these itself and molbuilder.json\n     CANNOT name them — one function each, so a reader and a writer can\n     never mean different files:\n\n      secret_key           the Flask session key.  Created on FIRST SERVER\n                           RUN at 0600.  Do not make it by hand; deleting it\n                           logs everyone out and a new one appears.\n                           (`secret_key_file` in config is REFUSED.)\n      notify               the run-report CHANNELS file — see below.\n      notify_keys          the operator\'s run-report signing keys.\n                           (`notify_keys_file` in config is REFUSED.)\n      <kind>_client_secret an OAuth provider\'s client secret, one per kind:\n                           google_client_secret (`molbuilder auth-setup`\n                           writes it), github_client_secret,\n                           microsoft_client_secret, orcid_client_secret.\n                           (`client_secret_file` in config is REFUSED.)\n\n  2. OPERATOR-NAMED.  Referenced by a PATH in molbuilder.json, so the name\n     is yours and this is their suggested home:\n\n      the TLS private key (and cert, if not system-managed)\n          "tls": {"cert": "~/.config/molbuilder/secrets/fullchain.pem",\n                  "key":  "~/.config/molbuilder/secrets/privkey.pem"}\n\nHOW ANYTHING REACHES A FILE IN HERE\n    Through the one function that owns it, never by building the path:\n\n      config_dir.secrets_dir()            this directory\n      config_dir.session_key()            secret_key\n      config_dir.client_secret(kind)      <kind>_client_secret\n      monitor.default_notify_path()       notify\n      monitor.notify_keys_path()          notify_keys\n\n    Review keeps each name in its one home: a module that joined one of\n    these names into a path itself would be a second answer to where the\n    file lives.  `tests/test_config_dir_has_one_home.py` fails if any door\n    stops moving with MOLBUILDER_CONFIG_DIR.  Set that variable and the\n    whole directory relocates — which is how you keep credentials off an\n    NFS-mounted $HOME on a login node.\n\nRUN-REPORT CHANNELS — the `notify` file in this directory\n    Shape: {"channels": {"<name>": {"url": ..., "kind"?: ..., "key"?: ...}}}\n    `kind` is "molbuilder" | "slack" | "discord"; omitted, it is read off the\n    URL\'s host.  Absent file means no notifier and the run proceeds exactly as\n    with the feature off; a malformed file says so in the monitor log and\n    carries on, and one bad channel does not cost the others.\n\n    THE EASY WAY is the web UI (Settings → run reports), which writes this\n    file at 0600 for you.  `molbuilder notify-token` is for the OTHER side:\n    it writes notify_keys and PRINTS the JSON to paste on the machine that\n    runs the job.  The shapes below are for reading and for testing.\n\n    EXAMPLES.  The URLs are <ANGLE-BRACKET> placeholders rather than\n    realistic fakes, deliberately: a fake that LOOKS real IS a credential as\n    far as a secret scanner is concerned -- GitHub\'s push protection rejected\n    an earlier draft of THIS FILE for carrying a "Slack Incoming Webhook\n    URL".  Which is the clearest demonstration of the point below: for Slack\n    and Discord the URL *is* the secret.  Substitute the bracketed parts:\n\n      {\n        "channels": {\n          "local": {\n            "kind": "molbuilder",\n            "url":  "http://127.0.0.1:8765/hook",\n            "key":  "mock-local-key-not-a-real-secret"\n          },\n          "team-slack": {\n            "kind": "slack",\n            "url":  "https://hooks.slack.com/services/<TEAM-ID>/<CHANNEL-ID>/<TOKEN>"\n          },\n          "team-discord": {\n            "kind": "discord",\n            "url":  "https://discord.com/api/webhooks/<CHANNEL-ID>/<TOKEN>"\n          }\n        }\n      }\n\n    NOTE THE TWO SHAPES, because they differ in where the credential is:\n      * Slack and Discord put the credential IN THE URL.  A third party hands\n        you nothing but a URL, so the URL *is* the secret — which is why this\n        file is 0600 even when it looks like it holds no key.\n      * a molbuilder listener takes a plain url plus a `key` that SIGNS the\n        body and NEVER TRAVELS.  That is the shape to prefer when you control\n        the receiver: a leaked URL cannot be used to post as you.\n\n    A LOCAL LISTENER is the way to try this without a third party.  Point a\n    "molbuilder" channel at 127.0.0.1 and run anything that answers — the\n    signature is computed over the body with `key`, so a listener that does\n    not check it will still receive the report and show you the shape.\n\nIF YOU BACK THIS UP\n    Back up the whole config directory, not just this folder, and treat the\n    copy with the same care.  `secret_key` is the one file whose loss is\n    harmless (sessions end, a new key appears).  A leaked webhook URL, OAuth\n    client secret or TLS key is not.\n\nReference: docs/configuration.md § 2.1b (the mode rule), § 2.3 (how a secret\nis written -- atomically, so an interrupted write cannot destroy the one it\nreplaces), § 3.1 (the whole directory tree), § 2.1e (the session\nkey\'s one home), docs/execution/run-reports.md § 4.1b (channel kinds),\ndocs/ops/access-control.md (what sign-in exposes).\n'
 
 
 def _seed_secrets_dir() -> List[Step]:
@@ -463,14 +439,7 @@ def _seed_secrets_dir() -> List[Step]:
     * **operator-named** -- the cert files: a TLS key or certificate.  The
       config names these by path, so this is their suggested home.
 
-    THIS DOCSTRING DESCRIBED THE OPPOSITE UNTIL 2026-09-20, and so did the note
-    this function prints: that the directory was only for what config names,
-    and that three secrets *"CANNOT live here"*.  They moved in; the text did
-    not follow, and `envs init-config` went on telling operators the reverse of
-    what the code does.  The README it writes had already been corrected, so
-    one function handed out two contradictory descriptions of one directory.
-
-    ``secrets/`` is no longer empty on a working installation -- the session key
+    ``secrets/`` is not empty on a working installation -- the session key
     appears on first server run.
     """
     steps: List[Step] = []
@@ -520,9 +489,7 @@ def seed_machine_config(activation: str, preamble: Optional[str] = None,
     _ensure_root()
     # THE ONE WRITER of this file (configuration.md § 2.3): its own path from
     # its own resolver, validated with the server's validator before a byte
-    # lands, 0600 from the first byte.  Until 2026-09-14 this joined the
-    # filename itself and wrote through `write_json` -- a second writer whose
-    # seed was never validated (review C-Y1).
+    # lands, 0600 from the first byte.
     write_config_scope(seed_document(activation, preamble, projects))
     return Step(path, "created", f'env_init.activation = "{activation}"'
                 + _preamble_note(activation, preamble))
@@ -578,7 +545,7 @@ def seed_environment_record() -> Step:
             f"into it"))
     # THE SAME STEPS ``jobset probe --write`` TAKES, in the same order: the
     # node, the three facts that travel (`local_facts`), the queues.  The
-    # stamp too -- `detected_at` was null in every record seeded here.
+    # stamp too.
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     env, facts_notes = local_facts(resolve_environment(now_iso=now),
                                    get_env_init())
@@ -590,7 +557,7 @@ def seed_environment_record() -> Step:
         note += f"; {len(env.domains)} queue(s)"
     # WHAT THE QUEUE PROBE COULD NOT MEASURE is said here as `jobset probe`
     # says it -- a measurement that quietly did not happen is the defect
-    # those notes exist for (W54 review: this dropped them).
+    # those notes exist for.
     for n in [*queue_notes, *facts_notes]:
         note += f"; {n.rstrip('.')}"
     if sg.get("activation"):
@@ -613,9 +580,7 @@ def _preamble_note(activation: str, preamble: Optional[str]) -> str:
         return ("; no preamble -- `conda activate` needs conda's hook "
                 "sourced in a non-interactive shell, and none was found")
     # ``source activate`` is a script on PATH.  It needs no hook, so the
-    # absence is the correct state and must not be reported as a miss --
-    # which is what it said until 2026-09-08, on every machine that HAD a hook
-    # and simply did not need it.
+    # absence is the correct state and must not be reported as a miss.
     return "; no preamble (source activate needs none)"
 
 
@@ -638,10 +603,8 @@ def init_config(activation: str,
     """
     # THE BLOCKERS FIRST.  `seeding_blockers()` holds the exact sentence for an
     # unwritable config root -- and `bootstrap` prints `init-config` as the
-    # remedy -- while this function answered the same condition with a raw
-    # `PermissionError` traceback from `mkdir`.  That is the *"a remedy the
-    # program prints that it then refuses to run"* class this migration exists
-    # to close, arrived at from the inside (D1).
+    # remedy -- so this function answers that condition with it, never with a
+    # raw `PermissionError` traceback from `mkdir`.
     blockers = seeding_blockers()
     if blockers:
         raise RuntimeError("\n".join(blockers))

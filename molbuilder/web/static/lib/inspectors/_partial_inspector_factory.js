@@ -1,9 +1,7 @@
 /* Shared scaffolding for the "partial-fetch + core.mount" inspector
- * adapters.  Pre-task-#308 lib/inspectors/trajectory.js and
- * lib/inspectors/spectra.js were ~95% identical: same error-card
- * renderer, same AbortController + fetch + innerHandle dance, same
- * cleanup-walk dispose shape.  The factory below captures all of
- * that; the two adapters collapse to ~25-line config blocks each.
+ * adapters (lib/inspectors/trajectory.js and lib/inspectors/spectra.js):
+ * the error-card renderer, the AbortController + fetch + innerHandle
+ * dance and the cleanup-walk dispose shape.
  *
  * Future inspectors that follow the same pattern (a server-rendered
  * Jinja partial + a separately-loaded ``core.mount(host, {file})``

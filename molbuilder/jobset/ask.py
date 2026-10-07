@@ -7,15 +7,6 @@ framework can write.  So it asks, rather than deriving: *how much time, how
 much memory.*  Everything else follows from the answer, and nothing has to be
 explained afterwards because nothing was invented.
 
-**What this replaces.**  The numbers used to arrive by themselves.  A job
-asked for 128 GB because SLURM grants 2 GB a core and it had 64 of them; it
-asked for 38 minutes because a per-trial default nobody set was multiplied by
-a trial count nobody saw.  Both were arithmetic on inputs the person had never
-been offered.  The first attempt at a fix was a provenance system — five
-categories, an announcement rule, a display — machinery whose entire purpose
-was to cope with numbers nobody chose.  **Asking removes the problem instead
-of labelling it.**
-
 Everything that lives here, and it lives nowhere else:
 
     Ask              the question, and the answer to it
@@ -23,33 +14,15 @@ Everything that lives here, and it lives nowhere else:
     gpu_share_notes  what a GPU-sharing request means, stated once
     confirm          the one interface — approve, change, or skip
 
-*This list said "four things" and named three of them until 2026-08-24.*  An
-inventory that does not match the module is how a resident goes unnoticed:
-`parse_duration` and `parse_memory` lived here for months without appearing
-on it, and being in a job-submission package is what stopped `task.py` --
-which only wanted to canonicalise a time string -- from reaching them
-without importing the whole of `jobset`.  They are now in
-`scheduler/quantities.py`, with every other dialect of the same two
-quantities (`docs/design.md`, "Architecture": an L1 module is named for the
-object it owns).
-
     The one output is the PLAN the launch door prints -- the exact sbatch
-    command of every job, from the same code that submits it.  A `render`
-    summary lived here until 2026-08-24 and described a submission that
-    never happens (it ignored the per-shelf split); with it went
-    `bench_bound`/`bench_total` and their slack/startup constants -- TIME
-    IS NEVER DERIVED (user dictation, 2026-08-24): the user states it, or
-    the launch is refused (`architecture.md` § 5.2; the target queue's own
-    ceiling stood in until 2026-10-02).
+    command of every job, from the same code that submits it.  TIME IS NEVER
+    DERIVED (user dictation, 2026-08-24): the user states it, or the launch
+    is refused (`architecture.md` § 5.2).
 
-A `fits(ask, rows)` sat here until it was reviewed and found to be **a third
-implementation of "does this fit"** — `admits` is the one check, placement
-uses it, and `queue_table` renders it per queue.  It was documented as *"the
-whole point"* and called by nobody.  A check designed and not wired is the
-defect this file exists to remove, one layer up.
+`admits` is the one check of "does this fit": placement uses it, and
+`queue_table` renders it per queue.
 
-The command line asks through these four.  *(This said the browser called
-them too until 2026-10-01; no web module imports this one -- the W52 review.)*
+The command line asks through these four.
 """
 from __future__ import annotations
 
@@ -61,23 +34,18 @@ if TYPE_CHECKING:
     from ..scheduler.admit import Refusal
 
 # The two quantities a job asks for -- a wall and an amount of memory -- and
-# every dialect each is written in, live in `scheduler/quantities.py`
-# (2026-08-24).  They sat HERE until then, in a module whose own docstring
-# lists what lives in it and never mentioned them: put where they were first
-# needed rather than where they belong, which is what forced `task.py` to
-# import this whole job-submission package to canonicalise a time string.
-# A codec on a basic unit is L1; this module is L2 (`docs/design.md`).
+# every dialect each is written in, live in `scheduler/quantities.py`:
+# a codec on a basic unit is L1; this module is L2 (`docs/design.md`).
 from ..scheduler.quantities import human_wall
 
 #: MPS's own hard ceiling -- more than this many processes cannot even
 #: ATTACH to one device (`engines/tuning.md` § 2.12, citing
 #: `references.bib: NvidiaMPS`, the A100-generation figure).  A site FACT
-#: cited from the vendor, not an estimate -- the estimation purge of
-#: 2026-08-24 deliberately kept it.
+#: cited from the vendor, not an estimate.
 MPS_MAX_CLIENTS_PER_DEVICE = 48
 
 #: This stack's tuned point, ~4 ranks/GPU without NCCL (`engines/tuning.md`
-#: § 2.12) -- a MEASURED literature figure, also kept: both feed
+#: § 2.12) -- a MEASURED literature figure: both feed
 #: `gpu_share_notes`, which INFORMS and never decides.
 GPU_TUNED_RANKS_PER_DEVICE = 4
 
@@ -161,8 +129,8 @@ def core_range(row) -> str:
     The arithmetic is `scheduler.quantities.core_range` -- ONE spelling, so
     the queue table here and the browser's machine card cannot disagree
     about how a range is written.  This wrapper adds only the fallback: a
-    record with no ``node_types`` (every record written before 2026-08-27)
-    still has ``max_cores``, and R3 says an unstated fact never bars.
+    record with no ``node_types`` still has ``max_cores``, and R3 says an
+    unstated fact never bars.
     """
     from ..scheduler.quantities import core_range as _range
     shapes = [t.get("cores") for t in (getattr(row, "node_types", None) or [])]
@@ -256,12 +224,10 @@ def _why_not(row, ask: Ask, *, cores=None,
 
     Reuses the scheduler's own admission so the listing and the submission
     cannot disagree about what fits: a table that says yes where the check
-    says no is worse than no table.  ``gpus`` is the job's own GPU count --
-    this asked every queue about ONE GPU until 2026-10-01, so a queue whose
-    nodes hold four read as taking an eight-GPU job the door then refused.
+    says no is worse than no table.  ``gpus`` is the job's own GPU count.
     """
     from ..scheduler.admit import Request, admits
-    # `Refusal`s since 2026-09-09: each carries its `limit`, `asked` and
+    # `Refusal`s: each carries its `limit`, `asked` and
     # `allowed`.  The listing renders `.message`; a caller wanting to know
     # WHICH limit bit reads the field instead of the sentence.
     return list(admits(row, Request(ranks=cores, walltime_s=ask.time_s,
@@ -363,12 +329,10 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
     (`submission.md` S4).
     """
     import click
-    # THROUGH THE GUARDED DOOR.  This was a bare `sys.stdin.isatty()`, which
-    # raises on exactly the input this branch exists to handle: `ValueError`
-    # when stdin is closed, `AttributeError` when it is None.  So the one
-    # path written to decline GRACEFULLY with no terminal could die with a
-    # traceback instead.  `hints` is floor 1 with no dependencies, so asking
-    # it is a downward import (A7).
+    # THROUGH THE GUARDED DOOR: a bare `sys.stdin.isatty()` raises on exactly
+    # the input this branch exists to handle (`ValueError` when stdin is
+    # closed, `AttributeError` when it is None).  `hints` is floor 1 with no
+    # dependencies, so asking it is a downward import (A7).
     from ..envs.hints import stdin_can_answer
     echo = echo or click.echo
     echo(text)
@@ -446,9 +410,7 @@ class Prediction:
     """
     #: What was asked about -- the JOB's name.  Not the queue: `ask` sends
     #: one request, and which queue it named is on the command line printed
-    #: beneath the table.  It was called ``domain`` for one revision and the
-    #: column header said "queue" while the value was the job, which is the
-    #: kind of label that quietly teaches the wrong thing.
+    #: beneath the table.
     label:   str = ""
     start:   Optional[str] = None
     nodes:   Optional[str] = None
@@ -468,11 +430,10 @@ def parse_test_only(text: str) -> Prediction:
 
     Anything without a recognisable *to start at* leaves ``start`` as
     ``None`` and keeps the raw text in ``refused``.  **Keeping the text
-    rather than matching a known prefix is what makes this work**: the
-    refusal was written against an invented ``sbatch: error: ...`` line,
-    and Sol actually says ``allocation failure: Requested node
-    configuration is not available``.  A parser that recognised prefixes
-    would have thrown away the one sentence worth reading.
+    rather than matching a known prefix is what makes this work**: Sol says
+    ``allocation failure: Requested node configuration is not available``,
+    and a parser that recognised prefixes would throw away the one sentence
+    worth reading.
 
     The processor count and node name are read independently of the time
     and of each other, so a field SLURM omits -- or a token it inserts --
@@ -523,8 +484,7 @@ def prediction_table(preds: Sequence[Prediction]) -> str:
                  "it moves.")
     # FLAGS THAT EXIST: `launch` takes --domain, --time and --mem; the
     # ranks and cores are prep's, and a prepped stage is not prepped
-    # again (this pointed at prep's --np until 2026-10-06; "--cores",
-    # which no verb takes, before that, W52).
+    # again.
     lines.append("  change --domain, --time or --mem and ask again, or launch "
                  "when you are happy (the ranks and cores are fixed at "
                  "prep).")

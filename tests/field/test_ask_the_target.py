@@ -76,9 +76,9 @@ def test_ask_reads_the_targets_answer_and_submits_nothing(tmp_path,
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
 
     # A held H2, its wall and memory stated, sent to the record's first queue.
-    from support.road import describe_h2, jobset
+    from support.road import describe_calculation, jobset
     queue = env.domains[0].name
-    bundle = describe_h2(tmp_path, monkeypatch)
+    bundle = describe_calculation(tmp_path, monkeypatch)
     task = json.loads((bundle / "task.json").read_text())
     task["allocation"] = {"domain": queue, "time": "0-00:05:00", "mem": "1G"}
     (bundle / "task.json").write_text(json.dumps(task, indent=2))

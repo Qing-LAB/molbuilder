@@ -11,12 +11,6 @@
  * from: on the card, and as each form's chip.  It fills nothing in: a blank
  * is already the instruction, and the card is its answer.
  *
- * (Until 2026-09-28 this was `auto-detect.js`, and an Auto-detect button copied
- * a per-engine SUGGESTION into the forms -- overwriting them.  Until the M6
- * review the card was handed a FILE PATH and the server re-read the file,
- * so after a restore, or with the file changed on disk, it answered for a
- * structure the deck would not carry.)
- *
  * The markup is `templates/_chemistry_card.html`; elements are built by
  * `lib/dom.js`.
  *
@@ -25,8 +19,8 @@
  *   analyze(structure, opts) -> Promise<result> — the supersede protocol
  *   renderPanel(resp, hosts)
  *
- * ``attach`` owns everything a tab used to hand-write three times (the
- * analyze call, the re-analysis on an edit, the status line):
+ * ``attach`` owns the analyze call, the re-analysis on an edit and the
+ * status line:
  *
  *   opts.kind        "optimization" | "vibration" | "transport"
  *   opts.forms()     {engine: {host, schema}} -- the rendered forms whose
@@ -200,7 +194,7 @@
         }
         opts = opts || {};
         // THE KIND IS STATED by every tab (the server refuses a request
-        // with none; it read an optimization for one until 2026-10-06).
+        // with none).
         var body = { structure: structure, kind: opts.kind };
         if (opts.forms) body.forms = opts.forms;
         var mySeq = ++_seq;

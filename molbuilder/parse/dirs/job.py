@@ -28,17 +28,6 @@ A run whose files state no ending, no exit and no such record is
 ``running`` -- not finished -- however long it has been quiet: nothing in
 them tells a slow step from a stopped one (user, 2026-09-26: *"It shows
 what it is"*).
-
-*(Until 2026-09-04 this module was a ``JobDirParser`` returning an
-eleven-field ``JobResult``: job type, system label, geometry, plots,
-progress, a source-file index, a per-stage input summary, diagnostics.
-Measured across the tree, ten of the eleven had no reader anywhere, and
-the eleventh -- this one -- was obtained by parsing every ``.out`` to
-build plot data and then throwing the plots away.  1,414 lines produced
-one field that was used.  The dead half is deleted rather than fixed;
-four code-quality defects went with it, including a second
-``LatticeConstant`` reader that disagreed with its sibling on units and
-a second ``SystemLabel`` regex that returned a different answer.)*
 """
 
 from __future__ import annotations
@@ -51,8 +40,7 @@ from typing import Any, Callable, Dict, List, Optional
 # IT TRAVELS BESIDE EVERY JOB (`runwrap.MONITOR_COMPANIONS`,
 # `execution/run-reports.md` § 2.3): the monitor reports how a run ended with
 # `run_status` itself.  So what it reads with is stdlib-only and travels too,
-# imported two ways -- from the package, or from beside the job -- as
-# `config_dir` always has been.
+# imported two ways -- from the package, or from beside the job.
 try:                                        # inside molbuilder
     # RELATIVE, as every shipped module's is: beside a job where `molbuilder`
     # happens to be importable, an absolute import would bind this file to
@@ -74,26 +62,9 @@ except ImportError:                         # beside a job, as the monitor's
 # builds its Frames from, a PySCF stdout through its decks' end lines.
 # Nothing in this module greps an output: it owns only the two questions no
 # single file can answer (which file speaks, and whether it was launched).
-#
-# *(Those three lines used to end "(enforced by the engine parsers own
-# it)" -- two half-sentences spliced -- and cited
-# `test_no_direct_out_grep_in_decoder` as the enforcing test "until
-# 2026-09-05" one line before saying it retired on 2026-09-04.  The lint's
-# whole body was `assert src.count("read_text") < 8`; it went with the
-# decoder, and nothing replaced it because the rule is structural now.)*
-
-# (`cg_step_milestone` had a threshold constant here.  The constant went
-# with the decoder on 2026-09-04; this comment did not, and `cg_step_milestone`
-# now occurs exactly once in the tree -- in the sentence naming it.)
 
 
 # ---- helpers --------------------------------------------------------- #
-
-
-# `_detect_stage` -- a file's stage ordinal, the first half of the speaking
-# file's sort -- stood here until 2026-10-04.  A run is asked about by its
-# stem, which names the stage, so within it only the run index orders
-# (`model/parse.md` § 5.1; plan B11, 3b.2).
 
 
 def _iso_z(ts: float) -> str:
@@ -130,9 +101,7 @@ def _enumerate_files(run_dir: Path, basename: str) -> Dict[str, List[Path]]:
     told apart by FILENAME (`project-layout.md` § 1), and an attempt's
     folder may hold several run indexes -- a warm retry re-runs the run
     script with ``--continue``, which advances the index in place
-    (`runwrap`).  *(A glob, ``<stem>*``, until
-    2026-10-03; ``None`` in the hierarchy, where the folder was taken to
-    select the run, until 2026-10-04.)*
+    (`runwrap`).
     """
     return {role: _of_run(_rf.find_by_role(run_dir, role), basename)
             for role in _rf.run_output_roles()}
@@ -196,28 +165,14 @@ def _finish_failed(concluded: Optional[str]) -> bool:
 
 
 # ---- how each result file ENDED ------------------------------------- #
-#
-# (Headed "plots from .out files" until 2026-09-18.  No plot has been built
-# here since 2026-09-04 -- building them and throwing them away to reach one
-# field is what got the decoder deleted, as this module's docstring says.)
 
 
 def _output_endings(paths: List[Path], run_dir: Path,
                     basename: str) -> "Dict[str, _re.RunEnding]":
     """Each run-output file's ending, by filename — ONE loop, one door.
 
-    This was two functions, `_out_conclusions` and `_molwatch_conclusions`,
-    each hard-wired to one role and each knowing that role's reader.  Adding
-    a third role meant adding a third function, which is why `.pyscf.log`
-    never got one: `ending_of` dispatches on the ROLE (`model/parse.md`
-    § 5.5), so a new run-output row is read here without this loop changing.
-
-    **Through the cheap door.**  Both halves went through
-    ``detect(path).parse(path)`` until 2026-09-18 -- a whole Trajectory built
-    and discarded to reach one string -- which also opened a ``ParseLogger``
-    per file, so merely LOOKING at a folder created and grew a ``.parse.log``
-    inside the user's project directory (measured: 540 B after one
-    ``run_status``, 1080 B after two, over 67 logs).
+    `ending_of` dispatches on the ROLE (`model/parse.md` § 5.5), so a new
+    run-output row is read here without this loop changing.
 
     A SIESTA output is read with its run's session log as the run's
     stderr (:func:`_stderr_of`), as the wrapper's own question reads it.
@@ -271,16 +226,13 @@ def _stderr_of(run_dir: Path, path: Path, logs: Dict[str, Dict[Any, Path]],
 
 #: The verdicts `run_status` can reach.  A CLOSED set, and the enforcement is
 #: `RunStatus.__post_init__` below -- nothing in this repo type-checks, so the
-#: annotation alone would refuse nothing.  Until 2026-09-09 the function
-#: returned `Dict[str, Any]` and a test asserted `s["state"] in (all four)`,
-#: which passes whatever the code returns.
+#: annotation alone would refuse nothing.
 #: ``pending`` and ``queued`` are the states before anything is written --
 #: never launched, and launched and silent -- which a caller holding the
 #: attempt's launch record gets (`run_status`'s ``launch``).
 #: ``unreadable`` is a run whose launch record (`run.json`) does not read:
 #: its state cannot be told -- launched or not -- so it is said, the file
-#: named in its detail, and never followed (it read as the files alone,
-#: ``running`` where nothing else was written, until 2026-10-06).
+#: named in its detail, and never followed.
 RUN_STATES: "tuple[str, ...]" = ("pending", "queued", "running",
                                  "finished", "failed", "unreadable")
 
@@ -296,7 +248,7 @@ class RunStatus:
     single file can answer.
 
     `state` is one of :data:`RUN_STATES`; `active_source` names the file that
-    spoke for the directory (highest stage, newest mtime) and is `None` when
+    spoke for the directory (the newest run index) and is `None` when
     no result file exists yet.
     """
     state:          str
@@ -355,14 +307,7 @@ def run_status(run_dir, basename: str, *,
       file's time, which a copied or restored folder reorders.
 
       ``basename`` says WHICH RUN is being asked about -- its stem, in
-      either shape -- and without it this answered about whichever rung ran
-      last: measured 2026-09-08, with a later stage's `.out` present a
-      finished rung read the later rung's "running".
-
-    Callers wanted exactly this and had to take it out of an
-    eleven-field summary: ``decode_run_dir`` answered ``status`` plus
-    ten fields with no reader anywhere, and reached the per-file
-    run-states by building every PLOT and discarding them.
+      either shape.
     """
     run_dir = Path(run_dir)
     files = _enumerate_files(run_dir, basename)
@@ -375,9 +320,7 @@ def run_status(run_dir, basename: str, *,
     # written here.  A "stdout" file exists because the PROCESS started, so it
     # counts whether or not it ended; a "progress" file is SEEDED at prep, so
     # it counts only once its footer concludes -- otherwise a stage's seed
-    # outvotes its own result (`model/parse.md` § 5.5, § 5.1).  That pair of
-    # rules was two hand-written functions until 2026-09-18, and the seed half
-    # was the only one that said WHY.
+    # outvotes its own result (`model/parse.md` § 5.5, § 5.1).
     speaks = set(_rf.stdout_roles())
     return replace(_build_status(
         [p for role in _rf.run_output_roles() for p in files[role]
@@ -424,10 +367,7 @@ def _build_status(out_paths: List[Path],
     after the engine (`engines/vibration.md` § 5.5), the wrapper's own last
     lines -- so it is ``running`` until it concludes, and ``failed`` once
     the monitor's closing record says the process went without concluding
-    (``monitor_ended``, asked only then).  *(Until 2026-10-03 an ended
-    output read finished with no conclusion at all, so status said finished
-    where every hand-over refused the run, and finished beside an exit code
-    of 1.)*  Where nothing says anything the run is ``running`` -- not
+    (``monitor_ended``, asked only then).  Where nothing says anything the run is ``running`` -- not
     finished -- however long it has been quiet (`running-a-job.md` § 4.2).
 
     ``out_paths`` are the files that may SPEAK, the run's newest run index
@@ -450,9 +390,7 @@ def _build_status(out_paths: List[Path],
                 detail=f"{_STOPPED_UNRECORDED}, before any output")
         # NOTHING WRITTEN YET, and the launch record says which nothing
         # (`project-layout.md` § 1.6): never launched is ``pending``,
-        # launched and silent is ``queued`` -- the words the jobset layer
-        # used for them above this door until 2026-09-26, while this door
-        # answered the same directory "running".
+        # launched and silent is ``queued``.
         if launch is not _UNASKED:
             if launch is None:
                 return RunStatus(state="pending",

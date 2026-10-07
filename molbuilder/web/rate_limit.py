@@ -48,9 +48,9 @@ Defaults
 
 * signature match              → immediate block
 * >= 20 4xx responses in 30 s  → block
-* >= 60 total requests in 60 s → block
+* total-burst                  → disabled (``threshold_total`` = 0)
 * cooldown                     → 3600 s (1 hour)
-* allowlist                    → empty (no IP is exempt by default)
+* allowlist                    → ``127.0.0.1``, ``::1`` (loopback)
 * trust_proxy                  → False (use ``request.remote_addr``)
 
 Multi-worker caveat
@@ -100,13 +100,11 @@ logger = logging.getLogger(__name__)
 
 # Default tunables — overridable per-deployment via cfg["rate_limit"].
 #
-# DESIGN NOTE (2026-06-18 hotfix):
+# DESIGN NOTE:
 #
-#   ``threshold_total`` is DISABLED by default (set to 0).  The
-#   original 60/60s ceiling tripped on every legitimate 1 Hz
-#   poll from the system-load monitor (#472) — within a minute
-#   the very user-driven traffic the limiter is meant to protect
-#   gets killed.  Successful 200s should not count toward an
+#   ``threshold_total`` is DISABLED by default (set to 0).  A
+#   60/60s ceiling trips on a legitimate 1 Hz poll from the
+#   system-load monitor within a minute.  Successful 200s should not count toward an
 #   abuse signal; the 404-storm signal already catches the
 #   canonical scanner pattern (rapid path enumeration generates
 #   4xx, not 2xx).
@@ -119,7 +117,7 @@ logger = logging.getLogger(__name__)
 #
 #   ``127.0.0.1`` / ``::1`` are baked into the default
 #   allowlist.  When the bind guard refuses non-loopback HTTP
-#   without TLS (cli.py::_refuse_remote_bind_without_tls),
+#   without TLS (cli.py::_enforce_tls_for_remote_bind),
 #   localhost requests really are local — never the scanner.
 #
 DEFAULTS: Dict[str, Any] = {
@@ -135,9 +133,7 @@ DEFAULTS: Dict[str, Any] = {
     # NO `admin_emails` HERE.  Who may read and clear the block list is not a
     # rate-limiting setting -- it is the same question "who may restart the
     # server" asks, and one list answers both: the top-level `admin` section
-    # (web/admin.py).  It lived here until 2026-08-03, where its empty default
-    # meant "any signed-in user" to this subsystem and had to be inverted by
-    # the other one.
+    # (web/admin.py).
 }
 
 
@@ -408,9 +404,7 @@ def _parse_allowlist(entries: Any) -> List[ipaddress._BaseNetwork]:
 
     Each entry is ``"ip"`` or ``"ip/prefix"``, checked where the config was
     read (`runtime_config._read_rate_limit`): a malformed one is refused
-    there, naming it, before any server starts.  It was skipped here with a
-    warning until 2026-10-02, and a non-list dropped the loopback default.
-    Bare IPs become /32 (v4) or /128 (v6) networks.
+    there, naming it, before any server starts.  Bare IPs become /32 (v4) or /128 (v6) networks.
     """
     return [ipaddress.ip_network(str(e).strip(), strict=False)
             for e in entries]
@@ -524,7 +518,7 @@ def init_rate_limit(app: Flask, cfg: Mapping[str, Any]) -> RateLimiter:
             # including one whose session just expired -- so it is skipped here,
             # marked by the gate that produced it (auth.py::_require_login).
             #
-            # Everything else is counted as before.  Not "ignore 401": a 401
+            # Everything else is counted.  Not "ignore 401": a 401
             # from anywhere else has a different author and may mean something.
             if getattr(g, "molbuilder_auth_challenge", False):
                 return response
@@ -558,7 +552,7 @@ def _register_admin_routes(app: Flask, rl: RateLimiter) -> None:
        auth is configured) refuses unauthenticated requests with
        HTTP 401.  Without auth installed, this layer is a no-op —
        the deployment is expected to be loopback-only, gated by the
-       bind guard in ``cli.py::_refuse_remote_bind_without_tls``.
+       bind guard in ``cli.py::_enforce_tls_for_remote_bind``.
     2. ``admin.is_admin_request()`` then refuses a session that is not an
        admin's, with HTTP 403 and the one sentence `web/admin.py` owns.  The
        set is the top-level ``admin`` section, which also answers "who may

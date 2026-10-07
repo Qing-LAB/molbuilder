@@ -26,14 +26,6 @@ const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
  * ONE width, for every mode. Bands overlap wherever modes are closer together
  * than that, and the handle resolves an overlap by taking the NEAREST mode,
  * which is an answer that never needs a tie-break.
- *
- * This used to answer per mode, because each band was clamped to half the gap to
- * its nearer neighbour so that no two could overlap. That was necessary while a
- * click had to land on a drawn mark — overlapping marks meant the answer
- * depended on which was drawn last. Reading a click as a position made "nearest"
- * available, and the clamp then cost what it was meant to protect: in a crowded
- * region it shrank targets to a fraction of a pixel, so some peaks were easy to
- * click and others were nearly impossible.
  */
 export function bandHalfWidth(broadening) {
     const width = isFiniteNumber(broadening) && broadening > 0 ? broadening : 0;
@@ -46,7 +38,7 @@ export function bandHalfWidth(broadening) {
  * The sum runs over the modes that have a strength, and a mode without one
  * contributes nothing: it is missing, not weak. With none known there is no
  * curve at all — a sum over heights nobody computed would be a picture of
- * nothing (§ 6.2; until 2026-09-28 every mode added a peak of height one).
+ * nothing (§ 6.2).
  * No imaginary mode is ever in the sum.
  */
 /* WHICH NUMBER IS THIS CURVE'S HEIGHT is the caller's to say.

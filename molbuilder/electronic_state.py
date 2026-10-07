@@ -10,16 +10,6 @@ always worked out a blank charge, and every reader of charge or spin asks it:
 the deck writers, the settings gate, the hand-over, the forms (through
 ``/api/structure/analyze``) and the read-back.  Nothing else decides.
 
-Until 2026-09-28 the two halves of one state were not even decided the same
-way.  The charge was resolved where it was used (``resolve_net_charge``); the
-spin was never resolved at all -- the analyzer only *suggested* it, and the
-suggestion reached a deck only if someone clicked Auto-detect, which copied it
-into the form and overwrote whatever was there.  Each layer then read the raw
-fields and interpreted them itself: three parity checks with three severity
-rules, four R/U mappings, a formate ion told to go open-shell because the
-count ignored its charge, a gold lead told the same because the count ignored
-its cell (the contract's § 2a lists the five failures).
-
 How a blank is answered (§ 2a.1a) -- a stated value always wins, and a blank
 takes the first of:
 
@@ -80,8 +70,7 @@ KINDS = ("optimization", "vibration", "transport")
 ALWAYS_FREE = frozenset({"non-collinear", "spin-orbit"})
 
 #: WHICH ENGINES RUN WHICH KIND -- SIESTA all three, PySCF optimization and
-#: vibration.  The rows of the capability table this module held until
-#: 2026-09-30; the choices each pair offers are the catalogue's now, on the
+#: vibration.  The choices each pair offers are the catalogue's, on the
 #: state's own items (`offered`, `engines/template.md` § 6.3a;
 #: `science/chemistry-correctness.md` § 2a.3), with the reasons
 #: `template.why_not_offered` gives.
@@ -243,9 +232,8 @@ def electronic_state(struct: Structure, cfg: Any, *,
     n_electrons = total_electrons(struct, charge.value)
     # FINITE IS THE CALCULATION'S, read from the axes the engine computes on
     # (`cell.engine_axis_kinds`): judged by the structure's alone, a periodic
-    # structure handed to PySCF was told to float an iron moment PySCF cannot
-    # float, and an odd count skipped the parity `gto.M` enforces (the M6
-    # review).
+    # structure handed to PySCF would be told to float an iron moment PySCF
+    # cannot float, and an odd count would skip the parity `gto.M` enforces.
     from .cell import engine_axis_kinds
     finite = all(k == "isolated" for k in engine_axis_kinds(engine, struct))
     rec = recommend(struct, facts, n_electrons=n_electrons, finite=finite)
@@ -270,7 +258,7 @@ def _recorded(struct: Structure) -> Optional[Dict[str, Resolved]]:
     cell op), which is no longer the structure that run came out of; an
     added or deleted atom changes the very count the record's spin was for,
     and ``web/molview.md`` § 8.4's flag says a later reader must not assume
-    it.  (It was taken regardless until the M6 review.)  A value today's
+    it.  A value today's
     vocabulary cannot hold is not taken -- it is not a statement anybody can
     check."""
     info = getattr(struct, "info", None) or {}
@@ -475,9 +463,7 @@ def recommend(struct: Structure, facts: ChemistryAnalysis, *,
                 f"even count): the s-band delocalises and no moment forms")
         if n_noble == 1 and odd:
             # By the COUNT, not the atom's configuration: a bare Au atom's
-            # doublet and a Cu(II) complex's d9 one are the same answer,
-            # and "nd10 (n+1)s1" named Cu(0) as the reason for a Cu(II)
-            # complex until the M6 review.
+            # doublet and a Cu(II) complex's d9 one are the same answer.
             return Recommended(
                 "unrestricted", 1,
                 f"one {nobles[0]} atom and an odd electron count "

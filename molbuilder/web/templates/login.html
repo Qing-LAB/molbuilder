@@ -11,10 +11,8 @@
      SSO provider's interstitial.  Hard-coded hex values (not the
      dark-theme tokens in lib/tokens.css) make that intent explicit.
 
-     No <link tokens.css> here: tokens.css is dark-theme; importing
-     it would either pollute the page or get overridden by every
-     rule below (since none of its var names match the --surface-N /
-     --text-N pattern this file uses).  Cleaner to NOT import it.
+     No <link tokens.css> here: tokens.css is dark-theme, and no rule
+     below reads its variables.
 
      Inline is safe because the login page renders before any
      user-controlled data exists in the session (no XSS surface).

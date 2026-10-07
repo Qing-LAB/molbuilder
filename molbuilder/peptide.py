@@ -62,8 +62,6 @@ def build_peptide(
         Ala-Arg-phosphoSer-Cys.  Dashes and parentheses are rejected --
         the bracket grammar (``residues._parse``) keeps parsing
         unambiguous.  See :mod:`molbuilder.residues` for the modified codes.
-        (This docstring previously advertised ``(SEP)`` parens and dashed
-        3-letter notation the parser does not accept -- corrected 2026-07-27.)
     title
         Optional title written into the XYZ comment / PDB TITLE line.
     add_hydrogens

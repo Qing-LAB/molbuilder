@@ -84,8 +84,7 @@ class TestMotionShare:
     def test_every_element_appears_once_ordered_by_how_much_it_carries(self):
         """The two things a caller can rely on, neither of which is arithmetic.
 
-        `sum(shares) == 1` USED to be asserted here and cannot fail --
-        `results.py` returns `w / total` where `total` is that same sum, so
+        `sum(shares) == 1` cannot fail -- `results.py` returns `w / total` where `total` is that same sum, so
         the claim is division, not behaviour (measured 2026-09-09).  What can
         fail is the element set (an atom silently dropped, or two rows mapped
         to one atom) and the ORDER, which the docstring promises largest-first
@@ -144,7 +143,7 @@ class TestMotionShare:
 
 
 # --------------------------------------------------------------------- #
-#  Against the real result                                              #
+#  Against known spectroscopy                                           #
 # --------------------------------------------------------------------- #
 
 class TestAgainstKnownSpectroscopy:

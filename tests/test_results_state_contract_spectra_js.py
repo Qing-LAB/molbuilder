@@ -13,13 +13,10 @@ against whichever module it was handed would pass while one of them drifted
 into the other's shape. The rule is *both inspectors obey § 4*, and the
 honest way to check it is twice.
 
-> The sibling file records why these were nearly deleted on 2026-09-02 and
-> what the survey got wrong; § 4 and § 4.1 are now where the rules live.
-
 **Read as SOURCE-PINNING**, with the limitation the sibling states: this
 greps the module for structure rather than running it, so it catches a
 refactor that removes a guard and not one that keeps the shape and breaks the
-behaviour. Conversion to the node harness is **B3** in `plans/plan.md`.
+behaviour.
 """
 from __future__ import annotations
 
@@ -145,14 +142,6 @@ class TestBackcompatAliases:
     shipped module and executed in node against the shared alias helper it
     actually calls, so what is asserted is the round trip — write the flat
     name, read the bucket — and not the spelling of the call that wired it.
-
-    *Until 2026-09-10 this was thirteen greps for the literal
-    `alias("modeFilter", "uiPrefs")`.  The uiPrefs knobs moved to a
-    `prefAlias` helper on 2026-09-10 (`fe9e67da`) — same aliasing, plus the
-    save the persistence lane needs — and six of the thirteen went red on a
-    change that broke nothing.  A grep for a call shape fails when a name
-    moves and passes when the behaviour breaks; this is the other way
-    round.*
     """
 
 
@@ -164,10 +153,6 @@ class TestBackcompatAliases:
             f"``state.{bucket}.{flat}``.  The alias is gone, so the flat "
             f"name and the bucket are now two values and the render code "
             f"reading one cannot see the other.")
-
-    # (`test_watchPath_is_fileState_path` went with the alias on
-    #  2026-09-28: `state.watchPath` named a path box that is gone, and the
-    #  path is `loadByPath`'s argument, stored in `fileState.path` alone.)
 
     @pytest.mark.parametrize("flat", _KNOBS)
     def test_a_knob_write_schedules_the_save(self, wired, flat):
@@ -268,76 +253,6 @@ class TestTransitionOrchestrator:
             "A finished run keeps polling forever.")
 
 # --------------------------------------------------------------------- #
-#  renderResults routes fileState writes through transition('APPLY')    #
-# --------------------------------------------------------------------- #
-
-
-class TestRenderResultsUsesTransition:
-    """renderResults MUST route its state.results writes through
-    transition('APPLY', {results}) -- the contract § 2 violation
-    closure mirrors trajectory's PR 2.3 fix for applyNewData."""
-
-    # RETIRED 2026-09-03, and they are worth recording as a pair because
-    # they failed on the day the code they describe was CORRECTED.
-    #
-    # `results.md` § 4 has always said fileState is "replaced atomically".
-    # It was not: every caller passed `transition("APPLY", {results})` with
-    # no path, so an answer landed under whatever filename happened to be
-    # in state at that moment, and `fetchSeq` -- a counter snapshotted
-    # before each fetch and re-checked after, in five places -- existed to
-    # notice when it had written into the wrong file.  APPLY now requires
-    # the path and drops an answer whose file is no longer on screen.
-    #
-    # test_transition_apply_writes_filestate matched
-    # `APPLY ... (.+?) return;` -- NON-GREEDY.  The new guard clause is now
-    # the first `return`, so the regex captured the guard and never reached
-    # the writes below it.  It failed BECAUSE the code got safer.
-    #
-    # test_no_direct_state_results_writes_in_renderResults required
-    # `function renderResults(results)` with exactly one parameter.  The
-    # second parameter is the filename the results belong to -- the entire
-    # point of the fix.
-    #
-    # Neither found a defect in nine months; both obstructed the one real
-    # change.  The property they gesture at is now held by construction:
-    # APPLY throws without a path, so an anonymous write cannot be
-    # expressed, and there is one door to the endpoint.
-# --------------------------------------------------------------------- #
-#  File-identity guard at fetch resolution                              #
-# --------------------------------------------------------------------- #
-
-
-    # RETIRED 2026-09-04 with the counter they describe.
-    #
-    # `fetchSeq` was a sequence number: bumped on LOADING, snapshotted
-    # before each fetch, re-checked after, to notice that a response had
-    # arrived for a file the user had moved off.  It existed because the
-    # filename and the data were written in two separate steps, so an
-    # answer could land under the wrong name.
-    #
-    # Since 2026-09-03 `transition("APPLY", ...)` REQUIRES the path and
-    # drops a payload whose file is not the one on screen, so the answer
-    # carries its own identity.  The remaining guards -- the status banner,
-    # the consecutive-error count, `stopWatch` -- now ask the same question
-    # of the same fact: `path !== state.fileState.path`.
-    #
-    # The replacement is STRICTLY STRONGER, which is why this is a deletion
-    # and not a trade.  `transition("IDLE")` never bumped the counter, so a
-    # fetch in flight when the inspector was disposed passed the old guard
-    # and fails the new one (`fileState.path` is null by then).  And
-    # `signal.aborted`, already checked beside it, is the only thing that
-    # can tell two loads of the SAME file apart -- which a counter could and
-    # a path cannot, so both halves are kept.
-    #
-    # These seven pinned the MECHANISM by name: "LOADING increments
-    # fetchSeq", "loadByPath captures mySeq", "the guard compares them".
-    # None could survive the mechanism being replaced by a better one, and
-    # none was checking the property -- that a late answer cannot be
-    # painted under the wrong file -- which two CO2 e2e tests pinned
-    # behaviourally until 2026-10-04, when they were retired for running
-    # their decks by hand (`web/results.md` § 4.2: neither half has a test
-    # now).
-# --------------------------------------------------------------------- #
 #  Refresh listener wired ONCE at mount                                 #
 # --------------------------------------------------------------------- #
 
@@ -386,10 +301,6 @@ class TestEntryPointsRouteThroughTransition:
     """The public entry points (loadByPath, stopWatch, dispose) MUST route
     state mutations through transition()."""
 
-    # (`test_loadByPath_calls_transition_loading` retired 2026-09-28 with
-    #  the settle pins below: a load that skipped the LOADING reset would
-    #  leave the previous file's poll running, which the registry e2e's
-    #  follow tests see by running it.)
 
     def test_dispose_calls_transition_idle(self, core_body):
         # The dispose handler is in the return-object literal.
@@ -404,16 +315,3 @@ class TestEntryPointsRouteThroughTransition:
         ), ("dispose doesn't call transition('IDLE').  fileState "
             "leaks across remounts; the audit § 1 'dispose leaks "
             "state.data' bug class is back for spectra.")
-
-
-# --------------------------------------------------------------------- #
-#  _settlePostLoad -- RETIRED as source pins (2026-09-28)               #
-# --------------------------------------------------------------------- #
-#
-# Three greps asserted that `_settlePostLoad` exists and that `loadByPath`
-# and `watchTick` call it -- text that survives the call being moved into a
-# dead branch.  What they stood for is asserted by RUNNING it now
-# (`test_inspector_registry_e2e.py`): a result still going is followed from
-# its first load (`test_no_interval_survives_mount_dispose`, whose guard
-# needs the live poll), and let go when its last phase lands
-# (`test_a_followed_run_is_let_go_when_its_last_phase_lands`).

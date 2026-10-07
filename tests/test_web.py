@@ -14,9 +14,6 @@ _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
 from support.envelope import (from_xyz as _env,
                              from_xyz_with_periodicity as _env_per)
 
-
-import io
-
 import pytest
 
 
@@ -29,10 +26,8 @@ def test_index_page_loads(web_client):
     r = web_client.get("/structure-optimization")
     assert r.status_code == 200
     body = r.data.decode()
-    # Post-2026-06-08 (task #295): the Build/Load form is retired;
-    # the optimization tab is file-driven via the project sidebar.
-    # The "Load from sidebar selection" button is the canonical
-    # structure entry point now (was ``input-text`` + ``build-btn``).
+    # The optimization tab is file-driven via the project sidebar: the
+    # "Load from sidebar selection" button is the structure entry point.
     for needle in (
         "molbuilder", "load-from-sidebar-btn",
         "viewer.js", "style.css", "3Dmol-min.js",
@@ -49,14 +44,9 @@ def test_index_page_has_tab_markup(web_client):
         'data-tab="pyscf"',
         'id="tab-siesta"',
         'id="tab-pyscf"',
-        # The two engine panels are each a schema-driven form container.
-        # ``id="generate-pyscf"`` stood here until 2026-08-15: the tab
-        # generated the script itself, so the Generate button was the
-        # thing that proved the PySCF panel was wired.  The tab now
-        # COLLECTS PARAMETERS and hands them on -- *the browser describes;
-        # a machine's own facts render* (`web/task-setup.md` § 1) -- so the
-        # container is what proves it, and asserting a button that is
-        # deliberately gone would pin the retired shape.
+        # The two engine panels are each a schema-driven form container:
+        # the tab COLLECTS PARAMETERS and hands them on -- *the browser
+        # describes; a machine's own facts render* (`web/task-setup.md` § 1).
         'id="pyscf-form-container"',
         'id="siesta-form-container"',
     ):
@@ -86,20 +76,6 @@ def test_the_tab_neither_generates_nor_saves(web_client):
         assert gone not in body, f"{gone} is back in index.html"
 
 
-# test_build_load_source_mode_toggle_present + test_viewer_js_applies_source_mode
-# retired 2026-06-08 (task #295) with the Build/Load form.  The new
-# load surface is ``#load-from-sidebar-btn`` — pinned by
-# ``test_index_page_loads`` above and the page-boot smoke test in
-# tests/test_pages_no_js_errors.py.
-
-
-# test_index_page_lists_threedna_in_backend_dropdown retired
-# 2026-06-08 (task #295) — the backend dropdown lived inside the
-# retired Build form on the optimization tab.  The DNA backend
-# selector still lives on the Molbuilder tab's "Init structure"
-# DNA panel; see tests/test_molbuilder_e2e.py for that coverage.
-
-
 def test_build_dna_response_includes_backend_used(web_client):
     """The user picked `auto`; the response has to surface which
     backend ran so they know whether they got a canonical helix
@@ -112,18 +88,10 @@ def test_build_dna_response_includes_backend_used(web_client):
     assert body["backend_used"] in ("threedna", "amber", "rdkit"), body
 
 
-# test_index_page_lists_add_hydrogens_select retired 2026-06-08
-# (task #295) — the add_hydrogens select lived inside the retired
-# Build form's nucleic-options block.  The DNA generator on the
-# Molbuilder tab carries the same control; pinned by
-# tests/test_molbuilder_e2e.py.
-
-
 def test_build_response_carries_validation_issues(web_client):
     """When the user opts out of add_hydrogens (e.g., to inspect the
     X3DNA heavy-atom skeleton), the build response must include the
-    h_ratio warn issue so the UI can flag it before the user clicks
-    Generate FDF / PySCF."""
+    h_ratio warn issue so the UI can flag it."""
     from molbuilder.builders.backends import available_backends
     if not available_backends().get("threedna"):
         pytest.skip("threedna backend not installed")
@@ -154,14 +122,6 @@ def test_build_response_no_issues_when_protonated(web_client):
     assert h_ratio_warns == [], (
         f"protonated peptide should not warn on h_ratio; got: {h_ratio_warns}"
     )
-
-
-# ``test_watch_url_param_handoff_logic_lives_in_trajectory_core`` and
-# ``test_watch_viewer_js_is_only_the_bootstrap`` removed 2026-05-19
-# along with /watch itself.  The Build → Watch ?path=... URL-param
-# handoff is gone (no /watch URL to handoff to); ``watch/viewer.js``
-# is deleted.  /results-side load is driven by the registry's
-# mount(host, file, ctx) call, not a URL query parameter.
 
 
 def test_all_pages_serve_with_shared_tab_nav(web_client):
@@ -249,15 +209,6 @@ def peptide_xyz(web_client):
     return r.get_json()["xyz"]
 
 
-# --------------------------------------------------------------------- #
-#  Pattern-B: regions reach Optimization Generate but aren't            #
-#  consumed by SIESTA / PySCF — surface as an INFO so the user can      #
-#  re-direct to Transport if that was the intent.  Task #303.           #
-# --------------------------------------------------------------------- #
-
-
-#: The region map the Pattern-B tests below hand to the generate endpoints.
-#: Named once so the on-disk sidecar and the request body cannot drift.
 _PATTERN_B_REGIONS = {"L-electrode": [0, 1, 2]}
 
 
@@ -307,13 +258,8 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
     preflight surfaces the failure as an error-severity Issue with
     where='config' in the body's ``issues`` array.
 
-    2026-06-14 R4-A contract change (see build.py:895-911): the
-    response now uses ``ok: False`` + HTTP 400 instead of the
-    earlier ``ok: True`` + 200, so the UI's ``!body.ok`` gate
-    renders issues uniformly.  (It compared this to
-    ``/api/build/fdf``'s parse-failure shape until that route was
-    deleted on 2026-08-17; the shape it describes is this one.)  Asserting the new shape so the test stays a
-    contract pin and not stale documentation.
+    The response uses ``ok: False`` + HTTP 400 (R4-A), so the UI's
+    ``!body.ok`` gate renders issues uniformly.
     """
     r = web_client.post("/api/build/preflight", json={
         "structure": _env(peptide_xyz),
@@ -342,24 +288,12 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
 
 
 def test_a_comma_string_coerces_for_every_sequence_shape():
-    """Four sequence shapes reach this function and until 2026-08-25 only
-    three of them parsed the text a person types.
-
-    ``Sequence[str]`` (``species_order``), ``Sequence[int]`` and
-    ``Sequence[float]`` each split a comma string.  The TUPLE branch beside
-    them did not -- it read ``if not isinstance(value, (list, tuple)):
-    return value`` and handed the string straight back, while the
-    docstring above it claimed tuples "fall through to per-element int
-    coercion".  So a POST carrying ``kgrid: "4,4,1"`` stored a ``str`` in a
-    field declaring ``Tuple[int, int, int]``, and the range check
-    downstream could only report it as a programmer bug.
+    """Four sequence shapes reach this function, and each parses the text a
+    person types: ``Sequence[str]`` (``species_order``), ``Sequence[int]``,
+    ``Sequence[float]`` and the TUPLE (``kgrid``).
 
     Three spellings are accepted because a person writes a k-grid all three
-    ways and the field means the same thing each time.  They came from
-    ``--kgrid`` (`cli.KGridParam`), which went with `molbuilder fdf` --
-    a k-grid is a PARAMETER, said in the description, so there is no
-    terminal half of this any more and the browser's parser is the one
-    that has to be right.
+    ways and the field means the same thing each time.
     """
     import dataclasses
     import typing
@@ -418,20 +352,13 @@ def test_a_kgrid_that_is_not_three_numbers_is_still_refused(web_client,
         "params": {"kgrid": "4,4"},
     })
     body = r.get_json()
-    # The config now PARSES -- that is the fix -- so the envelope is the
+    # The config PARSES, so the envelope is the
     # ordinary one and the complaint arrives where a wrong value belongs:
     # an error Issue naming the field, rather than a 400 naming a cast.
     errs = [i for i in body["issues"]
             if i["severity"] == "error" and i["where"] == "config.kgrid"]
     assert errs, body["issues"]
     assert "3-tuple" in errs[0]["message"], errs[0]
-
-
-# --------------------------------------------------------------------- #
-#  R6: watch upload temp filenames must be collision-safe across       #
-#  same-second concurrent uploads (mkstemp atomically reserves a       #
-#  unique inode).                                                       #
-# --------------------------------------------------------------------- #
 
 
 # --------------------------------------------------------------------- #
@@ -468,14 +395,6 @@ def test_load_xyz_format_sniff(web_client, peptide_xyz):
     assert body["source_format"] == "xyz"
 
 
-# `test_load_multipart` STOOD HERE and is retired (2026-09-07).  Its whole
-# subject was `/api/build/load`'s multipart branch, which is deleted: nothing
-# ever posted a `FormData` to that route -- the only one in the entire front
-# end targets `/api/files/upload` -- so the branch was reachable from this
-# test and from nowhere else.  A test is the last thing that should keep a
-# door open.
-
-
 def test_load_empty_returns_error(web_client):
     r = web_client.post("/api/build/load", json={"text": ""})
     body = r.get_json()
@@ -499,12 +418,10 @@ def test_molbuilder_page_loads(web_client):
         # Static asset paths the template references.
         "modify/style.css",
         # THE PAGE'S OWNER, and the only modify/ module with a <script> tag.
-        # `viewer.js` and `periodicity.js` are IMPORTED by it -- they used to
-        # load before the file that mounts, so nothing could have handed them a
-        # viewer even if one had existed (molview.md § 8 — making and tearing down a viewer).
-        # Asserting a tag for viewer.js pinned that broken load order.
+        # `viewer.js` and `periodicity.js` are IMPORTED by it (molview.md § 8
+        # — making and tearing down a viewer).
         "modify/selection-bootstrap.js",
-        # Scaffolding the JS targets by id.  Post-Track-B the template
+        # Scaffolding the JS targets by id.  The template
         # exposes only the EMPTY host (#molview-host); molview.mount
         # builds the whole fused card (the .viewer div, the selection
         # panel, the View-menu knobs) into it client-side, so those are
@@ -545,10 +462,8 @@ def test_build_load_response_includes_atom_metadata(web_client):
     xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
     r = web_client.post(
         "/api/build/load",
-        # JSON, not multipart: the multipart branch of this route was deleted
-        # 2026-09-07 with no caller, ever -- the only FormData in the front end
-        # targets /api/files/upload.  These three tests are about the RESPONSE
-        # SHAPE, so they moved to the transport a caller actually uses.
+        # JSON, the transport a caller uses -- the only FormData in the front
+        # end targets /api/files/upload.
         json={"text": xyz, "filename": "h2o.xyz"},
     )
     body = r.get_json()
@@ -609,10 +524,8 @@ def test_build_load_returns_workspace_payload(web_client):
     xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
     r = web_client.post(
         "/api/build/load",
-        # JSON, not multipart: the multipart branch of this route was deleted
-        # 2026-09-07 with no caller, ever -- the only FormData in the front end
-        # targets /api/files/upload.  These three tests are about the RESPONSE
-        # SHAPE, so they moved to the transport a caller actually uses.
+        # JSON, the transport a caller uses -- the only FormData in the front
+        # end targets /api/files/upload.
         json={"text": xyz, "filename": "h2o.xyz"},
     )
     body = r.get_json()
@@ -675,12 +588,6 @@ def test_build_molecule_returns_workspace_payload(web_client):
         )
 
 
-# --------------------------------------------------------------------- #
-#  Atom-count-changing ops emit NO selection_remap (retired)           #
-#  (web/molview.md § 11 -- the client clears the selection)      #
-# --------------------------------------------------------------------- #
-
-
 def test_modify_op_round_trips_the_periodic_cell(web_client):
     """Regression (2026-07 fresh-eyes review): a modify op must carry the
     periodicity (cell / axis_kind / vacuum) through the round-trip.  Before the
@@ -741,10 +648,6 @@ def test_modify_op_keeps_an_assigned_origin(web_client):
     assert np.allclose(per["engine_offset"], periodicity["engine_offset"]), \
         "rotate moved the assigned origin: moving atoms only moves atoms"
     assert np.allclose(per["box_corner"], [-2.0, -2.0, -6.0]), per["box_corner"]
-
-
-# `test_modify_calibrate_moves_atoms_into_the_cell` RETIRED 2026-09-25, with
-# the route (`model/structure-periodicity.md` § 6.0: calibrate is retired).
 
 
 # --------------------------------------------------------------------- #
@@ -1071,9 +974,7 @@ def test_modify_translate_recenter_puts_centroid_at_origin(web_client):
     structure's centroid sits at (0, 0, 0).
 
     _LINEAR_XYZ is (0,0,0)/(1,1,0)/(2,2,0)/(3,3,0), centroid
-    (1.5, 1.5, 0).  (The docstring said (1,1,1)..(4,4,4) until
-    2026-08-30 -- a fixture it has not matched for some time, and
-    nothing failed, because the assertion only reads the centroid.)"""
+    (1.5, 1.5, 0)."""
     r = web_client.post("/api/modify/translate", json={
         "structure": _env(_LINEAR_XYZ),
         "recenter": True,
@@ -1163,7 +1064,7 @@ def test_modify_translate_recenter_of_everything_leaves_the_box(web_client):
     """The other half of the same rule, on the WHOLE-structure path (nothing
     selected, through ``Structure.affine``): the atoms move and the box stays
     where it is -- *"leave the cell alone, moving atoms only moves atoms"*
-    (user, 2026-09-25).  Until then this path took the box along."""
+    (user, 2026-09-25)."""
     import numpy as np
     periodicity = {
         "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 20.0]],
@@ -1286,23 +1187,6 @@ def test_modify_page_has_m4_orient_rotate_controls(web_client):
 
 
 # --------------------------------------------------------------------- #
-#  Send-to-Build handoff                                                #
-# --------------------------------------------------------------------- #
-#
-# The electrode endpoints that shared this banner are gone: the pair went
-# with the Junction panel, and the per-side one went on 2026-09-01 once
-# `/api/modify/slab` had replaced it (`archive/2026-09-01-modify-redesign-plan.md` 3.4a).
-# Their three tests went with them -- what they pinned (a positive contact
-# distance, a `+z`/`-z` side) were that route's arguments, and no other
-# route takes either.
-
-
-# --------------------------------------------------------------------- #
-#  Basename validation (job-layout v1)                                  #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
 #  NaN / Inf rejection on /api/modify/* floats                          #
 # --------------------------------------------------------------------- #
 
@@ -1318,28 +1202,14 @@ def test_modify_translate_rejects_nan_offset(web_client):
     assert "finite" in r.get_json()["error"]
 
 
-# (The tests of `dataclass_to_form_schema` -- eight, on a hand-written
-#  fixture dataclass -- were retired with the function, 2026-10-02, M5 step
-#  3: no route had called it since the forms moved to the catalogue.)
-
-
 def test_siesta_form_schema_matches_documented_layout():
     """The layout the STRUCTURE-OPTIMIZATION TAB actually renders.
 
-    Repointed 2026-08-15 from ``dataclass_to_form_schema`` to
-    ``catalogue_to_form_schema``.  The tab is served by the catalogue
-    builder (``build.py`` /api/build/schema); the dataclass builder was
-    deleted on 2026-10-02.  Asked the old builder, this test could not see
-    the tab:
-    it passed UNCHANGED on the day ``restart`` and ``continue_retries``
-    left the form, which is precisely the regression a layout test exists
-    to catch.
+    The tab is served by the catalogue builder (``build.py``
+    /api/build/schema), so this asks that builder.
 
     THE SECTIONS ARE THE SIX SHARED CATEGORIES, not per-engine fieldset
-    names.  ``category`` replaced ``section`` for exactly this reason
-    (`engines/template.md` § 6.2): ``section`` was free text chosen per
-    engine, so SIESTA's *"Basis & grid"* and PySCF's *"Method"* were
-    unrelated words and no surface could group across engines.  The six
+    names (`engines/template.md` § 6.2).  The six
     are shared, in `template.CATEGORIES` order, so both engines show the
     same inner headings.
 
@@ -1361,18 +1231,14 @@ def test_siesta_form_schema_matches_documented_layout():
         ("method",      6),
         ("accuracy",    7),
         ("convergence", 4),
-        # 16 -> 15 on 2026-09-25: `wrap_into_cell` retired.  Where the atoms
-        # sit is one rule, the engine offset (`model/structure-periodicity.md`
-        # § 6.0), and a per-atom wrap can cut a device at its widest gap.
-        # 15 -> 13 on 2026-09-29: `write_forces` and `write_coor_step` are
-        # fixed by the rung on every SIESTA kind -- not a choice, so not a
-        # control (`engines/template.md` § 6.4).  13 -> 15 on 2026-09-30:
-        # shown again, read-only at that answer (`locked`, § 6.6 obligation
-        # 3; plan § 5w K7) -- still never a control.
+        # `write_forces` and `write_coor_step` are fixed by the rung on
+        # every SIESTA kind (`engines/template.md` § 6.4) and shown
+        # read-only at that answer (`locked`, § 6.6 obligation 3; plan § 5w
+        # K7) -- never a control.
         ("procedure",  15),
-        # 7 -> 3 on 2026-08-15: mpi_np, omp_threads, max_memory_mb and
-        # use_gpu moved to the staging surface.  They are bench axes
-        # measured on the machine, not parameters typed beside the physics.
+        # mpi_np, omp_threads, max_memory_mb and use_gpu are on the staging
+        # surface: bench axes measured on the machine, not parameters typed
+        # beside the physics.
         ("execution",   3),
     ], got
 
@@ -1416,8 +1282,7 @@ def test_api_build_schema_rejects_unknown_engine(web_client):
 
 def test_pyscf_form_schema_matches_documented_layout():
     """PySCF's half of the same contract -- the six shared categories,
-    from the same builder the tab uses.  See the SIESTA test above for
-    why this moved off ``dataclass_to_form_schema``."""
+    from the same builder the tab uses."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     sch = catalogue_to_form_schema("pyscf", "py")
     assert sch["config"] == "pyscf"
@@ -1425,19 +1290,16 @@ def test_pyscf_form_schema_matches_documented_layout():
 
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
     assert got == [
-        # `system` gained job_name (it leads the Setup card now, the
-        # same treatment system_label got); `execution` is gone entirely --
-        # threads and use_gpu were its only members and both are bench axes.
-        # +1 on 2026-09-28: the electronic state's `spin_treatment` beside
-        # the count that replaced `spin` (`unpaired_electrons`).
+        # `system` holds job_name and the electronic state's
+        # `spin_treatment` beside `unpaired_electrons`; there is no
+        # `execution` panel -- threads and use_gpu are bench axes.
         ("system",      7),
         ("method",      8),
-        # +5 on 2026-08-17 with P1's stage ladder: the FIVE geomeTRIC criteria
+        # The FIVE geomeTRIC criteria
         # (`geom_gmax`/`_grms`/`_dmax`/`_drms`/`_etol`) are one family
         # (`tuning.md` § 2.4) and they are THRESHOLDS -- *what answer you will
         # accept* -- which is what `accuracy` means in § 6.2, and what puts
-        # `scf_conv_tol` there too.  `_dmax`/`_drms` landed under `procedure`
-        # and split the family across two panels until this was found.
+        # `scf_conv_tol` there too.
         ("accuracy",    8),
         # `convergence` is *how do I reach it when it fights* -- the § 7.2
         # escalation ladder (diis_space, level_shift, damp, soscf) and the SCF
@@ -1446,21 +1308,12 @@ def test_pyscf_form_schema_matches_documented_layout():
         ("convergence", 6),
         # `geom_max_steps` is the OUTER geometry budget, so it sits with
         # `relax_steps`, the SIESTA knob `tuning.md` § 3.1 pairs it with --
-        # not with the inner SCF budget.  It was under `convergence`, which
-        # put one cross-engine concept on two different panels.
-        # 16 -> 13 at P3 (2026-08-21): the in-deck compute_frequencies
-        # trio left the OPTIMIZATION form -- the item retired outright,
-        # and temperature_K / pressure_atm re-homed to the vibration
-        # kind (calculations = ["vibration"]).
-        # 13 -> 12 on 2026-09-29: the one-choice `optimizer` retired with
-        # berny (`engines/pyscf.md` § 3).
+        # not with the inner SCF budget.
         ("procedure",  12),
     ], got
 
-    # The stage table is NOT here.  PySCFConfig still has a `stages`
-    # field -- the ladder is real -- but the staging surface owns it, so
-    # this form never asks.  Three tests asserting the opposite were
-    # retired the same day (tests/test_pyscf_stages.py).
+    # The stage table is NOT here: the staging surface owns the ladder, so
+    # this form never asks.
     ids = [f["id"] for s in sch["sections"] for f in s["fields"]]
     assert not [i for i in ids if "stage" in i], ids
 
@@ -1479,9 +1332,8 @@ def test_engine_key_present_on_every_form_field(engine, calculation):
     (`web/form-schema.md` § 1a, rule 4).  Without it the UI's
     source-of-truth badge is silently missing for that field.
 
-    EVERY CALCULATION, not the default one: the two tests this replaced built
-    the optimization form only, which leaves out the 20 transport-only and 13
-    vibration-only items (W54 S12)."""
+    EVERY CALCULATION, not the default one: the optimization form alone
+    leaves out the transport-only and vibration-only items (W54 S12)."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     sch = catalogue_to_form_schema(engine, "p", calculation=calculation)
     fields = _flatten_schema_fields(sch)
@@ -1503,11 +1355,8 @@ def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     from molbuilder import template as T
 
-    # WHICH fields are molbuilder-only is DERIVED, not curated.  The
-    # curated set here listed six names and three of them -- mpi_np,
-    # omp_threads, max_memory_mb -- left this form on 2026-08-15 for the
-    # staging surface, so the test failed for a move it should not have
-    # had an opinion about.  A `kind` of `wrapper` or `produce` IS the
+    # WHICH fields are molbuilder-only is DERIVED, not curated.  A `kind`
+    # of `wrapper` or `produce` IS the
     # statement "this never becomes an engine keyword" (template.md § 6),
     # so ask the catalogue and the list cannot go stale.
     items = {i.name: i for i in T.read_template(T.load_catalogue()).items}
@@ -1537,13 +1386,12 @@ def test_engine_key_pins_load_bearing_siesta_keywords():
     expected engine_key text.  If any of these changes, downstream
     text searches + the .fdf grep workflow break."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    from molbuilder.config.siesta import SiestaConfig
     sch = catalogue_to_form_schema("siesta", "p")
     fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
     expected = {
         # `Spin`, not `SpinPolarized`: the manual deprecates all three old
         # spin booleans in favour of the one four-valued keyword.  A MERGED
-        # item since 2026-09-28 (the electronic state), so the badge names
+        # item (the electronic state), so the badge names
         # both engines' spelling.
         "spin_treatment": "Spin (SIESTA) | the SCF class's R / RO / U (PySCF)",
         # The "two keys, either alone is silently ignored" rule depends on
@@ -1555,7 +1403,7 @@ def test_engine_key_pins_load_bearing_siesta_keywords():
         # references them.
         "mesh_cutoff":    "MeshCutoff",
         "basis_size":     "PAO.BasisSize",
-        # MERGED with PySCF's `charge` 2026-08-19: one question, one
+        # MERGED with PySCF's `charge`: one question, one
         # item, and the spelling names both engines because neither is
         # THE answer (`template.md` § 6.3).
         "net_charge":     "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)",
@@ -1575,11 +1423,10 @@ def test_engine_key_pins_load_bearing_siesta_keywords():
 def test_engine_key_pins_load_bearing_pyscf_keywords():
     """Same for PySCF.  The 2026-05-24 review surfaced that PySCF's
     method= is a CLASS switch, not a string kwarg -- and the class is
-    composed from the method and the spin treatment since 2026-09-28, so
+    composed from the method and the spin treatment, so
     the two badges between them say which class (the treatment's is the
     merged item's, pinned in the SIESTA test)."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    from molbuilder.config.pyscf import PySCFConfig
     sch = catalogue_to_form_schema("pyscf", "py")
     fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
     # (The merged items -- the charge and the spin -- are ONE declaration

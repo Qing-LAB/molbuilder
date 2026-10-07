@@ -7,9 +7,7 @@ a duration.  Feeding one to the other's formatter is the defect that
 made a six-minute SIESTA run display "last result Dec 31, 5:06 PM".
 
 The badge's clock selection is a pure function, ``badgeClocks``, run here
-under node.  (``cumulativeElapsed``, the helper the viewer's own
-per-iteration estimate divided, went with that estimate on 2026-09-27: the
-rate is the SCF-timing instrument's, `model/parse.md` § 2a P-T4.)
+under node.
 """
 from __future__ import annotations
 
@@ -44,20 +42,8 @@ def _run_cycle_clock(expr: str):
 
 
 class TestBadgeReadsTheRightClock:
-    """The badge's clock selection, RUN -- `badgeClocks(state)`.
-
-    These four assertions read `core.js` as TEXT until 2026-09-06 and checked
-    for the spelling of the four lines that made the choice::
-
-        assert "const clockSeries   = state.data.wall_clock_s || [];" in src
-
-    Behaviour-blind in both directions.  Rename `clockSeries` consistently and
-    it fails while the badge is perfect.  Swap the two clocks at their point
-    of USE -- leaving those four declarations byte-identical -- and it passes
-    while the badge formats a duration as a date and an epoch as a duration.
-    That second one was measured: **233 tests green** with the clocks swapped.
-
-    The decision now lives in a pure function, so these run it instead.
+    """The badge's clock selection, RUN -- `badgeClocks(state)`: the
+    decision lives in a pure function, so these run it.
     """
 
     def test_each_clock_lands_in_its_own_slot(self):

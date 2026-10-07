@@ -4,13 +4,11 @@
  * ``{kind: "dna", input: <sequence>, form: <B|A|Z>}`` to
  * /api/build/molecule.  Backend dispatches to ``build_dna`` which
  * picks the best installed backend (3DNA preferred, AmberTools
- * fallback, RDKit last) for an ssDNA from a 1-letter sequence.
+ * fallback, RDKit last) for a strand or a duplex (``_parseDnaNotation``).
  *
  * Other knobs the underlying ``build_dna`` accepts (terminal,
  * add_hydrogens, protonate_phosphates) keep the Python defaults
- * here — the panel sticks to the load-bearing knobs (sequence +
- * form).  Advanced knobs can land later as additional fields if
- * users ask.
+ * here.
  *
  * Flow mirrors smiles.js / name.js / peptide.js exactly: validate
  * client-side → POST → loadIntoCanvas gate → viewer render.
@@ -20,8 +18,7 @@
  * submission).  Anything else gets an actionable inline error
  * before the network call.
  *
- * Design ref: docs/web/tabs.md (panel 3: 3DNA
- * helix builder).
+ * Design ref: docs/web/tabs.md § 2 (Creating a structure — the in-gate).
  */
 
 (function (root) {
@@ -34,8 +31,7 @@
 
     // The panel's dependency slots, wired once for all five panels
     // (`panel-deps.js`): `configure` is the test door, `_lazyResolve` the
-    // production re-read that LANDMINE-2 needs.  This was eighty lines of
-    // byte-identical copy across smiles/name/peptide/rna/dna.
+    // production re-read.
     var _deps = root.molbuilder.panelDeps.make(root);
     var configure = _deps.configure;
     var _lazyResolve = _deps.resolve;
@@ -90,7 +86,7 @@
     }
 
     /**
-     * Generate ssDNA from a 1-letter sequence.
+     * Generate DNA from the panel's notation (``_parseDnaNotation``).
      *
      * @param {string} sequence  ACGT, case-insensitive
      * @param {object} [opts]
@@ -176,8 +172,7 @@
         // mismatch client-side with an actionable error so the user
         // doesn't wait for the server-side 3DNA backend to reject
         // (and a 60 s subprocess timeout if fiber slips into its
-        // interactive "Number of repeats" prompt).  Bug #2 fix
-        // (2026-06-07).
+        // interactive "Number of repeats" prompt).
         // ``(GC)+`` and ``(CG)+`` cover both strand orientations;
         // length is implicitly even because each repeat is 2 bases.
         // Matches the server-side ``_is_alternating_gc`` predicate
@@ -194,7 +189,7 @@
             });
         }
         // Lazy-resolve dependencies in case the script-load
-        // order put us above page.js / lib/* (LANDMINE-2 fix).
+        // order put us above page.js / lib/*.
         _lazyResolve();
         if (!_deps.fetch) {
             return Promise.reject(new Error(
@@ -243,8 +238,8 @@
                 if (!gate.ok) {
                     return { ok: false, cancelled: true };
                 }
-                // loadIntoCanvas routes through molview.data.installMolecule
-                // (the MODEL primitive for generated text; the FILE door is
+                // loadIntoCanvas installs into an empty viewer or appends to
+                // the open structure (the MODEL door; the FILE door is
                 // projects.parser.openMolecule -- not used here).
                 return { ok: true, n_atoms: body.n_atoms,
                          backend_used: body.backend_used,
@@ -279,18 +274,9 @@
         var status = doc.getElementById("dna-status");
         if (!input || !button) return;
 
-        /* The shared `.status` writer (lib/status.js).
-         *
-         * These seven panels each spelled this out, writing `.muted` with
-         * `is-error` / `is-generating` / `is-loading` -- modifiers NO
-         * stylesheet defined.  So a refused SMILES reported itself in the
-         * same muted grey as a hint, on every builder panel, and had done
-         * since they were written.  `.status` is the app's one severity
-         * surface and its `error` IS red.
-         *
-         * The busy state maps to the neutral line: it had no appearance
-         * before either (its class answered nothing), so this is the same
-         * rendering with one fewer class that means nothing. */
+        /* The shared `.status` writer (lib/status.js): `.status` is the
+         * app's one severity surface and its `error` IS red; the busy state
+         * is the neutral line. */
         function setStatus(msg, kind) {
             window.molbuilder.status.set(
                 status, msg, kind === "error" ? "error" : null);

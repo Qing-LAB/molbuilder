@@ -15,8 +15,7 @@ Three things are pinned here that no browser test pins well:
     shell in words.
 
 The card following a typed field, and filling nothing in, is the browser's
-to show: ``test_chemistry_card_e2e.py``.  (This file replaced
-``test_auto_detect_module_js.py`` on 2026-09-28, with the module it tested.)
+to show: ``test_chemistry_card_e2e.py``.
 """
 from __future__ import annotations
 

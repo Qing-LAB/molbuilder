@@ -258,7 +258,7 @@ flowchart LR
     VA["validate(struct, cfg)<br/>→ Issue list"]
   end
   subgraph E["engine emit"]
-    EM["render_fdf /<br/>render_script → text"]
+    EM["spec_for → DeckSpec /<br/>script_emit.render_deck → text"]
   end
   subgraph X["EXECUTION"]
     RUN["jobset prep / submit<br/>runwrap · envs"]

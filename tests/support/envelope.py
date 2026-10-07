@@ -5,13 +5,10 @@ persistence layer and the CLI round-trip through, and the exact shape
 `molview.exportFile()` produces and `struct_from_body` accepts.  So a test that
 wants to post a structure builds a Structure and calls it.
 
-WHY THIS FILE EXISTS.  When the request shape moved from `xyz` text to the
-envelope, six test files each grew their own `_envelope()` that split an XYZ
-string into elements and positions by hand.  Six hand-rolled XYZ parsers, in
-the test suite, for a project whose contract says a coordinate document is the
-server's format and the browser does not write one (molview.md § 11.7) -- and
-each one free to drift from the real envelope in its own direction, which is
-the exact duplication the code under test had just been cleaned of.
+WHY THIS FILE EXISTS.  A hand-rolled XYZ parser in a test is free to drift
+from the real envelope in its own direction, and the contract says a
+coordinate document is the server's format and the browser does not write one
+(molview.md § 11.7).
 
 A structure a test can post should be CONSTRUCTED, not parsed out of a string:
 `Structure(elements=[...], positions=[[...]])` states what it is, and
@@ -63,19 +60,11 @@ def envelope(elements, positions, **kw) -> dict:
 def from_xyz_with_periodicity(text: str, periodicity=None, **kw) -> dict:
     """An envelope from XYZ text with a stated box folded into its metadata.
 
-    Tests used to post ``{"xyz": text, "periodicity": {...}}`` -- the legacy
-    request shape, retired 2026-08-04 once the code answered the contract's own
-    question ("a key goes when nothing reads it") and no client sent it.  The
-    box is part of the structure, so it rides in ``metadata`` with everything
-    else about those atoms.
+    The box is part of the structure, so it rides with everything else about
+    those atoms.
     """
-    # NOTHING IS STRIPPED HERE.  A first cut popped `kgrid` and the three
-    # `resolved_*` views before handing the block on -- defending against
-    # inputs no caller produces.  Exactly one fixture carried `kgrid`, labelled
-    # in its own source as a "legacy key -> ignored"; the field left the model
-    # long ago and the fixture simply outlived it.  Deleting the line was the
-    # fix.  A helper that quietly accepts a field the data model rejects is
-    # how a fixture keeps a dead field alive.
+    # NOTHING IS STRIPPED HERE.  A helper that quietly accepts a field the
+    # data model rejects is how a fixture keeps a dead field alive.
     return from_xyz(text, **{**(periodicity or {}), **kw})
 
 

@@ -3,21 +3,16 @@
 
 **Module**: the ONE comparison between what a deck was rendered for and the
 launch it is about to get, plus the ONE wording of why a mismatch matters.
-**Callers**: `jobset/submit._resolve_launch` (the refusal, M5's *"`submit`
+**Callers**: `jobset/submit`'s launch planning (the refusal, M5's *"`submit`
 decides nothing … refuses if they do not"*), `jobset/prep.prep_stage`
 (the warning at `prep`, where changing your mind is still cheap -- each door
-shows it from the entry's answer), and --
-since the cold-start ruling (2026-08-21) -- `jobset/submit`'s per-trial
+shows it from the entry's answer), and `jobset/submit`'s per-trial
 gate calling :func:`check_trial_starts_cold` (the door VERIFIES the
 run's starting state; prep's measurement pin is the one setter); the
 fixture-level tests in `test_jobset` / `test_prep_calculation`.
 
-**Why its own module** (U6, 2026-08-12): this comparison lived in `prep.py`
-while its refusal vocabulary (`SubmitError`) lived in `submit.py`, so prep
-reached down for the error and submit reached up for the checker — the one
-import cycle in the jobset package, hidden behind a lazy import.  The
-comparison serves BOTH surfaces and belongs to neither; giving it a floor
-both import downward from dissolves the cycle instead of managing it.
+**Why its own module**: the comparison serves BOTH surfaces and belongs to
+neither; a floor both import downward from keeps them free of an import cycle.
 
 The warning and the refusal cannot come to different conclusions because
 both read :func:`launch_agreement`; after this module they cannot *say*
@@ -74,20 +69,10 @@ def launch_agreement(job_dir, job, *, text=None) -> LaunchAgreement:
     count … A parameter that depends on the launch cannot be decided before the
     launch is known."*
 
-    Until 2026-08-11, step 3 ran at `molbuilder fdf` on whatever machine typed
-    it, and the rank count was resolved hours later by the wrapper — the two
-    halves of one ordered sequence in different places, with nothing carrying
-    the first's answer to the third. On 2026-08-10 that produced a deck
-    rendered with no rank count — so ``BlockSize`` from the size-only branch —
-    launched at ``-np 14``, and SIESTA refused at startup with *"You have too
-    many processors for the system size"*. The migration then moved rendering
-    into `prep` (ladder step 4), so both halves resolve on one machine — and
-    this comparison stays, because a deck can still meet a launch it was not
-    rendered for: an edited `job-set.json`, a hand-carried deck, an edited
-    wrapper.
+    A deck can still meet a launch it was not rendered for: an edited
+    `job-set.json`, a hand-carried deck, an edited wrapper.
 
-    P4 unit 5 put the launch quantity **into** the deck, which is why that
-    failure was diagnosable at all. **Recording is not agreeing**: this is the
+    **Recording is not agreeing**: this is the
     comparison, and a person is owed its answer at the moment they are still
     deciding (`prep`) — not only at the moment they are committing cluster
     time (`launch`).
@@ -141,7 +126,7 @@ class DeckLaunchMismatch(Exception):
 def check_launch_matches_deck(job_dir, job) -> None:
     """Refuse a launch the deck was not rendered for (P6 unit 2).
 
-    Three outcomes, and the middle one is the live defect:
+    Three outcomes:
 
     * deck ``auto`` + launch ``auto`` — both defer to the wrapper. Fine.
     * deck ``auto`` + launch ``N`` — the deck's launch-derived values were
@@ -215,9 +200,8 @@ def check_trial_starts_cold(job_dir, job) -> None:
         # whether an EXISTING deck would warm-start.
         return
     text = deck.read_text(encoding="utf-8", errors="replace")
-    # One deck reader: `parse/fdf.py`.  A regex here saw `MD.UseSaveXV` but
-    # not `MD_UseSaveXV` / `MD-UseSaveXV`, which fdf treats as the same
-    # keyword -- so a warm deck passed this gate as cold.
+    # One deck reader: `parse/fdf.py`, which reads `MD_UseSaveXV` /
+    # `MD-UseSaveXV` as `MD.UseSaveXV`, as fdf does.
     from ..parse.fdf import _parse_fdf
     scalars, _blocks = _parse_fdf(text)
     saves = [(k, v[0]) for k, v in scalars.items() if "usesave" in k and v]

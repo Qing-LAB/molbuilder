@@ -2,11 +2,7 @@
 `transport/record.py`).
 
 What a TBtrans output says is read off the transport road's own minimal
-junction (plan Q5-Q7): the k-averaged transmission saved from the carbon-chain
-walk of 2026-08-29, ``tests/data/chain.TBT.AVTRANS_L-R``, was retired with its
-test 2026-10-06, and the current-line tests -- the 0.4 V point's output tail
-cut from its run, or lines invented as text -- on 2026-10-04
-(`process/testing.md` § 6).
+junction (plan Q5-Q7, `process/testing.md` § 6).
 """
 from __future__ import annotations
 

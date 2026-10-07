@@ -10,16 +10,12 @@ Routes:
     GET /partials/spectra-inspector         rendered spectra inspector HTML
                                             (consumed by
                                             ``lib/inspectors/spectra.js``)
-                                            (consumed by /modify; later
-                                            /spectra and any other tab that
-                                            needs atom selection)
 
 For trajectory / spectra / preview LOADING the page reuses the other
 tabs' endpoints -- ``/api/watch/*`` and ``/api/spectra/*`` for trajectory
 and spectra, ``/api/files/*`` for the source / structure previews -- so
 those are not re-exposed here.  ``/api/results/*`` is reserved for
-results-only operations (today: ``bundle``; a future "summarise this
-file's metadata for the dispatch label" would land here too), which stay
+results-only operations (``contract``, ``dir``), which stay
 in this blueprint without touching the other tabs' blueprints.
 
 Spec: ``docs/web/results.md``.
@@ -50,8 +46,8 @@ def results_page():
 # Inspectors are mounted into a single ``#inspector-host`` element
 # (registry-owned, see lib/inspectors/registry.js).  Small inspectors
 # build their DOM via createElement; the trajectory inspector's DOM
-# is large (~9.5 KB) and is the single source of truth shared with
-# /watch via ``_trajectory_inspector.html``.  Rather than fork the
+# is large (~9.5 KB) and lives in ``_trajectory_inspector.html``.
+# Rather than fork the
 # markup into JS, the registry inspector fetches the partial here
 # and assigns it to its host's innerHTML -- same-origin, autoescaped
 # Jinja render, no user input, so safe.
@@ -62,8 +58,7 @@ def partial_trajectory_inspector():
     """Return the rendered trajectory inspector partial as HTML.
 
     Source: ``templates/_trajectory_inspector.html``.  This endpoint
-    is how ``/results`` swaps the inspector in client-side (the /watch
-    page that included the partial server-side is gone).
+    is how ``/results`` swaps the inspector in client-side.
 
     Cache: ``private, max-age=300`` -- the partial is static
     content that only changes on template edits, but capping the
@@ -84,10 +79,7 @@ def partial_spectra_inspector():
     """Return the rendered spectra inspector partial as HTML.
 
     Source: ``templates/_spectra_inspector.html``.  ``/results`` swaps
-    the inspector in client-side through this endpoint; the
-    server-side include that ``spectra.html`` carried transitionally
-    left with step 2.5 (the standalone tab gates its inspect side on
-    ``hasInspectSide`` and no longer embeds the partial).
+    the inspector in client-side through this endpoint.
 
     Cache + content-type semantics identical to the trajectory
     partial endpoint -- intentional, so the inspector wrappers
@@ -98,16 +90,6 @@ def partial_spectra_inspector():
     resp.headers["Content-Type"]  = "text/html; charset=utf-8"
     resp.headers["Cache-Control"] = "private, max-age=300"
     return resp
-
-
-# --------------------------------------------------------------------- #
-#  /api/results/bundle stood here (Step 3 PR-E, task #492) until        #
-#  2026-08-29.  Calculation-to-calculation passing is RETIRED (user     #
-#  ruling): a calculation that builds on a finished result CITES it --  #
-#  the transport composite resolves its junction citation and prep      #
-#  does the fuse (parse the .XV, overlay the labels, sort, gate:        #
-#  transport/compose.py) -- rather than receiving a bundled copy.       #
-# --------------------------------------------------------------------- #
 
 
 @bp.route("/api/results/contract", methods=["GET"])
@@ -121,7 +103,7 @@ def api_results_contract():
     (`model/parse.md` § 5b, § 5b.1) -- each ``null`` when there is nothing
     to say.  The Results tab's structure inspector calls this after a load
     and records each answer through the viewer's ``data.info`` door, so an
-    export carries them (`archive/2026-09-01-structure-info-plan.md` I5).
+    export carries them.
 
     It asks ``run_info`` -- the ONE composer of "what does this
     directory say about itself" -- rather than the ``contract_of``
@@ -164,14 +146,8 @@ def api_results_dir():
     § 5.0, § 5.5) -- and, for a calculation root, its ladder.
 
     **WHY THIS EXISTS.**  The browser is the one consumer that cannot import
-    Python, and nothing served it the directory's own answer: the Results
-    picker listed through `/api/files/list` (content-blind — `{name, kind,
-    size, mtime}`) and then decided FOUR things the backend already owns,
-    from the filename, in JavaScript.  Measured 2026-09-18 over 110 real run
-    directories: *which file to open* differed from `openable_in` on **18 of
-    96**; **13** files were offered that no parser can read and **155** that
-    a parser handles were unreachable; the engine was guessed from the
-    suffix; and the run-file grammar was re-implemented as a JS regex.
+    Python, so it is served the directory's own answer rather than deciding
+    from the filename, in JavaScript, what the backend already owns.
 
     **PER FILE the server says what the file IS** -- ``role``, ``label`` and
     ``stage``, read back with its run's label, ``parser`` from the registry
@@ -202,9 +178,7 @@ def api_results_dir():
 
     # THE RUN DOOR ANSWERS what this folder is and holds -- its place, the run
     # it speaks for, that run's result, state and record, and what each file
-    # is (`runs.folder_answer`).  It was `parse.dirs`' `JobDirParser`, read
-    # through `parse_dir`, until 2026-10-04: below the floor that may know a
-    # calculation (plan B11, B14).
+    # is (`runs.folder_answer`).
     got = folder_answer(directory)
     attempts = list(got["attempts"])
     place = got["place"]
@@ -215,10 +189,7 @@ def api_results_dir():
     # copied.  Its rows are the description's stages (`job-system.md` § 5.3),
     # the ones not prepped yet among them: a transport ladder is prepped rung
     # by rung, so the job-set grows while the description already names all
-    # five (measured 2026-09-24: a root with the seed prepped answered a
-    # one-rung ladder).  This route composed that itself until 2026-10-01,
-    # and the CLI's `status` listed the prepped rungs alone.  `null` for a
-    # container that is not the root.
+    # five.  `null` for a container that is not the root.
     root = place["calculation"]
     if (place["role"] == calcdirs.CONTAINER and root is not None
             and Path(root).resolve() == directory.resolve()):
@@ -233,7 +204,7 @@ def api_results_dir():
             attempts.append(f"the ladder could not be read: {exc}")
         else:
             # THE ONE WIRE FORM (`JobSetStatus.to_dict`), the next prep's
-            # answer included -- a dict of this route's own dropped it (W52).
+            # answer included.
             ladder = got_status.to_dict()
 
     return jsonify({

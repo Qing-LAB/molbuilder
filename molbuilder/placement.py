@@ -2,11 +2,7 @@
 
 `configuration.md` § 3.1 draws the tree and § 2.1b states the mode rule.  This
 module is the same facts as a table code can act on, and it exists because prose
-cannot be executed: three of that page's own statements were measured false on
-2026-09-12 -- the config root was said to be `0700` and nothing created it that
-way, the serve log was said to be `0600` and `serve status` made it `0664`, and a
-row claimed this page owned "the mode and the durability of every file listed
-here" while several had no stated mode and were created with none.
+cannot be executed.
 
 **The table is the authority and § 3.1 cites it**, not the other way round.  A
 test comparing prose to code would break on formatting and still prove nothing
@@ -17,10 +13,7 @@ audit read.
 **Two jobs, kept apart, because they belong to different verbs.**  `envs
 init-config` SEEDS -- it makes what is missing and leaves what is there, since
 seeding must not police a directory the operator set up deliberately.  `envs
-doctor` AUDITS -- it reports what arrived loose.  That division was already
-written in `initconfig._ensure_root`'s docstring (*"this seeds, it does not
-police -- `envs doctor` is where a permissions audit would belong"*) and had
-neither a table nor an audit to be true of.
+doctor` AUDITS -- it reports what arrived loose.
 
 A directory or file ARRIVES loose in ways no writer controls: copied from
 another machine, restored from a backup, unpacked from an archive that dropped
@@ -67,21 +60,10 @@ class Place:
     #: session and must therefore live in `config_dir.secrets_dir()`?
     #: `misplaced` enforces exactly that, and nothing else reads this.
     #:
-    #: THIS WAS THREE FIELDS FOR A FEW HOURS ON 2026-09-20 and they were
-    #: compensating for each other.  `holds_credential` was declared here and
-    #: **read by nothing, ever** -- `git log -S` finds no commit that used it
-    #: -- yet `configuration.md` was written claiming it and this field "need
-    #: different rules, so they are different fields".  That was a
-    #: justification invented for a split that existed only in prose.  A third
-    #: field, `outside_secrets_because`, then carried an exemption for the
-    #: notebook token, whose own reason text said *"it is not a credential
-    #: molbuilder KEEPS"* -- i.e. the predicate was wrong, not the row.
-    #:
-    #: Defining this as KEPT rather than as *purpose* makes all three
-    #: collapse: the notebook token is simply `False` and says why in `why`,
-    #: and the checker needs no exemption branch.  A log that merely CONTAINS
-    #: a credential (a serve log, a notebook log) is `False` too and is
-    #: policed by `mode`, which is the field that always did that job.
+    #: Defined as KEPT rather than as *purpose*: the notebook token is `False`
+    #: and says why in `why`, and the checker needs no exemption branch.  A
+    #: log that merely CONTAINS a credential (a serve log, a notebook log) is
+    #: `False` too and is policed by `mode`.
     credential_store: bool = False
 
 
@@ -105,9 +87,7 @@ def places() -> Tuple[Place, ...]:
         Place("molbuilder.json", machine_config_path, False,
               PRIVATE_FILE_MODE,
               "it carries tls.key's path and the auth.providers block"),
-        # The NAME from its owner, not a literal: this row re-spelled
-        # `environment.json` until 2026-09-13 -- caught by running the retired
-        # A11 speller check against the tree, three days after its retirement.
+        # The NAME from its owner, not a literal (A11).
         Place(ENVIRONMENT_FILENAME, machine_scope_path, False, None,
               "what the machine IS -- cores, GPUs, queues.  No credential, and "
               "nothing in the tree states a mode for it"),
@@ -137,10 +117,9 @@ def places() -> Tuple[Place, ...]:
               "for it, never policed as one"),
         # THE DIRECTORY'S OWN NOTE.  Each credential molbuilder keeps here
         # has its own row above, so this row is the README molbuilder writes
-        # beside them (`initconfig` once wrote it 0664).  It covered EVERY
-        # file here, `*`, until 2026-10-02 -- and so told an operator to
-        # chmod a TLS key they had named, which `configuration.md` § 3.1
-        # says is theirs and the system's (W54 C9).
+        # beside them -- never `*`, which would tell an operator to chmod a
+        # TLS key they had named, theirs and the system's (`configuration.md`
+        # § 3.1).
         Place("the secrets README", secrets_dir, False, PRIVATE_FILE_MODE,
               "molbuilder writes it beside the credentials, at their mode",
               "README"),
@@ -159,14 +138,9 @@ def places() -> Tuple[Place, ...]:
               "the state root, where the default umask is not good enough"),
         Place("a serve pidfile", runtime_dir, False, None,
               "an address, not a secret", "serve-*.pid"),
-        # THE NOTEBOOK'S FOUR, absent from this table until 2026-09-15 while
-        # the newest credential in the tree lived in two of them
-        # (`plan.md` § 5n.8).  This module's own docstring says why that
-        # mattered: the audit exists because a file "ARRIVES loose in ways no
-        # writer controls" -- restored from a backup, copied off another
-        # machine, or left by a molbuilder older than the 2026-09-14 fix,
-        # which is exactly the measured 0664 case.  The writers are careful
-        # now; nothing was WATCHING.
+        # THE NOTEBOOK'S FOUR (`plan.md` § 5n.8): the newest credential in the
+        # tree lives in two of them, and the audit exists because a file
+        # "ARRIVES loose in ways no writer controls".
         Place("a notebook log", logs_dir, False, PRIVATE_FILE_MODE,
               "jupyter-server prints its own URL with the token in it at "
               "every start -- measured 2026-09-14 at 0664 with 14 "
@@ -202,29 +176,26 @@ def misplaced() -> List[str]:
     """Credential stores that do not live in `secrets/`.
 
     **The location rule, made executable.**  `configuration.md` § 3.1 states
-    that every credential molbuilder keeps is in `secrets/`; until 2026-09-20
-    that was prose only, and prose cannot be executed -- which is this
-    module's whole reason for existing.  Measured that day: `session_key()`
-    could be pointed back at the config root and 222 tests still passed,
-    because every test and every audit row asks the SAME resolver and so moves
-    with it.  Nothing compared the answer against the rule.
+    that every credential molbuilder keeps is in `secrets/`.  Every test and
+    every audit row asks the SAME resolver and so moves with it; only a
+    comparison against the rule catches a resolver pointed back at the config
+    root.
 
-    **EVERY COMPARISON IS ON A RESOLVED PATH**, and that is not a detail.  The
-    first version of this function compared the paths as spelled, and so let
-    through the very regression it was written for, one component longer:
+    **EVERY COMPARISON IS ON A RESOLVED PATH**, and that is not a detail.
+    Compared as spelled, the paths would let through the very regression this
+    is for, one component longer:
 
         secrets/../secret_key   ->  really the config root, reported CLEAN
 
     `Path.parents` does not collapse ``..`` and does not follow symlinks, so a
     credential could also be a link out of the tree -- to a world-readable
-    file, or off the encrypted volume entirely -- and this said nothing while
-    `findings` printed a `chmod` that would fix the target and leave the
+    file, or off the encrypted volume entirely -- and this would say nothing
+    while `findings` printed a `chmod` that would fix the target and leave the
     credential where it was.  `resolve()` on both sides closes both.
 
-    **A resolver that raises is a FINDING, not a pass.**  It read `except
-    Exception: continue`, i.e. *"cannot tell, therefore fine"* -- the shape
-    `access-control.md` § 8 rule 1 argues against everywhere else in this
-    codebase.  It matters in practice: `monitor._secrets_dir()` raises
+    **A resolver that raises is a FINDING, not a pass.**  *"Cannot tell,
+    therefore fine"* is the shape `access-control.md` § 8 rule 1 argues
+    against everywhere else in this codebase.  It matters in practice: `monitor._secrets_dir()` raises
     `ModuleNotFoundError` by design when the shipped companion is absent.
 
     Unlike the mode check this does not need the file to exist: a resolver
@@ -335,9 +306,7 @@ def machine_config_finding() -> Optional[str]:
     for a surface that shows the config alone (the Task-setup card, through
     `runtime_config.config_provenance`).  The terminal prints the same words
     among every `findings()`: ONE sentence and one rule for the file's mode
-    (`configuration.md` § 2.1b).  *(A second phrasing,
-    `runtime_config.machine_config_mode_warning`, with a rule of its own, was
-    the card's until 2026-10-02 -- T24.)*"""
+    (`configuration.md` § 2.1b)."""
     from .runtime_config import machine_config_path
     row = next(p for p in places() if p.resolve is machine_config_path)
     return next(iter(_mode_findings(row)), None)
@@ -352,9 +321,8 @@ def machine_config_warnings() -> List[str]:
     these -- `serve`, the jobset verbs, `auth-setup` -- so adding a check
     here reaches all of them.
 
-    It lived in `runtime_config` until 2026-09-13 and imported this module
-    lazily to get the findings: the one place `runtime_config` reached UP,
-    for a sum that is an audit (K-Y2).  Here it imports downward only.
+    Here rather than in `runtime_config`, because it is an audit, and from
+    here it imports downward only.
 
     **ONE LIST, NOT THREE** *(proposed and declined 2026-09-20)*.  Printing the
     three kinds under their own headers -- shadow, misplaced, mode -- restates

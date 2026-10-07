@@ -1,8 +1,8 @@
 """DNA double-strand (item 6): notation contract + X3DNA/B-form gate + duplex.
 
-v1 scope (this ship): bare sequence -> single strand; ``ds,<seq>`` -> canonical
-Watson-Crick DUPLEX (the complement is generated automatically by X3DNA fiber).
-Arbitrary / mismatched duplexes are a planned follow-up (X3DNA ``rebuild``).
+Bare sequence -> single strand; ``ds,<seq>`` -> canonical Watson-Crick DUPLEX
+(the complement is generated automatically by X3DNA fiber); two explicit
+strands -> an arbitrary / mismatched duplex (X3DNA ``rebuild``).
 """
 from __future__ import annotations
 
@@ -220,7 +220,7 @@ def test_relax_clashes_clears_near_coincidence_generally(_x3dna):
 
 def test_the_standard_base_templates_land_the_way_3dna_puts_them(_x3dna, tmp_path):
     """SCIENCE-ADJACENT. `_copy_standard_bases` puts exactly the files
-    `rebuild -atomic` expects, which is what `x3dna_utils cp_std BDNA` used to do.
+    `rebuild -atomic` expects, as `x3dna_utils cp_std BDNA` does.
 
     THE FAILURE THIS CATCHES.  `rebuild` reads the standard base geometry from
     fixed filenames in its working directory.  Miss one, copy the wrong dataset,

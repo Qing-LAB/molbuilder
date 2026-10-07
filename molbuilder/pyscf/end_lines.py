@@ -11,8 +11,6 @@ applied to a line.
 monitor reads how a PySCF run ended with the reader the Results tab uses --
 and beside every PySCF script (`runwrap.PYSCF_COMPANIONS`), whose
 progress-log writer writes the footer words from it.
-The two constants lived in the emitters themselves until 2026-09-26, where a
-reader that must run without molbuilder could not reach them.
 """
 
 #: The relaxation deck's (`pyscf/input.py`).  Reached only on the success
@@ -22,10 +20,7 @@ reader that must run without molbuilder could not reach them.
 END_MARKER = "Job complete in"
 
 #: The spectrum deck's (`pyscf/vibration_emitters.py`), which does not print
-#: the relaxation deck's line.  The two spectrum runs in the tree end with
-#: *"Total wall time: 5090.8 s"* -- and they are exactly the two directories
-#: that reported `running` for months (`plans/plan.md` § 5c.2), because
-#: nothing read this line at all.
+#: the relaxation deck's line.
 SPECTRUM_END_MARKER = "Total wall time:"
 
 

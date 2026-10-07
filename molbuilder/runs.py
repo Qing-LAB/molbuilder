@@ -13,13 +13,8 @@ folders, `runfiles` for the names a run gives its files, `runrecord` and
 knows a calculation, which is what `parse/` and `calcdirs` must not
 (`architecture.md` § 2.1).
 
-WHY ONE DOOR (plan B11, user 2026-10-04: *"agree to your B11"*).  The run a
-file belongs to was worked out by every reader that needed it, each its own
-way: labels guessed from the decks in a folder (`rundir.labels_in`), a stage
-cut from a name by a second grammar (`identity.parse_stage_token`), the
-speaking output picked by the newest file time in one reader and the newest
-run index in four others, the description read raw where its kind or shape
-was wanted.  The label a run names its files on is the DESCRIPTION's -- a
+WHY ONE DOOR (plan B11, user 2026-10-04: *"agree to your B11"*).  The label a
+run names its files on is the DESCRIPTION's -- a
 benchmark trial's is the description's with its point -- and every name is
 read back with it, through `runfiles`.
 """
@@ -63,8 +58,7 @@ def place_of(directory) -> Place:
     root, which its description's ``shape`` says is a run (flat) or a
     container (hierarchical), or a folder below it, which its own
     `calcdir.json` says.  **The description is read through its one door,
-    `read_task`** (`architecture.md` § 3.2, plan B14: `calcdirs` read its
-    ``shape`` raw until 2026-10-04)."""
+    `read_task`** (`architecture.md` § 3.2, plan B14)."""
     from molbuilder.task import read_task
     d = Path(directory)
     root = calcdirs.root_of(d)
@@ -83,17 +77,18 @@ def place_of(directory) -> Place:
     return Place(role=role, root=root, task=task)
 
 
-def _position(folder: Path, place: Place) -> Tuple[str, Optional[str]]:
-    """The label a folder's files are named on, and the stage its path
-    names -- read off the folders the layout made (`paths`, `identity`):
-    ``<NN>_<stage>/`` in the hierarchy, ``bench_<NN>_<stage>/`` at a flat
-    root, a trial's ``bench-<point>/`` relabelling its files
-    (`paths.trial_label`)."""
-    label, stage = place.task.label, None
+def _position(folder: Path, place: Place
+              ) -> Tuple[str, Optional[str], bool]:
+    """The label a folder's files are named on, the stage its path names,
+    and whether it is a benchmark trial's -- read off the folders the
+    layout made (`paths`, `identity`): ``<NN>_<stage>/`` in the hierarchy,
+    ``bench_<NN>_<stage>/`` at a flat root, a trial's ``bench-<point>/``
+    relabelling its files (`paths.trial_label`)."""
+    label, stage, trial = place.task.label, None, False
     try:
         parts = folder.resolve().relative_to(place.root.resolve()).parts
     except ValueError:
-        return label, None
+        return label, None, False
     for part in parts:
         if part.startswith("bench_") and parse_token(part[len("bench_"):]):
             stage = part[len("bench_"):]
@@ -101,8 +96,8 @@ def _position(folder: Path, place: Place) -> Tuple[str, Optional[str]]:
             stage = part
         point = trial_point(part)
         if point:
-            label = trial_label(place.task.label, point)
-    return label, stage
+            label, trial = trial_label(place.task.label, point), True
+    return label, stage, trial
 
 
 def _ordinal(stage: Optional[str]) -> int:
@@ -113,22 +108,22 @@ def _ordinal(stage: Optional[str]) -> int:
 def speaking(folder, label: str) -> Tuple[Optional[str], Optional[int]]:
     """THE RUN A FOLDER SPEAKS FOR -- ``(stage, run index)`` -- by the one
     rule (`architecture.md` § 3.2, `model/parse.md` § 5.1): the highest
-    stage that was launched -- its launch record, or files carrying a run
-    index -- then that stage's highest run index; with none launched yet,
-    the folder's one stage with a deck.  A file's time decides nothing: a
-    copied or restored folder reorders times, never runs."""
+    stage that was launched -- its launch records, one per launched run,
+    each carrying its run's number -- then that stage's highest launched
+    run; with none launched yet, the folder's one stage with a deck.  A
+    file's time decides nothing: a copied or restored folder reorders
+    times, never runs."""
     ran: Dict[Optional[str], int] = {}
     decks = set()
     deck_roles = set(_rf.deck_roles())
     for _p, rec in _rf.find(Path(folder), label):
-        if rec.run is not None or rec.role == ".run.json":
-            ran[rec.stage] = max(ran.get(rec.stage, -1),
-                                 rec.run if rec.run is not None else -1)
+        if rec.role == ".run.json" and rec.run is not None:
+            ran[rec.stage] = max(ran.get(rec.stage, -1), rec.run)
         if rec.role in deck_roles:
             decks.add(rec.stage)
     if ran:
         stage = max(ran, key=_ordinal)
-        return stage, (ran[stage] if ran[stage] >= 0 else None)
+        return stage, ran[stage]
     if len(decks) == 1:
         return next(iter(decks)), None
     return None, None
@@ -149,11 +144,21 @@ class Run:
     label: str
     stage: Optional[str] = None
     run: Optional[int] = None
+    #: A benchmark trial's run, in its own folder in either shape.
+    trial: bool = False
 
     @property
     def basename(self) -> str:
         """``<label>[_<stage>]`` -- the stem every file of the run carries."""
         return _rf.stem(self.label, self.stage)
+
+    @property
+    def names(self) -> "_rf.RunNames":
+        """The names of this run's stage's files, in its calculation's
+        shape -- the one composer every writer names them with
+        (`runfiles.RunNames`); refused for a run with no stage."""
+        return _rf.RunNames.of(self.label, self.stage,
+                               self.place.task.shape, trial=self.trial)
 
     def files(self):
         """``(path, RunFile)`` -- every file of this run's label and stage
@@ -233,7 +238,7 @@ def run_of(path, stage: Optional[str] = None) -> Optional[Run]:
     place = place_of(folder)
     if not place.ours or place.role != calcdirs.RUN:
         return None
-    label, named = _position(folder, place)
+    label, named, trial = _position(folder, place)
     stage = named or stage
     run = None
     if not p.is_dir():
@@ -249,7 +254,7 @@ def run_of(path, stage: Optional[str] = None) -> Optional[Run]:
                 if rec.run is not None]
         run = max(runs) if runs else None
     return Run(place=place, folder=folder, label=label, stage=stage,
-               run=run)
+               run=run, trial=trial)
 
 
 # --------------------------------------------------------------------- #
@@ -331,7 +336,7 @@ def about(path) -> Dict[str, Any]:
     place = place_of(folder)
     if not place.ours:
         return {"ours": False}
-    label, _stage = _position(folder, place)
+    label, _stage, _trial = _position(folder, place)
     return _row_about(p, label)
 
 
@@ -342,14 +347,15 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
     file named).  ``live`` -- `job.LIVE_STATES` -- is what a Results viewer follows
     (`web/results.md` § 4.1).  ``None`` for a file of no run of ours, as
     for an upload: nothing is asked of a folder no calculation claims
-    (`model/parse.md` § 5).  *(It answered for such a file's folder, with
-    no run named, until 2026-10-04: plan B11, 3b.2.)*"""
+    (`model/parse.md` § 5).  ``None`` too for a file of no run YET: a
+    folder where nothing has been launched and no one deck names the stage
+    it is for (:func:`speaking`)."""
     from molbuilder.parse.dirs.job import LIVE_STATES
     from molbuilder.parse.dirs.rundir import run_state_of
     run = run_of(path)
-    if run is None:
+    if run is None or run.stage is None:
         return None
-    st = run_state_of(run.folder, run.basename)
+    st = run_state_of(run.folder, run.names)
     return {"state": st.state, "detail": st.detail,
             "live": st.state in LIVE_STATES}
 
@@ -413,7 +419,7 @@ def openable(directory) -> Tuple[Optional[str], List[str]]:
     if not place.ours:
         return openable_in(str(d))
     attempts: List[str] = [f"calculation: {place.task.calculation}"]
-    label, stage = _position(d, place)
+    label, stage, _trial = _position(d, place)
     if place.role == calcdirs.RUN and stage is None:
         stage, _n = speaking(d, label)
     return _openable(d, label, stage, place.task.calculation,
@@ -433,10 +439,7 @@ def folder_answer(directory) -> Dict[str, Any]:
     no state and no record, though its calculation's product opens at its
     root.  A folder no calculation claims holds no run of ours: its files
     are listed, the registry says what it can open, and none of them is
-    claimed -- no label read off a deck, no state asked.  *(This was
-    `parse.dirs.rundir.JobDirParser` until 2026-10-04, below the floor it
-    must not cross: it read the description raw and guessed labels from the
-    decks -- plan B11, B14.)*
+    claimed -- no label read off a deck, no state asked.
     """
     from molbuilder.parse import detect
     from molbuilder.parse.contract import engine_of
@@ -461,23 +464,22 @@ def folder_answer(directory) -> Dict[str, Any]:
     else:
         engine = place.task.engine
         calc = place.task.calculation
-        label, stage = _position(d, place)
+        label, stage, _trial = _position(d, place)
         attempts.append(f"calculation: {calc}")
         if place.role == calcdirs.RUN:
             run = run_of(d)
             chosen = _openable(d, run.label, run.stage, calc, attempts)
             if run.stage is not None:
-                st = run_state_of(run.folder, run.basename)
+                st = run_state_of(run.folder, run.names)
                 status = {"state": st.state, "detail": st.detail,
                           "last_change_at": st.last_change_at,
                           "active_source": st.active_source}
-                record = run_record(run.folder, label=run.label,
-                                    stage=run.stage, status=st, engine=engine,
-                                    calculation=calc,
+                record = run_record(run.folder, names=run.names, status=st,
+                                    engine=engine, calculation=calc,
                                     stage_deck=run.stage_deck)
             else:
-                attempts.append("no run here yet: no stage has run in this "
-                                "folder, and more than one is prepped")
+                attempts.append("no run here yet: nothing has been launched "
+                                "in this folder")
         elif place.role == calcdirs.CONTAINER:
             chosen = _openable(d, label, stage, calc, attempts)
             attempts.append(
@@ -501,7 +503,7 @@ def folder_answer(directory) -> Dict[str, Any]:
         # READ BACK WITH THE RUN'S LABEL, a declared role or nothing
         # (`job-contracts.md` § 2.2a): a name read without its label is not
         # taken for one of ours -- SIESTA's `fdf.<stamp>.log` is not PySCF's
-        # log (plan D24: the listing fell back to `role_of` until 2026-10-04).
+        # log.
         rec = _rf.parse(entry.name, label) if label else None
         if rec is not None and rec.role not in declared:
             rec = None

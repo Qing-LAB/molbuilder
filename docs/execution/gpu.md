@@ -313,8 +313,8 @@ leaves the reader unable to recognise the wrong version.
 > `config/siesta.py`'s card comment says it had `use_gpu` on the Budget card and
 > why that was wrong; C3 — corrected then to one device, and since 2026-10-01
 > a refusal (G5); the rank count it implied is stated or refused since
-> 2026-10-02 (`architecture.md` § 5.2); C4 — `test_sbatch_emit.py` no longer
-> pins one rank per GPU. The table below is the record of what they said.
+> 2026-10-02 (`architecture.md` § 5.2); C4 — `test_sbatch_emit.py` is out of
+> the suite. The table below is the record of what they said.
 
 | # | where | says | true |
 |---|---|---|---|
@@ -380,7 +380,7 @@ queue card's box writes `allocation.gpu_binding` — is one browser test,
 |---|---|
 | `test_sbatch_emit.py` — the `ntasks`-default case | pins the retired *one rank per GPU* model (C4). G5 has no default since 2026-10-01, and a rank count none since 2026-10-02: the table's rows refuse both |
 | any test naming `use_gpu` as the question rather than the SIESTA spelling | after phase 3 there is one name; a test that asserts the pair is asserting the gap |
-| `test_wrapper_is_told_not_grepping.py`, the deck reader's table in `test_siesta_use_gpu.py`, and `test_template_declarations.py`'s audit of the wrapper's deck reads | each pinned the deck scan or its fallback, gone with phase 4 (2026-10-03); that the wrapper is told is the table's PySCF rows, whose deck carries no SIESTA keyword |
+| `test_wrapper_is_told_not_grepping.py`, the deck reader's table in `test_siesta_use_gpu.py`, and `test_template_declarations.py`'s audit of the wrapper's deck reads | each pinned the deck scan or its fallback, gone with phase 4 (2026-10-03); that the wrapper is told is the table's PySCF rows for the `.sbatch` header, whose deck carries no SIESTA keyword, and `test_wrapper_notify_flags.py::test_the_monitor_is_told_whether_the_run_uses_a_gpu` for the monitor's `--gpu` flag |
 
 **Added** — each pins a rule that could not previously be checked:
 

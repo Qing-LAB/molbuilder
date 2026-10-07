@@ -190,12 +190,8 @@ class TestHappyPath:
 
 
 class TestBackendSelection:
-    """Backend selector for DNA generator panel (restored 2026-06-07
-    after user reported it was missing from the new Sources card
-    UI).  Legacy index.html had a #backend select inside
-    #nucleic-options offering auto/threedna/amber/rdkit; the new
-    DNA panel was migrated without it, defaulting silently to
-    auto.  The selector is back + plumbed through generate()."""
+    """Backend selector for the DNA generator panel, plumbed through
+    generate()."""
 
     def test_default_backend_is_auto(self):
         out = _run_node('''
@@ -377,9 +373,8 @@ class TestErrorPaths:
         assert "3DNA" in out["error"]
 
     def test_canvas_cancel_passes_through_as_cancelled(self):
-        """User cancels the dirty-canvas warning modal (load door
-        returns cancelled) → envelope carries cancelled, called
-        through the single load door exactly once."""
+        """The load door returns cancelled → envelope carries
+        cancelled, called through the single load door exactly once."""
         out = _run_node('''
             let loadCalls = 0;
             dna.configure({

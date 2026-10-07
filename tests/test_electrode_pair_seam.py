@@ -1,23 +1,16 @@
 """The electrode pair meets itself on the wrong registry — measured.
 
 `science/junction-cell.md` § 3.1 tables the layer counts whose seam CONTINUES
-the fcc crystal.  None of them reproduces through the CLI's own placement:
+the fcc crystal.  None of them reproduces at the CLI's registry default:
 `--electrode` passes `sequence` but leaves `add_slab`'s `start_registry` at 0
-on BOTH slabs, and its spec grammar has no field for it — so every junction the
-CLI builds meets itself on the same registry.  Measured across three planes and
-three layer counts: **eclipsed** on (100)/(110), **twin** on (111).  A twin
-carries the RIGHT bond length, which § 3.1 says is exactly why a distance check
-misses it.
+on BOTH slabs unless told otherwise — so such a junction meets itself on the
+same registry.  Measured across three planes and three layer counts:
+**eclipsed** on (100)/(110), **twin** on (111).  A twin carries the RIGHT bond
+length, which § 3.1 says is exactly why a distance check misses it.
 
-The second test is the other half of the measurement and passes today:
-`start_registry` already IS the control, so this is a wiring defect and not a
-missing feature — `+z = 1`, `−z = 0` continues the crystal on both surfaces,
-with the across-seam distance at the bulk `a/√2`.
-
-*(Extracted 2026-09-15 from a walkthrough file that was withdrawn: its other
-cases asserted an API-presence on a private name, pinned a claim no document
-states, and used strict-xfail as a bug tracker.  These two assert a stated
-contract's own table through `classify_seam`, which is why they survive.)*
+The second test is the other half of the measurement: `start_registry` IS the
+control — `+z = 1`, `−z = 0` continues the crystal on both surfaces, with the
+across-seam distance at the bulk `a/√2`.
 """
 from __future__ import annotations
 
@@ -26,7 +19,7 @@ import pytest
 
 
 # --------------------------------------------------------------------- #
-#  F9 — the CLI's electrode builder never continues the crystal          #
+#  F9 — the CLI's electrode default does not continue the crystal        #
 # --------------------------------------------------------------------- #
 
 #: Interlayer spacing `d` per surface for Au at the builder's own default
@@ -96,9 +89,8 @@ def test_the_cli_electrode_pair_continues_the_crystal(plane, layers):
 
 @pytest.mark.parametrize("plane,layers", [("100", 4), ("111", 3)])
 def test_start_registry_is_the_control_that_fixes_it(plane, layers):
-    """AND THE FIX EXISTS ALREADY, which is what makes F9 a wiring defect
-    rather than a missing feature: `add_slab` continues the crystal when the
-    two slabs are given DIFFERENT registries.  Not xfail -- this passes today.
+    """`add_slab` continues the crystal when the two slabs are given
+    DIFFERENT registries.
     """
     seam = _junction(plane, layers, registry_plus=1, registry_minus=0)
     assert seam.verdict == "continues", seam.message
@@ -108,7 +100,7 @@ def test_start_registry_is_the_control_that_fixes_it(plane, layers):
     # modulo the lattice -- 2 x 1.442 = a/√2 -- which is why § 3.1 compares
     # "allowing for ... equivalent directions" and leaves the judgement to
     # `classify_seam`.  Asserting the vectors equal fails on (100) for that
-    # reason alone, which is how this comment came to exist.)
+    # reason alone.)
     a_exp = 4.0782
     assert seam.gap == pytest.approx(a_exp / np.sqrt(2), abs=1e-3), (
         f"continues, but the across-seam distance is {seam.gap:.4f} Å where "

@@ -19,10 +19,9 @@ shape), ``selection`` (which modes get per-mode ES), ``methods``
 engine-agnostic derivations every engine's artifact rests on:
 ``activity`` (which modes are active in a channel) and ``normal_modes``
 (which whole-body motions a vibration removes, and the one path that
-removes them; ``docs/science/normal-modes.md``).  The first runs on the
-host at serialisation; the second travels with a job -- the PySCF script
-imports it from ``mb_pyscf.pyz``, a SIESTA finish runs it from
-``mb_vibration.pyz``.
+removes them; ``docs/science/normal-modes.md``).  The PySCF script
+imports ``normal_modes`` from ``mb_pyscf.pyz``; a SIESTA finish runs both
+from ``mb_vibration.pyz``.
 """
 
 # NO CONFIG RE-EXPORT.  A spectra calculation is described by `PySCFConfig`;

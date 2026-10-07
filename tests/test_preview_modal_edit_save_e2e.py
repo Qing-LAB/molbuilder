@@ -1,19 +1,11 @@
 """End-to-end Playwright tests for the projects sidebar's
 View/Preview modal — view → edit → save with mtime-based safe
-overwrite (task #302, 2026-06-09).
+overwrite (task #302, 2026-06-09), through /api/files/write and its
+``expected_mtime`` conflict detection.
 
-Pre-task-#302 the modal showed file contents read-only with a
-disabled Save button.  The /api/files/write endpoint (with
-``expected_mtime`` for conflict detection) had been shipped for
-months; only the UI wiring was missing.  Pin the new flow
-end-to-end here.
-
-Task #310 (2026-06-09) replaced the <pre>+<textarea> pair with a
-single CodeMirror 5 instance — virtual scroll caps DOM memory
-for large files, search + jump-to-line addons handle find /
-Go-to-line.  The tests drive CM via the test handle exposed on
-``elModal.__molbuilder_test_cm`` so they don't depend on CM's
-internal DOM.
+The editor is a single CodeMirror 5 instance.  The tests drive CM via the
+test handle exposed on ``elModal.__molbuilder_test_cm`` so they don't depend
+on CM's internal DOM.
 """
 from __future__ import annotations
 
@@ -233,9 +225,8 @@ def test_preview_modal_save_handles_mtime_conflict(
     # Simulate an out-of-band write: the file gets a NEW mtime
     # before the user clicks Save.  Set the mtime explicitly via
     # os.utime so the test doesn't depend on filesystem mtime
-    # resolution (the previous time.sleep(1.1) burned ~1s per run
-    # for no contract value — the contract is "different mtime,"
-    # not "mtime distinguishable to the second").
+    # resolution — the contract is "different mtime," not "mtime
+    # distinguishable to the second".
     import os as _os
     old_mtime = target.stat().st_mtime
     target.write_text("someone else's edit\n")
@@ -254,15 +245,15 @@ def test_preview_modal_save_handles_mtime_conflict(
 
 def test_preview_modal_disables_edit_for_large_files(
         page, flask_server, tmp_path, monkeypatch):
-    """Files past the EDIT_MAX_BYTES cap (32 MB) load in
+    """Files past the VIEW_ONLY_BYTES cap (1 MB) load in
     paginated VIEW mode — bytes stream in 256 KB chunks via
     /api/files/read_range and Edit is disabled with a "use
     external editor" hint.  Pin both halves so a future refactor
     that drops the size check (or silently re-enables Edit on a
     too-big file) surfaces.
 
-    The cap is in the JS — the test exercises a file built just
-    over the cap so the paginated path fires.  The fixture writes
+    The cap is in the JS — the test exercises a file built over
+    the cap so the paginated path fires.  The fixture writes
     33 MB of 'A' so the file's UTF-8 size matches the byte size
     exactly + the chunked load completes quickly."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)

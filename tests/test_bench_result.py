@@ -13,20 +13,6 @@ from molbuilder.bench.result import (
     compare_asked_to_ran,
     parse_effective_run,
 )
-# The wrapper's own instruments are registered parsers since 2026-09-04
-# (`parse.md` § 5c); the logic is unchanged, only its address moved.
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 10 tests here parsed timing logs, monitor lines, utilisation
-# rows, wrapper logs, SIESTA lines or sacct text typed by hand (`process/testing.md` § 6).
-#
-# Retired 2026-10-06 (MEMORY gate 5: a failing test fed a hand-built record
-# is retired, never updated): three tests hand-built `BenchPoint`s -- one in
-# a knob vocabulary (`gpus`, `ranks_per_gpu`, `ranks`) no trial writes --
-# and pinned `choose_winner`'s `{}`, which now states why there is no
-# winner (`project-layout.md` § 2.3).  The no-winner sentence is read down
-# the road by `test_prep_bench_fold.py::test_a_verdictless_summarize_prints_no_report`.
 
 
 # --------------------------------------------------------------------- #
@@ -57,20 +43,10 @@ def test_choose_winner_fastest_completed():
 
 
 def test_a_sweep_proposes_no_wall_and_no_memory():
-    """Replaces `test_recommend_from_winner_peak_rss` and
-    `test_recommend_mem_uses_true_ceil` (deleted 2026-08-24, user).
-
-    Those pinned `recommend_resources`, which derived
-    ``mem_gb = peak RSS x 1.15`` and
-    ``time = s/iter x prod_iters(200) x 1.5``.  The safety factors and the
-    production iteration count were chosen by nobody -- the last of them a
-    default in the function's own signature -- and `summarize` wrote both
-    into `run-config.toml`, from which `prep` folded them into an allocation
-    and `sbatch` received them.  That is the mechanism the estimation purge
-    was ordered to end; it survived in the one path the purge missed.
-
-    What a sweep proposes now is what it MEASURED.  The wall and the memory
-    are the person's to state (`execution/submission.md` S1, S2).
+    """What a sweep proposes is what it MEASURED (user, 2026-08-24) -- never
+    a wall or a memory sized by safety factors and an iteration count chosen
+    by nobody.  The wall and the memory are the person's to state
+    (`execution/submission.md` S1, S2).
     """
     import molbuilder.bench.result as _r
     assert not hasattr(_r, "recommend_resources"), (
@@ -107,12 +83,8 @@ def test_from_dict_rejects_major_mismatch():
 
 
 def test_choice_survives_a_json_round_trip_for_the_offer():
-    """RETIRED 2026-08-12: `adapter.format_run` no longer exists -- a
-    verdict reaches production prep through `run-config.toml` (written
-    by summarize, applied by `_apply_run_config`; pinned end-to-end in
-    test_prep_bench_fold).  What
-    THIS file still owns is the artifact: the `choice` written here must
-    carry the knobs that offer reads back.
+    """The artifact: the `choice` written here must carry the knobs that
+    the offer reads back, through a JSON round trip.
     """
     import json
     res = build_bench_result(_pts())
@@ -125,10 +97,7 @@ def test_choice_survives_a_json_round_trip_for_the_offer():
 #  What the trial ACTUALLY ran -- the readback + the comparison          #
 # --------------------------------------------------------------------- #
 #
-# Restores, on the current design, the check the deleted legacy bench
-# module carried as `parse_point_out`'s effective_np / effective_omp /
-# effective_bs / effective_diag.  Without it a benchmark records the
-# settings it ASKED for as though they were the measurement, and a silent
+# Without this check a benchmark records the settings it ASKED for as though they were the measurement, and a silent
 # fallback (ELPA -> CPU solver, a launcher handing back fewer ranks)
 # competes in the ranking under a label describing a run that never
 # happened.

@@ -6,9 +6,7 @@ builds on (`engines/vibration.md` § 5.2a, W38 F9).
 **Module:** L2 (jobset).  ONE answer, asked by `prep` before it writes a stage
 -- the default, or what a run named by ``--from`` is -- and by `status` for the
 stage it names next, so the two never say different things about the same run.
-`status` answered by a rule of its own until the W37 review found it telling a
-person a stage set to start clean would continue, and naming nothing on the
-flat layout, where the next stage continues all the same.  Reads the folder; writes
+Reads the folder; writes
 nothing; raises nothing the person can fix -- a refusal is an answer, which
 `prep` turns into its own error and `status` prints; a bug raises.
 """
@@ -119,15 +117,12 @@ def usable(state: Optional[str]) -> bool:
     default of every hand-over -- a continuing stage, the frequency stage's
     geometry, a transport rung's inputs; a run named with ``--from`` is
     taken as said, and a structure stated relaxed needs no run, so neither
-    asks it.  *(It read the exit code alone until 2026-10-06: a run whose
-    output says its engine stopped was built on while `status` called it
-    failed.  A frequency stage and a transport rung took a run that
-    concluded with an error until 2026-10-03; user: "yes, for #1".)*"""
+    asks it."""
     return state == "finished"
 
 
 def read_run(base: Path, task, stage: str, attempt: Path,
-             container: Path, *, verdict: bool = True
+             *, verdict: bool = True
              ) -> Tuple[Optional[str], Optional[str], Optional[bool],
                         Optional[str]]:
     """``(concluded, state, converged, detail)`` of one run of ``stage``
@@ -136,27 +131,32 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     ``None`` when it has not ended on its own), its state through the one
     door (`parse.dirs.run_status`) and its relaxation's verdict
     (`parse.contract.relaxation_of`), read from the run's own files in
-    either shape, the run door's (`runs.run_of`): its progress log --
-    where a PySCF run writes its steps, which its stdout cannot stand in
-    for -- then its engine output at the run's index.  ``verdict=False``
+    either shape, the run door's (`runs.run_of`): its engine output at the
+    run's index, then its progress log -- where a PySCF run writes its
+    steps, which its stdout cannot stand in for.  The run is the newest one
+    launched, counted on the launch records.  ``verdict=False``
     skips the relaxation's parse -- a list of runs needs each one's
     conclusion, not a parse of each output."""
     from ..parse.contract import relaxation_of
     from ..parse.dirs import run_status
-    from ..paths import Shape
-    from ..runfiles import stem as rf_stem
+    from ..runfiles import RunNames, latest_run
     from ..runs import run_of
-    from ..runrecord import ending, launch_record
+    from ..runrecord import LaunchRecordError, ending, launch_record
     from .materialize import stage_home
     token = stage_home(base, task, stage).token
-    stem = rf_stem(task.label, token)
-    sh = Shape.named(task.shape)
-    concluded = ending(attempt, stem).line
+    names = RunNames.of(task.label, token, task.shape)
+    concluded = ending(attempt, names.stem).line
     try:
-        launch = (launch_record(attempt) if sh.keeps_attempts_as_directories
-                  else launch_record(container, basename=stem))
-        st = run_status(attempt, stem, launch=launch)
+        # THE RUN'S LAUNCH RECORD, in the folder it ran in, named by its
+        # stage's names -- an attempt's `run.json`, a flat stage's newest
+        # run's own (`runrecord.launch_record`).
+        launch = launch_record(attempt, names)
+        st = run_status(attempt, names.stem, launch=launch)
         state, detail = st.state, st.detail
+    except LaunchRecordError as e:
+        # A record that does not read is said, never taken for a run that
+        # stopped (`runrecord.launch_record`).
+        state, detail = "unknown", str(e)
     except Exception:                                    # noqa: BLE001
         state = detail = None
     rec = None
@@ -168,9 +168,16 @@ def read_run(base: Path, task, stage: str, attempt: Path,
         # writes into and a PySCF run's output no parser reads.  The
         # force-constant stage reads its relax run's record from that same
         # output (`prep._vibration_stage_geometry`), so the line and the deck
-        # say one verdict (the progress log was read first until 2026-10-05).
+        # say one verdict.  Where a stage's runs share the folder, the run
+        # is the newest launched -- the one whose record was read above.
         _run = run_of(attempt, stage=token)
-        paths = ([_run.stdout, _run.file(".molwatch.log")]
+        if _run is not None and names.numbered(".run.json"):
+            _run = dataclasses.replace(_run, run=latest_run(
+                attempt, task.label, stage=token, role=".run.json"))
+        paths = ([_run.stdout,
+                  _run.file(".molwatch.log",
+                            _run.run if names.numbered(".molwatch.log")
+                            else None)]
                  if _run is not None else [])
         for path in (q for q in paths if q is not None):
             try:
@@ -208,9 +215,7 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
 
     A force-constant stage with no `relax` before it builds on nothing: the
     structure as given, when it is stated relaxed -- else refused, whatever
-    was asked (`engines/vibration.md` § 5.2a's table; it was refused only at
-    prep's step 4b until 2026-10-05, so `status` offered the prep that
-    refused).
+    was asked (`engines/vibration.md` § 5.2a's table).
 
     ``template_text`` is the template as the caller read it -- prep's, read
     once (`script-preparation.md` § 3.0); with none it is read here.
@@ -235,12 +240,11 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
         return None, None
     if from_attempt:
         # A RUN NAMED is taken as said, for any kind -- what it was is
-        # reported and recorded, a linked stage's as much as any (W52: a
-        # linked stage's `--from` was copied and neither said nor ledgered).
+        # reported and recorded, a linked stage's as much as any.
         attempt = base / from_attempt
         named = command_stage(Path(from_attempt).parts[0])
         concluded, state, converged, _ = read_run(
-            base, task, named, attempt, attempt.parent, verdict=verdict)
+            base, task, named, attempt, verdict=verdict)
         return Continuation(stage=named, source=str(Path(from_attempt)),
                             by_default=False, concluded=concluded, state=state,
                             converged=converged,
@@ -253,10 +257,8 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
                            linked=linked, bench=bench)
     except _unreadable() as exc:
         # RAISES NOTHING THE PERSON CAN FIX, as this module promises: a
-        # template prep would refuse is a refusal here too, said -- `status`
-        # printed a traceback and the Results tab lost its whole ladder over
-        # it (W52).  A `TypeError` is a bug, and looks like one (it was
-        # caught with the rest until 2026-10-05).
+        # template prep would refuse is a refusal here too, said.  A
+        # `TypeError` is a bug, and looks like one.
         return None, (f"what `{stage}` continues from cannot be read: "
                       f"{exc}")
 
@@ -293,11 +295,7 @@ def unrelaxed_refusal(task, stage: str, *, stated: bool) -> Optional[str]:
 def _cannot_be_named(base: Path, task, stage: str, from_attempt,
                      cold: bool) -> Optional[str]:
     """Why ``--from`` / ``--cold`` cannot be taken here -- said BEFORE prep
-    writes anything (W52: each was refused only after the five steps had
-    rendered, one of them after an earlier carry had been undone) -- or
-    ``None``.  Both doors ask through this: the browser's prep route refused
-    a path out of the calculation, and `--from` with `--cold`, on its own,
-    while the terminal took both."""
+    writes anything -- or ``None``.  Both doors ask through this."""
     if not (from_attempt or cold):
         return None
     if from_attempt and cold:
@@ -317,11 +315,7 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
             if _independent(task) else "")
     if getattr(task, "calculation", None) == "transport":
         # A TRANSPORT RUNG'S INPUTS ARE ITS KIND'S: gathered from the rungs
-        # upstream (`prep.gather_sources`), never named.  `--from` was taken
-        # until 2026-10-05, naming another rung's run, and its carry and the
-        # gather then wrote into one attempt; the same rung's earlier
-        # attempt it was meant for is never there at prep -- a prepped rung
-        # is not prepped again.
+        # upstream (`prep.gather_sources`), never named.
         return ("--from / --cold name what a stage continues from; a "
                 "transport rung takes its inputs from the rungs upstream, "
                 "gathered by its kind (engines/transport.md § 6.1), and is "
@@ -331,7 +325,7 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
         # A LINKED KIND'S FIRST RUNG -- a vibration's `relax`, PySCF's one
         # rung -- builds on the calculation's structure; a run of another
         # stage is not its input (a `freq` run's `.XV` is a displaced
-        # geometry).  Taken as said until 2026-10-05.
+        # geometry).
         return (f"--from {from_attempt!r}: `{stage}` builds on the "
                 f"calculation's structure, its kind's first rung -- no run "
                 f"of another stage is its input (engines/vibration.md "
@@ -434,11 +428,10 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
             return None, (f"{lead}, which has not run yet.  Run it "
                           f"first --\n{run_prev}\n{clean}{rule}")
         attempt, source = base, None
-        # THE RUN BY ITS NAME, which every file of it carries -- what the
-        # line says and the stage's `.continued-from` records, one answer
-        # (`prep._flat_continued_from` asked again until 2026-10-05).
+        # THE RUN BY ITS NAME, which every file of it carries -- the newest
+        # launched, counted on the launch records, as its state is read.
         from ..runfiles import latest_run, run_name
-        n = latest_run(base, task.label, stage=token)
+        n = latest_run(base, task.label, stage=token, role=".run.json")
         run = run_name(task.label, token, n) if n is not None else None
     else:
         latest = latest_attempt(container) if container.is_dir() else None
@@ -447,7 +440,7 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
                           f"first --\n{run_prev}\n{clean}{rule}")
         attempt, source = latest, str(latest.relative_to(base))
     concluded, state, converged, detail = read_run(
-        base, task, prev, attempt, container, verdict=verdict)
+        base, task, prev, attempt, verdict=verdict)
     if usable(state):
         return Continuation(stage=prev, source=source, by_default=True,
                             concluded=concluded, state=state,
@@ -469,7 +462,7 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
         for n in reversed(attempts_in(container)):
             a = _adir(container, n)
             if a != attempt and usable(read_run(
-                    base, task, prev, a, container, verdict=False)[1]):
+                    base, task, prev, a, verdict=False)[1]):
                 other = str(a.relative_to(base))
                 break
     alt = (f"or continue from an earlier run of `{prev}` that finished --\n"
@@ -489,9 +482,7 @@ def no_relaunch(takes_nothing: bool, *, base) -> str:
     from .commands import rollback
     # NOTHING TO TAKE has two causes, and the job cannot tell them apart:
     # a stage set `restart: clean`, or a kind that declares no restart
-    # files (a transport lead, the transmission) -- so both are named
-    # (this named `restart: clean` alone until 2026-10-05, a setting a
-    # transport rung cannot have).
+    # files (a transport lead, the transmission) -- so both are named.
     why = ("it takes nothing from a run -- it is set `restart: clean`, or "
            "its kind declares no restart files" if takes_nothing
            else "a rerun of its kind starts over (its restart-file list's "
@@ -525,12 +516,12 @@ def relaunch(base, task, job) -> Tuple[Optional[Continuation], Optional[str]]:
         if latest is None:
             return None, None                        # never launched
         concluded, state, converged, _ = read_run(base, task, stage,
-                                                  latest, home.dir)
+                                                  latest)
         return Continuation(stage=stage, source=str(latest.relative_to(base)),
                             by_default=True, concluded=concluded, state=state,
                             converged=converged, own=True), None
-    n = latest_run(base, task.label, stage=home.token)
-    concluded, state, converged, _ = read_run(base, task, stage, base, base)
+    n = latest_run(base, task.label, stage=home.token, role=".run.json")
+    concluded, state, converged, _ = read_run(base, task, stage, base)
     return Continuation(stage=stage, source=None, by_default=True,
                         concluded=concluded, state=state, converged=converged,
                         own=True,
@@ -562,11 +553,10 @@ def state_remedy(concluded: Optional[str], state: Optional[str],
     type (`job-system.md` § 5.3) -- the hand-over's default and a transport
     rung's gather say it alike.  A run that ended with an error, or stopped,
     is LAUNCHED again: a prepped stage is not prepped again
-    (`job-system.md` § 5.0; its re-prep was offered until 2026-10-02) --
+    (`job-system.md` § 5.0) --
     unless it is not launched again either (``refused``,
     :func:`not_launched_again`), when the way back is its rollback, said
-    as `status` and `launch` say it ("Launch it again" was said of every
-    stage until 2026-10-05, launch then refusing it)."""
+    as `status` and `launch` say it."""
     again = (f"It is not launched again: {refused}" if refused else
              f"Launch it again --\n{launch_block}")
     # FAILED, IN THE STATUS DOOR'S WORDS -- why, as `status` says it: a
@@ -689,8 +679,7 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
     if force_constant_stage(task, stage) and relax_stage_of(task) is None:
         # NO `relax` TO BUILD ON: the structure as given when it is stated
         # relaxed -- nothing to choose -- else the refusal prep gives, here
-        # before anything is written (`engines/vibration.md` § 5.2a; the card
-        # said nothing until 2026-10-05).
+        # before anything is written (`engines/vibration.md` § 5.2a).
         _got, why = continuation_answer(base, task, stage, verdict=False)
         return ({"from_stage": None, "linked": True, "default": None,
                  "refused": why, "runs": [], "cold": False}
@@ -707,8 +696,7 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
         for n in (reversed(attempts_in(container)) if container.is_dir()
                   else ()):
             a = _adir(container, n)
-            c, s, _v, _d = read_run(base, task, prev, a, container,
-                                    verdict=False)
+            c, s, _v, _d = read_run(base, task, prev, a, verdict=False)
             runs.append({"source": str(a.relative_to(base)),
                          "what": _what_it_is(c, s)})
     return {"from_stage": prev,

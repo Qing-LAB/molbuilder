@@ -1,13 +1,13 @@
 /* molbuilder Modify tab -- op controls + state-timeline, NO structure data of its own.
  *
- * Post-migration (Track B + the state.* rip-out): the concealed MolView module owns the
+ * The MolView module owns the
  * viewer, the render loop, the selection panel, AND the structure itself.
  * This file is handed that viewer and holds ONLY:
  *
  *   * the edit-op controls -- Atom (Delete, Add atom), Transform (Translate, Center,
  *     Rotate, Orient).  Each POSTs op-PARAMS via
  *     ``molview.data.applyOp(op, args)``; the MODULE builds the structure body from its own
- *     data (data-model._structureBody) and applies the response atomically.  This file
+ *     data and applies the response atomically.  This file
  *     never sends or holds structure geometry/metadata.
  *   * the state timeline -- "Save state" (``data.save(1)``) / "Retract" (``data.load(-1)``)
  *     and the reload-restore (``data.load(0)``).
@@ -39,9 +39,7 @@ const displayNumber = (index) => index + 1;
  *
  * `postOp` below owns four things no panel should own twice: the in-flight
  * lock, the edit-status line, the selection refresh and the state-timeline
- * refresh.  The Slab panel needs all four -- it had none, so a refused slab
- * and a built one looked identical and a second click during a slow build did
- * nothing without saying so.
+ * refresh.  The Slab panel needs all four.
  *
  * It is created inside `init` because it closes over this page's state, so the
  * door is published here once init has run.  One Modify page per document, so
@@ -63,9 +61,8 @@ export function init(viewer) {
     // Transient UI state ONLY -- the in-flight op lock.  There is NO local structure
     // mirror: every geometry/metadata read goes LIVE through the unified molview.data API
     // (getStructure / getElements / getCoordinates), so the Modify tab holds zero copies of
-    // the structure and can never drift from the single source (the residue-across-ops /
-    // the None>None class of bug).  The op-REQUEST body is built inside the module
-    // (data-model.applyOp), not here.
+    // the structure and can never drift from the single source.  The op-REQUEST body is
+    // built inside the module (`applyOp`), not here.
     const state = {
         inFlight: false,       // true while an /api/modify/* fetch is open
     };
@@ -105,21 +102,12 @@ export function init(viewer) {
     }
     /* WHICH ATOMS ARE SELECTED — AS A SET, AND NOT IN ANY ORDER.
      *
-     * This said "in the order they were picked" and it was never true: the
-     * store SORTS (`add()` does), and *All* / *Invert* / a filter build one
-     * with no pick order at all.  The sentence is what made `orient` reading
-     * `sel[0]`/`sel[1]` look correct for as long as it did.  Ordered gestures
+     * The store SORTS (`add()` does), and *All* / *Invert* / a filter build
+     * one with no pick order at all.  Ordered gestures
      * read the ruler's track instead — `pickedInOrder()` below.
      *
      * `get()` is the selection door's read and hands back its
-     * own copy (molview.md § 9.5). This used to ask for `getState().indices` —
-     * a key on no snapshot the store has ever produced, so the read was
-     * `undefined.slice()`, a TypeError on the FIRST line of every refresh.
-     *
-     * Both subscriber paths swallow what a subscriber throws, so nothing was
-     * printed and nothing looked wrong: the op buttons, every anchor readout,
-     * Save state, Retract and the timeline indicator simply never updated
-     * again after the page was built. */
+     * own copy (molview.md § 9.5). */
     function selectedIndices() {
         const s = _selStore();
         return s ? s.get() : [];
@@ -144,37 +132,10 @@ export function init(viewer) {
         const d = _data();
         return (d && typeof d.getCoordinates === "function" && d.getCoordinates()) || [];
     }
-    // NOTE (Track B migration): the base render, the explicit-cell wireframe, and the
-    // isolate render controller USED to live here (`_drawBase` / the cell accessors).
-    // They are gone: the concealed MolView module owns the render loop (the render engine
-    // in molview/render-engine/ draws from molview.data), so Modify no longer draws anything itself.
 
-    // --------------------------------------------------------------- //
-    //  The 3Dmol viewer is EMBEDDED BY THE MODULE.                     //
-    //                                                                  //
-    //  Track B migration: Modify no longer calls viewer.embed itself.  //
-    //  selection-bootstrap.js mounts the concealed MolView module into //
-    //  the empty #molview-host; molview.mount BUILDS the card, embeds  //
-    //  the viewer, owns the render loop + measurement, wires          //
-    //  the selection viewer-adapter (click + halos), and puts the      //
-    //  toggles in the View menu.  Camera pivot-recentering that used   //
-    //  to live here (focusMolecule / snapPivotToCenter, raw 3Dmol) is  //
-    //  now the View-menu "Reset view" (handle.refit).  So there is NO  //
-    //  viewer handle, no embed, and no raw-3Dmol reach in this file.   //
-    //  --------------------------------------------------------------- //
-
-    // Axes (and all view chrome) are the module's: the embed's knob bar owns the Axes
-    // toggle; Modify holds no axis-drawing code (the old drawAxes / mol-axes adapter is gone).
-
-    // --------------------------------------------------------------- //
-    //  Atom list + click-to-select are owned by the selection panel    //
-    //  (lib/selection-panel.js).  The legacy left-column atom-list +   //
-    //  ``onAtomListRowClick`` / ``onViewerAtomClick`` handlers were    //
-    //  retired 2026-05-20.  The viewer-adapter (auto-mounted by        //
-    //  modify/selection-bootstrap.js) routes viewer clicks straight    //
-    //  to ``ws.selection.toggle`` and draws the halo overlay; the panel //
-    //  renders the per-atom list with checkboxes.                      //
-    // --------------------------------------------------------------- //
+    // The 3Dmol viewer, the render loop, the view chrome, the atom list and
+    // click-to-select are the MODULE's (molview.mount, from
+    // selection-bootstrap.js): this file has no viewer handle and no raw-3Dmol reach.
 
     // Edit-panel button enablement + per-op anchor readouts.
     //
@@ -184,9 +145,7 @@ export function init(viewer) {
     //   2. ``postOp()`` start/end to flip enablement during in-flight
     //      requests (otherwise a double-click could submit twice).
     //
-    // Selection is read live from the store; the DOM atom-list +
-    // selection-info table this used to populate now live in the
-    // selection panel.
+    // Selection is read live from the store.
     function refreshSelectionUI() {
         const sel    = selectedIndices();
         // The ordered ops read the ruler, so their readouts and their
@@ -253,18 +212,8 @@ export function init(viewer) {
         if (centerBtn) centerBtn.disabled = locked || _nAtoms() === 0;
         const translateBtn = $("translate-apply");
         if (translateBtn) translateBtn.disabled = locked || _nAtoms() === 0;
-
-
-        // (The "Send to Structure optimization" handoff was removed: cross-tab
-        // transfer now goes ONLY through a saved project file -- Save to project
-        // here, then "Load from project" in the target tab.  No in-memory "send
-        // to", so no sessionStorage-vs-disk conflict class to guard.)
     }
 
-    // --------------------------------------------------------------- //
-    //  Load: POST /api/build/load with a multipart file upload.  Same  //
-    //  endpoint the Build tab uses; M2 doesn't need its own route.     //
-    // --------------------------------------------------------------- //
     /** The shared `.status` writer (lib/status.js).
      *
      *  `#status` is the SHARED status line -- page-shell.css owns `.status`
@@ -275,12 +224,6 @@ export function init(viewer) {
     function setStatus(msg, kind = null) {
         window.molbuilder.status.set("status", msg, kind);
     }
-
-    // (loadFile() removed 2026-05-18: was the multipart upload path for the
-    // now-deleted #file-picker.  Structures reach this tab through the
-    // Projects sidebar, which hands MolView a PATH -- the server reads the
-    // `.xyz` and its `.molstruct.json` together.  The text-blob loader that
-    // stood in between went 2026-09-07, unused.)
 
     // Update the section header's #title-readout from the LIVE structure (unified API).
     // The Hill formula() belongs to MolView and comes through its one door -- we
@@ -296,19 +239,10 @@ export function init(viewer) {
         el.textContent = title ? `${title} (${f})` : (s ? f : "");
     }
 
-    // NOTE (state.* rip-out, task #42): the Modify tab used to keep a local ``state.*``
-    // mirror of the structure (xyz / elements / positions / atom_names / …), populated by an
-    // ``applyStructure`` modify-hook and re-read to build op requests.  That parallel copy is
-    // GONE: molview.data is the single source, every read goes through the unified API
-    // (getStructure / getElements / getCoordinates), and the op-REQUEST body is built INSIDE
-    // the module (data-model.applyOp._structureBody).  So there is no currentStateBody and no
-    // applyStructure here anymore -- op results flow store->UI via the molview.data
-    // subscription (refreshSelectionUI / refreshUndoButton / _refreshTitleReadout).
-
-    // ----- State timeline: Save state / Retract (§19.5) ----------- //
+    // ----- State timeline: Save state / Retract ---------------------- //
     //
-    // The old in-memory undo stack is gone.  Undo is now the model's
-    // push-only state timeline (data-model.js §19.5): the user takes
+    // Undo is the model's
+    // push-only state timeline: the user takes
     // an explicit checkpoint with "Save state" (``save(1)``), and
     // "Retract" (``load(-1)``) rolls the WHOLE model back to the
     // previous checkpoint.  ``state_index`` (0 = the loaded anchor)
@@ -319,7 +253,7 @@ export function init(viewer) {
     // Retract is meaningful when there is something to undo: an earlier
     // checkpoint (``state_index`` > 0) OR uncommitted edits since the last
     // checkpoint (``uncommitted``) -- the first Retract reverts uncommitted
-    // edits to the current checkpoint (data-model load(-1)), so it must be
+    // edits to the current checkpoint (load(-1)), so it must be
     // enabled while dirty even at the index-0 anchor.  Save state whenever a
     // structure is loaded.  Named refreshUndoButton for continuity with the
     // render-hook callers.
@@ -342,13 +276,9 @@ export function init(viewer) {
         if (statusEl) {
             /* AN EMPTY CANVAS STILL HAS A TIMELINE, and it stands at #0.
              *
-             * This branch used to blank the readout whenever the canvas held
-             * no atoms, from back when "no atoms" could only mean "nothing
-             * has been loaded, so there is no sequence".  `Clear` made that
-             * false: it ANCHORS a fresh point 0 on the empty canvas
+             * `Clear` ANCHORS a fresh point 0 on the empty canvas
              * (molview.md § 6.7a), so after clearing there is a sequence and
-             * the user is standing at its start -- and the row went blank
-             * instead of saying so (user, 2026-09-02: "time line
+             * the user is standing at its start (user, 2026-09-02: "time line
              * retract/save should be cleared to #0").
              *
              * So the empty case falls through to the branches below, which
@@ -411,11 +341,7 @@ export function init(viewer) {
         }
         try {
             /* READ THE ANSWER.  `load` returns the index it moved to, or null
-             * when it did not move (molview.md § 11.2) -- and this used to
-             * discard it and print success unconditionally, reporting
-             * `d.state_index`: the position it was ALREADY at.  So at the
-             * bottom of the history the user was told a retraction happened
-             * that did not, which is worse than saying nothing.
+             * when it did not move (molview.md § 11.2).
              *
              * `at === null`, not `!at`: index 0 is a real state and a falsy
              * number, so a truthiness test would call the oldest retraction in
@@ -427,12 +353,8 @@ export function init(viewer) {
                  * whose file is gone (a sequence is bounded at its last 30
                  * saves, workspace.md § 9.1), and for a server that did not
                  * answer -- `readState` conflates the last two on purpose
-                 * (workspace.md § 5).  An earlier draft of this branch split on
-                 * `state_index === 0` to say "already at the oldest", which
-                 * reads well and is wrong where it fires: Retract is disabled at
-                 * index 0 unless there are unsaved edits, and in THAT case a
-                 * null means point 0 was pruned, not that we are at the bottom.
-                 * A distinction the code cannot make is not one to print. */
+                 * (workspace.md § 5).  A distinction the code cannot make is
+                 * not one to print. */
                 setEditStatus(
                     "Nothing changed — that earlier state could not be "
                     + "brought back. A tab keeps its last 30 saves.",
@@ -461,13 +383,7 @@ export function init(viewer) {
      * tab drawing them too would put one fact in two places, which is exactly
      * what the plan's carve-out row for `commitPeriodicityOp` forbids.
      *
-     * What stood here was a second renderer with a severity vocabulary of its
-     * own, fed from `applyOp`'s return as `r.issues` — a key `/api/modify/*` has
-     * never answered with (`ok_structure_response` emits `notices`, and nothing
-     * else). So it rendered `undefined` on every op while looking implemented.
-     *
-     * NOT A SILENT DROP, and worth being exact about: the periodicity notices it
-     * was meant to carry ARE shown, by MolView. What reaches nobody today is a
+     * What reaches nobody is a
      * `validate_geometry` finding — a coincident-atom warning, say — because no
      * `/api/modify/*` route runs that validator at all. That is a hole in the
      * findings-delivery contract (task #37), not something a display fixes. */
@@ -477,7 +393,7 @@ export function init(viewer) {
         // UI-level concerns the module deliberately stays out of: the
         // in-flight lock (prevents a double-click double-fire), the
         // edit-status text, and the selection-UI refresh.  The module
-        // (data-model.applyOp) owns the HTTP fetch + atomic state
+        // (`applyOp`) owns the HTTP fetch + atomic state
         // replacement; this wrapper composes them with the button's
         // user-facing affordances.
         if (state.inFlight) return null;
@@ -508,8 +424,7 @@ export function init(viewer) {
             }
             /* THE COUNT IS READ OFF THE STRUCTURE THE DOOR HANDED BACK.
              * `applyOp` answers the structure itself (§ 6.9) — elements and
-             * their metadata — not a report about it. Asking it for `n_atoms`
-             * put "Deleted: undefined atoms." on screen after every op. */
+             * their metadata — not a report about it. */
             setEditStatus(
                 `${label}: ${(r.elements || []).length} atoms.`, "ok");
             return r;
@@ -563,8 +478,7 @@ export function init(viewer) {
         }
         /* THE PAGE'S OWN NOTE GOES TOO.  Which file is on the canvas is the
          * PAGE's state, not the viewer's (molview.md § 6.7), and it is
-         * persisted -- so a `Clear` that left it standing left the page
-         * believing the file it had just discarded was still open. */
+         * persisted. */
         const page = window.molbuilder && window.molbuilder.structurePage;
         if (page && typeof page.markLoadedFrom === "function") {
             page.markLoadedFrom(null);
@@ -586,9 +500,7 @@ export function init(viewer) {
     // Both ops route through the shared /api/modify/translate
     // endpoint; only the body changes (recenter:true vs explicit
     // dx/dy/dz).  After the structure shifts, the module's render
-    // reacts to the molview.data change and re-fits the camera --
-    // there's no separate "re-fit camera" button anymore because
-    // every coordinate-changing op already does the right thing.
+    // reacts to the molview.data change and re-fits the camera.
     async function applyCenter() {
         if (_nAtoms() === 0) {
             setEditStatus("Load a structure first.", "error");
@@ -683,8 +595,7 @@ export function init(viewer) {
         // enforces arity 2 (`orient` declares `ordered: true` and
         // `needsExactly: 2` in the op table); the button is disabled unless
         // exactly two atoms are picked.  Anchor order is the CLICK order, so
-        // first -> second sets the tilt direction in orient_along_axis -- and
-        // it is a click order now, not a sorted set pretending to be one.
+        // first -> second sets the tilt direction in orient_along_axis.
         // We pass the op-params only -- NOT the anchors.
         const axis  = getCheckedRadio("orient-axis") || "z";
         const angle = Number($("orient-angle").value);
@@ -712,12 +623,6 @@ export function init(viewer) {
         );
     }
 
-    // (sendToBuild removed: the "Send to Structure optimization" handoff is gone.
-    // Cross-tab/step transfer goes ONLY through a saved project file -- "Save to
-    // project" here, then "Load from project" in the target tab.  This is the
-    // data-transfer contract: no direct in-memory "send to" between tabs, so the
-    // whole sessionStorage-vs-disk / in-memory-corruption class is eliminated.)
-
     // --------------------------------------------------------------- //
     //  Wire DOM events.                                                //
     // --------------------------------------------------------------- //
@@ -735,10 +640,9 @@ export function init(viewer) {
         if (_store) {
             _store.subscribe(() => refreshSelectionUI());
         }
-        /* ...and the ordered track, for the same reason: Orient and Add atom
-         * are enabled by the PICKS now, so a click that changes them has to
-         * reach these buttons.  Subscribing to the selection alone left them
-         * stale for exactly the gestures that moved to the ruler. */
+        /* ...and the ordered track, for the same reason: Orient is enabled
+         * by the PICKS, so a click that changes them has to
+         * reach these buttons. */
         const _d0 = _data();
         if (_d0 && _d0.measurement && _d0.measurement.subscribe) {
             _d0.measurement.subscribe(() => refreshSelectionUI());
@@ -763,37 +667,11 @@ export function init(viewer) {
             });
         }
         _refreshTitleReadout();   // initial paint (in case a structure is already loaded)
-        // The old "clear undo history on save/load/discard" subscriber
-        // is gone: the state timeline now lives on the model (§19.5),
-        // and ``installMolecule`` re-anchors it (prune + reset to index 0) while
-        // ``save(1)`` prunes any abandoned tail -- the model owns
-        // that lifecycle, so there is no in-viewer stack to clear.
-
-        // (Legacy load-btn + file-picker dead-code block removed
-        // 2026-05-18.  The browser-local file dialog was dropped
-        // when the Projects sidebar took over.  The "Load from
-        // current selection" button was further removed 2026-05-20
-        // when the selection store began auto-loading on sidebar
-        // change.  The sidebar -> selection-bootstrap.js ->
-        // projects.parser.openMolecule -> installMolecule path is the ONLY
-        // supported loader.  Test contract:
-        // tests/test_web_files.py::TestNoLocalFileInputs pins that
-        // #load-btn and #file-picker are NOT in the rendered
-        // template.)
-        // Style / labels / axes wiring removed by #203 -- the embed's
-        // standard knob bar owns those controls now.  The bespoke
-        // #rep / #show-indices / #show-axes HTML inputs are gone from
-        // modify.html.
-        // (The old viewer-bar "Clear selection" button was removed -- it duplicated the
-        // selection panel's own Clear.  Clearing is the panel's job.)
-        // State timeline (§19.5): "Retract" (undo) -> load(-1),
-        // "Save state" -> save(1).  #undo-op keeps its id for
-        // continuity; its label/title in modify.html now read
-        // "Retract".
-        /* THE TRANSFORM TAB NEEDS ORDERED PICKS NOW, so it does what the Cell
+        // State timeline: "Retract" (undo) -> load(-1),
+        // "Save state" -> save(1).  #undo-op is the Retract button.
+        /* THE TRANSFORM TAB NEEDS ORDERED PICKS, so it does what the Cell
          * page does: turns the ruler on when reached, and says so (§ 11.6).
-         * On the TAB CLICK, never at module load -- announcing a mode change
-         * nobody asked for is what greeted a fresh page once. */
+         * On the TAB CLICK, never at module load. */
         const transformTab = document.querySelector('[data-op-tab="transform"]');
         if (transformTab) {
             transformTab.addEventListener("click", () => {
@@ -816,22 +694,13 @@ export function init(viewer) {
         const saveStateBtn = $("save-state");
         if (saveStateBtn) saveStateBtn.addEventListener("click", saveState);
 
-        // Focus-molecule is now the module's View-menu "Reset view" (handle.refit);
-        // Modify no longer owns a #focus-molecule button.
-
-        // Rotation-pivot snap is now wired via opts.interaction.
-        // onDragStart on the embed mount above (search for
-        // "interaction:"); the embed owns the drag-detection
-        // plumbing (threshold + modifier filtering + canvas-scoped
-        // listeners) so we just register the policy here as data.
-
         // Transform subtab: center-at-origin + translate-by-offset.
         const centerBtn = $("center-apply");
         if (centerBtn) centerBtn.addEventListener("click", applyCenter);
         const translateBtn = $("translate-apply");
         if (translateBtn) translateBtn.addEventListener("click", applyTranslate);
 
-        // M3: delete + add-atom op buttons.
+        // Delete + add-atom op buttons.
         const delBtn = $("delete-apply");
         if (delBtn) delBtn.addEventListener("click", applyDelete);
         // Whole-model, and so NOT an Atom-tab op: the button lives in the card
@@ -850,7 +719,7 @@ export function init(viewer) {
         });
         refreshAddDistance();
 
-        // M4: orient + rotate op buttons + live angle readouts.
+        // Orient + rotate op buttons + live angle readouts.
         const orientBtn = $("orient-apply");
         if (orientBtn) orientBtn.addEventListener("click", applyOrient);
         const rotateBtn = $("rotate-apply");
@@ -894,8 +763,7 @@ export function init(viewer) {
             });
         });
 
-        // Init-structure tabs (Sources reorganization 2026-06-08):
-        // same toggle pattern as the op-tabs above but for the
+        // Init-structure tabs: same toggle pattern as the op-tabs above but for the
         // Init structure card's generator/loader bar.  Each tab
         // unhides ONE ``.modify-init-panel`` and hides the rest;
         // ``hidden`` is the canonical "panel not active" state
@@ -916,11 +784,8 @@ export function init(viewer) {
             });
         });
 
-        // Phase 1: persist structure state across tab navigation.
         // Restore here (after every event handler is wired so the
-        // restored UI behaves identically to a freshly-loaded one);
-        // save on pagehide so the user's latest state survives a
-        // click on /, /watch, or anywhere else.
+        // restored UI behaves identically to a freshly-loaded one).
         /* KEPT SO THE OWNER CAN WAIT FOR IT. Whether this page arrived with work
          * already in it decides whether the sidebar's highlighted file may be
          * seeded onto the canvas, and that question has no answer until the
@@ -929,21 +794,20 @@ export function init(viewer) {
     })();
 
     // State persistence across tab navigation is owned by the workspace
-    // module -- server-side state files, one per step (workspace.md § 2;
-    // the browser-storage copy this comment used to cite is gone).  This
+    // module -- server-side state files, one per step (workspace.md § 2).  This
     // module's role is restore-only: `load(0)` adopts the stored sequence
     // and puts back the draft, so the WHOLE model (canvas + selection-store
     // atoms + render) rehydrates coherently.
 
 
     async function restoreModifyState() {
-        // Reload-restore is the §19.5 mount-restore primitive:
-        // ``load(0)`` reloads the current committed state from the
-        // session mirror and applies it to the WHOLE model WITHOUT
-        // re-anchoring the timeline or a network round-trip (unlike
+        // Reload-restore is the mount-restore primitive:
+        // ``load(0)`` reloads the current committed state and applies it
+        // to the WHOLE model WITHOUT
+        // re-anchoring the timeline (unlike
         // ``installMolecule``, the NEW-molecule door).  The data model
-        // reads the persisted snapshot itself, so this module no
-        // longer touches the persistence layer here.  It restores
+        // reads the persisted snapshot itself, so this module does not
+        // touch the persistence layer.  It restores
         // structure + selection + view + dirty + timeline position into molview.data; the
         // module's render + this file's molview.data subscription (refreshSelectionUI /
         // refreshUndoButton / _refreshTitleReadout) update the UI as a side effect.
@@ -972,10 +836,7 @@ export function init(viewer) {
         refreshUndoButton();
         _refreshTitleReadout();
         /* SAY NOTHING WHEN NOTHING CAME BACK. `load(0)` answers the point it put
-         * back, or null when this tag has no saved point at all (§ 11.2). The
-         * message used to be written either way, so a first visit was greeted
-         * with "Restored 0-atom structure (unnamed)" — and that sentence then
-         * sat there through the next file load, describing nothing. */
+         * back, or null when this tag has no saved point at all (§ 11.2). */
         if (at === null || at === undefined) return;
         // Read the restored structure LIVE from molview.data (the single source).
         const s = (d.getStructure && d.getStructure()) || null;
@@ -987,19 +848,6 @@ export function init(viewer) {
     }
 
     /** Clear the restore banner once the structure it describes is gone.
-     *
-     * "Restored 312-atom structure (unnamed)." is true at the moment it is
-     * written and false the moment anything replaces that structure -- yet
-     * it sat there through the next load, so after building ethanol over a
-     * restored 312-atom canvas the header still announced 312 atoms
-     * (browser walk, 2026-08-24).
-     *
-     * The half of this already fixed is recorded at the writer: the message
-     * used to be written even when NOTHING came back, greeting a first
-     * visit with "Restored 0-atom structure" -- and that note says the
-     * sentence "then sat there through the next file load, describing
-     * nothing".  Not writing it when there was nothing to restore fixed the
-     * empty case; the sentence still outlived the structure in every other.
      *
      * A restore announces what came back.  Once you change anything, that
      * is history, so the first data change retires it -- and only the
@@ -1015,13 +863,9 @@ export function init(viewer) {
     // Exposes a small read-only surface for Playwright E2E tests.
     // Production has zero behavior change -- this just attaches a
     // few references to ``window`` that nothing else looks at.
-    // ``getSelected`` reads live from the selection store (the
-    // viewer no longer owns selection state).
+    // ``getSelected`` reads live from the selection store.
     /* THERE IS NO WAY TO THE RAW 3Dmol VIEWER, and that is the contract, not a
-     * gap. `getViewer` used to hand one out through `_viewer3dmol()` on a handle
-     * stashed at `host.__molview_test_handle`. Neither exists: MolView conceals
-     * the embed (molview.md § 4), so nothing stashes that handle and nothing
-     * answers that call. It returned null on every invocation, and no test asked.
+     * gap: MolView conceals the embed (molview.md § 4).
      *
      * What tests need is what the page shows -- atom count, selection,
      * coordinates -- and those are read below through `molview.data`, the one
@@ -1030,41 +874,9 @@ export function init(viewer) {
     window.__molbuilder_modify_test = {
         getSelected: () => selectedIndices(),
         getNAtoms:   () => _nAtoms(),
-        /* `getState` STOOD HERE and is gone (2026-09-07).  It read `s.atoms`
-         * off `getStructure()`, which has never had an `atoms` key, so its
-         * `chain_ids` and `residue_ids` were `[]` for every structure ever
-         * loaded -- a hook that answered a question about identity columns
-         * with a fabricated empty list.  Nothing read it: the only consumer of
-         * this object is `conftest.py`, which takes `getNAtoms` and
-         * `getSelected`.  A test seam that cannot fail is worse than no seam,
-         * because it looks like coverage. */
     };
 
-    // Public loader for the Projects sidebar's onLoad callback (and
-    // any future tab-coordination code).  Reuses /api/build/load's
-    // JSON path so we don't need a browser File object.
     window.molbuilder = window.molbuilder || {};
-    // The viewer + its handle belong to the MODULE now: the module registers the embed handle
-    // with molview.data at mount (data.attachViewHandle), so molview.data.view reads the
-    // module-held handle (§20) -- there is no ``modify.handle`` global anymore.  And (state.*
-    // rip-out) no ``modify.currentStateBody`` / ``modify.applyStructure`` either: the op-request
-    // body is built INSIDE the module (data-model.applyOp._structureBody from molview.data) and
-    // op results flow store -> UI via the molview.data subscription, not a consumer hand-off hook.
-    /* `window.molbuilder.loadStructureText` STOOD HERE and is gone
-     * (2026-09-07).  Its own comment called it the last `window.molbuilder.*`
-     * alias this file publishes and marked it for removal once the E2E hook
-     * was repointed.  The hook had already moved: `conftest.py` reads
-     * `getNAtoms` and `getSelected` and nothing else, and no JS imports or
-     * calls this.  It was the last caller of the load door's TEXT branch
-     * outside the component demo, and it was calling it for nobody. */
-    // (No ``modify.handle`` runtime registration: the module owns the viewer + attaches
-    // the selection adapter to it, so selection-bootstrap no longer waits on it.)
-
-    // (The selection panel's measurement readout reads its coordinates straight
-    // from molview.data.getCoordinates() -- a sibling within MolView -- so this
-    // page no longer decorates a ``positionsProvider`` onto the molview.selection
-    // namespace.  Concealment flows one way: consumers call INTO MolView, they
-    // don't hang members ON it.)
 
     /* HAND THE RESTORE BACK. Everything above is wired synchronously; the one
      * thing still in flight when `init` returns is `load(0)`. The owner awaits

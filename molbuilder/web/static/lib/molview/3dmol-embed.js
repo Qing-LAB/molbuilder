@@ -23,23 +23,17 @@
  * here. Everything this layer holds is either DERIVED (the drawing copy, worked
  * out from the master copy every redraw) or GIVEN to it.
  *
- * ── Carried, not invented ─────────────────────────────────────────────────────
- * Step B of the rebuild. This is the one file NOT written from the document: the
- * bodies below are carried from the frozen tree because they are hard-won
- * knowledge about a library that punishes guessing. The three that cost the most
- * to learn are marked in place — the setStyle mesh cache, the native movie, and
- * the one-GLShape arrow batch.
+ * ── Carried knowledge ─────────────────────────────────────────────────────────
+ * The bodies below hold hard-won knowledge about a library that punishes
+ * guessing; each piece is marked CARRIED KNOWLEDGE in place.
  *
- * Carved OUT and up into the layers above: the card scaffold and info line
- * (mount.js); the knob bar, frame strip, animation interval, export menu,
- * snapshot and GIF encoder (ui.js, § 11.4). The option-normalising layer went
- * with them — this layer is handed finished data and normalises nothing.
- * DELETED outright: the `molbuilder.projects` reach and the `/api/files/*`
- * calls — a file route at the bottom of the stack (§ 6.7), and task #39.
+ * The card scaffold and info line live in mount.js; the knob bar, frame strip,
+ * animation interval, export menu and snapshot in ui.js (§ 11.4). This layer is
+ * handed finished data and normalises nothing.
  *
- * The axis triad went UP as well. Its geometry is worked out from the cell
- * (§ 10.3, "the cell box and the axes are worked out once"), which is maths, and
- * it arrives here as ordinary overlay arrows carrying their own colours.
+ * The axis triad's geometry is worked out from the cell above (§ 10.3, "the
+ * cell box and the axes are worked out once"), and it arrives here as ordinary
+ * overlay arrows carrying their own colours.
  */
 "use strict";
 
@@ -66,23 +60,11 @@ const FORCE_ARROW = {
 // structure; a sphere per picked atom does not.
 const SELECTION_GLOW = { color: "#ffd54a", radius: 0.7, opacity: 0.5 };
 
-/* The measurement glow (molview.md § 11.6).  A SECOND glow, not a second
- * meaning for the first: an atom can be selected AND measured at once, and the
- * two must be tellable apart on sight -- so this one is cool where the
- * selection is warm, and a little wider, so a measured atom that is also
- * selected reads as a ring around the amber rather than replacing it.
- *
- * Cool blue is also what the ruler already is elsewhere: the chip's border
- * takes `--molviewer-color-accent`, the same hue. */
-/* THE MARKS CARRY THE ORDER (user, 2026-08-31: "using arrows to show what is
- * the item that is selected and the direction of that selection ... then the
- * orientation, the order, and everything is already shown in the drawing").
- *
- * A glow said WHICH atoms and nothing else, so an ordered pick and an
- * unordered one looked identical -- which is why `orient` reading a sorted set
- * as though it were a click order went unnoticed for as long as it did.  An
- * arrow per step says which was first, and the picture stops needing the
- * caption.
+/* The measurement marks (molview.md § 11.6).  THE MARKS CARRY THE ORDER (user,
+ * 2026-08-31: "using arrows to show what is the item that is selected and the
+ * direction of that selection ... then the orientation, the order, and
+ * everything is already shown in the drawing").  An arrow per step says which
+ * was first.
  *
  * One pick has no direction to show, so it keeps a mark on the atom itself.
  * Two draw one arrow, three draw two -- first->second, second->third -- which
@@ -110,7 +92,7 @@ const CELL_FALLBACK = { color: "#888", radius: 0.04 };
  * paints of the SAME surface, so they are one declared value — the card's
  * `--molviewer-scene-background` — read here the way the cell wireframe's colour
  * already is. Written as two literals instead, they drift, and the drawing sits
- * as a bright rectangle inside a dark card (which is exactly what shipped).
+ * as a bright rectangle inside a dark card.
  *
  * The literal below is the last resort for a page with no stylesheet at all — a
  * node test — not a second palette. */
@@ -279,7 +261,7 @@ export function create(hostEl, opts) {
 
     /* ── Styles ────────────────────────────────────────────────────────────
      *
-     * CARRIED KNOWLEDGE (1 of 3). 3Dmol caches its representation meshes —
+     * CARRIED KNOWLEDGE. 3Dmol caches its representation meshes —
      * stick cylinders, sphere instances, line segments — at setStyle time.
      * Mutating atom.x afterwards updates the data model but the VISIBLE
      * geometry stays put until something forces a rebuild. Re-applying the
@@ -287,9 +269,7 @@ export function create(hostEl, opts) {
      * rebuilds with the new positions in one pass.
      *
      * This is why § 10.5 puts a coordinate change and a switch flip in
-     * different cost bands, and it is the bug class that shipped through ten
-     * rounds of "animation fixes" before anyone noticed the frames were
-     * advancing in the data and standing still on screen.
+     * different cost bands.
      */
     function applyStyle() {
         try { state.viewer.setStyle({ model: 0 }, styleSpec(state.view)); } catch (_) {}
@@ -304,17 +284,15 @@ export function create(hostEl, opts) {
             } catch (_) {}
         }
         // Unset means the card's ground (SCENE_BACKGROUND), never "leave it as
-        // it was": the library's own default is white, so a skipped call is how
-        // the window came to stay white inside a dark card.
+        // it was": the library's own default is white.
         const bg = state.view.background || sceneBackground(state.hostEl);
         try {
             /* "transparent" is THIS MODULE's word for the background § 1.1
              * offers before you export a picture. The library has no such
              * colour — it takes a colour AND an alpha — so the translation into
              * its vocabulary happens here, the one place allowed to know what it
-             * wants (§ 9.8). Handed the bare word, as it was, the library
-             * resolved it to black and the preset silently painted the window
-             * dark instead of clear. */
+             * wants (§ 9.8). Handed the bare word, the library resolves it
+             * to black. */
             if (bg === "transparent") state.viewer.setBackgroundColor(0x000000, 0);
             else state.viewer.setBackgroundColor(bg);
         } catch (_) {}
@@ -349,13 +327,9 @@ export function create(hostEl, opts) {
      * rebuilds the whole model's geometry, so its cost grows with the
      * structure; a sphere per atom does not.
      *
-     * It replaced two doors that did the same thing and were reached by
-     * nobody -- `markers` and `halos`, identical but for a default opacity,
-     * both hard-coded to `[]` by the only caller since the embed they came
-     * from was retired.  They also took their colour and radius FROM THE
-     * CALLER, which § 6.5 gives to this layer: "this says WHICH atoms, and
-     * what a highlight looks like is a constant owned by the sealed layer."
-     * So the replacement takes a list of atoms and a style THIS FILE owns.
+     * It takes a list of atoms and a style THIS FILE owns (§ 6.5: "this says
+     * WHICH atoms, and what a highlight looks like is a constant owned by the
+     * sealed layer.").
      */
     function redrawGlow(bucket, indices, style) {
         state[bucket] = clear(state[bucket]);
@@ -441,24 +415,13 @@ export function create(hostEl, opts) {
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
-    /* CARRIED KNOWLEDGE (2 of 3), CORRECTED. Arrows are batched — a whole
+    /* CARRIED KNOWLEDGE. Arrows are batched — a whole
      * overlay becomes a few scene objects instead of N, measured ~7x faster per
      * frame (81 arrows: ~70ms -> ~10ms) — but ONE SHAPE PER COLOUR, not one
-     * shape for everything.
-     *
-     * The claim this replaces was that a GLShape preserves per-arrow colour as
-     * vertex colour. It does not, and the library says so when asked: after
-     * appending a green arrow to a shape created from a red one, `shape.color`
-     * is still red and every vertex colour is 0,0,0. A GLShape carries a SINGLE
-     * colour, and `addArrow` only adds geometry to it.
-     *
-     * So batching everything into one shape painted every arrow the colour of
-     * whichever arrow happened to be first. Both things that use this door lost
-     * their meaning: the two axis triads came out monochrome — which is the
-     * whole of what tells the world frame from the cell's (§ 10.3) — and a force
-     * set whose largest arrow was not first lost the gold that marks it (§ 1.1).
-     * Neither could fail a node test: a stand-in records the call, and the
-     * colour is only wrong once something renders it.
+     * shape for everything: after appending a green arrow to a shape created
+     * from a red one, `shape.color` is still red and every vertex colour is
+     * 0,0,0. A GLShape carries a SINGLE colour, and `addArrow` only adds
+     * geometry to it.
      *
      * A stand-in whose addArrow return lacks .addArrow falls back to one shape
      * per arrow, which is correct, just slower.
@@ -513,12 +476,9 @@ export function create(hostEl, opts) {
             } catch (_) { continue; }
             if (a.label) {
                 /* WHERE THE CALLER SAYS, when it says. `labelEnd` is the point
-                 * just past the tip, worked out from the arrow's own base — and
-                 * it was computed and never read, so this scaled `end` by 1.05
-                 * FROM THE WORLD ORIGIN instead. For a triad based at the origin
-                 * the two agree, which is why it looked right; for the cell's
-                 * triad, based at the box's corner, the label drifts off toward
-                 * the origin by a fraction of the whole vector. */
+                 * just past the tip, worked out from the arrow's own base;
+                 * scaling `end` FROM THE WORLD ORIGIN is right only for an
+                 * arrow based at the origin. */
                 const at = (Array.isArray(a.labelEnd) && a.labelEnd.length === 3)
                     ? a.labelEnd
                     : [a.end[0] * 1.05, a.end[1] * 1.05, a.end[2] * 1.05];
@@ -587,7 +547,7 @@ export function create(hostEl, opts) {
         } catch (_) {}
     }
 
-    /* CARRIED KNOWLEDGE (3 of 3). A trajectory is loaded ONCE as a native
+    /* CARRIED KNOWLEDGE. A trajectory is loaded ONCE as a native
      * multi-frame model: the library parses every frame and computes bonds a
      * single time, and setFrame(i) then swaps to a pre-parsed frame with NO
      * setStyle rebuild. Measured ~4ms/frame against ~50ms for the old
@@ -620,13 +580,9 @@ export function create(hostEl, opts) {
         // below stays the same whether there is one frame or four hundred.
         loadFrames(elements, frames) {
             if (state.disposed) return false;
-            /* NO ATOMS IS A STRUCTURE, NOT A NON-EVENT (§ 6.7a).
-             *
-             * This read `if (!elements.length) return false` and returned
-             * before touching the viewer, so deleting the last atom emptied
-             * the panel's list -- which reads the store -- while the drawing
-             * kept the previous model on screen.  Two surfaces disagreeing,
-             * and the one still showing a molecule was the stale one. */
+            /* NO ATOMS IS A STRUCTURE, NOT A NON-EVENT (§ 6.7a): the drawing
+             * empties with the store, so the panel's list and the window
+             * never disagree. */
             const none = !Array.isArray(elements) || !elements.length
                       || !Array.isArray(frames) || !frames.length;
             if (none) {
@@ -703,7 +659,7 @@ export function create(hostEl, opts) {
         // would be the second home that drifts.
         showFrame(i) {
             if (state.disposed) return;
-            /* CARRIED KNOWLEDGE (4 of 4). setFrame is ASYNCHRONOUS — it returns
+            /* CARRIED KNOWLEDGE. setFrame is ASYNCHRONOUS — it returns
              * a promise, and the frame's geometry is not in place until that
              * settles. Painting straight after it paints the swap that has not
              * happened yet, and the window goes EMPTY: frame 0 keeps showing
@@ -717,7 +673,7 @@ export function create(hostEl, opts) {
             try { swap = state.viewer.setFrame(i); } catch (_) { return; }
             const settled = () => {
                 if (state.disposed) return;
-                /* CARRIED KNOWLEDGE (5 of 5).  setFrame swaps the model's
+                /* CARRIED KNOWLEDGE.  setFrame swaps the model's
                  * active atom array for the FRAME'S OWN atom objects (the
                  * library's setFrame: `s.atoms = s.frames[e]`), and
                  * setClickable stamps clickable + callback on the objects
@@ -951,11 +907,10 @@ export function create(hostEl, opts) {
 
             /* RELEASE THE WEBGL CONTEXT, EXPLICITLY.
              *
-             * Emptying the scene is not releasing the device.  This dropped
-             * the models and nulled the reference and stopped there, leaving
-             * the canvas -- and its live GL context -- in the host, to be
-             * freed whenever GC happened to run.  Measured 2026-09-02:
-             * fifteen create/dispose cycles left fifteen canvases alive.
+             * Emptying the scene is not releasing the device: the canvas --
+             * and its live GL context -- stays in the host until GC runs
+             * (measured 2026-09-02: fifteen create/dispose cycles that only
+             * emptied the scene left fifteen canvases alive).
              *
              * A browser grants a bounded number of contexts, so "eventually"
              * is not good enough for a page whose tabs each mount a viewer:

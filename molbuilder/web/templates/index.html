@@ -8,19 +8,18 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
-{# lib/form-schema.css styles the .param-grid / .param-section /
-   .schema-int-triple classes that form-schema.js produces when it
-   renders the SIESTA + PySCF parameter forms below (see
-   #siesta-form-container / #pyscf-form-container).  Linked here
-   AFTER page-shell.css + BEFORE style.css so the layering goes
-   shell → form-schema → per-page.  Missing link was flagged by the
-   2026-05-19 review (forms rendered unstyled). #}
+{# lib/form-schema.css styles the .param-grid / .schema-int-triple
+   classes that form-schema.js produces when it renders the SIESTA +
+   PySCF parameter forms below (see #siesta-form-container /
+   #pyscf-form-container).  Linked here AFTER page-shell.css + BEFORE
+   the page's own sheet so the layering goes shell → form-schema →
+   per-page. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 {# MolView component styles — the Inspect-structure card mounts the fused card. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/molview.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='structure-optimization/style.css') }}">
-{# 3Dmol + the mol-viewer stack now load via _molview_scripts.html at the end of
+{# 3Dmol + the mol-viewer stack load via _molview_scripts.html at the end of
    the body (self-hosted vendor; CSP blocks third-party sources). #}
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    It defines window.molbuilder.runtime which other modules call to
@@ -46,17 +45,15 @@
 <div class="app-content">
 
 <!-- ============================================================ -->
-<!--  Vertical workflow (2026-06-08 cleanup, expanded 2026-06-10): -->
+<!--  Vertical workflow:                                          -->
 <!--    1. Inspect — viewer + "Load from sidebar selection"        -->
 <!--    2. Charge and spin — what each engine form's calculation   -->
 <!--       will carry, and why (the chemistry card; the scientific  -->
 <!--       guard sits BETWEEN inspect and generate — see            -->
 <!--       science/chemistry-correctness.md § 2.5, § 2a)            -->
 <!--    3. Generate input — SIESTA/PySCF form                      -->
-<!--  The legacy Build/Load card (sequence/SMILES build form +     -->
-<!--  local file upload) was retired; the Molbuilder tab is now    -->
-<!--  the canonical structure-creation surface, and the project    -->
-<!--  sidebar is the canonical handoff.                            -->
+<!--  The Molbuilder tab is the canonical structure-creation      -->
+<!--  surface, and the project sidebar is the canonical handoff.   -->
 <!-- ============================================================ -->
 <main class="app-grid">
 
@@ -177,12 +174,11 @@
 
       <!-- Schema-driven form: filled by form-schema.js using the
            SiestaConfig schema from GET /api/build/schema/siesta.
-           Field IDs match the legacy ones (p-system-label,
-           p-mesh-cutoff, etc.) so the compatibility engine and
-           sessionStorage persistence keep working without changes.
+           Field IDs (p-system-label, p-mesh-cutoff, etc.) are what
+           the compatibility engine and sessionStorage persistence
+           key on.
 
-           The legacy static fieldsets used to sit here.  All ~30
-           SiestaConfig form fields now carry "section": metadata
+           All SiestaConfig form fields carry "section": metadata
            in molbuilder/config/siesta.py; the schema endpoint
            streams the layout to the JS renderer below.  Adding or
            removing a field is a one-line dataclass change -- no
@@ -224,7 +220,7 @@
       </p>
 
       <!-- Schema-driven form for PySCF.  Filled by form-schema.js
-           using GET /api/build/schema/pyscf.  All ~30 PySCFConfig
+           using GET /api/build/schema/pyscf.  All PySCFConfig
            form fields are declared in molbuilder/config/pyscf.py
            with "section": metadata; adding / removing a field is a
            one-line dataclass change. -->
@@ -286,9 +282,9 @@
    the selection stack) — the Inspect-structure card mounts the read-only fused
    card.  One shared include instead of a hand-pasted copy (`web/ui-contract.md`
    § 1 — one shared definition, not N copies); the include also provides
-   3Dmol + mol-viewer-embed. #}
+   3Dmol. #}
 {% include "_molview_scripts.html" %}
-{# An ES module now: it exports `render`/`clear` for the modules that import
+{# An ES module: it exports `render`/`clear` for the modules that import
    it (lib/molview) and still publishes `molbuilder.validationFindings` for the
    classic scripts on this page.  `type="module"` defers it, which costs those
    nothing -- all three read the namespace at call time, inside a handler. #}

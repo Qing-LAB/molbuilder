@@ -2,8 +2,8 @@
  * (archive/2026-09-01-transport-design.md § 4.1, P7b).
  *
  * ONE driver: the junction citation.  Picking the relaxed junction's
- * finished attempt (the shared tree-picker; only run-N directories are
- * choosable) sets everything downstream — the viewer loads the CITED
+ * directory (the shared tree-picker; its FILES make it citable) sets
+ * everything downstream — the viewer loads the CITED
  * calculation's own labeled structure, the chemistry analysis runs on
  * it, and Describe writes the FINISHED task.json into the selected
  * folder (no hand-over -- user ruling 2026-08-29: nothing is awaiting,
@@ -27,9 +27,7 @@ const WORKSPACE_TAG = "transport";
     "use strict";
 
     var SCHEMA_URL = "/api/transport/schema";
-    // WHAT EACH RUNG'S TAB HOLDS, per rung (`_saveRung`).  A new key since
-    // K7: the old one kept every field pre-filled with its default, which
-    // restored now would read as the person's own overrides (the K7 review).
+    // WHAT EACH RUNG'S TAB HOLDS, per rung (`_saveRung`).
     var FORM_KEY   = "molbuilder.transport_held";
 
     function _setStatus(msg) {
@@ -123,8 +121,8 @@ const WORKSPACE_TAG = "transport";
         // A SEQUENCE, like the other in-flight guards here: the tabs are
         // drawn again at each citation and each change on the shared panel,
         // and a draw superseded while its answers were in flight touches
-        // nothing -- a late one pointed `_rungHosts` at a tab already gone
-        // from the page, and the Send read that (the K7 review).
+        // nothing -- a late one would point `_rungHosts` at a tab already
+        // gone from the page, and the Send would read that.
         var seq = ++_rungsSeq;
         return root.fetch(SCHEMA_URL + "?surface=rung")
             .then(function (r) { return r.json(); })
@@ -211,19 +209,10 @@ const WORKSPACE_TAG = "transport";
         var saved;
         try { saved = JSON.parse(raw); } catch (_) { return; }
         if (!saved || typeof saved !== "object") return;
-        // BY THE SCHEMA, NOT BY A `name` ATTRIBUTE -- and that is the whole
-        // of this function's history.  It queried `[name="<field>"]`, and
-        // `form-schema.js` sets `id` on every control it builds and `name`
-        // on none of them (makeNumber, makeSelect, makeTriSelect,
-        // makeCheckbox, makeText, makeTriple -- all `id` only).  The two
-        // are not even the same string: the id is `t-transmission-emin-ev`
-        // where the saved key is `transmission_emin_ev`.
-        //
-        // So the restore matched ZERO elements on every load since it was
-        // written, and the module docstring's promise that "a reload
-        // restores the whole describe state" was false: the citation came
-        // back (it rides the workspace note) so the page LOOKED restored,
-        // while every parameter silently sat at its default.
+        // BY THE SCHEMA, NOT BY A `name` ATTRIBUTE: `form-schema.js` sets
+        // `id` on every control it builds and `name` on none of them, and
+        // the id (`t-transmission-emin-ev`) is not the saved key
+        // (`transmission_emin_ev`).
         //
         // `setValues` is the renderer's own door and knows how each field
         // kind is built, which is what stops this drifting again.
@@ -238,7 +227,7 @@ const WORKSPACE_TAG = "transport";
     /* What one rung's tab holds, into its session slot -- field by field
      * (`formSchema.heldValues`): a field that will not read keeps the value
      * it was last saved with, so one half-typed field does not stop every
-     * later edit on the tab being saved (the K7 review). */
+     * later edit on the tab being saved. */
     function _saveRung(container, schema, formSchema, rung) {
         try {
             var kept = null;
@@ -311,7 +300,7 @@ const WORKSPACE_TAG = "transport";
 
     /**
      * Mount the viewer if it is not already up; resolves to the handle or
-     * null.  Split out of _showInMolview (2026-08-19) so the init-restore
+     * null.  Its own function so the init-restore
      * can mount WITHOUT a file -- a reload has no commit to ride on, and a
      * restore that waits for one can never run.
      */
@@ -364,9 +353,7 @@ const WORKSPACE_TAG = "transport";
      * molview.md § 12.3 gives a display tab ("a read-only tab keeps its
      * structure by RELOADING it; the tab owns that, not the viewer").
      * There is no draft branch: on a read-only viewer `load(0)` is a
-     * documented no-op (§ 11.2a), and the Results inspector's own 2026-08-03
-     * bug record shows what a draft-restore on the wrong mode looks like --
-     * "Loaded." over an empty viewer, no request, no error.  The note is
+     * documented no-op (§ 11.2a).  The note is
      * read FIRST and unconditionally, so the citation, the meta line and
      * the send gate come back even if the structure file has moved.
      */
@@ -434,9 +421,7 @@ const WORKSPACE_TAG = "transport";
     // been rendered for a citation -- so never with the previous panel's
     // values -- and again on every edit to the panel's spin fields.  A
     // citation that does not compose leaves nothing to answer, and the card
-    // is hidden.  It changes no setting.  (A "Re-analyze chemistry" button
-    // stood here until 2026-09-28; the card follows the panel now, so there
-    // is nothing to press.)
+    // is hidden.  It changes no setting.
     var _chemistry = null;
 
     /* =================================================================
@@ -532,10 +517,9 @@ const WORKSPACE_TAG = "transport";
              * server's fresh reading -- never from patching what the
              * page already had.
              *
-             * RETURNED, so the outer .catch covers it.  Left dangling
-             * this chain had no handler of its own: a failed re-read
-             * left the button disabled reading "Swapping…" with
-             * nothing said, and only a reload got out of it. */
+             * RETURNED, so the outer .catch covers it: a failed re-read
+             * must not leave the button disabled reading "Swapping…"
+             * with nothing said. */
             return root.fetch("/api/transport/describe_attempt?path="
                 + encodeURIComponent(citation))
                 .then(function (r) { return r.json(); })
@@ -653,9 +637,7 @@ const WORKSPACE_TAG = "transport";
      * shown as what a blank field runs).  A blank is not chosen and not
      * sent; a rung holding nothing sends no bag.  Every value the person
      * gave is sent -- one equal to the catalogue's default, or set on an
-     * item that has none: the bags were each tab's DIFFERENCE from the
-     * default until 2026-09-30, so `scf_must_converge` could never be sent
-     * and an explicit 1 1 1 transmission grid neither (T-F24, T-F1).
+     * item that has none.
      * Throws, naming the field, on a value that will not read. */
     function _bagsByRung() {
         var fs = root.molbuilder && root.molbuilder.formSchema;
@@ -728,7 +710,7 @@ const WORKSPACE_TAG = "transport";
     }
 
     // Each rung's schema and panel host, populated by _fetchAndRender, so
-    // the Describe handler diffs every rung's panel without re-fetching.
+    // the Describe handler reads every rung's panel without re-fetching.
     var _rungSchemas = {};
     var _rungHosts = {};
     var _rungsSeq = 0;             // the newest draw of the rung tabs
@@ -756,9 +738,9 @@ const WORKSPACE_TAG = "transport";
                 t = setTimeout(function () {
                     // A VALUE THAT WILL NOT READ is said beside its field,
                     // and the rungs keep the template the panel last
-                    // described: drawn without it, a hint that had followed
-                    // the person's mesh fell back to the cited one while the
-                    // panel still showed theirs (the K7 review).
+                    // described: drawn without it, a hint that followed the
+                    // person's value would fall back to the cited one while
+                    // the panel still showed theirs.
                     try { _sharedValues(); } catch (_) { return; }
                     _renderRungs();
                 }, 300);

@@ -6,11 +6,7 @@ does the binary launch?", this module answers the next question:
 
 For ``molbuilder-siesta-gpu`` -- the only recipe with a validator today --
 this runs the probes in :data:`_RECIPE_PROBES`, which is the list; each row
-carries a measured runtime hint, and that table is what the CLI prints.  This
-docstring deliberately does not restate the rows: a second copy of the count
-and the wall-clock drifts from the table that actually runs, and the reader who
-believes the copy plans for the number it names and waits for the one the table
-costs -- ~2 minutes promised against ~30 spent.
+carries a measured runtime hint, and that table is what the CLI prints.
 
 **The suite is NOT a smoke check, and the long probes are NOT optional.**
 Four probes are ours and cost ~9 s in total (binary links, CUDA stack, MPS,
@@ -45,7 +41,7 @@ Deliberately not probed:
   * ``deviceQuery``: not in conda CUDA packages, redundant with the CUDA-stack
     probe.
   * CPU-vs-GPU energy cross-check at ~1e-4 eV: too loose (real ELPA2
-    GPU agreement is ~1e-6 eV total; arXiv 2002.10991).  Future deep mode.
+    GPU agreement is ~1e-6 eV total; arXiv 2002.10991).
 """
 from __future__ import annotations
 
@@ -104,11 +100,8 @@ class ProbeResult:
     def tag(self) -> str:
         """PASS / NOTE / FAIL -- the ONE word this probe is reported under.
 
-        There were two rules.  The live line said ``FAIL`` for an advisory
-        probe and the table beneath it said ``[NOTE]`` for the same probe --
-        and the table's own comment forbids exactly that: *"printing FAIL
-        beside a verdict that ignores it is two statements about one fact"*
-        (H11).  It lives on the result, so the two readers cannot disagree.
+        It lives on the result, so the live line and the table beneath it
+        cannot disagree (H11).
         """
         if self.passed:
             return "PASS"
@@ -188,7 +181,7 @@ def _stack_root(env_prefix: str, recipe: Recipe) -> Path:
 
 
 def _probe_binary_links(env_prefix: str, recipe: Recipe) -> ProbeResult:
-    """Probe 1: the conda-forge floor.
+    """The conda-forge floor.
 
     Confirms the installed binaries exist (rpath/lib resolution works)
     and that ``siesta --version`` exits 0.  Anything before this and
@@ -234,7 +227,7 @@ def _probe_binary_links(env_prefix: str, recipe: Recipe) -> ProbeResult:
 
 
 def _probe_siesta_ctest_simple(env_prefix: str, recipe: Recipe) -> ProbeResult:
-    """Probe 2: SIESTA's own ``-L simple`` ctest set.
+    """SIESTA's own ``-L simple`` ctest set.
 
     Runs the upstream tests labelled ``simple`` (currently
     00.BasisSets/default_basis + 01.PseudoPotentials/psf + .../full.psml)
@@ -288,7 +281,7 @@ def _probe_siesta_ctest_simple(env_prefix: str, recipe: Recipe) -> ProbeResult:
 
 
 def _probe_elpa_make_check(env_prefix: str, recipe: Recipe) -> ProbeResult:
-    """Probe 3: ELPA's ``make check``.
+    """ELPA's ``make check``.
 
     Per ELPA INSTALL.md the canonical "shipped ELPA is sane" test.
     Runs the small validators built alongside the library.  Uses
@@ -319,8 +312,7 @@ def _probe_elpa_make_check(env_prefix: str, recipe: Recipe) -> ProbeResult:
     # workstations.  ``MAKEFLAGS=-j1`` in the env defends against
     # the user's shell having ``-jN`` set globally.
     # Timeout 1800 s (30 min): realistic for 300+ validators on a
-    # consumer GPU; the previous 900 s was based on an off-by-2OOM
-    # research-summary estimate.
+    # consumer GPU.
     rc, out = _builds.run_streaming(
         [make, "-j1", "check", "CHECK_LEVEL=fast", "-k"],
         cwd=build_dir, sink=sys.stderr,
@@ -347,7 +339,7 @@ def _probe_elpa_make_check(env_prefix: str, recipe: Recipe) -> ProbeResult:
 
 def _probe_elpa_gpu_codepath(env_prefix: str,
                              recipe: Recipe) -> ProbeResult:
-    """Probe 4: THE one that catches silent CPU fallback.
+    """THE probe that catches silent CPU fallback.
 
     Invokes one GPU-flavoured ELPA validator (1stage real-double on a
     1000x1000 random matrix) and asserts the stderr does NOT contain
@@ -426,14 +418,12 @@ def _probe_elpa_gpu_codepath(env_prefix: str,
 
 
 def _probe_mps_available(env_prefix: str, recipe: Recipe) -> ProbeResult:
-    """Probe 6: NVIDIA MPS daemon binary present on host PATH.
+    """NVIDIA MPS daemon binary present on host PATH.
 
     MPS (Multi-Process Service) is what lets >= 2 MPI ranks share one
-    GPU concurrently for ELPA-GPU diag, since our ELPA tag
-    (2021.11.001) has no NCCL.  Without MPS, multi-rank ELPA-GPU runs
-    serialise on the CUDA driver context and the second rank pays
-    serialisation overhead with no benefit -- which is why the wrapper
-    auto-caps to ``mpi_np=2`` without MPS and to ``mpi_np=4`` with it.
+    GPU concurrently for ELPA-GPU diag.  Without MPS, multi-rank ELPA-GPU
+    runs serialise on the CUDA driver context and the second rank pays
+    serialisation overhead with no benefit.
 
     The ``nvidia-cuda-mps-control`` binary ships with the **NVIDIA
     host driver** (same package as ``nvidia-smi``).  It is NOT a
@@ -445,9 +435,8 @@ def _probe_mps_available(env_prefix: str, recipe: Recipe) -> ProbeResult:
     ``nvidia-cuda-mps`` package).  Detail tells them where to get it.
 
     Soft fail: env still WORKS without MPS -- single-rank ELPA-GPU
-    runs perfectly fine, and multi-rank runs auto-fall-back at the
-    wrapper.  Marked FAIL only to surface it in the report; the
-    wrapper handles the absence gracefully.
+    runs perfectly fine, and the wrapper starts MPS only when it is
+    there.  Reported advisory only to surface it in the report.
     """
     mps_ctrl = shutil.which("nvidia-cuda-mps-control")
     if mps_ctrl is None:
@@ -455,8 +444,8 @@ def _probe_mps_available(env_prefix: str, recipe: Recipe) -> ProbeResult:
             name="mps daemon",
             passed=False, advisory=True,
             detail=("nvidia-cuda-mps-control not found on host PATH "
-                    "-- multi-rank GPU runs will lose concurrency "
-                    "(wrapper auto-caps to mpi_np=2); install via "
+                    "-- multi-rank GPU runs will lose concurrency; "
+                    "install via "
                     "host NVIDIA driver / `nvidia-cuda-mps` distro pkg"),
         )
     # Don't actually START the daemon (it would conflict with the
@@ -487,7 +476,7 @@ def _probe_mps_available(env_prefix: str, recipe: Recipe) -> ProbeResult:
 
 
 def _probe_cuda_stack(env_prefix: str, recipe: Recipe) -> ProbeResult:
-    """Probe 5: CUDA driver + libcuda.so.1 loadability.
+    """CUDA driver + libcuda.so.1 loadability.
 
     SIESTA does NOT print the CUDA toolkit version at startup, so an
     explicit probe is required to catch the "driver too old for
@@ -552,7 +541,7 @@ def _probe_cuda_stack(env_prefix: str, recipe: Recipe) -> ProbeResult:
 # ``(slug, callable, runtime_hint)`` for each probe.
 #
 # * ``slug`` is the stable short identifier shown in the progress
-#   markers ("[2/5] siesta ctest: starting ...").  It must match the
+#   markers.  It must match the
 #   ``name`` field the probe writes into its ``ProbeResult``.
 # * ``runtime_hint`` is the user-facing "~Ns" estimate so the terminal
 #   is never silent for longer than the user expects.  Without these,
@@ -561,8 +550,7 @@ def _probe_cuda_stack(env_prefix: str, recipe: Recipe) -> ProbeResult:
 #
 # Hardcoded rather than a recipe field because only one recipe has a
 # validator today (siesta-gpu) and the probes are tightly coupled to
-# its build-tree layout.  When another recipe needs a validator we'll
-# extract a per-recipe ``validate_argv`` schema.
+# its build-tree layout.
 _RECIPE_PROBES = {
     "molbuilder-siesta-gpu": (
         # Order: cheap probes first so a misconfigured env fails fast

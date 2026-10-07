@@ -25,10 +25,9 @@ the same menu, both gpu-capable and both big enough.  The CPU branch had
 always walked the menu for a row that fits; the GPU branch only ever
 looked at row 0.
 
-The selector itself is gone since 2026-10-02: a job NAMES its queue
-(`architecture.md` § 5.2), and the named queue is admitted on its row or
-refused with every reason (`TestNamingADomainDoesNotSkipTheCheck` below).
-What stays here is that check -- what "fits" means, cores, memory, the GPU
+A job NAMES its queue (`architecture.md` § 5.2), and the named queue is
+admitted on its row or refused with every reason
+(`TestNamingADomainDoesNotSkipTheCheck` below).  What is here is that check -- what "fits" means, cores, memory, the GPU
 column -- read against Sol's menu, verbatim from the ``environment.json``
 copied back off the cluster, so a regression shows against the real rows
 rather than only a simplified stand-in.
@@ -49,9 +48,7 @@ def _row_holds(domain, needed_s):
 #:
 #: Parsed through `Domain.from_row`, the same parser the real record goes
 #: through, rather than hand-built objects: a fixture that skips the parser
-#: cannot catch a column the parser drops.  (Phase 3 made the menu typed --
-#: these were plain dicts until 2026-08-23, which is what let a routing row
-#: carry a key nothing declared.)
+#: cannot catch a column the parser drops.
 _SOL_ROWS = [
     {"name": "debug",     "partition": "htc",       "qos": "debug",
      "max_time": "00:15:00",   "gpu": {"a100": 4}},
@@ -176,13 +173,8 @@ class TestTheRequestStatesCoresOnce:
                  max_mem_gb=256.0, gpu={"a100": 4})
         why = admits(d, Request(ranks=64, cpus_per_task=1, gpus=2,
                                 mem_gb=390.0, walltime_s=2280))
-        # WHICH limits refused, named.  This read
-        #     assert any("min" in w for w in why)      # ...meaning walltime
-        #     assert any("cores" in w for w in why)    # ...meaning cores
-        #     assert any("GB" in w for w in why)       # ...meaning memory
-        # -- three substring sniffs standing in for a question `admits` could
-        # always answer and threw into prose.  Since 2026-09-09 a refusal is
-        # an `Issue` carrying `where`, so the claim is exact and says itself.
+        # WHICH limits refused, named: a refusal is an `Issue` carrying
+        # `where`, so the claim is exact and says itself.
         assert {i.limit for i in why} == {"walltime", "cores", "mem"}
 
 
@@ -211,9 +203,7 @@ class TestNamingADomainDoesNotSkipTheCheck:
 
 class TestTheGpuColumn:
     """`Domain.gpu` maps a gres TYPE to its per-node COUNT, as the probe
-    writes it (`scheduler.md` § 4, *Device*).  (A second, hand-declared
-    shape was read too until 2026-10-02; found 2026-08-23, when admission
-    started reading the column and crashed with `int('a100')` on it.)
+    writes it (`scheduler.md` § 4, *Device*).
     """
 
     def test_an_unreadable_count_is_skipped_not_raised(self):

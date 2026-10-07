@@ -2,10 +2,8 @@
 
 The ONE DOOR for this sidecar: the write side lives here, and the read
 side is re-exported from :mod:`molbuilder.parse.sidecars.spectra`, so a
-caller needs one import for both. Absorbed from the legacy
-``molbuilder.parsers.spectra_json`` (deleted 2026-06-21).  The split is
-what ``model/parse.md`` § 4 requires (provenance:
-`docs/archive/old_docs/protocols/parse-module.md` § 8).
+caller needs one import for both.  The split is what
+``model/parse.md`` § 4 requires.
 
 This module is the canonical home for the spectra-JSON exception
 classes (``SpectraJsonError`` etc.); the read-side re-imports them
@@ -108,8 +106,7 @@ def write_spectra_payload(payload: dict,
     the details (NaN handling, indent, BOM, atomicity).  Every writer
     calls it: :func:`dump_spectra_json` with a results object, the SIESTA
     finish through that, and the PySCF vibration script -- importing it from
-    ``mb_pyscf.pyz`` -- with the payload it builds phase by phase.  (The
-    script carried a copy of this until 2026-10-05.)
+    ``mb_pyscf.pyz`` -- with the payload it builds phase by phase.
 
     Behaviour:
 

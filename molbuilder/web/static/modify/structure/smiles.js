@@ -11,20 +11,17 @@
  *   1. Read the SMILES input; refuse empty.
  *   2. POST {kind: "smiles", input: <smiles>} to /api/build/molecule.
  *      RDKit on the server returns {ok, xyz, n_atoms, ...}.
- *   3. Route the generated XYZ through ``structurePage.loadIntoCanvas``
- *      — that's where the dirty-canvas warning-modal fires (a user
- *      mid-edit doesn't lose work), and on accept it installs + renders
- *      the model through the MolView door (``molview.data.installMolecule``).
+ *   3. Route the generated structure through ``structurePage.loadIntoCanvas``,
+ *      which installs it into an empty viewer or appends it to the open one.
  *
  * Errors / cancellation surface in #smiles-status (network drop,
- * 4xx from RDKit, user-cancel on the warning modal).
+ * 4xx from RDKit).
  *
  * Test seam: ``configure(opts)`` lets tests inject a fake fetch +
- * structurePage + viewer-loader so the Node-only unit tests can
+ * structurePage so the Node-only unit tests can
  * drive the state machine without a real DOM or HTTP roundtrip.
  *
- * Design ref: docs/web/tabs.md (panel 2: SMILES
- * generator) + § 5.4 (warning-modal gates Load + Generate).
+ * Design ref: docs/web/tabs.md § 2 (Creating a structure — the in-gate).
  */
 
 (function (root) {
@@ -34,8 +31,7 @@
 
     // The panel's dependency slots, wired once for all five panels
     // (`panel-deps.js`): `configure` is the test door, `_lazyResolve` the
-    // production re-read that LANDMINE-2 needs.  This was eighty lines of
-    // byte-identical copy across smiles/name/peptide/rna/dna.
+    // production re-read.
     var _deps = root.molbuilder.panelDeps.make(root);
     var configure = _deps.configure;
     var _lazyResolve = _deps.resolve;
@@ -43,7 +39,7 @@
 
     /**
      * Generate a structure from ``smiles`` and route it through the
-     * canvas-state gate.
+     * page's load gate.
      *
      * @param {string} smiles
      * @returns {Promise<{ok: boolean,
@@ -57,7 +53,7 @@
                 ok: false, error: "Enter a SMILES string first." });
         }
         // Lazy-resolve dependencies in case the script-load
-        // order put us above page.js / lib/* (LANDMINE-2 fix).
+        // order put us above page.js / lib/*.
         _lazyResolve();
         if (!_deps.fetch) {
             return Promise.reject(new Error(
@@ -99,19 +95,18 @@
                             || ("HTTP error from " + BUILD_URL),
                 };
             }
-            // Hand off to the canvas-state gate.  This fires the
-            // warning modal if the canvas is dirty.
+            // Hand off to the page's load gate.
             return _deps.structurePage.loadIntoCanvas(
                 { structure: body.structure },
                 { kind: "smiles",
                   generator_input: { smiles: trimmed } }
             ).then(function (gate) {
                 if (!gate.ok) {
-                    // Cancelled — leave the workspace alone.
+                    // Not applied — leave the workspace alone.
                     return { ok: false, cancelled: true };
                 }
-                // loadIntoCanvas routes through molview.data.installMolecule
-                // (the MODEL primitive for generated text; the FILE door is
+                // loadIntoCanvas installs into an empty viewer or appends to
+                // the open structure (the MODEL door; the FILE door is
                 // projects.parser.openMolecule -- not used here).
                 return { ok: true, n_atoms: body.n_atoms,
                          backend_used: body.backend_used };
@@ -129,7 +124,7 @@
             };
         })
         .finally(function () {
-            // Layer A of the recovery contract: the fence releases on
+            // The recovery contract (ui-contract.md § 10): the fence releases on
             // every path -- success, refusal, cancel, network drop.
             if (busy) busy.release();
         });
@@ -156,18 +151,9 @@
         var status = doc.getElementById("smiles-status");
         if (!input || !button) return;
 
-        /* The shared `.status` writer (lib/status.js).
-         *
-         * These seven panels each spelled this out, writing `.muted` with
-         * `is-error` / `is-generating` / `is-loading` -- modifiers NO
-         * stylesheet defined.  So a refused SMILES reported itself in the
-         * same muted grey as a hint, on every builder panel, and had done
-         * since they were written.  `.status` is the app's one severity
-         * surface and its `error` IS red.
-         *
-         * The busy state maps to the neutral line: it had no appearance
-         * before either (its class answered nothing), so this is the same
-         * rendering with one fewer class that means nothing. */
+        /* The shared `.status` writer (lib/status.js): `.status` is the
+         * app's one severity surface and its `error` IS red; the busy state
+         * is the neutral line. */
         function setStatus(msg, kind) {
             window.molbuilder.status.set(
                 status, msg, kind === "error" ? "error" : null);
@@ -192,8 +178,7 @@
                         // OpenBabel fallback (RDKit-first, OpenBabel-fallback).
                         + (r.backend_used ? " · " + r.backend_used : ""));
                 } else if (r.cancelled) {
-                    // User clicked Cancel on the warning modal —
-                    // tell them their workspace is untouched so
+                    // Not applied — tell them their workspace is untouched so
                     // they don't think Generate silently failed.
                     setStatus("Kept existing workspace.");
                 } else {
@@ -232,9 +217,7 @@
                             : undefined,
             structurePage: root.molbuilder.structurePage,
         });
-        // Wire the panel on DOMContentLoaded — the orchestrator's
-        // auto-bind ran via canvas-state + warning-modal loading
-        // first; by now structurePage is ready to receive calls.
+        // Wire the panel on DOMContentLoaded.
         if (root.document) {
             if (root.document.readyState === "loading") {
                 root.document.addEventListener(

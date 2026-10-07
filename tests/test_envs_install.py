@@ -4,8 +4,8 @@ Plan generation + execution shape; no real conda commands.  We use
 the SIESTA recipe (single conda package, no pip, has verify) for the
 create+verify path and a SYNTHETIC recipe (conda + pip + extra step +
 verify) for the all-phases path.  The synthetic recipe is used instead
-of a registry entry because no built-in recipe currently declares an
-``extra_steps`` install phase -- the planner logic under test is
+of a registry entry because no built-in recipe declares an
+``extra_steps`` phase on a default install -- the planner logic under test is
 recipe-shape-driven, so an in-test recipe is the honest fixture.
 """
 from __future__ import annotations
@@ -23,8 +23,7 @@ from molbuilder.envs.recipes import (CondaPackage, PipPackage, Recipe,
 
 
 # A recipe that exercises EVERY install phase: conda create + pip
-# install + an extra step + verify.  Mirrors the shape the retired
-# browser-E2E env used to provide.
+# install + an extra step + verify.
 _ALL_PHASES_RECIPE = Recipe(
     name="synth-install-env",
     category=None,
@@ -42,10 +41,8 @@ def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda"):
     """Bind a synthetic snapshot.
 
     `conda_envs` may be a mapping of ``{name: prefix}`` -- which is what the
-    real snapshot carries since 2026-09-12 -- or a bare sequence of names for
-    the tests that only ask whether an env exists.  Wrapping a mapping in
-    `frozenset` threw the prefixes away, and `_env_prefix` then fell through to
-    a live registry read against a fake manager path.
+    real snapshot carries -- or a bare sequence of names for the tests that
+    only ask whether an env exists.
     """
     envs_arg = (dict(conda_envs) if isinstance(conda_envs, dict)
                 else {name: f"/prefix/{name}" for name in conda_envs})
@@ -112,9 +109,7 @@ def test_plan_raises_without_conda_binary():
 
 # The manager is faked at `diagnostics.subprocess.run`: both readers of the
 # manager's documents -- `conda_env_prefixes` (env list --json) and
-# `manager_info` (info --json) -- live there since 2026-09-13.  Faking
-# `install.subprocess` intercepted only the second, and only until that reader
-# moved.
+# `manager_info` (info --json) -- live there.
 def _stub(returncode=0, stdout="", stderr=""):
     cp = MagicMock()
     cp.returncode = returncode
@@ -139,12 +134,9 @@ def test_run_install_succeeds_when_all_steps_zero(monkeypatch):
     # env list queries) -- return empty JSON so the probe sees "FRESH".
     monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
-    # The verify step now requires the env prefix to be resolvable so
-    # the bypass code path can fire.  Patch ``_env_prefix`` to return
-    # a fake prefix once the env has been "created".  Pre-fix, the
-    # verify step would silently fall back to the buggy ``conda run``
-    # argv when prefix resolution failed -- now it fails loud, which
-    # matches real-world behaviour where _env_prefix is rock-solid.
+    # The verify step requires the env prefix to be resolvable.  Patch
+    # ``_env_prefix`` to return a fake prefix once the env has been
+    # "created".
     monkeypatch.setattr(install, "_env_prefix",
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     # run_streaming carries the step execution: create + the conda set +
@@ -362,9 +354,9 @@ def test_run_install_skips_create_when_env_already_present(monkeypatch, tmp_path
     assert result.succeeded is True
     create = next(s for s in result.steps if s.label == "conda create")
     assert "already exists" in create.output
-    # SKIPPED, and claiming no exit code.  It used to record
-    # `returncode=0`, which made "I did not do this" indistinguishable
-    # from "I did this and it worked" to every reader of the result.
+    # SKIPPED, and claiming no exit code: `returncode=0` would make "I did
+    # not do this" indistinguishable from "I did this and it worked" to every
+    # reader of the result.
     assert create.outcome is install.Outcome.SKIPPED
     assert create.returncode is None
     assert create.outcome.is_success is True
@@ -389,23 +381,14 @@ def test_run_install_blocks_when_env_state_is_broken(monkeypatch, tmp_path):
     `--clean`, instead of letting `conda create` fail cryptically.
 
     THE FAILURE THIS CATCHES.  `probe_env_state` returns BROKEN for a directory
-    that exists without `conda-meta/` (`install.py:401`) -- a half-finished or
-    interrupted install.  `run_install` must stop there (`:650`,
-    `state.needs_cleanup`): if it proceeds, `conda create` refuses with "prefix
+    that exists without `conda-meta/` -- a half-finished or
+    interrupted install.  `run_install` must stop there
+    (`state.needs_cleanup`): if it proceeds, `conda create` refuses with "prefix
     already exists" and the person is left staring at a conda error with no idea
     that `--clean` is the answer.  Worse, nothing downstream runs, so a
     `succeeded is True` here would report a working env that is not one.
 
-    WHY THIS TEST EXISTS AT ALL.  A test of this NAME was deleted on 2026-09-08
-    because its own body comment admitted the mismatch -- *"the fake_run above
-    returns no real dir, so probe_env_state sees FRESH ... this test as written
-    confirms that the FRESH path still works"*.  It had promised a gate the
-    suite did not have, which is worse than an absent test: the audit that read
-    it counted the gate as covered.  This is the gate, actually exercised.
-
-    Contract: `ops/environments.md` -- the state machine and `--clean`;
-    recorded as a coverage gap by the 2026-09-08 audit
-    (`process/test-audit-findings.md` § 3.5).
+    Contract: `ops/environments.md` -- the state machine and `--clean`.
 
     BROKEN needs all three of: registered, directory present, no `conda-meta/`.
     The sibling above serves the same fixture WITH `conda-meta` and gets
@@ -498,7 +481,6 @@ def test_run_install_does_not_skip_create_when_caps_are_stale(monkeypatch):
         "cached caps.conda_envs instead of the live probe -- the bug "
         "is back"
     )
-    # Two streaming calls expected: conda create + verify.
     assert len(calls) >= 1, "create step must actually run"
 
 
@@ -746,8 +728,6 @@ def test_run_install_verify_substring_failure_is_fatal(monkeypatch):
 #
 # Gates the ASU-deployment critical path: ``molbuilder envs bootstrap``
 # iterates builtin_recipes(), runs each install, runs doctor at the end.
-# Audit 2026-06-24 found zero test coverage on this subcommand; this
-# block closes the gap.
 #
 # Strategy: mock at three boundaries (cheap, fast, no real conda):
 #   - molbuilder.envs._cli._install.run_install -> stub returning OK
@@ -868,7 +848,8 @@ def test_the_notebook_env_is_not_installed_by_bootstrap(monkeypatch):
     provided as optional ... install of this should be explicit just like the
     siesta-gpu env"*).
 
-    The sibling test above derives its expectation from `opt_in`, so it holds
+    `test_bootstrap_runs_install_for_each_conda_only_recipe` derives its
+    expectation from `opt_in`, so it holds
     whatever that field says -- delete `opt_in` from the notebook recipe and
     it still passes, while every bootstrapped machine quietly grows a
     notebook server.  This one names the env, and reads the output a person
@@ -1032,16 +1013,6 @@ def test_the_shim_runs_a_readonly_verb_with_no_terminal_and_no_flag():
         f"{combined}")
 
 
-# `_recording_manager` and `_asked` stood here until 2026-09-13: a fake manager
-# binary in a temp directory, recorded as `envs.manager`, with a log file.  It
-# was the right shape for the question it was first asked -- "did the wipe reach
-# a real `conda env remove`" -- while the wipe was a private dispatch.  Once the
-# wipe became a step in the plan, the plan and the result answer the same
-# question with nothing built: `plan_install` is pure, and every step carries an
-# outcome.  A sandbox that size is for testing a system; this is one order in
-# one list.
-
-
 def test_bootstrap_hard_stops_on_a_wrecked_env_like_install_does(monkeypatch):
     """D7 -- `bootstrap` was a LOSSY COPY of `install`'s orchestration.
 
@@ -1116,8 +1087,7 @@ def test_the_clean_plan_removes_the_env_before_it_creates_one():
 
     Read off the PLAN, which runs nothing: `plan_install` is pure, so the order
     is a property of the plan rather than something you have to execute to
-    find out.  The wipe used to be dispatched by the CLI on the side, which is
-    why this could not be asked before -- and why `--dry-run` could not show it.
+    find out.
 
     Two defects met here, one from each direction: `--clean` was refused for
     conda-only recipes (four of the five registered envs, so the remedy
@@ -1143,11 +1113,9 @@ def test_the_clean_run_removes_a_PRESENT_env_and_installs_into_the_new_one(
         monkeypatch):
     """`--clean` against the one state it exists for: an env that IS there.
 
-    Until 2026-09-13 this test faked the env ABSENT, and the removal step
-    carried the CREATE role -- so the runner asked "does it already exist?"
-    first and answered SKIPPED for every present env.  `--clean` never removed
-    anything, and the test could not see it because it never gave the skip a
-    chance to fire (K-L1).
+    Until 2026-09-13 the removal step carried the CREATE role -- so the runner
+    asked "does it already exist?" first and answered SKIPPED for every
+    present env, and `--clean` never removed anything (K-L1).
 
     Three facts, from the sequence the installer itself produces: the removal
     is dispatched, before the create; every step carries an outcome and the
@@ -1171,8 +1139,7 @@ def test_the_clean_run_removes_a_PRESENT_env_and_installs_into_the_new_one(
         # The fake manager's state follows the commands it was given: the env
         # is there until an `env remove` has gone through the door, and gone
         # after.  A probe that answered PRESENT forever would make the create
-        # after the removal look like a resume -- which is what the first
-        # version of this test did.
+        # after the removal look like a resume.
         removed = any(argv[1] == "env" for argv, _p in seen)
         if removed:
             return install.EnvState(name=name, listed_in_registry=False,
@@ -1408,11 +1375,6 @@ def test_an_advisory_probe_is_one_word_and_out_of_the_count(capsys):
     assert "[NOTE] mps" in printed.replace("  ", " ") or "[NOTE]" in printed
 
 
-# `test_the_host_env_name_has_a_persistent_home` retired 2026-10-02: the host
-# env is always `molbuilder` (`configuration.md` § 2.1c) -- `envs.host` is
-# refused by name, a row of `tests/data/molbuilder_json.toml`.
-
-
 def test_every_fix_command_a_recipe_prints_names_a_registered_recipe():
     """A remedy in product code has to be runnable.
 
@@ -1555,9 +1517,7 @@ def test_bootstrap_runs_install_for_each_conda_only_recipe(monkeypatch):
     """Default invocation: install the DEFAULT STACK and nothing a recipe
     says is opt-in.
 
-    The rule is `Recipe.opt_in is None` (2026-09-14).  It was
-    `build_spec is None` -- a proxy that meant "expensive, so ask first" and
-    happened to hold for the only opt-in env there was; the notebook env is
+    The rule is `Recipe.opt_in is None` (2026-09-14): the notebook env is
     cheap, conda-only and still opt-in.  All envs are absent here so
     --skip-existing has nothing to skip."""
     _bind()  # caps with empty conda_envs set
@@ -1580,9 +1540,8 @@ def test_bootstrap_runs_install_for_each_conda_only_recipe(monkeypatch):
         _cli.envs_group, ["bootstrap", "--yes"],
         catch_exceptions=False,
     )
-    # Every conda-only recipe in builtin_recipes() should appear in
-    # install_calls.  Source-build recipes (build_spec != None) must
-    # NOT appear -- they're opt-in via --include-source-builds.
+    # Every recipe in builtin_recipes() that is not opt-in should appear in
+    # install_calls; an opt-in recipe must NOT appear.
     from molbuilder.envs.recipes import builtin_recipes
     expected = [
         r.name for r in builtin_recipes() if r.opt_in is None
@@ -1626,7 +1585,7 @@ def test_bootstrap_include_source_builds_adds_them(monkeypatch):
         catch_exceptions=False,
     )
     from molbuilder.envs.recipes import builtin_recipes
-    # The flag is about SOURCE BUILDS, and since 2026-09-14 that is not the
+    # The flag is about SOURCE BUILDS, and that is not the
     # same set as "everything opt-in": the notebook env is opt-in and is not
     # a source build, so this flag does not reach it.  That is the point of
     # the separation -- `--include-source-builds` opts into a COST, and an
@@ -1759,11 +1718,7 @@ def _make_stub_mamba(bin_dir, *, host_env_present=True,
         the host env (controlled by ``host_env_present``), naming the
         prefix the same way a real manager does -- and listing it from
         then on once ``create`` has run, which is the one behaviour that
-        makes "create, then resolve" work.  The stub used to report the
-        env absent forever, and the shim found a python regardless by
-        deriving one from the manager's own path; with that derivation
-        gone (`installation.md` M2) a stub that does not honour its own
-        create is simply a broken manager.
+        makes "create, then resolve" work (`installation.md` M2).
       * ``mamba config --get channels`` -> ``--add channels '<name>'``
         lines per configured channel (empty tuple = fresh conda).
       * ``mamba info --json`` -> empty, so ``env list`` is the only
@@ -1771,9 +1726,8 @@ def _make_stub_mamba(bin_dir, *, host_env_present=True,
       * ``mamba create`` -> echo ``[stub-create] $*``.
       * The env's python -> echo ``[stub-dispatch] python $*`` and
         ``[stub-env] PYTHONPATH=$PYTHONPATH ...`` so tests can assert
-        what got forwarded.  Replaces the old ``mamba run``-driven
-        dispatch (the shim now bypasses mamba run to dodge the
-        mamba 1.x ``exec --`` bug).
+        what got forwarded.  The shim bypasses ``mamba run`` to dodge
+        the mamba 1.x ``exec --`` bug.
     """
     bin_dir.mkdir(parents=True, exist_ok=True)
     mamba = bin_dir / "mamba"
@@ -2076,10 +2030,9 @@ def test_unknown_subcommand_forwards_to_python(tmp_path):
 
 
 def test_rebuild_elsi_remaps_to_siesta_in_python():
-    """The elsi→siesta alias for ``--rebuild`` on the GPU recipe used
-    to live in the bash wrapper; it moved into ``_cli.cmd_install``
-    so the recipe-shape knowledge lives next to the recipe (single
-    source of truth).  This test pins the alias behavior."""
+    """The elsi→siesta alias for ``--rebuild`` on the GPU recipe lives in
+    ``_cli.cmd_install``, so the recipe-shape knowledge lives next to the
+    recipe (single source of truth).  This test pins the alias behavior."""
     from click.testing import CliRunner
     from molbuilder.envs import _cli
     from molbuilder import diagnostics

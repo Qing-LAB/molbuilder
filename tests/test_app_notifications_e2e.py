@@ -5,10 +5,6 @@ Pins the contract: a STACK the user clears INDIVIDUALLY, dedup by id, and the
 rule is `workspace.md` § 5's ``onPersistError`` -- *"be told when a background
 save fails -- never silent"* -- and § 6's *"tells you when a save to the server
 failed"*; this file pins the surface it arrives on.
-
-(It cited a "workspace-contract § 4.7" until 2026-09-02.  That document was
-retired into `archive/old_docs/protocols/`, and twelve pointers to it survived
-in the code -- all re-aimed the same day.)
 """
 from __future__ import annotations
 

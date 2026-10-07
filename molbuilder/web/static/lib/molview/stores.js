@@ -103,22 +103,6 @@ export function createSelectionStore(handed) {
     // THE SELECTION IS THE TRUTH; click and filter are two EDITORS of it.
     // Switching between them does not touch what is selected.
     let selected = [];
-    /* `pickOrder` WAS HERE, and it is gone (2026-08-31).  A click-order shadow
-     * of `selected`, kept in lock-step on a store whose whole contract is that
-     * order does NOT matter — this is a set, for managing groups and labels,
-     * where "these forty atoms" has no first and no second (§ 9.5).
-     *
-     * It existed for the angle vertex, a MEASUREMENT, and when measuring got
-     * its own track it was left with one reader: the Cell page's axis gesture,
-     * which needs `second − first`.  That gesture now reads the ruler, whose
-     * promise is exactly order and a count limit, so the shadow has no reader
-     * at all (user, 2026-08-31: "having selection and this function
-     * overlapping seems functionally wrong").
-     *
-     * Deleting it is what makes the two tracks actually independent — and the
-     * payoff is elsewhere: with nothing ordered riding on the selection, a
-     * window click under isolate can be let through for MEASURING while still
-     * refused for SELECTING (§ 11.6). */
     let mode = "click";          // which editor is showing — not what is selected
     let rows = [];               // the filter rows being built
     let combine = "and";
@@ -136,11 +120,6 @@ export function createSelectionStore(handed) {
     const set = (next, keepsVerdict) => {
         selected = next;
         /* A VERDICT BELONGS TO THE SELECTION IT PRODUCED (2026-09-07).
-         * `lastApply` was cleared whenever the QUESTION changed -- a row
-         * added, edited, removed, the combinator switched -- and never when
-         * the ANSWER did.  So: apply a filter that matches nothing, then
-         * press All, and the panel read "No atoms matched this filter, so
-         * nothing is selected" beside "N of N selected".
          *
          * Every door here replaces the selection the verdict was about, so
          * every one of them invalidates it.  `applyFilter` is the single
@@ -148,18 +127,9 @@ export function createSelectionStore(handed) {
          * this verdict, and it sets it immediately before this line. */
         if (!keepsVerdict) lastApply = null;
         /* ISOLATE IS A PREFERENCE, AND IT STAYS WHERE YOU PUT IT (user,
-         * 2026-09-07).  A line here turned it OFF whenever the selection
-         * emptied -- "since there would be nothing left to show" -- which
-         * made the button un-press itself: isolate on, press Clear, and the
-         * switch you set was silently gone.
-         *
-         * Nothing left to show is not a reason to forget the setting; it is
-         * a reason to draw everything, which `isolateInEffect` already says
-         * (`render-engine.js`).  Two mechanisms answered one question and
-         * neither covered the other's path -- this one fired only when the
-         * SELECTION changed, the renderer's affects only DRAWING -- so the
-         * 3-D window's click gate, which is neither, read the raw switch and
-         * was wrong.  One answer now, and this is not it. */
+         * 2026-09-07).  Nothing left to show is not a reason to forget the
+         * setting; it is a reason to draw everything, which
+         * `isolateInEffect` says (`render-engine.js`). */
         changed.fire(snapshot());
     };
 
@@ -170,13 +140,7 @@ export function createSelectionStore(handed) {
      * order), which editor is showing, the rows and how they combine, and every
      * switch.
      *
-     * The lesson that shaped it is worth keeping even though its subject is
-     * gone: a click-order shadow was maintained correctly in this store for
-     * months and simply LEFT OUT of the snapshot, so the panel read nothing,
-     * fell back to guessing an angle's vertex from geometry, and § 11.6's rule
-     * was dead end to end while looking implemented. **A fact the store keeps
-     * but does not hand over does not exist.** The shadow itself was retired
-     * on 2026-08-31 — order lives in the measurement track, which promises it.
+     * **A fact the store keeps but does not hand over does not exist.**
      */
     function snapshot() {
         return {
@@ -265,11 +229,11 @@ export function createSelectionStore(handed) {
          *
          * "3-7" is an atom range. It is not an element, not a residue, and not
          * a label — so carrying it across a kind change leaves the row saying
-         * something its new rule cannot mean. It was carried, and the by-label
-         * chooser has to show whatever the row holds (a label deleted from the
-         * structure must stay visible rather than silently becoming the first
-         * option), so the leftover "3-7" appeared in the list of labels as
-         * though somebody had defined one.
+         * something its new rule cannot mean. The by-label chooser has to show
+         * whatever the row holds (a label deleted from the structure must stay
+         * visible rather than silently becoming the first option), so a
+         * leftover "3-7" would appear in the list of labels as though somebody
+         * had defined one.
          *
          * Cleared HERE and not in the panel: the rule is about what a filter row
          * IS, so every caller gets it — a restored session and a test drive the
@@ -313,22 +277,14 @@ export function createSelectionStore(handed) {
             if (!rule) return selected.slice();       // no rows means no filter at all
             const atoms = await handed.resolveFilter(rule);
             if (!Array.isArray(atoms)) return selected.slice();
-            /* WHETHER ISOLATE IS ABOUT TO SWITCH ITSELF OFF, read BEFORE `set`
-             * applies the rule above (line ~127): after it, isolate is already
-             * false and "it was on and turned off" is indistinguishable from
-             * "it was off all along". The panel needs the difference, because a
-             * switch changing without the user touching it is worth a sentence.
-             *
-             * SET AFTER, because `set` fires its own snapshot: recording the
-             * count second would send it out attached to the OLD selection. */
+            /* RECORDED BEFORE `set`, because `set` fires its own snapshot:
+             * recording the verdict second would send it out attached to the
+             * OLD selection. */
             lastApply = {
                 matched: atoms.length,
-                // ISOLATE IS ON BUT NOT IN EFFECT.  This was
-                // `isolateTurnedOff` until 2026-09-07, when the switch
-                // stopped turning itself off: the same test now means "you
-                // asked to hide the unselected and there is nothing
-                // selected", so the whole structure is drawn and the panel
-                // says so rather than reporting a switch that moved.
+                // ISOLATE IS ON BUT NOT IN EFFECT: "you asked to hide the
+                // unselected and there is nothing selected", so the whole
+                // structure is drawn and the panel says so.
                 isolateNotInEffect: !!switches.isolate && atoms.length === 0,
             };
             set(atoms.slice(), true);   // this door owns the verdict above
@@ -456,9 +412,7 @@ function rowToRule(row) {
  *
  * THE ORDER IS THE USER'S CLICK ORDER and it is the answer, not a detail: the
  * vertex of an angle is the atom picked SECOND (§ 11.6).  Because this track is
- * only ever built by clicks, that order always exists -- which is what retires
- * the geometric vertex guess the readout needed when its input was a selection
- * that could arrive from All, Invert or a filter with no trail at all.
+ * only ever built by clicks, that order always exists.
  */
 
 //: Every measurement there is fits in three atoms (§ 11.6).
@@ -491,18 +445,8 @@ export function createMeasurementStore() {
         /* TURNING MEASURING OFF CLEARS THE PICKS (user, 2026-08-31).
          *
          * The toggle IS the measurement session, so leaving it ends the
-         * session.  It kept them until then, on the reasoning that coming back
-         * to a half-finished measurement costs nothing -- but the picks are
-         * not free while they sit there:
-         *
-         *   - the Cell page's pick buttons read the COUNT, so they stayed
-         *     enabled with the ruler off and a title saying "turn measuring
-         *     on", and pressing one staged a row from picks no longer marked
-         *     on the molecule;
-         *   - nothing on screen shows them once the ruler is off, so the state
-         *     that decides what those buttons do is invisible;
-         *   - and it made the mode ambiguous: off-with-picks and off-without
-         *     behaved differently and looked identical.
+         * session: nothing on screen shows the picks once the ruler is off,
+         * while the Cell page's pick buttons read their COUNT.
          *
          * Off means nothing is being measured.  One state, not two. */
         setActive(on) {
@@ -535,13 +479,8 @@ export function createMeasurementStore() {
             fire();
         },
 
-        /* NO `adopt`.  There was one, for restoring a session's picks from the
-         * view-context lane -- and it was the bug: the lane's only guard was an
-         * ATOM COUNT, which two different three-atom molecules pass, so the
-         * readout came back quoting a bond length for atoms nobody had picked.
-         * The picks do not persist at all now (§ 11.6), so there is nothing to
-         * adopt them from, and leaving the door standing would be an invitation
-         * to write that restore again. */
+        /* NO `adopt`: the picks do not persist (§ 11.6), so there is nothing
+         * to adopt them from. */
     };
 }
 

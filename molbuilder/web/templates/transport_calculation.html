@@ -15,8 +15,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/molview.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='transport/style.css') }}">
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
-   Defines window.molbuilder.runtime (register/whenReady).  See
-   protocols/runtime-registry.md. #}
+   Defines window.molbuilder.runtime (register/whenReady). #}
 <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/status.js') }}"></script>
@@ -32,7 +31,7 @@
 <div class="app-content">
 
 <!-- ============================================================ -->
-<!--  The composite's describe surface (transport-design.md 4.1):  -->
+<!--  The composite's describe surface:                           -->
 <!--    1. The junction — cite a finished attempt; viewer follows   -->
 <!--    2. Shared by every rung — the template's one description    -->
 <!--    3. Charge and spin — the junction's, for every rung         -->
@@ -146,9 +145,8 @@
     {#- THE BIAS LEADS, because it is the experiment and it GOVERNS the
         fields under it: at zero bias the whole non-equilibrium half of
         the density contour is inert, and more than one value turns the
-        run into a chain of attempt ladders.  It sat in card 4 beside
-        the Describe button until 2026-09-15, which read as though it
-        were a property of SAVING (`engines/transport.md` 3.4). -#}
+        run into a chain of attempt ladders (`engines/transport.md`
+        3.4). -#}
     <div class="action-row" id="transport-bias-row">
       <label for="transport-bias"><strong>Bias list (V):</strong></label>
       <input id="transport-bias" type="text" value="0.0"

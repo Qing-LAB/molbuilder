@@ -1,16 +1,9 @@
 """The spectra config surface -- defaults and validation metadata.
 
 The config a spectra calculation is described by is `PySCFConfig`,
-seen through the vibration deck's view (`_spectra_cfg`).  A separate
-`SpectraConfig` class carried this surface until 2026-08-22.
+seen through the vibration deck's view (`_spectra_cfg`).
 
-What remains after P3: the dataclass's defaults (the values the
-registry-path validator and the parity reference read) and its
-validation-facing metadata.  The form-schema half of this file retired
-with the /api/build/schema/spectra route -- nothing renders a form from
-this dataclass any more (see the tombstones below), and the class
-itself is a recorded retirement candidate deferred to transport's
-round (it shares the four-engine validator registry).
+Pinned here: its defaults and its validation-facing metadata.
 """
 
 from __future__ import annotations
@@ -24,14 +17,14 @@ from tests.spectra._helpers import _spectra_cfg
 
 
 # --------------------------------------------------------------------- #
-#  the spectra config surface -- defaults, metadata, form-schema shape #
+#  the spectra config surface -- defaults, metadata                    #
 # --------------------------------------------------------------------- #
 
 
 class TestSpectraDefaults:
     """The dataclass instantiates with all-defaults and the values
     match the v1 spec defaults so a user's first-pass run is
-    cheap (es_mode_selection=none) and uses production-defensible
+    cheap (es_mode_selection=skip) and uses production-defensible
     method/basis choices (B3LYP/def2-SVP/D3BJ, grid 4)."""
 
     def test_a_spectra_calculations_science_defaults(self):
@@ -58,10 +51,7 @@ class TestSpectraDefaults:
 
     def test_atom_freeze_list_is_empty_by_default(self):
         """Frozen atoms are INDICES and come from the structure's region
-        store -- empty until the user freezes something.  (Two further
-        lists, by element and by residue name, went with `SpectraConfig`
-        on 2026-08-22: nothing populated them and one unreachable branch
-        read them.)"""
+        store -- empty until the user freezes something."""
         cfg = _spectra_cfg()
         assert cfg.frozen_indices == []
 
@@ -73,31 +63,22 @@ class TestSpectraDefaults:
         assert cfg.es_mode_selection == "skip"
 
     def test_ir_off_v1_reserved(self):
-        """compute_ir is reserved for 1c and ignored in v1."""
+        """IR intensities are off by default."""
         cfg = _spectra_cfg()
         assert cfg.compute_ir is False
 
     def test_displacement_amplitude_production_default(self):
         """0.02 Å keeps ES probes inside the linear-response regime
         (ΔE_orbital ∝ displacement) and well below the threshold
-        where Mills 1972 §2.4 anharmonic mixing becomes meaningful.
-        Lowered from 0.10 → 0.02 on 2026-05-19; see docstring on
-        ``SpectraConfig.displacement_amplitude_ang`` for the
-        trade-off rationale."""
+        where Mills 1972 §2.4 anharmonic mixing becomes meaningful."""
         cfg = _spectra_cfg()
         assert cfg.displacement_amplitude_ang == pytest.approx(0.02)
 
 
 class TestSpectraFieldMetadata:
-    """The metadata that SURVIVED P3 is the validation vocabulary
-    (range / validate / choices / pattern) -- the form keys moved to
+    """The metadata here is the validation vocabulary
+    (range / validate / choices / pattern) -- the form keys live in
     the catalogue with the vibration items."""
-
-    # test_every_sectioned_field_has_label_and_help retired at P3:
-    # the form keys (section/label/help/...) left the dataclass
-    # when the catalogue became the one form source -- only the
-    # VALIDATION keys (range/validate/choices/pattern) remain,
-    # and the two tests below pin exactly those.
 
 
     def test_choices_are_enforced_where_a_user_supplies_one(self, tmp_path):
@@ -105,13 +86,9 @@ class TestSpectraFieldMetadata:
         checked at the DESCRIPTION layer, which is where a user actually
         supplies one.
 
-        The retired `SpectraConfig` enforced this in `__post_init__`,
-        which only ever fired for a caller constructing the class by
-        hand.  The guard that protects a real user reads `task.json`'s
+        The guard that protects a real user reads `task.json`'s
         stage overrides against the catalogue
-        (`validation/task.py::preflight`), and it refuses at ERROR --
-        verified here rather than assumed, because retiring a class that
-        carried a check is exactly when a check goes missing.
+        (`validation/task.py::preflight`), and it refuses at ERROR.
         """
         import json
         from molbuilder.config.pyscf import PySCFConfig
@@ -138,26 +115,10 @@ class TestSpectraFieldMetadata:
             _spectra_cfg(es_mode_selection=v)
 
 
-# TestSpectraConfigSchema retired at P3 with the
-# /api/build/schema/spectra route: nothing renders a form from
-# this dataclass any more -- the catalogue vibration schema is
-# pinned by test_catalogue_form_schema.py per kind.
-
-
 class TestFreqRangeFilter:
-    """archived-spec (docs/archive/old_docs/tabs/spectra/spec.md) § 8.1: the freq_min_cm1 / freq_max_cm1 fields appear
-    in the Electronic-structure section of the form schema and
-    are typed Optional[float].  The Model-2 selector logic that
-    APPLIES the filter lives in selection.py (next commit); this
-    class just pins the dataclass + schema surface."""
+    """The freq_min_cm1 / freq_max_cm1 fields default to no filter."""
 
     def test_default_no_filter(self):
         cfg = _spectra_cfg()
         assert cfg.freq_min_cm1 is None
         assert cfg.freq_max_cm1 is None
-
-    # test_freq_fields_in_es_section + test_freq_fields_render_as_
-    # optional_number retired at P3: form placement and widget kind
-    # are the CATALOGUE's facts now (the freq_min/max_cm1 items
-    # carry calculations = ["vibration"] and optional float typing
-    # there, pinned by test_catalogue_form_schema.py).

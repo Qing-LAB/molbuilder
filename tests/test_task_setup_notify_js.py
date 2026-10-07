@@ -8,9 +8,8 @@ a fact about one machine, and a description travels.
 
 So the card offers two checkboxes and a number, and the file it writes
 carries exactly that.  These tests drive the REAL functions out of
-``task-setup/viewer.js`` under Node, for the reason
-``test_task_setup_cell_readers_js.py`` gives at length: the controller
-cannot be imported without a DOM, so a test that does not run the source
+``task-setup/viewer.js`` under Node: the controller cannot be imported
+without a DOM, so a test that does not run the source
 can only check that names exist — and a stub returning the wrong thing
 passes that.
 """
@@ -46,16 +45,12 @@ def _run(controls: dict, task: dict | None, want: str):
 
     src = VIEWER.read_text()
     fns = "\n\n".join([
-        # `notifyValues` asks it which channels are ticked, so a harness
-        # without it would exercise a different function than the page runs.
         # `notifyValues` asks BOTH selectors, so the harness needs both or
         # it exercises a different function than the page runs.
         _slice(src, "//: ``null`` until the server has answered", "/** Paint one tick per report"),
         _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
-        # `applyNotifyToDoc` calls it, so the harness needs it too: the
-        # writer stopped moving the page on 2026-08-27 and does so through
-        # a helper rather than inline.
+        # `applyNotifyToDoc` calls it, so the harness needs it too.
         _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
         _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
         _slice(src, "function readNotifyFromTask(task)", "/** One line saying"),
@@ -118,8 +113,7 @@ def _controls(scf=False, periodic=False, hours="6", every=True, ticks=None):
 
     ``every`` is the *every channel on the machine that runs it* box, and
     ``ticks`` the per-channel ones -- ``[(name, checked), ...]``.  The default
-    is the state a page opens in, so every test written before channels
-    existed still describes the same card.
+    is the state a page opens in.
     """
     return {
         "ts-notify-scf":      {"checked": scf},
@@ -231,16 +225,12 @@ def test_an_unparseable_document_loses_nothing():
         pytest.skip("node not available")
     src = VIEWER.read_text()
     fns = "\n\n".join([
-        # `notifyValues` asks it which channels are ticked, so a harness
-        # without it would exercise a different function than the page runs.
         # `notifyValues` asks BOTH selectors, so the harness needs both or
         # it exercises a different function than the page runs.
         _slice(src, "//: ``null`` until the server has answered", "/** Paint one tick per report"),
         _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
-        # `applyNotifyToDoc` calls it, so the harness needs it too: the
-        # writer stopped moving the page on 2026-08-27 and does so through
-        # a helper rather than inline.
+        # `applyNotifyToDoc` calls it, so the harness needs it too.
         _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
         _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
     ])
@@ -315,17 +305,6 @@ def test_a_channels_secret_never_reaches_the_description():
     and nothing else.
 
     This plants them and reads the document the real writer produced.
-
-    *Replaces a source grep that could not fail, 2026-09-04.*  It sliced
-    `js[js.index("function channelSelection()") : js.index("function
-    readNotifyFromTask")]` -- and `readNotifyFromTask` is defined EARLIER
-    in the file, so the slice was `js[167161:135331]`, the empty string,
-    and all four `assert leak not in writer` were assertions about `""`.
-    Measured on the shipped file.  The rule held anyway, which is the
-    danger: nothing would have said so if it stopped holding.  A repaired
-    grep would have been worse than none -- `assert "key" not in writer`
-    fails the day someone writes `Object.keys(...)` inside that function,
-    which changes nothing.
     """
     doc = json.loads(_run(
         _controls(scf=True, every=False,

@@ -70,11 +70,9 @@ export function attachUiContext(deps) {
             frame: model.currentFrame(),
             /* The ruler (§ 11.6).  It belongs in THIS lane and in no other:
              * a measurement is looking, not changing, so it is never a state,
-             * never the draft, and never in the file the user saves.  Split
-             * the same way the rest of the payload is — `measuring` is a
-             * standing preference like a switch, `measurement` is atom indices
-             * and therefore only meaningful against the structure they were
-             * picked on (the `match` guard below). */
+             * never the draft, and never in the file the user saves.
+             * `measuring` is a standing preference like a switch; the picks
+             * themselves do not persist (§ 11.6). */
             measuring: model.measurement.getState().active,
         };
         if (!hasTruthLane) out.selection = model.selection.get();
@@ -143,9 +141,7 @@ export function attachUiContext(deps) {
      * synchronously after its settle announces) is carried by `restore`'s
      * own first await: reading the slot suspends, so the caller's
      * synchronous tail always lands first.  Pinned by
-     * test_the_context_applies_after_a_draft_restore_not_under_it — a
-     * second deferral mechanism stood here until the mutation test showed
-     * it guarded nothing. */
+     * test_the_context_applies_after_a_draft_restore_not_under_it. */
     let restoredOnce = false;
     offs.push(model.subscribe(() => {
         if (restoredOnce || !model.getStructure()) return;

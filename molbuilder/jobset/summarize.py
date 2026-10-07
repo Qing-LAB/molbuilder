@@ -1,25 +1,16 @@
 """The sweep's reader — trials' artifacts → ``bench-result.json``.
 
-Moved ``bench/summarize.py`` → ``jobset/summarize.py`` 2026-08-12
-(follow-up to the U-program): everything it reads is the JOB SET's —
-`job-set.json` for discovery, `materialize` for the trial directories,
-the winner's own deck for the mechanism — and its verdict is a report a
-person reads, and writes into `task.json` (nothing applies it: there is no
-second rung, `job-system.md` § 7.1).  A jobset reader living in `bench/` made
-the package boundary lie about the dependency direction.
+Everything it reads is the JOB SET's — `job-set.json` for discovery,
+`materialize` for the trial directories, the winner's own deck for the
+mechanism — and its verdict is a report a person reads, and writes into
+`task.json` (nothing applies it: there is no second rung, `job-system.md`
+§ 7.1).
 
 Serves ``molbuilder jobset summarize bench`` (step 6 u4): discovery keyed
 by ``job-set.json``'s own data, each trial parsed with the pure parsers in
 :mod:`molbuilder.bench.result`, the verdict written as a proposal of
 WHAT WAS MEASURED -- the winning configuration and its knobs.  A wall
-and a memory are NOT proposed: they were derived from a safety factor
-and an assumed iteration count until 2026-08-24 and reached `sbatch`
-through this file (`execution/project-layout.md` § 2.3.2).
-
-The OLD half — ``discover_points``' directory-name regex,
-``summarize_bundle``/``run_summarize`` over the shipped bundle format —
-was DELETED 2026-08-12 (u5) with that lifecycle: the token is an
-identifier, never a parser target (`job-contracts.md` § 6.3).
+and a memory are NOT proposed (`execution/project-layout.md` § 2.3.2).
 """
 
 from __future__ import annotations
@@ -47,14 +38,6 @@ def _read(path: Path, *, head: Optional[int] = None) -> str:
         return ""
 
 
-# `_latest_run_file`, `_wrapper_log` and `_trial_deck` -- a trial's files
-# found by the stem its job set recorded, each role at its OWN newest run
-# index and the session log by its newest stamp -- stood here until
-# 2026-10-04.  A trial's files are its run's, through the run door
-# (`runs.run_of` -> `Run`), every one at the run's one index (plan B11,
-# W56 3b.4).
-
-
 #: How far into a SIESTA ``.out`` the setup lines can sit.  The launch
 #: header (``* Running on N nodes``) is in the first KB, but the parallel
 #: grid and the eigensolver are printed AFTER the basis and pseudopotential
@@ -72,18 +55,13 @@ def deck_value(deck: Path, keyword: str) -> Optional[str]:
     label that matches (``do while ((.not. fdf_locate) .and. ...)``), so
     a deck that names a keyword twice is read with its FIRST value.
 
-    One reader, because there were two and they disagreed: this function
-    returned the first match while ``_winner_mechanism`` looped to the
-    end and kept the LAST, so on a deck with a duplicated keyword the
-    verdict named an algorithm SIESTA had not used -- and that verdict is
-    what a person copies into the production calculation's `execution`.
     Comparison is through ``_norm``, so ``Diag.Algorithm`` /
     ``diag_algorithm`` / ``DIAGALGORITHM`` are one keyword.
     """
     if not deck.is_file():
         return None
-    # One deck reader: `parse/fdf.py`.  It also tracks `%block`, which the
-    # line scan here did not -- a block's first token read as a keyword.
+    # One deck reader: `parse/fdf.py`.  It also tracks `%block`, so a
+    # block's first token is never read as a keyword.
     from ..parse.fdf import _parse_fdf
     scalars, _blocks = _parse_fdf(_read(deck))
     got = scalars.get(_norm(keyword))
@@ -110,15 +88,8 @@ def parse_point(label: str, run, engine: str,
 
     # THROUGH THE REGISTRY, like every other file this project reads.
     # The wrapper's three instruments -- the SCF-timing tee, the monitor
-    # log and the utilisation samples -- became registered parsers on
-    # 2026-09-04 (`parse.md` § 5c).  Until then this module opened them
-    # and regex'd their bytes itself: a second read stack for a class of
-    # file the first one had simply never been extended to.
-    #
-    # THE LATEST ATTEMPT'S, like the .out beside them.  These carried no
-    # run index until 2026-08-27, so a re-run appended to one and
-    # truncated the other; now every per-run artifact is indexed and
-    # every one is read the same way.
+    # log and the utilisation samples -- are registered parsers
+    # (`parse.md` § 5c).
     from molbuilder.parse import parse as _parse
     from molbuilder.parse.instruments import utilisation as _utilisation
 
@@ -166,15 +137,7 @@ def parse_point(label: str, run, engine: str,
     #     not built for it -- this needs one string field, on a summary
     #     that polls every 15 s.
     #   * THE RANK COUNT -- the "Running on N nodes" launch banner, in
-    #     the first KB.  Until U11 (2026-08-12) this was searched in a
-    #     16 KB TAIL window, so any run whose .out outgrew 16 KB -- i.e.
-    #     any real run -- silently lost its rank count and the verdict's
-    #     CPU half had no np.
-    #
-    # *(This scanned for its own `_DONE_MARKERS` tuple until 2026-08-25 --
-    # a second answer to "did this run end", which knew a capped bench with
-    # `SCF.MustConverge .false.` exits cleanly while the parser did not, so
-    # the summary rendered six healthy trials as failures.)*
+    #     the first KB.
     out = run.stdout if run is not None else None
     out_head = _read(out, head=_SETUP_WINDOW) if out is not None else ""
     state = "unknown"
@@ -186,18 +149,13 @@ def parse_point(label: str, run, engine: str,
         except OSError:
             pass
     # THE KNOBS ARE WHAT WAS ASKED, and only that: the ranks the run got
-    # are `effective`'s (below, SIESTA's own count).  A trial asking none
-    # had its `.out`'s count written here until 2026-10-06 -- a measurement
-    # in the asked slot, for a trial prep now refuses (every trial states
-    # its counts, `generator.md` § 4.3a).
+    # are `effective`'s (below, SIESTA's own count).  Every trial states its
+    # counts (`generator.md` § 4.3a).
 
     # What the trial REALLY ran with, and whether that is what it was
-    # asked to run.  Until 2026-08-13 nothing compared the two: the
-    # requested knobs were written into the record as though they were
-    # the measurement, so a silent fallback (ELPA -> the CPU solver, a
-    # launcher handing back fewer ranks, OMP_NUM_THREADS set in the
-    # environment) produced a row whose label described a run that never
-    # happened -- and `choose_winner` ranked it against the others.
+    # asked to run: a silent fallback (ELPA -> the CPU solver, a launcher
+    # handing back fewer ranks, OMP_NUM_THREADS set in the environment)
+    # must not yield a row whose label describes a run that never happened.
     _wlog = run.session_log if run is not None else None
     effective = parse_effective_run(out_head,
                                     _read(_wlog) if _wlog is not None else "")
@@ -229,11 +187,8 @@ def parse_point(label: str, run, engine: str,
 def _read_environment(bundle: Path) -> Dict:
     """The machine a result was measured on, as data for ``bench-result.json``.
 
-    Through the one door (N1).  This was the SECOND reader of
-    ``environment.json`` and it returned a raw ``dict`` where `prep`'s returned
-    an ``Environment`` -- one file, two readers, two types.  It reads the
-    object now and asks it for its own dict, so the shape a result records is
-    the shape the record has.
+    Through the one door (N1): it reads the object and asks it for its own
+    dict, so the shape a result records is the shape the record has.
     """
     from ..scheduler import read_environment
     from ..scheduler.record import calculation_record
@@ -244,9 +199,7 @@ def _read_environment(bundle: Path) -> Dict:
 #: FDF KEYWORD MATCHING, FROM THE MODULE THAT OWNS IT.  `parse/fdf.py::_norm`
 #: is fdf's real rule -- case-insensitive and blind to ``.``, ``-`` and ``_``,
 #: so SIESTA reads ``MeshCutoff``, ``Mesh.Cutoff`` and ``mesh_cutoff`` as one
-#: keyword.  A character-for-character copy stood here until 2026-09-18; it
-#: happened to agree, which is the only reason nothing had broken.  One copy
-#: of a matching rule is one chance for it to drift from the engine.
+#: keyword.
 from ..parse.fdf import _norm   # noqa: E402  -- fdf's own matching rule
 
 
@@ -254,13 +207,8 @@ def _read_system(bundle: Path) -> Dict:
     """Minimal system descriptor (engine + atom count).
 
     From the DESCRIPTION first: ``task.json``'s witness records exactly
-    these two facts, and a described sweep always has one.  Until
-    2026-08-12 this looped over ``job-gpu.fdf`` / ``job-cpu.fdf`` — the
-    OLD bench-bundle deck names, whose writer died with the fold (step 6
-    u5) — so every described sweep's ``bench-result.json.system``
-    silently degraded to ``{"engine": "siesta"}`` (2026-08-12 plan A9).
-    Description-less
-    bundles fall back to any root deck; like every reader in this
+    these two facts, and a described sweep always has one.
+    Description-less bundles fall back to any root deck; like every reader in this
     module, absence degrades rather than raises — this is a reporter.
     """
     from ..task import FILENAME, read_task
@@ -272,19 +220,16 @@ def _read_system(bundle: Path) -> Dict:
         except Exception:
             pass    # malformed description: fall through to the decks
     sysd: Dict = {"engine": "siesta"}
-    # Decks are born in their stage directories since the layout repair
-    # (roadmap 7.10 M1); the bare-root pattern stays first for a bundle
-    # prepped before it.  This is already the degraded path (a malformed
-    # description), so breadth beats precision here.
+    # Decks are born in their stage directories.  This is already the
+    # degraded path (a malformed description), so breadth beats precision
+    # here.
     from ..runfiles import find_by_role
     _root = Path(bundle)
     try:
         _subs = [s for s in _root.iterdir() if s.is_dir()]
     except OSError:
         # A MISSING BUNDLE DEGRADES.  `find_by_role` tolerates one; a bare
-        # `iterdir()` does not, and `glob("*/*.fdf")` -- what stood here --
-        # quietly yielded nothing.  Measured 2026-09-08: this raised
-        # FileNotFoundError where the docstring above promises a reporter.
+        # `iterdir()` does not.
         _subs = []
     _decks = (find_by_role(_root, ".fdf")
               + [d for sub in _subs for d in find_by_role(sub, ".fdf")])
@@ -311,19 +256,9 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
     never by parsing a directory name back (`job-contracts.md` § 6.3: the
     token is an identifier, not a parser target).
 
-    **There is no stage parameter** (U12, 2026-08-12).  A described
-    sweep's job-set lives in its stage's ``bench/`` container (U1), so
-    the set IS the scope — every job in it belongs to the stage that was
-    named at the surface.  The ``stage`` filter that stood here was a raw
-    suffix match (``tok.endswith(f"_{{stage}}")`` — `coarse` matched
-    `extra_coarse`) that bypassed the one stage resolver, and after U1
-    its only reachable use was the description-less fallback, whose jobs
-    carry no tokens at all: a stage arg filtered out EVERY point and
-    wrote an empty verdict.  A filter whose only reachable answer is
-    wrong is retired, not repaired.
-
-    Its regex-keyed predecessor ``discover_points`` died with the OLD
-    bundle format (u5).
+    **There is no stage parameter**: a described sweep's job-set lives in
+    its stage's bench container, so the set IS the scope — every job in it
+    belongs to the stage that was named at the surface.
     """
     from .materialize import job_dir_names, run_dir, shape_of
     from .model import gpu_request
@@ -333,25 +268,19 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
     for j in jobset.jobs:
         # Knobs speak the EXCHANGE vocabulary -- the job-set's own field
         # names (jobset/model.Resources) -- because the choice they feed
-        # goes straight back into an allocation (U13, 2026-08-12).  They
-        # were renamed to grid words here (ranks/cores_per_rank) and
-        # renamed BACK by the offer: two renames for nothing, and a third
-        # vocabulary for one fact (job-contracts § 6 note: one language).
+        # goes straight back into an allocation (job-contracts § 6 note:
+        # one language).
         # ALL THREE, every trial -- a CPU trial's `gres` is null, not
-        # absent: the knobs had a GPU key on GPU trials alone until
-        # 2026-10-06, one more shape for one fact.  The GPU request goes
+        # absent.  The GPU request goes
         # through the one door (`model.gpu_request`): its side and its
         # count are one answer.
         gpus = gpu_request(j.resources)
         knobs: Dict = {"mpi_np": j.resources.mpi_np,
                        "cpus_per_task": j.resources.cpus_per_task,
                        "gres": gpus.gres if gpus.uses else None}
-        # THE LATEST ATTEMPT WHERE THERE IS ONE, the container otherwise --
-        # `runstatus`'s own rule, and shape-agnostic, so it answered for a
-        # hierarchical stage long before a trial had attempts to find
-        # (`project-layout.md` § 1.5a).  Reading `dirs[j.name]` regardless
-        # is blind to the attempt layer: a re-measured trial's artifacts
-        # sit one level down.
+        # THE LATEST ATTEMPT WHERE THERE IS ONE, the container otherwise
+        # (`run_dir`, `project-layout.md` § 1.5a): a re-measured trial's
+        # artifacts sit one level down.
         _d = bundle / dirs[j.name]
         from ..runs import run_of
         pts.append(parse_point(
@@ -363,10 +292,7 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
 
 def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     """HOW the winning trial computed -- read from ITS OWN deck, never
-    re-derived (U13b, 2026-08-12).  The offer used to pin
-    ``diag_algorithm='ELPA-1STAGE'`` from ``engine == 'gpu'`` alone --
-    inventing the mechanism the measurement never named, and wrong the
-    day the grid grows a second eigensolver.  The deck the trial RAN is
+    re-derived (U13b).  The deck the trial RAN is
     on disk beside its results; its BENCH-MARKS block says gpu_mode and
     its body says the algorithm."""
     job = next((j for j in jobset.jobs if j.name == label), None)
@@ -385,10 +311,7 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     marks = _extract_bench_marks_dict(text) or {}
     if "gpu_mode" in marks:
         mech["use_gpu"] = str(marks["gpu_mode"]).lower() == "true"
-    # Through the ONE deck reader.  This loop kept the LAST match while
-    # `deck_value` takes the first -- two readers of one file, disagreeing
-    # on a deck that names the keyword twice, and this is the copy whose
-    # answer a person copies into the production calculation's `execution`.
+    # Through the ONE deck reader.
     alg = deck_value(deck, "Diag.Algorithm")
     if alg is not None:
         mech["diag_algorithm"] = alg
@@ -400,14 +323,10 @@ def bench_record(jobset, bundle, *, now_iso: Optional[str] = None
     """The sweep's record, built ONE way — points, then the verdict, then
     HOW the winner computed.
 
-    **Both readers of a sweep come through here**, and that is the whole
-    point.  ``run_summarize_jobset`` (which writes ``bench-result.json``)
-    and ``sweep_view`` (which the Results tab reads) each used to compose
-    this themselves, with the same four arguments — and then differed:
-    only the writing path enriched ``choice`` with ``_winner_mechanism``.
-    So the same sweep produced two different verdicts depending on which
-    door you came through, which is exactly the second path
-    `bench-summary.md` B2 forbids, in the pair of functions that cite it.
+    **Both readers of a sweep come through here** --
+    ``run_summarize_jobset`` (which writes ``bench-result.json``) and
+    ``sweep_view`` (which the Results tab reads) -- so one sweep has one
+    verdict whichever door you came through (`bench-summary.md` B2).
     """
     res = build_bench_result(
         discover_points_from_jobset(bundle, jobset),
@@ -432,10 +351,8 @@ def run_summarize_jobset(jobset, bundle, *,
     Returns ``(BenchResult, out_path, report_text)``, where ``report_text``
     is ``None`` when there is no verdict to report.
 
-    **The report is printed, not written** *(2026-09-04, user ruling)*.  It
-    was ``bench-recommendation.txt`` beside the record; measured across the
-    whole project tree, ZERO had ever been written.  The use it was built
-    for -- submit a sweep to a cluster, come back to the directory and read
+    **The report is printed, not written** *(2026-09-04, user ruling)*.  The
+    use it serves -- submit a sweep to a cluster, come back to the directory and read
     the answer -- is served by asking, which is what a terminal is for, and
     a report nothing consumes is a print.  `job-system.md` § 7.1.
 
@@ -454,13 +371,6 @@ def run_summarize_jobset(jobset, bundle, *,
 
 
 
-# `RECOMMENDATION_NAME = "bench-recommendation.txt"` stood here until
-# 2026-09-04.  The report is printed by `jobset summarize` now, not
-# written: zero of those files had ever been produced across the whole
-# project tree (`job-system.md` § 7.1).  It had been `run-config.toml`,
-# an editable TOML `prep run` folded into the launch, until 2026-09-02 --
-# so this is the second half of the same retirement.
-
 #: Catalogue item type -> the python type its TOML value must carry.
 #: Non-scalar types (lists, text) are absent on purpose: nothing sweeps
 #: them, so no proposal writes them.
@@ -472,10 +382,7 @@ def _pins_vocabulary(engine: str) -> Dict[str, type]:
     """The [pins] section's legal fields: every non-machine ``execution``
     item of this engine, typed from its catalogue declaration -- the SAME
     one-door membership rule the declaration lane uses
-    (`_declared_execution_pins`, `generator.md` § 4.3a).  A hand table
-    (``use_gpu``/``diag_algorithm``) stood here until 2026-08-21, so
-    the proposal writer could emit a swept knob -- ``block_size`` -- that
-    this reader then refused: summarize's own output failing `prep run`.
+    (`_declared_execution_pins`, `generator.md` § 4.3a).
     """
     from ..template import catalogue, select
     vocab: Dict[str, type] = {}
@@ -496,13 +403,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     **Nothing applies it.**  It is what the sweep found, said in
     sentences, for a person to read and act on -- and the action is writing
     an ``execution`` block in ``task.json``, which is the only thing
-    ``prep run`` consults (`architecture.md` § 5.2).
-
-    It was ``run-config.toml`` until 2026-09-02: an editable TOML the next
-    ``prep run`` folded into the launch, labelled *"recommendation, not
-    decision"* while functioning as a decision.  That made a benchmark a
-    second way for a run parameter to arrive, and a second arrival route is
-    what every silent-value defect in this lane has been.  *(User ruling:
+    ``prep run`` consults (`architecture.md` § 5.2).  *(User ruling:
     "the run parameter needs to be explicitly decided/written … benchmark
     recommendation should be named such that it is understood not as a user
     input but for result presentation.")*
@@ -518,9 +419,8 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     mech = choice.get("mechanism") or {}
     stage_word = stage or "<stage>"
 
-    # "NOTHING READS THIS FILE" until 2026-09-04, when it stopped being a
-    # file.  The sentence still has a job: nothing APPLIES this, and the
-    # line exists so a reader does not assume the next run will use it.
+    # Nothing APPLIES this, and the line exists so a reader does not assume
+    # the next run will use it.
     out = [f"molbuilder bench recommendation -- {stage_word}",
            "NOTHING APPLIES THIS.  It is what the benchmark found; the "
            "decision is yours to write.",
@@ -544,7 +444,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     if knobs["gres"]:
         # The trial's own request, written by prep (`gpu:<n>`): it parses,
         # or the record is not ours -- a parse error is said, never passed
-        # over (it was, until 2026-10-06).
+        # over.
         from ..scheduler.quantities import parse_gres
         n = sum(parse_gres(str(knobs["gres"])).values())
         if n:
@@ -552,21 +452,9 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     # THE VALUE AXES TOO, from the winner's own POINT -- not only from
     # `mechanism`.  `mechanism` is HOW the winner computed (the eigensolver,
     # the device); a value axis like `block_size` is a coordinate of the
-    # grid and lives in `point`.  Reading only `mechanism` dropped the
-    # measured `block_size` from a winner whose own label was
-    # `G0K4C1block_size128` -- a report that names a shape while silently
-    # omitting one of its measured coordinates sends a person to run at
-    # something nobody benchmarked.  (Caught by `test_value_axes.py`, which
-    # is the file that exists for exactly this axis, 2026-09-02.)
+    # grid and lives in `point`.
     # `res.system["engine"]` -- the description's own answer, put there by
-    # `_read_system` from `read_task`.  This read `getattr(res, "engine")`
-    # until 2026-09-04, and `BenchResult` has no such attribute: measured
-    # `hasattr(...) is False`, so the `or "siesta"` fired every time and a
-    # `getattr` was doing the work of a hardcoded literal while looking
-    # dynamic.  Harmless so far only because the bench lane refuses any
-    # non-SIESTA description by name (`prep_inputs.bench_inputs`) -- but this report is
-    # written for a person to read, so the day that lane admits PySCF it
-    # would offer SIESTA's pin vocabulary for a PySCF run.
+    # `_read_system` from `read_task`.
     vocab = _pins_vocabulary(res.system["engine"])
     for src in ((choice.get("point") or {}), (mech or {})):
         for name, val in sorted(src.items()):
@@ -596,10 +484,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
 def _fmt_duration(seconds: float) -> str:
     """``41`` -> ``41s``, ``245`` -> ``4m05s``, ``7523`` -> ``2h05m``.
 
-    Was ``_fmt_wall`` until 2026-09-06.  It formats a DURATION -- the same
-    P-T1 slip the field it prints was renamed out of (`model/parse.md`
-    § 2a): a wall clock is an epoch and renders as a date.  Nothing here
-    ever formatted one.
+    It formats a DURATION, not a wall clock (`model/parse.md` § 2a).
     """
     s = int(round(seconds))
     if s < 60:
@@ -619,9 +504,7 @@ def _point_table(points: List[BenchPoint]):
     ACTUALLY ran (``effective``), so a silent eigensolver fallback shows
     in the table itself.  A value nothing measured prints ``--``.  EVERY
     COLUMN, EVERY SWEEP: a CPU trial's GPU columns say ``no gpu`` and
-    ``--``, and a trial with no recorded machine ``--`` -- the GPU and
-    machine columns appeared only when some trial had one until
-    2026-10-06, so a CPU sweep printed another table.
+    ``--``, and a trial with no recorded machine ``--``.
     """
 
     def _num(v, fmt="{:g}"):
@@ -634,18 +517,15 @@ def _point_table(points: List[BenchPoint]):
         ("thr", "r", lambda p: _num(p.knobs.get("cpus_per_task"))),
         # A TRIAL THAT ASKED FOR NO GPU says so, as the page does
         # (`bench-summary.js`): `--` is a value nothing measured, and this
-        # is an asked column -- it printed `--` until 2026-10-06.
+        # is an asked column.
         ("gpu", "l", lambda p: str(p.knobs["gres"] or "no gpu")),
         ("algorithm", "l",
          lambda p: str(p.effective.get("diag_algorithm") or "--")),
         ("s/iter", "r", lambda p: _num(p.s_per_iter())),
         ("iters", "r", lambda p: _num(p.metrics.get("iters_measured"))),
-        # NAMED AFTER THE FIELD IT PRINTS.  This column said `wall` until
-        # 2026-09-06, which is the exact claim the 2026-09-03 correction
-        # retracted: it is the MONITORED WINDOW, not the job's wall time,
-        # and on a trial the scheduler killed it is a lower bound.  The
-        # field was renamed `wall_s` -> `monitored_elapsed_s` for that
-        # reason and the sweep stopped short of the rendering layer.
+        # NAMED AFTER THE FIELD IT PRINTS: it is the MONITORED WINDOW, not
+        # the job's wall time, and on a trial the scheduler killed it is a
+        # lower bound.
         ("monitored", "r",
          lambda p: (_fmt_duration(p.metrics["monitored_elapsed_s"])
                     if isinstance(p.metrics.get("monitored_elapsed_s"), (int, float))
@@ -714,9 +594,7 @@ def summary_text(res: BenchResult, out_path: Path, *,
             f"  trials ran on {len(census)} kinds of node: {parts}")
 
     # THE VERDICT AS THE RECORD SAYS IT -- the winner, or the one sentence
-    # saying why there is none (`bench.result.choose_winner`).  This line
-    # worked the reason out again from the points until 2026-10-06, and the
-    # page a third way, from a count of finished runs.
+    # saying why there is none (`bench.result.choose_winner`).
     if res.choice.get("label"):
         lines.append(f"  winner: {res.choice['rationale']}")
     else:
@@ -735,10 +613,8 @@ def summary_text(res: BenchResult, out_path: Path, *,
     # the report says what, and nothing applies it for you (§ 2.3.2).
     if res.choice.get("label"):
         stage_word = stage or "<stage>"
-        # THE REPORT ITSELF, here on stdout.  It used to be written beside
-        # the record and this block told you to go and read it; nobody ever
-        # did, because zero were ever written.  You asked the question, so
-        # the answer belongs in the answer.
+        # THE REPORT ITSELF, here on stdout: you asked the question, so the
+        # answer belongs in the answer.
         if report:
             lines.append("")
             lines.append(report.rstrip())
@@ -749,8 +625,7 @@ def summary_text(res: BenchResult, out_path: Path, *,
         if stage:
             # ONE COMMAND A LINE, the step's sentence above it (`commands`):
             # the calculation named when it is known, the mode stated where
-            # its config sets none -- it printed `--mode submit|direct`,
-            # which bash runs as a pipe (W52).
+            # its config sets none.
             from .commands import command, launch_lines
             lines.append("    2. prep the stage's run -- it uses what you "
                          "wrote, and nothing else:")
@@ -784,7 +659,7 @@ def bundle_for_sweep_file(jobset, path) -> Path:
     looking like a sweep that simply has not run yet.
 
     Rather than climb a fixed number of levels -- which would encode one
-    of the three layouts `paths.bench_container` supports -- ask the
+    of the layouts `paths.bench_container` supports -- ask the
     naming authority where the trials should be and walk up until they are
     actually THERE.  The answer is checked against the disk, so a wrong
     guess cannot be returned as a right one.
@@ -841,7 +716,7 @@ def sweep_view(jobset, bundle) -> Dict:
     # ONE record-builder, shared with `run_summarize_jobset` -- so the
     # verdict this view shows is the verdict that gets written, down to
     # `choice["mechanism"]`.  Composing it here a second time is what B2
-    # forbids, and is what this function did until 2026-08-25.
+    # forbids.
     res = bench_record(jobset, bundle, now_iso=utc_now_iso())
     points = res.points
     status = jobset_status(jobset, bundle)
@@ -874,7 +749,7 @@ def sweep_view(jobset, bundle) -> Dict:
             # What kind of node was under the run, and its one short
             # spelling -- SPELLED HERE, because the page composes nothing
             # (B1): a second brief-rule in JS would be two spellings of
-            # one node.  "" when the record predates the [MACHINE] line.
+            # one node.  "" when the record has no [MACHINE] line.
             "machine":       dict(p.machine),
             "machine_brief": machine_brief(p.machine),
             "artifacts":  p.state,      # what the files say
@@ -929,9 +804,8 @@ def swept_coordinates(points: List[BenchPoint]) -> List[str]:
 
 
 def utc_now_iso() -> str:
-    """UTC timestamp ``YYYY-MM-DDThh:mm:ssZ`` (moved from the deleted
-    ``bench/prep.py`` at u5) -- the summarize verb's stamp, and
-    :func:`sweep_view`'s."""
+    """UTC timestamp ``YYYY-MM-DDThh:mm:ssZ`` -- the summarize verb's stamp,
+    and :func:`sweep_view`'s."""
     return datetime.datetime.now(datetime.timezone.utc).strftime(
         "%Y-%m-%dT%H:%M:%SZ")
 

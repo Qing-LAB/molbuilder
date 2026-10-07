@@ -388,8 +388,8 @@ def test_a_refused_edit_leaves_the_earlier_warnings_standing():
 
 
 def test_a_refused_edit_changes_no_data():
-    """§ 11.1's "a failed edit changes nothing", re-asked now that a failure
-    leaves by a different route. Throwing must not skip the part where nothing
+    """§ 11.1's "a failed edit changes nothing", for a failure that leaves by
+    throwing. Throwing must not skip the part where nothing
     was written — and must not leave the door jammed against the next attempt,
     which is what an `running` flag cleared only on the success path would do.
     """

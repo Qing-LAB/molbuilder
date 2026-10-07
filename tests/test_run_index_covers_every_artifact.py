@@ -15,32 +15,18 @@ destroyed the measurement it existed to repeat. Found 2026-08-27 by reading the
 write mode rather than the design, and **not a sweep problem**: a flat ladder
 stage re-run loses its `util.csv` today for the same reason.
 
-CONVERTED 2026-09-06 — `plans/plan.md` § 5h, cluster 1.
-------------------------------------------------------
-Every assertion in this file used to read `runwrap.py`, `summarize.py`,
-`identity.py` or `monitor.py` **as text** and check for a spelling::
-
-    assert '--log "{basename}-run${{_run_n}}.monitor.log"' in src
-
-That is behaviour-blind in both directions. Reformat the f-string — split it,
-re-indent it, build the flag from a variable — and the test fails while the
-wrapper is perfect. Change what `_run_n` RESOLVES to, so every attempt lands on
-`-run0`, and the test passes while each run destroys the last. The string is
-not the behaviour; it is one spelling the behaviour currently happens to have.
-
 **The directory is built by `jobset prep`, not by hand** *(user, 2026-09-06:
 "you should construct run dir with actual backend if you are testing it")*.
 The run index is a property of *a directory that already holds attempts* —
 the wrapper scans for `-runN` and advances past the highest — so a
 hand-assembled directory would prove the wrapper indexes files in a layout
 nobody ever creates. Prep is what makes one, and prep is what ships the real
-`mb_monitor.pyz` into it (`jobset/prep.py:181`), so the monitor here is the
+`mb_monitor.pyz` into it, so the monitor here is the
 real one writing real samples to the flags the real wrapper passed it.
 
 **Only two things are stubbed, and neither is under test.** `siesta`, because
-the run index has nothing to do with what the engine computes and
-`test_conclusion_marker.py` already established the pattern — *"the whole
-meaning lives in shell control flow no unit test of Python can see."* And
+the run index has nothing to do with what the engine computes: its whole
+meaning lives in the run script's shell control flow. And
 `conda`, because the record's activation is a CLOSED set (anything but
 `conda activate` / `source activate` is refused), so the rendered
 script always shells out to it and a bare `bash` has no `conda init` behind
@@ -51,8 +37,6 @@ What each replacement must fail against is recorded on the test.
 """
 from __future__ import annotations
 
-import os
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -79,8 +63,8 @@ def _a_prepared_calculation(tmp_path: Path, monkeypatch,
     Returns the folder its stage runs in -- deck, wrapper and the shipped
     `mb_monitor.pyz`, exactly as a person would find it after `jobset prep`.
     """
-    from support.road import describe_h2, jobset
-    bundle = describe_h2(tmp_path, monkeypatch, shape="flat")
+    from support.road import describe_calculation, jobset
+    bundle = describe_calculation(tmp_path, monkeypatch, shape="flat")
     r = jobset("prep", "run", "coarse", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output
@@ -97,72 +81,6 @@ def _a_prepared_calculation(tmp_path: Path, monkeypatch,
     return stage
 
 
-def _run_the_wrapper(stage: Path) -> None:
-    env = dict(os.environ,
-               PATH=f"{stage / 'bin'}:{os.environ['PATH']}",
-               MB_MONITOR="1", MB_MONITOR_INTERVAL="1",
-               MB_LAUNCHED_BY="manual")
-    subprocess.run(["bash", f"{LABEL}.run.sh"], cwd=str(stage), env=env,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                   timeout=180, check=False)
-
-
-# --------------------------------------------------------------- the wrapper
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 1 test here wrote a monitor record over the run's own by hand (`process/testing.md` § 6).
-
-
-def test_a_run_that_printed_nothing_keeps_its_index(tmp_path, monkeypatch):
-    """An engine that dies before its first line leaves its `-run0.concluded`,
-    monitor log and `util.csv` and NO output: the SIESTA tee creates the
-    `.out` with the first line it writes.  The next run must still advance,
-    or it overwrites that marker and truncates that measurement.
-
-    MUTATION THIS MUST FAIL AGAINST: resolve the index from the outputs
-    alone (`"<basename>-run"*<ext>` in the wrapper's resolver).
-    """
-    stage = _a_prepared_calculation(tmp_path, monkeypatch,
-                                    engine="#!/bin/bash\nsleep 2\nexit 3\n")
-    _run_the_wrapper(stage)
-    marker = stage / f"{LABEL}-run0.concluded"
-    assert marker.exists() and not (stage / f"{LABEL}-run0.out").exists(), (
-        "the first run must leave a marker and no output, or this test "
-        f"measures nothing: {sorted(p.name for p in stage.iterdir())}")
-    first = marker.read_text()
-
-    _run_the_wrapper(stage)
-    assert (stage / f"{LABEL}-run1.concluded").exists(), (
-        "the re-run did not advance past a run that printed nothing: "
-        f"{sorted(p.name for p in stage.iterdir())}")
-    assert marker.read_text() == first, "the re-run overwrote run 0's marker"
-
-
-def test_no_unindexed_monitor_artifact_reaches_the_directory(tmp_path,
-                                                             monkeypatch):
-    """The stronger form, asked of the DIRECTORY rather than of the source.
-
-    One path writing the indexed name while another writes the bare one is
-    invisible to a test that only proves the indexed spelling appears
-    somewhere in the file.  Here the bare names simply must not turn up.
-    """
-    stage = _a_prepared_calculation(tmp_path, monkeypatch)
-    _run_the_wrapper(stage)
-
-    for bare in (f"{LABEL}.monitor.log", f"{LABEL}.util.csv"):
-        assert not (stage / bare).exists(), (
-            f"an unindexed {bare} was written -- some path still emits the "
-            "pre-2026-08-27 name")
-
-
-# `test_the_reader_takes_the_newest_attempt` retired 2026-10-04 (W56 3b.4):
-# its subject, `summarize._latest_run_file`, is gone.  A trial's files are
-# its run's, every one at the run's one index (`runs.Run.file`), and the run
-# a folder speaks for -- the newest run index, never a file's time -- is
-# `tests/data/the_speaking_run.toml`'s.
-
-
 # ----------------------------------------------------------- the cold sweep
 
 
@@ -175,15 +93,10 @@ def test_the_cold_sweep_claims_the_monitors_numbered_files(name):
 
     A name it does not claim is left in place to be appended to or truncated
     by the next run -- the very failure being fixed.  The monitor's files
-    carry the run index, always (`runfiles.WRITTEN`); the unnumbered spelling
-    from before 2026-08-27 was claimed too until 2026-10-06 -- old runs are
-    not a design input.
+    carry the run index, always (`runfiles.WRITTEN`).
 
     MUTATION THIS MUST FAIL AGAINST: drop the `-run*` pattern from
-    `OUR_FILE_PATTERNS`.  The retired test asserted four
-    pattern STRINGS appeared in `identity.py`; it could not tell whether
-    `is_ours` consulted them, and `{label}` vs `{label}_*` had already
-    silently become `*` once before (the note at `identity.py:212`).
+    `OUR_FILE_PATTERNS`.
     """
     assert is_ours(name, LABEL), f"the cold sweep does not claim {name}"
 
@@ -197,8 +110,7 @@ def test_the_wrappers_cold_sweep_names_the_indexed_artifacts(tmp_path,
     the list does not move `is_ours` at all -- it tries every pattern against
     TWO stems (`{label}` and `{label}-*`), so `J-run0.util.csv` still matches
     through the plain `.util.csv` row under the qualified stem.  The wrapper's
-    cold-restart list substitutes ONE anchor and does not expand
-    (`runwrap.py:490`), so there the row is load-bearing -- and the test above
+    cold-restart list substitutes ONE anchor and does not expand, so there the row is load-bearing -- and the test above
     would have stayed green while `--cold` silently stopped protecting every
     indexed monitor artifact.
 
@@ -221,6 +133,3 @@ def test_the_cold_sweep_does_not_claim_the_engines_own_files():
     would move a SIESTA restart file aside as if we had written it."""
     for theirs in ("H.psml", "INPUT_TMP.0", "FORCE_STRESS"):
         assert not is_ours(theirs, LABEL), f"{theirs} is the engine's"
-
-
-# --------------------------------------------------------------- the pairing

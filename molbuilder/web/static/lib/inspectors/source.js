@@ -2,17 +2,10 @@
  * .json / .log / .txt / .md files the user wants to peek at without
  * leaving the page.
  *
- * History:
- *   * 2026-05 -- v1 (single-shot): called ``ctx.readFile(file,
- *     {maxBytes: 16 MB})`` and rendered the whole text into a <pre>.
- *     Worked for tiny configs; slow + memory-heavy for MB-scale logs;
- *     hard-failed at 16 MB.
- *   * 2026-06-02 (task #119) -- v2 (paginated): fetches a 256 KB
- *     window via ``/api/files/read_range``, appends chunks as the
- *     user scrolls near the bottom, supports an explicit "Jump to
- *     end" shortcut for "show me the tail of this 100 MB log".
- *     Works on arbitrarily-large files; DOM grows only with what
- *     the user has actually scrolled past.
+ * Fetches a 256 KB window through ``ctx.readRange``, appends chunks as
+ * the user scrolls near the bottom, and offers an explicit "Jump to end"
+ * for the tail of a large log, so the DOM grows only with what the user
+ * has actually scrolled past.
  */
 (function (root) {
     "use strict";
@@ -120,23 +113,6 @@
             };
 
             // ---- Range-fetch helper --------------------------- //
-            //
-            // Routes through ``window.molbuilder.projects.readRange``
-            // (the public projects.* surface) so abort signals,
-            // uniform ``{ok, ...}`` envelopes, and any future
-            // transport-layer middleware (caching, retry, telemetry)
-            // are inherited automatically.  Pre-#189 (2026-06-02)
-            // this called ``fetch`` directly and inlined its own
-            // error wrapper -- duplicate logic that drifted from the
-            // sidebar's projects.api wrapper.
-            //
-            // Fallback path: if the runtime registry hasn't published
-            // projects yet (a result-tab inspector mounted before
-            // molbuilder-runtime.js finished), we keep a thin raw
-            // ``fetch`` fallback so the inspector still renders.  This
-            // is a belt-and-braces defence for the mount ordering;
-            // /results in production always has the registry up
-            // before any inspector mounts.
 
             function _fetchRange(offset, maxBytes) {
                 // Read the byte window through the framework-injected reader

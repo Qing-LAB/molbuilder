@@ -11,12 +11,6 @@ around.
 *for every name it composes, the framework owns the search.*  The run-file
 GRAMMAR stays in `runfiles` (§ 2.2a); this owns the TREE and the finders.
 
-*(Was ``jobset/shape.py``, floor 4, until 2026-09-08.  It sat there for one
-import — ``from ..task import SHAPES``, a two-element tuple of literals, held
-by floor 2 and read by this module alone.  Moving that constant here inverts
-one line and drops the whole naming-and-layout surface to a floor a shipped
-job can reach.)*
-
 Also [`engines/stages.md`](?doc=engines/stages.md) § 6.7 (*required, never
 inferred*; *"`prep` **reads** it; it does not decide it"*) and
 [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3 (the names, in
@@ -92,19 +86,14 @@ class Shape:
         """
         return token if self.name == "hierarchical" else "."
 
-    # `run_basename` -- the stage's stem in the flat shape, ``None`` in the
-    # hierarchy -- stood here until 2026-10-04.  A run is asked about by its
-    # stem in either shape (`runfiles.stem`): an attempt's folder may hold
-    # several run indexes (plan B11, 3b.2).
-
     @property
     def keeps_attempts_as_directories(self) -> bool:
         """Whether a re-run makes a **directory** (``run-1``) or an index.
 
         `project-layout.md` § 1: hierarchical separates attempts by directory,
-        flat by an **output index** (``-run0.out``) that the wrapper writes.
-        So the whole attempt layer — ``prepare_attempt``, ``latest_attempt``,
-        ``run.json`` — is hierarchical's, and in flat there is nothing to open:
+        flat by the run's number launch gives it (``-run0.out``).  So the
+        attempt layer — ``prepare_attempt``, ``latest_attempt`` — is
+        hierarchical's, and in flat there is nothing to open:
         *"continuing: free — the next stage finds them lying there."*
         """
         return self.name == "hierarchical"
@@ -119,13 +108,6 @@ class Shape:
 # ``run-<n>``, the directory one try of a stage or a trial runs in
 # (`project-layout.md` § 1.5 — immutable once it has run, which is why a
 # re-run opens the next rather than landing on top of one).
-#
-# IT HAD NO COMPOSER.  `f"run-{n}"` was written NINE times across four
-# modules, and the regex that reads it back sat in `materialize` and was
-# imported across into `prep` — a name spelled ten ways for a rule stated
-# once in the document.  One of those nine was added on 2026-09-08 by the
-# commit that gave the TRIAL directory a home, which is the habit exactly:
-# a caller reaches for an f-string because there is nothing to ask.
 
 #: What an attempt directory starts with.  One home, so the composer and the
 #: reader below cannot drift, and neither can a caller.
@@ -167,8 +149,7 @@ def attempt_index(name: str) -> Optional[int]:
 def attempts_in(container) -> "list[int]":
     """Every attempt index present in *container*, ascending.
 
-    The finder half -- every caller's (`materialize.attempts` passed it through
-    until 2026-10-03, and kept its own regex before that).
+    The finder half -- every caller's.
     """
     c = Path(container)
     try:
@@ -185,13 +166,9 @@ def attempts_in(container) -> "list[int]":
 # they are "nested containers inside a stage (④), not levels of the tree."
 # So a trial is a QUALIFIER on ④, and both names below are layout, which is
 # why they live here beside `stage_dir` rather than in the module that
-# happened to need them first.
-#
-# THEY MOVED DOWN 2026-09-09.  Both rules were `jobset/materialize.py`'s,
-# floor 4, and the address layer is floor 1 -- a rule the framework cannot
-# reach is a rule its callers re-spell, which is § 4.5's whole subject.
-# `materialize.bench_container` and `materialize.job_dir_name` passed
-# them through until 2026-10-03; every caller asks these now.
+# happened to need them first: the address layer is floor 1, and a rule the
+# framework cannot reach is a rule its callers re-spell, which is § 4.5's
+# whole subject.
 
 #: What a TRIAL directory starts with.  Dash-joined, where the container is
 #: underscore-joined -- § 6.3's separator rule, and what keeps
@@ -230,9 +207,7 @@ def trial_label(label: str, point: str) -> str:
     THE ONE COMPOSER, and every reader asks it: prep's element label
     (`resolve._label_for`), the run door's reading of a trial's folder
     (`runs`), a trial's deck read back for its stage token
-    (`materialize`), and the job a status row reads (`runstatus`).  *(Three
-    of them spelled the f-string themselves and the fourth cut the label
-    off the deck's name until 2026-10-04: plan W56 3b.3.)*
+    (`materialize`), and the job a status row reads (`runstatus`).
     """
     return f"{label}-{point}"
 
@@ -270,7 +245,7 @@ def stages_in(root, shape: "Shape", label: str = ""
             if got:
                 found.add(got)
     for _rel, token in bench_containers_in(root, shape):
-        got = parse_token(token) if token else None
+        got = parse_token(token)
         if got:
             found.add(got)
     return sorted(found)
@@ -281,19 +256,16 @@ def bench_container(shape: "Shape", token: str) -> str:
 
     ``<NN>_<stage>/bench`` in the hierarchy; ``bench_<NN>_<stage>`` at the root
     of a FLAT calculation.  An empty token is refused: every description has
-    a stage (`engines/stages.md` § 6.5), and a bare ``bench`` stood here for
-    a stageless calculation until 2026-10-06.
+    a stage (`engines/stages.md` § 6.5).
     `job-contracts.md` § 6.3: *"benchmark | bench/ inside the stage it
     measures"* -- in flat there IS no stage directory to sit inside, so the
     token qualifies the container's own name instead.
 
-    **The token qualifies it in flat because it once did not**, and two flat
-    stages' benchmarks then shared one root ``bench/``: each prep overwrote the
-    other's job-set, plan and verdict (2026-08-12 plan A5).
+    **The token qualifies it in flat**: without it two flat stages'
+    benchmarks would share one root ``bench/``, each prep overwriting the
+    other's job-set, plan and verdict.
 
-    This is the ONE spelling of that rule.  It sat in two places until
-    2026-08-13 and the two disagreed in BOTH non-hierarchical layouts, so
-    `launch` launched trials in directories the underway-ask never looked at.
+    This is the ONE spelling of that rule.
     """
     if not token:
         raise ValueError("a benchmark's container is its stage's -- no stage "
@@ -305,8 +277,9 @@ def bench_container(shape: "Shape", token: str) -> str:
 
 
 def bench_containers_in(root, shape: "Optional[Shape]" = None
-                        ) -> "list[tuple[str, Optional[str]]]":
-    """Every bench container under *root*, as ``(relative name, stage token)``.
+                        ) -> "list[tuple[str, str]]":
+    """Every bench container under *root*, as ``(relative name, stage token)``
+    -- the containers :func:`bench_container` names, each its stage's.
 
     ``shape=None`` means **either layout** -- for a caller that has no
     description to read one from.  That is not the inference
@@ -316,20 +289,17 @@ def bench_containers_in(root, shape: "Optional[Shape]" = None
     collide (``<NN>_<stage>/bench`` is one level down; ``bench_<NN>_<stage>``
     is at the root), so the union is exact rather than a guess.
 
-    The SEARCH half of :func:`bench_container`, which § 4.5 requires and which
-    did not exist -- a caller looking for *the benchmarks in this calculation*
-    had to know that the hierarchy hides them one level down inside each rung
-    while flat qualifies their own name.  That asymmetry is what made
-    ``bench_container`` need three shapes in one docstring.
+    The SEARCH half of :func:`bench_container`, which § 4.5 requires: the
+    hierarchy hides the benchmarks one level down inside each rung while flat
+    qualifies their own name.
 
     The stage token is returned rather than re-derived: in flat it is IN the
     container's name (``bench_01_coarse``) and in the hierarchy it is the
     PARENT directory, so a caller reading either spelling itself would be
-    writing this function again with one of the two arms missing -- which is
-    the fault (A5, 2026-08-12) that let two flat stages share one ``bench/``.
+    writing this function again with one of the two arms missing.
     """
     r = Path(root)
-    out: "list[tuple[str, Optional[str]]]" = []
+    out: "list[tuple[str, str]]" = []
     if shape is None:
         seen: set = set()
         for name in SHAPES:
@@ -343,19 +313,14 @@ def bench_containers_in(root, shape: "Optional[Shape]" = None
     except OSError:
         return out
     if shape.keeps_attempts_as_directories:
-        if (r / "bench").is_dir():
-            out.append(("bench", None))
         for d in entries:
             if d.is_dir() and (d / "bench").is_dir():
                 out.append((f"{d.name}/bench", d.name))
         return out
     for d in entries:
-        if not d.is_dir():
-            continue
-        if d.name == "bench":
-            out.append(("bench", None))
-        elif d.name.startswith("bench_"):
-            out.append((d.name, d.name[len("bench_"):] or None))
+        token = d.name[len("bench_"):] if d.name.startswith("bench_") else ""
+        if d.is_dir() and token:
+            out.append((d.name, token))
     return out
 
 

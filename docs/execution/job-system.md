@@ -354,7 +354,7 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
 
   "jobs": [
     {
-      "name":   "coarse",             // → folder 01_coarse/ AND squeue -J name
+      "name":   "coarse",             // → folder 01_coarse/ AND squeue -J bdt_au/coarse
       "script": "bdt_au_01_coarse.fdf",  // the deck, in the bundle root.  The
                                       // TOKEN in this filename is where the
                                       // directory's `01` comes from -- it is
@@ -1320,7 +1320,7 @@ STAGE 03_tight -- running
   resources       n=32, c=2
   attempt         run-1   (of run-0, run-1)
   launched        submit as job 481923 at 2026-08-10T19:04:08Z
-  command         sbatch -J tight -p public … tight.sbatch
+  command         sbatch -J bdt_relax/tight -p public … bdt_relax_03_tight.sbatch
   continued from  01_coarse/run-0
   warm files      bdt_relax.XV, bdt_relax.DM
   detail          running
@@ -1477,9 +1477,11 @@ algorithm — the shipped ladder's coarse is CG and its medium Broyden.)
 
 `.continued-from` in the attempt and `continued_from` in its `run.json` keep it
 beside the run, and the Results tab's Run panel shows it (*Continued from*). The
-flat layout records it too *(ruled 2026-10-01)*: a stage's own
-`<basename>.continued-from` and `<basename>.run.json` name the run by what every
-file of it carries — `H2_01_coarse-run0` — since flat keeps no directory per run.
+flat layout records it too *(ruled 2026-10-01)*: each run's own
+`<basename>-run<N>.continued-from` and `<basename>-run<N>.run.json` name the run
+it continues from by what every file of that run carries — `H2_01_coarse-run0`
+— since flat keeps no directory per run (the run's number on both since
+2026-10-06, plan W57 decision 2).
 **Both doors offer the same choice**: the terminal's flags, and Task setup's
 **Continue from** in the rung's tab, which shows the default — or why prep
 refuses it — before anything is written

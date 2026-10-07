@@ -27,8 +27,7 @@ def no_threedna():
 
 
 # `backend` NAMES WHAT IS MISSING (`web-api.md`, the route's row): a duplex
-# asked of "auto" needs X3DNA, so X3DNA is what the page can disable.  It
-# echoed the request until 2026-09-28.
+# asked of "auto" needs X3DNA, so X3DNA is what the page can disable.
 @pytest.mark.parametrize("body,backend", [
     ({"kind": "dna", "input": "ATGC", "backend": "threedna"}, "threedna"),
     ({"kind": "dna", "input": "ds,ATGCATGC"},                 "threedna"),
@@ -93,8 +92,7 @@ def test_the_cli_says_the_same_refusal_in_one_line(monkeypatch, capsys):
     ``add_hydrogens``).  The engines are made to fail as above.
 
     MUTATION THIS MUST FAIL AGAINST: `cli.main` without its
-    `BackendUnavailable` door, which ended in a Python traceback until
-    2026-09-28 (M2b's review).
+    `BackendUnavailable` door.
     """
     import sys
 

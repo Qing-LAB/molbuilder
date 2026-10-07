@@ -2,26 +2,22 @@
 
 L1 dataclass.  Its field metadata is read by the validation pass
 (``molbuilder/validation/``; the readers are `web/form-schema.md` § 1a's)
--- the forms are drawn from the catalogue; the PySCF generator at
-``molbuilder/pyscf/input.py:render_script`` is the only consumer of
-the configured values themselves.
+-- the forms are drawn from the catalogue; the PySCF deck's spec
+(``molbuilder/pyscf/input.py:spec_for``, and ``pyscf/vibration_deck.py``
+for a vibration) renders the configured values.
 
 Defaults are tuned for "build a small/medium molecule and relax it":
 
     * B3LYP+D3BJ/def2-SVP  (modern hybrid, dispersion-corrected)
     * Density fitting on -- bare ``mf.density_fit()``, so PySCF auto-picks
       the *basis-matched* JK-fit set (``def2-svp-jkfit`` for this def2-SVP
-      default, ``def2-tzvp-jkfit`` for def2-TZVP, ...).  NOT the single
-      "def2-universal-jkfit" this docstring used to claim -- verified via
+      default, ``def2-tzvp-jkfit`` for def2-TZVP, ...), verified via
       ``mf.with_df.auxbasis`` on a real def2 hybrid.
     * geomeTRIC optimizer with maxsteps=200, grms=3e-4 Ha/Bohr
     * Kohn-Sham DFT, with the charge and the spin worked out from the
       structure when left blank (`electronic_state`,
       `science/chemistry-correctness.md` § 2a): the phosphate rule for the
       charge, then open or closed shell at that charge
-    * Pre-optimization stage off by default; opt-in for systems
-      where the builder geometry is rough (long ssDNA, large
-      peptides) so PBE/def2-SVP can clean it up before B3LYP runs.
 """
 
 from __future__ import annotations
@@ -54,10 +50,9 @@ from .siesta import _validate_basename     # shared with SiestaConfig
 #: is a bug here rather than a second opinion.
 #:
 #: The keys are catalogue items, which is what makes them legal ``overrides``
-#: on a stage (`stages.md` § 2).  ``restart`` is NOT among them: it follows
-#: from a rung's POSITION rather than its tier (`run-identity.md` § 4 rule
-#: 3), so ``default_pyscf_stages`` sets it -- exactly where SIESTA's twin
-#: does.
+#: on a stage (`stages.md` § 2).  ``restart`` is NOT among them: a rung's
+#: position does not answer *is there anything to continue from*
+#: (`run-identity.md` § 4 rule 3), so neither engine's ladder sets it.
 #:
 #: Units: ``geom_gmax`` / ``geom_grms`` in Ha/Bohr; ``geom_dmax`` /
 #: ``geom_drms`` in Angstrom -- NOT Bohr, a long-standing geomeTRIC doc bug
@@ -106,10 +101,7 @@ PYSCF_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
 #: **Rule 2 is answered by the ``restart`` field below**, and by the same one
 #: field SIESTA answers it with: two values, ``clean`` and ``continue``, and
 #: a rerun that says ``clean`` writes its checkpoint without reading the one
-#: already beside it. Before that field existed the resume branches were
-#: gated on ``chkfile`` and ``save_optimized_xyz`` -- *write* flags doubling
-#: as read gates -- so *"write a checkpoint but do not resume from one"* was
-#: a sentence this engine could not say.
+#: already beside it.
 PYSCF_RESTART_GROUP = RestartGroup(
     literal="JOB",
     keys=(),
@@ -139,11 +131,6 @@ class PySCFConfig:
     # three merged items, declared once in `config/state.py` for both
     # engines, and `method` below.  A blank means *work it out*;
     # `electronic_state` does, for the form, the checks and the deck alike.
-    # `net_charge` was `charge` until 2026-08-19 (``charge`` is overloaded
-    # here: partial charges, formal charges, MolView's per-atom charge), and
-    # `unpaired_electrons` was `spin` until 2026-09-28 -- the SCF class's R
-    # or U travelled inside `method` then, and PySCF re-ruled RKS with a
-    # nonzero spin into ROKS without a word.
     net_charge: Optional[int] = _state.net_charge()
     spin_treatment: Optional[str] = _state.spin_treatment()
     unpaired_electrons: Optional[Union[int, str]] = _state.unpaired_electrons()
@@ -154,22 +141,11 @@ class PySCFConfig:
         "engine_key":  'gto.M(symmetry=...)',
     })
 
-    # ---------------- Engine ----------------
-    #
-    # NOT A FIELD (retired 2026-09-24).  Which program runs a described job
-    # is the description's `engine` (task.json), chosen on the describing
-    # tab's engine strip the way the Structure-optimization tab has always
-    # chosen it, and carried by the hand-over -- never a parameter of the
-    # deck.  The catalogue item that stood here (`[item.engine]`, one
-    # choice) existed only because the Spectrum tab had no strip; it gained
-    # one with the second engine (engines/vibration.md § 3.1).
-
     # ---------------- Method (main run) ----------------
     # WHICH THEORY -- Kohn-Sham DFT or Hartree-Fock -- and nothing else.  The
     # SCF class is COMPOSED from this and `spin_treatment` and written
     # explicitly (`dft.UKS`, `scf.ROHF`, ...; `pyscf/layout.scf_class`), never left
-    # to PySCF to re-rule.  It was the class itself (RKS / UKS / RHF / UHF)
-    # until 2026-09-28, which fused two questions into one field.
+    # to PySCF to re-rule.
     method: str = field(default="DFT", metadata={
         "category": ("method",),
         "workflow_group": "profile",
@@ -212,37 +188,19 @@ class PySCFConfig:
         # dispersion is also profile.  Setting once per project.
         "workflow_group": "profile",
         "label":   "Dispersion",
-        # ``mf.disp = "d3bj"`` -- which is what the emitter has always
-        # written.  The badge said ``mf = mf.add_dispersion(...)`` until
-        # 2026-08-15, and PySCF has no such method: anyone who trusted the
-        # badge and searched the docs for it found nothing.
         "engine_key":  'mf.disp = ...',
         # ``none`` IS THE VALUE for no correction -- stored, written into
-        # the template, read back as itself.  It was normalised to None by
-        # the form and the Build page until 2026-09-28, and None is what an
-        # UNSET item reads as: the template wrote the item valueless and
-        # `prep` filled the class default, so a person who chose "none"
-        # ran D3BJ (`template.config_from_template`: "an unset item is
-        # omitted ... so the class default applies").  One spelling, and
-        # never None.
+        # the template, read back as itself -- because None is what an UNSET
+        # item reads as, and an unset item takes the class default (d3bj).
         #
-        # ``d3`` WAS offered here and always crashed.  PySCF's own
-        # ``pyscf/scf/dispersion.py`` accepts exactly d3bj, d3bjm, d3op,
-        # d3zero, d3zerom and d4; anything else reaches
+        # PySCF's own ``pyscf/scf/dispersion.py`` accepts exactly d3bj,
+        # d3bjm, d3op, d3zero, d3zerom and d4; anything else reaches
         # ``raise NotImplementedError(f'{method_lower} is not supported
         # yet.')``.  Confirmed against B3LYP, PBE and PBE0 on PySCF 2.13.
-        # The zero-damping variant a user picking "d3" means is spelled
-        # ``d3zero``, so the choice is renamed rather than dropped.
         "choices": ("d3bj", "d3zero", "d4", "none"),
     })
-    # Effective Core Potential -- TWO plain fields, ONE format each.
-    #
-    # Rewritten 2026-08-13 (user).  It was ``str | dict | None`` where
-    # ``""``, ``"none"`` and ``None`` all meant different things: the
-    # first two disabled it, and ``None`` silently ADDED ``lanl2dz``
-    # whenever any element had Z > 36 and the basis was not def2.  Three
-    # spellings, a dict variant the CLI could not reach, and a hidden
-    # default.  The rulings that replaced it:
+    # Effective Core Potential -- TWO plain fields, ONE format each.  The
+    # user's rulings (2026-08-13):
     #
     #   * *"there is no point to limit matching to heavy -- who defines
     #     heavy? there is no clear reasoning or standard"* -- so no Z
@@ -250,7 +208,7 @@ class PySCFConfig:
     #   * *"empty means empty"* -- an empty name or an empty list means
     #     no ECP.  It never means "pick one for me".
     #   * *"one choice, one explicit format"*, *"do not invent too many
-    #     options/alias"* -- ``"none"`` is gone; so is the dict.
+    #     options/alias"*.
     #
     # Nothing is added behind the user's back.  ``validation`` still
     # HINTS when a structure looks like it wants an ECP and none was
@@ -340,7 +298,7 @@ class PySCFConfig:
         "engine_key":  'mf.grids.level',
         "range": (0, 9),
         "tier":  "advanced",
-        # Default tightened from 3 -> 4: hybrid functionals (B3LYP /
+        # Default 4: hybrid functionals (B3LYP /
         # PBE0 / M06-2X / wB97X-D, all our typical defaults) have
         # noisy forces at level 3.  Level 4 makes the SCF + force
         # noise floor low enough for tight geometry optimisation.
@@ -479,9 +437,9 @@ class PySCFConfig:
         "category": ("system",),
         "workflow_group": "profile",
         "label":   "PCM model",
-        # The real attribute, and what the emitter writes.  ``pcm.method``
-        # named no object that exists: the solvent handle only appears once
-        # ``mf = mf.PCM()`` has run, and it is called ``with_solvent``.
+        # The real attribute, and what the emitter writes: the solvent
+        # handle only appears once ``mf = mf.PCM()`` has run, and it is
+        # called ``with_solvent``.
         "engine_key":  'mf.with_solvent.method',
         "choices": ("IEF-PCM", "C-PCM", "COSMO"),
     })
@@ -489,19 +447,13 @@ class PySCFConfig:
     # ---------------- Runtime ----------------
     # UNLIMITED unless the user asks for a cap -- the typical memory limit is
     # all physical memory (user, ruled 2026-08-13 and again 2026-08-14).
-    # ``default = 4000`` stood here until 2026-08-14 and was obsolete history,
-    # not a competing default: it asserted a MACHINE FACT's value inside a
-    # portable description, which is the one thing `engines/template.md` § 7
-    # forbids floor 2 to do.  SIESTA's declaration had the right shape all
-    # along -- Optional, valueless, resolved on the machine that runs it --
-    # and this one never got the fix.  Now they are ONE item (§ 6.3).
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
         "allocation": True,
         "item_kind": "wrapper",
         "workflow_group": "staging",
         "label": "Max memory", "unit": "MB",
-        # NOT an engine keyword any more.  ``mol.max_memory`` is how PySCF
+        # Not an engine keyword: ``mol.max_memory`` is how PySCF
         # spells the answer, and § 6.3 is explicit that a merged item keeps no
         # anchor -- each engine's generator renders it its own way.
         "engine_key":  '(molbuilder: memory cap for the run -- ulimit -v in .run.sh / mol.max_memory)',
@@ -512,13 +464,7 @@ class PySCFConfig:
     threads: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
         # THE MACHINE ANSWERS THIS, exactly as SIESTA's `omp_threads` does --
-        # they are one fact, cores per task, under two engine spellings.  It
-        # carried no such mark until 2026-08-18, so `template_fields` excluded
-        # three machine facts for SIESTA and ONE for PySCF, and a portable
-        # PySCF description could assert how many cores to use -- the one thing
-        # `engines/template.md` § 7 forbids floor 2 to do.  Proven by the
-        # asymmetry it produced: the identical stage override was REFUSED as a
-        # machine fact for SIESTA and ACCEPTED for PySCF.
+        # they are one fact, cores per task, under two engine spellings.
         "allocation": True,
         "workflow_group": "staging",
         "label":      "CPU threads",
@@ -527,11 +473,9 @@ class PySCFConfig:
     })
     gpu_count: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        # THE SAME ITEM AS SIESTA'S, since 2026-10-01 (`execution/gpu.md`
-        # § 1.1): how many GPUs a run asks for, stated on its run card -- an
-        # allocation ask, never a template value, and no default.  PySCF had
-        # none until then, so a PySCF GPU run could only be given one GPU,
-        # unsaid.
+        # THE SAME ITEM AS SIESTA'S (`execution/gpu.md` § 1.1): how many
+        # GPUs a run asks for, stated on its run card -- an allocation ask,
+        # never a template value, and no default.
         "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "staging",
@@ -622,9 +566,7 @@ class PySCFConfig:
             "engine_key":  '(molbuilder: per-step .xyz from geomopt callback)',
     })
     # Match SiestaConfig's naming (``write_molwatch_log``) so the two
-    # configs read the same way.  ``molwatch_log`` is kept as a
-    # back-compat property below in __post_init__ for callers passing
-    # the old kwarg.  Emission also requires ``optimize=True`` -- the
+    # configs read the same way.  Emission also requires ``optimize=True`` -- the
     # molwatch hooks ride on the SCF and geomeTRIC opt-step callbacks,
     # so a single-point run has nowhere to attach.
     write_molwatch_log: bool = field(default=True, metadata={
@@ -637,9 +579,7 @@ class PySCFConfig:
     })
 
 
-    # ----- Vibrational spectroscopy (the vibration calculation kind; -----
-    # ----- spectra-migration plan P0, 2026-08-20.  Carried from the -----
-    # ----- the catalogue is the master. -----
+    # ----- Vibrational spectroscopy (the vibration calculation kind) -----
     already_relaxed: bool = field(default=False, metadata={
         "category": ("procedure",),
         "workflow_group": "profile",
@@ -742,7 +682,7 @@ class PySCFConfig:
     temperature_K: float = field(default=298.15, metadata={
         "category": ("procedure",),
         # ONE MEANING ON BOTH ENGINES (`engines/vibration.md` § 3.1): the
-        # thermochemistry's temperature, SIESTA's too since 2026-09-28.
+        # thermochemistry's temperature.
         "workflow_group": "profile",
         "label": "Thermochemistry temperature", "unit": "K",
         "item_kind": "deck",
@@ -796,10 +736,7 @@ class PySCFConfig:
         ``prep``, so no deck is written from it."""
         return parse_index_list(self.es_explicit_indices, first=1)
 
-    # Back-compat: the field was named ``molwatch_log`` before the
-    # 2026-05-10 naming alignment with SiestaConfig.write_molwatch_log.
-    # The property mirrors writes / reads to the canonical attribute
-    # so existing user code passing ``molwatch_log=...`` still works.
+    # ``molwatch_log`` reads and writes ``write_molwatch_log``.
     @property
     def molwatch_log(self) -> bool:                  # pragma: no cover
         return self.write_molwatch_log
@@ -807,7 +744,6 @@ class PySCFConfig:
     @molwatch_log.setter
     def molwatch_log(self, value: bool) -> None:     # pragma: no cover
         self.write_molwatch_log = value
-
 
 
 __all__ = ["PySCFConfig"]

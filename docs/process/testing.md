@@ -355,20 +355,16 @@ test_read_system_degrades_on_a_missing_bundle        -> summarize._read_system
 
 All four are callers of `runfiles.find_by_role`. If the door is right they all
 pass; if it is wrong they all fail together — **four tests carrying one bit**.
-*(The first two are gone — retired 2026-10-04, it stood on outputs written
-by hand, and 2026-10-05, a duplicate of the refusal pinned where a person meets
-it; the example stands as the pattern.)*
+*(None of the four is in the suite; the example stands as the pattern.)*
 
 > **The first one stopped being an example on 2026-09-18, and the reason is
 > this section's own rule.** `openable_in` still calls `find_by_role`, so the
 > claim above is still literally true of it — but it is no longer THIN: it
-> asked `task.json` what calculation this is (the run door, `runs`, asks the
-> description since 2026-10-04), `runfiles.result_roles` what
-> that produces, and `detect()` whether anything can open the answer
-> (`model/parse.md` § 5.2). Three rules the door cannot know, so by the rule
-> below it now earns its own tests, and it has them. Left in place rather
-> than swapped, because a caller *becoming* a decider is the transition worth
-> showing.
+> asks `runfiles.result_roles` what the calculation its caller names produces,
+> and the registry whether anything can open the answer (`model/parse.md`
+> § 5.2). Rules the door cannot know, so by the rule below it earns its own
+> tests. Left in place rather than swapped, because a caller *becoming* a
+> decider is the transition worth showing.
 
 > **Test the DOOR's outcome. Test a caller only where the caller DECIDES
 > something the door cannot know.**
@@ -471,9 +467,16 @@ code actually makes:**
 | the thing under test | the product to assert on | how |
 |---|---|---|
 | a route | the response — status, body, headers | the Flask test client |
-| a deck emitter | the rendered deck text | call the renderer |
+| a deck, a run script, a `.sbatch` header | the file `prep` writes | a row down the road (§ 6): `init → prep`, then the file read |
 | a JS module | what it *does* — call it and check the result or the DOM it changed | `tests/_node_esm.py` (§ 4) |
 | a whole page's flow | what a person sees after acting | a Playwright `*_e2e.py` (§ 5) |
+
+A generated file is checked where `prep` wrote it, because that is the only
+place its settings, its names and the check `prep` runs on it all meet; a row
+names the structure it needs (`structure`), H2 unless it does. A test calls
+the renderer (`spec_for` → `script_emit.render_deck`) directly only for a
+refusal the road cannot reach — the deck check handed a deck `prep` never
+writes — and its docstring says so.
 
 **Reading a shipped file is not automatically wrong — asserting on its
 spelling is.** These are legitimate, because the *artifact itself* is the

@@ -2,29 +2,11 @@
 
 Contract: `model/parse.md` § 5.5 (what a person can open is the REGISTRY's
 question); the record's own shape is `transport/record.py`'s, which writes it.
+`/api/results/dir` asks the registry what reads each file.
 
-**A PREDECESSOR WAS DELETED, and this is not it** (`b11dc830`, 2026-09-17,
-"the hand-assembly era comes out").  That one belonged to
-``transport/results.py``'s ``dump_transport_json`` — a writer with **zero
-production callers in every revision** — and it claimed a file only when the
-file carried a top-level ``schema_version``, while the live writer emits
-``schema``.  So it sat in the registry **unable to claim the one file
-molbuilder actually writes**, and no legacy file of its shape can exist
-because nothing ever wrote one.  Deleting it was right.
-
-What is different now: the reader has a consumer.  `/api/results/dir` asks
-the registry what reads each file, and until this module existed the answer
-for a transport record was *nothing* — so the Results tab parsed the file
-**in the browser**, with `JSON.parse` in `lib/inspectors/transport.js`.  That
-made it the one result kind whose format was understood only in JavaScript:
-no schema check, no refusal, and a malformed record rendered as whatever
-`JSON.parse` returned.
-
-**IT CHECKS THE SCHEMA, and that is the lesson of the predecessor.**
-`can_parse` reads the discriminator rather than trusting the suffix, so this
-reader cannot repeat the failure of being registered for a shape nobody
-writes: if the writer's schema moves, this refuses loudly instead of
-claiming a file it will then misread.
+**IT CHECKS THE SCHEMA.**  `can_parse` reads the discriminator rather than
+trusting the suffix: if the writer's schema moves, this refuses loudly
+instead of claiming a file it will then misread.
 """
 from __future__ import annotations
 
@@ -76,10 +58,7 @@ class TransportRecordFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        # THE SCHEMA, not the suffix alone.  The predecessor this replaces
-        # claimed on a key the live writer does not emit and could never
-        # read a real record; checking the discriminator is what stops that
-        # recurring in either direction.
+        # THE SCHEMA, not the suffix alone.
         from molbuilder.runfiles import role_of
         if role_of(Path(path).name) != ".transport.json":
             return False

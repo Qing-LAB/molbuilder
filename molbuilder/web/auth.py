@@ -155,8 +155,8 @@ def sign_in_is_configured(app) -> bool:
 
     **A PUBLIC predicate because a GATE depends on the answer.**  The notebook
     blueprint asks it to decide whether a loopback client may start a kernel
-    (`blueprints/jupyter.py`), and it used to spell `_PROVIDERS_EXT_KEY`
-    itself.  That fails OPEN on a rename: `.get()` returns `None`, "sign-in is
+    (`blueprints/jupyter.py`).  A caller spelling `_PROVIDERS_EXT_KEY`
+    itself fails OPEN on a rename: `.get()` returns `None`, "sign-in is
     not configured" becomes true, and an authenticated network-bound server
     starts admitting any loopback peer.  One owner for the key, and the
     question asked rather than the storage guessed at.
@@ -309,11 +309,10 @@ def _register_auth_gate(app) -> None:
         # every ordinary visitor, including one whose session simply expired --
         # it is not a probe.
         #
-        # Left uncounted it was: the limiter counts 4xx, a session expiring with
-        # a tab open turns the page's own 1 Hz poll into one 4xx per second, and
-        # twenty in thirty seconds blocked the user's address FOR AN HOUR on
-        # every path -- the login page included.  From their side the site was
-        # simply down, with no message.  The app locking its own user out.
+        # Counted, it would lock the app's own user out: the limiter counts
+        # 4xx, a session expiring with a tab open turns the page's own 1 Hz
+        # poll into one 4xx per second, and twenty in thirty seconds blocks the
+        # user's address FOR AN HOUR on every path -- the login page included.
         #
         # Marked HERE, on the one gate that produces it, rather than by
         # excluding 401 wherever it appears: a 401 from somewhere else has a
@@ -512,23 +511,12 @@ def _install_secret_key(app) -> None:
     """Load Flask's session-signing key, generating it on first run.
 
     **The key has ONE home** -- ``<config dir>/secrets/secret_key``, asked of
-    ``config_dir.session_key()`` (`configuration.md` § 2.1e).  It took a
-    ``secret_key_file`` argument until 2026-08-31, and a configurable location
-    for a single file is how it came to live in two places: the config pointed
-    at ``~/.molbuilder/secret.key`` while the wizard wrote
-    the path the resolver named, so running ``auth-setup`` produced a key the
-    server never read and reported success.
-
-    There is no ephemeral fallback any more, and its absence is the point.  It
-    existed for "no path configured", which cannot happen when the path is not
-    configurable -- and it degraded silently into sessions that died on every
-    restart, behind a warning in a log nobody reads.
+    ``config_dir.session_key()`` (`configuration.md` § 2.1e).
     """
     from ..config_dir import read_session_key, session_key
     path = session_key()
-    # ASK FOR THE KEY, NOT THE PATH.  This did `path.read_bytes()` until
-    # 2026-09-20; `path` is still needed below for the first-run CREATE and
-    # for the message, but nothing here decodes the file any more.
+    # ASK FOR THE KEY, NOT THE PATH: `path` is needed below only for the
+    # first-run CREATE and for the message.
     key_bytes = read_session_key()
     if key_bytes is not None:
         if len(key_bytes) < _MIN_KEY_BYTES:
@@ -547,12 +535,10 @@ def _install_secret_key(app) -> None:
     from ..persist import write_bytes
     ensure_private_dir(path.parent)
     # THROUGH THE ONE WRITER (§ 2.3), which `auth_setup.write_secret_file`
-    # already uses for the other three secrets.  This was a hand-rolled
-    # `os.open(O_CREAT|O_EXCL)` + `os.write` until 2026-09-20, under a comment
-    # claiming it was atomic.  `exclusive=True` keeps what `O_EXCL` was there
-    # for -- an existing key is never replaced, because replacing it signs
-    # every logged-in person out -- and adds what it lacked: the bytes arrive
-    # through a temp, so the file is complete or absent, never partial.
+    # uses for the other three secrets.  `exclusive=True`: an existing key is
+    # never replaced, because replacing it signs every logged-in person out;
+    # the bytes arrive through a temp, so the file is complete or absent,
+    # never partial.
     try:
         write_bytes(path, secrets.token_bytes(32), mode=PRIVATE_FILE_MODE,
                     exclusive=True)

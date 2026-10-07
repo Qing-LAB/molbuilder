@@ -25,21 +25,17 @@ It also means the CLI, the web tab and the codec reach the same normaliser —
 § 3's rule 1 is *"it happens once, and the result is stored"*, which is only
 true if there is one place it can happen.
 
-Since 2026-08-09 ``task.py`` calls in rather than trusting what it parsed: it
-derives ``run.id`` from ``run.name`` and ``structure.formula`` and refuses a
+``task.py`` calls in rather than trusting what it parsed: it derives
+``run.id`` from ``run.name`` and ``structure.formula`` and refuses a
 description that disagrees with itself (``Task._check_id``).  That is what makes
-*stored* mean anything — before it, ``id`` was a free string, and the header
-here still described a file that *"already has an id"*.
+*stored* mean anything.
 
 **On the character set.** § 3 is explicit that the set *"is not a new
 decision"* — `job-contracts.md § 2.1` Rule 2 fixes it, and this module does not
-get to widen it. Four validators in the tree already spell it
-(``projects._NAME_PATTERN``, ``checkpoint._CALC_NAME_RE`` — which cites this very
-contract — plus ``bench/grid`` and ``config/pyscf``). **None of them
-normalises**; they all reject. This is the first transform, so nothing is being
-duplicated here. Consolidating those four spellings is a real cleanup and is
-*not* this phase's — P3 subtracts *"any second normaliser"*, and there is not
-even a first one. What the tests do instead is assert that every id this
+get to widen it. Four validators in the tree spell it
+(``projects._NAME_PATTERN``, ``checkpoint._CALC_NAME_RE``, ``bench/grid`` and
+``config/pyscf``). **None of them normalises**; they all reject. This is the
+one transform. What the tests do instead is assert that every id this
 produces is accepted by the shipped validators, so the agreement is checked
 rather than assumed.
 """
@@ -90,15 +86,8 @@ class RestartGroup:
     #:
     #: ``literal`` is what the engine calls it; this is what molbuilder calls
     #: it, and a surface that has a config in hand and needs the calculation's
-    #: name needs this one. Added 2026-08-18, because without it the web
-    #: hand-over had no engine-agnostic way to ask and named the calculation
-    #: after its DESTINATION FOLDER instead — so the label the person typed
-    #: stayed in the template while `task.json` carried another, and § 4's
-    #: *"there is no second name"* was false on disk: the engine wrote
-    #: ``bdt_e2e.XV`` while everything molbuilder named was stemmed
-    #: ``bdt-e2e``. `prep --from` then refused a carry with *"that attempt
-    #: holds none of the files this stage would continue from"* — of a stage
-    #: that had run and produced exactly those files under the other name.
+    #: name needs this one: a calculation named from anything else carries a
+    #: second name, and § 4's *"there is no second name"* is false on disk.
     #:
     #: Defaulted so an engine that has not been revisited still constructs;
     #: the two shipped engines both fill it in.
@@ -159,8 +148,7 @@ _STAGE_BUDGET = 32
 #: The most a label may occupy, derived: the name limit, less the longest
 #: stage suffix and the longest extension that will be appended to it.
 #:
-#: Called ``MAX_ID_BYTES`` until 2026-08-09.  It never bounded the id -- it
-#: bounds what goes in a **filename**, and § 2.0a is that only the label does.
+#: It bounds what goes in a **filename**, and § 2.0a is that only the label does.
 #: The id is longer and goes in ``task.json``, where nothing bounds it.
 MAX_LABEL_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
 
@@ -181,21 +169,17 @@ MAX_LABEL_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
 #: then the run-indexed logs, which are **history and not state**: they are
 #: what a user goes back to read, and nothing here may treat them as leftovers.
 #:
-#: **DERIVED, since 2026-09-07, from `runfiles.WRITTEN`** — the catalogue
-#: that says what each of these files IS, which is what the Task-setup card
-#: shows a person and what this list has no room for. The globs are the same
-#: strings they always were; what changed is that the family and the names
-#: now come out of one table instead of two, and `runfiles` holds the notes
-#: on why each row is there.
+#: **DERIVED from `runfiles.WRITTEN`** — the catalogue that says what each of
+#: these files IS, which is what the Task-setup card shows a person; `runfiles`
+#: holds the notes on why each row is there.
 #:
 #: ⚠ **THIS LIST HAS A SECOND READER.** `runwrap._cold_restart_block`
 #: derives `--cold`'s *"except what molbuilder wrote"* exception from these
-#: same patterns, and it runs where an engine's output IS present. It used
-#: to read `{label}` as `*`, so a `{label}.xyz` row silently became `*.xyz`
-#: and made PySCF's `<JOB>_optimized.xyz` — warm state — look like ours;
-#: `--cold` then walked past the file it exists to move. Fixed 2026-08-17 by
-#: anchoring that exception on the run's id instead of a star, and pinned by
-#: `test_the_exception_is_anchored_on_the_id_not_widened_to_a_star`.
+#: same patterns, and it runs where an engine's output IS present.  That
+#: exception is anchored on the run's id, never widened to a star: read as
+#: `*`, a `{label}.xyz` row would make PySCF's `<JOB>_optimized.xyz` — warm
+#: state — look like ours, and `--cold` would walk past the file it exists to
+#: move (`test_the_exception_is_anchored_on_the_id_not_widened_to_a_star`).
 OUR_FILE_PATTERNS: Sequence[str] = _runfile_patterns()
 
 
@@ -250,8 +234,7 @@ def command_stage(token: str) -> str:
     `job-system.md` § 5.3).  Every other printed line already holds a name.
 
     Never the token: ``02_freq`` is itself a legal stage name, of another
-    stage, and the relaxation decks' headers printed it until K12 (plan § 5w
-    K12; the M11 review's SS-C11).  Never ``#N``: an unquoted ``#`` begins a
+    stage (plan § 5w K12).  Never ``#N``: an unquoted ``#`` begins a
     comment in bash, so a pasted ``launch run #2`` names no stage."""
     m = re.fullmatch(r"\d{2,}_([A-Za-z0-9_]+)", str(token))
     if m is None:
@@ -270,10 +253,9 @@ def launch_as_typed(stage: str, trial: Optional[str] = None) -> str:
     """A stage's launch -- its run, or THIS trial alone -- as typed from the
     calculation's folder: what a text read LATER says, wherever it was
     copied (a deck's header, a result's remedy), so it names no folder and
-    no mode; :data:`LAUNCH_MODE_NOTE` says what the mode means.  ONE wording
-    (W52: three engines' decks printed three forms, two of them with
-    ``--mode direct|submit``, which bash reads as a pipe, and the vibration
-    remedy a fourth).  ``stage`` is the stage's NAME -- never its token, a
+    no mode; :data:`LAUNCH_MODE_NOTE` says what the mode means.  ONE wording,
+    for every engine's deck and remedy (W52) -- never ``--mode
+    direct|submit``, which bash reads as a pipe.  ``stage`` is the stage's NAME -- never its token, a
     legal name of another stage (`job-system.md` § 5.3)."""
     return ("molbuilder jobset launch "
             + (f"bench {stage} {trial}" if trial else f"run {stage}"))
@@ -285,9 +267,7 @@ def checkpoint_as_typed(folder=None) -> Tuple[str, str]:
     the command composer (`jobset.commands.rollback`) and every layer below
     it say.  ``folder`` ``None`` is a text read LATER, wherever it was copied
     -- then the person types them from the calculation's folder, and the
-    sentence around them says so.  *(Four sites below the composer named no
-    folder until 2026-10-06: typed from another calculation, they listed
-    and restored that one.)*"""
+    sentence around them says so."""
     import shlex
     p = "" if folder is None else f" -p {shlex.quote(str(folder))}"
     return (f"molbuilder checkpoint list{p}",
@@ -323,11 +303,6 @@ def parse_token(token: str) -> Optional[Tuple[int, str]]:
     name; a filename's is `runfiles.parse`'s."""
     m = _TOKEN_RE.fullmatch(str(token))
     return (int(m.group(1)), m.group(2)) if m else None
-
-
-# `parse_stage_token` -- a stage cut from a filename's tail by its own
-# pattern -- stood here until 2026-10-04: a name is read back with its
-# label through `runfiles.parse`, which returns its stage (plan B11, 3b).
 
 
 def seq_text(seq: Optional[int]) -> str:
@@ -419,10 +394,9 @@ def resolve_stage_ref(refs: Sequence["StageRef"], text: str) -> "StageRef":
                                           nothing else
         #3           the stage's number — '#' then its assigned ``seq``
 
-    Until then a bare number and the whole token (``03_tight``) resolved
-    too — but both are LEGAL STAGE NAMES (`engines/stages.md` § 2 allows
-    ``[A-Za-z0-9_]+``), so a stage literally named ``2`` was ambiguous
-    with an ordinal.  ``#`` cannot appear in a name, which is what makes
+    A bare number and the whole token (``03_tight``) are LEGAL STAGE NAMES
+    (`engines/stages.md` § 2 allows ``[A-Za-z0-9_]+``), so neither may mean
+    an ordinal.  ``#`` cannot appear in a name, which is what makes
     the prefix collision-free; everything without it is a name, full stop.
 
     ``#N`` is matched against ``seq`` and **never** against a position in
@@ -467,7 +441,7 @@ def render_stage_choices(refs: Sequence["StageRef"]) -> str:
     """What a refusal offers — the TYPEABLE spellings: ``coarse ('#1'),
     tight ('#3')``; bare names where there are no ordinals.  ``#N`` is QUOTED,
     because bash reads an unquoted ``#`` as the start of a comment
-    (`job-system.md` § 5.3) -- it was offered bare until 2026-10-01 (W52).
+    (`job-system.md` § 5.3).
 
     A sibling of :func:`render_stage_refs`, split on purpose: the table
     format shows what is ON DISK (the token, ``03_tight``), this shows
@@ -506,18 +480,17 @@ def is_ours(name: str, label: str) -> bool:
     relabels each point ``<label>-<coordinate>`` so its warm files can never
     meet the run's (`project-layout.md` § 2.3.2), and everything molbuilder
     writes for that point is stemmed on the new label: ``bdt-G1K4C6_01_coarse.fdf``,
-    its wrapper, its trajectory log. None of them matched, so after any
-    ``prep bench`` the whole trial set was reported back as engine restart
-    state — 33 files on the fixture this was found with, none of them the
-    engine's, while the `run-identity.md` § 6 prompt they filled is the one
-    moment a person is asked to stop and read.
+    its wrapper, its trajectory log -- matched against ``{label}`` alone, the
+    whole trial set would read as engine restart state at the
+    `run-identity.md` § 6 prompt, the one moment a person is asked to stop
+    and read.
 
     Trying ``{label}-*`` as well as ``{label}`` is the rule
     `job-contracts.md` § 6.3 already states — ``-`` announces ONE qualifier,
     and ``resolve.point_token`` keeps the coordinate inside ``[A-Za-z0-9_]``
     so it cannot contain another. Deriving it costs one line; writing the
-    qualified forms out would double a list whose whole failure mode, twice
-    recorded above, is a pattern that silently stops matching.
+    qualified forms out would double a list whose failure mode is a pattern
+    that silently stops matching.
     """
     import fnmatch
     return any(fnmatch.fnmatchcase(name, p.format(label=stem))
@@ -621,10 +594,9 @@ def run_id(label: str, formula: str = "", *,
     and the stem of every file, so it carries the **filename cap** — 255 bytes
     less what ``_<stage>.<longest extension>`` will occupy. The id goes into
     ``task.json`` and never becomes a filename, so nothing bounds the pair.
-    Normalising the *joined* string, as this did until today, applied the
-    filename cap to a string that is not a filename: a long name plus a
-    long formula was refused for exceeding a limit neither of them would ever
-    meet on disk, and the message blamed the name.
+    Normalising the *joined* string would apply the filename cap to a string
+    that is not a filename, and refuse a long name plus a long formula for a
+    limit neither of them would ever meet on disk.
 
     The formula still goes through the same alphabet, because a witness a
     person may hand-edit is a witness that can be wrong; splitting the call is

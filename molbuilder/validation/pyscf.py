@@ -1,13 +1,7 @@
 """PySCF-specific validators + the PySCFConfig aggregator.
 
 The aggregator ``_validate_pyscf`` is what gets registered against
-``PySCFConfig`` in the engine-validator registry; its CALL ORDER is
-the public contract (every test that counts issues by position
-depends on it).  This module preserves that order verbatim from the
-pre-2026-06-13 flat ``molbuilder/validation.py``.
-
-Split per docs/science/validation.md  No logic
-changes; relocation only.
+``PySCFConfig`` in the engine-validator registry.
 """
 
 from __future__ import annotations
@@ -25,18 +19,16 @@ from .sidecar import _check_frozen_atoms_consumed
 
 
 # --------------------------------------------------------------------- #
-#  Shared PySCF numerical-grid rule (the ONE body — was duplicated).    #
+#  Shared PySCF numerical-grid rule (the ONE body).                     #
 #                                                                       #
 #  The grid-sensitive XC class is META-GGA (τ-dependent: SCAN/TPSS/     #
 #  M06-L/…), NOT "hybrids" -- a hybrid's HF exchange is analytic (off   #
 #  the DFT grid), so pure hybrid-GGAs are grid-robust.  Below grid      #
 #  level 4 a meta-GGA's oscillatory integrand picks up grid noise that  #
-#  dominates forces / frequencies.  The SAME gate matters at two call   #
-#  sites: geometry-opt FORCES (_validate_pyscf) and spectra HESSIAN     #
-#  frequencies (the retired spectra engine's render_checks).  Both     #
-#  carry a duplicated copy keyed WRONGLY on "hybrid" (V4 dedup; the     #
-#  meta-GGA re-key + corrected rationale is the scientific-audit fix).  #
-#  One detector-pair + one gate now; message context-selected.          #
+#  dominates forces / frequencies.  The SAME gate serves two call       #
+#  sites: geometry-opt FORCES (_validate_pyscf) and the vibration       #
+#  kind's HESSIAN frequencies (validation/spectra.py).  One             #
+#  detector-pair + one gate; message context-selected.                  #
 # --------------------------------------------------------------------- #
 
 GRID_FLOOR = 4
@@ -85,8 +77,9 @@ def check_dft_grid_level(cfg, *, context: str) -> List[Issue]:
     LDA/GGA (PBE, BLYP, BP86, revPBE, RPBE) is grid-robust and not flagged.
 
     ``context`` selects the rationale:
-      * ``"optimisation"`` — geometry-opt forces (Build tab).
-      * ``"spectra"``       — Hessian / harmonic frequencies (Spectra tab).
+      * ``"optimisation"`` — geometry-opt forces.
+      * ``"spectra"``       — Hessian / harmonic frequencies (the vibration
+        kind).
     """
     # Hartree-Fock integrates no exchange-correlation on a grid: the item
     # enters nothing there, whatever functional the template still names.
@@ -134,10 +127,6 @@ def _check_periodic_structure_in_a_gas_phase_script(
     a repeating axis produces a script that quietly drops the cell and computes
     an ISOLATED CLUSTER instead: not a rough version of what was asked for, a
     different calculation.
-
-    Nothing said so until 2026-08-03.  A three-axis-periodic NaCl cell with a
-    5.6 Å lattice generated a two-atom gas-phase script, the lattice appeared
-    nowhere in it, and no check mentioned the difference.
 
     WARN, NOT ERROR, and that is the project's rule rather than a hedge: an
     isolated-cluster calculation of a periodic input is legal and occasionally
@@ -199,9 +188,8 @@ def _validate_pyscf(struct: Structure, cfg,
     # Periodicity vs what this emitter can express.  FIRST, because it changes
     # what every other finding is about: the rest describe a cluster
     # calculation, and this says whether you asked for one.  EVERY KIND, a
-    # vibration among them: the vibration gate refused a repeating axis until
-    # 2026-09-29, and now this note is the one finding (user: "just note that
-    # periodicity will not be respected in pySCF").
+    # vibration among them (user: "just note that periodicity will not be
+    # respected in pySCF").
     issues += _check_periodic_structure_in_a_gas_phase_script(struct)
 
     # The charge and the spin are NOT judged here: they are the electronic
@@ -229,8 +217,7 @@ def _validate_pyscf(struct: Structure, cfg,
             honored=_relaxes,
             reason_when_dropped=_drop_reason,
         )
-    # Pattern B, re-homed here from the deleted web endpoints (C-shared
-    # 2026-08-21): region labels this optimization run does not consume
+    # Pattern B: region labels this optimization run does not consume
     # are named.  The vibration kind runs its own copy over the deck's
     # view (with the same frozen-label exclusion), so this defers there.
     if not vibration:
@@ -245,13 +232,9 @@ def _validate_pyscf(struct: Structure, cfg,
         from .sidecar import check_electrode_labels_are_frozen
         issues += check_electrode_labels_are_frozen(struct)
 
-    # Solvation, engine-side (moved from the kind at the U6 close):
-    # these are facts about the BUILD and the vocabulary, not about the
-    # vibration -- the optimization deck emits the same solvent lines
-    # (scf_setup.emit_solvent_lines), so a refusal that lived only in
-    # the kind let `solvent_method = SMD` reach the queue on an
-    # optimization deck, and an unknown solvent name escaped prep as a
-    # bare ValueError from the emitter (the G-1c stack-trace class).
+    # Solvation, engine-side: these are facts about the BUILD and the
+    # vocabulary, not about the vibration -- both decks emit the same
+    # solvent lines (scf_setup.emit_solvent_lines).
     _solv = str(getattr(cfg, "solvent", "") or "").strip().lower()
     if _solv:
         from ..pyscf.scf_setup import SOLVENTS
@@ -284,8 +267,8 @@ def _validate_pyscf(struct: Structure, cfg,
 
     # The ECP hint -- directly after basis adequacy, because the two are the
     # same conversation: what the basis covers, and what the core potential
-    # covers.  It ASKS.  Since 2026-08-13 nothing picks an ECP for the user,
-    # so this is the only place a bare all-electron Pt gets mentioned.
+    # covers.  It ASKS.  Nothing picks an ECP for the user, so this is the
+    # only place a bare all-electron Pt gets mentioned.
     issues += _check_ecp_declared_for_the_atoms_that_usually_want_one(
         struct,
         ecp=getattr(cfg, "ecp", "") or "",
@@ -299,8 +282,8 @@ def _validate_pyscf(struct: Structure, cfg,
     # invariants are the DESCRIPTION's and are checked where descriptions are:
     # ``task.Task.validate`` refuses an empty stage list, duplicate names and
     # an all-disabled ladder, and ``validation/task.py`` checks every
-    # override against the ``range`` / ``choices`` the schema declares -- which
-    # is what used to be spelled out per knob here.  This validator sees ONE
+    # override against the ``range`` / ``choices`` the schema declares.  This
+    # validator sees ONE
     # rung's resolved config and cannot see the ladder at all.
 
     # The species labels -- asked here because the gate reports a bad label

@@ -23,9 +23,8 @@
  * name (docs/execution/checkpointing.md § 5, § 7.1).
  *
  * Activation gate (docs/web/projects.md): the panel only appears
- * for a *run directory* -- a dir at projects rel-depth 3, in the
- * canonical layout projects/PROJECT/CATEGORY/RUNNING_DIR.  Selecting
- * anything shallower (or a file) hides the panel entirely.
+ * where /api/checkpoint/state answers `is_calculation` or
+ * `initialized` (see onDirectoryChange); anywhere else it hides.
  *
  * Refresh model (docs/web/projects.md): explicit only --
  * NO background polling.  State refreshes on (a) directory-enter into
@@ -95,10 +94,8 @@ function _attach() {
 
     // BIND ONCE.  `initCheckpointPanel` documents itself as safe to call from
     // several bootstrap paths, and this function is what that promise rests
-    // on -- but every listener below was added unconditionally, so a second
-    // call would double-bind them and one click on Save would POST twice.
-    // Only one caller exists today; the docstring invites a second, which is
-    // exactly how a latent trap gets sprung by an unrelated change.
+    // on: a second call must not double-bind the listeners below, or one
+    // click on Save would POST twice.
     if (elPanel.dataset && elPanel.dataset.psCheckpointWired === "1") {
         return true;
     }
@@ -157,16 +154,8 @@ export function onDirectoryChange(dirPath) {
      * request that fills it: `/api/checkpoint/state` answers
      * `is_calculation` (a `task.json` is here -- `project-layout.md`
      * invariant 2) beside `initialized` (a repo is here).  Either one means
-     * the panel has something to say; neither means it hides.
-     *
-     * THIS COUNTED PATH SEGMENTS until 2026-09-19 -- `RUN_DIR_DEPTH = 3`,
-     * "projects/PROJECT/CATEGORY/RUN" -- which is the same shape as the
-     * `_CALC_SEARCH_DEPTH` walk deleted in 76282e71, only counting down
-     * instead of up.  It answered wrongly in both directions: one extra
-     * grouping folder (`optimization/2026-batch/bdt-scan/`) put a real
-     * calculation at depth 4 and the panel vanished with no message, while
-     * three loose `.xyz` files in `structure/geometries/` sat at depth 3
-     * and were offered a `git init`.
+     * the panel has something to say; neither means it hides.  No path
+     * depth is counted.
      */
     if (!dirPath) {
         _state.currentDir = null;
@@ -242,9 +231,8 @@ function _renderState(repoState) {
         elSensor.setAttribute("data-state", "uninit");
         _paintToggle("uninit", "no states saved");
         // Clear the tooltip too.  The other two branches SET it, so without
-        // this the pill kept the previous folder's list of unsaved files while
-        // reading "no states saved" -- naming files that are not in this
-        // directory at all.
+        // this the pill would keep the previous folder's list of unsaved
+        // files while reading "no states saved".
         elSensor.title    = "";
         elEmpty.hidden    = false;
         elActions.hidden  = true;
@@ -490,8 +478,6 @@ async function _renderGraph(states) {
     // THE SHAPE COMES FROM PARENTAGE, NOT FROM BRANCH NAMES.  There are no
     // branches in this system -- going back to a state and saving from it is
     // how you fork (§ 7.1), so a fork is simply a state with a second child.
-    // The old renderer read branch names off ref decorations, which is a
-    // concept the contract removed; it drew every history as one line.
     //
     // @gitgraph/js needs a branch object per line, so one is created the
     // moment a parent acquires its second child.  Those names are a drawing
@@ -553,13 +539,10 @@ async function _fetchJSON(method, url, body, signal) {
         payload = await r.json();
     } catch (e) {
         /* AN ABORT IS NOT AN EMPTY BODY.  This catch is here for a
-         * reply that carries no JSON, and it used to swallow anything --
-         * including the `AbortError` a Cancel raises when the headers
-         * have landed and the body has not.  The call then returned
-         * `{http: 200, body: null}`, which reads downstream as a server
-         * that answered with nothing, and Cancel painted "HTTP 200" as
-         * an error.  Only the deep read passes a signal, so only it can
-         * reach this. */
+         * reply that carries no JSON; the `AbortError` a Cancel raises
+         * when the headers have landed and the body has not must not
+         * read downstream as a server that answered with nothing.  Only
+         * the deep read passes a signal, so only it can reach this. */
         if (e && e.name === "AbortError") throw e;
     }
     return { http: r.status, body: payload };
@@ -670,7 +653,7 @@ async function _readInto(dir, sig, opts) {
  *
  * A calculation's name is written verbatim into every state and is never
  * repaired silently (L3), so a folder called `BDT relax!` is refused.  Left at
- * that, the panel was a dead end: the refusal is the same whichever button you
+ * that, the panel would be a dead end: the refusal is the same whichever button you
  * press, and nothing here could supply the one thing that resolves it.  The
  * server marks that refusal `where: "calculation"` precisely so a surface can
  * tell it apart from the other one (a folder holding several calculations,
@@ -850,9 +833,9 @@ async function _restore(sha, label, force) {
             await _refresh();
             /* THE FOLDER'S FILES JUST CHANGED UNDERNEATH EVERY OPEN TAB.
              * `_refresh()` above repaints THIS panel's own list and nothing
-             * else, so a restore that swapped `task.json` for
-             * `task.1st.json` left Task setup showing stages and a bench
-             * the folder no longer has (reported 2026-08-24).  Announced
+             * else, so unannounced, a restore that swaps `task.json` leaves
+             * Task setup showing stages and a bench the folder no longer
+             * has (reported 2026-08-24).  Announced
              * rather than reached-into: this panel does not know which tabs
              * are open or what they cache. */
             const _p = window.molbuilder && window.molbuilder.projects;
@@ -936,10 +919,9 @@ export function initCheckpointPanel() {
  * Contract: `docs/web/projects.md` § 5.  A sub-namespace on the one door,
  * the way `projects.parser` is.
  *
- * Before this the panel's save was a private click handler, so a tab that
- * had to take a state before writing (Task setup, `task-setup.md` § 8) had
- * two bad options: POST the route itself -- a second caller with its own
- * error handling and no sidebar refresh -- or reach into the panel's DOM.
+ * A tab that must take a state before writing (Task setup,
+ * `task-setup.md` § 8) calls this rather than POSTing the route itself or
+ * reaching into the panel's DOM.
  *
  * Restore and tag are NOT here, and that is deliberate: restoring rewinds a
  * folder and tagging writes in the namespace you are meant to be naming
@@ -950,10 +932,7 @@ export function initCheckpointPanel() {
 /** Does this folder have a history, and does it differ from where it stands?
  *
  * Served by GET /api/checkpoint/state and speaking ITS field names
- * (`initialized`).  Until 2026-08-19 this called /api/checkpoint/status --
- * a route that never existed -- and read a British-spelled field the server
- * never wrote, so every caller got `{ok:false}` forever and survived only
- * where `init` happened to be idempotent. */
+ * (`initialized`). */
 export async function status(dir) {
     if (!dir) return { ok: false, error: "no folder given" };
     const res = await _fetchJSON("GET",

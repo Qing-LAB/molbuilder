@@ -12,26 +12,20 @@ This module owns TWO facts and the renders that follow from them:
   through the one door every kind's description check and ``resolve`` ask
   (``template.unread_overrides``, `engines/template.md` § 6.4) -- what puts
   a person's T(E) window into the deck ``tbtrans`` runs rather than the one
-  ``siesta`` runs.  It was this module's own check, for transport alone,
-  until 2026-09-30 (plan § 5w K4).
+  ``siesta`` runs.
 
-**NOTHING IN THIS MODULE RENDERS A DECK ANY MORE.**  All five rungs go
+**NOTHING IN THIS MODULE RENDERS A DECK.**  All five rungs go
 through the framework's own pipeline — ``siesta.input.spec_for`` with
 ``calculation="transport"`` -> :mod:`molbuilder.transport.deck`, whose
 ``SHAPE_OF_RUNG`` tables the four deck shapes — which is what lets the
 template's items reach them; the electronic contract is resolved by
 ``prep._resolve_transport`` from the calculation's own template.
-``config_for``, the pre-seam path's projection onto ``TransportConfig``,
-had no production caller and went with that class (M5 step 3, 2026-10-02);
-:func:`render_stage_deck` went on 2026-09-17 -- the tombstone at the end of
-this file says why a second renderer could not be left standing.
 
-That template is also why ruling Q5 no longer holds as written: § 2a.7
-reversed it.  The cited relaxation DEFAULTS the electronic description
-at ``jobset init``; it does not seal it.  The invariant survives untouched,
+The cited relaxation DEFAULTS the electronic description at ``jobset
+init``; it does not seal it (§ 2a.7).  The shared-contract invariant holds
 because ONE value shared by five rungs cannot disagree with itself.
 
-P5 added the launch half, whose facts also live here: the § 4.2 DAG
+The launch half's facts also live here: the § 4.2 DAG
 (:func:`stage_inputs`, read by prep's gather), the continuation rows
 (:func:`warm_declaration` — the seed's ``.DM``, the device's
 ``.TSDE``), and the bias scan's points (:func:`bias_points`; their folder
@@ -65,13 +59,6 @@ TRANSPORT_STAGES = KIND_ROLES["transport"]
 #: * ``"product"`` — **not an SCF at all.**  TBtrans runs none: there is
 #:   nothing to converge and no total energy, and its result is the
 #:   transmission the record already carries in its own ``points`` blocks.
-#:
-#: `record.py` asked every rung the ``"scf"`` question and read the answer out
-#: of its ``.out``.  For the transmission rung no parser claims that file --
-#: correctly, it is not a SIESTA run -- so the ladder rendered the registry's
-#: entire "supported file formats" list, two hundred words of it, in the cell
-#: where the final rung's state belongs (measured 2026-09-19).  The fix is not
-#: a TBtrans parser; it is to stop asking.
 STAGE_FACT = {
     "seed":         "scf",
     "electrode_L":  "fermi",
@@ -93,21 +80,8 @@ def resolvable_override_names() -> frozenset:
     § 6.8d, plan § 5w K5). Those two facts are the whole vocabulary, and
     this is where they are turned into one question both doors ask.
 
-    **Both doors had a different, wider answer, and the gap was measured
-    2026-09-16.** The web form offered nineteen controls and the describe door
-    checked membership of ``TransportConfig ∪ SiestaConfig``; sixteen resolve,
-    and three do not — ``num_threads`` and ``log_level`` are
-    ``TransportConfig`` fields that no catalogue row declares, and
-    ``max_memory_mb`` is a machine fact. A person setting the thread count on
-    the Transport tab got *"Described"*, and then **every** later `prep`, on
-    either road, refused the whole calculation while naming a field they had
-    never typed (*"did you mean 'omp_threads'?"*).
-
     Which names are run settings is the catalogue's own answer
-    (``template.run_settings``), rather than a fourth frozenset.  Until the
-    K5 review this subtracted the machine's answers alone, so the rung tabs
-    offered the solver, ``block_size`` and ``parallel_over_k`` -- each then
-    refused at the save with *"put it on the run card"*.
+    (``template.run_settings``), rather than a fourth frozenset.
     """
     import dataclasses
 
@@ -157,11 +131,7 @@ def rung_containers(base, task, stage: str) -> List[Tuple[Path, Optional[float]]
     bias point for a rung a scan runs at each point (``<token>/v<V>``,
     § 2a.11), the stage folder (``volts`` ``None``) otherwise.
 
-    The one door every reader of a rung's attempts asks (plan § 5w K10):
-    the record looked in the point folders for the transmission alone, so
-    a finished device scan read *not run*, and Task setup's count and
-    prep's *already under way* looked in the stage folder alone (the M11
-    review's T-F27, T-F13)."""
+    The one door every reader of a rung's attempts asks (plan § 5w K10)."""
     from ..jobset.materialize import stage_home
     from ..task import bias_token
     # THE STAGE'S FOLDER, from the one door -- its number read off the disk
@@ -279,10 +249,7 @@ def stages_for_transport(bags=None):
     describe door -- cannot build the ladder differently.  A rung this
     ladder does not have is refused by name.
 
-    **Ownership is not decided here.**  Until 2026-09-24 this took ONE flat
-    mapping and routed it by the `stages` declaration, parking an item that
-    declared no rung on the device -- the holding position the per-stage
-    surface (TR7) was to replace.  The per-rung form now asks the question
+    **Ownership is not decided here.**  The per-rung form asks the question
     per rung (`engines/transport.md` § 3.8.2a), so a bag arrives already
     placed, and the description's own check and ``resolve`` refuse a value
     on a rung that does not read it (``template.unread_overrides``).
@@ -299,19 +266,3 @@ def stages_for_transport(bags=None):
             for n in TRANSPORT_STAGES]
 
 
-# `render_stage_deck` DELETED 2026-09-17 -- a SECOND writer of the transport
-# decks, with no caller left.
-#
-# It rendered the electrode rungs through `wizard.render_electrode_fdf` and the
-# device/transmission rungs through `transiesta.render_script`, and its seed arm
-# already raised: "the seed deck renders through the framework, not here".  The
-# rest of the ladder followed the seed onto that framework on 2026-09-16, which
-# left this function with nothing calling it and its own warning applying to
-# every arm.
-#
-# Deleted rather than kept beside its replacement, for the reason its seed arm
-# gave: two renderers for one deck can disagree, and the only thing stopping
-# them was `prep` happening to branch before this call.  They HAD disagreed --
-# the pole energy this path emitted stopped SIESTA before the SCF loop for two
-# days, while the live path was correct, because the two read different config
-# classes (`template.md` 2.1a, the second duplication).

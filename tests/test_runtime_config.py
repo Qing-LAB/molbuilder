@@ -14,11 +14,8 @@ Every test writes its ``molbuilder.json`` into ``tmp_path`` and the fixture
 below makes ``tmp_path`` the CONFIG ROOT, so the reader opens exactly the file
 the test wrote and nothing else.
 
-That used to be arranged by ``chdir`` -- the reader's first candidate was the
-working directory -- with ``HOME`` and ``XDG_CONFIG_HOME`` sandboxed underneath
-in case the file was absent.  The working-directory step was deleted on
-2026-08-31 (`configuration.md` § 2.1a), and the ``chdir`` calls that remain in
-these tests no longer decide anything; the one variable does.
+The ``chdir`` calls in these tests decide nothing (`configuration.md`
+§ 2.1a); the one variable does.
 """
 
 from __future__ import annotations
@@ -35,8 +32,7 @@ from molbuilder.runtime_config import (CONFIG_FILENAME, RuntimeConfigError,
 def _tmp_path_is_the_config_root(monkeypatch, tmp_path, tmp_path_factory):
     """``tmp_path`` holds this test's machine config, and the reader knows it.
 
-    ONE variable answers for the whole lookup (`configuration.md` § 2.1c), so
-    this replaces the HOME/XDG sandboxing that used to guard the fallback;
+    ONE variable answers for the whole lookup (`configuration.md` § 2.1c);
     conftest's root fixture redirects HOME as well, so a test that reads
     ``$HOME`` for another reason still does not find the developer's.
 
@@ -50,25 +46,10 @@ def _tmp_path_is_the_config_root(monkeypatch, tmp_path, tmp_path_factory):
 # --------------------------------------------------------------------- #
 
 
-# `test_the_config_molbuilder_SEEDS_reads` retired 2026-10-02 (W54 T21): the
-# seeding file's `test_the_seeded_template_loads_and_names_every_section` reads
-# the same seeded document through the same reader, and died on every one of the
-# 12 informative mutants that killed this (`tools/verify_subsumption.py`).
-
-
-# `test_missing_file_returns_empty_dict` retired 2026-10-02 (W54): it equals `test_machine_config_file.py::test_no_config_files_returns_empty`.
-
-
 def test_empty_json_object_returns_empty_dict(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     (tmp_path / CONFIG_FILENAME).write_text("{}")
     assert read_config() == {}
-
-
-# `test_malformed_json_raises_usage_error` retired 2026-10-02 (W54): `test_auth_config.py`'s door test refuses the same file and checks it names the path (R10).
-
-
-# `test_non_dict_top_level_raises` retired 2026-10-02 (W54): `test_auth_config.py`'s door test refuses the same file and checks it names the path (R10).
 
 
 def test_non_dict_tls_section_raises(monkeypatch, tmp_path):
@@ -86,11 +67,8 @@ def test_non_dict_envs_section_raises(monkeypatch, tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  Nested form (the post-2026-05-14 shape)                              #
+#  Nested form                                                          #
 # --------------------------------------------------------------------- #
-
-
-# `test_nested_tls_section_parses` retired 2026-10-02 (W54): it equals the first half of `test_the_tls_section_is_read`.
 
 
 def test_nested_envs_section_parses(monkeypatch, tmp_path):
@@ -104,19 +82,7 @@ def test_nested_envs_section_parses(monkeypatch, tmp_path):
 
 # --------------------------------------------------------------------- #
 #  ONE SPELLING FOR TLS (2026-09-02)                                    #
-#                                                                       #
-#  Three tests lived here for the flat top-level `cert`/`key`: that it   #
-#  folded into `tls`, that a nested value beat it, and that it filled a  #
-#  slot the section omitted.  All three described how two spellings get  #
-#  along.  There is one spelling now, so there is nothing to get along   #
-#  with -- and a fold that quietly accepted either could not tell a      #
-#  migrated file from an un-migrated one.  What replaces them is the     #
-#  refusal, below, because a person whose file worked yesterday is owed  #
-#  the new spelling rather than a generic unknown-key list.              #
 # --------------------------------------------------------------------- #
-
-
-# `test_the_flat_tls_spelling_is_REFUSED_and_the_message_shows_the_new_one` retired 2026-10-02 (W54): a row of `tests/data/molbuilder_json.toml`, down the road, with both sentences.
 
 
 def test_the_tls_section_is_read(monkeypatch, tmp_path):
@@ -134,9 +100,6 @@ def test_the_tls_section_is_read(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 #  Unknown keys are refused, never silently ineffective (U7)            #
 # --------------------------------------------------------------------- #
-
-
-# `test_unknown_top_level_keys_are_refused_by_name` retired 2026-10-02 (W54): a row of `tests/data/molbuilder_json.toml` (it names the live sections too).
 
 
 def test_admin_emails_survive_the_loader(monkeypatch, tmp_path):
@@ -178,20 +141,6 @@ def test_admin_with_a_broken_emails_shape_is_refused(monkeypatch, tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  Accessors                                                            #
-# --------------------------------------------------------------------- #
-
-
-# `test_get_tls_on_empty_cfg_returns_empty` retired 2026-10-02 (W54): an accessor's shape, not a result through the road.
-
-
-# `test_get_tls_returns_section_copy` retired 2026-10-02 (W54): an accessor's shape, not a result through the road.
-
-
-# `test_get_envs_on_missing_section_returns_empty` retired 2026-10-02 (W54): an accessor's shape, not a result through the road.
-
-
-# --------------------------------------------------------------------- #
 #  Value-type validation lives in _normalise, not the accessors         #
 # --------------------------------------------------------------------- #
 
@@ -203,9 +152,6 @@ def test_read_config_rejects_non_string_envs_value(monkeypatch, tmp_path):
     }))
     with pytest.raises(RuntimeConfigError, match="envs"):
         read_config()
-
-
-# `test_read_config_rejects_non_string_envs_key` retired 2026-10-02 (W54): JSON keys are strings, so no file can reach it -- and an unlisted key is refused before its type is read.
 
 
 def test_read_config_rejects_non_string_tls_value(monkeypatch, tmp_path):
@@ -227,8 +173,3 @@ def test_read_config_rejects_empty_string_envs_value(monkeypatch, tmp_path):
     }))
     with pytest.raises(RuntimeConfigError, match="cannot be empty"):
         read_config()
-
-
-# `test_underscore_keys_are_comments_and_pass` retired 2026-10-02 (W54): a row of `tests/data/molbuilder_json.toml` (a comment at the top and inside a section).
-
-

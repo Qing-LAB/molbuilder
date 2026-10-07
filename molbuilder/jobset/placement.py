@@ -2,10 +2,6 @@
 is stated, and whether the queue it names can take it
 (`execution/architecture.md` § 5.2, `job-system.md` § 6.0).
 Floor 3 (`execution/architecture.md` § 2.1).
-
-A module of its own since 2026-10-03 (W55 B7): the check that every launch
-value is stated lived in the prep assembly, and launch's one request
-imported it from there -- so launch, floor 5, reached the conductor.
 """
 from __future__ import annotations
 
@@ -69,8 +65,7 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
                 missing.append((field, item.name))
         # A RANK COUNT FOR AN ENGINE THAT RUNS ONE PROCESS names nothing it
         # runs: its header asks one task, and launch would have sent the
-        # count (`submit._sbatch_request`).  `--np` on a PySCF run passed
-        # silently until 2026-10-05.
+        # count (`submit._sbatch_request`).
         if (getattr(allocation, "mpi_np", None) not in (None, "", 0)
                 and "mpi_np" not in {i.name for i in items}):
             return (f"{'stage ' + repr(stage) + ' ' if stage else ''}states "
@@ -85,18 +80,15 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
         named = getattr(allocation, "domain", None)
         if named and named not in queues:
             # A QUEUE THE RECORD DOES NOT LIST is not a queue this job can be
-            # sent to -- the header fell back to the menu's first row,
-            # silently, until 2026-10-02.  A record that lists none at all
-            # was probed off its scheduler, or not probed there.
+            # sent to.  A record that lists none at all was probed off its
+            # scheduler, or not probed there.
             said = f"{'stage ' + repr(stage) + ' ' if stage else ''}names "
             if queues:
                 return (f"{said}the queue {named!r}, which the target's "
                         f"record does not list -- it lists: "
                         f"{', '.join(queues)}.")
             # NONE AT ALL: probed off its scheduler, or not probed there --
-            # renewed by the record that answered's own steps (W54 R5: this
-            # printed the bare probe command whatever the target, and
-            # nothing about a snapshot).
+            # renewed by the record that answered's own steps.
             from ..scheduler.record import record_and_renewal
             which, renew = record_and_renewal(base, target)
             return (f"{said}the queue {named!r}, and the record it reads "
@@ -109,8 +101,7 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
         words, flag = _LAUNCH_WORDS[field]
         if at_launch:
             # LAUNCH READS NO DESCRIPTION: what it can still be told is a
-            # flag on this launch (it named task.json until 2026-10-06,
-            # which launch never reads -- the unit 11 review).
+            # flag on this launch.
             where.append(f"  {words:<15} {flag} on this launch")
             continue
         if field in ("domain", "time"):
@@ -211,8 +202,7 @@ def admitted(resources, environment, *, one_process: bool, stage=None,
     except Unplaceable as exc:
         # WHERE EACH REFUSED VALUE WAS STATED, read off the fold that
         # filled it (`job-system.md` § 5.0, checkpoint 4: "the file and key
-        # where each value is stated") -- this named fixed places until
-        # 2026-10-05, the unit 11 review.
+        # where each value is stated").
         said, at = sources or {}, []
         for r in exc.reasons:
             for f in _REFUSED.get(r.limit, ()):

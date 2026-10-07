@@ -71,7 +71,7 @@ class TestTheMap:
         assert out == [1]
 
     def test_the_frame_calculation_uses_THIS_map_and_not_its_own(self):
-        """The reason it was lifted out.
+        """One map, shared by the frame calculation and the click entry.
 
         A second copy would disagree the day the isolate rule changed, and a
         click would measure the wrong atom while every frame still drew

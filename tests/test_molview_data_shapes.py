@@ -1,8 +1,7 @@
 """The data structures and the per-frame calculation — every test derived from
 ``docs/web/molview.md``, never from the source it checks (§ 13).
 
-Step C of the rebuild (``docs/web/molview.md``). The rows of § 13.3
-guarded here:
+The rows of ``docs/web/molview.md`` § 13.3 guarded here:
 
     § 11.5 one translation, one place
     § 9.5  by atom index crosses the numbering boundary once
@@ -262,8 +261,6 @@ def test_a_reserved_label_is_an_ordinary_label():
     assert out["drawnSame"] is True
 
 
-
-
 # ---------------------------------------------------------------------------
 # § 10.3 — the two steps, in that order
 # ---------------------------------------------------------------------------
@@ -497,23 +494,13 @@ def test_the_cell_box_and_axes_are_not_per_frame_data():
     assert "cellBox" not in out["keys"] and "axes" not in out["keys"], (
         f"scene-level data leaked into the per-frame data: {out['keys']}"
     )
-    # Seven since 2026-08-30: `measured` joined them when the ruler gained its
-    # marks on the atoms (§ 6.5's table, § 11.6).  The list is asserted WHOLE
-    # rather than by membership, so a field added without a row in that table
-    # fails here — which is the only thing stopping the per-frame shape from
+    # The list is asserted WHOLE rather than by membership, so a field added
+    # without a row in § 6.5's table fails here — which is the only thing stopping the per-frame shape from
     # growing quietly.
     assert out["keys"] == ["arrows", "elements", "labels", "measured",
                            "positions", "selection", "sourceIndex"], (
         f"the processed frame must be exactly § 6.5's fields: {out['keys']}"
     )
-
-
-# `test_cell_geometry_arrives_even_while_the_cell_is_hidden` RETIRED 2026-09-25:
-# `sceneFor` takes no switches, so "every switch off" tested nothing here.  The
-# hidden-then-shown claim (§ 10.3's named failure) is asked where visibility
-# exists -- `test_molview_render_engine.py`
-# `test_a_cell_shown_after_a_hidden_load_is_drawn_at_the_servers_corner` -- and
-# its anchor and world-triad halves are asked below, of the server's own block.
 
 
 def _wire_periodicity(struct) -> str:
@@ -743,13 +730,6 @@ def test_the_effective_cell_prefers_the_resolved_answer_over_the_raw_one():
     assert out["nothing"] is not None
     assert set(out["nothing"]) == {"cell", "box_corner", "axis_kind", "vacuum"}
     assert all(v is None for v in out["nothing"].values())
-
-
-# `test_an_explicit_cell_is_carried_when_the_server_resolved_nothing` RETIRED
-# 2026-09-25.  It pinned a stored corner standing in when the server resolved
-# none -- the fallback D2 retired (plan § 5q.3: the browser never computes a
-# corner).  The server sends `box_corner` whenever there is a box, which the
-# test above asks of its real block.
 
 
 def test_the_axis_kinds_are_carried_verbatim_and_never_guessed():

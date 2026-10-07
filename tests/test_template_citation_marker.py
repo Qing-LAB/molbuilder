@@ -1,11 +1,9 @@
 """`citation: True` — the answerer that is neither the person nor the machine.
 
 `template.md` § 6.4 already had the STATE a transport calculation's electronic
-contract needs: *declared, valueless, filled by a later step*. What it lacked
-was the **source marker** — a way for the item to say *who* fills it. The
-scheduler had one (`allocation`); the cited run did not, so the same rule was
-carried by two hand-maintained frozensets in `transport/stages.py` plus a
-predicate spelled twice, in two files, with disagreeing formulations.
+contract needs: *declared, valueless, filled by a later step*. `citation` is
+the **source marker** — a way for the item to say *who* fills it, as
+`allocation` says the scheduler does.
 
 *Ruled 2026-09-15 by the user — "use the citation marker, not a view".*
 
@@ -101,18 +99,11 @@ def test_the_template_writer_CARRIES_the_cited_value():
 
 
 def test_a_typed_value_is_ACCEPTED_because_the_citation_only_DEFAULTS():
-    """The reversal, asserted rather than assumed *(2026-09-16)*.
+    """Asserted rather than assumed *(2026-09-16)*.
 
-    This test said the opposite until today: a template answering a cited
-    item was refused, because the write side emitted them valueless and so a
-    value could only be a hand edit -- "the one edit that can make a device
-    disagree with its own leads".
-
-    `engines/transport.md` § 2a.7 ruled the other way, and the invariant
-    survives intact: electrode and device cannot disagree because there is
-    **one** value shared by every stage, not because it came from the cited
-    run.  What is withdrawn is only the claim about its source.  So the
-    worked case is now legal -- relax with DZP because it is cheap and
+    `engines/transport.md` § 2a.7: electrode and device cannot disagree
+    because there is **one** value shared by every stage, not because it
+    came from the cited run.  So the worked case is legal -- relax with DZP because it is cheap and
     adequate for geometry, then transport with TZP because the longer
     orbital tails carry the metal-molecule coupling.
     """
@@ -128,11 +119,8 @@ def test_a_typed_value_is_ACCEPTED_because_the_citation_only_DEFAULTS():
 def test_the_allocation_exclusion_is_untouched():
     """`template_fields` still strips machine facts — and NOT citation ones.
 
-    It never did: excluding `basis_size` by name would stop an optimization
-    overriding its own basis, because the row is shared.  This docstring said
-    the exclusion was *kind-dependent* and that `config_from_template` enforced
-    a transport seal; § 2a.7 withdrew the seal, and the kind argument that
-    carried it went with it on 2026-09-16."""
+    Excluding `basis_size` by name would stop an optimization overriding its
+    own basis, because the row is shared."""
     fields = T.template_fields(_Cited)
     assert "mesh" in fields
     assert "basis" in fields, (
@@ -142,8 +130,7 @@ def test_the_allocation_exclusion_is_untouched():
 
 
 def test_select_can_ask_which_items_the_citation_answers():
-    """So `prep` asks the template instead of carrying its own name list —
-    which is what the frozensets were."""
+    """So `prep` asks the template instead of carrying its own name list."""
     items = [_decl(n) for n in ("mesh", "basis", "ranks")]
     t = T.read_template(T._emit(items, engines=("siesta",)))
     assert [i.name for i in T.select(t, citation=True)] == ["basis"]

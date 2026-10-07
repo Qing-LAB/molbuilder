@@ -1,18 +1,6 @@
 /* projects/preview.js -- file preview modal with view + edit + save.
  *
- * Task #302 (2026-06-09): the modal previously rendered file
- * contents read-only with a disabled Save button.  The save endpoint
- * (/api/files/write with expected_mtime) had been shipped for
- * months; only the UI wiring was missing.  Edit + Save are now
- * functional with the safe-overwrite contract (mtime-based
- * conflict detection).
- *
- * Task #310 (2026-06-09): the read-only viewer was a plain ``<pre>``
- * that accumulated every loaded chunk in DOM — a 500 MB log
- * scrolled-through-fully would put 500 MB of text into the page
- * and kill the browser.  The editable mode was a ``<textarea>``
- * with no find / no line numbers / no jump-to-line.  Both have
- * been replaced with a single CodeMirror 5 instance: virtual
+ * Viewing and editing share a single CodeMirror 5 instance: virtual
  * scrolling caps DOM memory at the visible window regardless of
  * file size, the search addon gives Ctrl-F over the whole loaded
  * doc, the jump-to-line addon gives Alt-G "go to line", and edit
@@ -56,27 +44,7 @@ let _cm = null;
 // Per-session state for the currently-open file.
 let _state = _emptyState();
 
-// CodeMirror loader — lazy + cached.  Returns the global
-// ``window.CodeMirror`` once the vendored bundle (core + addons +
-// dialog + search + jump-to-line) is fully loaded.  Concurrent
-// callers receive the same promise.
-
-// Edit budget — files this size or smaller load wholesale via
-// /api/files/read into the editor and are editable.  Files
-// LARGER than this are loaded in paginated chunks via
-// /api/files/read_range and Edit is disabled with a "use external
-// editor" hint — even with CodeMirror's virtual scroll, a 100 MB
-// save would block the UI for seconds on JSON-encode + transfer,
-// and the dominant workflow above this cap is read-only log
-// inspection rather than hand-editing.
-//
-// Server's hard ceiling is _MAX_READ_BYTES = 16 MB on
-// /api/files/read.  We raise the in-modal edit cap to 32 MB so
-// the post-#302 cap is more generous, but bulk-read still has
-// to hit the server's ceiling; we chunk above that.
-const EDIT_MAX_BYTES = 32 * 1024 * 1024;
-
-// 2026-06-12: ``VIEW_ONLY_BYTES`` is the soft threshold above which
+// ``VIEW_ONLY_BYTES`` is the soft threshold above which
 // the modal becomes view-only — no Edit button + no text selection.
 // Selection is gated alongside Edit because keystroke-triggered
 // CodeMirror operations on multi-MB documents are pathologically
@@ -94,9 +62,6 @@ const BULK_READ_MAX_BYTES = 16 * 1024 * 1024;
 // and the modal feel identical when reading the same file.
 const PAGE_BYTES = 256 * 1024;
 
-// Vendored bundle root.  Files committed under
-// molbuilder/web/static/vendor/codemirror/ — LICENSE included.
-
 function _emptyState() {
     return {
         path:          null,
@@ -107,7 +72,7 @@ function _emptyState() {
         editing:       false,
         readError:     null,
         // Paginated-view bookkeeping for files larger than
-        // ``EDIT_MAX_BYTES``.  ``mode`` distinguishes bulk vs.
+        // ``BULK_READ_MAX_BYTES``.  ``mode`` distinguishes bulk vs.
         // range; ``loadedBytes`` tracks how much of the file is
         // currently in the editor; ``loadingMore`` blocks
         // overlapping fetches when the user scrolls fast.
@@ -195,7 +160,7 @@ function _setStatus(message, kind /* "ok" | "dirty" | null */) {
  * so Playwright E2E tests can drive setValue / execCommand
  * without scraping CM-internal DOM.
  */
-// 2026-06-12: cap the selection length so a long mouse-drag (or any
+// Cap the selection length so a long mouse-drag (or any
 // programmatic selection) on a multi-MB document can't trigger the
 // CodeMirror render perf cliff (Ctrl-A measured 225 s on a 2 MB doc
 // in headless Chromium; click-drag through the same region has the
@@ -241,16 +206,12 @@ function _capSelectionLines(cm, obj) {
     }
 }
 
-// 2026-06-12: Ctrl-A / Cmd-A inside the preview editor is disabled.
+// Ctrl-A / Cmd-A inside the preview editor is disabled.
 //
 // Background: a real-keystroke selectAll on a multi-MB document froze
 // the browser for 200+ seconds in headless Chromium (the JS-level
 // ``setSelection`` was 31 ms on the same document; only the
-// keymap-triggered path scaled with selection length).  Variants
-// tried before giving up:
-//   * ``setSelection({scroll: false})`` inside ``cm.operation``
-//   * ``styleSelectedText: true`` for the contrast cue
-// Both worked from JS but the keystroke path stayed pathological.
+// keymap-triggered path scaled with selection length).
 //
 // User decision (recorded in the chat-driven workflow): keep things
 // simple — disable Ctrl-A entirely.  Click-drag still works for the
@@ -280,18 +241,16 @@ async function _ensureCmMounted() {
         // memory.
         viewportMargin: 50,
         autofocus:    false,
-        // 2026-06-12: ``styleSelectedText: true`` was tried for the
-        // selection-contrast fix but causes a catastrophic slowdown
-        // when Ctrl-A is triggered via a real keystroke (225 s in
-        // headless Chromium vs. 19 ms via execCommand on the same
+        // ``styleSelectedText`` stays off: it causes a catastrophic
+        // slowdown when Ctrl-A is triggered via a real keystroke (225 s
+        // in headless Chromium vs. 19 ms via execCommand on the same
         // doc).  CM wraps every selected span in a per-character
         // class on each keymap-driven selection and the work scales
         // with selection length, not viewport.  Use the
         // ``CodeMirror-selected`` background's opacity for the
         // contrast cue instead (see the CSS in projects-sidebar.css).
-        // Override Ctrl-A / Cmd-A to set the selection without the
-        // expensive scroll-into-view that froze the browser on
-        // multi-MB documents.  See ``_ignoreSelectAll`` for details.
+        // Ctrl-A / Cmd-A are consumed and do nothing; see
+        // ``_ignoreSelectAll`` for details.
         extraKeys: {
             "Ctrl-A": _ignoreSelectAll,
             "Cmd-A":  _ignoreSelectAll,
@@ -430,8 +389,8 @@ async function saveEdit() {
  *   * Size  > BULK_READ_MAX_BYTES → paginated /api/files/read_range chunks.
  *     Scroll-driven append fetches the next chunk; CodeMirror's virtual scroll
  *     keeps DOM memory bounded regardless of how much of the file is loaded.
- * Editing is a SEPARATE gate: files past EDIT_MAX_BYTES (32 MB) load read-only
- * (Edit disabled with a "use external editor" hint).
+ * Editing is a SEPARATE gate: files past VIEW_ONLY_BYTES (1 MB) load view-only,
+ * and paginated files are never editable.
  */
 export async function showPreview(wanted) {
     if (!elModal) {
@@ -442,10 +401,7 @@ export async function showPreview(wanted) {
     }
     /* THE CALLER'S FILE WINS, and the pick is only the fallback.
      *
-     * This read `projects.getCurrentFile()` and nothing else, which is
-     * fine for the View item -- it acts on the row you opened the menu
-     * on, and `setShared` ran first.  It is NOT fine for a commit
-     * subscriber, which is HANDED `{dir, file}`: `setShared` publishes
+     * A commit subscriber is HANDED `{dir, file}`: `setShared` publishes
      * that payload even when the sessionStorage write throws, on
      * purpose (`state.js`: *"we MUST NOT propagate the throw -- publish
      * the new state regardless so subscribers still update"*), and
@@ -461,9 +417,8 @@ export async function showPreview(wanted) {
     }
     /* RE-ENTRY MUST NOT EAT AN EDIT.  `_state = _emptyState()` below
      * drops the editor's contents, and `tryCloseModal` -- the only
-     * other teardown -- prompts first.  While the only callers sat
-     * under this modal's own backdrop that gap was unreachable; a
-     * commit subscriber is not, because `publishCommit` is public. */
+     * other teardown -- prompts first.  A commit subscriber can reach
+     * this while the modal is open, because `publishCommit` is public. */
     if (_state.editing && _isDirty() && path !== _state.path) {
         const ok = window.confirm(
             "You have unsaved edits in " + String(_state.path).split("/").pop()
@@ -529,10 +484,8 @@ export async function showPreview(wanted) {
 
     try {
         // Single-shot bulk read is bounded by the SERVER's bulk ceiling
-        // (BULK_READ_MAX_BYTES = 16 MB), which is what _loadBulk requests -- NOT the
-        // (larger) EDIT ceiling.  Branching on EDIT_MAX_BYTES sent 16-32 MB files down
-        // the bulk path where the server hard-refuses (files.py), so they showed the
-        // raw error with NO content while the paginated path (any size) sat unused.
+        // (BULK_READ_MAX_BYTES = 16 MB), which is what _loadBulk requests; the
+        // server hard-refuses a larger single-shot read (files.py).
         // Chunk above the bulk ceiling.
         if (_state.size <= BULK_READ_MAX_BYTES) {
             await _loadBulk(path);
@@ -582,7 +535,7 @@ async function _loadBulk(path) {
     _state.originalText = body.text;
     _state.mtime        = body.mtime;
     _state.size         = body.size;
-    // 2026-06-12: view-only above 1 MB.  Edit + selection are
+    // View-only above 1 MB.  Edit + selection are
     // both gated by this flag — see ``VIEW_ONLY_BYTES`` for the
     // perf rationale.  ``is-view-only`` on the cmview wrapper
     // disables click-drag selection via CSS user-select.
@@ -600,10 +553,9 @@ async function _loadBulk(path) {
         return;
     }
     // Highlight by suffix.  The modal previews .md / .py / .json / .toml as
-    // readily as an .fdf, and until 2026-08-16 every one of them rendered as
-    // plain text because no mode was ever set.  `modeFor` loads the vendored
-    // mode for this path on first use and answers null for the formats
-    // CodeMirror has none for, which is the plain-text we already had.
+    // readily as an .fdf.  `modeFor` loads the vendored mode for this path on
+    // first use and answers null for the formats CodeMirror has none for,
+    // which is plain text.
     try {
         _cm.setOption("mode", await modeFor(path || ""));
     } catch (e) {

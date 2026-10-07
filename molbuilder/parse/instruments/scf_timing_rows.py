@@ -8,13 +8,10 @@ the last column of each ``scf_history`` row of its progress log,
 and :func:`timing_figures` times either the same way; :func:`timing_of` reads
 a file by what it IS.  The run record, the trajectory viewer, the benchmark
 and the monitor all ask :func:`timing_of`, so every surface states one number
-for one run.  *(Until 2026-09-27 only the tee was read, and a PySCF run had
-no rate anywhere but the viewer's own estimate from its poll times.)*
+for one run.
 
 **Stdlib only, and it travels beside every job**
-(`runwrap.MONITOR_COMPANIONS`, `execution/run-reports.md` § 2.3).  It stood
-inside the registered parser's module until 2026-09-26, where the parse
-types it needs would have come with it.
+(`runwrap.MONITOR_COMPANIONS`, `execution/run-reports.md` § 2.3).
 """
 from __future__ import annotations
 
@@ -51,9 +48,9 @@ def scf_timing_metrics(text: str) -> Dict[str, Any]:
 
     **A step boundary is not an iteration either**, for the same reason: the
     delta INTO a row whose iteration is 1 spans the previous SCF's end, the
-    forces, the move and the new step's setup, and it is dropped.  It was
-    averaged in until 2026-09-26, and a relaxation read 0.5 s an iteration
-    against 0.3 s within its SCFs (149 boundaries of about 1.9 s).
+    forces, the move and the new step's setup, and it is dropped.  Measured:
+    averaged in, a relaxation read 0.5 s an iteration against 0.3 s within
+    its SCFs (149 boundaries of about 1.9 s).
 
     ``rows`` is the headline phase's SCF rows so far -- the monitor's
     iteration count (`execution/run-reports.md` § 2.3).  A run with both
@@ -61,8 +58,7 @@ def scf_timing_metrics(text: str) -> Dict[str, Any]:
     ``iters_measured_<phase>``, ``rows_<phase>`` --
     and its headline is the NEGF loop's: the part a device runs until it
     converges, 27.5 s an iteration beside the initialization's 97 s on
-    2026-09-25.  A line with no row text reads as periodic, which is what
-    every tee before the NEGF phase was recorded wrote.
+    2026-09-25.  A line with no row text reads as periodic.
     """
     rows: List[Row] = []
     for line in text.splitlines():
@@ -92,7 +88,7 @@ def progress_log_timing_metrics(text: str) -> Dict[str, Any]:
     grammar's one row reader (`molwatch_grammar.scf_history_row`) -- one
     ``scf_history`` block per SCF, its first row the one that begins it, in
     the run's one phase (`molwatch_grammar.SCF_PHASE`).  A row with no stamp
-    (a log from before 2026-06-20) is not timed."""
+    is not timed."""
     rows: List[Row] = []
     first = False
     for line in text.splitlines():

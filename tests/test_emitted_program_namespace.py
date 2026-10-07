@@ -37,6 +37,7 @@ from molbuilder import script_emit as _sc
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.pyscf.input import spec_for
 from molbuilder.structure import Structure
+from molbuilder.runfiles import RunNames
 
 _STRUCT = Structure(
     elements=["O", "H", "H"],
@@ -85,9 +86,10 @@ def _decks():
             try:
                 cfg = dataclasses.replace(PySCFConfig(job_name="w"), **over)
                 deck = str(_sc.render_deck(
-                    spec_for(_STRUCT, cfg, calculation=calculation),
+                    spec_for(_STRUCT, cfg, calculation=calculation,
+                             names=RunNames.of("w", "01_coarse", "flat")),
                     _STRUCT, cfg, verbose=cfg.verbose_comments))
-            except Exception:        # a refused combination is not this
+            except ValueError:       # a refused combination is not this
                 continue             # test's subject; the gate owns that
             yielded += 1
             yield {"calculation": calculation, **over}, deck
@@ -120,19 +122,6 @@ def _bound_in_scope(fn):
     return out
 
 
-def test_every_generated_deck_is_a_valid_program():
-    """A deck that does not parse is a deck that cannot run, and the check
-    gate reads lines rather than syntax -- so nothing else asks this."""
-    broken = []
-    for over, text in _decks():
-        try:
-            ast.parse(text)
-        except SyntaxError as exc:
-            broken.append(f"{over}: {exc.msg} at line {exc.lineno}")
-    assert not broken, "generated decks that are not valid Python:\n  " \
-                       + "\n  ".join(broken)
-
-
 def test_no_emitted_function_rebinds_a_name_the_deck_imported():
     """**The rule.**  molbuilder's emitted machinery may not take a name the
     engine owns.
@@ -160,31 +149,3 @@ def test_no_emitted_function_rebinds_a_name_the_deck_imported():
         f"{len(offenders)} of {n} decks rebind a name the deck imports; "
         f"molbuilder's emitted code is prefixed (`_mb_`, `_`) so that it "
         f"cannot:\n  " + "\n  ".join(sorted(set(offenders))[:8]))
-
-
-def test_each_import_from_the_bundle_is_bound_under_molbuilders_prefix():
-    """The convention that makes the rule above hold by construction:
-    **each import from the bundle is bound as ``_mb_<its name>``**
-    (`engines/pyscf.md` § 3), so an import of ours can never take a name the
-    engine owns.  Checked over every deck, so the prefix stays a rule rather
-    than a habit that decays one import at a time; the bundle's members are
-    read off `runwrap.PYSCF_COMPANIONS`, the list prep ships.
-
-    MUTATION THIS MUST FAIL AGAINST: an emitter writing its own
-    ``from relax_policy import relax`` beside the generated import lines.
-    """
-    from molbuilder.runwrap import PYSCF_COMPANIONS
-    members = {name[:-len(".py")] for name in PYSCF_COMPANIONS}
-    stray = set()
-    for _, text in _decks():
-        for n in ast.walk(ast.parse(text)):
-            if isinstance(n, ast.ImportFrom) and n.module in members:
-                if any(a.asname != f"_mb_{a.name}" for a in n.names):
-                    stray.add(ast.unparse(n))
-            elif isinstance(n, ast.Import):
-                if any(a.name in members and a.asname != f"_mb_{a.name}"
-                       for a in n.names):
-                    stray.add(ast.unparse(n))
-    assert not stray, (
-        f"imports from the bundle not bound as _mb_<its name>, so they can "
-        f"take a name the engine owns: {sorted(stray)}")

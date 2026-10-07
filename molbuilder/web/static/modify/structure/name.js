@@ -6,23 +6,21 @@
  * (`#name-generate-btn`), the status id (`#name-status`), and
  * the request body's ``kind`` ("name" instead of "smiles").  The
  * backend dispatches to ``build_from_name`` which hits PubChem
- * (or local lookup) for the IUPAC / common name.
+ * for the IUPAC / common name.
  *
  * Flow:
  *   1. Read the name input; refuse empty.
  *   2. POST {kind: "name", input: <name>} to /api/build/molecule.
- *   3. Route the generated XYZ through ``structurePage.loadIntoCanvas``
- *      — the dirty-canvas warning-modal fires there, and on accept it
- *      installs + renders via the MolView door (``molview.data.installMolecule``).
+ *   3. Route the generated structure through ``structurePage.loadIntoCanvas``,
+ *      which installs it into an empty viewer or appends it to the open one.
  *
  * Errors / cancellation surface in #name-status.
  *
  * Test seam: ``configure(opts)`` lets tests inject a fake fetch +
- * structurePage + viewer-loader so the Node-only unit tests can
+ * structurePage so the Node-only unit tests can
  * drive the state machine without a real DOM or HTTP roundtrip.
  *
- * Design ref: docs/web/tabs.md (panel 5: name
- * lookup, part of the "others" generator group).
+ * Design ref: docs/web/tabs.md § 2 (Creating a structure — the in-gate).
  */
 
 (function (root) {
@@ -32,8 +30,7 @@
 
     // The panel's dependency slots, wired once for all five panels
     // (`panel-deps.js`): `configure` is the test door, `_lazyResolve` the
-    // production re-read that LANDMINE-2 needs.  This was eighty lines of
-    // byte-identical copy across smiles/name/peptide/rna/dna.
+    // production re-read.
     var _deps = root.molbuilder.panelDeps.make(root);
     var configure = _deps.configure;
     var _lazyResolve = _deps.resolve;
@@ -41,7 +38,7 @@
 
     /**
      * Generate a structure from ``name`` (IUPAC / common /
-     * trade) and route it through the canvas-state gate.
+     * trade) and route it through the page's load gate.
      *
      * @param {string} name
      * @returns {Promise<{ok: boolean,
@@ -55,7 +52,7 @@
                 ok: false, error: "Enter a name first." });
         }
         // Lazy-resolve dependencies in case the script-load
-        // order put us above page.js / lib/* (LANDMINE-2 fix).
+        // order put us above page.js / lib/*.
         _lazyResolve();
         if (!_deps.fetch) {
             return Promise.reject(new Error(
@@ -93,8 +90,8 @@
                 if (!gate.ok) {
                     return { ok: false, cancelled: true };
                 }
-                // loadIntoCanvas routes through molview.data.installMolecule
-                // (the MODEL primitive for generated text; the FILE door is
+                // loadIntoCanvas installs into an empty viewer or appends to
+                // the open structure (the MODEL door; the FILE door is
                 // projects.parser.openMolecule -- not used here).
                 return { ok: true, n_atoms: body.n_atoms };
             });
@@ -122,18 +119,9 @@
         var status = doc.getElementById("name-status");
         if (!input || !button) return;
 
-        /* The shared `.status` writer (lib/status.js).
-         *
-         * These seven panels each spelled this out, writing `.muted` with
-         * `is-error` / `is-generating` / `is-loading` -- modifiers NO
-         * stylesheet defined.  So a refused SMILES reported itself in the
-         * same muted grey as a hint, on every builder panel, and had done
-         * since they were written.  `.status` is the app's one severity
-         * surface and its `error` IS red.
-         *
-         * The busy state maps to the neutral line: it had no appearance
-         * before either (its class answered nothing), so this is the same
-         * rendering with one fewer class that means nothing. */
+        /* The shared `.status` writer (lib/status.js): `.status` is the
+         * app's one severity surface and its `error` IS red; the busy state
+         * is the neutral line. */
         function setStatus(msg, kind) {
             window.molbuilder.status.set(
                 status, msg, kind === "error" ? "error" : null);

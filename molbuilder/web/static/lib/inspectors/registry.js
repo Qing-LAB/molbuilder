@@ -3,12 +3,7 @@
  *
  * Why this exists
  * ===============
- * Before the registry, ``/results``'s dispatch had two hard-coded
- * lists: one in the template (five inspector panels with magic
- * ids) and one in the JS (five match rules in a literal table).
- * Adding a new file type required editing both, in lockstep.
- *
- * With the registry, each inspector is a self-contained module that
+ * Each inspector is a self-contained module that
  * declares its own match rule, displayName, and how it mounts itself
  * inside a host element.  The template carries ONE host; the JS
  * dispatch is a short "pick inspector for this file; mount it; on
@@ -192,13 +187,9 @@
             );
         }
         /* `meta` IS PASSED ON, because this pick must be the dispatcher's
-         * pick.  It took the filename alone while the caller had already
-         * asked `pick(file, meta)` -- and had used that answer to name the
+         * pick: the caller already asked `pick(file, meta)` to name the
          * kind in the header and to decide whether to raise the loading
-         * cover.  Two picks on two different inputs, one rule: the pill
-         * could name one presenter while a different one was mounted
-         * beneath it.  Zero divergences over 11,035 real files today, and
-         * that is a property of the current predicates, not of the code. */
+         * cover. */
         const inspector = pick(file, meta);
         if (!inspector) return null;
         try {

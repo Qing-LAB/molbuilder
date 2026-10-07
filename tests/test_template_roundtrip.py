@@ -5,13 +5,8 @@ format and the writer's self-check), § 5 (the anatomy of an item), § 10
 (complete and lossless) · ``docs/execution/generator.md`` § 3.1 (the UI is a
 reader, and which keys serve it).
 
-**Rewritten 2026-08-11 with the format.** Six tests here pinned the retired
-item-block layout — ``test_every_payload_is_byte_identical_to_the_deck`` and its
-neighbours asserted that each block embedded a copy of the deck's own lines.
-That property was real for a format that stored the value twice; **TOML has no
-payload key, so the property has nothing to be about** and the tests were
-retired rather than ported. What replaced them is the writer's own round-trip
-check (§ 4.1) plus the refusals § 3 asks for.
+What guards the file is the writer's own round-trip check (§ 4.1) plus the
+refusals § 3 asks for.
 """
 from __future__ import annotations
 
@@ -141,14 +136,12 @@ def test_the_writer_refuses_output_that_does_not_read_back(monkeypatch, cfg):
 
 
 def test_the_emitted_file_is_valid_toml_and_carries_the_three_top_keys(cfg):
-    """§ 3: ``schema`` and ``engines`` — the two required top-level keys.
-
-    ``fingerprint`` was a third until 2026-08-14; it is retired (§ 10)."""
+    """§ 3: ``schema`` and ``engines`` — the two required top-level keys."""
     import tomllib
     raw = tomllib.loads(T.template_with_values(cfg))
     assert raw["schema"] == T.SCHEMA
     assert raw["engines"] == ["siesta"]      # @2: a LIST -- a calculation may run on several
-    assert "fingerprint" not in raw     # retired 2026-08-14, § 10
+    assert "fingerprint" not in raw     # § 10
 
 
 # --------------------------------------------------------------------- #
@@ -234,31 +227,23 @@ def test_every_exposed_field_becomes_an_item_and_declares_its_kind():
     declares is an item, and each one's ``kind`` says who consumes it."*  A
     field this vocabulary cannot place is a gap to fix, not an item to drop."""
     items = T.declarations_for(SiestaConfig)
-    # The membership rule, stated exactly (U16 made it literal): every
-    # parameter the schema declares is an item, excluded only by § 7's
-    # named rows -- "a machine fact" (``allocation``, a fact a field
-    # declares about itself) and the ladder.  No form-placement tag is in
-    # this expression: gating membership on one was the fourth, unlisted
-    # exclusion that silently
-    # kept species_order (identity-sensitive) out of every template.
-    # At @2 an allocation field IS a member (§ 6.4): the item is declared,
+    # The membership rule, stated exactly: every parameter the schema
+    # declares is an item.  No form-placement tag is in this expression.
+    # An allocation field IS a member (§ 6.4): the item is declared,
     # valueless, so a surface can ask for ranks and the wrapper writer knows
-    # to look.  Only the LADDER is excluded now -- the machine-fact row of
-    # § 7 excludes the VALUE, not the item.
+    # to look -- the machine-fact row of § 7 excludes the VALUE, not the
+    # item.
     members = [f.name for f in __import__("dataclasses").fields(SiestaConfig)]
     assert sorted(i.name for i in items) == sorted(members)
     assert all(i.kind in T.KINDS for i in items)
 
 
-# ---- U16 (2026-08-12): total membership, exercised end to end -------- #
+# ---- total membership, exercised end to end -------------------------- #
 
 def test_the_five_ungated_fields_round_trip_through_a_template():
-    """species_order (identity-sensitive, run-identity § 6a) and the
-    toggles the section gate silently dropped: set them, write the
-    template, read it back -- the value survives, which is what 'the
-    template describes the deck' means.  (`write_forces` and
-    `write_coor_step` were two of them; since 2026-09-29 the rung fixes
-    both and a template holds no value for them, `template.md` § 6.4.)"""
+    """species_order (identity-sensitive, run-identity § 6a) and a toggle:
+    set them, write the template, read it back -- the value survives, which
+    is what 'the template describes the deck' means."""
     cfg = SiestaConfig(system_label="JOB",
                        species_order=["C", "H", "S", "Au"],
                        copy_psml=False)
@@ -351,18 +336,12 @@ def test_the_type_check_runs_before_shape_can_mangle(tmp_path):
 
 
 def test_a_hand_added_machine_fact_VALUE_is_refused_with_the_story():
-    """A-9, restated at @2.
+    """A-9.  The ITEM is declared -- valueless, flagged as the scheduler's
+    (§ 6.4) -- so the refusal is of its VALUE, which is where § 2 puts it:
+    *the template declares the question and never asserts the answer.*
 
-    Until @2 an allocation-tagged field was never WRITTEN into a
-    template, so its mere presence meant a hand edit and the item was
-    refused.  § 6.4 changed that: the ITEM is now declared -- valueless,
-    flagged as the scheduler's -- a surface must be able to ask for ranks.
-    So the refusal moved from the item to its VALUE, which is where § 2
-    always put it: *the template declares the question and never asserts
-    the answer.*
-
-    The failure guarded against is unchanged: a deck once rendered for a
-    rank count the allocation never granted.
+    The failure guarded against: a deck once rendered for a rank count the
+    allocation never granted.
     """
     from molbuilder.config.siesta import SiestaConfig
     import molbuilder.template as T
@@ -375,8 +354,7 @@ def test_a_hand_added_machine_fact_VALUE_is_refused_with_the_story():
 
 
 def test_the_item_itself_is_legitimate_only_its_value_is_not():
-    """The other half, and the reason the test above had to change: the
-    same file WITHOUT a value must be accepted, or a surface could never
+    """The other half: the same file WITHOUT a value must be accepted, or a surface could never
     ask the question."""
     import molbuilder.template as T
     text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
@@ -389,11 +367,8 @@ def test_the_item_itself_is_legitimate_only_its_value_is_not():
 # ------------------------------------------------------------------ #
 #  § 6.2 -- the category guards                                       #
 #                                                                     #
-#  Both of these were added after a mutation sweep found the refusals  #
-#  they defend were UNTESTED: opening the closed vocabulary, and       #
-#  dropping `category` from the required keys, each left the suite     #
-#  green.  A refusal nothing exercises is a refusal that will be       #
-#  deleted by the next person who finds it inconvenient.               #
+#  A refusal nothing exercises is a refusal that will be deleted by    #
+#  the next person who finds it inconvenient.                          #
 # ------------------------------------------------------------------ #
 
 def test_an_unknown_category_is_refused_not_accepted():
@@ -577,30 +552,18 @@ def test_an_allocation_item_is_emitted_VALUELESS_however_the_config_is_filled():
 
 
 def test_the_machine_answered_items_are_flagged_and_nothing_else_is():
-    """**One flag, and it is the item's own.**
-
-    Three tests stood here until 2026-08-17 -- that every resolver name was
-    in the closed registry, that an unknown one was refused, and that the
-    four items named in the contract carried theirs.  All three tested a
-    SECOND vocabulary: a `resolver` NAME beside the boolean that already said
-    the same thing.  Nothing ever dispatched on those names, half of them
-    (``omp_threads``, ``block_size``) simply repeated the item's own name and
-    half invented one (``mpi_np`` -> ``rank_count``), so the registry bought
-    nothing and cost a standing confusion between two vocabularies.
-
-    What survives is the fact they were circling: **the scheduler answers
-    exactly these three, and the flag says so on the item.**
+    """**One flag, and it is the item's own**: the scheduler answers
+    exactly these, and the flag says so on the item.
     """
     t = _siesta_template()
     answered = {i.name for i in T.select(t, allocation=True)}
-    # ``gpu_count`` joined 2026-08-21 (user: "explicit is what we need") --
-    # the device count is the scheduler's grant exactly like the rank
-    # count, and as a bench axis it is declared, not derived.
+    # ``gpu_count`` (user, 2026-08-21: "explicit is what we need") -- the
+    # device count is the scheduler's grant exactly like the rank count, and
+    # as a bench axis it is declared, not derived.
     assert answered == {"mpi_np", "omp_threads", "max_memory_mb",
                         "gpu_count"}, answered
 
-    # `block_size` is the case that made the old registry look necessary: the
-    # scheduler does NOT grant it -- a benchmark measures it and `prep`
+    # `block_size`: the scheduler does NOT grant it -- a benchmark measures it and `prep`
     # realigns it against the GPU target -- so its item may legitimately carry
     # a value.  It needs no name of its own to say that; being unflagged and
     # `optional` with no value already says it.

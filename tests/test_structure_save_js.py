@@ -6,22 +6,13 @@ door, which asks *where*, posts `/api/structure/save`, runs the overwrite
 confirmation and refreshes the sidebar.  What this file owns is the readout,
 the button's enabled state, and recording where the bytes went.
 
-**What was retired here on 2026-09-02, and why.**  This file was 496 lines
-against a 456-line module, and its harness faked `projects.parser.saveMolecule`
-so it could exercise a save PIPELINE this panel no longer has: name
-normalisation, the overwrite retry, the sidebar refresh, fetch-level failures.
-All of that moved to `molviewFiles`, which had been mounted into this very tab's
-viewer since 2026-08 — two roads to one route, and this file tested the older
-one.
+The door's own behaviour is `test_molview_files_door_js.py`; the server's 409
+overwrite contract is `test_web.py`; the menu-to-door handoff is
+`test_molview_mount.py`.  Those are where the rules live, so a copy here would
+be a second statement of them free to drift.
 
-Its coverage was not lost with it.  The door's own behaviour is
-`test_molview_files_door_js.py`; the server's 409 overwrite contract is
-`test_web.py`; the menu-to-door handoff is `test_molview_mount.py`.  Those are
-where the rules live, so a copy here would have been a second statement of them
-free to drift — which is exactly what it had become.
-
-What remains is what nothing else can say: that the PANEL delegates, and that it
-tells the page where the bytes went.
+What this file pins is what nothing else can say: that the PANEL delegates, and
+that it tells the page where the bytes went.
 """
 from __future__ import annotations
 
@@ -102,16 +93,6 @@ def _run_node(snippet: str) -> object:
         pytest.fail(f"node exited {proc.returncode}\n"
                     f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}")
     return json.loads(proc.stdout.strip().splitlines()[-1])
-
-
-# --------------------------------------------------------------------- #
-#  The surface                                                          #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
-#  Where it last saved — the page's note, never the viewer's            #
-# --------------------------------------------------------------------- #
 
 
 # --------------------------------------------------------------------- #

@@ -12,8 +12,7 @@ declared by the field name, and the two declarations must agree on kind, type,
 default, category, allocation, optional and unit -- so they are written ONCE,
 here, and each config takes a fresh field from these factories (a dataclass
 ``Field`` is named and typed by the class it lands in, so one object cannot be
-shared).  ``net_charge`` had two copies until 2026-09-28, one carrying a
-``tier`` the other did not.  ``method`` is PySCF's alone -- SIESTA is a
+shared).  ``method`` is PySCF's alone -- SIESTA is a
 density-functional code -- and stays in ``config/pyscf.py``.
 """
 from __future__ import annotations

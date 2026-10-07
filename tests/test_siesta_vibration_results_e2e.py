@@ -29,8 +29,7 @@ tab's dropdown, and the page is read against `web/spectra.md`:
 
 Every hiding is read from the COMPUTED style, not the attribute or the
 class: a ``display`` rule of the element's own beats ``[hidden]`` in the
-author cascade, which is how the dots stayed visible under ``hidden`` until
-``.phase[hidden]`` was added.
+author cascade, which ``.phase[hidden]`` guards against.
 
 MUTATIONS THIS MUST FAIL AGAINST: the width control shown whatever the
 strengths (``drawn`` forced true); the ``.phase[hidden]`` guard

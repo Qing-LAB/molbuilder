@@ -10,8 +10,7 @@ and what it says about a file at the record's path that does not read.
 PREVENTS: a weaker probe erasing a declared fact (a login node that sees no
 GPUs probing `null` over a recorded `4`), a scripted probe changing a record
 nobody agreed to change, and an unreadable record replaced as if it were
-absent.  These were tests of the private `_probe_consent_merge`, with
-`click.confirm` patched, until 2026-10-02 (W54 T29).
+absent.
 """
 from __future__ import annotations
 

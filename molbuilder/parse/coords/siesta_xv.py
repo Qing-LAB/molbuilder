@@ -1,19 +1,6 @@
 """SIESTA ``.XV`` (final-coordinates) FileParser.
 
-Absorbed from the legacy ``molbuilder.parsers.siesta_struct``
-(``SiestaXVError`` + ``read_xv``); that package was deleted 2026-06-21
-and this is the only ``.XV`` reader (provenance:
-`docs/archive/old_docs/protocols/parse-module.md` § 8).
-
-The legacy ``read_xv`` returned a :class:`Structure` (geometry-only);
-cell vectors were read from the file but dropped per a historical
-"Structure is geometry-only" choice.  The Phase 1 JobMonitor decoder
-hit this gap and had to read the cell separately from the .fdf's
-``%block LatticeVectors`` (with all the LatticeConstant-unit-
-conversion bugs that came with it).
-
-This parser closes the gap: :class:`StructureResult` carries ``cell``
-as a first-class field, populated directly from the .XV's leading 3
+:class:`StructureResult` carries ``cell`` as a first-class field, populated directly from the .XV's leading 3
 rows (always Bohr per SIESTA convention; we convert to Å here).
 """
 
@@ -32,11 +19,7 @@ from molbuilder.structure import Structure
 from ._helpers import build_structure_result
 
 
-# 1 Bohr in Ångström, from the one place it is spelled.  This module and
-# the fdf reader (then `transport.preflight`, now `parse.fdf`) both read
-# `.XV` files and carried DIFFERENT
-# values (0.5291772108 here, 0.529177 there), so the same file gave
-# coordinates 4e-7 apart depending on which reader was asked.
+# 1 Bohr in Ångström, from the one place it is spelled.
 from molbuilder.constants import BOHR_ANGSTROM as _ANGSTROM_PER_BOHR
 
 
@@ -48,9 +31,7 @@ class SiestaXVError(ValueError):
 def _nonblank_lines(p: Path) -> List[str]:
     """The file's non-blank lines.  THE ONE READ every door below shares.
 
-    ``utf-8-sig`` accepts an optional BOM.  `_read_xv` used plain ``utf-8``
-    and `_read_xv_cell` used ``utf-8-sig``, so a BOM'd ``.XV`` broke the
-    atoms and not the cell -- one file, two answers.
+    ``utf-8-sig`` accepts an optional BOM.
     """
     return [ln for ln in p.read_text(encoding="utf-8-sig",
                                      errors="replace").splitlines()
@@ -60,9 +41,7 @@ def _nonblank_lines(p: Path) -> List[str]:
 def _cell_from(lines: List[str], name: str) -> np.ndarray:
     """The 3x3 cell in Å from the leading three rows.  STRICT: raises.
 
-    The tolerant door is this one with its failures swallowed -- which is
-    the relationship `_read_xv_cell`'s docstring has always described
-    ("it will raise SiestaXVError on the same file").  Writing it once and
+    The tolerant door is this one with its failures swallowed.  Writing it once and
     catching, rather than twice with different strictness, is what stops
     the two drifting.
     """
@@ -81,12 +60,8 @@ def _cell_from(lines: List[str], name: str) -> np.ndarray:
                 f"{name}: cell row {i+1} has a non-numeric component."
             ) from exc
         # `float("nan")` and `float("inf")` PARSE, so the try above does not
-        # catch them -- and since 2026-09-22 this matrix goes onto a
-        # `Structure`, whose `__post_init__` refuses a non-finite cell with a
-        # bare `ValueError`.  Every caller here catches `SiestaXVError` only,
-        # so that one escaped: the CLI printed a traceback, and the compose
-        # route, which catches `ComposeError`, answered HTTP 500.  The file is
-        # what is wrong, so the file's own reader says so.
+        # catch them, and the `Structure` this matrix goes onto refuses a
+        # non-finite cell with a bare `ValueError` its callers do not catch.
         if not np.all(np.isfinite(cell_bohr[i])):
             raise SiestaXVError(
                 f"{name}: cell row {i+1} has a non-finite component "
@@ -131,12 +106,7 @@ def _atoms_from(lines: List[str], name: str):
             raise SiestaXVError(
                 f"{name}: atom row {i+1} has non-integer Z {toks[1]!r}."
             ) from exc
-        # MOLBUILDER'S OWN TABLE, not ase's.  `transport.compose`'s reader
-        # already used `symbol_for_z`; this one imported
-        # `ase.data.chemical_symbols`, so unifying the two readers also
-        # drops a third-party import from the parse layer rather than
-        # spreading it.  The wording of the refusal is kept because the
-        # tests pin it.
+        # MOLBUILDER'S OWN TABLE, not ase's.
         try:
             elements.append(symbol_for_z(iza))
         except ValueError as exc:
@@ -153,21 +123,12 @@ def _atoms_from(lines: List[str], name: str):
 def read_xv_with_cell(path: Union[str, Path]):
     """``(Structure, cell_ang)`` from ONE pass over the file.
 
-    THE DOOR FOR CALLERS THAT WANT BOTH, and every caller did: the
-    FileParser, the web Modify door and the since-deleted `xv_to_xyz` each
-    called `read_xv` and then `read_xv_cell`, parsing the same file twice.
-    Strict, like `read_xv`: a malformed file raises.
+    THE DOOR FOR CALLERS THAT WANT BOTH.  Strict, like `read_xv`: a malformed file raises.
 
     THE STRUCTURE CARRIES THE CELL, and the tuple's second element is the
     same matrix for the two callers that want it bare (the FileParser fills
-    `StructureResult.cell`; `read_xv_cell` answers the matrix alone).
-
-    It did not, until 2026-09-22, and the omission was load-bearing in the
-    wrong direction.  A cell-less `Structure` gets `axis_kind = isolated` on
-    every axis, `replace` carries that forward, and attaching the cell
-    afterwards does NOT re-derive it -- so `xv2xyz` restated the axis kinds
-    by hand to undo a default that should never have applied.  A file that
-    states a lattice should produce a structure that has one, and then
+    `StructureResult.cell`; `read_xv_cell` answers the matrix alone).  A
+    file that states a lattice produces a structure that has one, so
     `Structure.__post_init__` applies ITS default (a stated cell means
     periodic on every axis) in the one place that owns that rule.
     """
@@ -259,9 +220,6 @@ class SiestaXVFileParser(FileParser):
 
     @classmethod
     def parse(cls, path: Path) -> StructureResult:
-        # ONE PASS.  This called `_read_xv` and then `_read_xv_cell`,
-        # reading and parsing the same file twice for the two halves of
-        # one answer.
         structure, cell = read_xv_with_cell(path)
         return build_structure_result(
             structure=structure,
@@ -275,31 +233,8 @@ class SiestaXVFileParser(FileParser):
 # --------------------------------------------------------------------- #
 #  Public-API re-exports                                                #
 # --------------------------------------------------------------------- #
-#
-# The `.fdf` helpers this file re-exported were DELETED 2026-09-06 with
-# `parse/dirs/_assembler_helpers`.  They were published under two import
-# paths "so tests + future callers have one import path per file type";
-# the future callers never arrived, and a tidy front door is what let six
-# uncalled functions read as a maintained API through two cleanups.
 read_xv = _read_xv
 read_xv_cell = _read_xv_cell
-
-
-# `xv_to_xyz` LIVED HERE UNTIL 2026-09-22, and it wrote a bare `.xyz`.
-#
-# It hand-built the extended-XYZ `Lattice="..."` comment that
-# `Structure.to_extxyz` owns (omitting `pbc=`), and its docstring justified
-# the header by naming a round-trip through `molbuilder.siesta.convert` --
-# a module that does not exist.  The reader that actually reopens the file,
-# `siesta/input.py::_struct_from_file`, goes through `StructureCodec().load`,
-# so the cell arrives from the SIDECAR and the header was carrying a fact the
-# pair already carries.  Meanwhile the half the header cannot carry -- the
-# frozen atoms a run declared -- was dropped on the floor.
-#
-# Its one production caller was the `xv2xyz` CLI verb, which now reads through
-# `read_xv_with_cell` and writes through the codec like every other converter
-# (`model/structure.md` § 2.4).  Deleted rather than repointed: a second
-# `.XV`-to-file path is the shape this whole consolidation removes.
 
 
 __all__ = [

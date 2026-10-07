@@ -66,13 +66,6 @@ class TestBandWidth:
         """§ 6.3 — the region you aim at is the region you see."""
         assert band(20) == 20
 
-    # `test_it_does_not_depend_on_where_the_modes_are` stood here and was
-    # character-identical to the test above it (§ 6.3's per-mode clamp being
-    # gone).  `bandHalfWidth(w)` takes only `w`, so mode positions cannot
-    # enter it -- that is a fact about the SIGNATURE, read in one line, and a
-    # test asserting `band(20) == 20` a second time could not have caught a
-    # regression that reintroduced the clamp anyway.  Removed 2026-09-09.
-
 
 # --- § 9  the envelope ------------------------------------------------------
 
@@ -96,8 +89,7 @@ class TestEnvelope:
 
     def test_with_no_strengths_anywhere_there_is_no_curve(self):
         """§ 9, § 6.2 — a sum over heights nobody computed would be a picture
-        of nothing (it drew a unit-height frequency distribution until
-        2026-09-28, which read as an intensity spectrum)."""
+        of nothing."""
         assert curve([mode(1, 1000.0), mode(2, 2000.0)], 20) is None
 
     def test_a_mode_without_a_strength_adds_nothing_when_others_have_one(self):

@@ -1,4 +1,4 @@
-"""Phase 3 (model/structure-annotations.md § 4): the fdf emit-strategy registry for
+"""model/structure-annotations.md § 4: the fdf emit-strategy registry for
 extensible annotation channels (additive; built-in frozen/region untouched)."""
 import numpy as np
 
@@ -34,23 +34,3 @@ def test_no_strategy_is_carried_not_emitted():
     assert afdf.unregistered_channels(s) == ["orphan"]     # flagged for a warning
     # the channels still EXIST on the structure (carried, just not emitted)
     assert s.get_channel("mytag").data == [0, 1]
-
-
-def test_render_fdf_includes_registered_channel_lines():
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.input import render_fdf
-    afdf.register_fdf_strategy("test-marker",
-                               lambda ch, st: ["# CHANNEL-MARKER " + str(sorted(
-                                   ch.data if ch.kind != "value" else ch.data.keys()))])
-    s = _struct()
-    s.set_channel("m", AtomChannel("flag", [1, 3], fdf="test-marker"))
-    fdf = render_fdf(s, SiestaConfig())
-    assert "# CHANNEL-MARKER [1, 3]" in fdf
-
-
-def test_render_fdf_unchanged_without_annotations():
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.input import render_fdf
-    s = _struct()                                          # no annotations
-    fdf = render_fdf(s, SiestaConfig())
-    assert "CHANNEL-MARKER" not in fdf and "DM.InitSpin" not in fdf

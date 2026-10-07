@@ -4,8 +4,7 @@
 rules the molwatch parser matches (`molwatch_grammar`'s lines) and the state
 it keeps, over plain Python records.  `molwatch.py` builds its Frames from what
 this reads; the monitor reads a running PySCF job's progress log with it, fed
-line by line as the log grows (`execution/run-reports.md` § 2.3).  It was the
-inside of `molwatch._parse_molwatch_log_impl` until 2026-09-26.
+line by line as the log grows (`execution/run-reports.md` § 2.3).
 
 **Stdlib only, and it travels beside every job** (`runwrap.MONITOR_COMPANIONS`).
 """
@@ -40,8 +39,7 @@ class MolwatchReader:
         self.stage = stage
         #: Committed step blocks, oldest first: ``{index, kind, coords,
         #: energy, forces, max_force, scf_history, wall_clock_s}``.  Only a
-        #: block with coordinates is committed -- the rule the parser always
-        #: had -- and a torn final block (``begin`` with no ``end``) is not.
+        #: block with coordinates is committed, and a torn final block (``begin`` with no ``end``) is not.
         self.blocks: List[Dict[str, Any]] = []
         self.engine = "molwatch"
         self.run_state: str = "running"      # parse.md 2b, P-S1

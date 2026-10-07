@@ -1,8 +1,7 @@
 """Mounting, and the handle — every test derived from ``docs/web/molview.md``,
 never from the source it checks (§ 13).
 
-Step G of the rebuild (``docs/web/molview.md``). The rows of § 13.3
-guarded here:
+The rows of ``docs/web/molview.md`` § 13.3 guarded here:
 
     § 4    the module is self-contained
     § 8    mount always resolves
@@ -13,7 +12,7 @@ guarded here:
     § 5.6  a viewer is owned
 
 Level 2 of § 13.2: boundary behaviour, with stand-ins that obey this document —
-a DOM stand-in and the drawing-library stand-in from step B. What a viewer LOOKS
+a DOM stand-in and the drawing-library stand-in. What a viewer LOOKS
 like is § 13.2's third level, in a real page, and nothing here pretends to check
 it.
 """
@@ -472,10 +471,10 @@ def test_a_switch_and_a_selection_reach_the_drawing():
 def test_the_switches_are_a_rail_of_buttons_outside_the_window():
     """§ 1.1 / § 8.5: icon buttons down the left edge, "always outside the
     canvas, never on top of the molecule" — Reset view, axes, atom labels, force
-    vectors, unit cell, show-selected-only, and (2026-08-30) **measure**, in
+    vectors, unit cell, show-selected-only, and **measure**, in
     that order.
 
-    The seventh is the one that is not the selection's: § 8.5 now says each
+    The seventh is the one that is not the selection's: § 8.5 says each
     button reads its lit state "from the store that owns it", so this test also
     pins that a switch living in `measurement` lights from there.
 
@@ -743,10 +742,8 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
     not the middle one by number" — and its coordinates from the master copy at
     the current frame, never from the drawing.
 
-    Its input changed on 2026-08-30: it used to read `selection`, which is what
-    an edit acts on.  The geometric-vertex fallback went with that change and is
-    asserted GONE here — a selection can arrive with no pick order (All, Invert,
-    a filter), a track cannot, so the guess has no case left to cover.
+    A selection can arrive with no pick order (All, Invert, a filter), a track
+    cannot, so no geometric-vertex guess is asserted here.
     """
     out = _run(
         """
@@ -832,10 +829,7 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
     )
     assert out["emptyTrack"] is True, "nothing picked is nothing to say"
 
-    # § 1.1's formats, WORD FOR WORD. These assertions used to be
-    # `startswith("#2")` — copied from what the code printed, in a file whose
-    # docstring says every test comes from the document. So the readout had
-    # never carried the element at all, and this test was what kept it that way.
+    # § 1.1's formats, WORD FOR WORD.
     assert out["one"] == ["C #2 — (0.000, 0.000, 0.000) Å"], out["one"]
     # EVERY picked atom's coordinates, then the derived answers: the position is
     # what a reader checks the distance against (§ 11.6).
@@ -879,8 +873,8 @@ def test_a_known_pair_shows_its_literature_distance():
     adds the reference distance beside the measured one.
 
     **A reference, not a default and not a verdict** *(user ruling,
-    2026-09-03)*.  Junctions are not built from bond distances any more -- metal
-    is added by hand and a slab is placed by its z offset -- so the table's job
+    2026-09-03)*.  Metal is added by hand and a slab is placed by its z
+    offset, so the table's job
     is to answer *"what is this bond usually"* at the moment you are looking at
     one.  It is the number alone: no deviation, no judgement on a geometry you
     may have set deliberately.
@@ -1022,8 +1016,6 @@ def test_the_module_writes_no_file_handling_of_its_own():
     )
 
 
-
-
 def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
     """§ 11.7: what leaves is "what the viewer holds — the atoms, their positions,
     and the facts about them". NOT bytes: a coordinate document is a format the
@@ -1037,7 +1029,7 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
     them. Whether a sidecar is written at all is the codec's rule now, applied
     server-side on the one generator both destinations go through.
 
-    Since 2026-08-19 the menu is § 11.3's two sections; the DATA rows are the
+    The menu is § 11.3's two sections; the DATA rows are the
     truth's, the payload is `{structure, frames}`, and a one-frame structure
     asks no range (the dialog exists for a quantity there is only one of).
     """
@@ -1112,13 +1104,6 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
     )
 
 
-# `test_a_picture_is_the_view_and_leaves_through_saveBinary` was defined
-# TWICE at module scope, 48 lines apart and character-identical but for the
-# whitespace in one `console.log`.  Python keeps the second, so the first had
-# never run since the day it was pasted -- it read as coverage in the file and
-# was not in the suite.  Deleted 2026-09-02, and
-# `test_no_test_is_shadowed_by_a_later_one` now makes the class unwritable.
-
 def test_a_picture_is_the_view_and_leaves_through_saveBinary():
     """§ 11.3's Image, single frame: the dialog asks a RESOLUTION (the user's
     2026-08-19 addition; no range — one frame never asks one), the picture is
@@ -1168,7 +1153,7 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
     """§ 11.3: the dialog opens ON THE DISPLAYED FRAME (accepting it unchanged
     is the common case), widening it is what the dialog is for, and the range
     reaches `exportFile` — frames ride the payload, and the stem names both
-    ends (§ 11.4's `_frameA-B`, which existed only in prose until 2026-08-19).
+    ends (§ 11.4's `_frameA-B`).
     """
     out = _run(
         """
@@ -1491,15 +1476,11 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
     )
 
 
-
 def _wire(*rows):
     """The notices a load really carries — built BY THE PRODUCER.
 
     `periodicity_gate._wire` is *"THE ONLY PLACE the wire shape is written"*,
-    and a test that types the shape out again is a second place: when the key
-    was renamed `level` -> `severity` on 2026-09-10 both halves of the product
-    moved together and this file's hand-written payload did not, so the only
-    thing that went red was a fake disagreeing with a fact.
+    and a test that types the shape out again is a second place.
 
     Each row is what `_notice` takes — `(severity, message, where)` — so what
     reaches the stand-in server is a row the browser could actually receive,
@@ -1592,8 +1573,8 @@ def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so():
 
 
 def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out():
-    """MolView offers four names before anyone has used them — `L-electrode`,
-    `R-electrode`, `bridge`, `interface` — because nearly every device structure
+    """MolView offers names before anyone has used them — `L-electrode`,
+    `R-electrode`, `bridge`, `interface`, `buffer` — because nearly every device structure
     needs them and typing one by hand is where `L-Electrode` comes from. They
     are SPELLINGS: MolView reads no meaning into any of them.
 
@@ -1605,10 +1586,8 @@ def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out():
     about before tagging atoms with it by accident. "This changes your run" and
     "this is a name I picked" must not look the same.
 
-    THE LIST IS MOLVIEW'S OWN (user decision, 2026-08-03). It was handed in at
-    mount, so five pages would each have had to repeat the same four names —
-    and only the module's demo page ever did, which is why every chip on every
-    real page came out the same colour.
+    THE LIST IS MOLVIEW'S OWN (user decision, 2026-08-03): handed in at mount,
+    five pages would each have had to repeat the same names.
     """
     out = _run(
         """
@@ -2334,8 +2313,6 @@ def test_loading_a_structure_reaches_the_drawing():
     assert out["painted"] is True, "nothing was ever painted"
 
 
-
-
 # ---------------------------------------------------------------------------
 # § 8.1–8.3 — the stylesheet is the design system, not a suggestion
 # ---------------------------------------------------------------------------
@@ -2388,7 +2365,7 @@ def test_the_handle_hands_out_surfaces_not_the_stores():
     `mount` returns `data`, and a tab is not the module.  The one door left out
     of each store is the one with a ROUTER: a pick is written by `pickAtom`,
     which decides measuring-vs-selecting, so `toggle` must not be reachable
-    beside it.  (`measurement` never had a public `toggle`; `selection` did.)
+    beside it.
     """
     out = _run("""
         const { viewer } = await mounted();

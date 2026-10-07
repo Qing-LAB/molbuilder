@@ -51,10 +51,7 @@ PATH = f"/api/{ROUTE}"
 def _seed_keys(doc):
     """Write the key file AT ITS ONE HOME, asked of the module that owns it.
 
-    Every site below built `<config dir>/notify_keys` by hand -- which is the
-    defect the production rule forbids, one layer out, and it is what broke
-    them all when every credential moved into `secrets/` on 2026-09-20.  Going
-    through the door means these tests now also prove the thing that matters:
+    Going through the door means these tests also prove the thing that matters:
     the app reads where the test wrote, wherever that turns out to be.
     """
     from molbuilder.monitor import notify_keys_path
@@ -68,14 +65,12 @@ def _seed_keys(doc):
 def store(tmp_path, monkeypatch):
     """A configured server, with the report store pointed inside tmp.
 
-    Reports live under the STATE directory since 2026-08-31 -- XDG's own home
-    for data that persists but is not configuration (`configuration.md`
-    § 2.1d).  Setting ``HOME`` alone stopped being enough then: it moved
-    ``~/.molbuilder`` because that path was built from the home directory, and
-    the state directory is named by its own variable.
+    Reports live under the STATE directory -- XDG's own home for data that
+    persists but is not configuration (`configuration.md` § 2.1d), named by
+    its own variable.
     """
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    # THE KEY FILE IS THE SWITCH (2026-08-31): it lives at the one known
+    # THE KEY FILE IS THE SWITCH: it lives at the one known
     # place and carries its own route, so there is no config to set.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
     (tmp_path / "cfg").mkdir(parents=True, exist_ok=True)
@@ -170,13 +165,15 @@ def test_a_stored_line_stands_on_its_own(store):
     """
     client, reports = store
     from molbuilder import monitor as M
-    ident = M.run_identity(M.WatchedRun(label="BDT_Au_relax", run=0))
+    from molbuilder.runfiles import RunNames
+    ident = M.run_identity(M.WatchedRun(
+        names=RunNames.of("BDT_Au", "01_relax", "hierarchical"), run=0))
     body = {**ident, "sent_at": 1756000000.5, "event": "scf_converged",
             "state": "running", "n_iters": 7, "energy": "-1740.21",
             "geom_step": 3, "elapsed_s": 1234.5}
     assert _post(client, body=body).status_code == 200
     line = _lines(reports)[0]
-    assert line["run"] == "BDT_Au_relax", "the label names the calculation"
+    assert line["run"] == "BDT_Au_01_relax", "the stem names the rung"
     assert line["host"], "which machine"
     assert line["user"] == USER, "whose, in the LINE and not only the filename"
     assert line["v"] == 1, "which shape, for a reader a year from now"
@@ -310,9 +307,8 @@ def test_a_wrong_signature_answers_EXACTLY_like_an_unconfigured_server(
     client, _ = store
     bad = _post(client, sig="0" * 64)
 
-    # A SERVER WITH NO KEY FILE.  `HOME` alone left MOLBUILDER_CONFIG_DIR
-    # pointing at the configured fixture's own `cfg/`, so the "off" server was
-    # the same configured server (review D, 2026-09-14).
+    # A SERVER WITH NO KEY FILE: its config directory is an empty one, not
+    # the configured fixture's own `cfg/`.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "empty-cfg"))
     off = create_app(config={"rate_limit": {"enabled": False}}).test_client()
     absent = off.post(PATH, data="{}",
@@ -405,10 +401,9 @@ def test_the_sender_never_states_who_it_is(store):
     another's record — the point of issuing one each, and what lets one be
     revoked alone.
 
-    The line *does* carry a `user` field since 2026-08-27, so that a record
-    pasted somewhere else still says whose it is. It is **stamped from the
-    key that verified**, never read from the payload, so the property is
-    unchanged and the mechanism is now visible in the line.
+    The line *does* carry a `user` field, so that a record pasted somewhere
+    else still says whose it is. It is **stamped from the key that
+    verified**, never read from the payload.
     """
     client, reports = store
     _post(client, body={"event": "tick", "user": "someone-else", "text": "hi"})
@@ -417,12 +412,6 @@ def test_the_sender_never_states_who_it_is(store):
     assert kept[0]["user"] == USER, "a payload field became an identity"
     assert (reports / f"{USER}.jsonl").exists()
     assert not (reports / "someone-else.jsonl").exists()
-
-
-# RETIRED 2026-09-14 (review D): `test_every_key_is_tried_with_no_early_exit`
-# sliced this blueprint's SOURCE between two markers and asserted the text held
-# no `return` -- a pin on how a loop is spelled, not on what it answers.  Its
-# own docstring called the property one to hold "by construction".
 
 
 # --------------------------------------------------------------------- #
@@ -435,12 +424,9 @@ def test_a_failure_is_counted_by_the_limiter(tmp_path, monkeypatch):
     nobody reaches this route by accident. 404 is still 4xx, so it feeds the
     404-storm signal like any other refusal.
 
-    THROUGH THE LIMITER, not through its bookkeeping: this read
-    `g.molbuilder_auth_challenge` inside a request context the TEST opened,
-    while the post ran in the client's own -- so the flag it read was never
-    the one the route could set -- and then grepped the blueprint's source
-    (review D, 2026-09-14).  Here the limiter is switched on with a
-    threshold of three, and the fourth bad probe is refused by IT."""
+    THROUGH THE LIMITER, not through its bookkeeping: the limiter is
+    switched on with a threshold of three, and the fourth bad probe is
+    refused by IT."""
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     cfg = tmp_path / "cfg"
     cfg.mkdir(parents=True, exist_ok=True)
@@ -621,8 +607,7 @@ def test_the_MONITOR_signs_what_the_LISTENER_verifies(store):
 
 def test_the_monitor_does_not_send_the_key_itself(store):
     """**Rule 7, checked on the wire.** What travels is a signature, never
-    the secret — that is the whole difference from the bearer token this
-    replaced."""
+    the secret."""
     from molbuilder import monitor as M
     sent = {}
 
@@ -655,12 +640,8 @@ def test_the_monitor_does_not_send_the_key_itself(store):
 def _app_with_key_file(tmp_path, monkeypatch, text):
     """A server whose key file holds exactly ``text``.
 
-    AT THE FILE'S ONE HOME.  These two tests handed `notify_keys_file` and
-    `notify_route` to `create_app` until 2026-09-14 -- keys it has not read
-    since 2026-08-31 (`web/app.py` registers the listener from
-    `read_notify_keys()` alone), so the 404 they asserted came from a route
-    that was never registered and would have been the same for a server that
-    accepted everything (review D).
+    AT THE FILE'S ONE HOME: `web/app.py` registers the listener from
+    `read_notify_keys()` alone.
     """
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     cfg = tmp_path / "cfg"
@@ -702,13 +683,10 @@ def test_a_route_that_is_not_one_url_segment_is_refused_by_the_file(
     """A value with a slash in it would silently mean a different path than
     the one written down — and the destination's url is built from it, so the
     two ends would disagree about where reports go.
-
-    The rule moved with the value: it was on the retired `notify_route`
-    config key, and now guards the file that carries the route.
     """
     from molbuilder.monitor import read_notify_keys
     # The key file has ONE home, so the test puts its file there rather than
-    # handing the reader a path (the reader stopped taking one, 2026-09-13).
+    # handing the reader a path.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     for bad in ("a/b", "", "has space", "x" * 200, "a.b", 42, None):
         _seed_keys({"route": bad, "keys": {USER: KEY}})

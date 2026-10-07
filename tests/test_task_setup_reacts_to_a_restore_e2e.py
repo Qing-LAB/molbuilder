@@ -18,14 +18,6 @@ panel repaints itself, the tab can re-read. The defect lives in the gap — the
 panel's own refresh repainting only itself — which is visible only with both
 surfaces on one page, and that is what a restore-through-the-sidebar walk
 gives.
-
-*Replaces `tests/test_task_setup_reacts_to_the_folder.py`, retired 2026-09-03
-(`process/testing.md` § 3a.1).* All six of its tests grepped `viewer.js`,
-`state.js` and `checkpoint.js` for the spelling of a function name — one
-asserted `viewer.count("_fillMeta(") >= 3` — and its docstring justified that
-with *"viewer.js is an ES module and the repo's node harness requires
-CommonJS"*, which was untrue when written. What it pinned was that the words
-were present; what broke was that the announcement never reached the tab.
 """
 from __future__ import annotations
 
@@ -132,8 +124,7 @@ def _show_panel(page):
 
     The panel shares its slot with the file tree and the toggle REMEMBERS
     which one is showing, so a second unconditional click after a reload
-    puts the tree back -- which is how this walk spent twenty seconds
-    waiting for a row that was on screen and then wasn't.
+    puts the tree back.
     """
     page.wait_for_selector("#ps-checkpoint-toggle", timeout=20000)
     showing = page.evaluate(
@@ -193,8 +184,7 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
     # Set-up SAVES the first state itself, noted "set up" -- so this is
     # state A and there is nothing to commit yet.  Pressing Save-a-state
     # here would answer "Nothing changed since the state this folder stands
-    # at" and record no row, which is how the first version of this walk
-    # waited twenty seconds for a row that was never coming.
+    # at" and record no row.
     page.wait_for_function(
         "() => [...document.querySelectorAll('.ps-checkpoint-list-item')]"
         "        .some(li => li.textContent.includes('set up'))",

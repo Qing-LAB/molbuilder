@@ -14,8 +14,7 @@ PREVENTS, each measured before 2026-09-28:
 * a blank charge written as 0 and a person's Hartree-Fock turned into DFT by
   a form fill, and ``dft.RKS`` with a nonzero spin re-ruled by PySCF into
   ROKS without a word;
-* a stage able to change the spin between rungs, the ``.DM`` carried across;
-* an old template's ``method = "RKS"`` silently read under the new vocabulary.
+* a stage able to change the spin between rungs, the ``.DM`` carried across.
 
 Nothing here launches an engine: prep writes the deck and stops.
 """
@@ -163,8 +162,7 @@ def test_the_charge_step_on_every_deck(isolated_projects_root,
                                        deprotonated_diester, engine, kind):
     """§ 2a.1a's charge step on each deck a charge reaches: a blank takes the
     phosphate rule -- the diester's one deprotonated group, -1 -- and says
-    so; a stated value wins, 0 included.  (Pinned per writer, API-level, ten
-    times over until the M6 review.)"""
+    so; a stated value wins, 0 included."""
     def deck(net_charge):
         if engine == "siesta":
             return _siesta(isolated_projects_root, deprotonated_diester,
@@ -465,12 +463,3 @@ def test_a_structure_carries_the_state_of_the_run_it_came_from(
     _d, _s, fdf = _siesta(isolated_projects_root, s)
     assert re.search(r"^NetCharge\s+\+0$", fdf, re.M), fdf
     assert "recorded by the run" not in fdf
-
-
-# ------------------------------------------------------- the migration (7)
-
-# The two migration tests retired 2026-10-06: each edited a template made on
-# the road back into its pre-2026-09-28 shape by hand -- a record of ours put
-# into a shape our writer never writes (`process/testing.md` § 6).  The
-# migration is checked where it is used: `jobset migrate` on a calculation
-# an older molbuilder wrote.

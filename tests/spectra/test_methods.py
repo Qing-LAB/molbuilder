@@ -9,11 +9,7 @@ that ships embedded in the emitted script and beside the result:
     method/basis/dispersion text + the structure-conditional phrasings
     ("5 fixed Au atoms"); the level of theory under Hartree-Fock is
     asserted on a prepped deck (`test_vibration_e2e.py`);
-  * the engine-fragment composition uses every engine's own
-    ``methods_fragment()`` hook.
-
-(A post-run form that re-composed the paragraph from parsed results was
-deleted on 2026-09-28 with its tests -- V1.18; nothing called it.)
+  * the engine fragment, handed over as text, is composed in.
 
 No PySCF / SCF anywhere -- prose composition only.
 """
@@ -30,14 +26,14 @@ from tests.spectra._helpers import _spectra_cfg
 # --------------------------------------------------------------------- #
 #  L2 Methods composer (methods.py)                                     #
 #                                                                       #
-#  archived-spec § 11.2 + § 9.4.  Pure prose generation; no engine I/O.          #
+#  Pure prose generation; no engine I/O.                                #
 # --------------------------------------------------------------------- #
 
 
 class TestExtractCitationKeys:
     """The bibliography-extractor underlies both the trailing
     bibliography in render_methods_md and the
-    SpectraResults.bibliography_keys field (archived-spec § 5).  Test it
+    SpectraResults.bibliography_keys field.  Test it
     standalone so its semantics are pinned independently of the
     composer's prose choices."""
 
@@ -67,9 +63,7 @@ class TestExtractCitationKeys:
         assert extract_citation_keys("[123numeric] [9Sun2020]") == []
         # A purely alphabetic bracket-word like [array] DOES look like
         # a citation key structurally and will be extracted; that's
-        # accepted as the cost of a permissive author key pattern --
-        # the references.bib linter (archived-spec § 11.3) catches the false
-        # positive at release-tag time.
+        # accepted as the cost of a permissive author key pattern.
         assert extract_citation_keys("an [array] of words") == ["array"]
 
     def test_underscores_allowed_in_keys(self):
@@ -108,7 +102,7 @@ class TestRenderMethodsMdPreRun:
     beside the result."""
 
     def test_minimal_config_produces_paragraph(self):
-        """Default config (selector=none, no ES) -> single
+        """Default config (selector=skip, no ES) -> single
         L2 paragraph with functional + basis + dispersion mentions."""
         from molbuilder.spectra import render_methods_md
         cfg = _spectra_cfg()
@@ -118,7 +112,7 @@ class TestRenderMethodsMdPreRun:
         assert "B3LYP" in md
         assert "def2-SVP" in md
         assert "D3(BJ)" in md
-        # selector=none -> NO per-mode-ES paragraph.
+        # selector=skip -> NO per-mode-ES paragraph.
         assert "per-mode electronic" not in md.lower()
 
     @pytest.mark.parametrize("disp, name, keys", [
@@ -131,8 +125,7 @@ class TestRenderMethodsMdPreRun:
         """D3 is Grimme2010, Becke-Johnson damping on top of it Grimme2011,
         D4 Caldeweyher2019 (`engines/vibration.md` § 4.10) -- and every key
         the paragraph cites resolves in the one bibliography, so a
-        manuscript's reference list gets entries, not dangling keys.  Until
-        2026-09-28 every version cited the damping paper alone."""
+        manuscript's reference list gets entries, not dangling keys."""
         from molbuilder.references import known_keys
         from molbuilder.spectra import extract_citation_keys, render_methods_md
         md = render_methods_md(_spectra_cfg(dispersion=disp))
@@ -169,8 +162,7 @@ class TestRenderMethodsMdPreRun:
         assert "Galperin2007" in md
         assert "Frederiksen2007" in md
         assert "Mills1972" in md
-        # Default amplitude 0.02 Å should appear (lowered from 0.10
-        # to 0.02 on 2026-05-19).
+        # Default amplitude 0.02 Å should appear.
         assert "0.02" in md
         assert "A = 0.02" in md or "A=0.02" in md or "0.02 Å" in md
 
@@ -198,7 +190,7 @@ class TestRenderMethodsMdPreRun:
         assert "≥ 1500" in md or ">= 1500" in md
 
     def test_frequency_window_ignored_for_explicit(self):
-        """selector=explicit ignores the freq window (archived-spec § 8.1);
+        """selector=explicit ignores the freq window;
         the prose shouldn't claim a window restriction that won't
         actually be enforced."""
         from molbuilder.spectra import render_methods_md
@@ -236,12 +228,9 @@ class TestRenderMethodsMdPreRun:
 class TestRenderMethodsMdFragment:
     """The composer is engine-IGNORANT: the caller supplies the
     engine-specific paragraph as TEXT (``fragment_md``), and the
-    composer interleaves it between the generic paragraphs.  P3
-    retired the engine-class hook: the registry it looked up died
-    with the old generator, and the one remaining producer (the
-    vibration deck) knows its own engine -- it passes
+    composer interleaves it between the generic paragraphs.  The
+    producer (the vibration deck) knows its own engine -- it passes
     :func:`molbuilder.pyscf.vibration_emitters.pyscf_methods_fragment`.
-    A raising callable cannot exist any more: text does not raise.
     Citation keys from the fragment flow into the trailing
     bibliography just like the generic prose's keys."""
 
@@ -319,12 +308,6 @@ class TestRenderMethodsMdWithStruct:
         """Frozen atoms subtract from n_free.  Named by INDEX -- the
         region store holds indices and the deck writes those into
         geomeTRIC's constraints file.
-
-        Uses a real `Structure`.  This built a `_S` stub exposing
-        `.atoms` of objects with `.symbol`, and `methods.py` carried a
-        `_structure_element_symbols` adapter to read either shape --
-        production code written for a test mock.  Both are gone
-        (2026-08-22): there is one structure type.
         """
         import numpy as np
 
@@ -342,8 +325,7 @@ class TestRenderMethodsMdWithStruct:
 
     def test_real_structure_dataclass_works(self):
         """A real molbuilder.Structure (elements as List[str], not
-        list-of-atom-objects) should feed atom counts correctly --
-        regression test against the mock-only earlier version."""
+        list-of-atom-objects) should feed atom counts correctly."""
         from molbuilder.spectra import render_methods_md
         from molbuilder.structure import Structure
         struct = Structure(
@@ -455,14 +437,11 @@ def test_the_homo_is_the_highest_level_carrying_more_than_half_an_electron(
     the system's -- silently, and only for the open-shell half of the work.
     The two unrestricted rows are the ones that catch it.
 
-    WHY THIS TEST CAN EXIST AT ALL (2026-09-09).  The rule lived only as text
-    inside the emitted PySCF script, where nothing could call it, and the
-    sidecar it writes carries `homo_idx` WITHOUT the occupations it came from --
-    so the read side cannot check it either, and `SpectraResults` validates only
-    that the index is in range. It is now a real function that the script
-    imports from `mb_pyscf.pyz`, so the tests exercise the implementation that
-    runs.
-    Recorded at `science/test-design-findings.md` § 7a.
+    WHY THIS TEST CAN EXIST AT ALL.  The sidecar carries `homo_idx` WITHOUT
+    the occupations it came from -- so the read side cannot check it, and
+    `SpectraResults` validates only that the index is in range. The rule is a
+    real function that the script imports from `mb_pyscf.pyz`, so the tests
+    exercise the implementation that runs.
     """
     from molbuilder.spectra.pyscf_vibration import homo_index
     assert homo_index(mo_occ) == expected, why

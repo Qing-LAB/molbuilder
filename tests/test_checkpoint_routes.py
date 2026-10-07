@@ -274,20 +274,6 @@ def test_nothing_tags_a_state_on_your_behalf(client, started, calc):
 
 
 # ------------------------------------------------------------------ #
-#  config — read only, and it says where to edit                      #
-# ------------------------------------------------------------------ #
-
-
-# `test_config_reports_the_limit_and_where_it_lives` stood here, driving
-# GET /api/checkpoint/config -- a route with no browser caller, retired
-# 2026-09-07.  It was missed in the sweep that retired the route because it
-# builds the URL through `_get(client, "config", ...)`, so a grep for
-# "checkpoint/config" does not see it.  The same blind spot the retirement
-# analysis had to correct for on three OTHER routes, hit here by the person
-# who wrote the correction.
-
-
-# ------------------------------------------------------------------ #
 #  init                                                               #
 # ------------------------------------------------------------------ #
 
@@ -407,8 +393,7 @@ def test_init_refuses_a_folder_of_independent_calculations_as_an_advisory(
     `CalculationNameError` and this one are things a **person** resolves --
     rename the folder, or point at one calculation -- so they are advisories
     the panel can render and act on.  Everything else is a fault.  *"A surface
-    that cannot tell them apart reports 'fix your input' for a broken disk"*,
-    and only one of the two advisories was tested.
+    that cannot tell them apart reports 'fix your input' for a broken disk"*.
     """
     root = tmp_path / "topic"
     (root / "run_a").mkdir(parents=True)
@@ -438,9 +423,7 @@ def test_every_route_refuses_a_real_calculation_outside_the_roots(
     test proves nothing: a nonexistent path answers 400 either way, because
     ``is_dir()`` rejects it a moment later.
 
-    Until 2026-08-25 this surface accepted "any path the host filesystem
-    grants read to the user running molbuilder", citing web-api.md § 1 --
-    a section about the response envelope.  The fence belongs HERE and not
+    The fence belongs HERE and not
     in ``molbuilder/checkpoint.py``: that module is generic on purpose, and
     like ``git status`` it reads what is in the directory it is handed to
     decide whether it can work with it at all.

@@ -5,24 +5,14 @@ contract this package implements.
 
 Public surface:
 
-* ABC — :class:`FileParser`.  *(`DirParser` retired 2026-10-04: a run
-  folder is the run door's, `molbuilder.runs`.  `TextParser`
-  retired 2026-09-05: its only implementations read molbuilder's OWN
-  generated blocks, which need no detection — they moved to the
-  module that writes them, `script_emit`.  `plans/plan.md` § 5d.)*
+* ABC — :class:`FileParser`.
 * Result types — :class:`ParseResult` and its frozen subclasses
-  (trajectory / structure / sidecar / instrument / engine parameters —
-  ``RunDirResult`` retired 2026-10-04 with the directory door's move to the
-  run door, ``BundleResult`` 2026-08-29 with calculation-to-calculation
-  passing, ``JobResult`` 2026-09-04 with the run decoder).
+  (trajectory / structure / sidecar / instrument / engine parameters).
 * Registry / dispatch — :func:`detect`, :func:`parse`, :func:`register`.
 * Exceptions — :exc:`ParseError` and its two children
   :exc:`UnknownFormatError` / :exc:`AmbiguousFormatError`.  Detection
   raises BOTH, and they are SIBLINGS: a caller that catches only the
   first turns a registry overlap into an unhandled exception.
-
-The 2026-06 migration (phases A-H) is complete: the engine, coords,
-sidecar, script and dir parsers all live here and register at import.
 """
 
 from .base import FileParser
@@ -46,11 +36,6 @@ from . import sidecars as _sidecars   # noqa: F401  -- side-effect import
 from . import instruments as _instruments   # noqa: F401  -- side-effect import
 from . import dirs as _dirs   # noqa: F401  -- side-effect import
 
-# Convenience re-exports of the canonical entry-point classes
-# from each sub-package.  Callers who know exactly which parser
-# they want get them off the top-level namespace without
-# having to know the sub-package layout.
-
 __all__ = [
     # ABCs
     "FileParser",
@@ -62,5 +47,4 @@ __all__ = [
     "detect", "parse", "register",
     # Exceptions
     "ParseError", "UnknownFormatError", "AmbiguousFormatError",
-    # Canonical entry-point classes (convenience re-exports)
 ]

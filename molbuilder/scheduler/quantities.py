@@ -19,20 +19,7 @@ Each quantity has three dialects, and they are NOT the same:
 **They disagree, which is why the distinction is load-bearing.**  `04:30`
 is four minutes thirty in the record dialect and four and a half hours in
 the human one.  A field holding *whichever dialect arrived* cannot be read
-correctly by anybody -- and on 2026-08-24 one did: the browser wrote `"4h"`
-into `task.json`, `prep` copied it verbatim into a field documented as
-SLURM's own, and `sbatch` was handed `-t 4h` and refused the tool's own
-written value.
-
-**Where these lived before, and why that was the bug's real cause.**  The
-human-dialect readers sat in `jobset/ask.py` -- a workflow module whose own
-docstring lists what lives there and does not mention them.  They were put
-where they were first needed rather than where they belong, so the record
-reader (`parse_walltime`, here, next to the `sinfo` text it was written for)
-and the human reader (`parse_duration`, over in the job-submission package)
-ended up in different subpackages with nothing to make their difference
-visible.  Then `jobset/submit.py` called the record reader on a
-human-dialect value, and nothing in the code's shape objected.
+correctly by anybody.
 
 They are one subject, so they get one home, and it is at **L1**: this is a
 codec on a basic unit, in the same sense as `identity` (how a run id is
@@ -101,19 +88,9 @@ def parse_gres(text) -> "dict":
     ``gpu:a100:4`` · ``gpu:a100:4(S:0-1)`` · ``gpu:a100:4,mps:400`` ·
     ``gpu:4`` (untyped -> type ``"gpu"``) · ``(null)``/``none`` -> ``{}``.
 
-    **The type is POSITIONAL, and that is the whole point.**  A second
-    reader of this same text matched the type against a hard-coded list of
-    known GPU names, which on ASU Sol reported:
-
-        gpu:a100.40gb:4  ->  a100     a MIG slice as a whole A100
-        gpu:gh200:1      ->  h200     Grace-Hopper, by substring
-        gpu:h200.35gb:4  ->  h200     a slice as the whole card
-        gpu:hl225:8      ->  None     Habana, simply unknown
-
-    `--gpus`' own help says the MIG slices "are separate askable types, not
-    a smaller ask of the same one" -- and that reader conflated exactly
-    those.  A list of names cannot keep up with a site's hardware; the
-    token is already there to be read.
+    **The type is POSITIONAL, and that is the whole point.**  A list of
+    names cannot keep up with a site's hardware; the token is already there
+    to be read.
 
     (Matching against known names IS right for ``nvidia-smi``, which prints
     marketing names like ``NVIDIA A100-SXM4-40GB`` rather than gres tokens.
@@ -162,12 +139,9 @@ def parse_duration(text) -> Optional[int]:
     if text is None or str(text).strip() == "":
         return None
     t = str(text).strip().lower()
-    # SLURM'S OWN SPELLING, ``[D-]HH:MM[:SS]``, accepted too (2026-08-24).
-    # It is not a nicety: it is how a queue's ``max_time`` is written in the
-    # machine record, so it is what the browser fills a time field WITH --
-    # and a person reading `7-00:00:00` out of their own `task.json` could
-    # not type it back at `--time`, which refused the very value the tool
-    # had just written.  One vocabulary, every surface.
+    # SLURM'S OWN SPELLING, ``[D-]HH:MM[:SS]``, accepted too.  It is how a
+    # queue's ``max_time`` is written in the machine record, so it is what
+    # the browser fills a time field WITH.  One vocabulary, every surface.
     m = re.fullmatch(r"(?:(\d+)-)?(\d+):(\d{2})(?::(\d{2}))?", t)
     if m:
         d, hh, mm, ss = (int(g or 0) for g in m.groups())
@@ -197,19 +171,13 @@ def parse_memory(text) -> Optional[float]:
     Reads the HUMAN dialect -- every form a person might type, SLURM's own
     among them.  What gets WRITTEN is :func:`slurm_mem`'s, which is a strict
     subset: this accepts ``0.5T`` and ``80GB``, and neither is a thing
-    ``--mem`` takes.  The docstring said "SLURM's own spelling" until
-    2026-08-24, which read as *"whatever comes out of here is fit for the
-    command line"* -- and that is the assumption the `-t 4h` failure was
-    made of.
+    ``--mem`` takes.
     """
     if text is None or str(text).strip() == "":
         return None
     t = str(text).strip().upper()
-    # A TRAILING ``B`` IS ACCEPTED (2026-08-24).  `prep --mem`'s own help
-    # says *"e.g. 80GB"* and passes the string through unparsed, while
-    # `launch --mem` parsed it and REFUSED -- two flags of one name
-    # disagreeing about a spelling one of them advertises.  Also ``K``,
-    # for completeness with SLURM's units.
+    # A TRAILING ``B`` IS ACCEPTED: `--mem`'s own help advertises ``80GB``.
+    # Also ``K``, for completeness with SLURM's units.
     if t.endswith("B") and len(t) > 1 and not t[-2].isdigit():
         t = t[:-1]
     mult = 1.0
@@ -242,15 +210,12 @@ def parse_mem_gb(text) -> Optional[float]:
     gigabytes there.  A factor of 1024, and nothing about either name says
     which you are holding -- the same shape as ``04:30`` meaning four
     minutes thirty to SLURM and four and a half hours to a person.  They
-    live in one module so that difference is on one screen; they lived in
-    two packages until 2026-08-24, which is how the wrong one came to be
-    called.
+    live in one module so that difference is on one screen.
 
-    **The unit R2 was missing.**  The record states memory as a number of
-    gigabytes; a job states it as SLURM text.  Nothing converted between
-    them, so ``max_mem_gb`` could be compared against nothing and was read
-    by no code at all -- a limit that cannot be expressed in the same unit
-    as the ask is a limit that will never be checked.
+    **The unit R2 needs.**  The record states memory as a number of
+    gigabytes; a job states it as SLURM text -- a limit that cannot be
+    expressed in the same unit as the ask is a limit that will never be
+    checked.
 
     ``--mem=0`` is SLURM for *all the memory on the node*, which is the
     opposite of asking for none, so it returns ``None``: an unbounded ask is
@@ -260,10 +225,7 @@ def parse_mem_gb(text) -> Optional[float]:
     questions.)
 
     A trailing ``B`` is accepted, as it is by `parse_memory`: ``80GB`` is
-    the spelling `prep --mem`'s own help advertises, and this returned
-    ``None`` for it until 2026-08-24 -- which reads as *unstated*, and an
-    unstated limit never bars, so an ask nobody could parse would have been
-    admitted to a queue that could not hold it.
+    the spelling `--mem`'s own help advertises.
     """
     if text is None:
         return None
@@ -323,7 +285,6 @@ def canonical_time(text) -> Optional[str]:
     return None if secs is None else slurm_time(secs)
 
 
-#: A typed GPU ask: ``[gpu:]<type>:<count>``.
 def parse_gres_flag(text) -> int:
     """A GPU ask as a PERSON types it -> the COUNT.
 
@@ -332,8 +293,7 @@ def parse_gres_flag(text) -> int:
     (`execution/scheduler.md` R2a; user, 2026-10-01: *"we never claimed any
     card type"*) -- so a card in the ask is refused, by name, where it is
     said.  The HUMAN dialect, apart from :func:`parse_gres`, which reads what
-    SLURM reports.  *(It read ``<type>:<count>`` too until 2026-10-01, and a
-    card typed here went to ``sbatch`` as typed.)*
+    SLURM reports.
     """
     g = str(text).strip()
     if g.startswith("gpu:"):
@@ -353,8 +313,7 @@ def canonical_gres(text) -> Optional[str]:
     Reads the person's count (:func:`parse_gres_flag`); anything else is
     refused -- a card included, because no GPU ask names one
     (`execution/scheduler.md` R2a) -- since a text that is no GPU ask must
-    not reach ``--gres``.  *(A card stored by a ``job-set.json`` from before
-    2026-10-01 was read as its count until 2026-10-03.)*"""
+    not reach ``--gres``."""
     if text is None or str(text).strip() == "":
         return None
     return f"gpu:{parse_gres_flag(str(text).strip())}"
@@ -385,10 +344,7 @@ def human_wall(secs: Optional[int]) -> str:
     """A queue's ceiling, for a person reading the table.
 
     Whole units where they are whole, and the remainder where it is not:
-    a 90-minute queue reads ``1h30m``, not ``1h``.  It rendered as ``1h``
-    until 2026-08-24 -- integer division, no remainder -- which UNDER-reports
-    the limit in the one table a person reads to decide what to ask for, so
-    they would ask for less than the queue would have given them.
+    a 90-minute queue reads ``1h30m``, not ``1h``.
 
     Hours, not days: ``168h`` is what this column has always read and what
     `submission.md`'s worked example shows.
@@ -433,8 +389,7 @@ def machine_sizes(domains) -> "list":
 
     A partition is a QUEUE and holds several kinds of machine
     (`scheduler.md` R0), and one domain's ``node_types`` names the ones IT
-    can reach.  Empty when no record states them -- every record written
-    before 2026-08-27 -- and a caller then falls back to whatever single
+    can reach.  Empty when no record states them, and a caller then falls back to whatever single
     figure it has, which is R3: an unstated fact never bars.
     """
     out = []

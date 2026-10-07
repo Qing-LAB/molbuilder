@@ -1,24 +1,10 @@
 /**
  * status.js — the ONE status-line writer.
  *
- * The CSS side has been a properly shared component for a long time:
  * `.status` and its severities live in `page-shell.css`, declared once, so an
- * error looks the same on every tab (`ui-contract.md` § 4, § 5).  The WRITER
- * was hand-rolled fifteen times.
+ * error looks the same on every tab (`ui-contract.md` § 4, § 5).
  *
- * That is not a cosmetic duplication.  The copies disagreed about things that
- * matter:
- *
- *   * a missing slot.  Most copies returned silently; one logged a warning,
- *     and that one is there because a silent return once turned a MolView
- *     mount failure completely invisible -- the catch handler died on a
- *     phantom id and the user saw nothing at all.
- *   * the severity vocabulary.  Some passed any `kind` straight into the
- *     class; others allowed exactly `ok|warn|error` and silently DROPPED
- *     anything else, so `setStatus(msg, "muted")` rendered as neutral on one
- *     tab and as nothing on another.
- *
- * One writer, so those cannot differ again.  The severities are the four
+ * The severities are the four
  * `page-shell.css` declares; an unknown one is a mistake worth hearing about
  * rather than a class that quietly does nothing.
  *
@@ -51,7 +37,7 @@
     function set(target, msg, kind) {
         var el = _resolve(target);
         if (!el) {
-            // LOUD, because the silent version hid a real one.  A status slot
+            // A status slot
             // that does not exist is a bug in the page, and the message it
             // was carrying is usually the report of another bug.
             if (root.console && root.console.warn) {
@@ -68,11 +54,8 @@
             }
             kind = null;
         }
-        /* THE SEVERITY IS REPLACED, NOTHING ELSE.  This wrote
-         * `className = "status" + kind`, which also stripped every class
-         * the line carried for its own layout -- the trajectory panel's
-         * `trajectory-status` went on the first "Loading…" (the Results-tab
-         * review, 2026-09-28).  And a line whose text and severity are
+        /* THE SEVERITY IS REPLACED, NOTHING ELSE: every class the line
+         * carries for its own layout stays.  And a line whose text and severity are
          * unchanged is not written again: a status line is a live region,
          * and a poll that rewrote the same words re-announced them to a
          * screen reader on every tick. */
@@ -88,7 +71,7 @@
         return true;
     }
 
-    /** A `(msg, kind)` bound to one slot — the shape most callers had. */
+    /** A `(msg, kind)` bound to one slot. */
     function writer(target) {
         return function (msg, kind) { return set(target, msg, kind); };
     }

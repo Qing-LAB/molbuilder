@@ -35,8 +35,8 @@ import { FROZEN_LABEL, PREDEFINED_LABELS, PREDEFINED_LABEL_NAMES }
  * @param card    the elements mount.js built (§ 8.1)
  * @param model   the data API — what almost everything here reads and writes
  * @param handle  the viewer, for PLAYBACK only (§ 8.5, § 9.2)
- * @param files   the door bytes leave through (§ 6.7, § 8) — `save(destination,
- *                filename, contents)`. MolView never reaches a file itself.
+ * @param files   the door bytes leave through (§ 6.7, § 8). MolView never
+ *                reaches a file itself.
  */
 /* THE CLASS EACH PREDEFINED NAME WEARS. Written out rather than composed, so
  * the class an element gets is a string that appears in this file — which is
@@ -69,8 +69,7 @@ const TONE_CLASS = {
  * numbers for a CONTROL, so they belong in the file that builds § 1.1's
  * controls; mount.js imports them so the handle enforces exactly the range the
  * box offers. One definition, checked at both ends — rather than the box
- * offering 20–3000 while playback quietly allowed something else, which is the
- * shape the speed bug already took once. */
+ * offering 20–3000 while playback quietly allowed something else. */
 export const SPEED_MIN_MS = 20;
 export const SPEED_MAX_MS = 3000;
 export const SPEED_DEFAULT_MS = 150;
@@ -171,8 +170,7 @@ function mountRail(doc, card, model, handle) {
             button.addEventListener("click", () => {
                 // Read the switch back from its one home rather than tracking
                 // it here — a button that remembered its own state would be the
-                // second answer that goes stale the moment anything else set it
-                // (isolate, for one, turns itself off when the selection empties).
+                // second answer that goes stale the moment anything else set it.
                 const store = storeOf(spec);
                 const on = store.getState()[spec.flag];
                 const write = spec.write
@@ -272,15 +270,13 @@ function mountFrameBar(doc, card, model, handle) {
     speedWrap.title = "Playback speed (ms per frame)";
     // THE CLASS MATTERS: molview.css styles `.molviewer-frames-speed-input` (its width, and
     // the spinner-arrow removal). Built without it, the control appears and is
-    // simply unstyled -- which is the same trap as the panel's controls, and I
-    // walked into it once here before the browser check caught it.
+    // simply unstyled.
     const speedBox = el("input", "molviewer-frames-speed-input");
     speedBox.type = "number";
     speedBox.min = String(SPEED_MIN_MS);
     speedBox.max = String(SPEED_MAX_MS);
     speedBox.step = "20";
-    // Opens on what playback is set to, not on a number written here. They were
-    // two copies and they disagreed: 150 in the box, 83 in the timer.
+    // Opens on what playback is set to, not on a number written here.
     speedBox.value = String(handle.getSpeed());
     speedBox.setAttribute("aria-label", "Playback speed, milliseconds per frame");
     speedWrap.appendChild(speedBox);
@@ -341,9 +337,7 @@ function mountFrameBar(doc, card, model, handle) {
         playBtn.textContent = playing ? "⏸" : "▶";
         playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
         // Loop lives on the handle, so it is read back like everything else
-        // here. It was taken once at build and never again — which held only
-        // because this box is loop's sole writer. "Nothing here is cached"
-        // above should be true of the whole bar, not most of it.
+        // here: "nothing here is cached" is true of the whole bar.
         loopBox.checked = handle.getLoop();
     }
 
@@ -568,8 +562,7 @@ function buildViewMenu(doc, model) {
     /* THE RADIUS SLIDER (§ 1.1: "a radius slider from 0.2 to 2.5 that scales
      * stick thickness / sphere size / line width"). It sits with the reps
      * because it scales whichever one is showing, which is what the carried
-     * stylesheet lays out — `.molviewer-menu-radius-row` was styled all along and
-     * had nothing to style.
+     * stylesheet lays out.
      *
      * The label WRAPS the input rather than pairing with it through `for`/`id`.
      * § 5.6 puts two viewers on one page and an id is document-global, so the
@@ -581,9 +574,7 @@ function buildViewMenu(doc, model) {
     radiusLabel.textContent = "Radius";
     /* NO class on the input or the output. The stylesheet reaches them by
      * ELEMENT inside the row — `.molviewer-menu-radius-row > input[type="range"]`
-     * and `> output` — so a class here would be one the design never defines.
-     * The old code set `mol-viewer-radius` and `mol-viewer-radius-out` and the
-     * stylesheet used neither. */
+     * and `> output` — so a class here would be one the design never defines. */
     const radius = doc.createElement("input");
     radius.type = "range";
     radius.min = "0.2";
@@ -603,8 +594,8 @@ function buildViewMenu(doc, model) {
      * picker. One preset is transparent — choose it before exporting a picture
      * to drop onto a slide.").
      *
-     * The presets are the ones the old design shipped: the card's own dark, a
-     * white for print, and transparent. `transparent` is a value like any other
+     * The presets are the card's own dark, a white for print, and
+     * transparent. `transparent` is a value like any other
      * here — what it MEANS to the drawing is the sealed layer's business (§ 9.8),
      * and this control neither knows nor needs to. */
     const BACKGROUNDS = [
@@ -655,11 +646,11 @@ function buildViewMenu(doc, model) {
     projection.className = "molviewer-menu-projection";
     projection.textContent = "Orthographic";
     /* NO initial `aria-pressed` here, and the next value is NOT read back off
-     * the attribute. Both were the same mistake: treating what was last PAINTED
-     * as where the setting lives. `paint()` below sets the attribute from the
-     * store, on the first pass like every other one.
+     * the attribute: what was last PAINTED is not where the setting lives.
+     * `paint()` below sets the attribute from the store, on the first pass like
+     * every other one.
      *
-     * Reading it back was the dangerous half, because `view.set` DEDUPES
+     * Reading it back would be dangerous, because `view.set` DEDUPES
      * (stores.js: `if (settings[name] === value) return`). Let the attribute
      * drift from the store once and every click computes the same stale value,
      * sets what the store already holds, fires nothing, and repaints nothing —
@@ -697,10 +688,8 @@ function buildViewMenu(doc, model) {
     /* THE FIRST PAINT IS THE SAME PAINT. `view.subscribe` hands nothing over
      * (§ 9.6 is a plain change-and-subscribe), unlike `selection.subscribe`
      * which fires immediately — so a view subscriber has to take its own first
-     * pass, and this one used to take it for the RADIUS ALONE. Style, background
-     * and projection were left showing hand-written initial markup instead: a
-     * second place the control's state was decided, which is the one thing
-     * § 8.5 says a control must not have. Calling the painter is all it takes. */
+     * pass, through the painter, so no initial markup is a second place the
+     * control's state is decided (§ 8.5). */
     paint(model.view.get());
 
     // The trigger and the popover go back with the menu: whoever places it needs
@@ -713,8 +702,7 @@ function buildViewMenu(doc, model) {
 
 /* THE EXPORT MENU (§ 11.4). Every export enters at MolView, and what to export
  * and where it goes is decided HERE — above the model — because an export
- * carries a decision, and a decision made in the wrong place is exactly how the
- * sidecar came to be dropped.
+ * carries a decision.
  *
  * The data export is the only one that is the truth, and it is read from the
  * master copy at the frame the user chose (§ 11.3). A picture is a render.
@@ -766,8 +754,7 @@ function buildExportMenu(doc, card, model, handle, files) {
     const dataRow  = section("Data");
     const imageRow = section("Image");
 
-    // What happened, said where the click was made -- a silent no-op row is
-    // exactly the failure this menu is recovering from.
+    // What happened, said where the click was made.
     const status = doc.createElement("div");
     status.className = "molviewer-export-status";
     status.hidden = true;
@@ -803,13 +790,7 @@ function buildExportMenu(doc, card, model, handle, files) {
     /* WHAT LEAVES, AND WHERE IT GOES — and nothing about how it becomes bytes.
      * MolView hands over the STRUCTURE and names a destination; the door turns
      * it into the pair, through the server's one generator, so a project save
-     * and a download cannot produce different bytes (§ 11.3, § 11.7).
-     *
-     * This used to assemble the bytes here: a hand-written `.xyz` and a
-     * `JSON.stringify` of the sidecar. That is a second writer in the browser,
-     * and both halves had already drifted from Python's -- the coordinate
-     * document in its decimals, the sidecar in the version key that makes one
-     * loadable at all. */
+     * and a download cannot produce different bytes (§ 11.3, § 11.7). */
     async function sendData(destination) {
         if (!files || typeof files.save !== "function") {
             say("no file door was handed to this viewer", true);
@@ -1114,11 +1095,9 @@ function mountBadge(doc, card, model) {
  * so nothing here decides a geometry.  It answers "what is this bond usually",
  * at the moment you are looking at one *(user, 2026-09-03)*.
  *
- * ONE HOME, MIRRORED UNDER GUARD.  The numbers and their literature sources
- * live in `molbuilder/data/contact_distance.json`; this is a copy, because a
- * fetch per measurement for six constants is not worth a round trip.
- * `tests/test_contact_distance_reference.py` fails if the two disagree, which
- * is the same arrangement `SIESTA_BENCH_FIELDS` has with the catalogue.
+ * ONE HOME, MIRRORED.  The numbers and their literature sources live in
+ * `molbuilder/data/contact_distance.json`; this is a copy, because a fetch per
+ * measurement for six constants is not worth a round trip.
  */
 const CONTACT_REFERENCE = {
     "Au|S": 2.40, "Ag|S": 2.50, "Cu|S": 2.30,
@@ -1145,18 +1124,13 @@ export function contactReference(a, b) {
 
 /* ══ The measurement readout (§ 11.6, § 8.5) ═════════════════════════════════
  *
- * Its own layer, and now its own INPUT: the atoms come from `measurement`, not
+ * Its own layer, and its own INPUT: the atoms come from `measurement`, not
  * from the selection.  Coordinates come from the MASTER COPY at the current
  * frame — which is why the numbers stay right while a trajectory plays and
  * under isolate, where the drawn numbering no longer matches the real one.
  *
  * THE VERTEX OF AN ANGLE IS THE ATOM PICKED SECOND, not the middle one by
- * number.  The track is only ever built by clicks, so that order always exists
- * — which is what retired `byGeometry`, the guess this function used to need
- * when its input was a selection that could arrive from All, Invert, a filter
- * or a restored session with no pick trail at all.  A guess dressed as the
- * user's own choice is worse than a missing feature; there is no longer a case
- * that produces one.
+ * number.  The track is only ever built by clicks, so that order always exists.
  *
  * The chip carries a CLEAR of its own, and it is the reason it may be clicked
  * at all (§ 8.5).  The selection panel's Clear is three inches away and empties
@@ -1302,13 +1276,7 @@ function angle(a, vertex, c) {
  */
 function mountPanel(doc, card, model) {
     /* WHAT EACH PREDEFINED NAME WEARS, and what it says on hover. Read once
-     * from MolView's own list (model-jobs.js).
-     *
-     * IT USED TO BE HANDED IN AT MOUNT, and that is why every chip on every real
-     * page came out the same colour: the option existed, the tones existed, and
-     * only the module's own demo page ever passed the list. Five pages would
-     * have had to repeat the same four names — five copies of one list, drifting
-     * apart. They are MolView's conveniences, so MolView keeps them. */
+     * from MolView's own list (model-jobs.js). */
     const labelTone = new Map();
     const labelNote = new Map();
     PREDEFINED_LABELS.forEach((entry) => {
@@ -1406,9 +1374,7 @@ function mountPanel(doc, card, model) {
     // Two editors of ONE selection. Switching between them does not touch what
     // is selected — the panel redraws, the truth does not move.
     //
-    /* NAMED FOR WHAT IT IS, NOT FOR THE GESTURE THAT REACHES IT. This read
-     * `Click` — an input device — above a list of atoms, and the name stopped
-     * being true the moment the list learned shift-ranges and box-drag. The
+    /* NAMED FOR WHAT IT IS, NOT FOR THE GESTURE THAT REACHES IT. The
      * store's key stays `click`: it is the editor's id, not its label, and
      * renaming it would reach into every saved session's `mode`. */
     const mode = el("div", "molviewer-selection-mode");
@@ -1429,12 +1395,8 @@ function mountPanel(doc, card, model) {
     pages.selection.appendChild(mode);
 
     /* ISOLATE IS NOT HERE. "Show selected only" is the rail's `◉` (§ 1.1) — one
-     * switch, one control. The panel carried a checkbox for it as well, so the
-     * same switch had two places to learn and two things to keep looking alike;
-     * the old design removed the panel's copy for exactly that reason when the
-     * switch moved to the rail, and this follows it. The switch itself is
-     * unchanged: it hides atoms from the DRAWING, the master copy still has all
-     * of them, and a read-only viewer isolates freely (§ 9.4).
+     * switch, one control. It hides atoms from the DRAWING, the master copy
+     * still has all of them, and a read-only viewer isolates freely (§ 9.4).
      */
 
     /* ── The click page: the atom list ──────────────────────────────────── */
@@ -1448,12 +1410,7 @@ function mountPanel(doc, card, model) {
     /* THE COUNT IS NOT PART OF EITHER EDITOR. It lives with the buttons below
      * (Clear / Invert / All), which are shared by both pages, because it is a
      * fact about THE SELECTION and the selection is one truth with two editors
-     * (§ 9.5) — not a fact about the list you happen to be looking at.
-     *
-     * It sat inside this section, so it showed on the atom list and vanished on
-     * Filter. The number was never wrong there: `draw` calls `drawList` on every
-     * snapshot whichever editor caused it, so an accurate count was being kept
-     * behind a hidden element. Only its placement made it unreadable. */
+     * (§ 9.5) — not a fact about the list you happen to be looking at. */
     const listWrap = el("div", "molviewer-selection-list-wrap");
     const list = el("table", "molviewer-atoms-table");
     listWrap.appendChild(list);
@@ -1474,19 +1431,10 @@ function mountPanel(doc, card, model) {
      * that replaced would make the second gesture undo the first; `Clear` is
      * how you start over. Both ends are inclusive, in either direction, and the
      * bulk door carries no pick trail — a run has no vertex to measure from. */
-    /* THE RUN IS THE ROWS BETWEEN THEM, read off the list as drawn.
-     *
-     * It counted `for (i = lo; i <= hi; i++)` — arithmetic on two atom indices,
-     * which INVENTS every index in between rather than reading atoms the model
-     * handed over. That is only right while the list happens to show every atom
-     * in index order: it says "the atoms between these two" when the user asked
-     * for "the rows between these two", and those are the same sentence only by
-     * coincidence of today's `getAtoms`. Show a subset, or order the rows by
-     * element or residue, and shift-click starts selecting atoms that are not on
-     * screen — silently, because a made-up index is still a valid one.
-     *
-     * `rowBoxes` is the list as the user sees it, in the order they see it, so
-     * "between" means what it looks like it means and nothing is invented. */
+    /* THE RUN IS THE ROWS BETWEEN THEM, read off the list as drawn, never
+     * arithmetic on two atom indices: `rowBoxes` is the list as the user sees
+     * it, in the order they see it, so "between" means what it looks like it
+     * means and nothing is invented. */
     /* WHILE THE RULER IS ON, THE LIST DOES NOT EDIT THE SELECTION (§ 11.6).
      *
      * A single click still picks — through `model.pickAtom`, which routes it to
@@ -1652,25 +1600,11 @@ function mountPanel(doc, card, model) {
     filterSection.appendChild(footer);
     /* WHEN A RULE MATCHES NOTHING, SAY SO. An empty result and never having
      * filtered leave the panel looking identical -- nothing selected -- so the
-     * user is left to guess whether the rule was wrong or the button missed.
-     *
-     * It also accounts for the switch that moves on its own: when the selection
-     * empties, isolate TURNS ITSELF OFF (stores.js -- "there would be nothing
-     * left to show"). The structure coming back is right, and a control
-     * changing state untouched is worth naming, or it reads as the viewer
-     * ignoring the switch.
-     *
-     * A first draft of this said isolate "needs a selection, so the whole
-     * structure is still shown" -- implying the switch was still on. It is not,
-     * and the tests passed anyway because none of them read the sentence
-     * against the store. A browser did. */
-    // The same BOX the server's notices use, for the same reason the original
-    // comment here gave -- "this says the same kind of thing the cell notices
-    // say, and a second look for one job is how two things that should match
-    // stop matching".  Since 2026-09-11 that means the shared findings row
-    // rather than a pair of MolView classes, so the sentence MolView writes
-    // about the filter and the sentence the server writes about the box look
-    // alike because they ARE alike, not because two stylesheets agree.
+     * user is left to guess whether the rule was wrong or the button missed. */
+    // The same BOX the server's notices use -- the shared findings row -- so
+    // the sentence MolView writes about the filter and the sentence the server
+    // writes about the box look alike because they ARE alike, not because two
+    // stylesheets agree.
     const filterNote = el("ul", "issues-panel molviewer-notices");
     filterNote.hidden = true;
     filterSection.appendChild(filterNote);
@@ -1744,13 +1678,7 @@ function mountPanel(doc, card, model) {
      * strings: `undefined` before the list has been drawn, `null` for
      * "+ new label…", and a string for a label that exists.
      *
-     * "+ new label…" is not a label, so it does not get a label's value. It used
-     * to: the option carried `"\0new"`, a name no label could have. Encoding
-     * "this one is not a name" INTO the name is what needed a character no name
-     * could contain, and the cost landed somewhere unrelated — a single NUL
-     * makes ui.js binary to `grep`, which then reports no matches AND no error.
-     * A search that silently finds nothing is worse than one that fails, and
-     * this file is the module's whole UI layer.
+     * "+ new label…" is not a label, so it does not get a label's value.
      *
      * Held here rather than read back off the `<select>`, which is rebuilt
      * whenever the set of names changes: reading a choice off a control you are
@@ -1791,9 +1719,7 @@ function mountPanel(doc, card, model) {
 
     function drawTargets() {
         const names = knownLabels();
-        /* Compare the LISTS. This used to flatten them into one string and
-         * compare that, which needed a separator no name could contain -- the
-         * second NUL in this file. Comparing what you already have needs no
+        /* Compare the LISTS: comparing what you already have needs no
          * separator, no encoding, and no character to reserve. */
         if (renderedTargets
             && renderedTargets.length === names.length
@@ -2406,12 +2332,6 @@ function mountPanel(doc, card, model) {
          * a user would go to in order to change it; everything else is drawn
          * here, above the tabs, where it shows on either page.
          *
-         * The split used to be made on where the BATCH came from -- a load, an
-         * edit -- which is the wrong question: a warning that the cell is
-         * unusable is about the cell whether it arrived with a file or with an
-         * edit, and routing it by its origin put it above the atom list, three
-         * clicks from the only control that could fix it.
-         *
          * Written as "not cell" rather than a list of accepted subjects,
          * because a list has to be extended every time a notice gains a new
          * one, and the failure when somebody forgets is SILENT: the server
@@ -2574,12 +2494,10 @@ function mountPanel(doc, card, model) {
     /* HOW MANY ROWS ARE ON SCREEN, so a change to what is IN one does not
      * rebuild them all.
      *
-     * Typing was the failure: every keystroke reached `updateFilter`, the store
-     * handed back a snapshot, and this function emptied the container and built
-     * fresh rows — destroying the very input the user was typing in. The caret
-     * went with it, so each character had to be preceded by a click. § 8.4 has
-     * the store take a filter A ROW AT A TIME exactly so this cannot happen, and
-     * the panel undid that by redrawing the whole set anyway.
+     * Every keystroke reaches `updateFilter` and the store hands back a
+     * snapshot; rebuilding the rows then would destroy the very input the user
+     * is typing in, caret and all. § 8.4 has the store take a filter A ROW AT A
+     * TIME exactly so this cannot happen.
      *
      * The rows are rebuilt only when the SET of them changes — added, removed,
      * or the panel is drawing them for the first time. A change to a row's
@@ -2588,11 +2506,10 @@ function mountPanel(doc, card, model) {
     let renderedRows = null;
 
     function drawRows(state) {
-        /* REBUILD ON THE SET *AND* ON EACH ROW'S KIND. The count alone was
-         * enough while every row held the same free-text box; it is not now that
-         * `by label` carries a chooser instead. Re-kinding a row leaves the count
-         * unchanged, so a count-only guard would leave the old control in place
-         * and the user typing into a box the rule no longer uses.
+        /* REBUILD ON THE SET *AND* ON EACH ROW'S KIND: `by label` carries a
+         * chooser instead of the free-text box. Re-kinding a row leaves the
+         * count unchanged, so a count-only guard would leave the old control in
+         * place and the user typing into a box the rule no longer uses.
          *
          * A row's VALUE is still not a reason to rebuild -- that is the caret
          * bug above, and the control the user typed into already holds it. */
@@ -2716,14 +2633,8 @@ function mountPanel(doc, card, model) {
      *             shows the RESOLVED gap (3 A per side on each isolated axis),
      *             which is the number the box was actually built from.
      *
-     * VACUUM MOVED FROM A VALUE TEST TO A PROVENANCE TEST (2026-08-03), because
-     * the model gained the state the old comment said it did not have. It used
-     * to read "default when it is 0 on every axis, because vacuum ALWAYS has a
-     * value; unset is not a state it has" -- true until `vacuum` became
-     * Optional. Left alone, `allZero(null)` is false, so the commonest case of
-     * all -- nobody set one -- would have lost its tag, which is exactly
-     * backwards. `Axes` stays value-based: all-isolated really is a value
-     * judgement, not an absence.
+     * `Axes` is value-based: all-isolated really is a value judgement, not an
+     * absence.
      */
     /* ONE WAY A NOTICE IS DRAWN, because the Cell page and the panel line show
      * the same thing in two places and two renderers would drift.
@@ -2766,13 +2677,6 @@ function mountPanel(doc, card, model) {
     /* NOTICES ARE FINDINGS, so they are drawn by the module that draws
      * findings -- `lib/validation-findings.js`, `science/validation.md` § 4.1
      * R2's one channel into the UI.
-     *
-     * This built its own rows until 2026-09-11, with its own two-word severity
-     * map (`severity === "warn" ? "warn" : "info"`), so an error arrived in the
-     * same grey as a remark -- the downgrade R4 forbids by name.  It was a
-     * SIXTH reader of one channel, written without looking for the module that
-     * already existed, and the guard for R2 could not see it because it checked
-     * a hardcoded list of two filenames.
      *
      * DEPENDING DOWNWARD IS NOT A BREACH OF § 4.  That rule says nothing
      * outside MolView is importable but the entry point, and that a mount needs
@@ -2817,11 +2721,9 @@ function mountPanel(doc, card, model) {
             : "The box is worked out from the molecule, your vacuum and the "
               + "axis kinds.";
 
-        /* WHAT EACH ROW DOES, not what it is (cell-plan.md § 7).  Everything a
-         * user needs to understand the two regimes lived in a document they
-         * are not reading; the page carried a `(default)` tooltip and nothing
-         * else.  Kept as `title` so it is there on hover without spending four
-         * lines of a narrow panel on prose. */
+        /* WHAT EACH ROW DOES, not what it is (cell-plan.md § 7).  Kept as
+         * `title` so it is there on hover without spending four lines of a
+         * narrow panel on prose. */
         const HINT = {
             Lattice: "The box the calculation runs in. Type one to fix it; "
                    + "leave it and it is worked out from the molecule, the "
@@ -2839,9 +2741,8 @@ function mountPanel(doc, card, model) {
         };
 
         for (const [label, value, isDefault, inert] of [
-            // THE LATTICE IS SHOWN, not summarised. It read "set" / "none",
-            // which tells a user their structure has a box and refuses to say
-            // what it is -- on the page whose whole job is reporting it.
+            // THE LATTICE IS SHOWN, not summarised: reporting it is the page's
+            // whole job.
             ["Lattice", matrixText(cell.cell), !rawCell, false],
             ["Origin",  vector(cell.box_corner), !rawOrigin, false],
             ["Axes",    Array.isArray(cell.axis_kind)

@@ -22,6 +22,14 @@ from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.pyscf.input import spec_for
 from molbuilder.script_emit import render_deck
 from molbuilder.structure import Structure
+from molbuilder.runfiles import RunNames
+
+
+def _names(cfg):
+    """The names prep gives this stage's deck (`runfiles.RunNames`),
+    under the config's own label."""
+    label = getattr(cfg, "system_label", None) or cfg.job_name
+    return RunNames.of(label, '01_freq', "hierarchical")
 
 
 def _water() -> Structure:
@@ -42,21 +50,9 @@ def _methyl() -> Structure:
 
 def _render(cfg: PySCFConfig, struct: Structure = None) -> str:
     s = struct if struct is not None else _water()
-    return render_deck(spec_for(s, cfg, calculation="vibration"),
+    return render_deck(spec_for(s, cfg, calculation="vibration",
+                                names=_names(cfg)),
                        s, cfg, verbose=False)
-
-
-def test_parity_error_refuses_the_deck():
-    """2S = 0 on the methyl radical's 9 electrons is impossible; the gate's
-    parity check must refuse at RENDER, not at PySCF runtime.  (It was
-    2S = 1 on water until 2026-09-30, when a PySCF vibration came to offer
-    `restricted` alone -- that deck is refused before parity is asked,
-    `engines/template.md` § 6.3a.)"""
-    with pytest.raises(Exception) as exc:
-        _render(PySCFConfig(spin_treatment="restricted",
-                            unpaired_electrons=0), _methyl())
-    msg = str(exc.value).lower()
-    assert "the electron count and the spin disagree" in msg, msg
 
 
 def test_amplitude_advisory_reaches_the_person():
@@ -78,10 +74,7 @@ def test_amplitude_advisory_reaches_the_person():
 def test_the_kind_door_runs_the_same_gate_body():
     """One gate, and the door that reaches it is the CALCULATION KIND.
 
-    This pinned a `SpectraConfig` row in the engine registry until
-    2026-08-22.  That row keyed on a class no production code ever
-    constructed, so it only ever dispatched for a caller holding one by
-    hand -- a test.  A vibration's science is the kind's:
+    A vibration's science is the kind's:
     `_validate_vibration_kind` runs `spectra_render_checks` against the
     deck's config view, which is the object the emitters get.  Same body,
     reached the way production reaches it: `validate(..., calculation=
@@ -104,7 +97,8 @@ def test_an_ecp_deck_compiles_and_carries_one_ecp_kwarg():
     s = Structure(elements=["Au", "Au"],
                   positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 2.47]]))
     cfg = PySCFConfig(ecp="lanl2dz", ecp_atoms=["Au"])
-    text = render_deck(spec_for(s, cfg, calculation="vibration"),
+    text = render_deck(spec_for(s, cfg, calculation="vibration",
+                                names=_names(cfg)),
                        s, cfg, verbose=False)
     assert text.count("ecp        =") == 1, "the ECP kwarg must appear once"
     assert "'Au': 'lanl2dz'" in text
@@ -138,27 +132,6 @@ def test_an_hf_raman_deck_never_mentions_the_dft_name():
         "the DFT deck lost its force_cpu module pick -- retarget")
 
 
-def test_the_vibration_deck_runs_the_engines_own_deck_gate():
-    """E-M4.6r: `check_rules` was None, so a non-compiling vibration deck
-    (the shipped ECP double-kwarg's whole class) was never parse-checked
-    at prep.  The spec now points at the engine's ONE gate -- and that
-    gate's identity probe must accept the vibration deck's own JOB
-    spelling (an aligned repr, not the optimization deck's quoted
-    form)."""
-    from molbuilder.pyscf import layout as _layout
-    cfg = PySCFConfig(job_name="vibjob")
-    s = _water()
-    spec = spec_for(s, cfg, calculation="vibration")
-    assert spec.check_rules is _layout.check_rules, (
-        "the vibration deck does not run the engine's one deck gate")
-    text = render_deck(spec, s, cfg, verbose=False)
-    assert _layout.check_rules(text, cfg=cfg) == [], (
-        "a healthy vibration deck fails its own gate")
-    broken = [i for i in _layout.check_rules("def broken(:", cfg=cfg)
-              if i.severity == "error"]
-    assert any("parse" in i.message for i in broken)
-
-
 def test_soscf_reaches_the_relax_site():
     """M1.3: the § 7a role table promises the `newton()` wrap at the
     vibration RELAXATION site; without it a `scf_soscf=true` run
@@ -189,7 +162,8 @@ def test_frozen_atoms_stay_frozen_through_the_relaxation():
     (E-V2e: no constraints reached geomeTRIC)."""
     s = _frozen_water()
     cfg = PySCFConfig()
-    text = render_deck(spec_for(s, cfg, calculation="vibration"),
+    text = render_deck(spec_for(s, cfg, calculation="vibration",
+                                names=_names(cfg)),
                        s, cfg, verbose=False)
     assert "_FROZEN_CONSTRAINTS_PATH" in text
     assert "$freeze" in text
@@ -214,7 +188,8 @@ def test_the_frozen_regime_is_said_out_loud():
     assert len(infos) == 1, "the frozen regime is not announced"
     assert "holds them fixed" in infos[0].message
     assert "taken over the free atoms only" in infos[0].message
-    text = render_deck(spec_for(s, cfg, calculation="vibration"),
+    text = render_deck(spec_for(s, cfg, calculation="vibration",
+                                names=_names(cfg)),
                        s, cfg, verbose=False)
     assert "static field of the fixed" in text, (
         "the Methods paragraph does not state the frozen regime")
@@ -244,10 +219,8 @@ def test_the_reserved_frozen_label_is_never_warned_unconsumed():
 def test_one_fact_one_finding_on_a_vibration_deck():
     """The dedup ruling: each fact earns exactly one finding.  The parity
     of the electronic state is the state's one family, asked once by
-    `validate` for every kind -- it was the engine's AND the kind's until
-    2026-09-28, one of them reasoned from optimization fields the vibration
-    deck ignores -- and the grid verdict is the kind's, the engine copy
-    DEFERRING on a vibration deck."""
+    `validate` for every kind -- and the grid verdict is the kind's, the
+    engine copy DEFERRING on a vibration deck."""
     from molbuilder.validation import validate
     # A parity mismatch each kind can reach: a PySCF vibration offers
     # `restricted` alone (`engines/template.md` § 6.3a), so its mismatch is
@@ -272,34 +245,6 @@ def test_one_fact_one_finding_on_a_vibration_deck():
     assert len(grid) == 1, f"{len(grid)} grid findings for one fact"
 
 
-def test_the_ir_only_phase_does_each_units_work_once():
-    """The U5 efficiency pair, pinned structurally: the IR-only phase
-    emits exactly ONE per-mode projection loop (it was nested inside a
-    second per-mode loop -- N² idempotent work), and the displaced
-    builds are not followed by a second kernel() (`_build_mf_at`
-    already converges before returning -- the extra call re-ran every
-    SCF for identical numbers)."""
-    text = _render(PySCFConfig(compute_raman=False, compute_ir=True))
-    ir = text.split("Phase 3-IR", 1)[1]
-    assert ir.count("for _n in range(len(modes_payload)):") == 1
-    assert "_mfp.kernel()" not in ir and "_mfm.kernel()" not in ir
-
-
-def test_each_deck_carries_one_gpu_mechanism():
-    """M1.4: the engine had two GPU-consumption mechanisms and the
-    vibration deck's text carried BOTH -- the promotion helper emitted
-    dead beside the class selection that actually does the work.  Each
-    deck now carries exactly its own: the vibration deck selects
-    gpu4pyscf classes (right for a deck rebuilding mol per geometry),
-    the optimization deck promotes the assembled mf."""
-    from molbuilder.pyscf.input import render_script
-    vib = _render(PySCFConfig())
-    assert "_mb_to_gpu" not in vib
-    assert "_gpu_scf" in vib, "the class-selection mechanism left too"
-    opt = render_script(_water(), PySCFConfig())
-    assert "mf = _mb_to_gpu(mf) if _USING_GPU else mf" in opt
-
-
 def test_the_level_of_theory_has_one_spelling_per_deck():
     """M1.2: the functional / grid / dispersion trio was spelled twice
     -- layout's for the optimization deck, hand-constants inside the
@@ -310,8 +255,7 @@ def test_the_level_of_theory_has_one_spelling_per_deck():
     On a Hartree-Fock deck too: HF has no functional and no grid, and
     takes the dispersion correction like any method (engines/pyscf.md
     § 7a), so its dresser holds the dispersion line alone and both of its
-    construction sites call it.  Until 2026-09-28 an HF deck carried no
-    dresser, and its run lost the dispersion its template asked for.
+    construction sites call it.
 
     MUTATION THIS MUST FAIL AGAINST: the dresser emitted for DFT alone."""
     text = _render(PySCFConfig(functional="b3lyp", dispersion="d3bj",

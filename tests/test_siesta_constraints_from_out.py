@@ -19,14 +19,10 @@ The fix: SIESTA ALREADY echoes the resolved constraints into the
       [ start -- end, start -- end ]
 
 So the parser reads them directly from the .out -- ZERO filename
-heuristics, and since 2026-10-04 nothing else: the sidecar and the
-paired-.fdf fallbacks went with plan B12 (W56 4c), the .out being the
-run's own statement of what the engine held (`model/parse.md` § 5.3).
-These tests pin the echo's grammar: the real BDT-stage-1 format
-(multi-range, comma-separated), and an empty or absent section read as
-the empty set (toggle correctly hidden).  The parser filling
+heuristics, the .out being the run's own statement of what the engine
+held (`model/parse.md` § 5.3).  The parser filling
 ``runtime_info.frozen_atoms`` from it is pinned on a measured run
-(`test_structure_info_bridge.py`).
+(`test_siesta_flat_run_e2e.py`).
 """
 from __future__ import annotations
 
@@ -39,9 +35,6 @@ from molbuilder.parse.engines.siesta import (
 class TestExtractFromOut:
     """The .out-direct extractor: zero filename heuristics."""
 
-    # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-    # 6 tests here read a constraint echo invented as text, or one
-    # pasted out of a real output (`process/testing.md` § 6).
 
     def test_missing_file_returns_empty(self, tmp_path):
         """OSError on read -> empty set (parser shouldn't crash)."""
@@ -49,13 +42,3 @@ class TestExtractFromOut:
             str(tmp_path / "does-not-exist.out")
         )
         assert result == set()
-
-
-# `TestFullParserNoFilenameHeuristic`, `TestArchitecturalContract` and
-# `TestTheSidecarPathLearnsTheSameLesson` retired 2026-10-04 (W56 4c, plan
-# B12): they pinned the precedence among the .out echo, a sidecar beside
-# the output and the paired .fdf, and the sidecar lookup's own guards -- on
-# outputs, decks and sidecars a test wrote.  The .out's echo is now the
-# one source, its grammar pinned above and the parser's reading of it on a
-# measured run (`test_structure_info_bridge.py`); a PySCF run states its
-# own in its progress log (`tests/data/held_atoms.toml`).

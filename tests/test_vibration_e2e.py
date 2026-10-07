@@ -1,8 +1,8 @@
 """The vibration calculation's E2E — the spectra-migration plan's P1 bar.
 
 Water, on this workstation, through the WHOLE framework loop:
-``describe --calculation vibration`` → ``prep run freq`` →
-``submit --mode direct`` → a schema-5 ``.spectra.json`` in the attempt
+``init --calculation vibration`` → ``prep run freq`` →
+``launch --mode direct`` → a schema-5 ``.spectra.json`` in the attempt
 directory, every phase complete, loadable through the Results door.  Two
 runs: the default (Raman) and the DECOUPLED IR-only run the 2026-08-20
 ruling asked for — whose intensities are held to water's literature
@@ -184,8 +184,7 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     assert re.search(r"dE \S+ eV \(tol \S+\)", closing), closing
     assert re.search(r"\|g\| \S+ eV \(tol \S+\)", closing), closing
     # every finished step is a converged SCF -- the first one too: a PySCF
-    # block is written when its step ENDS, and the rule once needed a step
-    # before it, so a run whose steps all ended between two wakes sent none
+    # block is written when its step ENDS
     said = [ln for ln in log.splitlines() if "[NOTIFY]" in ln]
     assert any("scf_converged" in ln for ln in said), said
     basis = next(ln for ln in log.splitlines() if "[UTIL-BASIS]" in ln)
@@ -314,8 +313,7 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     Hessian adds the solvent's own response (`with_solvent.hess`).  IR and
     Raman are OFF: their routes are built without that term, and the
     settings gate refuses them with a solvent until they carry it and are
-    measured (ruled 2026-09-29; the whole chain ran here until 2026-09-30,
-    under an info saying it all carried the solvent).  The physics pins are
+    measured (ruled 2026-09-29).  The physics pins are
     deliberately loose: PCM shifts water's bands by tens of cm^-1, so the
     gas windows widen; what is being proven is the solvated run completing
     with real numbers, plus the solvated deck actually differing from gas
@@ -324,8 +322,7 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     tpl = bundle / "W.template.toml"
     t = tpl.read_text()
     # An optional-empty item emits NO value line at all -- the edit
-    # INSERTS one (an escape-hatch assert here let a silent no-op
-    # through on the first landing; now the write is verified).
+    # INSERTS one, and the write is verified.
     anchor = '[item.solvent]\n'
     assert t.count(anchor) == 1
     t = t.replace(anchor, anchor + 'value = "water"\n', 1)
@@ -337,9 +334,8 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     tpl.write_text(t)
 
     d = _prep_and_run(bundle)
-    # The deck is born in its STAGE directory (L1, roadmap 7.10, layout
-    # repair 2026-08-24) -- it sat at the bundle root until then.  Bound
-    # AFTER the prep for the same reason: the file does not exist before.
+    # The deck is born in its STAGE directory (L1, roadmap 7.10).  Bound
+    # AFTER the prep: the file does not exist before.
     deck = bundle / "01_freq" / "W_01_freq.py"
     text = deck.read_text()
     assert "mf = mf.PCM()" in text or "_mb_apply_solvent" in text
@@ -371,8 +367,7 @@ def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
         on a density-fitted SCF -- molbuilder's default -- it builds a
         non-DF Hessian of a DF density (0.11 cm^-1).
 
-    Both are invisible on a functional without dispersion, which is how
-    the first version of this shipped.  So the grid below crosses
+    Both are invisible on a functional without dispersion.  So the grid below crosses
     dispersion WITH density fitting: ticking the IR box is a request for
     an extra column, never for different frequencies.
 
@@ -666,10 +661,8 @@ def test_a_hartree_fock_deck_names_no_functional(tmp_path, monkeypatch):
     plain Hartree-Fock.  Prep alone; nothing is launched.
 
     MUTATIONS THIS MUST FAIL AGAINST: the paragraph reading `cfg.functional`
-    whatever the method (its write-up named B3LYP under RHF until
-    2026-09-28); the grid advisory asking the functional without asking the
-    method; the dispersion dropped under Hartree-Fock (as both decks did
-    until the same day).
+    whatever the method; the grid advisory asking the functional without
+    asking the method; the dispersion dropped under Hartree-Fock.
     """
     from click.testing import CliRunner
 
@@ -722,10 +715,7 @@ def test_a_hartree_fock_deck_names_no_functional(tmp_path, monkeypatch):
 def test_the_listed_modes_get_the_probe_and_no_other(tmp_path, monkeypatch):
     """`engines/vibration.md` § 4.8: `explicit` gives the per-mode probe to
     the modes its list names -- TEXT, "1, 3", read by the one index-list
-    reader (`PySCFConfig.explicit_modes`).  Until 2026-09-28 the deck wrote
-    `list()` of that text, its characters, and the inlined selector's
-    `int(',')` stopped the probe; no run through the road had ever selected
-    a mode, so nothing saw it.  A list the reader cannot take -- "0, 2", the
+    reader (`PySCFConfig.explicit_modes`).  A list the reader cannot take -- "0, 2", the
     modes count from 1 -- is refused at prep, before a deck exists.
 
     MUTATION THIS MUST FAIL AGAINST: the deck's constant written as

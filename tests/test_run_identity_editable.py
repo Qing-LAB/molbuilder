@@ -7,8 +7,7 @@ starts cold instead"*), § 3 rule 1, § 5 (reported, not prevented) and
 
 **These tests write real files.** The unit's whole claim is about what is on
 disk beside a deck, and a mocked ``is_file`` would pass while the real
-predicate read the wrong names — which is exactly the seam that matters here,
-since four disagreeing inventories exist in this tree.
+predicate read the wrong names — which is exactly the seam that matters here.
 """
 from __future__ import annotations
 
@@ -18,12 +17,6 @@ from molbuilder.validation.identity import check_id_change, warm_files_present
 
 
 #: A **label**, which is what a file stem is (§ 2.0a, decision 26).
-#:
-#: This was ``BDT_Au_relax_C6H4S2Au38`` until 2026-08-09 -- a composite run id,
-#: and in the hand-grouped formula order that § 2.0 replaced with alphabetical
-#: on 2026-08-08.  Nothing failed, because these functions glob whatever string
-#: they are handed; the fixture was simply teaching that a formula belongs in a
-#: filename, which is the thing decision 26 says it never does.
 ID = "BDT_Au_relax"
 
 
@@ -50,18 +43,12 @@ def test_a_deck_is_not_state(calc):
     assert warm_files_present(calc, ID, "siesta") == []
 
 
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 21 tests here found engine state in restart files, outputs and
-# run records written by hand (`process/testing.md` § 6).
-
-
 # --------------------------------------------------------------------- #
 #  P3 unit 5 — § 5: reported rather than pinned                         #
 # --------------------------------------------------------------------- #
 #
-# § 5's table has four rows and a "who says it" column.  Three name the
-# surface at check time and are asserted here; the fourth names the READER at
-# preflight and is deliberately not this function's -- see the last test.
+# § 5's table has four rows and a "who says it" column; the fourth names the
+# READER at preflight and is deliberately not this function's.
 
 from molbuilder.validation.identity import check_prior_state       # noqa: E402
 

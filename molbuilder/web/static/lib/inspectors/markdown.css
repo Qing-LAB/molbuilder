@@ -1,7 +1,7 @@
 /* Markdown inspector — split-pane editor (CodeMirror) + live preview (marked).
  *
  * Mounted inside the /results tab's #inspector-host.  See
- * lib/inspectors/markdown.js (task #32, 2026-06-26).
+ * lib/inspectors/markdown.js.
  *
  * Layout: fixed-height shell with toolbar + 50/50 split + status line.
  * The CodeMirror editor and the rendered HTML pane scroll independently.
@@ -59,8 +59,7 @@
     filter:            brightness(1.1);
 }
 
-/* The split itself.  Equal halves; resize is via CSS only for now
- * (the JS side may add a draggable divider in a follow-up). */
+/* The split itself.  Equal halves. */
 .md-split {
     display:           flex;
     flex:              1;

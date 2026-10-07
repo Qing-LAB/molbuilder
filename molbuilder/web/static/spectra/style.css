@@ -5,7 +5,7 @@
  *
  * The spectra-INSPECTOR component classes (.card-section / .section-header /
  * .modes-table / .spectrum-chart / .mode-viewer / .phase-indicator / .es-* /
- * .results-meta / .field-block / .inline-row) live in
+ * .results-meta / .inline-row) live in
  * lib/inspectors/spectra.css -- the shared sheet BOTH /spectra and /results
  * link, so the inspector partial is styled everywhere WITHOUT this page sheet
  * (and its bare element rules) ever loading on another page
@@ -16,19 +16,17 @@
  * Tokens come from lib/tokens.css via the template <link> (no @import).
  */
 
-/* No `*` reset here: `lib/page-shell.css` owns the document tier and its rule is
- * byte-identical to the one that stood here.  Two identical copies in two sheets
- * means the winner is decided by <link> order rather than by anyone -- and the
- * day they stop being identical, nothing says which was meant. */
+/* No `*` reset here: `lib/page-shell.css` owns the document tier.  Two copies in
+ * two sheets would mean the winner is decided by <link> order rather than by
+ * anyone. */
 
 html, body { height: 100%; }
 
-/* ``body { ... }`` removed 2026-05-19; the canonical rules live in
- * lib/page-shell.css.  Header rules below stay per-page (the spectra
- * page uses different padding + border treatment than the shared
- * default).  Scoped to the banner's own class: a bare ``header`` also
- * dressed every ``<header class="section-header">`` on the page (the
- * shell moved to ``.app-header`` for the same reason, 2026-09-28). */
+/* The canonical body rules live in lib/page-shell.css.  Header rules
+ * below stay per-page (the spectra page uses different padding + border
+ * treatment than the shared default).  Scoped to the banner's own class:
+ * a bare ``header`` would also dress every ``<header class="section-header">``
+ * on the page. */
 
 .app-header {
     padding: var(--space-lg2) var(--space-xl) var(--space-md);
@@ -39,32 +37,16 @@ html, body { height: 100%; }
     font: var(--weight-bold) 1.6rem/1.2 var(--font-sans);
 }
 .app-header .tagline {
-    /* COMPOSITION ONLY (`ui-contract.md` § 5).  The `color` and `font-size`
-       that stood here restated page-shell's VERBATIM; only the tighter top
-       margin is this page's own. */
+    /* COMPOSITION ONLY (`ui-contract.md` § 5): only the tighter top margin
+       is this page's own. */
     margin: var(--space-xs) 0 0;
 }
 
 /* ---- Layout ---------------------------------------------------
- * The /spectra page's bespoke ``.spectra-grid`` two-column layout
- * was retired 2026-06-09 (task #296).  The page now uses the
- * shared ``.app-grid`` vertical-flow container from
- * static/style.css so the visual rhythm matches the
+ * The page uses the shared ``.app-grid`` vertical-flow container
+ * (lib/form-components.css) so the visual rhythm matches the
  * /structure-optimization tab (the user's reference design).
- * The inspector-partial component classes moved to
- * lib/inspectors/spectra.css (2026-07) -- see the header. */
-
-
-/* `.card` is the shell's (`lib/page-shell.css`).  A copy lived here with a
- * softer border, a larger radius and its own padding -- three divergences
- * from the surface every other tab uses, in the very file whose header says
- * this page was reworked "so the visual rhythm matches the
- * /structure-optimization tab (the user's reference design)".  It loaded
- * after the shell (spectra.html:22 vs :7), so the divergence won.
- * Removed 2026-08-24. */
-
-
-
+ * `.card` is the shell's (`lib/page-shell.css`). */
 
 textarea, input[type="text"], input[type="file"] {
     background: var(--bg-input);
@@ -98,10 +80,7 @@ button {
 }
 button:hover { background: var(--bg-input-focus); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
-/* `button.primary` styling lives in style.css (token-based + has
- * hover + disabled states + groups with #generate-fdf etc.).  The
- * old per-page hex literals here lost to style.css in load order
- * but went stale anyway as the theme tokens evolved. */
+/* `button.primary` styling lives in lib/form-components.css. */
 button > code {
     background: transparent;
     padding: 0;
@@ -112,37 +91,12 @@ button > code {
 .primary-actions { margin-top: 0.4rem; }
 
 .status {
-    /* COMPOSITION ONLY (`ui-contract.md` § 5).  The `font-size` and `color`
-       that stood here restated page-shell's own values VERBATIM -- so they
-       changed nothing until one of them drifted, which is exactly how a
-       second owner starts.  Reserving the line is this page's to say. */
+    /* COMPOSITION ONLY (`ui-contract.md` § 5): reserving the line is this
+       page's to say. */
     min-height: 1.1em;
 }
 /* Severity modifiers (.status.ok/.error/.warn/.muted) live ONCE in
- * page-shell.css (`web/ui-contract.md` § 1.1).  Note: .error unified onto the
- * global --error (was the softer panel --ps-danger-fg) — one severity palette. */
-
-/* ---- Issues panel ---- */
-/* The findings panel is styled ONCE, in lib/form-components.css
- * (.issues-panel + .issue-item + data-severity).  This page used to
- * re-declare .issues-panel with ``display: grid`` -- loading after the
- * shared sheet, so grid won here and the shared flex row layout silently
- * behaved differently on this one page (logged as debt in the migration
- * archive; a one-owner violation per docs/web/ui-contract.md 1).  It also
- * carried a SECOND row vocabulary (.issue / .badge / .where) for its own
- * renderer.  Both are gone with that renderer: findings now come from
- * lib/validation-findings.js in the one shared shape. */
-
-/* ---- Generated-script preview ---- */
-
-/* The Generate-side blocks (.prior-row / .script-preview /
- * .methods-modal*) left with their markup at P2/P3 --
- * the tab describes and hands over; it renders no script. */
-
-/* ---- Methods text ----
- * Moved to the inspector's own stylesheet, lib/inspectors/spectra.css,
- * 2026-09-28: it is the partial's markup, and /results never loaded
- * this file -- so there the text ran off the card in one line. */
+ * page-shell.css (`web/ui-contract.md` § 1.1). */
 
 /* Selector compatibility: a locked es-* value field gets faded so
  * the user sees which knob is active. */
@@ -151,9 +105,3 @@ button > code {
     pointer-events: none;
 }
 
-
-/* .upload-fallback rules removed 2026-05-18: the <details> block
- * they styled (an in-template upload-as-fallback affordance under
- * the path-based primary input) was dropped when the projects
- * sidebar took over file selection.  No DOM in any served template
- * carries this class today. */

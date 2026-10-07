@@ -33,11 +33,9 @@ import { createHistory } from "./history.js";
  * each costs, from what changed, in one place. That only works if it is told
  * WHICH change this was.
  *
- * Saying "the data changed" for every write, which is what this did, collapses
- * four costs into one: a streamed append reloaded the whole movie instead of
- * extending it, a cell edit reloaded it, and tagging an atom — which moves
- * nothing and draws nothing — reloaded it too. The cost table was correct and
- * unreachable.
+ * Saying "the data changed" for every write would collapse four costs into
+ * one: a streamed append, a cell edit and tagging an atom — which moves
+ * nothing and draws nothing — would each reload the whole movie.
  *
  * `none` is not an omission. A label is a fact about an atom, not a thing on
  * screen (§ 6.6): the panel redraws because the structure changed, and the
@@ -88,13 +86,9 @@ export function createModel(opts) {
      * second door — while making § 8's "a viewer mounts before it has a
      * structure" and § 12.3's read-only Results viewer both possible.
      *
-     * IT REPLACES TWO ANSWERS TO ONE QUESTION. "Has this viewer got its core
-     * data?" was asked as `seeded` at the install door and as "is the atom count
-     * zero?" at the frame doors, and the two could disagree: a payload carrying
-     * an empty atom list left `seeded` true while the count said nothing was
-     * loaded, so one door refused a second install and the other refused to
-     * append to it. § 5.2 is exactly this — two copies of a fact are two things
-     * that must be kept in step.
+     * ONE ANSWER TO ONE QUESTION. "Has this viewer got its core data?" is
+     * asked of this state at the install door and at the frame doors alike
+     * (§ 5.2: two copies of a fact are two things that must be kept in step).
      */
     const EMPTY = "empty";
     const HOLDING = "holding";
@@ -139,11 +133,7 @@ export function createModel(opts) {
 
     /* ── The switches and the selection reach the drawing (§ 10.5) ─────────
      *
-     * Without this the store was complete, the renderEngine was correct, and
-     * NOTHING ARRIVED: every frame was worked out from `{}` switches and an
-     * empty selection, so atom-number labels, force arrows, the cell box, the
-     * axes, the highlight and isolate were dead at once — six features, one
-     * missing wire. It is the model that has to make this call, because the
+     * It is the model that has to make this call, because the
      * renderEngine is called only by the model (§ 7 level 5) and a store may not
      * reach past it.
      *
@@ -153,9 +143,7 @@ export function createModel(opts) {
      * filter box would be work with an identical answer. */
     /* The ruler's marks reach the drawing the same way the switches do, and
      * through the same guard: a redraw only when what the frame calculation
-     * READS has changed.  Without this line the store was complete, the engine
-     * derived the marks correctly, and the window showed nothing — the exact
-     * failure the comment above records for the switches, one store later. */
+     * READS has changed. */
     let markedFrom = null;
     measurement.subscribe((track) => {
         const reads = JSON.stringify([track.active, track.picks]);
@@ -266,10 +254,8 @@ export function createModel(opts) {
         /* The set belongs to the answer that produced it, and this is every
          * change to the structure -- so it is settled HERE, once.
          *
-         * SET BEFORE ANYONE IS TOLD. Assigning it after the settle meant the
-         * panel drew while the fact was still null, so the notice appeared only
-         * on a later unrelated redraw and the next settle wiped it -- a flash.
-         * § 6.4: updated completely first, and no one observes a half state. */
+         * SET BEFORE ANYONE IS TOLD (§ 6.4: updated completely first, and no
+         * one observes a half state). */
         notices = opts.notices || null;
         change();                                             // 1
 
@@ -278,9 +264,7 @@ export function createModel(opts) {
          * The picks are MolView's internal state and they name atoms in the
          * molecule that was in the window.  So: A CHANGE TO THE STRUCTURE
          * CLEARS THEM -- an edit, a load, a Retract, a cell commit, all of it,
-         * with no per-door decision to remember.  It lived at three call sites
-         * before this and the fourth door added later is the one that would
-         * have forgotten.
+         * with no per-door decision to remember.
          *
          * `keepsAtoms` is the ONE exemption and it is not a judgement call: it
          * marks the doors that PROVE the atoms are unchanged (`requireSameAtoms`
@@ -300,11 +284,7 @@ export function createModel(opts) {
          *
          * HERE, because `settle` is the ONE place every change to the
          * structure passes through -- the last atom deleted, `clear()`, and a
-         * reopened page adopting an empty draft.  It lived at the two doors
-         * that empty the window on purpose, and the third way of arriving
-         * empty was the one that stayed blank: reload a cleared page and the
-         * restore path raised nothing, so the viewer came back a grey
-         * rectangle indistinguishable from a broken one.
+         * reopened page adopting an empty draft.
          *
          * Turned ON only -- a person who then hides it stays hidden. */
         if (!structure || !Array.isArray(structure.elements)
@@ -343,8 +323,7 @@ export function createModel(opts) {
      *
      * One question asked of every entry in § 9.3's table — does this change the
      * master copy? — and if yes it is a NO-OP that returns without effect AND
-     * WITHOUT THROWING. There is no list of disabled controls; every previous
-     * attempt to describe read-only became one, and it drifted.
+     * WITHOUT THROWING. There is no list of disabled controls.
      *
      * Wrapping each truth-changing door in this is what makes the guarantee hold
      * even for a door added later: forgetting the wrapper is visible, whereas
@@ -378,12 +357,6 @@ export function createModel(opts) {
      */
     /* WHAT AN EDIT DOES TO THE SEQUENCE (§ 11.2, user 2026-09-07).
      *
-     * Both gates called `history.edited()` -- which raised the badge and
-     * rewrote the DRAFT, but put nothing on the sequence.  Retract could then
-     * reach no further back than the last time somebody had thought to press
-     * Save state, so the promise the button appears to make -- step back to
-     * how it was -- was true only by luck.
-     *
      * WHICH OF THE TWO HAPPENS IS DECLARED, NOT DECIDED HERE.  An operation
      * says whether it deserves a point (`checkpoint` in `OPERATIONS`), and the
      * gates that are not operations -- a label write, a cell commit -- say so
@@ -408,7 +381,7 @@ export function createModel(opts) {
         const wanted = new Set(atoms);
         // A label changes what an atom IS, not what is drawn (§ 6.6): the panel
         // redraws because the structure changed, and the drawing has nothing to
-        // do. This used to reload the whole movie.
+        // do.
         settle(() => {
             structure.annotations.forEach((facts, i) => {
                 const had = (facts.labels || []).indexOf(name) >= 0;
@@ -450,10 +423,6 @@ export function createModel(opts) {
      *                       the region assignment may now differ from what
      *                       was relaxed.
      *
-     * ONE flag covered both until 2026-09-07 and was therefore unusable by
-     * the only reader that wanted it: acting on it meant warning that a
-     * mesh cutoff might not apply because someone renamed a region.
-     *
      * Set beside the record at the exact places an edit is marked
      * (`recordEdit()` -- inside the gate, so a read-only viewer or a
      * failed edit never reaches it), never cleared by the viewer:
@@ -492,13 +461,9 @@ export function createModel(opts) {
      *   3. A MISMATCH IS A HARD ERROR. "Never padded, never truncated, never
      *      guessed into fitting."
      *
-     * None of it was here, and both halves failed silently: appending with
-     * nothing loaded INVENTED an identity (`if (!frames) frames = []`), and a
-     * frame of the wrong length was pushed straight into the master copy — so a
-     * structure could hold two elements and a frame with one position. That
-     * breaks the same-atoms rule of § 6.2 that everything downstream reads
-     * against: the per-frame maths, measurement, and export all index the
-     * coordinates by the element list.
+     * A frame of the wrong length would break the same-atoms rule of § 6.2
+     * that everything downstream reads against: the per-frame maths,
+     * measurement, and export all index the coordinates by the element list.
      *
      * THEY THROW rather than returning false. A caller that appends a frame of
      * the wrong shape has a bug, and a frame dropped quietly leaves a hole in
@@ -590,13 +555,11 @@ export function createModel(opts) {
             // claim: these are different atoms entirely, and index 7 of the
             // molecule just replaced names nothing in the one now open.
             //
-            // Without this the count came from the NEW structure while the
-            // selection came from the OLD, and the atom list read
-            // "75 of 9 selected" after a 312-atom structure was replaced by
-            // ethanol (found in the browser, 2026-08-24).  The display was
-            // the visible half; the dangerous half is that Delete selected
-            // and Assign would have run against indices that no longer
-            // exist -- or worse, that now name different atoms.
+            // Otherwise the count comes from the NEW structure while the
+            // selection comes from the OLD, and Delete selected and Assign
+            // would run against indices that no longer exist -- or worse,
+            // that now name different atoms (found in the browser,
+            // 2026-08-24).
             selection.clear();
             unit = HOLDING;
         },
@@ -624,9 +587,7 @@ export function createModel(opts) {
      * § 5.1's promise at the point it matters — and the metadata from the same
      * read, so the two can never be one edit apart.
      *
-     * The SAME producer an edit uses. There were two, and two producers of one
-     * fact is how an export came to write a server-request payload into a
-     * `.molstruct.json`. */
+     * The SAME producer an edit uses. */
     const readData = (at) => structureForServer(
         structure, frames ? frames[at != null ? at : frameIndex] : null);
 
@@ -685,13 +646,10 @@ export function createModel(opts) {
              * question asked (user, 2026-08-31: *"any edit would clear
              * measurement selection list - to keep it simple and explicit"*).
              *
-             * It was cleared by NOTHING until then, and the failure was worse
-             * than the selection's: measure a bond, delete an earlier atom,
-             * and every index shifts down one.  The readout is subscribed to
-             * the structure, so it repaints AT ONCE -- quoting a different
-             * pair of atoms to three decimal places, with nothing saying
-             * anything moved.  The Cell page reads the same picks, so a stale
-             * one could be written into a cell matrix and posted.
+             * Measure a bond, delete an earlier atom, and every index shifts
+             * down one.  The readout is subscribed to the structure, so a
+             * kept measurement would repaint AT ONCE -- quoting a different
+             * pair of atoms -- and the Cell page reads the same picks.
              *
              * Unconditional rather than count-gated, and that is the simpler
              * rule as well as the safer one: a count-preserving transform
@@ -742,13 +700,6 @@ export function createModel(opts) {
          * makes "the facts that leave together were read together" a property of
          * this surface rather than a promise about how callers behave.
          *
-         * This returned three of the five and left THE COORDINATES OUT, so the
-         * one thing § 9.3 exists to prevent was what every caller had to do:
-         * read the labels here and the positions somewhere else, and send a set
-         * assembled from two moments. That is the failure § 9.3 tells the story
-         * of — current labels with stale positions, and a server judging a
-         * structure that was not the one on screen.
-         *
          * With nothing loaded it returns NOTHING rather than an empty structure
          * (§ 9.3): "there is nothing here" and "here is a structure with no
          * atoms" are different answers, and a caller has to be able to tell them
@@ -756,15 +707,9 @@ export function createModel(opts) {
          */
         getStructure() {
             if (!structure) return null;
-            /* THE MASTER COPY ENTIRE (§ 9.3) -- which it was not.  § 6.2 lists
-             * what the module holds: elements, annotations, periodicity,
-             * title, channelDefs, info.  This returned the first three and
-             * dropped the last three, while the contract's own sentence a few
-             * lines above called it the whole thing.  Callers believed the
-             * sentence: the Modify tab's `#title-readout` read `.title` off
-             * this and got `undefined`, so it showed the formula and NEVER the
-             * structure's name, and the restore banner said "(unnamed)" every
-             * time (2026-09-07). */
+            /* THE MASTER COPY ENTIRE (§ 9.3).  § 6.2 lists what the module
+             * holds: elements, annotations, periodicity, title, channelDefs,
+             * info. */
             return copy({
                 elements:       structure.elements,
                 annotations:    structure.annotations,
@@ -800,12 +745,6 @@ export function createModel(opts) {
          * A flat list. Each notice carries its own subject in `about`, which is
          * what decides where it is drawn -- a message about the box belongs
          * beside the box, whatever brought it.
-         *
-         * The list used to be wrapped in `{where, list}`, naming where the batch
-         * CAME FROM -- a load, an edit, the cell door -- and the panel routed on
-         * that. Two mechanisms for one decision, and the origin is the wrong one:
-         * a warning about an unusable cell arriving with a file went above the
-         * atom list, nowhere near the page that could fix it.
          *
          * A copy, like every read here: a caller that edits what it was handed
          * changes nothing (§ 9.3). */
@@ -927,15 +866,9 @@ export function createModel(opts) {
              * interprets none of it).
              *
              * THROUGH THE ONE FUNCTION THAT ANSWERS THAT QUESTION, because the
-             * drawing asks it too (§ 5.2). This used to spell the fallback out
-             * here while `sceneFor` spelled a different one out there, and the
-             * two disagreed: this said a plain `.xyz` had a cell, the drawing
-             * said it had none, and "Show unit cell" drew nothing while the Cell
-             * page listed a lattice.
+             * drawing asks it too (§ 5.2).
              *
-             * COPIED, like every other read (§ 9.3) — the main way in was the one
-             * way in that could be written through, which is the opposite of the
-             * rule. */
+             * COPIED, like every other read (§ 9.3). */
             return copy(effectiveCell(structure && structure.periodicity));
         },
         // The RAW values — what the structure actually says, `null` where it says
@@ -1113,11 +1046,9 @@ export function createModel(opts) {
          * They can only add positions for atoms whose identity was fixed at
          * load, so there is nothing here for the gate to protect.
          *
-         * Gating them was reading § 9.3's "does this change the master copy?"
-         * literally, and it cost the two things a read-only viewer is FOR: a
-         * Results tab could not follow a running optimization (§ 12.2), and
-         * § 12.3's read-only viewer could not "scrub to the last frame" because
-         * the only frame it could ever hold was the one it was seeded with.
+         * Gating them would cost the two things a read-only viewer is FOR: a
+         * Results tab following a running optimization (§ 12.2), and § 12.3's
+         * read-only viewer able to "scrub to the last frame".
          *
          * The range is recomputed from the master copy — never from what the
          * caller said it was adding (§ 6.4 step 2).
@@ -1145,9 +1076,7 @@ export function createModel(opts) {
         }),
 
         // `{forces}` — an OPTIONS object, which is the shape § 12.2's worked
-        // example uses (`addFrames(newFrames, {forces})`). It took a bare array,
-        // so the call the document shows handed an object where a list was
-        // indexed and every force silently became null.
+        // example uses (`addFrames(newFrames, {forces})`).
         addFrame: (function (frame, options) {
             const forces = (options && options.forces) || null;
             requireMatch(frame, "addFrame");
@@ -1224,10 +1153,9 @@ export function createModel(opts) {
         measurement: measurement,
 
         /* Where the picked atoms are, at the frame on screen, in pick order --
-         * `null` if any pick no longer names an atom.  It was computed twice,
-         * once by the readout inside and once by the Cell page outside, both
-         * walking the current frame with the same staleness guard.  A question
-         * about the measurement is the measurement's to answer. */
+         * `null` if any pick no longer names an atom.  The readout and the Cell
+         * page both read it: a question about the measurement is the
+         * measurement's to answer. */
         measurementPositions() {
             const picks = measurement.get();
             if (!picks.length) return null;
@@ -1329,11 +1257,7 @@ export function createModel(opts) {
             renderer = engine;
             if (engine) {
                 /* Everything the frame calculation is a function of (§ 10.2):
-                 * the data, AND what the user has set. Handing over only the
-                 * first four is how the switches came to reach nothing — the
-                 * renderEngine read `switches()` and `selection()` off this
-                 * object, found neither, and drew from empty defaults without
-                 * anything failing anywhere. */
+                 * the data, AND what the user has set. */
                 engine.setDataSource({
                     structure: () => structure,
                     frames:    () => frames,

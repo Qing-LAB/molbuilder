@@ -37,18 +37,8 @@ Geometry conventions for the nanojunction workflow:
       two electrodes extend along ±z.
     * ``add_slab`` places from ABSOLUTE coordinates -- a stated
       ``start_z``, a growth direction and a starting registry -- and reads
-      no selection at all.  **It is the only slab builder.**
-    * ``add_electrode_slab`` was the other one, and it placed RELATIVE to a
-      selection: the centroid of ``center_indices``, plus a
-      ``contact_distance``, with ``side="-z"`` mirroring the slab.  That
-      mirror is the accidental layer-order flip
-      ``archive/2026-09-01-bench-and-junction-plan.md`` § 2.3 records, and the redesign
-      set out to make it *unreachable rather than switchable* -- which it
-      did for the browser on 2026-08-30, while this function kept it
-      reachable from the CLI for two more days.  Deleted 2026-09-01
-      (``archive/2026-09-01-modify-redesign-plan.md`` § 3.4b); ``--electrode`` is now the
-      same convenience expressed over ``add_slab``, so the anchor-relative
-      grammar survives and the placement logic does not.
+      no selection at all.  **It is the only slab builder**; the CLI's
+      ``--electrode`` is a convenience expressed over it.
 """
 
 from __future__ import annotations
@@ -78,10 +68,8 @@ def _reindex_transport_metadata(
     and renumbering survivors to their new 0-based position
     (``model/structure-annotations.md`` § 2.1).
 
-    ONE pass over the label store -- reserved labels are in it and remap by the
-    same rule.  Until 2026-07-31 frozen was a second store and needed its own
-    line here, in lockstep with this one; a remap that forgot it silently
-    constrained the wrong atoms.
+    ONE pass over the label store -- reserved labels (frozen among them) are in
+    it and remap by the same rule.
 
     Used by ``delete_atoms`` (the only modify-op that changes the index space).
     Pure-passthrough ops (translate / rotate / orient) carry labels through
@@ -176,8 +164,8 @@ def add_atom(
         measure from the WORLD ORIGIN.  ``None`` is what "nothing is
         selected" means, and it is the only way to put the first atom on an
         empty canvas: with no atoms there is no index that could be passed,
-        so requiring one made a structure of one atom unbuildable from here
-        (user, 2026-09-07).  The origin is the same reference ``add_slab``
+        so requiring one would make a structure of one atom unbuildable from
+        here (user, 2026-09-07).  The origin is the same reference ``add_slab``
         measures its placement from, so the two agree about where (0, 0, 0)
         is.
     offset
@@ -383,9 +371,7 @@ def orient_along_axis(
         How to translate the structure after rotation:
 
         * ``"midpoint"`` (default): place the midpoint of ``a0`` and
-          ``a1`` at the origin.  This is what pair-mode electrode
-          construction relies on -- the gap is centred on the
-          molecule's anchor-pair midpoint.
+          ``a1`` at the origin.
         * ``"first"``: place ``a0`` at the origin.  The anchor pair
           extends from origin to ``(angle-rotated unit vector) * |d|``.
         * ``"none"``: leave translation unchanged after rotation; only
@@ -510,10 +496,7 @@ def rotate_around_axis(
     #
     # A SUBSET: only those atoms turn, and the box stays.  The pivot is the
     # SELECTION's centroid, because "spin this piece in place" is what a partial
-    # rotate means.  (Until 2026-07-31 the browser got this by shipping the
-    # selected atoms as their own cell-less document and mapping the answer back
-    # -- the second of § 11.7's two exceptions.  The route takes the atoms now,
-    # so the whole structure goes out and the whole structure comes back.)
+    # rotate means.
     if indices is not None:
         subset = sorted({int(i) for i in indices})
         pivot = (struct.positions[subset].mean(axis=0) if center == "centroid"
@@ -577,18 +560,14 @@ def load_fcc_lattice_full() -> dict:
     Returns the metals dict directly: ``{symbol: {a_experimental: float,
     a_pbe: float, name: str, system: str}}``.
 
-    **v3 (2026-08-30) dropped ``a_pbe_siesta_psml``.**  It was null for
-    every metal and nothing in the codebase could write it: its only homes
-    were the packaged file and a machine-wide ``MOLBUILDER_DATA_DIR``
-    override, so the "Your bulk run" control it fed greyed itself out --
-    correctly -- from the day it shipped.  A lattice constant measured in
-    the user's own SIESTA+PSML setup belongs to ONE optimization run, not
-    to a table every project shares, so it is read from that run's result
-    instead (``POST /api/modify/lattice-from-run``).
+    A lattice constant measured in the user's own SIESTA+PSML setup belongs
+    to ONE optimization run, not to a table every project shares, so it is
+    read from that run's result instead (``POST
+    /api/modify/lattice-from-run``).
 
-    **v2 files still load**, carrying a column this returns nothing for:
-    a user's overriding data dir must not stop working because a column
-    they never filled went away.  v1 ("a" only) still raises.
+    **v2 files load too**, carrying a column this returns nothing for: a
+    user's overriding data dir must not stop working over a column they
+    never filled.  v1 ("a" only) raises.
     """
     for candidate_dir in _data_dir_candidates():
         path = candidate_dir / "fcc_lattice.json"
@@ -601,14 +580,10 @@ def load_fcc_lattice_full() -> dict:
         # is the answer.  A file that EXISTS is a statement of intent -- the
         # README tells people to copy the JSON to `$MOLBUILDER_DATA_DIR` and
         # edit it -- so failing to read it and quietly using the packaged
-        # numbers answers a question they did not ask.
-        #
-        # Measured 2026-09-22: an override with one trailing comma returned
-        # Au = 4.0782 to a person who had typed 4.20, with no warning, and the
-        # panel then showed 4.0782 under a radio labelled "Experimental".
-        # Two of the four malformations already raised (a bad `_format`, a
-        # malformed entry); these two continued.  Four ways to be wrong, one
-        # answer.
+        # numbers answers a question they did not ask: an override with one
+        # trailing comma would hand somebody who typed 4.20 the packaged
+        # Au = 4.0782, with no warning, under a radio labelled "Experimental"
+        # (measured 2026-09-22).  Every malformation raises, with the path.
         try:
             with open(path, encoding="utf-8-sig") as fh:
                 data = _json.load(fh)
@@ -652,7 +627,7 @@ def load_fcc_lattice_full() -> dict:
                 f"FCC lattice table at {path!s} contains zero entries"
             )
         return metals
-    # NOT FOUND ANYWHERE is the only way out of the loop now: every other
+    # NOT FOUND ANYWHERE is the only way out of the loop: every other
     # failure raises where it happens, with the path that caused it.
     raise RuntimeError(
         f"could not locate fcc_lattice.json under any of: "
@@ -661,13 +636,10 @@ def load_fcc_lattice_full() -> dict:
 
 
 def _load_fcc_lattice() -> dict:
-    """Back-compat shim: return ``{symbol: a_experimental_float}``.
-
-    This was the v1 loader's return shape, kept here so callers that
-    only need "the default experimental lattice constant" don't have
-    to know about v2's per-XC fields.  Callers that need to pick
-    between experimental / PBE / user-measured values should hit
-    ``load_fcc_lattice_full`` directly (the web meta endpoint does).
+    """``{symbol: a_experimental_float}`` -- for callers that only need
+    "the default experimental lattice constant".  Callers that pick between
+    the experimental and PBE values hit ``load_fcc_lattice_full`` directly
+    (the web meta endpoint does).
     """
     full = load_fcc_lattice_full()
     return {sym: entry["a_experimental"] for sym, entry in full.items()}
@@ -691,9 +663,8 @@ SUPPORTED_FCC_PLANES: Tuple[str, ...] = ("100", "110", "111")
 #: ASE implements a non-orthogonal cell for fcc(111) only; asking for one on
 #: (100) or (110) raises ``NotImplementedError``.  So the flag is a real
 #: choice on ONE surface, and a UI that offers it as a free checkbox on all
-#: three lets the user pick a combination that cannot exist -- which is what
-#: it did: the box starts unchecked, and unchecked is the one setting a (100)
-#: slab cannot be built with, so the default request came back a 400.
+#: three would let the user pick a combination that cannot exist (unchecked
+#: is the one setting a (100) slab cannot be built with).
 #:
 #: What is NOT here: fcc(111)'s orthogonal cell additionally needs an even
 #: ``n``.  That depends on the size rather than the surface, so it stays
@@ -714,7 +685,7 @@ FCC_ORTHOGONAL_CHOICES: Dict[str, Tuple[bool, ...]] = {
 # :func:`_get_fcc_lattice` and cached for the rest of the process.
 # Lazy loading lets ``import molbuilder.modify`` succeed even when the
 # data file is missing -- only operations that actually need a lattice
-# constant (build_electrode_slab, etc.) surface the error, and only
+# constant (``add_slab``) surface the error, and only
 # at the moment they need it.
 _FCC_LATTICE_A_CACHE: Optional[dict] = None
 
@@ -725,21 +696,6 @@ def _get_fcc_lattice() -> dict:
     if _FCC_LATTICE_A_CACHE is None:
         _FCC_LATTICE_A_CACHE = _load_fcc_lattice()
     return _FCC_LATTICE_A_CACHE
-
-
-# The metal-anchor contact distances (`data/contact_distance.json`) are NOT
-# read here any more.  `add_electrode_slab` -- the one caller -- was deleted
-# 2026-09-01, and `add_slab` takes an absolute ``start_z``, so no builder asks
-# "how far from the molecule should this metal sit": adding metal is manual
-# and a slab is placed by its z offset *(user, 2026-09-03: "we abandoned the
-# way how a junction is constructed by using bond distances")*.
-#
-# The table is measured physics and stays, as a REFERENCE rather than a
-# default: MolView's measurement readout shows the literature value when the
-# two atoms you picked are a known pair (`web/molview.md` § 11.6).  The
-# `default_contact_distance` / `_load_contact_distance` / `_get_contact_distance`
-# trio that served it as a default went with the last caller -- a lookup whose
-# whole purpose was to answer a question nobody asks.
 
 
 def _check_fcc_element(element: str) -> None:
@@ -788,8 +744,8 @@ def _build_ase_slab(element: str, plane: str, size: Tuple[int, int, int],
     (e.g. *"Can't make orthorhombic cell with size=(3, 3, 1).
     Second number in size must be even"*); we just add the molbuilder
     context (which element / plane / orthogonal mode triggered it)
-    and re-raise as ``ValueError`` so callers (and the future Modify
-    UI) can display the message inline as a hint.
+    and re-raise as ``ValueError`` so callers can display the message
+    inline as a hint.
 
     See ``science/junction-cell.md`` § 2b for the per-(plane, orthogonal)
     compatibility table (``FCC_ORTHOGONAL_CHOICES`` above) -- determined
@@ -811,35 +767,23 @@ def _build_ase_slab(element: str, plane: str, size: Tuple[int, int, int],
 
 
 # --------------------------------------------------------------------- #
-#  The new slab builder (archive/2026-09-01-modify-redesign-plan.md § 3)              #
+#  The slab builder                                                     #
 # --------------------------------------------------------------------- #
 
 
 def _finish_slab(struct, metal_pos, element, full):
     """Append placed metal atoms and capture the box they imply.
 
-    EXTRACTED 2026-08-30 so two builders could share it rather than each
-    carrying a copy.  There is one builder now -- ``add_slab`` -- and this
-    is still its own function, because what it does (the metadata, the
-    cell, its origin, the axis kinds) is a different question from WHERE
-    the slab goes, and mixing the two is what made the placement bug in the
-    builder this outlived hard to see.
-
-    **It took two more parameters until 2026-09-01**, and both existed only
-    for ``add_electrode_slab``: ``pad_interlayer_gap``, which added one
-    layer spacing to the captured ``c``, and ``d_interlayer``, the spacing
-    to use when a monolayer had none to measure.  ``junction-cell.md`` § 6
-    retired that padding on the user's decision -- **`c` is measured and
-    set, never invented** -- and ``add_slab`` had already been passing
-    ``False``.  With the old builder gone the flag had one value, so it and
-    the number it guarded went with it.
+    Its own function, because what it does (the metadata, the cell, its
+    origin, the axis kinds) is a different question from WHERE the slab
+    goes.  **`c` is measured and set, never invented** (``junction-cell.md``
+    § 6).
     """
     # Assemble metadata for the new metal atoms.
     n_new = metal_pos.shape[0]
     new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
 
-    # Capture the electrode's cell (structure-periodicity.md § 4 -- fixes the old
-    # discard).  In-plane (x,y) = the ASE slab's lattice (rows 0,1; hexagonal for
+    # Capture the electrode's cell (structure-periodicity.md § 4).  In-plane (x,y) = the ASE slab's lattice (rows 0,1; hexagonal for
     # fcc(111)).  axis_kind = (periodic, periodic, transport): the transport z is
     # electrode-matched, never tiled/k-sampled.  Overwrites any prior cell -- the
     # electrode defines the junction's in-plane periodicity.  Skipped if the z
@@ -856,9 +800,7 @@ def _finish_slab(struct, metal_pos, element, full):
     elc_cell = None
     elc_axis_kind = None
     if z_extent > 1e-6:
-        # `c` IS THE ATOMS' EXTENT, VERBATIM.  A block here used to add one
-        # layer spacing to it; `junction-cell.md` § 6 retired that on the
-        # user's decision and the caller had already stopped asking for it.
+        # `c` IS THE ATOMS' EXTENT, VERBATIM (`junction-cell.md` § 6).
         z_len = z_extent
         elc_cell = np.array([
             [slab_cell[0, 0], slab_cell[0, 1], 0.0],
@@ -875,10 +817,10 @@ def _finish_slab(struct, metal_pos, element, full):
     # new electrode atoms are NOT auto-frozen and NOT auto-tagged with a
     # region label (callers who want either can post-process the result).
     # THE NON-ATOM FACTS COME FROM THE ONE SEAM, and the three this op
-    # genuinely decides are stated after it.  Hand-listing them instead
-    # dropped `vacuum` -- the padding the person typed, which § 6.1
-    # clause 1 calls truth and which is what "Use default" restores --
-    # and would drop every field added to `Structure` after today.
+    # genuinely decides are stated after it.  Hand-listing them would drop
+    # `vacuum` -- the padding the person typed, which § 6.1 clause 1 calls
+    # truth and which is what "Use default" restores -- and every field
+    # added to `Structure` later.
     #
     # THE BOX IS STATED AS A WHOLE.  When the layers come out coplanar there
     # is no z extent to capture (above), so this op has no cell to give -- and
@@ -931,8 +873,8 @@ def add_slab(
     3-D window's own coordinate system -- so the same numbers place the same
     slab whatever is currently picked.
 
-    Parameters that are not ``add_electrode_slab``'s
-    ------------------------------------------------
+    Parameters
+    ----------
     start_registry
         Which stacking registry the layer AT ``start_z`` sits on, as an
         index: 0=A, 1=B, 2=C.  Taken modulo the surface's period
@@ -963,17 +905,6 @@ def add_slab(
         On a surface whose stacking period is 2 -- (100) and (110) -- the two
         walks are the SAME sequence (backwards and forwards agree modulo 2),
         so the choice has no effect there and the panel does not offer it.
-
-        THIS REPLACED ``stacking`` (user, 2026-09-07), which said what the
-        registry did *when growing DOWNWARD* and was therefore a control whose
-        meaning depended on another control's value: growing up it did nothing
-        at all, and the panel had to hide it to avoid offering a choice with
-        no effect.  Said as a walk direction it is one fact that always means
-        the same thing, and the combination that had been unreachable -- the
-        backwards walk growing ``+z`` -- is now simply another row.  The three
-        combinations that existed before are bit-identical:
-        ``(+z, anything)`` and ``(-z, "mirror")`` are ``"ABC"``;
-        ``(-z, "continue")`` is ``"ACB"``.
 
     What it deliberately does NOT take
     ----------------------------------
@@ -1012,9 +943,7 @@ def add_slab(
     # point.  The registry lookup below also rejects an unknown plane, but it
     # says "no stacking period is known for fcc(101)" -- which names neither
     # what is wrong nor what is allowed.  `_ase_slab_builder` names the closed
-    # list.  The deleted `add_electrode_slab` checked the plane first and
-    # this one did not, so its removal briefly cost the better message
-    # (caught by its own test on 2026-09-01, repointed here).
+    # list.
     _ase_slab_builder(plane)
     a = (lattice_constant if lattice_constant is not None
          else _get_fcc_lattice()[element])
@@ -1038,9 +967,8 @@ def add_slab(
     # there -- so choosing where the window starts chooses the registry, and
     # the result is a CONTIGUOUS SLICE OF A REAL CRYSTAL by construction.
     #
-    # Two earlier attempts moved atoms laterally instead, and both were built
-    # on a false premise: that there is one lateral "step" from one layer to
-    # the next.  There is not.  Measured on ASE's own untouched Au(111) slab,
+    # Moving atoms laterally instead rests on a false premise: that there is
+    # one lateral "step" from one layer to the next.  There is not.  Measured on ASE's own untouched Au(111) slab,
     # consecutive layer centroids walk by three DIFFERENT vectors repeating
     # with period 3 -- [-1.4418, 0.8324], [0, -1.6648], [1.4418, 0.8324] --
     # because each layer is wrapped into the cell.  Any single "step" is one
@@ -1090,16 +1018,14 @@ def add_slab(
     # PLACEMENT IS ABSOLUTE, and the reference is THE SUPERSET'S centroid --
     # not the slice's.
     #
-    # THE SLICE'S CENTROID IS REGISTRY-DEPENDENT, and using it silently
-    # cancelled part of the registry the caller asked for.  Layer j's lateral
+    # THE SLICE'S CENTROID IS REGISTRY-DEPENDENT, and using it would silently
+    # cancel part of the registry the caller asked for.  Layer j's lateral
     # offset repeats with the stacking period, so the mean over a window of L
     # layers is independent of where the window starts ONLY when L is a whole
-    # number of periods.  At any other L the correction differed per registry:
+    # number of periods.  At any other L the correction differs per registry:
     # measured on Au(111), a 4-layer slab at registry B sat 1.249 A from the
     # registry-A one where the true step is a/sqrt(6) = 1.665 A -- off-lattice,
-    # and past SEAM_STEP_TOL_ANG, so `classify_seam` then called the pair
-    # `unknown` for a junction the user had every reason to think was one
-    # crystal.
+    # and past SEAM_STEP_TOL_ANG, so `classify_seam` calls the pair `unknown`.
     #
     # The superset is the same slab for every registry, so its centroid is a
     # constant: `offset` means one thing, and two registries differ by exactly
@@ -1109,12 +1035,7 @@ def add_slab(
         - all_pos[:, :2].mean(axis=0)
 
     # NO PADDING.  `c` IS MEASURED AND SET, NEVER INVENTED
-    # (`junction-cell.md` § 6, rewritten 2026-08-31).
-    #
-    # This used to add one interlayer spacing for you.  The switch that was
-    # supposed to expose that decision made it instead -- it defaulted on, and
-    # its note deliberately withheld the number -- so the one value deciding
-    # whether a junction was a crystal was computed out of sight.
+    # (`junction-cell.md` § 6).
     #
     # What the builder knows, it sets: `a` and `b` are the crystal's own
     # in-plane vectors, straight from the slab ASE built.  What it does not

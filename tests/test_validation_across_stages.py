@@ -45,17 +45,6 @@ def _ladder(*pairs):
 
 
 # --------------------------------------------------------------------- #
-#  R2 — each stage, as a resolved whole                                 #
-# --------------------------------------------------------------------- #
-# The per-stage door is the RENDER gate: every rung's deck runs the shipped
-# validator (with the calculation kind) at render_deck step 3.3, one rung at
-# a time.  The batch aggregator `validate_ladder` that this section tested
-# retired 2026-08-21 (G-1a): no production caller, and its validate() call
-# omitted `calculation`.  The gate's own behaviour is pinned where the gate
-# is: tests/test_prep_calculation.py and the engines' render tests.
-
-
-# --------------------------------------------------------------------- #
 #  R3 — the sequence                                                    #
 # --------------------------------------------------------------------- #
 
@@ -191,7 +180,7 @@ def test_a_single_run_response_is_unchanged():
     # The key set is a Python<->JS rename tripwire: `validation-findings.js`
     # reads `severity`, `message`, `where` and `workflow_group` by name, and
     # the node harness that would catch a rename SKIPS here (#79).  One writer
-    # now (`Issue.to_json`) -- four sites spelled it by hand until 2026-09-09.
+    # (`Issue.to_json`).
     assert set(d) == {"severity", "message", "where"}
 
 
@@ -202,8 +191,6 @@ def issues_to_json_single():
 
 def test_issue_still_defaults_its_stage_to_none():
     assert Issue("info", "m").stage is None
-    # `assert "stage" in {f.name for f in fields(Issue)}` stood here: the line
-    # above cannot pass unless the field exists.
 
 
 # --------------------------------------------------------------------- #
@@ -300,13 +287,10 @@ def test_it_never_refuses():
 # --------------------------------------------------------------------- #
 
 def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
-    """A-8 (final review, 2026-08-13): `stages.md` :884 said § 6.6a was
-    "implemented at validation/stages.py::check_identical_stages" while NO
-    production surface called it — `validate_ladder`'s only callers were
-    tests, so the warning was unreachable end-to-end.  The sequence checks
-    now ride the § 6.6 preflight when the template is in hand, and `prep`
-    is the surface that has both halves.  Pinned through the CLI: the note
-    must reach the person about to pay for the recompute."""
+    """A-8 (final review, 2026-08-13): the sequence checks ride the § 6.6
+    preflight when the template is in hand, and `prep` is the surface that
+    has both halves.  Pinned through the CLI: the note must reach the person
+    about to pay for the recompute."""
     from click.testing import CliRunner
 
     from molbuilder import describe as D
@@ -321,7 +305,7 @@ def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
         D.build_description(
             struct, SiestaConfig(system_label="JOB"),
             # Stage b resolves identically AND starts clean -- the one case
-            # § 6.6a warns about, and since 2026-08-18 the only way to reach
+            # § 6.6a warns about, and the only way to reach
             # it: `continue` is the default, and two identical rungs where the
             # second continues are simply *more steps at these settings*.
             # ...on its RUN CARD, the one place a rung's `restart` lives

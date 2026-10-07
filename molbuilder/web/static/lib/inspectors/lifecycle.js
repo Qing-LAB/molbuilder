@@ -1,8 +1,7 @@
 /* lifecycle.js — the two helpers every inspector core needs.
  *
  * `lib/spectra/core.js` and `lib/trajectory/core.js` are two inspectors with
- * one lifecycle: mount, listen, dispose.  Both spelled these out
- * byte-identically, which is two places for a leak fix to miss.
+ * one lifecycle: mount, listen, dispose, so a leak fix has one place.
  *
  * Exports (on window.molbuilder.inspectorLifecycle):
  *   listeners()          -> { on, defer, disposeAll }
@@ -35,13 +34,9 @@
              * Register a teardown that is not a listener -- a
              * ResizeObserver to disconnect, an observer to stop.
              *
-             * It exists so a core has exactly ONE registry.  When an
-             * inspector kept a second array beside this scope, `dispose()`
-             * drained that one and left every listener attached: a
-             * mount/dispose cycle removed nothing (caught 2026-08-23 by
-             * `test_inspector_registry_e2e.py`, which counts add/remove
-             * pairs across a real mount).  Two registries is the same
-             * defect as two readers -- one of them is the one that is used.
+             * It exists so a core has exactly ONE registry: a second array
+             * beside this scope would be drained by `dispose()` while every
+             * listener stayed attached.
              */
             defer: function (undoFn) {
                 if (typeof undoFn === "function") undo.push(undoFn);
@@ -74,14 +69,9 @@
      * THE LOAD HAS ENDED -- the first render is on screen, or the load was
      * refused and its reason is on the inspector's status line.  One signal
      * for both, so the tab's loading cover and the picker's "Parsing…" line
-     * go when the answer is on screen, whichever it is (a refused load used
-     * to leave both up for their safety timers).  Deferred two frames so the
-     * browser paints first -- AND a short timer beside them, whichever comes
-     * first, ONCE: frames do not run in a background tab, so a result opened
-     * there left "Parsing…" up until the picker's own timer (the structure
-     * viewer's reasoning, which it has always had).  Both cores wrote the
-     * frames-only version byte for byte
-     * (`tests/test_no_duplicated_ui_components.py`, 2026-09-28).
+     * go when the answer is on screen, whichever it is.  Deferred two frames
+     * so the browser paints first -- AND a short timer beside them,
+     * whichever comes first, ONCE: frames do not run in a background tab.
      */
     function announceReady(inspector, detail) {
         try {

@@ -121,9 +121,8 @@ def _spy_add_hydrogens():
 
 def test_maybe_add_hydrogens_auto_runs_on_partial_protonation():
     """``mode="auto"`` heuristic: if H/heavy < 0.5, trigger
-    chemistry.add_hydrogens.  Pre-tri-state the gate was at 0.3 --
-    which would skip a partially-protonated structure (ratio ~0.4)
-    silently.  Widened to 0.5 catches the gap zone."""
+    chemistry.add_hydrogens.  The gate sits at 0.5 so a partially-
+    protonated structure (ratio ~0.4) is not skipped silently."""
     from molbuilder.nucleic import _maybe_add_hydrogens
     s = _h_add_spy_struct(n_heavy=10, n_h=4)        # ratio 0.4
     called, restore = _spy_add_hydrogens()
@@ -209,8 +208,7 @@ def test_dna_12mer_simulation_ready_at_default_settings(backend):
     "auto", protonate_phosphates True) must give a chain with H/heavy
     in the typical organic range and zero net phosphate charge.
 
-    The earlier 4-mer tests pin atom counts but a 12-mer is closer
-    to what users actually run for stacking / canonical-helix work,
+    A 12-mer is closer to what users actually run for stacking / canonical-helix work,
     where the H/heavy heuristic threshold matters most.
     """
     if not available_backends()[backend]:
@@ -354,8 +352,7 @@ def test_threedna_strips_5prime_phosphate_for_terminal_oh():
     if not available_backends().get("threedna"):
         pytest.skip("threedna backend not installed")
 
-    # Single nucleotide -- pre-fix had 1 phosphate (the spurious 5'-P);
-    # post-fix has 0 (it's a free deoxyadenosine).
+    # Single nucleotide -- a free deoxyadenosine, no phosphate.
     s_a = build_dna("A", backend="threedna", terminal="OH",
                     add_hydrogens=False, protonate_phosphates=False)
     assert s_a.elements.count("P") == 0, (
@@ -363,8 +360,7 @@ def test_threedna_strips_5prime_phosphate_for_terminal_oh():
         f"got {s_a.elements.count('P')}"
     )
 
-    # 4-mer -- pre-fix had 4 phosphates, post-fix has 3 (only the
-    # internal A-T, T-G, G-C bridges).
+    # 4-mer -- 3 phosphates (only the internal A-T, T-G, G-C bridges).
     s_atgc = build_dna("ATGC", backend="threedna", terminal="OH",
                        add_hydrogens=False, protonate_phosphates=False)
     assert s_atgc.elements.count("P") == 3, (
@@ -372,7 +368,7 @@ def test_threedna_strips_5prime_phosphate_for_terminal_oh():
         f"got {s_atgc.elements.count('P')}"
     )
 
-    # 5'-terminal residue should now start at O5' (not P).  fiber
+    # 5'-terminal residue should start at O5' (not P).  fiber
     # writes residues in 5'->3' order, so residue_ids[0] is the 5'-end.
     first_rid = s_atgc.residue_ids[0]
     first_res_atom_names = {

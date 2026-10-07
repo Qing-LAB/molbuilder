@@ -28,8 +28,7 @@ def test_schema_major_ignores_a_minor_component():
 
     Until 2026-08-07 the whole post-@ token was compared, so ``@1.4`` was
     rejected against ``@1`` with a message claiming the major differed when
-    it did not.  Nothing shipped carried a minor, so nothing had exercised
-    it; ``molbuilder/task@1``'s reader is the first that did.
+    it did not.
     """
     assert persist.schema_major("molbuilder/task@1.4") == "1"
     assert persist.schema_major("molbuilder/task@2.0.1") == "2"
@@ -146,9 +145,7 @@ def test_write_bytes_mode_forces_owner_only_instead_of_widening(tmp_path):
     """`mode=0o600` is how a CREDENTIAL is written (`configuration.md` § 2.3).
 
     The default widens to 0644 because a shared artifact should not inherit
-    mkstemp's 0600 -- and that widening is exactly what kept secrets OUT of
-    this writer until the parameter existed, leaving them on a non-atomic one.
-    Both halves are asserted here, on a fresh file and over a loose one, so
+    mkstemp's 0600.  Both halves are asserted here, on a fresh file and over a loose one, so
     neither can be dropped without a failure.
     """
     import molbuilder.persist as persist

@@ -8,13 +8,11 @@
  *   * openMolecule(path) -> model.installMolecule({path}) -> POST /api/build/load
  *     (the server reads the .xyz + paired .molstruct.json via StructureCodec.read).
  *
- * **The SAVE half left on 2026-09-02** -- see the note where it stood.  Saving a
- * structure is `projects.molviewFiles.save("project", ...)`, which asks WHERE and
- * owns the overwrite flow (`tabs.md` § 6).
+ * Saving a structure is `projects.molviewFiles.save("project", ...)`, which asks
+ * WHERE and owns the overwrite flow (`tabs.md` § 6).
  *
- * The browser therefore moves NO structure bytes and NEVER authors the sidecar schema
- * (a browser-written sidecar had no schema_version, so the file-only load door rejected
- * it -- a save->reload breaker).  This module orchestrates the model <-> server
+ * The browser therefore moves NO structure bytes and NEVER authors the sidecar
+ * schema.  This module orchestrates the model <-> server
  * round-trip; it interprets nothing.
  *
  * Contract + map: docs/model/structure.md.
@@ -23,18 +21,15 @@
 /* THE VIEWER IS PASSED IN, by whoever mounted it.
  *
  * These doors move a file between disk and a viewer, so they need one — and the
- * only way to a viewer is the handle `mount` gave you (molview.md § 5.6). This
- * used to look one up by name on `window`, which stopped working the day MolView
- * was rebuilt to publish nothing, and every load on every tab failed with
- * "molview.data.installMolecule unavailable".
+ * only way to a viewer is the handle `mount` gave you (molview.md § 5.6):
+ * MolView publishes nothing.
  *
- * A page can have more than one viewer, so "the viewer" was never a question this
- * file could answer anyway. The caller knows which one it means. */
+ * A page can have more than one viewer, so "the viewer" is not a question this
+ * file can answer. The caller knows which one it means. */
 function _modelOf(viewer) {
   return (viewer && viewer.ok && viewer.data) || null;
 }
 
-// The save door refuses an existing target (no overwrite) with a 409 whose envelope is
 
 /**
  * openMolecule(viewer, path, { confirmDiscard? }) -- THE load door (contract §2).
@@ -67,26 +62,21 @@ export async function openMolecule(viewer, path, opts) {
   }
   // FILE-ONLY load (model/structure.md § 2.4): hand the PATH to the model; the SERVER
   // reads the .xyz + paired .molstruct.json through StructureCodec.read -- Python owns
-  // the file access AND the .xyz<->.molstruct pairing.  The browser no longer reads the
-  // bytes or derives the sidecar path (that was the raw-text/second-file-stack seam the
-  // consolidation exists to abolish).  The cell is DEDUCED from the file data (the .xyz's
+  // the file access AND the .xyz<->.molstruct pairing.  The browser does not read the
+  // bytes or derive the sidecar path.  The cell is DEDUCED from the file data (the .xyz's
   // own lattice + the sidecar) and is never overridden at load time.
   // Contract (§2): openMolecule NEVER throws -- it returns {ok:false, error} on any
   // failure, like its guard cases above.  The file-only load surfaces a missing/
   // unreadable file OR a parse/sidecar error as a rejected installMolecule (the
-  // server returns 404/400 -> _loadText throws); catch it here so a caller doing
-  // `if (!r.ok)` (transport/core, inspectors/structure, selection-bootstrap) can't
-  // crash on a bad path.  (Before the file-only move the browser's readFile caught
-  // the missing-file case; that guard now lives here.)
+  // server returns 404/400); catch it here so a caller doing
+  // `if (!r.ok)` can't crash on a bad path.
   let payload;
   try {
     payload = await model.installMolecule({
       path:   path,
       /* THIS IS THE USER SAYING "LOAD THIS FILE", so it replaces whatever is
        * there.  Without it a read-only viewer that already holds a structure
-       * answers null and does nothing -- so on structure-optimization, spectra,
-       * transport and the results inspector you could load ONE file per page
-       * and picking a second did nothing at all, silently.
+       * answers null and does nothing.
        *
        * Enforcing is right here and nowhere else: swapping the structure
        * outright is not an EDIT of the one on screen, which is what read-only
@@ -100,21 +90,6 @@ export async function openMolecule(viewer, path, opts) {
   }
   return { ok: true, payload: payload };
 }
-
-/* `saveMolecule(viewer, path, {overwrite, range})` stood here until
- * 2026-09-02.  **Deleted, not deprecated**: it had no caller left, and
- * everything it did is inside `molview-doors.js`'s `save("project", …)` --
- * the same POST to the same route with the same body, plus the parts it
- * lacked (asking WHERE through `chooseSavePath`, confirming the overwrite
- * rather than handing `needsOverwrite` back for someone else to handle, and
- * refreshing the sidebar).
- *
- * It was a half-flow: a path had to come from somewhere, so it needed a UI
- * layer on top, and `modify/structure/save.js` was that layer.  When the Save
- * panel moved onto the door, nothing was left calling it.  Two ways to write
- * one file is one too many (`tabs.md` § 6).
- *
- * The OPEN half stays: `openMolecule` has callers and no rival. */
 
 // The format-aware sub-namespace, mounted at window.molbuilder.projects.parser by the
 // sidebar entry point (projects-sidebar.js).

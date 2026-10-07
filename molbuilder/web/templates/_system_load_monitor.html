@@ -20,18 +20,15 @@
     so the user's choice survives intra-session navigation between
     tabs.
 
-    2026-06-21 redesign: detailed metric breakdowns (load-avg, per-
-    socket %, per-GPU power/temp/clocks) used to live in browser
-    ``title=`` tooltips that re-positioned on every 1 Hz redraw and
-    were therefore unusable.  They now live in a ``[data-detail]``
-    block under each cell, always visible.  Toggle moved adjacent to
-    the title so it's reachable without scanning the header right
-    edge. -#}
+    Detailed metric breakdowns (load-avg, per-socket %, per-GPU
+    power/temp/clocks) live in a ``[data-detail]`` block under each
+    cell, always visible: browser ``title=`` tooltips re-position on
+    every 1 Hz redraw.  The toggle sits beside the title so it's
+    reachable without scanning the header right edge. -#}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/system-load-monitor.css') }}">
 <aside id="system-load-monitor" aria-label="Server load monitor">
   {# Header row: toggle FIRST so it sits immediately next to the
-     title (user feedback 2026-06-21: right-aligned toggle was hard
-     to locate).  Title stays as a non-interactive label. #}
+     title.  Title stays as a non-interactive label. #}
   <div class="system-load-header">
     <button class="system-load-toggle" type="button"
             aria-pressed="false" title="Hide server load">≡</button>
@@ -89,7 +86,7 @@
      a ``gpu_error``, which the server sets ONLY when NVML was present
      and refused to start -- a broken host, not a CPU-only one.  A
      CPU-only box leaves this hidden forever and the strip is simply
-     two cells wide, as before. #}
+     two cells wide. #}
   <p class="system-load-notice" data-gpu-error hidden></p>
 </aside>
 <script src="{{ url_for('static', filename='lib/system-load-monitor.js') }}"></script>

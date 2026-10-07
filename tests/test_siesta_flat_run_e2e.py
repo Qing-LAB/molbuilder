@@ -12,8 +12,7 @@ relaxation is allowed one move, so it ends out of moves.
 Every expectation is what the run was given -- the structure written here,
 the deck prep wrote, the template, the env's pinned build -- or a rule of the
 contract applied to the run's own files; never a number a reader printed.
-These replace the readers' tests on runs saved under ``tests/fixtures``,
-``tests/parse/fixtures`` and ``tests/watch/fixtures`` (user, 2026-10-06:
+The readers are tested on this run, made with the engine (user, 2026-10-06:
 "when a test need siesta's output why is it not part of a e2e test?").
 """
 from __future__ import annotations

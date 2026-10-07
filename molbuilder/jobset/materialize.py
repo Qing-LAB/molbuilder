@@ -3,18 +3,10 @@ directories (docs/execution/job-system.md; naming: job-contracts § 6.3).
 
 Filesystem ONLY: it knows nothing about schedulers or engines.  For each
 job it creates the directory :func:`job_dir_names` assigns (a stage's
-``<NN>_<name>/``, a trial's ``<NN>_<name>/bench/bench-<point>/``, the
-bundle root for a stageless calculation, ``bench-<name>/`` for hand-built
-sets) and copies in, as real files, the static ``shared`` package plus
-the job's own ``script`` (`project-layout.md` § 1.0: a run directory holds
-everything it runs from).
-
-*(R8, 2026-08-12: this header still described Carry symlinks laid into a
-producer's directory and "the submit engine's dependency ordering" — both
-deleted 2026-08-10 with stage chaining (a carry is a COPY prep makes at
-`--from`, and nothing orders anything), and the `_mb_point` helper it
-called its ancestor is long gone.  A front door describing a deleted
-design misleads at the file's most-read lines.)*
+``<NN>_<name>/``, a trial's ``<NN>_<name>/bench/bench-<point>/``) and
+copies in, as real files, the static ``shared`` package plus the job's own
+``script`` (`project-layout.md` § 1.0: a run directory holds everything it
+runs from).
 """
 
 from __future__ import annotations
@@ -22,6 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:                      # annotations only
     from ..paths import Shape
+    from ..runfiles import RunNames
 
 import os
 from dataclasses import dataclass
@@ -31,7 +24,7 @@ from typing import Dict, List, Optional, Tuple
 from .. import calcdirs, runrecord
 from ..pseudos import PSEUDO_DIRNAME
 from ..identity import StageRef, parse_token, resolve_stage_ref
-from ..runfiles import parse as _rf_parse
+from ..runfiles import FIRST_ATTEMPT, parse as _rf_parse
 from .model import JobSet, warm_carry
 from ..paths import (attempt_dir, attempts_in,
                      trial_label as _paths_trial_label,
@@ -47,7 +40,7 @@ class StageHome:
     name: str
     seq: int
     #: ``<NN>_<name>`` -- the stage's directory in the hierarchy, its decks'
-    #: token in either shape; ``""`` when no stage was named.
+    #: token in either shape.
     token: str
     #: The stage's folder, or ``None`` when no calculation folder was given.
     dir: Optional[Path]
@@ -97,8 +90,7 @@ def ladder_homes(base, task) -> Tuple[StageHome, ...]:
 def described_refs(base, task) -> List[StageRef]:
     """The description's stages that run, as refs (`identity.StageRef`)
     numbered by the one door (:func:`ladder_homes`), so ``#N`` names the
-    folder ``NN_…`` everywhere -- the stages a verb that takes one offers.
-    It was ``commands.enabled_refs`` until 2026-10-03, numbered by place."""
+    folder ``NN_…`` everywhere -- the stages a verb that takes one offers."""
     return [StageRef(h.seq, h.name)
             for h, s in zip(ladder_homes(base, task), task.stages)
             if getattr(s, "enabled", True) is not False]
@@ -107,16 +99,13 @@ def described_refs(base, task) -> List[StageRef]:
 def stage_home(base, task, stage: Optional[str]) -> StageHome:
     """This stage's number, token and folder -- THE ONE DOOR every reader
     asks (`execution/architecture.md` § 3.2; W55 B8): :func:`ladder_homes`'
-    answer for it.  It was ``prep.token_for`` until 2026-10-03, numbering by
-    the stage's place in the description, so a stage removed after its prep
-    renumbered every stage after it (W38 F4).
+    answer for it.
 
     An unknown stage is refused by name: an empty token would silently drop
     the stage from every artifact name (`job-contracts.md` § 6.3)."""
     from .errors import PrepError
     if not stage:
-        # EVERY LADDER HAS A STAGE TO NAME (`engines/stages.md` § 6.5): a
-        # stageless answer -- an empty token -- stood here until 2026-10-06.
+        # EVERY LADDER HAS A STAGE TO NAME (`engines/stages.md` § 6.5).
         raise PrepError("which stage? Every description's ladder has one to "
                         "name -- none was given.")
     from ..identity import stage_key
@@ -127,31 +116,12 @@ def stage_home(base, task, stage: Optional[str]) -> StageHome:
                     f"ladder: {', '.join(s.name for s in task.stages)}.")
 
 
-#: One attempt at running a stage.  ``project-layout.md`` § 1.5: immutable once
-#: it has run, so a re-run is a NEW directory rather than an overwrite.
-
-
-
 def trial_dir(shape, stage_token: str, job_name: str) -> str:
     """The path from the bundle to ONE trial's directory — **the rule**.
 
     ``<container>/bench-<point>``, where the container is the stage's bench
     folder in hierarchical and the flat one otherwise
     (:func:`bench_container`).
-
-    **This exists because the rule was written twice.**
-    :func:`job_dir_names` composed it for a whole JobSet, and
-    `prep.prep_calculation` composed it again from the same two facts —
-    with a comment saying so and calling it safe: *"the same one
-    `job_dir_names` will answer for this job, computed from the same two
-    facts (token + trial-ness), so the deck is born where the launch will
-    look for it."*
-
-    They agreed, and a second computation that must be kept in step by hand
-    only ever agrees until something moves.  What moved was the attempt
-    layer (`project-layout.md` § 1.5a): one side learned about `run-<n>`
-    and the other did not, so the deck landed in the container while the
-    shared package landed in the attempt.
 
     `prep` cannot call :func:`job_dir_names` instead — it is *building* the
     JobSet in the loop that needs the directory, so there is nothing to ask
@@ -176,7 +146,7 @@ def trials_in(container) -> "List[Path]":
     return [c / _paths_trial_name(pt) for pt in _paths_trials_in(c)]
 
 
-def trial_work_dir(container, shape) -> Path:
+def trial_work_dir(container, shape, names: "RunNames") -> Path:
     """Where a trial's files GO, given the directory it lives in.
 
     :func:`trial_dir` (via :func:`job_dir_names`) answers *where does this
@@ -185,15 +155,11 @@ def trial_work_dir(container, shape) -> Path:
     (`project-layout.md` § 1.5a):
 
     * **hierarchical** — the attempt, ``bench-<point>/run-<n>``;
-    * **flat** — the container itself, because flat separates attempts by
-      the wrapper's filename index and has no directory layer to open.
+    * **flat** — the container itself, because flat has no directory layer
+      to open.
 
-    **It takes the container rather than recomputing it.**  A first version
-    took ``(base, shape, stage_token, job_name)`` and rebuilt the path — and
-    derived the token by a different route than `job_dir_names` does, so a
-    flat grouped sweep put its record somewhere the reader did not look.
-    That is the very divergence `trial_dir` was extracted to end, so this
-    asks its caller for the answer instead of computing a second one.
+    **It takes the container rather than recomputing it**, so it cannot
+    diverge from :func:`job_dir_names`.
 
     `resolve_attempt` is the rule, not restated: reuse the last attempt
     until it has been launched, then open the next -- a benchmark's sweep is
@@ -209,9 +175,8 @@ def trial_work_dir(container, shape) -> Path:
         return d
     # NOTHING IS MADE HERE: a container not there yet holds no attempt
     # (`paths.attempts_in`), and the plan makes the folder when it is
-    # written -- a preview or a refused bench left an empty one per trial,
-    # and a stage number taken, until 2026-10-05.
-    attempt, _fresh = resolve_attempt(d)
+    # written.
+    attempt, _fresh = resolve_attempt(d, names)
     return attempt
 
 
@@ -224,16 +189,7 @@ def shape_of(jobset: JobSet, base_dir) -> "Shape":
     rather than going looking for it a second time.
 
     A folder with no ``task.json`` is not a calculation molbuilder
-    described, and is refused.  ``None`` stood for it until 2026-10-06 --
-    bundles produced before 2026-08-10, hand-built JobSets in the tests, the
-    OLD bench bundle format -- and :func:`job_dir_names` read ``None`` as the
-    hierarchy: a fallback its own note called transitional.
-
-    *(This branched on ``kind != "ladder"`` until 2026-08-12 — "a benchmark
-    bundle carries no description and needs none" — which `generator.md` § 5
-    said would stop being true under the fold, and did: a described sweep is
-    a ParameterSet inside a described calculation, shaped like anything
-    else.)*
+    described, and is refused.
     """
     from ..task import FILENAME, read_task
     from ..paths import Shape
@@ -251,21 +207,8 @@ def sweep_set_paths(bundle) -> "List[Path]":
     The search counterpart of :func:`bench_container`, and it lives beside it
     for that reason: the namer says where a sweep's state GOES and this says
     where to look for it, so a layout change moves one file instead of two
-    that must be kept in step by hand.
-
-    **N4, 2026-09-09: it now asks, and this docstring used to say why it
-    could not.**  It read: *"It cannot simply call `bench_container` -- that
-    takes a shape and a token, and the caller this exists for is an error path
-    with no `job-set.json` to read them from.  That asymmetry -- one door to
-    COMPOSE a path, none to FIND one -- is what the paths framework is for;
-    when it lands, this is one of its callers and the patterns below move into
-    it."*  It landed: `paths.bench_containers_in` is `bench_container`'s search
-    half, and it takes ``shape=None`` for exactly this caller.
-
-    So the two globs are gone.  They were also WIDER than the rule -- ``*/`` at
-    depth 1 matches any directory, not just a declared container -- and the
-    caller had to read every hit to find out whether it was a sweep at all.
-    Asking narrows the answer to the containers the layout declares.
+    that must be kept in step by hand.  It asks `paths.bench_containers_in`,
+    so the answer is narrowed to the containers the layout declares.
 
     Returns the paths that exist, unread: whether a set is a sweep is in the
     file, and reading it is the caller's business.
@@ -283,19 +226,14 @@ def bench_stage_of(base, where) -> "Optional[str]":
     or a trial in it), through the layout's search half
     (`paths.bench_containers_in`), so both layouts answer.  A refusal or a
     status names the stage's own verbs with it, never a ``<stage>``.
-    ``None`` for a sweep in no stage's container -- a hand-built one.
-
-    *(It read the folder's first part as a stage token until 2026-10-01 --
-    the hierarchy's ``01_coarse/bench`` -- and so named no flat sweep's
-    stage: flat qualifies the container's own name, ``bench_01_coarse``;
-    the W52 review.)*"""
+    ``None`` for a sweep in no stage's container -- a hand-built one."""
     from ..identity import command_stage
     try:
         rel = Path(where).resolve().relative_to(Path(base).resolve())
     except (ValueError, OSError):
         return None
     for name, token in _bench_containers_in(base):
-        if token and (rel == Path(name) or Path(name) in rel.parents):
+        if rel == Path(name) or Path(name) in rel.parents:
             return command_stage(token)
     return None
 
@@ -306,9 +244,7 @@ def bench_owner(folder) -> "Optional[Tuple[Path, str]]":
     (flat's ``bench_<NN>_<stage>``) or two (the hierarchy's
     ``<NN>_<stage>/bench``), through the layout's search half -- else
     ``None``.  A sweep's own job-set names its trials from the calculation,
-    so a reader standing in its container reads them from there (W52:
-    `status` in a bench folder read every trial as never prepped, and named
-    the folder as the calculation)."""
+    so a reader standing in its container reads them from there."""
     from ..identity import command_stage
     from ..task import FILENAME as _TASK
     f = Path(folder).resolve()
@@ -317,7 +253,7 @@ def bench_owner(folder) -> "Optional[Tuple[Path, str]]":
             continue
         rel = f.relative_to(calc)
         for name, token in _bench_containers_in(calc):
-            if token and Path(name) == rel:
+            if Path(name) == rel:
                 return calc, command_stage(token)
     return None
 
@@ -334,17 +270,9 @@ def job_dir_names(jobset: JobSet, shape: "Shape") -> Dict[str, str]:
     | a stage token, job named by coordinate | — | a trial, in the stage's bench CONTAINER (:func:`bench_container`): ``<NN>_<name>/bench/bench-<point>`` hierarchical, ``bench_<NN>_<name>/bench-<point>`` flat |
     | no token | — | **refused**: not a job prep wrote |
 
-    **A job whose deck carries no stage token is refused.**  Three rows
-    placed such jobs -- written for `engines/stages.md` § 6.5's stage-LESS
-    calculation, retired 2026-08-16, and kept for JobSets assembled in code
-    with no description behind them -- by the set's name alone, until
-    2026-10-06: every description has a stage, and every deck prep writes
-    carries its token.
-
-    Until 2026-08-10 every kind got the trial prefix, so a staged run's
-    directories came out ``point-coarse/`` (`worked-example.md` gap 6); until
-    2026-08-12 the split was a branch on ``JobSet.kind`` and trials could not
-    nest at all.  Now it is read off each deck's own name.
+    **A job whose deck carries no stage token is refused**: every
+    description has a stage, and every deck prep writes carries its token.
+    The split is read off each deck's own name.
 
     **The seq is read back off the deck, not counted here.** ``job.script`` is
     ``<label>_<NN>_<name>.fdf`` (decision 27), so the token the directory is
@@ -358,9 +286,7 @@ def job_dir_names(jobset: JobSet, shape: "Shape") -> Dict[str, str]:
     directory, flat is depth 1 and they all sit in the bundle root
     (:class:`~molbuilder.paths.Shape`).  A described trial nests
     under its stage's directory, so the shape reaches it through the stage.
-    It is required: every surface reads it through :func:`shape_of`, and
-    ``None`` -- read as the hierarchy, for a ladder with no description --
-    stood here until 2026-10-06.
+    It is required: every surface reads it through :func:`shape_of`.
     """
     sh = shape
     refs = stage_refs(jobset)
@@ -377,12 +303,7 @@ def job_dir_names(jobset: JobSet, shape: "Shape") -> Dict[str, str]:
             # authority: "benchmark | bench/ inside the stage").  The
             # container is what gives the stage's bench state ONE home --
             # its trials, its own job-set.json, its verdict -- so two
-            # stages' benchmarks can never collide.  Until 2026-08-12 the
-            # trials sat directly in the stage; until 2026-08-13 this line
-            # spelled the flat container ``bench/`` itself, unqualified --
-            # exactly the two-flat-stages collision 2026-08-12 plan A5
-            # closed on the record side (final review A-1):
-            # bench_container is now the one spelling for both sides.
+            # stages' benchmarks can never collide.
             out[j.name] = trial_dir(sh, trial_token, j.name)
             continue
         raise ValueError(
@@ -415,13 +336,8 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
     positions, so a disabled stage leaves a gap rather than renumbering.
 
     **Total on purpose.** Every job gets a ref; one with no assigned ordinal
-    gets ``seq=None`` rather than being left out of the mapping. Omission was
-    the shape until 2026-08-10, and it pushed the same question — *what if
-    there is no ordinal?* — out to four callers, who answered it four different
-    ways: ``bench-<name>`` here, the row number in ``plan``, ``None`` in
-    ``runstatus``, and a whole second lookup-and-refusal branch in the CLI.
-    Two of those four printed a **position** where a reader reads an ordinal.
-    A total answer is what lets each caller read one and never test membership.
+    gets ``seq=None`` rather than being left out of the mapping, so each
+    caller reads one and never tests membership.
 
     ``seq=None`` is still never a guess: a sweep point has no order at all, and
     a ladder job whose deck carries no token has an ordinal nobody assigned
@@ -433,10 +349,9 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
     dependency edges, ``--stage-resources`` keys and the CLI all point at, so
     resolving to the other one would hand back a name this JobSet does not have.
     """
-    # NO kind branch (2026-08-12): the parse is anchored on the jobset's
-    # label, so a TRIAL's script (whose label is the coordinate-qualified
-    # one) never matches and gets seq=None -- the same answer the old
-    # ``if ladder`` guard produced, read off the deck instead of a field.
+    # NO kind branch: the parse is anchored on the jobset's label, so a
+    # TRIAL's script (whose label is the coordinate-qualified one) never
+    # matches and gets seq=None.
     out: Dict[str, StageRef] = {}
     for j in jobset.jobs:
         got = _rf_parse(os.path.basename(j.script), jobset.name)
@@ -479,11 +394,10 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
         # A TRIAL KEEPS ATTEMPTS EXACTLY AS A STAGE DOES, and the shape
         # decides (`project-layout.md` § 1.5a).  `trial_work_dir` is the
         # one answer to *where do this trial's files go*, and `prep` asks
-        # the same one -- when only this side knew, the package moved into
-        # `run-0` and the deck stayed in the container.
+        # the same one.
         d = base / dirs[job.name]
         if jobset.kind == "sweep":
-            d = trial_work_dir(d, sh)
+            d = trial_work_dir(d, sh, run_names(jobset, job, sh))
         plan.folder(d)
         created.append(d)
         if d.resolve() == base.resolve():
@@ -491,28 +405,16 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
             # bundle root, where every file it needs ALREADY SITS.  There is
             # nothing to link, and linking would DESTROY: `relink` unlinks the
             # existing entry first, and ``../<name>`` points outside the
-            # bundle.  Without this guard a flat prep replaced its own decks,
-            # wrappers and monitor with dangling symlinks to the parent
-            # directory -- found by M5 pass 1, 2026-08-10.
+            # bundle.
             #
             # The carry is skipped for the same reason and a second one: flat's
             # warm files are ONE SHARED SET at the root (§ 1), so the next
             # stage finds them lying there; there is no producer directory to
             # reach into.
             #
-            # EXCEPT THE PSEUDOPOTENTIALS, and the exception is this guard's
-            # own premise going stale (fixed 2026-09-11).  "Every file it
-            # needs already sits" held until `engines._pseudo_dir` began ADOPTING
-            # root `<El>.psml` into `pseudos/` (2026-08-28, 08656f2c) -- which
-            # in flat is the run directory being emptied of the one input
-            # SIESTA cannot look for anywhere else ("it opens
-            # `<element>.psml` in the directory it runs from and has no search
-            # path").  `project-layout.md` § 2241 says each run directory
-            # receives its own copies and `_pseudo_dir`'s own docstring says
-            # the run directories are untouched by it; in flat both stopped
-            # being true, so every flat SIESTA prep since that date rendered a
-            # deck that dies in `initatom` with "Pseudopotential file not
-            # found".  Hierarchical never reached this branch and never broke.
+            # EXCEPT THE PSEUDOPOTENTIALS: they live in `pseudos/`, and SIESTA
+            # opens `<element>.psml` in the directory it runs from and has no
+            # search path.
             for _ps in plan.glob(base / PSEUDO_DIRNAME, "*.psml"):
                 _dst = d / _ps.name
                 if not plan.is_file(_dst):
@@ -520,26 +422,18 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
             continue
         # The static package arrives as REAL COPIES (user, 2026-08-24;
         # `project-layout.md` § 1.0: the run directory "holds everything",
-        # and a symlink holds nothing).  These were relative symlinks to
-        # root copies, which is how a ten-trial sweep came to keep its 50
-        # rendered files at the bundle root with directories full of
-        # pointers.  The deck is NOT in this list any more: it is born in
-        # the directory (`prep_calculation` / step 1's adoption), so
-        # there is no root copy to reach for.
+        # and a symlink holds nothing).  The deck is not in this list: it is
+        # born in the directory, so there is no root copy to reach for.
         for fname in list(jobset.shared):
             src = base / fname
             dst = d / os.path.basename(fname)
             if not plan.is_file(src):
                 continue          # prep's own missing-input gates report it
-            if dst.is_symlink():
-                plan.remove(dst)  # a pre-2026-08-24 bundle's link, replaced
             if not plan.is_file(dst):
                 plan.copy(src, dst)
-        # NOTHING ELSE IS LINKED IN.  A second loop here laid the `Carry`
-        # symlinks -- into a producer's directory, before the producer had
-        # run, so they dangled by design.  Deleted 2026-08-10 with `Carry`
-        # itself: what a stage continues from is a real file COPIED by
-        # `prepare_attempt` from the attempt you name (project-layout.md 1.6).
+        # NOTHING ELSE IS LINKED IN: what a stage continues from is a real
+        # file COPIED by `prepare_attempt` from the attempt you name
+        # (project-layout.md 1.6).
     if own:
         plan.carry_out()
     return created
@@ -550,22 +444,24 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
 # --------------------------------------------------------------------- #
 
 
-def launch_record_at(kind: str, job, container: Path,
-                     attempt: Optional[Path]) -> Tuple[Path, Optional[str]]:
-    """``(where, basename)`` -- where a job's launch is recorded
-    (`project-layout.md` § 1.6.3), for :func:`runrecord.launch_record_path`,
-    :func:`runrecord.launch_record`, :func:`runrecord.write_launch` and every reader: the
-    attempt's ``run.json`` when there is an attempt; a sweep trial's own, at
-    the trial's top; a flat stage's ``<basename>.run.json`` in the
-    calculation's directory, which every stage shares -- ``basename`` its
-    deck's stem.  ONE answer: the writer and three readers each spelled it
-    until 2026-10-01, and the one that did not take the flat case relaunched
-    a flat stage still in the queue (W52)."""
-    if attempt is not None:
-        return Path(attempt), None
-    if kind == "sweep":
-        return Path(container), None
-    return Path(container), Path(job.script).stem
+def run_names(jobset: JobSet, job, shape: "Shape") -> "RunNames":
+    """THE NAMES OF ``job``'S FILES -- its stage's, in the calculation's
+    shape (`runfiles.RunNames`, `job-contracts.md` § 2.2a): a benchmark
+    trial's on its own label (`paths.trial_label`) and in its own folder, a
+    ladder stage's on the calculation's, sharing the calculation's folder
+    in the flat shape.  The stage is the one its deck's name carries, read
+    back through the grammar.  ONE answer, asked by prep, launch and status
+    alike: a run's record lies in its folder, and its name is the names'."""
+    from ..paths import trial_label
+    from ..runfiles import RunNames, parse
+    trial = jobset.kind == "sweep"
+    label = trial_label(jobset.name, job.name) if trial else jobset.name
+    rec = parse(Path(job.script).name, label)
+    if rec is None or rec.stage is None:
+        raise ValueError(
+            f"job {job.name!r}: its deck {job.script!r} is not named on "
+            f"{label!r} with a stage (`runfiles.compose`)")
+    return RunNames.of(label, rec.stage, shape.name, trial=trial)
 
 
 def latest_attempt(stage_dir: Path) -> Optional[Path]:
@@ -579,9 +475,7 @@ def latest_attempt(stage_dir: Path) -> Optional[Path]:
     § 1.5 says is untouched and *"is a run"* in its own right.
 
     This is a layout question, so it is answered in the layout layer rather
-    than by each observer working out where to look. ``runstatus`` globbed the
-    container until 2026-08-10 and therefore reported a finished hierarchical
-    stage as *"prepped, not launched"* — forever.
+    than by each observer working out where to look.
     """
     ns = attempts_in(stage_dir)
     return attempt_dir(stage_dir, ns[-1]) if ns else None
@@ -593,21 +487,7 @@ def run_dir(container: Path) -> Path:
 
     THE OTHER HALF OF :func:`latest_attempt`, which answers *is there an
     attempt* and is right to return ``None`` for flat.  Almost every caller
-    wants *where do I look*, and each was writing the fallback itself:
-    ``latest_attempt(d) or d`` in two places, ``attempt or d`` in a third,
-    ``att if att is not None else container`` in a fourth.  Five spellings
-    of one rule, in four files.
-
-    That is the shape the 2026-08-30 failure came in.  When § 1.5a gave
-    sweep trials attempts (2026-08-27), the observers that spelled the rule
-    were migrated and the two places in `submit` that had quietly composed a
-    CONTAINER path instead were not: the grouped bench then ``cd``ed a level
-    above its wrapper (every trial rc=127, Sol job 62372574) and wrote
-    ``run.json`` where nothing read it (every re-launch re-submitted).
-
-    `latest_attempt` already says the principle -- *"this is a layout
-    question, so it is answered in the layout layer rather than by each
-    observer working out where to look"*.  It was answering half of it.
+    wants *where do I look*, and this answers it in the layout layer.
 
     Keep using `latest_attempt` where ``None`` is the ANSWER (has this been
     prepared at all?); use this where a path is wanted.
@@ -622,55 +502,37 @@ def run_dir(container: Path) -> Path:
     return latest_attempt(container) or Path(container)
 
 
-# `stage_stdout` -- the newest of a stage's engine outputs in a folder --
-# stood here until 2026-10-04.  It is the run's, `runs.Run.stdout`, asked of
-# the run door (plan B11, W56 3b.4).
-
-
-def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
+def resolve_attempt(stage_dir: Path, names: "RunNames") -> Tuple[Path, bool]:
     """The attempt directory to prepare into, and whether it is a fresh one.
 
     The last attempt is REUSED when it has not been launched -- the one prep
     opened, which `launch` then runs -- and a new one is opened only when the
     last has: what a launch of a stage again opens (`job-system.md` § 5.4).
     That makes the numbering mean something: every ``run-<n>`` on disk but
-    the newest was actually started.  *(It quoted § 1.6's "preparing again is
-    safe until the run has been launched" until 2026-10-05; a stage has been
-    prepped once since 2026-10-02.)*
+    the newest was actually started.  ``names`` are the stage's
+    (:func:`run_names`), which name its launch record.
     """
     existing = attempts_in(stage_dir)
     if existing:
         last = attempt_dir(stage_dir, existing[-1])
         try:
-            launched = runrecord.launch_record(last) is not None
+            launched = runrecord.launch_record(last, names) is not None
         except runrecord.LaunchRecordError as e:
             from .errors import PrepError
             raise PrepError(str(e)) from e
         if not launched:
             return last, False
         return attempt_dir(stage_dir, existing[-1] + 1), True
-    return Path(stage_dir) / "run-0", True
+    return attempt_dir(stage_dir, FIRST_ATTEMPT), True
 
 
 @dataclass(frozen=True)
 class Attempt:
     """One try at a stage: the directory, and what was put in it.
 
-    **§ 9.4's fourth value object, and the author's own smell.**
-    :func:`prepare_attempt` returned a ``Dict[str, object]`` when it landed on
-    2026-08-10 — *"a bag the CLI unpacks by string key"* — so every surface
-    spelled ``rep["continued_from"]`` and a typo was a ``KeyError`` at best and
-    a silent ``None`` at worst. The dict was noticed while being written and
-    shipped anyway, which is the argument for naming the habit rather than the
-    instance.
-
     ``fresh`` is False when an unlaunched attempt was **reused** rather than
-    opened — § 1.6's *"preparing again is safe until the run has been
-    launched"*, which is what keeps a changed mind from leaking empty
-    directories. ``continued_from`` is **None** when this run starts from the
-    structure, and that is a different claim from *"continued from nothing"*
-    (`checkpointing.md` S3), which is why `run.json` omits the key entirely
-    rather than writing null.
+    opened (:func:`resolve_attempt`). ``continued_from`` is **None** when
+    this run starts from the structure.
     """
     stage:          str
     dir:            Path
@@ -686,7 +548,7 @@ class Attempt:
 #: to a caller that asks it anyway.
 FLAT_HAS_NO_ATTEMPTS = (
     "this calculation's shape is 'flat', which has no attempt directories "
-    "to open: runs are told apart by the wrapper's output index "
+    "to open: each run carries the number launch gives it "
     "(<label>_<NN>_<name>-run<N>.out) and every stage reads the files the "
     "stage before it left in the one folder (project-layout.md § 1) -- so "
     "there is no run to name with --from, and none to skip with --cold.")
@@ -699,10 +561,6 @@ def mark_run(base, run_dir, plan) -> None:
     them, the moment it does: a stage's attempt (:func:`prepare_attempt`,
     a bias point's included) and a benchmark trial's folder (`prep`).  The
     root says itself, through its description, and gets no record.
-
-    *(Only a stage's attempt was marked until 2026-10-04: a trial's
-    folders carried nothing, so the run door could not tell a trial was a
-    run of ours -- plan W56 3b.4.)*
 
     ``plan`` receives the stamps, as :func:`materialize`'s copies."""
     base, run_dir = Path(base), Path(run_dir)
@@ -764,10 +622,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
 
     ``stage_name`` goes through the ONE resolver, so it takes a name, a number
     or a token — the same three spellings every other surface takes, and the
-    same refusal when it matches none of them. It spelled its own lookup and
-    its own refusal until 2026-08-10, listing *"coarse, medium, tight"* with no
-    order at the one moment you are choosing which stage to run. That is the
-    gap decision 28 names, and a second listing format is how it comes back.
+    same refusal when it matches none of them.
     """
     base = Path(base_dir)
     sh = shape if shape is not None else shape_of(jobset, base_dir)
@@ -779,11 +634,8 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                                    stage_name).name
     job = next(j for j in jobset.jobs if j.name == stage_name)
 
-    # WHAT IT CONTINUES FROM, CHECKED BEFORE ANYTHING IS WRITTEN (W52).  The
-    # attempt was opened and filled, and an earlier carry undone, before
-    # these refusals until 2026-10-01 -- so a mistyped --from stripped an
-    # attempt prepared a moment ago, and a re-launch that could not continue
-    # left a fresh attempt behind it.
+    # WHAT IT CONTINUES FROM, CHECKED BEFORE ANYTHING IS WRITTEN (W52), so a
+    # refusal leaves no attempt opened or stripped.
     names: List[str] = (
         continuation_files(jobset, base, stage_name, continue_from,
                            named=named, carry=carry, shape=sh)
@@ -794,14 +646,15 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # (``04_device/v0.2/run-<n>``; archive/2026-09-01-transport-design.md § 4.3, layout
     # ruled 2026-08-29), and the point's directory already holds its own
     # deck + wrapper, so everything below reads it exactly like the
-    # stage's own directory.  Default: the job's own, as ever.
+    # stage's own directory.  Default: the job's own.
     from .planned import Plan
     own = plan is None
     plan = Plan() if own else plan
     stage_dir = (Path(container) if container is not None
                  else base / dir_of[stage_name])
     plan.folder(stage_dir)
-    attempt, is_new = resolve_attempt(stage_dir)
+    rn = run_names(jobset, job, sh)
+    attempt, is_new = resolve_attempt(stage_dir, rn)
     plan.folder(attempt)
 
     # WHAT EACH OF THESE DIRECTORIES IS, said by the code that just made them
@@ -819,13 +672,10 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
 
     # Inputs: the deck, wrappers and shared package, COPIED in -- real
     # files, per L2 (roadmap 7.10; `project-layout.md` § 1.0: the run
-    # directory "holds everything").  These were relative symlinks up to
-    # the bundle root, laid with a computed prefix; since 2026-08-24 the
-    # rendered files are BORN in the stage directory, so the stage dir is
-    # the source and the root is only a legacy fallback (a bundle prepped
-    # before the layout repair).  Identical bytes for every attempt argued
-    # for links once; a synced-back bundle whose links dangled on the
-    # other machine is the argument that outranks it.
+    # directory "holds everything") -- copies, not links: a synced-back
+    # bundle's links would dangle on the other machine.  What prep renders
+    # is born in the stage directory; the calculation's shared files are at
+    # its root.
     brought: List[str] = []
 
     def _bring(fname: str) -> None:
@@ -833,12 +683,8 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
         dst = attempt / bn
         for src in (stage_dir / bn, base / fname, base / bn):
             if plan.is_file(src) and src.resolve() != dst.resolve():
-                # REFRESHED every time, exactly as the old relink was
-                # (unlink + relay): a REUSED unlaunched attempt must see
-                # the re-prep's deck, not the first prep's -- skip-if-
-                # exists here kept a stale ELPA-2STAGE deck under a
-                # re-prep whose pin said otherwise (caught by
-                # test_a_declared_pin_reaches_the_run_deck..., 2026-08-24).
+                # REFRESHED every time: a REUSED unlaunched attempt must
+                # see the prep's deck, not an earlier one's.
                 plan.copy(src, dst)
                 brought.append(bn)
                 return
@@ -857,8 +703,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                                                         job.finish)),
                   MAKOV_PAYNE_SCRIPT):
         _bring(extra)
-    stem = Path(job.script).stem
-    for wrapper in (f"{stem}.run.sh", f"{stem}.sbatch"):
+    for wrapper in (rn.name(".run.sh"), rn.name(".sbatch")):
         _bring(wrapper)
 
     # Re-preparing an attempt that was already carried into: UNDO the previous
@@ -871,11 +716,8 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # by hand is touched.
     #
     # ONLY WHEN THE CALLER SAYS WHAT IT NOW CONTINUES FROM -- a run, or
-    # ``cold``.  A caller that says neither changes nothing: prep's five
-    # steps opened the attempt that way and undid a carry a moment before its
-    # own refusal, which left an attempt prepared a minute ago stripped of
-    # what it was to start from (W52).
-    marker = runrecord.continued_from_marker(attempt)
+    # ``cold``.  A caller that says neither changes nothing.
+    marker = runrecord.continued_from_marker(attempt, rn, FIRST_ATTEMPT)
     if not is_new and plan.is_file(marker) and (cold or continue_from):
         # The WHOLE declared set, not the pair-filtered one: the previous prep
         # may have named a different source and so copied a conditional file
@@ -897,11 +739,13 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                 copied.append(name)
 
     # Leave the provenance where ``launch`` can find it: prep is what knows
-    # which attempt this one continues from, and submit writes run.json.  A
+    # which attempt this one continues from, and submit writes the launch
+    # record.  A
     # marker file beats threading the value through a launch argument that
     # every caller would have to remember to pass.
     if copied:
-        runrecord.write_continued_from(attempt, continue_from, plan=plan)
+        runrecord.write_continued_from(attempt, continue_from, names=rn,
+                                       run=FIRST_ATTEMPT, plan=plan)
     if own:
         plan.carry_out()
 
@@ -977,15 +821,6 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
     the name: :func:`job_dir_names` is asked, and a parent that matches no job
     simply has no answer — which :func:`warm_carry` then treats as *unverified*
     rather than guessing.
-
-    The parent, not the first path component (A-3, 2026-08-13): a STAGELESS
-    calculation's stage dir is ``.`` — its attempts sit at the root, so
-    ``--from run-0`` has ``run-0`` as its head and ``.`` as its parent.
-    Matching on the head could never equal ``.``, so continuing a stageless
-    calculation from its own attempt read as *unverified* and silently
-    withheld every conditional carry (``.CG``) — prep still reported
-    success.  ``Path("run-0").parent`` is ``"."``, exactly the naming
-    authority's answer for the `engines/stages.md` § 6.5 root job.
     """
     if not continue_from:
         return None

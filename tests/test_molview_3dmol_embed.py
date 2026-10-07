@@ -1,8 +1,7 @@
 """The sealed layer — every test derived from ``docs/web/molview.md``, never from
 the source it checks (§ 13).
 
-Step B of the rebuild (``docs/web/molview.md``). The rows of § 13.3
-guarded here:
+The rows of ``docs/web/molview.md`` § 13.3 guarded here:
 
     § 9.9  the sealed layer faces downward only
     § 9.8  the drawing commands answer nothing upward
@@ -531,9 +530,9 @@ def test_the_module_owns_no_file_route():
     module's. `exportFile()` returns bytes and stops there (§ 11.3: "neither has
     MolView writing a file").
 
-    Note what this does NOT ban: the network. § 11.1 says MolView calls three
-    routes, so a blanket ban on `fetch` would contradict the contract — see
-    ``test_the_module_calls_only_the_routes_named_in_the_contract``.
+    Note what this does NOT ban: the network. § 11.1 lists the routes MolView
+    calls, so a blanket ban on `fetch` would contradict the contract — see
+    ``test_the_module_calls_only_the_routes_the_contract_describes``.
     """
     offenders = {}
     for name, code in _module_code().items():
@@ -551,14 +550,10 @@ def test_the_module_owns_no_file_route():
 
 def test_the_module_calls_only_the_routes_the_contract_describes():
     """Every route the module reaches must be one the contract describes, so that
-    a fact leaving by an undescribed path is visible — which is how the file
-    route got in last time.
+    a fact leaving by an undescribed path is visible.
 
-    § 11.1's sentence says THREE: load a structure, perform one geometry edit,
-    resolve a cell. § 9.5 describes a fourth in prose — "filtering is a question
-    asked of the server, not a scan done here" — which that sentence omits. The
-    plan records the wording as an open item; this test counts what the module
-    actually reaches, so the gap is stated rather than papered over.
+    § 11.1 lists four: load a structure, perform one geometry edit, resolve a
+    cell, and the filter (§ 9.5).
 
     If a fifth appears, either the contract gained a route or the module grew
     one it should not have. Both are worth stopping for.
@@ -575,7 +570,7 @@ def test_the_module_calls_only_the_routes_the_contract_describes():
         "build/load",                # § 11.1 — load a structure
         "modify/",                   # § 11.1 — one geometry edit
         "structure/periodicity",     # § 11.1 — resolve a cell
-        "selection/eval",            # § 9.5  — the filter, omitted by § 11.1's count
+        "selection/eval",            # § 9.5  — the filter
     }, f"the module reaches a route the contract does not describe: {sorted(found)}"
 
 

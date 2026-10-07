@@ -76,7 +76,10 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
         "                                 freq_min_cm1=800.0)}))",
     ])
     (tmp_path / "w.py").write_text(script)
-    done = subprocess.run([sys.executable, "w.py"], cwd=tmp_path, env=env,
+    # ITS RUN'S NUMBER, as the run script hands every PySCF script it
+    # (`engines/pyscf.md` § 2): the head stops without one.
+    done = subprocess.run([sys.executable, "w.py", "--run", "0"],
+                          cwd=tmp_path, env=env,
                           capture_output=True, text=True, timeout=120)
     assert done.returncode == 0, (
         f"the PySCF bundle cannot be imported, or cannot write, without "

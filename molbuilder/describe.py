@@ -1,8 +1,8 @@
 """``describe`` — write the portable description, and nothing else.
 
 **Module:** L2. Imports ``task``, ``template``, ``identity`` and
-``validation.task``; imported by ``jobset/_cli`` and (later) by the web's
-describe route. It is **pure up to one function**: everything is built and
+``validation.task``; imported by ``jobset/_cli`` and ``jobset/materialize``.
+It is **pure up to one function**: everything is built and
 checked in memory, and :func:`write_description` is the only part that touches
 a disk.
 
@@ -38,9 +38,7 @@ WHY A DATA OBJECT AND THEN A WRITER, rather than one function that writes.  Two
 surfaces have to produce byte-identical descriptions — the terminal and the
 browser — and the browser writes through its own concealed file layer rather
 than through raw paths.  One producer, two writers, is the shape
-``job-system.md`` § 4.1 calls Promotion A.  (``StageBundle`` was its other
-instance; that producer lost its last caller when the old surface went,
-2026-08-11, and folds away with `bench` — plan step 6.)
+``job-system.md`` § 4.1 calls Promotion A.
 """
 from __future__ import annotations
 
@@ -74,8 +72,7 @@ class Description:
     (``task.structure.source`` names it; no bytes here) — but
     :func:`write_description` does lay a travelling copy down beside the
     description (the ``.source`` pair), so the folder runs anywhere without
-    the original tree.  An earlier wording claimed "referenced rather than
-    copied" of the folder too, which the writer's own comment contradicts.
+    the original tree.
     """
     task: Task
     template: str
@@ -237,20 +234,15 @@ def write_description(desc: Description, dest, *,
     # makes (`StructureCodec.source_files`), and the written ``task.json``
     # records the name that call gave (`job-contracts.md` § 6.3): identities
     # are validated dot-free, so no engine output -- which stems every file
-    # on an identity -- can ever take a dotted name.  Before the mark, a flat
-    # run whose label matched the structure's stem overwrote its own input
-    # (WriteCoorXmol writes ``<SystemLabel>.xyz``; found 2026-08-19).
+    # on an identity -- can ever take a dotted name.  Without the mark, a run
+    # whose label matched the structure's stem would overwrite its own input
+    # (WriteCoorXmol writes ``<SystemLabel>.xyz``).
     #
     # NAMED FOR THE LABEL, never for the structure file *(plan D20,
-    # 2026-10-04)*.  This named the pair ``<file stem>.source<suffix>`` --
-    # ``h2.source.xyz`` beside the label ``H2`` -- while the hand-over, the
-    # catalogue and the Task setup card all named the label's, and a ``.pdb``
-    # source was recorded as ``x.source.pdb`` beside a pair written as
-    # ``x.source.pdb.xyz``.  And WHICH BYTES travel is the codec's, always:
-    # describe can MODIFY the structure it was handed (``--vacuum``), whose
-    # facts live in metadata a bare copy has nowhere to put (2026-08-12); the
-    # raw copy kept for an unmodified one was a second way to write one file.
-    # The original path stays the locator; what lands in the folder is the
+    # 2026-10-04)*, as the hand-over, the catalogue and the Task setup card
+    # name it.  And WHICH BYTES travel is the codec's, always: describe can
+    # MODIFY the structure it was handed (``--vacuum``), whose facts live in
+    # metadata a bare copy has nowhere to put.  The original path stays the locator; what lands in the folder is the
     # description's own, self-contained reference.
     src = (Path(desc.task.structure.source).expanduser()
            if desc.task.structure.source else None)
@@ -270,12 +262,11 @@ def write_description(desc: Description, dest, *,
     try:
         for filename, text in desc.files().items():
             (staging / filename).write_text(text, encoding="utf-8")
-        # The STRUCTURE travels with the calculation (found by M9's walk,
-        # 2026-08-12): the description records a reference plus a witness
-        # (stages.md § 6.3), and `prep` looks "beside the calculation
-        # FIRST" -- but nothing made that true.  A relative source recorded
-        # from another cwd was unresolvable the moment you stood inside the
-        # folder.  Written like the pseudos: the file is the calculation's
+        # The STRUCTURE travels with the calculation: the description records
+        # a reference plus a witness (stages.md § 6.3), and `prep` looks
+        # "beside the calculation FIRST" -- a relative source recorded from
+        # another cwd would be unresolvable from inside the folder.  Written
+        # like the pseudos: the file is the calculation's
         # data, the PATH stays this machine's.
         for path, data in pair:
             (staging / path.name).write_bytes(data)
@@ -283,12 +274,8 @@ def write_description(desc: Description, dest, *,
             from .siesta.input import copy_pseudopotentials
             from .pseudos import describe_psml_anchor, resolve_psml_lib
             # THE SAME ANCHOR RULE AS EVERY OTHER SURFACE (job-contracts.md
-            # § 2.5a).  This was a bare `Path(psml_lib).expanduser()` until
-            # 2026-08-21 -- a fourth rule, and the crudest of them: every
-            # relative spelling meant "from the working directory", so
-            # `--psml-lib pseudopotential` worked or failed depending on
-            # where the user happened to stand, and the bare name that means
-            # the tree everywhere else meant something different here.
+            # § 2.5a): the bare name that means the tree everywhere else means
+            # it here too.
             #
             # The anchor is `out_dir`, not `staging`: the calculation is the
             # folder being described, and staging is a transaction detail

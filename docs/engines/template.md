@@ -174,14 +174,14 @@ The template is a **floor 2 — description** object
   this rule was written against — a hand-edited `mpi_np` once passed and a deck
   rendered for a rank count the allocation never granted. Declaring the question
   is portable; answering it on the wrong machine is not.
-- **But a parameter molbuilder can *propose* a value for is still an item.**
+- **But a parameter a person may set is still an item.**
   `BlockSize` is the case that makes the distinction sharp: a rank count's VALUE
   is a machine fact, while `BlockSize` is an ordinary SIESTA keyword
   a person may set, benchmark, or leave to the engine
   ([`tuning.md § 2.11`](?doc=engines/tuning.md)). It is an item with **no
   `value`** until somebody supplies one — which is exactly what *"a missing
-  `value` means explicitly unset"* (§ 3) is for. `prep` fills an unset one from
-  the resolved machine; it never overwrites a set one.
+  `value` means explicitly unset"* (§ 3) is for. `prep` writes a set one
+  verbatim and leaves an unset one to the engine.
 
   > **Corrected 2026-08-11 (user).** This bullet read *"a value derived from a
   > machine fact is not an item either — `BlockSize` is computed from the rank
@@ -453,7 +453,7 @@ engines     = ["siesta"]                # REQUIRED — which engines this
 | key | required when |
 |---|---|
 | `anchor` | `kind = "engine"` — an engine item that names no keyword cannot reach the deck |
-| `value` | **when the item has been answered.** Its absence is a real state — *explicitly unset* — distinct from the default and from an absent key elsewhere. It was listed as unconditionally required until 2026-08-13, which read as though a valueless item were malformed; § 6.4 makes valueless the **normal** state for anything resolved at `prep` (memory, `block_size`, rank count, threads) |
+| `value` | **when the item has been answered.** Its absence is a real state — *explicitly unset* — distinct from the default and from an absent key elsewhere. It was listed as unconditionally required until 2026-08-13, which read as though a valueless item were malformed; § 6.4 makes valueless the **normal** state for anything answered after the description is written (`block_size`, rank count, threads, memory) |
 | `allocation` | when the **scheduler** answers this item, not a person — § 6.4. It is what makes a `value` on the item a refusal rather than a choice |
 | `citation` | **which calculation KINDS have this item answered by a cited run** rather than by a person — § 6.4's sibling, ruled 2026-09-15. A list, like `calculations`, and absence means *never* |
 | `shared` | **which calculation KINDS this item binds every rung of** — a scope, not an answerer (`engines/transport.md` § 3.8.6, decided 2026-09-24). A list, like `calculations`; absence means *any rung may own it*. Every `citation` row is shared; the marker exists because the shared set is larger than the cited one |
@@ -884,10 +884,8 @@ the engine matches is what found them.
 
 > **Deprecated is a different question from renamed, and the manual says
 > which.** A keyword the manual marks with `\fdfdeprecates` is one SIESTA
-> intends to stop reading — those four were migrated on 2026-08-15
-> (`MD.NumCGsteps` → `MD.Steps`, `MD.MaxCGDispl` → `MD.MaxDispl`,
-> `DM.MixingWeight` → `SCF.Mixer.Weight`, `DM.NumberPulay` →
-> `SCF.Mixer.History`). A keyword the manual merely cross-indexes under a newer
+> intends to stop reading, so the deck writes the keyword that replaces it. A
+> keyword the manual merely cross-indexes under a newer
 > name (`DM.Tolerance` under `SCF.DM.Tolerance`, `DM.EnergyTolerance` under
 > `SCF.FreeE.Tolerance`) is a living alias, and migrating it would be churn
 > with a behaviour risk and no gain. **The rule is the manual's own marking, not
@@ -1631,12 +1629,12 @@ count on a transport rung, which TranSIESTA cannot hold.
 
 **Presence declares the parameter; a value answers it.** An item with no `value`
 says *this calculation has such a parameter and nobody has chosen yet* — and a
-later step in the workflow fills it. This is the `BlockSize` pattern (§ 12),
-generalised.
+later step in the workflow fills it, or the engine's own default applies. This is
+the `BlockSize` pattern (§ 12), generalised.
 
 | state | means | who acts |
 |---|---|---|
-| no `value` | declared, unresolved | a surface asks for it, or `prep` proposes one |
+| no `value` | declared, unresolved | a surface asks for it, or the engine's own default applies |
 | `value` set | chosen | honoured verbatim, everywhere |
 | absent from the file | not a parameter of this calculation | nobody; the engine's own default applies |
 
@@ -1881,13 +1879,13 @@ help       = "How many MPI ranks to run with."
 | `allocation = true` | ranks, threads, memory — **stated for the run, not the template** | the run states its ranks and threads — on its run card or as a prep flag — or prep refuses the run (`architecture.md` § 5.2); a memory cap left unset is no cap -- a PySCF deck writes `max_memory = None`, which PySCF reads as not given, keeping its own setting (`PYSCF_MAX_MEMORY`, else 4000 MB); the vibration deck wrote 4000 for the blank until 2026-10-06. Nothing fills one *(prep filled them from what the machine granted until 2026-10-02)* | **no.** A reader refuses one (§ 2, G1) |
 | `optional = true`, no value | *unset is a legal answer* | the engine's own default, or `prep` proposes | yes |
 
-**Three items carry it** — `mpi_np`, `omp_threads`, `max_memory_mb` — and
+**Five items carry it** — `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads` — and
 `select(t, allocation=True)` is the one way to ask which. Nothing hand-lists
 them: not the deck writer, not the web form, not `prep`.
 
 **`block_size` is the case that shows why one flag is enough.** The scheduler
-does not grant it: a benchmark measures it and `prep` realigns it against the
-GPU target, so its item may legitimately carry a value. It says that by being
+does not grant it: the person sets it, or a benchmark measures it, so its item
+may legitimately carry a value. It says that by being
 **unflagged and `optional` with no value** — no extra key, no second name.
 
 > ### ⛔ The `resolver` registry is RETIRED — deleted 2026-08-17
@@ -2579,7 +2577,7 @@ flowchart LR
       W["<b>label</b> + (<b>engine_key</b>) + value + <b>unit</b><br/>checked against <b>range</b>"]
     end
 
-    subgraph S3["the DECK · siesta.render_fdf"]
+    subgraph S3["the DECK · siesta.input.spec_for → script_emit.render_deck"]
       D["<b>anchor</b> + value + <b>unit</b>"]
     end
 
@@ -2683,15 +2681,12 @@ someone will "simplify" away.
 >
 > **Both are needed and each is wrong alone**, which is the lesson of the second
 > and third rules below. To re-derive the deprecation list after a version bump:
-> `grep -rhoP '\\fdfdeprecates\{[^}]+\}' <siesta>/Docs/tex` — that is exactly
-> how the five we were emitting were found.
+> `grep -rhoP '\\fdfdeprecates\{[^}]+\}' <siesta>/Docs/tex`.
 
-**The manual is a source the code is not.** SIESTA's parser accepts
-`MD.NumCGsteps`, `DM.MixingWeight`, `MD.MaxCGDispl` and `SpinPolarized`
-happily — they are *deprecated*, and deprecation is a fact only the manual
-carries (`\fdfdeprecates`). Reading code alone found nothing; grepping that
-one macro over the manual found five keywords we were writing (2026-08-15).
-**Check emissions against the manual, not against whether the run succeeds.**
+**The manual is a source the code is not.** SIESTA's parser accepts a
+deprecated keyword happily — deprecation is a fact only the manual carries
+(`\fdfdeprecates`). **Check emissions against the manual, not against whether
+the run succeeds.**
 
 **But the manual is not the operative spelling.** After aligning seven keywords
 to the manual's typography, a binary-in-the-loop test failed: SIESTA queries
@@ -2893,17 +2888,13 @@ description.
 - ~~**A parameter whose default is *derived* rather than literal.**~~
   **Answered 2026-08-11 (user): it is an ordinary item with no `value`.**
   `BlockSize` was the example and it is now the pattern. A surface shows the item,
-  its `type = "pow2"` and its guidance; an empty `value` reads as *nobody has
-  chosen, so `prep` will propose one*; a value the user or a benchmark supplies is
-  honoured verbatim. That satisfies the 2026-08-07 rule unchanged — **an explicit
-  user setting is honoured; otherwise the value is derived at `prep`, where both
-  are available** — and it adds the third state the earlier framing could not
-  express: *omit the keyword and let the engine use its own default*
-  ([`tuning.md § 2.11`](?doc=engines/tuning.md)).
+  its `type = "int"` and its guidance; an empty `value` means *omit the keyword
+  and let the engine use its own default*; a value the user or a benchmark
+  supplies is written verbatim ([`tuning.md § 2.11`](?doc=engines/tuning.md)).
 
   ```toml
-  # NOT `allocation`: the scheduler does not grant a block size.  A
-  # benchmark measures it and `prep` realigns it against the GPU target, so
+  # NOT `allocation`: the scheduler does not grant a block size.  The
+  # person sets it or a benchmark measures it, so
   # this item may legitimately carry a value -- which is exactly what being
   # unflagged, `optional`, and valueless already says (§ 6.4).
   [item.block_size]
@@ -2921,14 +2912,10 @@ description.
   number, that number is written verbatim.  Guidance if you set one by hand:
   powers of two (16, 32, 64, 128), smaller for few orbitals, larger for
   thousands, under n_orbitals / ranks.  With ELPA on the GPU the block must be a
-  power of two or ELPA silently falls back to the CPU -- `prep` realigns it
-  there (tuning.md 2.11)."""
+  power of two or ELPA silently falls back to the CPU (tuning.md 2.11)."""
   ```
   *(The `help` above is abridged from the catalogue's own, which is longer and
-  is the text a user actually reads. It said "leave unset and prep proposes one"
-  until 2026-08-16 — the state retired on 2026-08-15. The comment above said
-  "there is no item called `block_size`" directly over `[item.block_size]`
-  until 2026-08-17.)*
+  is the text a user actually reads.)*
 
 ### 12.1 What this contract describes and the code does not do yet
 

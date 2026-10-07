@@ -1,22 +1,11 @@
 """The one process line for the cell — resolve once, check once.
 
 Contract: docs/model/structure-periodicity.md § 6.0 (where the atoms sit),
-§ 6.1a (both matrices) and docs/archive/2026-08-20-cell-plan.md § 6a.
+§ 6.1a (both matrices).
 
-WHAT THIS MODULE REPLACED, because it is what these tests are really guarding.
-Before 2026-08-03 the same box was judged in several places at once:
-
-  * "this box has no volume" was decided in FOUR places at TWO thresholds
-    (structure.py 1e-8, the gate 1e-8, the gate's reset path 1e-6, the emitter
-    1e-6) by THREE mechanisms (raise / notice / raise);
-  * findings travelled as gate ``notices`` AND as validator ``Issue``s, two
-    vocabularies for one subject, so the Cell page and the Generate panel could
-    disagree;
-  * notices carried no id, so tests matched on message prose -- which fails on a
-    reworded sentence and PASSES on a deleted check.
-
-So the tests below assert on ``where``, never on wording, and the central
-property they pin is ONE FINDING PER CAUSE: a broken box must not arrive wearing
+The tests below assert on ``where``, never on wording -- a match on message
+prose fails on a reworded sentence and PASSES on a deleted check -- and the
+central property they pin is ONE FINDING PER CAUSE: a broken box must not arrive wearing
 three different names.
 """
 from __future__ import annotations
@@ -79,8 +68,8 @@ class TestWhatSetsTheBox:
     def test_the_default_gap_does_not_depend_on_the_molecule_s_size(self):
         """3 Å is a vacuum DISTANCE, not a minimum box length (user, 2026-08-03).
 
-        The rule this replaced asked "is the box under 3 Å?", so a large
-        molecule -- whose box already exceeded 3 Å -- was given NO gap at all.
+        A rule asking "is the box under 3 Å?" would give a large molecule --
+        whose box already exceeds 3 Å -- NO gap at all.
         """
         big = Structure(elements=["H", "H"],
                         positions=np.array([[0.0, 0, 0], [20.0, 20.0, 20.0]]))
@@ -129,8 +118,8 @@ class TestWhatIsChecked:
 
     def test_an_ignored_vacuum_is_disclosed(self):
         """§ 3c: the sentence saying why a number you typed stopped mattering
-        used to be emitted only ``if not conditions`` -- dropped exactly when
-        the box ALSO had a problem, which is when you most needed it."""
+        is said even when the box ALSO has a problem, which is when you most
+        need it."""
         found = _by_id(_mol(cell=np.eye(3) * 30, vacuum=(5.0,) * 3,
                             axis_kind=ISOLATED),
                        "cell.vacuum_ignored")
@@ -211,13 +200,11 @@ class TestWhatIsChecked:
 class TestOneFindingPerCause:
     """A broken box must not arrive wearing three names.
 
-    Each of these WAS a double- or triple-report before the checker was one
-    thing, and each duplicate sends the user to fix something that is not the
-    problem.
+    Each duplicate sends the user to fix something that is not the problem.
     """
 
     def test_a_zero_volume_box_is_not_also_left_handed(self):
-        """det == 0 fails ``det > 0``, so a FLAT cell used to be reported as a
+        """det == 0 fails ``det > 0``, so a FLAT cell could be reported as a
         HANDEDNESS problem -- and "swap two lattice vectors" is useless advice
         for a molecule with no thickness."""
         got = _wheres(_mol(vacuum=(5.0, 5.0, 0.0)))
@@ -249,44 +236,6 @@ class TestOneFindingPerCause:
 class TestOneThreshold:
     """Every site that asks "does this box have a volume?" asks it the same way."""
 
-    def test_both_readers_move_when_the_one_threshold_moves(self, monkeypatch):
-        """SCIENCE. `structure.py` and the SIESTA emitter must refuse the same
-        boxes -- they carried their own literals once and disagreed, 1e-8
-        against 1e-6, so a cell one accepted the other rejected.
-
-        MOVE THE DEFINITION AND WATCH BOTH FOLLOW.  That catches a restored
-        literal AND an import-time snapshot (a module-level `from cell import
-        ZERO_VOLUME_TOL` binds once and would not move), and it survives a
-        rename.
-
-        This replaced `assert "ZERO_VOLUME_TOL" in inspect.getsource(mod)` --
-        a grep for a NAME, which passed if the name merely survived in a
-        comment beside a restored literal, and failed on a correct rename
-        (`testing.md` § 3a: assert the end product, never the source).
-
-        THE TWO READERS CHANGED, THE PROPERTY DID NOT (2026-09-21).  The
-        third was `Structure.__post_init__`, which refused a singular cell
-        outright until § 8.2 was applied to it -- a structure must be able to
-        HOLD an unusable box, or the Cell page cannot show one to fix.  The
-        checker and the emitter are the two that still refuse, and they are
-        the two that must agree.
-        """
-        import numpy as np
-        from molbuilder.structure import Structure
-        from molbuilder.siesta.input import spec_for
-        from molbuilder.config.siesta import SiestaConfig
-
-        cell = np.diag([1e-1, 1e-1, 1e-1])          # det = 1e-3
-        s = Structure(elements=["C"], positions=np.zeros((1, 3)), cell=cell)
-        assert cellmod.resolve(s).has_volume         # both accept it today
-        spec_for(s, SiestaConfig())
-
-        monkeypatch.setattr(cellmod, "ZERO_VOLUME_TOL", 1e-2)
-        assert not cellmod.resolve(s).has_volume
-        assert [i.where for i in cellmod.resolve_and_check(s)[1]] \
-            == ["cell.no_volume"]
-        with pytest.raises(ValueError):
-            spec_for(s, SiestaConfig())
 
     def test_the_resolver_and_the_checker_agree_on_the_boundary(self):
         """``has_volume`` is the ONE answer; nothing recomputes a determinant."""
@@ -355,17 +304,8 @@ class TestTwoVerdictsOneChecker:
         (`molview/ui.js`, `n.about === subject`), so a notice whose subject
         disagrees with its id is one the user never sees.
 
-        `about` was a stored fourth key until 2026-09-09 and equalled
-        `where.split(".")[0]` in every case the tree produces -- two homes for
-        one fact.  It is derived now, and this asserts the DERIVATION rather
-        than the key set: the shape is structural (one writer,
-        `periodicity_gate._wire`), the agreement was not.
-
-        The test this replaces asserted `set(n) == {four names}` and
-        `n["about"] == "cell"` on cell notices only -- so hardcoding
-        `about: "cell"` passed the whole suite, and the `append` and `slab`
-        notices had nothing watching them at all (measured by mutation,
-        2026-09-09).
+        `about` is derived from `where` (one writer, `periodicity_gate._wire`),
+        and this asserts the DERIVATION, for every subject -- not only `cell`.
         """
         from molbuilder.periodicity_gate import _notice, notices_for_report
         _rc, issues = cellmod.resolve_and_check(_mol())
@@ -374,8 +314,7 @@ class TestTwoVerdictsOneChecker:
         for n in wired:
             assert n["about"] == n["where"].split(".")[0]
 
-        # And for the subjects that are NOT cell, which is where the old test
-        # was blind.
+        # And for the subjects that are NOT cell.
         for where, subject in (("append.merge", "append"),
                                ("slab.seam_ok", "slab"),
                                ("cell.no_volume", "cell")):
@@ -418,11 +357,10 @@ class TestNothingIsWrittenBack:
 # ===================================================================== #
 #  A layered slab's own periodic repeat                                 #
 #                                                                       #
-#  Contract: docs/science/junction-cell.md.  These moved here from      #
-#  tests/test_transport_wizard.py when the derivation moved out of the  #
-#  electrode wizard: the junction builder needs the same number, and    #
-#  two copies of "how long is the box" is exactly the disagreement the  #
-#  rest of this module exists to prevent.                               #
+#  Contract: docs/science/junction-cell.md.  The junction builder and   #
+#  the electrode wizard need the same number, and two copies of "how    #
+#  long is the box" is exactly the disagreement the rest of this module #
+#  exists to prevent.                                                   #
 # ===================================================================== #
 
 def test_detect_layers_groups_by_z():
@@ -447,12 +385,9 @@ def test_bulk_z_period_refuses_layers_that_are_not_evenly_spaced():
     """A lead is frozen bulk, so its spacings are the one the slab was
     built with — and a block where they are not is refused, not averaged.
 
-    REPLACED `test_bulk_z_period_uses_the_median_not_the_mean` on
-    2026-09-20 (user ruling: "that single value should be the space we
-    use... only checking of a single value").  That test asserted the
-    median ignores a 3.00 A outlier among 2.35 A layers, which is exactly
-    the case this refuses: an outlier inside an electrode region means the
-    region was mislabelled or was never frozen, and smoothing it over
+    (user ruling, 2026-09-20: "that single value should be the space we
+    use... only checking of a single value").  An outlier inside an
+    electrode region means the region was mislabelled or was never frozen, and smoothing it over
     hands back a plausible period for a lead that is not bulk.
     """
     with pytest.raises(ValueError) as e:
@@ -465,10 +400,10 @@ def test_bulk_z_period_refuses_layers_that_are_not_evenly_spaced():
 
 
 def test_bulk_z_period_refuses_a_three_layer_block_the_median_could_not_judge():
-    """THE CASE THE OLD RULE COULD NOT SEE.  With only two spacings,
-    `median` is the mean of both, so the outlier moved the answer instead
-    of being rejected by it: [0, 2.35, 5.35] gave d = 2.675 and a seam
-    0.33 A too wide, silently.  A spread check has no such floor."""
+    """With only two spacings a `median` is the mean of both, so the
+    outlier would move the answer instead of being rejected by it:
+    [0, 2.35, 5.35] would give d = 2.675 and a seam 0.33 A too wide,
+    silently.  A spread check has no such floor."""
     with pytest.raises(ValueError):
         cellmod.bulk_z_period([0.0, 2.35, 5.35])
 
@@ -534,11 +469,8 @@ def test_stacking_period_is_abc_on_111_and_abab_otherwise():
 class TestInterplanarSpacingIsDerivedNotTabulated:
     """PINS: `science/junction-cell.md` § 2 — the layer spacing of a surface.
 
-    ONE RULE, NOT THREE LITERALS.  This lived in `modify/slab-panel.js` as
-    `a/sqrt(3)`, `a/2` and a nearest-neighbour line: crystallography in the
-    layer that should not know any, and short one row — `d(110)` was absent,
-    so a person building fcc(110) was shown two spacings, neither of them the
-    number the Cell page asks them to type.
+    ONE RULE, NOT THREE LITERALS, and here rather than in the browser layer,
+    which should know no crystallography.
 
     The spacing is NOT the naive cubic `a/sqrt(h^2+k^2+l^2)`. A centred
     lattice has planes between the ones the indices name, so the real repeat
@@ -551,7 +483,7 @@ class TestInterplanarSpacingIsDerivedNotTabulated:
 
     @pytest.mark.parametrize("plane", ("100", "110", "111"))
     def test_it_agrees_with_a_real_ASE_slab(self, plane):
-        """THE check neither implementation had: predicted against measured.
+        """THE check: predicted against measured.
 
         `bulk_z_period` / `detect_layers` measure this quantity off atoms;
         this predicts it from the constant. They are the same number, so a
@@ -665,14 +597,6 @@ def test_the_atoms_move_rigidly_so_a_device_is_never_cut():
                                atol=1e-12)
 
 
-# `test_the_invariant_is_coordinates_plus_offset_and_the_hand_off_carries_none`
-# RETIRED 2026-09-25: `tools/verify_subsumption.py` confirmed it on all 12
-# informative mutants against the past-the-face case below and against the
-# assigned-origin road test (`test_engine_offset_reaches_every_deck.py`), and
-# its stated frames were built with `engine_frame`, deleted as unused (plan
-# § 5q D10).
-
-
 @pytest.mark.parametrize("miss, outside", [(1.6e-5, True), (0.0, False)],
                          ids=["past-the-face", "on-the-face"])
 def test_the_cell_page_and_the_deck_give_one_containment_answer(miss, outside):
@@ -707,13 +631,6 @@ def test_the_cell_page_and_the_deck_give_one_containment_answer(miss, outside):
         where = f"c (transport): atom(s) {lo} "
         assert where in found.message, found.message
         assert where in refused and "[deck.atoms_outside]" in refused, refused
-
-
-# `test_an_engines_own_output_is_shown_as_the_engine_had_it` RETIRED
-# 2026-09-25 with `engine_frame` and `EngineFrame.box_corner`, which no
-# production code called (plan § 5q D10).  The readers that state 0 are
-# pinned where they live: the Results door (T2), `xv2xyz`, the transport
-# citation and the `freq` rung.
 
 
 def test_where_the_atoms_go_does_not_depend_on_the_axis_kind():

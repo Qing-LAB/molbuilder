@@ -41,15 +41,8 @@
  *
  * § 6.2 says an atom's facts are its labels and its residue — there is no frozen
  * field — and § 6.6 says a reserved label costs a NAME and one accessor and
- * nothing else. Both ends now hold that: the label arrives in `regions` with
+ * nothing else. Both ends hold that: the label arrives in `regions` with
  * every other label, and `getFrozen` is the one designated read of it.
- *
- * This file used to carry two translators here, and both are gone with the
- * server's second store (2026-07-31): an inbound alias that turned an
- * `is_frozen` flag into a label, and an outbound split that pulled the label
- * back out into a `frozen_atoms` field. The NAME did not have to change for
- * either to go: it is the name the server's `by label` rule always matched, and
- * now it is the name the server stores it under too.
  */
 export const FROZEN_LABEL = "frozen_atoms";
 
@@ -69,11 +62,9 @@ export const FROZEN_LABEL = "frozen_atoms";
  * atoms with it by accident, and it is why it is `tone: "warn"` below while the
  * others are just told apart from each other.
  *
- * WHY THE LIST LIVES HERE AND NOT IN THE TABS (user decision, 2026-08-03).
- * It was a mount option, so each page would have had to hand in the same four
- * names — five copies of one list, drifting. Only the module's own demo page
- * ever did, which is why every label chip on every real tab came out the same
- * colour. These are MolView's conveniences, so MolView keeps them.
+ * WHY THE LIST LIVES HERE AND NOT IN THE TABS (user decision, 2026-08-03):
+ * these are MolView's conveniences, so MolView keeps them, rather than every
+ * page handing in its own copy of one list.
  *
  * `frozen_atoms` appears here as the CONSTANT, never as a second literal: the
  * reserved meaning costs one name and one accessor, and that name is spelled
@@ -155,10 +146,7 @@ export function structureFromServer(payload) {
      * kind/color/fdf are CHANNEL-level facts and ride verbatim under
      * `channelDefs` (like periodicity — the viewer edits none of it);
      * the atom-indexed half folds onto each atom's facts, so an edit
-     * remaps it with its atom instead of leaving a stale index list.
-     * Until 2026-08-20 this block was never read: channels died at
-     * adoption and a pair that carried them lost them on any trip
-     * through the viewer. */
+     * remaps it with its atom instead of leaving a stale index list. */
     const chanIn = (payload.annotations
         && typeof payload.annotations === "object")
         ? payload.annotations : null;
@@ -235,14 +223,7 @@ export function structureFromServer(payload) {
             /* THE PERIODICITY BLOCK, CARRIED VERBATIM (§ 6.2). Its field
              * names are the server's — `cell`, `engine_offset`, `axis_kind`,
              * `vacuum`, and the resolved answers beside them — and they stay
-             * the server's the whole way through this module.
-             *
-             * It used to be renamed here to `{lattice, origin, …}`, and the
-             * readers then asked a block that has never had a `lattice` key for
-             * one. So the cell was null for every structure ever loaded: the box
-             * could not be drawn, the axes always fell back to the Cartesian
-             * triad, and an export carried no cell. Nothing failed, because a
-             * missing key reads as "this structure is not periodic". */
+             * the server's the whole way through this module. */
             periodicity: payload.periodicity || null,
             /* Structure-level identity + the channel definitions, carried
              * verbatim (§ 6.2 — the viewer interprets none of it).  The
@@ -250,9 +231,8 @@ export function structureFromServer(payload) {
              * the structure's own dict), never the flat display key: the
              * load door decorates that one with a filename fallback
              * (build.py: "override via extra rather than mutating
-             * struct.title"), and adopting the decoration manufactured a
-             * title the user never stated — caught by the disk→disk
-             * pipeline pin. */
+             * struct.title"), and adopting the decoration would manufacture
+             * a title the user never stated. */
             title: (payload.structure
                     && typeof payload.structure.title === "string")
                 ? payload.structure.title
@@ -266,20 +246,7 @@ export function structureFromServer(payload) {
              * FROM THE CANONICAL ENVELOPE, for the same reason `title`
              * is: `payload.structure` IS the structure's own dict, and
              * `info` is a field of a Structure, so it arrives there and
-             * nowhere else. This read asked for a FLAT `payload.info`,
-             * which no route has ever sent -- so every structure loaded
-             * since the store shipped arrived with an empty one, at
-             * HTTP 200, and § 8.4a's "it rides installMolecule in" was
-             * true of the contract and not of the code.
-             *
-             * Three things were broken by the one line, because every
-             * way a structure gets in comes through here: a saved pair's
-             * recorded contract was dropped the moment the pair was
-             * re-opened; a Results tab's recorded contract was wiped by
-             * the next modify op, since `applyOp` installs the server's
-             * answer the same way a load does; and with the store gone
-             * `markContractOutdated` had nothing left to flag, so an
-             * edit could never mark the contract stale. */
+             * nowhere else. */
             info: (payload.structure
                     && payload.structure.info
                     && typeof payload.structure.info === "object")
@@ -309,12 +276,8 @@ export function structureFromServer(payload) {
  * `resolved_*` values beside the raw ones, and this reads them rather than
  * working anything out (§ 6.2: MolView interprets none of it).
  *
- * IT IS ONE FUNCTION BECAUSE THE QUESTION HAS ONE ANSWER (§ 5.2). Two readers
- * asked it separately and disagreed: the Cell page read the resolved values and
- * said a structure had a cell, while the drawing read the RAW ones and found
- * none — so "Show unit cell" drew nothing at all for every structure that had
- * not been given an explicit cell, which is every plain `.xyz`. The panel and
- * the window described different structures, and neither failed.
+ * IT IS ONE FUNCTION BECAUSE THE QUESTION HAS ONE ANSWER (§ 5.2), so the Cell
+ * page and the drawing describe the same structure.
  */
 export function effectiveCell(periodicity) {
     const per = periodicity || {};
@@ -333,9 +296,7 @@ export function effectiveCell(periodicity) {
  *
  * An atom carries a list of the names it is tagged with. Everything that needs
  * the flipped form — `{"L-electrode": [0, 1]}` — gets it from here, and the walk
- * exists once. It was written four times, and two of the copies differed from
- * the other two in a way that was correct but invisible: a reader could not tell
- * the deliberate variation from drift.
+ * exists once.
  */
 export function groupByLabel(annotations) {
     const out = {};
@@ -358,10 +319,9 @@ export function groupByLabel(annotations) {
  * Takes ONE read of the structure and one frame of coordinates, so "the facts
  * that leave together were read together" (§ 9.3). That property is not
  * something a special door provides; it is what one read returning the whole
- * structure means. It matters because it went wrong once: a tab read the labels
- * and the cell fresh as it sent a request while the coordinates came from a copy
- * taken at page load, so the request carried current labels with stale positions
- * and the server judged a structure that was not the one on screen.
+ * structure means. It matters because a request carrying current labels with
+ * stale positions has the server judge a structure that is not the one on
+ * screen.
  */
 export function structureForServer(structure, positions) {
     if (!structure) return null;
@@ -389,10 +349,7 @@ export function structureForServer(structure, positions) {
      * envelope's parallel lists (`Structure.from_dict` reads them at the
      * top level).  Carried VERBATIM whenever any atom holds the fact —
      * placeholders included: whether "MOL"/chain "A" is a default is the
-     * server's judgment, not this module's (§ 6.2).  Until 2026-08-20
-     * nothing here emitted them, so the first edit round-trip replaced
-     * every real residue name with the server's re-synthesized
-     * placeholder. */
+     * server's judgment, not this module's (§ 6.2). */
     const ann = structure.annotations;
     const column = (pick, empty) => {
         let any = false;
@@ -448,11 +405,8 @@ export function structureForServer(structure, positions) {
         positions: positions.map((p) => [p[0], p[1], p[2]]),
         /* METADATA IS NESTED, because that is where the envelope keeps it
          * (web-api.md § 1 — the envelope IS the structure's canonical dict, and
-         * `Structure.from_dict` reads the block from here). These fields sat at
-         * the TOP level until 2026-07-31, where nothing read them: every
-         * geometry edit came back at HTTP 200 with its labels and its cell
-         * silently gone. The receiver refuses a stray top-level key now, so the
-         * same mistake cannot be quiet twice. */
+         * `Structure.from_dict` reads the block from here). The receiver
+         * refuses a stray top-level key. */
         metadata: {
             regions:     groupByLabel(structure.annotations),
             cell:        clone(per.cell),
@@ -472,8 +426,8 @@ export function structureForServer(structure, positions) {
      * the Metadata pane shows is what the pair will carry.
      *
      * COPIED like everything else here: `readData()` backs `exportFile`, so
-     * a caller editing `data.structure.info` was writing into the live store
-     * -- past the `info.set` door and its `announceStructure()`. */
+     * a reference would let a caller editing `data.structure.info` write into
+     * the live store -- past the `info.set` door and its `announceStructure()`. */
     if (structure.info && Object.keys(structure.info).length) {
         out.info = clone(structure.info);
     }
@@ -510,15 +464,10 @@ export function createLoad(handed) {
          * The server answers with ONE geometry — it parses a file, and a file
          * has one. The frames of a run come from somewhere else: the tab's own
          * parsed run file (§ 6.3). So a caller opening a trajectory hands them
-         * over HERE, and the whole structure — every frame — lands in one go.
-         *
-         * Doing it in a second call was three broken rules at once. § 9.3 says
-         * this is "the only way a structure gets in" and it was not: the frames
-         * came through another door. § 6.4 says the master copy is updated
-         * "first, and COMPLETELY... No one ever observes a half-updated state",
-         * and subscribers saw a one-frame structure that never existed. And
-         * worst, § 11.2's point 0 was anchored on that one frame — so retracting
-         * to the anchor threw the trajectory away.
+         * over HERE, and the whole structure — every frame — lands in one go:
+         * § 9.3 says this is "the only way a structure gets in", § 6.4 says
+         * the master copy is updated "first, and COMPLETELY", and § 11.2's
+         * point 0 is anchored on the whole trajectory.
          */
         if (Array.isArray(input.frames) && input.frames.length) {
             if (handed.checkFrames) {
@@ -540,9 +489,7 @@ export function createLoad(handed) {
          * a path would be a second answer to a question the tab already owns. */
         handed.put(loaded.structure, loaded.coordinates, stemOf(input),
                    /* what the read said about it (§ 6.8), from the ONE place
-                    * the payload was read -- this line asked the wire for the
-                    * field a second time, ten lines after `structureFromServer`
-                    * had already normalised it. */
+                    * the payload was read. */
                    loaded.notices || []);
         handed.recordFirstState();
         handed.announce();
@@ -587,22 +534,6 @@ function requestBodyFor(input) {
     }
     if (typeof input.text !== "string") return null;
     const body = { text: input.text, filename: input.filename };
-    /* SEVEN SIDE-BLOCKS STOOD HERE and are gone (2026-09-07): `format`,
-     * `sidecar`, `atomMetadata`, `periodicity`, `info`, and (on the caller's
-     * side) `source` and `atoms`.
-     *
-     * Every one of them existed to carry what a coordinate document cannot --
-     * the labels, the cell, the free `info` store -- back to a server that had
-     * just been handed a flattened copy of a structure it already had. They
-     * were compensation for the text branch, and the text branch has one
-     * caller left: the component demo, which loads hard-coded sample XYZ and
-     * has nothing to compensate for.
-     *
-     * `format` and `sidecar` never had a caller at all -- not in production,
-     * not in a test -- while both were documented as live parameters. The
-     * other three were the trajectory tab's, which now hands over frame 0 as
-     * an envelope assembled by the server (`watch.py::_frame0_structure`), so
-     * there is nothing left for them to repair. */
     return body;
 }
 
@@ -617,7 +548,7 @@ function requestBodyFor(input) {
  * and frame 40 is what leaves), and the facts about them. It assembles no bytes,
  * because a coordinate document is a format the server owns and a second writer
  * in the browser is a second answer to "what does this structure look like on
- * disk" (§ 11.7). The two already differed.
+ * disk" (§ 11.7).
  *
  * It stays SYNCHRONOUS. The round trip that turns this into bytes belongs to
  * whoever is putting them somewhere. Making this async would buy a new "the
@@ -677,11 +608,6 @@ export function createWriteOut(handed) {
  *   `emptySelection` — what an empty selection means for THIS operation, and
  *                      the three answers are genuinely different: act on all,
  *                      refuse, or fall back to the world origin.
- *                      `"origin"` was here once for `electrode` and went with
- *                      that op on 2026-09-01, deleted as a value no row used.
- *                      `add_atom` brought it back on 2026-09-07 for the same
- *                      reason it existed the first time: some operations have
- *                      a sensible answer at zero atoms, and (0, 0, 0) is it.
  *                      Only `"refuse"` is a branch HERE -- the others let the
  *                      request through with the group key omitted, and the
  *                      SERVER decides what the absence means, because it is
@@ -690,9 +616,7 @@ export function createWriteOut(handed) {
  *                      checked before the request goes out, so `orient` with
  *                      one atom selected never reaches the network.  It says
  *                      nothing about zero: that case belongs to
- *                      `emptySelection` alone, and letting this column answer
- *                      it too made every row with a count refuse at zero
- *                      regardless of its own policy.
+ *                      `emptySelection` alone.
  *   `checkpoint`     — WHETHER THIS OPERATION LAYS DOWN A TIMELINE POINT
  *                      (user, 2026-09-07).  A row that declares `true` records
  *                      a state when it lands, so Retract steps back exactly
@@ -711,9 +635,7 @@ export function createWriteOut(handed) {
  *                      SET -- `add()` sorts, and *All* / *Invert* / a filter
  *                      produce one with no pick order at all -- so an op whose
  *                      answer depends on WHICH ATOM WAS FIRST cannot read it.
- *                      `orient` did, and the same two atoms picked by clicking
- *                      and by shift-range oriented in OPPOSITE directions,
- *                      silently.  An `ordered` op reads the measurement track
+ *                      An `ordered` op reads the measurement track
  *                      instead, which is built only by clicks and promises
  *                      exactly what these ops need: a first and a second.
  *                      Set operations leave it unset -- order is meaningless
@@ -785,8 +707,7 @@ export function createEdits(handed) {
     /* ONE MUTATION IN FLIGHT. A second edit started while one is running is
      * REFUSED rather than interleaved: two responses applying over each other
      * produce a structure neither edit asked for, and the history records a
-     * state the user never saw. The old registry had this rule; the rebuild
-     * dropped it. */
+     * state the user never saw. */
     let running = false;
 
     return async function applyOp(name, params) {
@@ -795,10 +716,8 @@ export function createEdits(handed) {
         if (running) return null;
 
         /* NOTHING LOADED IS A STATE THE SERVER CAN ANSWER, not a reason to
-         * stay silent.  This returned `null` and sent nothing, so `slab` --
-         * which places from absolute coordinates and needs no atoms -- could
-         * not build the first thing on an empty canvas, and the button did
-         * nothing with no message.
+         * stay silent: `slab` places from absolute coordinates and needs no
+         * atoms.
          *
          * An empty structure is a structure: `Structure(elements=[])` is
          * legal, round-trips, and `add_slab` builds onto it.  Ops that DO
@@ -817,10 +736,7 @@ export function createEdits(handed) {
         /* THE COUNT REQUIREMENT IS ABOUT A SELECTION THAT EXISTS, and it is
          * checked BEFORE the request goes out.  An EMPTY selection is not a
          * wrong count -- it is the case the `emptySelection` column answers,
-         * and that column is the only one entitled to answer it.  Checking
-         * arity first made "refuse" the effective policy for every row with a
-         * `needsExactly`, no matter what its own column said, which is how
-         * `add_atom` could not place the first atom on an empty canvas.
+         * and that column is the only one entitled to answer it.
          *
          * The two rows that ask for a count still refuse at zero, because that
          * is what THEIR column says: `orient` needs two atoms to have a
@@ -834,14 +750,10 @@ export function createEdits(handed) {
         const positions = handed.readFrame(handed.currentFrame());
         /* THE BODY IS FLAT. The route reads its own arguments off the body root
          * -- `dx`, `indices`, `anchors`, `element` -- so nesting them under
-         * `params` sends them where nothing looks. That is what shipped: every
-         * op's arguments were read by nobody, so `translate` answered 200 and
-         * moved the structure by (0, 0, 0).
+         * `params` sends them where nothing looks.
          *
          * `group` is § 11.1's "Where it lands" column: WHERE the resolved
-         * selection goes in the body. The table did not have it once, and
-         * knowing how many atoms an op needs without knowing where to put them
-         * is why the rebuilt code could not build a body at all. It is OMITTED
+         * selection goes in the body. It is OMITTED
          * when the selection is empty, so the server applies its own centring
          * rather than being handed an empty list. */
         const body = Object.assign({}, params || {}, {
@@ -852,10 +764,8 @@ export function createEdits(handed) {
         }
 
         /* NO CATCH HERE. A refusal is the caller's to hear (§ 6.9): it owns the
-         * button that was pressed and the place to say so. This used to swallow
-         * it and answer `null`, which made "the server refused your edit" and
-         * "there was nothing to do" the same answer — so the button went dead
-         * with nothing on screen, which is the bug § 6.9 exists to end.
+         * button that was pressed and the place to say so; "the server refused
+         * your edit" and "there was nothing to do" are different answers.
          *
          * The operation name IS the server route segment (§ 11.1): the delete
          * operation is `delete`, not `deleteAtoms`. */
@@ -909,22 +819,15 @@ export function createCellEdit(handed) {
          * door takes. A cell edit is the server deciding what the box becomes,
          * and it decides that FROM THE WHOLE STRUCTURE — the atoms it has to
          * wrap included. So it is handed the structure as data, exactly as a
-         * save is, rather than a payload shaped for this one call.
-         *
-         * TWO WRONG SHAPES PRECEDED THIS ONE, and both failed the same silent
-         * way — a 400 caught and turned into null — so the ONE door § 6.2 gives
-         * the cell had never once succeeded. First `{op, params, structure}`,
-         * which nothing read; then this same structure under `data`, which the
-         * route rejected because it wanted a `{xyz, sidecar}` blob. The browser
-         * cannot produce that blob: it writes no coordinate document (§ 11.7).
-         * So the door takes the envelope, like every other one.
+         * save is, rather than a payload shaped for this one call: the browser
+         * writes no coordinate document (§ 11.7).
          */
         const structure = handed.readData();
         if (!structure) return null;
         /* NO CATCH HERE either, and this is the door it mattered most on. A cell
          * the gate cannot accept comes back 400 carrying the one sentence that
-         * says what to do about it; swallowing that and answering `null` is why
-         * the Update button appeared to do nothing (§ 6.9). */
+         * says what to do about it; swallowing that and answering `null` would
+         * leave the Update button appearing to do nothing (§ 6.9). */
         const answer = await postJson("/api/structure/periodicity", {
             structure: structure,
             op:        op,
@@ -933,12 +836,7 @@ export function createCellEdit(handed) {
         /* ADOPTED VERBATIM. The block comes back in the shape § 6.2 carries —
          * the server's own field names, with the `resolved_*` answers beside the
          * raw ones — which is the same shape `/api/build/load` sends, so there
-         * is nothing to translate and nothing to pick out.
-         *
-         * It used to be rebuilt here from four named fields, which dropped the
-         * resolved half: `getUnitCellInfo` reads `resolved_cell` first (§ 9.3's
-         * "the cell as it will actually be used"), so after an edit the main way
-         * in would quietly have answered with the raw value instead. */
+         * is nothing to translate and nothing to pick out. */
         const block = answer && answer.periodicity;
         if (!answer || answer.ok === false || !block) {
             throw said(answer, "The server answered, but not with a cell.");
@@ -974,13 +872,10 @@ export async function resolveFilter(structure, rule) {
             labels:      (facts.labels || []).slice(),
             residueName: facts.residue || null,
             // `by_atom_name` and `by_chain_id` are rule kinds the vocabulary
-            // offers, and until 2026-09-07 this list had no slot for either --
-            // so the server rebuilt the structure with atom names DEFAULTED to
-            // element symbols and every chain defaulted to "A".  Both rules
-            // then answered HTTP 200 with a confident wrong answer: `CA` never
-            // matched a real alpha carbon, chain `B` never matched anything.
-            // The viewer holds both (`facts.name` / `facts.chain`, set from the
-            // identity columns on load); it simply was not sending them.
+            // offers; without these the server would default atom names to
+            // element symbols and every chain to "A".  The viewer holds both
+            // (`facts.name` / `facts.chain`, set from the identity columns on
+            // load).
             atomName:    facts.name || null,
             chainId:     facts.chain || null,
         };
@@ -1005,10 +900,7 @@ export async function resolveFilter(structure, rule) {
  *
  * § 11.1 names FOUR routes, and this file calls exactly those four: load a
  * structure, perform one geometry edit, resolve a cell, resolve a filter. The
- * fourth used to be missing from that list while this module made the call —
- * "the kind of gap that lets a fifth appear unnoticed", as § 11.1 now puts it —
- * and the list was corrected rather than the call. The field-level JSON of these
- * payloads belongs to web-api.md.
+ * field-level JSON of these payloads belongs to web-api.md.
  */
 async function postJson(route, body) {
     let response;
@@ -1027,12 +919,10 @@ async function postJson(route, body) {
             "Could not reach the server. Check your connection and try again.");
     }
     if (!response.ok) {
-        /* THE BODY IS WHERE THE REASON IS, and not reading it is how the reason
-         * used to be lost. This threw `route + ": " + status` — a line nobody
-         * could act on — while the server had answered 400 with the sentence
-         * that says what to do: "swap two lattice vectors or negate one". The
-         * envelope is `{ok: false, error}` at every door (web-api.md), so the
-         * sentence is one read away and was never taken. */
+        /* THE BODY IS WHERE THE REASON IS: the envelope is `{ok: false,
+         * error}` at every door (web-api.md), so the server's sentence that
+         * says what to do ("swap two lattice vectors or negate one") is one
+         * read away, where a bare status is a line nobody can act on. */
         throw said(await bodyOf(response),
                    "The server refused the request and gave no reason.");
     }

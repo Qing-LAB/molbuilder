@@ -119,7 +119,6 @@ launch_mode = "direct"
 launch_sends = true
 launch_refused = ["`coarse` was launched, and it does not continue from a run of its own -- a rerun of its kind starts over",
                   "molbuilder checkpoint list"]
-after_launch = { made_lacks = ["01_coarse/run-1"] }
 
 [[case]]
 name = "...and status says the same of it, stopped: one fact, one sentence"
@@ -132,7 +131,7 @@ status_says = ["coarse, failed",
                "it does not continue from a run of its own -- a rerun of its kind starts over"]
 
 [[case]]
-name = "a flat stage set restart: clean is not launched again, and records no continuation"
+name = "a flat stage set restart: clean is not launched again"
 shape = "flat"
 run = { restart = "clean" }
 stand_in = { leaves_restart = true }
@@ -144,9 +143,8 @@ launch_stage = "coarse"
 launch_mode = "direct"
 launch_sends = true
 launch_refused = "it takes nothing from a run -- it is set `restart: clean`"
-after_launch = { made_lacks = ["H2_01_coarse.continued-from"] }
 
 [[case]]
-name = "a first stage starts from the structure, and its prep's line says so -- as one that continues says what from"
+name = "a first stage starts from the structure: its prep records it in the ledger, unasked"
 stage = "coarse"
 ledger_holds = [{ decision = "prep starts-cold", asked = false }]

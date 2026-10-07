@@ -16,9 +16,7 @@ no run), the file's own ending, and the transition the settle must make.
 The function is lifted from the shipped module and run in node against a
 fake ``state`` and a recording ``transition``.
 
-Why not e2e: the decision is a pure function of those two inputs.  The
-server half -- which run a file belongs to, and that the run's end is read
-before the file's last read -- is ``tests/test_viewers_follow_the_run.py``.
+Why not e2e: the decision is a pure function of those two inputs.
 """
 from __future__ import annotations
 

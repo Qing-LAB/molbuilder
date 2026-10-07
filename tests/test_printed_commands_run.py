@@ -28,16 +28,16 @@ from __future__ import annotations
 
 import pytest
 
-from support.road import describe_h2, each_is_taken, jobset, printed_commands
+from support.road import describe_calculation, each_is_taken, jobset, printed_commands
 
 
 def _described(tmp_path, monkeypatch, **kw):
-    """`describe_h2`'s calculation, its description stating the wall and the
+    """`describe_calculation`'s calculation, its description stating the wall and the
     memory too -- the two values a job handed to a scheduler states
     (`architecture.md` § 5.2) -- so the `--mode submit` line a next step
     prints is one that is taken, as it is for a person who stated them."""
     import json
-    bundle = describe_h2(tmp_path, monkeypatch, **kw)
+    bundle = describe_calculation(tmp_path, monkeypatch, **kw)
     tj = bundle / "task.json"
     d = json.loads(tj.read_text())
     d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
@@ -59,8 +59,8 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
     API-LEVEL for the page's two doors, which no `jobset` verb reaches; the
     lines themselves are typed down the road.
 
-    MUTATIONS THIS MUST FAIL AGAINST: a launch line with no mode (the page's
-    own, until 2026-10-03); a folder answer without the set machine; a
+    MUTATIONS THIS MUST FAIL AGAINST: a launch line with no mode; a folder
+    answer without the set machine; a
     prepped stage still offered its prep."""
     from molbuilder.web.app import create_app
     bundle = _described(tmp_path, monkeypatch)
@@ -139,7 +139,7 @@ def test_a_calculation_with_no_benchmark_says_so_first(tmp_path,
 
     MUTATION THIS MUST FAIL AGAINST: the stage-less refusal asked before
     the calculation's own (it offered `prep bench coarse`)."""
-    bundle = describe_h2(tmp_path, monkeypatch, engine="pyscf")
+    bundle = describe_calculation(tmp_path, monkeypatch, engine="pyscf")
     for verb in (("prep", "bench", "--target", "this"),
                  ("launch", "bench", "--mode", "direct")):
         r = jobset(*verb, "--bundle", bundle)

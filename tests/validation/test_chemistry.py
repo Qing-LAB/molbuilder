@@ -1,33 +1,22 @@
 """Tests for molbuilder.validation.chemistry.
 
 Per docs/process/testing.md (test layout mirrors source
-layout).  Split from the pre-2026-06-13 flat tests/test_validation.py
-on 2026-06-13; no test body was modified.  Shared fixtures
-(``water_struct``, ``_vacuum_cell``) live in tests/validation/conftest.py.
+layout).  Shared fixtures live in tests/validation/conftest.py.
 """
 
 from __future__ import annotations
 
-import io
-
 import numpy as np
-import pytest
 
-from molbuilder.issues import Issue, ValidationError
 from molbuilder.pyscf import PySCFConfig
-from molbuilder.siesta import SiestaConfig
 from molbuilder.structure import Structure
-from molbuilder.validation import report, validate
-from ._helpers import _peptide_struct, _vacuum_cell
-
-
+from molbuilder.validation import validate
+from ._helpers import _peptide_struct
 
 
 # --------------------------------------------------------------------- #
 #  Peptide protonation: warn when neutral build vs charged side chains  #
 # --------------------------------------------------------------------- #
-
-
 
 
 def test_peptide_with_asp_glu_warns_on_zero_charge():
@@ -43,15 +32,13 @@ def test_peptide_with_asp_glu_warns_on_zero_charge():
     assert "neutral" in msgs[0].message.lower()
 
 
-
 def test_peptide_with_explicit_charge_no_warn():
-    """When the user explicitly sets cfg.charge = -1, the validator
+    """When the user explicitly sets cfg.net_charge = -1, the validator
     treats them as having opted in and stays silent."""
     s = _peptide_struct(["ALA","ARG","ASP","GLU","GLY"])
     cfg = PySCFConfig(net_charge=-1)
     issues = validate(s, cfg)
     assert [i for i in issues if i.where == "config.net_charge"] == []
-
 
 
 def test_peptide_neutral_residues_no_warn():
@@ -61,7 +48,6 @@ def test_peptide_neutral_residues_no_warn():
     cfg = PySCFConfig()
     issues = validate(s, cfg)
     assert [i for i in issues if i.where == "config.net_charge"] == []
-
 
 
 def test_non_peptide_skips_protonation_check():
@@ -81,14 +67,11 @@ def test_non_peptide_skips_protonation_check():
 # --------------------------------------------------------------------- #
 #  The ECP hint — it ASKS, it never chooses                             #
 #                                                                       #
-#  Added 2026-08-13 with T9.  molbuilder used to PICK an ECP here:       #
-#  "lanl2dz" whenever any element had Z > 36 and the basis was not       #
-#  def2.  That auto-rule is retired -- *"who defines heavy? there is no  #
-#  clear reasoning or standard"* -- and the user asked for the other     #
-#  half to stay: *"you can still have the validation function to give    #
-#  hints - that should be confirmed."*  So the number survives ONLY as   #
-#  the bound of a question, and the message prints it so a reader can    #
-#  disagree.                                                             #
+#  No rule picks an ECP -- *"who defines heavy? there is no clear       #
+#  reasoning or standard"* -- but *"you can still have the validation   #
+#  function to give hints - that should be confirmed."* (user, T9).  So #
+#  the number is ONLY the bound of a question, and the message prints   #
+#  it so a reader can disagree.                                         #
 # --------------------------------------------------------------------- #
 
 def _pt_complex():
@@ -137,12 +120,6 @@ def test_a_selector_that_MISSES_the_element_still_warns():
     found = _ecp_findings(_pt_complex(), basis="cc-pVDZ",
                           ecp="lanl2dz", ecp_atoms=["C"])
     assert len(found) == 1 and "Pt" in found[0].message
-
-
-# `test_def2_brings_its_own_and_the_check_stays_quiet` retired 2026-09-29
-# with its premise: PySCF applies a def2 basis's core potential only when the
-# script names it, so the hint now speaks on def2 too -- through the road,
-# `test_science_gaps.py::test_a_def2_basis_on_gold_asks_for_its_core_potential`.
 
 
 def test_light_elements_are_never_mentioned():

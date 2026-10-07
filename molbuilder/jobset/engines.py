@@ -4,10 +4,8 @@ answers with: its sibling artifacts, its data files (the pseudopotentials,
 screened and copied into ``pseudos/``), its shared package.  Floor 3
 (`execution/architecture.md` § 2.1).
 
-A module of its own since 2026-10-03 (W55 B7): it lived in the conductor,
-so what a stage continues from imported the conductor to learn an
-engine's deck suffix and config class.  Nothing here prepares anything --
-it describes an engine, and the conductor asks it.
+Nothing here prepares anything -- it describes an engine, and the conductor
+asks it.
 """
 from __future__ import annotations
 
@@ -29,7 +27,7 @@ class EngineSeam:
     the ordering to read them in: a bag of callables cannot answer *"what does
     this engine still owe?"*, and against the steps a gap is a blank row.
 
-    **Fifteen questions, ten members.**  One is answered by shared code
+    **Of § 4's fifteen questions**, one is answered by shared code
     (`validation.validate`), and four arrive together through ``spec_for`` --
     the layout, the syntax, the record's values and the check rules are all the
     engine describing its deck, so they ride on one ``DeckSpec`` rather than on
@@ -39,38 +37,32 @@ class EngineSeam:
     ``bench_marks`` on the spec.
 
     Everything engine-specific that the loop below needs lives HERE, so the
-    loop itself never asks which engine it is in.  ``_job_for`` branched on
-    ``task.engine == "siesta"`` until 2026-08-12, which was § 7's forbidden
-    ``if`` one floor down from where it was deleted.
+    loop itself never asks which engine it is in.
     """
     #: The config class the template rebuilds into.
     config_cls: type
-    #: ``(structure, config, stage_token=) -> DeckSpec`` — the engine
+    #: ``(structure, config, names=) -> DeckSpec`` — the engine
     #: DESCRIBES its deck; the framework renders, writes and checks it
-    #: (`script-preparation.md` § 4.3).  The token is a RENDER ARGUMENT (step
-    #: 7, C7): the emitter never learns the word, the deck's filename carries
-    #: it.
+    #: (`script-preparation.md` § 4.3).  The stage's names are a RENDER
+    #: ARGUMENT (step 7, C7; `runfiles.RunNames`): the emitter never learns
+    #: the word, the names it is handed carry it -- and every name the deck
+    #: writes or prints.
     #:
-    #: **It handed back finished TEXT until 2026-08-18**, and that one fact was
-    #: what kept the framework's step-3 runner unreachable: given text, the
-    #: conductor had no form to pass on, so it performed the write and the
-    #: check itself and the ORDER of step 3 was stated in two places.  Given a
-    #: form, the framework can also re-derive what the deck was supposed to
-    #: contain, so nothing has to be carried alongside the text to make the
-    #: check possible.
+    #: Given a form, the framework can also re-derive what the deck was
+    #: supposed to contain, so nothing has to be carried alongside the text to
+    #: make the check possible.
     spec_for: Callable
     #: The deck's type suffix (``.fdf``).
     suffix: str
     #: ``(config, label) -> config`` — the identity WRITTEN, for a trial's
     #: relabelling.  Filename relabelling alone is not the § 2.3.2
     #: protection: the deck's own ``SystemLabel`` line is what keys the warm
-    #: files, and until 2026-08-12 it kept the run's label (found by the
-    #: first sweep that ever rendered a deck).
+    #: files.
     relabel: Callable
     #: ``(label, config, calculation, base_dir) -> warm-file declaration``
     #: for the Job -- the engine reads its § 4.2a rules file for the TYPE
     #: (U2), and ``base_dir`` lets a calculation's own fine-tuned copy win
-    #: (U6a; the comment said 3 args while the call passed 4 -- C-d).
+    #: (U6a).
     warm_for: Callable
     #: ``config -> traits`` the launcher routes on (GPU solver, …).
     traits_for: Callable
@@ -82,18 +74,13 @@ class EngineSeam:
     sibling_artifacts: Optional[Callable] = None
     #: ``(base_dir) -> [filename]`` — which files in the calculation are the
     #: SHARED PACKAGE every job links to.  The engine that put them there is
-    #: the one that can name them: this was a ``*.psml`` glob in shared code,
-    #: a SIESTA fact stated a floor below where SIESTA may speak, so a second
-    #: engine with data files of its own would have shipped none of them.
-    #: ``None`` for an engine that puts nothing in — the package is then empty,
+    #: the one that can name them.  ``None`` for an engine that puts nothing in — the package is then empty,
     #: which is the honest answer rather than an accident of a glob.
     shared_package: Optional[Callable] = None
     #: ``(struct, config, base_dir) -> None`` — the DATA FILES this engine's
     #: deck cannot run without, put into the calculation.
     #:
-    #: *Named ``stage_data`` for about a minute: "stage" is this project's
-    #: core noun and here it was being borrowed as a verb -- the collision
-    #: `submit._staged_for_launch` was renamed for.*  Distinct from
+    #: Distinct from
     #: ``sibling_artifacts``, which is about what a deck's own text promises;
     #: this is about what the ENGINE will open.  ``None`` for an engine that
     #: needs none (PySCF's basis sets ship inside PySCF).
@@ -101,11 +88,7 @@ class EngineSeam:
     #: It belongs to `prep` because `project-layout.md` § 2.6 puts the copy on
     #: the machine that runs the job — where the library lives is a fact about
     #: that machine — and because `prep` is already what decides the shared
-    #: package.  Added 2026-08-18: the rule *"a calculation copies the
-    #: pseudopotentials it needs into its own shared package"* was written and
-    #: unowned, so `jobset init` performed it and the browser's hand-over
-    #: did not, and a calculation described in the browser prepped, laid out
-    #: its directories and reported success with no pseudopotentials in it.
+    #: package.
     provide_data: Optional[Callable] = None
 
 
@@ -114,17 +97,14 @@ def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
     """The sibling files a SIESTA deck's own text PROMISES.
 
     A charged deck instructs ``python3 makov_payne_correction.py`` in its
-    header -- a promise only ``convert`` kept until E6 (redo 2026-08-12):
-    the described route rendered the same header and never wrote the
-    script, so `prep` shipped an instruction to run a file that did not
-    exist.  Same writer both routes, so they cannot drift.
+    header -- a promise this keeps.
 
     The charge is the electronic state's (`science/chemistry-correctness.md`
     § 2a) -- the one the deck beside it was written from.  The deck has just
     been written from that state, so a label naming no element cannot reach
     here.  ONLY FOR A FINITE SYSTEM (§ 2b): the script's formula is a
-    molecule's in a vacuum box, and a charged slab or crystal -- whose deck
-    says it gets no formula -- got the script too until the M6 review."""
+    molecule's in a vacuum box, and a charged slab or crystal's deck says it
+    gets no formula."""
     from ..electronic_state import electronic_state
     from ..siesta.makov_payne import emit_correction_script
     state = electronic_state(struct, cfg, kind=kind)
@@ -156,9 +136,9 @@ def _pseudo_dir(base: Path, plan=None) -> Path:
     pdir = base / PSEUDO_DIRNAME
     plan.folder(pdir)
     # A container, and it says so (`project-layout.md` § 1.4a): the shared
-    # package holds files, never a run.  Left unstamped it was the directory
-    # that reported a calculation *running* because it had no result file in
-    # it -- which is the shape of answer § 1.4a exists to stop.  It reads back
+    # package holds files, never a run.  Unstamped, it would report a
+    # calculation *running* because it has no result file in it -- the
+    # answer § 1.4a exists to stop.  It reads back
     # as *support* rather than a stage, because the naming authority maps no
     # job to it; that is derived, not stored.
     from .. import calcdirs
@@ -201,14 +181,8 @@ def _siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     would have reported plausible, wrong numbers instead of crashing. The check
     that catches that class reads the pseudopotentials themselves.
 
-    It has always run against ``psml_lib`` — the LIBRARY — and it is gated on
-    that field being set, so a calculation whose files are already beside it and
-    whose ``psml_lib`` is empty had **nothing checked at all**: the only thing
-    said was *"psml_lib is not set … once set, this preflight will check
-    coverage"*, while three real pseudopotentials sat in the folder the run
-    would open them from. This step makes that state the normal one, so it runs
-    the protocol here, against the **calculation** — which is where the files
-    the run reads actually are — and refuses on the same ERROR statuses the
+    This step runs the protocol against the **calculation** — which is where
+    the files the run reads actually are — and refuses on the same ERROR statuses the
     preflight and `molbuilder pseudo check` refuse on, from the same shared
     constant.
 
@@ -248,10 +222,6 @@ def _siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
         raise PrepError(str(exc))
     if not lib.is_dir():
         # Name the anchor the SPELLING asked for, in the rule's own words.
-        # This used to print only the resolved path, which under the old
-        # cascade was whichever candidate was tried last -- on Sol that was
-        # `<calc>/projects/pseudopotential`, a folder assembled from the
-        # user's working directory that nobody had chosen (2026-08-21).
         from ..pseudos import describe_psml_anchor
         raise PrepError(
             f"this calculation needs pseudopotentials for "
@@ -350,10 +320,8 @@ def _siesta_shared_package(base: Path, plan=None) -> List[str]:
     copy.
 
     The same files ``_siesta_provide_pseudos`` stages, named by the engine
-    that staged them (`script-preparation.md` § 4, the data-files step).
-    Under ``pseudos/`` since the layout repair (roadmap 7.10 M6); the bare
-    root glob stays as the fallback for a bundle prepped before it, so a
-    travelled calculation still names its package.
+    that staged them (`script-preparation.md` § 4, the data-files step),
+    under ``pseudos/``.
 
     THE PERMUTATION TRAVELS WITH THE RUNS, because a run of a sorted copy
     speaks the sorted order in every file it writes and the record is the
@@ -366,9 +334,8 @@ def _siesta_shared_package(base: Path, plan=None) -> List[str]:
     from ..atom_permutation import PERMUTATION_FILE
     from .planned import Plan
     view = plan if plan is not None else Plan()
-    grouped = sorted(f"{PSEUDO_DIRNAME}/{p.name}"
+    pseudos = sorted(f"{PSEUDO_DIRNAME}/{p.name}"
                      for p in view.glob(base / PSEUDO_DIRNAME, "*.psml"))
-    pseudos = grouped or sorted(p.name for p in view.glob(base, "*.psml"))
     return pseudos + ([PERMUTATION_FILE]
                       if view.is_file(base / PERMUTATION_FILE) else [])
 

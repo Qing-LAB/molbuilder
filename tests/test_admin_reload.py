@@ -2,8 +2,7 @@
 
 Contract: `ops/access-control.md` § 6 -- *"`POST /api/admin/reload` is
 registered only when a supervisor is running"*, and answers an admin, by § 5's
-rule.  *(How the mechanism was designed:
-`archive/2026-08-19-server-reload-plan.md` § 3.3 and § 4.)*
+rule.
 
 WHAT THIS ROUTE DOES: exits the process with a code the supervisor is waiting
 for, so a fresh server starts with every module imported again.  There is no
@@ -22,8 +21,7 @@ absent or empty means anyone who can sign in -- a provider's REQUIRED
 
 The tests below pin both halves of the gate: with no supervisor **the route
 does not exist** -- 404 -- and with one, a session that is not an admin's gets
-403.  *(This header said until 2026-10-02 that naming nobody also removes the
-route; the rule changed, as the second test's docstring records.)*
+403.
 """
 from __future__ import annotations
 
@@ -91,9 +89,7 @@ def test_naming_nobody_means_anyone_who_signed_in(monkeypatch):
 
     Asserted through the AVAILABILITY read rather than by pressing the button:
     a successful reload calls ``os._exit`` half a second later, which would take
-    the test runner with it.  (That is not a hypothetical -- this test used to
-    expect a 404 here, and when the rule changed it started succeeding and
-    killing pytest mid-run.)
+    the test runner with it.
     """
     app = _app(monkeypatch, supervised=True, admins=[])
     r = _as_logged_in(app.test_client()).get("/api/admin/reload/available")
@@ -439,9 +435,8 @@ print(json.dumps([bool(seen), (seen[0] if seen else False)]))
 def test_serve_supervises_by_default():
     """Plain ``molbuilder serve`` runs supervised.
 
-    The flag was opt-in until 2026-08-04, which meant the Reload button was
-    absent for anyone who had not read the help text -- and the reason to
-    supervise (a restart is possible at all) applies to every ordinary run.
+    The reason to supervise (a restart is possible at all) applies to every
+    ordinary run.
     """
     forked, _ = _serve_probe(["serve", "foreground", "--port", "0"])
     assert forked, "serve did not become a supervisor without --no-supervise"

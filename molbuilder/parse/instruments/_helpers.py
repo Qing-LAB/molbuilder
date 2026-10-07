@@ -1,8 +1,7 @@
 """The envelope every instrument parser fills.
 
 One line, because `ParseResult.envelope` is the one home for the four
-fields every result carries -- see its docstring for why this file used
-to build them by hand.
+fields every result carries.
 """
 from __future__ import annotations
 

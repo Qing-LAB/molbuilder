@@ -4,8 +4,7 @@
  *           sizes, how it folds) and § 4 (a self-contained module).
  * Called by: one <link> beside the module's one import.
  *
- * CARRIED, NOT REDESIGNED. This is the validated layout, brought across whole in
- * step G of the rebuild. It is not decoration: § 8.2 leans on it for the SIZING
+ * It is not decoration: § 8.2 leans on this layout for the SIZING
  * CONTRACT — the square, the shared extent that bottom-aligns the panel with no
  * script, and `--molviewer-size-card-min-width` as the floor mount.js keys its
  * blank-card-with-error path to.
@@ -30,10 +29,9 @@
    says `#1d2128`, never says `var(--bg-card, #1d2128)`, and never says `24px`
    where a named metric already exists.
 
-   WHY A BLOCK AND NOT A LITERAL PER RULE. The app's palette entered this file
-   two hundred times as `var(--token, #literal)` pairs — which is two hundred
-   places a fallback can drift from the token it stands in for, and two hundred
-   edits to re-theme. Mapping the palette ONCE, here, means:
+   WHY A BLOCK AND NOT A LITERAL PER RULE. A `var(--token, #literal)` pair per
+   rule is one more place a fallback can drift from the token it stands in for,
+   and one more edit to re-theme. Mapping the palette ONCE, here, means:
 
      - the module reads as its own design system: the vocabulary below is
        MolView's, and a rule that wants a surface asks for a surface;
@@ -46,22 +44,20 @@
        different ones (§ 5.6). Concealment is the same rule the 3D-scene
        constants already follow.
 
-   NINE CATEGORIES, AND THE NAME SAYS WHICH. A token's prefix is its kind, so
-   the kind cannot be guessed wrong:
+   THE NAME SAYS WHICH CATEGORY. A token's prefix is its kind, so the kind
+   cannot be guessed wrong:
 
-     --molviewer-color-*     14  the palette, each mapped to an app token
-     --molviewer-shadow-*     2  card, popover
-     --molviewer-space-*      2  xs, sm
-     --molviewer-radius-*     3  base, sm, md
-     --molviewer-control-*    7  ONE type size and one height for panel controls
-     --molviewer-layer-*      4  stacking order, so no rule invents a z-index
-     --molviewer-size-*      12  layout metrics: card, rail, panel, window, stack
-     --molviewer-menu-*       2  where an open popover sits
-     --molviewer-scene-*      3  3D-scene constants for the WebGL draw
+     --molviewer-color-*     the palette, each mapped to an app token
+     --molviewer-shadow-*    card, popover
+     --molviewer-space-*     spacing steps
+     --molviewer-radius-*    base, sm, md
+     --molviewer-control-*   ONE type size and one height for panel controls
+     --molviewer-layer-*     stacking order, so no rule invents a z-index
+     --molviewer-size-*      layout metrics: card, rail, panel, window, stack
+     --molviewer-menu-*      where an open popover sits
+     --molviewer-scene-*     3D-scene constants for the WebGL draw
 
-   `color-control` is the control's BACKGROUND; `control-*` is its SIZE. They
-   were one prefix before, which is how a colour and a font size came to look
-   like the same family.
+   `color-control` is the control's BACKGROUND; `control-*` is its SIZE.
 
    READ FROM SCRIPT, DELIBERATELY. Six are read back with `getComputedStyle`,
    because they are facts the stylesheet owns and the script must agree with
@@ -107,9 +103,7 @@
      * Browsers do NOT inherit the page font into `button`, `input`, `select` or
      * `textarea` — each falls back to its own UA default. So a panel that styles
      * its buttons and leaves its text box alone ends up showing three type sizes
-     * and three families side by side, which is exactly what it did: measured on
-     * the live page, 11px system-ui buttons next to a 16px -apple-system text
-     * box next to 13.33px Arial checkboxes, at heights 20.4 / 34 / 13.
+     * and three families side by side.
      *
      * These are the one answer, so a new control inherits the size instead of
      * picking its own. */
@@ -128,8 +122,7 @@
      * The rail's width is DERIVED from what is in it, not asserted beside it.
      * A button and the gap that separates it from the window are the two facts;
      * `--molviewer-size-rail-width` is their sum, and the square's arithmetic (§ 8.2) reads that
-     * sum. Written as a third number it was right by coincidence, and the next
-     * person to widen a button would have made the canvas overlap the rail. */
+     * sum. */
     --molviewer-size-rail-button:   24px;
     --molviewer-size-rail-gap:      6px;
     --molviewer-space-xs:      var(--space-xs, 4px);
@@ -160,12 +153,10 @@
     --molviewer-menu-margin:   8px;
 
     /* ── The panel's palette ────────────────────────────────────────────
-     * The panel came into this module with its colours still in the app's
-     * token file. The greys are shared with other sheets, so they are mapped
-     * here like the rest of the palette; the panel's OWN colours -- the pick
-     * accent, the include/exclude tags, the danger tones -- are declared as
-     * values, because the file that owned them is gone and this module is
-     * their only reader. */
+     * The greys are shared with other sheets, so they are mapped here like
+     * the rest of the palette; the panel's OWN colours -- the pick accent,
+     * the include/exclude tags, the danger tones -- are declared as values,
+     * because this module is their only reader. */
     --molviewer-color-panel-danger:              var(--ps-danger, #5a1f1f);
     --molviewer-color-panel-edge:                var(--ps-border, #2a2a2a);
     --molviewer-color-panel-edge-strong:         var(--ps-border-strong, #3a3a3a);
@@ -206,7 +197,7 @@
 }
 
 /* ==========================================================================
-   The fused card: viewer + panel + the fold (was fused-layout.css)
+   The fused card: viewer + panel + the fold
    ========================================================================== */
 
 /* Fused molview card: the viewer (a fixed 1:1 SQUARE) + the selection/cell panel in ONE
@@ -225,7 +216,7 @@
     container-type: inline-size;   /* enables the @container query below */
 
     /* The view-toggle RAIL (molviewer-window-stage's left column, § 1.1) is added to the LEFT of
-     * the canvas.  Fold its width into the square's min + max so the CANVAS keeps its former
+     * the canvas.  Fold its width into the square's min + max so the CANVAS keeps its
      * size instead of shrinking -- i.e. the viewer grows by the rail, it doesn't lose view
      * space.  ONE source of truth for the rail width -- and it is the SUM OF WHAT IS IN IT
      * (a button, and the gap to the window), so widening a button cannot leave the square's
@@ -247,17 +238,11 @@
 
 /* ── THE CARD SURFACE (§ 4, § 5.4) ──────────────────────────────────────────
  *
- * MolView BRINGS ITS OWN. Until this block existed the surface — background,
- * border, radius, padding — came from the host page's shared `.card` class,
- * which the old markup carried alongside `.molviewer-window-frame`. That worked on
- * every page that happened to load the app stylesheet and NOWHERE else: mounted
- * standalone (the demo, § 13.4) the module rendered as loose controls on a bare
- * page with no card and no separation between the window and the panel.
- *
- * Depending on a class the host happens to have is what § 5.4 forbids and what
- * this file's header already promised not to do. So the surfaces below are
- * declared here, in the module's own stylesheet, keyed to the module's own
- * classes.
+ * MolView BRINGS ITS OWN surface — background, border, radius, padding.
+ * Depending on a class the host happens to have is what § 5.4 forbids: mounted
+ * standalone (the demo, § 13.4) the module would render as loose controls on a
+ * bare page.  So the surfaces below are declared here, in the module's own
+ * stylesheet, keyed to the module's own classes.
  *
  * The values are the app's tokens FIRST, with the token's own value as the
  * fallback — so inside molbuilder the card is identical to every other card on
@@ -269,7 +254,7 @@
  * visual organisation. The 3D window and the panel are the CARDS: raised, with
  * the strong border and the card shadow. The module's own box is the GROUND they
  * sit on — the page's colour, quietly bounded. Giving all three the same surface
- * (which is what shipped first) draws three coincident rectangles and reads as
+ * draws three coincident rectangles and reads as
  * one undivided slab with controls loose on it. */
 .molviewer-card {
     background:    var(--molviewer-color-ground);
@@ -335,8 +320,7 @@
      *
      * ONE declaration. mount.js reads this same name back to decide whether the
      * host is wide enough (§ 8.2), so a second declaration would leave the
-     * script agreeing with whichever the cascade happened to pick. There was
-     * one, without the padding, and it was the half that lost. */
+     * script agreeing with whichever the cascade happened to pick. */
     --molviewer-size-card-min-width: calc(max(var(--molviewer-size-window-min), var(--molviewer-size-panel-min))
                               + 2 * (var(--molviewer-size-card-pad) + var(--molviewer-size-card-border)));
 }
@@ -393,17 +377,10 @@
     height: 100%;
     position: relative;            /* anchors the measurement-chip overlay to the canvas */
     overflow: hidden;              /* clip the drawing canvas to the square */
-    /* Viewer chrome -- the module owns it (it BUILDS .molviewer-window-wrap).  Moved here from
-     * form-components.css, dropping that sheet's parallel aspect-ratio / min-height /
-     * max-height:56vh sizing which duplicated (and drifted from -- 56vh vs the module's
-     * 60vh --molviewer-size-window-edge) the square the module already sizes above. */
+    /* Viewer chrome -- the module owns it (it BUILDS .molviewer-window-wrap). */
     border: 1px solid var(--molviewer-color-edge);
     border-radius: var(--molviewer-radius-sm);
-    /* THE SAME GROUND THE DRAWING CLEARS TO. It was `#ffffff`, justified as
-     * "matches the drawing canvas's own clear colour" — which stopped being true
-     * the moment the scene took the card's ground, and was invisible only
-     * because the inner card covers it. A colour nothing can see is still a
-     * colour that will be seen the day the layer above it moves. */
+    /* THE SAME GROUND THE DRAWING CLEARS TO. */
     background: var(--molviewer-color-scene);
     box-shadow: var(--molviewer-shadow-card);
 }
@@ -480,10 +457,7 @@
  * filter body, which flexes to fill the panel and holds the single scroll region. */
 /* The Cell and Metadata pages are ALL read-only info (no action buttons to keep on screen), so
  * unlike the Selection page each may simply SCROLL as a whole when it's taller than the panel --
- * it sizes to its content (compact when short), then scrolls.  The Metadata page had no rule
- * here until 2026-10-03: its sections keep `flex: 0 0 auto` and the page clips, so a store
- * longer than the panel -- a run's recorded contract and relaxation, 343 lines -- was cut off
- * with no way to reach the rest (user: "does not correctly scroll").
+ * it sizes to its content (compact when short), then scrolls.
  *
  * KEYED BY ROLE, NOT BY IDENTITY.  § 5.6 puts TWO viewers on one page, so an id
  * would be duplicated the moment the second one mounts.  `[data-page]` says what
@@ -505,7 +479,7 @@
  * scroll region.  The header + Clear/Invert + assign stay pinned above it. */
 /* `[data-fill]` marks the ONE section of a page that takes the leftover height and holds the
  * single scroll region -- the atom list in click mode, the filter rows in filter mode.  It
- * was two ids for the two of them; it is one role, and the page may only ever have one. */
+ * is one role, and the page may only ever have one. */
 .molviewer-panel .molviewer-panel-tab > [data-fill]:not([hidden]) {
     flex: 1 1 auto;
     min-height: 0;
@@ -579,14 +553,11 @@
 
 /* ---- Folding, side by side (the ROW layout only) ------------------------
  *
- * SCOPED TO THE ROW ON PURPOSE (2026-08-04).  These two rules used to sit
- * unscoped, and `width: auto` on the folded window then applied in the STACKED
- * layout too -- where it beat `.molviewer-card-body > .molviewer-window`'s
- * fixed stack width on specificity (three classes to two).  Folding the panel
- * on a narrow card made the 3D window jump narrower for no reason: it fell back
- * to sizing on its content, in a column whose whole point is that both children
- * share one width.  `width: 0` on the panel leaked the same way; it did no
- * visible harm only because the stacked block also zeroes the height.
+ * SCOPED TO THE ROW ON PURPOSE.  Unscoped, `width: auto` on the folded window
+ * would apply in the STACKED layout too -- where it beats `.molviewer-card-body
+ * > .molviewer-window`'s fixed stack width on specificity (three classes to
+ * two) and the 3D window would size on its content, in a column whose whole
+ * point is that both children share one width.
  *
  * A rule written for one layout has to SAY which, or the other one inherits it
  * and the breakage is invisible at the width you developed at. */
@@ -642,13 +613,7 @@
          * layout already does one axis over: there the rail is `align-self:
          * stretch`, so it spans the full height of the viewer and panel it
          * separates.  Stacked, the cross axis is WIDTH, so spanning it means the
-         * stack extent -- the one width the window and the panel both take.
-         *
-         * It was a compact centred pill (`width: auto; padding: 0 2rem`), on the
-         * reasoning that a small handle "cannot read as wider than the panels by
-         * construction".  True, and it bought the wrong thing: it read as a
-         * fragment laid across a seam rather than as the seam, and the two
-         * layouts stopped resembling each other for no reason a user could see. */
+         * stack extent -- the one width the window and the panel both take. */
         align-self: center;
         width: var(--molviewer-size-stack-extent);
         padding: 0;
@@ -728,7 +693,7 @@
 
 /* ── VIEWER-OVERLAY FRAMEWORK ─────────────────────────────────────────────────────────────── //
  * ONE shared class for every corner overlay the MolView module draws over the viewer square
- * (persistence indicator, and -- migrating -- the measurement chip).  The concealed factory
+ * (persistence indicator, the measurement chip).  The concealed factory
  * lib/molview/mount.js builds the element with these classes so EVERY overlay is
  * positioned + styled identically, from TOKENS only, with no per-consumer tweaking.  Anchors to
  * .molviewer-window-wrap (position: relative already), so it tracks the viewer in every fold state. */
@@ -838,7 +803,7 @@
 }
 
 /* ==========================================================================
-   The selection panel (was selection/selection-panel.css)
+   The selection panel
    ========================================================================== */
 
 /* Selection panel -- compact single-column card.
@@ -948,13 +913,13 @@
     align-items: center;
     gap: 0.4rem;
     /* No bottom margin: combinator + Apply filter are tightly
-     * grouped in a flex column .molviewer-filter-footer (2026-06-12).
+     * grouped in a flex column .molviewer-filter-footer.
      * Each direct child gets default gap from the parent's gap rule
      * — overriding margin here would double-space the footer. */
     margin-bottom: 0;
 }
 
-/* 2026-06-12: Combine + Apply filter footer.  Vertical stack with
+/* Combine + Apply filter footer.  Vertical stack with
  * a small gap so the two read as a single "combine ... and apply"
  * unit attached to the bottom of the filter rows. */
 .molviewer-filter-footer {
@@ -996,7 +961,7 @@
     margin-top: 0.4rem;
 }
 
-/* 2026-06-12 v3 (revised): + Add filter is the panel's headline
+/* + Add filter is the panel's headline
  * action — visible regardless of mode, full width across the
  * panel, larger + accent-coloured so the user spots it
  * immediately as "this is how I start a filter".  Compare with
@@ -1280,12 +1245,7 @@
 
 /* ---------- Action buttons + Assign block ------------------------- */
 
-/* Clear / Invert / All, laid out as a row.
- *
- * `display: flex` is DECLARED HERE. It used to live on a companion class the
- * element never carried, so every flex property below was inert on a block
- * div. `justify-content: space-between` went with it: it was pushing an
- * isolate toggle to the right, and that control is on the rail. */
+/* Clear / Invert / All, laid out as a row. */
 .molviewer-selection-actions-row {
     display: flex;
     gap: 0.5rem;
@@ -1294,15 +1254,8 @@
     flex-wrap: wrap;
     row-gap: 0.4rem;
 }
-/* 2026-06-12: "Show selected only" toggle — hides non-selected
- * atoms in the 3D viewer via opacity:0 overlays.  Aligned to the
- * Clear button's baseline; the inline checkbox + label form a
- * single click target. */
-/* (.selection-isolate-toggle removed -- the "Show selected only" toggle moved to the
-   viewer-controls bar; see the fused-card section below, .viewer-toggle.) */
-
-/* Shared base for every action button (Clear, Assign, Add, Remove,
- * Add-filter).  The verb buttons in the 3-col Assign row sit on
+/* Shared base for every action button (Clear, Invert, All, Assign, Add,
+ * Remove).  The verb buttons in the 3-col Assign row sit on
  * the same baseline, get the same font + padding; only the colour
  * differs to encode replace/add/remove semantics. */
 .molviewer-selection-add-btn,
@@ -1388,15 +1341,9 @@
 /* [hidden] MUST WIN over the display above.
  *
  * A class selector setting `display: flex` ties with the browser's own
- * `[hidden] { display: none }` and wins on source order -- so `el.hidden = true`
- * left this row fully visible and fully clickable.  What it hides is the label
- * box on a READ-ONLY viewer, where writing a label is swallowed by the gate: the
- * user got a chooser, an Assign button and two more beside it, all of which did
- * nothing, on every read-only page.  "A control that would do nothing should not
- * be offered" was true in the module and false on screen.
- *
- * The [hidden]-precedence audit did not catch it because it cross-references
- * ELEMENT IDS, and this element has only a class. */
+ * `[hidden] { display: none }` and wins on source order.  What it hides is the
+ * label box on a READ-ONLY viewer, where writing a label is swallowed by the
+ * gate: a control that would do nothing should not be offered. */
 .molviewer-selection-assign[hidden] { display: none; }
 
 .molviewer-selection-target-row {
@@ -1440,9 +1387,7 @@
    styled once in `lib/page-shell.css` -- the sheet every page loads, which is
    why they have a design on /results too.  This sheet owns where the box sits
    and how dense it is, never what a severity looks like (`ui-contract.md` § 5:
-   composition is the surface's, the tone has one owner).  Three rules lived
-   here until 2026-09-11: a second vocabulary, with two of the three
-   severities in it, that drew an error in the colour of a remark. */
+   composition is the surface's, the tone has one owner). */
 .molviewer-notices.issues-panel .issue-item {
     font: var(--molviewer-text-2xs)/1.35 var(--molviewer-control-family);
 }
@@ -1564,20 +1509,6 @@
 /* caption style from the shared .molviewer-selection-mini-label rule (§2.1); only the layout delta here. */
 
 /* ==========================================================================
-   The measurement readout
-   ========================================================================== */
-
-/* xyz / distance / angle, floating over the drawing canvas.  Built by
- * `mountReadout` in ui.js (§ 8.5).
- *
- * Anchored ``position: absolute`` inside `.molviewer-window-wrap`, which
- * mount.js builds as position:relative, so top/right land on the actual canvas
- * corner.  ``pointer-events: none`` lets clicks pass through to the drawing.
- *
- * Monospace + tabular-nums so coordinates, distances and angles do not jitter
- * as their decimals change.  Border-left with data-kind gives each a category
- * colour: grey for xyz, blue for distance, orange for angle. */
-/* ==========================================================================
    The 3D window's own chrome
    ========================================================================== */
 
@@ -1601,16 +1532,13 @@
      * stylesheet on .molviewer-window-canvas below, and by the drawing library as its
      * clear colour (3dmol-embed.js reads it here, as it does the two above).
      * WebGL cannot be styled by CSS, so a second literal in the script is the
-     * only alternative -- and two literals is how the drawing came to paint
-     * itself white inside a dark card.
+     * only alternative.
      *
      * It is the module's own scene token (`--molviewer-color-scene`) under the name the
      * SEALED LAYER reads, so the drawing's ground and the card's palette are one
      * decision made in one place. */
     --molviewer-scene-background: var(--molviewer-color-scene);
 
-    /* Inherit base .card padding + radius from tokens.css; this
-       file only adds the per-component overrides. */
     display:        flex;
     flex-direction: column;
     gap:            var(--molviewer-space-xs);
@@ -1703,11 +1631,8 @@
  * matter what the source order says — so a knob bar left in normal flow is drawn
  * UNDERNEATH THE DRAWING, and every click on it lands on the canvas instead.
  *
- * That is not hypothetical: the two menus survived only because each is
- * `position: relative` (below), which lifts them into the positioned layer one
- * by one. The frame bar, which is not, sat behind the scene — present, unhidden,
- * correctly sized, and invisible. The ROW is what belongs over the window, so
- * the row is what is positioned; anything put in it is then over the window too.
+ * The ROW is what belongs over the window, so the row is what is positioned;
+ * anything put in it is then over the window too.
  *
  * Below the busy scrim's 4 ON PURPOSE: while a rebuild is in flight the scrim
  * covers these controls, which is the whole reason it eats clicks. */
@@ -1766,7 +1691,7 @@
    ``overflow: hidden`` to keep the drawing library's canvas inside its rounded
    corners; an absolutely-positioned popover would get clipped by
    that wrapper and become unusable.  Coordinates are set in JS
-   via ``_positionMenuBody`` against the summary's bounding rect
+   (ui.js ``mountMenus``) against the summary's bounding rect
    when the menu opens and on scroll / resize while it stays
    open.  Initial top/left are no-op stubs so the popover is
    off-screen until the JS positioning fires (avoids a one-frame
@@ -2080,9 +2005,7 @@
  *
  * WHY THIS EXISTS as a sweeping rule rather than per-control fixes: a form
  * control that nobody styled does not look unstyled, it looks like a DIFFERENT
- * control. The "New label name" box sat at 16px/34px beside 11px/20.4px
- * buttons purely because no rule had ever named it, and the atom-list
- * checkboxes were browser defaults for the same reason. Naming the family here,
+ * control. Naming the family here,
  * once, means the next control added to the panel is consistent by default
  * instead of by remembering.
  *
@@ -2098,8 +2021,7 @@
     line-height: var(--molviewer-control-line);
 }
 
-/* The three that share a row have to share a height, or they step. The select
-   was 2.4px taller than the buttons beside it for want of this one line. */
+/* The three that share a row have to share a height, or they step. */
 .molviewer-panel input[type="text"],
 .molviewer-panel input:not([type]),
 .molviewer-panel select,
@@ -2122,7 +2044,7 @@
 }
 
 
-/* ── The export dialog + status (§ 11.3; drawn 2026-08-19) ─────────────────
+/* ── The export dialog + status (§ 11.3) ───────────────────────────────────
  * One small modal over the card: the frame range, Image's resolution and
  * movie format.  Everything below speaks the card's own token system --
  * the overlay is the busy cover's pattern (ground washed over the surface,
@@ -2346,7 +2268,7 @@
 }
 
 
-/* THE VIEWER IS WIDE CONTENT BELOW ITS OWN FLOOR (2026-08-23).
+/* THE VIEWER IS WIDE CONTENT BELOW ITS OWN FLOOR.
  *
  * MolView declares what it needs to render at all --
  * `--molviewer-size-card-min-width`, 368px: the wider of its two stacked
@@ -2354,9 +2276,7 @@
  * that is not a layout to fix; the module says so itself, and its card
  * correctly refuses to shrink past the floor.
  *
- * What was wrong was the CLIPPING.  The card stuck 18px out of its host and
- * the knob bar's right-hand controls were simply gone -- no scrollbar, no
- * sign anything was missing.  `ui-contract.md` § 3's rule for content wider
+ * `ui-contract.md` § 3's rule for content wider
  * than its container is that it scrolls inside its OWN box rather than
  * dragging the page sideways, and a 3-D viewer with a control bar is exactly
  * that content on a phone.
@@ -2365,8 +2285,7 @@
  *
  * IT LIVES HERE because it is the same rule on every page that mounts one,
  * and it follows from a fact the MODULE owns -- its own min-width floor.
- * It was this comment and one declaration copied into two tab sheets,
- * keyed on two different ids; `ui-contract.md` § 1 gives a widget used on
+ * `ui-contract.md` § 1 gives a widget used on
  * more than one page exactly one owner. Hosts opt in with the class rather
  * than by id, so a third page needs no third copy. */
 .molviewer-host {

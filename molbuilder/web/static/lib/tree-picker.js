@@ -1,18 +1,12 @@
 /* lib/tree-picker.js — the ONE pop-out path picker.
  *
- * Promoted 2026-08-28 from `projects/dialogs.js::chooseDestinationDir`
- * (user: reuse the picker window, don't reinvent — and make it a module
- * every surface can integrate).  One lazy-expanding tree over the
- * projects root, three consumers by design:
+ * One lazy-expanding tree over the projects root, used by:
  *
- *   * the sidebar's Move/Copy destination question (dirs only) — the
- *     original caller, now delegating here;
- *   * any form field that names a file in the tree;
- *   * the Transport tab's SLOT selection (archive/2026-09-01-transport-design.md
- *     § 4.1): pick a concluded attempt, with the metadata line read
- *     from the attempt's own `.fdf` — the deck that actually ran is
- *     the truth about a result (user, 2026-08-28), never a file this
- *     module invents.
+ *   * the sidebar's Move/Copy destination question (dirs only);
+ *   * the Modify tab's slab panel, picking the relaxed file a lattice is
+ *     measured from;
+ *   * the Transport tab's junction citation: any directory, with the
+ *     meta line from the caller's `describe`.
  *
  * The metadata seam is `describe(path, entry)`: the caller supplies
  * what a selection MEANS (an fdf summary, a file size, nothing) and
@@ -60,11 +54,11 @@ function _el(tag, cls, text) {
  *                 e.g. only `run-*` directories, only `.fdf` files
  *   pickable      optional (entry, path) => bool over SELECTABLE
  *                 entries: rows failing it still list (and expand),
- *                 but cannot be chosen — the Transport tab's slot
- *                 picker walks the whole tree yet lets only `run-N`
- *                 attempt directories be the answer
+ *                 but cannot be chosen — the slab panel's lattice
+ *                 picker walks the whole tree yet lets only `.xyz` /
+ *                 `.XV` files be the answer
  *   describe      optional async (path, entry) => string; shown in the
- *                 meta line when a selection lands (the fdf seam)
+ *                 meta line when a selection lands
  *   confirmLabel  the primary button's label (default "Choose")
  * @returns {Promise<string|null>}
  */
@@ -88,7 +82,7 @@ export async function pickPath(opts) {
   dialog.appendChild(tree);
 
   // The meta line: what the current selection MEANS, when the caller
-  // can say (the fdf-metadata seam for slot picking).
+  // can say (`describe`).
   const meta = _el("p", "tp-meta");
   meta.hidden = true;
   dialog.appendChild(meta);

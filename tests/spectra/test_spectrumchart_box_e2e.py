@@ -5,12 +5,7 @@ plotting library asks the surface how wide it is, and the browser's answer
 counts padding in -- so a padded surface draws wider than the frame meant to
 contain it, and the overflow is clipped rather than reported.
 
-WHY THIS IS NOT A REGEX ON `_style.css`, which is what stood here.
-`tests/spectra/test_spectrumchart_seal.py` asserted
-
-    re.search(r"\\.spectrumchart-surface\\s*\\{[^}]*padding:\\s*0", css, re.S)
-
--- one declaration, in one file.  A stylesheet is not a file, it is a
+WHY THIS IS NOT A REGEX ON `_style.css`.  A stylesheet is not a file, it is a
 cascade: a page sheet, a reset, a `.spectrumchart *` shorthand or a later
 rule in this very file can put the padding back, and the regex goes on
 finding the declaration it was told to look for.  Computed style is the

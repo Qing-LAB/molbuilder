@@ -1,13 +1,8 @@
 """The Build form's schema comes from the CATALOGUE (`web/form-schema.md` § 1).
 
-**The presentation does not change.** The JS renderer already takes whatever
-schema it is handed and knows nothing about any individual parameter, so this
-is one server function pointed at a different source — not a new UI.
-
-What changes is where the data comes from, and one visible consequence: the six
-`category` panels are SHARED, so SIESTA and PySCF show the same headings in the
-same order for the first time. `section` — free text chosen per engine, so
-*"Basis & grid"* and *"Method"* were unrelated words — is gone from this path.
+The JS renderer takes whatever schema it is handed and knows nothing about
+any individual parameter.  The `category` panels are SHARED, so SIESTA and
+PySCF show the same headings in the same order.
 """
 from __future__ import annotations
 
@@ -24,10 +19,6 @@ from molbuilder.web.blueprints._shared import catalogue_to_form_schema
 def test_every_item_this_engine_has_reaches_the_form(engine):
     """Membership is TOTAL (§ 7): a parameter the catalogue carries and the
     form omits is a control no user can reach.
-
-    This is what makes the six previously-unreachable SIESTA parameters appear
-    — `species_order`, `write_forces`, `write_coor_step`, `write_molwatch_log`,
-    `copy_psml`, `kgrid_displacement` — none of which had a `section`.
 
     **The exclusions are declared by the ITEM, never listed here**, and there
     are two.
@@ -50,17 +41,11 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
     ordinary person-answered choice for an *optimization*, where nothing else
     decides it. Excluding every item that has a role at all would take a
     legitimate control off the Build form.
-
-    *(The `role` marker landed 2026-09-16 and this test was not updated with
-    it, so `solution_method`, `wrap_into_cell` and `ts_hs_save` were offered
-    on a transport form for a week and this test pinned that. Found 2026-09-23
-    when the filter was added — the test failed, which is the test working.)*
     """
     items = [i for i in T.select(T.read_template(T.load_catalogue()),
                                  engine=engine) if i.group != "staging"]
 
-    # Membership is total PER KIND since the vibration items landed
-    # (template.md § 6.3): an item carrying `calculations` reaches the
+    # Membership is total PER KIND (template.md § 6.3): an item carrying `calculations` reaches the
     # form of exactly those kinds; an item without the key reaches every
     # kind.  The kinds to check come from the items themselves, so a new
     # kind needs no edit here.
@@ -104,26 +89,13 @@ def test_the_displacement_gets_a_control_that_can_carry_its_value():
     assert f["kgrid_displacement"]["default"] == [0.0, 0.0, 0.0]
 
 
-# RETIRED 2026-09-03 — test_the_renderer_knows_every_card_the_form_actually
-# _asks_for.  It regex-extracted WORKFLOW_GROUP_ORDER from form-schema.js and
-# compared it to the catalogue's groups as sets, having said in its own
-# docstring that "only a browser would show it" (`process/testing.md` § 3a.1).
-# Replaced by test_build_e2e.py::TestFormSchemasRender::
-# test_no_field_renders_loose_outside_a_card, which asks the rendered DOM
-# whether any field group sits outside a card -- the outcome a person sees,
-# and one that also catches the two ways the set comparison passed while the
-# page was wrong (a role in ORDER but not in META, and a card skipped for an
-# empty section map).  Mutation-verified.
 def test_an_optional_item_offers_its_unset_state():
     """§ 1.2: `optional` is written to the catalogue precisely so a surface can
     offer *(auto)* / *(no cap)*.  It cannot be inferred from `null_label`."""
     f = {x["name"]: x for s in catalogue_to_form_schema("siesta")["sections"]
          for x in s["fields"]}
-    # ``block_size``, not ``mpi_np``: the rank count moved to the
-    # staging surface on 2026-08-15 (it is a bench axis prep measures, not a
-    # parameter typed here), so it is no longer on this form to check.  The
-    # block size is the same shape of claim -- optional, auto-resolved, and
-    # its *(auto)* state is the whole reason `optional` is written down.
+    # ``block_size``: optional, auto-resolved, and its *(auto)* state is the
+    # whole reason `optional` is written down.
     assert f["block_size"]["optional"] is True
     assert f["block_size"]["null_option"] is True
     assert f["block_size"]["null_label"]

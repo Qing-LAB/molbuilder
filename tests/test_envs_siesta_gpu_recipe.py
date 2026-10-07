@@ -71,8 +71,6 @@ def test_recipe_description_mentions_gpu_and_source(recipe):
     )
 
 
-
-
 # --------------------------------------------------------------------- #
 #  Build toolchain in conda_packages                                     #
 # --------------------------------------------------------------------- #
@@ -81,11 +79,9 @@ def test_recipe_description_mentions_gpu_and_source(recipe):
 def test_the_toolchain_is_pinned_to_a_MINOR_version(recipe):
     """**The minor is the whole point** (`ops/installation.md` § 6).
 
-    It asserted the substring ``gcc_linux-64=14``, which `14.3` satisfies
-    and `14.4` satisfies equally -- and **14.4's gfortran miscompiles
-    SIESTA's `kpoint_t.F90`**, silently, into wrong k-points.  So the one
-    thing the pin exists to prevent was the one thing the test could not
-    tell apart from success.
+    A major-only ``gcc_linux-64=14`` is satisfied by `14.3` and `14.4`
+    equally -- and **14.4's gfortran miscompiles SIESTA's `kpoint_t.F90`**,
+    silently, into wrong k-points.
 
     Checked as a PROPERTY -- three packages, one version, and that version
     carrying a minor -- rather than by retyping `14.3` here: the number is
@@ -111,14 +107,9 @@ def test_pins_the_project_python(recipe):
     """**Every env that declares a python declares the SAME one.**
 
     That is the invariant, and it is what a single `MOLBUILDER_PYTHON` exists
-    to hold.  Asserting the literal ``python=3.12`` instead -- which this did
-    until 2026-09-14 -- pinned the DEFAULT, so the test failed on any machine
-    that legitimately overrode it, and it said nothing at all about whether
-    the five recipes agreed with each other.
-
-    `molbuilder-siesta` is excluded by the `if`, not forgotten: it declares no
-    python, so conda-forge's `siesta` build brings its own.  Pinning it would
-    constrain the one env whose purpose is installing anywhere.
+    to hold.  Asserting the literal ``python=3.12`` instead would pin the
+    DEFAULT, failing on any machine that legitimately overrode it, and say
+    nothing about whether the recipes agreed with each other.
     """
     from molbuilder.envs.recipes import builtin_recipes, _PYTHON_SPEC
     assert _PYTHON_SPEC in recipe.conda_specs, (
@@ -149,12 +140,6 @@ def test_uses_openblas_not_mkl(recipe):
     fftw then resolve against it, so Intel's libiomp5 never lands beside
     gcc's libgomp.  A declaration the solver enforces.
 
-    Two sibling tests stood here asserting a `forbidden_packages` denylist
-    and an `omp_runtime` label instead; both were removed with those fields
-    on 2026-09-12.  They asserted the shape of our own file -- the denylist
-    was checked against this very package list, in the same file, and could
-    not see what conda actually installs.  This one asserts the outcome.
-
     See docs/ops/installation.md section 6."""
     pkgs_lower = [p.lower() for p in recipe.conda_specs]
     assert any("openblas" in p for p in pkgs_lower)
@@ -167,8 +152,8 @@ def test_mpi_packages_pinned_to_openmpi_variant(recipe):
     """fftw / hdf5 / libnetcdf must use the openmpi variant to match the
     env's OpenMPI; mismatched variants segfault at runtime.
 
-    `netcdf-fortran` left this list on 2026-09-19 -- it is built from
-    source now, so there is no conda spec to check.  libnetcdf, the C
+    `netcdf-fortran` is built from source, so there is no conda spec to
+    check.  libnetcdf, the C
     layer it links, carries the same requirement."""
     for required in ("fftw", "hdf5", "libnetcdf"):
         matches = [p for p in recipe.conda_specs if p.startswith(required)]
@@ -200,21 +185,6 @@ def test_build_spec_cuda_required(recipe):
     assert recipe.build_spec.cuda_required is True
 
 
-# NO TEST ON `cuda_min_version` HERE -- THE FIELD IS GONE (2026-09-14).
-# Two stood here in one day and both asserted something false.  The first
-# pinned `"12.4"` with the reason *"default toolchain (gcc 14) pairs with CUDA
-# 12.4+"* -- which the pairing table contradicts.  The second asserted that the
-# floor must pair with the recipe's own gcc, which conflates two SEPARATE
-# preflight checks: the floor is what ELPA + SIESTA need, and
-# `check_cuda_gcc_compat` is whether nvcc accepts the chosen gcc (it names
-# `MOLBUILDER_GCC=13` when it does not).  Asserting the conflation refused
-# CUDA 12.4 + gcc 13, a combination the table allows.
-#
-# A test earns a place here when somebody checks ELPA 2024.05.001's own
-# documented CUDA minimum; until then the number is the original design
-# commit's and re-typing it proves nothing.
-
-
 def test_build_spec_components_in_order(recipe):
     """Siesta is built LAST, because it links the others.
 
@@ -236,9 +206,9 @@ def test_build_spec_components_in_order(recipe):
 def test_build_spec_activate_hook_publishes_paths(recipe):
     """Activate.d hook puts siesta on PATH, ELPA on LD_LIBRARY_PATH,
     and $CONDA_PREFIX/lib on LD_LIBRARY_PATH (where conda-installed
-    libcudart / libmpi / libgomp live).  ELSI no longer has its own
-    install dir since it's built into the siesta executable via the
-    SIESTA submodule path."""
+    libcudart / libmpi / libgomp live).  ELSI has no install dir of its
+    own: it is built into the siesta executable via the SIESTA submodule
+    path."""
     hook = recipe.build_spec.activate_hook
     assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"' in hook
     assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"' in hook
@@ -320,11 +290,10 @@ def test_elpa_component(recipe):
     assert elpa.configure_argv[0] == "sh"
     assert "configure" in flags
     assert "--enable-nvidia-gpu" in flags
-    # 2026-06-16 (recipe bump to ELPA 2024.05.001): the cc flag now
-    # uses a bash variable (CC_TAG) instead of a literal template, so
-    # the SM_80 specialised kernel can force sm_80 (A100-only) while
-    # everyone else uses their native cc.  See the CC_TAG block in
-    # recipes.py for the design rationale.
+    # The cc flag uses a bash variable (CC_TAG), so the SM_80 specialised
+    # kernel can force sm_80 (A100-only) while everyone else uses their
+    # native cc.  See the CC_TAG block in recipes.py for the design
+    # rationale.
     assert "--with-NVIDIA-GPU-compute-capability=$CC_TAG" in flags
     # The native cc still flows through via the CC_NUM/CC_TAG assignment
     # at the top of the configure prelude.
@@ -332,15 +301,14 @@ def test_elpa_component(recipe):
     assert "--enable-openmp" in flags
     assert "--prefix={install}" in flags
     assert "--with-cuda-path={env_prefix}" in flags
-    # No cmake flags from the old recipe.
+    # No cmake flags.
     assert "cmake" not in flags.lower() or "cmake" not in flags
     assert "-DENABLE_NVIDIA_GPU" not in flags
     assert "-DCMAKE_CUDA_ARCHITECTURES" not in flags
 
 
 def test_no_elsi_component(recipe):
-    """ELSI is NOT a separate BuildComponent in the 2-component
-    architecture -- it's a SIESTA submodule under
+    """ELSI is NOT a separate BuildComponent -- it's a SIESTA submodule under
     External/ELSI-project/elsi_interface and SIESTA's cmake builds
     it on the fly.  Per SIESTA 5.4 INSTALL.md."""
     names = [c.name for c in recipe.build_spec.components]
@@ -365,12 +333,9 @@ def test_siesta_component(recipe):
     gitlab.com/siesta-project/siesta DOES ship numeric 5.x release
     tags: ``5.0.0``, ``5.0.1``, ``5.0.2``, ``5.2.0``, ``5.2.1``,
     ``5.2.2``, ``5.4.0``, ``5.4.1``, ``5.4.2`` (bare numeric, no
-    ``v`` / ``siesta-`` prefix).  Earlier this recipe pointed at the
-    ``rel-5.4`` branch -- a moving target that drifted on every push
-    and (because the old global-fingerprint scheme baked the
-    resolved SHA into every sentinel) invalidated the ELPA sentinel
-    just because SIESTA's upstream HEAD moved.  Pinning to ``5.4.2``
-    also matches what the precompiled ``molbuilder-siesta`` env
+    ``v`` / ``siesta-`` prefix).  A tag, not the moving ``rel-5.4``
+    branch, so the source does not drift on every push.  Pinning to
+    ``5.4.2`` also matches what the precompiled ``molbuilder-siesta`` env
     ships, so the ``.fdf`` input format and TranSiesta output format
     stay identical across CPU vs GPU runs.  Override via
     ``MOLBUILDER_SIESTA_TAG`` for a hotfix from the ``rel-5.4`` branch
@@ -391,11 +356,6 @@ def test_siesta_component(recipe):
     assert "-DSIESTA_WITH_LIBXC=ON" in flags
     assert "-DSIESTA_WITH_NETCDF=ON" in flags
     assert "-DSIESTA_WITH_ELPA=ON" in flags
-
-
-# --------------------------------------------------------------------- #
-#  System preconditions                                                  #
-# --------------------------------------------------------------------- #
 
 
 # --------------------------------------------------------------------- #
@@ -456,23 +416,6 @@ def test_no_system_paths_in_cmake_flags(recipe):
                 f"{comp} configure_argv references system path "
                 f"{forbidden!r}: {flags}"
             )
-
-
-# TWO RPATH TESTS WERE DELETED HERE, 2026-09-19, and the reason is worth
-# keeping: they asserted `-DCMAKE_INSTALL_RPATH=$ORIGIN...` and
-# `-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON` reach the siesta binary.  MEASURED --
-# they do not.  SIESTA's own CMakeLists.txt (85-102, under
-# `option(SIESTA_SET_RPATH ON)`) does a plain, non-CACHE
-# `set(CMAKE_INSTALL_RPATH ...)`, and a normal variable shadows a `-D` cache
-# variable for the whole directory scope.  A probe replicating those lines,
-# built under `conda run` in the env, came out
-# `RUNPATH <env>/lib:$ORIGIN/../lib:<install>/lib` -- the recipe's value
-# nowhere in it.  So both tests were green over a flag that is discarded, and
-# reported the binary's rpath was right when nothing had looked at a binary.
-#
-# What replaces them is not another assertion: the siesta component's
-# `verify_argv` runs `{install}/bin/siesta --version`, which fails if the
-# loader cannot resolve the closure.  See docs/ops/installation.md 6.4.
 
 
 # --------------------------------------------------------------------- #

@@ -1,19 +1,15 @@
 """Vendored CodeMirror bundle integrity — L2 source-text invariant.
 
-The preview-modal editor (``lib/projects/preview.js``) injects six
-vendored files at first use: the core, two CSS files, and three
-addons (dialog, searchcursor, search, jump-to-line).  The wiring
+The preview-modal editor (``lib/projects/preview.js``) injects, through
+the shared loader, vendored files at first use: the core, two CSS files,
+and four addons (dialog, searchcursor, search, jump-to-line).  The wiring
 in preview.js depends on:
 
   * ``window.CodeMirror.commands.find``  — Ctrl-F dialog
   * ``window.CodeMirror.commands.jumpToLine``  — Alt-G dialog
 
 A vendor bundle update that ships only the core, or drops one of
-the addons, breaks the modal's search + jump bindings.  A previous
-generation of these checks lived as two end-to-end Playwright
-tests that spun up Chromium just to call
-``typeof window.CodeMirror.commands.find === 'function'`` after
-loading the bundle — pure existence checks of vendored code.
+the addons, breaks the modal's search + jump bindings.
 
 Per docs/process/testing.md (source-text invariants):
 verifying that a vendored file is present + carries the symbol
@@ -21,7 +17,7 @@ the host code depends on is the canonical L2 shape.  No browser,
 no JS runtime — just file existence + grep over the minified
 source.
 
-This test pulls the asset list directly from preview.js so any
+This test pulls the asset list directly from the loader so any
 future asset added to the bundle is automatically required.  The
 addon → command mapping is hand-maintained: adding a third addon
 should add an entry to ``_ADDON_COMMANDS``.
@@ -63,9 +59,7 @@ def _expected_assets() -> list[str]:
     file it injects.  The asset list is the source of truth — adding a
     bundle file there automatically extends this test's coverage.
 
-    The loader moved out of ``lib/projects/preview.js`` into
-    ``lib/codemirror-load.js`` on 2026-08-16, when the Task Setup tab
-    needed the same editor: two lazy-loaders would be two places for
+    One shared loader, because two lazy-loaders would be two places for
     this list to drift, which is the drift this test exists to catch.
     """
     src = LOADER_JS.read_text()
@@ -80,8 +74,7 @@ def _expected_assets() -> list[str]:
 
 
 def test_every_injected_asset_exists_and_is_nonempty():
-    """the shared loader lists six vendor files.  Each
-    one must be on disk under ``static/vendor/codemirror/`` AND
+    """Each vendor file the shared loader lists must be on disk under ``static/vendor/codemirror/`` AND
     non-empty (a 0-byte file would silently break the bundle)."""
     missing: list[str] = []
     empty: list[str] = []
@@ -104,7 +97,7 @@ def test_every_injected_asset_exists_and_is_nonempty():
 
 
 # --------------------------------------------------------------------- #
-#  Language modes (added 2026-08-16)                                     #
+#  Language modes                                                        #
 # --------------------------------------------------------------------- #
 
 _MODE_RE = re.compile(r'file:\s*"([^"]+\.min\.js)"')

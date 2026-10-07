@@ -6,12 +6,6 @@
  * GET /partials/trajectory-inspector and calls this module's exported
  * ``mount(host, opts)`` against the resulting host element.
  *
- * History note: this module was originally lifted out of
- * static/watch/viewer.js in early 2026-05.  The /watch page route
- * was retired 2026-05-19 (this module became /results-only); the
- * lift is preserved because the core implementation was clean +
- * already root-scoped, so no rewrite was needed.
- *
  * --- How the viewer + plots stay fast --------------------------------
  * Frames are loaded once into a 3Dmol "movie" model (addModelsAsFrames)
  * and the slider / playback simply calls viewer.setCurrentFrame(idx), which is
@@ -54,10 +48,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * ("pending"|"queued"|"running"|"failed"|"finished", the one door,
      * parse/dirs/job.py), which the server sends with the file as `run` and
      * which the badge and the follow read (`fileState.run`,
-     * web/results.md § 4.1).  *(The badge and the stop decision read
-     * `run_state` in two places until 2026-10-03, and once disagreed: the
-     * stop-check tested "errored", which nothing emits, so a crashed run
-     * polled every 15 s until the user left the tab.)* */
+     * web/results.md § 4.1). */
     const RUN_STATE = Object.freeze({
         RUNNING:  "running",
         ENDED:    "ended",
@@ -68,14 +59,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
 
     /* THE VIEWER IS THE ONE THIS MODULE MOUNTED, and it is reached through the
      * handle that mounting returned -- `_mv.data` (molview.md § 5.6: a viewer
-     * belongs to whoever mounted it; there is no registry to look one up in).
-     *
-     * There used to be a module-level `_mvdata()` reading
-     * `window.molbuilder.molview.data`. MolView publishes nothing on `window`
-     * (§ 4), so it answered null every time -- and the mount guard below tested
-     * it before mounting, which meant THIS TAB NEVER MOUNTED A VIEWER AT ALL.
-     * Every later call went to null too, inside try/catch or behind a `typeof`
-     * guard, so the failure never said a word. */
+     * belongs to whoever mounted it; there is no registry to look one up in). */
 
     /**
      * Mount the trajectory inspector inside ``rootEl``.
@@ -95,7 +79,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
      *                HTTP request, disposes the embed handle (which
      *                stops its own animation loop + tears down its
      *                3Dmol viewer), and removes window-level
-     *                listeners (resize, pagehide).  After dispose()
+     *                listeners (pageshow).  After dispose()
      *                the rootEl's contents are no longer owned by
      *                the inspector; caller may clear/replace freely.
      *   load(path) -- swap the displayed trajectory to ``path``
@@ -143,22 +127,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
     function mountInspector(rootEl, opts) {
     opts = opts || {};
 
-    // Poll cadence: 15 s.
-    //
-    // History: 15 s -> 60 s on 2026-06-14 (commit 6da01ce) to silence
-    // ``SSL: UNEXPECTED_EOF_WHILE_READING`` noise from overlapping
-    // ticks aborting in-flight TLS connections.  The G4 fix paired
-    // that bump with an in-flight guard in ``pollOnce`` (overlapping
-    // ticks now SKIP instead of aborting).
-    //
-    // 2026-06-17 Fix B: drop back to 15 s.  60 s was overcorrection --
-    // the in-flight guard alone is sufficient to prevent the SSL
-    // noise (the TLS teardown was the symptom, ``abort()`` mid-flight
-    // was the cause, and that's gone).  Users watching a live SIESTA
-    // SCF run see iterations complete in 13-24 s on the standard
-    // workstation; 60 s polling means 1-4 iterations slip between
-    // polls and the plot lags the on-disk state.  15 s restores the
-    // original responsiveness without re-introducing the SSL bug.
+    // Poll cadence: 15 s.  Overlapping ticks SKIP (the in-flight guard in
+    // ``pollOnce``) rather than abort a TLS connection mid-response.
+    // Users watching a live SIESTA SCF run see iterations complete in
+    // 13-24 s on the standard workstation, so a slower poll lets
+    // iterations slip between polls and the plot lags the on-disk state.
     const POLL_MS = 15000;
 
     // Inside-partial lookup: scoped to the inspector's root element
@@ -175,8 +148,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // dispose() in one call, then the per-resource teardowns (polling
     // timer, in-flight HTTP request, embed handle).
     //
-    // The window-level listeners (``resize``, ``pagehide`` on the
-    // legacy /watch handoff) MUST be tracked here -- they survive
+    // The window-level listener (``pageshow``) MUST be tracked here -- it survives
     // the host's innerHTML clear, so without explicit removal
     // every /results mount→dispose→mount cycle would accumulate
     // them.  Element listeners on partial-declared ids are GC'd
@@ -184,10 +156,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // the spectra core's dispose contract for cross-inspector
     // consistency).
     //
-    // THE SCOPE IS THE ONLY REGISTRY.  A local ``_cleanups`` array stood
-    // beside it for one commit on 2026-08-23 -- the leftover of the array
-    // ``_on`` used to push into before the scope was extracted -- and
-    // dispose() drained THAT while every listener sat in the scope.
+    // THE SCOPE IS THE ONLY REGISTRY.
     var _listeners = root.molbuilder.inspectorLifecycle.listeners();
     function _on(target, event, handler, opts) {
         _listeners.on(target, event, handler, opts);
@@ -270,19 +239,16 @@ import { molviewFiles } from "../projects/molview-doors.js";
         },
 
         viewState: {
-            // NO currentFrame here.  MolView owns the playhead; a tab-side copy was written
-            // (reset to 0 on every load) and never read, so it could only ever be a stale
-            // second answer.  The one place that needs the shown frame asks
+            // NO currentFrame here.  MolView owns the playhead; a tab-side copy could
+            // only ever be a stale second answer.  The one place that needs the shown frame asks
             // molview.data.currentFrame() at the moment it needs it.
             firstFit:     true,
         },
 
         // uiPrefs: contract § 3 reserves this bucket for per-session
         // knobs (sessionStorage-persisted, survives file-switch).
-        // Trajectory has NO fields here today: hide-frozen is owned
-        // by mol-viewer-embed's own sessionStorage with its own key
-        // (mol.viewer.hideFrozen), and playback speed/loop are knobs
-        // on MolView's frame-controls bar.  When/if a
+        // Trajectory has NO fields here today: playback speed/loop are
+        // knobs on MolView's frame-controls bar.  When/if a
         // trajectory-only pref appears (e.g. a
         // plot tab selection that isn't a viewer concern), populate
         // this bucket and wire the sessionStorage roundtrip
@@ -303,17 +269,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // the file it was issued for) before applying.  Late responses
             // from a prior file can never write into the current
             // file's view.
-            // (A two-finished-ticks buffer, `finishedTicks`, stood here
-            // until 2026-10-03: a tick could lie while the parser flushed
-            // trailing output.  The server now reads the run's end before
-            // the file's last read, web/results.md § 4.1.)
         },
 
         derived: {
             // Empty -- the rate the SCF line shows is the timing
             // instrument's, carried in the file's own data, so nothing is
-            // derived here (it held `scfPollHistory`, the browser's own
-            // per-iteration estimate, until 2026-09-27).  Kept
+            // derived here.  Kept
             // present-but-empty, as spectra's is, so the five-bucket shape
             // holds.
         },
@@ -327,14 +288,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // contract's reset matrix is enforced at transition() and at
     // the four documented external entry-points (loadByPath,
     // Refresh, pollOnce result, dispose).
-    //
-    // ESLint warns on ``Object.defineProperty(state, ...)`` from
-    // inside a closure; we squelch by setting properties first then
-    // overwriting with defineProperty.  Same pattern as the
-    // workspace dispatcher's compat shims.
     (function _wireBackcompatAliases() {
-        // The shared inspector helper (lib/inspectors/lifecycle.js): both
-        // cores spelled this out byte-identically.
+        // The shared inspector helper (lib/inspectors/lifecycle.js).
         function alias(key, bucket) {
             root.molbuilder.inspectorLifecycle.alias(state, key, bucket);
         }
@@ -464,9 +419,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             return;
         }
         if (target === "APPLY") {
-            // PR 2.3: close deferred gap #1.  applyNewData no longer
-            // writes fileState fields directly via the backward-
-            // compat aliases; it routes here.  Single canonical
+            // applyNewData does not write fileState fields via the
+            // backward-compat aliases; it routes here.  Single canonical
             // writer for fileState matches the contract § 2
             // forbidden list ("Direct mutation of fileState outside
             // a → LOADING → LOADED/WATCHING arc").
@@ -488,18 +442,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // _settlePostLoad after the APPLY (it inspects the new
             // data.run_state).
             //
-            // 2026-09-03 -- "never half-updated" was the weaker of the two
-            // properties, and the comment above defended only that one.
-            // The one that matters is that the DATA AND THE NAME BELONG TO
-            // EACH OTHER.  The noNewContent branch passed {mtime, data}
-            // and let path stand "because the file identity didn't
-            // change", which is an assumption nobody checked: a tick fired
-            // for file A resolves after the user has moved to B, and A's
-            // frames are written under B's name.  A `fetchSeq` counter
-            // existed to notice that afterwards; it is gone (2026-09-04),
-            // because an answer that carries its own name does not need a
-            // number to be recognised -- and the counter never caught the
-            // dispose case, since IDLE did not bump it.
+            // And the DATA AND THE NAME BELONG TO EACH OTHER: a tick fired
+            // for file A can resolve after the user has moved to B.
             //
             // The server already answers the question -- every reply
             // carries `r.path`, the file it actually read -- so the answer
@@ -511,25 +455,14 @@ import { molviewFiles } from "../projects/molview-doors.js";
                     + "file it came from, never onto the current one");
             }
             /* THE ANSWER TO A LOAD NAMES THE FILE.  A POLL MUST NAME THE
-             * ONE WE ALREADY HAVE.  Those are different questions and the
-             * first version of this guard (2026-09-03) asked only the
-             * second -- which broke every load whose resolved name differs
-             * from the requested one.
+             * ONE WE ALREADY HAVE.  Those are different questions.
              *
              * `/api/watch/load` answers with the file the SERVER read after
              * `_resolve_within_roots`: `~` expanded, symlinks followed,
              * `.`/`//`/trailing slash normalised, a DIRECTORY replaced by
              * the newest log inside it, an upload replaced by its /tmp
-             * path.  `transition("LOADING")` had stored what we ASKED for,
-             * so comparing the two dropped the payload, and the caller then
-             * read `state.data.frames` off the null the LOADING reset left
-             * -- surfacing a complete 200 response as
-             * "Network error: Cannot read properties of null".
-             *
-             * Measured differing inputs: a directory, a trailing slash, a
-             * `./` segment, a relative path, `~`, any symlinked ancestor
-             * (a projects/ symlinked to a data volume misses on EVERY
-             * load), and every multipart upload.
+             * path -- not necessarily what `transition("LOADING")` stored as
+             * ASKED for.
              *
              * `state.machine` is the discriminator, and it is exact:
              * `transition("LOADING")` set it and nothing else runs before
@@ -539,14 +472,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
              * status message downstream exists to explain -- and a poll,
              * comparing resolved against resolved, still cannot paint one
              * file's frames under another's name. */
-            /* NO `path !== null` EXEMPTION.  The first version had one, and
-             * it exempted exactly the case the guard is most needed for:
-             * `transition("IDLE")` -- dispose -- sets the path to null, so
-             * `path !== null` was false and an answer arriving after the
-             * inspector was torn down sailed through into a dead panel.
-             * The contract claimed the opposite ("fails the new one, because
-             * fileState.path is null by then"); it was the call sites, not
-             * this guard, doing that work. */
+            /* NO `path !== null` EXEMPTION: `transition("IDLE")` -- dispose
+             * -- sets the path to null, and an answer arriving after the
+             * inspector was torn down must not reach a dead panel. */
             if (state.machine !== "LOADING"
                 && payload.path !== state.fileState.path) {
                 return;          // a POLL answer for a file we are not showing
@@ -586,9 +514,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // ending.  Follow while the run is live; a failed run stops as a stopped
     // file always did (ERROR keeps the last data on screen); a finished run,
     // one never launched, and a file that belongs to no run -- an upload --
-    // have nothing more to bring.  (It read the file's `run_state` and
-    // waited for two finished ticks until 2026-10-03, so a run killed
-    // mid-step was followed until the page closed.)
+    // have nothing more to bring.
     function _settlePostLoad() {
         const run = state.fileState.run;
         if (run && run.live) {
@@ -606,21 +532,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
         return rs === RUN_STATE.STOPPED || rs === RUN_STATE.OOM;
     }
 
-    // (Contract § 4 Invariant 3 "render-with-snapshot" is NOT
-    // enforced today.  In practice the render functions close over
-    // ``state`` directly; applyNewData runs synchronously and calls
-    // render functions before yielding to the event loop, so there
-    // is no observable "stale-during-tick" race.  A snap() helper
-    // existed in PR 2 but went unused and was deleted in PR 2.3 to
-    // match implementation -- pulling the dead code prevents the
-    // contract from being "aspirational in code, claimed in tests".
-    // THIS COMMENT USED TO POINT AT "docs/web/results.md Invariant 3".
-    // There is no such section, and there should not be: the contract
-    // describes what this page DOES, and an invariant nothing enforces is
-    // not a thing it does.  The rule was written in the design proposal
-    // that contract replaced, and the pointer outlived it.  If the
-    // snapshot pattern ever becomes load-bearing, § 4 gains it THEN --
-    // written from the code that implements it, not before.)
+    // (The render functions close over ``state`` directly; applyNewData
+    // runs synchronously and calls them before yielding to the event loop,
+    // so there is no observable "stale-during-tick" race.)
 
     // Per-frame in-progress filter (contract § 4 Invariant 2).
     // The parser tags partial frames with in_progress=true
@@ -646,8 +560,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // Expose for tests + future render-function migration.
     state._plottableFrames = plottableFrames;                          // eslint-disable-line camelcase
 
-    // MolView migration (task #34): the trajectory inspector no longer embeds
-    // its own 3Dmol viewer.  It mounts the FULL concealed MolView module
+    // The trajectory inspector mounts the FULL concealed MolView module
     // read-only (web/molview.md § 4, § 8) into the empty #viewer-host and becomes
     // a DATA FEEDER — it hands MolView the parsed coordinate frames + raw
     // per-frame forces (molview.data.reloadFrames / addFrames / setForces; the
@@ -672,9 +585,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const mb = window.molbuilder || {};
         const ws = mb.workspace;
         const host = $("viewer-host");
-        /* NOT GATED ON A VIEWER EXISTING -- this is what creates one. The guard
-         * used to ask `_mvdata()` first, which is a question about the thing
-         * this block has not built yet, and it is why nothing ever mounted. */
+        /* NOT GATED ON A VIEWER EXISTING -- this is what creates one. */
         if (!host || typeof mount !== "function" || !ws) {
             setStatus("Viewer unavailable: the MolView module / persistence "
                     + "layer is missing from results.html.", "error");
@@ -697,14 +608,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
             return null;
         }
         // Test hook: expose the mount handle so Playwright e2e can drive the
-        // read-only trajectory view (the SELECTION + structure are read off the
-        // molview.data singleton — MolView conceals its internals).
+        // read-only trajectory view.
         host.__molview_results_handle = _mv;
         // NOTE: force arrows are NOT re-derived per frame.  The inspector hands the ENGINE
         // the filtered per-frame forces ONCE (buildForcesPerFrame) on a filter-knob change;
         // the engine bakes + styles the arrows into the native animation, so playback draws
-        // frame t's arrows with zero per-frame synthesis.  A per-frame onChange handler here
-        // was the cause of the slow animation and is deliberately gone.
+        // frame t's arrows with zero per-frame synthesis.
         return _mv;
     })();
 
@@ -728,10 +637,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
     function setStatus(msg, kind) {
         // The inspector's own status line (`_trajectory_inspector.html`
         // #trajectory-status): a refused load, a viewer that could not
-        // mount, the cell's provenance, an export.  It was absent on
-        // /results until 2026-09-28 and this returned in silence, so every
-        // one of those messages was lost; a mount without the partial
-        // still has none.
+        // mount, the cell's provenance, an export.  A mount without the
+        // partial has none, and this returns.
         if (!document.getElementById("trajectory-status")) return;
         window.molbuilder.status.set("trajectory-status", msg, kind);
     }
@@ -747,7 +654,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     /* ------------------------------------------------------------------ */
 
     /**
-     * 2026-06-12: Build a CSV bundling every column drawn across the
+     * Build a CSV bundling every column drawn across the
      * 4 trajectory plots.  Self-describing header (``#``-comments)
      * carries source file, parser, mtime, and the generation
      * timestamp so the file can be re-traced later without external
@@ -855,41 +762,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
         return lines.join("\n") + "\n";
     }
 
-    /* `framesToMultiXyz` STOOD HERE and is gone (2026-09-07).
-     *
-     * It was a second XYZ writer, in the browser, at six decimals -- and its
-     * only use was manufacturing frame 0 to get through the load door's TEXT
-     * branch, which then lost the labels, the cell and the `info` store that
-     * had to be handed back beside it. `molview.md` § 11.7 already claimed
-     * "the writer is gone (2026-07-31), not merely constrained" and that
-     * `Structure.to_xyz` is the only place in the system that writes an
-     * `.xyz`; both were false while this existed. The server assembles frame 0
-     * now (`watch.py::_frame0_structure`) and the tab installs the envelope. */
-
-    /* In 3Dmol.js a sphere `scale` value is multiplied by the element's
-     * van-der-Waals radius, so per-element size differences only become
-     * visible at a non-tiny scale.  Defaults below are tuned so that
-     * Au / S / C / H look visibly different in every mode that draws
-     * atoms.  The user's "radius scale" slider multiplies these.
-     *
-     * Sizing math lives in molbuilder/web/static/lib/mol-style.js so
-     * the Build and Watch viewers stay in lock-step on representation
-     * numerics.  The Watch tab additionally exposes a `colorscheme`
-     * select, which we forward through the shared helper. */
-    // Post-#205/#230 Part A+B: style (rep/radius/background/
-    // colorscheme) is fully owned by the embed's standard knob
-    // bar.  The trajectory-side applyStyle / styleSpec /
-    // _currentRep helpers and the applyStyleAndRewireClicks
-    // shim (further down) were removed by #232 review cleanup —
-    // handle.setStructure re-applies the embed's current style on
-    // every movie swap so no trajectory-side re-apply is needed.
-
-    // Unit-cell display, atom-index labels, and background are all MolView's
-    // now (its Cell page + knob bar): the periodicity passed to openMolecule
+    // Style, unit-cell display, atom-index labels, and background are all
+    // MolView's (its Cell page + knob bar): the periodicity on the envelope
     // drives the cell box, and the knob bar's Labels popover owns index labels.
-    // The trajectory inspector no longer computes a cell-line colour or wires a
-    // #show-cell / #show-indices control — those retired with the MolView
-    // migration (task #34).
 
     // Frozen-atom indices from runtime_info.frozen_atoms -- as the run's own
     // output states them (model/parse.md 5.3).  Returns a Set<number> for O(1)
@@ -912,7 +787,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // Returns a per-atom array (ORIGINAL atom order) of [fx,fy,fz]; a SUPPRESSED atom is
     // zeroed -- frozen atoms when "hide frozen" is on (their forces are constraint-balancing
     // artefacts, not physical free-atom forces) and sub-threshold magnitudes -- which the
-    // engine renders as NO arrow (process.js §2.4).  This decides WHICH forces show; the
+    // engine renders as NO arrow.  This decides WHICH forces show; the
     // ENGINE owns the styling (gold max-highlight, magnitude colour/radius ramp) and the
     // scale (the forceScale flag).  null when the parser captured no forces for this frame.
     function _buildForcesForFrame(frameIdx) {
@@ -934,8 +809,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
     /*  Force-vector overlay                                               */
     /* ------------------------------------------------------------------ */
     //
-    // The ENGINE builds + styles the force arrows from raw per-frame forces
-    // (process.js §2.4): the inspector hands FILTERED forces (below) + drives the
+    // The ENGINE builds + styles the force arrows from raw per-frame forces:
+    // the inspector hands FILTERED forces (below) + drives the
     // forceScale flag, and MolView owns the gold max-highlight, the magnitude
     // colour/radius ramp, and WHETHER they're drawn (its "show overlay" toggle).
 
@@ -956,8 +831,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // Re-hand the filtered per-frame forces to MolView after a FILTER knob change
     // (threshold / hide-frozen).  setForces re-bakes the arrow overlay IN PLACE -- no movie
     // reload -- preserving the overlay's on/off visibility.  Scale is separate (the cheap
-    // forceScale flag), so it never routes here.  ``drawForces`` keeps its name so the
-    // append path + knob wiring read unchanged.
+    // forceScale flag), so it never routes here.
     function drawForces() {
         const d = _mvdata();
         if (d) {
@@ -965,16 +839,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
         }
     }
 
-    // Legacy picking / atom-list helpers (_picks, _framePositions,
-    // _frameAtomsMeta, updateInspectPanel, togglePickFromRow, clearAtomPicks,
-    // _toDisplayIndex, rebuildInspectAtomList, updateAtomListCoords,
-    // refreshAtomListHighlights) were removed with the MolView migration
-    // (task #34): atom picking + the distance/angle measurement readout are now
-    // MolView's selection panel + measurement overlay (molview-module §14.5.3),
-    // driven off the shared molview.data selection store.
-
-    // Feed the parsed trajectory to MolView, in ONE call: frame 0 as the text
-    // that establishes atom identity, every frame beside it, the filtered
+    // Feed the parsed trajectory to MolView, in ONE call: frame 0 as the
+    // envelope that establishes atom identity, every frame beside it, the filtered
     // forces, and the labels the run carried.  MolView's frame bar appears
     // (frameCount > 1) and it owns playback / speed / loop / cell / labels /
     // selection from there.  Async because the load round-trips through the
@@ -983,10 +849,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // playhead near the tail when a live poll forces a full rebuild).
     //
     // THE LATTICE THE RUN REPORTED is handed over as `periodicity` (user
-    // decision, 2026-08-03: show the box, mark it as the run's).  The argument
-    // was always here; what was missing was the request builder forwarding it
-    // and the route applying it, so it was dropped at HTTP 200 and no
-    // trajectory has ever drawn its unit cell.
+    // decision, 2026-08-03: show the box, mark it as the run's).
     //
     // The cost the user accepted: an isolated molecule that ran in a large
     // SIESTA box gets a box drawn round it -- so the tab says where the box
@@ -1010,20 +873,13 @@ import { molviewFiles } from "../projects/molview-doors.js";
         /* FRAME 0 ARRIVES AS AN ENVELOPE, assembled by the server
          * (`watch.py::_frame0_structure`) out of the pieces it already had:
          * the frames from the parsed logs, the labels from the run's input
-         * script, the box from its output logs.
-         *
-         * This used to serialise frame 0 back into an XYZ document HERE, post
-         * it to be parsed, and hand the labels / cell / `info` store back
-         * alongside because a coordinate document has no room for them -- a
-         * structure the server had already parsed, flattened and re-parsed and
-         * then repaired from three parcels. `web-api.md` § 1: the browser
-         * sends what it holds, and never a document it wrote. */
+         * script, the box from its output logs.  `web-api.md` § 1: the
+         * browser sends what it holds, and never a document it wrote. */
         const frame0 = state.structure || null;
         if (!frame0) {
             /* The server assembles this from the frames it parsed, so a run
              * with frames and no envelope means the assembly itself failed.
-             * Say so rather than falling back to writing a document here --
-             * the fallback IS the thing that was removed. */
+             * Say so rather than writing a document here. */
             setStatus("This run's geometry could not be assembled by the "
                 + "server; nothing to show in the viewer.", "error");
             return;
@@ -1037,13 +893,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         /* Force scale (Å per force unit) is one of the SWITCHES that sit beside
          * the selection (molview.md § 9.5) -- `setSwitch`, the same door as
          * isolate / showForces / showCell.  Set BEFORE the load, so the first
-         * arrow bake already uses the right length.
-         *
-         * It used to call `setViewFlag`, which no store has ever had. The call
-         * threw, and because it sat outside the try around the frame load, the
-         * throw took the frames with it -- a trajectory showing ONE frame and
-         * no frame bar. It was then wrapped in a `typeof` guard rather than
-         * corrected, which stopped the crash and left the knob doing nothing. */
+         * arrow bake already uses the right length. */
         const _fscaleEl = $("force-scale");
         if (_fscaleEl) {
             _mvdata().selection.setSwitch(
@@ -1052,11 +902,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
 
         /* THE WHOLE RUN GOES IN ONE CALL (molview.md § 9.3).
          *
-         * This used to install frame 0 and then call `reloadFrames` with the
-         * rest, which is the exact shape the contract names as broken: the one
-         * entrance stops being one; a subscriber sees a single-frame structure
-         * that never existed (§ 6.4); and worst, point 0 is anchored on that
-         * one frame -- so **a Retract threw the trajectory away** (§ 11.2).
+         * Frame 0 first and the rest after would be the shape the contract
+         * names as broken: a subscriber would see a single-frame structure
+         * that never existed (§ 6.4), and point 0 would anchor on that one
+         * frame -- so a Retract would throw the trajectory away (§ 11.2).
          *
          * The labels ride along the same way: `frame0` is the server's
          * envelope, so the region / frozen / annotation block the Build tab
@@ -1066,9 +915,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             await _mvdata().installMolecule({
                 structure:    frame0,
                 // THE FILE IT CAME FROM names it (`web/molview.md`: an export
-                // "writes mine.xyz" for mine.xyz).  It was the parser's label
-                // until 2026-09-27 -- "SIESTA .out / .log" -- so an export was
-                // offered " .log_frame6" and saved a hidden `.log_frame6.xyz`.
+                // "writes mine.xyz" for mine.xyz).
                 filename:     state.path || "",
                 frames:       coordFrames,
                 forces:       buildForcesPerFrame(),
@@ -1080,17 +927,14 @@ import { molviewFiles } from "../projects/molview-doors.js";
         }
         if (typeof seekIdx === "number"
                 && seekIdx > 0 && seekIdx < coordFrames.length) {
-            /* `setCurrentFrame`, not `setFrame` -- no viewer has ever had a
-             * `setFrame`. Both seeks called it, so the playhead never moved:
-             * not after a rebuild, and not when a live run grew a tail. Inside
-             * a catch, so it failed without a word. */
+            /* `setCurrentFrame` is the viewer's seek. */
             try { _mvdata().setCurrentFrame(seekIdx); } catch (_) {}
         }
     }
 
     // (No local showFrame(): seeking is `data.setCurrentFrame(i)`, which already range-checks
-    // against the frames MolView holds.  A tab-side clamp re-derived that range from a second
-    // count, which is exactly the drift this file no longer carries.)
+    // against the frames MolView holds.  A tab-side clamp would re-derive that range from a
+    // second count.)
 
     /* ------------------------------------------------------------------ */
     /*  Plotly traces                                                      */
@@ -1339,7 +1183,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * step pending" for PySCF, or hides itself once there's
      * usable data.
      *
-     * Added 2026-06-14 so a freshly-started run doesn't look like
+     * Shown so a freshly-started run doesn't look like
      * a broken UI to the user.  The "blank plots" symptom on a
      * cold start is correct (engine just hasn't written anything
      * yet) but reads as a bug without explanation.
@@ -1378,14 +1222,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             } else {
                 nextHidden = false;
                 // WHICH ENGINE, so `state.format` -- the same field the
-                // SCF banner reads.  This asked `data.source_format`
-                // until 2026-09-04, which is a FORMAT: it happens to
-                // agree for a molwatch log carrying an engine header,
-                // and silently falls through to the generic message for
-                // one without ("molwatch") and for every `siesta-mdnc`
-                // file, so the run that most needed the "SIESTA is still
-                // initializing" explanation was the one least likely to
-                // get it.
+                // SCF banner reads -- and not `data.source_format`, which
+                // is a FORMAT ("molwatch", "siesta-mdnc").
                 const fmt = state.format || "";
                 if (fmt === "pyscf") {
                     nextText = (
@@ -1500,7 +1338,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             font: { family: "system-ui, sans-serif", size: 10 },
         }, { displayModeBar: false, responsive: true });
 
-        // 2026-06-12: two traces when the engine reports both.
+        // Two traces when the engine reports both.
         //
         //   * ``max_forces``             — across ALL atoms,
         //                                  including frozen ones.
@@ -1514,7 +1352,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         //
         // ``max_forces_constrained`` is an empty list when no frame
         // in the run carried a constrained value (no frozen atoms);
-        // in that case we render the single trace as before.
+        // in that case we render the single trace.
         const constrained = max_forces_c_plot;  // filtered via plottableFrames
         const forceTraces = [{
             x: x,
@@ -1729,9 +1567,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // SIESTA's dHmax.  Both decrease toward 0 during convergence
         // and look natural on a log y-axis.  Both use the orange
         // ``theme.scfGnorm`` so the green threshold line stays the
-        // only green element on the plot (2026-06-13 recolor; the
-        // pre-fix amber + green choices conflicted with the new
-        // threshold-line green).
+        // only green element on the plot.
         let residual, residualName, residualUnit;
         const residualColor = theme.scfGnorm;
         if (current[0].gnorm !== undefined) {
@@ -1750,11 +1586,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // "siesta", "pyscf", or "unknown" -- decided on the server by
         // `parse.contract.engine_of` from what the run directory
         // declares about itself (`running-a-job.md` 4.2).  It is NOT
-        // the parser's name and NOT source_format; this comment said it
-        // was until 2026-09-04, and believing it is how a wire field
-        // documented as naming the engine came to carry "molwatch" --
-        // a FORMAT -- for every molbuilder-generated run, sending the
-        // branch below to its neutral fallback every time.
+        // the parser's name and NOT source_format.
         //
         // Banner-title precision rule: be specific where we have
         // certainty, generic where we don't.
@@ -1794,10 +1626,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
          * § 5c): the server reads the run's timing log through the one reader
          * the run record reads it by (`parse.dirs.record.scf_timing_of`), and
          * this shows the figure for the phase the current row is in.  Nothing
-         * here computes one.  Until 2026-09-27 this estimated its own three
-         * ways -- SIESTA's first-iteration timer, the browser's poll times,
-         * the output's modification times -- beside the instrument's: one fact
-         * from three kinds of evidence.  Each engine's rows are stamped -- the
+         * here computes one.  Each engine's rows are stamped -- the
          * SIESTA tee, a PySCF deck's progress log -- and timed by one rule; an
          * output read alone has none, and no rate: not stated, so not shown. */
         const timing = (state.data && state.data.scf_timing) || null;
@@ -1899,25 +1728,16 @@ import { molviewFiles } from "../projects/molview-doors.js";
     /* ------------------------------------------------------------------ */
 
     async function pollOnce() {
-        // 2026-06-14 in-flight guard: if the previous tick's
-        // request is still on the wire, SKIP this tick.  The next
-        // tick (POLL_MS later) fires only if the prior one has
-        // settled.  Pre-fix every tick UNCONDITIONALLY aborted any
-        // in-flight prior poll, tearing down the TLS connection
-        // mid-response on slow / large-file polls and surfacing
-        // as ``SSL: UNEXPECTED_EOF_WHILE_READING`` in the server
-        // log.  The legitimate cancellation path -- the user's
-        // dispose() or a file-change supersede -- still aborts
-        // via the AbortController held in ``state.pollAbort``;
-        // it's only the tick-overlap case the guard prevents.
+        // In-flight guard: if the previous tick's request is still on
+        // the wire, SKIP this tick rather than abort it -- an abort
+        // tears down the TLS connection mid-response.  The legitimate
+        // cancellation path -- the user's dispose() or a file-change
+        // supersede -- still aborts via the AbortController held in
+        // ``state.pollAbort``.
         //
-        // The earlier "stale-mtime-by-arrival" concern in the
-        // old comment was always a false worry: ``state.mtime``
-        // is the POSTed query param + the server returns
-        // ``changed: false`` for any matched mtime, so a slow
-        // response with the old mtime is correctly a no-op.  No
-        // staleness risk -- just a wasted client wait, which the
-        // guard skips entirely.
+        // A slow response is not stale: ``state.mtime`` is the query
+        // param and the server returns ``changed: false`` for a
+        // matched mtime.
         if (state.pollInFlight) {
             return;
         }
@@ -1966,14 +1786,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
         } catch (e) {
             // AbortError: dispose() or a file-change supersede ran.
             // Silent -- the next tick (or the unmount) is the
-            // authoritative state.  Pre-fix this also caught the
-            // tick-overlap abort case; the in-flight guard above
-            // means it no longer fires for plain overlap.
+            // authoritative state.
             if (e.name === "AbortError") return;
             setStatus("Network error: " + e.message, "error");
         } finally {
             // Always release the in-flight flag so the NEXT tick
-            // (typically 60 s away) can fire.  Even on AbortError
+            // (POLL_MS away) can fire.  Even on AbortError
             // / network error, the controller is settled at this
             // point and a new tick is welcome.
             state.pollInFlight = false;
@@ -1985,13 +1803,13 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * TWO CLOCKS, NEITHER SUBSTITUTING FOR THE OTHER (parse.md § 2a):
      * `wall_clock_s` is an absolute epoch and becomes the "last result at"
      * TIMESTAMP; `elapsed_s` counts from the run's start and becomes the
-     * DURATION.  Feeding one to the other's formatter is what made a
-     * six-minute SIESTA run display "last result Dec 31, 5:06 PM".
+     * DURATION.  Fed to the other's formatter, a six-minute SIESTA run
+     * would display as a date.
      *
      * The epoch falls back to the file's `mtime` when the run carries no
      * clock of its own -- a raw SIESTA `.out` without molwatch hooks, whose
      * parser reports null rather than handing over its elapsed seconds.
-     * When it did the latter, that Dec-31 badge is what appeared.  There is
+     * There is
      * NO fallback in the other direction: an elapsed duration cannot be
      * turned into a date, because the file does not contain the missing
      * addend (P-T3).
@@ -1999,17 +1817,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * AN ENDED RUN'S "WHEN" IS ITS OWN END, where its output states one:
      * `runtime_info.run_end_local`, SIESTA's `>> End of run` -- the node's
      * clock, with no zone (P-T2).  The mtime is when the FILE last changed,
-     * which a copy moves: an output copied on 2026-09-27 of a run that ended
-     * on 2026-09-24 read "ended 9:53 AM", the copy's time.  One fact, one
+     * which a copy moves.  One fact, one
      * source; the mtime stays only where nothing in the file says when.
-     *
-     * EXTRACTED 2026-09-06: this decision lived inside a 340-line DOM
-     * render function, so the only
-     * thing a test could reach was the SPELLING of its four lines.  A pin on
-     * `const clockSeries   = state.data.wall_clock_s || [];` fires on a
-     * rename and passes while the two clocks are swapped at their point of
-     * use -- measured: 233 tests green with the badge formatting a duration
-     * as a date.  A pure function is testable in milliseconds.
      */
     function badgeClocks(state) {
         const lastFinite = (arr) => {
@@ -2020,8 +1829,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         };
         const data = (state && state.data) || {};
         // The server already offsets `elapsed_s` to the run's start, so the
-        // last value IS the total -- no subtraction here, which is what used
-        // to hide a wrong origin behind a correct-looking difference.
+        // last value IS the total -- no subtraction here.
         const elapsed  = lastFinite(data.elapsed_s || []);
         const lastWall = lastFinite(data.wall_clock_s || []);
         const endedAt  = (data.runtime_info || {}).run_end_local;
@@ -2284,9 +2092,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * A file that belongs to no run -- an upload -- is read by its own ending.
      * ONE renderer, called by every answer that can change it: a load, a
      * poll with new content, and a quiet poll that brings only how the run is
-     * doing.  (It read the file alone, and only on a full rebuild, until
-     * 2026-10-03: an output that ended read Finished while its job was still
-     * deriving its result.) */
+     * doing. */
     function _renderBadge() {
         if (!state.data) return;
         // Two clocks, and they are not interchangeable
@@ -2317,10 +2123,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // this is when the simulation itself produced the result),
             // fall back to the file's mtime -- the only timestamp
             // available when the engine's steps carry no time of day,
-            // e.g. a raw SIESTA .out without molwatch hooks.  That fallback
-            // is reached because the parser reports null rather than
-            // handing over its elapsed seconds; when it did the latter,
-            // a run six minutes in displayed "Dec 31, 5:06 PM".  This
+            // e.g. a raw SIESTA .out without molwatch hooks.  This
             // is DIFFERENT from "Watch tab last polled at X" -- a
             // client-side concern not shown on the badge.
             const lastResultTs = (lastResultEpoch != null)
@@ -2344,8 +2147,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 );
                 badgeDet.removeAttribute("title");
             } else if (kind === "stopped") {
-                // 2026-05-30: "Error" relabelled to "Stopped" per user
-                // feedback.  Non-convergence is a STATE, not an error
+                // "Stopped", not "Error" (user, 2026-05-30).
+                // Non-convergence is a STATE, not an error
                 // of the viewer / the .out file.  The actual reason
                 // (SCF non-convergence, MPI fault, ...) is shown below
                 // as a classified tag; the raw parser message is the
@@ -2436,20 +2239,15 @@ import { molviewFiles } from "../projects/molview-doors.js";
             && boundaryOk
             && countInSync;
 
-        // 2026-06-12: live-refresh no-new-frames short-circuit.
+        // Live-refresh no-new-frames short-circuit.
         //
         // The /api/watch/data poll fires every N seconds and frequently
         // returns the same trajectory it returned last time (no new
-        // frames yet).  Before this guard the ``else`` branch below
-        // (which handles the "can't append, do a full rebuild" case)
-        // would fire on every same-data poll and the rebuild would:
-        //   1. reset the 3Dmol camera (refit + applyCell rebuild),
-        //   2. tear down the animation loop and rearm it from frame 0,
-        //   3. clobber the user's scroll position on the inspect list.
-        // User-visible: the viewer "snaps back" to the default angle
-        // every few seconds AND the playback that was running stops.
+        // frames yet).  A full rebuild on every such poll would reset
+        // the camera, rearm the animation from frame 0 and stop the
+        // playback that was running.
         //
-        // The fix: if the new data carries no new frames AND has the
+        // So if the new data carries no new frames AND has the
         // same atom count + lattice (= same file, same parse state),
         // just refresh the per-frame metadata derived from runtime
         // info / parse warnings / runtime state markers — DON'T touch
@@ -2467,14 +2265,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // plots.  Plots rebuilt only if the run-state changed
             // OR the SCF history for the in-flight step grew.
             //
-            // 2026-06-17 Fix A: during a CG step, SCF iterations get
-            // appended to ``scf_history[lastStep]`` without the frame
-            // count, atom count, lattice, or run_state changing.  The
-            // geometry-only guard above correctly preserves camera /
-            // playback (the original 2026-06-12 fix), but conflating
-            // "same geometry" with "nothing to plot" left the SCF
-            // energy / dDmax / residual plots frozen until a new CG
-            // frame landed.  ``_scfFingerprint`` adds the missing
+            // During a CG step, SCF iterations get appended to
+            // ``scf_history[lastStep]`` without the frame count, atom
+            // count, lattice, or run_state changing, so "same geometry"
+            // is not "nothing to plot".  ``_scfFingerprint`` adds that
             // axis: per-step iter count + last cycle's energy.
             const runStateChanged =
                 oldData.run_state !== r.data.run_state
@@ -2482,8 +2276,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             const scfChanged =
                 _scfFingerprint(oldData) !== _scfFingerprint(r.data);
             // Contract § 2: route fileState writes through
-            // transition() so this function is no longer a fileState
-            // writer in disguise.  noNewContent only updates the two
+            // transition().  noNewContent only updates the
             // fields that can change on a same-content tick.
             transition("APPLY", { path: r.path, mtime: r.mtime,
                                   data: r.data, run: r.run });
@@ -2505,7 +2298,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // Contract § 2: full-rebuild path -- route the atomic
         // fileState replacement through transition('APPLY') so
         // transition() is the SINGLE entry-point for fileState
-        // writes (closes deferred Gap #1).
+        // writes.
         //
         // ``r.path`` is the server-resolved absolute path (the input
         // may have been a directory; r.path is the file actually
@@ -2513,8 +2306,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // The server always answers `format`, and it is the only thing
         // entitled to: the engine is a fact about the run DIRECTORY,
         // which the browser cannot see.  Falling back to
-        // `data.source_format` here was a second, client-side answer to
-        // a question the server had already answered -- and a wrong one
+        // `data.source_format` here would be a second, client-side answer
+        // to a question the server has already answered -- and a wrong one
         // in kind, since source_format is a FORMAT ("siesta-mdnc",
         // "pyscf-geom", "molwatch").  "unknown" is a real answer and
         // renders as the neutral banner.
@@ -2545,9 +2338,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             setStatus("File loaded ("+ state.label +") but no frames yet.", "");
             return;
         }
-        // (Per-frame XYZ export moved to MolView's Export knob, which is
-        // current-frame-correct — the tab no longer carries its own save-frame
-        // button.  Frame count + slider are MolView's frame bar.)
+        // (Per-frame XYZ export is MolView's Export knob, which is
+        // current-frame-correct.  Frame count + slider are MolView's frame bar.)
 
         if (canAppend) {
             // Strict tail-append: hand MolView ONLY the new frames (addFrames
@@ -2581,8 +2373,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // Follow the tail if the user was watching the end; otherwise leave the
                 // playhead where it is.  The target comes from MolView's own count, not from
                 // `n` (the parsed feed's length): the feed's job is to FEED MolView, never to
-                // be the authority on what the viewer is showing.  When those two disagreed --
-                // the feed's count grown, the movie's not -- that was #35.
+                // be the authority on what the viewer is showing.
                 if (wasAtEnd) {
                     const shown = _mvdata().frameCount();
                     if (shown > 1) _mvdata().setCurrentFrame(shown - 1);
@@ -2603,12 +2394,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // ``requestAnimationFrame`` ticks so the dispatch fires
         // AFTER the browser has had a chance to paint the new
         // ``frame-tot`` / slider state, run 3Dmol's GPU render, and
-        // commit Plotly's plot drawing -- the user's 2026-06-01
-        // report was that the picker meta cleared while ``frame-tot``
-        // visibly still read "0 / 0" and the viewer was blank, which
-        // happens because a synchronous dispatch arrives in the same
-        // event-loop tick as the textContent assignment but the
-        // browser hasn't painted yet.  Double rAF (rAF inside rAF)
+        // commit Plotly's plot drawing -- a synchronous dispatch arrives
+        // in the same event-loop tick as the textContent assignment,
+        // before the browser has painted.  Double rAF (rAF inside rAF)
         // is the cheapest pattern that ensures we're past one full
         // paint cycle.  Subsequent polls also dispatch but that's a
         // no-op for the picker (it idempotently clears the parse
@@ -2625,15 +2413,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
          * Saying so is the difference between a shown fact and a silent one;
          * the Cell page deliberately answers "is this box mine?" and not
          * "where did it come from" (molview.md \u00a7 9.5), so the tab that did
-         * the load is what says it.
-         *
-         * "Loaded N frames -- mtime ..." stood here too, and went on
-         * 2026-09-28 once the line was visible (the Results-tab review): the
-         * file's mtime sat beside the run-state badge's own "ended" time --
-         * two times for one run, the pairing web/trajectory.md § 4 warns
-         * against -- and the count could disagree with the frames the movie
-         * shows.  The badge carries the run's state and the frame bar its
-         * frames; this line carries what neither does. */
+         * the load is what says it.  The badge carries the run's state and
+         * the frame bar its frames; this line carries what neither does. */
         setStatus(_cellCameFromTheRun()
                   ? "Unit cell from the run (its output, or the box its deck"
                     + " placed the atoms in), not set by you."
@@ -2641,10 +2422,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     }
 
     // Refresh-button listener wiring.  Wired ONCE at mount; not
-    // re-wired on every load/transition.  Pre-PR-2.1 this lived
-    // inside startPolling() which loadByPath called on every load
-    // -- meaning the listener was re-attached every load and the
-    // old one was only torn down on dispose, multiplying handlers.
+    // re-wired on every load/transition.
     function _wireRefreshListener() {
         const C = (window.molbuilder || {}).constants;
         if (!C || !C.EVENT_REFRESH_REQUESTED) return;
@@ -2658,37 +2436,22 @@ import { molviewFiles } from "../projects/molview-doors.js";
         };
         _on(document, C.EVENT_REFRESH_REQUESTED, _onRefresh);
 
-        /* WATCH THE CONTAINER, don't wait to be told.
-         *
-         * This is what the 3-D viewer beside these plots already does -- its
-         * embed installs its own ResizeObserver -- which is why folding the
-         * sidebar has always left the viewer correct and the plots wrong.  Two
-         * widgets in one card, one observing its box and one relying on
-         * whoever changed the layout to remember it.  Nobody remembered:
-         * the only caller of resizePlots() was a render pass, so a width change
-         * with no re-render (the sidebar fold) was invisible.
+        /* WATCH THE CONTAINER, don't wait to be told -- as the 3-D viewer
+         * beside these plots does.  A width change with no re-render (the
+         * sidebar fold) reaches no render pass.
          *
          * Observing the row covers every cause -- fold, unfold, window resize,
          * the SCF grid reflow, and any future layout change -- without the
-         * sidebar and the plots having to know about each other.
-         *
-         * rAF-coalesced: a fold is a CSS transition, so the observer fires on
-         * many intermediate widths; one resize on the next frame is enough and
-         * keeps Plotly off the critical path. */
+         * sidebar and the plots having to know about each other. */
         const plotsRow = rootEl.querySelector(".plots-row");
         if (plotsRow && typeof ResizeObserver === "function") {
-            /* NO requestAnimationFrame COALESCING HERE.  A first cut wrapped
-             * this in rAF with a `pending` guard, which wedges: rAF does not
-             * run in a tab that is not rendering, so an observer fire while
-             * the tab is hidden leaves `pending` set forever and the guard
-             * then swallows EVERY later resize for the life of the mount.
-             * Caught on 2026-08-05 while debugging through a backgrounded
-             * window -- the plots never resized and the instrumentation
-             * inside the rAF never printed.
+            /* NO requestAnimationFrame COALESCING HERE: rAF does not run in
+             * a tab that is not rendering, so a `pending` guard set by an
+             * observer fire while the tab is hidden would swallow EVERY later
+             * resize for the life of the mount.
              *
              * `Plotly.Plots.resize` already returns early when the size has
-             * not changed, so the coalescing was buying almost nothing and
-             * cost correctness.  Straight call, no state to get wrong. */
+             * not changed.  Straight call, no state to get wrong. */
             const ro = new ResizeObserver(() => { resizePlots(); });
             ro.observe(plotsRow);
             _listeners.defer(() => {
@@ -2717,9 +2480,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // The tab owns NO playback: no step / play / pause / timer, and no #speed or #loop
     // controls.  MolView owns all of it -- the playback timer lives in its mount.js and it
     // renders its own frame-controls bar (prev/play/next + loop + speed + slider + counter),
-    // so a tab that hands MolView a trajectory gets the navigation UI for free.  The embed's
-    // own frame strip is deliberately OFF (`frameStrip: false` at the loadFrames seam), so
-    // there is exactly one bar and one timer.
+    // so a tab that hands MolView a trajectory gets the navigation UI for free.  There is
+    // exactly one bar and one timer.
     //
     // The only seek this file performs is the follow-the-tail jump after an append, and it
     // goes through `data.setCurrentFrame` like every other frame write -- never through the
@@ -2729,16 +2491,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
     /*  UI wiring                                                          */
     /* ------------------------------------------------------------------ */
 
-    // Loader-bar wiring (/watch's path-input + Load button) was
-    // removed 2026-05-19 along with /watch itself.  /results drives
-    // loading via the registry's mount(host, file, ctx) -- the
-    // sidebar selection IS the load trigger; no loader-bar UI on
-    // /results.  The applyHandoff IIFE (legacy Build→Watch
-    // ?path=... query-param pre-fill) is gone for the same reason.
+    // /results drives loading via the registry's mount(host, file, ctx).
 
     async function loadByPath(path) {
-        // A fresh load replaces the whole model (rebuildModel \u2192 openMolecule +
-        // reloadFrames); MolView owns the selection + playhead reset from there.
+        // A fresh load replaces the whole model (rebuildModel \u2192
+        // installMolecule); MolView owns the selection + playhead reset from there.
         setStatus("Loading\u2026", "");
         // Contract \u00a7 2: file-switch -> transition('LOADING').  This
         // single call runs the reset matrix (matrix \u00a7 3 row 1):
@@ -2761,9 +2518,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
 
             if (signal.aborted) return;
             // Contract § 4 Invariant 1, asked of the answer's own
-            // identity rather than a counter.  A newer LOADING moved
-            // `fileState.path`; dispose set it to null -- which the
-            // counter never caught, because IDLE did not bump it.  The
+            // identity.  A newer LOADING moved
+            // `fileState.path`; dispose set it to null.  The
             // `signal.aborted` check above is the other half: it is the
             // only thing that can tell two loads of the SAME file apart.
             if (path !== state.fileState.path) return;
@@ -2792,16 +2548,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // (watch.py::_frame0_structure).  Forwarded here beside the
                 // three above because it arrives the same way and for the same
                 // reason: only the LOAD response carries it.
-                //
-                // IT WAS MISSING, and nothing said so.  `rebuildModel` read
-                // `state.structure`, the store had the slot, and APPLY had the
-                // line that writes it -- but neither producer ever put the key
-                // in the payload, so the write was unreachable and `frame0`
-                // was null on every load.  The tab then took its
-                // "geometry could not be assembled" branch and returned before
-                // installing anything, so a run opened with no frame bar and
-                // no viewer at all.  Broken from the commit that introduced
-                // the envelope (2026-09-07) until this line.
                 structure:    r.structure || null,
                 // How the run this file belongs to is doing -- the one door's
                 // answer, which `_settlePostLoad` follows and the badge reads;
@@ -2816,11 +2562,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 const baseDir = r.resolved_from.replace(/\/+$/, "");
                 const fileNm  = (r.path || "").split("/").pop() || r.path;
                 // A directory resolves to ONE file (watch.py's discovery
-                // chain).  A "loaded N stages" arm stood here until
-                // 2026-09-05, for a merge that is deleted: stages are
-                // separate runs, and the person picks one.
-                // No mtime: the badge carries the run's time (see the
-                // routine load's note above).
+                // chain): stages are separate runs, and the person picks one.
+                // No mtime: the badge carries the run's time.
                 const msg = "Loaded \u201c" + fileNm + "\u201d from " + baseDir
                     + "/.";
                 setStatus(msg, "ok");
@@ -2828,8 +2571,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // Contract § 2: transition by the run's state.
             // _settlePostLoad starts the poll timer iff the run is live
             // (WATCHING) -- a run that is over doesn't get polled.
-            // Pre-PR-2.1 startPolling() fired unconditionally; finished
-            // files would burn a server request every 15 s forever.
             _settlePostLoad();
         } catch (e) {
             // AbortError fires when the user picks another file
@@ -2846,28 +2587,15 @@ import { molviewFiles } from "../projects/molview-doors.js";
         }
     }
 
-    // Loader-bar keydown (Enter on path-input → click Load) and the
-    // Build→Watch ?path=<file> URL-handoff IIFE were removed
-    // 2026-05-19 along with /watch.  On /results the path is set by
-    // the registry's mount(host, file, ctx) call -- no URL query
-    // pre-fill, no Enter-to-load shortcut.
-
-    // Frame-slider + prev/play/pause/next click wiring removed in
-    // #246 A1: those controls now live in the embed's auto-
-    // mounted frame strip (§ 6.3).  The Inspect-tab playback
-    // configuration (#speed, #loop) flows into the embed via
-    // setAnimation partial updates per § 3.9.
-
-    // Force-vector PRODUCER parameters — the trajectory-specific controls (task
-    // #34).  The inspector hands the ENGINE filtered raw forces + drives the forceScale
-    // flag; the engine builds + styles the arrows (gold max-highlight + magnitude ramp,
-    // process.js §2.4).  Whether they're DRAWN is MolView's "show overlay" view-toggle.
+    // Force-vector PRODUCER parameters — the trajectory-specific controls.
+    // The inspector hands the ENGINE filtered raw forces + drives the forceScale
+    // flag; the engine builds + styles the arrows (gold max-highlight + magnitude
+    // ramp).  Whether they're DRAWN is MolView's "show overlay" view-toggle.
     // SCALE is a cheap flag (in-place length re-bake); the FILTER knobs (min / hide-frozen)
     // re-hand the forces (drawForces → data.setForces, in-place re-bake), and MolView
     // redraws the current frame with the overlay's on/off visibility unchanged.
-    // Everything else the old aside owned (unit cell, atom-index labels, playback
-    // speed / loop, the atom-list Inspect panel + Clear button, and the per-frame
-    // Save-XYZ button) is MolView's: playback + speed + loop are its frame bar,
+    // Unit cell, atom-index labels, playback speed / loop, the atom list and
+    // per-frame export are MolView's: playback + speed + loop are its frame bar,
     // cell + labels are its knob bar, selection + measurement are its panel, and
     // per-frame structure export is its Export knob (current-frame-correct).
     _on($("force-scale"), "input", (e) => {
@@ -2876,8 +2604,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // Scale is one of the switches beside the selection (§ 9.5): the engine
         // re-bakes arrow LENGTH in place (no forces rebuild), so dragging the
         // slider is smooth.  Guarded on the VIEWER existing, not on the method:
-        // there is no viewer before the mount resolves, and asking whether the
-        // door exists is what hid this knob doing nothing.
+        // there is no viewer before the mount resolves.
         const d = _mvdata();
         if (d) d.selection.setSwitch("forceScale", v);
     });
@@ -2893,10 +2620,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
        so the file is self-describing — the user can re-trace what
        it came from months later without external bookkeeping.
        This handler gathers state, builds the file through
-       _buildPlotCsv above, and triggers the browser download.
-       (A comment here named `lib/trajectory/csv-export.js` as the
-       home of the format until 2026-09-06.  There is no such file
-       and there never was; the builder is in this module.) */
+       _buildPlotCsv above, and triggers the browser download. */
     _on($("trajectory-export-csv-btn"), "click", function () {
         if (!state.data || !state.data.frames
                 || state.data.frames.length === 0) {
@@ -2927,10 +2651,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         setStatus("Exported " + a.download + ".", "ok");
     });
 
-    // The tabbed controls aside (Display / Inspect ctabs) is gone: MolView owns
-    // the viewer + selection panel, and the tab's only control is the flat
-    // force-vector strip above.  No ctab visibility wiring needed.
-
     // Viewer resize: the embed installs its own ResizeObserver on the
     // canvas host so 3Dmol's WebGL viewport stays in sync as the card
     // resizes (clamp(360px, 52vh, 500px)).  No window-resize wiring
@@ -2944,12 +2664,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // forward restore the next interval fires up to POLL_MS LATER --
     // so a user who generated more frames in another tab can be
     // staring at the old trajectory for up to 15 s before the poll
-    // catches up.  Same shape as the 2026-06-02 /results file-picker
-    // bug (#192): the polling mechanism keeps state fresh AT STEADY
-    // STATE but doesn't react to the "user returned to this tab"
-    // event.
+    // catches up.
     //
-    // Fix mirrors the file-picker pattern: hook pageshow (covers
+    // Like the file picker: hook pageshow (covers
     // bfcache restore + initial load) and visibilitychange ->
     // visible (covers backgrounded-tab re-focus) and call
     // ``pollOnce()`` immediately so an mtime drift surfaces within
@@ -2969,37 +2686,21 @@ import { molviewFiles } from "../projects/molview-doors.js";
     _on(window,   "pageshow",          _onPageShow);
     _on(document, "visibilitychange",  _onVisibilityChange);
 
-    // ``WATCH_PATH_KEY`` sessionStorage persistence (Build ↔ Watch
-    // handoff for the legacy /watch loader bar) was removed
-    // 2026-05-19 along with /watch.  On /results, file selection is
-    // driven by the sidebar's ``projects.onChange`` event + the
-    // registry's mount(host, file, ctx) -- no loader-bar input
-    // exists to persist.
-
     // ---- Auto-load + handle assembly --------------------------- //
     //
-    // If the caller asked for an initial file (Stage 1D's
-    // /results-side mount), load it now.  /watch's auto-bootstrap
-    // never passes opts.file -- the user types into the loader bar
-    // there.  The applyHandoff block above already handled URL-
-    // param pre-fill for the /watch case.
+    // If the caller asked for an initial file, load it now.
     if (opts.file) {
         loadByPath(opts.file);
     }
 
     // Refresh-button listener wires here ONCE per mount.  Tears
     // down with the inspector's dispose path, through the listener scope.
-    // Pre-PR-2.1 this lived inside startPolling() which loadByPath
-    // called on every load -- so the listener was re-attached each
-    // load and the old ones piled up until dispose.  PR 2.1 audit
-    // follow-up makes the wiring strictly per-mount.
     _wireRefreshListener();
 
     // The handle the caller uses to dispose + control the mounted
     // inspector.  Required for /results' registry-based dispatch
     // (the registry calls dispose() before mounting the next
-    // inspector); /watch's bootstrap holds the handle for
-    // completeness but never disposes (the tab lives forever).
+    // inspector).
     return {
         /**
          * Tear down every long-lived resource this mount created:
@@ -3007,10 +2708,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
          * handle (the embed's dispose() releases the WebGL
          * context's bookkeeping + its animation loop + its
          * ResizeObserver; the canvas itself is freed when the
-         * host's innerHTML is cleared by the caller).  The
-         * parallel state.playTimer + the window resize listener
-         * were retired in #246 — the embed owns playback +
-         * resize.
+         * host's innerHTML is cleared by the caller).
          */
         dispose() {
             // Hand the whole scope back (lib/inspectors/lifecycle.js).
@@ -3034,19 +2732,15 @@ import { molviewFiles } from "../projects/molview-doors.js";
         },
         /**
          * Swap the displayed trajectory without re-mounting the
-         * inspector.  Equivalent to typing into the path input on
-         * /watch and clicking Load.  Used by /watch's loader-bar
-         * Load button + (planned) by the registry-side dispatch
-         * when the user picks a new ``.molwatch.log`` while the
-         * trajectory inspector is already mounted.
+         * inspector.
          */
         load(path) { return loadByPath(path); },
     };
 
     }   // ----- end of mountInspector(rootEl, opts) -----
 
-    // Export for both consumers (watch/viewer.js bootstrap on /watch,
-    // lib/inspectors/trajectory.js on /results).  Each consumer is
+    // Export for the consumer (lib/inspectors/trajectory.js on
+    // /results).  Each consumer is
     // responsible for picking when + where to mount; this module
     // does NOT self-bootstrap on page load.  Loading the script
     // alone is a no-op -- safe to include on any page that might

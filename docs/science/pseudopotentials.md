@@ -492,8 +492,9 @@ consistently.
 
 ## 4. Process — how to use it
 
-The SIESTA preflight runs these checks automatically before every `render_fdf` —
-ERRORs block, WARNs print in the issues panel. To screen a directory yourself
+The SIESTA preflight runs these checks automatically before every SIESTA deck is
+rendered (`validate`, the first step of `script_emit.render_deck`) — ERRORs
+block, WARNs print in the issues panel. To screen a directory yourself
 (the CLI entry point is the `pseudo check` subcommand — the `pseudo` group is at
 `cli.py:338`, the `check` command at `:342`):
 

@@ -1,9 +1,8 @@
-"""Round-trip tests for the convergence_targets nested-shape (task #534
-commit 3b — pre-cutover wire-format support).
+"""Round-trip tests for the convergence_targets nested-shape.
 
 Contract:
 
-* Flat header lines (legacy single-stage runs)::
+* Flat header lines (single-stage runs)::
 
     # convergence.max_force_tol_eV_per_A: 0.023
     # convergence.energy_step_tol_eV:         1e-9
@@ -12,10 +11,7 @@ Contract:
 
 * Nested header lines (staged runs) — the first segment is the stage's
   artifact TOKEN (`identity.stage_token`), which is DIGIT-FIRST
-  (``01_coarse``, `job-contracts.md` § 6.3).  Until 2026-08-19 this file
-  round-tripped an identifier-shaped ``stageN`` spelling no real deck
-  writes, so the reader's letter-first key regex passed every test here
-  while parsing every real staged header to an empty dict::
+  (``01_coarse``, `job-contracts.md` § 6.3)::
 
     # convergence.01_coarse.max_force_tol_eV_per_A: 0.103
     # convergence.01_coarse.energy_step_tol_eV:         1e-7
@@ -40,13 +36,12 @@ import pytest
 
 
 def test_emitter_writes_flat_lines_for_flat_input(tmp_path):
-    """Legacy single-stage input emits bare ``# convergence.<leaf>:``
+    """Single-stage input emits bare ``# convergence.<leaf>:``
     lines without a stage prefix."""
-    # `pyscf`, not `pyscf.gto`, let a HALF-INSTALLED pyscf through:
-    # `pyscf-properties` ships pyscf/prop and pyscf/pbc with no top-level
-    # module, so `import pyscf` succeeds on a namespace package and this
-    # guard did not guard.  Found 2026-09-12 on a host env carrying that
-    # package.  Ask for the submodule the test actually imports.
+    # `pyscf.gto`, not `pyscf`: `pyscf-properties` ships pyscf/prop and
+    # pyscf/pbc with no top-level module, so `import pyscf` succeeds on a
+    # namespace package (found 2026-09-12 on a host env carrying it).  Ask
+    # for the submodule the test actually imports.
     pytest.importorskip("pyscf.gto")
     from molbuilder.trajectory_log.emitter import MolwatchEmitter
     from pyscf import gto
@@ -72,11 +67,10 @@ def test_emitter_writes_flat_lines_for_flat_input(tmp_path):
 def test_emitter_writes_nested_lines_for_nested_input(tmp_path):
     """Staged input emits ``# convergence.<stage>.<leaf>:`` lines
     per stage."""
-    # `pyscf`, not `pyscf.gto`, let a HALF-INSTALLED pyscf through:
-    # `pyscf-properties` ships pyscf/prop and pyscf/pbc with no top-level
-    # module, so `import pyscf` succeeds on a namespace package and this
-    # guard did not guard.  Found 2026-09-12 on a host env carrying that
-    # package.  Ask for the submodule the test actually imports.
+    # `pyscf.gto`, not `pyscf`: `pyscf-properties` ships pyscf/prop and
+    # pyscf/pbc with no top-level module, so `import pyscf` succeeds on a
+    # namespace package (found 2026-09-12 on a host env carrying it).  Ask
+    # for the submodule the test actually imports.
     pytest.importorskip("pyscf.gto")
     from molbuilder.trajectory_log.emitter import MolwatchEmitter
     from pyscf import gto
@@ -105,8 +99,3 @@ def test_emitter_writes_nested_lines_for_nested_input(tmp_path):
     assert "# convergence.02_tight.energy_step_tol_eV: 1e-09"         in body
     # No flat-shape lines.
     assert "# convergence.max_force" not in body
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 3 tests here parsed a progress log typed by hand; the two
-# above write theirs with our own writer (`process/testing.md` § 6).

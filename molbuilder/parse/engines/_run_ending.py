@@ -6,9 +6,7 @@ the SIESTA family's one table, `siesta_grammar`, which the family's one
 reading pass (`siesta_reader`) builds its rules from; PySCF's are strings our
 own emitters print, so each emitter declares its constant (§ 5.5).  This
 module owns the dispatch -- which is P-S4's "one reader per question" made
-structural rather than aspirational.  *(SIESTA's markers were declared here
-until 2026-09-26, and the parser retyped four of them as literals beside the
-import it did use.)*
+structural rather than aspirational.
 
 **DISPATCH IS ON THE ROLE, never on the engine** (:data:`READERS`,
 :func:`ending_of`).  A directory whose engine is unknown, or which holds two
@@ -16,25 +14,20 @@ engines' outputs, needs no special case: each file is read by the reader its
 own role names, and `model/parse.md` § 5.1 picks which of them speaks.
 
 **No arrays, and deliberately.**  A caller that wants the ENDING does not
-want Frames -- positions and forces as numpy arrays -- and until 2026-08-25
-it paid for them anyway: `jobset/summarize.py` measured **45 ms per trial**
-(272 ms for a six-trial sweep, on 152 KB files) building one Frame per file
-to read one string field, on a summary that polls every 15 s.
+want Frames -- positions and forces as numpy arrays: building one Frame per
+file to read one string field measured **45 ms per trial** (272 ms for a
+six-trial sweep, on 152 KB files), on a summary that polls every 15 s.
 
 So a SIESTA output's ending is the reading pass's own answer, asked without
 Frames.  The registered :mod:`~molbuilder.parse.engines.siesta` parser builds
 its Frames from the same pass, so SIESTA's lines are read ONE way.
-*(`jobset/summarize.py` grew a private `_DONE_MARKERS` tuple that disagreed
-with the parser about a capped benchmark; a separate marker scan stood here
-until 2026-09-26, and a test had to keep it agreeing with the parser.)*
 
 **It travels beside every job** (`runwrap.MONITOR_COMPANIONS`,
 `execution/run-reports.md` § 2.3): the monitor reports how a run ended with
 this reader, through `parse/dirs/job.py`'s `run_status`.  So everything it
 imports is stdlib-only and travels too -- the SIESTA family's table, the
 molwatch log's grammar, the PySCF decks' end lines, `runfiles` -- and each is
-imported two ways, from the package or from beside the job, as `config_dir`
-always has been.
+imported two ways, from the package or from beside the job.
 """
 from __future__ import annotations
 
@@ -68,12 +61,7 @@ except ImportError:                         # beside a job, as the monitor's
 #: split by the only question a watcher asks.  ``unknown`` is deliberately
 #: NOT here: "no evidence either way" is not evidence of ending, and a
 #: watcher that reads it as one stops watching a run that is still alive.
-#:
-#: This tuple exists because a private restatement of it cost eleven hours.
-#: `cli.py`'s ``watch tail`` carried its own ``("finished", "error")``; when
-#: the § 2b rename retired both names the loop simply never terminated, and
-#: the test that should have caught it polled until it was killed.  P-S4 is
-#: not a style rule -- one door, or the copies drift silently.
+#: P-S4: one door, or the copies drift silently.
 CONCLUDED: Tuple[str, ...] = ("ended", "stopped", "out_of_memory")
 
 
@@ -403,12 +391,8 @@ def _keep(table: "OrderedDict", key, ending: RunEnding) -> None:
 
 # ---- The shell's door onto this reader ------------------------------------ #
 #
-# THE WRAPPER ASKS, IT DOES NOT GREP (`execution/run-reports.md` § 2.3).  The
-# generated `.run.sh` decided its warm retries and its failure hints by
-# grepping the output for strings it typed itself -- `SCF_NOT_CONV`,
-# `outcoor: Final (unrelaxed) ...`, `propor: ERROR` -- because nothing it
-# could run beside the job could read the output the way molbuilder does.
-# This module travels beside every job now, so the wrapper runs it with the
+# THE WRAPPER ASKS, IT DOES NOT GREP (`execution/run-reports.md` § 2.3).
+# This module travels beside every job, so the wrapper runs it with the
 # job's own python and the markers keep their one home.
 
 #: What a shell may ask, each answered by the exit status (0 yes, 1 no).

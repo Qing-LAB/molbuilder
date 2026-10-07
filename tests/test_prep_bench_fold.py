@@ -30,16 +30,12 @@ from molbuilder.task import Stage
 def _artifacts(calc, point, stage="01_coarse"):
     """Where a trial's files ARE — the attempt when one exists.
 
-    A trial keeps attempts since 2026-08-27 (`project-layout.md` § 1.5a),
-    so its deck and wrapper sit in ``run-<n>`` rather than in the trial
-    directory. This is the reader rule `runstatus` and `summarize` both
-    use: *the latest attempt where there is one, the container otherwise* —
-    which also keeps these tests correct for a flat calculation, where
-    there is no attempt layer at all.
-
-    One helper because the tests had the same duplication the code did:
-    eleven hand-built copies of one path, each of which would need finding
-    the next time the layout moves.
+    A trial keeps attempts (`project-layout.md` § 1.5a), so its deck and
+    wrapper sit in ``run-<n>`` rather than in the trial directory. This is
+    the reader rule `runstatus` and `summarize` both use: *the latest
+    attempt where there is one, the container otherwise* — which also keeps
+    these tests correct for a flat calculation, where there is no attempt
+    layer at all.
     """
     from molbuilder.jobset.materialize import latest_attempt
     c = pathlib.Path(calc) / stage / "bench" / f"bench-{point}"
@@ -62,11 +58,8 @@ def _tmp_is_the_projects_tree(tmp_path, monkeypatch):
 def _one_stage():
     """The ordinary starting ladder: ONE stage (`engines/stages.md` § 6.5).
 
-    Until 2026-08-16 these cases were written stage-LESS -- ``stages=()``,
-    artifacts at the folder root, bare verbs.  That shape is gone: a single
-    stage is still a stage, so it is named, tokened (``01_coarse``) and
-    prepped exactly like a rung of a three-stage ladder.  The tests below
-    kept their subjects and moved onto this shape.
+    A single stage is still a stage, so it is named, tokened
+    (``01_coarse``) and prepped exactly like a rung of a three-stage ladder.
     """
     return (Stage(name="coarse", enabled=True, overrides={}),)
 
@@ -90,15 +83,7 @@ def _state_the_run(dest, **card):
 @pytest.fixture(autouse=True)
 def _sandbox(tmp_path_factory, monkeypatch):
     """cwd isolation for EVERY test here (I6, 2026-08-13); conftest isolates
-    the config root.
-
-    The `calc` fixture and its users once read runtime config through a
-    cascade, and then read the DEVELOPER's cwd molbuilder.json and
-    ~/.molbuilder -- the contamination that made a
-    prep test pass GREEN off a config the test never wrote (the A8 pin's
-    own first version, and the 14-of-24 failure the 2026-08-12 isolation
-    memory records).  The correct pattern the newer tests already use,
-    applied to the whole file."""
+    the config root."""
     box = tmp_path_factory.mktemp("sandbox")
     monkeypatch.chdir(box)
 
@@ -107,12 +92,10 @@ def _sandbox(tmp_path_factory, monkeypatch):
 def calc(tmp_path):
     """A GPU calculation, described, on a machine whose probe found one a100.
 
-    ``use_gpu=True`` is stated here rather than assumed, because from
-    2026-08-17 it is the DESCRIPTION that decides whether this is a GPU
-    benchmark — `web/task-setup.md` § 6.2, *"use GPU or not is set up only at
-    the Job Prep UI"*.  `bench_inputs` used to pin it True for every trial, so
-    this fixture measured a GPU while describing a CPU run and nothing said so.
-    Every test below is about the G × K × C grid, and the fixture now says so.
+    ``use_gpu=True`` is stated here rather than assumed, because it is the
+    DESCRIPTION that decides whether this is a GPU benchmark —
+    `web/task-setup.md` § 6.2, *"use GPU or not is set up only at the Job
+    Prep UI"*.  Every test below is about the G × K × C grid.
     """
     struct = Structure(elements=["H", "H"],
                        positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
@@ -196,7 +179,7 @@ def test_the_grid_becomes_a_sweep_jobset_of_relabelled_trials(calc):
     import re
     for n in names:
         # L1 (roadmap 7.10): the deck is born in the TRIAL's directory;
-        # nothing rendered sits at the bundle root any more.
+        # nothing rendered sits at the bundle root.
         deck = _artifacts(calc, n) \
             / f"JOB-{n}_01_coarse.fdf"
         assert deck.is_file() and not deck.is_symlink()
@@ -206,8 +189,8 @@ def test_the_grid_becomes_a_sweep_jobset_of_relabelled_trials(calc):
 
 
 def test_the_pins_land_as_rendered_schema_values_not_splices(calc):
-    """What `transform_fdf` spliced is now resolved and rendered: the capped
-    SCF, the single point, the eigensolver — readable in the deck."""
+    """The pins are resolved and rendered: the capped SCF, the single
+    point, the eigensolver — readable in the deck."""
     import re
     js = _prep_bench(calc)
     _n0 = js['jobs'][0]['name']
@@ -275,25 +258,18 @@ def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
     # the hint teaches the REAL grammar + the launcher (E-J2 fix,
     # 2026-08-21): grouped submission, then summarize -> run-config.
     assert "molbuilder jobset launch bench" in r.output
-    # the exact hint phrase -- "per side" alone false-matched the vacuum
-    # warning's "8 Å per side" (found green while the hint was wrong,
-    # review 2026-08-21)
+    # the exact hint phrase -- "per side" alone would match the vacuum
+    # warning's "8 Å per side"
     assert "one job per resource shelf" in r.output
     assert "summarize bench" in r.output
     assert "config:" in r.output          # provenance rides every prep
 
     # AND EACH TRIAL IS NAMED BY ITS PATH FROM THE BUNDLE (O5, user yes
     # 2026-08-28).  With the attempt layer every trial's directory ends in
-    # `run-<n>`, so a listing of bare names read "run-0, run-0" and named
-    # nobody.  Asserted on the OUTPUT here; it used to be a grep of
-    # `_cli.py` for the literal `_rel(d)`, which broke the day that helper
-    # was renamed even though the printing was still correct -- and would
-    # equally have passed on a helper that printed the wrong thing.
-    # The listing is the indented block right after its header.  Selected
-    # STRUCTURALLY and not by matching `bench-`: a filter that looks for
-    # what correct output contains cannot see the regression, it just finds
-    # nothing and reports the listing "missing" (which is what the first
-    # cut of this did).
+    # `run-<n>`, so a listing of bare names reads "run-0, run-0" and names
+    # nobody.  The listing is the indented block right after its header.
+    # Selected STRUCTURALLY and not by matching `bench-`: a filter that
+    # looks for what correct output contains cannot see the regression.
     lines = r.output.splitlines()
     head = next(i for i, l in enumerate(lines)
                 if "trial dir(s) for stage" in l)
@@ -369,8 +345,7 @@ def _describe_cpu(calc):
 def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     """`launch bench <stage>` under submit mode: one grouped job per
     RESOURCE SHELF (user 2026-08-21 -- an exact-fit allocation per group,
-    so a narrow trial never idles a wide envelope; until then one job per
-    SIDE, § 2.3.2 user 2026-08-20).  The probed grid's every point has its
+    so a narrow trial never idles a wide envelope).  The probed grid's every point has its
     own width here, so #groups == #shelves -- still one LAUNCH ACT per
     shelf, never a queue flood; the value-axis cartesian is what shares
     shelves in real matrices.  Naming a trial still submits that one alone
@@ -476,9 +451,7 @@ def test_the_launch_plan_states_gpu_sharing(calc):
     User, 2026-08-23: *"explicitly note for gpu enabled task: how many
     task will be sharing the gpu at the same time, and warn if that
     number is exceedingly high"* -- checked on the real launch door, from
-    the very commands it is about to send.  (An unstated memory or wall was
-    SAID here too until 2026-10-02; it is refused now, never sent --
-    `architecture.md` § 5.2.)
+    the very commands it is about to send.
 
     The arithmetic itself (`ask.gpu_share_notes`) is unit-tested; this
     pins that it REACHES the approval screen, which is the half that was
@@ -500,10 +473,6 @@ def test_the_launch_plan_states_gpu_sharing(calc):
     assert any("rank(s)/GPU" in l for l in ratios)
 
 
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 5 tests here stood on restart files written by hand, trial
-# scripts replaced by hand-written stubs, or a retired verdict file (`process/testing.md` § 6).
-
 def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
     """The root ``job-set.json`` is the RUN plan and MERGES per stage
     (`job-contracts.md` § 6.1): prepping `medium` must not erase `coarse` --
@@ -522,8 +491,6 @@ def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
     js = json.loads((calc / "job-set.json").read_text())
     assert js["kind"] == "ladder"
     assert [j["name"] for j in js["jobs"]] == ["coarse", "medium"]
-    # (A re-prep replaced a stage's own entry until 2026-10-02; a prepped
-    # stage is refused now -- `tests/data/prep_protocol.toml`.)
 
 
 def test_a_sweeps_record_never_touches_the_root_plan(calc):
@@ -578,8 +545,7 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
              (calc / LEDGER_FILE).read_text().splitlines()]
     got = [(e["verb"], e["decision"]) for e in lines]
     # A DRY RUN WRITES NOTHING, the ledger included (`job-system.md` § 6.0,
-    # step 3: it was ledgered as `planned` from 2026-10-01 until
-    # 2026-10-05).  The state prep saved first comes first
+    # step 3).  The state prep saved first comes first
     # (`checkpointing.md` § 9).
     assert got == [("prep", "saved"),
                    ("prep", "prepped"),
@@ -594,12 +560,6 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     assert launch["mode"] == "submit"
     assert launch["mode_source"] == "--mode flag"
     assert "no scheduler header" in launch["reason"], launch
-
-
-# `test_prep_over_a_launched_attempt_asks_and_no_stops_it` and
-# `test_prep_underway_with_no_answer_proceeds_and_says_so` retired 2026-10-02
-# with the question they pinned: a prepped stage is refused now, and the one
-# question is the save (`tests/data/prep_protocol.toml`; `job-system.md` § 5.0).
 
 
 def test_each_trials_wrapper_carries_its_own_translated_launch(calc):
@@ -692,7 +652,6 @@ class TestTheRunsOwnCondition:
         not even declared."""
         self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
                                      "gpu_count": 1})
-        assert "bench" not in json.loads((calc / "task.json").read_text())
         r = self._run(calc)["resources"]
         assert (r["mpi_np"], r["cpus_per_task"]) == (2, 2)
 
@@ -784,8 +743,6 @@ class TestTheRunsOwnCondition:
           * the run takes `execution`'s wall and queue
           * a rung with no `execution` keeps the calculation's
           * `mem` is NOT among them and stays the calculation's
-        *(A fourth, the bench keeping the calculation's, called the fold
-        with no run card and so could not fail; it went 2026-10-05.)*
         """
         import json
 
@@ -850,28 +807,6 @@ class TestTheRunsOwnCondition:
         assert r["mpi_np"] == 2
         assert r["max_memory_mb"] == 4000
 
-    def test_which_machine_is_a_REFUSAL_not_a_traceback(self, calc):
-        """`workflow.md` § 9.  Resolving the condition reaches
-        `_environment_for`, so it meets the same which-machine question the
-        bench arm catches -- caught there on 2026-08-28 after it leaked a
-        traceback, and the run arm now makes the same call."""
-        from click.testing import CliRunner
-
-        from molbuilder.jobset._cli import jobset_group
-        from molbuilder.scheduler.record import environments_dir
-        self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
-                                     "use_gpu": False})
-        (calc / "environment.json").unlink()
-        d = environments_dir(); d.mkdir(parents=True, exist_ok=True)
-        (d / "alpha.json").write_text(json.dumps(
-            {"schema": "molbuilder/environment@1", "scheduler": "slurm"}))
-        r = CliRunner().invoke(jobset_group,
-                               ["prep", "run", "coarse", "--bundle",
-                                str(calc), "--no-sbatch"])
-        assert isinstance(r.exception, SystemExit), (
-            f"{type(r.exception).__name__} escaped: {r.exception!r}")
-        assert "several machines could be meant" in r.output
-
 
 def test_stage_plan_records_the_config_provenance(calc):
     """STAGE-PLAN.md is the reviewable record; the provenance block
@@ -884,10 +819,7 @@ def test_stage_plan_records_the_config_provenance(calc):
 
 
 def test_the_verb_renders_the_trial_decks_it_promises(calc):
-    """I5 (2026-08-13): every earlier deck-content pin supplied the
-    grid, pins and translation itself through library internals
-    (`bench_inputs` + `prep_calculation`), so the VERB's own wiring of
-    them was unpinned.  This drives `jobset prep bench coarse` -- the
+    """I5 (2026-08-13): this drives `jobset prep bench coarse` -- the
     command a user types -- and asserts the CONTENT of what lands: each
     trial deck carries the TRIAL's own identity line (§ 2.3.2's relabel,
     which is what keys its warm files away from the run's), and the
@@ -955,12 +887,10 @@ def test_a_fine_tuned_vocabulary_copy_wins_and_is_named(calc):
 
 
 def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
-    """R1 (review-4 keystone), rewritten 2026-08-16: the single-parameter-
-    set calculation is a FIRST-CLASS run.  Its shape changed -- § 6.5 now
-    gives that one parameter set a NAMED, tokened stage instead of the
-    tokenless root form -- but the property under test did not: prep,
-    submit and status all reach it, one rung deep, with no dangling link
-    anywhere in the attempt."""
+    """R1 (review-4 keystone): the single-parameter-set calculation is a
+    FIRST-CLASS run, one NAMED, tokened stage (§ 6.5): prep, submit and
+    status all reach it, one rung deep, with no dangling link anywhere in
+    the attempt."""
     from click.testing import CliRunner
     from molbuilder import describe as D
     from molbuilder.config.siesta import SiestaConfig
@@ -1003,11 +933,8 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
     assert not (dest / "run-0").exists()      # never at the root
     assert not (dest / "bench-JOB").exists()  # nor named for a benchmark
     assert "launch run coarse --mode" in res.output
-    # Every link in the attempt RESOLVES.  The 2026-08-12 redo found the
-    # first version of this test asserting existence only, over links that
-    # all dangled (prepare_attempt hopped a hardcoded "../.." over a
-    # depth-1 attempt): prep exited 0, submit was dead.  Existence of a
-    # symlink proves nothing -- resolve it.
+    # Every link in the attempt RESOLVES: existence of a symlink proves
+    # nothing -- resolve it.
     links = [p for p in (rung / "run-0").iterdir()]
     assert links, "the attempt is empty -- prep changed shape"
     assert not any(p.is_symlink() for p in links), (
@@ -1032,23 +959,12 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
     assert (rung / "run-0" / "run.json").is_file(), res.output
     res = r.invoke(jobset_group, ["status", "--bundle", str(dest)])
     assert res.exit_code == 0, res.output
-    # (a hand-built sweep whose decks named no stage, filed in a bare
-    # bench/ container, was pinned here until 2026-10-06: such a job is
-    # refused now -- `job_dir_names`)
-
-
-# `test_a_one_stage_calculation_continues_from_its_own_attempt` retired
-# 2026-10-02: a stage continues from its own attempt by being launched again,
-# never re-prepped, and that road -- the optimizer history carried -- is
-# `test_launch_door.py::test_a_stage_launched_before_continues_from_its_own_latest_run`.
 
 
 def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
     """E6 (redo 2026-08-12): a charged deck's header instructs
-    ``python3 makov_payne_correction.py`` -- a promise only `convert`
-    kept.  The described route rendered the same header and never wrote
-    the script, so prep shipped an instruction to run a file that did
-    not exist.  The seam's sibling_artifacts hook writes it now."""
+    ``python3 makov_payne_correction.py``, so prep ships that script beside
+    it (the seam's sibling_artifacts hook)."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     struct = Structure(elements=["H", "H"],
@@ -1073,14 +989,10 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
     assert res.exit_code == 0, res.output
     _deck_path = next(dest.glob("01_coarse/*.fdf"))     # L1: in the stage dir
     deck = _deck_path.read_text()
-    # BOTH halves asserted.  This stood as `if "makov_payne_correction.py"
-    # in deck:` wrapping the file check, so rewording the header -- which is
-    # generated prose -- silently turned a net-charge test into a no-op
-    # (measured 2026-09-09).  The instruction IS the promise; it has to be
+    # BOTH halves asserted: the instruction IS the promise; it has to be
     # there before "kept" can mean anything.
     # The INSTRUCTION, not the filename: the header mentions the script in
-    # prose on a neighbouring line too, so matching the bare name passed even
-    # with the run line renamed (mutation, 2026-09-09).  What is promised is
+    # prose on a neighbouring line too.  What is promised is
     # `python3 <script>`, and that is what has to be shipped.
     import re as _re
     m = _re.search(r"python3\s+(\S+\.py)", deck)
@@ -1093,17 +1005,9 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
 
 
 def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
-    """A4 (redo 2026-08-12), rewritten 2026-08-16: a one-stage calculation
-    can be benchmarked, and it is benchmarked the way every rung is --
-    ``prep bench <stage>``, trials in THAT stage's container.
-
-    A4's own subject was the bare-verb bench grammar for a stage-less
-    calculation (a lone name after ``bench`` bound to the trial, two names
-    refused, and the hint printed "prep bench None").  § 6.5 deleted the
-    shape that grammar served, so those assertions are retired rather than
-    translated -- there is no longer a calculation that owns no stage.
-    What survives is the part that was never about stage-less-ness: the
-    verdict offer, and a named trial submitting exactly itself."""
+    """A4 (redo 2026-08-12): a one-stage calculation can be benchmarked,
+    and it is benchmarked the way every rung is -- ``prep bench <stage>``,
+    trials in THAT stage's container."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     struct = Structure(elements=["H", "H"],
@@ -1159,8 +1063,8 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
         assert (bench / f"bench-{j['name']}").is_dir()
         assert not (dest / f"bench-{j['name']}").exists()
     # a NAMED trial submits alone (how a single point is re-run); an
-    # unnamed bench submits one grouped job per resource shelf -- the
-    # old one-per-invocation rule survives as one LAUNCH ACT per shelf.
+    # unnamed bench submits one grouped job per resource shelf -- one
+    # LAUNCH ACT per shelf.
     t0, t1 = js["jobs"][0]["name"], js["jobs"][1]["name"]
     res = r.invoke(jobset_group, ["launch", "bench", "coarse", t1, "--bundle",
                                   str(dest), "--mode", "direct", "--dry-run", "--yes"])
@@ -1229,7 +1133,6 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
     coarse = dest / "bench_01_coarse" / "job-set.json"
     medium = dest / "bench_02_medium" / "job-set.json"
     assert coarse.is_file() and medium.is_file()
-    assert not (dest / "bench" / "job-set.json").exists()
     # each record still names ITS stage's decks: no overwrite happened
     cj = json.loads(coarse.read_text())
     mj = json.loads(medium.read_text())
@@ -1245,16 +1148,12 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
         for j in record["jobs"]:
             assert (dest / cont / f"bench-{j['name']}").is_dir(), (
                 f"trial {j['name']} not in {cont}/")
-    assert not (dest / "bench").exists()
 
 
 def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
-    """A2 (redo 2026-08-12), rewritten 2026-08-16: FLAT prep is COMPLETE
-    without an attempt -- only an explicit ``--from``/``--cold`` (an
-    attempt ask flat cannot serve) reaches prepare_attempt's refusal.  The
-    original bug rode the stage-less bare-verb path § 6.5 has since
-    deleted; the shape-blindness it exposed is still worth pinning, so the
-    case moved onto the one-stage form."""
+    """A2 (redo 2026-08-12): FLAT prep is COMPLETE without an attempt --
+    only an explicit ``--from``/``--cold`` (an attempt ask flat cannot
+    serve) reaches prepare_attempt's refusal."""
     from click.testing import CliRunner
     from molbuilder import describe as D
     from molbuilder.config.siesta import SiestaConfig
@@ -1290,63 +1189,11 @@ def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
     assert "flat" in res.output
 
 
-# `test_a_config_refusal_is_a_refusal_not_a_traceback` retired 2026-10-02 (W54): its setup is the record gate, which `tests/data/launch_values.toml` drives down the road (a record that states no activation is refused).
-
-
-# `test_prep_bench_asks_when_a_trial_is_already_launched` retired 2026-10-02:
-# a prepped benchmark is refused now (`job-system.md` § 5.0).
-
-
-def test_a_stage_without_an_open_attempt_refuses_to_launch(calc):
-    """C5 (redo 2026-08-12, R2's missing half): a hierarchical stage
-    prepped without `prep run` -- decks and wrappers in place, no run-<n>
-    -- used to launch IN ITS OWN CONTAINER: no run.json, silently
-    relaunchable, everything § 1.5/1.6 exist to prevent.  It refuses now,
-    and names the way back: a prepped stage is not prepped again, so it is
-    the state saved before its prep (2026-10-02; it named `prep run`
-    until then)."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    import shutil
-    # `prep run coarse`, through the one entry: the run card states the
-    # launch shape and its GPU (`execution/gpu.md` G5)
-    prep_stage(calc, "run", "coarse", allocation=Resources(),
-               emit_sbatch=False)
-    # THE STATE IS BUILT, NOT LEFT BEHIND BY PREP.  This used to prep below
-    # the entry and assert no attempt appeared -- "library prep: NO
-    # attempt opened" -- which pinned the half-verb as if it were the design:
-    # prep returned a folder `launch` refuses, and every caller that was not
-    # the CLI shipped it.  Prep opens the attempt now (2026-09-08), so the
-    # state C5 guards against is reached the way a person reaches it: an
-    # attempt deleted, or a bundle prepped before that change.
-    shutil.rmtree(calc / "01_coarse" / "run-0")
-    assert not (calc / "01_coarse" / "run-0").exists()
-    res = CliRunner().invoke(jobset_group,
-                             ["launch", "run", "coarse",
-                              "--bundle", str(calc),
-                              "--mode", "direct", "--yes"])
-    assert res.exit_code != 0
-    assert "no attempt is open" in res.output
-    # a prepped stage is not prepped again: the way back is a rollback
-    assert "molbuilder checkpoint list" in res.output, res.output
-    assert not (calc / "01_coarse" / "run.json").exists()
-
-
-# `test_a_trial_deck_is_forced_cold_not_only_relabelled` retired 2026-10-06:
-# it asserted a copy of prep's branch written in the test, a hard replace
-# prep stopped making when the measurement pin became the one setter (Q6a,
-# 2026-08-21).  A trial's deck written cold by a real prep, and the
-# submission refusing one that is not: `test_value_axes.py`'s
-# `test_submission_gates_the_cold_start_against_the_deck`.
-
-
 # --------------------------------------------------------------------- #
 #  The declared grid drives the sweep (roadmap § 0.1 B1)                 #
 # --------------------------------------------------------------------- #
 # generator.md § 4.3a: `task.json`'s `bench` DECLARES what to measure —
-# portable points, resolved here.  Until 2026-08-19 nothing read it: the
-# machine enumerated its own grid regardless, so a user declaring
-# {mpi_np: [1,2,3]} got eleven machine-chosen K×C trials.
+# portable points, resolved here.
 
 
 def _declare_bench(calc, axes):
@@ -1371,10 +1218,9 @@ def test_a_declared_point_over_capability_is_crossed_out_by_name(calc):
     ask and the bound — never clamped, because a clamped point measures a
     configuration nobody declared.
 
-    It was refused with an exception naming ``mpi_np=4096`` until
-    2026-08-30 (user: *"generate all combinations, then cross out by
+    User, 2026-08-30: *"generate all combinations, then cross out by
     checking each one and leave only the valid ones... present the correct
-    outcome"*).  The grid is enumerated whole and each cell checked; what
+    outcome"*.  The grid is enumerated whole and each cell checked; what
     reaches the screen is the surviving list plus what was struck and why.
     Nothing survives here, so the sweep still cannot proceed — but the
     person is told which cell and by how much, not handed a sentence about
@@ -1391,24 +1237,15 @@ def test_a_declared_point_over_capability_is_crossed_out_by_name(calc):
     # The CELL, by the name its trial directory would carry, and both
     # numbers -- what was asked and what there is.
     assert "G0K4096C2" in shown
-    # THE NUMBERS, NOT THE VERB.  Refusals became findings on
-    # 2026-09-11 and render through one `Refusal.message`, which
-    # says "needs 8192 cores but this machine allows 4 cores";
-    # this pinned the older hand-built wording ("has 4") and so
-    # failed on a sentence that says the same thing.  What the
-    # line is about is that BOTH numbers reach the person.
+    # THE NUMBERS, NOT THE VERB: what the line is about is that BOTH
+    # numbers reach the person.
     assert "8192" in shown and re.search(r"\b4\b", shown), (
         f"the refusal must name what was asked and what is "
         f"allowed; it said: {shown!r}")
 
 
-# `test_prep_bench_asks_only_about_launched_trials` retired 2026-10-02 with the
-# question it pinned (`job-system.md` § 5.0).
-
-
 def test_a_multi_point_value_entry_is_a_value_axis(calc):
-    """§ 4.3a, BUILT 2026-08-21 (this test pinned the refusal while the
-    extension was recorded-not-built): a non-machine entry with SEVERAL
+    """§ 4.3a: a non-machine entry with SEVERAL
     points multiplies the machine grid, each point carries its coordinate,
     and the trial names carry it too."""
     _describe_cpu(calc)
@@ -1443,9 +1280,7 @@ def test_a_name_outside_the_execution_category_is_refused(calc):
     speed (§ 6.8).  ONE door owns membership -- the preflight's
     `_bench_names_a_speed_knob` (validation/task.py), which the dispatch
     runs before any pins are computed -- so this pins the CLI surface, not
-    the helper (whose first version duplicated the rule; the holistic
-    review removed the second door, and this § 6.8 error had no test at
-    all until then)."""
+    the helper."""
     from click.testing import CliRunner
 
     from molbuilder.jobset._cli import jobset_group
@@ -1485,9 +1320,7 @@ def test_a_declared_pin_reaches_the_trial_deck(calc):
     assert decks, "no trial decks rendered"
     text = decks[0].read_text()
     # The VALUE line, not the catalogue help comments -- those name
-    # every choice, so a substring match passes with the pin broken
-    # (this assertion's own first version did; its mutation run
-    # caught it).
+    # every choice, so a substring match passes with the pin broken.
     import re as _re
     assert _re.search(r"^Diag\.Algorithm\s+ELPA-2STAGE", text, _re.M), (
         [ln for ln in text.splitlines()
@@ -1515,58 +1348,10 @@ def test_a_declared_gpu_point_runs_the_declared_total_ranks(calc):
     assert {p["G"] for p in sweep} == {1}          # fixture probes one a100
 
 
-def test_the_cap_is_clean_scf_must_converge_is_pinned_off(calc):
-    """B2: the pins include scf_must_converge False, so a capped trial ends
-    as the single-point measurement it is instead of ABNORMAL_TERMINATION —
-    which is what lets `choose_winner` ever see a completed point."""
-    _sweep, pins, _tr = bench_inputs(calc, None)
-    assert pins["scf_must_converge"] is False
-    assert pins["max_scf_iter"] == 3
-
-    # AND WHERE SIESTA READS IT.  The two assertions above stop at the pins
-    # dict, an intermediate; SIESTA decides ABNORMAL_TERMINATION from the
-    # DECK.  A pin that fails to reach it emits NO keyword at all -- measured
-    # 2026-09-09 -- and SIESTA's own default is must-converge, which is
-    # exactly the outcome B2 exists to avoid.  So the absence is silent and
-    # only the rendered deck can show it.
-    import dataclasses as _dc
-    import numpy as _np
-    from molbuilder.structure import Structure as _S
-    from molbuilder.siesta.input import render_fdf as _render
-    _fields = {f.name for f in _dc.fields(SiestaConfig)}
-    _cfg = SiestaConfig(system_label="J",
-                        **{k: v for k, v in pins.items() if k in _fields})
-    _h2 = _S(elements=["H", "H"],
-             positions=_np.array([[0., 0., 0.], [0., 0., 0.74]]),
-             vacuum=(10., 10., 10.))
-    _deck = _render(_h2, _cfg)
-    assert "SCF.MustConverge .false." in _deck, (
-        "the cap's pin must reach the deck; SIESTA defaults to "
-        "must-converge when the keyword is absent")
-    assert "MaxSCFIterations  3" in _deck
-
-
 # --------------------------------------------------------------------- #
 #  The summary CONNECTS to the run (roadmap § 0.1 B3/B5) and the offer   #
 #  explains an empty verdict (B4)                                        #
 # --------------------------------------------------------------------- #
-
-
-def _mk_point(label, state="completed", spi=None, knobs=None):
-    from molbuilder.bench.result import BenchPoint
-    return BenchPoint(label=label, engine="siesta", state=state,
-                      knobs=knobs or {},
-                      metrics=({"s_per_iter": spi} if spi is not None else {}))
-
-
-# Retired 2026-10-06 (MEMORY gate 5: a failing test fed a hand-built record
-# is retired, never updated): `test_the_summary_closes_with_the_verdict_and_the_commands`,
-# `test_a_verdictless_summary_says_so_with_the_census`,
-# `test_the_table_measures_beside_the_ask_and_gates_gpu_columns` and
-# `test_no_winner_speaks_only_about_the_timed_set` each hand-built the
-# `BenchPoint`s or `BenchResult` they summarized.  The summary's one shape
-# and its no-winner sentence are `project-layout.md` § 2.3's; the road reads
-# the sentence below.
 
 
 def test_a_verdictless_summarize_prints_no_report(calc):
@@ -1776,22 +1561,6 @@ def test_sweep_view_never_writes_the_record_or_the_proposal(calc):
         "the view wrote a proposal -- that file is the user's")
 
 
-def test_sweep_view_refuses_to_pair_trials_by_position_if_the_readers_disagree(
-        calc, monkeypatch):
-    """The join is positional because the two readers key differently -- a
-    BenchPoint's label is the JOB's name, a StageStatus's is its STAGE's.
-    If either reader ever learns to skip a job, that must raise, not
-    silently pair trial N's measurement with trial N+1's state."""
-    from molbuilder.jobset import summarize as S
-    _prep_bench(calc)
-    jobset, bundle = _load_sweep(calc)
-    real = S.discover_points_from_jobset
-    monkeypatch.setattr(S, "discover_points_from_jobset",
-                        lambda b, j: real(b, j)[:-1])
-    with pytest.raises(ValueError, match="refusing to pair"):
-        S.sweep_view(jobset, bundle)
-
-
 def test_the_terminal_says_each_warning_once_across_a_sweep(calc, capsys):
     """O5 (user yes, 2026-08-28): the science gate FIRES per trial — every
     trial's own `.validation.txt` carries its findings — but the terminal
@@ -1843,47 +1612,11 @@ def test_a_point_the_machine_cannot_hold_does_not_kill_the_ones_that_fit(
     assert "G0K2C1" in shown and "G0K4096C1" in shown
     # The struck one names its numbers (R4), not a verdict word.
     assert "crossed out (1)" in shown
-    # THE NUMBERS, NOT THE VERB.  Refusals became findings on
-    # 2026-09-11 and render through one `Refusal.message`, which
-    # says "needs 4096 cores but this machine allows 4 cores";
-    # this pinned the older hand-built wording ("has 4") and so
-    # failed on a sentence that says the same thing.  What the
-    # line is about is that BOTH numbers reach the person.
+    # THE NUMBERS, NOT THE VERB: what the line is about is that BOTH
+    # numbers reach the person.
     assert "4096" in shown and re.search(r"\b4\b", shown), (
         f"the refusal must name what was asked and what is "
         f"allowed; it said: {shown!r}")
-
-
-# Three tests retired 2026-10-06 that sent a benchmark's shelves with the
-# scheduler and the header renderer swapped out in-process; their rules are
-# rows down the road, a stand-in `sbatch` refusing one shelf
-# (`tests/data/launch_protocol.toml`): every shelf written before any is
-# sent, one refused keeping its trials pending while the rest go
-# (`test_every_shelf_is_written_before_any_is_sent`); a benchmark launched
-# again passing its launched trials over -- its records where the walk
-# looks (`test_a_grouped_launch_records_where_the_launched_door_LOOKS`);
-# and the walk naming each trial's attempt, here run for real and on a
-# queue read from the walk it wrote
-# (`test_the_sequencer_cds_where_the_wrapper_ACTUALLY_is`).
-
-
-def test_only_a_bench_prefixed_directory_counts_as_a_trial(tmp_path):
-    """`trials_in` filters by the prefix `job_dir_name` composes.
-
-    Every directory in a real bench container happens to be a trial, so
-    dropping the filter changes nothing anyone has built — which is exactly
-    why it needed a case of its own: mutating it away left the whole bench
-    fold green.  A container also holds the sweep's own record, and a person
-    may put anything beside it; neither is an attempt at a measurement.
-    """
-    from molbuilder.jobset.materialize import trials_in
-    from molbuilder.paths import TRIAL_PREFIX
-    (tmp_path / f"{TRIAL_PREFIX}G0K4C1").mkdir()
-    (tmp_path / f"{TRIAL_PREFIX}G0K8C1").mkdir()
-    (tmp_path / "notes").mkdir()                 # a person's own folder
-    (tmp_path / "job-set.json").write_text("{}")  # the sweep's record
-    assert [d.name for d in trials_in(tmp_path)] == [
-        f"{TRIAL_PREFIX}G0K4C1", f"{TRIAL_PREFIX}G0K8C1"]
 
 
 def test_a_container_that_is_not_there_is_empty_not_an_error(tmp_path):

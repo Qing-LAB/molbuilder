@@ -1,38 +1,18 @@
 """The wrapper's own files, read through the registry — `parse.md` § 5c.
 
 Three parsers, one for each thing the wrapper measures beside the deck,
-plus the resolver that decides which of two sources to believe. These
-lived in `bench/result.py` and read bytes directly until 2026-09-04.
-
-The `.log` / `.csv` suffixes join a registry that RAISES on ambiguity, so
-the first test here is that they claim their own files and nothing else's.
+plus the resolver that decides which of two sources to believe.
 """
 from __future__ import annotations
 
 from molbuilder.parse.instruments import utilisation
 
 
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 7 tests here read an SCF-timing log, a monitor log or a
-# .util.csv typed by hand (`process/testing.md` § 6).
-
-
-# `test_a_relaxations_step_boundaries_are_not_iterations` moved to the e2e
-# tier 2026-10-06: it reads the timing log of a relaxation run on the road
-# with the real SIESTA, `tests/test_siesta_flat_run_e2e.py`
-# (`process/testing.md` § 6).
-
-
 # ---------------------------------------------------------------------------
 #  A number that was never measured
 # ---------------------------------------------------------------------------
-#  Both of these shipped on 2026-09-04 and both put a value where an
-#  absence belonged -- forbidden pattern #9, `model/parse.md` § 7.  The
-#  suite was green with both defects live, because every fixture in it
-#  carries a well-formed epoch column and a monitor summary that states
-#  BOTH means; nothing asked what happens when the measurement is
-#  partial, which is the shape a KILLED trial leaves and the one a
-#  benchmark most needs to read.
+#  A partial measurement is the shape a KILLED trial leaves and the one
+#  a benchmark most needs to read.
 
 
 def test_a_half_stated_summary_is_not_called_the_monitors_own():

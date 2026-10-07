@@ -6,17 +6,8 @@
 It could be mamba... use the detected activation method and the correct way to
 execute the script rather than directly hacking to the directory."*
 
-Until then `run_step` rewrote EVERY step into a hand-written bash wrapper that
-re-implemented `conda activate` -- so no machine used its own manager's
-activation, two copies of that wrapper had drifted four ways, and the one
-dispatch that did NOT have the rewrite (`_dispatch.run_in_env`, the tool router)
-simply failed on the machines the rewrite existed for.
-
 conda, mamba and micromamba take the same command in the same shape, so there
-is one way in and nothing per-manager to simulate.  molbuilder used to carry a
-re-implementation of `conda activate` as a fallback for one bug in mamba 1.x;
-that is deleted -- a manager whose `run` does not work is one to replace, and
-the failure now says so and names `envs.manager`.
+is one way in and nothing per-manager to simulate.
 """
 from __future__ import annotations
 
@@ -113,8 +104,7 @@ def test_a_broken_manager_run_falls_back_and_the_step_still_runs(
     either.  It hands the door that failure once and checks it switched.
 
     No fake binary: the door's dependency is `run_streaming`, so saying "this
-    is what came back" is the whole setup.  There used to be a shell script
-    per case, a PATH and a log to read the answer out of, for this.
+    is what came back" is the whole setup.
     """
     attempts = []
 
@@ -176,8 +166,8 @@ def test_every_step_gets_the_clean_slate_only_builds_used_to_get(
 
 
 def test_run_step_hands_that_environment_to_the_door(tmp_path, monkeypatch):
-    """The dead parameter is gone and the door does it instead -- asserted
-    through `run_step`, because "the function exists" was never the gap."""
+    """The door hands the step that environment -- asserted through
+    `run_step`, because "the function exists" was never the gap."""
     from molbuilder.envs import install as I
 
     seen = {}

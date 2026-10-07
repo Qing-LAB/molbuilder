@@ -2,10 +2,7 @@
 value it read.
 
 `model/parse.md` § 5d.3: the run record's third column, *what the engine
-used*, is read here and never echoed from the deck.  Nothing read this file
-until 2026-09-26, so the only record of a run's parameters was the deck --
-and a TranSIESTA device's 42-pole contour, from a default nobody chose,
-appeared nowhere a person would look.
+used*, is read here and never echoed from the deck.
 
 The fdf library writes one line per key SIESTA looks up: ``<key> <value>
 [<unit>] [# default value]`` -- the marker saying the deck does not carry the

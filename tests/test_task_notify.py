@@ -18,11 +18,6 @@ secret live in **`config_dir()/notify`**, mode `0600`, on the machine that
 runs the job, and the split is what keeps the rest of the record shareable
 (`web/this-machine.md`, which owns that file; `run-reports.md` § 3 owns its
 format).
-
-*(This said `~/.molbuilder/notify` and cited the 2026-09-01 plan until
-2026-09-02.  The path was never right — it is the config directory, which
-`MOLBUILDER_CONFIG_DIR` may move — and the plan records how the split was
-decided rather than what is true now.)*
 """
 from __future__ import annotations
 
@@ -47,8 +42,8 @@ def _task(**extra) -> Task:
 
 
 def _block(**stated) -> dict:
-    """A notify block WHOLE, as every description writes one since
-    2026-10-06 (`run-reports.md` § 3.0): its four values, ``null`` for
+    """A notify block WHOLE, as every description writes one
+    (`run-reports.md` § 3.0): its four values, ``null`` for
     never, ``["*"]`` for every channel and every field, with ``stated``
     over them."""
     return {"on_scf_converged": False, "every_hours": None,
@@ -82,7 +77,7 @@ def test_the_triggers_are_independent_not_a_choice():
 
 def test_absent_is_a_state_and_writes_no_key():
     """A description that reports on nothing must round-trip BYTE-identical,
-    or every file written before 2026-08-26 changes on first save and
+    or a file that asks for nothing changes on first save and
     "off" acquires a second spelling on disk."""
     t = _task()
     assert t.notify is None
@@ -92,17 +87,15 @@ def test_absent_is_a_state_and_writes_no_key():
 def test_a_block_with_every_trigger_off_is_still_a_block():
     """A block reports the start and the end at least (`run-reports.md`
     § 2) -- so one whose triggers are all off is a block, kept and written
-    whole, never read as no block.  *(It was read as none until 2026-10-06,
-    `test_a_policy_that_says_nothing_writes_no_key`: `{"every_hours": 0}`
-    meant off, against § 2.)*"""
+    whole, never read as no block."""
     t = _task(notify=_block())
     assert t.notify is not None
     assert t.to_dict()["notify"] == _block()
 
 
 def test_a_block_that_leaves_a_key_out_is_refused_naming_it():
-    """A block states all four (2026-10-06) -- an explicit choice and a key
-    left out were the same bytes until then."""
+    """A block states all four -- otherwise an explicit choice and a key
+    left out are the same bytes."""
     with pytest.raises(ValueError, match="'every_hours', 'channels', "
                                          "'report'"):
         _task(notify={"on_scf_converged": True})
@@ -136,8 +129,7 @@ def test_a_value_of_the_wrong_type_is_refused_by_name(bad, expect):
 def test_a_period_that_is_not_positive_is_refused(hours):
     """There is no reading of "every minus two hours" or "every 0 hours",
     and a timer armed with either fires on every pass -- the noise this
-    block exists to stop.  Never is ``null`` (W57 R10: ``0`` was never until
-    2026-10-06)."""
+    block exists to stop.  Never is ``null`` (W57 R10)."""
     with pytest.raises(ValueError, match="positive number of hours"):
         _task(notify=_block(every_hours=hours))
 
@@ -171,9 +163,7 @@ def test_names_round_trip_and_are_deduplicated():
 
 def test_every_channel_is_written_as_a_star():
     """*Every channel the running machine has* is written ``["*"]`` and read
-    back as every channel (``None``) -- it was the key left out until
-    2026-10-06 (`test_naming_no_channels_writes_no_key`), the same bytes as
-    a block that never said."""
+    back as every channel (``None``)."""
     t = _task(notify=_block(on_scf_converged=True))
     assert t.notify.channels is None
     assert t.to_dict()["notify"]["channels"] == ["*"]
@@ -191,13 +181,6 @@ def test_an_EMPTY_list_survives_the_round_trip():
     assert t.notify.channels == ()
     assert t.to_dict()["notify"]["channels"] == []
     assert Task.from_dict(t.to_dict()).notify.channels == ()
-
-
-# `test_channels_alone_is_a_policy_worth_writing` and
-# `test_a_selection_alone_is_a_policy_worth_writing` retired 2026-10-06: they
-# pinned `Notify.__bool__`, which decided whether a block was there by its
-# values.  A block is there or not (`Task.notify` is None without one), and
-# is written whole.
 
 
 @pytest.mark.parametrize("bad,why", [
@@ -236,9 +219,7 @@ def test_finish_is_not_settable():
 # --------------------------------------------------------------------- #
 #  WHAT each report carries (`stages.md` § 6.9)                          #
 #                                                                        #
-#  `notify` says WHEN and TO WHOM; `report` says WHAT IS IN IT.  Added   #
-#  2026-09-02 and unpinned until now -- which is how the serializer came #
-#  to parse the key and write nothing.                                   #
+#  `notify` says WHEN and TO WHOM; `report` says WHAT IS IN IT.          #
 # --------------------------------------------------------------------- #
 
 def test_a_field_selection_survives_the_round_trip():
@@ -260,8 +241,7 @@ def test_a_field_selection_survives_the_round_trip():
 def test_EVERY_field_is_a_star_and_an_EMPTY_LIST_is_the_summary_alone():
     """Two states, both written (§ 6.9): ``["*"]`` is *everything the
     monitor could determine*, ``[]`` the name, the state and the summary
-    line with no field grid.  *(Every field was the key left out until
-    2026-10-06.)*
+    line with no field grid.
     """
     every = _task(notify=_block(every_hours=1))
     assert every.notify.report is None

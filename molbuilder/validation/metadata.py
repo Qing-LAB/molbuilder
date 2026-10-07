@@ -4,10 +4,6 @@ Reads ``range`` and ``validate`` off dataclass field metadata and
 produces Issues.  This is what makes design.md Principle #1 load-
 bearing: field metadata IS the source of truth; CLI / web /
 validators all read from the same place.
-
-Split from the pre-2026-06-13 flat ``molbuilder/validation.py`` per
-docs/science/validation.md  Function body +
-public signature are identical to the pre-split version.
 """
 
 from __future__ import annotations
@@ -27,14 +23,8 @@ def _keyword_suffix(meta) -> str:
     do them: *"Real-space grid cutoff"* says what is wrong and cannot be found
     in the input file; *"MeshCutoff"* can be searched for and says nothing.
 
-    This is a REGRESSION FIX, not a new idea.  The labels used to BE the
-    keywords — ``MeshCutoff``, ``DM.Tolerance``, ``MD.MaxForceTol`` — and were
-    replaced with prose on 2026-08-14 when the catalogue became the master.
-    That was right for a form control and silently wrong here: seventeen
-    warnings lost the only word in them a person could act on.
-
     The BARE keyword, not the full ``engine_key``: a warning is scanned, and
-    ``MD.MaxCGDispl (universal for CG / Broyden / FIRE)`` is a sentence.  The
+    ``MD.MaxDispl (CG / Broyden / FIRE)`` is a phrase.  The
     full spelling belongs on the form's badge, where there is room for it.
 
     **Nothing is added for a setting that is not an engine keyword** — the
@@ -88,26 +78,11 @@ def _validate_config_metadata(cfg, refused=frozenset(),
             # `kgrid` -- (1, 64) bounds each axis count, never their
             # product -- and it is what the form now puts on each of the
             # three inputs.
-            #
-            # This branch replaces the error the TypeError handler below
-            # used to raise for exactly this shape (G5, 2026-06-14: *"drop
-            # the scalar range and add a per-component validate callable"*).
-            # G5's reasoning was right about the bug -- a tuple field with a
-            # scalar range went UNENFORCED -- but the remedy left the field
-            # unable to declare bounds at all, and a bound that cannot be
-            # declared cannot reach the form: `kgrid` and
-            # `kgrid_displacement` therefore rendered as three unbounded
-            # boxes, accepting 0, -4 or 7.5 and complaining only afterwards.
-            # Checking per component enforces it AND lets it be declared.
             label = meta.get("label", f.name)
             unit = f" {meta['unit']}" if meta.get("unit") else ""
             if isinstance(value, (tuple, list)):
                 # EVERY TRIPLE, per component, through the one helper the
                 # description's own check asks too (:func:`outside_range`).
-                # A field with a `validate` callable stood aside here until
-                # 2026-09-30, on the reading that the callable owned the
-                # bounds -- and once `kgrid`'s callable held only its shape,
-                # its range was warned nowhere (the K3 review).
                 for i, v in outside_range(value, rng):
                     issues.append(Issue(
                         "warn",
@@ -128,13 +103,7 @@ def _validate_config_metadata(cfg, refused=frozenset(),
                         ))
                 except TypeError:
                     # A SCALAR that will not compare -- a string where a
-                    # number belongs, say.  The sequence case above is no
-                    # longer routed here (2026-08-15); G5's error text told
-                    # the reader to "drop the scalar range and add a
-                    # per-component validate callable", which enforced the
-                    # bound but left it UNDECLARABLE, and an undeclared
-                    # bound never reaches the form.  Triples now declare
-                    # their bounds and get them checked per component.
+                    # number belongs, say.
                     issues.append(Issue(
                         "error",
                         (f"Field metadata for ``{f.name}`` declares "
@@ -147,9 +116,7 @@ def _validate_config_metadata(cfg, refused=frozenset(),
         # AN ENUM'S VALUE IS ONE OF ITS MEMBERS, with the member's type
         # (`engines/template.md` § 5) -- the rule the template reader and the
         # form's coercion already hold, here for a config built any other
-        # way.  Without it a stale caller's `method = "RKS"` (the SCF class,
-        # before the method became DFT or HF on 2026-09-28) was not refused:
-        # it was simply not "DFT", and the deck was written as Hartree-Fock.
+        # way.
         choices = meta.get("choices")
         if choices and value is not None:
             from ..template import is_member
@@ -167,17 +134,11 @@ def _validate_config_metadata(cfg, refused=frozenset(),
             try:
                 result = validator(value, cfg)
             except Exception as exc:
-                # 2026-06-14 I3 round-3: pre-fix this branch
-                # silently swallowed ANY exception from a
-                # validator-callable.  Same anti-pattern G5
-                # retired for the comparable-range path; this is
-                # the other door it could leak through.  A future
-                # validator that raises (regex .match() on a non-
-                # string, attribute-access on None, etc.) used to
-                # silently disappear from preflight.  Surfacing as
-                # error-Issue makes the metadata bug visible at
-                # preflight time so a contributor fixes the
-                # callable instead of leaving the validator dead.
+                # A validator-callable that raises (regex .match() on a
+                # non-string, attribute-access on None, etc.) is surfaced
+                # as an error-Issue, so the metadata bug is visible at
+                # preflight time instead of the validator silently
+                # disappearing.
                 issues.append(Issue(
                     "error",
                     (f"Field metadata for ``{f.name}`` has a "
@@ -261,8 +222,7 @@ def _check_values(cfg, calculation: str) -> List[Issue]:
 
     `resolve` refuses first, naming where the value came from; this holds a
     render that skipped `resolve` -- a library call or a test.  One pass, so
-    one value draws one refusal: the offered set and the limit were two
-    checks here until 2026-09-30, and a value could draw both.
+    one value draws one refusal.
     """
     from ..template import catalogue, engine_name, select, why_not
     engine = engine_name(type(cfg))

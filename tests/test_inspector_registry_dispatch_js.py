@@ -1,24 +1,12 @@
 """Inspector-registry contract — L2 module tests.
 
 Drives the registry's pick / pickResult / resultCategory / isResult
-+ list / register surface under Node with minimal DOM stubs.  Same
-contracts as the predecessor Playwright tests with no Chromium
-bring-up.
++ list / register surface under Node with minimal DOM stubs, no
+Chromium bring-up.
 
-History — this file first landed 2026-06-13 as a sweep that demoted
-32 tests out of ``test_inspector_registry_e2e.py`` +
-``test_results_folder_dispatch_e2e.py``.  The first pass shipped 35
-near-identical per-case test functions, each spinning up its own
-Node subprocess to call one pure JS function.  A retrospective audit
-the same day flagged the over-decomposition: the original e2e shape
-got mechanically copied into L2 without parametrizing.
-
-This revision rebuilds the file with module-scoped fixtures that
-batch each contract's cases through a single Node invocation, then
-parametrize over the cached result dict.  Net source: ~35 function
-defs → 5 parametrized + 3 one-offs.  Wall-clock: ~35 * 200ms = ~7s
-→ ~5 * 200ms = ~1s.  Per-case failure messages stay specific via
-pytest.param ids.
+Module-scoped fixtures batch each contract's cases through a single
+Node invocation, then parametrize over the cached result dict.
+Per-case failure messages stay specific via pytest.param ids.
 
 Per docs/process/testing.md + § 7 (L5 → L2 demotion
 when the test's only payload is "call this pure JS function and
@@ -145,9 +133,7 @@ _DISPATCH_CASES = [
     # wrapper output was renamed from `.out` to `.pyscf.log` in 2026-06 so
     # the dispatcher could tell PySCF from SIESTA; it is plain stdout, not
     # a trajectory format, and it belongs in the text viewer until a
-    # dedicated inspector ships.  (Guarded until 2026-09-08 by a regex over
-    # `trajectory.js`'s match() body -- which is how it came to be checked
-    # by spelling rather than by asking the registry.)
+    # dedicated inspector ships.
     ("/tmp/run/foo.pyscf.log", "source", "pyscf_log→source"),
     # .pdb is the second structure-inspector trigger.
     ("/tmp/protein.pdb", "structure", "pdb→structure"),
@@ -410,8 +396,7 @@ def test_the_documented_presenters_are_the_registered_ones(is_result_flags):
     registered.  ``isResult`` is what the registry answers, not a literal
     read out of a file -- `trajectory` and `spectra` never write one and
     are defaulted to results by `makePartialInspector`, which is exactly how
-    the table got its "three".  (A regex over the modules' source asked it
-    until 2026-09-26.)
+    the table got its "three".
 
     MUTATION THIS MUST FAIL AGAINST: a presenter flipping its ``isResult``,
     or one registering that the table does not list.
@@ -441,8 +426,6 @@ def test_the_documented_presenters_are_the_registered_ones(is_result_flags):
 # --------------------------------------------------------------------- #
 #  Distinct-shape tests — kept as one-offs                              #
 # --------------------------------------------------------------------- #
-
-
 
 
 def test_register_rejects_missing_required_fields():

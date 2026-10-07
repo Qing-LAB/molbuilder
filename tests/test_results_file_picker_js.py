@@ -1,8 +1,6 @@
 """Unit tests for ``lib/results/file-picker.js`` driven via node.
 
-The tab-level result-file picker replaced the in-trajectory
-``lib/trajectory/result-list.js`` on 2026-06-01.  These tests cover
-its pure helpers (``parseDir``, ``formatRelativeTime``,
+These tests cover the tab-level result-file picker's pure helpers (``parseDir``, ``formatRelativeTime``,
 ``filterToResultFiles``, ``_labelForResult``) under Node in a
 minimal stub environment -- no Chromium, no network.
 
@@ -169,8 +167,8 @@ class TestFilterToResultFiles:
     def test_filters_by_pick_result(self):
         """A file the SERVER's registry refused (`parser: null`) is dropped.
 
-        The predicate used to be seven filename tests in this file; it is
-        now `detect()`'s verdict, carried per file by `/api/results/dir`.
+        The predicate is `detect()`'s verdict, carried per file by
+        `/api/results/dir`.
         """
         out = _run_node(
             "const entries = [\n"
@@ -498,20 +496,13 @@ class TestAbsorbSatellites:
     carried the same 10:31:08 mtime.
     """
 
-    #: THE FIXTURE IS COMPOSED, NOT SPELLED (`runfiles.compose`), and that is
-    #: the whole history of this block.  It spelled the retired ``-stageN``
-    #: overlay until 2026-08-19; the fix replaced it with
-    #: ``<job>_geom_<token>_optim.xyz`` -- also a name nothing writes, because
-    #: the token does not sit inside the role (§ 2.2a) -- and the presenter's
-    #: matcher was loose enough (a prefix and a suffix) to accept either, so
-    #: both the rule and its test agreed on a grammar no generated file has
-    #: ever used.  Twice.  Names that come out of the generator cannot do that.
+    #: THE FIXTURE IS COMPOSED, NOT SPELLED (`runfiles.compose`): names that
+    #: come out of the generator cannot agree with a loose matcher on a
+    #: grammar no generated file uses.
     _JOB = "pyscf_relax"
     #: The label the run door reads this folder's run's names back with --
     #: the description's (`execution/architecture.md` § 3.2).  A file of
     #: another job in the same folder reads back as nobody's: foreign.
-    #: *(Every label the folder's decks stated, until 2026-10-04 -- plan
-    #: B11.)*
     _MASTER = "/p/" + _rf(_JOB, ".molwatch.log", "03_tight")
     #: What THIS rung's master absorbs: the two carried files, which stem on
     #: the bare job, and its own trajectory, which carries its token.
@@ -593,14 +584,6 @@ class TestAbsorbSatellites:
         and its own trajectory (`stages.md` § 1.1a).  So 03_tight's master
         absorbs 03_tight's stream and leaves 01_coarse's alone; the rung that
         wrote it has a master of its own to absorb it.
-
-        THIS IS WHAT THE OLD FIXTURE HID.  It named the streams
-        `<job>_geom_<token>_optim.xyz` -- the token inside the role, a spelling
-        no generated file has used -- and under THAT spelling every rung's
-        stream did stem on the bare `<job>`, so one master swallowed them all
-        and the file asserted a three-rung run was one menu entry.  With the
-        names the grammar builds, the count is one entry per rung, which is
-        the number of results there are.
         """
         out = self._absorb(([self._MASTER, self._OTHER_RUNG]))
         assert sorted(out) == sorted([self._MASTER.rsplit("/", 1)[-1],
@@ -621,11 +604,6 @@ class TestAbsorbSatellites:
         out = self._absorb((self._SATS))
         assert sorted(out) == sorted(p.rsplit("/", 1)[-1] for p in self._SATS)
 
-    # `test_a_different_run_in_the_same_folder_is_untouched` stood here until
-    # 2026-10-04: two jobs' runs in one folder.  A calculation folder holds
-    # one run label, the description's (plan B11) -- another job's files in
-    # it are foreign, and two jobs sharing a folder is not a layout molbuilder
-    # makes.
 
     def test_a_label_holding_a_stage_shaped_run_is_still_one_entry(self):
         """The label is READ BACK, never cut out of the name.
@@ -640,9 +618,6 @@ class TestAbsorbSatellites:
         like `au_2_bdt` was cut to `au`: none of the run's satellites matched
         the truncated prefix and one relaxation listed as four entries.
         Measured 2026-09-19.
-
-        Every other case in this class uses a label the regex happened to cut
-        correctly, which is why they all passed while this was broken.
         """
         job = "au_2_bdt"
         names = [_rf(job, ".molwatch.log", "02_fine"),

@@ -18,8 +18,7 @@ when none existed, the refusal named the **last one tried** -- which is how
 ``…/optimization/Relax/projects/pseudopotential``, a folder assembled out of
 where the user was standing that no user had ever chosen.
 
-The rule now is `job-contracts.md` § 2.5a, ONE line since 2026-08-28
-(user: the library always lives inside the project tree): **`psml_lib`
+The rule now is `job-contracts.md` § 2.5a, ONE line (user, 2026-08-28: the library always lives inside the project tree): **`psml_lib`
 is a path inside the projects tree, measured from the tree root.**  An
 absolute path is a convenience spelling of the same fact and must lie
 inside the tree; the dotted spellings are retired with the cascade.  No
@@ -102,7 +101,7 @@ class TestTheCallerWithNoCalculation:
 
     def test_it_anchors_at_the_servers_own_root(self, tmp_path, monkeypatch):
         """The server's own tree -- which is `projects_root()`, the one
-        door, NOT the working directory (it was cwd until 2026-08-22)."""
+        door, NOT the working directory."""
         from molbuilder.projects import PROJECTS_ROOT_ENV, projects_root
         monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "tree"))
         monkeypatch.chdir(tmp_path)          # deliberately irrelevant now
@@ -116,9 +115,8 @@ class TestTheCallerWithNoCalculation:
 
 class TestACalculationOutsideAnyTree:
     """A bundle copied somewhere flat has no tree to walk up to -- the
-    server's own root answers (2026-08-28: same fallback as no-dest;
-    the old fall-to-the-calculation-folder anchor retired with the
-    cascade, and in-folder pseudos are used without the field anyway)."""
+    server's own root answers (the same fallback as no-dest; in-folder
+    pseudos are used without the field)."""
 
     def test_the_bare_name_falls_to_the_servers_root(self, tmp_path,
                                                      monkeypatch):

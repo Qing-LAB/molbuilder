@@ -1,10 +1,5 @@
 """SIESTA .out / .log FileParser.
 
-Absorbed from the legacy ``molbuilder.parsers.siesta.SiestaParser``;
-that package was deleted 2026-06-21 and this is the only SIESTA output
-parser (provenance: `docs/archive/old_docs/protocols/parse-module.md` §
-8).
-
 For each completed CG/MD step the parser extracts:
 
   * coordinates      -- from ``outcoor: Atomic coordinates (Ang):`` blocks
@@ -26,8 +21,7 @@ phase's (`model/parse.md` § 5d.5-5d.6).  The line patterns are
 ``siesta_grammar``'s, the one table the wrapper and the monitor are rendered
 from too.
 
-Tolerant to in-progress + malformed files (Level 3 contract,
-2026-05-28):
+Tolerant to in-progress + malformed files (Level 3 contract):
   * if the outcoor block is mid-write at EOF the partial frame is dropped
   * if a step has no energy / force yet, ``None`` is stored so per-step
     arrays stay index-aligned with frames
@@ -62,12 +56,10 @@ from .siesta_reader import read_output
 #                                           -> n_mpi_processes
 #   * Echoed .fdf comments "# runtime.<k>: <v>" -> all the user-set caps
 # The launch lines are `siesta_grammar`'s (``read_launch_line``): TBtrans
-# prints the same ones.  A "Running on host:" probe stood here until
-# 2026-09-26; no SIESTA source prints that line.
+# prints the same ones.
 # The runtime header is the SAME line format as the molwatch log's, so
 # /spectra script writers and Build SIESTA writers emit IDENTICAL lines
-# (cf. molbuilder.runtime_info, which owns the write side).  A private
-# `_SIESTA_RUNTIME_RE` copy stood here until 2026-09-05; the grammar is
+# (cf. molbuilder.runtime_info, which owns the write side).  The grammar is
 # read by `molwatch_grammar.parse_runtime_line`, which owns it.
 
 # Convergence-target echo lines from SIESTA's ``redata:`` preamble are the
@@ -87,17 +79,13 @@ from .siesta_reader import read_output
 # drift when SIESTA's parser normalises or rejects).  Used to populate
 # ``runtime_info['siesta_diag']``.
 # The solver lines are `siesta_grammar`'s (``read_diag_line``), which
-# `bench/result.py` reads too.  Until 2026-09-26 this read the ``redata:``
-# algorithm line and a GPU banner that SIESTA 5.4.2 never prints, so no real
-# run had a solver on record.
+# `bench/result.py` reads too.
 
 # ---- the atoms the run held: the .out's own echo -------------------------
 #
 # THE .OUT STATES THEM, so the parser reads them as its own content
 # (`model/parse.md` § 5.3) -- what the engine applied, in the file being
-# parsed, so no name can point it at another run.  The sidecar beside the
-# output and the deck in its folder were tried after it until 2026-10-04,
-# from `_sidecar.py`, where this reader lived.
+# parsed, so no name can point it at another run.
 
 _SIESTA_CONSTRAINTS_HEADER_RE = re.compile(
     r"siesta:\s+Constraints\s+applied\s+in\s+the\s+following\s+order:",
@@ -198,8 +186,7 @@ def read_frozen_atoms_from_siesta_out(out_path: str) -> Set[int]:
 
 # The reading pass -- every rule, the runtime-info probes, the end-of-output
 # judgement -- is `siesta_reader`'s, and this parser builds Frames from what it
-# reads (`model/parse.md` § 5d.5).  The validation vocabularies, the IterSCF
-# timer line and the rule table moved there with it on 2026-09-26.
+# reads (`model/parse.md` § 5d.5).
 
 class SiestaParser:
     name  = "siesta"
@@ -228,10 +215,7 @@ class SiestaParser:
     # plenty of structural markers within the first 100 lines on small
     # runs, and within ~700-800 on big v5 runs whose preamble grew.
     # Strong content markers (case-insensitive substring match; see
-    # can_parse).  v4.x banner ("Welcome to SIESTA") and v5.x banner
-    # ("WELCOME TO SIESTA") were enumerated separately pre-2026-05-29;
-    # the case-insensitive lookup collapses them.  Listed lower-case
-    # here because the matcher lower-cases its input.
+    # can_parse) are the grammar's (`siesta_grammar.SNIFF_MARKERS`).
     _STRONG_MARKERS = _G.SNIFF_MARKERS
     _PREFIX_MARKERS = ("siesta:", "redata:")
     _SCAN_LINES = 300
@@ -252,8 +236,7 @@ class SiestaParser:
         # A PYTHON FILE IS A SCRIPT, never an engine's output -- the person's
         # PySCF deck, or one of the framework modules shipped beside every job
         # (`runwrap.MONITOR_COMPANIONS`), whose sources quote SIESTA's own
-        # lines: `siesta_reader.py` names `Begin Broyden opt. move` in its
-        # docstring and was claimed as a SIESTA output (2026-09-26).
+        # lines.
         if str(path).lower().endswith(".py"):
             return False
         try:
@@ -398,12 +381,14 @@ class SiestaOutFileParser(FileParser):
         if not lower.endswith(".fdf"):
             return None
         stem = filename[:-len(".fdf")]
+        # The output a run of this deck writes, as the catalogue spells it,
+        # its number shown as <N>.
+        from ...runfiles import RUN_FIELD, compose
+        out = compose(stem, ".out", run=RUN_FIELD).replace(RUN_FIELD, "<N>")
         return (
             f"{filename} is the SIESTA INPUT file, not its output. "
-            f"Point molbuilder at the .out file SIESTA wrote "
-            f"(typically {stem}.out / siesta.out / <label>.out), "
-            f"or at the unified {stem}.molwatch.log if the run "
-            f"was generated through molbuilder."
+            f"Point molbuilder at the run's output, {out}, or at the "
+            f".molwatch.log progress log beside it."
         )
     output = TrajectoryResult
 

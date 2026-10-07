@@ -1,6 +1,7 @@
 """Pin the parse-log sidecar contract: every parser emits a
 ``<input-stem>.parse.log`` next to its input, describing activity
-and any problems, by default ON.  See molbuilder/parse/_log.py.
+and any problems, when ``MOLBUILDER_PARSE_LOG`` turns it on.  See
+molbuilder/parse/_log.py.
 """
 from __future__ import annotations
 
@@ -29,12 +30,8 @@ def test_sidecar_path_for_transport_json():
             == Path("/x/job.transport.parse.log"))
 
 
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 7 tests here parsed a SIESTA output invented as text (`process/testing.md` § 6).
-
-
 # ----------------------------------------------------------------- #
-#  Transport sidecar parser also logs                                #
+#  ParseLogger.warn                                                  #
 # ----------------------------------------------------------------- #
 
 
@@ -52,11 +49,3 @@ def test_parse_logger_warn_carries_line_and_snippet(tmp_path, monkeypatch):
     assert "float() failed" in body
     # Snippet quoted in the warning line.
     assert "-1.5XX23" in body
-
-
-# `test_transport_sidecar_parser_writes_log` and
-# `test_transport_sidecar_logs_v1_rejection` deleted 2026-09-17 with the
-# transport sidecar parser.  Both drove `dump_transport_json`, a writer with
-# no production caller in any revision, to prove the parse log was written
-# and that a v1 payload was rejected.  The molstruct and spectra sidecars
-# still cover the log; the v1 shape is a format molbuilder never wrote.

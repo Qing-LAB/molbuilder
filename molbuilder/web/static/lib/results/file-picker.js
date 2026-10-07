@@ -1,13 +1,9 @@
 /* /results tab-level file picker.
  *
- * Promoted from the in-trajectory ``lib/trajectory/result-list.js``
- * (2026-06-01).  Pre-refactor: the dropdown lived inside the
- * trajectory inspector and only listed SIESTA .out / .molwatch.log
- * files in the current directory.  Post-refactor: the dropdown sits
+ * The dropdown sits
  * at the results-tab header (#results-file-picker-bar) and lists
  * every file in the current directory that any ``isResult: true``
- * inspector would mount -- trajectory + spectra + structure today,
- * any future result inspector tomorrow.
+ * inspector would mount.
  *
  * Mount target: ``#results-file-picker-bar`` in
  * ``templates/results.html``.  The bar is pre-shown during the scan
@@ -21,10 +17,8 @@
  * sidebar's "current file" highlight matches) AND dispatches a
  * ``molbuilder:results:fileSelected`` custom event on ``document``.
  * results/viewer.js listens for that event and disposes + remounts
- * the matching inspector.  Pre-task-#301 (2026-06-09) the dispatch
- * was implicit via the sidebar's ``onChange`` subscriber; that
- * subscription was retired so a stray sidebar single-click on
- * /results no longer hijacks the inspector mid-read.  The single
+ * the matching inspector.  A sidebar single-click on
+ * /results does not steer the inspector.  The single
  * source of truth for "which file is mounted" is the dropdown's
  * selectedOption + the most-recent fileSelected event.
  *
@@ -32,7 +26,7 @@
  * keeps the file already showing if this directory still offers it and
  * otherwise takes the newest, then labels the menu with that one value
  * AND announces it.  Labelling without announcing -- or the reverse --
- * is how the menu came to name one file while displaying another.
+ * would let the menu name one file while displaying another.
  *
  * Status line: the meta row doubles as a status surface.  Shows
  * "Scanning for output files…" during the directory listing fetch,
@@ -118,14 +112,11 @@
      *
      * ``parser`` is the REGISTRY's verdict, decided on the server by
      * ``detect()``; ``null`` means nothing can read the file and it is not
-     * offered.  This took ``/api/files/list``'s content-blind entries and
-     * seven filename predicates until 2026-09-18 (`plans/plan.md` N9).
+     * offered.
      *
-     * Still sorted newest-first, but that is now only the MENU's order --
+     * Sorted newest-first, but that is only the MENU's order --
      * WHICH file opens is ``openable``, the door's own pick, applied in
-     * ``_scan``.  The two were the same value here, which is how a spectrum
-     * run came to open a 1,373-byte progress stub: its spectrum shared an
-     * mtime with it and lost the name tie-break.
+     * ``_scan``.
      *
      * Pure (no DOM, no fetch).  Exported for unit tests.
      */
@@ -136,13 +127,8 @@
         const out = [];
         for (const entry of entries) {
             if (!entry) continue;
-            // THE SERVER SAYS WHETHER A FILE CAN BE OPENED, and this is the
-            // whole of the change: `parser` is the REGISTRY's answer
-            // (`/api/results/dir`), where this used to run seven filename
-            // predicates of its own.  Measured 2026-09-18 over 110 real run
-            // directories, that guess offered 13 files no parser can read --
-            // Slurm logs, a 0-byte `.out`, a `job-set.json` whose own route
-            // then answers 400 -- and hid 155 that a parser handles.
+            // THE SERVER SAYS WHETHER A FILE CAN BE OPENED: `parser` is the
+            // REGISTRY's answer (`/api/results/dir`).
             if (!entry.parser) continue;
             const fullPath = dirPath ? (dirPath + sep + entry.name) : entry.name;
             const rec = {
@@ -159,15 +145,12 @@
                 engine: engine || null,
             };
             // AND A PRESENTER MUST CLAIM IT, which is the SECOND half of
-            // "a file this menu lists" and used to be asked somewhere else.
+            // "a file this menu lists".
             // `parser != null` is the REGISTRY's verdict (can anything read
             // it); `pickResult` is the PICKER's (is it a result, or a
-            // catch-all the dropdown must not flood with).  Two questions,
-            // and this list answered only the first while `_populate`
-            // answered both -- so the meta line counted files the menu did
-            // not show.  Measured 2026-09-19 on
-            // `BDT-only-init-siesta`: "7 of 7" printed under a two-option
-            // dropdown.  One list, one count.
+            // catch-all the dropdown must not flood with).  Both are
+            // answered here, so the meta line counts what the menu shows.
+            // One list, one count.
             if (typeof pickResult === "function") {
                 let claimed = null;
                 try { claimed = pickResult(fullPath, rec); }
@@ -289,13 +272,8 @@
             try {
                 /* THE SAME ANSWER THE PICK WAS MADE ON, one line up.
                  * `entry` carries the server's `{role, parser, engine}`
-                 * (`filterToResultFiles`), `pickResult` is given it, and
-                 * `resultCategory` was not -- so every heading fell back to
-                 * the engine-less spelling and a SIESTA directory's runs sat
-                 * under "Optimization" (measured 2026-09-19 on
-                 * `BDT-only-init-siesta`, whose `engine` the server answered
-                 * `siesta`).  Two calls, one rule: both take `meta`
-                 * (`web/presenters.md` § 3). */
+                 * (`filterToResultFiles`).  Two calls, one rule: both take
+                 * `meta` (`web/presenters.md` § 3). */
                 label = (typeof inspector.resultCategory === "function")
                     ? inspector.resultCategory(entry.path, entry)
                     : inspector.displayName;
@@ -362,8 +340,7 @@
 
     /* A selected, disabled first row for "the door picked nothing".
      * Without it the browser displays the first option anyway, so the menu
-     * would name a file that is not mounted -- the label/display split this
-     * picker already had to fix once. */
+     * would name a file that is not mounted. */
     function _prependUnchosen(selectEl, text) {
         const opt = document.createElement("option");
         opt.value = "";
@@ -467,17 +444,15 @@
         //    directory selection lands. -------------------------- //
         let aborter         = null;
         //: THE DIRECTORY THIS PANEL IS BOUND TO -- owned here, changed by
-        //: ONE thing (Refresh, via `_alignToSidebar`).  It was a scan memo
+        //: ONE thing (Refresh, via `_alignToSidebar`).
         //: With the panel able to sit on a folder the sidebar has left,
         //: "which folder is this" is state somebody has to own.
         let boundDir        = null;
         //: Set by the Reload click, consumed by the next announcement.
         //: `results.md` 4 states the contract in four words -- *"Reload =
-        //: open the same file again"* -- and the same-file no-op added on
-        //: 2026-09-19 quietly broke it for every viewer that neither polls
-        //: nor listens for a refresh: structure, source, markdown.  For
-        //: those three the remount WAS the re-read, so Reload stopped
-        //: reaching the disk and showed you the geometry you already had.
+        //: open the same file again"* -- and for a viewer that neither polls
+        //: nor listens for a refresh (structure, source, markdown) the
+        //: remount IS the re-read, which the same-file no-op would skip.
         let forceNextAnnounce = false;
         //: What the SERVER said this directory is -- `{role, calculation}`
         //: or null when it does not say (project-layout.md § 1.4a).  Kept
@@ -586,7 +561,7 @@
         }
 
         /**
-         * Scan ``dir`` via /api/files/list, filter via
+         * Scan ``dir`` via /api/results/dir, filter via
          * registry.pickResult, populate the dropdown.  Async; safe
          * to call concurrently (older calls are aborted).
          */
@@ -625,28 +600,19 @@
 
             aborter = new AbortController();
             const signal = aborter.signal;
-            // List through the sidebar file layer (projects.listDir -> /api/files/list)
-            // rather than a hand-rolled fetch -- the ONE file-access path.  ``apiList``
-            // already sends ``cache:no-store``, which is load-bearing: it fixes the "click
-            // Results, see stale dropdown" bug (an identical /api/files/list URL would
-            // otherwise serve the cached prior scan, hiding newly-generated result files
-            // until a sidebar out+back).  ``signal`` aborts a superseded scan.
             // ASK THE DOOR.  `/api/results/dir` is the HTTP surface over
             // `parse.dirs` -- one call answering what is here, what reads
-            // each file, and which one to open.  This listed through the
-            // content-blind file browser and decided all three itself until
-            // 2026-09-18 (`plans/plan.md` N9: the door had no consumer).
+            // each file, and which one to open.  ``cache: "no-store"`` keeps
+            // an identical URL from serving a cached prior scan; ``signal``
+            // aborts a superseded scan.
             fetch("/api/results/dir?path=" + encodeURIComponent(dir),
                   { signal: signal, cache: "no-store" })
                 .then(r => r.json())
                 .then(body => {
                     if (disposed || signal.aborted) return;
                     /* AND THE ANSWER HAS TO BE ABOUT THE FOLDER WE ASKED
-                     * ABOUT.  This is the rule the rest of the session
-                     * established -- `calcdir.json`'s `of` on disk,
-                     * `said.dir !== _dir` in Task setup -- and the Results
-                     * picker was the one surface still missing it, which is
-                     * the tab the rule was LEARNED on.
+                     * ABOUT -- the rule `said.dir !== _dir` keeps in Task
+                     * setup.
                      *
                      * Abort is not the same guarantee.  `_abortInFlight`
                      * covers the common case, but a response already in the
@@ -719,14 +685,8 @@
                      * JSON.  The menu still lists every readable file; only
                      * the guess is gone.
                      *
-                     * ONE VALUE, because it used to be two: `_populate`
-                     * labelled the menu from the GROUPED list (ties by
-                     * category label) while the auto-pick took `results[0]`
-                     * from the flat one (ties by file name).  Both orderings
-                     * are right; having two is the defect -- four files
-                     * stamped 10:31:08 labelled the menu `…molwatch.log` and
-                     * displayed `…_optimized.xyz` (2026-08-04).  The chosen
-                     * path now feeds both. */
+                     * ONE VALUE: the chosen path both labels the menu and is
+                     * announced, so the two cannot name different files. */
                     const keepCurrent =
                         currentFile && results.some(r => r.path === currentFile);
                     const byDoor = body.openable
@@ -737,13 +697,8 @@
 
                     /* ---- ONE EXIT ----------------------------------- //
                      * `results.md` § 2.2: a scan that changes what is
-                     * current ALWAYS announces it.  That rule was stated in
-                     * a comment and kept by hand in each branch, so adding a
-                     * branch broke it -- the "nothing openable" case landed
-                     * 2026-09-19 with a bare `return`, and a stage container
-                     * went on showing its run-0 spectrum, tabs and all, from
-                     * a directory the user had left.  The announcement is
-                     * structural now: every path out of this scan passes
+                     * current ALWAYS announces it.  The announcement is
+                     * structural: every path out of this scan passes
                      * through it, so the next branch cannot forget. */
                     if (metaEl) metaEl.classList.remove("is-busy");
                     if (chosen === null) {
@@ -761,14 +716,10 @@
                         return;
                     }
                     _populate(selEl, cachedGroups, chosen);
-                    /* ONE EXIT, ALWAYS ANNOUNCED.  The `keepCurrent` arm used
-                     * to stop at `_startParseStatus` on the grounds that the
-                     * file was "already mounted" -- true on a re-entry, false
-                     * on the FIRST scan of a page load, which is the arm that
-                     * runs whenever the remembered file is still in the
-                     * listing.  The panel was then showing an inspector the
-                     * picker had never announced, chosen by filename because
-                     * no `meta` ever reached it.  Since 2026-09-19 the list is
+                    /* ONE EXIT, ALWAYS ANNOUNCED, the `keepCurrent` arm too:
+                     * on the FIRST scan of a page load that arm is what runs
+                     * whenever the remembered file is still in the listing.
+                     * The list is
                      * the only thing that decides what is shown, so it says so
                      * every time; `viewer.js` no-ops when the file has not
                      * actually changed, which is what makes a tab-re-entry
@@ -800,9 +751,7 @@
          *
          * The CALLER labels the menu with the same path first -- announcing
          * and labelling are two uses of one chosen value (results.md § 2.2),
-         * not two derivations.  This used to rely on setShared's onChange
-         * coming back round to relabel the menu, which stopped happening when
-         * that subscription was retired (#301) and left the label behind.
+         * not two derivations.
          */
         /**
          * Mirror this pick into the sidebar's pointer -- ONLY when the
@@ -811,19 +760,13 @@
          *
          * MIRRORING IS A COURTESY: it highlights the row you picked, and
          * that is meaningful only while the sidebar is showing this folder.
-         * Once the panel stopped following the sidebar (2026-09-19) the same
-         * call became a shove in the other direction -- bound to A, browsing
-         * B, you pick in the menu and the sidebar snaps back to A.  Worse
-         * than losing your place: `_divergedFromSidebar()` then answers
-         * false, so the header drops its warning while the sidebar visibly
-         * still lists B, and Reload can no longer reach B at all.  The one
-         * honest signal on the panel is switched off by a pick inside it.
+         * Bound to A, browsing B, a mirrored pick would snap the sidebar back
+         * to A: `_divergedFromSidebar()` would then answer false, the header
+         * would drop its warning while the sidebar visibly still lists B, and
+         * Reload could no longer reach B at all.
          *
-         * THIS IS ONE FUNCTION because the guard was written on the
-         * automatic path alone and the MANUAL one -- the case the comment
-         * itself described, "you pick in the menu" -- was left open until
-         * 2026-09-19.  Two call sites, one rule, no second chance to guard
-         * only half of it.
+         * THIS IS ONE FUNCTION so the automatic pick and the MANUAL one
+         * share the guard.  Two call sites, one rule.
          */
         function _mirrorToSidebar(dir, path) {
             if (_divergedFromSidebar()) return true;
@@ -860,11 +803,9 @@
              * That window is not hypothetical: if the scan then FAILS -- the
              * folder was deleted, the route answers 404 -- there is no
              * announcement to correct it and the state is permanent until
-             * the next Reload.  The header used to print `<new folder> /
-             * <old file>`, a path that does not exist, in the plain colour.
-             * That is the 2026-08-04 defect wearing its own mitigation.
+             * the next Reload.
              *
-             * The fix is in `_renderStatus`, not here: it compares the
+             * The guard is in `_renderStatus`, not here: it compares the
              * mounted file's own directory against the bound one and says
              * "showing <full path>, which is not in this folder" when they
              * disagree.  Binding early is then safe because the header
@@ -874,27 +815,13 @@
             _scan(dir, preferredFile || "");
         }
 
-        /* THE SIDEBAR DOES NOT MOVE THIS PANEL.  Browsing is browsing.
+        /* THE SIDEBAR DOES NOT MOVE THIS PANEL.  Browsing is browsing
+         * (user, 2026-09-19).
          *
-         * This has been decided three times and the record matters, because
-         * both answers are defensible and each fixed the other's bug:
-         *
-         *   2026-06-09 (#301) -- the subscription was RETIRED: single-clicking
-         *     around the sidebar hijacked the inspector mid-read.
-         *   2026-08-04 -- the DIRECTORY half came back, because a panel that
-         *     scoped itself once at mount went on rendering a previous folder:
-         *     a live BDT-Au111 job displayed as a finished BDT run from another
-         *     directory, "every number plausible and every number wrong".
-         *   2026-09-19 (user) -- retired again, WITH the thing that was
-         *     missing both times: the header now names the folder these
-         *     results came from and says when the sidebar has left it.
-         *
-         * Read the 2026-08-04 note again and the actual fault is in its last
-         * clause -- "with nothing on screen saying so".  Following the sidebar
-         * was one way to make the panel honest; naming the folder is the
-         * other, and it is the one that also lets you scroll around without
-         * losing your place.  Taking the second does not make the first wrong;
-         * it makes it unnecessary.  If the readout ever goes away, this
+         * The header names the folder these results came from and says when
+         * the sidebar has left it; that is what keeps the panel honest
+         * without following the sidebar, and it lets you scroll around
+         * without losing your place.  If the readout ever goes away, this
          * subscription has to come back.
          *
          * Re-scans happen on two things: Reload (which re-points the panel
@@ -928,8 +855,8 @@
         //
         //   1. setShared(dir, file) mirrors the sidebar's current
         //      pointer so the sidebar UI highlights the active
-        //      file (cosmetic; the sidebar no longer steers the
-        //      inspector on /results — task #301).
+        //      file (cosmetic; the sidebar does not steer the
+        //      inspector on /results).
         //
         //   2. dispatch ``molbuilder:results:fileSelected`` so the
         //      /results dispatcher mounts the matching inspector.
@@ -938,19 +865,9 @@
         /** The server's answer for one path -- `{role, parser, engine}` --
          * so the viewer dispatches on it instead of re-reading the name. */
         function _metaFor(file) {
-            /* THE WHOLE RECORD, not a hand-picked three.  `presenters.md`
+            /* THE WHOLE RECORD.  `presenters.md`
              * § 2 defines `meta` as `{role, label, stage, parser, engine}`
-             * for `match`, `resultCategory` and `absorbs` alike -- and this
-             * returned three of the five, so a presenter reading
-             * `meta.label` or `meta.stage` inside `match()` got `undefined`
-             * and fell through to its filename test.  Latent only because
-             * no `match` reads them yet; `absorbs` does, and it gets the
-             * full record by a different route, which is the drift.
-             *
-             * Picking fields by hand is the same fault as the event
-             * listener that rebuilt the detail and silently dropped `dir`
-             * (fixed 2026-09-20): two shapes of one record, kept in step by
-             * memory. */
+             * for `match`, `resultCategory` and `absorbs` alike. */
             const hit = (cachedResults || []).find(r => r.path === file);
             if (!hit) return null;
             return { role:   hit.role,   label:  hit.label,
@@ -964,9 +881,8 @@
             /* "Parsing…" STARTS BEFORE THE ANNOUNCEMENT, because a viewer
              * may answer inside it: the one already showing this file says
              * ready at once, from within the listener this dispatch runs.
-             * Started after, the status met that answer with nothing to
-             * clear and then waited out its whole timer (the Results-tab
-             * review, 2026-09-28). */
+             * Started after, the status would meet that answer with nothing
+             * to clear and then wait out its whole timer. */
             _startParseStatus(file);
             try {
                 document.dispatchEvent(new CustomEvent(
@@ -975,16 +891,13 @@
                      * this directory IS rather than guessing.  The server
                      * already answered it in the same response the menu was
                      * built from (`/api/results/dir`, project-layout.md
-                     * § 1.4a); dropping it here is why a stage container and
-                     * a folder nobody described got the same sentence --
-                     * "no result files yet", which is true of neither. */
+                     * § 1.4a), so a stage container and a folder nobody
+                     * described do not get the same sentence. */
                     /* `dir` and `diverged` ride along for the same reason
                      * `place` does -- the header has to NAME the folder these
                      * results come from, and say when the sidebar has moved on
-                     * without them.  That readout is not decoration: it is the
-                     * mitigation for 2026-08-04, where the panel went on
-                     * rendering another run "with nothing on screen saying
-                     * so".  Unbinding the panel from the sidebar is only safe
+                     * without them.  That readout is not decoration:
+                     * unbinding the panel from the sidebar is only safe
                      * because this is said out loud. */
                     /* `record` rides along for the Run panel (§ 3a), which
                      * listens to this event and nothing else: the run the
@@ -1030,8 +943,7 @@
 
         // -- pageshow / visibilitychange: force-rescan on tab re-entry -- //
         //
-        // The picker rescans when the directory CHANGES.  That misses two
-        // real-world re-entry scenarios where the directory is the same:
+        // Two real-world re-entry scenarios where the directory is the same:
         //
         //   1. bfcache restore.  Browsers (Chromium + Firefox by
         //      default) cache the whole page when the user navigates
@@ -1053,9 +965,9 @@
         // on ``visibilitychange``->visible so a backgrounded tab
         // refreshes when the user re-focuses it; same defense.
         //
-        // Force-rescan policy: read the current sessionStorage state and
-        // re-scope unconditionally -- the whole point is that an unchanged
-        // dir should still get a fresh listing.
+        // Force-rescan policy: re-read the bound folder unconditionally --
+        // the whole point is that an unchanged dir should still get a fresh
+        // listing.
 
         /** Is the sidebar somewhere else than this panel? */
         function _divergedFromSidebar() {
@@ -1069,8 +981,8 @@
          * REFRESH -- the one gesture that re-points this panel.
          *
          * Reads where the sidebar is now, binds to it, and scans.  This is
-         * the whole of the sidebar's authority over the Results tab since
-         * 2026-09-19 (`results.md` § 2.1): browsing does nothing, Refresh
+         * the whole of the sidebar's authority over the Results tab
+         * (`results.md` § 2.1): browsing does nothing, Refresh
          * adopts.  `preferredFile` keeps your pick when the new listing
          * still offers it.
          */
@@ -1080,8 +992,8 @@
             // ONE reader owns the per-tab keying (projects.md § 2) --
             // projects.getCurrentDir()/getCurrentFile().  When that reader
             // is absent (the sidebar module never mounted) there is nothing
-            // compliant to ask: a raw shared-key read here was the fork the
-            // contract forbids, and it answered with another tab's place.
+            // compliant to ask: a raw shared-key read here would answer with
+            // another tab's place.
             const cur = (typeof proj.getCurrentDir === "function")
                 ? proj.getCurrentDir()
                 : "";
@@ -1089,7 +1001,7 @@
                 // Nothing to adopt -- the sidebar has not resolved a folder
                 // yet.  Say so and RELEASE THE BUTTON: the busy class is set
                 // by the click handler and cleared only inside `_scan`, so
-                // bailing here used to disable Reload for the rest of the
+                // bailing without it would disable Reload for the rest of the
                 // page load -- on the one screen whose empty state tells you
                 // to press it.
                 _populatePlaceholder(selEl,
@@ -1097,12 +1009,10 @@
                 _showIdleMeta(null);
                 return;
             }
-            // THE MENU'S CHOICE, NOT THE SIDEBAR'S FILE.  This read
-            // `proj.getCurrentFile()`, so a sidebar SINGLE-CLICK -- which the
-            // contract says does nothing here -- silently decided what the
-            // next Reload would mount.  #301's hijack, deferred behind one
-            // button press.  `_rescanBound` already used the menu; both
-            // rescan paths now agree where "the file we want" comes from.
+            // THE MENU'S CHOICE, NOT THE SIDEBAR'S FILE: a sidebar
+            // SINGLE-CLICK -- which the contract says does nothing here --
+            // must not decide what the next Reload mounts.  Both rescan
+            // paths agree where "the file we want" comes from.
             _rescanDir(cur, _currentChoice());
         }
 
@@ -1133,13 +1043,9 @@
              * back/forward cache (``persisted`` true), and only the restore
              * comes back holding an old listing.  On a fresh load the mount
              * has already scanned -- the initial bind below -- so scanning
-             * again here emptied the menu it had just filled and asked the
+             * again here would empty the menu it had just filled and ask the
              * server for the same answer twice on every visit (`results.md`
-             * § 2.2: one scan).  This called the fresh case "a cheap
-             * no-op"; it was a full second scan from the day the hook was
-             * added (2026-06-02) to 2026-09-27, and the menu it emptied at
-             * the moment the page finished loading is what
-             * `test_results_file_picker_e2e.py` read, under load.  A fresh
+             * § 2.2: one scan).  A fresh
              * load whose mount found no folder still gets its initial bind
              * here.
              *

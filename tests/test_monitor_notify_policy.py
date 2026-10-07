@@ -27,13 +27,6 @@ import pytest
 from molbuilder import monitor as M
 
 
-# The policy asked of a real output stream -- nothing by default, a message
-# per geometry step, the period counted in hours -- moved to the e2e tier
-# 2026-10-06: the monitor watches a run made on the road with the real
-# SIESTA, `tests/test_monitor_watches_a_live_run_e2e.py` (`process/testing.md`
-# § 6).
-
-
 # --------------------------------------------------------------------- #
 #  the destination -- the user's file, never the description              #
 # --------------------------------------------------------------------- #
@@ -41,18 +34,14 @@ from molbuilder import monitor as M
 def _file(tmp_path, monkeypatch, channels):
     """The channel file AT ITS ONE HOME.
 
-    `load_channels` took a `path=` until 2026-09-14; it does not, because a
-    file holding webhook URLs (for Slack and Discord the URL IS the
+    `load_channels` takes no `path=`, because a file holding webhook URLs (for Slack and Discord the URL IS the
     credential) is reached through one resolver and nowhere else -- the same
     rule the notify key file already followed.  A test points the config
     directory, like everything else in the suite.
     """
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    # ASK THE RESOLVER.  This joined `tmp_path / "notify"` until 2026-09-20 and
-    # so encoded the file's directory a second time -- when every credential
-    # moved into `secrets/`, eleven tests in this file failed by writing where
-    # nothing reads.  A test that hand-builds the path is the same defect the
-    # production rule forbids, one layer out.
+    # ASK THE RESOLVER.  A test that hand-builds the path is the same defect
+    # the production rule forbids, one layer out.
     f = M.default_notify_path()
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps({"channels": channels}))
@@ -152,11 +141,6 @@ def test_a_misspelled_kind_falls_back_to_the_host_and_says_so(tmp_path, capsys, 
     got = M.load_channels()["chat"]
     assert got["kind"] is None
     assert M.channel_kind(got) == "discord"          # the host still answers
-    # `... or True` STOOD HERE, which made this assertion unfailable and left
-    # the claim in this test's own NAME -- "and says so" -- unchecked.  The
-    # original assertion looked for the typo itself in the output; the message does
-    # not echo it, so rather than fix the assertion or the message somebody
-    # appended `or True`.  This asserts what the warning actually says.
     said = capsys.readouterr().out
     assert "channel 'chat'" in said, (
         "a misspelled kind must be reported against the channel it was found "
@@ -177,10 +161,8 @@ def test_a_molbuilder_channel_carries_a_signing_key(tmp_path, monkeypatch):
 
 
 def test_several_channels_are_all_read(tmp_path, monkeypatch):
-    """The point of naming them: one run can reach a Slack AND a listener.
-
-    The single destination this replaced could not, so pointing it at Slack
-    silently replaced whatever was there (`run-reports.md` § 1).
+    """The point of naming them: one run can reach a Slack AND a listener
+    (`run-reports.md` § 1).
     """
     _file(tmp_path, monkeypatch, {"slack": {"url": "https://example/hook"},
                          "lab": {"url": "https://qlab/api/x", "key": "k"}})
@@ -191,9 +173,7 @@ def test_one_bad_channel_does_not_cost_the_others(tmp_path, monkeypatch):
     """A file with three channels and a typo in one reports on two.
 
     Refusing the file whole would turn one mistake into total silence, which
-    is the failure this whole area keeps producing.  This is the rule that
-    CHANGED when the file became a map: a non-string key used to refuse the
-    only destination there was, because there was nothing else to keep.
+    is the failure this whole area keeps producing.
     """
     _file(tmp_path, monkeypatch, {"good": {"url": "https://qlab/api/x", "key": "k"},
                          "badkey": {"url": "https://qlab/api/y", "key": 12345},

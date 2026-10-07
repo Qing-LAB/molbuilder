@@ -3,18 +3,12 @@
 What it reads from an output is asked of runs made on the road with the
 real SIESTA, in the e2e tier (`tests/test_siesta_flat_run_e2e.py`,
 `tests/test_siesta_relax_run_e2e.py`, `tests/test_siesta_stopped_run_e2e.py`).
-The tests that parsed a synthetic output here were retired 2026-10-04
-(`process/testing.md` § 6).
 """
 
 from __future__ import annotations
 
 
 from molbuilder.parse.engines.siesta import SiestaParser
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 23 tests here parsed a SIESTA output invented as text (`process/testing.md` § 6).
 
 
 def test_can_parse_rejects_non_siesta(tmp_path):

@@ -40,7 +40,8 @@ will hit:
 
   4. **Form constraints.**  fiber's ``-z`` flag (Z-DNA) only works
      for poly-d(GC) sequences; ``-rna`` only produces A-form RNA.
-     Mismatches are warned by the dispatcher above (see ``build()``).
+     ``build()`` warns on an RNA form other than A and refuses a Z-form
+     sequence that is not alternating GC.
 
 Detection chain (first hit wins)
 --------------------------------
@@ -73,9 +74,7 @@ Licensing
 http://x3dna.org/ behind a registration form.  molbuilder itself is
 MIT; we **do not** auto-fetch, mirror, or bundle 3DNA, and the
 ``BackendUnavailable`` message tells the user to download it from
-x3dna.org per their instructions.  See
-``docs/design.md`` § "3DNA (canonical helix builder)" for the full
-contract.
+x3dna.org per their instructions.
 """
 
 from __future__ import annotations
@@ -150,10 +149,7 @@ def _find_in_tree() -> Optional[_Threedna]:
     ``x3dna-v2.4-linux-64bit.tar.gz`` (file, not dir) or
     ``x3dna_notes/`` (dir, but missing bin/fiber + config/).
     """
-    # _threedna.py -> repo_root/molbuilder/builders/backends/_threedna.py
-    # A11: one owner for the root.  This counted FOUR levels because of
-    # where the file sits -- a fact about its depth, wrong the moment it
-    # moves.  Imported inside the function: this module is in the package
+    # Imported inside the function: this module is in the package
     # import chain, so a module-level import would cycle.
     from molbuilder import repo_root as _repo_root
     repo_root = _repo_root()
@@ -296,14 +292,8 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     if not seq:
         raise ValueError("Empty sequence")
 
-    # Z-DNA: fiber's `-z` only builds poly-d(GC) -- the user-supplied
-    # sequence is silently ignored and fiber falls into an interactive
-    # "Number of repeats" prompt instead.  Under capture_output=True
-    # with the Flask process's inherited stdin (typically a pipe rather
-    # than /dev/null) this can stall reading from stdin for the full
-    # 60 s subprocess timeout before the user sees an error.  Reject
-    # upfront with an actionable message so the user gets the constraint
-    # without a one-minute hang.
+    # Z-DNA: fiber's `-z` only builds poly-d(GC), so any other sequence is
+    # refused upfront with an actionable message.
     if kind == "dna" and form == "Z" and not _is_alternating_gc(seq):
         raise ValueError(
             f"Z-DNA via 3DNA's fiber requires an alternating poly-d(GC) "
@@ -448,8 +438,7 @@ def _strip_5prime_phosphate(struct: Structure) -> Structure:
 
     # The 5'-terminal residue is the FIRST residue of EACH chain (fiber writes
     # each chain 5'->3').  A duplex has TWO 5' termini (one per strand), so strip
-    # per chain -- not just the very first residue (which left strand B's 5'-P on
-    # a double-strand build).
+    # per chain -- not just the very first residue.
     chain_ids = struct.chain_ids
     first_rid_of = {}       # chain -> its first residue_id (5' terminus)
     for i in range(struct.n_atoms):
@@ -645,23 +634,23 @@ def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
 
 
 # --------------------------------------------------------------------- #
-#  Error message contract (see docs/design.md)                          #
+#  Error message                                                        #
 # --------------------------------------------------------------------- #
 
 
 def _unavailable_message() -> str:
     """Build the canonical BackendUnavailable message.
 
-    Per docs/design.md, the message must include:
+    The message includes:
       * which preconditions were checked (in-tree / env / PATH);
       * the URL http://x3dna.org/ and an explicit "register and accept
         the license -- molbuilder cannot fetch this for you";
       * a one-line non-commercial-license reminder;
       * the names of the fallback backends (amber, rdkit).
     """
-    from molbuilder import repo_root as _repo_root   # A11: one owner
+    from molbuilder import repo_root as _repo_root
     repo_root = _repo_root()
-    in_tree_glob = repo_root / "x3dna-v*"
+    in_tree_glob = repo_root / "x3dna*"
     env_root = os.environ.get("X3DNA", "(unset)")
     fiber_path = shutil.which("fiber") or "(not on PATH)"
 

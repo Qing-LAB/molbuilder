@@ -1,4 +1,4 @@
-"""The notebook feature's contract — the first tests it has ever had.
+"""The notebook feature's contract.
 
 `plan.md` § 5n, J10: 1,610 lines across five files, plus the notebook half of
 `serve_daemon` and six CLI verbs, and **nothing under `tests/` reached any of
@@ -7,10 +7,6 @@ running the live server, and one of them — 40 lines of Python inside a string
 literal — shipped a `NameError` on every notebook start because no linter,
 import or test could see it. That is the root of the whole row: nothing had
 ever forced a seam on this code.
-
-**Eight tests, and the suite grows by eight**, which is worth saying plainly
-because the usual rule here is that unifying an API must REDUCE the count.
-There is nothing to remove: the coverage being replaced is zero.
 
 Each one asserts a rule a DOCUMENT states, and each was mutation-tested —
 the code broken, the right test watched to fail, the code restored:
@@ -114,18 +110,15 @@ def test_every_authored_setting_reaches_the_argv():
 
 
 def test_a_runtime_setting_reaches_the_argv_through_the_same_emitter():
-    """The computed half goes out the same door as the authored half.
-
-    Two emitters is what this replaced, so the test that the merge happened
-    is that a value only this process knows -- the token -- comes out in the
-    same `--trait=value` spelling.
+    """The computed half goes out the same door as the authored half: a
+    value only this process knows comes out in the same `--trait=value`
+    spelling.
     """
     argv = J.notebook_argv("conda", "env", host="1.2.3.4", port=6007,
                            root_dir="/p", cert=None, key=None,
                            lab_dirs={"LabApp.workspaces_dir": "/w"})
-    # The example WAS `--ServerApp.token=SEKRIT`, which is no longer emitted
-    # at all -- see the test below.  `ip` and `workspaces_dir` are computed
-    # the same way and carry the same point.
+    # `ip` and `workspaces_dir` are computed at run time; the token is not
+    # emitted at all -- see the test below.
     assert "--ServerApp.ip=1.2.3.4" in argv
     assert "--LabApp.workspaces_dir=/w" in argv
 

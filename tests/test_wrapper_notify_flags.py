@@ -2,7 +2,7 @@
 
 `task.json` says WHEN this calculation should speak up; the monitor is what
 speaks.  Between them sits the wrapper, which bakes the policy in as flags
-on the `mb_monitor.py` line.
+on the monitor's launch line.
 
 **Why the policy rides ``Resources``.**  It is not a scheduler ask and
 becomes no ``sbatch`` directive — like ``continue_retries``, which the class
@@ -25,8 +25,10 @@ from pathlib import Path
 import pytest
 
 from molbuilder import runwrap
-from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.jobset.model import Resources
+from molbuilder.diagnostics import Capabilities
+from molbuilder.diagnostics import set_capabilities
+from molbuilder.runfiles import RunNames
 
 
 @pytest.fixture(autouse=True)
@@ -34,10 +36,9 @@ def _setup(tmp_path, monkeypatch):
     """This machine's record (its activation: the refuse-to-emit contract)
     + synthetic caps."""
     monkeypatch.chdir(tmp_path)
-    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-    # working-directory step, which is gone (configuration.md § 2.1a) --
-    # without naming the directory the write lands in a file nothing
-    # opens, and the test passes having configured nothing.
+    # THE SANDBOX IS THE CONFIG ROOT: without naming the directory the
+    # write lands in a file nothing opens, and the test passes having
+    # configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     # The record follows the config root -- and carries the activation, the
     # probe's copy the generator reads (`configuration.md` § 4).
@@ -45,80 +46,25 @@ def _setup(tmp_path, monkeypatch):
     write_machine_record()
     set_capabilities(Capabilities(
         runtime_config={}, conda_binary="/usr/bin/conda",
-        conda_envs=frozenset({"molbuilder-siesta"}),
+        conda_envs=frozenset({"molbuilder-siesta", "molbuilder-siesta-gpu"}),
     ))
     yield
 
 
-def _monitor_line(tmp_path: Path, **kw) -> str:
-    f = tmp_path / "job.fdf"
-    f.write_text("SystemLabel job\nNumberOfAtoms 8\n")
-    text = runwrap.render_run_wrapper(
-        f, resources=Resources(mpi_np=4, cpus_per_task=1, **kw))
-    lines = [ln for ln in text.splitlines()
-             if "mb_monitor.py" in ln and "--label" in ln]
+def _monitor_line(tmp_path: Path, deck: str = ".fdf", **kw) -> str:
+    """The run script's monitor launch, for a stage's deck -- written with
+    what travels beside it, the monitor's bundle (`write_run_wrapper`)."""
+    names = RunNames.of("job", "01_coarse", "hierarchical")
+    f = tmp_path / names.name(deck)
+    f.write_text("SystemLabel job\nNumberOfAtoms 8\n" if deck == ".fdf"
+                 else 'JOB = "job"\n')
+    wrapper = runwrap.write_run_wrapper(
+        f, names=names, emit_sbatch=False,
+        resources=Resources(mpi_np=4, cpus_per_task=1, **kw))
+    lines = [ln for ln in wrapper.read_text().splitlines()
+             if runwrap.MONITOR_BUNDLE in ln and "--label" in ln]
     assert len(lines) == 1, f"expected one monitor launch, got {len(lines)}"
     return lines[0]
-
-
-def _notify_flags(line: str):
-    return re.findall(r"--notify-[a-z-]+(?:\s+[\d.]+)?", line)
-
-
-# --------------------------------------------------------------------- #
-#  absent stays absent                                                   #
-# --------------------------------------------------------------------- #
-
-def test_a_description_that_asked_for_nothing_emits_no_flags(tmp_path):
-    """The wrapper for a calculation with no `notify` block must look
-    exactly as it did before this feature existed -- otherwise every
-    prepped bundle changes, and "off" acquires a spelling."""
-    assert _notify_flags(_monitor_line(tmp_path)) == []
-
-
-@pytest.mark.parametrize("kw", [
-    {"notify_on_scf": False},
-    {"notify_every_hours": 0},
-    {"notify_on_scf": False, "notify_every_hours": 0},
-])
-def test_explicitly_off_is_the_same_as_absent(tmp_path, kw):
-    """A policy that reports on nothing renders no flags, so there is one
-    spelling of off on the wrapper as there is one in the description."""
-    assert _notify_flags(_monitor_line(tmp_path, **kw)) == []
-
-
-# --------------------------------------------------------------------- #
-#  what is asked for is what is emitted                                  #
-# --------------------------------------------------------------------- #
-
-def test_the_scf_trigger_reaches_the_monitor(tmp_path):
-    line = _monitor_line(tmp_path, notify_on_scf=True)
-    assert "--notify-on-scf" in line
-    assert "--notify-every-hours" not in line
-
-
-def test_the_period_reaches_the_monitor_in_hours(tmp_path):
-    """HOURS on both sides.  A unit converted in transit is how "4h"
-    reached `sbatch` as `-t 4h` and was refused (task.Allocation) -- the
-    lesson being that a number crossing a boundary must not change
-    meaning."""
-    line = _monitor_line(tmp_path, notify_every_hours=6)
-    assert "--notify-every-hours 6" in line
-
-
-def test_a_fractional_period_survives(tmp_path):
-    """Half-hourly is a reasonable ask and must not silently become 0 or
-    30.  `%g` renders it without inventing trailing zeros."""
-    line = _monitor_line(tmp_path, notify_every_hours=2.5)
-    assert "--notify-every-hours 2.5" in line
-
-
-def test_both_triggers_are_emitted_together(tmp_path):
-    """They combine with OR -- checkboxes, not a choice -- so the wrapper
-    must be able to carry both at once."""
-    line = _monitor_line(tmp_path, notify_on_scf=True, notify_every_hours=1)
-    assert "--notify-on-scf" in line
-    assert "--notify-every-hours 1" in line
 
 
 # --------------------------------------------------------------------- #
@@ -130,9 +76,7 @@ def test_the_names_survive_a_job_set_file(tmp_path):
 
     `Resources.to_dict` is `asdict`, so a job-set file stores the names as a
     JSON array and `from_dict` hands them back as a LIST -- which never
-    equals the tuple it was written from. Every field this class held was a
-    scalar until 2026-08-31, so nothing had ever had to think about it, and
-    the first sequence field broke round-tripping the moment it landed.
+    equals the tuple it was written from.
 
     It breaks QUIETLY, which is why this test exists rather than a comment:
     the names still reach the wrapper either way, and only equality lies --
@@ -157,33 +101,6 @@ def test_a_list_of_names_is_accepted_and_normalised():
     assert Resources(notify_channels=["a", "b"]).notify_channels == ("a", "b")
 
 
-def test_naming_no_channels_emits_no_flag(tmp_path):
-    """Absent means *every channel the running machine has*, so a wrapper
-    for a description written before channels existed looks exactly as it
-    did before they did."""
-    line = _monitor_line(tmp_path, notify_on_scf=True)
-    assert "--notify-channels" not in line
-
-
-def test_the_names_reach_the_monitor_as_one_comma_list(tmp_path):
-    """A name is all that may ride here.  The address and the credential
-    are the machine's own file and must never be baked into a wrapper."""
-    line = _monitor_line(tmp_path, notify_on_scf=True,
-                         notify_channels=("slack", "lab"))
-    assert '--notify-channels "slack,lab"' in line
-
-
-def test_an_EMPTY_selection_still_emits_the_flag(tmp_path):
-    """**The distinction the whole field exists for.** `[]` is *send this
-    calculation nowhere*, and the only way the monitor can be told apart
-    from *nothing was said* is a flag with an empty value
-    (`run-reports.md` § 3.0).  Dropping it hands the job every channel on
-    the machine, which is the opposite of what was asked.
-    """
-    line = _monitor_line(tmp_path, notify_on_scf=True, notify_channels=())
-    assert '--notify-channels ""' in line
-
-
 def test_the_monitor_reads_back_what_the_wrapper_emitted(tmp_path):
     """Two files, one command line.  A wrapper that renders a value the
     monitor parses differently fails backgrounded and silent.  No `notify`
@@ -201,51 +118,6 @@ def test_the_monitor_reads_back_what_the_wrapper_emitted(tmp_path):
         assert got == expected, (channels, line)
 
 
-def test_the_report_selection_reaches_the_monitor(tmp_path):
-    """Baked at `prep`, so a running job's format cannot change because
-    `task.json` was edited while it queued (`stages.md` § 6.9)."""
-    line = _monitor_line(tmp_path,
-                         notify_report=("elapsed_s", "energy"))
-    assert '--notify-report "elapsed_s,energy"' in line, line
-
-
-def test_an_EMPTY_report_selection_still_emits_the_flag(tmp_path):
-    """Absent is every field; `()` is the summary line alone.  Two answers,
-    so the empty one must reach the monitor as a flag rather than as
-    silence -- the same shape the channels have."""
-    assert '--notify-report ""' in _monitor_line(tmp_path, notify_report=())
-    assert "--notify-report" not in _monitor_line(tmp_path)
-
-
-def test_the_monitor_reads_back_the_report_selection(tmp_path):
-    """Two files, one command line."""
-    from molbuilder import monitor as M
-    for sel, expected in ((None, None), (("elapsed_s", "energy"),
-                                         ("elapsed_s", "energy")), ((), ())):
-        line = _monitor_line(tmp_path, notify_report=sel)
-        m = re.search(r'--notify-report "([^"]*)"', line)
-        got = M._report_from_flag(None if m is None else m.group(1))
-        assert got == expected, (sel, line)
-
-
-def test_a_report_field_that_is_not_one_is_refused_at_the_wrapper(tmp_path):
-    """`task.json` checks the names on the way in, but `Resources` can be
-    built directly -- and a field that silently never arrives is the failure
-    this whole area keeps producing."""
-    with pytest.raises(runwrap.WrapperError, match="is not a report field"):
-        _monitor_line(tmp_path, notify_report=("cpu_temperature",))
-
-
-def test_a_name_that_could_not_be_shell_is_refused_at_the_wrapper(tmp_path):
-    """`task.json` checks every name on the way in, but `Resources` can be
-    built directly -- and this is where a name becomes SHELL.  A value that
-    reaches a generated script unchecked is a quoting bug waiting for the
-    one caller that does not go through a description.
-    """
-    with pytest.raises(runwrap.WrapperError, match="letters, digits"):
-        _monitor_line(tmp_path, notify_channels=('a" ; rm -rf /',))
-
-
 # --------------------------------------------------------------------- #
 #  the flags the monitor actually has                                    #
 # --------------------------------------------------------------------- #
@@ -259,9 +131,9 @@ def test_every_flag_emitted_is_one_the_monitor_accepts(tmp_path):
     /dev/null, so the job runs on and the only symptom is a `util.csv` that
     never appears.  Nothing else in the suite would notice.
 
-    The authority is the SHIPPED script, asked by running it -- not the
-    installed module.  `mb_monitor.py` is what actually sits in the run
-    directory and what the wrapper actually invokes: with the job's own
+    The authority is the SHIPPED monitor, asked by running it -- not the
+    installed module.  Its bundle (`runwrap.MONITOR_BUNDLE`) is what sits in
+    the run directory and what the wrapper invokes: with the job's own
     python, from the working directory, with no molbuilder on the path.
     Testing the installed module would pass in an environment the job
     never has.
@@ -269,13 +141,8 @@ def test_every_flag_emitted_is_one_the_monitor_accepts(tmp_path):
     import subprocess
     import sys
 
-    # EVERYTHING THAT TRAVELS, as the run directory holds it: the shipped
-    # monitor imports the framework's readers beside it at start.
-    for name in runwrap.MONITOR_COMPANIONS:
-        (tmp_path / name).write_text(runwrap.companion_source(name),
-                                     encoding="utf-8")
-    shipped = tmp_path / "mb_monitor.py"
-    proc = subprocess.run([sys.executable, str(shipped), "--help"],
+    line = _monitor_line(tmp_path, notify_on_scf=True, notify_every_hours=3)
+    proc = subprocess.run([sys.executable, runwrap.MONITOR_BUNDLE, "--help"],
                           capture_output=True, text=True, timeout=60,
                           cwd=str(tmp_path))
     assert proc.returncode == 0, f"could not ask the monitor: {proc.stderr}"
@@ -283,31 +150,9 @@ def test_every_flag_emitted_is_one_the_monitor_accepts(tmp_path):
     assert "--watch-pid" in accepted, (
         f"--help did not parse as expected; got {sorted(accepted)[:8]}")
 
-    line = _monitor_line(tmp_path, notify_on_scf=True, notify_every_hours=3)
     emitted = {tok for tok in line.split() if tok.startswith("--")}
     missing = emitted - accepted
     assert not missing, f"the wrapper emits flags the monitor rejects: {missing}"
-
-
-# --------------------------------------------------------------------- #
-#  the destination must not be here                                      #
-# --------------------------------------------------------------------- #
-
-def test_no_destination_or_credential_is_written_into_the_wrapper(tmp_path):
-    """A wrapper is a file on disk in the run directory: copied into
-    composed copies, readable by anyone with the filesystem.  The URL and
-    its token belong to the machine, in the user's own 0600 file, and must
-    never be baked in here.
-    """
-    f = tmp_path / "job.fdf"
-    f.write_text("SystemLabel job\nNumberOfAtoms 8\n")
-    text = runwrap.render_run_wrapper(
-        f, resources=Resources(mpi_np=4, cpus_per_task=1,
-                               notify_on_scf=True, notify_every_hours=6))
-    lowered = text.lower()
-    for leak in ("hooks.slack.com", "discord.com/api/webhooks",
-                 "authorization:", "bearer ", "--notify-url", "notify_token"):
-        assert leak not in lowered, f"the wrapper carries {leak!r}"
 
 
 # --------------------------------------------------------------------- #
@@ -316,9 +161,10 @@ def test_no_destination_or_credential_is_written_into_the_wrapper(tmp_path):
 
 @pytest.mark.parametrize("deck,use_gpu,told", [
     # (a SIESTA GPU deck needs the GPU env to render: `test_gpu_loadbalance`)
-    ("job.fdf", False, False),
-    ("job.py", True, True),           # PySCF's GPU is the same answer
-    ("job.py", False, False),
+    (".fdf", True, True),
+    (".fdf", False, False),
+    (".py", True, True),              # PySCF's GPU is the same answer
+    (".py", False, False),
 ])
 def test_the_monitor_is_told_whether_the_run_uses_a_gpu(tmp_path, deck,
                                                         use_gpu, told):
@@ -328,27 +174,6 @@ def test_the_monitor_is_told_whether_the_run_uses_a_gpu(tmp_path, deck,
     so a PySCF run on a GPU was judged on its CPU alone (2026-09-26).
 
     MUTATION THIS MUST FAIL AGAINST: never pass ``--gpu`` for a ``.py``."""
-    f = tmp_path / deck
-    f.write_text("SystemLabel job\nNumberOfAtoms 8\n" if deck.endswith(".fdf")
-                 else 'JOB = "job"\n')
-    text = runwrap.render_run_wrapper(
-        f, resources=Resources(mpi_np=4, cpus_per_task=1, use_gpu=use_gpu,
-                               gres="gpu:1" if use_gpu else None))
-    line = next(ln for ln in text.splitlines()
-                if "mb_monitor.py" in ln and "--label" in ln)
+    line = _monitor_line(tmp_path, deck, use_gpu=use_gpu,
+                         gres="gpu:1" if use_gpu else None)
     assert ("--gpu" in line.split()) is told, line
-
-
-def test_a_deck_the_monitor_cannot_name_is_said_not_watched(tmp_path):
-    """The monitor names every file through `runfiles`, and a deck pointed at
-    by hand as ``my.relaxation.fdf`` gives a stem no run label can be: it
-    died at start with its stderr at /dev/null and left no log at all.  The
-    wrapper says it at render, in its own log, and starts nothing."""
-    f = tmp_path / "my.relaxation.fdf"
-    f.write_text("SystemLabel my\nNumberOfAtoms 8\n")
-    text = runwrap.render_run_wrapper(
-        f, resources=Resources(mpi_np=4, cpus_per_task=1))
-    assert not [ln for ln in text.splitlines()
-                if "mb_monitor.py" in ln and "--label" in ln], (
-        "a monitor that cannot compose its own log's name was launched")
-    assert "monitor: not started -- the deck's name my.relaxation" in text

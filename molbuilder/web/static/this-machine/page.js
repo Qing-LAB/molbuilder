@@ -159,10 +159,7 @@
                 body: JSON.stringify({
                     url: url.trim(),
                     key: listener ? key.trim() : "",
-                    // THE MONITOR'S OWN VOCABULARY, sent as chosen.  The page
-                    // offered "Slack or Discord" as one kind until
-                    // 2026-09-02, leaving the sender to guess from the host --
-                    // which is the DEFAULT, not the answer.
+                    // THE MONITOR'S OWN VOCABULARY, sent as chosen.
                     kind: kind,
                 }),
             });
@@ -294,17 +291,10 @@
         var box = $("tm-issued");
         var body = $("tm-issued-body");
         if (!box || !body) return;
-        // THE PATH COMES FROM THE PAGE, not from this file.  It was
-        // "$cfg/notify" here, and stayed that way when every credential moved
-        // into secrets/ -- so the recipe shown at the one moment a key can be
-        // copied pointed where the monitor does not look.  The card carries
+        // THE PATH COMES FROM THE PAGE, not from this file: the card carries
         // it, derived server-side from the monitor's own resolver.
-        // NO FALLBACK LITERAL.  This read `|| "secrets/notify"` for a few
-        // hours on 2026-09-20 -- a hand-spelled copy of the path, added while
-        // REMOVING hand-spelled copies of the path, in this very function.
-        // The Python AST guard scans *.py only, so nothing would have caught
-        // it drifting.  If the attribute is missing the page is broken and
-        // should say so, not quietly print a path it guessed.
+        // NO FALLBACK LITERAL.  If the attribute is missing the page is
+        // broken and should say so, not quietly print a path it guessed.
         var card = $("tm-channels-card");
         var rel = card && card.dataset.notifyRel;
         if (!rel) {

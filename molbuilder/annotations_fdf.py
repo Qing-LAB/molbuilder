@@ -1,8 +1,7 @@
 """fdf emit-strategy registry for extensible atom-annotation channels
 (``model/structure-annotations.md`` § 4b).
 
-ADDITIVE, not a rewrite.  The two built-in channels keep their existing,
-Sol-validated emission:
+The two built-in channels have their own, Sol-validated emission:
   * ``frozen`` flag  -> ``%block Geometry.Constraints`` (``siesta/input.py``)
   * region tags      -> transport/electrode blocks (``transport/transiesta.py``)
 

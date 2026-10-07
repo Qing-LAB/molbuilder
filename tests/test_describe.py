@@ -6,7 +6,7 @@ write*, **floor 2 only**) · ``docs/execution/job-system.md`` § 5.1 (the comman
 ``docs/engines/stages.md`` § 6.3 (the structure is a reference), § 6.5 (a
 calculation with one parameter set), § 6.6 (the split preflight).
 
-Written with the verb, 2026-08-11, from the contract rather than from the
+Written from the contract rather than from the
 implementation — the properties below are the ones the design would be wrong
 without, not the ones the code happens to have.
 """
@@ -41,8 +41,7 @@ def cfg() -> SiestaConfig:
 
 #: § 6.5 (2026-08-16): a job always has at least one stage, so the helper's
 #: default is ONE stage carrying no overrides -- the calculation that is just
-#: the template.  It defaulted to ``()`` while a stage-less description was a
-#: legal shape; that shape is gone, and an empty ladder is now refused.
+#: the template.
 _ONE_STAGE = (Stage(name="coarse", enabled=True, overrides={}),)
 
 
@@ -86,8 +85,8 @@ def test_the_description_names_no_machine(struct, cfg, tmp_path):
     """
     D.write_description(_describe(struct, cfg), tmp_path / "calc")
     raw = tomllib.loads((tmp_path / "calc" / "relax.template.toml").read_text())
-    # RESTATED AT @2 (§ 6.4).  The rule is "name no machine", and what
-    # names a machine is an ANSWER, not a question.  These items ARE now
+    # § 6.4.  The rule is "name no machine", and what
+    # names a machine is an ANSWER, not a question.  These items ARE
     # declared -- a surface must be able to ask for ranks, and the wrapper
     # writer must know to look -- but they carry no `value`, so the folder
     # still means the same thing wherever it is copied.
@@ -119,9 +118,7 @@ def test_the_structure_is_a_reference_and_a_witness_never_a_copy(struct, cfg,
     assert task.structure.formula == struct.formula
     assert task.structure.atoms == struct.n_atoms
     # The source names a path that does not exist HERE, so there is
-    # nothing to copy -- the reference still records.  (U20: this line
-    # used to read as a NO-COPY pin, the pre-M9 contract, green only by
-    # this fixture accident; the copy half is its own test below.)
+    # nothing to copy -- the reference still records.
     assert not list((tmp_path / "calc").glob("*.xyz"))
 
 
@@ -134,8 +131,7 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path):
     prep's own loader reads it back (the fix of 2026-08-12).
 
     The structure FILE is ``h2.xyz`` and the label ``JOB``: init named the
-    pair ``h2.source.*`` until 2026-10-04 (plan D20).  This test held the
-    API-level halves of both rules until then, retired with it."""
+    pair ``h2.source.*`` until 2026-10-04 (plan D20)."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     from molbuilder.projects import PROJECTS_ROOT_ENV
@@ -179,9 +175,9 @@ def test_every_description_states_its_kind(struct, cfg, tmp_path):
     assert raw["calculation"] == "optimization"
     assert read_task(tmp_path / "calc" / "task.json").calculation == \
         "optimization"
-    # ("vibration" stands in for any non-default kind; "transport" no
-    # longer can -- since 2026-08-28 it is the COMPOSITE with required
-    # slots and no structure block, guarded in test_transport_task.py.)
+    # ("vibration" stands in for any non-default kind; "transport" is the
+    # COMPOSITE with required slots and no structure block, guarded in
+    # test_transport_task.py.)
     desc = D.build_description(struct, cfg, _ONE_STAGE, engine="siesta",
                                shape="hierarchical", name="relax",
                                source="structures/bdt.xyz",
@@ -210,11 +206,9 @@ def test_a_ladder_becomes_stages_and_varies(struct, cfg, tmp_path):
 def test_an_empty_ladder_is_refused(struct, cfg):
     """§ 6.5 (2026-08-16): a job always has at least one stage.
 
-    This asserted the opposite until then — that an empty ladder wrote a
-    description with neither key, a stage-less shape meaning "just the
-    template". That shape produced artifacts with NO stage token, and adding a
+    A stage-less shape produced artifacts with NO stage token, and adding a
     second stage later left the first run belonging to no token at all. One
-    shape removes the transition; an empty ladder is now refused, and the
+    shape removes the transition; an empty ladder is refused, and the
     refusal names the fix."""
     with pytest.raises(D.DescribeError, match="at least one stage"):
         _describe(struct, cfg, ())
@@ -277,11 +271,8 @@ def test_a_failure_while_writing_publishes_nothing(struct, cfg, tmp_path,
 
 
 # --------------------------------------------------------------------- #
-#  The name — inherited from the retired test_cli_system_label.py        #
+#  The name                                                             #
 # --------------------------------------------------------------------- #
-#  That file's nine tests all went through `molbuilder fdf`, which was
-#  deleted 2026-08-11.  Two of its properties are about the NAME rather than
-#  about that verb, so they move here rather than going with it.
 
 def test_a_name_that_cannot_normalise_is_a_clean_refusal(struct, cfg):
     """A label becomes a filename and a shell word, so the character set is
@@ -403,10 +394,10 @@ def test_init_refuses_a_folder_that_already_holds_a_calculation(
 
     MUTATION THIS MUST FAIL AGAINST: the refusal removed (the second `init`
     rewrites task.json)."""
-    from support.road import describe_h2, jobset
-    bundle = describe_h2(tmp_path, monkeypatch)
+    from support.road import STRUCTURE, describe_calculation, jobset
+    bundle = describe_calculation(tmp_path, monkeypatch)
     before = (bundle / "task.json").read_bytes()
-    r = jobset("init", "--structure", "P/structure/h2.xyz",
+    r = jobset("init", "--structure", STRUCTURE,
                "--bundle", "P/optimization/H2", "--engine", "siesta",
                "--calculation", "optimization",
                "--shape", "flat", "--name", "H2",

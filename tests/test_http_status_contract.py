@@ -15,18 +15,14 @@ ship because **Flask's default status is 200 when no tuple is
 returned**, so a developer who forgot to add ``, 500`` got HTTP
 200 silently.
 
-Every test here asks a ROUTE and reads the status it answers.  Until
-2026-09-26 two AST lints also read every blueprint's source for an
-``ok: False`` return with no explicit status, or one outside the § 1 set.
-They were retired with the other source scans (`process/testing.md` § 3a):
-an explicit ``, 200`` and Flask's default 200 are the SAME response, so no
+Every test here asks a ROUTE and reads the status it answers.  An
+explicit ``, 200`` and Flask's default 200 are the SAME response, so no
 request can tell them apart -- that half of the rule is review's
 (`process/code-audit.md` § 1c), and each route's own tests assert the
 status of the refusals they drive.
 
-The companion test ``test_web.py::TestUniformEnvelope`` pins that every
-success path returns ``ok: true``; the ``Endpoint index`` count in
-``docs/web/web-api.md`` is checked against Flask's URL map below.
+The ``Endpoint index`` count in ``docs/web/web-api.md`` is checked
+against Flask's URL map below.
 """
 from __future__ import annotations
 
@@ -41,10 +37,9 @@ WEB_API_MD    = REPO_ROOT / "docs" / "web" / "web-api.md"
 
 
 class TestKnownAdvisorySitesAreHTTP200:
-    """Regression pins for the four canonical scientific-advisory
-    sites — these were the ones the 1b audit fixed (400 → 200).
-    Pinning them here so a future refactor that re-introduces 400
-    lands as a test failure with a clear pointer to § 1.6 (b).
+    """Regression pin for the scientific-advisory bucket, which the 1b
+    audit fixed (400 → 200): a future refactor that re-introduces 400
+    lands as a test failure with a clear pointer to § 1 (b).
 
     The advisory bucket uses ``, 200`` EXPLICITLY at the call site
     (not Flask's default) so the intent is visible to readers.
@@ -56,17 +51,8 @@ class TestKnownAdvisorySitesAreHTTP200:
 
         `web-api.md` § 1: a validator hard-fail is answered with HTTP **200**
         and the refusal as the body, not with a 4xx -- the caller asked a fair
-        question and the answer is "no, and here is what is missing".
-
-        **This replaced a source-text assertion on 2026-09-17.** The old form
-        read a blueprint file and asserted a literal snippet --
-        `'"errors_only": _issues_to_json(errors_only, cfg=cfg),\n        }), 200'`
-        -- including its indentation. It pinned three sites over its life and
-        lost all three to route deletions (build.py's two on 2026-08-17,
-        spectra.py's on 2026-08-21, transport.py's render route on
-        2026-09-17), each time leaving the rule with one fewer instance and
-        the test one edit from asserting nothing at all. A rule about what a
-        caller RECEIVES is checked by calling.
+        question and the answer is "no, and here is what is missing".  A
+        rule about what a caller RECEIVES is checked by calling.
         """
         from molbuilder.projects import PROJECTS_ROOT_ENV
         d = tmp_path / "notcitable"
@@ -83,16 +69,10 @@ class TestKnownAdvisorySitesAreHTTP200:
         assert body["form"] is None
         assert body["summary"], "the refusal must NAME what is missing"
 
-    # ``test_build_py_has_two_advisory_200_sites`` was deleted 2026-08-17.
-    # It counted ``}, 200`` in build.py and required >= 2, naming
-    # ``api_build_fdf`` and ``api_build_pyscf`` as the two.  Both routes are
-    # gone, so build.py now has ZERO advisory sites and the count it asserted
-    # can never be met again -- the test's subject, not its rule, was removed.
-
 
 class TestKnownServerFaultSitesAreHTTP500:
-    """The two sites the 1b audit moved from HTTP 400 / 200 to HTTP 500
-    (server-fault bucket), each asked through its route.
+    """The server-fault bucket the 1b audit moved sites into (HTTP 400 /
+    200 to HTTP 500), asked through the route.
     """
 
     def test_a_builder_that_falls_over_is_answered_500(
@@ -125,9 +105,6 @@ class TestKnownServerFaultSitesAreHTTP500:
         assert body["ok"] is False
         assert "the builder fell over" in body["error"], body
 
-    # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-    # 1 test here loaded a SIESTA output invented as text (`process/testing.md` § 6).
-
 
 class TestRouteCountDocMatchesReality:
     """The ``## 3. Endpoint index — all NN routes`` header in
@@ -135,12 +112,8 @@ class TestRouteCountDocMatchesReality:
     otherwise the doc silently goes stale every time a route is
     added or removed.
 
-    2026-08-07: the heading moved from ``## 2.`` to ``## 3.``.  The doc had
-    TWO sections numbered 2 — "Security posture" was inserted without
-    shifting anything below it — and three disagreeing route counts: the
-    heading said 79, the paragraph under it said 78, and the app had 80.
-    The regex now anchors on the heading text rather than its number, so a
-    future renumber does not break the test that catches the count.
+    The regex anchors on the heading text rather than its number, so a
+    renumber does not break the test that catches the count.
     """
 
     def test_route_count_in_section_2_header_matches_app(self):

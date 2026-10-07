@@ -5,11 +5,8 @@
  * ROLE: styles for the inspector's COMPONENT classes only (.card-section /
  *   .section-header / .modes-table / .spectrum-chart / .mode-viewer /
  *   .phase-indicator / .es-* / .results-meta / .inline-row).
- *   Extracted from spectra/style.css (2026-07) so /results no longer loads the
- *   spectra PAGE sheet -- whose bare `button` / `textarea` / `.card` rules were
- *   overriding page-shell's canonical controls across the whole /results page
- *   (`web/ui-contract.md` § 1: one owner per pattern; a page sheet never
- *   restyles another page).
+ *   /results does not load the spectra PAGE sheet (`web/ui-contract.md` § 1:
+ *   one owner per pattern; a page sheet never restyles another page).
  * USED BY: templates/spectra.html + templates/results.html (both <link> this
  *   sheet); spectra/style.css keeps ONLY the /spectra page chrome.
  * Tokens only (lib/tokens.css); no bare element selectors in this sheet.
@@ -109,8 +106,7 @@
     align-items: center;
     gap: var(--space-sm);
     color: var(--text-secondary);
-    /* The words naming a control never wrap -- a label broken across
-       three lines was the defect this layout replaced. */
+    /* The words naming a control never wrap. */
     white-space: nowrap;
 }
 .spectrum-controls input[type="range"] {
@@ -135,24 +131,17 @@
     color: var(--text-secondary);
     opacity: 0.75;
     font-size: var(--text-xs);
-    /* No `flex: 1` any more: the hint sits UNDER its control rather
-       than competing with the next control for the same row. */
+    /* The hint sits UNDER its control rather than competing with the
+       next control for the same row. */
 }
 
 /* ---- The spectrum, and the three views under it ----
  *
- * The chart used to share its row with the mode viewer (`.spectrum-and-mode`,
- * a two-column grid with a `.spectrum-pane`).  Both are gone: the three views
- * of a selected mode are tabs below the full-width chart now, so there is no
- * split to lay out and no pane to hold one side of it.  Their rules went with
- * the markup rather than staying behind as selectors nothing can match. */
+ * The three views of a selected mode are tabs below the full-width chart. */
 
 /* The HOST is a place, not a frame: SpectrumChart mounts its own frame
  * inside, which states its height and draws its border and background
- * (`web/spectrumchart.md` § 11).  Until 2026-09-28 this rule drew a second
- * frame around it -- two borders -- with a HEIGHT of its own and `overflow:
- * hidden`: the host capped at 420 px while the frame inside grew to 460, so
- * on a tall screen the chart's bottom edge, x-axis included, was cut off. */
+ * (`web/spectrumchart.md` § 11). */
 .spectrum-chart {
     width: 100%;
     margin: 0 0 var(--space-xs);
@@ -172,8 +161,8 @@
 }
 
 .modes-table-wrap {
-    /* Taller than the 360px it had as one band among several: it owns a tab
-       now, so the useful limit is the viewport rather than a share of a page. */
+    /* It owns a tab, so the useful limit is the viewport rather than a share
+       of a page. */
     max-height: clamp(320px, 55vh, 760px);
     overflow: auto;
     border: 1px solid var(--border-soft);
@@ -214,7 +203,7 @@
  * which of the four cases it is (web/spectra.md § 2). */
 .spectrum-absent { margin: var(--space-sm) 0; }
 /* No strengths, no controls (web/spectra.md § 2): the grid rule above would
- * beat the [hidden] attribute in the author cascade, as .phase's did. */
+ * beat the [hidden] attribute in the author cascade. */
 .spectrum-controls[hidden] { display: none; }
 
 .modes-table th[data-col] {
@@ -246,17 +235,11 @@
  * animates the selected mode; this sheet owns only the BOX it is given
  * (vibrationview.md § 13) -- the module styles everything inside it.
  *
- * It has been three things: a full-width band under the modes table, then a
- * bordered card beside the chart, now one of three tabs under it.  Each move
- * left chrome behind that the next layout did not need -- the divider, then the
- * card border -- which is why what is left here is almost nothing.
- *
  * ONE STEP DOWN THE TYPE SCALE, deliberately: this is a dense instrument panel,
  * not body copy, so its chrome sits at --text-2xs where the page reads at
  * --text-base.  The sizes are token steps, not hand-picked decimals. */
-/* NO CARD CHROME.  A border, a background and a padding made this a card when
-   it sat inside the results section beside the chart.  It fills a tab panel
-   now, and a card drawn just inside a panel is a box around a box -- the 3-D
+/* NO CARD CHROME: it fills a tab panel, and a card drawn just inside a panel
+   is a box around a box -- the 3-D
    window below carries its own ground and its own edge, which is the boundary
    that means something. */
 .mode-viewer-wrap { min-width: 0; }
@@ -264,8 +247,7 @@
 
 /* The sentence under the 3-D view: which elements carry the mode, how far
    anything moves, and whether that size is real (spectra.md § 4.2).  A full line
-   of its own, because it IS a sentence -- in the header beside the title it was
-   squeezed to a fragment.  The margin shorthand also clears the left indent
+   of its own, because it IS a sentence.  The margin shorthand also clears the left indent
    page-shell gives an inline `.status`; that indent is for a status trailing a
    button, not for a paragraph. */
 .mode-viewer-wrap .viewer-readout {
@@ -310,7 +292,7 @@
 .amplitude-help-body p { margin: 0 0 var(--space-xs); }
 .amplitude-help-note { color: var(--text-muted); }
 
-/* NO RULES FOR TABLES OR CODE HERE ANY MORE, and that absence is the point: the
+/* NO RULES FOR TABLES OR CODE HERE, and that absence is the point: the
    derivation, its constants and its tables of numbers live in docs/web/spectra.md
    § 4.1, which the help links.  A panel this narrow could show a five-column
    table of frequencies only by wrapping it into unreadability, and the same
@@ -319,17 +301,7 @@
 /* The BOX the mode viewer is given — its size and where it sits on the page,
  * which is all a host decides (vibrationview.md § 13).  What is inside it, its
  * ground and how its canvas is positioned, belongs to the module and is declared
- * module's own sheet, which the module links itself.
- *
- * Two rules used to live here that did not belong: a `background`, which fought
- * the module's own scene ground on the same element and won or lost by load
- * order; and a `position: relative` carrying a comment about how the 3-D drawing
- * library lays out its canvas.  A page sheet knowing that is the seal leaking
- * into another language. */
-/* The BOX the module is given.  Smaller than it was: one molecule needs a
-   fraction of the width the full-page band used to take, and the height now
-   tracks the box so the card stays square-ish beside a chart of the same
-   height (vibrationview.md § 13 -- the host sizes it, the module fills it). */
+ * in the module's own sheet, which the module links itself. */
 .mode-viewer {
     width: 100%;
     height: clamp(200px, 26vh, 320px);
@@ -349,8 +321,7 @@
    `[hidden] { display: none }` on specificity and wins on source order, so
    `element.hidden = true` stops hiding anything -- the control stays in the
    layout as a ghost.  The Temperature row is toggled exactly that way (it
-   belongs to the thermal amplitude only), and it sat visible under
-   "exaggerated" until this guard existed.  docs/process/code-audit.md. */
+   belongs to the thermal amplitude only).  docs/process/code-audit.md. */
 .viewer-controls .inline-label[hidden] { display: none; }
 .viewer-controls .inline-label {
     display: inline-flex;
@@ -365,9 +336,7 @@
  *
  * ONE FIGURE, TWO HALVES.  The diagram shows the SHAPE of the change -- which
  * way the frontier levels move as the molecule is pushed along the mode -- and
- * the numbers give it MAGNITUDE.  They were stacked, so reading "the gap opens
- * by 12 meV" meant scrolling away from the picture that showed it opening.
- * Side by side they are one act of reading.
+ * the numbers give it MAGNITUDE.  Side by side they are one act of reading.
  *
  * Every length and colour below comes from lib/tokens.css.  The two exceptions
  * are named here as this component's own tokens, because they are facts about
@@ -377,18 +346,13 @@
        set by the longest row: a label, a four-decimal value and a unit. */
     --es-numbers-min: 11rem;
 
-    /* NO TOP RULE, NO TOP MARGIN.  Both were here to separate this panel from
-       the modes table that used to sit above it.  Inside its own tab there is
-       nothing above it to separate from, so the line drew a boundary around
-       nothing -- residue of the layout it was written for. */
+    /* NO TOP RULE, NO TOP MARGIN: inside its own tab there is nothing
+       above it to separate from. */
 }
 
 /* THE CONTAINER THE QUERY BELOW ASKS ABOUT.  A `@container` condition needs
    an ancestor that has declared itself one; without this line the query can
-   never match and `.es-body` stays stacked at every width.  It was declared
-   on `.spectrum-and-mode` until the panel was restructured (the query moved
-   to `.es-body` and this did not move with it), so the comment under it said
-   "declared above" of something nothing declared -- restored 2026-09-17. */
+   never match and `.es-body` stays stacked at every width. */
 .results-summary { container-type: inline-size; }
 
 .es-body {
@@ -408,9 +372,8 @@
    whole: three columns of levels do not get more readable with more width, so
    growing the box should not grow the plot without limit. */
 @container (min-width: 40rem) {
-    /* The figure takes everything the numbers do not.  It was capped, from when
-       it sat in a narrow column beside other things; in its own tab a cap just
-       leaves a hole to the right of the panel. */
+    /* The figure takes everything the numbers do not: in its own tab a cap
+       would leave a hole to the right of the panel. */
     .es-body {
         grid-template-columns:
             minmax(0, 1fr) minmax(var(--es-numbers-min), max-content);
@@ -446,23 +409,17 @@
     overflow: hidden;
 }
 /* Plotly sizes its own <svg> and re-sizes it through Plotly.Plots.resize when
-   the box changes (core.js _watchChartWidth).  A width rule here would fight
+   the box changes (core.js _watchEsWidth).  A width rule here would fight
    that, so the sheet owns the BOX and the library owns what is inside it. */
 .es-bar-diagram p.status { padding: var(--space-md); margin: 0; }
 
-/* NO INK RULES HERE, and the absence is the record of a decision.
- *
- * This sheet used to colour a hand-rolled SVG level diagram: an axis, ticks,
- * level dashes and tie lines, each a class the renderer emitted.  The figure is
- * now drawn by Plotly -- the same library as the spectrum above it -- because
- * the shifts it exists to show are meV against an eV scale and cannot be seen
- * without zoom, pan and a reset, all of which that library already has.
+/* NO INK RULES HERE.  The level diagram is drawn by Plotly -- the same
+ * library as the spectrum above it -- because the shifts it exists to show are
+ * meV against an eV scale and cannot be seen without zoom, pan and a reset.
  *
  * Plotly takes colours as JavaScript values rather than inheriting CSS, so the
- * palette moved to `chartTheme()` in lib/spectra/core.js, which READS these same
- * tokens off the document.  The tokens are still the one source of truth; what
- * changed is who asks them.  Leaving the old rules here would have been styling
- * for markup nothing emits any more. */
+ * palette is `_esTheme()` in lib/spectra/core.js, which READS these same tokens
+ * off the document.  The tokens are still the one source of truth. */
 
 /* ---- The numbers beside it ---- */
 
@@ -529,11 +486,9 @@
     background: var(--bg-input);
     font-size: var(--text-sm);
 }
-/* 2026-05-28 [hidden]-attribute audit: ``display: flex`` above ties
- * on specificity with the UA stylesheet's ``[hidden] { display: none
- * }`` rule and wins (author cascade), so #phase-indicator was
- * VISIBLE at page load despite ``hidden=`` being set in the
- * template.  Same pattern as .page-busy-cover.  Explicit guard wins. */
+/* ``display: flex`` above ties on specificity with the UA stylesheet's
+ * ``[hidden] { display: none }`` rule and wins (author cascade).  Explicit
+ * guard wins. */
 .phase-indicator[hidden] { display: none; }
 .phase {
     display: inline-flex;
@@ -592,9 +547,7 @@
 .run-progress > .status { margin: 0 0 var(--space-xs); }
 /* The regime sentence above the two figures -- what these numbers are (full
  * RRHO, or the vibrational contributions alone) and what they are good for.
- * It borrowed the form sheet's `.hint` until 2026-09-28, and /results does
- * not load that sheet, so the one sentence saying what the numbers mean
- * rendered as unstyled body text. */
+ * Its own rule: /results does not load the form sheet's `.hint`. */
 .thermo-note {
     margin: 0 0 var(--space-sm);
     color: var(--text-secondary);
@@ -607,12 +560,7 @@
 
 /* ---- Methods text (the Results panel) ------------------------------
  * The inspector partial's own markup (#methods-block), so its own
- * stylesheet -- the one both pages load.  It lived in spectra/style.css,
- * which /results does not load, so on the Results tab the <pre> kept the
- * browser's `white-space: pre` and ran off the card in one line (user,
- * 2026-09-28: "not wrapped. unreadable"); and it named two theme tokens
- * that do not exist (`--border`, `--surface-sunken`), so even where it
- * loaded it drew a light-grey box on the dark theme.
+ * stylesheet -- the one both pages load.
  *
  * Monospace and pre-wrap: the text carries [CitationKey] markers and a
  * bibliography list whose line structure is meaningful, and a user is

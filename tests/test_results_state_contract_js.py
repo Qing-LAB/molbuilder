@@ -1,12 +1,5 @@
 """What is LEFT of `results.md` § 4's source pins — two, and why.
 
-This file held 28 tests that read `lib/trajectory/core.js` as text. Over
-2026-09-04 twenty-six were replaced by tests that RUN the code
-(`test_trajectory_transition_js.py`,
-`test_in_progress_frames_stay_out_of_plots.py`), each one mutation-verified
-against the defect it claims to catch, and each deletion made only after
-its replacement was green.
-
 Two remain, for stated reasons rather than by omission:
 
 * **`test_helper_called_from_loadByPath`** — a wiring assertion. The
@@ -17,8 +10,8 @@ Two remain, for stated reasons rather than by omission:
   already-finished run would settle one poll later instead of at once.
   The same wiring on the POLL side — where the consequence is a finished
   run re-fetched every 15 s for ever — is covered behaviourally in
-  `test_trajectory_transition_js.py::test_a_poll_that_finds_the_run_
-  ended_settles_it`.
+  `test_trajectory_transition_js.py::test_a_quiet_poll_that_finds_the_
+  run_over_settles_it`.
 
 * **`test_applyNewData_routes_writes_through_transition`** — not a
   spelling pin but a NEGATIVE LINT (`process/testing.md` § 6): it
@@ -27,12 +20,6 @@ Two remain, for stated reasons rather than by omission:
   entry point. It fails when an offender appears, which is the shape
   § 6 sanctions.
 
-**What the deleted twenty-six taught, measured rather than assumed.**
-Breaking the two-tick buffer while leaving `>= 2` alive in a comment
-passed all 28. Deleting the Refresh registration passed 155 tests. And
-`test_merge_propagates_in_progress` was guarding lines that cannot
-execute at all — see the note in
-`test_in_progress_frames_stay_out_of_plots.py`.
 """
 from __future__ import annotations
 
@@ -74,12 +61,6 @@ def _unused_braced(src: str, open_idx: int) -> str:
     raise AssertionError("unbalanced braces from the state literal")
 
 
-# Seven classes with a docstring and no test method stood here, plus an
-# unused `_ADAPTER_PATH`.  They claimed contracts -- bucketed state,
-# back-compat aliases, the transition orchestrator, refresh wiring, the
-# in-progress filter -- and asserted none of them.  Removed 2026-09-10;
-# the live versions are in `test_trajectory_transition_js.py`.
-
 class TestSettlePostLoad:
     """The follow rule (`results.md` § 4.1) lives in ``_settlePostLoad()``.
     Called from both loadByPath and pollOnce; reads the run's state the
@@ -102,22 +83,6 @@ class TestSettlePostLoad:
             "the poll timer never starts.")
 
 
-    # RETIRED 2026-09-03 — the third grep to fail on the day the code it
-    # describes was corrected, for the same reason as its two siblings in
-    # the spectra file.  Its regex was `APPLY ... (.+?) return;`,
-    # NON-GREEDY, so the guard clause added to drop an answer meant for a
-    # file the user has moved off became the first `return` and the capture
-    # never reached the writes below it.  The assertion message read
-    # "transition('APPLY') no longer writes state.fileState.mtime.  The
-    # atomic-replacement semantics is broken" -- while the change it was
-    # reporting on is the one that MADE the replacement atomic.
-    #
-    # `results.md` § 4 had said "replaced atomically" since the state
-    # machine landed.  It was not: the noNewContent branch passed
-    # {mtime, data} and left path standing "because the file identity
-    # didn't change", an assumption nothing checked.  APPLY now requires
-    # the path -- which every server reply already carries as `r.path` --
-    # and drops a reply whose file is not the one on screen.
     def test_applyNewData_routes_writes_through_transition(self, core_body):
         """applyNewData's two write blocks (noNewContent + full
         rebuild) MUST both go through transition('APPLY').  Direct
@@ -154,5 +119,3 @@ class TestSettlePostLoad:
             f"call(s).  Expected >= 2 (noNewContent path + full-"
             f"rebuild path).  Either a write block was removed or a "
             f"direct write was reintroduced.")
-
-

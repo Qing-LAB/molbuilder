@@ -14,11 +14,6 @@ decidable from the name, and § 1.4's own closing paragraph settles that three
 times over: a flat calculation root IS a run, a hierarchical stage directory is
 a container, and a hand-made folder with one ``.fdf`` in it is a run.
 
-So every reader guessed, and they did not guess alike: one took every directory
-for a run and reported a `pseudos/` folder as *running*; one took the
-description to be in the directory it was handed, true only in the flat shape;
-one walked up a fixed number of levels hoping to find it.
-
 **Two fields, and each earns its place** (§ 1.4a).  Everything else a reader
 might want — which stage, which attempt index, whether a container is a stage or
 support — is DERIVED from ``of`` through `jobset.materialize.job_dir_names`, the
@@ -37,8 +32,7 @@ of this record.
 **Absence is not a refusal** (§ 1.4a).  A directory with no record is read
 ALONE: its files, which a parser claims, which one to open, how its run ended.
 What it cannot answer is everything relational, and the reader says so rather
-than guessing.  That is what a tree written before this rule gets, and why
-there is no migration step.
+than guessing.
 """
 from __future__ import annotations
 
@@ -110,13 +104,6 @@ def read(directory) -> Optional[Placement]:
     if role not in ROLES or not isinstance(of, str):
         return None
     return Placement(role=role, of=of)
-
-
-# `container_or_run(directory)` stood here until 2026-10-04 -- § 1.4a's
-# table, which read a root's `shape` out of `task.json` raw.  This floor
-# reads no description (`execution/architecture.md` § 2.1, § 3.2): a folder's
-# place is the run door's, `runs.place_of`, which reads the description
-# through its one reader, `read_task` (plan B14).
 
 
 def root_of(directory) -> Optional[Path]:

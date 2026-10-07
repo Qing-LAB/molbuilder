@@ -9,7 +9,6 @@ Written from the contract with the module, 2026-08-11.
 """
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
@@ -18,7 +17,6 @@ from molbuilder.resolve import (ALLOCATION_FIELDS, MachineTranslation,
                                 ParameterSet, ResolveError, point_token,
                                 resolve)
 from molbuilder.siesta.stages import default_siesta_stages
-from molbuilder.structure import Structure
 from molbuilder.task import Stage, StructureRef, Task, derive_run
 from molbuilder.template import template_with_values
 
@@ -140,12 +138,6 @@ def test_a_rider_axis_is_not_swallowed_as_a_machine_axis(template):
     **every GPU trial emitted `Diag.ELPA.GPU .false.`** -- a CPU family
     measured under GPU labels.
 
-    Nothing caught that.  Two tests stood next to `_RIDERS` asserting the two
-    lists partition `Resources` and that every rider names a real field; both
-    hold whether or not `use_gpu` is tagged, so dropping its tag passed 238
-    tests (measured 2026-09-09, when deriving `_RIDERS` from the dataclass
-    retired them and exposed the gap).
-
     This asserts the CONSEQUENCE: a rider swept as an axis reaches the config
     that renders the deck, not the allocation.
     """
@@ -232,8 +224,7 @@ def test_a_run_keeps_the_calculations_own_label(template):
 
 def test_point_token_is_the_authoritys_rendering():
     """`job-contracts.md` § 6.3: the coordinate is ONE qualifier — ``G1K4C6``,
-    concatenated, because a separator inside it would read as more qualifiers.
-    (This joined with ``-`` until the bench fold, C6, 2026-08-11.)"""
+    concatenated, because a separator inside it would read as more qualifiers."""
     assert point_token({"G": 1, "K": 4, "C": 6}) == "G1K4C6"
     assert point_token({"mpi_np": 8, "block_size": 16}) == \
         "mpi_np8block_size16"
@@ -383,14 +374,6 @@ def test_naming_a_stage_that_is_not_there_is_refused_with_the_options(template):
                 SiestaConfig, allocation=ALLOC, stage="nonesuch")
 
 
-# ``test_a_description_with_no_ladder_refuses_a_stage`` was retired
-# 2026-08-16.  It pinned a refusal for a description with NO ladder -- a
-# shape `engines/stages.md` § 6.5 deleted, so the test asserted an
-# interaction that can no longer happen.  Naming an unknown stage is still
-# refused, and that is pinned just above by
-# ``test_an_unknown_stage_is_refused_with_the_ladder_listed``.
-
-
 def test_a_pin_naming_nothing_in_the_schema_is_refused(template):
     with pytest.raises(ResolveError, match=r"nothing in the"):
         resolve(template, _task(), SiestaConfig, allocation=ALLOC,
@@ -435,24 +418,3 @@ def test_a_sweep_axis_spelling_a_machine_fact_names_the_road(template):
     with pytest.raises(ResolveError, match=r"machine fact"):
         resolve(template, _task(), SiestaConfig, allocation=ALLOC,
                 sweep={"omp_threads": [1, 2]}, stage=STAGE)
-
-
-# --------------------------------------------------------------------- #
-#  The riders — on Resources, but not machine axes                      #
-# --------------------------------------------------------------------- #
-
-# `test_the_two_field_lists_answer_two_different_questions` and
-# `test_every_rider_is_a_real_field_of_resources` stood here.  `_RIDERS` is
-# DERIVED from `dataclasses.fields(Resources)` now -- each rider carries
-# `metadata={"axis": "rider"}` at its own declaration -- so a rider naming a
-# non-field cannot be written, and the partition is set algebra on one list.
-#
-# Of the pair, `ALLOCATION & RIDERS == set()` was already unconditional; the
-# other was equivalent to the second test, not to nothing.
-#
-# WHY THE SPLIT EXISTS, kept from their docstring: adding `use_gpu` to
-# `Resources` silently reclassified the bench's GPU family axis as a machine
-# axis, so the flag never reached the config that renders the deck and EVERY
-# GPU TRIAL EMITTED `Diag.ELPA.GPU .false.` -- a CPU family measured under GPU
-# labels.  Once split, the translation check still tested the narrower list
-# while its refusal said "names nothing on Resources".

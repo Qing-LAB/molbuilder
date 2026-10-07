@@ -12,9 +12,9 @@ A working-directory `molbuilder.json` is NOT read, and that is SAID OUT LOUD.
     all based on implicit rules."*
 
 The machine scope has ONE location, the per-user config directory. A
-working-directory file is **not read at all** — so the danger inverts: it used
-to win silently, and now it loses silently. A person editing one would watch
-their changes do nothing, which is why its presence is still said out loud.
+working-directory file is **not read at all**, so it loses silently: a person
+editing one would watch their changes do nothing, which is why its presence is
+said out loud.
 
 It is a warning and never a refusal, in both directions: an unread file does not
 stop the program, and a loose mode does not either.
@@ -99,8 +99,7 @@ class TestItIsAWarningAndNotARefusal:
         from molbuilder.runtime_config import read_config
         work, _home = isolated
         # A section a server would start on, so a regression shows as the
-        # setting leaking in -- `execution` here was refused, and a cwd read
-        # would have raised instead of leaking (W54 T16).
+        # setting leaking in.
         (work / "molbuilder.json").write_text('{"launch": {"mode": "direct"}}')
         assert read_config() == {}
 
@@ -158,11 +157,6 @@ class TestTheModeIsCheckedOnTheWayIn:
         assert _mode_warning() is None, (
             "there is nothing to say about a file nobody wrote")
 
-    # `test_owner_only_bits_are_not_a_reach` and
-    # `test_group_only_and_world_readable_read_differently` retired 2026-10-02
-    # with the second sentence they pinned (`machine_config_mode_warning`):
-    # the one sentence is the table's, whose rule is any bit beyond 0600
-    # (`configuration.md` § 2.1b, T24).
 
     @pytest.mark.parametrize("mode", [0o644, 0o640, 0o666, 0o604])
     def test_any_reach_past_the_owner_is_named(self, isolated, mode):
@@ -196,15 +190,6 @@ class TestTheModeIsCheckedOnTheWayIn:
         f.chmod(0o644)
         msg = _mode_warning()
         assert "tls.key" in msg and "auth.providers" in msg
-
-
-# RETIRED 2026-09-14 (review D): `test_a_loose_file_is_still_read` asked
-# `machine_config_path()`, which never opens the file and never looks at its
-# mode -- so a mode check that REFUSED would have left it green.  What it
-# meant to pin ("a loose file is warned about, not refused") is
-# `TestTheModeIsCheckedOnTheWayIn`: those tests read a file at 0644 and get a
-# message back, which is the warning-not-refusal in the only form that can
-# fail.
 
 
 class TestBothWarningsTravelTogether:
@@ -244,9 +229,9 @@ class TestOneFindingIsSaidOnce:
     doing that in `serve` since the table was added.
 
     `architecture.md` A11 is the rule (one home per filename) and the table is
-    what knows every path in the tree, so the table owns it -- and since
-    2026-10-02 the prose sentence is gone too: `config_provenance` carries the
-    table's row for the card (`configuration.md` § 2.1b, T24).
+    what knows every path in the tree, so the table owns it:
+    `config_provenance` carries the table's row for the card
+    (`configuration.md` § 2.1b, T24).
     """
 
     def test_a_loose_config_is_reported_once(self, isolated):

@@ -13,11 +13,10 @@ USED-BY script_emit (writes every block and reads the rest through these),
 TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
         (`runwrap.VIBRATION_COMPANIONS`)
 
-`execution/job-contracts.md` § 3.1 owns the grammar.  It sat inside
-`script_emit` until 2026-09-28, which writes the blocks and builds its bench
-declarations against the template at import -- so a job, where the template
-does not exist, could not read even one block.  The grammar and its reader are
-the part a job needs, and they need nothing but the standard library.
+`execution/job-contracts.md` § 3.1 owns the grammar.  Its own module because
+a job reads blocks where the template does not exist: the grammar and its
+reader are the part a job needs, and they need nothing but the standard
+library.
 """
 from __future__ import annotations
 
@@ -44,8 +43,6 @@ BLOCK_USER_CUSTOM   = "user-custom"
 #: for, this says what was heard, and one reader should be able to compare
 #: them without knowing which engine wrote it.
 BLOCK_PARAMETERS    = "effective-parameters"
-#: § 3.7 item blocks: the marker is ``item <field>``, so the NAME reaches
-#: the marker and prep can rebuild a config by scanning.
 
 
 def begin_marker(name: str) -> str:
@@ -101,14 +98,11 @@ def without_stamps(data: bytes) -> bytes:
 def _brace_delta(line: str) -> int:
     """``{`` minus ``}`` on one line, counting only braces OUTSIDE strings.
 
-    A plain ``line.count("{") - line.count("}")`` stood here until
-    2026-09-05, and a brace inside a JSON *string* closed the walk early.
-    Measured: a region named ``a}b`` -- valid JSON on the wire, written
-    correctly by :func:`emit_atom_metadata` -- made the whole
-    ATOM-METADATA block unreadable, so every reader of that deck got
-    ``None`` and the labels AND the frozen set vanished with no message.
-    ``{``, ``"`` and ``\\`` in a label were all fine; only ``}`` was fatal,
-    which is exactly the shape of bug that survives casual testing.
+    Counting every brace would let a brace inside a JSON *string* close the
+    walk early: a region named ``a}b`` -- valid JSON on the wire, written
+    correctly by :func:`emit_atom_metadata` -- would make the whole
+    ATOM-METADATA block unreadable, and the labels AND the frozen set vanish
+    with no message.
 
     JSON strings cannot contain a literal newline, so the in-string state
     never has to carry across lines.
@@ -198,7 +192,7 @@ def read_json_block(text: str, name: str) -> Optional[Dict[str, Any]]:
 
 def extract_engine_offset(text: str) -> Optional[Dict[str, Any]]:
     """The ENGINE-OFFSET block's payload -- ``{applied_offset, cell,
-    axis_kind, stated}`` -- or ``None`` for a deck written before § 6.0.  The deck's
+    axis_kind, stated}`` -- or ``None`` for a deck that carries none.  The deck's
     own coordinates carry no offset; ``applied_offset`` is the correction that
     was added to the design's to produce them."""
     return read_json_block(text, BLOCK_ENGINE_OFFSET)
@@ -207,13 +201,10 @@ def extract_engine_offset(text: str) -> Optional[Dict[str, Any]]:
 def extract_vibration_record(text: str) -> Optional[Dict[str, Any]]:
     """The VIBRATION block's payload -- ``{stage, force_criterion_ev_ang,
     temperature_K, already_relaxed, relaxation, relaxation_stage,
-    molbuilder_version}`` (format ``molbuilder-vibration/v2``; v1, before
-    2026-09-28, had no ``temperature_K``; ``relaxation_stage`` joined on
-    2026-09-29 and is absent from a block written before), built by
+    molbuilder_version}`` (format ``molbuilder-vibration/v2``), built by
     `spectra.siesta_vibration.vibration_record` and written by
     `script_emit.emit_vibration_record` -- or ``None`` for a deck that
-    carries none: every deck but a SIESTA force-constant one, and one written
-    before 2026-09-28."""
+    carries none: every deck but a SIESTA force-constant one."""
     return read_json_block(text, BLOCK_VIBRATION)
 
 

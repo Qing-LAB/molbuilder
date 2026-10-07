@@ -1,9 +1,7 @@
 """Tests for molbuilder.validation.geometry.
 
 Per docs/process/testing.md (test layout mirrors source
-layout).  Split from the pre-2026-06-13 flat tests/test_validation.py
-on 2026-06-13; no test body was modified.  Shared fixtures
-(``water_struct``, ``_vacuum_cell``) live in tests/validation/conftest.py.
+layout).  Shared fixtures live in tests/validation/conftest.py.
 """
 
 from __future__ import annotations
@@ -198,9 +196,8 @@ def test_cell_determinant_zero_is_error(water_struct):
     skip the volume check below."""
     cell = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=float)
     issues = validate(water_struct, SiestaConfig(), cell=cell)
-    # `cell.determinant` said "degenerate OR left-handed" -- two faults with
-    # two different repairs under one id, so a flat molecule was told to swap
-    # its lattice vectors.  Split 2026-08-03; the checker reports one.
+    # "degenerate" and "left-handed" are two faults with two different
+    # repairs, so each has its own id and the checker reports one.
     errs = [i for i in issues if i.where == "cell.no_volume"]
     assert len(errs) == 1, [i.where for i in issues]
     assert errs[0].severity == "error"
@@ -297,21 +294,14 @@ def test_dipole_in_vacuum_nonpolar_molecule_no_warn():
 
 
 
-# `test_dipole_with_kgrid_no_warn` stood here; it pinned the k-count key
-# the K3 review found wrong.  What the advisory asks -- the axes SIESTA
-# computes on -- is driven through `jobset prep` now:
-# tests/test_validation_delivery_contract.py::TestTheDipoleAdvisoryAsksTheAxes.
-
-
-
 # --------------------------------------------------------------------- #
 #  SIESTA: kgrid sanity                                                 #
 # --------------------------------------------------------------------- #
 
 
-# The k-grid sanity check now trusts the AUTHORITATIVE per-axis periodicity
-# (``struct.axis_kind``) instead of a geometry span-ratio guess (which
-# mis-flagged real crystals whose atoms don't reach the cell edge).  These
+# The k-grid sanity check trusts the AUTHORITATIVE per-axis periodicity
+# (``struct.axis_kind``), never a geometry span-ratio guess (which
+# mis-flags real crystals whose atoms don't reach the cell edge).  These
 # tests carry the axis_kind their scenario implies, as a real structure would.
 
 def _axis_struct(kind, extent, cell_len, n_atoms=8):
@@ -341,9 +331,7 @@ def test_kgrid_one_on_a_periodic_axis_is_silent():
     """k == 1 states NOTHING (user rule, 2026-08-20;
     `science/validation.md`): correct for an isolated axis and a
     legitimate Gamma-only choice for a periodic one, so it is validated
-    not at all -- even beside a sampled sibling.  (This replaces the
-    retired forgotten-axis warn, which validated an axis about which the
-    user had stated nothing.)"""
+    not at all -- even beside a sampled sibling."""
     s, cell = _axis_struct(("periodic", "isolated", "isolated"),
                            extent=3.0, cell_len=6.0)
     cfg = SiestaConfig(kgrid=(1, 4, 1))   # k=1 on the periodic x
@@ -358,10 +346,7 @@ def test_kgrid_periodic_crystal_partial_span_no_false_positive():
     be flagged 'k>1 wasted'.  The old span-ratio heuristic (periodic iff
     atoms span >85%) mis-read such axes as vacuum -- the false positive that
     told users to drop the k-points a crystal actually needs."""
-    # A block spanning ~50% of the cell on EVERY axis (the old fixture
-    # was a z-line: x/y extents 0, so those axes really did hold 6 A of
-    # emptiness -- a geometry the 2026-08-20 statement rule legitimately
-    # hints on, and not the crystal this docstring names).
+    # A block spanning ~50% of the cell on EVERY axis.
     corners = np.array([[x, y, z] for x in (0.0, 3.0)
                         for y in (0.0, 3.0) for z in (0.0, 3.0)])
     cell = np.diag([6.0, 6.0, 6.0])

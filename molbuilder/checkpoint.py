@@ -15,9 +15,7 @@ formats** are [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 
 Single user, one repository per calculation, no auto-commit.  Saving and
 initialising are CLI/UI acts, at prep and Save, never a running job's
-(`checkpointing.md` § 9; the "wrapper bootstraps git" path was dropped).
-*("No git ever runs on a compute node" -- I4 -- stood here until 2026-10-04:
-every env molbuilder installs ships git.)*
+(`checkpointing.md` § 9).
 
 The whole surface is ``Repo``: ``init``, ``save``, ``restore``, ``status``,
 ``states``, ``tag``.  A **state** is a saved snapshot of the folder, a **tag**
@@ -61,9 +59,8 @@ from .task import FILENAME as _TASK_FILENAME
 
 #: Where the archive lives, one directory per distinct content (§ 3).
 #:
-#: **DO NOT RENAME THIS TO MATCH THE TOOL'S NAME.**  The tool is
-#: `molbuilder checkpoint` everywhere a person types it, and the 2026-08-18
-#: rename deliberately left this alone (user's ruling): the directory sits
+#: **DO NOT RENAME THIS TO MATCH THE TOOL'S NAME** (user's ruling).  The
+#: tool is `molbuilder checkpoint` everywhere a person types it; the directory sits
 #: inside calculation folders that already exist, and renaming it orphans
 #: real archives -- whole copies of large files -- to no one's benefit.  A
 #: verb someone types is the tool's name; a directory on disk is the data's.
@@ -301,8 +298,7 @@ class FolderStatus:
     else is measured **against that state and never against the newest one** —
     which is why going back does not make the whole folder read as modified.
     It is the **State**, not its id: answering "what is unsaved" requires
-    reading it anyway, so returning only the id made every caller that wanted
-    the note or the parent ask git for the same thing a second time.
+    reading it anyway.
 
     The three lists are A5's three shapes, and all three are lost when a
     restore makes the folder equal its target.
@@ -375,9 +371,6 @@ def _run_git(argv: List[str], cwd: str, *,
 #: job-set's job directories, a benchmark's trials.  Each is already an entry in
 #: the persisted-artifact registry (job-contracts.md § 6.1), so this reuses the
 #: system's existing self-description instead of inventing a marker file.
-# ``bench-manifest.json`` was the third entry until U19 (2026-08-12): its
-#: producer (``bench generate``, the shipped-bundle lifecycle) died in step
-#: 6 u5, and a descriptor nothing writes declares nothing.
 #: A11: both names come from the modules that write them -- `task.FILENAME`
 #: and `jobset.model.FILENAME` -- never re-spelled here.
 _BUNDLE_DESCRIPTORS = (_TASK_FILENAME, _JOBSET_FILENAME)
@@ -400,10 +393,8 @@ def _scan_subtree(path: Path) -> Tuple[List[str], List[str]]:
       walk does **not** descend into one: what is inside another repository is
       that repository's business.
 
-    Dot-directories are skipped entirely.  Before, only ``.git`` and
-    ``.binsnapshots`` were -- so a ``.venv/`` beside a run (full of ``.py``)
-    read as a nested working directory and blocked ``init`` for a reason that
-    had nothing to do with calculations.
+    Dot-directories are skipped entirely, so a ``.venv/`` beside a run (full
+    of ``.py``) does not read as a nested working directory.
     """
     working: List[str] = []
     repos: List[str] = []
@@ -674,13 +665,11 @@ def _atomic_write_bytes(target: Path, data: bytes,
                         tmp_dir: Optional[Path] = None) -> None:
     """Write via a **unique** temp + ``os.replace``.
 
-    The shape was built HERE (two properties, and the second was missing
-    package-wide: a reader never sees a partial file, and two writers never
-    collide — the derived-name trap § 6 names, plus the ``tmp_dir``
-    never-stored escape for targets inside the folder being saved).  At U8
-    (2026-08-12) it moved to :func:`molbuilder.persist.write_bytes` so every
-    persisted artifact writes the same way; this name stays because it is
-    this module's seam — the states tests inject failure through it.
+    Through :func:`molbuilder.persist.write_bytes`, so every persisted
+    artifact writes the same way: a reader never sees a partial file, and two
+    writers never collide (the derived-name trap § 6 names); ``tmp_dir`` keeps
+    the temp out of a folder being saved.  This name is this module's seam —
+    the states tests inject failure through it.
     """
     from .persist import write_bytes
     write_bytes(target, data, tmp_dir=tmp_dir)
@@ -796,10 +785,7 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
 
     **Content already in the archive is hard-linked instead of copied, and it
     is checked exactly the same way.**  A link avoids the *write*, never the
-    read.  This paragraph used to end *"...and no re-check, because a hard link
-    is the same inode that was verified when it was first written"* -- which is
-    what the body did until the check moved below the branch, and it survived
-    here describing behaviour that is gone.  Verified *when written* is true;
+    read.  Verified *when written* is true;
     unchanged *since* is the assumption I2b exists because it fails, so a
     damaged inode would otherwise be linked into a brand-new archive whose
     MANIFEST disagrees with its own bytes from the moment it is published.
@@ -829,14 +815,9 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
         # ALREADY PUBLISHED -- BUT THE NAME PROVES WHAT IT SHOULD HOLD, NOT
         # THAT IT STILL DOES.
         #
-        # This used to `return digest` on the strength of the name alone, and
-        # that made a save adopt a damaged archive and report success: the new
-        # state carried a digest whose archive no longer verified, so a state
-        # the user was told they could return to was not restorable.  § 1's
-        # promise, broken by the one operation that makes it.
-        #
-        # I2b allows two outcomes and not three -- "it matches, or it is
-        # refused" -- and skipping the question entirely was the third.
+        # Returning on the strength of the name alone would make a save adopt
+        # a damaged archive and report success.  I2b allows two outcomes --
+        # "it matches, or it is refused".
         #
         # SHALLOW, and that is the considered answer rather than a shortcut.
         # Git commits over a corrupt object store without looking at it:
@@ -900,31 +881,27 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
                 shutil.copy2(src, dst)
             # CHECKED THE SAME WAY WHETHER IT WAS COPIED OR LINKED.
             #
-            # This used to `continue` past the check after a link, reasoning
-            # that a hard link is "the same inode that was verified when it was
-            # first written".  Verified *when written* is true; unchanged
-            # *since* is the assumption, and I2b exists precisely because that
-            # assumption fails -- bit rot, or somebody tidying a directory.
-            # Reusing a damaged inode would build a new archive whose MANIFEST
-            # disagrees with its own bytes from the moment it is published.
+            # A hard link is the same inode that was verified when it was
+            # first written; unchanged *since* is the assumption, and I2b
+            # exists precisely because that assumption fails -- bit rot, or
+            # somebody tidying a directory.  Reusing a damaged inode would
+            # build a new archive whose MANIFEST disagrees with its own bytes
+            # from the moment it is published.
             #
-            # A link still avoids the write, which is the expensive half; what
-            # it no longer avoids is the read.
+            # A link still avoids the write, which is the expensive half; it
+            # does not avoid the read.
             if sha256_of(dst) != sha256:
                 raise CheckpointError(
                     f"archive copy of {key!r} is corrupt: it does not match "
                     f"the source it was copied from.  Refusing to publish an "
                     f"archive that would verify against its own bad checksum "
                     f"(checkpointing.md § 6).")
-            # AND THIS ARCHIVE'S OWN COPIES ARE OFFERED FOR REUSE TOO.
-            #
-            # *Identical content is stored once* (§ 12) was only ever true
-            # ACROSS saves: the index is built from already-PUBLISHED archives,
-            # so two paths holding the same bytes in the SAME save were each
-            # copied in full.  A stage that carries its predecessor's 2 GB
-            # density matrix forward -- by copy, or by a hard link in the
-            # working tree, which the walk sees as two ordinary files -- cost
-            # 4 GB of archive, on every save.
+            # AND THIS ARCHIVE'S OWN COPIES ARE OFFERED FOR REUSE TOO
+            # (*identical content is stored once*, § 12): the index is built
+            # from already-PUBLISHED archives, so without this two paths
+            # holding the same bytes in the SAME save would each be copied in
+            # full -- a stage carrying its predecessor's 2 GB density matrix
+            # forward would cost 4 GB of archive, on every save.
             #
             # Added only after the verify, so nothing unchecked is ever offered
             # as a link target.  The MANIFEST is untouched by this: same shas,
@@ -1148,12 +1125,10 @@ class Repo:
             # in by hand is "initialised" with no state to stand at, so this is
             # Optional rather than a State that might not be there.
             #
-            # THAT FOLDER IS ALSO THE ONE L3 WAS ESCAPING THROUGH.  § 2.0 says
-            # people run bare git in these directories, and a folder they had
-            # already `git init`-ed never reached the name check below: `save`
-            # then wrote the raw folder name into every state's trailer, so
-            # `Calculation: has spaces!` shipped in a history that `init` would
-            # have refused outright.  Setting it here makes `init` the verb
+            # THAT FOLDER WOULD OTHERWISE ESCAPE L3.  § 2.0 says people run
+            # bare git in these directories, and a folder already
+            # `git init`-ed never reaches the name check below.  Setting it
+            # here makes `init` the verb
             # that repairs such a folder -- and `--calculation` the way to give
             # it a name its directory cannot spell.
             if not self._configured_calculation():
@@ -1240,11 +1215,9 @@ class Repo:
     def _manifest_of(self, state: "State") -> Dict[str, Tuple[str, int]]:
         """What *state* held, read off its own record (I2b, I2c).
 
-        **Damage is named, never absorbed.**  A state with no digest, or a
-        digest whose archive is gone, used to leave this empty — and an empty
-        record makes every archived file look newly added, so the panel said
-        "12 unsaved" about files that were saved and are now unreachable.
-        I2b's whole point is that those are two different observations:
+        **Damage is named, never absorbed.**  An empty record for a state with
+        no digest, or a digest whose archive is gone, would make every
+        archived file look newly added.  I2b's whole point is that those are two different observations:
         verification matches or it is refused, and there is no third answer.
         """
         if not state.archive:
@@ -1282,8 +1255,7 @@ class Repo:
 
     #: One record per state, one call for any number of them.  ``%D`` carries
     #: the tags pointing at each commit, which is why nothing has to ask git a
-    #: second time per state -- listing fifty states used to cost a hundred and
-    #: one subprocesses.
+    #: second time per state.
     _FORMAT = "%H%x1f%P%x1f%aI%x1f%D%x1f%B%x1e"
 
     @staticmethod
@@ -1386,9 +1358,7 @@ class Repo:
         cost the answer does not earn.
 
         **Its blind spot is a same-size file whose mtime is not more than a
-        second past the standing state's timestamp** -- which is wider than
-        "rewritten inside the same second", the way this used to be written.
-        The comparison is ``>``, and it has to be: a restore writes archived
+        second past the standing state's timestamp**.  The comparison is ``>``, and it has to be: a restore writes archived
         files with ``copy2``, so a legitimately restored file carries an mtime
         far OLDER than the state, and anything stricter would call every
         restored folder unsaved.  The cost of that is that an mtime-preserving
@@ -1610,9 +1580,8 @@ class Repo:
                 "defaulted (checkpointing.md L3).")
         # L3's other half, checked HERE because this is where the name is
         # written verbatim into a state.  `init` refuses a name needing repair,
-        # but a folder somebody had already `git init`-ed skipped that gate
-        # entirely (§ 2.0 says they do), so the raw directory name reached the
-        # trailer.  `calculation()` stays unvalidated so read-only surfaces
+        # but a folder somebody had already `git init`-ed never passes that
+        # gate (§ 2.0 says they do).  `calculation()` stays unvalidated so read-only surfaces
         # still work on such a folder; the refusal lands on the write.
         try:
             check_calculation_name(self.calculation())
@@ -1658,14 +1627,12 @@ class Repo:
         #
         # S1b lets a name skip a *measurement* for a family that is always big.
         # A link has no size worth measuring -- it is twenty bytes of path text
-        # -- so for a link the hint is simply wrong, and `.gitignore` was
-        # sending `02_tight/job.DM -> ../01_coarse/job.DM` to the store that does
-        # not take links.  It was then in NEITHER store: `add` skipped it as
-        # ignored, the archive skipped it as a link, and a restore neither
-        # brought it back (git never had it) nor removed it (`git clean`
-        # without `-x` leaves ignored paths alone).  § 3's "exactly one store"
-        # quietly did not hold, for exactly the links `jobset/materialize.py`
-        # lays between stages.
+        # -- so for a link the hint is simply wrong: `.gitignore` would send
+        # `02_tight/job.DM -> ../01_coarse/job.DM` to the store that does not
+        # take links, and it would be in NEITHER store: `add` skips it as
+        # ignored, the archive skips it as a link, and a restore neither
+        # brings it back (git never had it) nor removes it (`git clean`
+        # without `-x` leaves ignored paths alone).
         #
         # `-f` ONLY for links, and that limit is the whole safety of it: forcing
         # a big *file* past the ignore rules is S1's losing branch, a blob in
@@ -1730,19 +1697,11 @@ class Repo:
         # THE QUESTION, LAST -- AND ONLY WHEN THERE IS A QUESTION TO ASK.
         #
         # `force` IS the answer (§ 5: "--force ... answers yes, for a script"),
-        # so asking is pure cost once it is set.  This used to compute the
-        # answer unconditionally and then discard it, which cost twice:
-        #
-        #   * every large file in the folder was hashed for a message nobody
-        #     would see -- on a real calculation, the whole density-matrix set,
-        #     read end to end and thrown away.  § 6 refuses to double a SAVE for
-        #     less than this;
-        #   * and it made a forced restore fail for a reason about the state
-        #     you are LEAVING.  `status` reads the standing state's MANIFEST, so
-        #     a damaged archive over there refused a restore whose target was
-        #     perfectly intact -- and since `status` and `list` fail the same
-        #     way, there was no verb left that could move the folder anywhere.
-        #     § 2.0 promises the verbs cover the work.
+        # so asking is pure cost once it is set: every large file would be
+        # hashed for a message nobody sees, and `status` reads the standing
+        # state's MANIFEST, so a damaged archive of the state you are LEAVING
+        # would refuse a restore whose target is intact -- leaving no verb
+        # that could move the folder anywhere (§ 2.0).
         #
         # DEEP when it is asked, because this is the moment the folder is about
         # to change: "what will be lost" is answered by content, never by a
@@ -1774,10 +1733,10 @@ class Repo:
         # do it, because a file matching an ignore pattern is invisible to it.
         #
         # `-z` and a NUL split, NOT `.split()`.  Whitespace is not a separator
-        # here: `01 coarse/job.fdf` split into `01` and `coarse/job.fdf`, so the
-        # real key matched nothing, the file counted as a leftover, and the loop
-        # below DELETED a tracked file the target holds -- with nothing to put
-        # it back, since only archived files are copied afterwards.  `-z` also
+        # here: `01 coarse/job.fdf` would split into `01` and `coarse/job.fdf`,
+        # the real key would match nothing, and the loop below would DELETE a
+        # tracked file the target holds -- with nothing to put it back, since
+        # only archived files are copied afterwards.  `-z` also
         # stops git quoting a non-ASCII name, which fails the same way.
         tracked = {name for name in
                    _run_git(["ls-files", "-z"], cwd=self.path).stdout.split("\0")
@@ -1786,8 +1745,8 @@ class Repo:
         #
         # `git clean` above removes an untracked link, but only when no ignore
         # pattern matches its name -- so a stray `job.DM -> ../01_coarse/job.DM`
-        # survived a restore of a state that never held it, pointing a later
-        # run at the wrong stage's output.  A link the target did not hold is a
+        # would survive a restore of a state that never held it, pointing a
+        # later run at the wrong stage's output.  A link the target did not hold is a
         # leftover exactly like a file, and A5 removes leftovers without asking
         # because they are not a loss.  `unlink` on a link removes the LINK; the
         # file it pointed at is somebody else's entry in this same walk.

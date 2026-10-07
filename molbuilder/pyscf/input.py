@@ -1,20 +1,17 @@
 """molbuilder.pyscf.input -- generate a runnable PySCF script for
 molecule relaxation / single-point work.
 
-Mirrors the molbuilder.siesta.input module:
+Its names:
 
-    PySCFConfig      -- dataclass holding every parameter
-    render_script    -- format an in-memory Structure as a Python script
+    PySCFConfig      -- the parameters, imported from ``config/pyscf.py``
     spec_for         -- the deck's spec, which `prep` renders and writes
 
 The generated script runs as `python <script>.py` beside `mb_pyscf.pyz`, the
 molbuilder code it imports (`engines/pyscf.md` § 3): build mole -> SCF ->
-(optional) pre-optimization -> main optimization -> save outputs.
+(optional) optimization -> save outputs.
 
 We default to B3LYP+D3BJ/def2-SVP with density fitting -- the modern
 production default for organic chemistry / biomolecule work in PySCF.
-The optional pre-optimization stage uses the cheaper PBE/def2-SVP to
-fix bad bond lengths before the hybrid functional sees them.
 
 Module name: this lives at ``molbuilder/pyscf/input.py`` so an
 ``import pyscf`` inside the generated user script is unambiguous (the
@@ -31,8 +28,7 @@ from ..config.pyscf import PySCFConfig
 # § 4 rule 2's reading of `restart`, shared with SIESTA -- one
 # field, one rule, one place that reads it.
 from ..identity import continues
-from ..runfiles import (compose as _rf, stdout_roles as _stdout_roles,
-                        tail as _rf_tail)
+from ..runfiles import compose as _rf, stdout_roles as _stdout_roles
 from ..structure import Structure
 
 #: THE ROLES THIS SCRIPT WRITES, spelled once (`job-contracts.md` § 2.2a).
@@ -42,8 +38,7 @@ from ..structure import Structure
 #: here: the label does not exist yet at emit time.  What the constants buy is
 #: the other half of the rule.  The role vocabulary still has ONE home, so a
 #: role cannot be respelled in the emitted lines while the header, the
-#: warm-file declaration and the reader all say something else.  That is
-#: exactly how `_geom_optim.xyz` came to have six spellings.
+#: warm-file declaration and the reader all say something else.
 ROLE_CHK         = ".chk"
 ROLE_LOG         = ".log"                # PySCF's own log, a rung's own
 ROLE_SPECTRA     = ".spectra.json"       # a vibration's result
@@ -51,6 +46,7 @@ ROLE_INITIAL     = "_initial.xyz"
 ROLE_OPTIMIZED   = "_optimized.xyz"
 ROLE_CONSTRAINTS = ".constraints.txt"
 ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # geomeTRIC's trajectory, a rung's own
+ROLE_GEOM_LOG    = "_geom.log"           # geomeTRIC's log, under the same prefix
 
 #: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- declared in
 #: `end_lines`, which the reader imports and which travels beside the job
@@ -60,20 +56,44 @@ from .end_lines import END_MARKER   # noqa: E402
 #: THE ROLE A PySCF RUN'S STDOUT HAS.  Imported, not spelled: the wrapper
 #: derives the same answer from the same catalogue row
 #: (`runwrap._stdout_role_for`), and the banner this module prints is the one
-#: place a PERSON is told the filename.  A literal here is how the two came to
-#: disagree -- see the banner below.
+#: place a PERSON is told the filename.
 PYSCF_STDOUT_ROLE = _stdout_roles("pyscf")[0]
 
 #: geomeTRIC does not take a filename -- it takes a PREFIX and appends this.
 #: Naming the tail is what lets the prefix be DERIVED from the role rather than
-#: assembled next to it, and assembling it next to it is precisely what put the
-#: stage token inside the role.
+#: assembled next to it.
 GEOMETRIC_APPENDS = "_optim.xyz"
+#: ...and this, for its log -- the catalogue's row for the prefix's files
+#: (``_geom.log``, numbered where the stage's runs share a folder).
+GEOMETRIC_LOG_APPENDS = ".log"
+
+
+def run_file_expr(names, role: str) -> str:
+    """THE PYTHON EXPRESSION A DECK NAMES ONE OF ITS RUN'S FILES WITH: its
+    ``JOB`` and the tail the stage's names give the role
+    (`runfiles.RunNames.tail`) -- a template, its ``{run}`` filled with the
+    number the run script gave the script (``_MB_RUN``,
+    `runtime_info.run_given`).  The same expression in both shapes: where
+    the stage's runs have folders of their own the template has nothing to
+    fill (plan W57 decision 2, `engines/pyscf.md` § 2)."""
+    return f"JOB + {names.tail(role)!r}.format(run=_MB_RUN)"
+
+
+def geometric_prefix_expr(names) -> str:
+    """The expression for geomeTRIC's PREFIX -- its log's name, as the
+    stage's names give it, less the tail geomeTRIC appends: its log and its
+    trajectory then land under the run's own names."""
+    tail = names.tail(ROLE_GEOM_LOG)[:-len(GEOMETRIC_LOG_APPENDS)]
+    return f"JOB + {tail!r}.format(run=_MB_RUN)"
+
+
+def _shown(names, role: str) -> str:
+    """``role``'s name as a deck's header shows it -- the run's number as
+    ``<N>`` where the name carries it (`runfiles.RunNames.template`)."""
+    from ..runfiles import RUN_FIELD
+    return names.template(role).replace(RUN_FIELD, "<N>")
 # ONE name for each of the two doors this writer opens, imported once at
-# module scope -- as `siesta/input.py` already does.  Seven aliases for
-# ``script_emit`` and three for ``layout`` stood here, one pair
-# re-imported inside each function, so the same door had seven spellings
-# and `spec_for`'s return annotation named one that no scope defined.
+# module scope -- as `siesta/input.py` does.
 from .. import script_emit as _sc
 from . import layout as _layout
 
@@ -107,16 +127,13 @@ _STABILITY_ENERGY_TOL = 1e-8
 # --------------------------------------------------------------------- #
 
 
-# The PCM dielectric table MOVED to scf_setup.SOLVENTS
-# (2026-08-21, one home for both decks); the emitter's own
-# refusal moved with it, so this alias serves one reader --
-# the deck header's solvent line.
+# The PCM dielectric table lives in scf_setup.SOLVENTS (one home
+# for both decks); this alias serves one reader -- the deck
+# header's solvent line.
 from .scf_setup import SOLVENTS as _SOLVENTS
 from molbuilder.constants import HARTREE_EV as _HARTREE_EV
 from molbuilder.constants import (
     HARTREE_BOHR_EV_ANGSTROM_ASE as _HARTREE_BOHR_EV_ANG_ASE)
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -139,11 +156,9 @@ def _atoms_block(struct: Structure, positions, indent: str = "    ") -> str:
 def _resolve_ecp(struct: Structure, cfg: PySCFConfig):
     """Thin shim onto :func:`molbuilder.chemistry.resolve_pyscf_ecp`.
 
-    The rule is shared with the spectra generator regardless of WHICH
-    script we're emitting (refactored to chemistry.py 2026-05-23 so the
-    two generators can't drift).  Since 2026-08-13 the rule is simply
-    *which declared elements are present*: no basis is consulted and no
-    ECP is added that the user did not name.
+    The rule is shared with the vibration deck, so the two generators
+    can't drift: *which declared elements are present* -- no basis is
+    consulted and no ECP is added that the user did not name.
     """
     from ..chemistry import resolve_pyscf_ecp
     return resolve_pyscf_ecp(struct, cfg.ecp, cfg.ecp_atoms)
@@ -152,22 +167,27 @@ def _resolve_ecp(struct: Structure, cfg: PySCFConfig):
 def spec_for(struct: Structure,
                   config: Optional[PySCFConfig] = None,
                   *,
-                  stage_token: Optional[str] = None,
-                  calculation: str = "optimization") -> "_sc.RenderedDeck":
-    """Format a Structure as a runnable PySCF script (Python text).
+                  names,
+                  calculation: str = "optimization") -> "_sc.DeckSpec":
+    """Describe a Structure's PySCF deck -- the spec
+    `script_emit.render_deck` renders into a runnable script.
 
     The result is what you'd write by hand if you knew exactly what
     every PySCF knob does -- with verbose comments turned on by
     default so you can read the file as documentation of the choices.
 
-    ``stage_token`` names **which rung of the ladder this deck is**, and it is
-    used.  `stages.md` § 1.1a: a PySCF ladder is N decks and N jobs, so two rungs
-    are two processes writing into the same calculation -- and anything they both
-    name would collide.  So the token goes into every name the script itself
-    chooses: PySCF's own log (``<JOB>_<NN>_<stage>.log``), geomeTRIC's trajectory
-    and opt log (``<JOB>_<NN>_<stage>_geom_optim.xyz``, ``..._<NN>_<stage>_geom.log``)
-    and the molwatch trajectory log (``<JOB>_<NN>_<stage>.molwatch.log``) -- the
-    same three names SIESTA suffixes (§ 1.1a, consequence 1).
+    ``names`` are the stage's (`runfiles.RunNames`): **which rung of the
+    ladder this deck is**, and every name it chooses.  `stages.md` § 1.1a: a
+    PySCF ladder is N decks and N jobs, so two rungs are two processes
+    writing into the same calculation -- and anything they both name would
+    collide.  So the stage's token is in every name the script itself
+    chooses: PySCF's own log (``<JOB>_<NN>_<stage>.log``), geomeTRIC's
+    trajectory and opt log (``<JOB>_<NN>_<stage>_geom_optim.xyz``,
+    ``..._<NN>_<stage>_geom.log``) and the molwatch trajectory log
+    (``<JOB>_<NN>_<stage>.molwatch.log``) -- the same three names SIESTA
+    suffixes (§ 1.1a, consequence 1) -- and, where the stage's runs share a
+    folder, the run's number after it, filled when the script runs
+    (:func:`run_file_expr`; plan W57 decision 2).
 
     **The ``JOB`` literal stays unsuffixed**, exactly as SIESTA's ``SystemLabel``
     does and for the same reason (§ 1.1a, consequence 2): the engine finds the
@@ -175,10 +195,10 @@ def spec_for(struct: Structure,
     that changed per rung would hide them.
 
     The DECK's filename still carries a token when `prep` gives it one: the
-    caller builds that name, not this function.  Ignored here means *the
-    script's internals are not re-suffixed*, not *the token is discarded*.
+    caller builds that name, not this function.
     """
     cfg = config or PySCFConfig()
+    stage_token = names.stage
     # THE ONE PLACEMENT, computed once: the atom literal writes these
     # positions and the deck's ENGINE-OFFSET record states the same frame.
     from ..cell import to_engine as _to_engine
@@ -187,14 +207,12 @@ def spec_for(struct: Structure,
     label = cfg.job_name
     v = cfg.verbose_comments
 
-    # ---------- pre-emission validation ----------
     if calculation == "vibration":
         # The kind is a RENDER ARGUMENT, like the stage token: the seam
         # stays ONE per engine, and the vibration deck is this engine
         # learning a second calculation (spectra-migration plan § 2).
         from .vibration_deck import vibration_spec
-        return vibration_spec(struct, config or PySCFConfig(),
-                              stage_token=stage_token)
+        return vibration_spec(struct, config or PySCFConfig(), names=names)
     if calculation != "optimization":
         raise ValueError(
             f"PySCF has no {calculation!r} deck; it renders "
@@ -205,8 +223,7 @@ def spec_for(struct: Structure,
     # moment, restricted with unpaired electrons, a treatment it does not
     # have -- is refused by the gate `render_deck` runs before any text.
     # NOT WHEN A LABEL NAMES NO ELEMENT: the state is an electron count, and
-    # that label is the gate's to refuse by name -- this raised a bare
-    # KeyError here, before the gate, until the M6 review.  The text below
+    # that label is the gate's to refuse by name.  The text below
     # is written only after the gate, so it never meets the None.
     from ..chemistry import every_label_resolves
     from ..electronic_state import electronic_state
@@ -216,11 +233,6 @@ def spec_for(struct: Structure,
     # The CLASS is composed when the text is written, inside the blocks --
     # never here: this runs before the settings gate, and a treatment PySCF
     # cannot run has no class to compose; it is the gate's to refuse by name.
-    # PySCF doesn't have a meaningful cell here (the script builds a
-    # gas-phase or PCM-solvent molecule), so we skip the cell-side
-    # checks and run only the structure / config-side validators.
-    # Warnings print to stderr; errors raise ValidationError before
-    # any script text is emitted.
     # The gate is NOT run here -- `render_deck` owns step 3.3.  PySCF's
     # subject is the structure as it arrived, which is the framework's
     # default, so this spec names no `validate_subject`.
@@ -274,8 +286,9 @@ def spec_for(struct: Structure,
             out.append(f"    {LAUNCH_MODE_NOTE}")
         else:
             out.append("Run with:")
-        out.append(f"    bash {_rf(label, '.run.sh', stage_token)}          "
-                   f"# the same wrapper, by hand")
+        out.append(f"    bash {names.name('.run.sh')} --run 0    "
+                   f"# the same wrapper, by hand: its run's number, 0 for "
+                   f"the first")
         out.append("")
         out.append("    The wrapper beside this file is self-contained: it runs")
         out.append("    unattended in a shell that inherits nothing, so it bakes")
@@ -284,16 +297,10 @@ def spec_for(struct: Structure,
         out.append("    where and when it ran (`running-a-job.md` section 2).")
         out.append("")
         out.append("Or drive PySCF yourself:")
-        # THE ROLE PySCF'S OWN STDOUT HAS, not SIESTA's.  This said `.out`
-        # until 2026-09-18 -- the one line in the tree that told a person to
-        # write PySCF output into SIESTA's filename, while the catalogue row
-        # for `.out` says the opposite and every reader dispatches on the
-        # role.  A person following it got a file `run_status` read with
-        # SIESTA's markers, so a finished run stayed `running` for ever:
-        # exactly the defect `model/parse.md` § 5.5 was written for, created
-        # by us, in generated text.  R-RO1 binds this site.
-        out.append(f"    python {_rf(label, '.py', stage_token)} > "
-                   f"{_rf(label, PYSCF_STDOUT_ROLE, stage_token)} 2>&1")
+        # THE ROLE PySCF'S OWN STDOUT HAS, not SIESTA's: every reader
+        # dispatches on the role (`model/parse.md` § 5.5).
+        out.append(f"    python {names.name('.py')} --run 0 > "
+                   f"{names.name(PYSCF_STDOUT_ROLE, 0)} 2>&1")
         out.append("")
         out.append("    Perfectly good, and the reason the plain invocation is")
         out.append("    still written here -- but then the environment, the")
@@ -303,7 +310,7 @@ def spec_for(struct: Structure,
         out.append("    either way, so a run started by hand is still watchable.)")
         out.append("")
         out += emit_outputs_block(
-            label, stage_token, log=cfg.log_file, chk=cfg.chkfile,
+            names, log=cfg.log_file, chk=cfg.chkfile,
             initial=cfg.save_initial_xyz,
             optimized=cfg.save_optimized_xyz and cfg.optimize,
             trajectory=cfg.optimize and cfg.write_trajectory,
@@ -428,22 +435,17 @@ def spec_for(struct: Structure,
                 f"# (from ecp_atoms = {list(cfg.ecp_atoms)!r}).  Empty either",
                 "# side = no ECP; nothing is added that you did not name.",
             ]
-        # Geometry warm-restart hook (task #539).  The atom literal is
-        # bound to ``_atom_block`` so the if-exists block below can
-        # override it from a prior run's ``<JOB>_optimized.xyz``.  The
-        # runwrap's ``--cold`` glob moves ``_optimized.xyz`` aside when
-        # the user wants a fresh start; otherwise the script auto-resumes
-        # from the relaxed geometry on the next ``--continue`` invocation
-        # (analog to SIESTA's automatic ``.XV`` read -- the per-engine
-        # warm-file inventory, `execution/job-contracts.md` § 4.2).
+        # Geometry warm-restart hook.  The atom literal is bound to
+        # ``_atom_block`` so the if-exists block below can override it from
+        # a prior run's ``<JOB>_optimized.xyz`` (analog to SIESTA's ``.XV``
+        # read -- the per-engine warm-file inventory,
+        # `execution/job-contracts.md` § 4.2).
         #
         # READ WITH MOLBUILDER'S ONE XYZ READER (`Structure.from_xyz`,
         # imported from mb_pyscf.pyz -- `engines/pyscf.md` § 3): the file is
         # the previous run's own pair, written atomically by the codec, so a
         # file that cannot be read is not one molbuilder wrote, and the run
-        # stops with the reader's words.  Until 2026-10-05 a hand-written
-        # parser here skipped an empty file and, on a parse failure, warned
-        # and fell back to the input geometry.
+        # stops with the reader's words.
         out.append("_atom_block = '''")
         out.append(_atoms_block(struct, _frame.positions))
         out.append("'''")
@@ -451,9 +453,7 @@ def spec_for(struct: Structure,
         # § 4 rule 2).  The geometry this reads is the PREVIOUS rung's, so no flag
         # of this deck's own -- not ``save_optimized_xyz``, which says whether this
         # run WRITES one, and not ``optimize``, which says whether this run relaxes
-        # -- can answer whether to start from it.  Until ``restart`` existed the
-        # write flags doubled as the read gate, which made *"write a checkpoint but
-        # do not resume from one"* unsayable: § 4's "present but not honoured".
+        # -- can answer whether to start from it.
         if continues(cfg):
             out.append(f'_opt_path = _mb_outfile(JOB + "{ROLE_OPTIMIZED}")')
             out.append("if _os.path.exists(_opt_path):")
@@ -469,9 +469,7 @@ def spec_for(struct: Structure,
             # ONE shape: ``resolve_pyscf_ecp`` returns ``{element: name}`` or
             # None, so this is a Python dict-literal every time.  It must NOT
             # be quoted -- a string-with-braces is what PySCF rejects as an
-            # unknown ECP name, and that was a real bug once.  The string
-            # branch that stood beside this went with the ``str | dict``
-            # field (2026-08-13).
+            # unknown ECP name.
             out.append(f'    ecp        = {ecp_chosen!r},')
         out.append(f"    charge     = {charge},")
         out.append(f"    spin       = {state.unpaired_electrons.value},")
@@ -487,14 +485,12 @@ def spec_for(struct: Structure,
             # supplies its own `JOB` at run time, so only what follows the
             # label can be emitted here -- and it is the end of the name
             # `compose` would build, not a second assembly of it.
-            _logname = _rf_tail(ROLE_LOG, stage_token)
-            out.append(f'    output     = _mb_outfile(JOB + {_logname!r}),')
+            out.append(f'    output     = _mb_outfile('
+                       f'{run_file_expr(names, ROLE_LOG)}),')
         # A CAP LEFT UNSET IS NO CAP (`template.md` § 2), and the deck says
         # so: `None`, which PySCF's `Mole.build` reads as not given, keeping
         # its own setting (`PYSCF_MAX_MEMORY`, else 4000 MB -- a figure it
-        # plans its work by).  The line was left out when unset until
-        # 2026-10-06, its comment saying PySCF's own default "reads the
-        # machine", which it does not.
+        # plans its work by).
         out.append(f"    max_memory = {cfg.max_memory_mb},   # MB"
                    if cfg.max_memory_mb else
                    "    max_memory = None,   # not stated: PySCF's own setting")
@@ -502,22 +498,14 @@ def spec_for(struct: Structure,
         out.append(")")
         out.append('print(f"Built mol: {mol.natm} atoms, {mol.nelectron} electrons, '
                    f'charge={charge:+d}")')
-        # Capture the user's actual input geometry NOW, before pre-opt
-        # has a chance to modify it.  Otherwise _initial.xyz would end up
-        # being the post-pre-opt geometry (since later we set mol = mol_pre).
+        # Capture the user's actual input geometry NOW, before the
+        # relaxation moves it.
         if cfg.save_initial_xyz:
             if v:
                 out.append("# Snapshot the input geometry before any optimization runs.")
             out.append(emit_save_call("mol", ROLE_INITIAL))
         out.append("")
 
-        # ---------------- Unified molwatch log emitter (early, additive) ------
-        # Defined and instantiated NOW -- before the relaxation -- so the log
-        # file (header + initial-preview block) exists the moment the script
-        # starts running.  A rung's relaxation can take hours on a real molecule;
-        # we don't want the Watch tab staring at "no file to load" the whole
-        # time.  SCF cycle hook is wired on the production mf below; the opt-step
-        # hook is wired on the ``relax(...)`` call.
         # NOTE: the molwatch emitter is NOT constructed here.  It writes its
         # whole header -- including every ``# runtime.<key>`` line -- inside
         # __init__, so it must be built only once _RUNTIME_INFO is complete;
@@ -536,9 +524,7 @@ def spec_for(struct: Structure,
             out.append("# never left for PySCF to re-rule.")
         out.append(f"mf = {_layout.scf_module(state)}.{method_class}(mol)")
         # THE FUNCTIONAL, THE GRID, DENSITY FITTING AND DISPERSION go through the
-        # one door.  Twelve hand-written sentences stood here describing exactly
-        # these four items -- the catalogue describes them too, and only one of the
-        # two was kept in step with the declarations.
+        # one door.
         return "\n".join(out) if out else None
 
     def _science_b(struct, cfg) -> str:
@@ -549,10 +535,9 @@ def spec_for(struct: Structure,
         """
         out: List[str] = []
         if cfg.solvent:
-            # ONE spelling for both decks (scf_setup.emit_solvent_lines;
-            # 2026-08-21).  The mf.PCM() form -- not pcm.PCM(mf) -- is
-            # load-bearing: only the decorated-SCF form exposes
-            # .with_solvent (the bare constructor crashed here once, P1).
+            # ONE spelling for both decks (scf_setup.emit_solvent_lines).
+            # The mf.PCM() form -- not pcm.PCM(mf) -- is load-bearing: only
+            # the decorated-SCF form exposes .with_solvent.
             from .scf_setup import emit_solvent_lines
             out += emit_solvent_lines(cfg)
         out.append("")
@@ -560,10 +545,7 @@ def spec_for(struct: Structure,
         # (`execution/script-preparation.md` § 4.2).  ``layout.SCF_SECTION`` names
         # the catalogue items and ``layout.line`` says how PySCF spells each one;
         # the framework reads the declaration, writes the catalogue's note above
-        # the value, and skips whatever ``line`` declines.  The four hand-written
-        # sentences that stood here said what the catalogue already says about
-        # these very items -- and said it in a place nothing kept in step with the
-        # declarations.
+        # the value, and skips whatever ``line`` declines.
         return "\n".join(out) if out else None
 
     def _science_c(struct, cfg) -> str:
@@ -591,9 +573,6 @@ def spec_for(struct: Structure,
                            "independently of the energy tolerance.")
         if not cfg.level_shift:
             out += _layout.hard_scf_hint(state)
-        # Hard-SCF troubleshooting knobs (gap #10).  Only emit when
-        # bumped from PySCF defaults so tutorial scripts stay clean
-        # for the easy-converge path.
         if cfg.chkfile:
             out.append(f'mf.chkfile = _mb_outfile(JOB + "{ROLE_CHK}")')
             # Continuation: a rung that says ``continue`` starts its SCF from the
@@ -613,7 +592,7 @@ def spec_for(struct: Structure,
             # checkpoint from a crashed run does not trigger.  ``_os`` is imported
             # at the top of the script.
             if continues(cfg):
-                out.append("_chk_path = _mb_outfile(JOB + \".chk\")")
+                out.append(f'_chk_path = _mb_outfile(JOB + "{ROLE_CHK}")')
                 out.append("if _os.path.exists(_chk_path) and "
                            "_os.path.getsize(_chk_path) > 0:")
                 out.append('    mf.init_guess = "chkfile"')
@@ -684,29 +663,15 @@ def spec_for(struct: Structure,
 
         # Construct the molwatch emitter HERE -- after the SCF setup, after
         # the _RUNTIME_INFO writes above -- and then wire the callback.
-        #
-        # It used to be built before the SCF setup so the Watch tab had a
-        # file to load early (a stage's relaxation can run for hours, and
-        # "no file to load" is a bad thing to stare at).  That intent is
-        # preserved: everything between there and here is attribute
-        # assignment on ``mf``, and the first expensive call -- the SCF in
-        # the stability block -- is still below us.
-        #
-        # But MolwatchEmitter.__init__ writes the ENTIRE header, every
+        # MolwatchEmitter.__init__ writes the ENTIRE header, every
         # ``# runtime.<key>`` line included, and a log header cannot be
-        # rewritten once the first data block follows it.  Building it
-        # before the SCF setup therefore froze _RUNTIME_INFO at whatever it
-        # held at that moment, and silently dropped every key written after
-        # -- which is exactly what happened to the five scf_* facts added
-        # above: present in the process, present on stdout, absent from the
-        # artifact /results actually renders.  The GPU keys survived only
-        # because the probe happens to run before the old construction site.
+        # rewritten once the first data block follows it.
         #
         # So the rule is: _RUNTIME_INFO is populated FIRST, the emitter is
         # built AFTER.  Any future runtime fact belongs above this line.
         if cfg.optimize and cfg.write_molwatch_log:
             out += _emit_molwatch_emitter(
-                v, cfg, stage_token,
+                v, cfg, names,
                 frozen_atoms=list(getattr(struct, "frozen_atoms", [])
                                   or []))
             out.append(_emit_molwatch_callback_wire("mf"))
@@ -747,9 +712,7 @@ def spec_for(struct: Structure,
             # <JOB>.constraints.txt at run time and pass it to geomeTRIC via
             # the ``constraints=`` kwarg.  Indices are 1-based per geomeTRIC.
             # See molbuilder/structure.py + pyscf/vibration_emitters.py for the
-            # cross-engine carrier; the spectra path uses cfg.frozen_indices
-            # while Build PySCF reads struct.frozen_atoms directly so /modify
-            # sidecar flows through without an explicit form field.
+            # cross-engine carrier.
             frozen = list(getattr(struct, "frozen_atoms", []) or [])
             emit_constraints = bool(frozen)
             _derived["emit_constraints"] = emit_constraints
@@ -769,18 +732,14 @@ def spec_for(struct: Structure,
     def _science_d(struct, cfg) -> Optional[str]:
         """The run itself: the optimiser call, or the single point.
 
-        Split from the block above it on 2026-08-19 so the six convergence
-        targets could be a SECTION of the layout rather than a section
-        rendered inside a block.  The comment that stood at the old call
-        site said the section *cannot* be a top-level member because it is
-        emitted inside the optimise branch; a branch is a reason to omit a
-        member, not a reason to hide one -- `spec_for` holds the config and
-        can answer which (`script-preparation.md` § 4.1).
+        A block of its own so the six convergence targets are a SECTION of
+        the layout rather than a section rendered inside a block
+        (`script-preparation.md` § 4.1).
         """
         out: List[str] = []
         if cfg.optimize:
             out += _emit_optimization(
-                cfg, _derived["emit_constraints"], stage_token)
+                cfg, _derived["emit_constraints"], names)
         else:
             if v:
                 out.append("# ============================================================")
@@ -796,14 +755,6 @@ def spec_for(struct: Structure,
             out.append("mol_eq = mol")
         out.append("")
 
-        # The post-relax frequencies/thermo block RETIRED here
-        # (spectra-migration plan D2/P3, 2026-08-21): the vibration
-        # calculation kind is the ONE Hessian door on the framework --
-        # it relaxes first, writes the same RRHO numbers into the
-        # .spectra.json thermo block, and adds the full spectroscopy
-        # product.  Two homes for "the Hessian on the framework" would
-        # be drift by construction.
-
         # ------------------------------------------------------------- save
         # _save_structure is defined early in the script (before mol is built),
         # and _initial.xyz was captured immediately after gto.M().  Here
@@ -814,7 +765,7 @@ def spec_for(struct: Structure,
         out.append("")
         out.append('print(f"\\n' + END_MARKER + ' {time.time() - t0:.1f} s")')
 
-        # Post-processing hook (gap #6).  Commented call templates for
+        # Post-processing hook.  Commented call templates for
         # the follow-ups users typically want after a relaxation.
         # Default-disabled so the script's behaviour is unchanged;
         # uncomment to enable.
@@ -862,9 +813,7 @@ def spec_for(struct: Structure,
 
     # ----- ONE DeckSpec, and the framework runs the step -----
     # The reader's section, the record blocks and the banner are the
-    # framework's (`script-preparation.md` § 4.2a): this writer assembled them
-    # itself until 2026-08-18, which made them two copies of one idea -- the
-    # half of roadmap P4 that phase 1 did not close.
+    # framework's (`script-preparation.md` § 4.2a).
     spec = _sc.DeckSpec(
         engine="pyscf",
         engine_frame=_frame,
@@ -881,12 +830,9 @@ def spec_for(struct: Structure,
         # the walk is what the blocks actually agreed on, not a copy taken
         # before they ran.
         derived=_derived,
-        # section_title: the framework's default.  Both engines write a
-        # heading as a `#` comment, so both restated the default verbatim
-        # until 2026-08-19 -- two more copies of one string, and a slot
-        # that LOOKED exercised.  It stays a slot because the comment
-        # character is genuinely an engine's syntax; it is simply not one
-        # these two differ on.
+        # section_title: the framework's default.  It stays a slot because
+        # the comment character is genuinely an engine's syntax; it is
+        # simply not one these two differ on.
         provenance_defaults=lambda c: {
             "use_gpu":       str(bool(getattr(c, "use_gpu", False))).lower(),
             "density_fit":   str(bool(getattr(c, "density_fit", True))).lower(),
@@ -895,30 +841,11 @@ def spec_for(struct: Structure,
             "max_memory_mb": ("no cap" if not c.max_memory_mb
                               else str(int(c.max_memory_mb))),
         },
-        created_by="molbuilder render_script",
+        created_by="molbuilder jobset prep",
         check_rules=_layout.check_rules,
     )
     return spec
 
-
-
-def render_script(struct: Structure,
-                  config: Optional[PySCFConfig] = None,
-                  *, stage_token: Optional[str] = None) -> str:
-    """Format a Structure as a runnable PySCF script (Python text).
-
-    **A thin call over :func:`spec_for`.**  The engine describes its deck; the
-    framework renders it.  This name survives because the test suite points
-    at it -- what moved is what it does, not what it is called
-    (`archive/2026-08-18-preparation-backend-plan.md` § 3.1a).
-
-    Prefer ``spec_for`` + ``script_emit.prepare_deck`` where a deck is being
-    WRITTEN: that runs validate -> render -> write -> check in one place (§ 4.3).
-    """
-    spec = spec_for(struct, config, stage_token=stage_token)
-    cfg = config or PySCFConfig()
-    return _sc.render_deck(spec, struct, cfg,
-                                  verbose=cfg.verbose_comments)
 
 def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
                                calculation: Optional[str] = None, *,
@@ -991,7 +918,7 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
             expr = None
         third = f"_mb_read(lambda: {expr})" if expr else "None"
         out.append(f"_MB_PARAMS[{name!r}] = ({param.default!r}, "
-                   f"{param.value!r}, {third})")
+                   f"{_layout.as_written(name, param.value)!r}, {third})")
     out.append("")
     out.append("import json as _mb_json")
     from ..deck_record import BLOCK_PARAMETERS, begin_marker, end_marker
@@ -1032,8 +959,7 @@ def _emit_runtime_from_parameters() -> List[str]:
     solver.  PySCF leaves ``conv_tol_grad`` unset until ``kernel()``, so the
     record reads it back as nothing and falls back to the request -- 0, the
     configuration's "let PySCF derive it" -- while the deck had read back the
-    value PySCF will use, sqrt(conv_tol).  Overwriting put that 0 in every
-    PySCF log's header until 2026-09-27."""
+    value PySCF will use, sqrt(conv_tol)."""
     return ["# the effective value where there is one, the request otherwise;",
             "# what the deck read off the solver above stands",
             "_RUNTIME_INFO.update({_k: (_r if _e is None else _e)",
@@ -1047,15 +973,9 @@ def _emit_stability_block(cfg: PySCFConfig, v: bool) -> List[str]:
 
     Why before.  An open-shell SCF can converge to a broken-symmetry
     SADDLE point: the energy stops changing, ``mf.converged`` is True,
-    and the wavefunction is still not the variational minimum.  Until
-    2026-08-13 this script called ``mf.stability()`` AFTER the whole
-    optimization and only printed what it found -- so a run that landed
-    on a saddle at the first geometry optimized every subsequent step
-    and computed its frequencies on the wrong electronic state, then
-    said so at the end.  The emitter's own comment named the remedy and
-    declined to apply it.
+    and the wavefunction is still not the variational minimum.
 
-    What it does now: converge, check, and if the check hands back
+    What it does: converge, check, and if the check hands back
     better orbitals, rebuild the density matrix from them and converge
     again -- up to three times.  Persistent instability WARNS and
     continues (user decision 2026-08-13): a hint does not get to end the
@@ -1108,9 +1028,8 @@ def _emit_stability_block(cfg: PySCFConfig, v: bool) -> List[str]:
         "import numpy as _mb_np",
         # ASKED, NEVER CALLED (`engines/pyscf.md` § 7.3): gpu4pyscf's GPU
         # classes DECLARE they have no stability analysis -- `stability =
-        # NotImplemented` -- and calling that raises a TypeError nothing
-        # here expected, which killed every open-shell GPU run before its
-        # first step (the M11 review, PO-C2).  The engine's own declaration
+        # NotImplemented` -- and calling that raises a TypeError.  The
+        # engine's own declaration
         # is read instead, and a check that cannot run says so below.
         "_mb_stability = getattr(mf, 'stability', None)",
         "",
@@ -1190,8 +1109,7 @@ def _emit_stability_block(cfg: PySCFConfig, v: bool) -> List[str]:
 
 def _emit_optimization(cfg: PySCFConfig,
                        emit_constraints: bool,
-                       stage_token: Optional[str] = None
-                       ) -> List[str]:
+                       names) -> List[str]:
     """The relaxation this deck runs — **one rung, one call**.
 
     `stages.md` § 1.1a: a PySCF ladder is N decks and N jobs exactly as SIESTA's
@@ -1212,10 +1130,7 @@ def _emit_optimization(cfg: PySCFConfig,
     # THE SIX TARGETS ARE NOT WRITTEN HERE.  ``GEOMETRY_SECTION`` is a member of
     # the layout, above this block, so the framework walks it and knows what it
     # said to write -- which is what lets the check gate ask whether each target
-    # survived into the file.  This function rendered the section itself until
-    # 2026-08-19, on the reasoning that *"the section cannot be a top-level
-    # layout member because it is emitted inside the optimise branch"*.  A
-    # branch is a reason to OMIT a member, not to hide one: `spec_for` holds the
+    # survived into the file.  A branch is a reason to OMIT a member, not to hide one: `spec_for` holds the
     # config and answers which (`script-preparation.md` § 4.1).
     out: List[str] = [""]
     if v:
@@ -1260,16 +1175,8 @@ def _emit_optimization(cfg: PySCFConfig,
         # (`job-contracts.md` § 2.2a).  Compose the name the file will HAVE,
         # then take off the tail geomeTRIC is going to add: what is left is the
         # prefix, and it cannot disagree with the role by construction.
-        #
-        # It used to be built the other way -- the token concatenated in the
-        # middle, giving `<JOB>_geom_<stage>_optim.xyz`, a name the declared
-        # role `_geom_optim.xyz` could not match.  So the trajectory never
-        # carried between rungs and four readers were told to open a file
-        # nothing wrote.  `_rf` is given a placeholder label because only the
-        # part AFTER the label is emitted; the script supplies its own `JOB`.
-        _tail = _rf_tail(ROLE_GEOM_TRAJ, stage_token)[:-len(GEOMETRIC_APPENDS)]
-        _traj = f"JOB + {_tail!r}"
-        out.append(f"        prefix                = _mb_outfile({_traj}),")
+        out.append(f"        prefix                = "
+                   f"_mb_outfile({geometric_prefix_expr(names)}),")
     if cfg.write_molwatch_log:
         out.append("        callback              = _molwatch.opt_step_hook,")
     out.append("    )")
@@ -1291,8 +1198,7 @@ def _emit_optimization(cfg: PySCFConfig,
     return out
 
 
-def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
-                           stage_token: Optional[str] = None,
+def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
                            frozen_atoms=()) -> List[str]:
     """The lines that open this rung's ``.molwatch.log`` and close it: the
     writer, molbuilder's own :class:`~molbuilder.trajectory_log.emitter.
@@ -1300,11 +1206,12 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     ``mb_pyscf.pyz`` (:func:`emit_bundle_imports`) -- and the hooks that
     write the log's end lines at exit.
 
-    ``stage_token`` names the rung, and it reaches two things: the log's own
-    filename and the one entry of its convergence-target map.  § 1.1a
-    consequence 1 -- a ladder is N decks and N jobs, so two rungs are two
-    processes in one folder and an unsuffixed log would have the second
-    overwrite the first.
+    ``names`` are the rung's (`runfiles.RunNames`), and they reach two
+    things: the log's own filename (:func:`run_file_expr` -- a run's own
+    where the stage's runs share a folder) and, by their stage token, the one
+    entry of its convergence-target map.  § 1.1a consequence 1 -- a ladder
+    is N decks and N jobs, so two rungs are two processes in one folder and
+    an unsuffixed log would have the second overwrite the first.
 
     The emitter is instantiated **early** -- before the relaxation -- so the
     log file (header + initial-preview block) exists from the moment the
@@ -1319,8 +1226,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
         accepted opt step)
 
     Block layout, parser tolerance, and other contract details are
-    documented on the class itself.  Until 2026-10-05 its source was pasted
-    into the script here by :func:`inspect.getsource`.
+    documented on the class itself.
     """
     out: List[str] = []
     out.append("")
@@ -1347,15 +1253,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     # finishes.  The SCF callback is wired on the production mf below.
     # This rung's log takes the basename of the deck that produced it, and
     # that is ONE rule rather than two (`stages.md` § 7) -- so the name comes
-    # from ``molwatch_log_basename`` rather than being spelled again here.
-    # The script gets the resolved suffix as a literal: the name is decided
-    # here, at render, and the run only uses it.
-    from ..trajectory_log.format import molwatch_log_basename
-    _placeholder      = "_X_"
-    _resolved_for_X   = molwatch_log_basename(_placeholder, stage_token)
-    # Strip the placeholder; what's left is the suffix the generator
-    # appends to ``JOB`` at runtime.
-    _suffix = _resolved_for_X[len(_placeholder):]
+    # from the stage's names rather than being spelled again here: decided
+    # here, at render, as a template whose run's number the run fills.
     # Convergence targets for the molwatch header.  ONE entry, because one
     # deck is one rung (§ 1.1a): the values are this config's own, already
     # resolved by `prep` from the description ⊕ this stage's overrides.  The
@@ -1385,7 +1284,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     _rms_force_eV = float(cfg.geom_grms) * _ha_bohr_to_ev_ang
     _energy_tol_eV = float(cfg.geom_etol) * _HARTREE_EV
     out.append("_CONVERGENCE_TARGETS = {")
-    out.append(f"    {(stage_token or 'run')!r}: {{")
+    out.append(f"    {names.stage!r}: {{")
     out.append(f"        'max_force_tol_eV_per_A': {_max_force_eV!r},")
     out.append(f"        'rms_force_tol_eV_per_A': {_rms_force_eV!r},")
     out.append(f"        'max_displ_ang':          {float(cfg.geom_dmax)!r},")
@@ -1398,7 +1297,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     # THE ATOMS THIS RUN HOLDS go into its log's header (`model/parse.md`
     # § 5.3): the run states them, as a SIESTA run's `.out` does.
     out.append(f'_molwatch = _mb_MolwatchEmitter('
-               f'_mb_outfile(JOB + {_suffix!r}), JOB, mol, '
+               f'_mb_outfile({run_file_expr(names, ".molwatch.log")}), '
+               f'JOB, mol, '
                f'runtime_info=_RUNTIME_INFO, '
                f'convergence_targets=_CONVERGENCE_TARGETS, '
                f'frozen_atoms={sorted(int(i) for i in frozen_atoms)!r})')
@@ -1438,9 +1338,8 @@ def _sidecar_for(struct: Structure) -> dict:
     # relaxed geometry, another run's, and the input snapshot in the engine's
     # frame, whose coordinates the input record's fingerprint does not
     # describe.  This run's record is read from its own output by the one
-    # reader when it is exported (`model/parse.md` § 5b); a copy here handed
-    # a SIESTA run's record to a PySCF-relaxed geometry (the M11 review,
-    # PS-C10; `engines/pyscf.md` § 2).
+    # reader when it is exported (`model/parse.md` § 5b, `engines/pyscf.md`
+    # § 2).
     info = {k: v for k, v in (struct.info or {}).items()
             if k not in ("relaxation", "calculation")}
     return StructureCodec().pair(
@@ -1450,9 +1349,7 @@ def _sidecar_for(struct: Structure) -> dict:
 def emit_outfile_helper() -> List[str]:
     """``_mb_outfile(name)`` -- where a PySCF deck writes each output: BESIDE
     THE SCRIPT, whatever the process's working directory.  The one
-    definition, emitted into every PySCF deck; the vibration deck carried its
-    own, resolving against the cwd, until 2026-09-28 (plan W36 ⑩), so the same
-    deck run by hand from another folder wrote there.
+    definition, emitted into every PySCF deck.
 
     Why beside the script: PySCF and geomeTRIC may change directory during an
     optimisation (geomeTRIC builds scratch in a temp dir; PySCF's
@@ -1481,8 +1378,10 @@ def emit_outfile_helper() -> List[str]:
 def emit_script_head(threads: Optional[int]) -> List[str]:
     """Every PySCF deck's first lines after its docstring: the deck's anchor
     (:func:`emit_outfile_helper`), ``mb_pyscf.pyz`` on its import path
-    (:func:`emit_bundle_path`), and the run's threads -- ``threads``, the
-    run's own count, or ``None`` to take the allocation's -- sized, with
+    (:func:`emit_bundle_path`), the run's number its run script gave it
+    (``_MB_RUN``, `runtime_info.run_given`), and the run's threads --
+    ``threads``, the run's own count, or ``None`` to take the allocation's
+    -- sized, with
     BLAS capped, before numpy is imported (`runtime_info.cap_threads`), from
     a member that imports only the standard library.  It imports the rest of
     the run's set-up from that member here too: the facts the run records
@@ -1490,11 +1389,17 @@ def emit_script_head(threads: Optional[int]) -> List[str]:
     Everything else the deck imports from the bundle comes after numpy's own
     import (:func:`emit_bundle_imports`): a member importing numpy ahead of
     the caps would start its BLAS on every core (`engines/pyscf.md` § 3)."""
-    from ..runtime_info import cap_threads, probe_gpu, runtime_facts
+    from ..runtime_info import (cap_threads, probe_gpu, run_given,
+                                runtime_facts)
     stated = None if threads is None else int(threads)
     return (emit_outfile_helper() + emit_bundle_path()
-            + emit_bundle_imports(cap_threads, runtime_facts, probe_gpu)
-            + ["# This run's threads, and every BLAS capped at one -- before "
+            + emit_bundle_imports(cap_threads, runtime_facts, probe_gpu,
+                                  run_given)
+            + ["# This run's number, as its run script gave it (--run N): "
+               "the names below",
+               "# fill it in where they carry it (engines/pyscf.md § 2).",
+               "_MB_RUN = _mb_run_given()",
+               "# This run's threads, and every BLAS capped at one -- before "
                "numpy loads",
                f"_MB_REQUESTED_THREADS, _MB_PHYS_CORES = "
                f"_mb_cap_threads({stated!r})",
@@ -1593,39 +1498,43 @@ def emit_bundle_imports(*objects) -> List[str]:
     return out + [""]
 
 
-def emit_outputs_block(label: str, stage_token: Optional[str], *,
+def emit_outputs_block(names, *,
                        log: bool, chk: bool, initial: bool, optimized: bool,
                        trajectory: bool, progress_log: bool, held: bool,
                        spectra: bool = False) -> List[str]:
     """The ``Outputs:`` block of a PySCF deck's header: exactly the files
     this run writes for its settings (`engines/pyscf.md` § 2), named as the
-    deck names them -- one list for both decks, each saying which of its
-    settings is on."""
-    from ..trajectory_log.format import molwatch_log_basename
+    deck names them -- by the stage's names (`runfiles.RunNames`), the run's
+    number shown as ``<N>`` where a name carries it -- one list for both
+    decks, each saying which of its settings is on.  The engine's own
+    restart files (``.chk``, ``_optimized.xyz``) are the grammar's carried
+    names: they cross rungs, so they carry no stage and no run."""
+    label = names.label
     out = ["Outputs:"]
     if spectra:
-        out.append(f"    {_rf(label, ROLE_SPECTRA)}   -- the result, replaced "
-                   f"atomically at each phase")
+        out.append(f"    {_shown(names, ROLE_SPECTRA)}   -- the result, "
+                   f"replaced atomically at each phase")
     if log:
-        out.append(f"    {_rf(label, ROLE_LOG, stage_token)}   -- pyscf verbose log")
+        out.append(f"    {_shown(names, ROLE_LOG)}   -- pyscf verbose log")
     if chk:
         out.append(f"    {_rf(label, ROLE_CHK)}   -- checkpoint (DM, mol)")
     if initial:
-        out.append(f"    {_rf(label, ROLE_INITIAL)} + .molstruct.json   -- the "
-                   f"input coordinates, as a pair")
+        out.append(f"    {_shown(names, ROLE_INITIAL)} + .molstruct.json   -- "
+                   f"the input coordinates, as a pair")
     if optimized:
         out.append(f"    {_rf(label, ROLE_OPTIMIZED)} + .molstruct.json   -- the "
                    f"relaxed coordinates, as a pair")
     if trajectory:
-        out.append(f"    {_rf(label, ROLE_GEOM_TRAJ, stage_token)}   -- this "
-                   f"rung's trajectory (multi-frame XYZ)")
-        out.append(f"    {_rf(label, '_geom.log', stage_token)}   -- "
-                   f"geomeTRIC's log for this rung")
+        _geom_log = _shown(names, ROLE_GEOM_LOG)
+        out.append(f"    {_geom_log[:-len(GEOMETRIC_LOG_APPENDS)]}"
+                   f"{GEOMETRIC_APPENDS}   -- this rung's trajectory "
+                   f"(multi-frame XYZ)")
+        out.append(f"    {_geom_log}   -- geomeTRIC's log for this rung")
     if held:
-        out.append(f"    {_rf(label, ROLE_CONSTRAINTS)}   -- the held atoms, in "
-                   f"geomeTRIC's format")
+        out.append(f"    {_shown(names, ROLE_CONSTRAINTS)}   -- the held atoms, "
+                   f"in geomeTRIC's format")
     if progress_log:
-        out.append(f"    {molwatch_log_basename(label, stage_token)}   -- the "
+        out.append(f"    {_shown(names, '.molwatch.log')}   -- the "
                    f"progress log: each step's coordinates, energy (eV), "
                    f"forces (eV/Ang) and SCF cycles, read by the Results tab")
     return out
@@ -1670,19 +1579,14 @@ def emit_save_helper(v: bool, sidecar: dict) -> List[str]:
 
     **A bare ``.xyz`` is never written** (user ruling, 2026-09-22: *"All
     structured data goes through the structure API, which never writes just
-    XYZ.  We should never write bare XYZ files.  Period."*).  SIESTA never
-    wrote one; this emitter did, from four call sites, and every geometry a
-    PySCF run produced therefore landed with no labels, no cell and no
-    identity beside it.
+    XYZ.  We should never write bare XYZ files.  Period."*).
 
     THE SIDECAR IS NOT BUILT AT RUN TIME.  ``sidecar`` is what
     ``StructureCodec().pair(struct).sidecar`` produced at compose time
     (:func:`_sidecar_for`), so the labels, cell and periodicity a run
     writes out are the ones it was given, not a second derivation of them;
     ``write_moved`` re-pins only its ``structure_hash``, because the
-    coordinates have moved.  Until 2026-10-05 the writer itself was spliced
-    here, fifteen lines with their own number format and their own JSON
-    settings (`plans/plan.md` V1.10).
+    coordinates have moved.
     """
     out: List[str] = []
     out.append("# ============================================================")
@@ -1745,29 +1649,3 @@ def _emit_troubleshooting_block(cfg: PySCFConfig) -> List[str]:
     out.append("#   * cfg.basis = 'aug-cc-pVDZ' or 'def2-SVPD'")
     out.append("#   * cfg.scf_conv_tol = 1e-10")
     return out
-
-
-# --------------------------------------------------------------------- #
-#  File-level convenience wrapper                                       #
-# --------------------------------------------------------------------- #
-
-
-
-# `convert` DELETED 2026-09-17 -- the single-shot "read a structure file, write
-# a deck" worker, and the PySCF half of a symmetric pair.
-#
-# It existed for `molbuilder pyscf`, a command that wrote a finished deck from flags.
-# `molbuilder pyscf` was deleted 2026-09-17, and this has had **no production caller since**
-# -- that command was its only caller.
-#
-# A deck is written by `jobset prep` from a description: `spec_for` ->
-# `prepare_deck`, which is the same three steps this did, with the description
-# in front of them instead of a command line.  `render_script` survives -- it is a
-# thin call over `spec_for` and `engines/pyscf.md` names it as this emitter's public
-# surface.
-
-
-# `job_name` -- the ``JOB`` a generated deck declares, read back -- stood here
-# until 2026-10-04, kept for a run-door reader of the engine's label that no
-# reader turned out to need: a run's engine files are found from the
-# output's own name or line, never from its deck (plan W56 4d).

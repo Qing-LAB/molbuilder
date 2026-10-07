@@ -11,9 +11,7 @@ with), the PySCF parser's sibling-log enrichment, and the cheap ending scan
 modules): it goes beside every job (`runwrap.MONITOR_COMPANIONS`), so the
 monitor reads a PySCF run's progress with the lines the Results tab reads it
 with, and what it imports of ours -- the physical constants, the PySCF end
-lines -- travels with it and is imported two ways.  It is `molwatch.py`'s grammar
-half, split out on 2026-09-26 for that reason -- the SIESTA family's table
-(`siesta_grammar`) was split from its parser the same way.
+lines -- travels with it and is imported two ways.
 """
 from __future__ import annotations
 
@@ -33,11 +31,7 @@ ENGINE = re.compile(r"^#\s*engine:\s*(\S+)", re.IGNORECASE)
 RUNTIME = re.compile(r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
 #: One segment of a convergence key -- DIGIT-FIRST INCLUDED, because the
 #: nested form's first segment is a stage token and those lead with the
-#: zero-padded ordinal (``01_coarse``, `job-contracts.md` § 6.3).  The
-#: identifier-shaped ``[a-zA-Z_]`` head that stood in the parser was written
-#: against the ``stage1.<leaf>`` example in the emitter's comment, so every
-#: real staged header parsed to an EMPTY target dict and the Results card said
-#: "not found in source" over eight present lines (2026-08-19).  The ONE
+#: zero-padded ordinal (``01_coarse``, `job-contracts.md` § 6.3).  The ONE
 #: spelling of the key grammar: the parser's section rule uses it too.
 CONV_KEY = r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)?"
 #: ``# convergence.<leaf>: <v>`` (single-stage) or
@@ -142,10 +136,8 @@ def parse_convergence_line(line: str, targets: Dict[str, Any]) -> bool:
 
     THE one reader of the convergence-header grammar.  The molwatch parser's
     reading pass (`molwatch_reader`) delegates here, and so does the PySCF
-    trajectory parser's sibling-log enrichment -- the private copy the
-    PySCF parser once kept "to avoid coupling" was letter-first and flat-only,
-    so a staged header read as EMPTY on one path while the other read it fine
-    (2026-08-19).  Coupling to the format's owner is the point.
+    trajectory parser's sibling-log enrichment.  Coupling to the format's
+    owner is the point.
 
     Both header shapes land as the callers expect (#534):
 
@@ -213,8 +205,7 @@ def parse_runtime_line(line: str, runtime_info: Dict[str, Any]) -> bool:
 
     Coercion, in order: ``None`` -> ``None``; ``True`` / ``False`` ->
     ``bool``; anything ``int()`` accepts -> ``int``; otherwise the raw
-    string.  Floats stay strings, which is the behaviour both former copies
-    had.
+    string.  Floats stay strings.
     """
     m = RUNTIME.match(line)
     if not m:
@@ -276,9 +267,7 @@ def scan_conclusion(path) -> str:
     The cheap door onto :func:`parse_conclusion_line`, for a caller that
     wants only how the run ended (`model/parse.md` § 2b) -- what
     ``_run_ending.ending_of`` asks of a progress log.  A status probe over a
-    whole directory must not full-parse to reach one string: doing that is
-    what made ``run_status`` create and grow a ``.parse.log`` beside every
-    molwatch log it looked at, on every Watch poll.
+    whole directory must not full-parse to reach one string.
 
     **Every line, in file order**, because the grammar's rule is *error
     outranks concluded and the LAST error wins* -- a tail-only read would
@@ -301,8 +290,8 @@ def scf_history_row(line: str) -> Optional[Dict[str, Any]]:
     """One ``scf_history`` row -- ``cycle energy delta_E gnorm ddm
     [wall_time]`` -- as a dict, or ``None`` when the line is not one.
 
-    The optional sixth column is the emitter's epoch when the cycle finished;
-    older logs (before 2026-06-20) have five.  It keeps its on-disk name and
+    The optional sixth column is the emitter's epoch when the cycle finished.
+    It keeps its on-disk name and
     is read as ``wall_clock_s``, because it is an epoch where SIESTA's
     same-position value is an elapsed time (`model/parse.md` § 2a).
     """

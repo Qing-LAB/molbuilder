@@ -13,15 +13,11 @@ Routes (registered with no url_prefix; each carries its own full path):
     POST /api/task-setup/{handover,prep,save,bench-grid,prep-plan}
     GET  /api/task-setup/{folder,machines,sweepable,columns,presets}
 
-(The render doors POST /api/build/fdf and /api/build/pyscf were DELETED
-2026-08-17 -- a browser renders no deck; their tombstone is below.  The
-install-wrapper / install-pseudos doors retired 2026-08-21 the same way.)
-
 These endpoints share a single Flask app instance with the watch
 blueprint at ``molbuilder/web/blueprints/watch.py``.  Two top-level
 routes stay on the app itself rather than on this blueprint:
 
-    GET  /                     the page (tabbed UI shell)
+    GET  /                     redirect to the first tab
     GET  /api/health           liveness
 
 JSON shape:
@@ -47,11 +43,10 @@ JSON shape:
                          returns: same shape as /api/build/molecule
                                   plus "source_format": "xyz"|"pdb"
 
-  The emitting-door survivor (preflight) reads the structure
+  The preflight reads the structure
   through ``_shared.struct_from_body`` -- the atoms as NUMBERS with their
   facts beside them, which is what the browser holds and what every other
-  structure door already takes.  A legacy ``{"xyz": "<text>"}`` body still
-  works; the helper accepts either and the envelope wins when both appear.
+  structure door already takes.
 """
 
 from __future__ import annotations
@@ -104,12 +99,9 @@ _BUILDERS = {
 def _sniff_structure_format(text: str) -> str:
     """Return ``"xyz"`` or ``"pdb"`` for raw structure text.
 
-    The earlier sniff scanned only ``text[:120]`` for ``"ATOM "``,
-    which missed real PDB files: their HEADER / TITLE / REMARK lines
-    push the first ATOM record well past byte 120, so the file was
-    misclassified as XYZ and ``Structure.from_xyz`` raised on the
-    header lines.  Fix: rely on the format's own first-line rule
-    instead of a byte-window scan.
+    Relies on the format's own first-line rule instead of a byte-window
+    scan: a real PDB file's HEADER / TITLE / REMARK lines can push the
+    first ATOM record far into the file.
 
     Rule: XYZ's first non-blank line is an atom count (positive int).
     Anything else (PDB headers, plain text, empty) is treated as PDB.
@@ -127,18 +119,6 @@ def _sniff_structure_format(text: str) -> str:
     return "pdb"
 
 
-# ---------------------------------------------------------------------- #
-#  /api/run/install-wrapper and /api/siesta/install-pseudos retired      #
-#  2026-08-21 (C-doors): zero browser callers -- the described route     #
-#  owns both jobs now.  `prep` writes the wrapper beside every deck it   #
-#  renders (runwrap, through jobset/prep.py) and resolves + copies the   #
-#  pseudopotentials itself (pseudos.resolve_psml_lib and the walk-up     #
-#  rule), so a web door that did either was a second writer of a fact    #
-#  the machine-side verb already owns -- the exact position the          #
-#  /api/build/{fdf,pyscf} render doors were in before their deletion.    #
-# ---------------------------------------------------------------------- #
-
-
 @bp.route("/api/structure/analyze", methods=["POST"])
 def api_structure_analyze():
     """The electronic state of a structure, for exactly what a form says.
@@ -153,10 +133,7 @@ def api_structure_analyze():
     The structure is THE ENVELOPE the page would hand over -- the one its
     viewer holds, the same the preflight and the hand-over send -- so the
     answer is about the structure the deck will be written for, its cell,
-    its axis kinds and the record of the run it came from included.  (A
-    ``structure_path`` door stood beside it until the M6 review: the server
-    re-read the FILE, so after a restore, or with the file changed on disk,
-    the card answered for a structure the deck would not carry.)
+    its axis kinds and the record of the run it came from included.
 
     Returns the structure's chemistry FACTS (``analyze_structure``: the atom
     count, the metals and their usual spins) and, per engine, the
@@ -167,11 +144,6 @@ def api_structure_analyze():
     this route and the deck writers and the checks read the same class, and
     cannot disagree.  With no ``forms``, each engine that runs the kind is
     answered with every item blank.
-
-    Until 2026-09-28 it returned per-engine SUGGESTIONS (two adapters over
-    an analysis judged at charge 0 on the neutral, non-repeating structure)
-    that the Auto-detect button copied into the forms, overwriting whatever
-    they held.
     """
     body = request.get_json(silent=True) or {}
     if not isinstance(body.get("structure"), dict):
@@ -264,8 +236,7 @@ def api_build_molecule():
     # Bound here, before any builder runs, because the missing-backend
     # answer below names it -- and a builder that is not DNA/RNA can
     # reach that answer too (a peptide whose hydrogens nothing here can
-    # add), which crashed the handler on an unbound name until
-    # 2026-09-28.
+    # add).
     requested: str | None = None
     build_warnings: list[str] = []
     try:
@@ -379,13 +350,11 @@ def api_build_molecule():
         struct.regions = dict(struct.regions or {},
                               **{f"{text}#": list(range(struct.n_atoms))})
 
-    # Workspace-state Phase 2 migration (2026-06-07): route through
-    # the canonical ``ok_structure_response`` helper.  Endpoint-
-    # specific keys (pdb, summary, backend_used, add_hydrogens_mode)
-    # land BOTH at the top level (back-compat with every existing
-    # JS consumer that reads them off the response root) AND in the
-    # canonical ``extra`` sub-dict (Phase 4+ workspace-dispatcher
-    # consumers read them from there).  Issues + canonical atoms
+    # Route through the canonical ``ok_structure_response`` helper.
+    # Endpoint-specific keys (pdb, summary, backend_used,
+    # add_hydrogens_mode) land BOTH at the top level (for every JS
+    # consumer that reads them off the response root) AND in the
+    # canonical ``extra`` sub-dict.  Issues + canonical atoms
     # come from the helper — one validate_geometry pass.
     return ok_structure_response(struct, extra={
         # build/molecule's legacy contract: title defaults to the
@@ -422,12 +391,6 @@ def api_periodicity():
     question about them (molview.md § 11.7).  ``payload`` is required (may be
     ``null``) for ``cell`` / ``box_corner``, where ``null`` means "clear it" --
     omitting the key is an error rather than a silent clear.
-
-    This door used to take a ``{"data": {xyz, sidecar}}`` blob, which the one
-    caller that exists -- MolView's ``commitPeriodicityOp``, the ONE door the
-    cell changes through (molview.md § 6.2) -- could not produce, because the
-    browser writes no coordinate document.  So it answered 400 to every request
-    ever made of it and the cell door had never once succeeded.
 
     Response: ``{ok, periodicity, notices}`` -- ``periodicity`` is the cell block
     exactly as ``/api/build/load`` sends it (``cell`` / ``engine_offset`` /
@@ -469,14 +432,9 @@ def api_periodicity():
     try:
         struct = _struct_from_body(body)
         # NOT GATED ON THE INCOMING STATE.  This is the page a bad box is
-        # repaired on -- the load door admits one for exactly that reason
-        # (`:867`) -- so refusing the edit because the box is still bad
-        # leaves it unfixable: setting a good cell, clearing it, and
-        # editing the block were all refused with the very sentence that
-        # asks the user to do them.  `validate_periodicity` corrects
-        # nothing ("the struct comes out as it went in"), so its only
-        # effect here was the raise, and its notices were already dropped
-        # on purpose.  The RESULT is gated below, which is what
+        # repaired on -- the load door admits one for exactly that reason --
+        # so refusing the edit because the box is still bad would leave it
+        # unfixable.  The RESULT is gated below, which is what
         # molview.md § 6.8 actually asks for.
         new_struct, receipts = apply_edit(struct, op, body.get("payload"))
         # The CONDITIONS are re-derived on the RESULT, so "the box does not
@@ -516,7 +474,7 @@ def api_structure_save():
     unloadable).  Body: ``{"path": "<project-relative .xyz>", "structure": {...},
     "overwrite": bool}``.  Returns ``{ok:true, path, notices}`` | ``{ok:false, needsOverwrite:true}``
     (409, drives the tab's overwrite dialog) | ``{ok:false, error}`` -- and the
-    periodicity gate runs here exactly as on export (2026-08-20): the same
+    periodicity gate runs here exactly as on export: the same
     refusal is the same 400, the same verdicts ride ``notices``."""
     from molbuilder.web.blueprints.files import _resolve_within_roots, _PickerError
     from molbuilder.workingcopy_structure import StructureCodec
@@ -525,20 +483,16 @@ def api_structure_save():
     overwrite = bool(body.get("overwrite"))
     if not isinstance(path, str) or not path:
         return jsonify({"ok": False, "error": "missing or invalid 'path'"}), 400
-    # THE STRUCTURE, not a document the browser wrote.  A `{xyz, sidecar}` blob
-    # was the old shape, and taking it is what left the browser writing the
-    # `.xyz` half -- the one-path rule (molview.md § 11.7) cannot be true while a
-    # door accepts bytes.  The structure arrives as the envelope every other door
+    # THE STRUCTURE, not a document the browser wrote: the one-path rule
+    # (molview.md § 11.7) cannot be true while a door accepts bytes.  The structure arrives as the envelope every other door
     # takes (web-api.md § 1), and the SERVER writes both files from it.
     try:
         struct = _struct_from_body(body)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    # THE SAME GATE THE EXPORT DOOR RUNS (2026-08-20): a save and a download
-    # cannot produce different bytes -- and they must not disagree about a
-    # refusal either.  Until this line the same structure export refuses (a
-    # left-handed cell, an uncontainable origin) was written here without a
-    # word.  Runs BEFORE the overwrite gate, so nobody is asked to confirm
+    # THE SAME GATE THE EXPORT DOOR RUNS: a save and a download cannot
+    # produce different bytes -- and they must not disagree about a refusal
+    # either.  Runs BEFORE the overwrite gate, so nobody is asked to confirm
     # an overwrite for a save that will be refused; the verdicts ride the
     # response as `notices`, exactly as they do on export.
     from ._shared import checked_periodicity
@@ -577,9 +531,7 @@ def api_structure_export():
 
     That division exists because the browser cannot produce the pair itself. The
     sidecar's envelope -- ``schema_version``, and the ``structure_hash`` pinning
-    it to its geometry -- is the codec's, and a browser-authored one shipped
-    without the version key once: the load door then refused the pair on the next
-    open and every label in it was silently dropped.
+    it to its geometry -- is the codec's.
 
     Body: the ENVELOPE (web-api.md § 1) plus two optional keys --
     ``{"structure": {...}, "name": "<stem>", "frames": [...]}``.
@@ -589,10 +541,7 @@ def api_structure_export():
     structure, which frames, chosen at which moment.  The SUFFIX is the server's,
     because it follows from the format and the format follows from the frame
     count, which ``pair()`` already decided -- a caller that appends its own is
-    answering a question that has an answer.  The caller that did appended
-    ``.xyz`` to a multi-frame export, so a download arrived named ``.xyz`` with
-    extended-XYZ ``Lattice=`` lines inside it, at the extension every trajectory
-    reader dispatches on.  A missing / empty / path-shaped ``name`` falls back to
+    answering a question that has an answer.  A missing / empty / path-shaped ``name`` falls back to
     ``structure``; only the last path component is ever used, and nothing here
     touches the filesystem.
 
@@ -619,7 +568,7 @@ def api_structure_export():
     # BESIDE the envelope rather than inside it -- the same shape
     # ``/api/build/load`` takes on the way in: one structure carrying the
     # identity and the metadata, plus the coordinates of the frames wanted.
-    # Absent, this is the single-frame export it always was.
+    # Absent, this is the single-frame export.
     frames = body.get("frames")
     if frames is not None and not isinstance(frames, list):
         return jsonify({"ok": False,
@@ -734,11 +683,7 @@ def api_build_load():
     text: str = ""
     fmt: str = "auto"
     filename: str = ""
-    # THE TEXT CARRIES ATOMS, AND ONLY ATOMS (plan § 5q D15).  Three side
-    # blocks stood here -- `atom_metadata`, `periodicity`, `info` -- to hand
-    # back what a browser-written XYZ could not hold, for the Results tab.
-    # That tab installs the server's own envelope now, so nothing sent them;
-    # the one caller left is the component demo's sample XYZ.
+    # THE TEXT CARRIES ATOMS, AND ONLY ATOMS (plan § 5q D15).
     body: Dict[str, Any] = request.get_json(silent=True) or {}
     text = body.get("text") or ""
     filename = body.get("filename") or ""
@@ -754,8 +699,7 @@ def api_build_load():
             # Sniff by content -- the ONE shared rule (XYZ's first non-blank line is
             # a POSITIVE atom count; anything else is PDB).  Delegate to the same
             # helper the /api/build/molecule path uses so the two never disagree on an
-            # edge case (e.g. a leading "0" line: int("0")>0 is False -> pdb, whereas
-            # the old inline `"0".isdigit()` said xyz).
+            # edge case (e.g. a leading "0" line: int("0")>0 is False -> pdb).
             fmt = _sniff_structure_format(text)
 
     try:
@@ -771,11 +715,9 @@ def api_build_load():
         return jsonify({"ok": False,
                         "error": f"could not parse {fmt}: {exc}"}), 400
 
-    # Workspace-state Phase 2 migration (2026-06-07): route through
-    # the canonical ``ok_structure_response`` helper.  Per-atom
-    # payload, legacy aliases, validate-pass issues, and the
-    # forward-compat ``extra`` sub-dict all come from the helper
-    # in a single call.  Endpoint extras (pdb, summary, the
+    # Route through the canonical ``ok_structure_response`` helper.
+    # Per-atom payload, legacy aliases, validate-pass issues, and the
+    # ``extra`` sub-dict all come from the helper in a single call.  Endpoint extras (pdb, summary, the
     # actual parsed format, title fallback) override the
     # canonical defaults at both the top level and the canonical
     # ``extra`` sub-dict — same threading rule for every key.
@@ -792,27 +734,6 @@ def api_build_load():
         # the top level and the ``extra`` sub-dict.
         "source_format": fmt,
     })
-
-
-# ---------------------------------------------------------------------- #
-#  DELETED 2026-08-17 -- ``/api/build/fdf`` and ``/api/build/pyscf``.      #
-#                                                                         #
-#  The two deck-emitting doors.  Script generation left the               #
-#  structure-optimization tab on 2026-08-15 (user: the tab collects        #
-#  parameters, the staging surface owns the rest), and nothing replaced    #
-#  the callers: `/api/build/fdf` had ZERO references in any JS or HTML     #
-#  outside a comment saying it was orphaned, and `/api/build/pyscf` had    #
-#  none at all.  Both were reachable, both rendered a deck, and only       #
-#  tests called them.                                                     #
-#                                                                         #
-#  A reachable door with no caller is not free.  It is a second way to     #
-#  render a deck -- the thing `prep` owns (`generator.md` § 7) -- kept     #
-#  alive by its own tests, which is how a "still works" argument gets      #
-#  made for a path no user can take.                                      #
-#                                                                         #
-#  A browser renders no deck.  `jobset prep` does, on the machine that     #
-#  will run it (`project-layout.md` § 2.2).                               #
-# ---------------------------------------------------------------------- #
 
 
 @bp.route("/api/build/schema/<engine>", methods=["GET"])
@@ -860,9 +781,7 @@ def api_build_schema(engine: str):
 def _unstated(**said):
     """A 400 naming what a request left out.  The engine and the calculation
     kind are stated by every caller -- the page states both -- and never
-    supplied here: they defaulted to SIESTA and an optimization until
-    2026-10-06 (W57: the description states its kind; `jobset init` its
-    engine)."""
+    supplied here."""
     missing = [k for k, v in said.items() if not v]
     return jsonify({"ok": False,
                     "error": (f"the request states no "
@@ -874,11 +793,9 @@ def _unstated(**said):
 def api_build_preflight():
     """Cheap validation-only endpoint for the live UI hint panel.
 
-    Body: the structure envelope (``structure`` per `_struct_from_body`;
-    a bare ``xyz`` string is the tolerated legacy spelling) plus
-    ``engine`` (``"siesta"``/``"pyscf"``), ``params`` (the config dict),
-    and optionally ``calculation`` (the kind the validators branch on --
-    ``"optimization"`` when absent).
+    Body: the structure envelope (``structure`` per `_struct_from_body`)
+    plus ``engine`` (``"siesta"``/``"pyscf"``), ``params`` (the config
+    dict), and ``calculation`` (the kind the validators branch on).
 
     Returns ``{"ok": True, "issues": [{"severity", "message",
     "where"}, ...]}``; on bad input returns ``{"ok": False, "error":
@@ -887,8 +804,7 @@ def api_build_preflight():
     Rationale: the build form has many knobs whose interactions
     matter (k-grid vs vacuum padding, hybrid functional vs grid
     level, charged peptide without explicit charge override, ...).
-    Pre-existing UX surfaced these only after the user clicked
-    Generate, jamming them into a single status line.  This endpoint
+    This endpoint
     runs ``validate(struct, cfg)`` without rendering FDF / PySCF
     text -- much cheaper -- so the UI can call it on debounced form
     input and update a structured issues panel live.
@@ -911,22 +827,12 @@ def api_build_preflight():
         }), 400
 
     # THE STRUCTURE ARRIVES AS DATA, through the one reader every structure
-    # door shares: the atoms as numbers and the facts beside them, with the
-    # legacy `xyz` text still accepted for a caller that has only text.
-    #
-    # THIS DOOR READ `xyz` AND NOTHING ELSE, and the browser stopped sending it
-    # -- the tab posts the envelope, like every other emitting door already
-    # takes.  So Generate FDF, Generate PySCF and the live preflight on
-    # /structure-optimization all answered `400 no xyz provided` for the exact
-    # body the tab sends.  Found by driving the page: the boot test caught the
-    # console error only once a restored structure made the preflight fire
-    # before anybody clicked anything.
+    # door shares: the atoms as numbers and the facts beside them.
     try:
         struct = _struct_from_body(body)
     except (ValueError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    # Preflight must see exactly what Generate sees (labels + the
-    # model's periodicity truth) -- it validated a phantom before.
+    # Preflight must see the labels + the model's periodicity truth.
     from ._shared import periodicity_checked_for_emit
     struct = periodicity_checked_for_emit(struct)
 
@@ -936,16 +842,10 @@ def api_build_preflight():
         else:
             cfg = _pyscf_config_from_params(params, calculation)
     except Exception as exc:
-        # L3 R4-A fix 2026-06-14: the "bad params" branch now
-        # returns ``ok: False`` to match the wire-api.md envelope
-        # contract -- pre-fix it returned ``ok: True`` even though
-        # the config didn't parse, which the UI (viewer.js:211)
-        # silently ignored because it gates issue-rendering on
-        # ``r.ok``.  Switching to ``ok: False`` + the same issue
-        # makes the failure surface uniformly with
-        # ``/api/build/fdf``'s 400 path; the UI's existing
-        # ``!body.ok`` gate then renders the issue + the user sees
-        # the parse error in the issues panel.
+        # The "bad params" branch returns ``ok: False`` to match the
+        # web-api.md envelope contract; the UI's ``!body.ok`` gate then
+        # renders the issue + the user sees the parse error in the
+        # issues panel.
         return jsonify({
             "ok":     False,
             "error":  f"bad parameters: {exc}",
@@ -1031,9 +931,7 @@ def api_task_setup_handover():
     Four files, and none of them is a runnable anything:
 
       * ``<label>.template.toml`` -- every parameter with the value in force.
-        This is the file the parameter tab's work has been going into a void
-        for: the tab collects the physics and produces no artifact, so without
-        this there is no path from the form to a calculation at all.
+        Without it there is no path from the form to a calculation at all.
       * ``task.1st.json`` -- what the tab knows about the calculation ITSELF:
         the engine, the structure it is of, and what it is called.
       * ``<label>.source.xyz`` + ``<label>.source.molstruct.json`` -- THE
@@ -1052,8 +950,7 @@ def api_task_setup_handover():
     body = request.get_json(silent=True) or {}
     engine = str(body.get("engine") or "").lower()
     # The hand-over carries the calculation KIND (handover-procedure § 6:
-    # "the hand-over is a Send button on the same endpoint" -- landed for
-    # the vibration kind, 2026-08-20).  The template narrows by it, and
+    # "the hand-over is a Send button on the same endpoint").  The template narrows by it, and
     # the receiving tab writes it into task.json.
     calculation = str(body.get("calculation") or "")
     if not engine or not calculation:
@@ -1121,14 +1018,7 @@ def api_task_setup_handover():
     # destination folder only when they did not.
     #
     # `run-identity.md` § 4: *"The label is the SystemLabel / JOB literal.
-    # There is no second name."*  This took the folder's name unconditionally,
-    # so the identity typed on the parameter tab stayed in the template while
-    # `task.json` carried another — two names for one calculation, and both
-    # persisted.  Downstream the engine wrote `<system_label>.XV` while every
-    # file molbuilder named was stemmed on the task label, so `prep --from`
-    # refused a carry from a stage that HAD run and had produced exactly those
-    # files: *"that attempt holds none of the files this stage would continue
-    # from. Did it run?"*
+    # There is no second name."*
     #
     # Which field carries the identity is the ENGINE's to say, and it says so
     # (`RestartGroup.field`) — no `if engine ==` here.  The folder name is
@@ -1171,8 +1061,7 @@ def api_task_setup_handover():
 
     # THE STRUCTURE ITSELF, from the one generator.  `molview.md` § 11.7: the
     # server writes every file, because a browser-authored pair drifts from the
-    # server's -- it shipped once without the sidecar's `schema_version` and
-    # every label in it was dropped silently on the next open.  So this asks
+    # server's.  So this asks
     # `StructureCodec` for the pair exactly as `/api/structure/export` does, and
     # the two are byte-identical by construction rather than by agreement.
     #
@@ -1187,9 +1076,9 @@ def api_task_setup_handover():
         # ``<label>.source.xyz`` -- the dotted segment is the reservation
         # (`job-contracts.md` § 6.3): every identity is validated
         # dot-free, so no engine output, which stems its files on an
-        # identity, can ever take this name.  Before it, a flat SIESTA
-        # run whose label matched the structure's stem overwrote its own
-        # input via WriteCoorXmol (found 2026-08-19).  The one call both
+        # identity, can ever take this name -- else a flat SIESTA run
+        # whose label matched the structure's stem would overwrite its own
+        # input via WriteCoorXmol.  The one call both
         # writers make -- `jobset init` too (`StructureCodec.source_files`).
         made = StructureCodec().source_files(struct, label)
     except ValueError as exc:
@@ -1199,8 +1088,7 @@ def api_task_setup_handover():
     # `source` names the COORDINATE document only.  The sidecar beside it is
     # found by the pairing rule, which has one home (`model/structure.md`
     # § 2.4) and is the codec's -- naming it here would be a second copy of a
-    # rule this file does not own, and § 11.7 says that is how the `.extxyz`
-    # round trip came to not close.
+    # rule this file does not own.
     geometry_name = next((f["name"] for f in structure_files
                           if not f["name"].endswith(".json")), "")
 
@@ -1211,9 +1099,7 @@ def api_task_setup_handover():
         # and a file whose whole job is to be handed between two surfaces
         # should not need a document open beside it to be understood.
         # The SENDER is the calculation kind's tab (E-B9): both tabs post
-        # through the same shared door (lib/task-handover.js), so naming
-        # one of them here wrote the wrong provenance on every Spectrum
-        # send.
+        # through the same shared door (lib/task-handover.js).
         "_what":     f"A hand-over from the "
                      f"{'Spectrum' if calculation == 'vibration' else 'Structure-optimization'} "
                      f"tab, not a "
@@ -1232,12 +1118,8 @@ def api_task_setup_handover():
                       "id": run_id(typed, formula),
                       "created": datetime.now().astimezone().isoformat(timespec="seconds")},
         # WHAT THIS IS OF -- by NAME, pointing at files in this same folder.
-        # It used to record `structure_path`, which was the projects sidebar's
-        # selected file: a second fact read at a second moment, which
-        # `molview.md` § 9.3a forbids for exactly the reason it went wrong --
-        # the cursor sat on a `.template.toml`, so the hand-over claimed a
-        # calculation was OF its own parameter file.  These names come from the
-        # structure that was sent, so they cannot disagree with it.
+        # These names come from the structure that was sent, so they cannot
+        # disagree with it (`molview.md` § 9.3a).
         "structure": {"source":  geometry_name,
                       "formula": formula,
                       "atoms":   len(getattr(struct, "elements", []) or [])},
@@ -1248,17 +1130,13 @@ def api_task_setup_handover():
     # THE KIND RIDES THE HAND-OVER, every kind -- the receiving tab writes
     # it into task.json and proposes the kind's own ladder (for a vibration,
     # `relax` then `freq` on SIESTA unless the box says relaxed, `freq` alone
-    # on PySCF) instead of the tier default.  An optimization's was left
-    # out until 2026-10-06, as task.json left it out.
+    # on PySCF) instead of the tier default.
     handover["calculation"] = calculation
 
     return jsonify({
         "ok":            True,
         "label":         label,
-        # THE door (`template.template_filename`), not a literal suffix --
-        # this was the seventh site forming this name, and the one the
-        # 2026-08-17 sweep missed because it spelled `.template.toml`
-        # rather than joining SUFFIX.
+        # THE door (`template.template_filename`), not a literal suffix.
         "template_name": _template_filename(label),
         "template_text": template_text,
         "handover_name": TASK_HANDOVER_NAME,
@@ -1285,14 +1163,6 @@ def api_task_setup_prep():
     `preparing-for-another-machine.md` exists for, and prepping for THIS
     machine is the ordinary one.
 
-    *(This said FOUR inputs and named `bench-result.json` as the second
-    machine one, until 2026-09-08.  The verdict left prep's inputs on
-    2026-09-02 -- `prep_run_inputs` records the removal in its own list --
-    and `project-layout.md` § 2.3.3 states the rule it left behind: the
-    verdict is "a REPORT you read, and `prep run` never opens it".  A
-    retired input in the argument for why remote prep works is worse than
-    a stale comment: it is the load-bearing half of that argument.)*
-
     What this door does NOT do is submit.  `prep` writes files into the
     calculation and can be run again; `launch` spends a queue slot and
     refuses batch submission by design (one job per invocation, by hand).
@@ -1309,17 +1179,13 @@ def api_task_setup_prep():
 
     **Everything else is the entry's** (W55 B3, D15): the description, the
     stage -- a name in any case, or ``#N`` -- the machine, what the stage
-    continues from, every refusal in its words.  *(Until 2026-10-05 this
-    route assembled its preview from pieces of the entry -- the run's
-    shape, the launch rows, the continuation, the prepped sentence -- and
-    refused ``#N`` and a stage name in another case, which the entry
-    takes.)*
+    continues from, every refusal in its words.
     """
     body = request.get_json(silent=True) or {}
     if not isinstance(body, dict):
         return jsonify({"ok": False, "error": "the body is a JSON object"}), 400
     # WORDS, as the page sends them: a field of another type is refused in
-    # words, never a 500 (it reached `.strip()` until 2026-10-05).
+    # words, never a 500.
     for key in ("dest", "kind", "stage", "target", "from", "plan_id"):
         if body.get(key) is not None and not isinstance(body.get(key), str):
             return jsonify({"ok": False,
@@ -1342,8 +1208,7 @@ def api_task_setup_prep():
         return jsonify({"ok": False,
                         "error": "kind must be 'run' or 'bench'"}), 400
     # NOTHING IS PREPPED UNSEEN (`job-system.md` § 5.0): a Prep names the
-    # plan its preview showed, and the entry refuses one that differs -- a
-    # Prep naming none was taken, unseen, until 2026-10-05.
+    # plan its preview showed, and the entry refuses one that differs.
     if not preview and not plan_id:
         return jsonify({"ok": False,
                         "error": "a Prep names the plan its preview showed "
@@ -1396,8 +1261,7 @@ def api_task_setup_prep():
         return jsonify({"ok": False,
                         "error": f"{type(exc).__name__}: {exc}"}), 500
     # THE MACHINE IT IS FOR, in the tab's word: the entry's answer -- the
-    # one named, else the one the calculation's copy of its record names
-    # (it said "(this machine)" whenever none was sent until 2026-10-05).
+    # one named, else the one the calculation's copy of its record names.
     said = ans.as_dict(dest)
     return jsonify({
         "ok": True, **said,
@@ -1461,12 +1325,9 @@ def api_task_setup_save():
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
-    # GATE ③ FIRES HERE TOO (G-1b, 2026-08-21).  `workflow.md` § 9 names
-    # this door beside `describe` and dispatch, and until now only the
-    # codec's four checks ran at save: a description naming an unknown
-    # field, a value outside its bounds, or a bench point that fits no
-    # item saved cleanly and failed at prep -- on the cluster, hours
-    # later.  Same function the CLI runs (`validation.task.preflight`),
+    # GATE ③ FIRES HERE TOO (G-1b): a description naming an unknown field,
+    # a value outside its bounds, or a bench point that fits no item is
+    # refused here rather than at prep, on the cluster.  Same function the CLI runs (`validation.task.preflight`),
     # so the two surfaces cannot disagree; the template beside the
     # description adds the sequence findings when it is already there.
     from molbuilder.template import find_template as _find_template
@@ -1482,9 +1343,7 @@ def api_task_setup_save():
                        if _tpl_file is not None else None))
     # THE CONFIG CLASS RIDES WITH THE FINDINGS.  Without it `_issues_to_json`
     # omits `workflow_group` and the page has no card to put a finding on
-    # (`web/ui-contract.md` Rule 2).  Both calls below passed nothing until
-    # 2026-09-09, and `test_workflow_group_wire_contract.py` -- written for
-    # exactly this defect -- covered the preflight routes and not these two.
+    # (`web/ui-contract.md` Rule 2).
     _pf_cfg = _cfg_cls_for(task)
     _pf_errs = [i for i in _pf if i.severity == "error"]
     if _pf_errs:
@@ -1610,8 +1469,7 @@ def api_task_setup_sweepable():
     parsed = _T.catalogue()
     # THE KIND NARROWS IT, as it narrows the columns: a kind's run card
     # offers only what that kind carries (`template.md` § 6.3's sibling
-    # rule) -- a vibration's or a transport's was offered `restart`, which
-    # neither carries, and the deck ignored it (the K5 review's C2).
+    # rule).
     kind = str(request.args.get("calculation") or "")
     if not kind:
         return _unstated(calculation=kind)
@@ -1627,9 +1485,7 @@ def api_task_setup_sweepable():
             # THE VALUE SHAPE (user, 2026-08-20): the machine card births
             # a row at its value in force and offers an enum's choices or
             # a bool's two values from a dropdown -- it can only do either
-            # by asking the catalogue.  Until this the payload carried no
-            # type at all, and every added setting was born as the number
-            # 1, whatever the parameter was.
+            # by asking the catalogue.
             "type":            it.type or "",
             "choices":         list(it.choices) if it.choices else None,
             # THE KIND'S OWN DEFAULT (`template.recommended_for`), never the
@@ -1660,9 +1516,7 @@ def _column_items(engine: str, kind: str):
         # THE membership rule, asked of the item rather than restated here.
         # A RUN SETTING is the rung's run card's, never a column (plan § 5w
         # K5; `engines/stages.md` § 6.2): the machine's answers, and the ones
-        # a person gives -- `use_gpu`, `restart`, the solver.  A column was
-        # a second home, and a rung's `use_gpu` set there reached its deck
-        # and not the scheduler's device ask (SO-C1).
+        # a person gives -- `use_gpu`, `restart`, the solver.
         if it.name in run_settings:
             continue
         # A column belongs to this folder's KIND (template.md § 6.3's
@@ -1680,9 +1534,7 @@ def _column_items(engine: str, kind: str):
         # § 6.4's `shared`: "the value binds every rung and no stage
         # overrides it").  It is edited in the template, on the tab that
         # owns it; a column here would be a per-rung override `prep`
-        # refuses by name.  Measured 2026-09-24: a transport folder's
-        # picker offered thirteen of them, `mesh_cutoff` and `basis_size`
-        # among them -- the reverted swap's defect, on this surface.
+        # refuses by name.
         if kind in it.shared:
             continue
         yield it
@@ -1701,14 +1553,11 @@ def api_task_setup_columns():
     and it is the same membership `prep` applies when it accepts or refuses an
     override: a column offered here is a column `prep` will take.
 
-    **Why this is not `/api/build/schema`**, which is what the tab read until
-    2026-08-18.  That is the PARAMETER FORM's schema, and it filters the whole
-    `staging` group out on purpose — a form does not ask a person how many ranks
-    the scheduler granted (`form-schema.md` § 1.3).  Filtering a panel and
-    limiting a table are different jobs.  (Borrowing the form's answer once
-    cost the table `restart`, which was a column then; since 2026-09-30 it is
-    the rung's run card, with every other run setting -- plan § 5w K5.)  Every ladder built anywhere but
-    `jobset init --stage-strategy` therefore ran every stage `clean`.
+    **Why this is not `/api/build/schema`.**  That is the PARAMETER FORM's
+    schema, and it filters the whole `staging` group out on purpose — a form
+    does not ask a person how many ranks the scheduler granted
+    (`form-schema.md` § 1.3).  Filtering a panel and limiting a table are
+    different jobs.
 
     `group` rides along because it is still the right answer to a different
     question — which columns the table STARTS with (§ 1.3).
@@ -1728,26 +1577,19 @@ def api_task_setup_columns():
             "label":   it.label or it.name,
             "help":    it.help or "",
             "unit":    it.unit or "",
-            # THE KIND'S OWN DEFAULT (`template.recommended_for`): the hover
-            # said a vibration folder's *Recommended* was the general one
-            # (the M11 review's PS-C12).
+            # THE KIND'S OWN DEFAULT (`template.recommended_for`).
             "default": _T.with_recommended(it, _calc_kind).default,
             "group":   it.group or "",
             # THE VALUE SHAPE (user, 2026-08-20): the stage table's cell
             # editor renders a dropdown for an enum or a bool, and it can
-            # only ask the catalogue -- inventing a widget from the value's
-            # look is how `use_gpu` became a number box.
+            # only ask the catalogue.
             "type":    it.type or "",
             # ...OF THE CHOICES THIS KIND MAY TAKE on this engine (the
             # catalogue's `offered`, template.md § 6.3a): a vibration's
             # relaxation cell offers three relaxers, never dynamics.
             "choices": (list(_T.offered(it, engine, _calc_kind))
                         if it.choices else None),
-            # THE SAME WRITER THE FORM USES.  This read `it.anchor`
-            # until 2026-08-19, and an anchor is derived by taking the
-            # leading token of `engine_key` -- so an item whose spelling
-            # leads with a VALUE published the value: `method` showed as
-            # `RKS`, one of its four choices, where the keyword belongs.
+            # THE SAME WRITER THE FORM USES.
             "engine_key": _engine_key_for(it),
             # WHICH RUNGS may carry their own value (template.md § 6.4).
             # Empty means any -- the ordinary case, and the optimization
@@ -1766,25 +1608,15 @@ def api_task_setup_columns():
                     "roles": _T.stage_role_rule(engine, _calc_kind)})
 
 
-# `/api/task-setup/template-values`, `/resolved` and `/attempts` stood here
-# until 2026-10-03: no page called them -- the folder answer serves each
-# part (`template`, `provenance`, `attempts`) from the same helper.
-
-
 def _folder_template(folder, label) -> dict:
     """What the folder's template answers -- the payload, not the response.
 
-    Extracted so the per-card route and the folder door (§ 2.1's one answer)
-    cannot come to differ: composing a second reading here is the very thing
-    the docstring above argues against one layer down.  ``label`` is the
+    ``label`` is the
     calculation's -- its description's, else its hand-over's -- and ``None``
     for a folder that is neither, which has no template to show.
     """
-    # THE door, not a glob (`template.find_template`).  This took
-    # ``sorted(glob(...))[0]`` until 2026-08-17 -- so a folder holding two
-    # templates had this tab reading one file and `prep` reading the other,
-    # which is precisely the split this endpoint's own docstring argues
-    # against one layer down: it shared `prep`'s PARSER and not its PATH.
+    # THE door, not a glob (`template.find_template`): this tab and `prep`
+    # read the same file.
     from molbuilder.template import (SOURCE_WORDS, find_template,
                                      read_template, select)
     if label is None:
@@ -1804,9 +1636,7 @@ def _folder_template(folder, label) -> dict:
         return {"ok": False, "name": found.name,
                 "error": f"{found.name}: {exc}"}
 
-    # Through `select` -- `engines/template.md` § 8.0 owns the rule.  What it
-    # cost HERE: this was a comprehension over `.items`, re-implementing the
-    # `Template.values()` deleted 2026-08-17 as one of four second readers.
+    # Through `select` -- `engines/template.md` § 8.0 owns the rule.
     values = {it.name: it.value for it in select(tmpl) if it.is_set}
     # ...AND WHOSE EACH ONE IS, in the words every surface says it
     # (`template.SOURCE_WORDS`, `engines/template.md` § 6.6 obligation 2):
@@ -1825,17 +1655,13 @@ def _folder_provenance(dest) -> dict:
     machine a prep names, and at a calculation's first prep on whether its
     copy exists yet: the prep entry reads it once, at its checkpoint 4, and
     its answer -- a preview's too -- carries that table
-    (`job-system.md` § 5.0).  This card listed the record's scopes asked
-    with no machine until 2026-10-05, and on a fresh calculation named this
-    box's record while the preview read the one picked."""
+    (`job-system.md` § 5.0)."""
     from molbuilder.runtime_config import config_provenance
     try:
         prov = config_provenance(project_dir=dest)
     except Exception as exc:                      # a malformed config
         return {"ok": False, "error": str(exc)}
-    # THE WARNINGS TRAVEL WITH THE PROVENANCE, and forwarding only three of
-    # the five keys is how the tab and the terminal came to disagree.  The
-    # terminal prints `shadow` (a `molbuilder.json` sitting unread in a working
+    # THE WARNINGS TRAVEL WITH THE PROVENANCE.  The terminal prints `shadow` (a `molbuilder.json` sitting unread in a working
     # directory) and the config's mode finding, which `mode_warning` carries in
     # the same words (`placement.machine_config_finding`); a page that showed
     # the resolved path WITHOUT them would tell a person their config is fine
@@ -1889,16 +1715,6 @@ def api_task_setup_bench_grid():
     # The picker offers "(this machine)" as a LABEL, not a name; `LOCAL_TARGET`
     # is the name.  Translated exactly as the prep door translates it, so both
     # doors speak one vocabulary.
-    #
-    # This sent `None` until 2026-09-08, on the ground that `LOCAL_TARGET`
-    # would discard the bundle's own `environment.json`.  Measured, it does
-    # not: `record_scopes` puts the calculation's snapshot first whatever the
-    # target, and `machine_for` treats `LOCAL_TARGET` as not-by-name.  The two
-    # differ on one thing -- with no snapshot and named records present,
-    # `None` raises `AmbiguousTarget` while `LOCAL_TARGET` reads this box's
-    # scope.  So `None` stood for both *nobody said* and *the person picked
-    # this machine*, and a not-yet-prepped calculation got the refusal meant
-    # for the first, beside a Prep button that worked.
     from molbuilder.scheduler.record import LOCAL_TARGET
     target = body.get("target") or None
     if target in ("(this machine)", LOCAL_TARGET):
@@ -2000,30 +1816,24 @@ def api_task_setup_prep_plan():
                      # the failure that module exists for.  The engine
                      # filters it: a SIESTA run is not told about `.py`.
                      # ...spelled as THIS shape spells them: an attempt's
-                     # `run.json`, a flat stage's `<base>.run.json` (plan D22).
-                     "files": manifest(task.label, token, task.engine,
-                                       calculation=task.calculation,
-                                       shape=shape.name)})
+                     # `run.json`, a flat stage's first run's
+                     # `<base>-run0.run.json` (plan D22, W57 decision 2).
+                     "files": manifest(task.label, token,
+                                       shape=shape.name, engine=task.engine,
+                                       calculation=task.calculation)})
     bench = None
     if task.bench:
         # Every axis, with its points.  A row of length one is a DECISION and
         # measures one cell; the card says which is which (§ 6.2b).
         #
-        # AND WHERE THE SWEEP LANDS, because the card was inventing it.  The
-        # bench row rendered a literal `bench-<token>/` composed in the
-        # browser -- the one place on this card that did not ask, and wrong
-        # in every layout: the real container is `bench_<NN>_<stage>` flat,
-        # `<NN>_<stage>/bench` hierarchical, bare `bench` stageless, and the
-        # dash form it showed is a TRIAL's name (`bench-<point>`), which
-        # lives INSIDE the container.  This function's own docstring already
-        # forbade it -- *"a list composed in the browser would be a second
-        # answer free to disagree with the thing it describes"* -- so this
-        # asks `bench_container`, which is the ONE spelling of that rule.
+        # AND WHERE THE SWEEP LANDS, asked of `bench_container`, which is the
+        # ONE spelling of that rule: the container is `bench_<NN>_<stage>`
+        # flat, `<NN>_<stage>/bench` hierarchical, bare `bench` stageless.
         #
         # ONE ENTRY PER RUNG, because that is what a sweep is: `prep bench`
         # takes a stage, the container lives inside the stage it measures,
         # and each entry here is a command someone actually runs.  Joining
-        # them into one cell was tried and is wrong twice -- it hides which
+        # them into one cell is wrong twice -- it hides which
         # rung each belongs to, and the card's directory column is
         # `max-content` shared down the list, so a joined cell widens that
         # column for every row, which is exactly what the stylesheet says
@@ -2048,10 +1858,7 @@ def api_task_setup_prep_plan():
     # outputs, which belong to the run and are listed by the Results tab.
     #
     # FROM THE CATALOGUE, like the stage rows: its fixed-name rows at the
-    # calculation's root that prep writes (`runfiles.fixed`).  This was a
-    # list of its own, four names with a line each written here, until
-    # 2026-10-04 (plan B13) -- a second answer, free to disagree with the
-    # thing it describes.
+    # calculation's root that prep writes (`runfiles.fixed`).
     from molbuilder.runfiles import fixed
     bundle = fixed("calculation", when=("prep",),
                    calculation=task.calculation, engine=task.engine)
@@ -2062,8 +1869,9 @@ def api_task_setup_prep_plan():
     # thing this cannot say: whether they are there yet.
     # And what `summarize run` writes there from results that exist -- the
     # transport record, a sweep's comparison -- whose own line says so.
-    once = manifest(task.label, None, task.engine,
-                    ("prep", "run", "summarize"), task.calculation)
+    once = manifest(task.label, None, shape=shape.name, engine=task.engine,
+                    when=("prep", "run", "summarize"),
+                    calculation=task.calculation)
     return jsonify({"ok": True, "shape": shape.name, "stages": rows,
                     "bench": bench, "bundle": bundle, "once": once,
                     "warm": _warm_in_effect(task, folder)})
@@ -2154,14 +1962,7 @@ def api_task_setup_folder():
     """**What is this folder?** — Task setup's one per-directory answer.
 
     `web/task-setup.md` § 2.1 is the rule this exists to make keepable: *"the
-    page holds no state of its own… the folder is the only link."*  The page
-    did not keep it.  It assembled itself from twelve endpoints, each landing
-    when it landed and each painting its own card, and the per-folder facts
-    among them were cleared on a directory change by
-    `_resetPerFolderState()` — a hand-written list of EIGHT clears in a file
-    with twenty-five module variables.  Measured 2026-09-19: a six-trial
-    bench plan (`mpi_np` 4/8/16 × `omp` 1/2) rode into a brand-new
-    calculation whose hand-over declares no `varies`, on a four-core box.
+    page holds no state of its own… the folder is the only link."*
 
     **The page is a function of (folder, engine, machine), in that
     dependency order.**  This door answers the first.  The engine's
@@ -2175,15 +1976,11 @@ def api_task_setup_folder():
     **The answer names its subject**, and that is the half a reset list
     cannot cover.  There are two ways a page shows the wrong folder — state
     that LINGERS, and an answer that LANDS LATE — and clearing things fixes
-    only the first.  Task setup has no `AbortController` anywhere across its
-    twelve calls, so a response for the folder you just left can still
-    arrive and paint.  `dir` is here so a consumer that has moved on can
+    only the first.  `dir` is here so a consumer that has moved on can
     discard it, which is `calcdir.json`'s rule (`project-layout.md` § 1.4a)
     applied to the wire: a record names its own place and the reader checks.
 
-    **Composed, never recomputed.**  Each part calls the same helper its own
-    route calls, so the two cannot come to disagree — the failure this whole
-    door exists to end.  A part that fails carries its own `error` instead
+    **Composed, never recomputed.**  A part that fails carries its own `error` instead
     of failing the answer: a malformed template must not cost you the
     description beside it.
     """
@@ -2212,8 +2009,7 @@ def api_task_setup_folder():
     def _described():
         """The description, through its one reader (`read_task`,
         `execution/architecture.md` § 3.2) -- the `Task` a molbuilder-written
-        `task.json` holds, or the words its reader refused one with.  *(Read
-        as raw JSON until 2026-10-04, plan B14.)*"""
+        `task.json` holds, or the words its reader refused one with."""
         from molbuilder.task import read_task
         f = folder / TASK_FILENAME
         if not f.is_file():
@@ -2251,9 +2047,7 @@ def api_task_setup_folder():
         "handover": handover,
         # WHICH FILES ARE HERE -- names only.  The "what gets written" card
         # asks *is the file this description names actually present*, which
-        # is a fact about the folder and belongs in the folder's answer; the
-        # page listed the directory itself for it, which is one more call
-        # that can land after you have moved on.
+        # is a fact about the folder and belongs in the folder's answer.
         "files": sorted(e.name for e in folder.iterdir() if e.is_file()),
         "template": _folder_template(folder, _label),
         "provenance": _folder_provenance(folder),
@@ -2323,9 +2117,7 @@ def _folder_prepped(folder) -> dict:
         return out
     except Exception as exc:                      # noqa: BLE001
         # THE SAME SHAPE, AND THE ERROR IN IT (`web-api.md`: one part
-        # failing carries its own `error`) -- `placed` went missing here
-        # until 2026-10-06, and the page read the failure as nothing
-        # prepped and offered Prep.
+        # failing carries its own `error`).
         return {"error": str(exc), "run": {}, "bench": {}, "placed": {}}
 
 
@@ -2336,9 +2128,7 @@ def api_task_setup_commands():
     read: the lines the tab shows, composed by the terminal's own composer
     (`jobset/commands.stage_lines`), so a line on the page is one the
     terminal would print and `launch` would take (`job-system.md` § 5.3,
-    *what molbuilder prints, you can type*; W55 B4).  The page composed
-    them itself until 2026-10-03, and its launch line carried no `--mode`
-    where this machine's config sets none (D11).
+    *what molbuilder prints, you can type*; W55 B4).
 
     POST ``{dest, kind, stage, from?, cold?, target?}`` -> ``{ok, lines}``.
     A stage prepped already has no prep line -- prep would refuse it -- as
@@ -2426,9 +2216,7 @@ def api_task_setup_presets():
     columns of an optimization and of a vibration ladder's relax rung, and
     of NO transport rung (`stages` routes each rung its own items;
     `engines/transport.md` § 2a.7: a rung carries its role's profile), so a
-    transport description gets an empty menu and its rows draw none.  Until
-    2026-09-24 every transport rung offered `coarse / medium / tight`
-    (plan W31, archived 2026-09-29).
+    transport description gets an empty menu and its rows draw none.
     """
     engine = str(request.args.get("engine") or "").lower()
     kind = str(request.args.get("calculation") or "")

@@ -2,9 +2,7 @@
 
 Spec source of truth: ``docs/web/tabs.md``.
 
-Covers M1: the four pure-function ops (delete_atoms, add_atom,
-orient_along_axis, add_slab) plus the junction
-convenience wrapper.  No web / CLI / UI yet -- those land in M2-M5.
+Covers the pure-function modify ops.
 """
 
 from __future__ import annotations
@@ -23,8 +21,6 @@ from molbuilder.modify import (
     rotate_around_axis,
 )
 from molbuilder.structure import FROZEN_LABEL, Structure
-
-
 
 
 @pytest.fixture
@@ -68,8 +64,7 @@ def periodic_dimer():
 def _assert_lattice_preserved(out, ref):
     """The op must carry the box verbatim -- cell, a stated offset, axis kinds,
     vacuum.  None of it is per-atom, so an edit must never revert it to
-    isolated defaults, and moving atoms must never move it.  (k-grid is no
-    longer geometry; it lives on SiestaConfig -- structure-periodicity.md.)"""
+    isolated defaults, and moving atoms must never move it."""
     assert out.cell is not None and np.allclose(out.cell, ref.cell)
     assert out.engine_offset is not None and np.allclose(out.engine_offset,
                                                          ref.engine_offset)
@@ -87,8 +82,7 @@ class TestOpsPreservePeriodicity:
     NB: MOVING ATOMS ONLY MOVES ATOMS (user, 2026-09-25: "leave the cell alone,
     moving atoms only moves atoms").  Every op here -- the rigid transforms
     included -- carries the cell, a stated offset, the axis kinds and the vacuum
-    verbatim; a whole-structure rotation rotated the lattice with the atoms
-    until then (`model/structure-periodicity.md` § 6.0)."""
+    verbatim (`model/structure-periodicity.md` § 6.0)."""
 
     def test_delete_preserves_lattice(self, periodic_dimer):
         """SCIENCE. Deleting an atom leaves the cell, axis kinds and vacuum untouched.
@@ -123,9 +117,8 @@ class TestOpsPreservePeriodicity:
         """SCIENCE. `orient_along_axis` turns the atoms and leaves the box alone.
 
         Catches a rotation that turns the cell with the molecule, or resets the
-        axis kinds -- a whole-structure rotation did the first until 2026-09-25,
-        by design then, and the user retired it: *"moving atoms only moves
-        atoms"*.  An atom the turn leaves outside the box is named on the Cell
+        axis kinds (user, 2026-09-25: *"moving atoms only moves
+        atoms"*).  An atom the turn leaves outside the box is named on the Cell
         page and at the deck, and the person moves the box if they want to.
 
         Contract: `model/structure-periodicity.md` § 6.0.
@@ -241,8 +234,6 @@ def test_delete_preserves_metadata_in_lockstep(linear_dimer):
     assert len(out.chain_ids)      == out.n_atoms
 
 
-
-
 def test_delete_does_not_mutate_input(linear_dimer):
     """Delete is pure: the structure passed in is unchanged afterwards.
 
@@ -255,7 +246,7 @@ def test_delete_does_not_mutate_input(linear_dimer):
 
     THIN: `delete_atoms` builds its lists with comprehensions and slices
     `positions` with a fancy index (which copies), so purity is structural
-    rather than defended. See the audit note.
+    rather than defended.
     """
     delete_atoms(linear_dimer, [0])
     assert linear_dimer.n_atoms == 6
@@ -514,8 +505,8 @@ def test_add_atom_without_anchor_measures_from_the_origin():
 
 
 def test_add_atom_without_anchor_places_the_first_atom_on_an_empty_structure():
-    """The case that forced the change: an EMPTY canvas has no index to pass,
-    so requiring an anchor made a one-atom structure unbuildable from here.
+    """An EMPTY canvas has no index to pass, so only an anchorless add can
+    place its first atom.
     """
     empty = Structure(elements=[], positions=np.zeros((0, 3)))
     out = add_atom(empty, "C", None, [0.0, 0.0, 0.0])
@@ -589,8 +580,8 @@ def test_add_atom_explicit_residue_id_groups_atoms_in_one_residue(linear_dimer):
 
 
 def test_add_atom_default_still_allocates_fresh_residue(linear_dimer):
-    """SP-E sanity: the default (no residue_id kwarg) preserves the
-    pre-SP-E behaviour of giving each appended atom its own residue."""
+    """The default (no residue_id kwarg) gives each appended atom its own
+    residue."""
     s = add_atom(linear_dimer, "S", 0, [1, 0, 0])
     s = add_atom(s, "S", 0, [-1, 0, 0])  # second call -- still fresh id
     assert s.residue_ids[-2] != s.residue_ids[-1]
@@ -704,11 +695,7 @@ def test_orient_handles_antiparallel_case():
     final direction are all invariant under both, so none of them can tell the
     two apart. This is the only quantity that can.
 
-    Contract: `web/tabs.md` § 2. MEASURED 2026-09-09 (#76): the previous fixture
-    had TWO atoms, in which a reflection and a rotation are indistinguishable --
-    replacing the branch with `-np.eye(3)` left this test, all 101 in this file,
-    and all 320 in every file touching `orient` green, `validation/test_geometry.py`
-    included.
+    Contract: `web/tabs.md` § 2.
     """
     # FOUR atoms, deliberately NOT coplanar: three of them would still span a
     # plane, and a reflection through that plane is undetectable.  A tetrahedron
@@ -798,14 +785,6 @@ def test_orient_rejects_bad_axis(linear_dimer):
         orient_along_axis(linear_dimer, (0, 5), axis="w")
 
 
-# `TestRigidTransformMovesTheBox` RETIRED 2026-09-25 -- five tests that a
-# whole-structure rotate / translate / orient carried the box WITH the atoms
-# (the lattice vectors, the cell_origin corner, the fractional coordinates).
-# The user retired that design: "leave the cell alone, moving atoms only moves
-# atoms".  What holds now is pinned in `TestOpsPreservePeriodicity` above: every
-# op, the rigid transforms included, carries the box verbatim.
-
-
 @pytest.mark.parametrize("axis", ["x", "y", "z"])
 @pytest.mark.parametrize("angle", [0.0, 37.0, 90.0, -113.5, 360.0])
 def test_a_rotation_is_rigid_and_proper(axis, angle):
@@ -824,13 +803,6 @@ def test_a_rotation_is_rigid_and_proper(axis, angle):
         (det = -1). Distances all survive, so a distances-only test passes, and
         the molecule is its own MIRROR IMAGE. That is a different compound, and
         for anything chiral it is the wrong answer with no symptom.
-
-    REDESIGNED 2026-09-09.  It was `angle=0.0` asserting positions unchanged --
-    and `R(0) = I` holds for a WRONG AXIS, a FLIPPED SIGN and a
-    degrees/radians error alike, so it separated "did nothing" from "did
-    nothing". `angle=0.0` survives here as one row of five, where it now means
-    what it says because the other four can fail. Recorded at
-    `science/test-design-findings.md` § 3.
 
     The fixture is four atoms and deliberately NON-COPLANAR: three would span a
     plane, and a reflection through that plane is undetectable. The signed
@@ -938,14 +910,14 @@ def test_rotate_rejects_bad_axis(linear_dimer):
 # --------------------------------------------------------------------- #
 #  add_slab -- uniform (m, n, n_layers) per call                       #
 #                                                                       #
-#  ASE supports each plane with specific (orthogonal, m, n) constraints #
-#  (spec § 8); the function passes the user's choice to ASE and lets    #
+#  ASE supports each plane with specific (orthogonal, m, n) constraints;#
+#  the function passes the user's choice to ASE and lets                #
 #  ASE's error bubble up as a ValueError on incompatible inputs.        #
 # --------------------------------------------------------------------- #
 
 
 def test_electrode_supported_lists_match_table():
-    """Spec § 8: closed list of 6 metals + 3 planes."""
+    """Closed list of 6 metals + 3 planes."""
     assert SUPPORTED_FCC_ELEMENTS == ("Au", "Ag", "Cu", "Ni", "Pt", "Pd")
     assert SUPPORTED_FCC_PLANES   == ("100", "110", "111")
 
@@ -981,7 +953,7 @@ def test_electrode_atom_count(single_anchor, element, plane,
 
 
 def test_electrode_metadata_marks_atoms_as_ELC(single_anchor):
-    """Spec § 5: electrode atoms get residue_name='ELC' and a fresh
+    """Electrode atoms get residue_name='ELC' and a fresh
     residue_id so the molecule and electrode are separable."""
     out = add_slab(single_anchor, "Au", "111", (2, 2, 1), start_z=2.0)
     elc_indices = [i for i, n in enumerate(out.residue_names) if n == "ELC"]
@@ -1071,13 +1043,6 @@ def test_electrode_lattice_constant_override(single_anchor):
     `_build_ase_slab` called directly at the same lattice, and against the
     default, so a value ignored, defaulted, or applied at the wrong scale all
     fail -- with no distance of ours anywhere in the test.
-
-    REDESIGNED TWICE ON 2026-09-09, and the second time is the point.  It first
-    asserted `e_extent > d_extent + 0.5` under a docstring calling itself "a
-    proxy for 'the kwarg actually reached ASE'" -- satisfied by any lattice
-    above the default.  I then made it assert `extent(5.0)/extent(default) ==
-    5.0/a` at `rel=1e-9`, which is EXACT and is a statement about ASE's
-    linearity, not about us.  Recorded at `science/test-design-findings.md` § 2.
     """
     from molbuilder.modify import _build_ase_slab, _get_fcc_lattice
 
@@ -1119,7 +1084,7 @@ def test_electrode_lattice_constant_override(single_anchor):
 
 
 @pytest.mark.parametrize("orthogonal,size,per_side", [
-    # Spec § 2 walkthrough (now uniform per call): user calls the
+    # The user calls the
     # two slabs with one (m, n, n_layers).  For stepped contacts
     # ("3×3 close, 4×4 further out") the user makes two add_slab calls
     # instead of one; covered separately by the stacked test below.
@@ -1128,13 +1093,7 @@ def test_electrode_lattice_constant_override(single_anchor):
 ])
 def test_junction_end_to_end(orthogonal, size, per_side):
     """Mini "BDT-like" stub (S–S linker), oriented on z, with Au(111) on both
-    sides — **built as two slabs**, one per flag, which is what a junction is
-    now (redesign plan § 3.4).
-
-    `add_symmetric_electrodes` did exactly this in one call and was deleted
-    with the Junction panel.  The junction is still worth an end-to-end test;
-    what changed is that each side's position is stated rather than derived
-    from a gap.
+    sides — **built as two slabs**, one per side, each side's position stated.
     """
     bdt = Structure(
         elements=["S", "C", "C", "S"],
@@ -1150,16 +1109,13 @@ def test_junction_end_to_end(orthogonal, size, per_side):
     assert abs(oriented.positions[0, 2]) > 0
     assert np.isclose(oriented.positions[0, 2], -oriented.positions[3, 2])
 
-    # Two slabs, each at half the old `gap` from the same centre -- the
-    # arithmetic the deleted wrapper did internally, now written down.
     # After orient with default midpoint centring, atom 3 is on +z (top),
     # atom 0 on -z (bottom).
     junction = oriented
     # BOTH SIDES CONTINUE THE CRYSTAL outward from the junction, and in the
     # walk vocabulary that is a different value per side: read along the
     # growth direction, going up from a layer is the forward walk and going
-    # down from one is the backward walk.  (Under the old `stacking` this was
-    # unsayable growing up -- the argument had no effect there at all.)
+    # down from one is the backward walk.
     for start_z, grow, sequence in ((+4.5, "+z", "ABC"), (-4.5, "-z", "ACB")):
         junction = add_slab(
             junction, "Au", "111", size, start_z=start_z, grow=grow,
@@ -1177,7 +1133,7 @@ def test_junction_end_to_end(orthogonal, size, per_side):
 
 
 def test_junction_stepped_contacts_via_two_calls():
-    """Spec § 2: stepped "3×3 close, 4×4 further out" pattern is built
+    """The stepped "3×3 close, 4×4 further out" pattern is built
     by two add_slab calls per side -- inner stack with one
     gap, outer stack with a larger gap that puts it past the inner stack.
     No per-layer-list needed."""
@@ -1196,9 +1152,7 @@ def test_junction_stepped_contacts_via_two_calls():
     # Place the outer 4×4 stack one such layer further out.
     outer_gap = inner_gap + 2.355
 
-    # Inner stacks: 3×3 single layer, both sides.  Single-electrode
-    # mode uses ``contact_distance`` (anchor-to-closest-layer), not
-    # ``gap`` (which is reserved for the pair-mode total junction gap).
+    # Inner stacks: 3×3 single layer, both sides.
     z0 = float(oriented.positions[0, 2])
     z3 = float(oriented.positions[3, 2])
     s1 = add_slab(oriented, "Au", "111", (3, 3, inner_layers),
@@ -1271,14 +1225,6 @@ def test_modify_module_falls_back_to_packaged_data_when_env_var_broken(
     importlib.reload(mod)
 
 
-# The element-aware DEFAULT contact distance retired 2026-09-03 with its
-# supplier.  Junctions are not built from bond distances any more -- metal is
-# added by hand, a slab is placed by its z offset -- so nothing asks for a
-# default gap.  The table itself lives on as a REFERENCE shown beside a
-# two-atom measurement; `tests/test_contact_distance_reference.py` owns it,
-# including the assertion that the supplier stays gone.
-
-
 # --------------------------------------------------------------------- #
 #  rotate_around_axis(center=...) pivot                                 #
 # --------------------------------------------------------------------- #
@@ -1303,9 +1249,8 @@ def test_rotate_around_axis_centroid_pivot_leaves_centroid_invariant():
 
 
 def test_rotate_around_axis_python_default_is_origin_pivot():
-    """The Python API's default ``center='origin'`` preserves the
-    legacy world-axis behaviour for any existing caller that didn't
-    pass the kwarg.  The Modify-tab UI defaults to ``'centroid'``
+    """The Python API's default ``center='origin'`` rotates about the
+    world axes.  The Modify-tab UI defaults to ``'centroid'``
     on its own (HTML <select>), which is independent from the
     function's default."""
     s = Structure(elements=["C"] * 2,
@@ -1367,17 +1312,12 @@ def test_structure_copy_is_independent():
 
 
 # --------------------------------------------------------------------- #
-#  All modify ops MUST carry the label store through.                   #
-#                                                                       #
-#  Audit task #186 (2026-06-02) found every modify op silently         #
-#  dropped these fields when it returned a new Structure.  Concretely:  #
+#  All modify ops MUST carry the label store through:                   #
 #    * Pure-rotation ops (orient_along_axis, rotate_around_axis) and    #
 #      add_atom / add_slab must carry the lists through               #
 #      verbatim (existing atom indices unchanged).                      #
 #    * delete_atoms must remap surviving indices to the post-delete    #
 #      0-based numbering and drop deleted atoms from the lists.        #
-#                                                                       #
-#  These tests close the contract loop end-to-end.                     #
 # --------------------------------------------------------------------- #
 
 
@@ -1429,11 +1369,10 @@ def test_delete_atoms_drops_empty_region_after_delete():
 
 # An op that does not change the index space returns the label store
 # unchanged.  ONE property over the class of ops, not a test per op: the
-# ops share a single carry-through path, so five hand-written copies of
-# this assertion carried one bit between them.
+# ops share a single carry-through path.
 #
 # `frozen_atoms` is deliberately NOT named here.  It is an ordinary label
-# in `regions` (`structure.py`, one store since 2026-07-31) and the reindex
+# in `regions` (`structure.py`) and the reindex
 # walks the store with no case for it -- so a test that singled it out
 # would be testing the label, not the mechanism.  That it is an ordinary
 # label is `tests/test_reserved_label_one_store.py`'s job.

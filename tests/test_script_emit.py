@@ -6,7 +6,6 @@ pure: no rendering, no I/O.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import pytest
@@ -96,7 +95,7 @@ def test_emit_provenance_without_defaults_still_emits_block():
 
 
 def test_emit_bench_marks_uses_anchors_not_line_numbers():
-    """v1 contract change: anchor= replaces line=N for layout-stability."""
+    """v1 contract: anchor= rather than line=N, for layout-stability."""
     block = sc.emit_bench_marks(
         metadata={"n_atoms": 212, "gpu_mode": "true"},
         fields=sc.SIESTA_BENCH_FIELDS,
@@ -197,7 +196,7 @@ def test_emit_atom_metadata_with_the_reserved_label_only_sorts_and_dedupes():
 
 def test_emit_atom_metadata_uses_zero_based_indices():
     """The contract pins 0-based atom indices (matches .molstruct.json
-    schema v3 and Structure.regions in Python).  SIESTA's
+    and Structure.regions in Python).  SIESTA's
     Geometry.Constraints in engine body remains 1-based by SIESTA
     convention -- the two coexist deliberately."""
     block = sc.emit_atom_metadata(
@@ -222,17 +221,16 @@ def test_emit_atom_metadata_omits_structure_hash():
 
 
 def test_emit_atom_metadata_honors_created_by_and_created_at():
-    """Audit fix 2026-06-16: callers (render_fdf / render_script)
-    pass a specific ``created_by`` for traceability AND a real
-    ``created_at`` timestamp.  Pin both."""
+    """A caller passes a specific ``created_by`` for traceability AND a
+    real ``created_at`` timestamp, and the block carries both."""
     block = sc.emit_atom_metadata(
         regions={"r": [0]},
         n_atoms_total=1,
-        created_by="molbuilder render_fdf",
+        created_by="molbuilder jobset prep",
         created_at="2026-06-16T17:00:00-07:00",
     )
     payload = _atom_metadata_payload(block)
-    assert payload["created_by"] == "molbuilder render_fdf"
+    assert payload["created_by"] == "molbuilder jobset prep"
     assert payload["created_at"] == "2026-06-16T17:00:00-07:00"
 
 
@@ -347,7 +345,7 @@ def test_extract_atom_metadata_dict_round_trips_through_emit_then_parse():
         regions={"L-electrode": [0, 1, 2], "bridge": [3, 4],
                  "frozen_atoms": [0, 4]},
         n_atoms_total=5,
-        created_by="molbuilder render_fdf",
+        created_by="molbuilder jobset prep",
         created_at="2026-06-16T17:00:00-07:00",
     )
     # Wrap in a "host" file so it looks like real .fdf content.
@@ -357,7 +355,7 @@ def test_extract_atom_metadata_dict_round_trips_through_emit_then_parse():
     assert payload["regions"] == {"L-electrode": [0, 1, 2], "bridge": [3, 4],
                                   "frozen_atoms": [0, 4]}
     assert "frozen_atoms" not in payload, "the same fact written twice"
-    assert payload["created_by"] == "molbuilder render_fdf"
+    assert payload["created_by"] == "molbuilder jobset prep"
 
 
 def test_extract_atom_metadata_dict_returns_none_when_block_missing():
@@ -394,7 +392,6 @@ def test_apply_atom_metadata_populates_the_label_store():
     assert struct.regions == {"R-electrode": [10, 11, 12],
                               "frozen_atoms": [10, 12]}
     assert struct.frozen_atoms == [10, 12]
-
 
 
 def test_apply_atom_metadata_returns_false_when_no_block():
@@ -460,15 +457,9 @@ def test_siesta_bench_fields_cover_the_four_bench_knobs():
 
 
 def test_blocksize_field_constrains_pow2_and_leaves_the_range_to_the_deck():
-    """Rewritten 2026-08-10.  This pinned ``range_ == (16, 256)`` -- a
-    constant the emitted decks contradicted routinely, because the default
-    beside it is derived from the rank count while the bound was not
-    (``_auto_block_size(200, mpi_np=16)`` is 8, below the declared floor).
-
-    The engine-wide list now declares the TYPE and leaves the window to the
+    """The engine-wide list declares the TYPE and leaves the window to the
     renderer that knows the launch (``siesta/input.py::_block_size_bounds``),
-    so a forgotten range is an absent one rather than a wrong one.  The
-    per-deck window is pinned in ``test_stage_resource_destinations.py``."""
+    so a forgotten range is an absent one rather than a wrong one."""
     bs = next(f for f in sc.SIESTA_BENCH_FIELDS if f.name == "BlockSize")
     assert bs.type_ == "pow2"
     assert bs.range_ is None
@@ -531,55 +522,8 @@ def test_extract_provenance_dict_handles_no_defaults_section():
 
 
 # --------------------------------------------------------------------- #
-#  Composed-script round trips                                          #
+#  The in-body ATOM-METADATA block, applied                             #
 # --------------------------------------------------------------------- #
-
-
-def _composed_script(*, with_atom_md: bool = True,
-                     with_user_custom: bool = True,
-                     with_provenance: bool = True) -> str:
-    parts = []
-    if with_provenance:
-        parts.append(sc.emit_provenance(
-            generator_version="molbuilder git test",
-            generated_at="2026-06-17T00:00:00Z",
-        ))
-    if with_atom_md:
-        am = sc.emit_atom_metadata(
-            regions={"L-electrode": [1, 2], "R-electrode": [10, 11],
-                     "frozen_atoms": [1, 11]},
-            n_atoms_total=12,
-        )
-        assert am is not None
-        parts.append(am)
-    parts.append("SystemLabel test\nBlockSize 64\n")
-    if with_user_custom:
-        parts.append(sc.emit_user_custom_placeholder())
-    return "\n".join(parts) + "\n"
-
-
-
-
-
-
-
-
-
-
-
-# --------------------------------------------------------------------- #
-#  The version line on the in-body block is READ (2026-08-03)           #
-# --------------------------------------------------------------------- #
-#
-# The block states the version that wrote it, and this reader took the contents
-# at face value regardless.  So a block written in the older layout -- frozen
-# atoms as a key BESIDE `regions` rather than a label inside it -- was applied,
-# its frozen set dropped, and a run came back with nothing frozen and nothing
-# said.  That is how real 50- and 216-atom frozen sets went missing.
-#
-# WARN AND TRANSLATE, not refuse (user decision).  Refusing would make a
-# finished run unopenable, and the whole point of these notes is that a run
-# directory explains itself.
 #
 # Built from a constructed junction, never a file found on disk: a fixture
 # cannot go stale, and its relevance is not a guess.
@@ -636,65 +580,9 @@ def test_a_block_written_for_a_different_structure_is_refused():
     assert not back.regions, "labels were applied before the guard fired"
 
 
-# --------------------------------------------------------------------- #
-#  The PROVENANCE `engine` key — the DECLARATION side                   #
-# --------------------------------------------------------------------- #
-#
-# `running-a-job.md` § 4.2: the engine is declared when the script is
-# generated, and `parse.contract.engine_of` reads it back. Everything
-# that pinned that rule tested the READER, against hand-written
-# provenance text. So the emitters — the half that actually makes the
-# declaration exist — had NO coverage: an adversarial review measured
-# 853 tests still green with `engine=spec.engine` and the wrapper's
-# `engine=` argument both deleted. These are the missing half, and they
-# assert on a REAL generated artifact rather than a fixture string.
-
-def test_a_generated_deck_declares_its_engine():
-    """Both engines, through their own seams and the one deck writer."""
-    import numpy as np
-
-    from molbuilder import script_emit as sc
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.script_emit import _extract_provenance_dict
-    from molbuilder.pyscf.input import spec_for as pyscf_spec
-    from molbuilder.siesta.input import spec_for as siesta_spec
-    from molbuilder.structure import Structure
-
-    st = Structure(elements=["O", "C", "O"],
-                   positions=np.array([[0.0, 0.0, -1.16],
-                                       [0.0, 0.0, 0.0],
-                                       [0.0, 0.0, 1.16]]),
-                   vacuum=(10.0, 10.0, 10.0))
-
-    for spec_for, cfg, name, engine in (
-        (siesta_spec, SiestaConfig(system_label="co2"), "co2.fdf", "siesta"),
-        (pyscf_spec,  PySCFConfig(job_name="co2"),      "co2.py",  "pyscf"),
-    ):
-        import tempfile
-        d = Path(tempfile.mkdtemp())
-        spec = spec_for(st, cfg)
-        assert spec.engine == engine, "the seam's own answer moved"
-        sc.prepare_deck(spec, st, cfg, d / name)
-        block = _extract_provenance_dict((d / name).read_text(encoding="utf-8"))
-        assert block is not None, f"{name} carries no PROVENANCE block at all"
-        assert block.get("engine") == engine, (
-            f"{name}'s PROVENANCE says engine={block.get('engine')!r}; the "
-            f"deck was generated for {engine!r}. This key IS the declaration "
-            f"`running-a-job.md` § 4.2 resolves against -- without it a run "
-            f"directory falls back to sniffing file shapes.")
-
-
 # ===================================================================== #
-#  Rehomed from tests/parse/test_scripts.py, 2026-09-05                 #
+#  The block readers                                                    #
 # ===================================================================== #
-#
-#  That file tested the `TextParser` tier over the script blocks, which is
-#  gone (`plan.md` § 5d).  Most of it went with the tier -- it asserted
-#  `ScriptResult` fields, `result_kind == "script"` and parser names.
-#  These four did NOT: they cover the extractors, which moved here and are
-#  live.  Retiring an ABC is not a reason to retire the coverage it
-#  happened to carry.
 
 FULL_FDF = """\
 # === molbuilder header BEGIN ===
@@ -740,14 +628,14 @@ NumberOfAtoms 5
 
 
 def test_header_extracts_when_present():
-    """Rehomed. The HEADER block is the run command a person reads first."""
+    """The HEADER block is the run command a person reads first."""
     header = sc._extract_header_text(FULL_FDF)
     assert header is not None
     assert "Run with mpirun" in header
 
 
 def test_header_returns_none_when_absent():
-    """Rehomed. Block-absent is None, NOT an empty string.
+    """Block-absent is None, NOT an empty string.
 
     The present-vs-absent distinction is what the ATOM-METADATA emission
     rule turns on (`job-contracts.md` § 3.1); collapsing them would make a
@@ -758,12 +646,8 @@ def test_header_returns_none_when_absent():
 
 
 def test_bench_marks_extracts_version_and_fields():
-    """Rehomed. The only coverage of bench-marks EXTRACTION.
-
-    `test_script_emit.py` had four tests for emitting this block and none
-    for reading it back, so deleting the tier without this would have left
-    the read half of BENCH-MARKS untested -- the block `jobset summarize`
-    and `jobset/agreement.py` both depend on.
+    """The only coverage of bench-marks EXTRACTION -- the block `jobset
+    summarize` and `jobset/agreement.py` both depend on.
     """
     marks = sc._extract_bench_marks_dict(FULL_FDF)
     assert marks is not None
@@ -772,23 +656,16 @@ def test_bench_marks_extracts_version_and_fields():
 
 
 def test_the_block_readers_do_no_io():
-    """Rehomed, and re-aimed at the CODE rather than the ABC.
-
-    This was `parse.md` § 7 forbidden #2 -- *"TextParsers do NO I/O"* --
-    and the ABC it named is gone.  The rule is not about the class: a block
-    reader takes a STRING, and one that started opening files would be a
-    real defect either way, because every caller already holds the text and
+    """A block reader takes a STRING, and one that started opening files
+    would be a real defect, because every caller already holds the text and
     some hold it from a request body rather than a path.
 
-    **Scoped to the reader section at BOTH ends.**  It ran reader-header to
-    end-of-file until 2026-09-05, which was the same thing while the readers
-    were last in the file.  They are not: the ROUND-TRIP section now follows
-    them, and it legitimately opens a file -- `merge_user_custom_from_target`
-    reads the previous deck to carry your USER-CUSTOM zone forward, and
-    `write_script` writes.  A one-ended scan swept those in and failed the
-    moment the sections were reordered, which is the guard working: it is
-    meant to notice when I/O appears among the readers, and it could not tell
-    "appeared" from "the boundary moved" without the second bound.
+    **Scoped to the reader section at BOTH ends.**  The ROUND-TRIP section
+    follows the readers and legitimately opens a file --
+    `merge_user_custom_from_target` reads the previous deck to carry your
+    USER-CUSTOM zone forward, and `write_script` writes -- so the second
+    bound is what tells I/O appearing among the readers from the boundary
+    moving.
     """
     src = Path(sc.__file__).read_text()
     start = src.index("#  READING THE BLOCKS BACK")

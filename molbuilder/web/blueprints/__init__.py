@@ -1,32 +1,23 @@
 """Flask Blueprints registered into the molbuilder web app.
 
-The Build routes are still defined directly on the app in
-``web/app.py`` (historical layout).  The blueprint modules in this
-package hold the page + API routes for the other tabs:
+The blueprint modules in this package hold page + API routes:
 
   * ``watch.py``     -- /api/watch/* trajectory API endpoints
                         (consumed by the /results trajectory
-                        inspector; the legacy /watch page route was
-                        retired 2026-05-19; the module name is
-                        kept for git-history continuity per the
-                        2026-06-07 rename-and-no-redirect rule).
+                        inspector)
   * ``files.py``     -- /api/files/* file IO endpoints
-  * ``spectra.py``   -- /spectrum-calculation page (was ``/spectra``
-                        pre-2026-06-07) + /api/spectra/* endpoints
-  * ``modify.py``    -- /molbuilder page (was ``/modify``
-                        pre-2026-06-07) + /api/modify/* endpoints
-  * ``transport.py`` -- /transport-calculation page +
-                        /api/transport/* endpoints
-  * ``results.py``   -- /results page + /partials/* partials +
+  * ``spectra.py``   -- /spectrum-calculation page + /api/spectra/* endpoints
+  * ``modify.py``    -- /api/modify/* endpoints
+  * ``transport.py`` -- /api/transport/* endpoints
+  * ``results.py``   -- /results page + /partials/* partials
   * ``selection.py`` -- /api/selection/eval + /api/selection/atoms
                         (atom-selection rule
                         eval + atom list; Pattern C:
                         stateless, JS holds the rule tree, Python
                         canonicalises + evaluates.  Click-toggle is
                         handled client-side in the selection store)
-  * ``system.py``    -- /api/system/load (server-load snapshot for
-                        the bottom-strip widget, 2026-06-15)
-  * ``auth.py``      -- /login + /oauth-callback/* + provider dispatch
+  * ``system_load.py`` -- /api/system/load (server-load snapshot for
+                        the bottom-strip widget)
 
 All blueprints are registered into a single Flask app by
 ``web/app.py::create_app()``.

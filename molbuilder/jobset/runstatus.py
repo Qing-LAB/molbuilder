@@ -28,21 +28,18 @@ from typing import Any, Dict, List, Optional
 
 from ..identity import StageRef
 from ..paths import attempts_in
-from .materialize import (job_dir_names, launch_record_at, latest_attempt, run_dir, shape_of, stage_refs)
+from .materialize import (job_dir_names, latest_attempt, run_dir, run_names, shape_of, stage_refs)
 from ..runrecord import LaunchRecordError, launch_record
 from .commands import block, command, launch_lines, rollback
-from .model import KIND_SWEEP, JobSet
+from .model import JobSet
 from .plan import resources_text
 
-# Engine-native warm-restart files keyed by the project id (system label).
-# DERIVED from the one rules file (job-contracts § 4.2a; U3/W2, 2026-08-13):
-# the per-engine dict that stood here was the THIRD hand-kept copy of the
-# vocabulary, already citing a retired doc.  The carry rows are status's
+# Engine-native warm-restart files keyed by the project id (system label),
+# DERIVED from the one rules file (job-contracts § 4.2a; U3/W2).  The carry rows are status's
 # question -- could a stage here hand state to the next one? -- asked of the
 # one door with the calculation's folder, so its own list answers.
 from ..warmfiles import warm_list as _warm_list
-from ..paths import attempt_name, trial_label
-from ..runfiles import stem as rf_stem
+from ..paths import attempt_name
 
 
 
@@ -50,13 +47,10 @@ def _warm_files(engine: str, base):
     """What carries, from the list in effect for the calculation in
     ``base`` (`warmfiles.warm_list`, every section: status reads a folder,
     not a rung's kind) -- its own copy first, else the engine's
-    (`job-contracts.md` § 4.2a).  Resolved AT USE — never at import (C-b,
-    2026-08-13): the module-level dict that stood here loaded BOTH
-    engines' rules files the moment anything imported
-    ``molbuilder.jobset``, so one malformed TOML killed every entry
-    point with an import-time traceback.  An engine without a rules file
-    simply has no carry rows to report.  *(The engine's file alone answered
-    here until 2026-10-03, while prep followed the calculation's copy.)*"""
+    (`job-contracts.md` § 4.2a).  Resolved AT USE — never at import (C-b):
+    one malformed TOML must not kill every entry point with an import-time
+    traceback.  An engine without a rules file simply has no carry rows to
+    report."""
     try:
         return _warm_list(engine, None, base).carry
     except Exception:
@@ -71,12 +65,7 @@ class StageStatus:
     """One stage's status (read-only snapshot).
 
     **WHICH stage this is arrives as a whole :class:`~molbuilder.identity.
-    StageRef`, not as a loose name and a loose number.** It used to be the
-    latter, and the cost was immediate: ``render_stage_status`` wanted the
-    heading ``01_coarse``, had only the two halves, and so built a SECOND
-    ``StageRef`` out of them to ask for it -- a caller working out an answer a
-    floor below already held, inside the very object made to stop that (§ 9.6's
-    rule A4). Carrying the ref means the resolver in ``materialize`` is the only
+    StageRef`, not as a loose name and a loose number.** Carrying the ref means the resolver in ``materialize`` is the only
     place one is ever made.
     """
     ref:        StageRef
@@ -97,7 +86,7 @@ class StageStatus:
     #: a new directory and leaves the old one exactly as it was (§ 1.5), so
     #: this is the list of tries, not a counter that can be off.
     attempts: List[int] = field(default_factory=list)
-    #: The attempt's ``run.json``, whole, or ``None`` if it has not been
+    #: The run's launch record, whole, or ``None`` if it has not been
     #: launched.  Carried rather than picked apart so the per-stage view has
     #: the record without a SECOND reader of the same file -- the schema is
     #: versioned (``molbuilder/run-launch@1``) and may grow fields.
@@ -113,8 +102,7 @@ class StageStatus:
     #: Whether the description runs it -- a disabled stage is listed, and is
     #: never the stage to resume from (§ 5.3).
     enabled: bool = True
-    #: What the stage IS, the plan's columns (`plan` folded into
-    #: `status <stage>`, 2026-10-01): its deck, the restart files it declares
+    #: What the stage IS, the plan's columns: its deck, the restart files it declares
     #: -- what it would take from a run it continues from -- and the
     #: resources it asks for.
     script: Optional[str] = None
@@ -174,8 +162,7 @@ class JobSetStatus:
 
     def to_dict(self) -> Dict[str, Any]:
         """THE WIRE FORM -- the Results tab's ladder is this (`web/results.md`
-        § 2.4), the next prep's answer included (W52: the route built a dict
-        of its own and dropped it)."""
+        § 2.4), the next prep's answer included."""
         return {
             "name": self.name, "engine": self.engine,
             "first_incomplete": self.first_incomplete,
@@ -199,12 +186,6 @@ def _warm_present(stage_dir: Path, label: str, engine: str,
     return out
 
 
-# `_label_of` -- a job's label cut off its deck's name, walking the
-# underscores for a stage token -- stood here until 2026-10-04.  A trial's
-# label is composed by the one composer, `paths.trial_label` (plan W56
-# 3b.3).
-
-
 #: The state a stage has before `prep` has made it a directory -- the ONE
 #: spelling, read by `_stage_state` for a planned stage whose directory is
 #: missing and by :func:`jobset_status` for a described stage nothing has
@@ -223,14 +204,12 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
     keeps every stage in one folder, and an attempt may hold several run
     indexes.
 
-    ``launch`` is the attempt's ``run.json``. It is what separates *queued* from
+    ``launch`` is the run's launch record. It is what separates *queued* from
     *never started*, which no amount of looking at an empty directory can do:
     § 1.6's *"a queued cluster job has produced nothing yet, so 'no output' and
     'not started' look identical"*, and its promise that status can then say
     *"queued as job 481923"* rather than guessing from an absence.  The
-    directory door answers both from it (`parse.dirs.job.run_status`): the
-    rule stood HERE, above the door, until 2026-09-26, so the Results tab's
-    directory door answered the same attempt "running".
+    directory door answers both from it (`parse.dirs.job.run_status`).
     """
     if not observed.is_dir():
         return NOT_PREPPED
@@ -245,10 +224,8 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
         st = run_status(observed, basename, launch=launch)
     except Exception as e:                    # fail-soft; stay informative
         return ("unknown", f"could not decode: {e}")
-    # `run_status` returns a `RunStatus` since 2026-09-09; both fields are
-    # always present, so the old `.get(..., default)` pair is gone with the
-    # dict.  The "unknown" fallback lives in the except clause above, which is
-    # the only way this can fail to have an answer.
+    # The "unknown" fallback lives in the except clause above, which is the
+    # only way this can fail to have an answer.
     return (st.state, st.detail)
 
 
@@ -266,42 +243,30 @@ def _rung_homes(base: Path, task, job_name: str, d: Path) -> list:
 
 
 def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
-                refs) -> StageStatus:
+                refs, shape) -> StageStatus:
     """One prepped job's status, read from where its attempts are."""
     d = base / dirs[job.name]
-    # WHICH FILES are this stage's: its run's stem names them, in either
-    # shape -- a flat folder holds every stage, an attempt may hold several
-    # run indexes.
-    token = refs[job.name].token
-    # THE LABEL IS THIS JOB'S, NOT THE JOBSET'S.  A sweep's `JobSet.name`
-    # is `task.label`, while each trial is relabelled with its point --
-    # its job's name (`project-layout.md` § 2.3.2) -- so narrowing by the
-    # jobset's name matched NOTHING for a trial, and a finished trial
-    # answered § 1.6's forbidden "prepped, not launched".  Composed by the
-    # one composer prep's label comes from (`paths.trial_label`).
-    job_label = (trial_label(jobset.name, job.name)
-                 if jobset.kind == KIND_SWEEP else jobset.name)
-    basename = rf_stem(job_label, token or None)
+    # WHICH FILES are this stage's: its stage's names (`materialize.
+    # run_names`) -- in either shape a flat folder holds every stage, an
+    # attempt may hold several run indexes.  THE LABEL IS THIS JOB'S, NOT
+    # THE JOBSET'S: a trial is relabelled with its point.
+    names = run_names(jobset, job, shape)
+    basename = names.stem
     read = []
     for home, volts in _rung_homes(base, task, job.name, d):
         # WHERE the run happened, asked of the layer that decides layout
         # -- the latest attempt where there is one, the container for a
-        # flat run (project-layout.md § 1.5).  Globbing the folder
-        # regardless was blind to the whole attempt layer: a finished
-        # hierarchical stage read as "prepped, not launched" because its
-        # .out is one level down.
+        # flat run (project-layout.md § 1.5).
         attempt = latest_attempt(home)  # None is the ANSWER: prepared?
         observed = run_dir(home)        # ...and this is where to look
-        # WHERE the launch record lives -- the one answer the writer reads
-        # too (`materialize.launch_record_at`): the attempt when one exists;
-        # a sweep trial's at the trial's top; a flat stage's own record,
-        # named by its deck, in the directory every stage shares.  This
-        # spelled the rule a second time until 2026-10-01 (W52).  ONE THAT
-        # DOES NOT READ is said, never read as launched or not
+        # THE LAUNCH RECORD lies in the folder the run happened in, named
+        # by the stage's names -- the one answer the writer reads too: the
+        # attempt's `run.json`, a trial's at its top, a flat stage's newest
+        # run's own in the folder every stage shares.  ONE THAT DOES NOT
+        # READ is said, never read as launched or not
         # (`runrecord.launch_record`).
         try:
-            launch = launch_record(
-                *launch_record_at(jobset.kind, job, home, attempt))
+            launch = launch_record(observed, names)
         except LaunchRecordError as e:
             read.append((home, volts, attempt, observed, None, "unknown",
                          str(e)))
@@ -326,17 +291,11 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         attempts=attempts_in(home),
         launch=launch,
         relaunch_continues=job.relaunch_continues,
-        # THE SAME LABEL THE STATE WAS READ WITH.  This asked for
-        # `jobset.name` while everything else in the loop had moved to
-        # `job_label` -- so a trial's own label (`paths.trial_label`;
-        # `_label_of` until 2026-10-04) was applied to
-        # the `.out` and not to the warm files beside it.  Measured on a
-        # staged sweep trial: `siesta-AuBDTAu-G0K20C1.XV` on disk, warm
-        # files reported `[]`, and `jobset status` told a person there
-        # was nothing to restart from.
-        warm_files=_warm_present(observed, job_label, jobset.engine, base),
+        # THE SAME LABEL THE STATE WAS READ WITH -- the stage's names'.
+        warm_files=_warm_present(observed, names.label, jobset.engine,
+                                 base),
         # WHAT THE STAGE IS -- the plan's own columns, read per stage by
-        # `status <stage>` since `plan` folded into it (2026-10-01).
+        # `status <stage>`.
         script=str(job.script),
         carries=[w.name for w in job.warm],
         resources=resources_text(job.resources),
@@ -364,8 +323,8 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
     has prepped yet as :data:`NOT_PREPPED` -- so a calculation lists its
     stages before its first prep (``jobset`` is then ``None``), and a ladder
     prepped one stage at a time lists them all.  The Results tab's ladder is
-    this answer (`web/results.md` § 2.4).  A set with no description beside
-    it -- a hand-built one, a benchmark's sweep -- lists its own jobs.
+    this answer (`web/results.md` § 2.4).  A benchmark's sweep, with no
+    description beside it, lists its own jobs.
 
     ``first_incomplete`` is the first stage that is not ``finished`` -- the
     stage to resume from, never a disabled one; ``None`` (and
@@ -382,12 +341,11 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
     if jobset is not None:
         sh = shape_of(jobset, base_dir)
         kw = {"dirs": job_dir_names(jobset, sh),
-              "refs": stage_refs(jobset)}
+              "refs": stage_refs(jobset), "shape": sh}
     stages: List[StageStatus] = []
     if task is not None:
         # ONE KEY for a stage's name, in any case (`identity.stage_key`):
-        # a stage renamed in case only kept its prepped job (W52: the exact
-        # join read it as not prepped and offered `prep run` again).
+        # a stage renamed in case only keeps its prepped job.
         from ..identity import stage_key
         held = {stage_key(j.name): j for j in (jobset.jobs if jobset is not None
                                                else ())}
@@ -421,8 +379,7 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
     # A BENCHMARK'S SWEEP is read against the calculation it measures, as
     # its job-set names its trials (`materialize.bench_owner` re-bases a
     # reader standing in the container); its stage is read off where its
-    # trials live, so its next step is its own verbs (W52: it was told a
-    # ladder's `launch run <trial>`, which a sweep refuses).
+    # trials live, so its next step is its own verbs.
     bench_of = None
     if sweep and jobset.jobs:
         from .materialize import bench_stage_of
@@ -452,11 +409,8 @@ def stage_continuation(base: Path, task, name: str) -> dict:
     """``{"resume_from": ...}`` or ``{"resume_refused": ...}`` -- what a
     prep of ``name`` would continue from, or why it would refuse -- asked of
     `continuation.continuation_answer`, the one door `prep` asks too, so the
-    two never disagree about the same run (the W37 review: a rule of
-    status's own told a stage set to start clean that it would continue).
-    For the stage `status <stage>` names as much as for the first
-    incomplete one (W52: a later stage was told `Prep it` while its prep
-    refused)."""
+    two never disagree about the same run.  For the stage `status <stage>`
+    names as much as for the first incomplete one."""
     from .continuation import continuation_answer
     # NO VERDICT: status names the run, not its relaxation -- and the table
     # (the Results tab's ladder too) is read far more often than prepped.
@@ -475,9 +429,8 @@ def render_status(status: JobSetStatus) -> str:
         f"JOB-SET STATUS -- {status.name} ({status.engine})",
         "",
     ]
-    # The stage's SEQ, never its row.  This printed `enumerate()` until
-    # 2026-08-10 -- a position where a reader reads an ordinal, which is the
-    # number `engines/stages.md` R5 forbids as an identifier.  A sweep point
+    # The stage's SEQ, never its row: a row's position is the number
+    # `engines/stages.md` R5 forbids as an identifier.  A sweep point
     # has no order, so it prints `-` from the one rule the plan table uses.
     # `attempt` is which run-<n> the row was READ FROM.  Without it the table
     # says "finished" without saying finished *when* -- and after a re-run the
@@ -488,9 +441,6 @@ def render_status(status: JobSetStatus) -> str:
              ", ".join(s.warm_files) or "-", s.detail)
             for s in status.stages]
     # Widths and the rule are both driven off `hdr`, never off a literal count.
-    # They were two hand-written numbers until 2026-08-10, and adding the
-    # `attempt` column desynchronised them immediately: six headings over a
-    # five-segment rule.
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(len(hdr))]
     def fmt(r):
         return "  ".join(s.ljust(w[k]) for k, s in enumerate(r))
@@ -533,7 +483,7 @@ def _sweep_next(status: JobSetStatus) -> str:
     """A benchmark's next step: its own verbs, for the stage it measures, on
     the calculation (`job-system.md` § 7) -- the trials launch together, the
     ones already launched passed over, and what they measured is read back
-    once they have run (W52: worded as a ladder's)."""
+    once they have run."""
     stage, base = status.bench_of, status.base
     read = block([command("summarize", "bench", stage, base=base)])
     states = {s.state for s in status.stages}
@@ -551,10 +501,7 @@ def _sweep_next(status: JobSetStatus) -> str:
 
 def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
     """What to do about a PREPPED stage that has not finished, by its state
-    -- each a command that works (W52: every state was told to "re-submit
-    that stage (the engine warm-starts from its own restart files)", a
-    queued or running one included, and a stage that starts clean, whose
-    re-launch is refused, alike).  molbuilder does NOT auto-resume; the
+    -- each a command that works.  molbuilder does NOT auto-resume; the
     person decides (`engines/stages.md`)."""
     state = s.state if s is not None else "stopped"
     if state == "pending":
@@ -564,9 +511,8 @@ def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
         return (f"First incomplete stage: {name}, {state} -- let it "
                 f"finish; `{command('status', name, base=base)}` shows its "
                 f"run.")
-    # A PREPPED STAGE IS NOT PREPPED AGAIN (user, 2026-10-02): what it
-    # said here until then -- "prep it again for a fresh attempt", and
-    # "or change its parameters first" -- is a rollback now.
+    # A PREPPED STAGE IS NOT PREPPED AGAIN (user, 2026-10-02): changing it
+    # first is a rollback.
     if s is not None and s.relaunch_continues:
         how = ("launch it again -- it continues from its own latest run:\n"
                + block(launch_lines("run", name, base=base))
@@ -574,9 +520,7 @@ def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
                                                           base=base))
     else:
         # THE SAME SENTENCE `launch` refuses a second launch with -- one
-        # fact (`Job.relaunch_continues`), one answer (C10: a stopped
-        # force-constant stage was told to prep anew here while launch
-        # continued it).
+        # fact (`Job.relaunch_continues`), one answer (C10).
         from .continuation import no_relaunch
         how = no_relaunch(s is None or not s.carries, base=base)
     return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
@@ -588,8 +532,8 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
     """One stage, in full — the per-stage form `job-system.md` § 5.3 reserves.
 
     The table answers *where is this calculation up to*; this answers *what
-    this stage is* -- its deck, what it declares, its resources, the columns
-    `plan` printed until it folded in here (2026-10-01) -- and *what happened
+    this stage is* -- its deck, what it declares, its resources, the plan's
+    columns -- and *what happened
     to it*, which is a different question and the one you ask before
     deciding whether to run it again. It is only answerable at all
     because of the attempt layer: the tries are directories, and the launch is
@@ -599,8 +543,8 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
     built and ``continuation`` -- :func:`stage_continuation`'s answer for a
     stage nothing has prepped, which the caller asks; without it, the
     table's own answer for the first incomplete stage. Nothing here opens a
-    file — a second reader of ``run.json`` would be a second answer to *was
-    this launched?*
+    file — a second reader of the launch record would be a second answer to
+    *was this launched?*
     """
     s = next(x for x in status.stages if x.name == stage_name)
     if not s.prepped:
@@ -624,11 +568,11 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
                           f"  {s.detail}", "", how])
     rows: List[tuple] = [
         # WHAT THE STAGE IS, before what happened to it -- the plan's columns
-        # (`plan` folded in here, 2026-10-01; `job-system.md` § 5.3).
+        # (`job-system.md` § 5.3).
         ("deck", s.script or "-"),
         # WHAT IT DECLARES, never what was copied -- the plan's column
-        # (`STAGE-PLAN.md`, D28): each run's `.continued-from` and
-        # `run.json` say what came across.
+        # (`STAGE-PLAN.md`, D28): each run's `.continued-from` and launch
+        # record say what came across.
         ("declares", ", ".join(s.carries) or "-"),
         ("resources", s.resources or "-"),
     ]
@@ -646,8 +590,7 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
         if cmd:
             rows.append(("command", " ".join(cmd)))
         # SAID EVERY TIME (checkpointing.md S3): the run it continued from,
-        # or null -- it started from the structure.  The row was left out
-        # then until 2026-10-06.
+        # or null -- it started from the structure.
         src = s.launch.get("continued_from")
         rows.append(("continued from",
                      src if src else "nothing -- it started from the structure"))
@@ -656,9 +599,7 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
     rows.append(("warm files", ", ".join(s.warm_files) or "-"))
     rows.append(("detail", s.detail or "-"))
 
-    # The pad comes off the longest label, never a literal.  Hand-written and
-    # it was 14 -- exactly the width of "continued from", so the one row that
-    # had something to say ran its value straight into its own name.
+    # The pad comes off the longest label, never a literal.
     w = max(len(k) for k, _ in rows) + 2
     lines = [f"STAGE {s.ref.label} -- {s.state}", ""]
     lines += [f"  {k.ljust(w)}{v}" for k, v in rows]

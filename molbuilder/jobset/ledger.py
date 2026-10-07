@@ -86,9 +86,7 @@ def prepped(base, *, kind: str, stage, dirs, provenance):
     -- the table `STAGE-PLAN.md` and the pipeline log carry.  It comes back because the
     answer carries it: the command line PRINTS it (`format_provenance`) and
     the Task setup tab receives it -- the same table, read once, recorded
-    and displayed from the answer.  *(It was read again here, after the
-    write, until 2026-10-05: at a first prep the record that answered was
-    another file than the one STAGE-PLAN.md named.)*
+    and displayed from the answer.
     """
     base = Path(base)
     record(base, "prep", "prepped", kind=kind, stage=stage,

@@ -7,7 +7,7 @@
  *   the on-disk indexed STATE TIMELINE (`workspace.md` § 9).
  *
  * ROLE: session state + concealed file access ONLY.  Holds NO in-memory data model and never
- *   interprets what it stores.  The MolView data model (lib/molview/data-model.js) owns the
+ *   interprets what it stores.  The MolView data model (lib/molview/) owns the
  *   structure/selection/periodicity/frames + their format, serialises itself, and hands the BYTES
  *   here to persist; this layer writes them format-blind.  The suspend/resume + the
  *   "when the data changed" decision (PUSH-ONLY, no debounce) live in the data model —
@@ -18,11 +18,9 @@
  * becomes the workspace_id the state files are named after. Two tags are two ids
  * and two sets of files, so one saver cannot reach another's work.
  *
- * It is an ARGUMENT, not something set beforehand. There used to be
- * ``useNamespace(owner)``, which set one value that every later write then used --
- * so on a page with two savers the second to set it silently took the first one's
- * writes, and neither found out until one read back something it never wrote. A
- * tag passed with each call has no such window.
+ * It is an ARGUMENT, not something set beforehand: one value set beforehand and
+ * used by every later write would let the second of two savers on a page silently
+ * take the first one's writes. A tag passed with each call has no such window.
  *
  * USED BY (callers of window.molbuilder.workspace):
  *   - lib/molview/history.js — the state save/retract TIMELINE: persist(), readState(),
@@ -42,7 +40,6 @@
  *                                 (index === -1 clears the whole timeline).
  *   - workspaceId(tag)         -- the stable id this tag's draft is keyed under.
  *   - onPersistError(fn)       -- subscribe to non-blocking disk-write failures.
- *   - STORAGE_KEY is gone with the browser copy: there is no browser-side slot.
  */
 "use strict";
 
@@ -58,20 +55,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     //
     // A stable id for a tag's draft, so repeated updates hit the SAME state files
     // and a same-tab reload keeps them (not a fresh orphan each time).
-    //
-    // REMEMBERED PER TAG, and that is load-bearing rather than tidy. The id is
-    // what the state files are named after -- <workspace_id>.<step>.wc.json --
-    // so one shared memory would hand the first tag's id to every tag that asked
-    // afterwards, and two savers would write over each other's numbered history
-    // while their browser copies stayed properly apart. Isolation has to hold for
-    // the identity as well as for the content; holding for only one of them is
-    // broken in the half that survives a crash, which is the half the timeline
-    // exists for.
-    //
-    // This replaced a single `_workspaceId` variable that `useNamespace(owner)`
-    // reset. That worked only because a page had one saver: the setter was the
-    // thing keeping the cache honest, so removing it without this would have
-    // taken the guarantee away in silence.
     /* THE ID IS THE TAG, MADE SAFE FOR A FILE NAME.
      *
      * The state files are `<workspace_id>.<step>.wc.json`, and the id has to be
@@ -80,17 +63,11 @@ const root = (typeof window !== "undefined") ? window : globalThis;
      * out from the tag makes that true by construction, with nothing remembered
      * anywhere.
      *
-     * It used to be a random string minted per browser tab and kept in
-     * sessionStorage so a reload could find it again. That went with the
-     * sessionStorage copy: there is one place work is kept now, and it is on the
-     * server.
-     *
      * TWO CONSEQUENCES, both deliberate. Two browser windows open on the same
-     * page now share one saved workspace, because they are two windows onto the
+     * page share one saved workspace, because they are two windows onto the
      * same work rather than two workspaces that happen to look alike. And the
-     * file pile is bounded: a closed tab used to abandon its whole timeline under
-     * an id nothing would ever use again, which is why this directory grew until
-     * an operator deleted it by hand.
+     * file pile is bounded: no closed tab abandons its timeline under an id
+     * nothing would ever use again.
      *
      * The server allows letters, digits, `_` and `-` in an id — no dots, so the
      * index stays unambiguous — so anything else in a tag becomes a dash.
@@ -111,30 +88,13 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         }
     }
 
-    /* THERE IS NO `hasRestorableSnapshot` OR `mountRestoreTarget` HERE ANY MORE,
-     * and their absence is the rule rather than an omission.
-     *
-     * They answered two questions a tab asks when a page loads: "have I got work
-     * saved here worth bringing back?" and "which project file was it from?" This
-     * module answered them by opening the saved bytes and looking for a molecule
-     * inside — which it is documented not to do, and which it got wrong: a
-     * molecule you build from SMILES has no file it came from, so the second one
-     * reported "nothing saved" and the tab wiped work that was there.
-     *
-     * Both are the TAB's questions about the TAB's own bytes. It wrote them, so it
-     * knows what is in them: it reads its own state file back and looks. And
-     * `mountRestoreTarget` handed out a PROJECT FILE PATH, which belongs to the
-     * projects module and has no business being read out of here at all.
-     */
-
     // ─── The write (format-blind) ─────────────────────────────────── //
     // The on-disk indexed STATE FILE (`workspace.md` § 9, the state files
     // on the server and their two ordering rules).
     // ``snapshotBlob`` is the consumer's already-serialised OPAQUE session snapshot; ``identity``
     // = {workspace_id, state_index} keys the filename ``<workspace_id>.<state_index>.wc.json``.
     // The server stores it FORMAT-BLIND (never through the structure codec).  Best-effort.
-    // Ordered event tracer (diagnostic; no-op unless window.__MV_TRACE).  Mirrors
-    // data-model's _trace so client seams + HTTP round-trips share one timeline.
+    // Ordered event tracer (diagnostic; no-op unless window.__MV_TRACE).
     function _trace(ev, extra) {
         if (!root.__MV_TRACE) return;
         try {
@@ -147,7 +107,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
     // Persist contract: NON-BLOCKING but ERROR-EXPLICIT.  The on-disk state
     // write is fire-and-forget (the hot path never awaits it -- the in-memory
-    // model + synchronous session mirror are the source of truth), BUT a failure
+    // model is the source of truth), BUT a failure
     // is NEVER swallowed: it is reported to the console AND emitted as a
     // ``molbuilder:persist-error`` DOM event so a UI layer can warn the user
     // ("state didn't reach disk; retract history / crash recovery may be
@@ -183,14 +143,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
     // ---- Recovery -------------------------------------------------------- //
     // A failure is surfaced (above) and a persist-error banner is RAISED.
-    // Nothing used to lower it: there was no success signal at all, so once a
-    // write failed the warning stood for the life of the page -- through the
-    // backend coming back, through every later write succeeding -- and its
-    // "(xN)" only ever grew.  Measured 2026-09-05, after a server outage: the
-    // route was answering 200 again while the banner still said saving was
-    // broken, and the only way out was to dismiss it by hand.
-    //
-    // So a write that lands announces itself, and the UI layer clears the
+    // A write that lands announces itself, and the UI layer clears the
     // warning.  Emitted ONLY on a transition out of the failed state, because
     // a per-write event on a healthy session is noise on every keystroke.
     function _reportPersistOk(detail) {
@@ -247,11 +200,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     function persist(tag, bytes, identity) {
         _requireTag(tag);
         if (!root.fetch) return false;
-        /* ONE PLACE, and the call does not wait for it. There used to be a second
-         * copy in the browser's own storage, written on the way past; it was
-         * dropped because nothing ever read it back to restore anything — every
-         * restore went to the server anyway — so it cost a write per edit and
-         * bought nothing.
+        /* ONE PLACE -- the server -- and the call does not wait for it.
          *
          * NOTHING USEFUL CAN COME BACK FROM HERE. The write is sent without
          * waiting, so a slow disk never stalls an edit, and whether it arrived is
@@ -263,7 +212,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
     /**
      * Read the OPAQUE snapshot bytes on disk at {workspace_id, state_index} (§4.7 read-by-index),
-     * what popState calls to fetch a *history* index the session mirror no longer holds.  Resolves
+     * what the history calls to fetch a saved index.  Resolves
      * the parsed JSON, or null when the file is missing / unreadable.  Format-blind — the data
      * model interprets what comes back.
      */
@@ -304,8 +253,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             _trace("http:prune-states:error", { above: index });
             _reportPersistError({ op: "prune-states", above_index: index,
                                   error: (err && err.message) || String(err) });
-            // Resolve (undefined) so _anchorTimeline's ordered write still runs;
-            // a failed prune leaves a stale tail, not a lost anchor.
+            // Resolve (undefined) so a caller's ordered write still runs;
+            // a failed prune leaves a stale tail, not a lost save.
         });
     }
 
@@ -318,10 +267,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     };
 
     // MERGE into any pre-existing ``workspace`` namespace, not replace it -- defensive, so a
-    // plain ``= api`` can't clobber a slot some other module set first.  (The canvas-state
-    // store used to mount ``workspace._canvasState`` here; it now lives on
-    // ``molview._canvasState`` -- the 2026-07 carve keeps the workspace persistence-only --
-    // so this merge is no longer load-bearing for it, but stays as a general safeguard.)
+    // plain ``= api`` can't clobber a slot some other module set first.
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.workspace = Object.assign(
         root.molbuilder.workspace || {}, api);

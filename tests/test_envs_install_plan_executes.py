@@ -105,10 +105,7 @@ def test_the_browser_step_confines_itself_to_the_prefix(tmp_path):
     measured 1.3 GB there, outside every env and surviving `conda env
     remove`.
 
-    This began as three `in` checks against the recipe's own literal, which
-    is the constant re-typed at itself: it proves nothing about where a
-    browser goes and can only fail if someone edits the string.  Executing it
-    proves the hook is written, the download is pointed inside the prefix,
+    Executing it proves the hook is written, the download is pointed inside the prefix,
     and $HOME is untouched.
     """
     prefix = tmp_path / "env"
@@ -209,12 +206,9 @@ def test_the_verify_step_runs_and_only_warns_about_a_foreign_gcc(tmp_path):
     assert recipe.verify_expect_contains in cp.stdout
     assert "WARNING: bare gcc resolves to" in cp.stderr
     # ...and the remedy is printed, not executed, and NAMES A REGISTERED
-    # RECIPE.  This asserted `molbuilder envs install siesta-gpu` until
-    # 2026-09-12 -- the literal the code emitted, and a command that errors:
-    # `recipe_by_name` takes canonical names only, so the one warning telling
-    # you the GPU env lacks its toolchain shims handed you "unknown recipe
-    # 'siesta-gpu'", exit 2.  A test pinning the emitted string cannot see
-    # that; this pins the two things that make a remedy usable.
+    # RECIPE: `recipe_by_name` takes canonical names only, so a remedy naming
+    # `siesta-gpu` hands you "unknown recipe 'siesta-gpu'", exit 2.  This
+    # pins the two things that make a remedy usable.
     assert f"install {recipe.name}" in cp.stderr, cp.stderr
     assert "`" not in cp.stderr, (
         "a backtick in the warning would be command substitution inside the "

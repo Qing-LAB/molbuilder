@@ -2,7 +2,7 @@
 
 The implementation drops the lock during parse so other requests
 aren't blocked.  This file pins down the race window: if a concurrent
-/api/load swaps the active file mid-parse, the stale parse result
+/api/watch/load swaps the active file mid-parse, the stale parse result
 from the previous file must NOT clobber the new state.
 """
 
@@ -162,9 +162,7 @@ def test_concurrent_polls_dont_serialize_on_parse(tmp_path):
 
     # Wait for the fast caller to actually finish its lock-grab (proof
     # of liveness during the slow parse) before releasing the slow
-    # parser.  Replaces the previous `time.sleep(0.4)` -- that was a
-    # hard timing assumption that got flaky on slow CI runners and
-    # racy on fast machines.  The 2 s timeout is generous; a real
+    # parser.  The 2 s timeout is generous; a real
     # liveness bug would block forever.
     assert fast_acquired.wait(timeout=2.0), (
         "fast caller never finished -- the lock was held throughout "

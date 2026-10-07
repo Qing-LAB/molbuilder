@@ -32,15 +32,11 @@ test-only use (the JSDoc comment in the source notes it's not part
 of the inspector's public API).  This file drives it via a small
 Node harness with a series of POSIX + macOS + Windows + pytest-tmp
 inputs and asserts each one redacts to the expected shape.
-
-A future regression that drops the redaction call from
-``_buildPlotCsv`` (or weakens the regexes) fails here loudly.
 """
 from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -152,18 +148,6 @@ def _load_and_call(raw):
     return out["v"]
 
 
-def _run_node(script: str) -> str:
-    """Run a Node one-liner and return stdout."""
-    proc = subprocess.run(
-        ["node", "-e", script],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    return proc.stdout
-
-
 @pytest.mark.parametrize(
     "raw,expected,description", _CASES,
     ids=[c[2].replace(" ", "_") for c in _CASES],
@@ -171,33 +155,11 @@ def _run_node(script: str) -> str:
 def test_redaction_pattern(raw, expected, description):
     """Drive ``_redactSourcePath`` through the module's own export.
 
-    CONVERTED 2026-09-06 (`plans/plan.md` § 5h).  This used to EXTRACT the
-    function's source by anchored slicing -- ``marker_end_token = "
-    return p;\\n    }"``, eight spaces and a newline -- run that text under
-    Node, and separately assert the export string appeared in the file.  Two
-    problems, and they compounded: re-indent the function and the slice breaks
-    with "the function may have been renamed"; and because the slice never
-    touched the export, the export existed *"so this test can drive the
-    function"* while no test drove it that way.  Removing it failed only the
-    string pin, never a real check.
-
-    Now the module is LOADED (`tests/_node_esm.run_node`, with `static_root`
-    so its browser-absolute `/static/...` import resolves) and the function is
-    called on the namespace production reaches it through.  The separate
-    export pin is deleted: it is genuinely redundant now, because these cases
-    cannot run without the export.
+    The module is LOADED (`tests/_node_esm.run_node`, with `static_root` so
+    its browser-absolute `/static/...` import resolves) and the function is
+    called on the namespace production reaches it through.
     """
     out = _load_and_call(raw)
     assert out == expected, (
         f"_redactSourcePath({raw!r}) -> {out!r}, expected {expected!r}\n"
         f"Case: {description}")
-
-# `test_csv_builder_calls_redaction` stood here and searched core.js for the
-# literal `_redactSourcePath(\n            ctx.sourcePath` -- twelve spaces of
-# indentation included.  Re-wrapping that one call broke it while the CSV
-# stayed clean, and no arrangement of text can answer the question that
-# matters: did the file that reached the user's disk carry their login.  It
-# does now, in tests/test_inspector_registry_e2e.py::
-# test_the_exported_csv_does_not_carry_the_users_name, which mounts a real
-# run, clicks Export, and reads the downloaded bytes.  What stays HERE is the
-# pattern table above: one path in, one path out, no browser needed.

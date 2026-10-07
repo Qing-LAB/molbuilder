@@ -1,8 +1,5 @@
-/* projects/dialogs.js -- modal dialogs for sidebar mutations.
- *
- * 2026-06-12: created when the foldable <details> create-form sections
- * + the per-entry "view"/"×" inline buttons were replaced with a single
- * + dropdown + a kebab menu (see web/projects.md § 4).
+/* projects/dialogs.js -- modal dialogs for sidebar mutations
+ * (see web/projects.md § 4).
  *
  * Each export opens a <dialog>, lets the user type / pick something,
  * and resolves with the chosen value (or null on cancel / ESC).  No
@@ -67,9 +64,7 @@ function _open(dialog) {
 // ─── Filename / dirname validation ───────────────────────────────── //
 
 // Same rules as the rename endpoint: basename-only, no separators,
-// not . / .. .  (The rule came from `modify/structure/save-dialog.js`,
-// retired 2026-09-02 when the Save panel moved onto this module's own
-// `chooseSavePath`; this is now its only home.)
+// not . / .. .
 function _validateName(raw) {
   const s = (raw || "").trim();
   if (!s) return { ok: false, reason: "" };
@@ -312,14 +307,9 @@ export function chooseUploadFile(opts) {
  *
  * @param {object} opts
  * @param {string} opts.title   — modal heading (e.g. "Move to…")
- * @param {string} opts.srcPath — source path (highlighted as the
- *                                "current location" if its parent
- *                                is in the tree; cannot be picked
- *                                as the destination)
  */
 export async function chooseDestinationDir(opts) {
-  // Delegates to the ONE pop-out picker (lib/tree-picker.js, promoted
-  // from the implementation that lived here 2026-06-12..2026-08-28) --
+  // Delegates to the ONE pop-out picker (lib/tree-picker.js) --
   // this wrapper keeps the sidebar's question named for what it asks.
   opts = opts || {};
   const { pickPath } = await import("../tree-picker.js");

@@ -11,22 +11,14 @@ decides, then hands its answer to :func:`prep_calculation` -- the five
 steps, on the described route: a description plus its template in, one
 rendered deck and wrapper **per element** of the resolved
 :class:`~molbuilder.resolve.ParameterSet` out.  :func:`prep_jobset` is steps
-4–5, the tail of those.  Neither reads or decides anything of its own: each
-took a hand-built set or read the calculation itself when called directly,
-which only tests did, until 2026-10-06 -- `prep` has been described-only
-since 2026-08-12 (U2/U4).
+4–5, the tail of those.  Neither reads or decides anything of its own.
 
-The framework here was first built inside the benchmark and the general part
-lifted out (§ 2.3.1a: *benchmarking is `prep` whose parameters are a set
-rather than a point* — the five steps are general, the grid is the
-specialisation).
+§ 2.3.1a: *benchmarking is `prep` whose parameters are a set rather than a
+point* — the five steps are general, the grid is the specialisation.
 
 Wrappers render **once per job, in the JOB'S OWN DIRECTORY** (L2, roadmap
-7.10 -- until 2026-08-24 they rendered in the bundle root and were symlinked
-down, which is how a ten-trial sweep came to keep 50 rendered files at its
-root).  Every element renders its own deck, so each wrapper carries its own
-element's resources.  *(A hand-built set sharing one script got a copy of
-the first job's wrapper until 2026-10-06; nothing builds one.)*
+7.10).  Every element renders its own deck, so each wrapper carries its own
+element's resources.
 """
 
 from __future__ import annotations
@@ -40,14 +32,14 @@ import numpy as np
 from typing import TYPE_CHECKING, Callable, List, Optional, Sequence, Tuple
 
 from .. import script_emit as _sc
-from .materialize import (job_dir_names, materialize, stage_home,
-                          ladder_homes)
+from .materialize import (job_dir_names, materialize, run_names,
+                          shape_of, stage_home, ladder_homes)
 from ..runrecord import write_gathered_from
 from ..warmfiles import warm_list
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 from .plan import FILENAME as _PLAN_FILE
-from ..runfiles import compose as _rf
+from ..runfiles import RunNames, compose as _rf
 from ..pseudos import PSEUDO_DIRNAME
 from .errors import PrepError
 from .machine import machine_record, require_activation, set_machine
@@ -103,21 +95,21 @@ def _user_error_as_prep():
 
 def _flat_continued_from(base: Path, task, stage: str, continuation,
                          plan) -> None:
-    """A flat stage's own ``<basename>.continued-from``, for its launch
-    record (`project-layout.md` § 1.6.3) -- the flat layout records what a
-    stage continues from too (user, 2026-10-01).  It names the run by what
-    every file of it carries (`runfiles.run_name`): flat keeps no directory
-    per run.  Into ``plan``, with the rest of the prep."""
-    from ..runfiles import stem as rf_stem
+    """A flat stage's first run's own ``.continued-from``, for its launch
+    record (`project-layout.md` § 1.6.3), named by the stage's names
+    (`runfiles.RunNames`) -- the flat layout records what a stage continues
+    from too (user, 2026-10-01).  It names the run it continues from by what
+    every file of that run carries (`runfiles.run_name`): flat keeps no
+    directory per run.  Into ``plan``, with the rest of the prep."""
+    from ..runfiles import FIRST_ATTEMPT
     from ..runrecord import write_continued_from
-    stem = rf_stem(task.label, stage_home(base, task, stage).token)
-    # THE RUN, as the hand-over named it (`Continuation.run`, one answer --
-    # this asked the folder again until 2026-10-05).  A stage prepped once
-    # has no record of its own here to take away: the removal that stood
-    # for a re-prep went with it.
+    names = RunNames.of(task.label, stage_home(base, task, stage).token,
+                        task.shape)
+    # THE RUN, as the hand-over named it (`Continuation.run`, one answer).
     if continuation is None or continuation.run is None:
         return
-    write_continued_from(base, continuation.run, basename=stem, plan=plan)
+    write_continued_from(base, continuation.run, names=names,
+                         run=FIRST_ATTEMPT, plan=plan)
 
 
 def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
@@ -127,10 +119,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 this_prep=None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir`` --
     steps 4 and 5 of :func:`prep_calculation`, its one caller, which hands
-    over what the prep entry read and decided.  *(It was a library door of
-    its own until 2026-10-06, over a hand-built job set -- making its own
-    plan, asking the shape, reading the provenance and snapshotting the
-    machine when not handed them; only tests called it so.)*
+    over what the prep entry read and decided.
 
     ``plan`` (`jobset.planned.Plan`) receives what this writes, and is read
     for the decks it already holds (`job-system.md` § 5.0).
@@ -151,9 +140,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
     stage it preps.  The plan it is handed is the calculation's, merged
     (`_merge_run_jobset`), and every other stage in it was prepped already:
     its run script and monitor stay as that stage's own prep wrote them,
-    the copy its attempt ran with (`project-layout.md` § 1.6.2, § 2.6; plan
-    D21: every prep rendered every stage's again until 2026-10-04 -- in the
-    flat shape, the launched stage's own, in its run folder).  ``None``
+    the copy its attempt ran with (`project-layout.md` § 1.6.2, § 2.6).  ``None``
     renders every job: a benchmark's plan is its own, every trial this
     prep's.
 
@@ -170,24 +157,13 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
 
     Returns the per-job directories.  Raises :class:`PrepError` on an
     invalid JobSet or a script that is not in its job's directory.
-
-    **This list said something else until 2026-09-16** — wrappers rendered at
-    the bundle root and symlinked into a ``point-<name>/`` dir — which is the
-    design the body deleted on 2026-08-24 (step 1's own header says *IN THE
-    JOB DIR* and step 3's says *(gone)*), and ``point-<name>`` is a directory
-    name ``materialize.job_dir_name`` (now `paths.trial_name`) records retiring before that.  A public
-    entry point whose docstring describes a deleted design misleads at the
-    lines a caller actually reads.
     """
-    from ..paths import trial_label
     from ..runwrap import write_run_wrapper
 
-    # The allocation is NOT a parameter here (U2, 2026-08-12; it was, and
-    # re-applying it over per-element resources was the review's "stomp").
-    # `project-layout.md` M4 still holds -- an allocation is an input to
-    # *prep* -- but it enters ONCE, at resolve, where each element folds it
-    # into its own resources (generator.md § 5); by this floor every job
-    # already carries the answer.
+    # The allocation is NOT a parameter here (U2): an allocation is an input
+    # to *prep* (`project-layout.md` M4), but it enters ONCE, at resolve,
+    # where each element folds it into its own resources (generator.md § 5);
+    # by this floor every job already carries the answer.
     errs = jobset.validate()
     if errs:
         raise PrepError(
@@ -210,19 +186,19 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
             continue
         # THE SAME QUESTION `prep_calculation` AND `materialize` ASK.  A
         # trial's files live in its attempt when the shape keeps them
-        # (`project-layout.md` § 1.5a); this loop looked in the container
-        # and reported the deck missing, because it was the one writer
-        # that had not been told.
+        # (`project-layout.md` § 1.5a).
         _jd = base / _dir_of[job.name]
+        # THE NAMES OF THIS JOB'S FILES (`materialize.run_names`) -- what its
+        # run script names every file of its runs by.
+        _names = run_names(jobset, job, _sh)
         if jobset.kind == "sweep":
             from .materialize import trial_work_dir
-            _jd = trial_work_dir(_jd, _sh)
+            _jd = trial_work_dir(_jd, _sh, _names)
         plan.folder(_jd)
         if jobset.kind == "sweep":
             # A TRIAL'S FOLDERS SAY WHAT THEY ARE, as a stage's attempt
             # does (`project-layout.md` § 1.4a) -- marked here, once, for
-            # every sweep (the steps marked each a second time until
-            # 2026-10-05).
+            # every sweep.
             from .materialize import mark_run
             mark_run(base, _jd, plan)
         script_path = _jd / job.script
@@ -231,33 +207,16 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 f"job {job.name!r}: script {job.script!r} not in "
                 f"{_jd} (render the inputs before prep).")
         def _wrap(script_path):
-            # The ALLOCATION, whole (architecture.md § 3.1, rule A8).  This
-            # call listed nine of the wrapper's eleven keyword arguments until
-            # 2026-08-17 and omitted `omp_threads`, so every deck here shipped
-            # a `.sbatch` asking for `-c N` beside a `.run.sh` that baked an
-            # OMP default of 1 -- invisible under sbatch, where
-            # SLURM_CPUS_PER_TASK outranks the default, and silently flat on a
-            # workstation, which is where a benchmark's cores-per-rank axis
-            # stopped measuring anything.
-            #
-            # It is the second time this door lost a field to a hand-copied
-            # argument list: `max_memory_mb` went the same way on 2026-08-11,
-            # and that fix moved the field onto `Resources` without changing
-            # how it is passed.  Passing the object is what buys the sentence
-            # that fix wrote -- *carried on the allocation, it cannot be
-            # forgotten by one of them.*
+            # The ALLOCATION, whole (architecture.md § 3.1, rule A8): passed
+            # as the object, no field of it can be dropped by a hand-copied
+            # argument list.
             write_run_wrapper(
                 script_path,
-                # THE LABEL TRAVELS (`gpu.md` G7).  `jobset.name` is
-                # `task.label` -- the SystemLabel / JOB literal and the stem
-                # of every file -- so the wrapper is TOLD the name its sweep
-                # keys on.  It opened the deck and read it back until
-                # 2026-09-17, which is re-deriving a value we are holding.
-                # A benchmark trial's is the trial's own, the label its deck
-                # carries (`paths.trial_label`; the calculation's stood here
-                # until 2026-10-05, W38 M5).
-                label=(trial_label(jobset.name, job.name)
-                       if jobset.kind == "sweep" else jobset.name),
+                # THE NAMES TRAVEL (`gpu.md` G7): the job's own -- its label
+                # (a trial's carries its point, `paths.trial_label`), its
+                # stage and whether its runs share a folder -- so the wrapper
+                # is TOLD every name it writes, and composes none.
+                names=_names,
                 resources=job.resources,
                 env=env,
                 emit_sbatch=emit_sbatch,
@@ -266,13 +225,10 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 # fallback would read the record one level below the
                 # bundle's environment.json (roadmap 7.10 M1).
                 project_dir=base,
-                # WHICH MACHINE THIS IS FOR, carried rather than re-derived
-                # (2026-08-24).  The record always travels, so the wrapper
-                # reads that machine's own activation off it instead of this
-                # machine's config.  It is the
-                # same lesson as the paragraph above: a fact the conductor
-                # already resolved, handed over whole, cannot be forgotten
-                # or answered a second way further down.
+                # WHICH MACHINE THIS IS FOR, carried rather than re-derived.
+                # The record always travels, so the wrapper reads that
+                # machine's own activation off it instead of this machine's
+                # config.
                 machine_record=machine_record,
                 # THE QUEUE IT WAS ADMITTED ON at prep, as its job records
                 # it (`job-system.md` § 6.0): the header renders it and binds
@@ -299,10 +255,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
             for _point in (points or {}).get(job.name, ()):
                 _wrap(Path(_point) / job.script)
         if log is not None:
-            _stem = Path(job.script).stem
             log.received(job.script, _flat_resources(job.resources)
                          + (f", env={env}" if env else ""))
-            for _w in (f"{_stem}.run.sh", f"{_stem}.sbatch"):
+            for _w in (_names.name(".run.sh"), _names.name(".sbatch")):
                 if plan.is_file(_jd / _w):
                     log.produced(_w, f"{len(plan.read_text(_jd / _w).splitlines())}"
                                      f" lines")
@@ -313,9 +268,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
 
     # ---- 2. the shared package, copied --------------------------------- #
     # ONLY THE JOBS THIS PREP RENDERS: every other stage in the merged plan
-    # was prepped already, and its folder is its own prep's (a prep listed,
-    # and copied missing shared files into, every prepped stage's folder
-    # until 2026-10-05).
+    # was prepped already, and its folder is its own prep's.
     dirs = materialize(jobset, base, plan, shape=_sh, only=render)
     if log is not None:
         log.phase("STEP 5 · RUN DIRECTORY — where each job will be launched")
@@ -327,17 +280,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                          "the bundle root — flat runs here, nothing is linked"
                          if _d.resolve() == base.resolve() else str(_d))
 
-    # ---- 3. (gone) -- wrappers are BORN in the job dir (step 1) -------- #
-    # A whole pass of symlink-laying stood here: wrappers rendered at the
-    # root, then pointed at from each directory.  With the render moved
-    # into the directory there is nothing left to link, and the monitor
-    # travels as a real copy with the rest of the shared package
-    # (`materialize`), because a run directory holds real files
-    # (`project-layout.md` § 1.0; user, 2026-08-24).
-
-    # ---- 4. emit STAGE-PLAN.md (§ 5 D3; mirrors bench's BENCH-PLAN.md) --- #
-    # The reviewable plan lands in the bundle at prep -- the table `jobset
-    # plan` printed until it folded into `status <stage>` (2026-10-01), which
+    # ---- 3. emit STAGE-PLAN.md (§ 5 D3; mirrors bench's BENCH-PLAN.md) --- #
+    # The reviewable plan lands in the bundle at prep; `status <stage>`
     # reads the same columns per stage.  It carries the CONFIG PROVENANCE --
     # which files supplied the effective execution settings -- so a
     # behaviour difference between two machines is explained by the bundle
@@ -401,9 +345,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, builds_on=None,
     """``(structure, cell, relaxation)`` a force-constant stage of a SIESTA
     vibration is written with -- `freq`, or any stage after `relax` in a
     displacement sweep, asked of `vibration_render_kind` and never of a name
-    (`engines/vibration.md` § 5.2a, § 5.9; until 2026-09-28 only a stage
-    named `freq` came here, so a sweep's second stage measured the unrelaxed
-    input): the sorted
+    (`engines/vibration.md` § 5.2a, § 5.9): the sorted
     copy as given, and no cell or record of its own, when the ladder holds no
     `relax` stage; the coordinates that stage relaxed to, in the cell it ran
     in, when it does -- read from the run the stage builds on,
@@ -459,8 +401,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, builds_on=None,
     # THE WAYS ON, from the one composer, for a `relax` that is prepped and
     # has run (§ 5.3: what molbuilder prints, you can type): launched again
     # it continues from its newest attempt; redone, its prep is restored
-    # first -- a prepped stage is not prepped again (§ 5.0; these printed
-    # its prep until 2026-10-05).
+    # first -- a prepped stage is not prepped again (§ 5.0).
     from .commands import block, launch_lines, rollback
     again = (f"Launch `{relax}` again -- it continues from its newest "
              "attempt --\n"
@@ -671,8 +612,6 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
     # M11 SS-C6): `relax_force_tol` is read by the relaxation rung alone, so
     # it is that rung's value -- the criterion the reference geometry was
     # relaxed to -- and the template's when the structure is stated relaxed.
-    # The force-constant stage's own copy was read until 2026-09-30, so a
-    # preset that relaxed at 0.05 judged at 0.01.
     from ..resolve import resolved_ladder
     from ..template import stage_role
     criterion = next(
@@ -777,9 +716,7 @@ class Resolved:
     after them: the description, its template and the machine's record --
     each READ ONCE by the prep that holds this -- the allocation folded once
     and the stage's elements resolved once.  The steps after them read these
-    and none of the three files (W55 B1: until 2026-10-05 the entry and the
-    five steps each read the description, the template and the record, and
-    resolved the stage twice)."""
+    and none of the three files."""
     task: "Task"
     template: Path
     template_text: str
@@ -914,26 +851,14 @@ def prep_calculation(base_dir, stage: Optional[str], *,
     -- each file read once, and the stage resolved once (:class:`Resolved`):
     ``resolved`` is the entry's, answered at its own checkpoints and handed
     over (`prep_stage`, `job-system.md` § 5.0, checkpoint 4).  The entry is
-    its one caller: a prep that read and resolved on its own, below the
-    entry, was a second door that skipped every check the entry makes --
-    tests called it until 2026-10-06, and it went with them;
+    its one caller;
     3. **render the deck(s)** — one per element of that set;
     4. **render the wrapper**;
     5. **build the run directory**.
 
-    **Steps 2 and 3 did not exist here until 2026-08-11**, and their absence was
-    stated by the code as a refusal: `prep` demanded that the decks already be
-    in the bundle root, because they were finished at ``molbuilder fdf`` time on
-    a machine that could not know the rank count. That is the *one real
-    migration* — the producer ran at *produce* and belonged at *prep* — and
-    steps 1 and 3 are now on the same side of the split, which is what
-    § 2.3.1's *"step 3 cannot precede step 1"* was always about.
-
     Every prep writes the PIPELINE LOG -- what each step received, decided
     and produced -- beside this prep's ``STAGE-PLAN.md``: an observer of the
-    pipeline, never a step in it (`script-preparation.md` § 4.5; until
-    2026-10-05 only ``--pipeline-log`` wrote it, and the Task setup tab never
-    did).
+    pipeline, never a step in it (`script-preparation.md` § 4.5).
 
     ``opened``, when given, receives the :class:`~molbuilder.jobset.materialize.Attempt`
     reports of the attempts this prep opened.  A caller reporting on the
@@ -1076,9 +1001,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # noise wearing a safety vest.  Scoped to THIS loop (not a module
     # global) so a long-lived server process cannot quietly swallow a
     # later prep's warnings -- and to this THREAD: the gate's report reads
-    # its stream from `validation.REPORT_STREAM`, a context variable.  It
-    # swapped the process's `sys.stderr` until W55 D8, and two preps at once
-    # left one's filter as the server's stderr.
+    # its stream from `validation.REPORT_STREAM`, a context variable.
     import io as _io
     import sys as _sys
     from ..validation import REPORT_STREAM
@@ -1105,14 +1028,17 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     _scope = REPORT_STREAM.set(_once)
     try:
         for element in pset:
-            script = _rf(element.label, seam.suffix, token)
+            # THE NAMES OF THIS ELEMENT'S FILES (`runfiles.RunNames`): its
+            # own label -- a trial's carries its point -- and stage, in the
+            # calculation's shape.  Its deck, its run script and its seed are
+            # all named by them, so none can spell another's name its way.
+            _names = RunNames.of(element.label, token, _shape.name,
+                                 trial=element.is_trial)
+            script = _names.name(seam.suffix)
             # WHERE THIS ELEMENT'S FILES GO -- its own directory, never the
-            # bundle root (user, 2026-08-24; `project-layout.md` § 1.0 always
-            # said it: "only rendered files and copies go down to where the
-            # engine runs").  What stood here rendered every deck, wrapper,
-            # validation report and molwatch log AT THE ROOT and symlinked
-            # them down -- 50 files at the root of a ten-trial sweep, the
-            # hierarchy inverted into a veneer of links.  The directory is the
+            # bundle root (user, 2026-08-24; `project-layout.md` § 1.0: "only
+            # rendered files and copies go down to where the engine
+            # runs").  The directory is the
             # same one `job_dir_names` will answer for this job, computed from
             # the same two facts (token + trial-ness), so the deck is born
             # where the launch will look for it.
@@ -1125,28 +1051,21 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                 # The dir is named by the JOB's name -- the sweep coordinate,
                 # `_job_for`'s own first rule -- never by the element's
                 # RELABELLED SystemLabel (`<calc-label>-<coord>`): the two
-                # differ by the calculation prefix, and using the label here
-                # wrote decks into `bench-JOB-G1K1C1/` while every reader
-                # asked `job_dir_names` and looked in `bench-G1K1C1/`.
+                # differ by the calculation prefix, and every reader asks
+                # `job_dir_names`.
                 from ..resolve import point_token as _pt
                 _trial = _pt(element.point)
                 _jdir = trial_work_dir(
-                    base / trial_dir(_shape, token, _trial), _shape)
+                    base / trial_dir(_shape, token, _trial), _shape, _names)
             else:
                 _trial = None
-                _sd = _shape.stage_dir(token) if token else "."
+                _sd = _shape.stage_dir(token)
                 _jdir = base if _sd == "." else base / _sd
             plan.folder(_jdir)
             # The deck is rendered from values ⊕ THIS element's allocation, so it
             # records the rank count it actually assumed.  Rendering from the
             # values alone emits `mpi_np auto` and the launch check then refuses a
-            # deck that `prep` itself just made -- which is how this was found.
-            # The stage's artifact TOKEN reaches the emitter here, as a RENDER
-            # ARGUMENT (C7).  It feeds three names -- the deck, the engine's own
-            # log, and the molwatch log -- and leaving it unset made two rungs of
-            # one calculation write to a single `<label>.molwatch.log`.  `prep`
-            # holds the StageRef, so `prep` says the word; no config field carries
-            # it, for either engine (`stages.md` § 1.1).
+            # deck that `prep` itself just made.
             # THE CONFIG THIS ELEMENT RENDERS FROM, as the kind's rung says
             # (a lead's own label, the junction's state) -- identity for
             # every kind with no steps of its own.
@@ -1163,12 +1082,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                 # and ONE verifier, the submission door
                 # (`agreement.check_trial_starts_cold`; user-settled
                 # 2026-08-21: prep bakes the intent, submission determines
-                # the actual state).  A hard replace stood here as a second,
-                # provenance-invisible setter until then (Q6a).
-            # The stage's artifact token is a RENDER ARGUMENT (C7, 2026-08-12):
-            # `prep` holds the StageRef, so `prep` says it, per call -- the
-            # config field that used to carry it is gone, and the emitter never
-            # learns the word (engines/stages.md § 1.1).
+                # the actual state).
             # The render's refusals (missing pseudos above all) are user-fixable
             # and translate to PrepError -- see _user_error_as_prep
             # (2026-08-12 plan A8).
@@ -1179,7 +1093,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             # order (`script-preparation.md` § 4.3).
             log.phase(f"STEP 3 · DECK — {script}")
             log.received("config", f"{type(cfg).__name__}"
-                                   + (f", stage_token={token}" if token else "")
+                                   + f", stage_token={token}"
                                    + (f", trial {element.label}"
                                       if element.is_trial else ""))
             # EVERY DECK THIS ELEMENT WRITES: the one in its own folder, and
@@ -1194,7 +1108,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                     with _calling("spec_for", engine=task.engine,
                                   where=script):
                         _spec = seam.spec_for(
-                            rung.struct, _at, stage_token=token,
+                            rung.struct, _at, names=_names,
                             calculation=rung.render_kind,
                             **rung.spec_extra(element, cfg),
                             # A TRIAL'S DECK NAMES ITS OWN LAUNCH (plan § 5w
@@ -1214,16 +1128,10 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             # a scan each point's, never the stage folder above them, where
             # nothing would ever write to it again.  AND NAMED FOR ITS DECK
             # (`job-contracts.md` § 6.3: the trajectory log takes the deck's
-            # basename): the element's label, the deck's own.  It took the
-            # engine's label (`label_of`) until 2026-10-06 -- the same, but
-            # for an electrode rung, whose SystemLabel is its `.TSHS` stem:
-            # its seed was `bdt_L-electrode_02_electrode_L.molwatch.log`
-            # beside `bdt_02_electrode_L.fdf`, and the run door never found
-            # it.
+            # basename): the element's label, the deck's own.
             for _seed_dir in ([d for d, _ in rung.points] or [_jdir]):
                 _seed_trajectory_log(rung.struct, cfg, _seed_dir,
-                                     engine=task.engine, label=element.label,
-                                     token=token,
+                                     engine=task.engine, names=_names,
                                      frame=spec.engine_frame,
                                      relaxes=(rung.render_kind
                                               == "optimization"),
@@ -1261,8 +1169,8 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # later its verdict — lives in the stage's ``bench/`` container
     # (job-contracts.md § 6.3's Directories row, the cross-layer authority),
     # so two stages' benchmarks can never collide.  The ROOT job-set.json
-    # is the RUN's plan and MERGES per stage, so prepping `tight` no longer
-    # erases `coarse` — status, and the cross-stage ``--from`` carry whose
+    # is the RUN's plan and MERGES per stage, so prepping `tight` keeps
+    # `coarse` — status, and the cross-stage ``--from`` carry whose
     # pair rule needs the source job on file, read the whole ladder.
     kind = "sweep" if sweep is not None else "ladder"
     js = JobSet(name=task.label, engine=task.engine, kind=kind,
@@ -1275,9 +1183,6 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
         js = _merge_run_jobset(
             base / JOBSET_FILENAME, js,
             # The CURRENT ladder bounds what the merge keeps.
-            # (`read_task` refuses a description without stages and
-            # `Task` refuses an empty tuple, so the stage-less fallback
-            # arms that stood here were unreachable -- U6 close.)
             ladder=frozenset(s.name for s in task.stages))
     # WHAT THE HAND-OVER CARRIES, counted where the plan's row is: the run
     # was decided at 4a, and its files follow from the job this prep writes
@@ -1295,10 +1200,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                               f"{_flat_resources(_j.resources)}")
     log.produced(JOBSET_FILENAME, str(record_dir / JOBSET_FILENAME))
     # The allocation is NOT passed on: every job already carries its own
-    # resolved resources, per element (generator.md § 5).  Passing it made
-    # prep_jobset re-apply the BASE allocation over every job — the review's
-    # "stomp": each trial's wrapper rendered with the base rank count
-    # instead of its own translated G·K.
+    # resolved resources, per element (generator.md § 5).
     # ONE FRAMEWORK, LOCAL OR REMOTE (user, 2026-08-24: *"the jobset probe
     # should do its job whether it's running on the local machine or a
     # remote HPC environment.  Either way, it should provide the only set
@@ -1325,32 +1227,11 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                        provenance=resolved.provenance)
 
     # ---- THE ATTEMPT, because PREP is what sets a stage up to run ------- #
-    #
-    # `prepare_attempt` says the rule in its own words: *"Set ONE stage up to
-    # run ... preparing is still design and the split from starting is what
-    # gives you somewhere to look before committing cluster time."*  Resolve
-    # the next `run-<n>`, create it, link the deck in -- all of it design,
-    # none of it spending a queue slot.  `launch` starts what prep set up and
-    # records that it ran; `_launch_dir` REFUSES a hierarchical stage with no
-    # attempt open (C5, 2026-08-12) precisely because opening one is not its
-    # job.
-    #
-    # It ran in ONE CALLER -- the CLI, which called this and then opened the
-    # attempt itself, under a comment calling that "the CLI's OWN addition".
-    # So `prep_calculation` returned a folder that `launch` refuses, and every
-    # other caller got exactly that: the browser's Prep button rendered the
-    # decks, reported success, and told the person to launch something the
-    # launcher would not take.  A verb that is only finished by one of its
-    # callers is not a verb.
-    #
-    # `project-layout.md` said the opposite in two places -- *"launch adds
-    # attempts"* -- which is why the browser's half was not obviously wrong:
-    # it implemented the document.  The document is corrected with this.
-    #
-    # TRIALS ALREADY DID THIS.  A bench point's deck is rendered straight into
-    # its attempt (`trial_work_dir` above), so a sweep has been complete since
-    # § 1.5a gave trials attempts.  Only the ladder rung was left half-done --
-    # the asymmetry was inside this function, not between two surfaces.
+    # Opening the attempt is design, none of it spending a queue slot;
+    # `launch` starts what prep set up, and refuses a hierarchical stage with
+    # no attempt open (C5) because opening one is not its job.  A bench
+    # point's deck is rendered straight into its attempt (`trial_work_dir`
+    # above).
     if kind == "ladder" and stage:
         # ONE ATTEMPT LADDER PER POINT for a scan (`04_device/v0.2/run-<n>`,
         # layout ruled 2026-08-29), because the transmission at v reads the
@@ -1409,9 +1290,7 @@ def _open_attempts(js: JobSet, base: Path, stage: str,
     first attempt, ``run-0`` (``resolve_attempt``'s rule).  ``continuation`` -- REQUIRED, it
     decides which run the attempt starts from and what it carries
     (`code-audit.md` D1); ``None`` starts it clean -- is prep's decision, so
-    the attempt is opened once, with its carry: it was opened with none and
-    then again with it until 2026-10-01, and a refusal between the two left
-    an earlier carry undone (W52).
+    the attempt is opened once, with its carry.
     """
     from .materialize import prepare_attempt
 
@@ -1472,7 +1351,7 @@ def _what_this_prep_takes(stage: str, continuation, gather) -> List[str]:
     return out or [f"`{stage}` takes nothing from another run"]
 
 
-def _launch_as_written(plan, run_dir, job) -> dict:
+def _launch_as_written(plan, run_dir, names) -> dict:
     """What the job will be launched with, as its header and its run script
     carry it -- A13's end point (`execution/architecture.md` § 5.2): the
     header's ``#SBATCH`` lines and the run script's stated counts, read from
@@ -1480,9 +1359,8 @@ def _launch_as_written(plan, run_dir, job) -> dict:
     again."""
     from ..runwrap import stated_counts
     from ..scheduler.emit import Directives
-    stem = Path(job.script).stem
-    header = Path(run_dir) / f"{stem}.sbatch"
-    script = Path(run_dir) / f"{stem}.run.sh"
+    header = Path(run_dir) / names.name(".sbatch")
+    script = Path(run_dir) / names.name(".run.sh")
     return {"header": (Directives.lines_of(plan.read_text(header))
                        if plan.is_file(header) else []),
             "run_script": (stated_counts(plan.read_text(script))
@@ -1584,11 +1462,8 @@ def _resolve_transport(task, stage: str, allocation, *, template_text,
     template's text as the prep read it, once (`script-preparation.md`
     § 3.0).
 
-    **The same `resolve` every other kind uses.** It was unreachable for
-    transport until TR1, for a plain reason: `resolve` reads a template and a
-    transport calculation did not have one. Now it does, so the arm that
-    `engines/transport.md` § 3.2 measured as *"a second conductor that
-    decides"* can hand its deciding back to the one that already exists.
+    **The same `resolve` every other kind uses**: a transport calculation
+    has a template, so it decides through the one conductor that exists.
 
     Returns the rung's :class:`~molbuilder.resolve.ResolvedConfig` — **the
     whole element, not just its values**. What is gained over assembling it by
@@ -1596,17 +1471,9 @@ def _resolve_transport(task, stage: str, allocation, *, template_text,
     a pin set it, which is the whole of what the pipeline log had nothing to
     print.
 
-    THE RESOURCES RIDE ON THE ELEMENT, and returning ``element.values`` alone
-    dropped them (found 2026-09-16). `resolve` folds two riders onto each
-    element's resources — ``continue_retries`` and ``use_gpu``, both config
-    answers that the WRAPPER reads — and this arm rebuilt the allocation by
-    hand afterwards, so neither ever arrived. Measured: ``SiestaConfig``
-    defaults them to ``1`` and ``False`` while ``Resources`` defaults both to
-    ``None``, so every transport wrapper rendered with no warm-retry loop at
-    all, and ``use_gpu`` fell back to GREPPING the deck for ``Diag.ELPA.GPU``
-    — the SIESTA-keyword re-derivation `execution/gpu.md` G7 deleted. That is
-    `resolve.py`'s own A-5 finding (*"travels the whole way was true of one
-    road out of two"*) opening a third road.
+    THE RESOURCES RIDE ON THE ELEMENT: `resolve` folds ``continue_retries``
+    and ``use_gpu`` onto each element's resources, both config answers that
+    the WRAPPER reads.
     """
     from ..config.siesta import SiestaConfig
     from ..resolve import ResolveError, resolve
@@ -1615,13 +1482,10 @@ def _resolve_transport(task, stage: str, allocation, *, template_text,
     # refused by `resolve`, the one door every kind's prep goes through
     # (`template.shared_by_every_stage` + `why_shared`; `fixed_by_role` +
     # `why_role`), which also lays each rung's own answers on its config.
-    # This step refused transport's own copy until 2026-09-28, and no other
-    # kind refused at all.
     # AND THE RUNG THAT READS A VALUE (`stages`, the same § 6.4) is asked at
     # that one door too, for every kind (`template.unread_overrides`, plan
     # § 5w K4): a transmission window on the seed's rung is refused there
-    # by name.  This step asked transport's own copy of it until
-    # 2026-09-30.
+    # by name.
 
     if log is not None:
         log.phase("STEP 2 · RESOLVE — the description becomes a ParameterSet")
@@ -1631,9 +1495,7 @@ def _resolve_transport(task, stage: str, allocation, *, template_text,
                      allocation=allocation, stage=stage, pins=pins)
     except ResolveError as exc:
         # `resolve` translates the template's and the overrides' refusals
-        # (ValueError) into its own since 2026-09-28 -- this caller caught
-        # ValueError too, and the generic caller did not, so a refused
-        # template was a named refusal here and a traceback everywhere else.
+        # (ValueError) into its own.
         raise PrepError(str(exc)) from exc
     # ONE ELEMENT.  A transport rung is a production run; its one axis is the
     # bias, and that is the device's own directory level rather than a sweep
@@ -1655,10 +1517,7 @@ def _transport_parts(task, stage: str, composed, config):
 
     ONE DOOR, asked by the conductor through the rung
     (:func:`_transport_rung_of`) and by the gather when it renders an
-    upstream rung NOW (:func:`_transport_rung`, plan § 5w K11, T-F30): the
-    gather compared an upstream attempt with that stage folder's LAST
-    render, which a change since did not touch, so a stale result was
-    carried forward and recorded as consistent.
+    upstream rung NOW (:func:`_transport_rung`, plan § 5w K11, T-F30).
     """
     from ..transport.transiesta import electrode_hs_stem
     # (i) THE STRUCTURE.  Two of them, out of the one cited file: the
@@ -1817,11 +1676,13 @@ def _transport_spec(task, stage: str, struct, config, state, volts=None, *,
     § 6.4; a single-bias rung keeps the 0 V `resolve` laid on)."""
     from ..siesta.input import spec_for as _siesta_spec_for
     cfg = _at_bias(config, volts)
+    # THE RUNG'S NAMES -- a transport rung's deck is named on the
+    # calculation's label, as prep's own loop names it.
+    names = RunNames.of(task.label, stage_home(base, task, stage).token,
+                        task.shape)
     with _user_error_as_prep():
         try:
-            spec = _siesta_spec_for(struct, cfg,
-                                    stage_token=stage_home(base, task,
-                                                           stage).token,
+            spec = _siesta_spec_for(struct, cfg, names=names,
                                     calculation="transport", state=state)
         except ValueError as exc:
             # `transport_spec` refuses an unknown rung with a message
@@ -1882,8 +1743,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         # molbuilder prints, you can type): one not prepped is prepped and
         # launched; a prepped one is launched, or let finish, or -- to run
         # it as it is described now -- redone from the state saved before
-        # its prep (§ 5.0).  These printed its prep in every case until
-        # 2026-10-05, which a prepped rung refuses.
+        # its prep (§ 5.0).
         from .commands import (block, launch_lines, rollback,
                                run_first as _run_first)
         from .continuation import (not_launched_again, read_run,
@@ -1891,32 +1751,29 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         q2 = ("\n  (strict composition, ruling Q2: transport never runs its "
               "pieces for you.)")
         redo = rollback(f"`{upstream}`'s prep", base=base)
-        # PREPPED, by the one door (`prepped_already`; the deck file was
-        # asked until 2026-10-05).
+        # PREPPED, by the one door (`prepped_already`).
         if not prepped_already(base, task, "run", upstream):
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
                 f"and {upstream} has not been prepped -- run it first --\n"
                 + block(_run_first(upstream, base=base)) + q2)
         # Newest first, and NUMERICALLY -- `run-10` is ten, not a tenth
-        # (§ 4.3: the index is not padded).  This reached across for
-        # `materialize.ATTEMPT_RE` and applied it twice, once to filter and
-        # once to sort; `paths` owns both halves of the name now.
+        # (§ 4.3: the index is not padded); `paths` owns both halves of the
+        # name.
         from ..paths import attempt_dir as _adir
         from ..paths import attempts_in as _ain
         attempts = [_adir(up_dir, n) for n in reversed(_ain(up_dir))]
         # ONE TO BUILD ON -- the one status door says it finished
         # (`continuation.usable`): exit code 0 and nothing in its output
-        # saying the engine stopped; one that concluded with an error was
-        # gathered until 2026-10-03.
+        # saying the engine stopped.
         concluded = [d for d in attempts
-                     if usable(read_run(base, task, upstream, d, up_dir,
+                     if usable(read_run(base, task, upstream, d,
                                         verdict=False)[1])]
         if not concluded:
             # WORDED BY THE NEWEST ATTEMPT'S STATE, as a stage's own default
             # is (`continuation.state_remedy`).
             newest = attempts[0] if attempts else None
-            c, s, _v, d = (read_run(base, task, upstream, newest, up_dir,
+            c, s, _v, d = (read_run(base, task, upstream, newest,
                                     verdict=False)
                            if newest is not None
                            else (None, "pending", None, None))
@@ -1932,19 +1789,12 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         # THE SAME CALCULATION, not the same bytes.  A deck that renders
         # through the framework carries a generated-at timestamp and the
         # generator's git sha, and neither says anything about what the
-        # engine computes -- so a byte comparison here refused a perfectly
-        # good upstream result because the seed had been re-prepped, or
-        # merely because a commit landed between the two preps.  It said
-        # "the junction citation or its contract changed", which was false
-        # and pointed the reader at the science.
-        #
-        # `same_calculation` masks exactly those fields and keeps every
-        # other byte, the region partition included (`script_emit`).
-        # THE DECK THE UPSTREAM RUNG RENDERS NOW (plan § 5w K11, T-F30).
-        # This read the stage folder's LAST render, which a changed template
-        # value or a re-pointed junction leaves as it was until that rung
-        # is prepped again -- so a stale result was carried forward, and
-        # `.gathered-from` said it was consistent.
+        # engine computes.  `same_calculation` masks exactly those fields and
+        # keeps every other byte, the region partition included
+        # (`script_emit`).
+        # THE DECK THE UPSTREAM RUNG RENDERS NOW (plan § 5w K11, T-F30),
+        # never the stage folder's last render, which a changed template
+        # value or a re-pointed junction leaves as it was.
         if composed is None:
             composed = _composed_junction(base, task)
         now = _rung_deck_now(base, task, upstream, composed,
@@ -1963,8 +1813,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
                 f"they ran, so their {filename} answers a different "
                 f"calculation.  To run it as it is described now, {redo}")
         # ...AND HOLDS THE FILE: the newest that passes all three
-        # (`engines/transport.md` § 6.1) -- the third was asked of the newest
-        # matching attempt alone until 2026-10-05.
+        # (`engines/transport.md` § 6.1).
         holding = [d for d in matching if (d / filename).is_file()]
         if not holding:
             raise PrepError(
@@ -1999,8 +1848,7 @@ def _composed_junction(base, task):
     if composed is None:
         # THE RECORD IS THE FIRST RUNG'S PREP'S TO WRITE, and a prepped rung
         # is not prepped again (`job-system.md` § 5.0): the way on is the
-        # state saved before that prep ("prep the rung again" stood here
-        # until 2026-10-05).
+        # state saved before that prep.
         from .commands import rollback
         raise PrepError(
             f"this calculation's junction cannot be read for the gather: "
@@ -2047,11 +1895,7 @@ def gather_sources(base_dir, task, stage: str, *, template_text: str
     anything is written when an upstream run has not concluded, or ran
     another deck (:func:`transport_inputs`'s gates; strict composition,
     ruling Q2).  The steps copy each entry into the attempt they open in its
-    container (:func:`_gather_into`).  *(It was a step of its own, run after
-    the five, until 2026-10-05; before 2026-09-16 it ran on the CLI road
-    alone, so the browser's Prep opened an attempt and carried nothing into
-    it, and a device job could reach the node without an electrode's
-    `.TSHS`.)*  `prep_calculation` asked directly renders the decks without
+    container (:func:`_gather_into`).  `prep_calculation` asked directly renders the decks without
     it: a deck is the reviewable artifact, whether or not the rungs before it
     have run.
     """
@@ -2067,19 +1911,12 @@ def _merge_run_jobset(path: Path, new: JobSet,
     """The root ``job-set.json`` is the RUN's whole plan: each stage's prep
     updates its OWN row and leaves the others standing.
 
-    Until 2026-08-12 every prep wrote only its own elements, so `prep run
-    tight` erased `coarse` from floor 3 — breaking the status rollup and,
-    worse, the ``--from`` pair rule: with the source job gone, `warm_carry`
-    read the pair as unverified and silently withheld ``.CG``
-    (`project-layout.md` § 2.3.4 row 3).
+    The status rollup and the ``--from`` pair rule read the source job's
+    row (`project-layout.md` § 2.3.4 row 3).
 
     ``ladder`` is the CURRENT task's stage-name set, and it bounds what is
     kept (2026-08-12): a row is standing only while its stage is still
-    on the ladder — a stage removed from ``task.json`` used to stay in the
-    plan forever, its deck gone.  *(Three arms replaced the plan outright
-    until 2026-10-03 -- one that did not read, a pre-container sweep's, one
-    under another name: the prep entry reads the plan first, and molbuilder
-    writes neither of the others.)*
+    on the ladder.
     """
     if not path.is_file():
         return new
@@ -2088,9 +1925,7 @@ def _merge_run_jobset(path: Path, new: JobSet,
     # one already here is replaced rather than doubled, should two preps of
     # one stage ever race past the entry's gate together.
     # ONE KEY for a stage's name, as every reader of the plan matches it
-    # (`identity.stage_key`): a stage renamed in case only kept its row on
-    # every read and lost it here, so the next prep of any stage made it
-    # preppable twice (the framework inventory, 2026-10-03).
+    # (`identity.stage_key`).
     from ..identity import stage_key
     fresh = {stage_key(j.name) for j in new.jobs}
     standing = (None if ladder is None
@@ -2118,11 +1953,8 @@ def _flat_resources(resources) -> str:
     whose whole value is that a person can read it.
     """
     def _val(v):
-        # A SEQUENCE FIELD PRINTS AS ITS VALUE, not as its repr.  Every field
-        # here was a scalar until `notify_channels` (2026-08-31), and the
-        # default rendering put `('slack', 'lab')` -- and, worse, a bare `()`
-        # -- into the one file whose whole value is that a person can read it.
-        # `()` is a real answer meaning *nowhere*, so it gets a word.
+        # A SEQUENCE FIELD PRINTS AS ITS VALUE, not as its repr.  `()` is a
+        # real answer meaning *nowhere*, so it gets a word.
         if isinstance(v, tuple):
             return ",".join(v) if v else "(none)"
         return v
@@ -2166,42 +1998,32 @@ def _environment_rows(environment) -> "List[tuple]":
 
 
 def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
-                         label: str, token=None, frame=None,
+                         names, frame=None,
                          relaxes: bool = True, plan=None) -> None:
     """Write the one-block preview the Watch tab discovers before a run starts.
 
     The deck NAMES its trajectory log; something has to CREATE it, or the tab
-    has nothing to find until the engine writes its first step. That seeding
-    lived inside ``convert`` — which writes a deck to disk — and `prep` renders
-    the text and writes it itself, so the preview was silently skipped.
+    has nothing to find until the engine writes its first step.
 
-    **Found by the trajectory-log tests when `molbuilder fdf` was deleted.**
-    They named a real property of the product, not of the verb, which is why
-    they were repointed rather than retired.
-
-    ``engine`` and ``label`` come through the caller from the
-    :class:`EngineSeam` — this function hardcoded ``"siesta"`` and read
-    ``cfg.system_label`` until 2026-08-12, which was the seam leaking.
+    ``engine`` comes through the caller from the :class:`EngineSeam`.
+    ``names`` are the deck's
+    stage's (`runfiles.RunNames`): the seed is the FIRST run's log, named as
+    that run names it -- in a shared folder with its number, ``-run0``.
     """
     if not getattr(cfg, "write_molwatch_log", False):
         return
-    from ..trajectory_log import molwatch_log_basename, write_initial_preview
-    # ``token`` is the caller's, same as the render argument (C7): the
-    # config no longer carries a stage, and nothing here re-derives one.
+    from ..runfiles import FIRST_ATTEMPT
+    from ..trajectory_log import write_initial_preview
+    # The stage is the names': nothing here re-derives one.
     # The stage's own convergence targets travel with its log, so the Watch
     # tab's threshold line is THIS stage's and not the ladder's first.  They
     # come from the RESOLVED config, which is the whole point of resolving
     # before rendering: `coarse` and `tight` disagree about both of these.
-    # THE KEY NAMES ARE THE READER'S, not this writer's invention.
-    # `max_force_ev_per_ang` / `max_steps` stood here until 2026-09-05 and
-    # nothing read either: the trajectory card asks for
-    # `max_force_tol_eV_per_A` and `max_geom_iter` (trajectory/core.js), which
-    # are what the OTHER two producers of this same header emit --
-    # `trajectory_log/emitter.py`'s `_LEAF_KEYS` and the `.out` parser's
-    # `_set_conv_target`.  So a staged SIESTA run drew a convergence card with
-    # zero rows and no threshold line, while the `.out` sitting beside it
-    # parsed the same two numbers correctly: the same directory answering the
-    # same question two ways depending on which file was opened.
+    # THE KEY NAMES ARE THE READER'S, not this writer's invention: the
+    # trajectory card asks for `max_force_tol_eV_per_A` and `max_geom_iter`
+    # (trajectory/core.js), which the other two producers of this same header
+    # emit too -- `trajectory_log/emitter.py`'s `_LEAF_KEYS` and the `.out`
+    # parser's `_set_conv_target`.
     # ONLY A DECK THAT RELAXES HAS TARGETS -- the viewer draws "the targets
     # the run was chasing" (`web/trajectory.md` § 3), and a force-constant run
     # chases none: a threshold line over its steps called 115 nudges a
@@ -2215,8 +2037,8 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
             targets[key] = value
     write_initial_preview(
         struct,
-        base / molwatch_log_basename(label, token),
-        job=label, engine=engine,
+        base / names.name(".molwatch.log", FIRST_ATTEMPT),
+        job=names.label, engine=engine,
         convergence_targets=(targets or None),
         frame=frame,
         frozen_atoms=list(getattr(struct, "frozen_atoms", []) or []),
@@ -2233,25 +2055,16 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     resolved it once, from the allocation, and a second derivation here is the
     habit `generator.md` § 5 exists to end.
 
-    The **name** answers *which job is this*, and there are exactly three
-    answers because there are three things an element can be: a trial (named by
-    its sweep coordinate), a rung of a ladder (named by the stage), or the whole
-    calculation (named by its label).
+    The **name** answers *which job is this*: a trial is named by its sweep
+    coordinate, a rung of a ladder by its stage.
     """
     from ..resolve import point_token
 
-    if element.point:
-        name = point_token(element.point)
-    elif stage_name:
-        name = stage_name
-    else:
-        name = task.label
+    name = point_token(element.point) if element.point else stage_name
 
     # THE RUNG'S OWN KIND answers what it carries and whether a re-run of it
     # resumes (`job-contracts.md` § 4.2a): a vibration's `relax` rung is an
-    # optimisation, its force-constant rungs the vibration.  The
-    # calculation's kind stood here until 2026-09-29, and a vibration's
-    # `relax` rung lost its `.CG` (the M11 review, SS-C14).
+    # optimisation, its force-constant rungs the vibration.
     kind = _rung_kind(task, stage_name)
     with _calling("warm_for", engine=task.engine, where=name):
         warm = seam.warm_for(element.label, element.values, kind, base_dir)
@@ -2272,10 +2085,9 @@ def _rung_kind(task, stage_name: Optional[str]) -> str:
     calculation's own, except a SIESTA vibration's rungs, which are two
     programs (`vibration_render_kind`): the `relax` rung an optimisation,
     every other rung the vibration.  A PySCF vibration relaxes inside its
-    one deck, so its rungs are all the vibration.  Two answers stood until
-    2026-09-29, one engine-scoped and one not (the K6 review, R9); since
-    2026-09-30 it is read off the rung's ROLE, the one rule every door asks
-    which items a rung reads by (`template.stage_role`, plan § 5w K4)."""
+    one deck, so its rungs are all the vibration.  It is read off the rung's
+    ROLE, the one rule every door asks which items a rung reads by
+    (`template.stage_role`, plan § 5w K4)."""
     from ..template import stage_role
     if stage_role(str(task.engine), str(task.calculation),
                   stage_name) == "relaxation":
@@ -2297,8 +2109,7 @@ def _fold_allocation(flags, declared, chosen=None):
     whole-object precedence would make ``--np 8`` erase a memory ask
     nobody mentioned.  ``declared`` is the description's ``allocation``
     (`stages.md` § 6.8a); ``chosen``, the run card's launch shape
-    (§ 6.8d, `prep_inputs.declared_run_shape`).  *(Its value half was
-    `_under_description` until 2026-10-05.)*"""
+    (§ 6.8d, `prep_inputs.declared_run_shape`)."""
     out = flags or Resources()
     import dataclasses as _dc
     known = {f.name for f in _dc.fields(Resources)}
@@ -2341,9 +2152,7 @@ def _with_notify(flags, declared) -> "Resources":
     **FIELD BY FIELD ANYWAY**, for the reason the function above it states:
     a whole-object copy makes a description that sets only the period erase
     a caller's SCF trigger, which is the same silent loss as `--np 8`
-    erasing a memory ask.  Written whole first, and it did exactly that --
-    `Resources(notify_on_scf=True)` under `Notify(every_hours=6)` came back
-    with the trigger gone.  Nothing sets these from outside yet; the point
+    erasing a memory ask.  Nothing sets these from outside yet; the point
     is that the shape cannot start losing values the day something does.
 
     No block leaves the fields ``None``, which the wrapper renders as no
@@ -2352,8 +2161,7 @@ def _with_notify(flags, declared) -> "Resources":
     """
     out = flags or Resources()
     # NO BLOCK IS ``None`` (`task.Notify`): a block whose values are all off
-    # still reports the start and the end -- it read as no block, by its
-    # falsiness, until 2026-10-06.
+    # still reports the start and the end.
     if declared is None:
         return out
     import dataclasses as _dc
@@ -2404,11 +2212,7 @@ def _shared_for(base: Path, seam: "EngineSeam" = None, *, engine: str = "",
 # --------------------------------------------------------------------- #
 #
 # `prep` has two doors -- `molbuilder jobset prep` and the Task setup tab's
-# Prep buttons -- and until 2026-09-29 each did its own part of the act: the
-# command line ran the preflight, asked the *already under way* question,
-# checked the launch agreement and wrote their ledger lines; the tab called
-# the five steps alone and showed the folders.  One act, two answers.  This
-# is the act, once; it prints nothing and asks nothing, and returns what it
+# Prep buttons.  This is the act, once; it prints nothing and asks nothing, and returns what it
 # found and decided as data for each door to show in its own way.
 
 
@@ -2461,16 +2265,13 @@ class PrepAnswer:
     #: "the first stage, or one that starts clean".
     linked: bool = False
     #: The person said ``--cold`` (the attempt's own ``cold`` says only that
-    #: it started clean, which prep now states whenever nothing continues).
+    #: it started clean, which prep states whenever nothing continues).
     cold: bool = False
     #: WHERE IT WAS ADMITTED -- a run's placement, as its job records it
     #: (`job-system.md` § 6.0), or ``None`` with no queue.
     placement: Optional[dict] = None
     #: A13 -- what the job will be launched with, as its header and its run
-    #: script carry it (:func:`_launch_as_written`).  *(The asked queue,
-    #: wall and memory, the run card's shape and a bench's axes rode beside
-    #: it until 2026-10-05, for a summary the page composed of its own; the
-    #: end point and the notes say it.)*
+    #: script carry it (:func:`_launch_as_written`).
     launch: Optional[dict] = None
     #: A PREVIEW: the plan, stopped before the save, named by its identity
     #: for the Prep that follows (`job-system.md` § 5.0), with what it would
@@ -2680,7 +2481,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # AND THE REFUSAL IS A DECISION TOO (`job-system.md` § 5.3: every
         # decision the entry makes lands in the ledger) -- in a described
         # calculation only: a folder that is not one gets no ledger of ours
-        # (W52: after a refusal the stage's last line read `prepped`).
+        # (W52).
         if desc.is_file() and not preview:
             ledger(base, "prep", "refused", kind=kind, stage=stage,
                    reason=str(exc))
@@ -2690,10 +2491,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     try:
         # 1 · A DESCRIBED CALCULATION is "a template PLUS task.json"
         #     (project-layout.md § 2.1), and prep builds everything else from
-        #     the two -- every kind, transport's included (it has carried a
-        #     template since 2026-09-16, `engines/transport.md` § 2a; one
-        #     written before then passed here on task.json alone until
-        #     2026-10-05, and was refused at checkpoint 4).
+        #     the two -- every kind, transport's included
+        #     (`engines/transport.md` § 2a).
         # EACH READ ONCE (W55 B1): the description here, its template beside
         # it -- every step after this reads these, never the files again.
         task = unread = None
@@ -2726,8 +2525,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 f"{base} is not a described calculation -- no task.json + "
                 "template pair.  `prep` derives everything from those two "
                 "(project-layout.md § 2.1); run `molbuilder jobset init` "
-                "first.  (Hand-built job-sets remain launchable: `launch` "
-                "and `status` read job-set.json directly.)")
+                "first.")
         if unread is not None:
             raise unread
         if (from_attempt or cold) and kind == "bench":
@@ -2746,8 +2544,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 raise PrepError(why)
         if stage is None:
             # ONE STAGE, named -- before anything is read of the machine or
-            # written (W52: a bare `prep run` was refused by `resolve` after
-            # the machine record had been snapshotted).  THE STAGES THE VERB
+            # written (W52).  THE STAGES THE VERB
             # TAKES are offered: a prepped one is not (2a).
             from .commands import name_a_stage
             from .materialize import described_refs
@@ -2773,8 +2570,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             stage = resolve_stage_ref(refs, stage).name
 
         #    ...AND ENABLED: a stage the description disables is never prepped
-        #    (user, 2026-10-03, Q1: "never allow use").  Transport refused
-        #    one on its own, and the ladder prepped it when named.
+        #    (user, 2026-10-03, Q1: "never allow use").
         if stage is not None:
             from ..task import stage_disabled
             why = stage_disabled(task, stage)
@@ -2783,10 +2579,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
 
         # 2a · NOT PREPPED BEFORE (user, 2026-10-02: "refuse it, redo via
         #      rollback").  Asked before anything is read of the machine or
-        #      written; the refusal names the way back.  Until that day a
-        #      prepped stage was re-rendered -- its attempt reused until
-        #      launched, after a launch a new one -- once asked
-        #      ("already under way here", run-identity.md § 6).
+        #      written; the refusal names the way back.
         if stage is not None:
             why = prepped_already(base, task, kind, stage)
             if why:
@@ -2880,9 +2673,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #      by the binding launch asks too (`job-system.md` § 5.0,
         #      checkpoint 4; § 6.0).  A benchmark's cells are admitted where
         #      its grid is enumerated, and its queue is named when it is
-        #      launched (`generator.md` § 4.3a).  *(Until 2026-10-05 nothing
-        #      did before launch; the run card's fit panel, retired with the
-        #      preview, had shown it.)*
+        #      launched (`generator.md` § 4.3a).
         if kind == "run" and header:
             placed, why = admitted(
                 resolved.pset.elements[0].resources, environment,
@@ -2952,8 +2743,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # records once it is written.
         seen: set = set()
         # ONE ENTRY PER FOLDER: on the flat layout every stage's folder is
-        # the calculation's one, and the answer listed it once per stage --
-        # "prepped 3 job dir(s)" for one stage (W52).
+        # the calculation's one (W52).
         from ..scheduler.record import LOCAL_TARGET
         out = PrepAnswer(
             kind, stage, findings=findings, notes=notes,
@@ -2964,8 +2754,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                            if not (repr(i.to_json()) in seen
                                    or seen.add(repr(i.to_json())))],
             # WHICH FILES ANSWERED, as read at checkpoint 4 -- a preview's
-            # too (it was set only once the prep was written until
-            # 2026-10-05, and the page computed a table of its own).
+            # too.
             provenance=provenance,
             # THE MACHINE, by name: the one named, else the one the
             # calculation's copy of its record names, else this one.
@@ -2986,9 +2775,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             js = JobSet.from_dict(json.loads(plan.read_text(
                 base / JOBSET_FILENAME)))
             # THE ATTEMPT -- opened once, with what it continues from
-            # (`_open_attempts`; until 2026-10-01 it was opened a second time
-            # here, and a refusal between the two left an earlier carry
-            # undone -- W52).  A later attempt is `launch`'s.  Flat keeps no
+            # (`_open_attempts`).  A later attempt is `launch`'s.  Flat keeps no
             # attempt directories: the run is the calculation's folder.
             from ..template import KIND_ROLES
             out.linked = task.calculation in KIND_ROLES
@@ -3032,7 +2819,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                                  "cpus_per_task": r.cpus_per_task,
                                  "continue_retries": r.continue_retries}
                 out.deck = Path(job.script).name
-                out.launch = _launch_as_written(plan, run_dir, job)
+                out.launch = _launch_as_written(
+                    plan, run_dir, run_names(js, job, shape_of(js, base)))
                 from .agreement import launch_agreement
                 agreement = launch_agreement(
                     run_dir, job,
@@ -3062,9 +2850,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             raise PrepError(f"the folder's state could not be saved, so "
                             f"nothing was prepped: {exc}")
         # 7 · THE RECORD BEGINS with the preflight's notes -- after the save,
-        #     so the state saved holds no line of this prep (it was written
-        #     before the save until 2026-10-05, and a redo's folder was never
-        #     unchanged).  A refusal writes them with its own line.
+        #     so the state saved holds no line of this prep.  A refusal writes them with its own line.
         _record_preflight()
         out.saved = kept.said()
         ledger(base, "prep", "saved", stage=stage, state=kept.state.short,
@@ -3090,8 +2876,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 # FROM THE STRUCTURE, said every time (`ledger.py`'s
                 # promise: `continues` or `starts-cold`) -- with `--cold`,
                 # or as its description has it: the first stage, or one
-                # set `restart: clean`.  Only `--cold` was written until
-                # 2026-10-06.  A transport rung's inputs are its `gathers`.
+                # set `restart: clean`.  A transport rung's inputs are its `gathers`.
                 ledger(base, "prep", "starts-cold", stage=stage,
                        asked=bool(cold))
         elif continuation is not None:
@@ -3124,8 +2909,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # bundle written before a rename), and the named classes every step
         # raises for the same (:func:`_user_error_as_prep`: a molbuilder.json
         # that does not read, a deck refused, a wrapper that cannot render),
-        # said the same way on both doors; the Task setup route answered a
-        # molbuilder.json that does not read with a 500.  A `TypeError` is
+        # said the same way on both doors.  A `TypeError` is
         # not translated: it is a bug, and should look like one.
         raise _refused(_as_prep_error(exc)) from exc
 

@@ -83,13 +83,12 @@ def test_a_dead_pid_reads_dead_and_a_live_foreign_one_foreign(tmp_path):
 
 def test_signalling_a_stale_pidfile_reports_and_cleans_never_signals(
         tmp_path, monkeypatch):
-    # The pidfile lives under the RUNTIME directory now, and the real one
-    # (/run/user/$UID) exists -- so without naming a temporary root this test
-    # tried to create a directory that was already there, and would have been
-    # writing a pidfile into the live location if it had not.
+    # The pidfile lives under the RUNTIME directory, and the real one
+    # (/run/user/$UID) exists -- so this test names a temporary root rather
+    # than writing a pidfile into the live location.
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
     # The pidfile's one door is `config_dir.serve_pidfile` -- the daemon asks
-    # it directly since 2026-09-13, and so does this test.
+    # it directly, and so does this test.
     from molbuilder.config_dir import serve_pidfile
     serve_pidfile(7777).parent.mkdir(parents=True, exist_ok=True)
     serve_pidfile(7777).write_text("999999999\n")
@@ -134,8 +133,7 @@ def _spawn_supervisor(tmp_path, port=9321, child_sleep=60):
         "log_max_bytes=1_000_000, log_keep=2)\n")
     # The supervisor writes its pidfile under the RUNTIME directory and its
     # log under the STATE directory, not under HOME (`configuration.md`
-    # § 2.1d).  HOME alone moved both while `~/.molbuilder` existed; it no
-    # longer does, and these are CHILD PROCESSES, so the roots are handed over
+    # § 2.1d).  These are CHILD PROCESSES, so the roots are handed over
     # explicitly rather than monkeypatched.
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
     (tmp_path / "runtime").mkdir(parents=True, exist_ok=True)
@@ -229,8 +227,7 @@ def test_a_flapping_child_is_given_up_on(tmp_path):
         "log_max_bytes=1_000_000, log_keep=1))\n")
     # The supervisor writes its pidfile under the RUNTIME directory and its
     # log under the STATE directory, not under HOME (`configuration.md`
-    # § 2.1d).  HOME alone moved both while `~/.molbuilder` existed; it no
-    # longer does, and these are CHILD PROCESSES, so the roots are handed over
+    # § 2.1d).  These are CHILD PROCESSES, so the roots are handed over
     # explicitly rather than monkeypatched.
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
     (tmp_path / "runtime").mkdir(parents=True, exist_ok=True)
@@ -270,8 +267,7 @@ def test_start_refuses_when_already_running(monkeypatch):
                         # `marker` -- `serve` for the supervisor,
                         # `_shepherd` for the notebook -- and a stub
                         # narrower than the contract breaks the day a
-                        # caller uses the rest of it (2026-09-15: the
-                        # status detail began reporting the notebook).
+                        # caller uses the rest of it.
                         lambda pid, **kw: "ours")
     r = CliRunner().invoke(cli, ["serve", "start", "--port", "8123"])
     assert r.exit_code != 0
@@ -285,8 +281,8 @@ def test_status_writes_its_detection_into_the_log(tmp_path, monkeypatch):
     from click.testing import CliRunner
     from molbuilder.cli import cli
     # In-process, so the roots are monkeypatched rather than passed in a child
-    # environment.  HOME no longer decides where the log goes -- the state
-    # directory does (`configuration.md` § 2.1d).
+    # environment.  The state directory decides where the log goes
+    # (`configuration.md` § 2.1d).
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setattr(sd, "read_pid", lambda port: os.getpid())
     monkeypatch.setattr(sd, "pid_state",
@@ -294,8 +290,7 @@ def test_status_writes_its_detection_into_the_log(tmp_path, monkeypatch):
                         # `marker` -- `serve` for the supervisor,
                         # `_shepherd` for the notebook -- and a stub
                         # narrower than the contract breaks the day a
-                        # caller uses the rest of it (2026-09-15: the
-                        # status detail began reporting the notebook).
+                        # caller uses the rest of it.
                         lambda pid, **kw: "ours")
     # port 9329: nothing listens -- the health probe fails fast
     r = CliRunner().invoke(cli, ["serve", "status", "--port", "9329"])

@@ -17,9 +17,9 @@ everything:
   documented as what a person types and `Resources.time` as what SLURM
   takes, and nothing translated between them.
 
-The rule that replaced it: **the record holds ONE spelling, SLURM's, and
+The rule: **the record holds ONE spelling, SLURM's, and
 translation happens at the edges where humans are** (`task.py::Allocation`,
-`ask.canonical_time`/`canonical_mem`).
+`scheduler.quantities.canonical_time`/`canonical_mem`).
 """
 from __future__ import annotations
 
@@ -33,17 +33,6 @@ from molbuilder.jobset.model import Job, Resources
 
 SLURM_TIME = re.compile(r"^(?:\d+-)?\d+(?::\d{2}){0,2}$")
 SLURM_MEM = re.compile(r"^\d+(?:\.\d+)?[KMGT]?$")
-
-
-# `TestTheDomainTheBundleCarries` retired 2026-10-06: four launches of a
-# hand-built sweep with no trial folders, which a benchmark's walk now
-# refuses -- each trial's run script is checked where it runs, here and on
-# a queue alike.  Their rules are rows down the road
-# (`tests/data/launch_values.toml`): a benchmark sent to the queue its prep
-# was told, with no flag ("a benchmark keeps the calculation's wall and
-# queue"); `--domain` at launch beating it; a queue named nowhere refused,
-# with the queues listed.  Two queues among one calculation's trials is a
-# state the road cannot make (every trial carries the calculation's one).
 
 
 class TestTheRecordHoldsOneSpelling:
@@ -61,11 +50,6 @@ class TestTheRecordHoldsOneSpelling:
             Resources(time="4h", mem="80GB").to_dict())))
         assert r.time == "0-04:00:00" and r.mem == "80G"
 
-    def test_a_hand_edited_job_set_is_normalised_on_load(self):
-        """The case that unblocks a bundle already on disk: a file written
-        before this rule still carries `4h`, and reading it fixes it."""
-        r = Resources.from_dict({"time": "4h", "mem": "256G", "mpi_np": 48})
-        assert r.time == "0-04:00:00"
 
     def test_task_json_allocation_is_normalised_on_read(self):
         from molbuilder.task import _allocation_from_obj

@@ -264,18 +264,21 @@ au_bdt_relax/
 ├── <label>_03_tight-run0.out       tight, first attempt     ─┘
 ├── <label>_01_coarse-run0.concluded     the run's own records carry the
 ├── <label>_01_coarse-run0.monitor.log   index too: the marker (§ 1.6.3), the
-│     (and .util.csv, .scf-timing.log)   monitor's pair, the timing log
+│     (and .util.csv, .scf-timing.log)   monitor's pair, the timing log, the
+├── <label>_01_coarse-run0.run.json      launch record (§ 1.6.3), the
+├── <label>_01_coarse-run0.molwatch.log  progress log -- and .continued-from
+│                                        when the run continues from another
 ├── <label>_01_coarse.runwrap-<stamp>.log   the wrapper's session log
-├── <label>_01_coarse.run.json      the stage's launch record (§ 1.6.3)
 │
 ├── <label>.XV  <label>.DM  <label>.CG  ⚠ ONE shared set, UNSUFFIXED
 ├── <label>.STRUCT_OUT              ⚠ one, overwritten by each stage
 └── <label>.ANI  <label>.EIG        ⚠ likewise
 ```
 
-*A flat stage's launch record is its own `<basename>.run.json`, named like
-every other file of it: the directory is every stage's (§ 1.6.3). The tree is a
-picture; every file, with its writer and its door, is § 5.*
+*Each run of a flat stage has its own launch record,
+`<basename>-run<N>.run.json`, named like every other file of that run: the
+directory is every stage's and every run's (§ 1.6.3). The tree is a picture;
+every file, with its writer and its door, is § 5.*
 
 *`<label>` is the `SystemLabel` — the stem of every file here. It is **not** the
 run id, which carries the formula as well and lives in `task.json`
@@ -284,7 +287,8 @@ run id, which carries the formula as well and lives in `task.json`
 **The unsuffixed warm files are the whole design, good and bad.** They are
 unsuffixed *on purpose* — that is exactly what lets stage 2 pick up stage 1's
 geometry with no instruction from anyone (`job-contracts.md § 2.3`:
-`MD.UseSaveXV`, `DM.UseSaveDM`, `MD.UseSaveCG` just find them). And it is
+`MD.UseSaveXV`, `DM.UseSaveDM` — and `MD.UseSaveCG` on a CG relaxation — just
+find them). And it is
 exactly why stage 2 overwrites them.
 
 **Hierarchical** — the same stages and attempts, kept apart by directory:
@@ -614,10 +618,15 @@ how.** It was a third case until now — neither of the two below — and that i
 what made `launch` refuse a re-run outright and tell you to move the directory
 aside by hand. That is the `--force`-era answer this section retired.
 
-| shape | how a re-run is kept apart |
+| shape | where a trial runs |
 |---|---|
-| **hierarchical** | a **directory**: `bench-<point>/run-1/` beside `run-0/`, nothing shared |
-| **flat** | the **filename index** the wrapper already writes: `-run1.out` beside `-run0.out`, warm files shared |
+| **hierarchical** | its **attempt**, `bench-<point>/run-0/`, opened at the benchmark's prep |
+| **flat** | its own **folder**, `bench-<point>/` — the folder is the run (`runfiles.runs_share_folder`) |
+
+**A trial is launched once, in either shape.** `launch` passes over a trial
+launched before, and refuses one named; measuring it again is the state saved
+before the benchmark's prep, restored, and a prep anew
+([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 
 **The SHAPE decides, not the kind — and every reader must ask one function.**
 `materialize.run_dir(container)` answers *where does this stage or trial
@@ -653,6 +662,19 @@ opting out. *(User, 2026-08-27: re-running a benchmark must be possible —
 > the newest `<basename>-run*.<suffix>` of each (through the run door since
 > 2026-10-04, at the run's one index). *This note stood in the present
 > tense until 2026-09-04 — it told a reader the destruction still happens.*
+>
+> **And the last of them, 2026-10-06** *(plan W57, decision 2)*: in the flat
+> shape the progress log, the launch record and `.continued-from` carried no
+> index, so a re-launch truncated run 0's PySCF trajectory and replaced its
+> launch record, while § 1.6.3 named them unindexed beside this note. Each
+> carries `-run<N>` in the flat shape now — `<base>-run1.molwatch.log`,
+> `-run1.run.json`, `-run1.continued-from`, the last named for the run that
+> continues — and so do the PySCF deck's own logs: PySCF's `.log`, which
+> PySCF opens with `'w'`, so a re-run truncated it, and geomeTRIC's files
+> under the prefix the deck hands it, whose log geomeTRIC moved aside as
+> `<prefix>_1.log`, a name nothing declares. The hierarchy names them as before: its attempt
+> folder is launched once, and a PySCF run is never retried in place
+> (`runfiles.WRITTEN`, the rows marked `attempt="shared"`).
 
 **No conversion, and no reader for the old layout** (user: *"new dir becomes
 standard. No historical burden."*). A benchmark is a **measurement**, and
@@ -794,16 +816,30 @@ can spend a week computing from a geometry you would have rejected in a minute.
 | | an attempt | a run |
 |---|---|---|
 | is | one launch of a stage or a trial | one start of the wrapper inside the attempt |
-| named | `run-<n>/` in the hierarchy; in the flat shape, the `-run<N>` index | `-run<N>`, in every file the wrapper writes |
-| numbered by | `prep`: the next unused `n` (§ 4.3) | the wrapper: the highest `-run<N>` any file beside it carries — an output, a marker, a monitor file — plus one, else 0 |
-| a new one when | you prep and launch again (§ 1.5) | the wrapper warm-retries in place (`running-a-job.md` § 3.5) |
+| named | `run-<n>/` in the hierarchy; in the flat shape, the `-run<N>` index | `-run<N>`, in every file of the run |
+| numbered by | the next unused `n` (§ 4.3): `prep` opens the first, `launch` each next (§ 1.6.2) | `launch`, which hands it to the run script as `--run N` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.5): an attempt's run is 0; a flat stage's next is one past its newest launch record, else 0 (`runrecord.next_run`); a warm retry's is the next, which the run script hands itself (§ 3.5 there) |
+| a new one when | you prep and launch again (§ 1.5) | `launch` sends it, or the run script warm-retries in place |
 
-In the flat shape the two coincide: the index is all that tells attempts apart.
-In the hierarchy an attempt holds one run, or more when a warm retry re-runs it
-in place (`run-0/` holding `-run0` and `-run1`), and closes when its launch ends
-(§ 1.5). **The launch gate, the run record and the marker `run_status` counts
-read the attempt's latest run**: the highest index its files reached
-(`runfiles.latest_run`).
+In the flat shape a launch is told apart by its index alone, and a warm retry
+is a run of its own, with its own launch record naming the run it retries
+(§ 1.6.3). In the hierarchy an attempt holds one run, or more when a warm retry
+re-runs it in place (`run-0/` holding `-run0` and `-run1`), and closes when its
+launch ends (§ 1.5). **The launch gate, the run record and the marker
+`run_status` counts read the attempt's latest run**: the highest index its
+files reached (`runfiles.latest_run`).
+
+**The number is decided once, by `launch`** *(plan W57, decision 6,
+2026-10-06)*. The run script counted it until then — the highest `-run<N>`
+beside it, plus one — while one launch could start several runs: a warm retry
+re-runs the script, which took the next number, so the run that ended had no
+launch record of its own. And with each flat run's `.continued-from` written by
+`launch` before its run starts (§ 1.6.3), a script counting the files beside it
+would take the number after its own. A run script refuses to start without
+`--run`, naming the launch command. One written before takes no `--run`:
+given one, it stops on the unknown argument, its own explicit error, and
+its stage is prepped anew, from the state saved before its prep
+([`job-system.md`](?doc=execution/job-system.md) § 5.0) — `jobset migrate`
+says so of each stage of a flat calculation it numbers (§ 1.6.3).
 
 #### 1.6.2 Who makes the attempt directory
 
@@ -857,9 +893,9 @@ Two small files answer the two questions *(the second decided by the user,
 
 | file | written by | when | it says | absent means |
 |---|---|---|---|---|
-| `run.json` (`molbuilder/run-launch@1`) — a flat stage's `<basename>.run.json` | `launch`, into the attempt — or, for a flat stage, beside its deck | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent and with what wall and memory, and **what it continued from** | not launched: `launch` runs in this attempt |
+| `run.json` (`molbuilder/run-launch@1`) — a flat stage's run's own `<basename>-run<N>.run.json` | `launch`, into the attempt — or, for a flat stage, beside its deck, one per run; a flat run's warm retry, by the run script through the monitor's bundle (`running-a-job.md` § 3.5) | when the launch succeeds: `sbatch` accepted it, or the direct process started; a retry's as it starts | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent and with what wall and memory, **what it continued from**, and for a retry **the run it retries** | not launched: `launch` runs in this attempt |
 | `<basename>-run<N>.concluded` | the wrapper, on its main line | its last act, after the engine returns — and after the job's finish, when it has one (`engines/vibration.md` § 5.5) — and before it stops the monitor | *the process ended on its own* — the exit code and the time; **when the finish failed, its exit code and the words `finish failed (<bundle>)`** (`parse/dirs/job.FINISH_FAILED`) | still running, or force-stopped: the files cannot tell which |
-| `.continued-from` — a flat stage's `<basename>.continued-from` | `prep`, and `launch` when it opens a stage's next attempt — one writer, `runrecord.write_continued_from` | when it copies warm files in — on the flat layout, when the stage continues from a run whose files lie in the folder | which attempt they came from, for `launch` to write into `run.json` — on the flat layout the run's own name, `<label>_<NN>_<stage>-run<N>`, which every file of it carries (ruled 2026-10-01) | the run starts from the structure |
+| `.continued-from` — a flat stage's run's own `<basename>-run<N>.continued-from`, named for the run that continues | `prep`, and `launch` when it opens a stage's next attempt or a flat stage's next run — one writer, `runrecord.write_continued_from` | when it copies warm files in — on the flat layout, when the stage continues from a run whose files lie in the folder | which attempt they came from, for `launch` to write into `run.json` — on the flat layout the run's own name, `<label>_<NN>_<stage>-run<N>`, which every file of it carries (ruled 2026-10-01) | the run starts from the structure |
 
 - **`run.json` is written at launch, never at completion** — written when the
   job finished, it would leave a running direct attempt reading as never
@@ -874,12 +910,28 @@ Two small files answer the two questions *(the second decided by the user,
   directory "is its own attempt", and named a `submit bench` that picked the
   next unlaunched trial, until 2026-10-01: § 1.5a gave trials attempts, the
   verb is `launch`, and the picker was retired; the W52 review.)*
-  **A flat stage writes its own**, `<basename>.run.json` beside its deck
-  (`runrecord.launch_record_path`): there is no attempt directory,
-  and every stage shares the calculation's one, so the record is named by
-  its stage like every other file of it *(user, 2026-09-26: "unify this
-  behavior")*. A flat calculation's directory, asked as a whole, reads the
-  newest of them. **One that does not read** — not JSON, or not a
+  **A flat stage writes one per run**, `<basename>-run<N>.run.json` beside
+  its deck (`runrecord.launch_record_path`): there is no attempt directory,
+  and every stage and every run shares the calculation's one, so the record
+  is named by its stage and its run like every other file of it *(user,
+  2026-09-26: "unify this behavior"; the run's number since 2026-10-06, plan
+  W57 decisions 2 and 6)*. Asked about a stage, the door answers with its
+  newest run's record; asked about a flat calculation's directory as a
+  whole, with the newest stage's — by the stage's number, then the run's,
+  never a file's time (`runs.speaking`'s rule; it took the newest file
+  until 2026-10-06). **A warm retry is a run of its own** and, on the flat
+  layout, gets its own record as it starts: the same job — its launch's
+  mode, command, job id and queue — its own start, `continued_from` the
+  run it retries and `retry_of` that run's number, written by the run
+  script through the monitor's bundle (`runrecord.record_retry`,
+  [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5). The
+  hierarchy's `run.json` is its attempt's and answers for every run in it.
+  **A flat calculation written before** — `<basename>.run.json`,
+  `<basename>.continued-from` or `<basename>.molwatch.log`, no run number —
+  is refused by the door, naming `molbuilder jobset migrate --bundle
+  <calc>`, which gives each the number of its stage's newest run, 0 for a
+  stage never launched (W57 decision 7's pattern). **One that does not
+  read** — not JSON, or not a
   `molbuilder/run-launch` record — is an error naming the file, never
   *launched* or *not launched*: status says so on its row, and prep and
   launch refuse (`runrecord.launch_record`, the one door,
@@ -998,9 +1050,11 @@ simply *skip the copy* — a fresh attempt is empty unless something is copied
 in — so it belongs to the command that sets the run up:
 `jobset prep run <stage> --cold`, then `jobset launch run <stage>`
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3 owns what you type). The
-flat shape reuses one directory, so there the wrapper's own `--cold` names the
-warm files a clean start would overwrite and refuses until `--force`
-([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.4,
+flat shape reuses one directory and opens no attempt, so there a stage starts
+clean by its run card's `restart: clean`, and `prep --cold` is refused, saying
+so ([`job-system.md`](?doc=execution/job-system.md) § 5.4). The run script's
+own `--cold` names the warm files a clean start would overwrite and refuses
+until `--force` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.4,
 `job-contracts.md` § 4).
 
 ---
@@ -1040,13 +1094,9 @@ Because some of what goes *inside* the deck is a fact about the machine.
 
 `BlockSize` is the clearest case. It is a **tunable** knob — you may set it, and
 a benchmark may measure it ([`tuning.md § 2.11`](?doc=engines/tuning.md)) — and
-when the target is GPU-ELPA, `prep` **realigns** an explicit value to a power of
-two, because ELPA otherwise falls back to the CPU silently. That reconciliation
-needs the GPU flag and the rank count, which only exist here. *(Until
-2026-08-16 this said `prep` **proposes** a value from the orbital and rank
-counts when you have not set one. It does not: unset means SIESTA's own
-automatic and the keyword is not emitted — the middle state was retired on
-2026-08-15.)* The GPU flag is another: `use_gpu` writes `Diag.ELPA.GPU` into the
+its legal window is a fact about the launch: the deck's BENCH-MARKS block records
+the rank count it was rendered for and, when the deck carries a `BlockSize`, the
+window that rank count allows. The GPU flag is another: `use_gpu` writes `Diag.ELPA.GPU` into the
 deck *and* sends the wrapper to a different conda environment, and whether this
 machine has a GPU at all is not a laptop's to know. A deck rendered on a laptop
 is either wrong for the cluster or a guess.
@@ -1216,7 +1266,7 @@ is how a fact about a machine you are not standing on arrives
 [`script-preparation.md`](?doc=execution/script-preparation.md) § 4.1, pair by
 pair. The short form, and the reason `prep` is a step of its own rather than
 something the browser finishes: a script carries values that *depend on how it
-will be launched* — a block size derived from the rank count, and a GPU line that
+will be launched* — the rank count with the block-size window it allows, and a GPU line that
 also decides which environment the wrapper must activate. **A parameter that
 depends on the launch cannot be decided before the launch is known.** That is
 § 2.2 restated as a sequencing rule.
@@ -1267,7 +1317,7 @@ Naming them apart is what makes step 1 answerable.
 | **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, **the partitions and QoS you can actually reach and their wall limits**. *Preference:* which of them a run **uses** — its own statement (`allocation.domain`, `--domain`), never a default ([`architecture.md` § 5.2](?doc=execution/architecture.md)); the activation is a fact of the machine, in its record. **A machine reports what exists; only you can say what you want** — and a machine's facts are recorded by the probe on that machine, its record copied to where you prep (M2a). | *(Amended 2026-08-17 — the declared list said "the QoS … the partition you are entitled to", citing `environment.py::detect_site`'s claim that those are "not reliably derivable from `sinfo`". `scheduler_probe.parse_allowed_qos` derives exactly that from `sacctmgr -nP show assoc user=$USER`, so the tree held two modules disagreeing about whether one fact is detectable. Entitlement **is** probed; preference is not — [`configuration.md` § 5](?doc=configuration.md) M-1.)* |
 | **M2a** | **A fact is recorded by the probe ON its machine — measured, or declared to the probe there** (`--set`, `--scheduler`; the activation copied from that machine's `molbuilder.json`), and the record is copied to where you prep. *What partitions and QoS you can reach* is such a fact; a queue list written by hand on another machine is refused (`configuration.md` § 5). *Which one this run uses* is the run's own statement. `prep` checks the second against the first (M4's capability ⊇ allocation) | *(Rewritten twice on 2026-08-17.)* It first said the partition is the one fact both sides supply and **declaration wins** — a tie-break. The rewrite removed the tie-break by declaring the fact "probed only", which made the workstation-describing-a-cluster case an **error**: you cannot probe a machine you are not on. The third form keeps the split by ROLE (fact vs preference) and settles the overlap by EVIDENCE (a measurement beats a note), which is the only ordering that leaves both cases expressible. *(History: the workstation-describing-a-cluster case is served now by probing ON the cluster and copying its record — a queue list written on another machine is refused, 2026-10-02.)* Full argument: [`configuration.md` § 5](?doc=configuration.md) M-1 |
 | **M3** | **What was detected and what was declared must both be recoverable from the run directory.** | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
-| **M4** | **The scheduler ask is an input to `prep`, not a decision at submit.** *(Amended 2026-09-02: "not a field of the description" held while `Allocation` carried the launch shape too. The shape now IS a description field — `task.json`'s `execution`, D2 — because what a run computes at is the person's decision and must survive being written down. The wall clock, the memory and the queue stay `prep`'s input, and the reasoning below is theirs.)* | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *derived from the rank count* (block size), plus the GPU line that picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
+| **M4** | **The scheduler ask is an input to `prep`, not a decision at submit.** *(Amended 2026-09-02: "not a field of the description" held while `Allocation` carried the launch shape too. The shape now IS a description field — `task.json`'s `execution`, D2 — because what a run computes at is the person's decision and must survive being written down. The wall clock, the memory and the queue stay `prep`'s input, and the reasoning below is theirs.)* | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *tied to the rank count* (the block-size window), plus the GPU line that picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
 | **M5** | **`launch` decides nothing. It checks that the deck and the launch still agree, refuses if they do not, and starts one job.** | The check already exists (`LaunchAgreement`). A launch that quietly disagrees with its deck is the failure M4 exists to prevent, arriving one step later |
 | **M6** | ~~A workstation needs no config file~~ — **AMENDED 2026-08-17 (user): a workstation records its capability in a config file too, in the same shape a cluster uses.** Detection still answers *what is here*; the file answers *what a run may have*, and `prep` needs the second to refuse an over-ask rather than discover it at launch | The original reasoning was *nothing is rationed*, which held only while nothing checked. Once `prep` enforces capability ⊇ allocation ([`generator.md § 4.1`](?doc=execution/generator.md)), a workstation with no stated ceiling is the one machine where the check cannot run — so the rule that was sparing the user a file was instead sparing them the error. **One shape for both kinds of machine** also means the probe verb, the config reader and `prep`'s bound have one path rather than a workstation special case. |
 
@@ -1560,7 +1610,7 @@ default — `siesta` on one core of a 128-core node — is exactly what this
 exists to prevent; nothing here falls through to it.
 
 Once the winner is written into `execution`, step 2 reads it like any statement. The measured
-rank count flows into step 3, where it changes `BlockSize`; the measured
+rank count flows into step 3, where it sets the deck's recorded `mpi_np` and `BlockSize` window; the measured
 eigensolver changes `Diag.Algorithm`; and whether the GPU was worth it changes
 `Diag.ELPA.GPU`, which in step 4 changes **which environment the wrapper
 activates** and adds the `--gres` ask. One measurement, several destinations —
@@ -2602,20 +2652,20 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 | `<label>_optimized.molstruct.json` *(PySCF)* | the relaxed geometry's cell and labels -- the sidecar of the restart file `_optimized.xyz` | the PySCF deck | none | result |
 | `<label>.constraints.txt` *(PySCF)* — only: atoms are held | which atoms are held still, in geomeTRIC's own format | the PySCF deck | none | derived |
 | `<label>.spectra.json` *(vibration)* | the spectrum this run computed: frequencies, the strengths the engine computes, thermochemistry -- written by the run itself | the run itself: the PySCF deck, or a SIESTA force-constant job's finish (`mb_vibration.pyz`) | `parse.sidecars.spectra.SpectraSidecarFileParser` | result |
-| `<base>.molwatch.log` | the run as it happens — coordinates, energy and forces, one block per step | prep seeds it in the attempt; PySCF's deck writes each step into it, SIESTA never does | `parse.engines.molwatch.MolwatchLogFileParser` | record |
+| `<base>.molwatch.log` *(hierarchical)* · `<base>-run<N>.molwatch.log` *(flat)* | the run as it happens — coordinates, energy and forces, one block per step | prep seeds the first run's, in the attempt -- in the flat shape numbered for run 0; PySCF's deck writes each step into its run's own, SIESTA never does | `parse.engines.molwatch.MolwatchLogFileParser` | record |
 | `<base>-run<N>.out` *(SIESTA)* | the run's output as the engine printed it | the run script, from the engine's stdout | `parse.engines._run_ending.ending_of` | result |
 | `<base>-run<N>.pyscf.log` *(PySCF)* | the same, for PySCF — it writes here and not to .out | the run script, from the engine's stdout | `parse.engines._run_ending.ending_of` | result |
-| `<base>.log` *(PySCF)* | PySCF's own log | the PySCF deck | `parse.dirs.record.run_record` | result |
-| `<base>_geom.log` *(PySCF)* | geomeTRIC's optimizer log | geomeTRIC, under the prefix the deck hands it | none | result |
+| `<base>.log` *(hierarchical)* · `<base>-run<N>.log` *(flat)* *(PySCF)* | PySCF's own log | the PySCF deck | `parse.dirs.record.run_record` | result |
+| `<base>_geom.log` *(hierarchical)* · `<base>-run<N>_geom.log` *(flat)* *(PySCF)* | geomeTRIC's optimizer log | geomeTRIC, under the prefix the deck hands it | none | result |
 | `<base>.runwrap-<stamp>.log` | the wrapper's own session log — one per launch, stamped with the clock | the run script, at each start | `wrapper_log.log_of_run` | record |
 | `<base>-run<N>.monitor.log` | the monitor's rolling status | the monitor | `parse.instruments.monitor.MonitorLogFileParser` | record |
 | `<base>-run<N>.util.csv` | processor and memory samples taken while it ran | the monitor | `parse.instruments.util_csv.UtilCsvFileParser` | record |
 | `<base>-run<N>.scf-timing.log` *(SIESTA)* — only: the engine printed an SCF iteration | wall time per SCF iteration — on a TranSIESTA device, both its phases | the run script's tee of the output's SCF lines | `parse.instruments.scf_timing_rows.timing_of` | record |
 | `<base>-run<N>.parse.log` — only: `MOLBUILDER_PARSE_LOG` set | molbuilder's log of reading the run's output | molbuilder's parser, reading the output (`parse._log.ParseLogger`) | none | record |
-| `<base>.molwatch.parse.log` — only: `MOLBUILDER_PARSE_LOG` set | the same, for the trajectory log | molbuilder's parser, reading the trajectory log (`parse._log.ParseLogger`) | none | record |
+| `<base>.molwatch.parse.log` *(hierarchical)* · `<base>-run<N>.molwatch.parse.log` *(flat)* — only: `MOLBUILDER_PARSE_LOG` set | the same, for the trajectory log | molbuilder's parser, reading the trajectory log (`parse._log.ParseLogger`) | none | record |
 | `<base>-run<N>.concluded` | the marker the wrapper writes when the job ends | the run script, its last act | `runrecord.ending` | record |
-| `run.json` *(hierarchical)* · `<base>.run.json` *(flat)* | the launch record: how, where and when the run was sent, and what it continued from | launch (`runrecord.write_launch`) | `runrecord.launch_record` | record |
-| `.continued-from` *(hierarchical)* · `<base>.continued-from` *(flat)* — only: it continues from an earlier run | the run whose restart files were carried in, for launch's record | prep and launch, on a re-launch, through `runrecord.write_continued_from` | `runrecord.read_continued_from` | record |
+| `run.json` *(hierarchical)* · `<base>-run<N>.run.json` *(flat)* | the launch record: how, where and when the run was sent, what it continued from, and the run a warm retry retries | launch (`runrecord.write_launch`); a flat run's warm retry, the run script through the monitor's bundle (`runrecord.record_retry`) | `runrecord.launch_record` | record |
+| `.continued-from` *(hierarchical)* · `<base>-run<N>.continued-from` *(flat)* — only: it continues from an earlier run | the run whose restart files were carried in, for launch's record | prep, and launch when it runs a stage again, through `runrecord.write_continued_from` | `runrecord.read_continued_from` | record |
 | `<base>-run<N>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it | `molbuilder runtime-info`, beside the file it reads | none | record |
 | `.gathered-from` *(transport)* | what a rung took, from which upstream run | prep (`jobset.prep.transport_inputs`, through `runrecord.write_gathered_from`) | `runrecord.read_gathered_from` | record |
 | `slurm.<jobid>.out` — only: launched to a queue | SLURM's own stdout for the job | SLURM, as the run's header asks (`-o`) | none | record |
@@ -2925,8 +2975,11 @@ than no invariant, because it fails a directory that is working correctly.
 6a. **Every directory in this tree is made by Python, and every file put in one
    is a real file.** The wrapper activates an environment and runs the engine
    as its child in a directory it was handed; it creates no directory and
-   arranges no file (`running-a-job.md § 2.2a`). *Test:* render a wrapper for
-   each engine and assert its text contains no `cd` command
+   arranges no file (`running-a-job.md § 2.2a`). *Test:* the SIESTA run
+   script is held by the road — the catalogue rows
+   (`tests/data/the_catalogue.toml`) launch it and need the run's files where
+   launch ran it; the PySCF run script, which runs only in the e2e tier, is
+   rendered and its text holds no `cd` command
    (`tests/test_warm_file_inventory.py`).
 6b. **Every directory this tree makes below the calculation root carries a
    `calcdir.json`, and the root carries `task.json`** (§ 1.4a) — stamped by

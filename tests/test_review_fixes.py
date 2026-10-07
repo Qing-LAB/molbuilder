@@ -2,16 +2,11 @@
 
 Each test maps to a specific finding:
 
-    S1   peptide.py element field stripped of leading whitespace
-    S2   SiestaConfig.net_charge / PySCFConfig.charge override the
-         phosphate-only auto-detection heuristic
-    S6   web app caps multipart upload size at 10 MB
+    S6   web app caps multipart upload size
     S7   Structure.to_pdb caps atom serial / residue id at PDB column
          widths
     T3   protonate_phosphate_oxygens is a no-op on a peptide
-    T5   web layer's _xyz_to_structure delegates to Structure.from_xyz
-    D1   SiestaConfig and Config alias coexist
-    D3   charged-system cell padding auto-bumps to 25 A
+    D3   a charged system's thin vacuum is warned, never bumped
 """
 
 from __future__ import annotations
@@ -27,38 +22,11 @@ from molbuilder.chemistry import (
 
 
 # --------------------------------------------------------------------- #
-#  S1 / T1 -- element field is stripped of leading/trailing whitespace  #
-# --------------------------------------------------------------------- #
-
-
-def test_s1_t1_element_strip_propagates_to_species():
-    """If a Structure ever lands in the FDF generator with an element
-    like ' C', species detection must NOT see two distinct species."""
-    from molbuilder.chemistry import species_order
-    species = species_order(["C", "C", "H", "O"])
-    # ONE entry per element, whatever the order.  This asserted pure
-    # atomic-number order as a side effect, which stopped being the rule on
-    # 2026-09-23 (`model/chemistry.md` § 3a: carbon leads, hydrogen follows
-    # it) -- and the order was never what this test is about.  Duplicates
-    # are: a `" C"` that did not get stripped becomes a second carbon.
-    assert species == ["C", "H", "O"]
-    assert len(species) == len(set(species))
-    # If a downstream caller forgets to strip, the FDF generator should
-    # crash visibly rather than silently produce a malformed input.
-    try:
-        sp = species_order(["C", " C", "H"])
-    except KeyError:
-        return   # acceptable: the unknown ' C' raises
-    counts = {s: sp.count(s) for s in set(sp)}
-    assert all(c == 1 for c in counts.values())
-
-
-# --------------------------------------------------------------------- #
-#  D3 -- vacuum comes with the STRUCTURE (cell_padding removed 2026-07)  #
+#  D3 -- vacuum comes with the STRUCTURE                                #
 #                                                                       #
-#  render_fdf derives the vacuum box from struct.resolve_cell() (bbox + #
-#  2*vacuum, centred).  cfg.cell_padding is gone; a charged system with #
-#  thin vacuum is WARNED (never auto-bumped) -- geometry is the user's.  #
+#  The deck's box is the structure's (bbox + 2*vacuum, centred); a      #
+#  charged system with thin vacuum is WARNED (never auto-bumped) --     #
+#  geometry is the user's.                                              #
 # --------------------------------------------------------------------- #
 
 
@@ -67,13 +35,10 @@ def test_d3_charged_system_warns_on_thin_vacuum(deprotonated_diester):
     recommendation (image-image Coulomb decays only as 1/L), so it must be
     reported -- and the geometry must be left alone.
 
-    The DELIVERY changed on 2026-07-29: this used to be a Python
-    ``warnings.warn`` inside ``render_fdf``, which reached the server's stderr
-    and therefore no web user at all.  It is now an ``Issue`` from the SIESTA
-    validator (``cell.vacuum_thin``), so the same advice reaches the browser
-    panel and the CLI report alike -- clause R5 of the delivery contract,
-    docs/science/validation.md 4.1.  The assertion follows the finding to its
-    new channel; the invariant (report, never mutate) is unchanged.
+    It is an ``Issue`` from the SIESTA validator (``cell.vacuum_thin``), so the
+    same advice reaches the browser panel and the CLI report alike -- clause
+    R5 of the delivery contract, docs/science/validation.md 4.1: report,
+    never mutate.
     """
     import dataclasses
     from molbuilder.config.siesta import SiestaConfig
@@ -88,25 +53,6 @@ def test_d3_charged_system_warns_on_thin_vacuum(deprotonated_diester):
     assert findings[0].severity == "warn"
     # Geometry untouched: the vacuum the user set is still the vacuum stored.
     assert s.vacuum == (10.0, 10.0, 10.0)
-
-
-def test_d3_neutral_uses_the_structures_vacuum(water_structure):
-    import dataclasses
-    from molbuilder.siesta import SiestaConfig, render_fdf
-    from molbuilder.validation import validate
-    # The FDF cell note reports the STRUCTURE's vacuum (per side); a sufficient
-    # neutral vacuum (10 >= 8) raises no thin-vacuum finding.
-    s = dataclasses.replace(water_structure, vacuum=(10.0, 10.0, 10.0))
-    cfg = SiestaConfig(verbose_comments=False)
-    assert "vacuum = (10.0, 10.0, 10.0) A/side" in render_fdf(s, cfg), "cell note"
-    # Asked of the door that ANSWERS it.  This caught a `warnings.warn` raised
-    # inside `render_fdf` until 2026-09-17 -- a mechanism contract R5 retired
-    # (`science/validation.md` § 4.1: a complaint is an `Issue`, because a
-    # `warnings.warn` reaches the server's stderr and no web user ever sees
-    # it).  Once the warn went, the recorder was always empty and the assert
-    # could not fail.
-    assert not [i for i in validate(s, cfg) if i.where == "cell.vacuum_thin"], (
-        "a 10 A/side vacuum was called thin")
 
 
 # --------------------------------------------------------------------- #
@@ -163,11 +109,9 @@ def test_t3_protonate_noop_on_peptide():
 def test_s6_web_app_caps_upload_size(web_client):
     """The unified Flask app caps uploads at 50 MB.
 
-    Pre-merge the build app capped at 10 MB and the watch app at 50 MB.
-    Flask's MAX_CONTENT_LENGTH is a single global setting, so the merged
-    app uses the larger of the two so /api/watch/load can accept
-    realistic SIESTA / PySCF logs.  The /api/build/load endpoint still
-    rejects oversize uploads -- just at the 50 MB threshold now.
+    Flask's MAX_CONTENT_LENGTH is a single global setting, sized so
+    realistic SIESTA / PySCF logs can be uploaded; /api/build/load rejects
+    oversize uploads at that threshold.
     """
     app_cfg = web_client.application.config
     assert app_cfg.get("MAX_CONTENT_LENGTH") == 50 * 1024 * 1024
@@ -175,16 +119,3 @@ def test_s6_web_app_caps_upload_size(web_client):
     r = web_client.post("/api/build/load",
                         json={"text": big, "filename": "big.xyz"})
     assert r.status_code == 413
-
-
-# --------------------------------------------------------------------- #
-#  D1 -- RETIRED 2026-09-02: `Config` was a backward-compat alias        #
-#                                                                       #
-#  `Config = SiestaConfig` existed so that code importing the old name   #
-#  kept working.  The project's rule is that a rename DELETES the old    #
-#  name everywhere rather than leaving a second spelling behind, and     #
-#  this test was what held the second spelling in place: the alias had   #
-#  no caller but this, and two docstring examples that taught it.        #
-#  Alias, both `__all__` entries, the examples and this test are gone    #
-#  together -- which is the only way a shim is actually removed.         #
-# --------------------------------------------------------------------- #

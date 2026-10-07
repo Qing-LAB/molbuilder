@@ -1,21 +1,12 @@
-/* panel-deps.js — the builder panels' dependency wiring, once.
- *
- * Five panels (smiles · name · peptide · rna · dna) each carried a
- * byte-identical `configure()` and `_lazyResolve()`, together with the same
- * eleven-line comment explaining the second one — about eighty lines of copy,
- * five places to edit, and five places for a fix to miss.
- *
- * WHAT THE COPIES WERE FOR, kept here because the reason is real:
+/* panel-deps.js — the builder panels' dependency wiring, once, for the five
+ * panels (smiles · name · peptide · rna · dna).
  *
  *   * `configure()` is the test door.  A Node unit test drives the panel's
  *     state machine with a fake fetch and a fake structure page, without a
  *     DOM or an HTTP roundtrip.
- *   * `resolve()` is the LANDMINE-2 fix.  Each panel's IIFE used to capture
- *     `window.molbuilder.*` once at script-eval time, so a template that
- *     loaded a panel before `page.js` finished registering its globals left
- *     those slots null forever and the first generate() hit the
- *     "not configured" branch.  Re-reading on every call means a later
- *     script-load cannot silently degrade the panel.
+ *   * `resolve()` re-reads `window.molbuilder.*` on every call, so a
+ *     template that loads a panel before `page.js` registers its globals
+ *     still finds them: a later script-load cannot silently degrade the panel.
  *
  * Values a test injected are never overwritten by the production lookup —
  * that is what makes the two doors coexist.
@@ -35,7 +26,7 @@
                 if (opts.fetch) deps.fetch = opts.fetch;
                 if (opts.structurePage) deps.structurePage = opts.structurePage;
             },
-            /** The production door: re-read every call (LANDMINE-2). */
+            /** The production door: re-read every call. */
             resolve: function () {
                 if (typeof host === "undefined" || !host || !host.molbuilder) {
                     return;

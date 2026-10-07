@@ -1,13 +1,9 @@
 """Abstract base classes for the parse module.
 
 Per ``docs/model/parse.md`` § 1.  **One** ABC, :class:`FileParser`: a
-parser turns one FILE into a result.  *(A ``DirParser`` stood beside it until
-2026-10-04: its one subclass read the description, which this floor must not
--- the directory door moved up to the run door, `molbuilder.runs`, plan B11,
-B14.  A ``TextParser`` retired 2026-09-05.)*
+parser turns one FILE into a result.
 
 Forbidden by the doc:
-* (TextParsers did NO I/O; the ABC retired 2026-09-05 -- see below.)
 * FileParsers do NO subprocess / network / threads.
 """
 
@@ -18,8 +14,7 @@ from pathlib import Path
 from typing import Type
 
 # Imported here so subclasses can declare ``output = SomeResult``
-# without circular imports.  ``types.py`` only imports from this
-# module (the ABCs), not the other way round.
+# without circular imports: ``types.py`` does not import this module.
 from .types import ParseResult
 
 
@@ -74,20 +69,4 @@ class FileParser(ABC):
         ``UnknownFormatError`` when reasonable) on malformed
         input rather than letting unstructured exceptions escape.
         """
-
-
-# `TextParser` stood here until 2026-09-05.
-#
-# Its six implementations all read molbuilder's OWN generated blocks --
-# HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM -- and
-# that is the one case in this package with nothing to detect: the caller
-# always knows which block it wants, so the registry's whole purpose
-# ("query it rather than knowing which parser to call") did not apply.
-# Every class was a function in a costume: `ProvenanceTextParser.parse`
-# built a ten-field `ScriptResult` to carry the one dict the extractor had
-# already returned.
-#
-# The readers moved to the module that WRITES the blocks (`script_emit`),
-# which also removed a circular import the split had forced.  `plans/plan.md` § 5d.
-
 

@@ -82,7 +82,3 @@ def test_a_stage_name_with_a_newline_cannot_reach_a_filename():
     Stage(name="coarse")                      # the ordinary case still works
     with pytest.raises(ValueError):
         Stage(name="coarse\n")
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 1 test here matched a progress-log footer typed by hand (`process/testing.md` § 6).

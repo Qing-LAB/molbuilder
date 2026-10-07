@@ -9,12 +9,10 @@ them into a :class:`KMesh` once per deck; the deck's writer, the settings
 gate, the derived settings (``Diag.ParallelOverK``) and the record read that
 one object, and none of them works the mesh out again.
 
-**Why a module and not a helper in each writer.**  Until 2026-09-30 nothing
-derived a mesh from the axes: four writers each built their own block from
-``cfg.kgrid``, the transport axis was forced to 1 in six places, one fact
-carried two severities (a warning in the SIESTA validator, an error in the
-transport kind's), and a lead's ``Diag.ParallelOverK`` was decided from the
-template's ``kx ky 1`` while its deck wrote ``kx ky 40``.
+**Why a module and not a helper in each writer.**  Writers each building
+their own block from ``cfg.kgrid`` would each force the transport axis to 1,
+give one fact two severities, and decide a lead's ``Diag.ParallelOverK`` from
+the template's ``kx ky 1`` while its deck writes ``kx ky 40``.
 
 It imports nothing from the catalogue -- :mod:`molbuilder.template` asks
 :func:`fixed` for its one per-value door (``template.why_not``), so this module
@@ -248,9 +246,7 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
 
     The count rules are per mesh -- each mesh's counts are its own item's.
     The OFFSET is one value every mesh of the deck shares, so its finding is
-    said once, naming each mesh that samples the axis at one point: the
-    transmission deck's two meshes warned twice about it until the K3
-    review.
+    said once, naming each mesh that samples the axis at one point.
     """
     from .issues import Issue
     judged = [m for m in meshes if m is not None and not (

@@ -12,23 +12,15 @@ from molbuilder.structure import Structure
 def _two_slabs(struct, element, plane, size, *, gap=8.0, **kw):
     """A junction: two slabs, one per side, each starting at ``gap/2``.
 
-    Repointed twice, and each time the builder under it was deleted rather
-    than the rule.  `add_symmetric_electrodes` did this in one call and went
-    with the Junction panel (2026-08-31); `add_electrode_slab` did it in two
-    and went on 2026-09-01, its anchor-relative placement folded into the
-    callers that wanted it.  What these tests are about -- the CELL a build
-    captures -- is `_finish_slab`'s, and that has not moved.
-
-    `sequence="ACB"` on the `-z` side is the redesign's answer to the
-    mirror the old builder applied unconditionally.
+    What these tests are about -- the CELL a build captures -- is
+    `_finish_slab`'s.  `sequence="ACB"` on the `-z` side continues the
+    crystal rather than mirroring it.
     """
     from molbuilder.modify import add_slab
     out = add_slab(struct, element, plane, size,
                    start_z=gap / 2.0, grow="+z", **kw)
     return add_slab(out, element, plane, size,
                     start_z=-gap / 2.0, grow="-z", sequence="ACB", **kw)
-
-
 
 
 def _s(**kw):
@@ -38,14 +30,10 @@ def _s(**kw):
 class TestAxisKindIsTheOnePeriodicityField:
     """`axis_kind` is the only periodicity state a Structure holds.
 
-    It used to be one of two. `pbc` was a stored field carrying the boolean
-    view, and `__post_init__` reconciled them on every construction —
-    deriving one from the other and settling which won. It could not hold a
-    fact `axis_kind` did not (the mapping flattens `periodic` and
-    `transport` onto the same True), so it was a duplicate to keep in step,
-    and it forced a special case in `replace()` for the caller who stated
-    only the view. Retired 2026-09-22, user: *"why the fuck need pbc when
-    axis_kind fully contains this information and more"*.
+    A stored boolean view could not hold a fact `axis_kind` does not (the
+    mapping flattens `periodic` and `transport` onto the same True) -- user,
+    2026-09-22: *"why the fuck need pbc when axis_kind fully contains this
+    information and more"*.
 
     The boolean survives as the `pbc()` ACCESSOR, for the two outside
     formats that need one — see `TestPbcIsAnInteropAccessor`.
@@ -61,7 +49,7 @@ class TestAxisKindIsTheOnePeriodicityField:
     def test_transport_is_never_guessed(self):
         """A cell alone says "there is a lattice", not "this is a device".
         Only a builder states `transport`, which is precisely the fact the
-        retired boolean could not carry."""
+        boolean view cannot carry."""
         assert "transport" not in _s(cell=np.eye(3) * 5).axis_kind
 
     def test_a_stated_kind_is_kept_verbatim(self):
@@ -90,7 +78,6 @@ class TestAxisKindIsTheOnePeriodicityField:
         assert s.vacuum is None
         assert s.effective_vacuum() == (3.0, 3.0, 3.0)
         assert s.defaulted_vacuum_axes() == [0, 1, 2]
-
 
 
 class TestResolveCell:
@@ -127,8 +114,8 @@ class TestResolveCell:
 
 class TestSidecarRoundTrip:
     """axis_kind / vacuum persist through the .molstruct.json sidecar
-    (structure-periodicity.md § 7; additive @ schema v4).  k-grid is NOT a
-    geometry field, so it's neither written nor read (dropped @ schema v5)."""
+    (structure-periodicity.md § 7).  k-grid is NOT a geometry field, so it's
+    neither written nor read."""
 
     def test_round_trip_through_to_dict_and_apply(self):
         from molbuilder.sidecars import molstruct as ms
@@ -140,8 +127,7 @@ class TestSidecarRoundTrip:
         )
         assert d["axis_kind"] == ["periodic", "periodic", "transport"]
         # WHAT WENT IN COMES BACK.  [0,0,0] is a deliberate zero and survives
-        # as one; `null` is "nobody chose" and survives as that.  A brief
-        # legacy rule folded the first into the second -- removed 2026-08-03.
+        # as one; `null` is "nobody chose" and survives as that.
         assert d["vacuum"] == [0.0, 0.0, 0.0]
         assert "kgrid" not in d   # k-grid is not geometry -> not in the sidecar
 
@@ -150,7 +136,6 @@ class TestSidecarRoundTrip:
         assert s.axis_kind == ("periodic", "periodic", "transport")
         assert not hasattr(s, "kgrid")
         assert s.pbc() == (True, True, True)  # the accessor: transport -> True
-
 
 
     def test_invalid_axis_kind_rejected_at_build(self):
@@ -162,7 +147,7 @@ class TestSidecarRoundTrip:
 
 class TestElectrodeCaptureCell:
     """The slab builder captures its ASE cell + sets axis_kind
-    (structure-periodicity.md § 4 -- fixes the modify.py:955 discard)."""
+    (structure-periodicity.md § 4)."""
 
     def test_a_built_slab_captures_cell_and_axis_kind(self):
         from molbuilder.modify import add_slab
@@ -183,12 +168,6 @@ class TestElectrodeCaptureCell:
         # hand-off accepts them.
         assert out.engine_offset is None, "the new box kept an origin set for the old one"
         cellmod.require_placed(cellmod.to_engine(out), out.axis_kind)
-
-    # ---- the z length: extent + ONE interlayer spacing ---------------- #
-    #  science/junction-cell.md § 1.  This used to be the bare extent, and
-    #  `assert cell[2,2] > 0` above was the only thing watching it -- which
-    #  a box that collides with its own image passes.  The seam distance is
-    #  the assertion that cannot be satisfied by the bug.
 
     @staticmethod
     def _seam(out):
@@ -217,12 +196,6 @@ class TestElectrodeCaptureCell:
         point, not a bug: the missing step is a decision about the
         calculation, it is visible in the tab you are already in, and
         `classify_seam` names it on every build.
-
-        *Three tests here pinned the opposite until 2026-09-01 -- extent plus
-        one layer spacing, an `inter_layer_offset` override, and a monolayer
-        falling back to the crystal spacing. They went with the padding they
-        described, which had survived in `add_electrode_slab` alone for a
-        month after the rule that retired it.*
         """
         a = 4.0782
         dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
@@ -232,18 +205,9 @@ class TestElectrodeCaptureCell:
         assert out.cell[2, 2] == pytest.approx(extent, abs=1e-9)
 
         # AND WHAT THE FACES DO WHEN THEY MEET, which is a different rule
-        # (junction-cell.md § 3.3) and worth pinning here because it is what
-        # the redesign changed.  `c == extent` puts the two faces at Δz = 0
+        # (junction-cell.md § 3.3).  `c == extent` puts the two faces at Δz = 0
         # across the boundary; MIRRORED slabs would then be eclipsed, atom on
         # atom, at distance 0.  These CONTINUE the crystal, so the faces sit
         # one registry step apart -- a/√6 for fcc(111) -- and the boundary is
         # a stacking fault rather than a collision.
         assert self._seam(out) == pytest.approx(a / np.sqrt(6), abs=1e-6)
-
-
-# `TestTheBuiltJunctionReachesTheEngine` RETIRED 2026-09-25 with its one test,
-# `test_render_fdf_puts_device_inside_the_transport_cell`:
-# `tools/verify_subsumption.py` confirmed it on all 12 informative mutants
-# against the transport rungs' placement test through prep
-# (`test_transport_prep.py::TestTheLadderPreps::test_every_rung_hands_the_engine_placed_coordinates`),
-# the successor its own docstring named.

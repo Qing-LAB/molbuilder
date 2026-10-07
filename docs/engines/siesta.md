@@ -18,8 +18,11 @@ what SIESTA wrote: its output lines § 5d.5, the run record § 5d).
 
 This is how molbuilder turns a `Structure` + a `SiestaConfig` into a
 **SIESTA-runnable `.fdf` text**. SIESTA is a periodic-DFT code (Soler et al. 2002 — see References); a `.fdf`
-("Flexible Data Format") is its plain-text input file. The one entry point is
-`render_fdf(struct, config) -> str` (`siesta/input.py:329`).
+("Flexible Data Format") is its plain-text input file. The engine describes the
+deck — `spec_for(struct, config=None, *, names, cell=None, calculation=…, …) ->
+DeckSpec` (`siesta/input.py`) — and `jobset prep` hands that spec to
+`script_emit.prepare_deck`, which validates, renders (`script_emit.render_deck`),
+writes and checks it.
 
 > **Vocabulary.** Cross-cutting terms (DFT, SCF, open/closed-shell, k-points,
 > pseudopotential, ELPA, PAO) are in the
@@ -44,17 +47,18 @@ The same emitter is reached two ways — a developer/CLI surface and the web for
 flowchart LR
     subgraph IN["inputs"]
         S["Structure<br/>(atoms + optional cell)"]
-        C["SiestaConfig<br/>(config/siesta.py:114)"]
+        C["SiestaConfig<br/>(config/siesta.py)"]
     end
     CLI["CLI: molbuilder jobset prep<br/>(via the template)"]
     WEB["web Structure-optimization tab<br/><i>collects parameters only —<br/>renders no deck</i>"]
-    R["render_fdf(struct, config, *, cell=None)<br/>siesta/input.py:329"]
+    R["spec_for(struct, config, *, names, cell=None) → DeckSpec<br/>siesta/input.py"]
+    P["prepare_deck(spec, …)<br/>script_emit.py<br/><i>validate → render_deck → write → check</i>"]
     OUT["JOB.fdf<br/>(+ sibling JOB.molwatch.log,<br/> + copied &lt;Element&gt;.psml)"]
     S --> R
     C --> R
     CLI --> R
     WEB -.->|"the parameters it collected,<br/>via the template"| CLI
-    R --> OUT
+    R --> P --> OUT
 ```
 
 
@@ -69,17 +73,20 @@ flowchart LR
 > "read a structure file, write a deck" worker behind `molbuilder fdf` (deleted 2026-08-11), and it had no
 > other production caller. A deck is written by `jobset prep` from a
 > description — `spec_for` → `prepare_deck`, the same three steps with the
-> description in front of them instead of a command line. `render_fdf` stays:
-> it is a thin call over `spec_for` and it is this emitter's public surface.
+> description in front of them instead of a command line.
 
-- **Backend (Python).** `render_fdf(struct, config)` returns the text, and that
-  is the whole public surface. A deck reaches disk one way — `jobset prep`,
-  which calls `spec_for` → `prepare_deck` on the machine that will run it, and
-  writes the siblings the deck's own text promises
-  (`engines._siesta_sibling_artifacts`).
+- **Backend (Python).** `spec_for(struct, config, *, names, …)` returns the
+  deck's `script_emit.DeckSpec` — its layout, how each setting is spelled, the
+  values its record carries and the rules the finished deck must satisfy — and
+  the framework renders it (`script_emit.render_deck`). The public surface is
+  `spec_for` and `SiestaConfig`; `molbuilder.siesta` exports `SiestaConfig`,
+  `copy_pseudopotentials` and `find_psml`. A deck reaches disk one way —
+  `jobset prep`, which calls `spec_for` → `script_emit.prepare_deck` (validate
+  → render → write → check) on the machine that will run it, and writes the
+  siblings the deck's own text promises
+  (`jobset/engines.py::_siesta_sibling_artifacts`).
 
-  > **These are the Python API and they are unchanged. The `molbuilder fdf` CLI
-  > verb is deleted** *(2026-08-11, user — obsolete residue from the flat-dir
+  > **The `molbuilder fdf` CLI verb is deleted** *(2026-08-11, user — obsolete residue from the flat-dir
   > design; [`process/conventions.md § 3`](?doc=process/conventions.md))*. It let
   > a person render a finished deck straight from flags, skipping the description
   > and guessing at values only the target machine knows. A deck now comes from
@@ -106,18 +113,20 @@ flowchart LR
 *Stated 2026-08-11 (user). **✅ It is code**: `jobset/prep.py` takes the
 description plus its template and emits one deck per element of the resolved
 `ParameterSet`, through `EngineSeam(config_cls=SiestaConfig,
-spec_for=spec_for)`. This line read "Not yet code" until 2026-08-16, and named
-`render_deck=render_fdf` until 2026-08-18 — the seam handed back finished TEXT
-until then, and now hands back the deck's **form**
+spec_for=spec_for)`: the seam hands back the deck's **form**, a `DeckSpec`, and
+the framework renders, writes and checks it
 ([`script-preparation.md § 4.3`](?doc=execution/script-preparation.md)).*
 
-> **`render_fdf` no longer starts from a config somebody typed. It starts from
-> the layered description** — the template's items, resolved through this stage
-> and this machine into an ordinary `SiestaConfig`.
+> **The deck starts from the layered description** — the template's items,
+> resolved through this stage and this machine into an ordinary `SiestaConfig`,
+> which `prep` hands to `spec_for`.
 
-**The seam does not move, and that is the point.** `render_fdf(struct, config)`
-keeps its signature: the config dataclass stays the one object handed to the
-emitter, which is what lets the *same* object be validated and rendered
+**The seam does not move, and that is the point.** In
+`spec_for(struct, config=None, *, names, cell=None, …)` the config dataclass
+stays the one object of settings handed to the engine — `names`, the stage's
+(`runfiles.RunNames`), give its stage token and every name the deck prints —
+and `prep` hands the same object to `script_emit.prepare_deck`, which is what
+lets the *same* object be validated and rendered
 ([`stages.md § 4`](?doc=engines/stages.md) R1). What changes is the layer above
 it — who builds that object, and from what.
 
@@ -127,13 +136,14 @@ flowchart LR
     O["<b>task.json</b><br/>this stage's overrides"]
     M["<b>this machine</b><br/>ranks · GPUs · env<br/>floor 1"]
     C["<b>SiestaConfig</b><br/><i>an ordinary instance —<br/>not a new type</i>"]
-    V["validate(struct, cfg)"]
-    R["<b>render_fdf</b><br/>siesta/input.py"]
+    SP["<b>spec_for</b> → DeckSpec<br/>siesta/input.py"]
+    V["validate(struct, cfg)<br/><i>render_deck's first step</i>"]
+    R["<b>render_deck</b><br/>script_emit.py"]
     D["the deck"]
     T -->|"prep step 2"| C
     O -->|"prep step 2"| C
     M -->|"prep step 2"| C
-    C --> V --> R --> D
+    C --> SP --> V --> R --> D
     C -.->|"filtered: kind in {engine, deck}"| R
 ```
 
@@ -160,23 +170,31 @@ P12 unit 6b (R3 — the contract holds the rule, the plan holds the order).
 
 ```python
 @dataclass
-class SiestaConfig: ...          # config/siesta.py:114
-Config = SiestaConfig            # back-compat alias (:1095)
+class SiestaConfig: ...                                             # config/siesta.py
 
-render_fdf(struct, config=None, *, cell=None) -> str                    # siesta/input.py:329
-copy_pseudopotentials(species, lib, dest_dir) -> list[str]              # :275 → the elements whose .psml was MISSING
+spec_for(struct, config=None, *, names, cell=None,
+         calculation="optimization", vibration=None,
+         relaxed_by=None, state=None, trial=None) -> DeckSpec          # siesta/input.py
+copy_pseudopotentials(species, lib, dest_dir, *, plan=None) -> list[str]  # siesta/input.py → the elements whose .psml was MISSING
+find_psml(element, lib) -> Path | None                               # siesta/input.py
 ```
 
-```python
->>> from molbuilder.siesta.input import render_fdf
->>> from molbuilder.config.siesta import SiestaConfig
->>> fdf = render_fdf(struct, SiestaConfig(system_label="hemeC"))   # → the full .fdf text
+A deck is made on the road: `init` describes the calculation, and `prep`
+writes the deck on the machine that will run it — a SIESTA run states its
+ranks and the cores per rank, and on a machine with a queue its queue, wall
+and memory too (`--domain`, `--time`, `--mem`):
+
+```bash
+molbuilder jobset init --structure P/structure/hemeC.xyz --bundle P/optimization/hemeC \
+    --engine siesta --calculation optimization --shape flat --psml-lib pseudopotential
+molbuilder jobset prep run coarse --bundle P/optimization/hemeC --target this \
+    --np 4 --cpus-per-task 1
 ```
 
-The text **carries its provenance + bench-marks record at the tail**, behind
-the machine-record banner (job-contracts § 3.1, physics-first order —
-amended R11 2026-08-12; this line said "opens with"), before that the engine
-header — so it does *not* start with `SystemName`. The header block itself reads:
+The deck `prep` writes **carries its provenance + bench-marks record at the
+tail**, behind the machine-record banner (job-contracts § 3.1, physics-first
+order), before that the engine header — so it does *not* start with
+`SystemName`. The header block itself reads:
 
 ```fdf
 SystemName        hemeC
@@ -201,17 +219,17 @@ the render's.)*
 
 ## 3. What the `.fdf` contains (sections, in emission order)
 
-`render_fdf` emits these blocks in order, and since the physics-first
-amendment (`job-contracts.md` § 3.1, 2026-08-01/recorded 2026-08-12) the
-engine body IS the file's head — the file **begins at row 1 below**.  The
-shared script-contract blocks follow it as the tail, in § 3.1's order:
-`user-custom` placeholder, status banner, `provenance`, `bench-marks`, the
-optional `atom-metadata`, and `engine-offset` last, on every deck — which is
-why `tail -40` on any deck shows its record.  Parsers find every block by its MARKERS, never by
-position, so this order is ergonomics, not interface.  *(Until 2026-08-12
-this paragraph still taught the retired header-on-top wrapping the § 3.1
-amendment had corrected.)*  `SystemLabel` is the basename SIESTA
-prefixes every output file with; `MeshCutoff` sets the real-space integration grid
+The deck's spec lays these blocks out in order (`spec_for`'s layout), and
+`script_emit.render_deck` writes them in that order: the engine body IS the
+file's head (`job-contracts.md` § 3.1, physics-first order) — the file
+**begins at row 1 below**.  The shared script-contract blocks follow it as the
+tail, in § 3.1's order: `user-custom` placeholder, status banner,
+`provenance`, `bench-marks`, the optional `atom-metadata`, `engine-offset` on
+every deck, and `vibration` last on a force-constant deck — which is why
+`tail -40` on any deck shows its record.  Parsers find every block by its
+MARKERS, never by position, so this order is ergonomics, not interface.
+`SystemLabel` is the basename SIESTA prefixes every output file with;
+`MeshCutoff` sets the real-space integration grid
 fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 
 | # | Section | Emitted from | Notes |
@@ -223,7 +241,7 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 5 | **Frozen atoms** | `%block Geometry.Constraints` (1-based indices) | only if `struct.frozen_atoms`; the 3-stage boundary carrier (see [`model/structure-annotations.md`](?doc=model/structure-annotations.md)) |
 | 6 | Basis & grid | `MeshCutoff`, `PAO.BasisSize`, `PAO.EnergyShift` | |
 | 7 | XC (+ dispersion template) | `XC.functional`, `XC.authors` | commented DFT-D template for non-vdW XC |
-| 8 | SCF | `SolutionMethod`, `SCF.Mixer.Weight`, `SCF.Mixer.History`, `DM.Tolerance`, … | Pulay = the DM-mixing scheme using past iterations. An optimization and a vibration offer `diagon` and `OMM` (`offered`, [`template.md`](?doc=engines/template.md) § 6.3a): `transiesta` is a transport device's, fixed by its rung |
+| 8 | SCF | `SolutionMethod`, `SCF.Mixer.Weight`, `SCF.Mixer.History`, `DM.Tolerance`, … | Pulay = the DM-mixing scheme using past iterations. An optimization and a vibration offer `diagon` and `OMM` (`offered`, [`template.md`](?doc=engines/template.md) § 6.3a): `transiesta` is a transport device's, fixed by its rung `DM.Tolerance` and `DM.EnergyTolerance` are written with two significant figures (`1.0e-05`), PySCF's tolerances the same ([`pyscf.md`](?doc=engines/pyscf.md) § 7.1) |
 | 9 | Spin | `Spin <option>` (v5 single-line) + `Spin.Fix`/`Spin.Total` for a pinned count | `Spin` always, `non-polarized` included — § 5 |
 | 10 | NetCharge | `NetCharge ±N` | always, at 0 too, beside where it came from; never on a transport rung (its junction is neutral by rule) — § 4 |
 | 11 | k-grid | `%block kgrid_Monkhorst_Pack` — the rung's mesh, counts and offset, from `kmesh.write` | § 6.1 |
@@ -245,11 +263,10 @@ block: what it controls (one sentence), a sensible range, and what to tweak when
 it misbehaves. Removing/changing one of those comments is a spec change and
 triggers a test update.
 
-**Two `MD` keyword traps (SIESTA 5.4.2)** — pinned by decision-log 2026-06-23:
-`MD.Steps` is the **universal** step count for *every* relaxation mode
-(CG, Broyden, **and** FIRE); the `MD.NumBroydenSteps`/`MD.NumFIRESteps` aliases in
-older references are silently dropped by 5.4.2. Likewise `SaveHS` replaced the
-dropped `WriteHS`.
+**One step count for every relaxation (SIESTA 5.4.2).** `MD.Steps` bounds
+*every* relaxation mode — CG, Broyden **and** FIRE — and `SaveHS` writes the
+Hamiltonian and overlap. SIESTA ignores a keyword it does not know without a
+word, so each keyword the deck writes is one the manual names.
 
 ---
 
@@ -482,7 +499,7 @@ flowchart TD
     A -->|"ELPA-1STAGE / ELPA-2STAGE"| G{"use_gpu?"}
     G -->|"true"| GPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .true.<br/>env → molbuilder-siesta-gpu<br/><i>the only ask needing a source build</i>"]
     G -->|"false"| CPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .false.<br/>env → molbuilder-siesta<br/><i>CPU-ELPA runs in the packaged env</i>"]
-    A -.->|"ScaLAPACK + use_gpu"| ERR["render_fdf raises ValueError<br/>(input.py:1038)"]
+    A -.->|"ScaLAPACK + use_gpu"| ERR["spec_for raises ValueError<br/>(siesta/input.py::_parallel_facts)"]
 ```
 
 Two **orthogonal** decisions (contract rewritten 2026-06-29):
@@ -495,8 +512,9 @@ Two **orthogonal** decisions (contract rewritten 2026-06-29):
    solve runs on the GPU (`Diag.ELPA.GPU .true.`), GPU-only with no silent CPU
    fallback. Off with an ELPA algorithm → CPU-ELPA (`Diag.ELPA.GPU .false.`).
    Meaningful only with an ELPA algorithm — GPU + ScaLAPACK is rejected by the
-   **emitter itself** (`render_fdf` raises `ValueError`, `input.py:1038`), not just
-   the UI.
+   **emitter itself** (`siesta/input.py::_parallel_facts` raises `ValueError`,
+   reached through `spec_for` on every SIESTA deck, a transport rung's
+   included), not just the UI.
 
 **Emission:**
 - `ScaLAPACK` → emit **nothing** (SIESTA's built-in default).
@@ -528,8 +546,8 @@ The practical guidance:
   **NCCL** (NVIDIA's multi-GPU collective library), so without MPS the ranks serialise
   on the GPU's driver context. MPS auto-enables when `Diag.ELPA.GPU .true.` is emitted,
   `nvidia-cuda-mps-control` is on the host PATH (it ships with the NVIDIA driver, not
-  conda), *and* the run will use ≥ 2 ranks (single-rank MPS is pure overhead). The
-  rank count is the one the run states — there is no GPU default
+  conda), *and* the run has more ranks than GPUs, so ranks share one (a GPU per
+  rank needs no MPS). The rank count is the one the run states — there is no GPU default
   ([`running-a-job.md` § 3.3](?doc=execution/running-a-job.md)); about **4 ranks
   per GPU with MPS** is this no-NCCL build's tuned point
   ([`tuning.md` § 2.12](?doc=engines/tuning.md)).
@@ -716,17 +734,19 @@ tab can render the structure before SIESTA produces any output. The `.molwatch.l
 format itself is engine-agnostic and specified in `pyscf.md`.
 
 **A stage's log is named for the deck that produced it** —
-`<label>_<NN>_<stage>.molwatch.log` beside `<label>_<NN>_<stage>.fdf`, the same
-name whether the stages share a directory or each has its own. One rule, derived
+`<label>_<NN>_<stage>.molwatch.log` beside `<label>_<NN>_<stage>.fdf` — and
+where the stages share a directory, the flat shape, each run's own,
+`<label>_<NN>_<stage>-run<N>.molwatch.log`: prep seeds the first run's
+*(the run's number since 2026-10-06, plan W57 decision 2)*. One rule, derived
 from the deck rather than declared separately, which is what keeps a directory's
 stages separable — the filename is the separation, and the person picks one
 ([`job-contracts.md § 2.3`](?doc=execution/job-contracts.md)); the table for every
 name in the system is [`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)
 and the reasoning is [`stages.md § 7`](?doc=engines/stages.md).
 
-`molwatch_log_basename` takes the stage's artifact token, and every reader
-reads it back through `runfiles.parse`, with the run's label — one spelling,
-no second regex.
+The stage's names (`runfiles.RunNames`) take the stage's artifact token, and
+every reader reads it back through `runfiles.parse`, with the run's label —
+one spelling, no second regex.
 
 For a charged molecule **`prep`** also drops a `makov_payne_correction.py`
 script next to the `.fdf` (§ 4). And each per-stage `.molwatch.log` carries
@@ -759,11 +779,9 @@ coordinates block); (3) emit invalid SIESTA syntax for any standard config — e
 variant tested must render end-to-end without raising.
 
 **Tests:** `test_smiles_and_siesta.py` (the render round-trip),
-`test_review_fixes.py` (net-charge override, the thin-vacuum **warn** — D3, since
-`cell_padding` was removed 2026-07 — and the `Config`
-alias), `test_siesta_stages.py` + `test_siesta_stages_emit.py` (the ladder and
-what each stage emits), `test_siesta_stage_strategy_presets_drift.py` (the
-presets against their three consumers), `test_siesta_use_gpu.py` (§ 7's
+`test_review_fixes.py` (the thin-vacuum **warn** — D3, since `cell_padding`
+was removed 2026-07), `test_siesta_stages.py` (the ladder and its strategy
+presets), `test_siesta_use_gpu.py` (§ 7's
 two orthogonal decisions, including the rejected GPU + ScaLAPACK pair),
 `test_k_point_mesh_e2e.py` (§ 6.1's mesh on every rung, through `jobset init`
 and `prep`), and `test_molwatch_preview.py` (the sibling log). *(This list named

@@ -7,22 +7,9 @@ pass trivially against the Flask error page.
 Why this test exists
 ====================
 
-The 2026-06-10 post-B.5 sweep surfaced two such dead pins that
-had been silently passing for weeks:
-
-* ``tests/test_web_files.py::test_file_input_not_emitted`` was
-  parametrized over ``/spectra`` and ``/modify`` — both retired in
-  Phase B.5.  The test asserted ``id="xyz-file" not in body`` etc.
-  The retired routes return 404; the Flask error page doesn't
-  contain ``id="xyz-file"``; the assertion passed; nothing was
-  pinned.  The test was retired wholesale.
-
-* ``tests/spectra/test_blueprint.py::test_inspector_partial_has_mode_viewer``
-  asserted ``vendor/3Dmol-min.js not in body`` against ``/spectra``
-  (also retired).  Same shape, same silent pass.  Fixed to point at
-  ``/spectrum-calculation``; the assertion then **correctly** failed
-  because task #296 added 3Dmol there (the inspect-structure card).
-  The 404-pass had been hiding genuine drift.
+The 2026-06-10 sweep found two such dead pins that had been silently
+passing for weeks: a negative body assertion against a route that
+answered 404, which the Flask error page satisfies.
 
 The pattern is dangerous wherever a test takes the shape:
 
@@ -89,11 +76,8 @@ def _function_makes_http_request(node: ast.AST) -> bool:
     ``<client>.get(...)`` / ``.post(...)`` / etc. — heuristic for
     'this test drives HTTP'.
 
-    Caveat: ``dict.get("key")`` matches this shape too.  In practice
-    the combination of ``dict.get`` AND ``assert <X> not in body``
-    (where body is from a fixture file, not an HTTP response) is rare
-    in this codebase; none observed at lint-introduction time.  If a
-    false positive surfaces, add the function to ``ALLOWLIST``.
+    Caveat: ``dict.get("key")`` matches this shape too.  If a false
+    positive surfaces, add the function to ``ALLOWLIST``.
     """
     for n in ast.walk(node):
         if not isinstance(n, ast.Call):
@@ -259,9 +243,7 @@ def test_negative_body_asserts_have_preceding_status_check():
 
     Without that guard, a route that returns 404 silently makes the
     negative-substring assertion pass against the Flask error page,
-    pinning nothing.  Two cases like this lived in the suite for
-    weeks (test_file_input_not_emitted, test_inspector_partial_has_mode_viewer)
-    before the 2026-06-10 post-B.5 sweep retired them.
+    pinning nothing.
     """
     test_files = sorted(TESTS_ROOT.rglob("test_*.py"))
     # Filter out this file itself + non-tests like conftest.

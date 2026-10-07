@@ -1,4 +1,4 @@
-"""Helpers shared across the build / modify / watch blueprints.
+"""Helpers shared across the blueprints.
 
 This module is the SINGLE source of truth for:
 
@@ -6,8 +6,7 @@ This module is the SINGLE source of truth for:
 * JSON -> Structure body parsing (xyz + per-atom metadata lists)
 * Structure -> JSON response body construction
 * JSON -> dataclass coercion (used by Build for SiestaConfig /
-  PySCFConfig form values; available to Modify for any future op
-  that takes a dataclass-driven body, e.g. M5's electrode panel)
+  PySCFConfig form values)
 
 If a helper is genuinely blueprint-specific (e.g. Build's
 ``/api/build/load`` accepts both multipart and JSON, Modify's body
@@ -109,8 +108,7 @@ def issues_to_json(issues, cfg=None):
         # The stage label rides BESIDE ``where``, never inside it
         # (engines/stages.md § 4 R2): the same check produces the same id
         # whether it fired for a single run or for a stage, and the UI binds
-        # behaviour to the id.  Omitted when absent so a single-run response
-        # is byte-identical to what it was before ladders existed.
+        # behaviour to the id.  Omitted when absent.
         if i.stage is not None:
             d["stage"] = i.stage
         out.append(d)
@@ -138,13 +136,10 @@ def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
         raise ValueError("'structure' must be an object")
     # WHAT THE ENVELOPE IS, checked by membership.  A key outside this set is a
     # fact the sender believes it transmitted -- refused rather than dropped.
-    # `applyOp` shipped `regions` and `periodicity` at the TOP level for weeks;
-    # `from_dict` reads them from `metadata`, so every geometry edit came back
-    # with its labels and its cell silently gone, at HTTP 200.
     known = {"title", "elements", "positions", "atom_names", "residue_ids",
              "residue_names", "chain_ids", "metadata",
              "info",              # the free-form NON-structural store
-                                  # (structure-info-plan.md; from_dict reads it)
+                                  # (from_dict reads it)
              "source_index",      # the CALLER's map back onto a larger structure
              "document"}          # outbound only; a request's is ignored
     stray = sorted(k for k in env if k not in known)
@@ -152,11 +147,9 @@ def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
         raise ValueError(
             f"structure carries {stray!r}, which the envelope does not define "
             f"(known: {sorted(known)!r}).  Metadata belongs under 'metadata'.")
-    # AN EMPTY STRUCTURE IS A STRUCTURE, and refusing one blocked the whole
-    # point of the slab op: it places from ABSOLUTE coordinates -- dx, dy and
-    # start_z from the world origin -- so it needs no atoms to build onto.
-    # Requiring some meant a person had to load an unrelated molecule before
-    # they could make an electrode, which is a rule nobody chose.
+    # AN EMPTY STRUCTURE IS A STRUCTURE: the slab op places from ABSOLUTE
+    # coordinates -- dx, dy and start_z from the world origin -- so it needs
+    # no atoms to build onto.
     #
     # `elements` MISSING is still refused: that is a malformed envelope, and
     # telling it apart from a deliberately empty one is the whole distinction.
@@ -183,11 +176,6 @@ def struct_from_body(body: Dict[str, Any], key: str = "structure") -> Structure:
     a question about them.  It is exactly what ``molview``'s
     ``structureForServer`` emits, which is the only shape any caller sends.
 
-    *(This once said ``geometry`` wrapped the elements and positions -- a
-    shape ``_struct_from_envelope`` REFUSES, because ``geometry`` is not in
-    its known-key set and a stray key fails the whole body.  Written to the
-    letter, that docstring produced a 400.)*
-
     **A body carries ``structure``, or it is refused** -- by name, naming the
     shape it wanted.
 
@@ -197,12 +185,6 @@ def struct_from_body(body: Dict[str, Any], key: str = "structure") -> Structure:
     by the same reader either way -- a second parameter, not a second door --
     because two envelopes in a body must not become two ideas of what an
     envelope is.
-
-    It read the flattened `{xyz, atom_names, ...}` columns as a second shape
-    during the migration, and a body carrying BOTH took the envelope and
-    ignored the rest (never merged, because merging lets a stale field
-    silently override a fresh one).  That window is closed: there is no second
-    shape left for the both-keys rule to arbitrate, and the rule went with it.
     """
     envelope = body.get(key)
     if not isinstance(envelope, dict):
@@ -217,10 +199,7 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
 
     Used by every response that carries a Structure so the front-end's
     selection store stays in sync with the in-memory geometry without
-    a separate fetch.  Pre-2026-06-07, modifier-op responses lacked
-    this and the selection panel went stale after every Delete / Add /
-    Orient / etc — the disk hadn't changed yet so the
-    ``/api/selection/atoms`` re-fetch returned pre-op atoms.
+    a separate fetch.
 
     Each row:
 
@@ -236,8 +215,7 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
                                              # cannot render the same fact twice
             # NO IDENTITY COLUMNS.  atom_names / residue_names / chain_ids
             # travel at the TOP level of the payload, beside `metadata` --
-            # `structure.py::IDENTITY_FIELDS`.  They rode on the row as well
-            # until 2026-09-07; nothing read that copy.
+            # `structure.py::IDENTITY_FIELDS`.
         }
     """
     n = len(struct.elements)
@@ -264,18 +242,6 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
             "z":         float(pos[2]),
             "regions":   atom_to_regions.get(i, []),
         }
-        # NO IDENTITY COLUMNS ON THE ROW.  `atom_name`, `residue_name` and
-        # `chain_id` rode here until 2026-09-07, a second copy of facts the
-        # design carries at the TOP level: `structure.py::IDENTITY_FIELDS`
-        # says they travel "beside `metadata`", and that is what the browser
-        # reads (`model-jobs.js:139-141` -> `atomNames[i]`, `chainIds[i]`).
-        #
-        # They existed because `/api/selection/atoms` returned them -- this
-        # function's own docstring called itself "the same shape
-        # /api/selection/atoms returns" -- and that route is deleted.
-        # Measured before removing: `atom_name` and `chain_id` had ZERO
-        # readers anywhere, and `residue_name` had one, already written with
-        # a fallback to the parallel array beside it.
         rows.append(row)
     return rows
 
@@ -288,11 +254,7 @@ def workspace_payload(
     """The canonical wire shape for every endpoint that returns a
     ``Structure``.
 
-    Per :doc:`protocols/workspace-state` § 4.4, this is the single
-    serialiser that supersedes the four hand-rolled jsonify blobs
-    that historically lived inside ``/api/build/load``,
-    ``/api/build/molecule``, ``/api/modify/*``, and
-    ``/api/selection/atoms``.  Adding a new field that every
+    Adding a new field that every
     consumer should see (``bonds``, ``dipole``, …) is a one-line
     change here, applied to every endpoint at once.
 
@@ -324,25 +286,15 @@ def workspace_payload(
       :class:`molbuilder.structure.Structure` round-trips through
       :meth:`Structure.to_xyz`.  PDB-emitting endpoints set
       ``source_format="pdb"`` via ``extra`` plus a ``"text"``
-      override at the callsite (see Phase 2 migration in
-      :doc:`protocols/workspace-state` § 6).
+      override at the callsite.
     * ``lattice`` is always ``None`` here, and NOT because the structure
-      has no cell -- it has one.  ``Structure`` grew ``cell`` /
-      ``engine_offset`` / ``axis_kind`` / ``vacuum``, and they travel in
-      the ``periodicity`` block that :func:`structure_to_dict` takes
-      from ``struct.to_wire()``, together with the resolved views.
-      ``lattice`` is the older single-field spelling that no consumer
-      reads; it stays for the wire shape's sake.  (This note used to
-      say Structure "carries geometry only" and that a future cell
-      field would land here -- it landed elsewhere, on purpose:
-      one block, so a cell cannot half-arrive.)  This helper is the
-      one place to add it.
-    * ``issues`` is populated via :func:`validate_geometry` — the
-      same set the modify-tab response array already exposed.
-      Callers that don't want the validation pass (e.g. a
-      throughput-sensitive path that already validated) pass
-      ``extra={"issues_skipped": True}`` and override ``issues``
-      via ``extra`` if needed.
+      has no cell -- it has one: ``cell`` / ``engine_offset`` /
+      ``axis_kind`` / ``vacuum`` travel in the ``periodicity`` block that
+      :func:`structure_to_dict` takes from ``struct.to_wire()``, together
+      with the resolved views -- one block, so a cell cannot half-arrive.
+      ``lattice`` is a single-field spelling that no consumer reads; it
+      stays for the wire shape's sake.
+    * ``issues`` is populated via :func:`validate_geometry`.
     """
     return {
         "text":          struct.to_xyz(),
@@ -351,8 +303,7 @@ def workspace_payload(
         "n_atoms":       struct.n_atoms,
         "atoms":         atoms_list(struct),
         "lattice":       None,
-        # H1 2026-06-14: ``cfg=None`` explicit (not implicit
-        # default) so the missing-cfg case is documented at the
+        # ``cfg=None`` explicit (not implicit default) so the missing-cfg case is documented at the
         # call site.  ``validate_geometry`` emits only ``where=
         # "struct.*"`` issues -- no engine config field is in
         # scope here -- so workflow_group enrichment correctly
@@ -360,9 +311,7 @@ def workspace_payload(
         # engine-config validation upstream of this helper MUST
         # pass cfg= or the per-card fan-out (web-ui-coherence
         # Rule 2) silently drops engine issues into the residual
-        # panel.  Pinned by ``test_workflow_group_wire_contract``
-        # at the wire side; this comment documents WHY this site
-        # is fine.
+        # panel.
         "issues":        issues_to_json(
             validate_geometry(struct), cfg=None),
         "extra":         dict(extra) if extra else {},
@@ -384,17 +333,13 @@ def structure_to_dict(
     ``applyStructure(r)`` reads directly (``xyz``, ``elements``,
     flat per-atom columns, ``n_residues``).
 
-    The optional ``extra`` dict (Phase 2 addition, 2026-06-07)
-    threads endpoint-specific keys (``pdb``, ``summary``,
+    The optional ``extra`` dict threads endpoint-specific keys (``pdb``, ``summary``,
     ``backend_used``, ``add_hydrogens_mode``) into BOTH places at
     once:
 
-    * At the top level of the returned dict, for back-compat with
-      every existing JS consumer that reads them off the response
-      root (Phase 1-3 clients).
-    * In the canonical ``extra`` sub-dict, where the Phase 4+
-      workspace dispatcher will read them after the client
-      migration completes.
+    * At the top level of the returned dict, for every JS consumer
+      that reads them off the response root.
+    * In the canonical ``extra`` sub-dict.
 
     Top-level ``extra`` keys override the canonical defaults — a
     caller emitting ``source_format="pdb"`` from a PDB-parsing
@@ -444,26 +389,10 @@ def structure_to_dict(
         # Legacy aliases for existing modify-tab consumers (identity columns
         # also sourced from the ONE view so they can't diverge).
         #
-        # WHICH OF THESE STILL HAVE A READER, asked 2026-08-03 because the note
-        # above says "the legacy keys go when nothing reads them -- a question
-        # the code can answer", and nobody had asked it:
-        #
-        #   `xyz`           -- LIVE.  The generators' answer: modify/structure/
-        #                      {peptide,name,dna,rna,smiles}.js read `body.xyz`.
-        #   `residue_names` -- LIVE.  MolView folds it in as a parallel array
-        #                      (`model-jobs.js::structureFromServer`) because the
-        #                      atoms do not carry it.
-        #   the other five  -- NO reader, in any client or on the Python side.
-        #                      `elements` looks read, but every hit is MolView's
-        #                      OWN shape coming back out of `applyOp` /
-        #                      `getStructure`, not this key.
-        #
-        # They stay anyway, and deleting them is NOT cleanup: the envelope was
-        # "added not swapped" on purpose (tests/test_structure_envelope_protocol
-        # .py), and `test_a_response_carries_the_envelope_beside_todays_keys`
-        # guards each one by name.  Retiring them RETIRES THAT TRANSITION -- a
-        # decision, not a tidy-up, and one that also has to say what happens to
-        # the guard that both views agree.
+        # They stay: the envelope was "added not swapped" on purpose
+        # (tests/test_structure_envelope_protocol.py), and
+        # `test_a_response_carries_the_envelope_beside_todays_keys` guards each
+        # one by name.
         "xyz":           base["text"],
         "elements":      wire["elements"],
         "atom_names":    wire["atom_names"],
@@ -471,9 +400,8 @@ def structure_to_dict(
         "residue_names": wire["residue_names"],
         "chain_ids":     wire["chain_ids"],
         "n_residues":    wire["n_residues"],
-        # Endpoint-specific keys at the top level for back-compat
-        # with existing JS consumers.  Phase 4+ readers go through
-        # ``extra`` instead.
+        # Endpoint-specific keys at the top level for the JS consumers
+        # that read them off the response root.
         **extras,
     }
 
@@ -486,10 +414,8 @@ def ok_structure_response(
     """Build a Flask jsonify response for any Structure-returning
     endpoint.
 
-    Phase 2 of the workspace-state migration (2026-06-07) —
     ``/api/build/load`` + ``/api/build/molecule`` + every
-    ``/api/modify/*`` route through this helper instead of
-    hand-rolling their own jsonify blob.  The optional ``extra``
+    ``/api/modify/*`` op route through this helper.  The optional ``extra``
     dict carries per-endpoint add-ons:
 
     * ``/api/build/load``: ``{"pdb", "summary", "source_format"}``
@@ -505,12 +431,7 @@ def ok_structure_response(
     :func:`workspace_payload`) in ``{"ok": True, ...}``.
 
     EVERY STRUCTURE LEAVING FOR THE BROWSER IS CHECKED HERE, and this is the
-    only place it can be done once (structure-periodicity.md § 8.1).  The EIGHT
-    ``/api/modify/*`` ops plus the two build doors return through this helper,
-    and until 2026-08-01 none of the eight ran the gate at all: deleting the atom
-    that held a clearance, or translating the structure out of an explicit box,
-    changed nothing anyone was told about.  (``/api/modify/meta`` is the ninth
-    route and not an op -- a GET of the dropdown enums, no structure either way.)
+    only place it can be done once (structure-periodicity.md § 8.1).
 
     Note what does NOT need doing here.  In the DERIVED regime the cell is a
     computed view -- ``resolve_cell`` builds it from the bounding box and the
@@ -525,8 +446,6 @@ def ok_structure_response(
     decoration: without it, the assignment below would drop a caller's receipts
     without a word, which is the failure this whole helper exists to make
     impossible.
-
-    No caller passes it today -- every op's answer is conditions only.
     """
     said = list((extra or {}).get("notices") or [])
     # THE ONE LINE (cell-plan.md § 6a): resolve once, check once, report.
@@ -534,10 +453,7 @@ def ok_structure_response(
     # No try/except, because there is nothing to catch: these are the
     # loading/modifying doors, and § 8.2 says they REPORT a bad box rather than
     # refusing it -- so they ask the checker directly instead of calling the
-    # raising gate and reconstructing a notice from the exception. That
-    # reconstruction is what dropped the finding's id: it rebuilt the dict by
-    # hand from ``str(exc)``, so the front end received a message it could not
-    # identify, and tests had to match on the prose.
+    # raising gate and reconstructing a notice from the exception.
     _rc, issues = resolve_and_check(struct)
     said.extend(notices_for_report(issues))
     merged = dict(extra or {})
@@ -643,13 +559,10 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     **The two grouping axes** (`form-schema.md` § 1.3), both carried by every
     item and answering different questions:
 
-    * ``group`` -- *when do I set this?* -- is the OUTER card, unchanged since
-      2026-06-13, and load-bearing: it exists because the stage selector once
-      silently rewrote budget and system fields.
+    * ``group`` -- *when do I set this?* -- is the OUTER card.
     * ``category`` -- *what question about the calculation is this?* -- is the
-      legend INSIDE the card, and it replaces the per-engine free-text
-      ``section``.  The six are shared, so SIESTA and PySCF show the same inner
-      headings for the first time.
+      legend INSIDE the card.  The six are shared, so SIESTA and PySCF show the
+      same inner headings.
 
     Sections come out in § 6.2's reading order, which is the order the closed
     vocabulary is declared in -- not alphabetical, and not the order the items
@@ -669,8 +582,7 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     items = [it for it in items if it.group != "staging"]
     # The form serves ONE calculation kind (`template.md` § 6.3's sibling
     # rule): an item another kind owns stays out by its own declaration.
-    # P0 hardcoded "optimization" here; P2 threads the caller's kind --
-    # the vibration form is the same renderer over the same catalogue.
+    # The vibration form is the same renderer over the same catalogue.
     items = [it for it in items
              if not it.calculations or calculation in it.calculations]
     # THE KIND'S OWN RECOMMENDATION stands in for the general default on a
@@ -771,14 +683,10 @@ def _jsonable(v: Any) -> Any:
 def engine_key_for(item) -> str:
     """How this item is spelled for the engine — the string a SURFACE shows.
 
-    **One writer, because two surfaces disagreed.**  The parameter form used
-    this precedence; the task-setup column chooser (`build.py`) read
-    ``item.anchor`` directly and published it under the same JSON name.  An
-    ``anchor`` is DERIVED — ``_bare_anchor`` takes the leading token of
-    ``engine_key`` and nothing checks that the token is a keyword — so for an
-    item whose ``engine_key`` leads with a VALUE the column chooser showed the
-    value: ``method`` appeared as ``RKS`` (one of its four choices) and
-    ``optimizer`` as ``geomeTRIC``, while the form showed the full spelling.
+    **One writer for every surface.**  An ``anchor`` is DERIVED —
+    ``_bare_anchor`` takes the leading token of ``engine_key`` and nothing
+    checks that the token is a keyword — so for an item whose ``engine_key``
+    leads with a VALUE, the anchor is that value.
 
     The order is the honest one: the full spelling if the item has it, then
     the keywords a ``deck`` item expands to, and the bare anchor only when
@@ -813,16 +721,12 @@ def _item_to_field(item, id_prefix: str,
         out["pattern"] = item.pattern
     if item.group:
         out["workflow_group"] = item.group
-    # The engine-keyword badge.  **The FULL spelling, not the anchor.**
-    #
-    # This read `item.anchor` from 2026-08-14 until 2026-08-15, and an anchor
-    # is deliberately the bare leading keyword (`template.md` § 5) -- so the
-    # badge said `gto.M` on four different controls, `mf` on three more, and
-    # nothing at all on the eleven whose engine_key is a molbuilder note
-    # rather than a keyword.  That note is the only way a reader learns the
+    # The engine-keyword badge.  **The FULL spelling, not the anchor**: an
+    # anchor is the bare leading keyword (`template.md` § 5), and an
+    # engine_key that is a molbuilder note is the only way a reader learns the
     # setting never reaches the deck, which `web/form-schema.md` § 1a requires
-    # always be present.  `expands` remains the fallback for a `deck` item
-    # whose several keywords are the honest answer.
+    # always be present.  `expands` is the fallback for a `deck` item whose
+    # several keywords are the honest answer.
     spelled = engine_key_for(item)
     if spelled:
         out["engine_key"] = spelled
@@ -832,7 +736,7 @@ def _item_to_field(item, id_prefix: str,
         # An Optional[bool] has three states and the renderer walks
         # ``f.choices`` to build them; they are the CONTROL's vocabulary, not
         # the item's, so the catalogue does not carry them (§ 5's `choices` is
-        # an enum's members).  Today only `parallel_over_k` is one.
+        # an enum's members).
         out["choices"] = ["auto", "true", "false"]
     if item.range:
         out["min"], out["max"] = item.range
@@ -843,10 +747,8 @@ def _item_to_field(item, id_prefix: str,
         # by, so a lock cannot miss its cell (`kmesh.AXES`).
         from molbuilder.kmesh import AXES
         out["labels"] = list(AXES)
-        # A triple gets a step too (2026-08-15).  It was emitted only for the
-        # SCALAR kinds, so the renderer had to pick one itself -- and a bound
-        # or a step chosen in the renderer is a second place for the rule to
-        # live.  `min`/`max` are already set above from `item.range` and
+        # A triple gets a step too: a bound or a step chosen in the renderer
+        # is a second place for the rule to live.  `min`/`max` are already set above from `item.range` and
         # apply PER COMPONENT for a triple: `kgrid` bounds each axis count,
         # not their product.
         out["step"] = "1" if item.type == "int3" else "any"
@@ -950,13 +852,7 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
     #
     # A COMMA STRING PARSES, for the same reason the Sequence[*] branches
     # just below accept one: a non-browser client sends the text a person
-    # would type.  Until 2026-08-25 this was the one sequence branch that
-    # did not -- `if not isinstance(value, (list, tuple)): return value`
-    # handed the string straight back, while the docstring above claimed it
-    # "falls through to per-element int coercion".  A POST carrying
-    # `kgrid: "4,4,1"` therefore stored a str in a `Tuple[int, int, int]`
-    # field, and the range check downstream could only report it as a
-    # programmer bug.
+    # would type.
     #
     # A value that is neither a string nor a sequence is REFUSED here rather
     # than passed through, with a ValueError naming the field -- what this
@@ -988,8 +884,7 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
             return _parse_int_list_with_ranges(value)
         if isinstance(value, (list, tuple)):
             # Already a sequence; each element read as a whole number,
-            # refused element-wise -- `int(4.5)` truncated silently, which
-            # the note here said this did not do.
+            # refused element-wise.
             return [_as_number(field.name, v, int) for v in value]
         return value
     # Anything else: pass through.
@@ -1072,10 +967,7 @@ def config_from_params(cls, params: Dict[str, Any],
 
     **A blank is not chosen**, for every field: ``None`` or ``""`` leaves the
     field at what lies under it -- the kind's recommendation, else the class
-    default, which for an optional field is its own blank.  A blank number
-    reached ``float(None)`` and a raw ``TypeError`` naming nothing until
-    2026-09-30 (the M11 review's SS-C16 / SO-N5), and two PySCF fields
-    carried a sentinel list of their own for the same rule.
+    default, which for an optional field is its own blank.
 
     **A value that will not read as its type is refused, naming its
     field** (``coerce_to_field_type``): the caller says it as the refusal.
@@ -1123,13 +1015,10 @@ class PeriodicityRefused(Exception):
     something before the request can be answered, which is what a 400 means.
 
     It exists so that answer cannot be forgotten.  ``validate_periodicity``
-    raises ``ValueError``, and every door that runs it on the way IN had to
-    remember a try/except.  SIX OF THE SEVEN DID NOT -- only the Cell-page door
-    handled it -- so a refusable cell arrived as a 500 and an HTML error page,
-    which the browser's ``r.json()`` then reported as a network failure, hiding
-    the real message the gate had written.  Raising a
-    type ONE handler in ``web/app.py`` knows about means a seventh door inherits
-    the right answer instead of inheriting the omission.  (Same reasoning, same
+    raises ``ValueError``, and every door that runs it on the way IN would
+    have to remember a try/except.  Raising a type ONE handler in
+    ``web/app.py`` knows about means a door inherits the right answer instead
+    of inheriting the omission.  (Same reasoning, same
     file, as the 413 handler beside it.)
     """
 
@@ -1137,8 +1026,8 @@ class PeriodicityRefused(Exception):
 def checked_periodicity(struct):
     """Run the gate and let a refusal become the door's 400.
 
-    The one wrapper both entry paths use -- ``periodicity_checked_for_emit``
-    below and the export door -- so neither owns a copy of the translation.
+    The one wrapper every entry path uses -- ``periodicity_checked_for_emit``
+    below among them -- so none owns a copy of the translation.
     Returns the gate's ``(struct, notices)`` unchanged.
     """
     try:
@@ -1158,20 +1047,11 @@ def periodicity_checked_for_emit(struct):
 
     THE BOX ARRIVES IN THE ENVELOPE AND NOWHERE ELSE: a structure crosses
     once (web-api.md § 1), so a second place to say what the box is would be
-    two sources silently ranked -- the shape that once emitted a 20 Å cell
-    for an envelope stating 8.
+    two sources silently ranked.
     """
     checked, _conditions = checked_periodicity(struct)
     return checked
 
-
-# (apply_sidecar_if_possible / apply_companion_labels_if_present /
-#  regions_pattern_b_notice retired 2026-08-21, C-shared: the emitting
-#  doors take the ENVELOPE now -- regions ride structure.metadata through
-#  Structure.from_dict -- so the read-a-sidecar-file-beside-the-path flow
-#  lost its last caller, and the Pattern-B notice re-homed into the
-#  validators (validation/sidecar.py::check_unconsumed_region_labels),
-#  where it runs on every deck route instead of two deleted endpoints.)
 
 __all__ = [
     "atoms_list",

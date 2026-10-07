@@ -11,9 +11,7 @@ so.  An explicit `env=` beats both; host PATH is the fallback; anything else is
 a refusal that names what was tried.
 
 `route()` answers all of that and dispatches nothing, so these are ordinary
-calls.  They used to build a fake manager binary, fake tools, a PATH and a log
-file, and read the decision back out of the log -- because the decision was
-tangled with the dispatch and there was nothing to ask.
+calls.
 """
 
 from __future__ import annotations

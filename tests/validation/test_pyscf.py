@@ -1,9 +1,7 @@
 """Tests for molbuilder.validation.pyscf.
 
 Per docs/process/testing.md (test layout mirrors source
-layout).  Split from the pre-2026-06-13 flat tests/test_validation.py
-on 2026-06-13; no test body was modified.  Shared fixtures
-(``water_struct``, ``_vacuum_cell``) live in tests/validation/conftest.py.
+layout).  Shared fixtures live in tests/validation/conftest.py.
 """
 
 from __future__ import annotations
@@ -25,8 +23,8 @@ from ._helpers import _vacuum_cell
 #  PySCF: field range validation                                        #
 #                                                                       #
 #  The spin's findings (a restricted count, parity, a floating moment)  #
-#  are the electronic state's one family since 2026-09-28, pinned        #
-#  through prep in tests/test_electronic_state.py.                      #
+#  are the electronic state's one family, pinned through prep in        #
+#  tests/test_electronic_state.py.                                      #
 # --------------------------------------------------------------------- #
 
 
@@ -112,9 +110,8 @@ def test_basis_adequacy_fires_for_closed_shell_metal():
 
 
 def test_unconsumed_region_labels_are_named_on_every_deck_route(water_struct):
-    """Pattern B, re-homed (validation.md § 5, C-shared 2026-08-21): the
-    notice rode two deleted web endpoints and fired NOWHERE; it now runs
-    inside the engine validators, so the CLI's prep gate says it too.
+    """Pattern B (validation.md § 5, C-shared 2026-08-21) runs inside the
+    engine validators, so the CLI's prep gate says it too.
     The reserved frozen label is excluded -- the engines consume it."""
     from molbuilder.structure import FROZEN_LABEL
     s = water_struct
@@ -124,8 +121,7 @@ def test_unconsumed_region_labels_are_named_on_every_deck_route(water_struct):
     named = [i for i in issues if i.where == "structure.regions"]
     assert len(named) == 1
     # The label LIST is what must exclude the consumed frozen label --
-    # the trailing advice sentence always spells "frozen_atoms", so the
-    # old prefix-split assert could not fail.
+    # the trailing advice sentence always spells "frozen_atoms".
     listed = named[0].message.split("]", 1)[0]
     assert "L-electrode" in listed
     assert "frozen_atoms" not in listed, (

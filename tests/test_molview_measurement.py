@@ -145,12 +145,8 @@ def test_clicking_a_picked_atom_takes_it_back_out():
 def test_turning_measuring_off_ends_the_session_and_clear_only_empties_it():
     """Two controls, two jobs — and OFF means nothing is being measured.
 
-    The picks survived the toggle until 2026-08-31, on the reasoning that
-    coming back to a half-finished measurement costs nothing.  It was not
-    free: the Cell page's pick buttons read the COUNT, so they stayed enabled
-    with the ruler off, titled "turn measuring on", and staged a row from picks
-    nothing on screen was showing.  Off-with-picks and off-without behaved
-    differently and looked identical.
+    The Cell page's pick buttons read the COUNT, so picks left behind with the
+    ruler off would stage a row from picks nothing on screen was showing.
 
     Clear is still its own control: it empties the track WITHOUT leaving the
     mode, which is what a user wants mid-measurement.
@@ -364,8 +360,7 @@ def test_only_the_view_context_lane_persists_the_track():
         "ui.js":          "the rail toggle and the readout",
         "render-engine.js": "derives the marks on the picked atoms (§ 11.6)",
         "ui-context.js":  "the one lane that persists it (§ 11.2b)",
-        # ADDED 2026-08-31, and it reverses the note that stood here.  The
-        # window's click still goes through `model.pickAtom` -- WHICH track it
+        # The window's click still goes through `model.pickAtom` -- WHICH track it
         # lands in is still not this file's opinion.  What it now asks is
         # whether the ruler is on, and that is a different question: under
         # isolate the drawn numbering is not the real one, so the entry
@@ -377,8 +372,8 @@ def test_only_the_view_context_lane_persists_the_track():
         # following it.
         "mount.js":       "asks whether the ruler is on, to let a pick "
                           "through under isolate (§ 11.6)",
-        # ADDED 2026-08-31.  The marks became ARROWS, so the sealed layer now
-        # names the thing it is drawing.  It draws only -- it is handed which
+        # The marks are ARROWS, so the sealed layer names the thing it is
+        # drawing.  It draws only -- it is handed which
         # atoms, in order, and owns what a mark LOOKS like (§ 6.5); it reads no
         # track and decides nothing about one.
         "3dmol-embed.js": "draws the marks, one arrow per step (§ 11.6)",
@@ -398,7 +393,7 @@ def test_only_the_view_context_lane_persists_the_track():
 
 
 def test_the_readout_reads_the_track_and_not_the_selection():
-    """§ 11.6's input changed; this is the line that says so.  A readout still
+    """§ 11.6: the readout reads the track.  A readout
     reading `selection` would look identical until the user selected an atom
     for an edit and got a measurement they never asked for."""
     ui = _sources()["ui.js"]
@@ -409,10 +404,8 @@ def test_the_readout_reads_the_track_and_not_the_selection():
 
 
 def test_the_geometric_vertex_guess_is_gone():
-    """It existed only because a SELECTION can arrive with no pick order — from
-    All, Invert, a filter, a restored session.  A track is only ever built by
-    clicks, so the case is unreachable and the guess is deleted rather than left
-    to be maintained (`archive/2026-09-01-modify-redesign-plan.md` § 1.3)."""
+    """A track is only ever built by clicks, so a geometric vertex guess has
+    no case to serve (`archive/2026-09-01-modify-redesign-plan.md` § 1.3)."""
     ui = _sources()["ui.js"]
     assert "byGeometry" not in ui and "orderedForMeasurement" not in ui
 
@@ -422,8 +415,7 @@ def test_the_geometric_vertex_guess_is_gone():
 # ---------------------------------------------------------------------- #
 #  THE CLEARING RULE HAS ONE HOME (§ 11.6, user 2026-08-31)               #
 #                                                                        #
-#  It lived at three call sites and the fourth door -- the cell commit -- #
-#  had already forgotten it.  It is now stated once in `settle`, which    #
+#  It is stated once in `settle`, which                                   #
 #  every structure change passes through, with a single exemption for the #
 #  doors that PROVE the atoms are unchanged (`requireSameAtoms` runs      #
 #  before they land): a running job's frames arriving.  Those must not    #
@@ -475,9 +467,8 @@ def test_a_frame_arriving_from_a_job_does_NOT_clear_the_track():
 #  AN ORDERED OP READS THE ORDERED TRACK (§ 11.6, user 2026-08-31)        #
 #                                                                        #
 #  `orient`'s answer is WHICH ATOM WAS FIRST -- first -> second is the    #
-#  tilt direction.  It read `selection`, which SORTS, so the same two     #
-#  atoms picked by clicking and by shift-range oriented in opposite       #
-#  directions with nothing said.  The op table now declares the track.    #
+#  tilt direction.  `selection` SORTS, so the op table declares the       #
+#  track.                                                                 #
 # ---------------------------------------------------------------------- #
 
 _RECORDING_SERVER = """
@@ -555,10 +546,9 @@ def test_a_set_op_still_reads_the_selection_and_ignores_the_ruler():
 #                                                                        #
 #  "The internal selection states should not be accessible from outside   #
 #  the module ... this is the only way to guarantee that you're not       #
-#  misusing any of those states."  The model used to hand out the STORE,  #
-#  so every internal write door came with it and a consumer could add a   #
-#  pick without going through `pickAtom` -- the one place that decides    #
-#  measuring-vs-selecting and the one place isolate has been translated.  #
+#  misusing any of those states."  A pick goes through `pickAtom` -- the  #
+#  one place that decides measuring-vs-selecting and the one place        #
+#  isolate has been translated.                                           #
 # ---------------------------------------------------------------------- #
 
 def test_the_router_is_what_a_pick_goes_through():
@@ -585,9 +575,7 @@ def test_the_router_is_what_a_pick_goes_through():
 
 def test_asking_for_the_ruler_is_the_modules_decision_not_the_pages():
     """`requestPicking` answers whether it turned the ruler ON, so a caller
-    never has to read `active` and set it itself — which is the two-step both
-    panels were copying, and which lived in a page-side file until the module
-    took it back."""
+    never has to read `active` and set it itself."""
     out = _model("""
         const m = await loaded();
         const first  = m.requestPicking();   // was off -> turns on

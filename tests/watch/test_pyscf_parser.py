@@ -3,22 +3,11 @@ are structures, whatever its comment lines say, and never a file that only
 starts with a number.
 
 Its readings of a geomeTRIC trajectory -- energies, forces, SCF history --
-need a trajectory a real run wrote; the tests that read one typed by hand
-were retired 2026-10-04 (`process/testing.md` § 6).
+need a trajectory a real run wrote (`process/testing.md` § 6).
 """
 
 from __future__ import annotations
 
-
-# THE SAME DIALECT THE PARSER NAMES, not a second derivation of it.
-# `constants.py` keeps two spellings of Hartree/Bohr -> eV/A on purpose --
-# the ASE/NIST value and `HARTREE_EV / BOHR_ANGSTROM`, 0.36 ppm apart --
-# and says a call site NAMES the one it needs, because a force and the
-# threshold drawn over it must share one.  This file composed the second
-# while `parse/engines/pyscf.py` imports the first, so the assertion was
-# measuring the gap between the two dialects rather than the conversion.
-# The gap is on the seventh significant figure: 257.11043095 against
-# 257.11033738 (measured 2026-09-21, which is how it surfaced).
 
 from molbuilder.parse.engines.pyscf import PySCFParser
 
@@ -57,8 +46,3 @@ def test_can_parse_rejects_zero_or_negative_atom_count(tmp_path):
     p = tmp_path / "zero.xyz"
     p.write_text("0\nempty\n")
     assert PySCFParser.can_parse(str(p)) is False
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 13 tests here parsed a geomeTRIC trajectory, a .qdata.txt or a
-# PySCF log typed by hand (`process/testing.md` § 6).

@@ -1,18 +1,9 @@
 """Tests for ``window.molbuilder.formSchema.setValues`` — the
 public helper a tab writes values into a rendered form through (the
-Recommended panel's reset, a restored form).  It was added for the
-Auto-detect button's "apply suggestion" path, retired 2026-09-28.  See
+Recommended panel's reset, a restored form).  See
 ``molbuilder/web/static/lib/form-schema.js`` for the helper, and
-``docs/web/form-schema.md`` § 3.0a for what it guarantees.
-
-It cited ``science/validation.md`` § 5.1 until 2026-09-02 -- a
-section that document has never had, and a document this does not
-belong in: validation.md is the SCIENTIFIC machinery (analyzer,
-adapters, gates), and a helper that writes values into DOM inputs
-is the form module's own contract.  form-schema.md has carried
-``setValues`` in its API table all along; § 3.0a now states the
-two things it guarantees, which are the two a new field kind gets
-wrong by omission.
+``docs/web/form-schema.md`` § 3.0a for what it guarantees -- the two
+things a new field kind gets wrong by omission.
 
 These run as Playwright tests against a minimal HTML page that
 mounts a schema with one field of each kind (checkbox, int,

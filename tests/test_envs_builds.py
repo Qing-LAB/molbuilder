@@ -197,11 +197,8 @@ def _quiet_preflight(monkeypatch):
 def test_a_resume_skips_the_phases_whose_sentinel_exists(tmp_path, monkeypatch):
     """A sentinel's EXISTENCE is the whole record: the phase that left one is
     not run again, the phases without one are.  Asserted through
-    `run_build_spec`, with the door faked -- a test that wrote a sentinel and
-    read it back stood here and never reached the loop that honours it.
-
-    The file used to carry a toolchain hash and a timestamp; nothing read
-    either, so the executor's rule and the test's are the same one:
+    `run_build_spec`, with the door faked, so the loop that honours it is
+    reached; the executor's rule and the test's are the same one:
     `sentinel.exists()`.
     """
     spec = _one_component_spec()
@@ -239,8 +236,8 @@ def test_the_presence_gate_asks_the_installed_binary_through_the_door(
     whatever its sentinels say -- and it is asked THROUGH THE DOOR, under the
     same environment the verify phase runs in (M1, K-L4).
 
-    The verify command here is ``false``: run bare, as the gate did until
-    2026-09-13, it fails and the phases run; answered by the door, the
+    The verify command here is ``false``: run bare, it fails and the phases
+    run; answered by the door, the
     component is skipped whole.  So a gate that stops going through the door
     turns this test red by itself.
     """
@@ -400,31 +397,18 @@ def test_no_cuda_no_gcc_is_silent(tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  Forbidden packages                                                    #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
 #  Disk + network preflight                                              #
 # --------------------------------------------------------------------- #
 
 
 def test_check_disk_reminds_and_never_refuses(tmp_path, monkeypatch):
-    """There is no threshold any more, and no error -- only a reminder.
-
-    Three tests stood here, pinning `required_gb=30` / `recommended_gb=50`.
-    Those constants are gone: their only documentation was the word "Rough",
-    nothing measured them, and the 30 was promoted to a HARD ERROR that refused
-    builds (user, 2026-09-12: *"it is hard to gauge... So I wouldn't really
-    bother that.  We just remind user that you need to make sure you have enough
-    free space."*).  One test replaces three, because one rule replaced two
-    thresholds.
+    """There is no threshold, and no error -- only a reminder (user,
+    2026-09-12: *"it is hard to gauge... So I wouldn't really bother that.  We
+    just remind user that you need to make sure you have enough free space."*).
 
     The reference is this machine's own largest env, doubled -- a scale, not a
     requirement.  **It reminds either way**: a rule that speaks only below a
-    number IS a threshold, whatever the docstring says, and this one's
-    docstring said "there is no threshold" while the line under it returned
-    `None` above the reference.  With no reference at all it still reminds,
+    number IS a threshold, whatever the docstring says.  With no reference at all it still reminds,
     because "make sure you have room" is true with or without a figure.
     """
     class FakeUsage:
@@ -458,9 +442,8 @@ def test_disk_is_never_a_preflight_WARNING_either(tmp_path, monkeypatch,
     """A reminder that always fires must not be a question.
 
     `_build_callbacks` turns `warnings` into *"Proceed despite warnings?"*, so
-    landing the disk reminder there meant a derived number gated the install --
-    the hard 30 GB gate deleted on 2026-09-12, re-grown as a prompt.  It is
-    `info`: a line to read, not a decision to make.
+    landing the disk reminder there would let a derived number gate the
+    install.  It is `info`: a line to read, not a decision to make.
     """
     class FakeUsage:
         def __init__(self, free_gb=2.0):
@@ -694,16 +677,9 @@ def test_run_build_short_circuits_on_preflight_error(tmp_path, monkeypatch):
     spec = recipe_by_name("molbuilder-siesta-gpu").build_spec
     env_prefix = str(tmp_path / "env")
     os.makedirs(env_prefix)
-    # THE ERROR IS INJECTED, not hoped for.  This test said "No CUDA on the fake
-    # env -> preflight errors" and that was not what stopped it: measured
-    # 2026-09-12, the gpu spec on a fake prefix yields NO preflight errors --
-    # missing CUDA and a missing driver are warnings.  What actually fired was
-    # the disk gate, because /tmp on this machine has ~10 GB free and the gate
-    # refused below a hard-coded 30.  So the test passed for a reason having
-    # nothing to do with its name, on a machine-specific accident -- and when
-    # that gate was removed it began running a REAL autotools configure in
-    # tmp_path.  Worse, its false short-circuit is what hid the
-    # `_run_build_phase(conda_binary=...)` TypeError for four commits.
+    # THE ERROR IS INJECTED, not hoped for: measured 2026-09-12, the gpu spec
+    # on a fake prefix yields NO preflight errors -- missing CUDA and a
+    # missing driver are warnings.
     monkeypatch.setattr(B, "preflight", lambda *a, **k: B.PreflightReport(
         errors=("injected: preflight refused",), warnings=(), info=()))
     result = B.run_build_spec(

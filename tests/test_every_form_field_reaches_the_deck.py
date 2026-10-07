@@ -29,6 +29,14 @@ from molbuilder import script_emit as se
 from molbuilder.structure import Structure
 from molbuilder.web.blueprints._shared import catalogue_to_form_schema
 import molbuilder.template as T
+from molbuilder.runfiles import RunNames
+
+
+def _names(cfg):
+    """The names prep gives this stage's deck (`runfiles.RunNames`),
+    under the config's own label."""
+    label = getattr(cfg, "system_label", None) or cfg.job_name
+    return RunNames.of(label, '01_coarse', "hierarchical")
 
 
 def _struct() -> Structure:
@@ -50,6 +58,9 @@ _NOT_IN_THE_DECK = {
     ("siesta", "verbose_comments"):
         "it is about the deck's COMMENTS -- what a person reads beside each "
         "keyword -- and this file compares what SIESTA reads",
+    ("pyscf", "verbose_comments"):
+        "it is about the deck's COMMENTS -- what a person reads beside each "
+        "setting -- and this file compares what PySCF runs",
     ("siesta", "write_molwatch_log"):
         "SIESTA honours it at the PROMISES sub-step (3.12), not in the deck: "
         "`prep._seed_trajectory_log` skips seeding "
@@ -68,6 +79,7 @@ _ENABLING = {
     "use_gpu":             [{"diag_algorithm": "ELPA-2STAGE"}],
     "auxbasis":               [{"density_fit": True}],
     "ecp_atoms":              [{"ecp": "def2-SVP"}],
+    "ecp":                    [{"ecp_atoms": ["O"]}],
     "solvent_method":         [{"solvent": "water"}],
     "geom_continue_retries":  [{"on_nonconvergence": "continue"}],
 }
@@ -86,10 +98,12 @@ def _engine_read(text) -> str:
     out.  Every value of the electronic state is written beside its source,
     so a spin a writer ignored would still change the comment next to it --
     and a comparison of the whole text called that honoured (the M6 review).
+    The PySCF parameters record goes too: `_MB_PARAMS[name] = (default,
+    asked, read)` reports what was asked, so every value changes it.
     """
     out = []
     for line in str(text).splitlines():
-        if line.strip() and not line.lstrip().startswith("#"):
+        if line.strip() and not line.lstrip().startswith(("#", "_MB_PARAMS[")):
             out.append(re.sub(r"\s+#.*$", "", line))
     return "\n".join(out)
 
@@ -152,7 +166,8 @@ def test_every_field_the_form_offers_changes_the_generated_deck(
 
     def deck(**over):
         cfg = dataclasses.replace(cls(**base_kw), **over)
-        return _engine_read(se.render_deck(spec_for(struct, cfg), struct, cfg))
+        return _engine_read(se.render_deck(
+            spec_for(struct, cfg, names=_names(cfg)), struct, cfg))
 
     dead, unprobed = [], []
     for name, item in sorted(_form_fields(engine, prefix).items()):

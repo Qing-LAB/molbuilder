@@ -3,8 +3,7 @@
 One function, :func:`select_modes`, and the PySCF vibration script imports
 it: this file travels beside the job inside ``mb_pyscf.pyz``
 (``runwrap.PYSCF_COMPANIONS``, ``engines/pyscf.md`` § 3), where molbuilder is
-not installed -- so it imports nothing.  Until 2026-10-05 the script carried
-a hand-written copy of it, held equal to this one by a test.
+not installed -- so it imports nothing.
 
 The three selectors (`engines/vibration.md` § 4.8):
 
@@ -13,10 +12,6 @@ The three selectors (`engines/vibration.md` § 4.8):
     explicit  -> exactly the listed modes; the window is IGNORED --
                  the person named specific modes, and the window does
                  not override that
-
-(`top_n` and `threshold` ranked modes by Raman activity; retired by
-decision 2026-09-23 and removed 2026-09-28, V1.6 -- the probe measures
-d(eps)/dQ, which follows its own selection rule.)
 """
 
 from __future__ import annotations

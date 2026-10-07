@@ -10,29 +10,21 @@ numbers**:
   built for.
 
 ASU Sol offers an `arm` partition (Grace-Hopper, aarch64) in the same menu as
-eight x86 ones, and until this the record could not tell them apart. The
+eight x86 ones. The
 failure is total rather than slow: an x86 conda env does not activate usefully
 on aarch64, and an AVX-512 binary does not run there at all. Worse, it arrives
 disguised — `envs/builds.py` looks for `x86_64-conda-linux-gnu-gcc` **by
 name**, so on aarch64 it finds nothing and reports an unknown compiler version
 rather than the actual cause.
 
-**R3 decides the default.** *An unstated limit never bars*, so a record
-written before these fields states nothing and nothing is filtered — which is
-what keeps every existing record working.
+**R3 decides the default.** *An unstated limit never bars*, so a record that
+states no architecture filters nothing.
 """
 from __future__ import annotations
 
 import json
 
 from molbuilder.scheduler.record import Environment, Topology
-
-
-# Reading the architecture off the machine -- `scontrol show node`'s
-# `Arch=`, `lscpu`'s `Architecture:` -- is the field test's
-# (`tests/field/`), on a record probed there: two tests on text typed into
-# the suite retired 2026-10-06 (user: "the whole default test set should
-# never be based on fabricated text").
 
 
 # --------------------------------------------------------------------- #

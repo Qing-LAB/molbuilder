@@ -1,4 +1,4 @@
-"""End-to-end tests for /api/load: JSON path mode + multipart upload mode.
+"""End-to-end tests for /api/watch/load: JSON path mode + multipart upload mode.
 
 The multipart branch is the file-picker fallback for users who click
 Load without typing a path.  These tests verify both flows produce a
@@ -54,11 +54,6 @@ def client_with_default_roots():
 # --------------------------------------------------------------------- #
 #  JSON path mode (live-watch)                                          #
 # --------------------------------------------------------------------- #
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 8 tests here loaded a SIESTA output, a progress log or a PySCF
-# product typed by hand, or a copy of the measured relaxation outside its folder (`process/testing.md` § 6).
 
 
 def test_load_by_json_path_missing_file(client, tmp_path):
@@ -149,25 +144,6 @@ def test_load_by_multipart_unrecognised_format(client):
 
 
 # --------------------------------------------------------------------- #
-#  runtime_info.convergence_targets contract                            #
-#                                                                       #
-#  Pin the END-TO-END API contract: parser → Trajectory.runtime_info →  #
-#  HTTP /api/watch/data response → frontend.  The first two links now   #
-#  sit together here: the parser test moved in from                     #
-#  test_live_poll_invariants_audit.py when that file was retired        #
-#  2026-09-03 (testing.md § 3a — 18 of its 21 tests asserted on the     #
-#  spelling of lines in core.js rather than on anything the code did).  #
-#  It was the only genuinely behavioural test in the file with no home  #
-#  elsewhere, and it belongs beside the HTTP link it feeds.             #
-# --------------------------------------------------------------------- #
-
-
-# `test_the_siesta_parser_reads_convergence_targets_from_the_input_echo` moved
-# to the e2e tier 2026-10-06: the echo of a run made on the road with the real
-# SIESTA, `tests/test_siesta_flat_run_e2e.py` (`process/testing.md` § 6).
-
-
-# --------------------------------------------------------------------- #
 #  Directory mode (job-layout v1)                                       #
 #                                                                       #
 #  The loader resolves a directory path to a single file through the   #
@@ -175,18 +151,6 @@ def test_load_by_multipart_unrecognised_format(client):
 #  These tests pin the route's half of it, so a regression at the      #
 #  protocol boundary fails here rather than as "load failed".          #
 # --------------------------------------------------------------------- #
-
-
-# `test_load_directory_picks_molwatch_log_first` RETIRED 2026-09-25.  It
-# pinned "the protocol prefers .molwatch.log", which `model/parse.md` § 5.5
-# withdrew on 2026-09-24 (`0f914577`): SIESTA never writes into the log prep
-# seeds -- a 613-byte `initial_preview` beside a 34 KB `.out` -- so offered
-# first, the seed outranked the run's own result.  An optimization's engine
-# output is what opens now (`runfiles.result_roles` names it first), pinned on
-# a measured run of ours:
-# `tests/test_results_blueprint.py::TestTheContractEndpoint::test_a_measured_run_of_ours_is_answered_by_the_run_door`
-# -- whose folder holds no seeded log, so the order against one is not pinned
-# there (plan W56 unit 4 re-measures it).
 
 
 def test_load_directory_empty_returns_chain_error(client, tmp_path):
@@ -198,8 +162,7 @@ def test_load_directory_empty_returns_chain_error(client, tmp_path):
     assert body["ok"] is False
     # The trail cites the rule it followed (`model/parse.md` § 5.2) and says
     # what it found: a folder no calculation claims, holding no file a run
-    # of ours writes.  *(It cited the retired deck-label search's roles,
-    # `*.fdf` among them, until 2026-10-04, plan B11.)*
+    # of ours writes.
     assert "docs/model/parse.md" in body["error"]
     assert "no file here is one a run of ours writes" in body["error"]
 
@@ -220,19 +183,11 @@ def test_format_names_the_engine_not_the_parser_that_read_it(
         `label`  — who read it   ("molwatch unified log (.molwatch.log)")
         `format` — what ran it   ("siesta" / "pyscf")
 
-    The route sent `parser_cls.name` for both.  For an engine-native file
-    they coincide — a SIESTA `.out` is read by the parser called `siesta`,
-    which is why `test_load_by_json_path` above passed throughout — so nothing looked wrong.  They diverge for exactly the
-    file `job-contracts.md` § calls *"THE canonical trajectory, preferred
-    by every reader"*: every molbuilder-generated run arrived as
-    `"molwatch"`.
-
-    The cost was visible: `lib/trajectory/core.js` branches on
-    `state.format === "siesta"` / `"pyscf"` to title the SCF banner, and
-    its own comment calls the third branch *"the rare fallback"* for a log
-    with no engine header.  It was the only branch that ever ran, so every
-    run showed the neutral "SCF progress / Opt step" instead of "SIESTA
-    DFT SCF progress / CG/MD step".
+    For an engine-native file they coincide — a SIESTA `.out` is read by
+    the parser called `siesta`.  They diverge for exactly the file
+    `job-contracts.md` § calls *"THE canonical trajectory, preferred by
+    every reader"*, and `lib/trajectory/core.js` branches on
+    `state.format === "siesta"` / `"pyscf"` to title the SCF banner.
 
     The engine is not inferred here from a filename: the log DECLARES it
     (`# engine: <name>`), `parse/engines/molwatch.py` reads that line into
@@ -281,10 +236,7 @@ def test_an_upload_never_asks_the_temp_directory_which_engine_ran(
 
     The `.fdf` planted below is the whole point: it makes the temp
     directory sniff as SIESTA, so a poll that asks the directory must
-    disagree with the load.  Without it this test passes against the bug
-    (found by adversarial review, 2026-09-04 -- the full 8360-test suite
-    was green while this defect sat in it, because no test built this
-    directory shape).
+    disagree with the load.  Without it this test passes against the bug.
     """
     import tempfile as _tempfile
 

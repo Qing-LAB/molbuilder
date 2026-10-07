@@ -48,19 +48,11 @@ from .recipes import builtin_recipes, effective_name, recipe_by_name
 def _log_root() -> Path:
     """The install log directory, resolved WHEN ASKED, not at import.
 
-    This was a module constant, which froze the real home into the
-    module the moment anything imported it -- so a test that isolated
-    ``HOME`` afterwards still wrote install logs into the developer's
-    actual log directory (five zero-byte files per full-suite run, found
-    2026-08-28 by noticing them appear at the same second a suite
-    started).  A path that depends on the environment is a QUESTION, and
-    a question is asked when it is asked.
-
-    It was ``~/.molbuilder/logs`` until 2026-08-31 -- a second per-user root
-    that moved with neither ``MOLBUILDER_CONFIG_DIR`` nor any XDG variable, so
-    a person who moved their config still had install logs in the old place
-    (`configuration.md` § 2.1d).  Asked of `config_dir`, which is the one
-    module that answers "where is X" for every per-user file.
+    A path that depends on the environment is a QUESTION, and a question is
+    asked when it is asked: a module constant would freeze the real home
+    before a test isolates ``HOME``.  Asked of `config_dir`, which is the one
+    module that answers "where is X" for every per-user file
+    (`configuration.md` § 2.1d).
     """
     from ..config_dir import logs_dir
     return logs_dir()
@@ -125,8 +117,7 @@ def _tee_console_to(log_path: Path):
     orig_err = sys.stderr
     try:
         # Through the one creator, so `logs/` is 0700 when this verb is the
-        # first to make it (a bare `mkdir` left it at the umask until the next
-        # `serve` tightened it -- review C-L5, 2026-09-14).
+        # first to make it.
         from ..config_dir import ensure_private_dir
         ensure_private_dir(log_path.parent)
         fh = open(log_path, "w", encoding="utf-8", buffering=1)
@@ -187,10 +178,9 @@ def cmd_list() -> None:
 # --------------------------------------------------------------------- #
 
 
-#: The remedy speller moved to `hints.py` (floor 1) so that `recipes.py` can
-#: reach it: a recipe may not depend on the CLI (A7), so it had hand-copied this
-#: output into a shell string and the copy had drifted.  Bound here under its
-#: old name because every hint in this file reads it.
+#: The remedy speller lives in `hints.py` (floor 1) so that `recipes.py` can
+#: reach it: a recipe may not depend on the CLI (A7).  Bound here because every
+#: hint in this file reads it.
 _fix_cmd = _hints.fix_cmd
 
 
@@ -377,10 +367,7 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                                "recompile nothing, turning the audit")
                     click.echo("              green over binaries that did not "
                                "move.  --clean rebuilds them.)")
-                # NO `continue` HERE.  It skipped to the next recipe, which was
-                # invisible while this was the last thing printed for an env --
-                # and stopped being so the moment an opt-in report was added
-                # after the chain.  An `else` says the same thing and cannot
+                # NO `continue` HERE: an `else` says the same thing and cannot
                 # swallow whatever is appended below it.
                 else:
                     # Bare `repair` installs the MISSING packages and skips
@@ -392,24 +379,17 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                     # STEPS, so for one that has them doctor prints both.
                     #
                     # `repair` installs what the audit reported and does NOT
-                    # re-run `extra_steps`; `install` does run them, and since
-                    # 2026-09-18 it also installs a missing conda package (the
-                    # declared set is its own step).
-                    # What `install` still will not do is move a package that
-                    # is PRESENT at the wrong version, which is why a pin
+                    # re-run `extra_steps`; `install` does run them, and it also
+                    # installs a missing conda package (the declared set is its
+                    # own step).
+                    # What `install` will not do is move a package that is
+                    # PRESENT at the wrong version, which is why a pin
                     # mismatch is answered with `--include-version-fix` above.
-                    #
-                    # This branch printed `install` alone until then, on the
-                    # strength of a worked example -- the host env's `ipykernel`
-                    # kernelspec -- that no longer exists.  The only recipe left
-                    # with post-install steps is the GPU env's toolchain shims,
-                    # and for THAT one a missing conda package was being answered
-                    # with the one command that cannot install it.
                     click.echo("    next:    "
                                + _fix_cmd("repair", rep.recipe.name, *_flags))
-                    # THE DEFAULT SET, not every declared step.  `_HOST` gained
-                    # an `extra_steps` entry on 2026-09-18 -- the opt-in chromium
-                    # download -- and keying on the raw tuple would tell every
+                    # THE DEFAULT SET, not every declared step.  `_HOST` has an
+                    # opt-in `extra_steps` entry -- the chromium download -- and
+                    # keying on the raw tuple would tell every
                     # host-env reader that `install --yes` has post-install work
                     # to re-run, when a default install dispatches none.
                     if rep.recipe.extra_set():
@@ -423,15 +403,10 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                         click.echo("             (only version/build pins "
                                    "differ; --include-version-fix is what "
                                    "makes repair rebuild those)")
-            # OUTSIDE THE AUDIT CHAIN, and that placement is the fix rather
-            # than a layout choice.  Written as an `if` BETWEEN the chain's
-            # first `if` and its `elif`, it re-parented the `elif`/`else` onto
-            # itself -- so for the one recipe that has opt-in packages (the
-            # host env, on every machine that has not run --with-dev-tools)
-            # the FAILED branch became unreachable: `any_failed` was never
-            # set, a REQUIRED missing package printed nothing at all, and
-            # `doctor` exited 0 over it.  Two independent reviews measured the
-            # same thing on 2026-09-18.
+            # OUTSIDE THE AUDIT CHAIN: an `if` BETWEEN the chain's first `if`
+            # and its `elif` would re-parent the `elif`/`else` onto itself and
+            # make the FAILED branch unreachable for a recipe with opt-in
+            # packages.
             #
             # It reports PACKAGES.  The audit walks declared packages, so the
             # opt-in extra step (the chromium download) is not among them --
@@ -537,17 +512,14 @@ def cmd_repair(name: str, include_optional: bool,
     audit = _doctor.audit_packages(prefix, recipe)
     # Partition issues by what we'll act on.
     to_install_conda: list = []
-    # ONE list of pip issues, not two.  There used to be a "flagged"
-    # bucket for packages needing their own flags, which existed only
-    # because repair built its own command line and had to decide what
-    # could share one.  The RECORD decides that now, so the split has
-    # nothing left to sort.
+    # ONE list of pip issues: the RECORD decides each package's flags, so
+    # there is nothing to sort.
     to_install_pip: list = []
     skipped_optional: list = []
     skipped_version: list = []
     skipped_opt_in: list = []
     # BOTH buckets hold ISSUES, not a spec string for one kind and an issue
-    # for the other.  The audit now names the record on conda issues too, so
+    # for the other.  The audit names the record on conda issues too, so
     # both halves can map back to it -- which is the rule § 5 states without
     # an exception.
     for issue in audit.issues:
@@ -617,9 +589,9 @@ def cmd_repair(name: str, include_optional: bool,
         # What stays different is the GRANULARITY: every conda command is a
         # whole solve, so repair batches these into one `conda install`
         # rather than N.  The operator accepted that second solve by
-        # running `repair`; `install` itself never pays it (there, an
-        # optional package is dropped from the create solve instead -- see
-        # `create_step_for`).
+        # running `repair`; `install` itself never pays it (there, the set
+        # without the optional specs is the declared alternative -- see
+        # `conda_packages_step_for`).
         for issue in to_install_conda:
             pkg = conda_by_name.get(issue.name or "")
             if pkg is not None and pkg.reason:
@@ -653,15 +625,10 @@ def cmd_repair(name: str, include_optional: bool,
                     "[repair]   then, in that shell, the same "
                     "`python -m molbuilder envs repair ...` again.",
                     err=True)
-    # PIP REPAIR GOES THROUGH THE INSTALLER'S OWN DOOR.
-    #
-    # It used to hand-build its own `python -m pip install ...` -- twice,
-    # once batched and once per flagged package -- which is how it came
-    # to know nothing about a package's declared alternatives while the
-    # installer did.  Now each package is turned into a step by
-    # `pip_step_for` and run by `run_step`, so force flags, optionality
-    # and fallbacks are read off ONE record by ONE runner, and repair
-    # cannot drift from install again.
+    # PIP REPAIR GOES THROUGH THE INSTALLER'S OWN DOOR: each package is
+    # turned into a step by `pip_step_for` and run by `run_step`, so force
+    # flags, optionality and fallbacks are read off ONE record by ONE
+    # runner.
     #
     # The audit reports issues; the RECORD says how to fix them, so the
     # issue is mapped back to its package by name rather than carrying a
@@ -697,10 +664,7 @@ def cmd_repair(name: str, include_optional: bool,
     click.echo("[repair]   re-running audit...", err=True)
     audit2 = _doctor.audit_packages(prefix, recipe)
     # A kind the FLAGS opted in stays in `remaining`, so a repair that was
-    # asked to fix a pin and failed cannot exit 0.  It used to be filtered
-    # out unconditionally, and `failures` never reached the exit code, so
-    # `repair --include-version-fix` printed "conda install: FAILED" and
-    # exited 0 -- a CI job gating on it passed.
+    # asked to fix a pin and failed cannot exit 0.
     # OPT-IN NEVER COUNTS AGAINST THE EXIT CODE.  repair did not install it
     # and cannot; leaving it in `remaining` would make every repair of the
     # host env exit 1 for a package the operator never asked for.
@@ -968,8 +932,7 @@ def cmd_doctor(no_verify: bool) -> None:
                    "runs molbuilder).", err=True)
         sys.exit(1)
     # WHAT ARRIVED LOOSE.  `doctor` is where a permissions audit belongs --
-    # `initconfig._ensure_root`'s docstring said so before there was one to
-    # point at -- and this is the surface a person is already looking at when
+    # this is the surface a person is already looking at when
     # they ask "is my installation right".  Seeding seeds; this polices, by
     # reporting: the fix is one `chmod` and the line carries it
     # (`configuration.md` § 2.1a's reasoning -- a warning, never a refusal).
@@ -1014,10 +977,8 @@ def _render_validation(report: "_validate.ValidationReport",
         if not probe.passed and show_output_on_fail and probe.output:
             for line in probe.output.splitlines()[-20:]:
                 click.echo(f"        {line}")
-    # COUNTED THE WAY THE VERDICT COUNTS (E7).  `all_passed` ignores an
-    # advisory that did not pass; this counted it as a failure, so one real
-    # failure beside an absent MPS printed "4/6 checks passed" -- two rules for
-    # one question, and the number was the one nobody had checked.
+    # COUNTED THE WAY THE VERDICT COUNTS (E7): `all_passed` ignores an
+    # advisory that did not pass, so the count does too.
     required = [p for p in report.probes if not p.advisory]
     n_pass = sum(1 for p in required if p.passed)
     n_total = len(required)
@@ -1097,22 +1058,10 @@ def _build_callbacks(recipe, auto_yes: bool):
     """The preflight + progress callbacks a source build needs.  ``(on_warnings,
     on_progress)``.
 
-    **Shared because `bootstrap` did not have them** (2026-09-12).  These were
-    defined inline in `cmd_install`, and `cmd_bootstrap` called
-    ``run_install(recipe, caps=caps)`` with neither -- so
-    ``bootstrap --include-source-builds`` asked its one "Proceed with bootstrap
-    of N env(s)?" and then committed to a CUDA build with **every preflight
-    warning auto-accepted and never printed**: no missing-driver notice, no
-    compute-capability fallback, no stale-artifact warning, no free-space
-    reminder, and no per-phase progress.  `builds.run_build_spec` treats
+    **Shared by `install` and `bootstrap`.**  `builds.run_build_spec` treats
     ``on_warnings=None`` as "proceed silently", and `format_preflight_report` is
-    only ever called FROM this callback -- so with no callback the report is not
-    merely unconfirmed, it is never rendered.  `installation.md` presents
-    ``bootstrap --include-source-builds`` as the equivalent shortcut to
-    ``install molbuilder-siesta-gpu``, which showed all of it.
-
-    Its own help promised the confirmation too: *"the user is asked to confirm
-    before each source build starts unless --yes is also given."*  Nothing asked.
+    only ever called FROM this callback -- so with no callback the report is
+    never rendered.
     """
     state = {"i": 0, "total": 0}
     if recipe.build_spec is not None:
@@ -1262,10 +1211,8 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         )
         # ELSI is a SIESTA submodule (built inside SIESTA's cmake, not
         # as a separately-listable component) -- accept the alias and
-        # remap so users coming from the old siesta-gpu-rebuild.sh
-        # wrapper or SIESTA 5.4 INSTALL.md vocabulary don't trip.
-        # The pre-2026-06-24 shell-side remap is gone; this is the
-        # single source of truth for the rename.
+        # remap so users coming from SIESTA 5.4 INSTALL.md vocabulary
+        # don't trip.  This is the single source of truth for the rename.
         if (rebuild == "elsi"
                 and name == "molbuilder-siesta-gpu"
                 and "siesta" in valid):
@@ -1280,18 +1227,9 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 f"--rebuild={rebuild!r} unknown; choices: {', '.join(valid)}"
             )
 
-    # --clean WORKS FOR EVERY RECIPE (2026-09-12).  It refused conda-only ones
-    # until now, which left four of the five registered envs with no
-    # wipe-and-reinstall door at all -- while `installation.md` 508 says
-    # "there is no `envs remove` subcommand -- `install --clean` is the one
-    # door, so the wipe and the reinstall cannot get out of step", and while
-    # doctor's own failed-verify hint and the ORPHAN/GHOST/BROKEN hard stop
-    # both printed `install <name> --clean --yes` as the copy-paste fix.
-    # Measured: `install molbuilder-pySCF --clean --yes` -> "Error: --clean
-    # only applies to source-build recipes", exit 2.  The remedy the program
-    # hands you was a usage error for everything except the GPU build.
-    #
-    # Nothing needed adding to make it work: step 1 of the wipe IS "remove the
+    # --clean WORKS FOR EVERY RECIPE: `installation.md` -- "there is no `envs
+    # remove` subcommand -- `install --clean` is the one door, so the wipe and
+    # the reinstall cannot get out of step".  Step 1 of the wipe IS "remove the
     # conda env", which is the whole job for a conda-only recipe, and step 2
     # is skipped because `artifact_root` is None when there is no build_spec.
 
@@ -1303,9 +1241,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
 
     try:
         # `clean=clean`: the wipe is a step in the plan, so a dry run shows
-        # it.  It could not before -- the surface dispatched it -- and
-        # `--clean --dry-run` therefore printed a plan that omitted the most
-        # destructive thing the command would do.
+        # it.
         effective, plan = _install.plan_install(
             recipe, caps=caps, clean=clean, include_opt_in=with_dev_tools)
     except RuntimeError as e:
@@ -1329,26 +1265,19 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 click.echo(_shell_join(alt))
         if recipe.build_spec is not None:
             click.echo("")
-            # If env exists, probe it.  Otherwise probe with $HOME
-            # for the disk check; env-specific tools (gcc, openmpi)
-            # show up as "(detected after conda create)".  This
-            # avoids the misleading "env's gcc 11.4" line that would
-            # otherwise just be the system gcc.
+            # If env exists, probe it.  Otherwise env-specific tools (gcc,
+            # openmpi) show up as "(detected after conda create)".
             # The prefix is on the snapshot when the env exists; NONE when it
-            # does not.  This handed `~` to `preflight` as the env prefix on a
-            # fresh machine, and the free-space reference then walked every
-            # directory beside your home -- all of /home on a shared login
-            # node (K-L3).  Where the manager will put a new env is not
-            # knowable here, so no directory is measured on its behalf.
+            # does not.  Where the manager will put a new env is not
+            # knowable here, so no directory is measured on its behalf (K-L3).
             env_for_probe = caps.env_prefix(effective)
             probe = _builds.probe_toolchain(env_for_probe or "/nonexistent")
             click.echo(_builds.format_install_summary(
                 recipe.build_spec, probe, rebuild=rebuild,
             ))
             # WHAT THE MACHINE HAS TO PROVIDE, said where somebody is
-            # deciding whether to start.  `Recipe.system_preconditions` was
-            # accurate and rendered NOWHERE until 2026-09-14; its own text
-            # says which entries are optional (the NVIDIA driver is, for the
+            # deciding whether to start.  `Recipe.system_preconditions`' own
+            # text says which entries are optional (the NVIDIA driver is, for the
             # GPU path at run time -- it is not needed to build).
             if recipe.system_preconditions:
                 click.echo("")
@@ -1379,7 +1308,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 # the one number worth showing is the home filesystem's --
                 # measured directly, with no reference scale: computing one
                 # means walking every directory beside the path, and with `~`
-                # that was all of /home (K-L3).
+                # that would be all of /home (K-L3).
                 import os as _os
                 _free, reminder = _builds.check_disk(_os.path.expanduser("~"))
                 if reminder:
@@ -1446,12 +1375,8 @@ def _install_one(recipe, effective: str, caps, *,
     """Install ONE recipe: probe, diagnose, wipe if asked, summarise, confirm,
     tee, run, recap.  Returns the `InstallResult`.
 
-    **THE ONE ORCHESTRATION DOOR** (Z1).  `install` and `bootstrap` differ only
-    in which recipes they hand it.  They used to be two implementations of this
-    sequence and they had drifted: `bootstrap` ran no env-state probe, so it
-    never hit the ORPHAN / GHOST / BROKEN hard stop and would drive a `conda
-    create` at wreckage; it never printed the install summary; and it asked for
-    no per-recipe confirmation before a 45-minute source build (D7).
+    **THE ONE ORCHESTRATION DOOR** (Z1, D7).  `install` and `bootstrap` differ
+    only in which recipes they hand it.
 
     It RAISES rather than exiting, because the two verbs answer differently: a
     refusal ends `install` with exit 2, and is one line of a `bootstrap` report
@@ -1507,8 +1432,7 @@ def _install_one(recipe, effective: str, caps, *,
     # A directory the manager will not own -- ORPHAN, BROKEN -- cannot be
     # wiped by `--clean` either: `env remove` refuses both addresses for a
     # directory without conda-meta/history (measured on conda 26.7.1,
-    # 2026-09-14).  The one remedy is the person's `rm -rf`, and this stop
-    # printed `--clean --yes` as the fix (review B-L1).
+    # 2026-09-14).  The one remedy is the person's `rm -rf`.
     unremovable = state.state in (_install.EnvPresence.ORPHAN,
                                   _install.EnvPresence.BROKEN)
     if unremovable and clean:
@@ -1547,10 +1471,7 @@ def _install_one(recipe, effective: str, caps, *,
         # `effective`, not `name`: with an `envs.<category>` override the
         # recipe name is not the env name, and
         # every neighbouring line here already uses the effective one.  The
-        # LINE comes from the one speller (`remove_env_cmd`, M3): this site
-        # spelled it by hand until 2026-09-13, with its own copy of M3's
-        # reasoning above it -- and would have printed "None env remove ..."
-        # on a machine with no detected manager, which the speller refuses to.
+        # LINE comes from the one speller (`remove_env_cmd`, M3).
         click.echo("    " + _install.remove_env_cmd(caps.conda_binary,
                                                     effective))
         click.echo(
@@ -1558,10 +1479,8 @@ def _install_one(recipe, effective: str, caps, *,
         )
         raise _CannotInstall(
             f"env is {state.state_label}; conda create cannot recover it")
-    # `can_resume`, not a string compare on the label.  `StepRole` exists
-    # because four sites keyed control flow on a display label and renaming one
-    # for clarity silently disabled the create-skip; this was the same shape, on
-    # the other state machine, in the surface.  The accessor is the question.
+    # `can_resume`, not a string compare on the label.  The accessor is the
+    # question.
     if state.can_resume and not clean:
         click.echo("")
         click.echo("Install will RESUME on this env (conda create skipped,")
@@ -1570,9 +1489,7 @@ def _install_one(recipe, effective: str, caps, *,
     # For source-build recipes, detect existing artifact state up
     # front so the user knows whether this is a fresh install, a
     # resume, or a wipe.
-    # THE PROBE ALREADY RESOLVED THE PREFIX (`state.prefix`).  This asked
-    # `_env_prefix` again here, a third time in the `--clean` block below and
-    # a fourth inside `run_install` -- for one install (K-D7).
+    # THE PROBE ALREADY RESOLVED THE PREFIX (`state.prefix`).
     artifact_root = None
     if recipe.build_spec is not None and state.dir_exists and state.prefix:
         paths_for_state = _builds.resolve_paths(recipe.build_spec, state.prefix)
@@ -1605,11 +1522,7 @@ def _install_one(recipe, effective: str, caps, *,
     # --clean ASKS here and does nothing else.  The removal is a step at the
     # front of the plan (`remove_step_for`), through the one door, with an
     # outcome and a line in the recap; the artifact directory sits inside the
-    # env and goes with it.  This surface used to ALSO `rmtree` that directory
-    # itself and `reset_capabilities()` before `run_install` ran -- the first
-    # a second wipe on the side (env-framework 5.4), the second a reset taken
-    # BEFORE the removal it existed to account for, so it accounted for
-    # nothing (K-L1).  What it asks about comes from the probe above.
+    # env and goes with it.  What it asks about comes from the probe above.
     if clean:
         # ASK whenever a directory is about to go, listed or not (review B-L3).
         env_exists_pre_clean = state.dir_exists
@@ -1660,10 +1573,7 @@ def _install_one(recipe, effective: str, caps, *,
         # exist yet, in which case the probe returns mostly None.  We
         # use it only for the build-job count + cost summary.
         # A PREFIX, which is what `probe_toolchain` documents and requires
-        # (D8).  It was handed an env NAME, so the summary shown immediately
-        # before a source build's `Proceed?` reported gcc / OpenMPI / CUDA as
-        # undetected on a perfectly healthy env.  The snapshot knows the prefix
-        # since 2026-09-12, so this costs nothing.
+        # (D8); the snapshot knows it, so this costs nothing.
         probe_for_summary = _builds.probe_toolchain(
             caps.env_prefix(effective) or "/",
         )
@@ -1707,12 +1617,10 @@ def _install_one(recipe, effective: str, caps, *,
         )
 
         # If the build_spec executor short-circuited on preflight errors,
-        # print them PROMINENTLY before the per-step recap.  Previously
-        # the ``build:preflight`` step was silently filtered out by the
-        # ``startswith("build:")`` skip rule so the user got "install
-        # FAILED" with zero diagnostic info.  This is the failure mode
-        # the user hit on 2026-06-15 when ELPA's empty repo_url caused a
-        # check_repo_reachable failure that never reached the terminal.
+        # print them PROMINENTLY before the per-step recap, which skips
+        # build steps -- otherwise the user gets "install FAILED" with zero
+        # diagnostic info (2026-06-15: ELPA's empty repo_url caused a
+        # check_repo_reachable failure that never reached the terminal).
         if (result.build_result is not None
                 and result.build_result.preflight_errors):
             click.echo("", err=True)
@@ -1736,12 +1644,8 @@ def _install_one(recipe, effective: str, caps, *,
             if step.role is _install.StepRole.BUILD:
                 continue
             # The OUTCOME, not just the exit code: a step that never
-            # dispatched has no rc, and "rc=None" told the reader
-            # nothing about whether it was skipped or refused.
-            # `word`, the same string the live line prints -- see
-            # `Outcome.word`.  This said `.value` ("degraded") while the live
-            # line said "UNAVAILABLE -- optional, continuing" about the same
-            # step: one run, two vocabularies (H5).
+            # dispatched has no rc.  `word`, the same string the live line
+            # prints -- see `Outcome.word` (H5).
             verdict = (step.outcome.word if step.outcome is not None
                        else "not run")
             rc = ("" if step.returncode is None
@@ -1849,10 +1753,8 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
         skip_existing = False
 
     # WHAT BOOTSTRAP INSTALLS: the default stack, and nothing a recipe says
-    # is opt-in.  This tested `build_spec is None` until 2026-09-14 -- a proxy
-    # that meant "expensive, so ask first" and happened to hold for the only
-    # opt-in env there was.  `Recipe.opt_in` states the reason instead, so a
-    # cheap env can be opt-in too (the notebook tab is).
+    # is opt-in.  `Recipe.opt_in` states the reason, so a cheap env can be
+    # opt-in too (the notebook tab is).
     default_set  = [r for r in builtin_recipes() if r.opt_in is None]
     opt_in_set   = [r for r in builtin_recipes() if r.opt_in is not None]
     source_builds = [r for r in opt_in_set if r.build_spec is not None]
@@ -1910,8 +1812,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
         before = len(plan)
         new_plan: list = []
         for r in plan:
-            # Through the one door: an inline copy here is what let
-            # bootstrap plan a second host env (see `effective_name`).
+            # Through the one door (see `effective_name`).
             env_name = effective_name(r, caps)
             present = caps.env_available(env_name)
             click.echo(
@@ -1939,16 +1840,11 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
 
     if not plan:
         if dry_run:
-            # A DRY RUN WITH NOTHING TO INSTALL STILL HAS TO DO NOTHING.
-            # `--dry-run` was honoured only inside the `else:` below, so on a
-            # machine where every env is already present control fell through
-            # to `_seed_config` -- which PROMPTS for the activation form and the
-            # projects root, and CREATES the config directory, molbuilder.json,
-            # environment.json, secrets/ and environments/.  A dry run that asks
-            # questions and writes files, against a flag whose own help says
-            # "do not install anything" and `env-framework.md` 480's "--dry-run
-            # means nothing gets installed, including by the shim".  It also
-            # spent the full verify+audit pass on every env.
+            # A DRY RUN WITH NOTHING TO INSTALL STILL HAS TO DO NOTHING:
+            # falling through to `_seed_config` would PROMPT for the activation
+            # form and the projects root, and CREATE the config directory and
+            # its files, against a flag whose own help says "do not install
+            # anything".
             click.echo("Every env in the default stack is already present.")
             click.echo("(dry-run: nothing installed, nothing written, no "
                        "doctor pass.)")
@@ -1982,12 +1878,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
             click.echo("=" * 70)
             click.echo(f"[{i}/{len(plan)}] {recipe.name}")
             click.echo("=" * 70)
-            # THE SAME DOOR `install` USES (D7).  This was a lossy copy of
-            # it: no env-state probe, so no ORPHAN / GHOST / BROKEN hard stop
-            # and a `conda create` driven at wreckage; no install summary; and
-            # no per-recipe confirmation before a 45-minute source build.  What
-            # it did have -- the tee, the log, the build callbacks -- the door
-            # has too, because they came from here.
+            # THE SAME DOOR `install` USES (D7).
             env_name = effective_name(recipe, caps)
             # `installation.md` M5: `--clean` removes an env and installs into
             # it again, and when that env is the one this interpreter runs from
@@ -2033,21 +1924,15 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
             for name, why, hint in failures:
                 click.echo(f"  - {name}: {why} -- {hint}", err=True)
         else:
-            # SAY ONLY WHAT THE STEP LIST PROVED.  This read "bootstrap
-            # complete; every recipe installed." and was printed from a check
-            # that asks one thing: did any install step report a failure.  On
-            # 2026-09-17 that was true of a run whose doctor then found four
-            # envs short of a REQUIRED package and exited 1 -- the banner and
-            # the exit code disagreeing in the same output
-            # The verdict comes after doctor now,
-            # because doctor is what knows it.
+            # SAY ONLY WHAT THE STEP LIST PROVED: did any install step report
+            # a failure.  The verdict comes after doctor, because doctor is
+            # what knows it.
             click.echo(f"all {len(plan)} install(s) completed without a "
                        f"failed step.")
 
-    # THE CONFIG DIRECTORY IS PART OF A FIRST INSTALL.  Until this ran
-    # here, a bootstrap left the machine one file short of being able to
-    # render any wrapper (`running-a-job.md` 5.2).  This is the moment the
-    # answer is known: the
+    # THE CONFIG DIRECTORY IS PART OF A FIRST INSTALL: without it the machine
+    # is one file short of being able to render any wrapper
+    # (`running-a-job.md` 5.2).  This is the moment the answer is known: the
     # env manager has just been located and confirmed.
     click.echo("")
     click.echo("=" * 70)
@@ -2064,20 +1949,15 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
         # forty minutes building envs, and take the doctor report with it.
         click.echo(f"  ! could not seed the config directory: "
                    f"{type(exc).__name__}: {exc}", err=True)
-        # `_fix_cmd` takes a recipe name; this verb has none, so the empty
-        # string is passed deliberately and the join drops nothing else.
         click.echo(f"  ! fix that, then run: "
                    f"{_fix_cmd('init-config')}", err=True)
-        # AND IT COUNTS AGAINST THE EXIT CODE (2026-09-12).  Not fatal on the
-        # spot -- that rule is right, a read-only $HOME should not throw away
-        # forty minutes of built envs or take the doctor report with it -- but
-        # it was not recorded either, so the exit came from doctor alone and
-        # bootstrap reported SUCCESS having created no config directory at all.
-        # The realistic trigger is the documented form: `bootstrap` without
-        # `--yes` has two questions to ask, and with no tty on stdin (nohup,
-        # CI, a batch step) click aborts on the first one.  Every later verb
-        # then refuses for want of an activation in the record, and the exit
-        # code said the install was fine.
+        # AND IT COUNTS AGAINST THE EXIT CODE.  Not fatal on the spot -- a
+        # read-only $HOME should not throw away forty minutes of built envs or
+        # take the doctor report with it -- but recorded, so bootstrap never
+        # reports success having created no config directory.  The realistic
+        # trigger is the documented form: `bootstrap` without `--yes` has two
+        # questions to ask, and with no tty on stdin (nohup, CI, a batch step)
+        # click aborts on the first one.
         seed_failed = True
 
     # Refresh capabilities so doctor sees newly-created envs.
@@ -2103,10 +1983,8 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
     click.echo("=" * 70)
     if not include_source_builds:
         click.echo("")
-        # NO INVENTED FIGURES.  This said "~45 min, ~12 GB disk"; the phase
-        # rows sum to 21-29 min and the 12 GB was a third guess that
-        # disagreed with the 30 GB gate it was printed beside.  The install's
-        # own preflight derives the time and measures the disk.
+        # NO INVENTED FIGURES: the install's own preflight derives the time
+        # and measures the disk.
         click.echo("# Install GPU SIESTA (built from source -- its preflight")
         click.echo("# prints the time estimate and your free space before")
         click.echo("# committing; the host env from this bootstrap is the")
@@ -2127,9 +2005,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
 
     # THE VERDICT, ONCE, AFTER EVERYTHING THAT CAN CHANGE IT.  Three things
     # decide whether this machine is ready -- the installs, the config seeding
-    # and doctor's report -- and until 2026-09-17 only the first announced
-    # itself in words while the exit code came from the third.  A reader got
-    # "every recipe installed." and exit 1 from one run.
+    # and doctor's report.
     click.echo("")
     click.echo("=" * 70)
     if failures or seed_failed or exit_code != 0:
@@ -2159,7 +2035,8 @@ __all__ = ["envs_group"]
 # WHY THIS IS AN ``envs`` SUBCOMMAND rather than its own group.  The
 # installer is how a person first meets this program, and
 # ``scripts/install-env.sh`` forwards "$@" verbatim to ``molbuilder envs``
-# -- its DESIGN INVARIANT, with ``--gcc`` the single stated exception.  A
+# -- its DESIGN INVARIANT, with ``--gcc`` and ``--python`` the stated
+# exceptions.  A
 # command under this group is therefore reachable as
 # ``bash scripts/install-env.sh init-config`` with no shell change at all,
 # which is the whole point: the seeding logic lives in Python, where every
@@ -2171,7 +2048,7 @@ def _recommended_activation(conda_binary: "Optional[str]") -> tuple:
     an answer to one.
 
     The distinction is the rule.  ``activation`` is DECLARED, never detected
-    (`running-a-job.md` § 5; ``detect_conda_activation`` deleted 2026-08-13),
+    (`running-a-job.md` § 5),
     and nothing here writes anything: it proposes, the person confirms, and
     ``--yes`` is the person saying *take the recommendation* -- which is then
     PRINTED, so a wrong default is visible rather than silent.
@@ -2204,12 +2081,10 @@ def _warn_about_seeding_now(auto_yes: bool) -> bool:
     """Say at the START what would only be discovered at the END.
 
     The config directory is seeded after every install, and that ordering is
-    right -- a failure there must not discard forty minutes of built envs.  What
-    was wrong is that its preconditions were only TESTED there: a read-only
-    $HOME, or a bootstrap with no terminal to ask its two questions in, was
-    reported after the expensive work, with a note to fix it and re-run
-    `init-config` by hand.  Both facts are knowable before the first install, so
-    they are stated here, while an interactive user can still say no at the
+    right -- a failure there must not discard forty minutes of built envs.  Its
+    preconditions -- a read-only $HOME, or a bootstrap with no terminal to ask
+    its two questions in -- are knowable before the first install, so they are
+    stated here, while an interactive user can still say no at the
     Proceed prompt (user, 2026-09-12: *"if it's read only, then we should give
     the warning early rather than wait at the very end"*).
 

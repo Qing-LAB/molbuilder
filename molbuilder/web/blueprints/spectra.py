@@ -2,17 +2,12 @@
 
 Routes:
 
-    GET  /spectrum-calculation          the page (rendered template).  Renamed
-                                        from /spectra in Phase B.5 (2026-06-07);
-                                        legacy redirect deleted.
+    GET  /spectrum-calculation          the page (rendered template).
     POST /api/spectra/load              parse an uploaded <job>.spectra.json
                                         (or read JSON body) into the typed
                                         SpectraResults shape
 
-THE PRODUCER LEFT THIS FILE (spectra-migration plan P3, 2026-08-21):
-``POST /api/spectra/render`` and ``GET /api/build/schema/spectra``
-retired with the old generator.  The tab's compute half renders the
-CATALOGUE's vibration form (``GET /api/build/schema/pyscf?calculation=
+The tab's compute half renders the CATALOGUE's vibration form (``GET /api/build/schema/pyscf?calculation=
 vibration``, build.py) and hands the description to Task setup
 (``POST /api/task-setup/handover``); the deck is written by ``prep``
 on the machine that runs it (docs/execution/script-preparation.md).
@@ -74,14 +69,6 @@ def spectrum_calculation_page():
     build.py) through the shared form renderer.
     """
     return render_template("spectra.html")
-
-
-# Sidecar application moved to web/blueprints/_shared.py
-# (apply_sidecar_if_possible) so Build's /api/build/fdf +
-# /api/build/pyscf can import from the shared module instead of
-# reaching into the Spectra blueprint.  Backwards-compatible alias
-# preserved here so any in-flight branch importing from this module
-# keeps working.
 
 
 # ===================================================================== #
@@ -231,15 +218,12 @@ def api_spectra_load():
     path = body.get("path")
     inline = body.get("json")
     if path:
-        # THE FENCE (web-api.md § 2.1).  This route used to hand `path`
-        # straight to the parser, and the parser -- correctly, being a
-        # generic reader -- does a bare open().  So any path the server
-        # process could read was readable from here: not the file's
-        # CONTENT, since the decode error reports only the parser's
-        # position, but its EXISTENCE, which is filesystem enumeration.
-        # The rate limiter's attack-string screen reads the URL, and this
-        # path arrives in a JSON body, so nothing else was standing here.
-        # Exactly the hole watch.py closed on 2026-06-18.
+        # THE FENCE (web-api.md § 2.1).  The parser -- correctly, being a
+        # generic reader -- does a bare open(), so without it any path the
+        # server process could read would have its EXISTENCE readable from
+        # here, which is filesystem enumeration.  The rate limiter's
+        # attack-string screen reads the URL, and this path arrives in a
+        # JSON body, so nothing else stands here.
         from .files import _PickerError, _resolve_within_roots
         try:
             path = _resolve_within_roots(path)

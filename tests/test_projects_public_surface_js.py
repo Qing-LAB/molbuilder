@@ -1031,18 +1031,14 @@ class TestSafeSave:
     """``safeSave`` wraps ``saveToWorkspace`` so the three terminal
     states are distinct: null (no current dir), {cancelled:true}
     (user cancel), {ok:true|false, ...} (write outcome).  Tests
-    here cover the shapes the three real callers (SIESTA + PySCF
-    save in viewer.js, Spectra save in spectra/core.js) actually
-    consume.  Tests for theoretical caller mistakes were removed
-    after the 8-audit-round cleanup: callers are reviewed for
-    contract compliance, the helper is not hardened against
-    impossible inputs."""
+    here cover the shapes its callers actually consume: callers are
+    reviewed for contract compliance, the helper is not hardened
+    against impossible inputs."""
 
     def test_safeSave_folds_abort_envelope_to_cancelled(self):
         """The only fold safeSave does: ``{ok:false, aborted:true}``
         from saveToWorkspace → ``{ok:false, cancelled:true}`` for
-        the call site to branch on.  All three real callers
-        check ``r.cancelled`` first."""
+        the call site to branch on."""
         out = _run_node('''
             global.fetch = async () => {
                 const err = new Error("aborted");

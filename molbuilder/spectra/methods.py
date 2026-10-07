@@ -2,33 +2,22 @@
 
 Produces the Markdown prose that ships in two places:
 
-  * the header docstring of the emitted deck (spec § 11.2);
+  * the header docstring of the emitted deck;
   * the ``methods_text`` field of :class:`SpectraResults`, which the
     run writes from the same paragraph and the Results panel's
     "Methods text" block shows.
 
 The same prose appears in both, so the emitted script and the parsed
-JSON say the same thing.  (A third surface, the Spectra tab's "Show
-methods text" modal, left with the Generate lane at P3.)  It is
+JSON say the same thing.  It is
 composed ONCE, before the run, from the configured knobs: the count it
 states is R2's, equal to the run's by construction (R6), and the one
 thing only the run knows -- which dmu/dR route it took -- is added at
-load by :func:`with_ir_route`.  *(A ``results=`` arm that would have
-re-composed it after the run had no production caller and was deleted
-on 2026-09-28, V1.18.)*
+load by :func:`with_ir_route`.
 
 Engine-specific fragments are PASSED IN as ``fragment_md`` by the
 caller that knows its own engine (today the vibration deck, with
 :func:`molbuilder.pyscf.vibration_emitters.pyscf_methods_fragment`).
-The composer here stays ignorant of which engine ran the job, so a
-future SIESTA engine adds a producer without changing this file.
-
-*(This named ``SpectraEngine.methods_fragment`` and a registry
-lookup until 2026-09-17.  That class and ``spectra/engine_base.py``
-were deleted at the spectra migration's P3, 2026-08-21 -- there is
-no engine registry anywhere in the tree; see ``engines/overview.md``
-§ 5.  The ``fragment_md`` parameter below has described the real
-mechanism the whole time.)*
+The composer here stays ignorant of which engine ran the job.
 
 Citation keys appear inline as ``[KeyName]`` markers (e.g.
 ``[Sun2020]``).  Every key cited here must resolve against
@@ -49,7 +38,7 @@ if TYPE_CHECKING:            # annotations only -- importing
     # other is named in annotations and never called: this module travels
     # beside a SIESTA vibration job (`runwrap.VIBRATION_COMPANIONS`), where
     # it is not importable.
-    from .vibration_deck import VibrationConfigView
+    from ..pyscf.vibration_deck import VibrationConfigView
     from ..structure import Structure
 
 
@@ -89,10 +78,8 @@ def render_methods_md(
         (the vibration deck passes
         :func:`molbuilder.pyscf.vibration_emitters.
         pyscf_methods_fragment`).  Empty means no engine paragraph.
-        The registry lookup this replaced retired with the old
-        generator (P3): this module is engine-IGNORANT by design
-        (its own header line 21), and the one remaining producer
-        knows its own engine.
+        This module is engine-IGNORANT by design; the caller knows its
+        own engine.
     struct
         Optional :class:`Structure`.  Used to phrase "N free atoms,
         3N-6 modes" etc. when available; falls back to generic
@@ -103,9 +90,7 @@ def render_methods_md(
     str
         Markdown ready to drop into a manuscript draft.  Two surfaces
         carry it: the deck's own header docstring, and the Results
-        panel's "Methods text" block (the preview MODAL this used to
-        name left with the Generate lane at P3, and the paragraph had
-        no surface at all between then and 2026-09-11).
+        panel's "Methods text" block.
 
         INCOMPLETE BY DESIGN, since it is composed before the run.  Which
         dmu/dR route a run took cannot be known here -- it is settled
@@ -140,7 +125,7 @@ def render_methods_md(
     # ------------------------------------------------------------------ #
     # Trailing bibliography (BibTeX keys, one per line).  Composed
     # from the keys present in the text we just built so a reader of
-    # the emitted script has the full list inline (spec § 11.2).
+    # the emitted script has the full list inline.
     # ------------------------------------------------------------------ #
     body = "\n\n".join(parts)
     bib_keys = extract_citation_keys(body)
@@ -234,11 +219,7 @@ def extract_citation_keys(text: str) -> List[str]:
     Matches ``[Key]`` and ``[Key §section]`` patterns.  Used by
     :func:`render_methods_md` to build the trailing bibliography,
     and by the engine to populate :attr:`SpectraResults.
-    bibliography_keys` (spec § 5).
-
-    A linter (spec § 11.3) will later cross-check the returned
-    list against ``references.bib`` to refuse a release tag if any
-    cited key is missing or marked TO-VERIFY.
+    bibliography_keys`.
     """
     seen: set = set()
     out: List[str] = []
@@ -260,9 +241,7 @@ def extract_citation_keys(text: str) -> List[str]:
 
 #: Each dispersion choice as the literature writes it, and the papers that
 #: define it: D3 itself [Grimme2010]; Becke-Johnson damping on top of it
-#: [Grimme2011]; D4 [Caldeweyher2019].  Until 2026-09-28 every version cited
-#: [Grimme2011] alone -- the damping paper, which is not where D3's zero
-#: damping or D4 come from.
+#: [Grimme2011]; D4 [Caldeweyher2019].
 _DISPERSION_PROSE = {
     "d3bj":   ("D3(BJ)", "Grimme2010, Grimme2011"),
     "d3zero": ("D3(0)", "Grimme2010"),
@@ -362,7 +341,7 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
 def _paragraph_electronic_structure(cfg: "VibrationConfigView") -> str:
     """Second Methods paragraph: per-mode displaced-geometry SCFs.
     Only emitted when ``cfg.es_mode_selection != "skip"`` -- the
-    L4 step is opt-in (spec § 8)."""
+    L4 step is opt-in."""
     amp = cfg.displacement_amplitude_ang
     n_below = cfg.es_n_homo_below
     n_above = cfg.es_n_lumo_above
@@ -395,7 +374,7 @@ def _paragraph_electronic_structure(cfg: "VibrationConfigView") -> str:
 def _frequency_window_clause(cfg: "VibrationConfigView") -> str:
     """Inline phrase describing the frequency window when one is in
     effect.  Empty string when no window or selector=explicit
-    (window is ignored there per spec § 8.1)."""
+    (window is ignored there)."""
     if cfg.es_mode_selection == "explicit":
         return ""
     fmin = cfg.freq_min_cm1
@@ -454,9 +433,7 @@ def _mode_count(struct: Structure, cfg: "VibrationConfigView"):
         return max(0, 3 * n_free - 6), 6
     frozen = [int(i) for i in (cfg.frozen_indices or [])
               if 0 <= int(i) < len(positions)]
-    # ON THE AXES THE DECK COMPUTES ON -- the view's (`cell.engine_axis_kinds`,
-    # plan § 5w K8): the structure's own stated a periodic structure's count
-    # while the deck removed a cluster's motions (PS-C4).
+    # ON THE AXES THE DECK COMPUTES ON -- the view's (`cell.engine_axis_kinds`).
     n_rigid = len(rigid_motions(
         positions, frozen, cfg.axis_kind,
         cell=getattr(struct, "cell", None)))
@@ -464,25 +441,14 @@ def _mode_count(struct: Structure, cfg: "VibrationConfigView"):
 
 
 def _count_free_atoms(struct: Structure, cfg: "VibrationConfigView") -> int:
-    """Approximate the count of unfrozen atoms by element + index
-    union (residue-name freezing isn't decidable without parsing the
-    PDB).  Returns the total atom count when no freeze rule applies.
-
-    The Methods prose only uses this to phrase "N free atoms, 3N-6
-    modes" -- being off by a few atoms in unusual frozen-residue
-    setups is acceptable since the engine's actual frozen-atom list
-    appears verbatim in the script body (spec § 7)."""
+    """The count of unfrozen atoms: the total less the frozen indices in
+    range.  Returns the total atom count when no atom is frozen."""
     n_total = _count_structure_atoms(struct)
     if n_total == 0:
         return 0
-    # FROZEN ATOMS ARE NAMED BY INDEX, and only by index.  A
-    # freeze-by-ELEMENT arm stood here and was unreachable: the one caller
-    # is the vibration deck, which passes its config view, and that view
-    # supplies `frozen_elements = []` always.  Only the retired
-    # `SpectraConfig` could carry a value, and nothing constructed it
-    # outside tests -- so the arm was exercised by its own fixture and by
-    # nothing else (2026-08-22).  The region store holds indices, and the
-    # deck writes those indices into geomeTRIC's constraints file.
+    # FROZEN ATOMS ARE NAMED BY INDEX, and only by index.  The region store
+    # holds indices, and the deck writes those indices into geomeTRIC's
+    # constraints file.
     if not cfg.frozen_indices:
         return n_total
     frozen: set = set()

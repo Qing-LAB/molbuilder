@@ -34,19 +34,12 @@ from typing import List, Optional, Tuple
 # `config_dir` is the bootstrap that owns these paths and the one creator of a
 # private directory; it is stdlib-only and answers before any config is read,
 # which is what lets the supervisor -- L1, importing nothing of the application
-# it restarts -- reach it.  Four one-line pass-throughs (`run_dir`, `pid_path`,
-# `log_path`, `stacks_path`) and a private `_mkdir_private` stood between this
-# module and those doors until 2026-09-13 (K-D3, I8's shape).
+# it restarts -- reach it.
 from .config_dir import (PRIVATE_FILE_MODE, ensure_private_dir,
                          jupyter_log, jupyter_pidfile,
                           runtime_dir, serve_log, serve_pidfile)
 from .reload_protocol import RELOAD_EXIT_CODE, SUPERVISED_ENV
 
-
-# --------------------------------------------------------------------- #
-#  paths — functions, never module constants (the F4 lesson: a path      #
-#  that depends on the environment is a question, asked when asked)      #
-# --------------------------------------------------------------------- #
 
 # --------------------------------------------------------------------- #
 #  the log roll                                                          #
@@ -56,21 +49,16 @@ def open_private(path: Path, mode: str):
     """``open(path, mode)`` for a file that must be 0600 from its first byte.
 
     PUBLIC, because `configuration.md` § 2.3's writer table already names it as
-    the door for an appended log -- the one shape temp-and-rename cannot serve.
-    It was private while two other surfaces appended to the same logs with a
-    bare `open(..., "a")`, landing 0664 on a file that carries a provider's
-    `client_secret` (A2, I5): a door nobody outside the module can reach is a
-    door the neighbours route around.
+    the door for an appended log -- the one shape temp-and-rename cannot serve:
+    a door nobody outside the module can reach is a door the neighbours route
+    around.
 
     The mode rides the descriptor via ``os.open``, so there is no window where
     the file exists readable with content in it -- the same discipline
     `auth_setup.write_secret_file` uses, for the same reason.
 
     ``mode`` is `open`'s: ``"a"`` / ``"w"`` give a text file (UTF-8),
-    ``"ab"`` / ``"wb"`` bytes.  It returned bytes whatever was asked until
-    2026-09-13, so a caller writing text had to know to say ``"a"`` and
-    then ``.encode()`` -- and a `logging` handler, which writes text, could
-    not use it at all.
+    ``"ab"`` / ``"wb"`` bytes.
     """
     flags = os.O_WRONLY | os.O_CREAT
     flags |= os.O_APPEND if "a" in mode else os.O_TRUNC
@@ -108,8 +96,7 @@ class LogRoll:
         # provider error to `logging.exception` precisely because the `params`
         # dict "on certain misbehaving providers can include the
         # client_secret", and says "don't risk leaking that into the
-        # user-visible response".  The response was protected and this file
-        # was not.  A CAS ticket (`cas.py`), an OAuth code, and the `--cert` /
+        # user-visible response".  A CAS ticket (`cas.py`), an OAuth code, and the `--cert` /
         # `--key` paths in the child argv land here too.
         #
         # Mode on the descriptor at CREATE time, not a chmod afterwards: a
@@ -148,12 +135,9 @@ class LogRoll:
             # The ARCHIVE holds the same bytes, so it gets the same mode.
             # WE CLOSE WHAT WE OPENED.  `gzip.GzipFile` borrows a `fileobj`
             # and documents that it never closes one -- it closes only a file
-            # it opened itself.  Handing it ours and walking away left the
-            # handle with no owner, waiting on the garbage collector, which is
-            # CPython's refcounting rather than a promise.
-            # (A1 also claimed the archive stayed unflushed until then.  That
-            # part is not reproducible on CPython 3.14 -- but the ownership was
-            # wrong either way, which is why this changed.)
+            # it opened itself.  Handing it ours and walking away would leave
+            # the handle with no owner, waiting on the garbage collector, which
+            # is CPython's refcounting rather than a promise.
             with open(self.path, "rb") as fin, \
                     open_private(dst, "wb") as raw, \
                     gzip.GzipFile(fileobj=raw, mode="wb") as fout:
@@ -174,12 +158,7 @@ class LogRoll:
 def read_pidfile(path: Path) -> Optional[int]:
     """The pid a pidfile names, or ``None`` if it cannot be read as one.
 
-    THE ONE READER (`plan.md` § 5n, J16).  These four lines stood in three
-    places -- here keyed by serve port, in `stop_by_pidfile` on a path, and
-    in `molbuilder.jupyter` keyed by serve port -- which is the same shape
-    that was collapsed for the TLS context (J8) and for pid VERIFICATION
-    (`jupyter.pid_state` delegating to `pid_state` here).  The read beside
-    them was left at three copies until 2026-09-15.
+    THE ONE READER (`plan.md` § 5n, J16).
 
     Absent, empty, unreadable and "not a number" all answer ``None``, and
     every caller treats that as *nothing to act on* -- so a missing pidfile
@@ -207,10 +186,7 @@ def unverified_ctx():
     public name fails verification on `127.0.0.1` anyway, which is where
     every one of these probes goes.
 
-    **ONE HOME, because it is a security knob.**  It was built by hand three
-    times: twice in `jupyter.py` (collapsed there on 2026-09-14, with a
-    docstring claiming one home) and once more in `cli.py`'s `serve status`,
-    which that collapse did not reach (`plan.md` § 5n, J8).  Here because
+    **ONE HOME, because it is a security knob** (`plan.md` § 5n, J8).  Here because
     this module is the supervisor's own floor -- stdlib only, imported by
     both callers already, and the serve side is not the notebook's to own.
     """
@@ -463,14 +439,8 @@ def supervise(port: int, child_argv: List[str], *,
             log = jupyter_log(port)
             ensure_private_dir(log.parent, tighten=True)
             # 0600 FROM ITS FIRST BYTE, through the door this module made
-            # public for exactly this.  A bare `open(..., "ab")` stood here
-            # and landed 0664 -- and this log is a SECRET SINK: jupyter-server
-            # prints its own URL with the token in it, so the credential
-            # `jupyter_runtime` is careful to write 0600 was sitting
-            # world-readable beside it (measured 2026-09-14: 14 occurrences
-            # of `token=` in a 0664 file).  It was saved from being worse
-            # only by `LogRoll` having tightened the shared `logs/` dir first
-            # -- an accident of ordering, not a property of this code.
+            # public for exactly this: this log is a SECRET SINK --
+            # jupyter-server prints its own URL with the token in it.
             fh = open_private(log, "ab")
         except OSError as exc:
             _note(roll, f"notebook: could not open its log -- {exc}")
@@ -490,9 +460,7 @@ def supervise(port: int, child_argv: List[str], *,
         """SIGTERM the shepherd; its own handler takes the group with it."""
         live = state["jupyter"]
         if live is None or live.poll() is not None:
-            # SAY IT.  This returned in silence, which is how the reentrancy
-            # bug above stayed invisible: the supervisor had lost its handle,
-            # every stop did nothing, and the log recorded nothing at all.
+            # SAY IT: a lost handle is otherwise invisible in the log.
             _note(roll, "notebook: nothing to stop"
                         if live is None else
                         f"notebook: already gone (pid {live.pid})")

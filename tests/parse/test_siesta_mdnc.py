@@ -16,7 +16,7 @@ BOOKKEEPING, because every mistake in it is silent:
 What the reader makes of a real history -- the file read, its units, a
 frame's geometry and energy paired, the output's frames kept -- is read off a
 run made on the road with the real SIESTA, `tests/test_siesta_flat_run_e2e.py`
-(moved there 2026-10-06, user: "when a test need siesta's output why is it
+(user, 2026-10-06: "when a test need siesta's output why is it
 not part of a e2e test?"; `process/testing.md` § 6).  What stays here is the
 alignment's own rule, on frames built in memory.
 """

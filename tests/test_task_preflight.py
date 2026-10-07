@@ -4,7 +4,7 @@ Contract: ``docs/engines/stages.md`` § 6.6 (eight checks, *"in order, and all
 of it before anything is written"*, each naming what it refused) · § 6.7
 (`shape` is required and never inferred) · ``docs/science/validation.md`` § 4.1.
 
-P2 unit 7. The other four rows are ``task.py``'s and are tested in
+The structural rows are ``task.py``'s and are tested in
 ``test_task_description.py``.  That the codec imports no engine config -- the
 reason ``preflight`` takes ``config_cls`` as a parameter -- is `stages.md`
 § 6's rule and review's to hold; what runs here is the preflight answering
@@ -22,9 +22,7 @@ from molbuilder.validation.task import preflight, refuse_on_error
 
 
 def _task(**kw) -> Task:
-    # ``derive_run``, not a hand-typed id.  This read
-    # ``Run(name="opt", id="opt-0001")`` until 2026-08-09 -- an id nothing
-    # derives, which was legal only while ``run.id`` was a free string.
+    # ``derive_run``, not a hand-typed id: ``run.id`` is derived.
     base = dict(engine="siesta", shape="flat", calculation="optimization",
                 run=derive_run("opt"),
                 structure=StructureRef(source="h2.xyz"))
@@ -98,13 +96,6 @@ def test_the_generator_table_is_an_argument_so_a_test_need_not_invent_one():
 
 # --------------------------------------------------------------------- #
 #  § 6.7 — every engine offers both shapes                              #
-#                                                                        #
-#  This block asserted the opposite until 2026-08-18: that `hierarchical`#
-#  is REFUSED for PySCF, because its ladder ran inside one process and   #
-#  so wrote one directory.  `stages.md` § 1.1a retired that -- a PySCF   #
-#  ladder is N decks and N jobs like SIESTA's -- and § 6.7 with it.      #
-#  The test is not deleted, because the question it asks is still the    #
-#  right one; it is inverted to the answer the contract now gives.       #
 # --------------------------------------------------------------------- #
 
 @pytest.mark.parametrize("engine", ("siesta", "pyscf"))
@@ -114,9 +105,7 @@ def test_both_shapes_are_offered_by_both_engines(engine, shape):
     about the CALCULATION, not about the engine -- and the layer that answers it
     names no engine.
 
-    The PySCF/hierarchical cell was carried by a strict xfail while the code
-    still refused it. It stopped being an exception when the in-script ladder
-    went (§ 1.1a): a PySCF ladder is N decks and N jobs, so there is a directory
+    A PySCF ladder is N decks and N jobs (§ 1.1a), so there is a directory
     per rung to lay out, exactly as there is for SIESTA.
     """
     assert preflight(_task(engine=engine, shape=shape)) == []
@@ -246,7 +235,7 @@ def test_pyscf_gets_the_same_treatment_as_siesta():
 def test_a_fractional_value_for_a_counting_field_is_refused():
     """**The defect the seam walk found.**  ``relax_steps`` is declared
     ``int`` and 100.7 is inside its range, so the bounds row passed it and it
-    reached the deck as ``MD.NumCGsteps 100.7``.  Neither side could see it:
+    would reach the deck as ``MD.Steps 100.7``.  Neither side could see it:
     ``task.py`` has no schema, and ``effective_config`` had no reason to think
     a value might not be one the field can hold."""
     [issue] = preflight(_staged({"relax_steps": 100.7}))

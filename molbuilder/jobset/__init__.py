@@ -7,9 +7,7 @@ JobSet ahead of time and hands it down.  ``prep`` derives it from a
 described calculation on the machine that will run it — so the ranks,
 resources and paths in it are the ones that machine actually has.
 
-**This package re-exports nothing** (W55 B7, 2026-10-03).  It re-exported
-twenty-four names that nobody imported through it, and loading them ran
-the conductor, launch and status for every reader of ``jobset.model`` —
-the floors each module sits on are `execution/architecture.md` § 2.1, and
-a caller imports the module that owns what it wants.
+**This package re-exports nothing**: the floors each module sits on are
+`execution/architecture.md` § 2.1, and a caller imports the module that
+owns what it wants.
 """

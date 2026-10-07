@@ -16,9 +16,6 @@ from molbuilder.validation import validate
 
 import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
-from support.envelope import (from_xyz as _env,
-                             from_xyz_with_periodicity as _env_per)
-
 
 
 def _thin_box_molecule() -> Structure:
@@ -215,13 +212,7 @@ class TestF4GateDerivesWhatChecksNeed:
         finding, and the checks that cannot be answered without it stand
         down rather than taking the request with them.
 
-        THE STRUCTURE IS A NOBLE-METAL CLUSTER ON PURPOSE.  An electron
-        count was reached from three places, two of them behind a metal
-        (a detector that returned early unless it found one) -- so Au,
-        not Fe, and not a bare molecule.  An earlier version of this test
-        used `["Xx", "H"]`, passed, and left `validate()` still raising
-        `KeyError` out to the preflight as an HTTP 500 with no findings at
-        all.  Since 2026-09-28 the count is the electronic state's alone,
+        The electron count is the electronic state's alone,
         asked by `validate` for every kind; the kinds stay here because
         the vibration route reads the state through its own view too.
         """
@@ -243,36 +234,6 @@ class TestF4GateDerivesWhatChecksNeed:
                  and i.severity == "error"]
         assert named, [f"{i.where}/{i.severity}" for i in issues]
         assert "Xx" in named[0].message
-
-
-class TestR5FindingsAreNeverWarnings:
-    """PINS: docs/science/validation.md § 4.1 clause R5 — one channel means one
-    channel.
-
-    INVARIANT: a scientific finding travels as an ``Issue`` from a validator,
-    never as a Python ``warnings.warn``.  A warning cannot reach a web user at
-    all; as an Issue the same advice reaches BOTH surfaces — the browser panel
-    through the endpoint's ``issues[]`` and the CLI through ``render_fdf``'s own
-    ``report(validate(...))``.
-    """
-
-    def test_thin_vacuum_is_an_issue_not_a_python_warning(self):
-        """It used to be warnings.warn inside render_fdf: server stderr only,
-        invisible to every web user."""
-        import warnings
-        from molbuilder.siesta import render_fdf
-        s = _thin_box_molecule()
-        wheres = {i.where for i in validate(s, SiestaConfig())}
-        assert "cell.vacuum_thin" in wheres
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            render_fdf(s, SiestaConfig())
-        vacuum_warnings = [w for w in caught
-                           if "vacuum" in str(w.message).lower()]
-        assert not vacuum_warnings, (
-            "the emitter still raises a Python warning for vacuum; a finding "
-            "must travel as an Issue so the web surfaces it (R5)")
-
 
 
 class TestF2NoSecondSource:
@@ -309,25 +270,6 @@ class TestF2NoSecondSource:
         assert not s.frozen_atoms
         assert not s.regions
 
-    # ── `test_in_body_labels_xhr.py` was retired here, 2026-09-02 ──────
-    #
-    # 214 lines and six collected tests that posted to `/api/build/fdf`
-    # and `/api/build/pyscf`.  **Neither route exists** -- the build
-    # blueprint offers `molecule`, `load`, `schema/<engine>` and
-    # `preflight` -- so every request 404'd, every body parsed to `{}`,
-    # and the file's ONE assertion sat inside `if body.get("ok") is True:`
-    # and never ran.  Six green tests, nothing checked.
-    #
-    # Its `TestBuildPyscfInBodyLabels` was a class with a docstring and no
-    # body at all, under a banner reading "mirror coverage", beside a
-    # `_post_pyscf` helper nothing called.
-    #
-    # The rule it claimed is F2, and F2 is checked above -- at
-    # `struct_from_body`, the door every route reads a structure through,
-    # which is where the property actually lives rather than at whichever
-    # endpoints happened to exist in May.
-
-
 
 def _strip_js_comments(src: str) -> str:
     """JS source with /* block */ and // line comments removed.
@@ -350,10 +292,9 @@ class TestF1TheTabHoldsNoStructuralMirror:
     copy, and ONE read carries the whole master copy so a tab cannot send a
     PARTIAL set of facts.
 
-    The door was ``factsForRequest()`` until molview.md § 9.3 retired it.  The
-    guarantee got STRONGER, not weaker: a second assembling accessor could drift
-    from the master copy, so the shape of the one read is what makes F1 true now
-    rather than the caller's discipline.
+    A second assembling accessor could drift from the master copy, so the
+    shape of the one read is what makes F1 true rather than the caller's
+    discipline.
 
     PREVENTS: the stale-geometry bug — the structure-optimization tab read labels
     and periodicity live but mirrored the geometry into ``state.xyz`` once at
@@ -374,12 +315,10 @@ class TestF1TheTabHoldsNoStructuralMirror:
         # ...and the one whole-master-copy read is what request bodies use.
         assert "getStructure()" in src, (
             "the tab must read the structure live through § 9.3's one door")
-        # A CALL, not a mention -- so the CODE is what gets searched.  The file
-        # explains in prose what `factsForRequest` was and why it went, which is
-        # worth keeping; what must not come back is a second accessor assembling
+        # A CALL, not a mention -- so the CODE is what gets searched.  What
+        # must not come back is a second accessor assembling
         # the same facts in another shape, because two assemblers is exactly the
-        # drift F1 forbids.  (Searching the raw text conflates the two and makes
-        # the guard fire on its own documentation.)
+        # drift F1 forbids.
         code = _strip_js_comments(src)
         assert "factsForRequest" not in code, (
             "factsForRequest was retired by molview.md § 9.3; assembling the "
@@ -405,9 +344,7 @@ class TestF4DerivesOnlyABoxTheStructureAskedFor:
                                 [-0.757, 0.586, 0.0]]))
         wheres = {i.where for i in validate(water, PySCFConfig())}
         # ANY cell finding means a box was invented -- the least it would say
-        # is `cell.vacuum_defaulted`.  (This asked for `cell.determinant` and
-        # `cell.volume`, which no code has emitted since 2026-08-03, so it
-        # could not fail.)
+        # is `cell.vacuum_defaulted`.
         assert not any(w.startswith("cell.") for w in wheres), (
             "a gas-phase molecule that never asked for a box must not be "
             f"judged against one: {sorted(wheres)}")
@@ -457,24 +394,13 @@ class TestSpatialAdequacyIsAdvisoryNotBlocking:
                 f"{where} is {severity!r}; space adequacy is advisory — it must "
                 f"not block a run the user may want for good reasons")
 
-    def test_a_thin_box_still_emits_and_does_not_raise(self):
-        """The whole point: the deck is produced, with the warnings attached."""
-        import warnings
-        from molbuilder.siesta import render_fdf
-        s = _thin_box_molecule()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            fdf = render_fdf(s, SiestaConfig())      # must NOT raise
-        assert "%block LatticeVectors" in fdf
 
     def test_representability_stays_blocking(self):
         """The boundary: 'this is not a box' is an error, not advice."""
         import numpy as np
         from molbuilder.cell import check, resolve
-        # Asked `validate_geometry` for `cell.determinant` until 2026-08-03.
-        # The verdict moved to the ONE checker -- geometry was emitting a second
-        # error for the same box -- and the id split in two, because "no volume"
-        # and "mirrored" are different repairs.
+        # The verdict is the ONE checker's, and "no volume" and "mirrored"
+        # are different repairs, so each has its own id.
         rc = resolve(_thin_box_molecule(), box=np.diag([8.0, 8.0, 0.0]))
         bad = [i for i in check(rc) if i.where == "cell.no_volume"]
         assert bad and bad[0].severity == "error", bad

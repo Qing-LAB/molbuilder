@@ -22,7 +22,7 @@ def _traits(eff) -> Dict[str, str]:
 
     SIESTA conditions its ``.CG`` on the optimizer both rungs use
     (``requires_same = "optimizer"``).  PySCF has one optimizer, geomeTRIC
-    (`engines/pyscf.md` § 3, the ``optimizer`` item retired 2026-09-29), and
+    (`engines/pyscf.md` § 3), and
     its rules file conditions nothing on a trait, so there is no fact to
     report.
     """

@@ -9,9 +9,6 @@ metal's basis and pseudopotential are adequate.  The facts come from
 ``chemistry.analyze_structure`` and the state from
 ``electronic_state.electronic_state`` -- the same two the chemistry card and
 the deck writers read -- so no surface keeps its own parallel logic.
-
-(Split from the flat ``molbuilder/validation.py`` on 2026-06-13; the spin
-checks were rebuilt as the one family on 2026-09-28.)
 """
 
 from __future__ import annotations
@@ -119,11 +116,10 @@ def _check_peptide_protonation(struct: Structure, charge) -> List[Issue]:
 #: decides nothing on its own -- it only bounds WHOM THE HINT BELOW NAMES,
 #: and the hint prints the criterion so a reader can disagree with it.
 #:
-#: Until 2026-08-13 this same number silently ADDED ``lanl2dz`` to a
-#: calculation.  The user retired that: *"there is no point to limit
-#: matching to heavy -- who defines heavy? there is no clear reasoning or
-#: standard ... explicit is better than implicit."*  Kept only as the
-#: threshold of a question, never of an action.
+#: The user's ruling (2026-08-13): *"there is no point to limit matching
+#: to heavy -- who defines heavy? there is no clear reasoning or standard
+#: ... explicit is better than implicit."*  So it is the threshold of a
+#: question, never of an action.
 _ECP_HINT_Z = 36
 
 
@@ -132,14 +128,13 @@ def _check_ecp_declared_for_the_atoms_that_usually_want_one(
         engine_label: str) -> List[Issue]:
     """WARN when a structure carries post-Kr elements and no ECP covers them.
 
-    **This hint asks; it never chooses.**  molbuilder used to pick an ECP
-    for you here.  It no longer does, and the reason it still speaks is the
-    other half of the same ruling: *"you can still have the validation
+    **This hint asks; it never chooses.**  It speaks because of the other
+    half of the user's ruling: *"you can still have the validation
     function to give hints -- that should be confirmed."*
 
     An element is covered by an ``ecp`` name whose ``ecp_atoms`` patterns
     select it -- and by nothing else.  **A def2 basis does NOT cover it by
-    itself**, which this check assumed until 2026-09-29: PySCF's def2 files
+    itself**: PySCF's def2 files
     carry the core potential (``def2-svp.dat``: *Au nelec 60*), but
     ``gto.M`` applies one only when ``ecp`` is given (PySCF 2.14
     ``gto/mole.py``, ``build``; ``check_sanity`` merely warns), and the deck
@@ -202,8 +197,7 @@ def _check_metal_basis_adequacy(struct: Structure, *,
     Fe / Mn / Co / Ni / Cu / Mo etc. and the SCF converges to a
     distorted electronic structure with the wrong d-orbital ordering.
 
-    Recommendations encoded here mirror the spec § Scientific
-    correctness guidance: def2-SVP is the production minimum;
+    Recommendations encoded here: def2-SVP is the production minimum;
     def2-TZVP is publication-quality.  Anything smaller for a
     transition-metal-containing structure -> WARN.
     """
@@ -231,8 +225,7 @@ def _check_metal_basis_adequacy(struct: Structure, *,
              f"electronic structure (wrong d-orbital occupations, "
              f"wrong spin-gap energies).  Recommended minimum for "
              f"transition metals: def2-SVP.  Publication quality: "
-             f"def2-TZVP or cc-pVTZ-DK.  PySCF auto-loads a Stuttgart "
-             f"ECP for second/third-row TMs when ``basis='def2-SVP'``."),
+             f"def2-TZVP or cc-pVTZ-DK."),
             "config.basis",
         )]
     return []
@@ -244,11 +237,7 @@ def check_electronic_state(struct: Structure, cfg, *,
     every kind (`science/chemistry-correctness.md` § 2a, ES3-ES9).
 
     Asked once, by :func:`molbuilder.validation.validate`, of the state the
-    deck will be written from (``electronic_state``).  It replaced three
-    parity checks with three severity rules, four ways of asking "is this
-    closed-shell?", and ``check_open_shell_metal``, which judged a neutral,
-    non-repeating structure whatever the calculation said -- so a formate
-    ion prepared at -1 and a bulk gold lead were both told to go open-shell.
+    deck will be written from (``electronic_state``).
 
     At most one finding per fact (ES9), and the first that holds wins:
 
@@ -302,18 +291,15 @@ def _transport_charge(cfg) -> List[Issue]:
     The one place that reads the STATED charge of a transport config: the
     state's rule makes the junction neutral (``electronic_state._charge``),
     so a value in the template would otherwise be dropped without a word.
-    (It lived in the transport kind's validator until the M6 review, outside
-    the family.)
 
     `engines/transport.md` 2a.7 defers net charge and gating, and the reason
     is the boundary condition: a transport calculation is OPEN, so the
     device's electron number is set by the electrodes' chemical potentials
     and found by the contour integration rather than fixed by the deck --
     and a lead is bulk metal that must stay neutral, because charging it
-    moves the Fermi level every downstream stage is measured against.  The
-    ruling was written before the declaration followed it, so a template can
-    still carry a value -- a hand-edited one written before 2026-09-16, or a
-    caller building the config directly.  Silently neutralising someone's
+    moves the Fermi level every downstream stage is measured against.  A
+    config can still carry a value -- a caller building it directly.
+    Silently neutralising someone's
     charged junction is the defect; saying so is the fix.
     """
     charge = getattr(cfg, "net_charge", None)
@@ -450,8 +436,7 @@ def _spin_findings(struct: Structure, st, engine: str,
     # person's, or the run's the structure came out of -- an echo, so the
     # oxidation state it implies can be checked against the chemistry (info:
     # it labels, it does not count).  Not an implied count: a stated
-    # restricted's 0 on an iron complex is ES9's finding already, and this
-    # said it a second time until the M6 review.
+    # restricted's 0 on an iron complex is ES9's finding already.
     if c.source in ("stated", "recorded") and c.value != FREE:
         from ..chemistry import explain_metal_spin
         for m in st.facts.open_d_metals:

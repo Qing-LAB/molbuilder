@@ -5,11 +5,9 @@ point of config information."*  A person who hits the
 same day) should not have to work out which file to edit -- the first line
 of output says so before anything else runs.
 
-**That question had three candidate answers when this was written and now has
-one** (`configuration.md` § 2.1a): the machine scope lives in the config
-directory, and a `./molbuilder.json` is not read.  The line matters more
-rather than less for it -- the location is no longer the directory you are
-standing in, so it is no longer something a person can infer.
+The machine scope lives in the config directory (`configuration.md` § 2.1a),
+and a `./molbuilder.json` is not read -- the location is not the directory you
+are standing in, so it is not something a person can infer.
 """
 from __future__ import annotations
 
@@ -21,9 +19,8 @@ from click.testing import CliRunner
 def _a_config_root_of_its_own(tmp_path, monkeypatch):
     """A root nothing has written to, so "not found" is this test's answer.
 
-    The first draft of this file had no isolation and reported the repo's
-    real, gitignored dev config -- and `conftest`'s blanket guard only clears
-    the override, leaving the XDG fallback, so the directory is named here.
+    `conftest`'s blanket guard only clears the override, leaving the XDG
+    fallback, so the directory is named here.
     """
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "config-root"))
 
@@ -57,11 +54,3 @@ def test_the_file_is_named_and_marked_found(tmp_path):
     line = _first_line(["machines"])
     assert str(root / "molbuilder.json") in line
     assert line.endswith("(found)")
-
-
-# `test_a_file_in_the_working_directory_is_not_what_it_names` retired 2026-10-02 (W54): a cwd file not being read is `test_config_warnings.py`'s to say, once.
-
-
-# `test_the_line_names_the_same_file_config_provenance_would` retired 2026-10-02 (W54): it repeated `test_the_file_is_named_and_marked_found` -- both read `machine_config_path`.
-
-

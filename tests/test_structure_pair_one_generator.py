@@ -47,11 +47,6 @@ def _a_clock_that_does_not_tick_mid_test(monkeypatch):
                         lambda: "2026-09-05T00:00:00Z")
 
 
-# A per-file fixture writing a machine record with an activation stood here
-# until 2026-10-02 (W54 T15): conftest's `_this_machine_has_been_probed`
-# writes one for every test.
-
-
 def _with_metadata() -> Structure:
     """Metadata applied the way it actually arrives — through the codec's own
     door, which coerces and validates. Assigning the fields directly bypasses
@@ -185,10 +180,7 @@ def test_a_range_and_a_single_frame_are_both_named_xyz():
 
 
 def test_a_saved_range_can_be_opened_again(tmp_path):
-    """The pin that was missing, which is why the naming defect survived: the
-    save test wrote a trajectory and never read its file back.
-
-    A project save is the scientific record (molview.md § 11.3). A record that
+    """A project save is the scientific record (molview.md § 11.3). A record that
     cannot be reopened is not one.
     """
     struct = _with_metadata()
@@ -231,14 +223,6 @@ def test_the_suffix_travels_with_the_pair_rather_than_being_re_derived():
     assert StructureCodec().pair(
         struct, frames=[struct.positions, struct.positions]).suffix == ".xyz", (
         "extended XYZ is a superset of plain XYZ and shares its extension")
-
-
-# `test_every_metadata_field_survives_the_whole_export_pipeline` RETIRED
-# 2026-09-25 into the test below.  It built the browser's envelope as a PYTHON
-# copy of `structureForServer`, which kept passing -- blind -- when that copy
-# drifted from the real JS (its `cell_origin` key had become a retired name the
-# server ignores).  The test below runs the real translators, and now carries
-# its fields: mixed axis kinds, a vacuum, and the stated offset both ways.
 
 
 @pytest.mark.parametrize("stated", [None, [1.0, 1.0, 1.0]],

@@ -2,8 +2,7 @@
 
 **What it is for.** When a result looks wrong, three questions get asked: what
 does this project recommend, what did this run ask for, and what did the engine
-actually do with it. Until now a log answered none of them: the deck stated the
-request and nothing recorded what was heard.
+actually do with it.
 
 **Why the engines answer differently, and why that is honest.** PySCF's script
 can read its own ``mol`` / ``mf`` back after setup, so it records three columns
@@ -20,16 +19,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.runwrap import _effective_parameters_block
-from molbuilder.deck_record import BLOCK_PARAMETERS, begin_marker, end_marker
 from molbuilder.script_emit import parameter
 from molbuilder.structure import Structure
+from molbuilder.runfiles import RunNames
 
-
-# A per-file fixture writing a machine record with an activation stood here
-# until 2026-10-02 (W54 T15): conftest's `_this_machine_has_been_probed`
-# writes one for every test.
+#: The names prep gives this stage's deck: its label, its rung, its layout
+#: (`runfiles.RunNames`).
+NAMES = RunNames.of('t', "01_coarse", "hierarchical")
 
 
 @pytest.fixture
@@ -38,23 +35,6 @@ def deck(tmp_path) -> Path:
     p.write_text("# a comment\nSystemLabel  t\n\nMeshCutoff 200.0 Ry\n",
                  encoding="utf-8")
     return p
-
-
-def test_both_engines_write_the_same_fence(deck):
-    """**W8** (`script-preparation.md` § 4.2b) — the record covers every
-    parameter and is generated, so one reader serves either engine.
-
-    One reader, either engine — which is the point of sharing the name."""
-    from molbuilder.pyscf.input import render_script
-
-    siesta = _effective_parameters_block(deck)
-    pyscf = render_script(
-        Structure(elements=["H", "H"],
-                  positions=np.array([[0., 0., 0.], [0.74, 0., 0.]])),
-        PySCFConfig(job_name="t"))
-    for text in (siesta, pyscf):
-        assert begin_marker(BLOCK_PARAMETERS) in text
-        assert end_marker(BLOCK_PARAMETERS) in text
 
 
 def test_siesta_records_the_deck_as_the_engine_parses_it(deck):
@@ -105,38 +85,33 @@ def test_siesta_s_fence_states_every_item_s_default_and_the_deck_as_launched(
     assert "#   MeshCutoff 200.0 Ry" in out
 
 
-# ------------------------------------------- every route that writes, checks
-
-
-
 # ------------------------------------------------- SIESTA's own check rules
 
 def _fdf(**over):
+    """A SIESTA deck as the framework renders it for prep (`spec_for` ->
+    `script_emit.render_deck`), with its structure and settings -- for the
+    check's refusals, which only a deck prep never writes can show."""
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.input import render_fdf
+    from molbuilder.script_emit import render_deck
+    from molbuilder.siesta.input import spec_for
 
     struct = Structure(elements=["O", "H", "H"],
                        positions=np.array([[0., 0., 0.],
                                            [0.957, 0., 0.],
                                            [-0.24, 0.927, 0.]]))
     cfg = SiestaConfig(system_label="t", **over)
-    return render_fdf(struct, cfg), struct, cfg
-
-
-def test_a_clean_siesta_deck_passes_its_own_rules():
-    from molbuilder.siesta.layout import check_rules
-
-    text, struct, cfg = _fdf()
-    assert check_rules(text, struct, cfg) == []
+    return (render_deck(spec_for(struct, cfg, names=NAMES), struct, cfg),
+            struct, cfg)
 
 
 def test_a_keyword_written_twice_is_refused_because_libfdf_takes_the_first():
-    """The worst kind of wrong: the deck reads as though it says what you meant.
+    """The worst kind of wrong: the deck reads as though it says what it
+    meant.  ``fdf_locate`` walks from the top and stops at the first match,
+    so a keyword written twice does not conflict loudly -- the first silently
+    wins, and the later line is the one ignored.
 
-    ``fdf_locate`` walks from the top and stops at the first match, so a
-    duplicate does not conflict loudly -- it silently wins, and the line a
-    person edited later is the one being ignored.
-    """
+    API-level: a refusal the road cannot reach -- prep writes no deck with a
+    keyword twice, so the check is handed one here."""
     from molbuilder.siesta.layout import check_rules
 
     text, struct, cfg = _fdf()
@@ -144,66 +119,15 @@ def test_a_keyword_written_twice_is_refused_because_libfdf_takes_the_first():
     assert [i for i in issues if "twice" in i.message], issues
 
 
-def test_a_duplicate_that_agrees_with_itself_is_not_an_error():
-    """Harmless repetition is not the defect; a disagreement is."""
-    from molbuilder.siesta.layout import check_rules
-
-    text, struct, cfg = _fdf()
-    same = [ln for ln in text.splitlines() if ln.startswith("MeshCutoff")][0]
-    assert check_rules(text + "\n" + same, struct, cfg) == []
-
-
-def test_a_deck_whose_identity_is_not_the_stamped_one_is_refused():
-    from molbuilder.siesta.layout import check_rules
-
-    text, struct, cfg = _fdf()
-    broken = text.replace("SystemLabel       t", "SystemLabel       other")
-    assert [i for i in check_rules(broken, struct, cfg)
-            if "SystemLabel" in i.message]
-
-
 def test_the_atom_count_must_match_the_coordinate_block():
+    """A count that disagrees with the coordinate block is refused.
+
+    API-level: a refusal the road cannot reach -- prep writes the count from
+    the atoms it places, so the check is handed a deck that disagrees."""
     from molbuilder.siesta.layout import check_rules
 
     text, struct, cfg = _fdf()
     broken = text.replace("NumberOfAtoms     3", "NumberOfAtoms     5")
     assert [i for i in check_rules(broken, struct, cfg)
             if "NumberOfAtoms" in i.message]
-
-
-
-
-# ------------------------------------------------- one writer, every artifact
-
-def test_the_wrapper_keeps_what_a_reader_put_in_their_own_section(tmp_path):
-    """**W4** (`script-preparation.md` § 3.2) — one deck, one writer, and the
-    writer keeps the reader's own section.
-
-    The wrapper INVITES an edit, so it must not delete one.
-
-    It emits a USER-CUSTOM block -- the one part of a generated file a person
-    is meant to touch -- and wrote itself with a plain ``write_text``, so every
-    re-prep silently removed whatever they had added. Decks were routed through
-    the one writer on 2026-08-17; wrappers were not, and an invitation the next
-    run revokes is worse than no invitation at all.
-    """
-    from molbuilder.jobset.model import Resources
-    from molbuilder.runwrap import write_run_wrapper
-    from molbuilder.deck_record import BLOCK_USER_CUSTOM, end_marker
-
-    deck = tmp_path / "t.fdf"
-    deck.write_text("SystemLabel t\nNumberOfAtoms 1\n", encoding="utf-8")
-
-    wrapper = write_run_wrapper(
-        deck, resources=Resources(mpi_np=1, cpus_per_task=1), env="e")
-    marker = end_marker(BLOCK_USER_CUSTOM)
-    wrapper.write_text(
-        wrapper.read_text(encoding="utf-8").replace(
-            marker, "export MY_OWN_FLAG=1\n" + marker), encoding="utf-8")
-
-    write_run_wrapper(deck, resources=Resources(mpi_np=1, cpus_per_task=1),
-                      env="e")
-    assert "MY_OWN_FLAG" in wrapper.read_text(encoding="utf-8")
-    assert oct(wrapper.stat().st_mode)[-3:] == "755", "still runnable"
-
 

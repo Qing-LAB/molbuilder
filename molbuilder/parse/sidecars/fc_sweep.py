@@ -5,9 +5,8 @@ question); the record's own shape is `spectra/displacement_sweep.py`'s, which
 writes it (`engines/vibration.md` § 5.9).
 
 `/api/results/dir` asks the registry what reads each file and offers only what
-something reads, so without this reader the sweep's record sat at the
-calculation root unoffered -- measured on the first road run, 2026-09-28.  It
-is the transport record's twin (`sidecars/transport.py`): it claims a file by
+something reads, so without this reader the sweep's record would sit at the
+calculation root unoffered.  It is the transport record's twin (`sidecars/transport.py`): it claims a file by
 its role in the catalogue AND by the schema its writer stamps, never by the
 suffix alone, so a record of another version is refused rather than misread.
 """

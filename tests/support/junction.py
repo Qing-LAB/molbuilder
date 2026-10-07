@@ -1,8 +1,7 @@
 """A known Au-BDT-Au junction, built in source.
 
-WHY THIS EXISTS.  Tests used to reach for ``tests/data/au_bdt_au.*`` and for real
-directories under ``projects/`` as though they were ground truth.  They are not:
-a checked-in artefact is an unversioned assumption.  It was written by whatever
+WHY THIS EXISTS.  A checked-in artefact or a real directory under
+``projects/`` is not ground truth: it is an unversioned assumption.  It was written by whatever
 the code did on the day it was captured, nothing re-checks it, and when the
 format moves it goes quietly stale -- so a test built on one can pass while
 describing a file nobody would produce today, or fail for reasons that have
@@ -18,16 +17,11 @@ It is current by construction, it is readable in source -- twelve lines and you
 can count the atoms -- and a test written on it exercises the real
 write-then-read path instead of trusting a snapshot of one.
 
-Used by ``tests/test_fdf_generator_roundtrip.py``, ``tests/test_script_emit.py``
-and ``tests/test_no_tests_read_the_projects_tree.py`` (the structure), and its
+Used by ``tests/test_script_emit.py`` and
+``tests/test_no_tests_read_the_projects_tree.py`` (the structure), and its
 spectrum sidecar by ``tests/parse/test_sidecars.py`` and
 ``tests/parse/test_round2_fixes.py`` (written by our writer, read back by our
 reader).
-
-*(It also named ``tests/parse/dirs/test_bundle.py`` until 2026-09-06.  That
-file does not exist and neither does a bundle DirParser -- the pointer
-outlived both, which is how ``parse/dirs/_assembler_helpers`` came to look
-like it served something.)*
 """
 from __future__ import annotations
 
@@ -154,11 +148,3 @@ def spectra_sidecar(path):
     )
     dump_spectra_json(results, path)
     return path
-
-
-# `run_dir` -- a deck rendered into a bare folder -- stood here until
-# 2026-10-04, for the one test that read a run's labels by searching
-# that folder; a run's labels are its own deck's, through the run door
-# (`runs.declared`, plan B12).  `xv_file`, a SIESTA `.XV` written by a
-# hand-rolled writer, went the same day: a `.XV` is SIESTA's, and a test
-# reads one a run made on the road wrote (`tests/test_siesta_flat_run_e2e.py`).

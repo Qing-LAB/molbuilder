@@ -1,9 +1,9 @@
 """The spectra atom-index contract — `web/spectra.md` § 5's partition rule.
 
 Invariants 1-2 (the free_atom_idxs partition + eigenvector length) are enforced
-by ``SpectraResults.__post_init__``; these pin that enforcement, including the
-out-of-range gap that a count-only check used to miss.  Invariant 3 (the frontend
-``free_atom_idxs`` scatter) is a JS test (``test_spectra_scatter_js.py``);
+by ``SpectraResults.__post_init__``; these pin that enforcement, including an
+out-of-range index that a count-only check would miss.  Invariant 3 (the frontend
+``free_atom_idxs`` scatter) is the frontend's;
 invariant 4 (1-based display via ``atomIndexModel``) is the shared _atom-index
 rule and is not spectra-specific.
 """
@@ -45,8 +45,8 @@ def test_valid_partition_with_frozen_atoms_constructs():
 
 
 def test_out_of_range_free_index_raises():
-    # free=[0,1,5], frozen=[], n=3: count 3==3 + no overlap (the OLD check
-    # passed), but 5 is out of range -> the true partition check must catch it.
+    # free=[0,1,5], frozen=[], n=3: count 3==3 + no overlap, but 5 is out of
+    # range -> the partition check must catch it.
     with pytest.raises(ValueError, match="partition"):
         _results(n_atoms_total=3, free=[0, 1, 5], frozen=[], n_free_rows=3)
 

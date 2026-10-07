@@ -1,12 +1,9 @@
 """Task Setup tab — the page renders, and it renders the design's shape.
 
 `docs/web/task-setup.md` is the contract. This pins the parts a reader of that
-document would expect to find on the page, plus the two properties that are
-easy to lose in a later edit:
+document would expect to find on the page, plus a property that is easy to
+lose in a later edit:
 
-  * the tab **writes nothing today** — Save is disabled and says why. A future
-    change that wires saving has to change this test deliberately, which is the
-    point: enabling a write path by accident is the failure worth catching.
   * the tab sheet is **layer 5** of `docs/web/ui-contract.md` § 1 — composition
     only, every value a token. A raw hex colour or a raw px/rem spacing value in
     `task-setup/style.css` is the drift that made the older tab sheets
@@ -73,11 +70,6 @@ def test_the_page_loads_the_shared_stylesheet_layers(web_client):
 
 
 # --------------------------------------------------------------------- #
-#  The stylesheet is composition only                                   #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
 #  The controller                                                       #
 # --------------------------------------------------------------------- #
 
@@ -107,9 +99,7 @@ def _fresh_calc_dir(root):
     outside it, which is the guard working, not a test problem.
 
     Takes the root, so the tree is wherever the caller's
-    `isolated_projects_root` put it.  It was
-    `ROOT / "projects/_t_handover/..."` until 2026-09-06 -- inside the
-    developer's own data, which a crashed run left behind.
+    `isolated_projects_root` put it.
     """
     d = root / "handover/optimization/probe_calc"
     d.mkdir(parents=True, exist_ok=True)
@@ -238,21 +228,14 @@ def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root):
 
 
 # --------------------------------------------------------------------- #
-#  T3 — the stage table edits                                            #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
 #  T4 machine rows · T5 what has run                                     #
 # --------------------------------------------------------------------- #
 
 def _row_badge(name, points, machine):
     """What the machine card says a row IS — the real source, driven.
 
-    A regex over `viewer.js` stood here until 2026-09-01 and broke on a
-    refactor that kept the rule exactly ("the row's length no longer decides
-    what it is" — it still did). A source grep pins a spelling; this pins the
-    behaviour, which is the thing the contract states.
+    A source grep pins a spelling; this pins the behaviour, which is the
+    thing the contract states.
     """
     import json as _json
     import shutil
@@ -290,19 +273,14 @@ def test_one_point_is_the_trials_value_and_several_a_measurement():
 
 
 def test_a_ONE_POINT_MACHINE_row_is_a_trial_not_a_decision():
-    """**Replaced the test that asserted the opposite** (2026-09-02).
-
-    It read `test_length_decides_for_a_MACHINE_row_too` and pinned the
-    design that lasted one day: *one point is a decision on every axis*.
-    Narrowing a `bench` row to say what the RUN uses destroyed the plan to
-    measure, so the two were separated -- `mpi_np: [8]` is *measure eight*,
-    one trial, and `prep run` never reads it (`stages.md` § 6.8).  What the
-    run uses is `execution`, asked in the rung's own tab.
+    """`mpi_np: [8]` is *measure eight*, one trial, and `prep run` never
+    reads it (`stages.md` § 6.8).  What the run uses is `execution`, asked
+    in the rung's own tab.
 
     The measure card said "chosen · 1 point" beside such a row, which told
     a person their run was decided by a row the run does not consult.
 
-    The `machine` KIND survives, and that is deliberate: it tints the row,
+    The `machine` KIND is deliberate: it tints the row,
     because which kind of setting this is stays worth seeing."""
     one = _row_badge("mpi_np", [8], True)
     assert one["verdict"] == "measured \u00b7 1 point", (
@@ -511,10 +489,6 @@ def test_the_structure_pair_is_not_reported_as_engine_state():
             (base / n).write_text("x")
         assert warm_files_present(base, "slab", "siesta") == [], (
             "the hand-over's own files are reported as engine warm files")
-        # Its two engine-file halves -- a `slab.XV` and a bare `slab.xyz`
-        # written by hand to stand for a run -- retired 2026-10-04 (user:
-        # "any fucking faking tests should be retired"; `process/testing.md`
-        # § 6).
 
 
 from conftest import write_pseudos as _pseudos_for
@@ -523,14 +497,9 @@ from conftest import write_pseudos as _pseudos_for
 def _child_env_with_a_config(tmp_path):
     """Environment for a spawned `molbuilder`, with a machine config of its own.
 
-    These two tests run the real CLI in a SUBPROCESS from the repo root, and
-    it used to pick up a ``./molbuilder.json`` sitting there -- the developer's
-    own file, which no test had put under control.  That is proving something
-    with found state, and it ended the moment the machine config stopped being
-    looked for in the working directory (`configuration.md` § 2.1a).
-
-    So the child is given a root of its own, holding the one thing the render
-    requires: a probed record, carrying the activation the generator reads
+    The tests below run the real CLI in a SUBPROCESS, so the child is given
+    a root of its own, holding the one thing the render requires: a probed
+    record, carrying the activation the generator reads
     (`configuration.md` § 4).  ``monkeypatch`` cannot reach across a
     process boundary, which is why the environment is built here rather than
     set on the parent.
@@ -555,11 +524,6 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
     That is what the four shape-checks could not see, and why this compares the
     DECK's own lattice against the structure that started the chain rather than
     checking that each step returned `ok`.
-
-    Written 2026-08-17 because § 7 had just been rewritten to claim the chain
-    was verified — and it was, by hand, in a browser. A claim in a contract
-    that rests on somebody having driven it once is the same false assurance
-    the section above it retracts.
     """
     import json as _json, subprocess, sys
     d = _fresh_calc_dir(isolated_projects_root)
@@ -634,9 +598,8 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
         # atoms in the same order, placed by the one rule
         # (`model/structure-periodicity.md` § 6.0) -- the design coordinates
         # plus the engine offset -- and the deck's own record states that
-        # offset.  Until 2026-09-25 this compared them EQUAL, because a slab
-        # authored at the origin was written untranslated; now "nothing lost"
-        # means one translation for every atom, and the one the deck says.
+        # offset.  "Nothing lost" means one translation for every atom, and
+        # the one the deck says.
         import numpy as _np
         from molbuilder import cell as _cell
         from molbuilder.deck_record import extract_engine_offset
@@ -891,37 +854,13 @@ def test_both_pickers_payloads_carry_the_value_shape(web_client):
     assert citems["relax_force_tol"]["default"] == 0.02
 
 
-# RETIRED 2026-09-03 — test_the_viewer_dispatches_widgets_on_the_shape_not
-# _the_look.  It opened "Source-text pins (this page has no node harness --
-# the live browser walk covers behavior)", which is the admission that decides
-# it (`process/testing.md` § 3a.1).  Its three claims, and where each went:
-#
-#   * the widget rule (`legalValues`) -- it counted call sites,
-#     `src.count("legalValues(") >= 3`.  A count cannot tell a call that runs
-#     from one moved into a branch nothing reaches.  Now driven:
-#     test_task_setup_cell_types_e2e.py::test_a_bool_column_is_a_chooser_not
-#     _a_box, mutation-verified against legalValues().
-#   * the cell READER chosen by declared type -- already driven under node in
-#     test_task_setup_cell_readers_js.py::test_a_cell_reads_as_its_declared
-#     _type, so the pin was a duplicate.
-#   * "a new row is born at its value in force, never the literal 1" -- an
-#     absence assertion (`'addPoint(sel.value, "1")' not in src`), which
-#     passes on any spelling of the same bug.  Not replaced: it states no
-#     rule any document carries, and a test may not invent one.
-# `test_every_declared_type_has_a_cell_reader` moved to
-# `tests/test_task_setup_cell_readers_js.py` on 2026-08-25, with the table
-# it pins: the readers left `viewer.js` for `task-setup/cell-readers.js` so
-# a test could run them instead of grepping for their names.  Key-existence
-# was all this file could ever check -- `int3: (t) => t` would have passed.
-
 def test_another_kinds_items_stay_out_of_the_optimization_surfaces(
         web_client):
     """`template.md` § 6.3's sibling rule at the two web doors
     (spectra-migration P0, 2026-08-20): the vibration items leaked into
     the Build form and the column picker the day their catalogue rows
     landed -- an item another calculation kind owns stays out by its own
-    `calculations` declaration until the vibration surface threads the
-    real kind."""
+    `calculations` declaration."""
     import json as _json
     schema = _json.dumps(
         web_client.get("/api/build/schema/pyscf"
@@ -1011,12 +950,6 @@ class TestTheMachineChoiceIsAskedNotGuessed:
         # and it says the choice is required, in the card the design uses
         assert 'id="ts-target-needs"' in body
 
-        # The `[hidden]`-precedence guard this used to pin by name was
-        # covered by `test_css_hidden_attribute_audit.py`, which DERIVED the
-        # ids JS toggles (58 of them, `#ts-target-state` among them) and
-        # required a guard for each -- until that audit was retired on
-        # 2026-09-10 (`082ba979`).  So the guard is UNTESTED now, and held by
-        # review (process/code-audit.md § 3.1).
 
     def test_the_route_lists_the_records_and_says_when_a_choice_is_required(
             self, web_client, tmp_path, monkeypatch):
@@ -1064,20 +997,6 @@ class TestTheMachineChoiceIsAskedNotGuessed:
         assert sol["readable"] is False
         assert "probe --write --name sol" in sol["summary"]
 
-    # `test_the_taught_command_carries_the_chosen_target` stood here and read
-    # `viewer.js` as text: `"_targetArg()" in src`, and absent from the 80
-    # characters after "jobset launch".  Both were true of the source while
-    # the page was broken -- choosing a machine never re-rendered the block,
-    # so the line a person copied carried no `--target` at all.  Driven now,
-    # against a real named record, by test_task_setup_prep_e2e.py::
-    # test_choosing_a_machine_puts_it_in_the_command_you_copy.
-
-
-class TestEveryStageOffersBothThingsYouCanDoWithIt:
-    """`task-setup.md` § 11: a stage is either something to MEASURE or
-    something to RUN, and the page hands over the command for each rather
-    than choosing between them."""
-
 
 class TestTheTabShowsWhatAPrepWouldResolve:
     """`preparing-for-another-machine.md` § 5: the tab shows what `prep`
@@ -1093,10 +1012,9 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         b.mkdir(parents=True)
         monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
         monkeypatch.chdir(tmp_path)
-        # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-        # working-directory step, which is gone (configuration.md § 2.1a) --
-        # without naming the directory the write lands in a file nothing
-        # opens, and the test passes having configured nothing.
+        # THE SANDBOX IS THE CONFIG ROOT: without naming the directory the
+        # write lands in a file nothing opens, and the test passes having
+        # configured nothing.
         monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
         # ...and the box is probed: this moves the machine scope, and
         # prep refuses without a record (`running-a-job.md` § 3.1).
@@ -1104,7 +1022,7 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         write_machine_record()
         # ...and a NAMED record beside it, so which machine a fresh folder is
         # for is not decided yet: the card shows no queues, and is not hidden
-        # (W54 C10 -- it answered `ok: false` here).
+        # (W54 C10).
         from molbuilder.scheduler import (Environment,
                                           named_environment_path,
                                           write_environment)
@@ -1127,31 +1045,6 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         assert {s["scope"] for s in r["sources"]} == {"machine"}
         assert "launch.mode" in r["effective"]
         assert "from" in r["effective"]["launch.mode"]
-
-    # `test_a_remote_target_is_warned_and_a_local_one_is_not` and
-    # `test_the_warning_is_the_same_rule_the_cli_uses` were RETIRED
-    # 2026-08-25 with the warning they pinned.  Both asserted § 3's rule as
-    # it read before 2026-08-24 -- *"a preamble is a preference, so it stays
-    # local"* -- which that section retracted in a boxed note the same day:
-    # the bootstrap is a fact about the machine and rides its probed record,
-    # and `runwrap` reads the record and nothing else.  The warning fired on
-    # every named-target prep regardless, because it asked the local config
-    # cascade a question the target's record had already answered.  A test
-    # that keeps a retracted rule alive is worse than no test: it makes
-    # deleting the dead code look like a regression.
-
-    # `test_the_provenance_list_uses_the_pages_facts_component` stood here
-    # and asserted the string `'class="ts-facts" id="ts-resolved"'` appeared
-    # in the template -- that someone typed two attributes in one order.  It
-    # said nothing about whether `loadResolved()` runs, reaches the route, or
-    # writes a row.  The other half is now driven:
-    # test_task_setup_prep_e2e.py::
-    # test_choosing_a_machine_shows_what_a_prep_would_resolve reads the
-    # rendered block and checks the preamble's value AND the file it came
-    # from.  The `[hidden]` guard belonged to
-    # test_css_hidden_attribute_audit.py, which derived `#ts-resolved` with
-    # the other 57 -- retired on 2026-09-10 (`082ba979`), so the guard is
-    # untested now and held by review (process/code-audit.md § 3.1).
 
 
 # --------------------------------------------------------------------- #
@@ -1181,8 +1074,6 @@ def test_transport_describe_refuses_a_citation_the_tree_lacks(web_client):
 def test_describe_attempt_stays_inside_the_tree(web_client):
     r = web_client.get("/api/transport/describe_attempt?path=../../etc")
     assert r.status_code == 400
-
-
 
 
 def test_the_sheet_writes_no_raw_palette_colour():
@@ -1282,13 +1173,6 @@ def test_every_page_class_in_the_markup_is_styled_somewhere():
         f"and says so nowhere.")
 
 
-# `test_every_command_the_page_teaches_is_a_REAL_cli_verb` retired
-# 2026-10-03 with the page's own command lines (W55 B4): the page composes
-# none, and the lines it shows -- the terminal's composer's,
-# `/api/task-setup/commands` -- are typed back down the road
-# (`test_printed_commands_run.py`).
-
-
 # --------------------------------------------------------------------- #
 #  The folder door -- Task setup's one per-directory answer              #
 # --------------------------------------------------------------------- #
@@ -1334,10 +1218,6 @@ class TestTheFolderDoor:
         from molbuilder.web.app import create_app
         return dest, create_app(config={}).test_client()
 
-    # `test_the_door_answers_what_the_four_calls_answer` retired 2026-10-03
-    # with the three routes it compared the folder answer to
-    # (`/template-values`, `/resolved`, `/attempts`): no page called them,
-    # and the folder answer is the one door left.
 
     def test_the_answer_names_the_folder_it_is_about(self, described):
         """The half a reset list cannot cover.

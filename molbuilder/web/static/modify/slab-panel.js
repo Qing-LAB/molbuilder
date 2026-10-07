@@ -7,13 +7,8 @@
  * Called by: modify/selection-bootstrap.js, which mounts the viewer and hands
  *           it here.  Nothing self-starts.
  *
- * IT IS THE ONLY SLAB BUILDER.  The Junction panel it was written beside is
- * gone (§ 3.4, done 2026-08-31) along with its half of viewer.js and the
- * symmetric-electrode route, and the per-side `/api/modify/electrode` route
- * went the day after (§ 3.4a) once nothing called it.  This file never shared
- * code with any of them -- it asks `/api/modify/meta` for its menu rather than
- * reading globals that panel stashed -- which is why the removals were
- * deletions and not untanglings.
+ * IT IS THE ONLY SLAB BUILDER.  It asks `/api/modify/meta` for its menu
+ * rather than reading globals.
  *
  * IT READS NO SELECTION.  `dx`, `dy` and the starting z are measured from the
  * 3-D window's own origin, so the same numbers place the same slab whatever
@@ -29,8 +24,6 @@ const GROWS = [["+z", "+z (up)"], ["-z", "-z (down)"]];
 const REGISTRY_NAMES = ["A", "B", "C"];
 
 //: WHICH WAY THE REGISTRY CYCLE IS WALKED, read along the growth direction.
-//  Replaced "Stacking below it" (user, 2026-09-07), which named downward
-//  behaviour only and so had to hide itself whenever the slab grew up.
 const SEQUENCES = ["ABC", "ACB"];
 
 //: The walk written out from where it actually starts.  Starting on B the
@@ -177,10 +170,8 @@ export function init(viewer) {
         renderSequence();
         renderOrthogonalChoice();
         renderPeriodNote();
-        // AND THE SPACING IS THE SURFACE'S.  It used to print d(111) and
-        // d(100) side by side whatever was selected, so the plane did not
-        // change it; now the note answers for THIS surface and has to be
-        // re-asked when the surface changes.
+        // AND THE SPACING IS THE SURFACE'S: the note answers for THIS surface
+        // and has to be re-asked when the surface changes.
         onLatticeInputsChanged();
     }
 
@@ -211,8 +202,7 @@ export function init(viewer) {
     /* THE CELL SHAPE IS NOT A FREE SWITCH (junction-cell.md § 2b): ASE builds
      * a non-orthogonal cell for fcc(111) only.  Where the surface allows one
      * shape, the box is set to it and disabled -- offering the other is
-     * offering a slab that cannot be built, and the box starting unchecked is
-     * exactly how a default (100) request came back a 400.
+     * offering a slab that cannot be built.
      *
      * Which shapes exist is the server's fact (`orthogonal_choices`), never a
      * copy here.  A plane the server said nothing about leaves the box alone
@@ -240,12 +230,6 @@ export function init(viewer) {
         }
     }
 
-    /* THERE IS NO `onGrowChanged`.  The row it used to hide -- "Stacking below
-     * it" -- was the one control whose meaning depended on the growth
-     * direction, and hiding it was how that dependency was managed.  With the
-     * walk stated outright, `grow` says which side of `start_z` the slab
-     * occupies and nothing else, so no other control has to react to it. */
-
     /* A seam only continues the crystal when the layer count is a whole
      * multiple of the stacking period (junction-cell.md § 3.1).  The period
      * is the server's; the arithmetic is one modulo and stays here. */
@@ -267,27 +251,9 @@ export function init(viewer) {
         note.hidden = false;
     }
 
-    /* WHAT THE TYPED `a` MEANS, as the cross-check § 3.3 describes: the
-     * derived spacings and how far the value sits from each literature
-     * reference.  The one mistake anyone makes is picking a SECOND-shell
-     * pair, which reads a factor 1.414 high and lands ~41% out -- where this
-     * line says so at once. */
-    /* THE CRYSTALLOGRAPHY IS THE SERVER'S, and this asks for it.
-     *
-     * These three numbers were computed here, as `a/sqrt(3)`, `a/2` and
-     * `a/sqrt(2)` -- the only live implementation anywhere of the § 2
-     * spacing table, in the layer that should not know it.  It was also
-     * short a row: `d(110) = a/(2*sqrt(2))` was missing, and both spacings
-     * were printed whatever surface was selected, so a person building
-     * fcc(110) was shown two numbers and not the 1.4419 Å the Cell page
-     * asks them to type.  `/api/modify/spacings` derives all of them from
-     * one rule and answers for THE SELECTED plane.
-     *
-     * The "% from reference" half went too: `blueprints/modify.py` computes
-     * exactly that subtraction for `/lattice-from-run`, and says in a
-     * comment that it lives there because "two homes for one subtraction is
-     * one home too many". This was the second home, printed beside the
-     * first on the same gesture.
+    /* THE CRYSTALLOGRAPHY IS THE SERVER'S, and this asks for it:
+     * `/api/modify/spacings` derives the spacings from one rule and answers
+     * for THE SELECTED plane.
      *
      * Stale answers cannot land: each request carries a ticket and only the
      * newest one is allowed to write, so typing quickly cannot leave an
@@ -326,10 +292,8 @@ export function init(viewer) {
 
     /* ── The lattice reference (§ 3.3) ───────────────────────────────────
      *
-     * THE BOX IS NEVER BLANK.  It started empty while the server, given no
-     * value, used the experimental constant anyway -- so the panel showed
-     * nothing for a number it was certainly going to build with (user,
-     * 2026-09-07).  Picking a reference fills the box; the box is still
+     * THE BOX IS NEVER BLANK (user, 2026-09-07): the panel shows the number
+     * it will build with.  Picking a reference fills the box; the box is still
      * typeable, and typing in it selects "Custom", so the two can never
      * disagree about what will be sent.
      */
@@ -382,15 +346,7 @@ export function init(viewer) {
             && notify.show({ id: "slab-lattice-from-run", level, message });
 
         /* ASK FOR THE FILE, rather than reading whatever the sidebar happens
-         * to have selected (user, 2026-08-31).
-         *
-         * This called `projects.shared().file` -- a method that has never
-         * existed on that module.  Guarded by `&&`, so it was `undefined` on
-         * every press and the button always took the refusal branch below:
-         * the whole feature was unreachable, and no action a person could take
-         * made it work.
-         *
-         * The picker is also the better question.  The sidebar's current
+         * to have selected (user, 2026-08-31).  The sidebar's current
          * selection is implicit state -- it depends on what you last clicked,
          * possibly for an unrelated reason -- where a dialog asks the thing
          * the button is about.  `mode: "file"` is the tree picker's own
@@ -432,9 +388,6 @@ export function init(viewer) {
         onLatticeInputsChanged();
         // THE NOTES ARE FINDINGS, one row each at its own severity, drawn by
         // the one renderer under the box (`science/validation.md` § 4.1 R2a).
-        // They were joined into this message in the worst one's tone until
-        // 2026-09-27, so "this is probably not bulk" read as one clause of a
-        // run-on line beside the reassuring comparisons (plan W19).
         renderFindings(j.notes || [], { panel: $("slab-lattice-findings") });
         say("info",
             `${j.element}${j.n_atoms} from ${j.source}: a = ${j.a.toFixed(4)} Å`);
@@ -468,11 +421,7 @@ export function init(viewer) {
         const a = num("slab-a", NaN);
         if (Number.isFinite(a) && a > 0) body.lattice_constant = a;
         /* THROUGH THE PAGE'S ONE OP WRAPPER (viewer.js `runOp`), which owns
-           the in-flight lock and the edit-status line.  This awaited
-           `applyOp` directly and DISCARDED the answer -- and `applyOp`
-           returns null both when another edit is in flight and when a
-           precondition is refused, so a built slab and a refused one were
-           indistinguishable, with no button disabled in between. */
+           the in-flight lock and the edit-status line. */
         await runOp("/api/modify/slab", body, "Add slab");
     }
 

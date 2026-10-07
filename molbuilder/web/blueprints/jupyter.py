@@ -1,10 +1,6 @@
 """The Notebook tab's control surface: start, stop, and where to point a frame.
 
 Contract: `docs/web/jupyter.md`; the exposure rule is that document's § 6.
-(It said `access-control.md` § 6 until 2026-09-14, which is about
-`/api/admin/reload` and contains no mention of a notebook -- the rule that
-actually ships, including the loopback clause below, was only ever in this
-docstring.)
 
 **WHY THESE ROUTES ARE ADMIN-ONLY, and why they can be absent entirely.**
 A live kernel is arbitrary code execution as the account running the server --
@@ -15,20 +11,10 @@ direction.  So it follows the same rule, and for the same reason:
   (§ 3.4), so without one there is nobody to start or stop it, and a button
   that cannot work is worse than an absent one.
 
-  **ONE GATE, ASKED PER REQUEST** (`plan.md` § 5n, J3).  There were two until
-  2026-09-15.  Registration itself sat behind the SUPERVISED env var, read at
-  import -- and that variable means *somebody can respawn me*, which
-  `serve foreground` also sets while writing no pidfile and installing no
-  handlers.  So `_supervised()` was added per request to ask the real
-  question, and the module ended up with two gates on two different facts for
-  one rule.  The import-time one had a second cost: it made the app's URL MAP
-  depend on the environment `create_app()` happened to run in, so no test
-  could reach these routes at all.
-
-  The routes are therefore always registered, and `_refuse()` answers **404**
-  when `_supervised()` says no.  The same thing a client sees, decided when
-  the answer is knowable -- and now with a sentence saying which run mode
-  this is, instead of Flask's bare HTML page.
+  **ONE GATE, ASKED PER REQUEST** (`plan.md` § 5n, J3).  The routes are
+  always registered, and `_refuse()` answers **404** when `_supervised()`
+  says no -- with a sentence saying which run mode this is, instead of
+  Flask's bare HTML page.
 * **the `admin` list decides who may press it.**  Signing in is not enough:
   reaching a session already required being in a provider's ``allowed_users``,
   but *running code on the server* is the privilege § 5 separates.
@@ -55,15 +41,12 @@ bp = Blueprint("jupyter", __name__)
 def _supervised() -> bool:
     """Is there a supervisor that can actually be ASKED to hold a notebook?
 
-    `SUPERVISED_ENV` alone is the wrong question, and answering it was a real
-    defect.  `reload_protocol`'s own docstring says what that flag means --
+    `SUPERVISED_ENV` alone is the wrong question.  `reload_protocol`'s own
+    docstring says what that flag means --
     *somebody can respawn me* -- and TWO supervisors set it: `serve start`'s
     `serve_daemon.supervise`, which writes a pidfile and installs the two USR
     handlers, and `serve foreground`'s `cli._supervise_forever`, which does
-    neither.  Under the second, this returned True, the tab drew a
-    Start button, and the click came back `not running (no pidfile at ...)` --
-    which reads as a broken molbuilder rather than as a run mode that has no
-    notebook.  Found in review 2026-09-14.
+    neither.
 
     So the probe is the thing the Start button actually depends on: a serve
     pidfile naming a live serve of ours, which is exactly what
@@ -103,11 +86,10 @@ def _may_control() -> bool:
     `--no-auth` flag does), so an unauthenticated molbuilder can legitimately
     be listening on a network interface.
 
-    ``request.remote_addr`` is the socket peer, so no header can forge it --
-    **and that holds for a narrower reason than "this app installs no
-    ProxyFix", which is what this said until 2026-09-15.**  `auth.trust_proxy`
-    DOES install one (`web/auth.py`).  It is still true here, by the
-    condition rule 2 already requires: ProxyFix is installed by `init_auth`,
+    ``request.remote_addr`` is the socket peer, so no header can forge it.
+    `auth.trust_proxy` DOES install a ProxyFix (`web/auth.py`); it holds
+    here by the condition rule 2 already requires: ProxyFix is installed by
+    `init_auth`,
     which only runs when providers are configured, and rule 2 only runs when
     there are NONE.  So the two cannot coexist -- but the reason is the
     condition, not the absence of the middleware
@@ -139,11 +121,7 @@ def _may_control() -> bool:
 def _serve_port() -> int:
     """The port THIS server is on -- the notebook's is derived from it.
 
-    ONE HOME, in `web.app`.  This parsed `request.host` itself and fell back
-    to **80** while `app.py` parsed the same header and fell back to **0** --
-    two answers to one question, and the notebook feature simply does not
-    work behind the reverse proxy `deployment.md` recommends, because the
-    public host's port is not the port the supervisor is keyed by.
+    ONE HOME, in `web.app`.
     """
     from ..app import serve_port
     return serve_port()
@@ -179,8 +157,8 @@ def api_jupyter_status():
     from ...jupyter import status
 
     port = _serve_port()
-    # ONE CALL EACH.  `_supervised()` reads a pidfile and stats /proc, and it
-    # was asked twice per request on a polling endpoint.
+    # ONE CALL EACH.  `_supervised()` reads a pidfile and stats /proc, on a
+    # polling endpoint.
     supervised = _supervised()
     may_control = bool(supervised and _may_control())
     # The token and the open-notebook paths are never even PRODUCED for a
@@ -197,9 +175,7 @@ def api_jupyter_status():
         #
         # The snapshot is bound ONCE per process (`diagnostics`), and the web
         # server is long-lived: an env created after it started is invisible
-        # to it.  Measured 2026-09-14 -- the env was installed, a fresh probe
-        # saw it, and this endpoint still said no, so the tab told a person to
-        # install what they had just installed.
+        # to it.
         #
         # Only on the NEGATIVE, and that is the whole economy of it: when the
         # snapshot says yes there is nothing to correct, so the polling path
@@ -217,9 +193,7 @@ def api_jupyter_status():
     # THE WHOLE PAYLOAD, IN ONE EXPRESSION (`plan.md` § 5n, J5).
     #
     # Nine keys come from `jupyter.status()`, six are added here and `ok` is
-    # the envelope -- and until 2026-09-15 the six arrived as scattered
-    # `st[...] = ` mutations, so the shape a page depends on existed in no
-    # single place and in no document.  `jupyter.md` § 5 is the contract;
+    # the envelope.  `jupyter.md` § 5 is the contract;
     # this is the one assembly, and the two are meant to be read together.
     #
     # TWO THINGS ARE WITHHELD, and not by deleting them afterwards.
@@ -228,11 +202,8 @@ def api_jupyter_status():
     # a credential that was never built and one whose safety depends on a
     # later line in a function that will grow.  The token authenticates a
     # browser to a LIVE KERNEL, which is the same arbitrary code execution
-    # the Start button hands out; returning it to every caller while refusing
-    # them the button inverted the gate, and the old justification ("already
-    # behind the sign-in gate") does not hold in the case `_may_control`
-    # itself contemplates -- an unauthenticated molbuilder legitimately bound
-    # to a network interface has no sign-in gate at all.
+    # the Start button hands out, and an unauthenticated molbuilder
+    # legitimately bound to a network interface has no sign-in gate at all.
     #
     # `port_clash` is gated too: it names another server on this machine.
     return jsonify({
@@ -255,11 +226,8 @@ def _refuse():
     Returns a ready ``(body, status)`` -- 404 when there is no supervisor to
     ask, 403 when there is one and this caller may not press the button.
 
-    **One sentence, not two.**  `start` used to answer with three lines
-    naming `molbuilder.json`'s `admin` section while `stop` answered
-    ``"admin auth required"`` -- the same gate, the same condition, two
-    answers, and the short one told a person nothing about what to do
-    (`plan.md` § 5n, J4).
+    **One sentence for both routes** (`plan.md` § 5n, J4): the same gate
+    and the same condition give the same answer.
     """
     if not _supervised():
         return jsonify({

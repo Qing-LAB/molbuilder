@@ -25,7 +25,7 @@ Path validation
 Every endpoint that takes a ``path`` query parameter runs it through
 :func:`_resolve_within_roots`, which:
 
-  1. Expands ``~`` and ``$VARS``.
+  1. Expands ``~``.
   2. Resolves to absolute (follows symlinks).
   3. Rejects raw ``..`` components defense-in-depth (the resolution
      step already prevents escaping the roots, but rejecting ``..``
@@ -38,11 +38,8 @@ Every endpoint that takes a ``path`` query parameter runs it through
 Anything that fails validation gets HTTP 400 with a JSON error.
 
 Design note: this blueprint is the projects sidebar's full file-system
-surface.  The pre-2026-05-30 version was navigation-only ("intentionally
-read-only"); the 2026-05-30+ commits added mkdir / upload / write /
-delete / rename + the project-bootstrap endpoint to complete capability
-C4 (the mutation surface, ``web/projects.md`` § 4 + § 5).  Path-safety
-remains the invariant: every
+surface, the mutation surface included (``web/projects.md`` § 4 + § 5).
+Path-safety is the invariant: every
 mutation runs through ``_resolve_within_roots`` + depth + canonical-
 topic checks before touching disk.
 """
@@ -109,9 +106,7 @@ def _depth_inside_root(resolved: Path) -> Optional[int]:
     the root; depth 2 = a topic directory under a project; etc.
 
     Shared by every endpoint whose validation includes a depth
-    rule (currently /api/files/write + /api/files/delete + the
-    /api/files/upload target_dir check).  Single source so all
-    three endpoints stay in lockstep on the security boundary.
+    rule, so they stay in lockstep on the security boundary.
     """
     parts = _rel_parts_inside_root(resolved)
     return None if parts is None else len(parts)
@@ -121,11 +116,9 @@ def _root_containing(candidate) -> "Optional[Tuple[Path, Path]]":
     """``(root, resolved)`` for the first allowed root that contains
     ``candidate``, or ``None``.
 
-    **The one place that asks "which root is this in?"**  Three functions
-    asked it separately until 2026-08-22 -- this resolver, the depth rule
-    the write/delete/upload endpoints share, and the new-name validator --
-    each looping the roots and each calling ``relative_to`` in a
-    ``try/except ValueError``.  Three copies of a security boundary is
+    **The one place that asks "which root is this in?"** -- this resolver,
+    the depth rule the write/delete/upload endpoints share, and the new-name
+    validator all ask it here.  Three copies of a security boundary would be
     three chances for one of them to answer differently.
 
     The containment test itself is `projects.contain`, shared with the
@@ -147,10 +140,7 @@ def _is_canonical_topic_dir(resolved, rel_parts) -> bool:
     `rename` refuses outright ("use your shell if you really need to") while
     `delete` takes `force=true`, so the sidebar's topic-dir kebab can proceed
     after a strong confirmation.  Those are different answers to the same
-    question, which is why `_validate_op_target` could not centralise them: it
-    took `(resolved, op)` and had no notion of `force`, so it could only ever
-    express `rename`'s policy.  (Deleted 2026-09-09 as #69 -- its one caller
-    refused directories before reaching it, so no arm could fire.)
+    question, so each route keeps its own policy.
 
     What the two routes DO share, and what drifts when it lives twice, is this
     three-term test: depth 2, a directory, and a name in
@@ -173,12 +163,8 @@ def _rel_parts_inside_root(resolved) -> "Optional[Tuple[str, ...]]":
 
     Every endpoint with a depth rule needs this: depth 1 is a project,
     depth 2 a topic, and what is legal to rename, move, copy or delete
-    depends on which.  Five functions walked the roots themselves to get
-    it -- rename, move/copy, delete, upload and the depth rule -- and two
-    of them carried comments conceding the duplication ("centralising
-    would help", "the same loop but returns just the length").  Five
-    copies of a depth rule is five chances to disagree about what a user
-    may delete.
+    depends on which.  Several copies of a depth rule would be several
+    chances to disagree about what a user may delete.
     """
     hit = _root_containing(resolved)
     if hit is None:
@@ -209,11 +195,11 @@ def _resolve_within_roots(raw_path: str) -> Path:
         )
 
     # THE fence is `projects.contain` -- one implementation, shared with the
-    # `jobset` CLI's --bundle (`projects.py`, 2026-08-22).  This function
-    # keeps what is genuinely ITS OWN: several allowed roots, first match
-    # wins, and an HTTP-shaped refusal that names them all.  The rules about
-    # `..`, `expanduser`-not-`expandvars` and resolving both sides moved into
-    # the shared primitive with their reasons attached.
+    # `jobset` CLI (`projects.py`).  This function keeps what is genuinely
+    # ITS OWN: several allowed roots, first match wins, and an HTTP-shaped
+    # refusal that names them all.  The rules about `..`,
+    # `expanduser`-not-`expandvars` and resolving both sides live in the
+    # shared primitive with their reasons attached.
     # `..` and unresolvable paths are refused for their own reason rather
     # than as "outside every root", which would say the wrong thing.
     if ".." in Path(raw_path).parts:
@@ -235,7 +221,7 @@ def _resolve_within_roots(raw_path: str) -> Path:
 
 
 # --------------------------------------------------------------------- #
-#  Sidecar pairing (2026-06-12)                                         #
+#  Sidecar pairing                                                      #
 # --------------------------------------------------------------------- #
 #
 # Structure files (.xyz / .pdb) may carry a paired ``.molstruct.json``
@@ -261,15 +247,9 @@ def _paired_sidecar_path(structure_path: Path) -> Path:
     """The canonical sidecar path next to ``structure_path``, whether or not
     it exists -- used both to FIND one to move and to COMPUTE a destination.
 
-    **Asked of the module that owns the pairing**, not spelled here.  This
-    retyped ``".molstruct.json"`` as a local constant and re-implemented the
-    stem rule, on the written ground that *"the blueprint doesn't import from
-    sidecars/molstruct directly to keep its dependency graph narrow"* -- a
-    preference, not a constraint: `sidecars` is L2 and `web` is L3, so the
-    import is ordinary.  It was the last duplicated constant of its kind in
-    the tree (2026-09-18), and the cost of keeping it was that a change to the
-    suffix would have to find this copy -- missing it means the file browser
-    silently stops recognising the file that carries a structure's labels.
+    **Asked of the module that owns the pairing**, not spelled here: a copy
+    a change to the suffix missed would make the file browser silently stop
+    recognising the file that carries a structure's labels.
     """
     from molbuilder.sidecars.molstruct import sidecar_path_for
     return sidecar_path_for(structure_path)
@@ -428,15 +408,6 @@ def api_files_list():
     })
 
 
-# 2026-06-01: ``/api/files/result-list`` endpoint retired.  Its single
-# consumer (the in-trajectory dropdown at ``lib/trajectory/result-list.js``)
-# was lifted to the tab level at ``lib/results/file-picker.js``, which
-# uses the existing ``/api/files/list`` + client-side filtering through
-# the inspector registry's ``pickResult`` -- no second endpoint needed,
-# and the single source of truth for "what counts as a result" now
-# lives entirely in the JS inspectors.
-
-
 @bp.route("/api/files/stat", methods=["GET"])
 def api_files_stat():
     """Metadata for a single path (file or directory)."""
@@ -528,8 +499,7 @@ def api_files_read():
         # ``utf-8-sig`` accepts an optional BOM (some Windows editors
         # inject one) — without this, a BOM-prefixed XYZ rendered the
         # first line as garbage and Structure.from_xyz rejected the
-        # file at parse time.  Matches the read pattern in
-        # molstruct_json + spectra_json + transport_json + structure.py.
+        # file at parse time.
         text = resolved.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError:
         return jsonify({
@@ -864,13 +834,11 @@ _DEFAULT_RANGE_BYTES = 256 * 1024
 @bp.route("/api/files/read_range", methods=["GET"])
 def api_files_read_range():
     """Range-read endpoint for the source inspector's paginated view
-    of arbitrarily-large text files (task #119, 2026-06-02).
+    of arbitrarily-large text files.
 
     Reads a byte-range of ``path`` and returns it as UTF-8 text plus
     enough metadata for the client to know where it landed + how
-    much more there is.  Replaces the source inspector's "read the
-    whole file or 413" model with an "I'll fetch what you ask for"
-    model.
+    much more there is.
 
     Query params:
         path        -- absolute or relative path inside a project root.
@@ -1038,10 +1006,6 @@ def _validate_subdir_name(parent_abs: Path, name: str) -> None:
 
     Raises :class:`molbuilder.projects.InvalidName` on rejection.
     """
-    # (`roots = _allowed_roots()` stood here until 2026-09-09 and was never
-    #  read: `_root_containing` does the walk.  Residue of the refactor that
-    #  gave the roots one accessor -- not a dropped check, the containment is
-    #  the `hit is None` arm below.)
     hit = _root_containing(parent_abs)
     root = hit[0] if hit is not None else None
     if root is None:
@@ -1253,13 +1217,8 @@ def api_projects_create():
 
 # --------------------------------------------------------------------- #
 #  File mutation endpoints (upload / write / rename / move / copy /      #
-#  delete) -- all SHIPPED                                                #
+#  delete)                                                              #
 # --------------------------------------------------------------------- #
-#
-# History: in 2026-05 these were deliberate 501-stub routes (design
-# captured + UX surface rendered while the behaviour was deferred); each
-# was then implemented, and the tests that pinned the 501 + error text
-# were updated to the real behaviour.  There are no 501 stubs left here.
 
 
 # Upload filename regex.  Allows the dot that ``validate_name``
@@ -1487,8 +1446,8 @@ def api_files_write():
          to clobber an existing file.  Without ``overwrite``, an
          existing file at ``path`` returns 409.
 
-      2. **Edit-and-save** (file-preview modal's Save -- still a
-         stub on the UI side): ``expected_mtime`` is the mtime
+      2. **Edit-and-save** (file-preview modal's Save):
+         ``expected_mtime`` is the mtime
          captured at /api/files/read time.  If the file's current
          mtime differs, 409 (someone else modified it).
 
@@ -1526,7 +1485,7 @@ def api_files_write():
     # Depth check: the file's PARENT must be at depth >= 1 inside
     # the picker's root.  i.e., write to projects/<proj>/<...>/file
     # but not directly into projects/ itself.  Shared with /upload
-    # + /delete via the _depth_inside_root helper.
+    # via the _depth_inside_root helper.
     parent_depth = _depth_inside_root(resolved.parent)
     if parent_depth is None or parent_depth < 1:
         return jsonify({
@@ -1536,14 +1495,8 @@ def api_files_write():
                       f"{str(resolved)!r}"),
         }), 400
 
-    # Phase 6e sixth-review LANDMINE-6: validate the leaf name with
-    # the same regex /upload uses, so the two endpoints don't drift
-    # apart.  Previously ``/write`` accepted ``" foo.xyz"`` (leading
-    # space), ``.bashrc`` (dotfile), names with NUL bytes, etc. —
-    # which then surfaced as confusing user reports ("why does Save
-    # accept what Upload rejects?").  Also unblocks LANDMINE-7: the
-    # auto_rename loop's misleading 500 for leading-space stems is
-    # now unreachable.
+    # Validate the leaf name with the same regex /upload uses, so the
+    # two endpoints don't drift apart.
     leaf_err = _validate_upload_filename(resolved.name)
     if leaf_err is not None:
         return jsonify({"ok": False, "error": leaf_err}), 400
@@ -1556,10 +1509,9 @@ def api_files_write():
                       f"Use /api/files/mkdir to create it first."),
         }), 400
 
-    # Phase 6e third-review POLISH-3: reject directory targets
-    # explicitly.  Without this, ``write_text`` failed with a
+    # Reject directory targets explicitly, else the write fails with a
     # noisy IsADirectoryError (caught as 500) and ``auto_rename``
-    # produced ``<dirname>-2`` files next to the directory.
+    # produces ``<dirname>-2`` files next to the directory.
     if resolved.is_dir():
         return jsonify({
             "ok":   False,
@@ -1592,12 +1544,8 @@ def api_files_write():
         elif overwrite:
             pass  # explicit overwrite
         elif auto_rename:
-            # Phase 6e second-review BOMB #11: the dialog promises
-            # auto-rename for all kinds; previously only /upload
-            # implemented it, so text writes (.xyz/.pdb) silently
-            # 409'd on collision after the dialog said they
-            # wouldn't.  Mirror the /upload picker here.
-            # Phase 6e third-review BOMB-3: keep filename
+            # The dialog promises auto-rename for all kinds: mirror
+            # the /upload picker here.  Keep filename
             # validation parity with /upload's auto_rename loop
             # so a future tightening of _validate_upload_filename
             # is enforced symmetrically by both endpoints.  /write
@@ -1659,13 +1607,12 @@ def api_files_write():
         )
         text = _mb_merge_user_custom(text, resolved)
 
-    # 2026-06-09: atomic write — temp-file in the same directory
+    # Atomic write — temp-file in the same directory
     # (so ``os.replace`` is a same-filesystem rename), fsync the data
     # before replace so a crash between write() and replace() can't
     # leave the OS write buffer holding the only copy of the new
     # bytes (orphan .tmp file would also block the next save until
-    # manual cleanup).  Matches spectra_json + transport_json +
-    # molstruct_json's atomic-write contract.
+    # manual cleanup).
     try:
         parent = resolved.parent
         fd, tmp = tempfile.mkstemp(
@@ -1794,8 +1741,7 @@ def api_files_rename():
         }), 404
 
     # Depth check + canonical-topic protection.  Same shape as
-    # delete's check; centralising would help but the two endpoints
-    # are infrequent enough that the duplication is acceptable.
+    # delete's check.
     rel_parts = _rel_parts_inside_root(resolved)
 
     if rel_parts is None:
@@ -1849,7 +1795,7 @@ def api_files_rename():
                       f"different name or delete the existing entry first."),
         }), 409
 
-    # 2026-06-12: sidecar pairing.  If the source is a structure file
+    # Sidecar pairing.  If the source is a structure file
     # with a paired .molstruct.json sidecar, the rename MUST take both
     # atomically (or both rollback).  Otherwise renaming water.xyz to
     # bridge.xyz orphans water.molstruct.json -- next load can't find
@@ -1916,7 +1862,7 @@ def api_files_rename():
 
 
 # --------------------------------------------------------------------- #
-#  /api/files/move + /api/files/copy   (2026-06-12)                      #
+#  /api/files/move + /api/files/copy                                   #
 # --------------------------------------------------------------------- #
 #
 # Same shape + validation as /api/files/rename, but the destination
@@ -1932,34 +1878,6 @@ def api_files_rename():
 # layout + canonical-topic protection + sidecar-pairing-per-file)
 # that deserves its own design pass.  Users who need it run their
 # shell.
-
-
-# `_validate_op_target` was DELETED 2026-09-09 (#69).  It claimed to
-# "centralise the 'would orphan a canonical project layout' check so move /
-# copy stay in lockstep with rename + delete", and it did none of that:
-#
-#   * it had ONE caller, `api_files_move`, and every one of its three arms
-#     needs a DIRECTORY -- the picker root itself (depth 0), a canonical topic
-#     directory (depth 2 + `is_dir()`), or a path outside every root.  `move`
-#     returns 400 for `src.is_dir()` BEFORE reaching it, and `src` came from
-#     `_resolve_within_roots`, so it is inside a root by construction.  No arm
-#     could ever fire.
-#   * `copy` never called it at all.
-#   * and the rule it "centralised" is still written twice, live and inline,
-#     in `api_files_rename` and `api_files_delete`.  The only consolidated copy
-#     was the dead one.
-#
-# What actually protects move/copy is the wholesale directory refusal above,
-# which is STRICTLY STRONGER than a topic check.  A docstring claiming a
-# protection that does not run is worse than no protection: an audit read this
-# one and counted the guard as covered.
-#
-# CLOSED 2026-09-20: the depth-2 canonical-topic rule is ONE copy,
-# `_is_canonical_topic_dir` above, called by rename and delete alike.  This
-# note said it lived in two live inline copies long after it did not --
-# which is worse than saying nothing, because it describes work as owed
-# that is finished.  What follows was `TS5`'s tail and is not
-# this commit.
 
 
 def _resolve_dst_dir(raw_dest: str, op: str) -> Tuple[Optional[Path], Optional["Tuple[dict, int]"]]:
@@ -2294,8 +2212,7 @@ def api_files_delete():
 
     JSON body: ``{path, recursive?}``
 
-    Validation contract (matches the stub docstring + the JS
-    ``_isDeletableEntry`` gate so the user never sees a control
+    Validation contract (matches the JS ``_isDeletableEntry`` gate so the user never sees a control
     they can't use):
 
       * ``path`` must resolve inside an allowed picker root.
@@ -2318,7 +2235,7 @@ def api_files_delete():
     body = request.get_json(silent=True) or {}
     raw_path  = body.get("path", "")
     recursive = bool(body.get("recursive", False))
-    # 2026-06-24: ``force=true`` bypasses the canonical-topic
+    # ``force=true`` bypasses the canonical-topic
     # refusal at depth 2.  Used by the sidebar's topic-dir kebab
     # menu where the user has been shown an explicit confirmation
     # warning that the entire subdirectory (with all contents) will
@@ -2347,8 +2264,7 @@ def api_files_delete():
     # Depth check + canonical-topic protection.  We need both the
     # depth (for the root-protection + recursive-flag rules) AND
     # the path parts (for the canonical-topic name lookup at depth
-    # 2).  Walk the roots once for the parts; _depth_inside_root
-    # is the same loop but returns just the length.
+    # 2).
     rel_parts = _rel_parts_inside_root(resolved)
 
     if rel_parts is None:
@@ -2375,7 +2291,7 @@ def api_files_delete():
     # deleting the spectrum/ or struct/ subdir orphans the project
     # layout.  Files at depth 2 (e.g. projects/<proj>/README.md) are
     # fine to delete.  The ``force=true`` override lets the sidebar's
-    # topic-dir kebab menu (added 2026-06-24) bypass this after the
+    # topic-dir kebab menu bypass this after the
     # user has acknowledged a strong confirmation prompt.
     # The CONDITION is shared with `rename`; the `force` escape is this route's
     # own policy (see `_is_canonical_topic_dir`).
@@ -2409,7 +2325,7 @@ def api_files_delete():
                           f"everything inside."),
             }), 409
 
-    # Sidecar pairing (2026-07): deleting a structure FILE (.xyz/.pdb) must also remove
+    # Sidecar pairing: deleting a structure FILE (.xyz/.pdb) must also remove
     # its paired .molstruct.json -- the mirror of the rename/move/copy pairing -- else the
     # sidecar is orphaned (the labels/cell of a file that no longer exists).  None for
     # directories, non-structure files, and files without an existing sidecar.  (Deleting

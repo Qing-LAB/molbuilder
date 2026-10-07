@@ -11,8 +11,8 @@ own tight tolerance.
 
 Every expectation is what the run was given -- the structure written here,
 the deck prep wrote -- or the rule of the record applied to the run's own
-output; never a number a reader printed.  These replace the tests that read
-a relaxation saved under ``tests/fixtures/siesta_relax`` (user, 2026-10-06:
+output; never a number a reader printed.  The relaxation is made with the
+engine here (user, 2026-10-06:
 "when a test need siesta's output why is it not part of a e2e test?").
 """
 from __future__ import annotations

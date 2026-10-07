@@ -1,33 +1,26 @@
 """Which machine a `prep` is FOR is the user's answer, never a default.
 
 `preparing-for-another-machine.md` § 4.  Four ways the wrong machine could
-be chosen; two already refused before this file existed (C2, C4) and are
-pinned here so they stay refused, two did not (C1, C3).
+be chosen (C1-C4), each refused.
 
-**Every case drives the real `prep` command.** The unit-level probe that
-first surfaced C2 said the target was ignored -- `machine.set_machine` returns
-an existing snapshot before it ever reads `target` -- and running the case
-showed the guard fires further along. A test that reasons about one
-function would have "found" a bug that is not there.
+**Every case drives the real `prep` command.** `machine.set_machine` returns
+an existing snapshot before it ever reads `target`, and the guard fires
+further along: a test that reasons about one function would "find" a bug
+that is not there.
 """
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
 
 import pytest
 
-from molbuilder.scheduler import AmbiguousTarget, UnknownTarget
 
 #: A record as `jobset probe --write` writes one.  It carries `env_init`,
 #: the probe's copy of how a shell enters an environment on that machine
-#: (`configuration.md` § 4) -- since 2026-08-24 what the generator reads.  Without
-#: it `prep --target <name>` refuses rather than bake THIS machine's
-#: activation into a wrapper bound for another one, so a fixture that
-#: omitted it stopped every target test at that refusal instead of at the
-#: guard it meant to exercise.
+#: (`configuration.md` § 4), which the generator reads.  Without it
+#: `prep --target <name>` refuses rather than bake THIS machine's
+#: activation into a wrapper bound for another one.
 #:
 #: It lists one queue, so a prep for it can name the queue its header asks
 #: for (`architecture.md` § 5.2: a job sent to a scheduler states its queue,
@@ -45,7 +38,7 @@ def machines(tmp_path, monkeypatch):
     """A home with named target records, and a bundle to prep -- and NO
     record of this machine until a test writes one (`this_machine`): the
     conftest's probed record is removed, as its own docstring says a test
-    wanting that refusal does.  (Moving HOME did this until 2026-10-02.)"""
+    wanting that refusal does."""
     # THE DOORS -- never the path spelled here (`configuration.md` § 3.1;
     # W54 T28).
     from molbuilder.config_dir import ensure_private_dir
@@ -127,11 +120,8 @@ class TestTheUserChoosesTheMachine:
         assert res.exit_code != 0, res.output
         assert "several machines could be meant" in res.output
         # It names every choice, including staying here -- AS SOMETHING A
-        # PERSON CAN TYPE.  This asserted "omit --target" until 2026-08-24,
-        # which is what the message used to say and was self-contradictory:
-        # omitting the flag is the action that produced this refusal, so the
-        # instruction it gave could not be followed.  With any named record
-        # on file, preparing for the box in front of you was impossible.
+        # PERSON CAN TYPE: omitting the flag is the action that produced this
+        # refusal, so "omit --target" could not be followed.
         assert "--target sol" in res.output
         assert "--target agave" in res.output
         from molbuilder.scheduler.record import LOCAL_TARGET
@@ -205,7 +195,7 @@ class TestTheUserChoosesTheMachine:
         assert "probe --write --name sol" in res.output
 
     def test_c4_an_unknown_target_names_the_known_ones(self, machines):
-        """Refused before this file existed; pinned so it stays."""
+        """Pinned so it stays refused."""
         machines.write("sol")
         machines.this_machine()
         res = _prep("P/optimization/y", "--target", "nosuch")
@@ -214,7 +204,7 @@ class TestTheUserChoosesTheMachine:
         assert "sol" in res.output
 
     def test_c2_a_contradicting_target_is_refused(self, machines):
-        """Refused before this file existed.  Pinned because reading
+        """Pinned because reading
         `machine.set_machine` alone suggests otherwise -- it returns an existing
         snapshot before consulting `target`, and the guard is further on."""
         machines.write("sol", scheduler="slurm")
@@ -233,16 +223,6 @@ class TestTheUserChoosesTheMachine:
              ).read_text())
         assert rec["scheduler"] == "workstation"
 
-
-# `TestTheBootstrapIsSaidToNotTravel` was RETIRED 2026-08-25 with
-# `runtime_config.bootstrap_travels`.  Its own docstring stated the rule
-# `preparing-for-another-machine.md` § 3 retracted on 2026-08-24 -- *"a
-# preamble is a preference, so it stays local"*.  Since that date the
-# bootstrap rides the machine's probed record and `runwrap` reads the
-# record and nothing else (see `_REC` above, which carries `env_init`
-# precisely because the generator now requires it).
-# The warning it pinned therefore fired on every named-target prep while
-# the wrapper being generated was correct.
 
 class TestTheCasesReadingFoundThatPokingDidNot:
     """Three defects that only a full read of `machine_for` shows, because

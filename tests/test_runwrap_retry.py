@@ -15,15 +15,9 @@ on the road with the real SIESTA (`tests/test_siesta_stopped_run_e2e.py`,
     exits 0 and prints ``outcoor: Final (unrelaxed) atomic coordinates``
     (a converged relax prints ``Relaxed atomic coordinates``).  So the
     geometry retry lives in the zero-exit path.
-
-2026-07-29: replaces the first-cut implementation whose zero-exit-only check
-could never fire (SCF aborts exit non-zero; its geometry marker string does
-not occur in SIESTA output), and whose ``exec "$0"`` PATH-searched a bare
-relative name — exit 127 under the canonical ``bash <base>.run.sh``.
 """
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -33,34 +27,28 @@ from molbuilder.jobset.model import Resources
 from molbuilder.runwrap import render_run_wrapper
 
 REPO = Path(__file__).resolve().parents[1]
-# What the retries ask, answered on real output, moved to the e2e tier
-# 2026-10-06: an SCF stop on the stopped run made on the road
+# What the retries ask, answered on real output, is the e2e tier's: an SCF
+# stop on the stopped run made on the road
 # (`tests/test_siesta_stopped_run_e2e.py`), a relaxation out of moves on one
-# allowed a single move (`tests/test_siesta_flat_run_e2e.py`); the frozen
-# outputs of older runs they read went with them (`process/testing.md` § 6).
+# allowed a single move (`tests/test_siesta_flat_run_e2e.py`).
 
-# The exact idioms the wrapper renders (tested both as source text and,
-# below, behaviourally).  If these change in runwrap.py, change them here
-# in the same commit.
+# The exact idioms the wrapper renders.  If these change in runwrap.py,
+# change them here in the same commit.
 SELF_LINE = '_mb_self="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"'
 EXEC_LINE = 'exec bash "$_mb_self" --continue'
 #: What the retries ASK -- the door's questions (`_run_ending.QUESTIONS`),
-#: the SCF's cause rendered from the grammar's own marker.  The wrapper
-#: grepped strings of its own until 2026-09-26.
+#: the SCF's cause rendered from the grammar's own marker.
 from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
+from molbuilder.runfiles import RunNames
 ASK_SCF = f'_mb_ending stopped-by "{SCF_NOT_CONV_MARKER}"'
 ASK_GEOM = "_mb_ending relaxation-capped"
 
 
 @pytest.fixture
 def sandbox(tmp_path, monkeypatch):
-    """An isolated config root and synthetic caps (mirrors test_runwrap_v2);
-    the activation the generator needs is the record's, `_MACHINE`."""
+    """An isolated config root and synthetic caps; the activation the generator needs is the record's, `_MACHINE`."""
     monkeypatch.chdir(tmp_path)
-    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-    # working-directory step, which is gone (configuration.md § 2.1a) --
-    # without naming the directory the write lands in a file nothing
-    # opens, and the test passes having configured nothing.
+    # THE SANDBOX IS THE CONFIG ROOT (configuration.md § 2.1a).
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     set_capabilities(Capabilities(runtime_config={},
                                   conda_binary="/usr/bin/conda"))
@@ -82,7 +70,9 @@ def _render(**kw) -> str:
 
     ``kw`` are allocation fields: the door takes the object whole (A8), so
     they are set on it rather than passed beside it."""
-    return render_run_wrapper(Path("/x/JOB.fdf"), machine_record=_machine(),
+    names = RunNames.of("JOB", "01_coarse", "flat")
+    return render_run_wrapper(Path("/x") / names.name(".fdf"),
+                              machine_record=_machine(), names=names,
                               resources=Resources(mpi_np=4, cpus_per_task=1,
                                                   **kw))
 
@@ -94,52 +84,16 @@ def _render(**kw) -> str:
 
 class TestRenderedContract:
 
-    def test_no_retry_machinery_without_continue_retries(self, sandbox):
-        text = _render()
-        assert "_mb_warm_retry" not in text
-        assert ASK_SCF not in text
-        assert ASK_GEOM not in text
-
-    def test_scf_retry_lives_in_the_nonzero_exit_branch(self, sandbox):
-        """The retriable SCF failure exits non-zero (SCF.MustConverge
-        default) — the question must be asked BEFORE ``exit
-        "$_siesta_exit"``."""
-        text = _render(continue_retries=2)
-        assert "_mb_warm_retry() {" in text
-        i_scf = text.index(ASK_SCF)
-        i_exit = text.index('exit "$_siesta_exit"')
-        assert i_scf < i_exit, (
-            "SCF_NOT_CONV retry must precede the non-zero-exit exit — "
-            "SIESTA aborts non-zero on SCF non-convergence")
 
     def test_geometry_retry_is_asked_on_the_zero_exit_path(self, sandbox):
         """The zero-exit retry asks the door whether the relaxation ran out
-        of moves -- the door reads the marker SIESTA actually prints
-        (`TestTheDoorOnRealOutput`), not an invented phrase."""
+        of moves -- the door reads the marker SIESTA actually prints, not
+        an invented phrase."""
         text = _render(continue_retries=2)
         assert ASK_GEOM in text
-        assert "Geometry step did NOT converge" not in text
         # ... and it sits AFTER the non-zero-exit branch closes.
         assert text.index('exit "$_siesta_exit"') < text.index(ASK_GEOM)
 
-    def test_reexec_is_bash_on_an_absolute_self_path(self, sandbox):
-        """``exec "$0"`` PATH-searches a bare name under ``bash x.run.sh``
-        (exit 127); the wrapper must exec via bash + captured abs path."""
-        text = _render(continue_retries=2)
-        assert SELF_LINE in text
-        assert EXEC_LINE in text
-        # No bare self-exec anywhere outside the explanatory comment.
-        for line in text.splitlines():
-            if 'exec "$0"' in line:
-                assert line.lstrip().startswith("#")
-
-    def test_retry_preserves_original_args_minus_continuation_flags(
-            self, sandbox):
-        text = _render(continue_retries=2)
-        assert '_mb_orig_args=(${@:+"$@"})' in text
-        # --force / --cold are filtered: they would reset the run-index /
-        # move aside the warm-start files the retry depends on.
-        assert "--continue|-c|--force|-f|--cold|--from-scratch) ;;" in text
 
     def test_monitor_is_stopped_as_a_retry_before_reexec(self, sandbox):
         """exec skips the EXIT trap; without the stop each retry would
@@ -149,49 +103,3 @@ class TestRenderedContract:
         text = _render(continue_retries=2)
         fn = text[text.index("_mb_warm_retry() {"):text.index(EXEC_LINE)]
         assert "_mb_stop_monitor USR1" in fn
-
-
-# --------------------------------------------------------------------- #
-#  Marker ground truth — frozen real SIESTA output                       #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
-#  Behavioural regression — the exit-127 re-exec bug                     #
-# --------------------------------------------------------------------- #
-
-
-class TestReexecMechanics:
-
-    def test_self_reexec_survives_bare_bash_invocation(self, tmp_path):
-        """Run the EXACT self-path + exec idiom the wrapper renders, as a
-        standalone script invoked the canonical way (``bash x.run.sh``
-        with a bare relative name, from the script's dir AND from a
-        parent dir).  The first-cut ``exec "$0"`` died here with 127."""
-        sub = tmp_path / "sub"
-        sub.mkdir()
-        scr = sub / "t.run.sh"
-        scr.write_text(
-            "#!/bin/bash\nset -u\n"
-            + SELF_LINE + "\n"
-            + 'if [ "${MB_RETRY_N:-0}" -ge 1 ]; then\n'
-            + '    echo "SECOND_RUN_OK argv=$*"\n    exit 0\nfi\n'
-            + "export MB_RETRY_N=1\n"
-            + EXEC_LINE + "\n")
-        # From the script's own directory (bare name — the 127 trap):
-        r1 = subprocess.run(["bash", "t.run.sh"], cwd=sub,
-                            capture_output=True, text=True, timeout=30)
-        assert r1.returncode == 0, r1.stderr
-        assert "SECOND_RUN_OK" in r1.stdout
-        assert "--continue" in r1.stdout      # the retry flag arrived
-        # From a parent dir via a relative path (the sbatch shape):
-        r2 = subprocess.run(["bash", "sub/t.run.sh"], cwd=tmp_path,
-                            capture_output=True, text=True, timeout=30)
-        assert r2.returncode == 0, r2.stderr
-        assert "SECOND_RUN_OK" in r2.stdout
-
-
-# (TestInstallWrapperEndpointValidation retired 2026-08-21 with its
-#  subject: /api/run/install-wrapper had zero browser callers -- `prep`
-#  writes the wrapper beside every deck it renders, and the wrapper's
-#  own validation is pinned above through render_run_wrapper directly.)

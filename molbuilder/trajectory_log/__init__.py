@@ -2,7 +2,7 @@
 
 Submodules:
     format  -- write_initial_preview (one-block preview-only writer
-               used by the SIESTA path)
+               used by prep's seed)
     emitter -- MolwatchEmitter (streaming class for runs with SCF
                + opt-step hooks; the PySCF script imports it from
                mb_pyscf.pyz beside the job, where molbuilder is not
@@ -13,7 +13,7 @@ lives at :mod:`molbuilder.parse.engines.molwatch`.
 """
 
 from .emitter import MolwatchEmitter
-from .format import molwatch_log_basename, write_initial_preview
+from .format import write_initial_preview
 
-__all__ = ["MolwatchEmitter", "molwatch_log_basename",
+__all__ = ["MolwatchEmitter",
            "write_initial_preview"]

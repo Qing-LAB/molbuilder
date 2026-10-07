@@ -1,8 +1,7 @@
 """The model — every test derived from ``docs/web/molview.md``, never from the
 source it checks (§ 13).
 
-Step D of the rebuild (``docs/web/molview.md``). The rows of § 13.3
-guarded here:
+The rows of ``docs/web/molview.md`` § 13.3 guarded here:
 
     § 6.4  nothing keeps its own copy / master copy, then range, then frame, then notify
     § 9.3  a read cannot be used to write
@@ -18,7 +17,7 @@ guarded here:
     § 6.6  MolView interprets no reserved label
 
 The server is a stand-in that obeys the document's account of it (§ 13.1): it
-answers the three routes of § 11.1 and nothing else.
+answers the routes of § 11.1 and nothing else.
 """
 from __future__ import annotations
 
@@ -34,7 +33,7 @@ MODEL = MODULE_DIR / "model.js"
 # would draw and compare it with what the Cell page reports (§ 5.2).
 ENGINE = MODULE_DIR / "render-engine.js"
 
-# A stand-in server. It answers the three routes of § 11.1 and records what it
+# A stand-in server. It answers the routes of § 11.1 and records what it
 # was sent, so a test can assert what actually left the browser.
 SERVER = """
 globalThis.__requests = [];
@@ -140,10 +139,8 @@ def test_no_read_at_all_can_be_written_through():
     the RULE: after all of that, the structure and the coordinates are what they
     were.
 
-    Written because the three-read version passed while `getUnitCellInfo` — the
-    MAIN way in for the cell (§ 9.3's table) — handed out live references into
-    the master copy. The four narrower cuts beside it all copied, so the one
-    read a caller is told to use was the one that could be written through.
+    The defect it guards: `getUnitCellInfo` — the MAIN way in for the cell
+    (§ 9.3's table) — handed out live references into the master copy.
     """
     out = _run(
         """
@@ -370,11 +367,9 @@ def test_the_cell_page_and_the_drawing_cannot_describe_different_structures():
 def test_what_the_viewer_is_has_one_answer_and_a_replacement_can_be_enforced():
     """§ 5.2, applied to the viewer's own lifecycle.
 
-    "Has this viewer got its core data?" is ONE question and was answered two
-    ways — a `seeded` flag at the install door, and "is the atom count zero?" at
-    the frame doors — which could disagree. It is one state now, checked and set
-    in one place, so coming back to the install door never finds the initial
-    state a second time.
+    "Has this viewer got its core data?" is ONE question, answered by one
+    state, checked and set in one place, so coming back to the install door
+    never finds the initial state a second time.
 
     And no state is a dead end. A read-only viewer refuses to have its structure
     swapped out from under it, but the HOST can say it means to: deciding which
@@ -731,7 +726,7 @@ def test_a_trajectory_arrives_whole_in_one_install():
     # § 6.4 is about WHAT a subscriber sees, not how often it is told: every
     # notification must show a settled structure. More than one is fine — the
     # anchor's badge is a second — but a `1` among them is the half-updated
-    # state the rule forbids, and that is exactly what the two-call load gave.
+    # state the rule forbids.
     assert out["seen"] and all(n == 3 for n in out["seen"]), (
         "a subscriber saw the structure part-way in — the frames landed in a "
         f"second settle after the atoms: {out['seen']}"
@@ -750,13 +745,8 @@ def test_a_trajectory_arrives_whole_in_one_install():
 
 
 def test_an_edit_lays_down_a_point_so_retract_steps_back_one_edit():
-    """§ 11.2 (changed 2026-09-07 at the user's request): "every edit lays down
-    a point of its own", so Retract always steps back exactly one edit.
-
-    Before this, an edit only rewrote the DRAFT and the sequence stayed where it
-    was, so a Retract after three edits went back to wherever the last MANUAL
-    Save state had been -- which for a person who had never pressed the button
-    is the whole session at once.
+    """§ 11.2 (user, 2026-09-07): "every edit lays down a point of its own", so
+    Retract always steps back exactly one edit.
 
     Driven through the model rather than the history module, because the claim
     is about the EDIT GATE spending the operation's declaration, not about the
@@ -877,12 +867,8 @@ def test_an_atom_carries_a_label_once_however_often_it_is_applied():
 
 
 def test_the_reserved_label_needs_no_boundary_translation():
-    """§ 6.6: MolView's end is "one mechanism, no special case".
-
-    This used to assert a FOLD — the server sent an `is_frozen` flag beside the
-    labels and the module turned it into a label on the way in. The server keeps
-    one store now, so there is nothing to fold: the label arrives as a label and
-    the translator that existed for it is gone.
+    """§ 6.6: MolView's end is "one mechanism, no special case": the label
+    arrives as a label.
 
     (The reserved label's full contract — one store, one designated read, both
     boundaries — is `test_molview_reserved_label_js.py`. This keeps the § 6.6 row
@@ -1451,10 +1437,7 @@ def test_one_read_of_the_structure_holds_everything_a_request_needs():
         }));
         """
     )
-    # THE WHOLE STRUCTURE, and the list grew when `getStructure` became the
-    # holistic read (2026-09-06): `title`, `info` and `channelDefs` are § 6.2
-    # fields that used to be reachable only through other calls, which is the
-    # same "assembled from two moments" failure this test is named for.
+    # THE WHOLE STRUCTURE, § 6.2's fields.
     # EXACT rather than a superset, deliberately: a field silently DROPPED is
     # what this catches, and a superset check cannot see one go.  A field
     # legitimately added updates this line, on purpose.
@@ -1529,15 +1512,9 @@ def test_what_the_caller_knew_about_the_atoms_travels_in_the_envelope():
     have to arrive WITH the structure, in one call, exactly as the frames do —
     the alternative is a second door, and § 9.3 has one.
 
-    THEY TRAVEL IN THE ENVELOPE, and that is the change of 2026-09-07. This
-    used to assert three side-blocks on the TEXT branch — `atomMetadata`,
-    `periodicity`, `info` — which existed to carry back to the server what a
-    coordinate document cannot hold, after the browser had just flattened a
-    structure the server already had. The trajectory tab now hands over frame 0
-    as an envelope the server assembled (`watch.py::_frame0_structure`), so the
-    labels and the cell are simply IN the structure and there is nothing left
-    to repair. The three fields are gone; this is the guarantee that replaced
-    them.
+    THEY TRAVEL IN THE ENVELOPE. The trajectory tab hands over frame 0 as an
+    envelope the server assembled (`watch.py::_frame0_structure`), so the
+    labels and the cell are simply IN the structure.
 
     (`web-api.md` § 1: "the browser sends what it holds; it never sends a
     document it wrote".)
@@ -1576,9 +1553,8 @@ def test_what_the_caller_knew_about_the_atoms_travels_in_the_envelope():
         "the caller's cell never left the browser, so no trajectory can draw "
         "the box its run used"
     )
-    # ONE KEY, not four.  The side-blocks are gone, and a body that grew one
-    # back would mean a caller is again writing what the envelope already
-    # holds.
+    # ONE KEY: a body that grew a side-block would mean a caller is writing
+    # what the envelope already holds.
     assert out["keys"] == ["structure"], (
         f"the envelope did not travel alone: {out['keys']}")
 
@@ -1636,11 +1612,6 @@ def test_an_empty_selection_means_what_the_table_says():
     """§ 13.3: with nothing selected, `translate` acts on every atom, `orient`
     refuses, `delete` refuses and `slab` acts anyway — each read from the table
     rather than hand-coded per operation.
-
-    *It used to pin `electrode` here, as the one op whose empty-selection
-    answer was `"origin"` — fall back to centring on the world origin. That op
-    and that column value both went on 2026-09-01, so the case is gone; what
-    the test is FOR is unchanged, and the remaining answers still differ.*
     """
     out = _run(
         """
@@ -1691,10 +1662,7 @@ def test_a_failed_edit_changes_nothing():
     § 11.1: that is the other half of "all at once" — it is what lets a failed
     edit be a state the viewer can sit in without being wrong.
 
-    A refusal REACHES THE CALLER BY THROWING (§ 6.9), which is what this asserts
-    now; it used to expect `null`, back when a refused edit and an empty viewer
-    gave the same answer. What the failure route is does not change what this
-    test is about: nothing moved.
+    A refusal REACHES THE CALLER BY THROWING (§ 6.9).
     """
     out = _run(
         """
@@ -1786,14 +1754,11 @@ def test_an_edit_records_itself_and_a_failed_one_records_nothing():
     fall out rather than needing a case of its own: a refused edit never
     reaches the line.
 
-    THE SEQUENCE IS WHAT IS MEASURED, not the badge, and that changed on
-    2026-09-07 with § 11.2's rule.  While an edit only rewrote the draft, the
-    badge going up WAS the record of it and "an edit raises the badge" was the
-    whole observable.  Now an edit lays down a point and the badge goes back
-    down when that point lands -- so the badge is False either side of a
-    successful edit, and asking it whether the edit was recorded gets the same
-    answer as asking it whether the edit was refused.  The position on the
-    sequence tells them apart.
+    THE SEQUENCE IS WHAT IS MEASURED, not the badge: an edit lays down a point
+    and the badge goes back down when that point lands -- so the badge is False
+    either side of a successful edit, and asking it whether the edit was
+    recorded gets the same answer as asking it whether the edit was refused.
+    The position on the sequence tells them apart.
     """
     out = _run(
         """
@@ -1888,8 +1853,7 @@ def test_writing_a_label_records_a_point_and_is_frozen_read_only():
     )
     assert out["first"] == {"anchor": [0]}
     # Tagging is an EDIT, so it lays down a point like any other (§ 11.2, and
-    # the gate says so itself: `recordEdit(true)`).  This asked the badge until
-    # 2026-09-07, which was the only observable an edit had back then.
+    # the gate says so itself: `recordEdit(true)`).
     assert out["recorded"] == 1, (
         f"tagging did not lay down a timeline point: {out}")
     assert out["replaced"] == {"anchor": [1]}, (
@@ -2002,8 +1966,7 @@ def test_a_load_clears_the_selection():
 
     The edit door clears only when the count changed, and that is right for
     an edit: a count-preserving transform moves the SAME atoms, so the
-    selection still means what it meant.  A load has no such claim, and it
-    had no clear at all.
+    selection still means what it meant.  A load has no such claim.
 
     Found in the browser 2026-08-24: after a 312-atom structure was
     replaced by ethanol, the atom list read **"75 of 9 selected"** -- the
@@ -2079,9 +2042,8 @@ def test_deleting_every_atom_is_an_ORDINARY_EDIT():
     just the init status or clear operation, but atom deletion would just
     update list properly")*.
 
-    An earlier draft wiped `info` here.  That made an ordinary edit quietly
-    destructive -- a second thing the button does that its label does not
-    say.  `clear()` is the door that means START EMPTY, and § 6.7a's table is
+    Wiping `info` here would make an ordinary edit quietly destructive -- a
+    second thing the button does that its label does not say.  `clear()` is the door that means START EMPTY, and § 6.7a's table is
     the difference between them."""
     out = _run("""
         const m = await loaded();
@@ -2300,11 +2262,7 @@ def test_clear_restarts_the_timeline_and_IS_the_state_it_starts_from():
         """
     )
     # THE PRECONDITION IS A SEQUENCE WITH SOMETHING ABOVE #0, which is what
-    # `clear` has to end.  It used to be stated as "standing at 1, and dirty",
-    # which stopped being true on 2026-09-07 when every edit began laying down
-    # a point of its own (§ 11.2): the delete now takes the position to 2 and
-    # leaves nothing unsaved.  The subject of the test is untouched -- it is
-    # about what `clear` does to that sequence, not how the sequence was built.
+    # `clear` has to end.
     assert out["wasAt"] == 2, (
         "the setup did not build a sequence to end -- this test would pass "
         f"on a viewer that was already at #0: {out}")
@@ -2336,9 +2294,8 @@ def test_reopening_a_cleared_page_still_shows_the_triad():
 
     Neither the edit path nor `clear()` runs when a page is reopened -- the
     restore path installs the saved state through `settle` and touches
-    neither door.  While the rule lived at the two doors, this arrival
-    raised nothing: a cleared page came back a grey rectangle
-    indistinguishable from a broken viewer.
+    neither door, so a rule at the doors would bring a cleared page back a
+    grey rectangle indistinguishable from a broken viewer.
 
     A fresh viewer is the point.  The switch starts OFF on one
     (`SWITCH_DEFAULTS`), so nothing here can pass by inheriting the switch
@@ -2418,9 +2375,8 @@ def test_a_label_write_flags_labels_and_not_the_structure():
     `molview.md` § 8.4a. The settings a later calculation inherits are the
     mesh cutoff and the transverse k-mesh, and **no setting is a function of
     a name** -- so a label write must not raise the flag that says they were
-    converged for a cell that is gone. One flag covered both until
-    2026-09-07, which is why nothing could act on it: warning here would mean
-    telling a person their mesh cutoff is suspect because they renamed an
+    converged for a cell that is gone. With one flag for both, warning here
+    would mean telling a person their mesh cutoff is suspect because they renamed an
     electrode, and on a junction renaming an electrode is routine.
     """
     out = _run(_with_a_recorded_contract(

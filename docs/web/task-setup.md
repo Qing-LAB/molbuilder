@@ -694,7 +694,7 @@ distinction the names themselves draw (`job-contracts.md` § 2.3):
 |---|---|
 | **For the whole run** | `prep`'s own records — the job set, the plan, the machine as probed, the decision ledger — the catalogue's calculation-level rows |
 | **Once, for the calculation** | the files that carry **no** stage token, because one run writes one of them |
-| **one per rung** | everything stemmed on that rung's token, in the directory the shape puts it in, **spelled as that shape spells it**: an attempt's `run.json` and `.continued-from` in the hierarchy, a stage's `<base>.run.json` and `<base>.continued-from` in the flat shape |
+| **one per rung** | everything stemmed on that rung's token, in the directory the shape puts it in, **spelled as that shape spells it**: an attempt's `run.json` and `.continued-from` in the hierarchy, a run's own `<base>-run<N>.run.json`, `<base>-run<N>.continued-from` and `<base>-run<N>.molwatch.log` in the flat shape — the card names the first run's, `-run0` |
 
 **Not the engine's outputs, and that asymmetry is the point.** An engine's
 output set depends on its version and on which options are on, so listing *that*

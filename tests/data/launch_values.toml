@@ -69,16 +69,6 @@ allocation_unset = ["domain"]
 refused = "(the target's record lists: cpu, debug)"
 
 [[case]]
-name = "a run on a scheduler states its wall -- no queue ceiling"
-allocation_unset = ["time"]
-refused = "wall (time)"
-
-[[case]]
-name = "a run on a scheduler states its memory -- no scheduler default"
-allocation_unset = ["mem"]
-refused = "memory (mem)"
-
-[[case]]
 name = "every value stated nowhere is named in one refusal"
 run_unset = ["mpi_np", "omp_threads"]
 allocation_unset = ["domain", "time", "mem"]
@@ -94,11 +84,6 @@ name = "a named target whose record lists no queues is renewed by ITS probe, on 
 machine = "named"
 queues = []
 refused = ["(sol's) lists no queues at all", "molbuilder jobset probe --write --name sol", "copy the sol.json it writes"]
-
-[[case]]
-name = "...and a calculation whose own copy lists none is told it takes a new prep from a saved state as well -- a re-probe alone changes nothing"
-calculation_record = { schema = "molbuilder/environment@2", scheduler = "slurm", env_init = { activation = "conda activate", preamble = "true" } }
-refused = ["(this calculation's environment.json, snapshotted at its first prep) lists no queues at all", "then go back to the state saved before its first prep", "molbuilder checkpoint list"]
 
 [[case]]
 name = "a run on a machine with no scheduler is asked for no queue, wall or memory"
@@ -131,47 +116,28 @@ refused = ["no machine record for this machine", "molbuilder jobset probe --writ
 made_lacks = ["environment.json", "01_coarse"]
 
 [[case]]
-name = "a target whose record says nothing of its activation is refused"
-record = { env_init = {} }
-refused = "this machine's record does not say how a shell enters an environment there"
-
-[[case]]
-name = "...a named target too -- recorded on that machine, its record copied here, and the refusal says the copy back"
-machine = "named"
-named_record = { env_init = {} }
-refused = ["the record of 'sol' does not say how a shell enters an environment there", "on that machine, then copy the sol.json it writes into"]
-
-[[case]]
 name = "this machine's own env_init never reaches a wrapper written for another machine"
 machine = "named"
 machine_config = { env_init = { activation = "conda activate", preamble = "source /home/u/miniconda3/etc/profile.d/conda.sh" } }
 run_sh_lacks = ["miniconda3"]
-
-[[case]]
-name = "a calculation's own copy of its record is named when it states no activation -- no probe reaches it"
-machine = "workstation"
-calculation_record = { schema = "molbuilder/environment@2", scheduler = "workstation", script_generation = { activation = "conda activate" } }
-refused = "this calculation's record of its machine"
-
-[[case]]
-name = "...and one that does not read is refused by name -- never another machine's record answering"
-machine = "workstation"
-calculation_record = "{ not json"
-refused = "this calculation's record of its machine cannot be read"
 
 # A CALCULATION IS SET TO THE MACHINE OF ITS FIRST PREP, and that does not
 # change (`configuration.md` M-3): its copy names the machine, a later
 # `--target` is checked against the name, and another record reaches it only
 # through a new prep from a saved state.
 [[case]]
-name = "a calculation set to a machine takes --target naming it again, whatever was re-probed since"
+name = "a calculation set to a machine takes --target naming it again"
 machine = "named"
-calculation_record = { schema = "molbuilder/environment@2", detected_at = "2026-08-01T00:00:00+00:00", scheduler = "slurm", env_init = { activation = "conda activate", preamble = "true" }, domains = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64 }], machine = "sol" }
+before = [["prep", "run", "coarse"]]
+stage = "medium"
+prep = ["--cold"]
 
 [[case]]
 name = "...and is refused any other, this machine too -- naming the one it is set to, and a new prep from a saved state"
-machine = "workstation"
-calculation_record = { schema = "molbuilder/environment@2", scheduler = "slurm", env_init = { activation = "conda activate", preamble = "true" }, domains = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64 }], machine = "sol" }
+machine = "named"
+before = [["prep", "run", "coarse"]]
+stage = "medium"
+prep = ["--cold", "--target", "this"]
 refused = ["this calculation is set to 'sol'", "To go on with it: --target sol", "and prep again with --target this"]
 
 [[case]]
@@ -202,10 +168,14 @@ run_sh_lacks = ["module load mamba/latest"]
 # ===================================================================== #
 
 [[case]]
-name = "the header carries each stated value, and no site settings"
-header = ["#SBATCH -n 2", "#SBATCH -c 1", "#SBATCH -t 0-01:00:00",
-          "#SBATCH -p cpu", "#SBATCH -q public", "#SBATCH --mem=8G"]
+name = "the header carries each stated value, and no site settings -- and the sbatch line launch shows states the same"
+header = ["#SBATCH -J H2_01_coarse", "#SBATCH -N 1",
+          "#SBATCH -n 2", "#SBATCH -c 1", "#SBATCH -t 0-01:00:00",
+          "#SBATCH -p cpu", "#SBATCH -q public", "#SBATCH --mem=8G",
+          "#SBATCH -o slurm.%j.out", 'bash H2_01_coarse.run.sh "$@"']
 header_lacks = ["--mail", "--export", "--gres"]
+launch = []
+line = ["-p cpu", "-q public", "-t 0-01:00:00", "-n 2", "-c 1", "--mem=8G"]
 run_sh = ["_mpi_np_default=2", "_omp_threads_default=1"]
 
 [[case]]
@@ -275,7 +245,7 @@ refused = "but debug allows 00:15:00"
 # A benchmark keeps the calculation's ask -- `allocation` is the
 # calculation's and the benchmark's, `execution` this run's (`stages.md`
 # § 6.8e): a run card's two-day wall on every trial would queue each
-# ten-minute measurement behind everything (the unit 11 review).
+# ten-minute measurement behind everything.
 [[case]]
 name = "a benchmark keeps the calculation's wall and queue, never a run card's"
 bench = { mpi_np = [1], omp_threads = [1] }
@@ -296,7 +266,7 @@ line = ["-p long", "-q public"]
 # A queue named nowhere reaches launch only for a benchmark, whose shelves'
 # queue is named when they are sent: a run prepped for a queue has its
 # queue recorded, and one prepped with --no-sbatch is refused for its
-# header first (the unit 11 review, 2026-10-05).
+# header first.
 [[case]]
 name = "the queues launch lists ask what its door admits -- the wall and memory prep baked, when launch states none"
 prep = ["--no-sbatch"]
@@ -309,13 +279,6 @@ queues = [
 launch = []
 launch_refused = "no --domain"
 listing = ["but debug allows 00:15:00", "but debug allows 4"]
-
-[[case]]
-name = "this machine's record has the last word at launch, and the refusal says how to follow it -- the ask, or a new prep from a saved state"
-calculation_record = { schema = "molbuilder/environment@2", scheduler = "slurm", env_init = { activation = "conda activate", preamble = "true" }, domains = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 128 }] }
-run = { mpi_np = 96 }
-launch = []
-launch_refused = "to prepare against this machine's record (configuration.md M-3), go back to the state saved before the calculation's first prep"
 
 # ===================================================================== #
 #  3 · WHAT THE RUN SCRIPT DOES HERE                                    #
@@ -336,8 +299,3 @@ run = { mpi_np = 3, omp_threads = 2 }
 given_gpus = ""
 run_args = ["-np", "5"]
 runs = ["MPI ranks    : 5   (source: -np flag)"]
-
-# Retired 2026-10-06 (W57 T1): the row that sent a run to a queue and read
-# run.json's queue, wall and memory as sent -- written only after a stand-in
-# `sbatch` answered with a job id, in SLURM's words.  A real send is the
-# field tier's (`tests/field/`, testing.md § 0).

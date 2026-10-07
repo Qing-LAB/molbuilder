@@ -1,27 +1,8 @@
 """Where molbuilder keeps its own per-user files — stated once.
 
 ``$MOLBUILDER_CONFIG_DIR``, else ``$XDG_CONFIG_HOME/molbuilder``, else
-``~/.config/molbuilder`` (`configuration.md` § 2.1c).  Three modules
-computed that rule independently:
-
-* ``runtime_config._machine_config_file`` -> ``molbuilder.json``
-* ``scheduler/record.machine_scope_path`` -> ``environment.json`` and the
-  ``environments/`` beside it
-* ``auth_setup.default_secret_dir`` -> ``secret_key``
-
-They agreed, and two of them said so in prose -- one docstring reads
-*"Mirrors auth_setup.default_secret_dir's convention"*, the other
-*"mirrored rather than imported"*.  **A comment is not a mechanism**, and
-`configuration.md` M-4 already made this exact call one level down: it gave
-``environment.json`` one home for its FILENAME, which "was a string literal
-in three modules".  The directory that filename sits in never got the same
-treatment.  This is it.
-
-*(``auth_setup.default_secret_dir`` is named above as it was.  It survived
-this module as a one-line ``return config_dir()`` -- the duplication gone,
-the second NAME still there -- along with ``auth_setup.secret_key_path`` and
-``google_client_secret_path``, pass-throughs to the two doors below.  All
-three were deleted 2026-09-13; callers ask here.)*
+``~/.config/molbuilder`` (`configuration.md` § 2.1c).  One rule, one
+home: every caller asks here, and **a comment is not a mechanism**.
 
 **L1: pure stdlib, no molbuilder deps -- any layer may use it.**  That line
 is copied deliberately from ``persist.py``, which is the precedent: the same
@@ -73,10 +54,6 @@ __all__ = [
 PRIVATE_DIR_MODE = 0o700
 
 #: A file carrying a credential: owner reads and writes, nobody else.
-#: (Three pairs of names carried these two numbers until 2026-09-13 --
-#: `CONFIG_*_MODE` in `runtime_config`, `REPORT_*_MODE` in the notify
-#: blueprint -- so the writer of `molbuilder.json` used one pair and the
-#: audit checked the same file with another.  K-D2.)
 PRIVATE_FILE_MODE = 0o600
 
 #: The directory name under the XDG config root.  One string, because it is
@@ -143,8 +120,7 @@ def state_dir() -> Path:
     place sets ``XDG_STATE_HOME``; there is no config key for it and cannot
     be: this module is the bootstrap that finds ``molbuilder.json``, so it
     must answer before any config is read (``paths.logs`` is refused by
-    `runtime_config._read_paths` for exactly that reason -- this docstring
-    said the opposite until 2026-09-13).
+    `runtime_config._read_paths` for exactly that reason).
     """
     xdg = os.environ.get("XDG_STATE_HOME")
     return (Path(xdg) if xdg else Path.home() / ".local" / "state") / DIRNAME
@@ -176,13 +152,7 @@ def runtime_dir() -> Path:
 # API rather than go through directly for some variables ... they don't need to
 # handcraft anything or derive anything"*).
 #
-# The filenames live here and nowhere else.  They were spread across seven
-# modules -- `runtime_config`, `auth_setup`, `scheduler/record`, `monitor`,
-# `cli`, `serve_daemon` -- each joining its own onto a directory.  Each join
-# was small and correct; together they were seven modules that had to agree
-# about a spelling with nothing making them.  `configuration.md` M-4 recorded
-# exactly this for ONE file -- *"a string literal in three modules"* -- fixed
-# that one, and did not generalise the rule, so the next six grew back.
+# The filenames live here and nowhere else.
 #
 # The environment variables are read above, to DERIVE these answers.  No
 # caller sees them.
@@ -197,21 +167,11 @@ def runtime_dir() -> Path:
 #: What lives HERE is the files with no format to own: opaque secrets, a
 #: pidfile, a log.  Nobody else may spell these.
 #:
-#: WHERE they sit changed on 2026-09-20 (user): every secret now lives in
-#: `secrets/`, not beside `molbuilder.json`.  The property that matters is
-#: unchanged -- ONE fixed home per file, resolved by ONE function, which is
-#: what stops a reader and a writer meaning different files (2.1e).  That
-#: property was never about WHICH directory, only about there being exactly
-#: one; a directory named `secrets` that did not hold the secrets misled
-#: every reader who opened it.
-#:
-#: (Pulling `environment.json` and `notify` in here was tried and reverted the
-#: same day -- it took a name away from its format owner, which is the rule
-#: A11 exists to hold: each filename below is spelled in exactly the one
-#: module entitled to spell it, and review refuses a registry here on the
-#: spelling alone.  `configuration.md` § 2.3 records why a
-#: `retrieve_secret(name)` door is the same proposal and meets the same
-#: refusal.)
+#: Every secret lives in `secrets/` (user, 2026-09-20): ONE fixed home per
+#: file, resolved by ONE function, which is what stops a reader and a writer
+#: meaning different files (2.1e).  Each filename below is spelled in exactly
+#: the one module entitled to spell it; `configuration.md` § 2.3 records why a
+#: `retrieve_secret(name)` door is refused.
 SESSION_KEY_FILENAME = "secret_key"
 #: An OAuth provider's client secret is ``<kind>`` + this: Google's is
 #: ``google_client_secret``.
@@ -226,15 +186,9 @@ SECRETS_DIRNAME = "secrets"
 def session_key() -> Path:
     """The Flask session-signing key -- ``<config dir>/secrets/secret_key``.
 
-    One home and one name, which is the whole point.  HISTORICALLY it was
-    written to one path and read from another (``~/.molbuilder/secret.key``)
-    -- two directories and two spellings -- so running ``auth-setup`` produced
-    a key the server never read and reported success (`configuration.md`
-    § 2.1e).  Both of those paths are dead; ask this function.
-
-    It moved under `secrets/` on 2026-09-20 with every other credential.  That
-    is a change of directory, not of the rule: still one home, still resolved
-    here, still not nameable in `molbuilder.json`.
+    One home and one name, which is the whole point: a key written to one
+    path and read from another is a key the server never reads
+    (`configuration.md` § 2.1e).  Not nameable in `molbuilder.json`.
     """
     return secrets_dir() / SESSION_KEY_FILENAME
 
@@ -245,11 +199,7 @@ def client_secret(kind: str) -> Path:
 
     A FIXED home, one per kind, and `molbuilder.json` cannot name it
     *(user, 2026-10-02: "no secret in molbuilder.json except the cert
-    files")*.  Until that day a provider entry named its file with
-    ``client_secret_file`` and this was Google's default; the wizard wrote
-    this path into the entry, so the server read what the config named while
-    the mode audit looked here -- one credential, two answers
-    (`configuration.md` § 3.1).
+    files")*; `configuration.md` § 3.1.
     """
     return secrets_dir() / f"{kind}{CLIENT_SECRET_SUFFIX}"
 
@@ -259,20 +209,18 @@ def read_session_key() -> "bytes | None":
 
     **Ask for the SECRET, not for the path to it** *(user, 2026-09-20: "we
     should avoid user access the file directly, the api should return the
-    KEY/SECRET")*.  Every caller used to do ``session_key().read_bytes()``,
-    which is a second place that knows a credential is a file, how it is
-    encoded, and what an unreadable one means.  `monitor` already did this
-    correctly for its two -- `load_channels` and `read_notify_keys` hand back
-    values -- and these two were the ones still handing out a path.
+    KEY/SECRET")*.  A caller reading the file itself would be a second place
+    that knows a credential is a file, how it is encoded, and what an
+    unreadable one means.  `monitor` does the same for its two --
+    `load_channels` and `read_notify_keys` hand back values.
 
     ``None`` rather than an exception for "absent", because absent is an
     ordinary state: the server makes the key on first run (`web/auth.py`).
     A file that EXISTS but cannot be read is a different thing and raises.
 
     This is not a `retrieve_secret("name")` registry, which
-    `configuration.md` § 2.3 refuses and which was reverted inside a day on
-    2026-08-31: a name-keyed table has to re-spell filenames their owners
-    own.  One named function per secret, on the module that owns it.
+    `configuration.md` § 2.3 refuses: a name-keyed table has to re-spell
+    filenames their owners own.  One named function per secret, on the module that owns it.
     """
     p = session_key()
     if not p.exists():
@@ -285,25 +233,19 @@ def relative_home(resolve) -> str:
 
     **For the text molbuilder shows a person.**  `notify-token` prints a shell
     recipe that runs on a CLUSTER, so it cannot use an absolute local path: it
-    builds `$cfg` from the same three branches `config_dir` does and joins a
-    name.  It joined ``notify``, and when the credentials moved into `secrets/`
-    the printed recipe went on telling people to write a webhook where nothing
-    reads it -- silently, because a notifier swallows every failure by design.
-    The AST guard of the time (retired 2026-09-26) could not catch that: it
-    matched the literal ``"notify"`` and the string there was
-    ``"$cfg/notify"``.  Deriving the tail is what closes it.
+    builds `$cfg` from the same three branches `config_dir` does and joins the
+    tail this derives, so the recipe follows the file wherever its resolver
+    puts it -- a wrong one fails silently, because a notifier swallows every
+    failure by design.
 
-    **It lives here, not in `placement`** *(moved 2026-09-20)*.  It never
-    touches that module's table -- it is `config_dir` arithmetic over a
-    resolver the caller supplies -- and `placement` in this codebase means JOB
-    placement nearly everywhere else (`scheduler/place.Placement`,
-    `calcdirs.Placement`, `placement.domain` through `jobset/`), so
-    `from .placement import relative_home` in `cli.py` read like scheduler
-    code.  Here it sits beside the function that defines what it is relative
+    **It lives here, not in `placement`**: it is `config_dir` arithmetic over
+    a resolver the caller supplies, and `placement` in this codebase means
+    JOB placement nearly everywhere else (`scheduler/place.Placement`,
+    `calcdirs.Placement`, `placement.domain` through `jobset/`).  Here it sits beside the function that defines what it is relative
     TO, and it ships with this module to a compute node.
 
-    **A path outside the config directory RAISES**, deliberately.  The first
-    version returned the absolute path instead, which rendered as
+    **A path outside the config directory RAISES**, deliberately.  The
+    absolute path would render as
     ``$cfg//run/user/1000/molbuilder/jupyter-8888.json`` -- a broken recipe
     from a function whose name promises a relative one.  Nothing can use that,
     so a resolver that is not under the config directory is a call-site
@@ -316,7 +258,7 @@ def secrets_dir() -> Path:
     """Every credential molbuilder keeps, in one directory.
 
     Two kinds live here and they differ in who names them, not in where they
-    sit *(2026-09-20)*:
+    sit:
 
     * **fixed home** -- `secret_key`, `notify`, `notify_keys`, each OAuth
       kind's `<kind>_client_secret`.  Resolved by one function each and NOT
@@ -327,8 +269,7 @@ def secrets_dir() -> Path:
       config names these by path, so this is their suggested home and the name
       is yours.
 
-    The DIRECTORY has one owner, which is why this function exists --
-    `envs init-config` used to join ``root / "secrets"`` itself, and a
+    The DIRECTORY has one owner, which is why this function exists: a
     directory nobody owns is one the placement audit cannot check (A11).
     """
     return config_dir() / SECRETS_DIRNAME
@@ -367,10 +308,8 @@ def ports_with_pidfile(prefix: str = "serve") -> List[int]:
     the reason `jupyter.serve_port_of` exists: a second place that knows how
     to take the name apart drifts the day the name changes.
 
-    **This is what lets `serve status` answer without being told a port.**
-    It defaulted to 8000, so a server on 8888 was reported *"not running"* --
-    confidently wrong, when the port was on disk the whole time
-    (`plan.md` § 5n, J14).
+    **This is what lets `serve status` answer without being told a port**:
+    the port is on disk (`plan.md` § 5n, J14).
 
     It lists only what has a FILE.  A `serve foreground` writes none, so it
     cannot appear here, and a caller that means *"what is running"* has to
@@ -452,10 +391,6 @@ def jupyter_lab_home() -> Path:
         ``data/jupyter_server_config.py``; it is what suppresses
         ``.ipynb_checkpoints`` (`jupyter.md` 4.2).
 
-    *(This said "two directories" while the code made three and wrote a
-    config file beside them -- the door's own contract behind its caller,
-    `plan.md` 5n J11.)*
-
     **Separate from ``~/.jupyter`` on purpose.**  Lab writes a user setting the
     first time it resolves one, and a user setting BEATS an override -- so a
     framed Lab sharing the person's own settings home adopted whatever their
@@ -470,11 +405,6 @@ def jupyter_lab_home() -> Path:
     a setting changed in one molbuilder's framed Lab follows them to the
     next.  ``workspaces/`` is SESSION state, which does differ, so it is
     keyed by serve port one level down (`jupyter._workspace_dir`).
-
-    That exception was missed when the workspace arrived on 2026-09-15:
-    this sentence justified sharing a directory that had just stopped
-    holding only defaults, and the shared layout re-created the bug the
-    workspace was added to fix -- one server's start emptied another's.
     """
     return state_dir() / "jupyter-lab"
 
@@ -485,9 +415,9 @@ def ensure_private_dir(d: Path, *, mode: int = PRIVATE_DIR_MODE,
 
     It lives here, in the module that owns the directories, because the
     SUPERVISOR needs it too: `serve_daemon` is L1 and imports nothing of the
-    application it restarts, so a creator one layer up would have left it with a
-    private copy -- which is what it had, and the copy is why two creators
-    disagreed about the case below.  Pure stdlib, which is also what lets this
+    application it restarts, so a creator one layer up would leave it with a
+    private copy, and two creators would disagree about the case below.  Pure
+    stdlib, which is also what lets this
     module keep travelling beside a job.
 
     The umask can only REMOVE bits from a requested mode, never add them, so
@@ -512,9 +442,8 @@ def ensure_private_dir(d: Path, *, mode: int = PRIVATE_DIR_MODE,
     # EVERY MISSING ANCESTOR AT ``mode`` TOO.  `Path.mkdir(parents=True,
     # mode=)` gives the mode to the leaf only and creates missing parents at
     # the umask -- so the first thing made under a fresh config root (say
-    # `environments/` by `jobset probe --write`) left the ROOT itself 0755
-    # around every secret written into it later, and `envs doctor` then
-    # reported a directory this program had made.  Measured 2026-09-14.
+    # `environments/` by `jobset probe --write`) would leave the ROOT itself
+    # 0755 around every secret written into it later.  Measured 2026-09-14.
     for parent in reversed(d.parents):
         if not parent.exists():
             parent.mkdir(mode=mode, exist_ok=True)

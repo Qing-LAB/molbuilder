@@ -12,8 +12,6 @@ where it exists — `parse.md` § 5a's sibling upgrade, resolved by the
 caller, not by either file reading the other. The csv is the one that is
 always there: a trial the scheduler killed has a csv and no summary, and
 that is the trial a benchmark most needs to read.
-
-*(Moved from `bench/result.py` on 2026-09-04 -- `parse.md` § 5c.)*
 """
 from __future__ import annotations
 
@@ -40,10 +38,10 @@ def _time_weighted(series: List[Tuple[float, float]]) -> Optional[float]:
 
     Takes PAIRS, not two parallel lists, and that is the point: a value and
     the instant it was read cannot be separated, so a column with a hole
-    cannot borrow its neighbour's clock.  Two parallel lists made that
-    silent -- a single ``[N/A]`` from ``nvidia-smi`` (MIG instances and
-    some drivers report it) shortened one column, shifted every later
-    reading onto the wrong interval, and returned a plausible number.
+    cannot borrow its neighbour's clock: with two parallel lists, a single
+    ``[N/A]`` from ``nvidia-smi`` (MIG instances and some drivers report it)
+    would shorten one column and shift every later reading onto the wrong
+    interval.
 
     ``util.csv`` is CHANGE-GATED: the monitor writes a row only when a
     metric moves >= its threshold, or when a 300 s keepalive elapses.  The
@@ -66,11 +64,9 @@ def _time_weighted(series: List[Tuple[float, float]]) -> Optional[float]:
 
     **An EMPTY series is ``None``, never ``0.0``.**  A column whose rows
     all lack a usable ``epoch`` has not been measured, and 0.0 is a
-    reading -- one that says the machine sat idle.  Returning it put a
-    fabricated number where the absence of one belonged, which is
-    forbidden pattern #9 (`model/parse.md` § 7), and it was the same
-    mistake in the same file as the ``[N/A]`` shift above: a hole
-    borrowing a plausible value instead of admitting itself.  Callers
+    reading -- one that says the machine sat idle -- and a fabricated
+    number where the absence of one belongs is forbidden pattern #9
+    (`model/parse.md` § 7).  Callers
     omit the metric rather than store the ``None`` -- an absent key
     reads as "not measured", which is what happened.
     """
@@ -104,17 +100,12 @@ def util_csv_metrics(csv_text: str) -> Dict[str, float]:
     **The name ends in ``elapsed_s`` because P-T1 says the suffix IS the
     contract** (`model/parse.md` § 2a): a time field ends in
     ``wall_clock_s`` and renders as a date, or ``elapsed_s`` and renders
-    as a duration.  This was ``wall_s`` until 2026-09-05 -- a duration
-    wearing a date's name, which is the exact ``wall_time`` trap the rule
-    was written for.  Plain ``elapsed_s`` would have been the other kind
-    of wrong: the rule reads it as *seconds since the run began*, and
+    as a duration.  Plain ``elapsed_s`` would be wrong too: the rule reads it as *seconds since the run began*, and
     this window starts after the job does and ends when the MONITOR
     stops.  The prefix says which window, so the suffix can keep its
     promise.
 
-    **It is the MONITORED WINDOW, not the job's wall time**
-    (corrected 2026-09-03; this said "the monitor runs for the life of
-    the job, so this is the job's wall time to sampling resolution").
+    **It is the MONITORED WINDOW, not the job's wall time**.
     It is last written row − first, and both ends are anchored only when
     the monitor reaches its terminal branch: the first sample is always
     written, and the last is force-written there.  A trial the scheduler
@@ -175,12 +166,9 @@ def util_csv_metrics(csv_text: str) -> Dict[str, float]:
     out: Dict[str, float] = {}
     epochs = cols.get("epoch") or []
     if cols.get("mem_gb"):
-        # The job's OWN memory since 2026-08-26: the monitor reads its
-        # cgroup (`monitor._read_mem_used_gb`), so this is the calculation
-        # rather than the machine.  It used to be MemTotal - MemAvailable,
-        # every process on the node -- correct only when the job held the
-        # whole node, and on a shared one it was measuring other people's
-        # jobs as much as this one's.
+        # The job's OWN memory: the monitor reads its cgroup
+        # (`monitor._read_mem_used_gb`), so this is the calculation rather
+        # than the machine.
         #
         # Still the max of a sampled series, so it is bounded below by the
         # true peak; the kernel's own counter, where the monitor states one,

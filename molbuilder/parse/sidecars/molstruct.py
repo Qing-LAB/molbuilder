@@ -1,11 +1,8 @@
 """``.molstruct.json`` sidecar FileParser.
 
-The READ side. Absorbed from the legacy
-``molbuilder.parsers.molstruct_json.load`` (deleted 2026-06-21) with its
-validators; the write side -- ``save``, ``with_lock``,
+The READ side; the write side -- ``save``, ``with_lock``,
 ``sidecar_path_for``, ``to_dict``, ``apply_to_structure``,
-``sha256_of_file`` -- is :mod:`molbuilder.sidecars.molstruct`
-(provenance: `docs/archive/old_docs/protocols/parse-module.md` § 8).
+``sha256_of_file`` -- is :mod:`molbuilder.sidecars.molstruct`.
 
 The sidecar carries per-atom region + frozen-atom metadata that
 rides next to a structure file (``<stem>.molstruct.json``).
@@ -36,13 +33,6 @@ from ._helpers import build_sidecar_result
 
 # The readable-version gate is `sidecars.molstruct.READABLE_VERSIONS`,
 # imported above and used by `load_text` below.
-#
-# A private `_READABLE_SCHEMA_VERSIONS = (SCHEMA_VERSION,)` stood here
-# until 2026-09-05 with eighteen lines arguing for a STRICT one-version
-# gate -- while the gate that runs accepts three.  It was read by
-# nothing, so the argument was decoration and the disagreement was
-# invisible.  The reasoning it carried was not wasted and now lives
-# with the live constant, where a person changing the set will meet it.
 
 
 def _normalised_dict(
@@ -62,7 +52,7 @@ def _normalised_dict(
     created_at: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Re-validate + canonicalise sidecar fields.  Private read-side
-    helper; mirrors the legacy ``to_dict`` validation logic so an on-
+    helper; mirrors the write side's ``to_dict`` validation so an on-
     disk sidecar that snuck past with hand-edited indices fails loudly
     at load time (with the file path in the error message) rather than
     at engine-load time.
@@ -124,14 +114,12 @@ def _normalised_dict(
         "structure_hash":  structure_hash,
         # SPREAD, not re-listed -- the same rule the write side follows, and for
         # the same reason: a field added to (or removed from) the dataclass must
-        # ride onto both sides with no edit here.  This block used to name each
-        # field, which is why it had to be touched at all when the reserved
-        # label stopped being one.
+        # ride onto both sides with no edit here.
         **fields,
         **identity,
         # The `info` block (schema 9): carried whole when the file holds
         # one -- the store is open by design, so nothing here enumerates
-        # its keys (archive/2026-09-01-structure-info-plan.md).
+        # its keys.
         **({"info": dict(info)} if isinstance(info, dict) and info else {}),
         "selection_rules": normed_rules,
         "created_by":      str(created_by),
@@ -174,11 +162,7 @@ def load_text(text: str, *, source: str = "<sidecar>",
     if sv not in READABLE_VERSIONS:
         # REFUSED, NOT READ PARTIALLY.  An older sidecar does not store the same
         # facts in the same places, so reading it here would not recover them --
-        # it would return a payload that LOOKS complete and quietly is not.  The
-        # v3 case is why this is strict: its frozen atoms live under a top-level
-        # key this reader does not name, so the file loaded, the atoms did not,
-        # and the omission first became visible as a missing
-        # ``Geometry.Constraints`` block in a generated SIESTA input.
+        # it would return a payload that LOOKS complete and quietly is not.
         raise MolstructJsonError(
             f"sidecar {source}: schema_version is {sv!r}, but this molbuilder "
             f"build reads versions {sorted(READABLE_VERSIONS)} only (v8 "
@@ -213,20 +197,16 @@ def load_text(text: str, *, source: str = "<sidecar>",
             f"string of >= 16 chars; got {sh!r}"
         )
 
-    # A KEY NOBODY READS IS METADATA THE WRITER THINKS IT SAVED.
-    #
-    # ``apply_to_structure`` already refuses stray keys with exactly that
-    # reasoning -- but it never got the chance, because this function reads the
-    # keys it NAMES and drops the rest on the floor one layer earlier.  That is
-    # the hole the v3 frozen-atom loss went through: the guard was real, correct,
-    # and downstream of the leak.  It is checked HERE now, where the payload is
-    # still whole.
+    # A KEY NOBODY READS IS METADATA THE WRITER THINKS IT SAVED.  Checked
+    # HERE, where the payload is still whole: this function reads the keys it
+    # NAMES, so a stray one would be dropped before ``apply_to_structure``
+    # could refuse it.
     from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
                                       RETIRED_METADATA_KEYS,
                                       RETIRED_IDENTITY_KEYS)
     # `info` (schema 9): the free-form NON-structural store -- known by
     # NAME here (the block is open by design, so its keys are not
-    # enumerated; archive/2026-09-01-structure-info-plan.md).
+    # enumerated).
     # AND THE RETIRED ONES, which are accepted and ignored rather than
     # refused -- a key this project used to write is not a key nobody reads,
     # and the files carrying it are the user's (`structure.RETIRED_METADATA_KEYS`).
@@ -245,7 +225,7 @@ def load_text(text: str, *, source: str = "<sidecar>",
         retired_out.update({k: data[k] for k in RETIRED_METADATA_KEYS
                             if data.get(k) is not None})
 
-    # Re-validate regions + frozen_atoms via _normalised_dict.  This
+    # Re-validate the fields via _normalised_dict.  This
     # catches malformed user-edited JSON BEFORE any consumer tries to
     # apply the data to a Structure (where the same checks would run
     # but with a less specific error message that doesn't mention
@@ -292,7 +272,7 @@ class MolstructSidecarFileParser(FileParser):
     region + frozen_atom metadata that rides next to a structure
     file.  Returns a :class:`SidecarResult` whose ``payload`` is
     the raw schema-validated dict and ``schema`` is the version-
-    qualified discriminator (``"molstruct/v3"``)."""
+    qualified discriminator (``"molstruct/v<N>"``)."""
 
     name   = "molstruct-json"
     label  = "molbuilder .molstruct.json sidecar"

@@ -1,6 +1,6 @@
 """`role` and `stages` — the third answerer, and which rung may own an item.
 
-Two declarations added 2026-09-16 (`engines/template.md` § 6.4;
+Two declarations (`engines/template.md` § 6.4;
 `engines/transport.md` § 2a.3), both siblings of `allocation`:
 
 * **`role`** — *the stage's role answers this*.  A list of KINDS, like

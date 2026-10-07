@@ -8,11 +8,7 @@ JSON record they produce (``environment@2`` — registry row: job-contracts
 copied beside a calculation at its first prep) that every later stage and any
 external tool reads.
 
-**Section references below cite the archived
-`docs/archive/old_docs/job-execution.md` design record** (the live homes are job-system § 7 and job-contracts § 6.1; R8,
-2026-08-12 — the numbers no longer resolve in the live doc set and are
-kept as the design's own history).  Detection priority for topology
-(§ 4.6 there): the **compute node**, not where
+Detection priority for topology: the **compute node**, not where
 this runs.
 
   1. SLURM  -> ``scontrol show node`` (correct compute-node shape, askable
@@ -29,9 +25,7 @@ an exception.
 This module is NOT shipped beside a job.  The files that travel are
 `runwrap.MONITOR_COMPANIONS` -- the monitor and the framework readers it
 reads a run through; this one imports `..persist`, `..config_dir`,
-`.quantities` and `.admit` where it needs them.  Its docstring claimed "stdlib-only ... meant to also ship
-to the target" until 2026-09-13, and `diagnostics.local_facts` placed
-itself by that claim (K-Y3).  The RECORD is JSON and reads anywhere.
+`.quantities` and `.admit` where it needs them.  The RECORD is JSON and reads anywhere.
 """
 
 from __future__ import annotations
@@ -47,19 +41,8 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 from ..identity import checkpoint_words
 
 SCHEMA = "molbuilder/environment@2"
-#
-# @1 -> @2 (N2, 2026-08-17): ``domains`` added -- each row carrying the QoS
-# the probe read for it (``site.qos`` was meant to be written then; nothing
-# writes it).  A MAJOR bump rather than a minor, deliberately:
-# ``from_dict`` tolerates missing keys, so an @1 record would parse -- and would
-# read as *a cluster with no reachable domains*, which is indistinguishable from
-# a real cluster where you hold no QoS.  The bump is what makes an old record
-# say "I predate the probe" instead of answering the question wrongly.
-# (`configuration.md` § 5.)
 
-#: The record's filename, at every scope.  It was a string literal in three
-#: modules (`jobset/prep.py`, `jobset/summarize.py`, and the door below) until
-#: N1 -- the same defect `task.FILENAME` was created to fix.
+#: The record's filename, at every scope.
 from ..runfiles import MACHINE_RECORD_FILE as FILENAME  # noqa: E402 -- the catalogue's name
 
 # Normalized GPU-type tokens we recognize in an nvidia-smi name string.
@@ -68,7 +51,7 @@ _GPU_TYPES = ("a100", "a30", "h100", "h200", "v100", "a40", "l40", "l4",
 
 
 # --------------------------------------------------------------------- #
-#  Data model (§ 5.2)                                                   #
+#  Data model                                                           #
 # --------------------------------------------------------------------- #
 
 
@@ -88,15 +71,13 @@ class Topology:
     #: never normalised, because a name we invent is a name nothing else
     #: uses.
     #:
-    #: Added 2026-08-26 (user: *x64 vs arm are different, don't mix them*).
+    #: (user, 2026-08-26: *x64 vs arm are different, don't mix them*)
     #: ASU Sol offers an ``arm`` partition -- Grace-Hopper, aarch64 -- in the
     #: same menu as eight x86 ones, and nothing here could tell them apart:
     #: an x86 conda env does not activate usefully on aarch64 and an
     #: AVX-512 binary does not run there at all, so the failure is total
     #: rather than slow.  Recorded with ``env_arch`` -- the two numbers a
-    #: wrong-architecture refusal would compare; nothing compares them yet
-    #: (W54 R22: this said records "filter" on it).  ``None`` is a record
-    #: written before the field.
+    #: wrong-architecture refusal would compare; nothing compares them yet.
     arch:             Optional[str] = None
 
 
@@ -105,8 +86,6 @@ class Site:
     """Scheduler-specific submission facts (empty on a workstation)."""
     partition: Optional[str] = None
     qos:       Optional[str] = None
-    # `account` -- neither written nor read -- went 2026-10-02 (W54 R22); a
-    # record carrying one still reads, `from_dict` keeping known keys only.
 
 
 @dataclass(frozen=True)
@@ -124,11 +103,8 @@ class _Unset:
     """The one instance below (``UNSET``) marks a policy column NO PROBE
     EVER ASKED -- distinct from ``None``, which means *asked; no cap
     stated*.  That distinction is the record's tri-state (`scheduler.md`
-    R13, `checkpointing.md` S3's absent-vs-null): :meth:`Domain.to_row`
-    drops ``UNSET`` but writes ``None`` as ``null``, so *asked, uncapped*
-    survives the trip to disk.  Built 2026-08-28, the day a fresh Sol
-    probe asked both policy questions and the written record could not
-    show it -- ``to_row`` dropped every ``None`` field indiscriminately.
+    R13): :meth:`Domain.to_row` drops ``UNSET`` but writes ``None`` as
+    ``null``, so *asked, uncapped* survives the trip to disk.
     """
     __slots__ = ()
 
@@ -151,19 +127,8 @@ class Domain:
     never *submit here*.  Which domain a run wants is the job's own
     statement (`execution/architecture.md` § 5.2).
 
-    **One type for both ways a fact arrives** (2026-08-17).  It carried four
-    fields when only the prober built one, and a hand-declared row -- how a
-    workstation stated a cluster's capability, before a record was probed ON
-    the cluster and copied (2026-10-02) -- went through
-    `get_routing` as a **raw dict** instead, so the same function returned a
-    4-key mapping or a 6-key one depending on which branch ran.  A caller could
-    not rely on the shape of its own answer.  The columns below are the ones
-    people actually write; anything else rides in ``extra``.
-
-    ``extra`` is R10, 2026-08-12, made a property of the TYPE rather than of
-    one code path: rebuilding a row from a known-key list made drafting a
-    column indistinguishable from not writing it.  A reader owns only the keys
-    it checks.
+    The columns below are the declared ones; anything else rides in
+    ``extra`` (R10).  A reader owns only the keys it checks.
     """
     name:      str
     partition: str
@@ -172,10 +137,7 @@ class Domain:
     max_cores: Optional[int] = None
     max_mem_gb: Optional[float] = None
     #: What SLURM grants PER CORE when a job states no ``--mem`` -- the number
-    #: that turns 64 cores into a 128 GB ask nobody made.  A DECLARED column
-    #: since 2026-08-23, when the probe started measuring it: `asu-sol.md`
-    #: § 5.3 has documented it since the row was designed, and it rode in
-    #: ``extra`` until the probe could fill it.  Tri-state like the policy
+    #: that turns 64 cores into a 128 GB ask nobody made.  Tri-state like the policy
     #: ceilings below (R13): ``None`` means *asked; the partition does not
     #: say* -- never zero (R3) -- and ``UNSET`` that it was never asked.
     default_mem_per_core_gb: Any = UNSET
@@ -192,20 +154,16 @@ class Domain:
     max_cpus_per_job:  Any = UNSET
     max_cpus_per_node: Any = UNSET
     #: R14 -- how many jobs this domain's QoS lets ONE USER have submitted
-    #: at once (``MaxSubmitJobsPerUser``).  Same tri-state as the two above,
-    #: and the same reason it exists: the column was in the QoS table all
-    #: along and the format list did not ask for it.
+    #: at once (``MaxSubmitJobsPerUser``).  Same tri-state as the two above.
     #:
     #: It is a different KIND of ceiling from every other field here.  Those
     #: cap ONE job and are answerable from the job alone; this caps the SET,
     #: so whether an ask fits depends on what is already queued.  A bench
-    #: sweep submits many jobs at once by construction -- which is how Sol's
-    #: `debug` (cap 2) took two of six and refused four, with the record
-    #: unable to have said so.
+    #: sweep submits many jobs at once by construction.
     max_submit_jobs:   Any = UNSET
     gpu:       Optional[Dict[str, Any]] = None
     #: Every distinct machine this domain holds: ``[{cores, nodes, mem_gb,
-    #: gpu}, ...]``.  DECLARED since 2026-08-27, because a partition is a
+    #: gpu}, ...]``.  Declared because a partition is a
     #: QUEUE and not a machine type -- Sol's ``htc`` is 48-, 64- and
     #: 128-core nodes under one name.
     #:
@@ -215,20 +173,10 @@ class Domain:
     #: the record positively rules out) and this is what a person reads to
     #: choose.  Empty means the record does not say, never *no machines*.
     node_types: Optional[List[Dict[str, Any]]] = None
-    # `gpu_partition` -- where a GPU job went when that differed from
-    # ``partition`` -- was a field here from 2026-08-23 until 2026-10-02: the
-    # probe never wrote it, and a GPU job goes to the queue it names
-    # (`scheduler.md` § 4).  A record still carrying one keeps it in
-    # ``extra``, and the machine list says so.
     #: Columns this reader does not check, kept verbatim.
     extra:     Dict[str, Any] = field(default_factory=dict)
 
     #: The keys :meth:`from_row` recognises; everything else goes to ``extra``.
-    #: The scalar ``node_type`` was RETIRED 2026-08-27 (`scheduler.md`
-    #: R11): it said a queue has one machine type, which R0 measured to be
-    #: false, and the S3 check reading it had never fired because the
-    #: probe could not honestly write it.  A declared one now lands in
-    #: ``extra``, uninterpreted; ``node_types`` is the machine list.
     _KNOWN = ("name", "partition", "qos", "max_time",
               "max_cores", "max_mem_gb", "default_mem_per_core_gb",
               "max_cpus_per_job", "max_cpus_per_node", "max_submit_jobs",
@@ -262,9 +210,7 @@ class Domain:
 
         ``None`` is dropped -- the record says nothing by silence -- except
         in the ``_NULLABLE`` policy columns, where ``None`` means *asked;
-        no cap stated* and must land as ``null``.  Dropping those too is
-        the 2026-08-28 leak: a Sol probe asked both policy questions and
-        the written record could not show it.
+        no cap stated* and must land as ``null``.
         """
         row: Dict[str, Any] = {}
         for k in self._KNOWN:
@@ -280,8 +226,7 @@ class Domain:
         """What this domain's ``gpu`` column says the nodes offer.
 
         Empty when it says nothing.  **Every reader of the GPU inventory goes
-        through here** -- reading the column at the call site is what let two
-        readers disagree about it (:func:`_read_devices`).
+        through here** (:func:`_read_devices`).
         """
         return _read_devices(self.gpu)
 
@@ -290,11 +235,7 @@ def _read_devices(gpu: Any) -> Tuple[Device, ...]:
     """A domain's ``gpu`` column -> the devices it names.  **The one reader.**
 
     The probe writes the column as gres TYPE to per-node COUNT, ``{"a100": 4,
-    "a100.20gb": 16}`` -- one entry per type ``sinfo`` reported.  *(A second
-    spelling, one device described by hand, ``{"type": "a100", "per_node": 4,
-    "mem_gb": 80}``, was read too until 2026-10-02 -- no writer, and a record
-    is a measurement, not a hand-written file; W54 R22,
-    `execution/scheduler.md` § 4.)*
+    "a100.20gb": 16}`` -- one entry per type ``sinfo`` reported.
 
     An unreadable count is ``None``, never a raise and never a zero -- a column
     we cannot read is not a domain with no devices (R3), and admission must be
@@ -309,15 +250,14 @@ def _read_devices(gpu: Any) -> Tuple[Device, ...]:
 
 @dataclass
 class Environment:
-    """The portable target description (§ 5.2).  Produced by probes,
+    """The portable target description.  Produced by probes,
     consumed by adapters; neither knows the other's internals."""
     scheduler: str                                   # "slurm" | "workstation"
     topology:  Topology = field(default_factory=Topology)
     site:      Site = field(default_factory=Site)
     #: Every (partition, qos) this account may actually submit to, with its
     #: wall.  Empty on a workstation, and empty on a cluster until `jobset
-    #: probe` has run -- which is why @2 exists: on @1 those two were the same
-    #: value and nothing could tell them apart.
+    #: probe` has run.
     domains:   List["Domain"] = field(default_factory=list)
     #: HOW A SHELL ON THIS MACHINE ENTERS THE ENVIRONMENT -- the preamble
     #: to run and the activation form to use, as that machine states them
@@ -327,14 +267,9 @@ class Environment:
     #: **It is a fact about the TARGET, so it travels on the target's
     #: record.**  A wrapper is generated on a workstation and executed on a
     #: cluster; the two activate differently (`module load mamba` +
-    #: `source activate` on ASU Sol, a `conda.sh` hook on the workstation),
-    #: and until 2026-08-24 nothing carried the difference.  `prep
-    #: --target sol` resolved Sol's topology and queues from this record
-    #: and then baked the WORKSTATION's preamble into every wrapper, so
-    #: every job on Sol died with
-    #: ``line 196: /home/.../conda.sh: No such file or directory``.
+    #: `source activate` on ASU Sol, a `conda.sh` hook on the workstation).
     #:
-    #: ``{}`` means the record predates this field, or the `molbuilder.json`
+    #: ``{}`` means the `molbuilder.json`
     #: of the machine it was probed on declared no ``env_init``.  Absent is
     #: NOT "use the local machine's" -- that substitution is the bug -- so
     #: prep REFUSES any target whose record carries no activation, saying
@@ -358,8 +293,8 @@ class Environment:
     #: circularity -- *"probing needs an env"* -- is only about the probe's
     #: own env, never the ones a generated script will use.
     #:
-    #: ``[]`` means the probe could not enumerate (no conda on PATH, or a
-    #: record written before this field).  Empty is "unknown", not "none":
+    #: ``[]`` means the probe could not enumerate (no conda on PATH).
+    #: Empty is "unknown", not "none":
     #: a gate cannot refuse on it.
     conda_envs: List[str] = field(default_factory=list)
     #: The instruction set the environments above were enumerated ON, as
@@ -375,17 +310,12 @@ class Environment:
     #: `envs/builds.py` looks for ``x86_64-conda-linux-gnu-gcc`` by name, so on
     #: aarch64 it simply finds nothing and reports an unknown compiler
     #: version rather than the actual cause.
-    #:
-    #: ``None`` means a record written before this field (R3).
     env_arch:   Optional[str] = None
     source:    Dict[str, str] = field(default_factory=dict)
     detected_at: Optional[str] = None
     #: Who wrote it: the probe -- `jobset probe`, or `envs init-config`
-    #: through it.  It said ``jobset-prep@1``, from when prep probed, on every
-    #: record until 2026-10-02 (R13); ``prep-bench@1``, the deleted verb,
-    #: before R10 (2026-08-12).
-    #: ``None`` for a record that does not say -- never a guessed writer
-    #: (it was read as ``jobset-probe@1`` until 2026-10-06).
+    #: through it.  ``None`` for a record that does not say -- never a
+    #: guessed writer.
     tool:      Optional[str] = "jobset-probe@1"
     #: THE MACHINE A CALCULATION IS SET TO -- the ``--target`` of its first
     #: prep, ``this`` for the machine it was prepped on -- written by that
@@ -397,9 +327,7 @@ class Environment:
 
     def __post_init__(self):
         # THE SCHEDULER IS STATED -- `slurm` or `workstation`, nothing else
-        # (`configuration.md` M-2): a record without one read as a
-        # workstation until 2026-10-06, and withheld every `.sbatch` for a
-        # cluster that had lost the key.
+        # (`configuration.md` M-2).
         if self.scheduler not in ("slurm", "workstation"):
             raise ValueError(
                 f"the machine record's scheduler is {self.scheduler!r} -- it "
@@ -448,8 +376,8 @@ class Environment:
                    if d is not None]
         return cls(
             # AS WRITTEN: a record states its scheduler -- a missing one is
-            # a record that does not read, never a workstation (until
-            # 2026-10-06); a writer it does not name is not guessed.
+            # a record that does not read, never a workstation; a writer it
+            # does not name is not guessed.
             scheduler=d.get("scheduler"),
             topology=topo, site=site, domains=domains,
             env_init={
@@ -489,14 +417,10 @@ def _parse_gres(gres: str) -> Tuple[Optional[int], Optional[str]]:
     """``gpu:a100:4`` -> ``(count, type)`` -- a Topology states ONE device
     kind, so this narrows what `quantities.parse_gres` reads in full.
 
-    **The reading itself is not done here any more** (2026-08-24).  This
-    matched the type against `_GPU_TYPES`, a hard-coded list, and on ASU Sol
-    that turned `gh200` into `h200` by substring, `a100.40gb` into `a100`,
-    and `hl225` into nothing at all -- so a machine record could state a
-    device its nodes do not have.  The token carries the type; a list of
-    names cannot keep up with a site's hardware.
+    The token carries the type; a list of names cannot keep up with a
+    site's hardware.
 
-    `_gpu_type_from_name` survives for the input it was RIGHT for:
+    `_gpu_type_from_name` serves the input it is RIGHT for:
     ``nvidia-smi`` prints marketing names (``NVIDIA A100-SXM4-40GB``), not
     gres tokens, and matching those against known names is the only way to
     read them.
@@ -532,9 +456,8 @@ def _parse_scontrol_node(text: str) -> Topology:
         t.mem_total_gb = round(rm / 1024.0, 1)
     if "Gres" in kv:
         n, gt = _parse_gres(kv["Gres"])
-        # A NODE THAT STATES NO GRES HAS NONE -- measured, so 0, never the
-        # unknown it read as until 2026-10-06 (`configuration.md` M-2: a
-        # consumer tells absent from unknown).
+        # A NODE THAT STATES NO GRES HAS NONE -- measured, so 0
+        # (`configuration.md` M-2: a consumer tells absent from unknown).
         if n is None and kv["Gres"].strip().lower() in ("(null)", "none"):
             n = 0
         t.gpus_per_node, t.gpu_type = n, gt
@@ -603,9 +526,7 @@ def topology_field_types() -> Dict[str, type]:
         args = [a for a in typing.get_args(hints[f.name])
                 if a is not type(None)]
         # A plain (non-Optional) annotation has no args -- the hint IS the
-        # type.  str was the fallback for that branch too, which would have
-        # silently text-typed the first plain field ever added (milestone
-        # review N3; unreachable today, every field is Optional).
+        # type.
         hint = hints[f.name]
         out[f.name] = args[0] if args else (
             hint if isinstance(hint, type) else str)
@@ -646,7 +567,7 @@ def detect_topology(scheduler: str, *,
                     partition: Optional[str] = None,
                     overrides: Optional[dict] = None
                     ) -> Tuple[Topology, str]:
-    """Resolve the compute-node topology by the § 4.6 priority.  Returns
+    """Resolve the compute-node topology.  Returns
     ``(Topology, source)`` where source is ``scontrol`` | ``lscpu`` |
     ``flag`` | ``unknown``.  Overrides (declared flags) win field-by-field
     and mark the source ``flag`` when they supplied anything."""
@@ -662,7 +583,7 @@ def detect_topology(scheduler: str, *,
     # Local probe ONLY when we are physically ON the target: a workstation,
     # or a SLURM job/allocation (``SLURM_JOB_ID`` set).  On a SLURM LOGIN
     # node ``lscpu`` would describe the *login* node, not the compute node
-    # (§ 4.6) -- so if scontrol failed there, leave topology unknown and
+    # -- so if scontrol failed there, leave topology unknown and
     # let declared flags fill it, rather than report the wrong machine.
     on_node = (scheduler == "workstation"
                or bool(os.environ.get("SLURM_JOB_ID")))
@@ -704,18 +625,12 @@ def detect_site(scheduler: str) -> Tuple[Site, str]:
     with ``*``); empty on a workstation.
 
     ``qos`` is left ``None`` **here** because ``sinfo`` cannot answer it --
-    not because nothing can.  This docstring claimed they were
-    "site policy, not reliably derivable", and `probe` disproves it
-    in the same tree: ``parse_allowed_qos`` reads exactly your QoS from
-    ``sacctmgr -nP show assoc user=$USER``.  Two modules disagreeing about
-    whether one fact is detectable is what `configuration.md` § 5 M-1 was
-    written to end.
+    not because nothing can.
 
     The split is by **command**, not by knowability: this function is the NODE
     probe and asks ``sinfo``/``scontrol``; the cluster probe (`jobset probe`)
     asks ``sacctmgr`` which QoS your account may use and writes each into its
-    ``domains`` row; ``site.qos`` is written by nothing.  What genuinely
-    is policy, and stays in `molbuilder.json`, is which of them you *want*."""
+    ``domains`` row; ``site.qos`` is written by nothing."""
     if scheduler != "slurm":
         return Site(), "n/a"
     site = Site()
@@ -735,7 +650,7 @@ def resolve_environment(*, overrides: Optional[dict] = None,
                         now_iso: Optional[str] = None,
                         scheduler_override: Optional[str] = None
                         ) -> Environment:
-    """Run the probes in order and assemble the Environment (§ 4.4).
+    """Run the probes in order and assemble the Environment.
 
     ``overrides`` is a flat dict of declared topology values (e.g.
     ``{"cores_per_socket": 24, "gpus_per_node": 4}``) that win over
@@ -766,9 +681,7 @@ def probe_queues(env: Environment, user: str) -> Tuple[List[str], Optional[str]]
 
     **THE ONE QUEUE PROBE** (`configuration.md` M-3: a machine is measured
     by `jobset probe`, or by `envs init-config` seeding its own record
-    "through the same prober").  It was inline in `jobset probe` until
-    2026-10-02, so init-config seeded a cluster's record as ``slurm`` with no
-    queues, and the first prep that named one was refused (R4).
+    "through the same prober").
 
     Not a refusal when there is no ``sinfo`` -- M-2: a workstation records
     its capability in the same shape a cluster does, with no domains.
@@ -776,8 +689,7 @@ def probe_queues(env: Environment, user: str) -> Tuple[List[str], Optional[str]]
     from .probe import (derive_domains, parse_allowed_qos, parse_qos,
                         parse_scontrol_partitions, parse_sinfo)
     notes: List[str] = []
-    # ``%m`` (memory per node, MB) added 2026-08-23 -- the ceiling
-    # `Domain.max_mem_gb` has wanted since the row was designed
+    # ``%m`` (memory per node, MB) is the ceiling `Domain.max_mem_gb`
     # (`execution/scheduler.md` § 2).
     sinfo_txt = _run(["sinfo", "-h", "-o", "%P|%30l|%D|%40G|%c|%m"])
     if sinfo_txt is None:
@@ -792,14 +704,10 @@ def probe_queues(env: Environment, user: str) -> Tuple[List[str], Optional[str]]
                          "workstation record (topology only).")
         return notes, None
     parts = parse_sinfo(sinfo_txt)
-    # MaxTRES added 2026-08-27 (R13): the QoS's per-job cpu cap was in this
-    # very table all along, and the format list never asked for it -- a field
-    # you did not request is not an absence the record may report as silence.
+    # MaxTRES (R13): a field you did not request is not an absence the
+    # record may report as silence.
     #
-    # MaxSubmitJobsPerUser added 2026-08-30 (R14) -- the SAME rule, the next
-    # column over.  Sol's `debug` caps a user at 2 submitted jobs; a bench
-    # sweep sent six, two landed, four came back QOSMaxSubmitJobPerUserLimit,
-    # and no record could have said so.
+    # MaxSubmitJobsPerUser (R14) -- the SAME rule, the next column over.
     #
     # APPENDED, never inserted: `sacctmgr -nP` prints no header, so these rows
     # are positional and a column in the middle would shift every reader
@@ -823,8 +731,7 @@ def probe_queues(env: Environment, user: str) -> Tuple[List[str], Optional[str]]
               "format=QOS"]) or "")
     # THE SECOND COMMAND, and it needs one: `sinfo` has no format code for
     # DefMemPerCPU, and that is the number SLURM grants per core when a job
-    # states no --mem -- the one that turned 64 cores into a 128 G ask nobody
-    # made.  Absent scontrol, the rows simply carry no per-core default, which
+    # states no --mem.  Absent scontrol, the rows simply carry no per-core default, which
     # reads as "this machine does not say" rather than as zero (R3).
     policy = parse_scontrol_partitions(
         _run(["scontrol", "show", "partition"]) or "")
@@ -834,13 +741,9 @@ def probe_queues(env: Environment, user: str) -> Tuple[List[str], Optional[str]]
             p.def_mem_per_cpu_mb = pol.def_mem_per_cpu_mb
             p.max_cpus_per_node = pol.max_cpus_per_node
             # the record writes null-when-asked vs absent-when-not
-            # (probe.py's absent-vs-null note, 2026-08-28)
             p.policy_queried = True
     rows, notes = derive_domains(parts, qos, allowed)
-    # EVERY NOTE AFTER `derive_domains`, which REASSIGNS `notes`.  The
-    # submit-cap note below was appended BEFORE it until 2026-10-02, and so
-    # was never shown -- the class of bug the scontrol note is about: a
-    # measurement that quietly did not happen.
+    # EVERY NOTE AFTER `derive_domains`, which REASSIGNS `notes`.
     if no_submit_cap and qos_txt is not None:
         notes.append(
             "this Slurm did not accept MaxSubmitJobsPerUser in the QoS format "
@@ -861,28 +764,15 @@ def probe_queues(env: Environment, user: str) -> Tuple[List[str], Optional[str]]
 # --------------------------------------------------------------------- #
 #  The door (N1) -- configuration.md § 5, M-4                            #
 # --------------------------------------------------------------------- #
-#
-# This module owned the SCHEMA, the dataclasses and the JSON round-trip, and
-# not the FILE.  That gap is why three call sites grew three different shapes:
-# a raw ``write_text``, a read returning an ``Environment``, and a second read
-# returning a plain ``dict``.  Everything below is the missing layer, and no
-# consumer opens the file itself any more.
 
 
 def machine_scope_path() -> Path:
     """Where the MACHINE-scope record lives — ``jobset probe``'s target.
 
     ``~/.config/molbuilder/environment.json``, honouring ``XDG_CONFIG_HOME``.
-    The convention is :func:`molbuilder.config_dir.config_dir`'s and is now
-    IMPORTED.  It was **mirrored** here, on the grounds that this module is
-    stdlib-only and `runtime_config` is not -- true, and the reason the rule
-    does not live in `runtime_config`.  It is not a reason to spell it twice:
-    `config_dir` is L1 pure stdlib exactly like `persist`, which this module
-    already imports (`write_environment` -> `..persist.write_json`).
+    The convention is :func:`molbuilder.config_dir.config_dir`'s.
 
-    **Per-user only, with no cwd step.**  `molbuilder.json` had one until
-    2026-08-31 and no longer does, so the two now agree rather than
-    contrasting (`configuration.md` § 2.1a).  A
+    **Per-user only, with no cwd step.**  A
     calculation is very often the working directory, so a cwd step here would
     make the machine scope and the calculation scope the same file whenever
     you happened to run from inside a bundle, and M-3's precedence would then
@@ -895,8 +785,6 @@ def machine_scope_path() -> Path:
 def calculation_record(bundle_dir) -> Path:
     """The record a calculation carries, at its root.
 
-    The join lived at three sites -- ``record_scopes``, a refusal message and
-    the snapshot path -- and two of them are places a reader is TOLD a path.
     A message naming a file the code does not read is worse than no message,
     so the spelling has one home.
     """
@@ -908,10 +796,9 @@ def calculation_machine(bundle_dir) -> Optional[str]:
     machine's record carries (`configuration.md` M-3: set at its first prep,
     and it does not change), :data:`LOCAL_TARGET` for the machine it was
     prepped on -- or ``None`` before its first prep, or for a copy that does
-    not read or names none (one written before 2026-10-02).  The one reader
+    not read or names none.  The one reader
     of that name: Task setup's folder answer, the launch lines molbuilder
-    prints and a re-probe's remedy ask it (each read the copy itself until
-    2026-10-06)."""
+    prints and a re-probe's remedy ask it."""
     env = read_environment(calculation_record(bundle_dir))
     return getattr(env, "machine", None) if env is not None else None
 
@@ -920,13 +807,9 @@ def environments_dir() -> Path:
     """Where NAMED target records live — ``<config dir>/environments/``.
 
     One record describes one machine, and the machine you are preparing for is
-    not always the machine you are on.  A benchmark prepped on a workstation
-    for a cluster was silently measured against the workstation, because there
-    was exactly one record and it was this box's.
+    not always the machine you are on.
 
-    **From `config_dir`, not from `machine_scope_path().parent`** (A11, whose
-    elaboration was corrected on 2026-09-12 and used to name this file's
-    resolver as the config root's owner).  A file's resolver answers *"where is
+    **From `config_dir`, not from `machine_scope_path().parent`** (A11).  A file's resolver answers *"where is
     this file"*; climbing off it to reach the directory is the same two-spellings
     drift as re-typing a path, and it means moving `environment.json` silently
     moves this directory too.
@@ -938,10 +821,7 @@ def environments_dir() -> Path:
 def named_environment_path(name: str) -> Path:
     """The record for the target called `name` — the ONE join for that file.
 
-    `jobset probe --write --name sol` used to build the directory and re-spell
-    ``f"{name}.json"`` at the call site, importing the bare `FILENAME` for the
-    unnamed case beside it: two spellings of one path inside one expression, in
-    a surface.  A reader and a writer that disagree here look at different
+    A reader and a writer that disagree here look at different
     files and both report success.
     """
     return environments_dir() / f"{name}.json"
@@ -980,8 +860,7 @@ def known_machines() -> List[Dict[str, object]]:
             # so the message covers both -- and the REMEDY differs by scope:
             # this machine's record is written by a bare `probe --write`,
             # while a named target takes `--name` and must be probed on the
-            # machine it describes.  (Said `--name (this machine)` until
-            # 2026-08-22, which is not a name and not a command.)
+            # machine it describes.
             fix = (f"`{probe_command(None)}` here" if kind == "local"
                    else f"`{probe_command(name)}` {probe_steps(name)}")
             return {"name": name, "kind": kind, "path": str(path),
@@ -994,13 +873,10 @@ def known_machines() -> List[Dict[str, object]]:
         #
         # `sockets x cores_per_socket` describes ONE node -- whichever
         # `sinfo` printed first (`_slurm_pick_node`) -- and a partition is a
-        # queue, not a machine type (`scheduler.md` R0).  On Sol that read
-        # "64 cores" for a cluster whose machines are 48, 64 AND 128, in the
-        # card a person picks a machine from.
+        # queue, not a machine type (`scheduler.md` R0).
         #
-        # R3 keeps every older record working: one written before
-        # `node_types` existed says nothing here, and falls back to the one
-        # figure it does have.  (Caught in the browser, 2026-08-27.)
+        # R3: a record whose domains list no `node_types` falls back to the
+        # one figure it does have.
         from .quantities import core_range as _core_range
         from .quantities import machine_sizes as _machine_sizes
         cores = getattr(env.topology, "cores_per_socket", None)
@@ -1012,11 +888,6 @@ def known_machines() -> List[Dict[str, object]]:
             bits.append(f"{spread} cores")
         elif total:
             bits.append(f"{total} cores")
-        # MEMORY, which was measured and never shown (2026-08-24).  The
-        # probe records `mem_total_gb` for every machine, and the summary
-        # named the scheduler, the cores, the GPUs and the domain count --
-        # so the one number a person sizing a job most wants sat in the
-        # file unread.
         _mem = getattr(env.topology, "mem_total_gb", None)
         if _mem:
             bits.append(f"{float(_mem):g} GB")
@@ -1128,23 +999,17 @@ def record_scopes(bundle_dir=None,
 def read_environment(path) -> Optional["Environment"]:
     """The record at ONE path, or ``None``.
 
-    Takes the **file**, not the directory holding it.  It took a directory and
-    joined :data:`FILENAME`, which forced a second reader (``_read_named``) the
-    moment named targets arrived, because a named record's name IS its
-    filename.  Two readers of one format is the defect this door exists to
-    remove, so the join moved out to :func:`record_scopes` where the paths are
-    built.
+    Takes the **file**, not the directory holding it: a named record's name
+    IS its filename, so the join lives in :func:`record_scopes` where the
+    paths are built.
 
     ``None`` covers every way there is no usable answer here — absent,
     unreadable, not JSON, wrong schema, malformed.  **Malformed is ``None``,
     not an exception**: a hand-edited file earns a fall-through to the next
     scope, and the caller has one thing to check instead of four.
 
-    The narrowness of the second ``except`` is deliberate and was paid for.
-    This read called a method that did not exist (``from_json``) from
-    2026-08-11 to 2026-08-12, and a broad ``except Exception`` swallowed the
-    ``AttributeError`` — so the persisted answer was never read back and every
-    `prep` silently re-probed.  A bad file earns tolerance; a bug does not.
+    The narrowness of the second ``except`` is deliberate: a bad file earns
+    tolerance; a bug does not.
     """
     try:
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -1159,15 +1024,11 @@ def read_environment(path) -> Optional["Environment"]:
 def write_environment(env: "Environment", path) -> Path:
     """The record to ONE path, atomically.  Returns the path written.
 
-    Through ``persist.write_json``, the shared writer (L1, pure stdlib, so the
-    ship-to-target rule holds).  It emits exactly what the hand-rolled
-    ``write_text(env.to_json() + "\n")`` did — 2-space indent, trailing
-    newline — while adding the unique-temp + ``os.replace`` that keeps two
+    Through ``persist.write_json``, the shared writer: 2-space indent,
+    trailing newline, and the unique-temp + ``os.replace`` that keeps two
     writers from colliding.
 
-    Takes the **file** for the same reason the reader does; the ``filename=``
-    escape hatch that briefly existed here was the one-filename rule being
-    patched around rather than dropped.
+    Takes the **file** for the same reason the reader does.
     """
     from ..persist import write_json
     return write_json(Path(path), env.to_dict())
@@ -1234,9 +1095,8 @@ class UnknownTarget(Exception):
         ladder resolve against a different machine than stage 1, which is the
         exact disagreement the once-per-bundle rule exists to prevent.  So
         neither: say which machine it is set to, and the way to another --
-        a new prep from a saved state.  (It said "to move it: delete the
-        snapshot" until 2026-10-02 -- user: *"we have persistency to roll
-        back and start for a new prep if we need to"*.)
+        a new prep from a saved state (user, 2026-10-02: *"we have
+        persistency to roll back and start for a new prep if we need to"*).
         """
         exc = cls.__new__(cls)
         exc.name, exc.known = name, []
@@ -1274,11 +1134,10 @@ class AmbiguousTarget(Exception):
         listed += f"\n    --target {LOCAL_TARGET}   # this machine"
         # "NOTHING NEEDS PROBING" ONLY WHEN IT IS SO: with no record of its
         # own, `--target this` is refused next, and the probe it needs is the
-        # one command that helps (W52: the refusal said so unconditionally,
-        # and every printed way out was a dead end).
+        # one command that helps.
         here = read_environment(machine_scope_path()) is not None
         # ...and a NAMED record that does not read needs probing again: it
-        # is listed, so it is said (the fix-6 review).
+        # is listed, so it is said.
         dead = sorted(n for n, path in named_environments().items()
                       if n in self.choices and read_environment(path) is None)
         tail = ("  These records already exist -- nothing needs probing."
@@ -1297,14 +1156,10 @@ class AmbiguousTarget(Exception):
             + tail.lstrip("\n"))
 
 
-#: THE TYPEABLE NAME FOR THIS MACHINE (2026-08-24).  ``known_machines``
-#: displays ``(this machine)``, which is a label and not something a person
-#: can type at ``--target``; and with any named record on file, OMITTING
-#: ``--target`` raised `AmbiguousTarget` -- whose own message said *"omit
-#: --target only when this machine is the one"*.  So the instruction the
-#: refusal gave was the action that produced it, and preparing for the box
-#: you are sitting at became impossible the moment you saved one cluster
-#: record.  C1 protects against SILENCE; naming this machine is not silence.
+#: THE TYPEABLE NAME FOR THIS MACHINE.  ``known_machines`` displays
+#: ``(this machine)``, which is a label and not something a person can type
+#: at ``--target``.  C1 protects against SILENCE; naming this machine is not
+#: silence.
 LOCAL_TARGET = "this"
 
 
@@ -1313,7 +1168,7 @@ def probe_command(name: Optional[str] = None) -> str:
     machine's with no name (:data:`LOCAL_TARGET` is reserved, and the probe
     refuses it), a named target's with ``--name``, run on that machine.  ONE
     spelling for every refusal that asks for a record (`configuration.md`
-    M-4; W52: four spellings, one of them a command the probe refuses)."""
+    M-4)."""
     if name in (None, LOCAL_TARGET):
         return "molbuilder jobset probe --write"
     return f"molbuilder jobset probe --write --name {name}"
@@ -1323,8 +1178,7 @@ def probe_steps(name: Optional[str] = None) -> str:
     """Where :func:`probe_command` runs, and what follows it, in words:
     ``here`` for this machine; for a named target, on that machine -- and
     then the record it writes copied into this machine's ``environments/``,
-    without which the remedy leaves the same refusal (W52, the fix-6
-    review: only the activation check said "copy")."""
+    without which the remedy leaves the same refusal."""
     if name in (None, LOCAL_TARGET):
         return "here"
     return (f"on that machine, then copy the {name}.json it writes into "
@@ -1343,14 +1197,13 @@ def record_and_renewal(bundle_dir=None, target: Optional[str] = None
                        ) -> Tuple[str, str]:
     """The record a calculation reads, in words, and how it comes to read a
     re-probed one -- ``(which, renew)``, the ONE spelling for every refusal
-    whose fix is a re-probe (`configuration.md` M-4; W52's fix-6 review: a
-    calculation prepped for Sol was told to probe "this machine").
+    whose fix is a re-probe (`configuration.md` M-4).
 
     The calculation's own snapshot answers first, whatever the flag says
     (M-3): a calculation that holds one is set to that record, and a
     re-probed one reaches it only through a new prep, from a state saved
-    before its first -- TWO steps, both said (W52: one alone re-reads the
-    same record).  One that holds none reads the target's record, and its
+    before its first -- TWO steps, both said: one alone re-reads the
+    same record.  One that holds none reads the target's record, and its
     probe line is the whole remedy."""
     snap = (calculation_record(Path(bundle_dir))
             if bundle_dir is not None else None)
@@ -1385,13 +1238,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     state saved before that one (M-3).
 
     **It never probes** (`configuration.md` M-4): when no scope answers it
-    answers ``None``, and the caller refuses with :func:`probe_command`.  A
-    ``probe`` flag added a fresh detection until 2026-10-01 -- opt-in since
-    2026-08-17, when every lookup shelling out to ``sinfo``, ``scontrol``,
-    ``lscpu`` and ``nvidia-smi`` cost 56 ms a call -- and its last two
-    callers, a GPU run's sizing and the Task setup preview, measured a
-    machine with no record a moment before `prep` step 1 refused for want of
-    one (W52).
+    answers ``None``, and the caller refuses with :func:`probe_command`.
 
     ``local_only`` asks a DIFFERENT question from everything else in this
     function: not *"which machine is this calculation for"* (bundle / target /
@@ -1400,10 +1247,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     running on know about itself, full stop."*  R9's second check
     (`jobset/submit.py::_reject_if_this_machine_says_no`) wants exactly that:
     a re-admission against THIS machine's own probe, independent of and in
-    addition to whichever machine the calculation is prepped for.  Bug found
-    2026-08-23 -- a workstation with named targets (``environments/sol.json``)
-    but no local probe of its own raised ``AmbiguousTarget`` from inside a
-    read-only re-check that never asked about a target at all.  The C1
+    addition to whichever machine the calculation is prepped for.  The C1
     question and this one only LOOK alike because both start from "no target
     was named"; C1 protects the case where that silence would make a wrong
     machine's numbers travel into a wrapper.  Here there is no wrapper, no
@@ -1412,12 +1256,8 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     """
     if local_only:
         return read_environment(machine_scope_path())
-    # A named target is validated FIRST, before any scope is consulted.  It
-    # read the calculation's snapshot first and returned it when present, on
-    # the reasoning that the snapshot *is* the answer already taken.  That made
-    # a typo silent: `--target nope` on an already-prepped folder prepped
-    # happily against whatever was snapshotted, which is precisely the mistake
-    # this flag exists to catch.
+    # A named target is validated FIRST, before any scope is consulted, so a
+    # typo is never answered by whatever was snapshotted.
     # `LOCAL_TARGET` NAMES WHICH MACHINE; IT IS NOT A DIFFERENT WAY OF FINDING
     # ONE.  So it reads the same scopes saying nothing reads -- the
     # calculation's snapshot first (`workflow.md` § 5 step 1: *"read the
@@ -1427,17 +1267,6 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     # `jobset probe --name this` is refused.  C1 is skipped for the reason it
     # always was -- the question it guards, WHICH machine is meant, has just
     # been answered.
-    #
-    # It used to read ONLY the machine scope.  That made naming the local
-    # machine DISCARD the calculation's own `environment.json` while saying
-    # nothing kept it -- one box, two answers, and the explicit road was the
-    # worse one.  It reaches everybody: the task-setup tab can only send the
-    # label `(this machine)`, so every local prep from the browser took it,
-    # and `--target this` is what C1's own refusal tells people to type.  With
-    # no machine-scope file the read then returned `None` and prep refused in
-    # REMOTE words -- "on this, run jobset probe --write --name this, then
-    # copy the record into ~/.config/ here" -- advice that means nothing for
-    # the box you are sitting at (found by the task-setup e2e, 2026-09-02).
     #
     # A record stored beside the calculation IS a stored record, which is what
     # `running-a-job.md` § 3.1 asks for: *"read from a record, and nowhere
@@ -1476,8 +1305,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     # produces one -- so the presence of any named record is what makes the
     # question ambiguous.  Requiring a local record here first would let the
     # commonest cluster setup (named targets, nothing probed locally) fall
-    # through to the machine the user is sitting at -- a fresh probe of it,
-    # when readers still probed -- which is the exact failure this refusal
+    # through to the machine the user is sitting at, which is the exact failure this refusal
     # exists to stop.
     if target is None and _named:
         _snapshot = calculation_record(bundle_dir) if bundle_dir is not None else None
@@ -1497,11 +1325,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
             # SET AT ITS FIRST PREP, AND IT DOES NOT CHANGE (M-3; user,
             # 2026-10-02).  The copy names its machine, so the check is a
             # name: `this` is checked like any other, and a re-probe of the
-            # calculation's own machine is no conflict.  It compared whole
-            # records until 2026-10-02 -- the probe's stamp included, so a
-            # re-probe of Sol refused every calculation set to it -- and
-            # skipped `this` (W54 R3).  A copy written before then names no
-            # machine, and is read as it is.
+            # calculation's own machine is no conflict.
             raise UnknownTarget.conflict(target, env.machine, bundle_dir)
         return env
     return None

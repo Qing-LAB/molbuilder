@@ -15,17 +15,16 @@ banner read ``Network error: Unexpected token < in JSON ...``.
 Users read "network down" -- when actually the server itself
 crashed.
 
-The R4 fix introduces a shared ``_formatFetchError`` helper that
-branches on ``e.name === "SyntaxError"`` and surfaces a clearer
-message that tells the user to check the server log.
+The shared formatter (``lib/fetch-error.js``) branches on
+``e.name === "SyntaxError"`` and surfaces a clearer message that tells
+the user to check the server log.
 
 What this file pins
 ===================
 
 * SyntaxError -> "Server returned non-JSON response ..."
 * TypeError / generic Error -> "Network error: <msg>"
-* The user-visible call sites (load-status, fdf-status, pyscf-status,
-  chemistry-status) all route through the helper.
+* No other source spells the SyntaxError rule for itself.
 """
 from __future__ import annotations
 
@@ -63,8 +62,8 @@ pytestmark = [
 def _extract_format_fetch_error_src():
     """The formatter's source — from its ONE home.
 
-    Read `lib/fetch-error.js`, not a viewer: the rule moved there on
-    2026-08-22 (roadmap 7.2) after a second copy appeared.
+    Read `lib/fetch-error.js`, not a viewer: that is the rule's one
+    home.
     """
     src = _MODULE.read_text(encoding="utf-8")
     needle = "    function format(e) {"
@@ -164,17 +163,12 @@ def test_generic_error_preserves_network_error_label():
 
 
 # --------------------------------------------------------------------- #
-#  Source-text guards: the helper is used by the 4 user-visible sites    #
+#  Source-text guard: the formatter has exactly one home                #
 # --------------------------------------------------------------------- #
 
 
 def test_the_formatter_has_exactly_one_home():
     """No file spells the SyntaxError rule for itself.
-
-    Replaces a test that grepped ONE viewer for its own call sites.  That
-    shape passed while a second copy of the rule was being written in
-    another file, and then failed for the wrong reason when the rule moved
-    -- it was measuring a file, not the rule.
 
     A copy is what this catches: any active source that branches on
     ``e.name === "SyntaxError"`` to build a message is a second opinion
@@ -199,16 +193,3 @@ def test_the_formatter_has_exactly_one_home():
     assert not offenders, (
         "these files build their own non-JSON message instead of calling "
         "molbuilder.fetchError.format(): " + ", ".join(offenders))
-
-
-# `test_every_page_that_formats_a_fetch_error_loads_the_module` stood here: a
-# sweep over templates for a <script> tag.  It caught nothing for months
-# because it named two pages by hand, and `transport_calculation.html` -- which
-# loads the chemistry card's module -- was not one of them.
-#
-# Retired rather than widened.  A script-tag lint is neither an API contract
-# nor a correctness claim; the failure it guards is now UNCONSTRUCTIBLE:
-# `_formatFetchError` degrades to `e.message` when the formatter is absent
-# (lib/chemistry.js), so a page missing the module loses the nicer wording and
-# nothing else.  `test_the_formatter_has_exactly_one_home` below still keeps
-# the formatter itself from being re-implemented.

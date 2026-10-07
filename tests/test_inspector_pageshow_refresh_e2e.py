@@ -1,5 +1,5 @@
 """Pin the pageshow / visibilitychange refresh contract for the
-trajectory and spectra inspectors (audit task #194, 2026-06-02).
+trajectory inspector (audit task #194, 2026-06-02).
 
 Background.  The 2026-06-02 /results stale-dropdown bug (#192) was
 shaped: ``state stays cached across a tab re-entry; UI shows old
@@ -91,9 +91,7 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
 def live_output(isolated_projects_root_module, tmp_path_factory):
     """A real run's output -- the trajectory inspector's primary file type
     -- made on the road with the real SIESTA: an H2 relaxation, its moves
-    the frames (`process/testing.md` § 6; a frozen output of an older run,
-    copied into a folder of its own as ``run.out``, stood here until
-    2026-10-06)."""
+    the frames (`process/testing.md` § 6)."""
     tree = isolated_projects_root_module
     with live_siesta(tree, tmp_path_factory):
         yield (h2_relaxed_for_vibration(tree) / "01_relax" / "run-0"

@@ -12,7 +12,7 @@ sent looking for something that is not there.
 § 22.1). A full-text review on 2026-08-14 found the same enumeration wrong in
 two documents at once:
 
-* ``jobset.Resources`` has **nine** fields. ``job-contracts.md`` § 6.2 says
+* ``jobset.Resources`` had **nine** fields. ``job-contracts.md`` § 6.2 said
   nine — it had said *"seven"*, was corrected, and was pinned with a test.
   ``job-system.md`` § 3 still showed **seven**, in a class diagram AND in an
   annotated example whose own caption two lines above said *"ALL NINE fields
@@ -131,12 +131,6 @@ def test_the_resources_field_count_is_stated_in_prose_and_true():
     checkable and not only the member list.  It was wrong once in both
     directions -- the contract said seven while its own table carried eight,
     and the guide showed seven while its own caption said nine.
-
-    *Was `..._is_nine_fields_...` until 2026-08-23, when `use_gpu` became the
-    tenth (`execution/gpu.md` G7).  The name carried the number, so the count
-    lived in three places -- the class, the contract, and a test's own title.
-    It now reads the word out of the contract and compares, which is the same
-    check with one fewer place to update.*
     """
     n = len(dataclasses.fields(Resources))
     text = (DOCS / "execution/job-contracts.md").read_text(encoding="utf-8")
@@ -253,15 +247,6 @@ def test_the_frozen_label_in_the_spec_matches_the_code_constant():
         f'the code writes {FROZEN_LABEL!r} inside `regions`.'
     )
 
-
-# --------------------------------------------------------------------- #
-#  pow2 is DECLARED, so the checker that was written for it can run      #
-#                                                                        #
-#  audit-2026-08-14 SS 48/50: `pow2` was in TYPES, documented in SS 5 and  #
-#  SS 12's example, had a correct entry in _TYPE_CHECKS -- and no code     #
-#  path could produce it, so a user-supplied 96 reached the deck while   #
-#  the AUTO path capped to a power of two.                               #
-# --------------------------------------------------------------------- #
 
 def test_block_size_is_a_plain_int_and_survives_the_round_trip():
     """The two states of ``block_size`` (tuning.md § 2.11, revised
@@ -464,8 +449,7 @@ MEASURED = {
         ("web/form-schema.md", r"of \*\*(\d+)\*\* optional items",
          lambda: _optional_items()[0]),
     # Both engines' counts come out of ONE row, so neither pattern carries the
-    # other's number.  The first draft spelled SIESTA's 44 inside the PySCF
-    # pattern as an anchor, which made adding a SIESTA row break the PySCF
+    # other's number: otherwise adding a SIESTA row would break the PySCF
     # claim -- a test whose failure names the wrong document.
     "SIESTA exclusive catalogue rows (generator.md § 7.2)":
         ("execution/generator.md",
@@ -578,8 +562,8 @@ def _siesta_presets():
 #: ``id: (document, section, {item: (row label, {tier: column})}, code table)``.
 #:
 #: A tier table is a claim of the same kind ``MEASURED`` holds -- a number
-#: stated in prose that the code also states -- only there are fifteen of them
-#: and they are the ones that decide what a calculation converges to.  They are
+#: stated in prose that the code also states -- only these are the ones that
+#: decide what a calculation converges to.  They are
 #: registered rather than copied because copying is what put three wrong values
 #: into the tight rung on 2026-08-18: they were read off the code they were
 #: supposed to be checking.
@@ -601,16 +585,10 @@ TIER_TABLES = {
                           ("publishable", {2: 1}),
                           ("tight", {3: 1})]},
         _pyscf_presets),
-    # SIESTA WAS CLAIMED AND NOT CHECKED until 2026-09-02.  § 2.6's note
-    # said its ladder was verified against `SIESTA_STAGE_PRESETS` here;
-    # nothing was -- only the two PySCF tables were registered, so the
-    # sentence asserting the check was the only thing standing in for it.
-    #
     # § 2.3 is where the SIESTA per-tier force tolerance is actually
     # stated, one row per tier with the SIESTA value first in the cell.
     # (§ 2.4 is geomeTRIC's and has no SIESTA column at all; § 2.5's
-    # SIESTA column is a single global, not a ladder -- so the note pointed
-    # at the wrong two sections as well as at a check that did not exist.)
+    # SIESTA column is a single global, not a ladder.)
     "SIESTA force convergence (tuning.md § 2.3)": (
         "engines/tuning.md", "### 2.3",
         {"relax_force_tol": [("loose preopt", {1: 0}),
@@ -681,9 +659,7 @@ def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
     values the tab showed were not the values the job would run.
 
     Asked of the route a person's tab calls, on a calculation `jobset init`
-    wrote, with a leftover template dropped beside it.  (This read the
-    package's source for hand-joined suffixes until 2026-09-26, and missed
-    the two sites that spelled the suffix through an alias.)
+    wrote, with a leftover template dropped beside it.
 
     MUTATION THIS MUST FAIL AGAINST: the tab's lookup going back to
     ``sorted(folder.glob("*.template.toml"))[0]``.
@@ -740,8 +716,8 @@ def test_the_two_clock_derivation_homes_are_real_functions():
     missing = []
     for mod, sym in rows:
         # A contract may legitimately cite the TEST that guards a rule, and
-        # since 2026-09-05 § 7 #2 does exactly that.  Resolve against both
-        # trees before calling a citation broken.
+        # § 7 #2 does exactly that.  Resolve against both trees before
+        # calling a citation broken.
         for base in ("molbuilder", "tests"):
             f = root / base / mod
             if f.is_file():
@@ -800,16 +776,14 @@ def test_the_allocation_example_in_its_OWNING_contract_is_what_the_reader_stores
 # --------------------------------------------------------------------- #
 #  Gate E -- MEMBERSHIP, never a count                                   #
 #                                                                        #
-#  `plan.md` § 5p.3p step 10.  Three enumerations a reader ACTS on: they  #
-#  pick a route, add a presenter, run a command.  Each was held by        #
-#  nothing, or by a COUNT -- and a count is satisfied by any two errors   #
-#  that cancel, which is not hypothetical: `web-api.md`'s endpoint index  #
-#  passed at 97 on 2026-09-17 while carrying a DELETED route and omitting #
-#  a LIVE one.  Two errors, cancelling, green.                            #
+#  `plan.md` § 5p.3p step 10.  An enumeration a reader ACTS on is held   #
+#  by its members, never by a COUNT -- a count is satisfied by any two    #
+#  errors that cancel, which is not hypothetical: `web-api.md`'s endpoint #
+#  index passed at 97 on 2026-09-17 while carrying a DELETED route and    #
+#  omitting a LIVE one.  Two errors, cancelling, green.                   #
 #                                                                        #
-#  Modelled on `test_the_documented_L1_index_is_the_enforced_one` above:  #
-#  read the documented set out of the table, read the enforced set out of #
-#  the code, assert BOTH directions, and name each side's extras.         #
+#  Read the documented set out of the table, read the enforced set out   #
+#  of the code, assert BOTH directions, and name each side's extras.      #
 # --------------------------------------------------------------------- #
 
 

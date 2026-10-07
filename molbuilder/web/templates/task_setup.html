@@ -28,10 +28,9 @@
 <!-- ============================================================ -->
 <!--  Task Setup — the tab that writes a description.                -->
 <!--                                                               -->
-<!--  READ-ONLY today.  It opens whatever the projects sidebar has  -->
-<!--  selected, shows what that folder already says, and lets you   -->
-<!--  read and edit `task.json` in the vendored CodeMirror editor.  -->
-<!--  Saving is NOT wired: the button is disabled and says why.     -->
+<!--  It opens whatever the projects sidebar has selected, shows   -->
+<!--  what that folder already says, lets you read and edit        -->
+<!--  `task.json` in the vendored CodeMirror editor, and saves it.  -->
 <!--                                                               -->
 <!--  The design is docs/web/task-setup.md; where the two disagree,   -->
 <!--  that document wins.                                           -->
@@ -131,7 +130,7 @@
            queue names it and fills nothing: its own probed ceilings are
            shown beside the two asks, which stay empty until a person
            states them -- a value stated, never proposed (submission.md S1,
-           S5; picking one wrote its ceilings in until 2026-10-05, D13). -->
+           S5). -->
       <section class="card" id="ts-queue-card" hidden>
         <h2>Where it runs, and what it may use</h2>
         <p class="hint">Pick a queue: <strong>what it allows</strong> is shown
@@ -177,25 +176,15 @@
           </div>
         </div>
 
-        {#- THE RUN'S VALUES ARE NOT ASKED HERE.  They stood in this card
-           until 2026-09-01, writing the flat `allocation` as a
-           calculation-wide default that each stage tab could then override
-           -- and the person who has to use it deleted them: "I don't see
-           why what the run will use for every stage needs to be set up
-           front and then repeat again."  One card, in the rung's own tab
-           (task-setup.md 6.2c), beside the `prep run` line that reads it.
+        {#- THE RUN'S VALUES ARE NOT ASKED HERE: one card, in the rung's own
+           tab (task-setup.md 6.2c), beside the `prep run` line that reads it
+           (user, 2026-09-01: "I don't see why what the run will use for every
+           stage needs to be set up front and then repeat again.").
 
            WHAT THIS CARD KEEPS IS WHAT IT OWNS: the queue menu, and
            `domain`/`time`/`mem` for the calculation as a whole.  A rung
            wanting a different queue or wall adds that row to its own card,
            where it reads as THIS RUNG DIFFERS. -#}
-
-        {# A `ts-queue-state` block stood here, hidden, with a title and a
-           body no JS ever wrote -- markup added on the assumption it would
-           be needed and then never wired.  Deleted 2026-08-24 rather than
-           left: the card already speaks through `ts-queue-needs` (a machine
-           with no queues) and the per-field notes (what this queue allows),
-           and an element nothing fills is a promise the page does not keep. #}
       </section>
 
       
@@ -237,14 +226,6 @@
            /api/task-setup/bench-grid -- the terminal's own report, as data,
            so the browser never enumerates the grid a second way. #}
         <div class="ts-fit" id="ts-machine-fit" hidden></div>
-        {#- A `ts-benchalloc` disclosure stood here on 2026-09-01, writing a
-           `bench_allocation` key so a measurement could ask for its own
-           queue and wall.  Deleted the same day with the key: measuring and
-           running are TWO PREPS (generator.md 4.1), so a bench that wants a
-           shorter wall says `prep bench --time 30m` on its own command, and
-           `task.json` holds one allocation because the calculation has one
-           ask.  A second key was a second answer to a question the command
-           line already answered. -#}
 
         <div class="ts-actions" id="ts-machine-actions" hidden>
           <select id="ts-add-setting" class="ts-pick"
@@ -256,13 +237,12 @@
         </div>
       </section>
 
-      {#- THE RUN CARD IS NOT HERE.  It stood beside the measure card
-         until 2026-09-02, and the person who has to use it said where it
-         belongs: "that selection panel card should be next to the prep for
-         run button such that it's obvious that this is designed for the run.
-         This is not mixed up with the existing functional bench setup."
+      {#- THE RUN CARD IS NOT HERE (user, 2026-09-02: "that selection panel
+         card should be next to the prep for run button such that it's
+         obvious that this is designed for the run.  This is not mixed up
+         with the existing functional bench setup.").
 
-         So it is built per rung, inside that rung's tab, immediately above
+         It is built per rung, inside that rung's tab, immediately above
          `prep run` -- `stageRunCard` in viewer.js.  A card two cards away
          from the button it decides for is a card you read as part of the
          bench setup. -#}
@@ -273,12 +253,9 @@
          with the other cards, such that the 'what gets written' card can
          travel as we scroll the window down").
 
-         It was full width BELOW both columns, on the argument that a JSON
-         document reads badly in a narrow rail -- and it cost the page its
-         second column partway down, so the aside could not follow.  The
-         argument measured the wrong thing: the MAIN COLUMN is not the rail,
-         and it is wide enough to read JSON in.  So this is a card like the
-         others, at the same width open or closed.
+         The MAIN COLUMN is not the rail, and it is wide enough to read JSON
+         in, so this is a card like the others, at the same width open or
+         closed.
 
          CLOSED BY DEFAULT, and forced open by an unsaved edit -- a buffer
          that differs from disk may never be hidden (`syncFromModel`). #}
@@ -292,9 +269,7 @@
         </summary>
         <div class="ts-editor" id="ts-editor"></div>
         {#- THE FOLDER'S STATE IS SAVED FIRST, by the server, always
-            (`task-setup.md` § 8; `checkpointing.md` § 9).  The box that
-            offered it -- unticked, with a note you typed -- went 2026-10-03
-            (user, B10: "make this consistent with B1"). -#}
+            (`task-setup.md` § 8; `checkpointing.md` § 9). -#}
         <div class="ts-editor-bar">
           <button type="button" class="primary" id="ts-save" disabled>
             Save to this folder</button>
@@ -304,8 +279,8 @@
             element because `ts-save-why` is `refreshSave`'s (it says why the
             button is enabled or not, and is rewritten on every repaint), and
             the shared state box is `loadFolder`'s -- a save ends by reopening
-            the folder, which painted "Loaded ..." straight over the
-            confirmation.  One surface, one owner. -#}
+            the folder, which paints "Loaded ..." into it.  One surface, one
+            owner. -#}
         <p class="ts-ask-note" id="ts-save-said" hidden></p>
       </details>
 
@@ -329,12 +304,9 @@
         {# What the FOLDER holds, not only what this page writes.  The
            structure is listed because it is what the calculation is OF: a
            person checking a description before a week of compute is checking
-           the geometry as much as the parameters, and a list that omitted it
-           was the page's own claim that the folder had two files in it. #}
-        {#- SAVE WRITES THE FIRST.  It said "the first two" until 2026-09-17,
-            while `/api/task-setup/save` called `write_task` and wrote
-            `task.json` alone -- so somebody editing parameter values read
-            that the template was being written for them.  The other three
+           the geometry as much as the parameters. #}
+        {#- SAVE WRITES THE FIRST: `/api/task-setup/save` writes `task.json`
+            alone.  The other three
             arrive together with the hand-over, from the tab the structure
             came from (`build.py::api_task_setup_handover`). -#}
         <p class="hint">What is in the folder. Save writes the first; the
@@ -371,7 +343,7 @@
 
            A CONFIRMATION, NOT A SECOND ANSWER: the names and the numbers
            come from /api/task-setup/prep-plan, which asks the one namer
-           (`prep.token_for`) and the one layout (`Shape.stage_dir`).  Flat
+           (`materialize.stage_home`) and the one layout (`Shape.stage_dir`).  Flat
            and hierarchical name directories differently, and a list this
            page composed would be free to disagree with the thing it is
            describing. -#}
@@ -394,10 +366,7 @@
 
          THE NAMES COME FROM THE GRAMMAR, not from this page: every one is
          composed by `runfiles.compose` with this rung's own token, so the
-         card cannot show a spelling the writers do not use.  That is not a
-         hypothetical -- geomeTRIC's opt log had six spellings across the
-         emitter, the parser and the contract until 2026-09-07, and the card
-         would have been a seventh. -#}
+         card cannot show a spelling the writers do not use. -#}
       <section class="card" id="ts-written-card" hidden>
         <h2>What this calculation writes</h2>
         <p class="hint">The files <strong>molbuilder</strong> names &mdash;
@@ -415,12 +384,11 @@
          belongs after them rather than between "where it runs" and
          "stages".
 
-         ONE CARD, ONE FILE, and that is new (2026-08-31).  Everything here
+         ONE CARD, ONE FILE.  Everything here
          goes into task.json, which TRAVELS -- the ticks, and the channel
          NAMES, which are labels the person chose and not credentials.  The
          addresses and keys those names resolve to are on the This-machine
-         tab, in a file that never travels.  It was one card over two files
-         and the separation was held by this comment; it is now held by the
+         tab, in a file that never travels: the separation is held by the
          architecture (`run-reports.md` 1, `this-machine.md` 1). #}
       <section class="card" id="ts-notify-card" hidden>
         <h2>Tell me how it is going</h2>

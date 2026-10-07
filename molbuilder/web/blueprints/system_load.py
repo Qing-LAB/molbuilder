@@ -14,17 +14,13 @@ Single dependency rationale:
   percent between the prior call and this one.
 * GPU stats come from ``nvidia-smi`` run as a SUBPROCESS with a hard
   timeout, cached for a few seconds -- **never an in-process NVML
-  call**.  This module used ``pynvml`` until 2026-08-28, when a
-  request thread entered the driver during another user's GPU work
-  and never came back: NVML has no timeout anywhere in its API, a
-  thread blocked in a driver ioctl cannot be cancelled from Python,
-  and the whole web server froze for eight hours behind one page
-  widget.  The process boundary is the only real fence: a stuck
+  call**: NVML has no timeout anywhere in its API, and a thread
+  blocked in a driver ioctl cannot be cancelled from Python, so one
+  stuck call would freeze the whole web server.  The process boundary is the only real fence: a stuck
   child is abandoned at the timeout and the server keeps serving
   (user rule: *a temporary failure of the inquiry, never a failure
-  of the system*).  The monitor on compute nodes has always sampled
-  this way (`monitor._sample_gpus`), so this is the server catching
-  up to its own convention, not a new one.  NVML itself is built for
+  of the system*).  The monitor on compute nodes samples the same way
+  (`monitor._sample_gpus`).  NVML itself is built for
   many concurrent readers -- nvidia-smi, DCGM, several molbuilder
   instances -- so the subprocess costs nothing in correctness; the
   cache makes its ~50 ms cost irrelevant at widget cadence.
@@ -160,10 +156,6 @@ def _gpu_snapshot() -> Tuple[List[Dict[str, Any]], Optional[str]]:
             # not stderr -- measured 2026-09-18: a driver/library version
             # mismatch exits 18 with an EMPTY stderr and "Failed to
             # initialize NVML: Driver/library version mismatch" on stdout.
-            # Reading only stderr rendered that as "nvidia-smi exited 18: no
-            # message", which is precisely the silent degradation this
-            # module's own rule forbids: the reason existed, travelled, and
-            # was dropped one line short of the widget.
             said = ((cp.stderr or "").strip()
                     or (cp.stdout or "").strip())
             err = (f"nvidia-smi exited {cp.returncode}: "
@@ -296,7 +288,7 @@ def snapshot() -> Dict[str, Any]:
     OVER-subscription: load 25 on a 20-core box means the run queue
     is queueing -- which a 100% cpu_pct can hide.
 
-    ``per_socket_pct`` (added 2026-06-16) emits one entry per CPU
+    ``per_socket_pct`` emits one entry per CPU
     socket so the tooltip can distinguish "GPU socket saturated +
     other socket idle" (NUMA-pin healthy) from "both sockets half-
     busy" (rank spread, paying UPI penalty).  Empty list on

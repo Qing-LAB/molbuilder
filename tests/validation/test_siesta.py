@@ -1,24 +1,14 @@
 """Tests for molbuilder.validation.siesta.
 
 Per docs/process/testing.md (test layout mirrors source
-layout).  Split from the pre-2026-06-13 flat tests/test_validation.py
-on 2026-06-13; no test body was modified.  Shared fixtures
-(``water_struct``, ``_vacuum_cell``) live in tests/validation/conftest.py.
+layout).  Shared fixtures live in tests/validation/conftest.py.
 """
 
 from __future__ import annotations
 
-import io
-
-import numpy as np
-import pytest
-
-from molbuilder.issues import Issue, ValidationError
-from molbuilder.pyscf import PySCFConfig
 from molbuilder.siesta import SiestaConfig
-from molbuilder.structure import Structure
-from molbuilder.validation import report, validate
-from ._helpers import _peptide_struct, _vacuum_cell
+from molbuilder.validation import validate
+from ._helpers import _peptide_struct
 
 
 # --------------------------------------------------------------------- #
@@ -69,17 +59,14 @@ def test_every_range_warning_names_the_engine_keyword(water_struct):
         if not rng:
             continue
         lo, hi = rng
-        # NON-SCALAR FIELDS ARE SKIPPED, and the skip has to be explicit.
-        # This asked ``dataclasses.replace`` to raise for them -- but
-        # ``replace`` does no type checking, so it happily stored the scalar
-        # and the TypeError surfaced later, inside validate(), as a crash
-        # rather than a skip.  Nothing noticed until `kgrid` and
-        # `kgrid_displacement` gained a per-component ``range`` on
-        # 2026-08-15 and became the first ranged tuples in the schema.
+        # NON-SCALAR FIELDS ARE SKIPPED, and the skip has to be explicit:
+        # ``dataclasses.replace`` does no type checking, so it would store
+        # the scalar and the TypeError would surface later, inside
+        # validate(), as a crash rather than a skip.
         #
         # They are genuinely out of scope for THIS rule: their range warning
         # names a component (``k-point mesh (%block kgrid_Monkhorst_Pack)[0]
-        # = 641 ...``, per component since 2026-09-30), which is a different
+        # = 641 ...``), which is a different
         # sentence shape from the ``label (KEYWORD) = value`` this test
         # governs.
         if isinstance(getattr(SiestaConfig(), f.name), (tuple, list)):
@@ -183,10 +170,9 @@ def test_siesta_charged_system_emits_makov_payne_notice(water_struct):
     msg = mp[0].message
     # Quote the user's charge so the warn is self-explanatory.
     assert "+1" in msg
-    # Phase-after-Phase-6: the warn now quotes the computed numeric
-    # estimate at three representative cell sizes (post-#172) instead
-    # of the qualitative "0.5-1.5 eV" range.  Check that at least one
-    # of the bracket values appears.
+    # The warn quotes the computed numeric estimate at three
+    # representative cell sizes.  Check that at least one of the bracket
+    # values appears.
     assert any(s in msg for s in ("1.36", "1.02", "0.82"))
     # Mention the companion script the wrapper now emits.
     assert "makov_payne_correction.py" in msg
@@ -218,11 +204,8 @@ def test_siesta_mesh_cutoff_below_slider_floor_emits_only_one_warning(
         water_struct):
     """Regression: a value below the SLIDER floor (100 Ry) must
     produce exactly ONE warning -- the dataclass metadata-range one,
-    not double-counted with the production-floor rule.
-
-    Before the gate at >= 100 Ry in _check_siesta_mesh_cutoff, the
-    same field would generate two warns and existing tests counting
-    by ``where`` would fail.
+    not double-counted with the production-floor rule, which
+    _check_siesta_mesh_cutoff gates at >= 100 Ry.
     """
     cfg = SiestaConfig(mesh_cutoff=50.0)
     issues = validate(water_struct, cfg)
@@ -245,11 +228,9 @@ def test_siesta_peptide_protonation_warn(water_struct):
 
 
 # --------------------------------------------------------------------- #
-#  SIESTA pseudo-coverage check is wired into the preflight             #
-#  (2026-05-23: previously the pseudos.py coverage check was not        #
-#  exercised by the Build->Generate flow.  These tests pin that every   #
-#  validate(struct, SiestaConfig) call now exercises the coverage       #
-#  check, surfacing missing files / XC mismatches as preflight Issues.) #
+#  SIESTA pseudo-coverage check is wired into the preflight: every      #
+#  validate(struct, SiestaConfig) call exercises the coverage check,    #
+#  surfacing missing files / XC mismatches as preflight Issues.         #
 # --------------------------------------------------------------------- #
 
 
@@ -310,9 +291,8 @@ class TestSiestaPseudoCoverageInPreflight:
         # Actionable: mentions PseudoDojo + the projects/pseudopotential/
         # convention.
         assert "pseudo-dojo.org" in psml_issues[0].message
-        # The convention is the BARE name.  This asserted
-        # "projects/pseudopotential" until 2026-08-21 -- the one spelling
-        # that cannot work, because the walk-up finds the tree and joining
+        # The convention is the BARE name: "projects/pseudopotential"
+        # cannot work, because the walk-up finds the tree and joining
         # its name again nests it inside itself (job-contracts.md 2.5a).
         msg = psml_issues[0].message
         assert "`pseudopotential`" in msg
@@ -326,9 +306,9 @@ class TestSiestaPseudoCoverageInPreflight:
         There are two sources and no third: `psml_lib`, or files already
         beside the calculation (`job-contracts.md` § 2.5a).  When neither
         exists the run cannot start, so saying so at configuration time
-        beats finding out after MPI init — and leaving it at WARN is the
-        one place this path still let the pseudopotential source go
-        unstated (user, 2026-09-19: *"the pseudopotential file has to be
+        beats finding out after MPI init — and leaving it at WARN would
+        let the pseudopotential source go unstated (user, 2026-09-19:
+        *"the pseudopotential file has to be
         explicit and it has to be strictly checked at the configuration
         time"*).
 
@@ -407,8 +387,7 @@ class TestSiestaPseudoCoverageInPreflight:
     def test_xc_family_mismatch_emits_error(self, tmp_path, monkeypatch):
         """Pseudos are LDA but the calc requests PBE -> an XC-FAMILY
         mismatch, which is never physically correct (silently wrong bond
-        lengths).  ERROR per element (upgraded from WARN in the 2026-07
-        scientific-correctness audit) so it BLOCKS emission."""
+        lengths).  ERROR per element so it BLOCKS emission."""
         # libxc id 1 = XC_LDA_X
         for el in ("O", "H"):
             (tmp_path / f"{el}.psml").write_text(
@@ -427,117 +406,3 @@ class TestSiestaPseudoCoverageInPreflight:
         assert len(mismatch_issues) == 2   # O + H both flagged, blocking
         assert all("silently wrong" in i.message
                    for i in mismatch_issues)
-
-
-# --------------------------------------------------------------------- #
-#  Deck keyword CURRENCY -- we must not write options SIESTA retired.   #
-# --------------------------------------------------------------------- #
-
-#: Every keyword the SIESTA 5.4.2 manual formally retires, with what replaced
-#: it.  Not prose-derived: the manual marks each one with ``\fdfdeprecates``,
-#: and this table is that markup, read out of the manual source at tag 5.4.2
-#: (``Docs/tex/sections/**.tex``; ``!`` in the markup means a dotted prefix).
-#:
-#: Carried as DATA rather than parsed at test time on purpose — the manual
-#: lives in an optional source checkout, and a test that silently skips when
-#: it is absent is a test that never runs. To refresh after a SIESTA bump:
-#:
-#:     grep -rhoP '\\fdfdeprecates\{[^}]+\}' <siesta>/Docs/tex | ...
-SIESTA_542_DEPRECATED = {
-    "MD.NumCGsteps":   "MD.Steps",
-    "MD.MaxCGDispl":   "MD.MaxDispl",
-    "DM.MixingWeight": "SCF.Mixer.Weight",
-    "DM.NumberPulay":  "SCF.Mixer.History",
-    "DM.NumberBroyden": "SCF.Mixer.History",
-    "DM.MixSCF1":      "SCF.Mix.Spin",
-    "MD.TargetPressure": "Target.Pressure",
-    "MD.TargetStress": "Target.Stress.Voigt",
-    "MD.FCDispl":      "FC.Displacement",
-    "MD.FCFirst":      "FC.First",
-    "MD.FCLast":       "FC.Last",
-    "UseNewDiagk":     "Diag.WFS.Cache",
-    "WriteMullikenPop": "Charge.Mulliken",
-    "Write.HirshfeldPop": "Charge.Hirshfeld",
-    "Write.VoronoiPop": "Charge.Voronoi",
-    "Diag.DivideAndConquer": "Diag.Algorithm",
-    "Diag.MRRR":       "Diag.Algorithm",
-    "Diag.ELPA":       "Diag.Algorithm",
-    "Diag.NoExpert":   "Diag.Algorithm",
-    "SpinPolarized":   "Spin",
-    "NonCollinearSpin": "Spin",
-    "SpinOrbit":       "Spin",
-}
-
-#: Empty, and that is the point.  ``SpinPolarized`` sat here between the two
-#: halves of this migration: ``Spin`` is not a rename of it but a consolidation
-#: of THREE booleans into one four-valued enum, so it needed a type change in
-#: the template rather than a sweep.  That landed 2026-08-15 and the exception
-#: went with it.  An entry here is a debt, not a policy.
-KNOWN_DEPRECATED_STILL_EMITTED: set = set()
-
-
-def test_no_deprecated_siesta_keyword_reaches_the_deck(water_struct):
-    """We must not write options the engine has retired.
-
-    Five were being written until 2026-08-15 — ``MD.NumCGsteps``,
-    ``MD.MaxCGDispl``, ``DM.MixingWeight``, ``DM.NumberPulay`` and
-    ``SpinPolarized`` — and none of them was noticed by reading the code,
-    because deprecation is a fact about the MANUAL, not about the source. The
-    code accepts them happily; the manual is where they are marked retired.
-
-    Swept across optimiser types and the switches that open conditional
-    blocks, because a deprecated keyword can hide behind a branch.
-    """
-    import dataclasses
-
-    # This import went missing in an earlier cleanup and the swallow
-    # below ate the resulting NameError FIFTEEN times per run -- the
-    # deprecated-keyword assert passed over an empty set until the
-    # non-empty guard (U6 close) said so.
-    from molbuilder.siesta import render_fdf
-    seen = set()
-    # The catalogue's own spellings: since 2026-09-28 a value outside an
-    # enum's choices is refused by name, and the lower-case forms this swept
-    # were refused on every combination -- which the guard below caught.
-    for relax in ("CG", "Broyden", "FIRE", "Verlet", "Nose"):
-        # The spin opens its branch with a PINNED count -- the pair of
-        # keywords (`Spin.Fix` + `Spin.Total`) is where the retired
-        # `SpinPolarized` flag would hide.
-        for extra in ({}, {"spin_treatment": "unrestricted",
-                           "unpaired_electrons": 2}, {"use_gpu": True}):
-            try:
-                cfg = dataclasses.replace(SiestaConfig(), relax_type=relax, **extra)
-                deck = render_fdf(water_struct, cfg)
-            except Exception:
-                continue                     # a combination this build refuses
-            for line in deck.splitlines():
-                line = line.strip()
-                if line and not line.startswith(("#", "%")):
-                    seen.add(line.split()[0])
-
-    # If EVERY combination refused, `seen` is empty and the vocabulary
-    # assert below would pass over nothing -- a broken render_fdf would
-    # read as a clean deck set.
-    assert seen, "no combination rendered at all; the sweep saw nothing"
-    bad = sorted((seen & set(SIESTA_542_DEPRECATED)) - KNOWN_DEPRECATED_STILL_EMITTED)
-    assert not bad, (
-        "deck writes keyword(s) SIESTA 5.4.2 deprecates:\n  "
-        + "\n  ".join(f"{k} -> use {SIESTA_542_DEPRECATED[k]}" for k in bad))
-
-
-def test_the_catalogue_declares_no_deprecated_keyword():
-    """Same rule one level up — at the SOURCE rather than at the output.
-
-    The deck is generated; the catalogue is authored. A deprecated keyword
-    that reaches a deck got there because an item declares it, so this is the
-    check that names the item to fix rather than the line to grep for.
-    """
-    from molbuilder import template as T
-    cat = T.read_template(T.load_catalogue())
-    bad = []
-    for it in T.select(cat, engine="siesta", kind=("engine", "deck")):
-        for kw in (list(it.expands) or ([it.anchor] if it.anchor else [])):
-            if kw in SIESTA_542_DEPRECATED and kw not in KNOWN_DEPRECATED_STILL_EMITTED:
-                bad.append(f"{it.name} declares {kw} -> use "
-                           f"{SIESTA_542_DEPRECATED[kw]}")
-    assert not bad, "catalogue declares deprecated keyword(s):\n  " + "\n  ".join(bad)

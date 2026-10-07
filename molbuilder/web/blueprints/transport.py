@@ -40,7 +40,6 @@ from ._shared import (
 )
 
 from molbuilder.units import UnknownUnit
-from molbuilder.validation import validate as _validate
 
 
 bp = Blueprint("transport", __name__)
@@ -87,8 +86,8 @@ def api_transport_describe_attempt() -> Any:
     """Classify a picked directory against the § 4.1b citation
     condition and describe what it provides — the `describe` seam the
     shared tree-picker feeds on when the Transport tab picks the
-    junction slot (P7; reworked 2026-08-29, second user ruling: the
-    condition is FILES, never layout).
+    junction slot (P7; user ruling: the condition is FILES, never
+    layout).
 
     ``?path=`` is tree-relative.  The answer names the form the
     directory satisfies ("relaxation" | "structure"), or — when it
@@ -210,11 +209,10 @@ def api_transport_describe_attempt() -> Any:
     # TWO SEPARATE QUESTIONS, and the card needs both: *what is this
     # junction* (always answerable from the citation's own files) and
     # *can it be composed into a calculation* (a refusal, sometimes).
-    # They used to be one call, so every reason a junction cannot be
-    # BUILT -- labels missing, an electrode that moved, a mid-run
-    # record, blocks that interleave -- also blanked the viewer, and
-    # the refusal was read over an empty card instead of over the thing
-    # it is about.
+    # Kept apart, so a reason a junction cannot be BUILT -- labels
+    # missing, an electrode that moved, a mid-run record, blocks that
+    # interleave -- does not blank the viewer: the refusal is read over
+    # the thing it is about.
     #
     # The composition answers both when it succeeds (`relaxed` IS the
     # labeled citation structure), so the happy path reads the .XV once
@@ -234,13 +232,10 @@ def api_transport_describe_attempt() -> Any:
         # can act on without matching prose.
         for note in composed.sorted.notes:
             status = status + "  ⚠ " + note
-        # AND THE LEADS' OWN MEASUREMENTS, which reached nothing until
-        # 2026-09-20.  `extract_electrode_model` measures the periodic
-        # seam and the principal-layer condition and writes both to
-        # `ElectrodeModel.notes` -- and every reader stopped at
-        # `sorted.notes`, so the one place that says whether a lead is
-        # really bulk was computed and dropped.  Same rule as the line
-        # above: checked and reported, never enforced.  Labelled,
+        # AND THE LEADS' OWN MEASUREMENTS.  `extract_electrode_model`
+        # measures the periodic seam and the principal-layer condition and
+        # writes both to `ElectrodeModel.notes`, the one place that says
+        # whether a lead is really bulk.  Same rule as the line above: checked and reported, never enforced.  Labelled,
         # because "the seam is ECLIPSED" is useless without which end.
         for model in (composed.electrode_left, composed.electrode_right):
             for note in (model.notes if model is not None else ()):
@@ -342,7 +337,7 @@ def api_transport_describe() -> Any:
 
     Validation is the codec's and the description's own check: the
     ``Task`` construction below is the gate `read_task` runs, and the
-    task preflight (gate ③, `workflow.md` § 9) is the one `jobset init`
+    task preflight (gate ③) is the one `jobset init`
     and the Task-setup save run -- its errors refuse, its warnings ride
     ``notices``.  The citation resolves through the same door prep
     composes through.
@@ -378,8 +373,7 @@ def api_transport_describe() -> Any:
                                  f"got {bias_raw!r}"}), 400
     # PER-RUNG BAGS, the shape `task.stages` carries (`engines/transport.md`
     # § 3.8.2a): a rung's tab writes that rung's bag, so the rung is the
-    # person's answer and nothing here routes.  Until 2026-09-24 this took
-    # one flat mapping and parked what declared no rung on the device.
+    # person's answer and nothing here routes.
     bags = body.get("stages") or {}
     if (not isinstance(bags, dict)
             or not all(isinstance(v, dict) for v in bags.values())):
@@ -468,12 +462,7 @@ def api_transport_describe() -> Any:
             # a PROMOTED field, and `varies` is the promotion
             varies=tuple(sorted({n for b in bags.values() for n in b})),
             # ROUTED TO THE RUNG THAT OWNS EACH ONE (`engines/template.md`
-            # § 6.4's `stages` declaration).  Every override went onto the
-            # `device` rung until 2026-09-16, whatever it was -- so a
-            # person's T(E) window was written into the deck `siesta` runs,
-            # where the keyword is inert, and not into the deck `tbtrans`
-            # runs, which is the one that computes T(E).  Silently: you
-            # asked for ±3 eV and got the default.
+            # § 6.4's `stages` declaration).
             stages=tuple(stages_for_transport(bags)))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
@@ -487,11 +476,8 @@ def api_transport_describe() -> Any:
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    # THE DESCRIPTION'S OWN CHECK (gate ③), which `workflow.md` § 9 fires at
-    # every describe -- this door skipped it until 2026-09-30, so a rung's
-    # value past its hard limit was first refused at prep and a bias point
-    # outside its recommended range was said nowhere (plan § 5w K3).  The
-    # same function the Task-setup save and `jobset init` run: its errors
+    # THE DESCRIPTION'S OWN CHECK (gate ③, plan § 5w K3).  The same
+    # function the Task-setup save and `jobset init` run: its errors
     # refuse in the save's own words, its warnings ride `notices`.
     from molbuilder.validation.task import (preflight as _task_preflight,
                                             config_class_for as _cfg_cls_for)
@@ -509,15 +495,8 @@ def api_transport_describe() -> Any:
     return jsonify({
         "ok": True,
         "label": task.label,
-        # TWO FILES, and the second was missing until 2026-09-16.
-        #
-        # A transport description is `task.json` AND a template, like every
-        # other kind's (TR1).  The CLI's `jobset init` wrote both; this door
-        # returned only the first, so a description made in the browser had
-        # no shared electronic description and `prep` refused it by name.
-        # The regression was mine and the tests did not catch it because
-        # they build a description through the fixture rather than through
-        # this endpoint -- the door a person actually uses.
+        # TWO FILES: a transport description is `task.json` AND a
+        # template, like every other kind's (TR1).
         #
         # Its values are DEFAULTED FROM THE CITED RUN (§ 2a.7, ruling 1) and
         # are the person's to change afterwards; a `citation` row nobody
@@ -558,12 +537,6 @@ def api_transport_schema() -> Any:
     what the shared panel holds, since a rung's value can follow a shared
     one (the transmission grid starts at the SCF's).  The answer names the
     citation's source so the page can say where the numbers came from.
-
-    *(Until 2026-09-24 this route reflected `TransportConfig`'s fields
-    through a filter measured dead in seven of its ten branches, and the
-    catalogue swap that replaced it was reverted because `citation` was
-    the only marker and Class A is larger -- `plans/plan.md` W30.  The
-    `shared` marker is the declaration that swap lacked.)*
     """
     from molbuilder.projects import projects_root
     from molbuilder.transport.citation_defaults import citation_answers
@@ -654,8 +627,7 @@ def _panel_template(cite_dir, shared: Dict[str, Any], *, label: str) -> str:
     is not applied -- a `citation` row is written valueless (§ 3.8.3), and
     a blank electronic state is "work it out" on the whole junction at
     prep, which the chemistry card beside the panel shows.  Never written as
-    an empty string: a blank species order reached the template as '' and
-    `prep` refused the file by name (measured 2026-09-24).
+    an empty string, which `prep` would refuse by name.
 
     Raises ``ValueError`` -- the value, or a citation the template's door
     refuses (a cited run that carried a net charge, ES7).
@@ -671,21 +643,3 @@ def _panel_template(cite_dir, shared: Dict[str, Any], *, label: str) -> str:
                                    **chosen)
 
 
-# `POST /api/transport/render` DELETED 2026-09-17, and with it
-# `_transport_config_from_params`, which built the `TransportConfig` the
-# route coerced its form values into and had no other caller.
-#
-# It rendered a device deck through `TransiestaEngine.render_script` and
-# handed the text back as JSON.  No browser called it: `lib/transport/core.js`
-# stopped POSTing here on 2026-08-29 and the tab has fetched `/describe`,
-# `/schema`, `/describe_attempt` and `/swap_electrodes` ever since.  It was
-# the last caller of that renderer, and the renderer was a second writer of a
-# deck the framework already writes -- one that read a different config class,
-# so the pole-energy correction of 2026-09-16 never reached it and a deck from
-# this route stopped SIESTA before the SCF loop.
-#
-# A BROWSER RENDERS NO DECK (`tabs.md`): a deck is rendered by `jobset prep`
-# from a description, which is why `/api/build/fdf` and `/api/build/pyscf`
-# went the same way on 2026-08-17.  The preflight this route also ran is not
-# lost -- `validation` reaches it through the engine registry, which is the
-# path the Generate button already used.

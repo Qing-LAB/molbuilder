@@ -32,11 +32,6 @@ def test_what_a_stage_builds_on(case, tmp_path, monkeypatch):
     run_road_case(TABLE, case, tmp_path, monkeypatch)
 
 
-# `test_a_force_constant_stage_builds_on_the_measured_relaxation` moved to the
-# e2e tier 2026-10-06: it asks a relaxation run on the road with the real
-# SIESTA, `tests/test_siesta_relax_run_e2e.py` (`process/testing.md` § 6).
-
-
 def test_a_transport_rung_takes_no_from_or_cold(tmp_path):
     """A transport rung's inputs are its kind's -- gathered from the rungs
     upstream -- and a rung prepped is not prepped again, so ``--from`` and
@@ -61,4 +56,3 @@ def test_a_transport_rung_takes_no_from_or_cold(tmp_path):
         got, refused = continuation_answer(tmp_path, task, "device", **asked)
         assert got is None and refused and (
             "takes its inputs from the rungs upstream" in refused), refused
-

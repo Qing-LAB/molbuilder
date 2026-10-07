@@ -13,8 +13,7 @@ finish began (`running-a-job.md` § 4.2).
 
 **Stdlib only, and it travels beside every job** (`runwrap.
 MONITOR_COMPANIONS`), so the monitor pairs a run with its log exactly as the
-Results tab does.  Split out of `runwrap.py` on 2026-09-27 for that reason,
-as the SIESTA family's grammar was split from its parser.
+Results tab does.
 
 ONE SECTION PER RUN.  A warm retry re-execs the wrapper with its output
 still going to the first log, and opens a log of its own -- measured on the
@@ -61,7 +60,7 @@ _WRAPPER_LOG_LINES = (
     ("engine_version", re.compile(r"^\s+(?:SIESTA|TBtrans) version\s*:\s*(\S+)")),
 )
 #: ``[molbuilder] run index: <N>  ->  <out>`` -- which run the section is,
-#: written by the wrapper's run-index resolver (`runwrap`).
+#: written by the run script (`runwrap`).
 RUN_INDEX_LINE = "[molbuilder] run index:"
 _WRAP_RUN_INDEX = re.compile("^" + re.escape(RUN_INDEX_LINE) + r"\s*(\d+)")
 #: ``molbuilder: detected phys_cores=48, n_sockets=2, cores_per_socket=24`` --
@@ -90,7 +89,7 @@ def read_wrapper_log(text: str) -> List[Dict[str, Any]]:
             cur = {}
             sections.append(cur)
             continue
-        if cur is None:            # before any banner: a log from before it
+        if cur is None:
             cur = {}
             sections.append(cur)
         m = _WRAP_RUN_INDEX.match(line)

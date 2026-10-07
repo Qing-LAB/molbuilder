@@ -1,35 +1,19 @@
-"""Half-Phase-H gap closures from the pre-Phase-H audit.
-
-# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
-# CPython refuses a non-frozen subclass of a frozen one on its own.
-# A test that mutates an instance to watch Python raise tests Python.
+"""The parse package's public surface and model/parse.md § 7's lints.
 
 Pins:
-  * Public-surface coverage: every symbol exported from
-    molbuilder.parse.__init__ has at least one test reference.
-  * ParseWarning is constructible + carries the documented fields
-    (audit found 0 test refs to it despite being exposed publicly).
-  * (parse_text() and the ScriptSourceTextParser umbrella were
-    exercised here until 2026-09-05; the TextParser tier retired
-    but no direct smoke test).
+  * every symbol exported from molbuilder.parse.__all__ is importable;
+  * ParseWarning is constructible + carries the documented fields.
   * Forbidden patterns per model/parse.md § 7:
-      - P2 retired with the ABC; the RULE moved to
-        test_script_emit.py::test_the_block_readers_do_no_io
-      - P3 (FileParser no subprocess) — lint test on every
+      - #3 (FileParser no subprocess) — lint test on every
         FileParser source file
-      - P6 (engine-specific code only in engines/coords) — lint
-        test that parse/types.py + parse/base.py + parse/registry.py
+      - #7 (engine-specific code only in engines/coords) — lint
+        test that the core files (types, base, registry, errors)
         contain NO engine name strings (siesta / pyscf / molwatch)
-  * Top-level re-exports
-    are importable from molbuilder.parse for the canonical "I want
-    the umbrella" / "I want the bundle assembler" usage pattern.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
 
 import molbuilder.parse as parse_module
 from molbuilder.parse import (
@@ -92,8 +76,8 @@ _PARSE_DIR = REPO / "molbuilder" / "parse"
 
 
 def _glob_py(rel_subdir: str) -> list[Path]:
-    """Walk a parse/ sub-directory returning every .py except
-    __init__/__pycache__/_helpers."""
+    """Walk a parse/ sub-directory returning every .py outside
+    __pycache__."""
     out: list[Path] = []
     for p in (_PARSE_DIR / rel_subdir).rglob("*.py"):
         if "__pycache__" in p.parts:
@@ -105,10 +89,7 @@ def _glob_py(rel_subdir: str) -> list[Path]:
 def _modules_defining_a_fileparser():
     """Every module under `parse/` that declares a FileParser subclass.
 
-    DISCOVERED, not listed.  This lint named three packages -- engines,
-    sidecars, coords -- until 2026-09-04, when `instruments/` added three
-    FileParsers and inherited no guard: a parser there could shell out
-    with the suite green.  A hardcoded list turns "every FileParser
+    DISCOVERED, not listed.  A hardcoded list turns "every FileParser
     obeys #3" into "the three packages someone remembered do", and the
     day it goes stale is the day a package is added, which is the day
     nobody is looking at this file.
@@ -135,8 +116,7 @@ def test_the_fileparser_lint_sees_every_package_that_has_one():
     """Anti-vacuity: the discovery above must actually find the new ones.
 
     Without this, an `rglob` that silently matched nothing would make
-    the #3 lint below pass by scanning zero files -- the failure mode it
-    was just rescued from, re-entered through a different door.
+    the #3 lint below pass by scanning zero files.
     """
     packages = {p.parent.name for p in _modules_defining_a_fileparser()}
     assert {"engines", "sidecars", "coords", "instruments"} <= packages, (
@@ -167,7 +147,7 @@ def test_forbidden_p3_fileparsers_no_subprocess_or_network():
 
 
 def test_forbidden_p6_no_engine_specific_code_in_core():
-    """model/parse.md § 7 forbidden #7 (was #6 in earlier drafts):
+    """model/parse.md § 7 forbidden #7:
     engine-specific code only in parse/engines/ and parse/coords/.
     The core layer (parse/types.py, parse/base.py, parse/registry.py,
     parse/errors.py) must NOT mention engine names — that's a sign

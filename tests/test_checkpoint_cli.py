@@ -1,4 +1,4 @@
-"""`molbuilder snapshot` — the verbs a person actually types (§ 5).
+"""`molbuilder checkpoint` — the verbs a person actually types (§ 5).
 
 **Contract:** [`checkpointing.md`](?doc=execution/checkpointing.md) § 5 (the
 commands and the two labels) · § 5.1 (what `list` must show) · § 7.1 · A4 · A5.
@@ -7,9 +7,6 @@ These test the CLI as its own surface, not as a thin wrapper: a `Repo` that
 behaves and a CLI that hides it are the same failure to a user. So the
 assertions are on **what is printed and what the exit code is**, since those are
 the whole of what the CLI promises.
-
-Retired verbs get their own test. A verb that is merely undocumented is still a
-verb somebody's script calls, and the contract removed these outright.
 """
 from __future__ import annotations
 
@@ -60,12 +57,9 @@ def _ids(output):
 def test_the_group_offers_exactly_the_contracts_verbs():
     """§ 5 names six verbs, and the group offers those six.
 
-    **An equality.** It checked "each of these six appears" until 2026-08-11,
-    which a seventh verb passes -- and which needed a companion test naming the
-    retired ones (`checkpoint`, `branch`, `migrate-manifest`) to catch them
-    coming back. Stating the set instead covers both directions and keeps the
-    retired names out of the suite: a verb added without a contract change
-    fails here, whatever it is called.
+    **An equality.** "Each of these six appears" passes a seventh verb;
+    stating the set covers both directions: a verb added without a contract
+    change fails here, whatever it is called.
     """
     from molbuilder.cli import cli as _cli
     assert set(_cli.commands["checkpoint"].commands) == {
@@ -332,8 +326,8 @@ def test_at_a_terminal_the_question_is_asked_and_yes_is_an_answer(
     (calc / "job.XV").write_text("unsaved\n")
 
     # The runner replaces sys.stdin wholesale, so the terminal check is the
-    # seam -- not stdin itself.  It lives in `envs.hints` since 2026-09-13,
-    # the one copy below both the CLI and the envs verbs.
+    # seam -- not stdin itself.  It lives in `envs.hints`, the one copy
+    # below both the CLI and the envs verbs.
     monkeypatch.setattr(hints, "stdin_can_answer", lambda: True)
     result = CliRunner().invoke(
         cli, ["checkpoint", "restore", first, "-p", str(calc)], input="y\n")
@@ -409,7 +403,7 @@ def test_config_names_the_calculation(mb):
 
 
 def test_config_prints_no_archive_total(mb):
-    """§ 12 says *no surface* prints one, and only the route was checked.
+    """§ 12 says *no surface* prints one.
 
     The number was never true -- hard links counted in full, so ten saves of
     an unchanged 2 GB file read as 20 GB where the disk holds 2 -- and it fed
@@ -430,7 +424,7 @@ def _said(result):
 
 
 def test_restore_announces_the_slow_part_before_doing_it(mb, calc):
-    """§ 7.2 quotes this string **verbatim** and nothing asserted it.
+    """§ 7.2 quotes this string **verbatim**.
 
     *"Checksumming gigabytes takes time, and a pause nobody explained reads as
     a hang.  The verbs announce the slow part -- 'verifying the archive, then
@@ -488,8 +482,7 @@ def test_list_says_which_question_it_answered(mb, calc):
 
 
 def test_list_says_when_the_generated_ignore_block_was_edited(mb, calc):
-    """The panel says so (I2b) and the CLI does too -- and only the panel was
-    tested.  The block is rewritten from the classification on every save, so
+    """The panel says so (I2b) and the CLI does too.  The block is rewritten from the classification on every save, so
     a hand edit inside the markers is about to disappear; a surface that
     receives that fact and stays quiet leaves somebody editing a file that
     never survives.

@@ -157,8 +157,7 @@ def test_the_name_has_exactly_one_spelling():
 def test_deleting_atoms_remaps_the_reserved_label_by_the_same_rule():
     """§ 2.1: a channel that is not remapped silently points at the wrong
     atoms — and for THIS label that means the wrong atoms are held still in
-    someone's relaxation. It used to need its own line in the remap, in lockstep
-    with the labels' line."""
+    someone's relaxation."""
     from molbuilder.modify import delete_atoms
     s = Structure.from_xyz("4\n\nC 0 0 0\nO 1 0 0\nH 0 1 0\nN 0 0 1\n")
     s.regions = {"keep": [0, 3]}
@@ -289,10 +288,9 @@ def test_an_atom_carries_the_reserved_label_once_and_only_as_a_label(served):
     One representation: the label, in the list of labels.
     """
     client, path = served
-    # Through /api/build/load -- the door the browser actually uses.  This
-    # asked /api/selection/atoms until 2026-09-07; that route was deleted for
-    # having no caller, and the ROWS are the same object either way
-    # (`_shared.atoms_list`, used by every response that carries a structure).
+    # Through /api/build/load -- the door the browser actually uses; its ROWS
+    # are `_shared.atoms_list`, used by every response that carries a
+    # structure.
     answer = client.post("/api/build/load", json={"path": path}).get_json()
     assert answer.get("atoms"), answer
     rows = answer["atoms"]
@@ -331,13 +329,8 @@ def test_the_list_and_the_filter_cannot_disagree(served):
     """What the atom list says an atom carries, and what filtering by that
     name selects, are the same set.
 
-    This asked two routes until 2026-09-07 -- the atom list came from
-    `/api/selection/atoms`, which read the file itself and had drifted to
-    applying only the sidecar's `regions`. That route is deleted, and with it
-    the possibility it existed to guard against: there is one reader of the
-    pair now, and the filter is answered against the atoms the caller holds.
-    The property is still worth asserting, because the two halves are still
-    computed by different code.
+    The filter is answered against the atoms the caller holds; the property is
+    worth asserting because the two halves are computed by different code.
     """
     client, path = served
 
@@ -374,10 +367,6 @@ def test_the_metadata_dict_has_exactly_these_members():
     # STATED, not just compared to itself.  The assertion above checks the
     # writer against the constant; this one pins what the constant IS, so
     # adding a field to both at once still forces a conscious edit here.
-    # `pbc` left the set 2026-09-22 -- it was the boolean view of `axis_kind`
-    # and is now the `pbc()` accessor (`structure-periodicity.md` § 2.0a).
-    # `cell_origin` left it 2026-09-25 for the stated `engine_offset` (§ 6.0);
-    # that it is never written again (D2) is `TestARetiredKeyPassesEveryGate`'s.
     assert set(METADATA_FIELDS) == {"regions", "cell", "engine_offset",
                                     "axis_kind", "vacuum", "annotations"}
     assert "frozen_atoms" not in METADATA_FIELDS, (
@@ -454,9 +443,7 @@ def test_an_atom_on_the_wire_has_exactly_these_members(served):
     )
     # AND THE IDENTITY COLUMNS ARE AT THE TOP LEVEL, which is where the design
     # puts them (`structure.py::IDENTITY_FIELDS`: carried "beside `metadata`")
-    # and where the browser reads them.  They rode on the row as well until
-    # 2026-09-07 -- a second copy nothing read, left by the deleted
-    # `/api/selection/atoms`.
+    # and where the browser reads them.
     body = client.post("/api/build/load", json={"path": path}).get_json()
     assert "atom_names" in body and "residue_names" in body, sorted(body)
     assert rows[1]["regions"] == [FROZEN_LABEL]

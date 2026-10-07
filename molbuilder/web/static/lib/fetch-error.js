@@ -9,9 +9,6 @@
  * second as "Network error: Unexpected token <" sends a chemist to
  * check their wifi while the server sits there crashed.
  *
- * Extracted 2026-08-22 (roadmap 7.2).  It had been written twice —
- * `structure-optimization/viewer.js` had it, and `lib/auto-detect.js`
- * gained a copy the same day, while extracting a triplicated renderer.
  * A rule about what a failure MEANS must not be able to hold two
  * opinions.
  *

@@ -1,12 +1,10 @@
 /* molbuilder shared design tokens.
  *
  * One source of truth for colors, radii, shadows, and spacing /
- * typography scales used across every tab: Build (/), Modify
- * (/modify), Spectra (/spectra), Results (/results).  Each page
+ * typography scales used across every tab.  Each page
  * links this file via ``<link>`` (before its per-page stylesheet)
  * so the tokens land first and per-page rules layer on top.
- * Page-local additions (e.g. Modify's --warning-bg) sit in the
- * importing file's ``:root`` block.
+ * Page-local additions sit in the importing file's ``:root`` block.
  *
  * If you change a token here, every page picks it up automatically.
  * Keep visuals subtle (this is a scientist-facing tool) -- no harsh
@@ -34,11 +32,8 @@
     --text-secondary: #a8aebb;
     /* 4.5:1 or better on every ground it sits on -- card 5.8, page 6.4,
      * input 5.1, a FOCUSED input 4.6 (where a placeholder shows) -- the WCAG
-     * floor page-shell.css cites.  It was #6c7280 (3.35:1 on a card) until
-     * 2026-09-28, under the Run panel's labels, the ladder's columns and the
-     * transport and sweep notes; then #8e94a0 for an afternoon, which left
-     * the focused input at 4.2.  Still well below --text-secondary (7.3 on a
-     * card), so muted stays muted. */
+     * floor page-shell.css cites.  Still well below --text-secondary (7.3 on
+     * a card), so muted stays muted. */
     --text-muted:     #959ba7;
     --text-mono:      #b8c4d6;
 
@@ -49,8 +44,7 @@
     /* Header gradient overlay (used by lib/page-shell.css header).
      * Same hue as --accent (#6ba6ff = 107,166,255) at low alpha so
      * the header reads as accented without losing the dark-theme
-     * card colour underneath.  Tokenised 2026-06-13 — was two raw
-     * rgba literals. */
+     * card colour underneath. */
     --header-gradient-top:    rgba(107, 166, 255, 0.05);
     --header-gradient-bottom: rgba(107, 166, 255, 0.00);
     --accent-bg:     rgba(107, 166, 255, 0.10);
@@ -89,28 +83,19 @@
     --radius-lg:     10px;
     --gap:           var(--space-md);  /* legacy alias — follows the grid */
 
-    /* ---- Spacing scale — A 4px GRID (2026-08-23) ------------------
+    /* ---- Spacing scale — A 4px GRID ------------------------------
      * Every step is a whole number of 4px units, so any two spacings in
      * the app are commensurable and a rhythm is either kept or visibly
      * broken.  Use these for ALL padding/margin/gap.
      *
-     * WHY THE GRID.  The five steps used to run 4 · 8 · 14 · 20 · 28,
-     * and 14 was the only value off any grid.  The gaps it left were
-     * filled by hand: a measurement across the tree found 6, 10 and 12
-     * used hundreds of times as literals, because the nearest token was
-     * wrong by enough to matter.  The literals were not authors ignoring
-     * the scale -- they were the scale being too coarse to say what the
-     * component needed.  Two steps are added and one value moves.
-     *
-     * ``--gap`` is preserved as an alias of --space-md for pre-2026-05-19
-     * call sites; new code should prefer the explicit name. */
+     * ``--gap`` is an alias of --space-md; new code should prefer the
+     * explicit name. */
     --space-xs:      4px;      /* 1 unit — inline, chip insets */
     --space-sm:      8px;      /* 2 — control padding, tight rows */
-    --space-sm2:     12px;     /* 3 — NEW: the step 6/10/12 reached for */
-    --space-md:      16px;     /* 4 — was 14px, the one off-grid value;
-                                *     card and row rhythm.  = legacy --gap */
+    --space-sm2:     12px;     /* 3 — the step 6/10/12 reached for */
+    --space-md:      16px;     /* 4 — card and row rhythm.  = legacy --gap */
     --space-lg:      20px;     /* 5 — card padding, section inset */
-    --space-lg2:     24px;     /* 6 — NEW: the step 22/24/26 reached for */
+    --space-lg2:     24px;     /* 6 — the step 22/24/26 reached for */
     --space-xl:      28px;     /* 7 — section break */
 
     /* ---- Typography scale ----------------------------------------
@@ -137,13 +122,8 @@
      * CHARACTERS, not a distance: it tracks the font and the reader's
      * zoom the way a pixel width never could.  Typography's range for
      * continuous text is 45-75 characters; these hints are short
-     * explanatory paragraphs in a wide card, so the looser end.
-     *
-     * Added 2026-09-15: `.hint` had no cap at all, so a card's help
-     * paragraph ran the full width of the app content column -- about
-     * 150 characters on this display, twice the readable maximum, and
-     * the reason every card read as a wall (user: "all text does not
-     * fit the boxes ... visually ugly"). */
+     * explanatory paragraphs in a wide card, so the looser end
+     * (user: "all text does not fit the boxes ... visually ugly"). */
     --measure-prose:    74ch;
 
     --weight-normal:    400;
@@ -152,19 +132,17 @@
     --weight-bold:      700;   /* page titles only */
 
     /* ============================================================== */
-    /*  Component-scoped palettes (Phase 3, 2026-06-13)               */
+    /*  Component-scoped palettes                                     */
     /* ============================================================== */
-    /* Promoted from per-file :root blocks so the palette is global +
-     * a single source of truth.  Each family is namespaced (--ps-*,
+    /* Global so the palette is a single source of truth.  Each family is namespaced (--ps-*,
      * --sp-*, --mv-*) so semantic intent stays clear vs. the global
      * tokens above. */
 
     /* --- Projects sidebar (lib/projects/projects-sidebar.css) ---
      * Self-contained sidebar palette — flat black/gray backgrounds
      * + the standard cool-blue accent + red/amber severity colors
-     * for entry-action chrome.  Promoted from projects-sidebar.css's
-     * :root block on 2026-06-13.  Authors that previously wrote raw
-     * hex inside this file should reach for these tokens instead. */
+     * for entry-action chrome.  Authors should reach for these tokens
+     * rather than raw hex. */
     --ps-w:               18rem;
     --ps-bg:              #181818;
     --ps-bg-deep:         #141414;   /* code-input bg in sidebar */
@@ -173,7 +151,7 @@
     --ps-fg-muted:        #999999;
     --ps-fg-dim:          #888888;   /* dimmer than fg-muted */
     --ps-border:          #2a2a2a;
-    --ps-bg-2:            var(--ps-border);   /* was a phantom (#2a2a2a) in projects-sidebar.css */
+    --ps-bg-2:            var(--ps-border);
     --ps-border-strong:   #3a3a3a;
     --ps-hover:           #232323;
     --ps-selected:        #2d4a6e;
@@ -185,9 +163,8 @@
     --ps-danger-fg:       #e07a7a;
     --ps-warn-bg:         #5d4520;
     --ps-warn-fg:         #ffdca7;
-    /* Checkpoint sensor states + git-ref chips (Phase 3 completion,
-       2026-06-29): semantic palette for the projects-sidebar checkpoint
-       UI -- moved out of raw hex in projects-sidebar.css. */
+    /* Checkpoint sensor states + git-ref chips: semantic palette for the
+       projects-sidebar checkpoint UI. */
     --ps-ck-clean-bg:       #2d4a2d;
     --ps-ck-clean-fg:       #b8e0b8;
     --ps-ck-clean-border:   #4a7a4a;
@@ -218,8 +195,7 @@
      *   --group-stage-accent    what changes 1→2→3 ("review me")
      *   --group-budget-accent   patience caps, set-and-forget
      *
-     * "profile" replaces the prior "system" name (2026-06-13) so
-     * the workflow-group role doesn't collide with the "System"
+     * "profile", so the workflow-group role doesn't collide with the "System"
      * schema section, the OS/file-system meaning, or the generic
      * physics term "the system being computed."
      *
@@ -230,26 +206,24 @@
     --group-stage-accent:   var(--warn-soft);
     --group-budget-accent:  var(--success);
 
-    /* --- Embeddable-overlay tier (CSS-migration step 3, 2026-07) ---
+    /* --- Embeddable-overlay tier ---
      * The concealed embed modules (lib/results/file-picker.js's sheet,
      * lib/system-load-monitor.css,
      * lib/trajectory/trajectory-inspector.css, lib/form-schema.css) render inside
      * host pages, so they tint with TRANSLUCENT overlays that adapt to
      * whatever background sits beneath them — rather than assuming a
-     * specific solid --bg-*.  These were previously undefined phantom
-     * tokens carried only by inline var(--x, fallback) fallbacks, which
-     * drifted (--border-subtle alone appeared at four different alphas).
-     * Promoted here as ONE value each so the palette controls them.
+     * specific solid --bg-*.  ONE value each, so the palette controls
+     * them.
      * The embed severity set aliases the canonical severity palette so
      * there is ONE severity vocabulary app-wide. */
     --surface-elevated:  rgba(20, 24, 28, 0.55);   /* raised panel over host bg */
     --surface-hover:     rgba(255, 255, 255, 0.08);/* hover tint */
     --surface-deep:      rgba(0, 0, 0, 0.18);      /* recessed well */
     --surface-recessed:  rgba(0, 0, 0, 0.20);
-    --border-subtle:     rgba(255, 255, 255, 0.08);/* was .06/.08/.12/.18 — unified */
+    --border-subtle:     rgba(255, 255, 255, 0.08);
     --bg-panel:          #20242b;                  /* embed panel solid bg */
-    --text-tertiary:     #7c7c7c;                  /* was #777/#7c7c7c — unified */
-    --radius-md:         8px;                       /* was 8px/10px — unified */
+    --text-tertiary:     #7c7c7c;
+    --radius-md:         8px;
     --font-sans:         system-ui, -apple-system, "Segoe UI", sans-serif;
     --accent-fg:         #0a1018;                  /* dark text on an accent fill */
     --accent-on:         var(--bg-page);           /* = #14171c */
@@ -313,18 +287,12 @@
     --ts-refuse-bg:     rgba(248, 113, 113, 0.10);
     --ts-refuse-fg:     var(--error);
 
-    /* --- Promoted here 2026-09-02 -------------------------------------
-     * Three tokens that were defined in a COMPONENT file's `:root`.  A
-     * `:root` block is global wherever the sheet is loaded, so an
-     * unprefixed name set in one component is set for every page that
-     * loads it -- and two components could set it differently, with the
-     * last sheet loaded winning.  That is the fragmentation § 2 forbids,
-     * arriving through the door marked "component-scoped".
-     *
-     * They kept their names because they READ global -- no module prefix
-     * -- and the fix for a global-looking name is a global home, not a
-     * rename that makes the collision quieter. */
-    --page-max-width:   1680px;             /* was modify/style.css */
+    /* --- Global names --------------------------------------------------
+     * Unprefixed names live here, never in a component's `:root`: a
+     * `:root` block is global wherever the sheet is loaded, so two
+     * components could set one differently, with the last sheet loaded
+     * winning -- the fragmentation § 2 forbids. */
+    --page-max-width:   1680px;
     --focus-ring:       0 0 0 3px var(--accent-glow);
     --shadow-soft:      0 1px 0 rgba(255, 255, 255, 0.02) inset,
                         0 2px 6px rgba(0, 0, 0, 0.25);

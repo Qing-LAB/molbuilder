@@ -1,17 +1,14 @@
-"""SIESTA .fdf input generator.
+"""SIESTA .fdf deck description.
 
-Takes a Structure (or an XYZ/PDB file path) and emits a .fdf input file
-ready to drop into a SIESTA run, with optional auto-copy of PSML
-pseudopotentials from a flat library on disk.
+:func:`spec_for` describes a Structure's deck -- its layout, its lines and
+its records -- for the framework to render, write and check
+(`script_emit.prepare_deck`, which `jobset prep` calls; `script-preparation.md`
+§ 4.3).
 
 Public API:
-    SiestaConfig      -- dataclass holding every FDF parameter
-    Config            -- backwards-compat alias for SiestaConfig
-    render_fdf(...)   -- format an in-memory Structure as FDF text
-    convert(...)      -- read XYZ/PDB, write FDF, optionally copy psml
-    copy_pseudopotentials(...) -- standalone psml copy helper
-
-The CLI lives in :mod:`molbuilder.cli` as the ``fdf`` subcommand.
+    spec_for(...)               -- the deck's spec
+    copy_pseudopotentials(...)  -- copy the PSML files a deck names
+    find_psml(...)              -- find one in a library
 """
 
 from __future__ import annotations
@@ -24,7 +21,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..runfiles import compose as _rf
+from ..runfiles import RunNames, compose as _rf
 from ..structure import Structure
 # SiestaConfig is the L1 dataclass; this module imports it for use by
 # the generator below.  External callers can import it from either
@@ -40,11 +37,6 @@ from ..identity import command_stage, continues
 from .. import script_emit as _sc
 
 
-
-
-
-
-
 # --------------------------------------------------------------------- #
 #  Helpers                                                              #
 # --------------------------------------------------------------------- #
@@ -56,17 +48,12 @@ def _auto_block_size(n_atoms: int,
     """Pick a SIESTA ``BlockSize`` for the ScaLAPACK orbital
     distribution.  Affects cache efficiency at moderate rank counts.
 
-    HISTORICAL NOTE (2026-05-28 correction)
-    ----------------------------------------
-    This function previously claimed to guard against ``propor:
-    ERROR: IMAX = 0`` via the formula
-    ``BlockSize <= floor(n_atoms / Nrank)``.  An empirical sweep on
-    2026-05-28 disproved it: SIESTA crashes IDENTICALLY with
+    It does NOT guard against ``propor: ERROR: IMAX = 0``.  An empirical
+    sweep on 2026-05-28: SIESTA crashes IDENTICALLY with
     BlockSize = 1, 2, 4 at mpi_np = 15 on hemeC-dithiol.  THIS NOTE
     is the durable record of that result -- the probe ran in a /tmp
     scratch that no longer exists, so the numbers here are the
-    artifact (softened 2026-08-12; a citation pointing at deleted
-    scratch read as if a repo artifact backed it).
+    artifact.
 
     The propor crash is in ``matel_table.F90``'s MPI-deduplication
     of radial-function tables, not in any BLACS distribution.  It
@@ -76,8 +63,8 @@ def _auto_block_size(n_atoms: int,
     ``runwrap.py``'s post-run diagnostic for the user-facing fix
     (the wrapper's ``-np`` runtime override).
 
-    What this function STILL does
-    -----------------------------
+    What this function does
+    -----------------------
     Pick a power-of-2 BlockSize that gives ScaLAPACK good cache
     behaviour at the requested rank count.  Larger BlockSize
     reduces communication overhead per orbital block; too-large
@@ -89,34 +76,25 @@ def _auto_block_size(n_atoms: int,
     with ``n_orbitals_est = 10 * n_atoms`` -- the SAME rough DZP
     estimate the deck's BENCH-MARKS block records as
     ``n_orbitals_est`` (job-contracts.md § 3.2 provenance example
-    + § 3.3; the atoms-based cap ``floor(n_atoms / mpi_np)`` was
-    retired U18, 2026-08-12).  It is an upper bound for the diag
-    block, not the propor-fixing constraint it was once advertised
-    as (see HISTORICAL NOTE above).
+    + § 3.3).  It is an upper bound for the diag block, not a propor
+    fix (see above).
 
     Strategy
     --------
-    Two regimes -- CPU mode and GPU mode.  Since U18 (2026-08-12)
-    both derive the cap from the same orbital estimate; they still
-    differ in floor and in the no-rank-info fallback, because the
-    optimal BlockSize differs on the two solvers.
+    Two regimes -- CPU mode and GPU mode.  Both derive the cap from
+    the same orbital estimate; they differ in floor, because the
+    optimal BlockSize differs on the two solvers.  A missing rank
+    count (``mpi_np`` None) is refused: the window is derived from it.
 
     CPU mode (default)
       * mpi_np = 1: size-only ladder (1, 2, 4, 8 by n_atoms), capped
         at 8 -- one rank has nothing to distribute over (single-rank
-        runs ignore BlockSize anyway).  No rank count is refused: the
-        window is derived from it (it took this ladder until
-        2026-10-06).
+        runs ignore BlockSize anyway).
       * mpi_np >= 2: largest power of 2 satisfying
         ``BlockSize <= min(256, floor(10 * n_atoms / mpi_np))``.
         The 256 ceiling is the LOAD-BALANCE ceiling shared with GPU
         mode below: past it, too few blocks circulate per rank for
-        BLACS to balance, with no cache gain to pay for it.  (Until
-        2026-08-12 this bullet also propped 256 on "the top of the
-        BENCH-MARKS legal override window, range=[16,256]" -- a
-        constant § 3.3 retired 2026-08-10; the deck's declared window
-        is now per-deck ``[1, floor(n_orbitals_est/mpi_np)]`` and the
-        auto pick lands inside it by the same min() above.)
+        BLACS to balance, with no cache gain to pay for it.
 
     GPU mode (``gpu_mode=True``)
       Orbital-aware formula with two caps:
@@ -127,8 +105,7 @@ def _auto_block_size(n_atoms: int,
       The 10·n_atoms term estimates n_orbitals (rough DZP heuristic;
       underestimates for heavy elements like Au where DZP gives
       ~25 orb/atom).  The 256 cap is a defensible upper bound:
-      bigger than the historical CPU number (which under-shot by
-      using n_atoms not n_orbitals), within the range of values
+      within the range of values
       ELPA-GPU benchmark papers actually swept, and small enough
       that load balance stays good with ≤4 ranks.  The 1024 cap is
       the ELPA CUDA kernel hard limit (2^10).
@@ -149,14 +126,6 @@ def _auto_block_size(n_atoms: int,
         n_atoms=16,  mpi_np=4 (tiny test fixture):            32
         n_atoms=1000, mpi_np=4 (big metal slab):             256
 
-    HISTORY
-      The pre-2026-06-16 CPU formula was used uniformly.  For the
-      typical GPU-form path (cfg.mpi_np = None, gpu_mode = True)
-      it fell into the size-only ladder and returned 8 for any
-      system >=16 atoms -- way below the ELPA-CUDA optimum.  A
-      live 212-atom Au-BDT GPU run was using BlockSize=8 the whole
-      time before this fix.
-
     Returns
     -------
     A positive power of 2.  If SIESTA still crashes at startup with
@@ -166,8 +135,7 @@ def _auto_block_size(n_atoms: int,
     if mpi_np is None:
         # NO RANK COUNT, NO WINDOW: the window is derived from the deck's
         # ranks, and every prepped deck states them (`architecture.md`
-        # § 5.2).  Four ranks were assumed in GPU mode, and a size-only
-        # ladder on the CPU, until 2026-10-06 -- a count nobody stated.
+        # § 5.2).
         raise ValueError(
             "BlockSize's window is derived from the deck's rank count "
             "(mpi_np), and this deck states none.")
@@ -175,7 +143,7 @@ def _auto_block_size(n_atoms: int,
         # Orbital-aware cap: ``floor(10 * n_atoms / mpi_np)`` (the
         # 10x is a rough DZP-basis heuristic; underestimates for
         # heavy elements like Au where DZP gives ~25 orb/atom).
-        # Since U18 (2026-08-12) the CPU branch below derives from
+        # The CPU branch below derives from
         # the same orbital estimate per job-contracts.md § 3.2/
         # § 3.3; GPU keeps its own branch for the floor of 8.
         # Two further caps narrow the choice to a defensible range:
@@ -191,9 +159,8 @@ def _auto_block_size(n_atoms: int,
         # An empirical sweep on the target hardware (see
         # ``scripts/bench-siesta-blocksize.sh``) can refine this
         # default for power users.  Without measurement, 256 is a
-        # defensible upper bound -- bigger than the historical CPU
-        # number, smaller than the kernel limit, and within the
-        # range the literature has actually measured.
+        # defensible upper bound -- smaller than the kernel limit, and
+        # within the range the literature has actually measured.
         np_ = max(1, int(mpi_np))
         orbital_estimate = 10 * max(1, n_atoms)
         upper = min(256, 1024, orbital_estimate // np_)
@@ -202,9 +169,7 @@ def _auto_block_size(n_atoms: int,
             pow2 *= 2
         return pow2
     if int(mpi_np) <= 1:
-        # CPU + no rank info -- conservative size-only baseline.
-        # Cap at 8 is the historical safety choice; with mpi_np
-        # known we remove this ceiling below.
+        # One rank: a size-only ladder, capped at 8.
         if   n_atoms >= 16:  return 8
         elif n_atoms >=  8:  return 4
         elif n_atoms >=  4:  return 2
@@ -216,10 +181,8 @@ def _auto_block_size(n_atoms: int,
     # floor(n_orbitals_est / mpi_np)`` with ``n_orbitals_est =
     # 10 * n_atoms`` -- the SAME estimate the deck's BENCH-MARKS
     # block records (job-contracts.md § 3.2 provenance example +
-    # § 3.3; atoms-based ``floor(n_atoms / mpi_np)`` retired U18,
-    # 2026-08-12).  The 256 ceiling: top of the BENCH-MARKS legal
-    # override window (``range=[16,256]``, § 3.3) and the
-    # load-balance ceiling shared with the GPU branch -- above 256
+    # § 3.3).  The 256 ceiling: the load-balance ceiling shared with
+    # the GPU branch -- above 256
     # a low-rank run drops below ~12 blocks/rank and tail-effect
     # imbalance bites.  Take the LARGEST power of 2 under the cap.
     orbital_estimate = 10 * max(1, n_atoms)
@@ -240,24 +203,18 @@ def _block_size_bounds(n_atoms: int,
 
     ``job-contracts.md`` § 3.3 calls ``range`` *"advisory bounds for
     validating a requested override"*.  Advice about a value that was derived
-    from the launch has to be derived from the same launch, and until
-    2026-08-10 it was not: the range was the module constant ``(16, 256)``
-    while the default came from :func:`_auto_block_size`.  The two disagreed
-    routinely rather than exceptionally — under the ATOMS-era derivation of
-    the day, ``_auto_block_size(200, mpi_np=16)`` was 8 and ``(20,
-    mpi_np=32)`` was 1, both below the declared floor (U18's orbital
-    derivation gives 64 and 4; the history keeps the old numbers because
-    they are what motivated the fix) — so the block advised a *validator*
-    that its own emitted value was illegal, and advised a *bench tool* it
-    could climb past this deck's own rank constraint.  Climbing is the
+    from the launch has to be derived from the same launch, or the block
+    advises a *validator* that its own emitted value is illegal, and a
+    *bench tool* that it may climb past this deck's own rank constraint.
+    Climbing is the
     dangerous direction: above ``floor(n_orbitals_est / mpi_np)`` some
     ranks get no block at all.
 
     **One derivation, not two.**  The upper bound IS
     :func:`_auto_block_size`'s answer, because that function already picks the
     largest legal power of two — so "the generator's choice" and "the top of
-    the window" are the same number by construction, and cannot drift apart
-    the way a second constant did.  That gives the block a checkable
+    the window" are the same number by construction, and cannot drift
+    apart.  That gives the block a checkable
     invariant: ``lo <= default <= hi``, always.
 
     The floor is the picker's own: 1 on CPU (the empirical sweep in
@@ -266,7 +223,7 @@ def _block_size_bounds(n_atoms: int,
 
     ``emitted`` is the value the deck actually carries.  It differs from the
     derived one only when the user set ``block_size``, which
-    :func:`render_fdf` honours verbatim; the window is widened to contain it,
+    the deck writes verbatim; the window is widened to contain it,
     because a block whose range excludes its own default is the defect this
     function exists to end — the user's number is a *decision*, not an error
     to advertise as out of bounds.
@@ -277,12 +234,6 @@ def _block_size_bounds(n_atoms: int,
         lo = min(lo, int(emitted))
         hi = max(hi, int(emitted))
     return (lo, hi)
-
-
-# `_detect_species` DELETED 2026-09-23 -- it was this module's own species
-# rule, and then a one-line wrapper over `chemistry.species_order`.  A
-# wrapper is a second name for one answer, and the second name is how the
-# transport emitter came to have a third.  Callers ask `chemistry` directly.
 
 
 def find_psml(element: str, lib: Path) -> Optional[Path]:
@@ -335,61 +286,45 @@ def copy_pseudopotentials(species: Sequence[str], lib: Path,
 # --------------------------------------------------------------------- #
 
 
-def _restart_keys(cfg) -> tuple:
+def _restart_keys(cfg, relax_type=None) -> tuple:
     """Which members of the declared group this run mode has a use for.
 
     The group itself is the catalogue's — ``[item.restart].expands``, read
     through the one API (`template.md` § 8.0).  This says only which of them
     *mean* anything for the run being written, and there is exactly one such
-    distinction: ``MD.UseSaveCG`` names the optimizer's own history, so a run
-    that does not relax with an optimizer has none.
+    distinction: ``MD.UseSaveCG`` names the CG optimizer's own history, so a
+    run that does not relax with CG has none.
 
-    **It read ``SIESTA_RESTART_GROUP.keys`` for one morning** (2026-08-18) and
-    that was the wrong home. *Which keywords `restart` writes* was declared in
-    THREE places — the catalogue's ``expands``, that tuple, and
-    ``warm-files.toml``'s ``honoured_by`` rows — carrying the same three names
-    in three different orders. A generator asked to *"pull what it needs from
-    the source it knows"* cannot, when there are three; whichever an author
-    reaches for is the one their layer then disagrees from. ``expands`` is the
-    parameter's own statement of what it writes into the deck, it is floor-2
-    data, and it is already in the read API every other item question goes
-    through.
-
-    ``none`` (a static stage) and the dynamics modes are the cases: a Verlet
-    or Nosé run integrates rather than optimizes.  Broyden and FIRE **do** get
-    it — that is what the condition has always done, and narrowing it is a
-    SIESTA-semantics question wanting the manual and a science review, not
-    something to change while fixing how the group is written.
+    ``MD.UseSaveCG`` is written for a CG relaxation alone: SIESTA 5.4.2
+    reads it only in the ``cg`` arm of ``Src/read_options.F90`` and hands it
+    only to the CG optimizer (``Src/siesta_move.F``).  A static stage, the
+    dynamics modes, Broyden and FIRE have no use for it.  ``relax_type`` is
+    the deck's own when it writes no relaxation of ``cfg``'s (a transport
+    seed); otherwise ``cfg``'s.
     """
     keys = _sc.parameter("restart", "siesta").writes
-    relax = str(getattr(cfg, "relax_type", "") or "none").strip().upper()
-    if relax in ("NONE", "VERLET", "NOSE"):
+    if relax_type is None:
+        relax_type = getattr(cfg, "relax_type", "")
+    relax = str(relax_type or "none").strip().upper()
+    if relax != "CG":
         return tuple(k for k in keys if k != "MD.UseSaveCG")
     return keys
 
 
-def _restart_group_lines(cfg) -> List[str]:
+def _restart_group_lines(cfg, relax_type=None) -> List[str]:
     """The whole restart group, in one place, for BOTH answers.
 
-    **`clean` writes `.false.`; it does not stay silent.**  Until 2026-08-18
-    this group was emitted only when the run continued, on the premise that a
-    key left out is a key not honoured.  It is not: SIESTA reads
+    **`clean` writes `.false.`; it does not stay silent**: SIESTA reads
     ``<SystemLabel>.DM`` when the file is there whatever the deck omits
-    (measured — see ``SIESTA_RESTART_GROUP.mechanism``).  A stage told to
-    start clean therefore warm-started from whatever the directory held, and a
-    benchmark trial — forced clean precisely so every point measures the same
-    thing — measured a continued run whenever the wrapper retried it.
+    (measured — see ``SIESTA_RESTART_GROUP.mechanism``), so a stage told to
+    start clean would warm-start from whatever the directory held.
 
-    **One site, from the declaration.**  The members were written by hand at
-    two points in this file, several hundred lines apart, each with its own
-    ``if continues(cfg)``.  Reading them from
-    the catalogue's ``expands`` is what makes *"one field, one group"* true
-    of the code rather than of a comment: a member cannot now be emitted with
-    one answer while its sibling carries the other, and an engine that grows a
-    fourth member gets it written without touching this function.
+    The members are read from the catalogue's ``expands``, so a member cannot
+    be emitted with one answer while its sibling carries the other.
+    ``relax_type`` as `_restart_keys`.
     """
     on = ".true." if continues(cfg) else ".false."
-    return [f"{k:<18}{on}" for k in _restart_keys(cfg)]
+    return [f"{k:<18}{on}" for k in _restart_keys(cfg, relax_type)]
 
 
 def _stage_science(cfg: "SiestaConfig") -> str:
@@ -442,12 +377,9 @@ def _bench_marks_for(struct, cfg, block_size, bs_range) -> dict:
             "n_atoms":        struct.n_atoms,
             "n_orbitals_est": 10 * struct.n_atoms,
             "gpu_mode":       str(bool(cfg.use_gpu)).lower(),
-            # The launch quantity BlockSize was derived FROM.  § 5.2's whole
-            # point is that a later change of launch can re-derive the coupled
-            # lines "instead of silently leaving them stale" -- and
-            # ``_auto_block_size`` takes three inputs while this block used to
-            # record two, so re-derivation was not actually possible from what
-            # the deck carried.
+            # The rank count this deck was rendered for: prep warns and
+            # launch refuses a launch with another (`jobset/agreement.py`),
+            # and ``_auto_block_size`` takes it as an input.
             "mpi_np":         ("auto" if cfg.mpi_np is None
                                else str(int(cfg.mpi_np))),
         },
@@ -504,49 +436,25 @@ def _parallel_facts(cfg, mesh) -> dict:
     ``over_k``'s automatic answer is *more than one point* on ``mesh``,
     the k-point mesh THIS deck writes (`kmesh.mesh_for`, `engines/siesta.md`
     § 6.1): an electrode's ``kx ky 40``, never the template's ``kx ky 1``.
-    It read ``cfg.kgrid`` until 2026-09-30, so a wire junction's lead ran
-    forty points with the diagonaliser split over orbitals.
     """
     # ---- Parallel execution (MPI) -------------------------------
     # BlockSize is a THROUGHPUT knob, not a crash guard: the empirical
-    # sweep recorded in the HISTORICAL NOTE above (2026-05-28, hemeC)
+    # sweep recorded in :func:`_auto_block_size` (2026-05-28, hemeC)
     # showed the ``propor: ERROR: IMAX = 0`` startup crash identical at
     # BlockSize 1, 2 and 4 -- it is matel_table's proportionality check
-    # against the rank count, and the remedy is a smaller -np.  The
-    # paragraph that stood here until 2026-08-12 still taught the
-    # pre-sweep theory ("an explicit smaller BlockSize keeps every
-    # distribution step well-conditioned") -- the OPPOSITE of the deck
-    # text emitted ten lines below, in the same function.
-    # TWO STATES (tuning.md § 2.11, revised 2026-08-15).  Unset means
+    # against the rank count, and the remedy is a smaller -np.
+    # TWO STATES (tuning.md § 2.11).  Unset means
     # AUTO, and auto means SIESTA'S OWN automatic -- the keyword is simply
     # not emitted.  The manual declares it: ``BlockSize [integer]
     # <automatic>``.  Omitting a keyword is a real answer, the same shape
     # as ``Diag.Algorithm ScaLAPACK`` emitting nothing (siesta.md § 7).
     #
-    # A THIRD state stood here until 2026-08-15: unset made molbuilder
-    # DERIVE a value (``_auto_block_size``) and write it into the deck,
-    # while SIESTA's own automatic hid behind the sentinel ``0``.  So the
-    # ordinary user got a guess and the engine's answer needed a magic
-    # number to request -- and the guess contradicted § 2.11's own opening
-    # decision (2026-08-11): *"not a value molbuilder derives and hands
-    # you"*.  It also produced ``BlockSize 1`` below four atoms, which is
-    # legal and the exact opposite of the cache blocking the parameter
-    # exists for.
-    #
-    # ``_auto_block_size`` itself is NOT deleted -- it is still the upper
-    # bound of the BENCH-MARKS window (``_block_size_bounds``), which is
+    # ``_auto_block_size`` is the upper bound of the BENCH-MARKS window (``_block_size_bounds``), which is
     # where a power-of-two constraint belongs: the benchmark sweeps them.
     if cfg.block_size is None:
         block_size = None
     else:
-        # Honoured verbatim -- hand-set, or a benched result.  Earlier code
-        # auto-downgraded when ``BlockSize * mpi_np > n_atoms`` on the
-        # theory that it caused propor IMAX=0; an empirical sweep
-        # (2026-05-28) disproved that -- propor is a matel_table issue, not
-        # a BlockSize issue.  Under a GPU-ELPA target a non-power-of-two
-        # value is realigned by `prep`, which is the layer that knows the
-        # GPU flag and the rank count (§ 2.11); it is not second-guessed
-        # here, and never silently.
+        # Honoured verbatim -- hand-set, or a benched result.
         block_size = int(cfg.block_size)
 
     if cfg.parallel_over_k is None:
@@ -572,10 +480,9 @@ def _parallel_facts(cfg, mesh) -> dict:
             "ELPA-1STAGE or ELPA-2STAGE); GPU acceleration does not apply to "
             f"the {_algo} solver.  Pick an ELPA algorithm or turn GPU off "
             "(engines/siesta.md § 7).")
-    # THE FOUR MPI VALUES go through the one door.  None of them is a config
-    # field read straight through -- the block size is computed from the atom
-    # count and the rank count, ParallelOverK defaults from whether the k-mesh
-    # is more than Gamma, the algorithm is normalised -- so they reach the door
+    # THE FOUR MPI VALUES go through the one door.  They are not all config
+    # fields read straight through -- ParallelOverK defaults from whether the
+    # k-mesh is more than Gamma, the algorithm is normalised -- so they reach the door
     # through ``parameter(..., value=)`` and a DERIVED number still arrives
     # with its declaration, its range and its note.
     return {"block_size": block_size, "over_k": over_k,
@@ -594,34 +501,18 @@ def _relaxation_facts(cfg) -> Optional[dict]:
     (`script-preparation.md` § 4.1).  Every value here is a function of
     ``cfg`` alone, so there was never anything to wait for.
     """
-    # Relaxation / dynamics.  In SIESTA 5.4.2 the step-count and
-    # displacement-cap fdf keywords are UNIVERSAL across relax types
-    # despite the CG-prefixed names -- ``MD.Steps`` and
-    # ``MD.MaxDispl`` are recognized for CG, Broyden, AND FIRE.
-    #
-    # HISTORY: pre-2026-06-23, this branch emitted made-up per-
-    # algorithm keywords (``MD.NumBroydenSteps``, ``MD.MaxDispl``)
-    # which SIESTA 5.4.2 silently dropped -- with NO warning -- so a
-    # Broyden / FIRE relaxation ran as a Single-point calculation.
-    # The user surfaced the bug in TJ-BDT-Au111 when stage 2 (Broyden)
-    # "finished in one step" with max-force 0.18 vs threshold 0.02 --
-    # SIESTA never took a Broyden step at all.  See decision-log
-    # 2026-06-23 in design.md for the full failure analysis.
-    #
-    # Empirical proof of the universal mapping (small H2 against
-    # SIESTA 5.4.2 with ``MD.TypeOfRun Broyden`` + ``MD.Steps 5``
-    # + ``MD.MaxDispl 0.1 Ang``):
+    # Relaxation / dynamics.  In SIESTA 5.4.2 one step count and one
+    # displacement cap serve every relaxation -- ``MD.Steps`` and
+    # ``MD.MaxDispl`` are read for CG, Broyden and FIRE alike.  Measured
+    # on H2 with ``MD.TypeOfRun Broyden`` + ``MD.Steps 5`` +
+    # ``MD.MaxDispl 0.1 Ang``:
     #   redata: Dynamics option        = Broyden coord. optimization
     #   redata: Maximum number of optimization moves = 5
     #   redata: Max atomic displ per move = 0.1000 Ang
-    # Identical echo lines a CG first stage already produces in real jobs.
     #
-    # Verlet / Nose (NVE / NVT dynamics, not relaxation) use distinct
-    # step-control keywords -- ``MD.FinalTimeStep`` + the temperature
-    # block.  They never reached this branch with the broken mapping
-    # because no test ever ran them; today they're handled below too
-    # for completeness, with the universal MD.Steps NOT emitted
-    # (it would be a no-op + visual noise in the fdf).
+    # Verlet / Nose (NVE / NVT dynamics, not relaxation) bound their loop
+    # by time instead -- ``MD.FinalTimeStep`` and the temperature block --
+    # and are written no ``MD.Steps``.
     if not (cfg.relax_type and cfg.relax_type.lower() != "none"):
         return None
     relax_kind = cfg.relax_type.strip().upper()
@@ -636,16 +527,9 @@ def _relaxation_facts(cfg) -> Optional[dict]:
         "VERLET":  "MD.FinalTimeStep",
         "NOSE":    "MD.FinalTimeStep",
     }
-    # REFUSED, never defaulted.  This fell back to ``MD.Steps`` for any
-    # unrecognised type, and SIESTA's geometry loop is bounded by a
+    # REFUSED, never defaulted: SIESTA's geometry loop is bounded by a
     # DIFFERENT keyword depending on the run type (siesta_init.F: idyn 0
     # bounds on MD.Steps, idyn 1-5 on MD.InitialTimeStep..FinalTimeStep).
-    # So adding any of SIESTA's other MD ensembles -- ParrinelloRahman,
-    # NoseParrinelloRahman, Anneal, all idyn 3-5 -- to the choice list
-    # without touching this map would emit a keyword the run ignores,
-    # leaving MD.FinalTimeStep at its default of 1: a one-step MD that
-    # looks like it ran.  A loud refusal here costs one line; that bug
-    # costs a wasted allocation and is invisible in the output.
     if relax_kind not in _STEP_KW:
         raise ValueError(
             f"relax_type {cfg.relax_type!r} has no step-count keyword "
@@ -676,7 +560,6 @@ def _relaxation_facts(cfg) -> Optional[dict]:
     }
 
 
-
 def _vibration_bundle() -> str:
     """The name of the bundle that finishes a force-constant job -- the
     launcher's (`runwrap.VIBRATION_BUNDLE`), which builds and ships it."""
@@ -685,14 +568,19 @@ def _vibration_bundle() -> str:
 
 
 def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
-               *, cell: Optional[np.ndarray] = None,
-               stage_token: Optional[str] = None,
+               *, names: "RunNames",
+               cell: Optional[np.ndarray] = None,
                calculation: str = "optimization",
                vibration: Optional[dict] = None,
                relaxed_by: Optional[dict] = None,
                state=None,
-               trial: Optional[str] = None) -> "_sc.RenderedDeck":
-    """Format a Structure as SIESTA .fdf text.
+               trial: Optional[str] = None) -> "_sc.DeckSpec":
+    """Describe a Structure's SIESTA .fdf deck -- the spec
+    `script_emit.render_deck` renders into its text.
+
+    ``names`` are the stage's (`runfiles.RunNames`) -- a RENDER ARGUMENT, as
+    the kind is: its stage token, and every name the deck prints, the deck's
+    own among them, are theirs (`job-contracts.md` § 2.2a).
 
     ``trial`` is the benchmark trial this deck is, by its point's name
     (``G1K4C6``), or ``None`` for the run -- a render argument from `prep`,
@@ -728,8 +616,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     lattice vector -- never wrapped atom by atom, never left where they were
     authored -- and the deck states the offset it applied.
     """
+    stage_token = names.stage
     if calculation == "transport":
-        # The kind is a RENDER ARGUMENT, like the stage token: the seam
+        # The kind is a RENDER ARGUMENT, like the stage's names: the seam
         # stays ONE per engine, and the transport deck is this engine
         # learning a second calculation -- the same shape PySCF's
         # vibration arm has (`engines/transport.md` § 3.6).
@@ -740,8 +629,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # rather than restating them.
         # A RENDER ARGUMENT THIS ARM DOES NOT READ is refused by name: a
         # transport deck derives no cell -- it is the composed junction's own
-        # (§ 2a.9) -- and has no vibration, relaxation record or bench trial.
-        # Passed, each was dropped in silence (§ 3.6a).
+        # (§ 2a.9) -- and has no vibration, relaxation record or bench trial
+        # (§ 3.6a).
         unread = [name for name, value in (
             ("cell", cell), ("vibration", vibration),
             ("relaxed_by", relaxed_by), ("trial", trial)) if value is not None]
@@ -766,15 +655,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # LAYOUT below by the framework, which is the only reading that can
     # close the check gate's loop: a list this writer kept would say what
     # the writer believed, and the gate exists because a writer can be
-    # wrong.  This function kept such a list until 2026-08-19 -- filled at
-    # eight call sites and read at none, because the sections it collected
-    # from were rendered inside a block where the framework could not see
-    # them (`script-preparation.md` § 4.1).
+    # wrong (`script-preparation.md` § 4.1).
     cfg = config or SiestaConfig()
-    # THE ONE ENTRY, override included (`model/chemistry.md` § 3a).  This
-    # spelled the override resolution itself, and `transport/transiesta.py`
-    # spelled it differently -- so one deck honoured `species_order` and the
-    # other could not see it.
+    # THE ONE ENTRY, override included (`model/chemistry.md` § 3a).
     from ..chemistry import species_order as _species_order
     species = _species_order(struct.elements, cfg.species_order)
     species_index = {s: i + 1 for i, s in enumerate(species)}
@@ -790,7 +673,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     for el in struct.elements:
         if el not in species_index:
             raise ValueError(
-                f"Atom element {el!r} not in --species-order "
+                f"Atom element {el!r} not in the species order "
                 f"{list(species_index)!r}"
             )
 
@@ -811,9 +694,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # LAST LINE OF DEFENCE: SIESTA builds reciprocal vectors from the cell,
         # so a zero-volume lattice fails outright -- it must never be emitted.
         #
-        # A flat / linear molecule with NO vacuum set used to land here, but the
-        # 6.1 default now gives every ISOLATED axis 3 A per side, so that path
-        # is gone.  Two things still reach here: a vacuum a user SET to zero on
+        # The 6.1 default gives every ISOLATED axis 3 A per side, so two
+        # things reach here: a vacuum a user SET to zero on
         # a flat axis (their value is honoured, never overridden), and an
         # axis where vacuum does not apply: a TRANSPORT axis, whose length is the
         # captured device length rather than bbox + padding.  The message names
@@ -845,10 +727,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 f"direction (Modify -> Cell tab), or correct the axis kind. The "
                 f"geometry is never changed for you.", "cell.no_volume")])
         # Vacuum adequacy is checked by the VALIDATOR
-        # (validation/siesta.py:_check_siesta_vacuum_adequacy), which the
-        # report(validate(...)) call below runs -- so the finding reaches the
-        # web panel and this stderr report alike.  It used to be a
-        # warnings.warn here, which no web user could ever see (contract R5,
+        # (validation/siesta.py:_check_siesta_vacuum_adequacy), which
+        # `script_emit.render_deck` runs -- so the finding reaches the web
+        # panel and the stderr report alike (contract R5,
         # science/validation.md 4.1).
         # ROW NORMS, NOT THE DIAGONAL.  `np.diag` is the axis length only for
         # an orthogonal cell; on the hexagonal Au(111) lattice this whole
@@ -889,9 +770,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # one vector, or a unit confusion that produces sub-Angstrom
         # vectors (e.g., user wrote ``0.5`` meaning 0.5 nm = 5 A, but
         # the call passed it as A: vol = 0.5^3 = 0.125 A^3, fails for
-        # any non-empty molecule).  Pre-2026-05-28 the threshold was
-        # a flat ``vol < 1.0 A^3`` which only caught the most extreme
-        # cases; the per-atom floor scales with the molecule.  The
+        # any non-empty molecule).  The per-atom floor scales with the
+        # molecule.  The
         # check does NOT false-positive on legitimate dense cells:
         # compressed Fe at 100 GPa is ~10 A^3 per atom, 10x above the
         # threshold; even hard-sphere close-packed C is ~6 A^3 per
@@ -924,28 +804,15 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                   + (" A, the offset the structure states)" if _frame.stated
                      else " A, centred in the cell)"))
 
-    # ---------- pre-emission validation ----------
-    # By now `cell` and `positions` are final; run the validation pass
-    # before any FDF text is generated so error-severity issues block
-    # emission cleanly.  Warnings print to stderr but the run proceeds.
-    # See molbuilder.validation and docs/design.md for the check list.
-    # The validation_struct mirrors the input struct but uses the FINAL
-    # post-positioning ``positions`` array (so geometry-based checks
-    # see what SIESTA will actually read).  CRITICAL: must carry the
-    # transport metadata (``frozen_atoms`` + ``regions``) through, or
-    # the validator's ``_check_frozen_atoms_consumed`` sees an empty
-    # frozen list and never fires its "N atoms held fixed" / "won't
-    # honor" issues -- the contract carrier silently dropped between
-    # the Build endpoint that loaded the sidecar and the validator that
-    # was supposed to consume it.  Caught by the 2026-05-26 review.
+    # By now `cell` and `positions` are final.  The validation_struct
+    # mirrors the input struct but uses the FINAL post-positioning
+    # ``positions`` array (so geometry-based checks see what SIESTA will
+    # actually read) -- the subject the settings gate judges.
     # ONE FIELD CHANGES -- the positions the deck will actually write --
-    # so one field is stated.  This was a thirteen-field hand-list whose
-    # own comments record two rounds of the same bug: the frozen/region
-    # carrier dropped (2026-05-26) and the periodicity dropped
-    # (2026-07-29), each found after a genuine crystal validated as
-    # isolated.  It still did not name `annotations` or `info`.  Deriving
-    # through the door carries every field nobody named, including the
-    # ones added after today (`model/structure.md` § 2.2a).
+    # so one field is stated.  Deriving through the door carries every
+    # field nobody named -- ``frozen_atoms``, ``regions``, the periodicity
+    # -- including the ones added after today (`model/structure.md`
+    # § 2.2a).
     #
     # AND THE ORIGIN IS RESTATED, because the coordinates changed frame:
     # `positions` was placed by the engine offset above, so these atoms are in
@@ -958,9 +825,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
 
     # The gate is NOT run here.  `render_deck` owns step 3.3 and applies it
     # to the subject this spec names -- the placed coordinates and the
-    # resolved cell, which is what the deck actually expresses.  Running it
-    # here as well gave the step two owners judging two different
-    # structures (`script-preparation.md` § 4.3).
+    # resolved cell, which is what the deck actually expresses
+    # (`script-preparation.md` § 4.3).
 
     # WHAT THE DECK DERIVED — the per-render context, filled in as the writer
     # works each value out and read by everything downstream of it: the ONE
@@ -968,10 +834,6 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # framework writes them afterwards.  The block size, the k-parallel
     # default, the algorithm, the step and displacement keywords and the Nosé
     # target are none of them a config field read straight through.
-    #
-    # It is what makes the body LAZY: the record needs numbers the body works
-    # out, so before this the two could only be assembled in one pass, which is
-    # why the deck's text — and not its spec — had to cross the seam (§ 4.3).
     v = cfg.verbose_comments
     from . import layout as _layout
     # WHAT THIS DECK DERIVED -- filled here, before the layout is built,
@@ -983,9 +845,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # (`script-preparation.md` § 4.1).  Every value below is a function of
     # `(struct, cfg)` alone, so there was never anything to wait for.
     #
-    # The blocks fill in the rest as they render -- the block size, the
-    # k-parallel default -- and the syntax door and the record blocks read
-    # the same dict.  ONE channel, not one argument list per reader.
+    # The syntax door and the record blocks read the same dict.  ONE
+    # channel, not one argument list per reader.
     # THE K-POINT MESH THIS DECK WRITES -- worked out ONCE, here, and read by
     # the block that writes it, the parallel split and the settings gate
     # (`kmesh.mesh_for`, `engines/siesta.md` § 6.1).
@@ -1004,10 +865,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                     **(_relaxation_facts(cfg) or {})}
 
     def _deck_line(param):
-        # ONE channel: whatever this deck has worked out so far.  The door
-        # took a keyword per value until 2026-08-19, so the context could
-        # hold nothing the door did not also declare -- and the layout's
-        # own facts (is this a relaxation? an MD run?) had nowhere to live.
+        # ONE channel: whatever this deck has worked out so far.
         return _layout.line(_derived)(param)
 
     # THE DECK'S SHAPE, declared.  Read down it and you have read what a
@@ -1063,32 +921,15 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # see where `block_size` came from.
         derived=_derived,
         note_lead=_layout.note_lead,
-        # section_title: the framework's default.  Both engines write a
-        # heading as a `#` comment, so both restated the default verbatim
-        # until 2026-08-19 -- two more copies of one string, and a slot
-        # that LOOKED exercised.  It stays a slot because the comment
-        # character is genuinely an engine's syntax; it is simply not one
-        # these two differ on.
+        # section_title: the framework's default.  It stays a slot because
+        # the comment character is genuinely an engine's syntax; it is
+        # simply not one these two differ on.
         provenance_defaults=lambda c: {
             "use_gpu": str(bool(c.use_gpu)).lower(),
             # TWO states, matching the emitter above: unset omits the
-            # keyword, a value is written verbatim.  A `== 0` arm stood
-            # here saying "omitted (SIESTA's own)" for the retired
-            # sentinel -- and it would have LIED: with 0 the emitter
-            # writes `BlockSize 0` into the deck (0 is not None), so
-            # PROVENANCE claimed an omission the deck contradicts.  0 is
-            # refused on every door now -- the item's hard limit (`above`,
-            # engines/template.md 5.3) -- so the state has no way in and no
-            # arm here.
-            # ...and the SAME LIE survived in the other arm until 2026-09-05,
-            # one line below the paragraph warning about it.  Unset renders
-            # `auto -> None`: a record claiming the auto-policy chose the
-            # value `None` for a keyword the deck does not contain.  There is
-            # no such choice to report -- `_parallel_facts` sets
-            # `block_size = None` whenever the user did, because deriving one
-            # was deleted ("not a value molbuilder derives and hands you"),
-            # so `auto -> <number>` is not merely wrong here, it is a state
-            # that cannot occur.
+            # keyword, a value is written verbatim.  0 is refused on every
+            # door -- the item's hard limit (`above`, engines/template.md
+            # 5.3) -- so it has no arm here.
             #
             # Unset says `auto`, the spelling `mpi_np` and `omp_threads` use
             # two lines down for the same meaning: molbuilder chose nothing
@@ -1107,7 +948,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             _block_size_bounds(st.n_atoms, c.mpi_np,
                                gpu_mode=bool(c.use_gpu),
                                emitted=_derived.get("block_size"))),
-        created_by="molbuilder render_fdf",
+        created_by="molbuilder jobset prep",
         check_rules=_layout.check_rules,
         # WHAT the settings gate judges: the structure as this deck
         # expresses it, not as it arrived.
@@ -1144,32 +985,29 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # stdout to ``<basename>.out`` (the Watch tab's discovery chain
         # also looks for that filename).  See docs/execution/job-contracts.md.
         #
-        # Stage-aware filenames: ``stage_token`` (``01_coarse`` --
-        # ``identity.stage_token``) arrives as a RENDER ARGUMENT from the caller
-        # that holds the StageRef (C7, 2026-08-12 -- it rode a config field
-        # until then, which was the emitter learning the word stages.md § 1.1
-        # forbids).  Every name MOLBUILDER chooses picks it up, so a ladder
-        # produces ``<label>_01_coarse.fdf``, ``…_01_coarse.out`` and
-        # ``…_01_coarse.molwatch.log`` and a stage's deck matches its own log.
+        # Stage-aware filenames: the stage's names (`runfiles.RunNames`,
+        # their token ``01_coarse`` -- ``identity.stage_token``) arrive as a
+        # RENDER ARGUMENT from the caller that holds the StageRef (C7,
+        # stages.md § 1.1).  Every name
+        # MOLBUILDER chooses is theirs, so a ladder produces
+        # ``<label>_01_coarse.fdf``, ``…_01_coarse.out`` and its progress log,
+        # and a stage's deck matches its own files.
         #
         # The SystemLabel itself stays unsuffixed, which is the whole reason the
         # ladder works: SIESTA writes and reads ``<SystemLabel>.XV`` / ``.DM`` /
         # ``.CG``, so the next stage finds the last one's geometry with no copying
         # and no instruction (decision 26 -- engine-named files stay bare).
-        #
-        # This wrote ``-stage<N>`` until 2026-08-10.  ``-`` announces *a counter
-        # follows* (``job-contracts.md`` § 6.3) and a stage is not a counter, and a
-        # bare position silently reassigns outputs when the ladder grows (R5).
-        from ..trajectory_log.format import molwatch_log_basename
-        _fdf_name  = _rf(cfg.system_label, ".fdf", stage_token or None)
-        _out_name  = _rf(cfg.system_label, ".out", stage_token or None)
-        _mw_name   = molwatch_log_basename(cfg.system_label, stage_token)
+        # THE STAGE'S NAMES NAME THEM (`runfiles.RunNames`): the deck, its
+        # wrapper; the output a person's own `mpirun` writes is the
+        # unnumbered spelling the `.out` row keeps for a run no wrapper
+        # numbered (`attempt="maybe"`).
+        _fdf_name  = names.name(".fdf")
+        _out_name  = _rf(names.label, ".out", names.stage)
         if cfg.verbose_comments:
             out.append("# === Run with (job-layout v1) ===")
             # The stage by its NAME, through `command_stage`: the token
-            # (`02_freq`) is a legal name of another stage, and `launch`
-            # refused it on every staged deck until K12 (`job-system.md`
-            # § 5.3; the M11 review's SS-C11).  A trial's deck names its own
+            # (`02_freq`) is a legal name of another stage (`job-system.md`
+            # § 5.3).  A trial's deck names its own
             # launch -- `launch run` would launch the stage's run.
             from ..identity import LAUNCH_MODE_NOTE, deck_launch
             _launch = deck_launch(stage_token, trial)
@@ -1184,9 +1022,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             if _launch:
                 out.append(f"#     {_launch}")
                 out.append(f"#     {LAUNCH_MODE_NOTE}")
-            out.append(f"#     bash "
-                       f"{_rf(cfg.system_label, '.run.sh', stage_token or None)}"
-                       "          # the same wrapper, by hand")
+            out.append(f"#     bash {names.name('.run.sh')} --run 0"
+                       "    # the same wrapper, by hand: its run's number,"
+                       " 0 for the first")
             out.append(
                 "# The wrapper beside this deck is self-contained: it runs "
                 "unattended in a shell")
@@ -1198,9 +1036,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "SIGTERM, and records where")
             out.append("# and when it ran (running-a-job.md section 2).")
             out.append("#")
-            # the deck's OWN rank count (R11 -- a hardcoded 4 contradicted
-            # the BENCH-MARKS mpi_np three blocks down; "auto" says the
-            # wrapper decides)
+            # the deck's OWN rank count, the one BENCH-MARKS records
             _np_hint = "auto" if cfg.mpi_np is None else str(int(cfg.mpi_np))
             out.append(
                 "# Or drive SIESTA yourself, from this directory -- all "
@@ -1223,22 +1059,14 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 out.append(f"# Stage {stage_token} -- "
                            + (_vib_deck.stage_science(cfg, _derived)
                               if _derived.get("fc") else _stage_science(cfg)))
-                # WHAT THIS STAGE ACTUALLY DOES WITH THE PREVIOUS ONE'S STATE.
-                # This said "SIESTA reads .XV / .DM from the previous stage"
-                # unconditionally, on every staged deck -- including one whose own
-                # restart group two hundred lines below says `.false.` three times.
-                # A deck that contradicts itself at its first screenful is worse
-                # than one that says nothing: the banner is what a person reads to
-                # decide whether the ladder is chaining, and it answered yes for
-                # every rung including the ones that start fresh.
+                # WHAT THIS STAGE ACTUALLY DOES WITH THE PREVIOUS ONE'S STATE,
+                # from the same answer as its restart group: the banner is what
+                # a person reads to decide whether the ladder is chaining.
                 if continues(cfg):
                     # WHERE THOSE FILES COME FROM (plan W37): `prep` copies the
                     # run it continues from into the folder this deck runs in
                     # -- the stage before it, newest, by default -- and the
-                    # flat layout's are where that stage left them.  This said
-                    # "the previous run left ... in this directory", which no
-                    # run does on the hierarchy, and named a panel that no
-                    # longer exists.
+                    # flat layout's are where that stage left them.
                     out.append(
                         "# This stage CONTINUES: SIESTA reads any .XV / .DM "
                         "under the same SystemLabel in the")
@@ -1258,7 +1086,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             out.append(
                 "# Watch the run live: open the Watch tab and point it "
                 "at this directory")
-            out.append(f"# (the loader resolves it to {_mw_name}).")
+            out.append("# (the loader opens the run it speaks for -- its "
+                       "output, model/parse.md 5.1).")
             # 2026-06-12: SIESTA 5.x emits an unconditional WARNING about
             # ``BASIS_ENTHALPY`` / ``BASIS_HARRIS_ENTHALPY`` being
             # deprecated.  The warning is INFORMATIONAL — the data is
@@ -1274,11 +1103,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             out.append(
                 # NO STAGE TOKEN.  SIESTA names this one itself, from
                 # `SystemLabel` -- which § 2.3 keeps UNSUFFIXED so the restart
-                # files transfer between rungs.  The token was appended here
-                # anyway, so the deck told the reader to open a file SIESTA
-                # will never write: the same mistake as the geomeTRIC
-                # trajectory, on the other engine (found by the § 2.2a audit,
-                # 2026-09-07).
+                # files transfer between rungs.
                 f"# — read {_rf(cfg.system_label, '.BASIS_ENTHALPY')} "
                 "in any post-processing.")
             out.append("")
@@ -1286,8 +1111,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # Runtime-hint header.  Same shape as molwatch logs use
         # (``# runtime.<key>: <value>``) so the SIESTA parser can read
         # the user's configured caps back out of the .fdf at /results
-        # load time.  These are HINTS the wrapper turns into env vars +
-        # ulimits; SIESTA itself ignores comment lines.  Per the
+        # load time.  SIESTA itself ignores comment lines.  Per the
         # cross-cutting "every script declares what it wanted" rule.
         if cfg.omp_threads is not None:
             out.append(f"# runtime.omp_threads_requested: {int(cfg.omp_threads)}")
@@ -1296,11 +1120,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         if (cfg.omp_threads is not None) or (cfg.max_memory_mb is not None):
             out.append("")
 
-        # 2026-05-27: SystemName + SystemLabel both driven by
-        # ``system_label`` -- the dataclass dropped ``system_name`` after
-        # the web UI's one-field design proved the dup field only ever
-        # caused divergence bugs (output filenames keyed on SystemLabel,
-        # so the SystemName header always had to mirror it anyway).
+        # SystemName + SystemLabel both driven by ``system_label``: output
+        # filenames are keyed on SystemLabel, so the SystemName header
+        # mirrors it.
         out.append(f"SystemName        {cfg.system_label}")
         out.append(f"SystemLabel       {cfg.system_label}")
         out.append("")
@@ -1365,10 +1187,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# Without this block SIESTA relaxes every atom.",
             ]
             out.append("%block Geometry.Constraints")
-            # Emit one ``position`` line per chunk of up to 20 indices
-            # (~80 chars) for readability.  SIESTA accepts arbitrarily
-            # many ``position`` lines inside the block; chunking makes
-            # the .fdf easy to grep + edit.
+            # One ``position`` line per chunk of up to 20 indices: libfdf
+            # reads at most 50 tokens on a line (``MAX_NTOKENS`` in
+            # ``External/libfdf/src/parse.F90``, SIESTA 5.4.2), so a held
+            # set written on one line would not survive; the block takes
+            # any number of ``position`` lines.
             from ..engine_atom_index import siesta_atom_index
             ids_1based = [siesta_atom_index(i) for i in frozen]
             chunk = 20
@@ -1399,7 +1222,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         out: List[str] = []
         out.append("")
 
-        # Dispersion-correction template for non-vdW XC (gap #3).
+        # Dispersion-correction template for non-vdW XC.
         #
         # Non-dispersive XC (PBE / BLYP / LDA / hybrids without explicit
         # dispersion) systematically under-binds vdW-dominated systems --
@@ -1454,8 +1277,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # ---- the restart group, whole, from its declaration ---------------
         # ONE field decides it (`restart`) and ONE object declares its members
         # (the catalogue's `[item.restart].expands`).  Both answers are written:
-        # continue, `.false.` to start clean -- SIESTA reads the files when they
-        # are present unless told otherwise, so omission says nothing.  See
+        # `.true.` to continue, `.false.` to start clean -- SIESTA reads a .DM it
+        # finds unless told `.false.`, and an .XV or .CG only when told `.true.`
+        # (`Src/read_options.F90`, `Src/struct_init.F`).  See
         # `_restart_group_lines`.
         if v: out += [
             "",
@@ -1464,8 +1288,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             "# density (.DM) and, for a relaxation, the optimizer's own history",
             "# (.CG).  One field decides all of them, `restart`",
             "# (run-identity.md § 4), and every member is written either way:",
-            "# SIESTA reads these files when they are there unless a deck says",
-            "# .false., so leaving a key out is not a way to decline it.",
+            "# SIESTA reads a .DM it finds unless told .false., and an .XV or",
+            "# .CG only when told .true., so the deck states each answer.",
             f"# This run: {'continue' if continues(cfg) else 'clean'}.",
         ]
         out += _restart_group_lines(cfg)
@@ -1474,8 +1298,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # from the electronic state by `layout.SPIN_SPELLING` (SIESTA 5's one
         # `Spin <option>` keyword; the v4 `SpinPolarized` flag is retired),
         # and a pinned count is the two-line `Spin.Fix` + `Spin.Total` pair --
-        # a single `SpinTotal <v>` token, which an early generator wrote, is
-        # not a SIESTA keyword and was silently ignored.
+        # `SpinTotal <v>` is not a SIESTA keyword.
         return "\n".join(out) if out else None
 
     def _after_spin(struct, cfg) -> Optional[str]:
@@ -1521,11 +1344,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # (it depends on the coordination), and the practice is to run each
         # plausible count and keep the lowest energy.  The candidates are the
         # metals' own hints (`chemistry._METAL_SPIN_HINTS`, the table the
-        # chemistry card shows) -- for every metal present, not the
-        # Fe(II)/Fe(III) text this printed for any metal until 2026-09-28.
+        # chemistry card shows) -- for every metal present.
         # Not under non-collinear or spin-orbit, where SIESTA stops on the
         # `Spin.Fix` each candidate needs (ES6), and not for a repeating cell,
-        # whose moment floats: the M6 review found it printed for both.
+        # whose moment floats.
         hinted = [h for h in state.facts.metal_hints
                   if h.common_spins and h.element in state.facts.open_d_metals]
         if v and state.spin_treatment.value == "unrestricted" \
@@ -1562,8 +1384,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # (`science/chemistry-correctness.md` § 2b): a charged MOLECULE in a
         # vacuum box has an image-charge error with a known leading term; a
         # charged repeating cell -- a slab, a defect in a crystal -- does
-        # not, and gets no formula.  Both got the molecule's note and its
-        # script until the M6 review.
+        # not, and gets no formula.
         if q != 0 and v and state.finite:
             out += [
                 "# Note: SIESTA adds a uniform compensating background charge",
@@ -1628,15 +1449,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # `%block kgrid_Monkhorst_Pack` -- the counts and the shift -- so the block
         # itself is emitted below rather than through the per-parameter door; a
         # multi-line structure is not a `key value` line.  What does go through the
-        # catalogue is why each is what it is, and the nine hand-typed lines that
-        # stood here were a thinner copy of exactly that: they lost the equivalent
-        # cutoff (the number that makes two different cells comparable), the
-        # per-axis independence, and SIESTA's transport-direction override.
+        # catalogue is why each is what it is.
         out += _layout.k_mesh_lines(mesh, notes=v)
         # No blank line here: the section that follows opens with one, because
         # the framework separates every section from what precedes it.
-
-        # No blank line here either: every section opens with one.
 
         return "\n".join(out) if out else None
 
@@ -1648,20 +1464,6 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         """
         if _derived.get('relax_kind') is None:
             return None
-            # MD.UseSaveCG is NOT emitted here any more.  It is a member of the
-            # restart group like the other two, and the group is written in ONE
-            # place from its declaration (`_restart_group_lines`, above the
-            # k-grid).  It was written here, several hundred lines from its
-            # siblings, each site testing `continues` for itself -- which is how
-            # "one field, one group" stayed true of the prose and not of the deck.
-            #
-            # Which run modes have a use for it is unchanged and lives in
-            # `_restart_keys`: every RELAXATION (CG, Broyden, FIRE) and neither
-            # dynamics mode, because a Verlet or Nosé run integrates rather than
-            # optimizes and has no optimizer history to reload.  Whether that is
-            # the right SIESTA semantics is still open -- it wants the manual and
-            # a science review -- and moving where the group is written was not
-            # the moment to answer it.
         return ""
 
     def _troubleshooting(struct, cfg) -> str:
@@ -1739,7 +1541,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                     "#     flat regions) or FIRE (better for >100 atoms)",
                 ]
 
-        # Post-processing hook (gap #6).  Commented templates for the
+        # Post-processing hook.  Commented templates for the
         # follow-up analyses users typically want after a successful
         # relaxation.  Default-disabled so the script's behaviour is
         # unchanged; uncomment + tune to enable.
@@ -1778,48 +1580,15 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             "# SaveDeltaRho        .true.",
             "# SaveElectrostaticPotential  .true.",
         ]
-        # ----- ONE DeckSpec, and the framework runs the step -----
-        # The reader's section, the record blocks and the banner are the
-        # framework's (`script-preparation.md` § 4.2a).  This writer assembled them
-        # itself until 2026-08-18 -- as did PySCF's, which made them two copies of
-        # one idea and left `render_deck` with no caller.  What stays here is what
-        # only SIESTA can say: which VALUES its provenance and bench-marks rows
-        # carry.
-        #
-        # BENCH-MARKS is always emitted for a `.fdf`; the `MD.Steps` anchor is
-        # universal across CG / Broyden / FIRE.  ATOM-METADATA emits nothing when
-        # regions and frozen atoms are both empty -- absence is the honest signal.
         return "\n".join(out) if out else None
 
     return spec
 
 
-def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
-               *, cell=None, stage_token: Optional[str] = None) -> str:
-    """Format a Structure as SIESTA .fdf text.
-
-    **A thin call over :func:`spec_for`.**  The engine describes its deck; the
-    framework renders it.  This name survives because twenty test files and two
-    shipped routes point at it -- what moved is what it does, not what it is
-    called (`archive/2026-08-18-preparation-backend-plan.md` § 3.1a).
-
-    Prefer ``spec_for`` + ``script_emit.prepare_deck`` where a deck is being
-    WRITTEN: that runs validate -> render -> write -> check in one place, and
-    the order then has one owner rather than one per caller (§ 4.3).
-    """
-    spec = spec_for(struct, config, cell=cell, stage_token=stage_token)
-    cfg = config or SiestaConfig()
-    return _sc.render_deck(spec, struct, cfg,
-                           verbose=cfg.verbose_comments)
-# --------------------------------------------------------------------- #
-#  File -> (Structure, cell) loader                                     #
-# --------------------------------------------------------------------- #
-
-
 def _emit_dispersion_template(xc_authors: str, v: bool) -> List[str]:
     """Commented-out dispersion-correction template emitted when
-    XC.functional is non-vdW (PBE / BLYP / hybrids).  See gap #3 in
-    docs/design.md and docs/engines/siesta.md § "Reference sources".
+    XC.functional is non-vdW (PBE / BLYP / hybrids).  See
+    docs/engines/siesta.md § "Reference sources".
 
     The template is commented so the default behaviour is unchanged
     (the user opts in by uncommenting).  Three routes are offered: a
@@ -1924,6 +1693,11 @@ def _emit_dispersion_template(xc_authors: str, v: bool) -> List[str]:
     return out
 
 
+# --------------------------------------------------------------------- #
+#  File -> (Structure, cell) loader                                     #
+# --------------------------------------------------------------------- #
+
+
 def _struct_from_file(path: str) -> Tuple[Structure, Optional[np.ndarray]]:
     """Read an XYZ or PDB and return ``(Structure, cell_or_None)``.
 
@@ -1939,28 +1713,11 @@ def _struct_from_file(path: str) -> Tuple[Structure, Optional[np.ndarray]]:
     if ext == ".pdb":
         return StructureCodec().load(p), None
     if ext in (".xyz", ""):
-        # THROUGH THE ONE READER.  This used to call ``ase.io.read`` here,
-        # with a comment explaining that ASE "understands extended-XYZ headers
-        # and gives us the lattice when present, which our hand-rolled parser
-        # doesn't" -- a correct diagnosis fixed in the wrong place, by adding a
-        # SECOND reader beside the lossy one instead of fixing it.  Every other
-        # caller kept the lossy one.  ``Structure.from_xyz`` is ASE now, so the
-        # lattice arrives on the structure and there is one reader again.
         # THROUGH THE CODEC, which is the one reader of a structure AND the
-        # sidecar beside it (`model/structure.md` § 2.4).  The comment below
-        # records this lesson being learned once already -- a second reader
-        # added beside the lossy one instead of fixing it -- and it stopped one
-        # level short: `from_xyz` became the one COORDINATE reader, while the
-        # PAIR has a different one, and this route kept the half that drops the
-        # other file.  So a structure carrying frozen atoms, region labels, an
-        # explicit cell or a stated vacuum went through here and came out
-        # without them: the `.molstruct.json` sat unread beside the `.xyz`, and
-        # the script relaxed every atom of a structure whose author had frozen
-        # two.  `prep` and the web route have always used the codec; only the
-        # single-shot converters did not.
-        #
-        # The codec applies the sidecar when it is there and changes nothing
-        # when it is not, so a bare `.xyz` reads exactly as before.
+        # sidecar beside it (`model/structure.md` § 2.4): frozen atoms, region
+        # labels, an explicit cell or a stated vacuum arrive with the
+        # coordinates.  The codec applies the sidecar when it is there and
+        # changes nothing when it is not.
         struct = StructureCodec().load(p)
         cell = struct.cell
         return struct, (np.asarray(cell, dtype=float)
@@ -1968,19 +1725,3 @@ def _struct_from_file(path: str) -> Tuple[Structure, Optional[np.ndarray]]:
     raise ValueError(
         f"unsupported input extension {ext!r}; expected .xyz or .pdb"
     )
-
-
-
-# `convert` DELETED 2026-09-17 -- the single-shot "read a structure file, write
-# a deck" worker, and the SIESTA half of a symmetric pair.
-#
-# It existed for `molbuilder fdf`, a command that wrote a finished deck from flags.
-# `molbuilder fdf` was deleted 2026-08-11 (decision 34), and this has had **no production caller since**
-# -- a month before this was noticed, which is the measurement that put
-# it in the same commit as its PySCF twin.
-#
-# A deck is written by `jobset prep` from a description: `spec_for` ->
-# `prepare_deck`, which is the same three steps this did, with the description
-# in front of them instead of a command line.  `render_fdf` survives -- it is a
-# thin call over `spec_for` and `engines/siesta.md` names it as this emitter's public
-# surface.

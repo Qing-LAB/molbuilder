@@ -20,21 +20,10 @@
 
     /* ---- theme toggle ------------------------------------------- */
 
-    /* THE APP IS DARK.  `docs-render.css` is a deliberately isolated theme --
-     * it does not read the app's tokens, so that the rendered markdown is a
-     * reading surface in its own right -- and isolation cut both ways: the
-     * pane defaulted to its LIGHT palette, so every document opened as a
-     * white sheet inside a dark shell until the reader found the toggle.
-     * `tokens.css` has no light palette at all (no `prefers-color-scheme`, no
-     * `data-theme`), so light was defaulting to the one theme the app does
-     * not have.
-     *
-     * The toggle stays: a light reading surface is a real preference, and
-     * some people print from this pane.  What changes is which way it starts
-     * and how long the answer survives -- a reading preference is not session
-     * state, and sessionStorage made the reader re-choose in every new
-     * browser session.  localStorage with a sessionStorage fallback keeps it
-     * working where storage is blocked. */
+    /* THE APP IS DARK, so the isolated `docs-render.css` theme starts dark;
+     * the toggle offers a light reading surface (some people print from this
+     * pane), and the choice is a reading preference kept in localStorage,
+     * with a sessionStorage fallback where storage is blocked. */
     function _store(key, value) {
         try { localStorage.setItem(key, value); return; } catch (_) {}
         try { sessionStorage.setItem(key, value); } catch (_) {}
@@ -58,8 +47,7 @@
         _store("docs-theme", dark ? "dark" : "light");
     }
     if (themeBtn) {
-        // Dark unless the reader has said otherwise -- matching the app,
-        // rather than defaulting away from it.
+        // Dark unless the reader has said otherwise -- matching the app.
         _applyTheme(_read("docs-theme") !== "light");
         themeBtn.addEventListener("click", function () {
             _applyTheme(!renderEl.classList.contains("docs-render-dark"));

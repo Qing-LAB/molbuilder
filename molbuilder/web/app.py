@@ -1,35 +1,14 @@
 """Flask app factory for the molbuilder UI.
 
-The UI has five tabs served by one process:
-
-  * Molbuilder             at  ``GET /molbuilder``
-                                renders ``modify.html``
-  * Structure optimization at  ``GET /structure-optimization``
-                                renders ``index.html``: a viewer +
-                                "Load from sidebar selection" entry
-                                point + the SIESTA / PySCF Generate
-                                forms.  (The legacy Build form was
-                                retired in task #295; the tab is
-                                file-driven now.)
-  * Spectrum calculation   at  ``GET /spectrum-calculation``
-                                (web/blueprints/spectra.py)
-  * Transport calculation  at  ``GET /transport-calculation``
-                                renders ``transport_calculation.html``
-                                (placeholder; form skeleton + backends
-                                arrive later)
-  * Results                at  ``GET /results``
-                                (web/blueprints/results.py)
-
 The full route table + the cross-tab workflow model lives in
 ``docs/web/tabs.md``.  Pre-1.0 cleanup: there are NO
 legacy-path redirects; renames break the old URL by design.
 
 Plus the file-picker + project mutations under
 ``web/blueprints/files.py``, the inspector partial endpoints under
-``results.py`` (``/partials/trajectory-inspector`` etc.), the legacy
+``results.py`` (``/partials/trajectory-inspector`` etc.), the
 ``/api/watch/*`` trajectory data routes under
-``web/blueprints/watch.py`` (the standalone ``/watch`` tab itself
-was retired), the optional auth surface in ``auth.py`` +
+``web/blueprints/watch.py``, the optional auth surface in ``auth.py`` +
 ``auth_providers/``, and a small set of app-level routes:
 
   * ``GET /api/health``               liveness
@@ -88,9 +67,7 @@ def _install_admins(app, cfg) -> None:
     means anyone who can sign in -- a provider's ``allowed_users`` already named
     them -- and naming addresses narrows it (`access-control.md` § 5).
 
-    Installed independently of the rate limiter.  It used to live inside that
-    limiter's config and be reached through its object, so disabling the limiter
-    silently changed who was an admin.
+    Installed independently of the rate limiter.
     """
     from ..runtime_config import get_admin_emails
     from .admin import install_admins
@@ -138,9 +115,9 @@ _MAX_UPLOAD_MB = 50
 
 
 class _ClientDisconnectSSLFilter:
-    """Logging filter: demote werkzeug's client-disconnect SSL EOF
-    traceback to DEBUG level so it doesn't flood the log on every
-    legitimate fetch abort.
+    """Logging filter: drop werkzeug's client-disconnect SSL EOF
+    traceback so it doesn't flood the log on every legitimate fetch
+    abort.
 
     Matches ONLY records whose formatted message contains
     ``UNEXPECTED_EOF_WHILE_READING`` (the C-level SSL EOF symbol
@@ -209,14 +186,7 @@ def serve_port() -> int:
     **A property of the process, not of the request.**  It keys the serve and
     notebook pidfiles, the notebook's runtime file, the `frame-src` CSP, the
     `frame-ancestors` grant Jupyter is given, and which supervisor a start
-    signal reaches.  It was parsed out of `request.host` in two places with
-    two different fallbacks (0 here, 80 in the notebook blueprint), which had
-    two consequences: on a `Host:` with no port the page said `frame-src
-    'none'` while the API reported on port 80, and **behind the reverse proxy
-    `deployment.md` recommends the whole notebook feature stopped working** --
-    the tab addressed `serve-80.pid` while the supervisor held
-    `serve-8000.pid`, so status read "not running" forever and Start named a
-    pidfile nobody had configured.  Found in review 2026-09-14.
+    signal reaches.
 
     Three sources, in order of how much they know:
 
@@ -225,13 +195,7 @@ def serve_port() -> int:
     2. **`$MOLBUILDER_SERVE_PORT`** -- for an EMBEDDING CALLER, which is not
        an exotic case: `deployment.md` § 1.3 tells operators to run
        `create_app()` under gunicorn behind nginx, and that path never
-       touches `app.config`, so this function fell through to the header and
-       read the PUBLIC port (443) -- addressing `serve-443.pid` while the
-       supervisor held `serve-8000.pid`.  Verbatim the failure the paragraph
-       above describes as the reason this function exists, fixed for
-       `molbuilder serve` and left broken for the deployment the docs
-       recommend (found in review 2026-09-15, `plan.md` § 5n.8).  Same key
-       name, so there is one thing to know.
+       touches `app.config`.  Same key name, so there is one thing to know.
     3. **the `Host:` header** -- last, and only as a guess for an app built
        without either (tests). It is written ONCE, here.
     """
@@ -265,9 +229,7 @@ def create_app(*, config=None) -> Flask:
                 :func:`molbuilder.runtime_config.read_config`.  Given
                 (often ``{}``: no sign-in, no TLS), it is VALIDATED by the
                 same reader -- a section the file would be refused for is
-                refused here too (W54 C17: it was taken as given, so a
-                test could build an app from a config no server would
-                start on).
+                refused here too.
 
                 It supplies the sections the app reads at start -- `auth`,
                 `admin`, `rate_limit`.  What other doors read through the
@@ -285,8 +247,7 @@ def create_app(*, config=None) -> Flask:
     logging.basicConfig(level=logging.WARNING,
                         format="%(levelname)s: %(message)s")
 
-    # K1 2026-06-14: demote ONLY the client-disconnect SSL EOF
-    # traceback to DEBUG.  Pattern: ``ssl.SSLError: [SSL:
+    # Drop ONLY the client-disconnect SSL EOF traceback.  Pattern: ``ssl.SSLError: [SSL:
     # UNEXPECTED_EOF_WHILE_READING]`` -- the browser aborted a
     # request mid-stream (long-poll cancel, page navigate, etc.).
     # Werkzeug's dev server logs the full ssl.c traceback at
@@ -358,9 +319,6 @@ def create_app(*, config=None) -> Flask:
     # the whole module graph behind it on cached copies, which is the half that
     # actually breaks.  Revalidation is a property of how a file is SERVED, so it
     # reaches every one of the 170 without a build step.
-    #
-    # (`/api/plotly.js` keeps its own long max-age: that file changes only when
-    # the plotly PACKAGE is upgraded, which is a fresh app start anyway.)
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
     # Optional auth.  When the cfg has no ``auth`` section the call is
@@ -379,10 +337,10 @@ def create_app(*, config=None) -> Flask:
     # docs/ops/deployment.md for the threat model + defaults.
     _install_rate_limit(app, config)
 
-    # Build + Watch route groups live on Blueprints so each half is
-    # self-contained (handlers, helpers, validation).  Both blueprints
-    # use full route paths in their decorators (no url_prefix) -- the
-    # paths read clearly at the call site.
+    # Route groups live on Blueprints so each is self-contained
+    # (handlers, helpers, validation).  Every blueprint uses full route
+    # paths in its decorators (no url_prefix) -- the paths read clearly
+    # at the call site.
     from .blueprints.build     import bp as build_bp
     from .blueprints.watch     import bp as watch_bp
     from .blueprints.modify    import bp as modify_bp
@@ -412,11 +370,7 @@ def create_app(*, config=None) -> Flask:
     # The notebook tab's control surface.  ALL THREE ROUTES ARE ALWAYS
     # REGISTERED; START/STOP refuse per request -- 404 with no supervisor to
     # ask, 403 for a caller who may not run code here (`web/jupyter.md`
-    # § 5.2).  This said the two control routes "exist only under a
-    # supervisor and only for the admin list (access-control.md § 6)", which
-    # described the import-time gate deleted on 2026-09-15 and cited the
-    # reference corrected the day before -- and it is the restatement a
-    # reader of `create_app` actually sees (found in review 2026-09-15).
+    # § 5.2).
     app.register_blueprint(jupyter_bp)
     app.register_blueprint(bench_bp)
 
@@ -442,13 +396,7 @@ def create_app(*, config=None) -> Flask:
     from .blueprints.notify_setup import bp as notify_setup_bp
     app.register_blueprint(notify_setup_bp)
 
-    # THE KEY FILE IS THE SWITCH (user, 2026-08-31).  It took two settings in
-    # `molbuilder.json` -- a path pointing at this file, and a copy of the
-    # route the file's own command had generated.  Both were things molbuilder
-    # already knew: it writes the file at `notify_keys_path()`, and it issued
-    # the route.  Requiring them retyped is how a working key file sat beside a
-    # listener that had never been registered, answering 404 to everything,
-    # which is indistinguishable from missing code by design.
+    # THE KEY FILE IS THE SWITCH (user, 2026-08-31).
     #
     # The safe state is unchanged and still the one you get by doing nothing
     # (`access-control.md` § 8 rule 1): no file, no route in it, no listener.
@@ -456,11 +404,6 @@ def create_app(*, config=None) -> Flask:
     _notify_route, _notify_keys = read_notify_keys()
     if _notify_route and _notify_keys:
         from .blueprints.notify import bp as notify_bp
-        # NO `MB_NOTIFY_KEYS_FILE`.  It carried `str(notify_keys_path())` to
-        # `notify.read_keys`, which expanduser'd it and asked
-        # `read_notify_keys` again -- the same answer this line already has,
-        # routed through Flask config to be re-derived (I9).  The blueprint
-        # asks path-free now, so the file has one resolver on both ends.
         app.config["MB_NOTIFY_ROUTE"] = _notify_route
         app.register_blueprint(notify_bp)
 
@@ -481,9 +424,7 @@ def create_app(*, config=None) -> Flask:
         }), 413
 
     # A REFUSED CELL IS THE USER'S TO FIX, so it leaves as a 400 with the gate's
-    # own sentence -- not as the 500 + HTML page that six of the seven doors
-    # running the gate used to produce, by running it outside any try.  Handled
-    # HERE, once, for the same reason as the 413 above: a door that forgets
+    # own sentence.  Handled HERE, once, for the same reason as the 413 above: a door that forgets
     # inherits the right answer instead of a misleading one
     # (structure-periodicity.md § 8.1 seam 7).
     from .blueprints._shared import PeriodicityRefused
@@ -570,7 +511,7 @@ def create_app(*, config=None) -> Flask:
 
     # Tab order + labels are the single source of truth in
     # ``molbuilder.web.tabs``; inject into every template so the
-    # nav partial iterates rather than hard-coding the 5 anchors.
+    # nav partial iterates rather than hard-coding the anchors.
     @app.context_processor
     def _inject_tabs():
         return {"tabs": TABS}
@@ -652,13 +593,8 @@ def create_app(*, config=None) -> Flask:
         # surface where a secret is typed, and it never reads one back.
         # The contract is docs/web/this-machine.md.
         #
-        # THE PATH IS PASSED IN, NOT WRITTEN IN THE TEMPLATE.  It read
-        # `<config dir>/notify` in HTML until 2026-09-20 and stayed that way
-        # when every credential moved into `secrets/` -- so the page told an
-        # operator to put a webhook where the monitor does not look, and the
-        # e2e test guarding it asserted only the word "notify", which the
-        # wrong path still contains.  `relative_home` answers from the
-        # monitor's own resolver, so this cannot drift again.
+        # THE PATH IS PASSED IN, NOT WRITTEN IN THE TEMPLATE.  `relative_home`
+        # answers from the monitor's own resolver, so this cannot drift.
         from ..monitor import default_notify_path
         from ..config_dir import relative_home
         return render_template("this_machine.html",
@@ -666,8 +602,6 @@ def create_app(*, config=None) -> Flask:
 
     @app.route("/transport-calculation")
     def transport_calculation_page():
-        # Transport-calculation tab: placeholder; form skeleton +
-        # engine backends to follow.
         return render_template("transport_calculation.html")
 
     @app.route("/documents")
@@ -699,12 +633,6 @@ def create_app(*, config=None) -> Flask:
     #   second section, before their own server would offer them a restart
     #   button is bookkeeping rather than safety -- and it fails silently, since
     #   a missing button is indistinguishable from a broken build.
-    #
-    #   The list used to live inside `rate_limit`, and THIS route had to invert
-    #   its meaning for itself: one value, two opposite readings.  It also hung
-    #   off the limiter's own object, so disabling the limiter moved who was an
-    #   admin.  Both of those were the real defect and both are gone.  The
-    #   default is not a defect, and it lives in one place now (web/admin.py).
     from .admin import is_admin_request as _is_admin
     from .admin import not_an_admin as _not_an_admin
     _supervised = os.environ.get(SUPERVISED_ENV) == "1"
@@ -773,11 +701,8 @@ def create_app(*, config=None) -> Flask:
     @app.route("/api/backends")
     def api_backends():
         # `auto_name` is what dispatch(backend="auto") would pick on
-        # this machine.  NO browser reads this today (the Build backend
-        # picker left with task #295) -- it stays as a diagnostics door
-        # (curl-able; the rate-limit tests probe it), a read-only
-        # answer rather than a second writer, which is what kept it out
-        # of the C-doors retirement.
+        # this machine.  NO browser reads this -- it is a read-only
+        # diagnostics door (curl-able).
         from ..builders.backends import auto_backend_name, available_backends
         return jsonify({
             "ok": True,

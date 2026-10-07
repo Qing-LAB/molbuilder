@@ -15,11 +15,7 @@ Pins:
     the reference radios without duplicating the numbers in JS.
   * A v2 file still loads, so a user's overriding data dir keeps working.
 
-WHY v3 DROPPED A COLUMN.  ``a_pbe_siesta_psml`` was null for every metal
-and nothing in the codebase could write it: its only homes were this
-packaged file and a machine-wide ``MOLBUILDER_DATA_DIR`` override, so the
-"Your bulk run" control it fed greyed itself out -- correctly -- from the
-day it shipped.  A lattice constant measured in the user's own
+WHY v3 HAS NO ``a_pbe_siesta_psml`` COLUMN.  A lattice constant measured in the user's own
 SIESTA+PSML setup belongs to ONE optimization run, not to a table every
 project shares, so it is read from that run's result instead
 (``POST /api/modify/lattice-from-run``, tests/test_lattice_from_run.py).
@@ -70,11 +66,9 @@ def test_every_metal_has_the_two_literature_references():
         # reachable: nothing in the codebase writes this file, so the value
         # would be null again and the radio would grey itself out again.
         #
-        # THE ONLY PLACE THIS CAN BE SEEN.  It reads the raw JSON.  Two other
-        # tests carried the same line against `load_fcc_lattice_full` output,
-        # where it could not fail: the loader builds a fresh dict of four
-        # fixed keys, so a column re-added to the file never reaches it.
-        # Removed there 2026-09-09; this is the guard.
+        # THE ONLY PLACE THIS CAN BE SEEN: it reads the raw JSON.  The loader
+        # builds a fresh dict of four fixed keys, so a column re-added to the
+        # file never reaches its output.
         assert "a_pbe_siesta_psml" not in entry, (
             f"{sym} carries a_pbe_siesta_psml. A per-run measurement does not "
             f"belong in a table every project shares -- it comes from "
@@ -125,9 +119,8 @@ def test_sources_block_present():
         assert key in sources, f"_sources missing entry for {key!r}"
         assert sources[key].get("citation") or sources[key].get("notes"), (
             f"_sources.{key} carries neither citation nor notes")
-    # The third source block went with the column it described (v3): it cited
-    # "user-measured via a bulk-cell relax in their specific SIESTA + PSML
-    # setup", which is a per-run fact and never was a shared reference.
+    # No source block for a per-run measurement: a bulk-cell relax in one
+    # SIESTA + PSML setup is a per-run fact, never a shared reference.
     assert "pbe_siesta_psml" not in sources
 
 

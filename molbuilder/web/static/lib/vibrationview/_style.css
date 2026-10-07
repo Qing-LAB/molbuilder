@@ -59,8 +59,7 @@
      * module filling its box; it is the module overwriting the host's box with
      * a percentage of a parent that usually has no height of its own — which
      * resolves to auto, collapses to the content, and leaves a canvas four
-     * pixels tall drawing a molecule nobody can see.  It did exactly that, and
-     * the animation looked broken rather than the layout.
+     * pixels tall drawing a molecule nobody can see.
      *
      * Both rules are single-class selectors, so the later sheet wins; the module
      * links its own at mount, which makes it later than every page sheet.  The

@@ -1,9 +1,7 @@
 """SIESTA netCDF MD history — ``<label>.MD.nc`` → :class:`TrajectoryResult`.
 
-WHY THIS EXISTS.  Until now every SIESTA coordinate and every frame energy
-molbuilder shows was recovered by parsing ``.out`` TEXT: ``outcoor:`` blocks
-for geometry, ``siesta: E_KS(eV) = …`` for energy.  Two things are wrong with
-that, and both were measured rather than assumed (2026-08-15):
+WHY THIS EXISTS.  The ``.out`` TEXT -- ``outcoor:`` blocks for geometry,
+``siesta: E_KS(eV) = …`` for energy -- has two measured faults:
 
   * **Precision.**  The ``.out`` prints ``E_KS(eV) = -30.4405`` — four
     decimals.  Near the end of a relaxation the step-to-step energy change
@@ -12,7 +10,7 @@ that, and both were measured rather than assumed (2026-08-15):
     (``-30.44046192323598``).
   * **Fortran fixed-width output.**  Adjacent columns touch when a value
     fills its field (``-1.929956131.029438``) and overflow to
-    ``**********`` when it does not fit.  ``parse/engines/siesta.py``
+    ``**********`` when it does not fit.  ``siesta_grammar``
     carries a separator-inserting regex AND a structural column slicer to
     survive that.  Typed netCDF arrays have no such failure mode.
 
@@ -78,9 +76,8 @@ _ENERGY = ENERGY_EV
 #:
 #: A CHEAP EXIT, not the correctness gate -- the schema check below (does it
 #: have ``xa`` and ``etot``?) is what actually decides, and it already rejects
-#: everything this would.  Mutation testing on 2026-08-15 confirmed that:
-#: deleting this check left every test green, because opening a non-netCDF
-#: file raises and ``can_parse`` returns False anyway.  It stays because
+#: everything this would: opening a non-netCDF file raises and
+#: ``can_parse`` returns False anyway.  It stays because
 #: detection runs over every file in a run directory, and reading four bytes
 #: beats constructing a netCDF Dataset to learn the same thing.
 _MAGIC = (b"CDF\x01", b"CDF\x02", b"CDF\x05", b"\x89HDF")
@@ -150,8 +147,6 @@ class SiestaMdNcFileParser(FileParser):
         finally:
             ds.close()
         return TrajectoryResult(
-            # The SIXTH hand-built envelope, found in the 2026-09-04
-            # review: this one bypassed even its own package's helper.
             **ParseResult.envelope(cls.name, path),
             frames=frames,
             lattice=lattice,
@@ -259,7 +254,7 @@ def _frames_from(ds, path: Path):
     #                     evaluated, before the move)
     #
     # So ``Frame(structure=xa[k], energy=etot[k])`` -- the obvious
-    # pairing, and what this file did in its first draft -- attaches every
+    # pairing -- attaches every
     # geometry to the PREVIOUS geometry's energy.  Nothing raises, the
     # frame count looks right, and every energy in the trajectory is off
     # by one move.  On a converging relaxation the numbers are close
@@ -392,9 +387,7 @@ def sibling_md_nc(out_path: Path) -> Optional[Path]:
     (:func:`_system_label_of`).  SIESTA names its history from that label,
     while a run of ours names the output ``<label>_<token>-run<N>.out``, so
     the output's own line is what pairs the two -- read from the file,
-    never the lone ``.MD.nc`` of a folder (`model/parse.md` § 5.3) *(the
-    exact stem, then the only ``*.MD.nc`` in the directory, until
-    2026-10-04)*.
+    never the lone ``.MD.nc`` of a folder (`model/parse.md` § 5.3).
     """
     out_path = Path(out_path)
     label = _system_label_of(out_path)
@@ -457,11 +450,9 @@ def upgrade_frames(frames: Sequence, out_path: Path, *,
                 and src_pos.shape == own_pos.shape):
             # THE DOOR, not `dataclasses.replace`: the swapped geometry gets
             # the same `__post_init__` validation any parsed one does, and the
-            # annotations, elements and PDB metadata ride along COPIED.
-            # `dataclasses.replace` re-passed them by reference, so this
-            # frame's structure shared its `cell` and `info` dict with the
-            # frame it was derived from -- one trajectory, two frames, one
-            # aliased record.
+            # annotations, elements and PDB metadata ride along COPIED, so
+            # this frame's structure shares no `cell` or `info` dict with the
+            # frame it was derived from.
             changes["structure"] = frame.structure.replace(positions=src_pos)
             n_coords += 1
         if src.energy is not None:

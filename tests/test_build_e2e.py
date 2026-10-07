@@ -1,8 +1,6 @@
 """End-to-end Playwright tests for /structure-optimization — the describing tab.
 
-Audit task #190 (2026-06-02) opened this file when the tab had no
-browser coverage at all; the tab has been rebuilt twice since, and this
-docstring describes what the tests cover NOW, not the world of #190:
+What the tests cover:
 
   * The two parameter forms (SIESTA + PySCF) populate from the CATALOGUE
     schema door and carry engine_key badges — a silent renderer break
@@ -18,16 +16,14 @@ docstring describes what the tests cover NOW, not the world of #190:
     navigation, and only an explicit Load re-reads changed disk bytes.
   * Live preflight findings render beside their own control and clear
     when the value is fixed.
-  * Send to Task setup — the tab's PRIMARY loop since script generation
-    left it (#295, 2026-08-15): the button writes the structure pair,
+  * Send to Task setup — the tab's PRIMARY loop: the button writes the structure pair,
     the parameter template and the hand-over into the selected folder
     through the one shared door (lib/task-handover.js), and the
     one-job-per-folder guard fails CLOSED.
 
 NOT covered here (intentional scope split): the HTTP layer is
 test_web.py's; Task setup's own save door is test_task_setup_tab.py's.
-There is no Generate button and no Build form on this tab any more —
-decks are rendered by `prep` on the machine that runs them.
+Decks are rendered by `prep` on the machine that runs them.
 """
 from __future__ import annotations
 
@@ -157,7 +153,6 @@ def _open_build(page, base_url):
     # The "Load from sidebar selection" button is server-rendered;
     # waiting for it proves the HTML reached the browser.  The form-
     # container fields are added by JS after the schema fetch lands.
-    # (Was ``#build-btn`` before the 2026-06-08 Build-form retirement.)
     page.wait_for_selector("#load-from-sidebar-btn", timeout=_BOOT_TIMEOUT_MS)
     return errors
 
@@ -201,18 +196,13 @@ class TestFormSchemasRender:
         catalogue without adding it to the renderer looks exactly like the
         bug the grouping was introduced to fix.
 
-        *Replaces `test_catalogue_form_schema.py::
-        test_the_renderer_knows_every_card_the_form_actually_asks_for`,
-        retired 2026-09-03.*  That test regex-extracted `WORKFLOW_GROUP_ORDER`
-        from the renderer's source and compared it to the catalogue's groups
-        as SETS — and its own docstring conceded "only a browser would show
-        it" (`process/testing.md` § 3a.1).  It could not see the two ways the
-        comparison passes while the page is still wrong: a role listed in
+        Asked of the rendered DOM because comparing the renderer's
+        `WORKFLOW_GROUP_ORDER` with the catalogue's groups as SETS passes in
+        two ways while the page is still wrong: a role listed in
         ``WORKFLOW_GROUP_ORDER`` but missing from ``WORKFLOW_GROUP_META``
         fails the `if` that admits a field to a card, and a card whose
         section map comes out empty is skipped entirely.  Here the question
-        is asked of the rendered DOM, where the answer is the same one the
-        person gets.
+        is asked of the DOM, where the answer is the same one the person gets.
         """
         _open_build(page, flask_server)
         sel = f"#{engine}-form-container"
@@ -295,25 +285,19 @@ class TestTabSwitching:
 
 
 # --------------------------------------------------------------------- #
-#  Build a peptide and check the post-build viewer / button state       #
+#  The sidebar structure flow                                           #
 # --------------------------------------------------------------------- #
 
 
 class TestSidebarStructureFlow:
-    """The sidebar is the ONLY way a structure reaches this tab
-    (the typed Build form retired with #295): a commit loads, a bare
-    pick does not, a second commit replaces the first, and typed
-    parameter edits are guarded before a commit discards them.
-
-    (This class was ``TestPeptideBuild`` from the #190 era — no test
-    here has typed a sequence or clicked Build since that form left.)
+    """The sidebar is the ONLY way a structure reaches this tab: a commit
+    loads, a bare pick does not, a second commit replaces the first, and
+    typed parameter edits are guarded before a commit discards them.
     """
 
     def test_sidebar_load_updates_info_atoms(
             self, page, flask_server, water_xyz_file):
-        """Post-2026-06-08 (task #295): the Build/Load form is
-        retired; structures come from the project sidebar.  A
-        commit on a sidebar pick rebuilds the structure section
+        """Structures come from the project sidebar.  A commit on a sidebar pick rebuilds the structure section
         and the #info-atoms span flips from the em-dash
         placeholder to a numeric atom count."""
         _open_build(page, flask_server)
@@ -347,7 +331,7 @@ class TestSidebarStructureFlow:
         """structure-optimization migration: committing a structure mounts the
         FULL concealed MolView component (mode:"readonly" — the same rich card
         Modify uses, read-only) into #viewer-host, and the structure lives in
-        molview.data as the single source of truth (which Generate reads)."""
+        molview.data as the single source of truth."""
         _open_build(page, flask_server)
         page.wait_for_function(
             "() => !!(window.molbuilder && window.molbuilder.projects"
@@ -390,19 +374,6 @@ class TestSidebarStructureFlow:
         count = page.locator(".molviewer-selection-count").inner_text()
         assert count.split(" of ")[1].split()[0] == "3"   # water
 
-    # ``test_the_form_learns_the_structure_after_sidebar_load`` was retired
-    # 2026-08-16.  Its witness was the block-size placeholder rendering
-    # ``auto (<N>, n=<atoms>)`` once a structure was loaded -- and the user
-    # deleted exactly that display: "nobody knows what this means and nobody
-    # can predict what the auto value would be ... i'd rather just leave it as
-    # 'auto'".  ``autoBlockSize()`` went with it, so the test pinned an
-    # interaction the tab no longer has.
-    #
-    # The property it stood for -- the form REACTS to a structure arriving --
-    # still deserves a witness, and it needs a control whose display depends
-    # on the structure.  There is no such control today; when one exists, the
-    # test comes back pointed at that instead of at a hint that was removed
-    # on purpose.
 
     def test_setShared_alone_does_NOT_load_structure(
             self, page, flask_server, water_xyz_file):
@@ -448,13 +419,10 @@ class TestSidebarStructureFlow:
         every read-only surface (this tab, spectra, transport, the results
         inspector) would load ONE file per page and then silently ignore every
         later pick.  The viewer answered null, nothing threw, and the old
-        structure stayed on screen.
-
-        NOTHING GUARDED IT.  Every commit test here commits a single file, and
-        the second-visit class covers navigating away and back, or the SAME file
-        changed on disk -- neither is a second pick in one visit.  Delete the
-        word `enforce` from projects/parser.js today and the whole suite still
-        passes.
+        structure stayed on screen.  Every other commit test here commits a
+        single file, and the second-visit class covers navigating away and
+        back, or the SAME file changed on disk -- neither is a second pick in
+        one visit.
 
         The two fixtures have different atom counts because that is the only
         thing on screen that can tell them apart.
@@ -548,13 +516,12 @@ class TestSidebarStructureFlow:
         siesta_input = page.locator(
             "#siesta-form-container input").first
         siesta_input.focus()
-        # A DIGIT, not a letter.  This pressed "a" until 2026-08-15, which
-        # worked only because the first control happened to be a text input.
-        # The form is now ordered by the shared category vocabulary
-        # (`web/form-schema.md` § 1), so the first control is a NUMBER input --
-        # and a number input silently swallows a letter, firing no `input`
-        # event, leaving the form not-dirty and this test waiting on a modal
-        # that was never going to open.  A digit is a real edit in either.
+        # A DIGIT, not a letter.  The form is ordered by the shared category
+        # vocabulary (`web/form-schema.md` § 1), so the first control is a
+        # NUMBER input -- and a number input silently swallows a letter,
+        # firing no `input` event, leaving the form not-dirty and this test
+        # waiting on a modal that was never going to open.  A digit is a real
+        # edit in either.
         siesta_input.press("9")
         # Commit a DIFFERENT structure (methane).  Form-dirty gate
         # fires the warning before discarding the parameter edits.
@@ -584,9 +551,8 @@ class TestSidebarStructureFlow:
 
 
 # --------------------------------------------------------------------- #
-#  Second-visit + external-change pattern (#195, audit follow-up to    #
-#  the 2026-06-02 /results stale-dropdown bug).  Per                   #
-#  docs/process/testing.md, every tab whose UI       #
+#  Second-visit + external-change pattern.  Per                        #
+#  docs/process/testing.md, every tab whose UI                          #
 #  is driven by a subscriber-on-state-change needs at least one       #
 #  test exercising the "user navigated away, external state          #
 #  changed, returned" workflow.                                       #
@@ -606,7 +572,7 @@ class TestBuildSecondVisitExternalChange:
         content is REPLACED on disk (different atom count), user
         comes back to /build.
 
-        NEW contract (2026-07-22, persistency wins / explicit load):
+        The contract (persistency wins / explicit load):
         the revisit KEEPS the tab's own loaded data -- the tab does
         NOT auto-reload the sidebar file, so it still shows the
         3-atom water it held.  The externally-changed file is picked
@@ -671,12 +637,6 @@ class TestBuildSecondVisitExternalChange:
 
 class TestFindingsSitBesideTheirField:
     """A finding belongs next to the control it is about (user, 2026-08-15).
-
-    It landed in the CARD's list until then — the right neighbourhood and the
-    wrong address, since a card holds twenty controls — and a finding whose
-    field had no card fell all the way to the residual panel at the bottom of
-    the page. That is where the ECP warning was: as far from the ECP box as
-    the layout allows.
 
     Asserted in a browser because nothing below one can see it. The placement
     depends on the rendered DOM (the ``.schema-field`` wrapper), on the schema
@@ -799,17 +759,14 @@ class TestFindingsSitBesideTheirField:
 
 
 class TestSendToTaskSetup:
-    """The tab's PRIMARY loop, witnessed in a browser for the first time
-    (U6 close, 2026-08-22): every layer below this one was green while
-    the hand-over ran — the endpoint in test_task_setup_tab.py, the
-    guards in source pins — but nothing ever clicked the button.  That
-    is the exact blindness the 2026-08-22 span-cut regression proved
-    this lane exists for.
+    """The tab's PRIMARY loop, witnessed in a browser: every layer below
+    this one -- the endpoint in test_task_setup_tab.py -- can be green while
+    nothing clicks the button.
 
     Two halves: a legal send writes the CLI's own files into the
     selected folder, and a folder already holding a description refuses
-    with nothing overwritten (the one-job-per-folder guard, which since
-    2026-08-22 also fails CLOSED on a read error)."""
+    with nothing overwritten (the one-job-per-folder guard, which also
+    fails CLOSED on a read error)."""
 
     def _calc_dir(self, tmp_path, monkeypatch):
         """projects/<project>/<topic>/<calc> — the depth the send guard
@@ -835,11 +792,8 @@ class TestSendToTaskSetup:
         """The same, but the structure STATES its cell.
 
         Without one the preflight raises `cell.vacuum_defaulted` and the
-        send takes its NOTICES branch, which returns early.  That branch is
-        the only one this class covered, which is how a defect on the other
-        one survived: `window.location.href = "/task-setup"` lived past the
-        early return and no test ever executed it (found 2026-09-19 by
-        restoring the jump and watching these tests stay green).
+        send takes its NOTICES branch, which returns early; this fixture
+        reaches the other one.
         """
         _register_tmp_as_picker_root(tmp_path, monkeypatch)
         calc = tmp_path / "proj" / "opt" / "boxed-run"
@@ -890,14 +844,7 @@ class TestSendToTaskSetup:
             "the hand-over never landed")
 
         # AND IT STAYS PUT (user, 2026-09-19).  This tab's job ends when the
-        # files are on disk; opening Task setup is the person's move.  The
-        # wait above used to accept EITHER this or a jump to /task-setup,
-        # which is how the jump survived being wrong: sessionStorage slots
-        # are per page and a page's own slot shadows the shared one, so Task
-        # setup opened whatever folder IT last showed.  Measured 2026-09-19 —
-        # the hand-over landed in `optimization/junction6-hier` and Task
-        # setup opened `spectrum/bridge-hier`, ready to edit the wrong
-        # calculation.  One outcome now, and the test says which.
+        # files are on disk; opening Task setup is the person's move.
         assert page.evaluate("() => window.location.pathname") == (
             "/structure-optimization"), (
             "the hand-over navigated away; it writes files and stops")
@@ -922,8 +869,7 @@ class TestSendToTaskSetup:
 
         This tab's job ends when the files are on disk; opening Task setup
         is the person's move (user, 2026-09-19: *"we just skip the fancy tab
-        to tab jump connection to avoid implicit coupling"*) — the rule the
-        transport arm has kept since 2026-08-29, now the only rule.
+        to tab jump connection to avoid implicit coupling"*).
 
         WHAT THE JUMP COST, and why not jumping beats handing the folder
         over: it relied on the sidebar's selection being shared, but
@@ -958,9 +904,7 @@ class TestSendToTaskSetup:
             self, page, flask_server, tmp_path, monkeypatch):
         """A Send adds its findings to the live check's and clears none
         (`handover-procedure.md` § 2.1): the live check's are still true of
-        the form it sent.  Until the K3 review a Send replaced them with its
-        own notices, so what the live check was saying left the page at the
-        moment it was sent.
+        the form it sent.
 
         MUTATION THIS MUST FAIL AGAINST: the send handing the panel its own
         notices alone (the live warning is gone)."""
@@ -1085,15 +1029,11 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
         page, flask_server, engine):
     """Move one field; the panel appears and names it.  Reset; it goes.
 
-    WHAT THIS REPLACES.  `test_form_schema_diff_js.py::
-    test_both_engine_forms_carry_the_panel` read index.html for the string
-    `id="siesta-recommend"` and then sliced viewer.js to check two host ids
-    appeared before `mountRecommended(engine, host`.  Every one of those is
+    WHY IN A BROWSER.  The string `id="siesta-recommend"` in index.html and
+    the host ids before `mountRecommended(engine, host` in viewer.js are all
     true of a page where `mountRecommended` returns at its first line -- it
     does exactly that when `formSchema.diffFromDefaults` is missing, and it
-    is a `return`, not a throw, so nothing anywhere says so.  The other tests
-    in that file mount `form-schema.js` against a synthetic one-div page and
-    never load index.html or viewer.js at all.
+    is a `return`, not a throw, so nothing anywhere says so.
 
     Driven per engine because "both forms carry it" is the claim, and the
     pyscf panel is behind a tab a person has to click.  The field is
@@ -1172,9 +1112,8 @@ def test_the_form_holds_only_what_the_person_gave_and_keeps_it_over_a_reload(
     something -- a field is blank, not chosen, the kind's recommendation its
     hint, and a box nobody answered is indeterminate.  What the person gave
     survives a reload, and so does what they did not: the restore writes
-    through the form's own writer.  It read `.checked` by id, which turned a
-    box nobody answered into "off" (`test_form_state_persistence_js.py`
-    pinned that reader, and retired with it)."""
+    through the form's own writer, so a box nobody answered does not come
+    back "off"."""
     _open_build(page, flask_server)
     page.wait_for_selector("#p-mesh-cutoff", timeout=_BOOT_TIMEOUT_MS)
 

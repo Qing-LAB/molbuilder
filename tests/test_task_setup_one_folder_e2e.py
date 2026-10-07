@@ -1,13 +1,10 @@
 """The page is a function of the folder — checked by moving between two.
 
 `web/task-setup.md` § 2.1: *"the page holds no state of its own… the folder
-is the only link."*  That sentence was written before it was kept.  The page
-assembled itself from twelve endpoints, each painting its own card, and the
-per-folder ones were cleared by `_resetPerFolderState()` — a hand-written
-list of clears in a module with twenty-five variables.  A list only ever
-covers what someone remembered to add to it, so the rule needed a check that
-does not depend on remembering: **open A, open B, and assert that nothing of
-A is on the page.**
+is the only link."*  A hand-written list of clears only ever covers what
+someone remembered to add to it, so the rule needs a check that does not
+depend on remembering: **open A, open B, and assert that nothing of A is on
+the page.**
 
 Measured on 2026-09-19, before the folder door: with the sidebar moved to a
 brand-new SIESTA calculation, two cards still rendered the PySCF vibration
@@ -114,9 +111,7 @@ def test_opening_another_folder_leaves_nothing_of_the_first(
     # THE TASK SETUP SURFACE, not the whole document.  The projects sidebar
     # is a different component with its own contract (`web/projects.md`) and
     # its own idea of when to re-list; section 2.1 is about THIS page's
-    # cards.  Asserting on `document.body` swept the sidebar's file list in
-    # and failed on `alphalabel.template.toml` sitting there -- a true
-    # observation about the wrong component.  Still the WHOLE panel and not
+    # cards.  Still the WHOLE panel and not
     # named cards: a per-card list is the same hand-kept thing that failed.
     text = page.evaluate(
         "() => (document.querySelector('main') || document.body).innerText")

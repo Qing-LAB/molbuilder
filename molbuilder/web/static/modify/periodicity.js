@@ -26,9 +26,7 @@ export function init(viewer) {
 
     /* WHICH REGIME THE BOX IS IN -- the fact that decides what every other
      * control on this panel does, made into a control of its own (user,
-     * 2026-09-07).  It was always there and never shown: you entered
-     * "explicit" by typing a cell and left it by pressing a button called
-     * "Update vacuum", with a modal afterwards to explain what that had done.
+     * 2026-09-07).
      *
      * On the wire it is not a field -- `cell: null` IS the derived regime
      * (structure-periodicity.md § 6.1) -- so this is a reading of the
@@ -94,10 +92,7 @@ export function init(viewer) {
             'input[name="pv-regime"][value="' + value + '"]');
         if (el) el.checked = true;
     }
-    /* THE PANEL SHOWS THE FIELDS THE CHOSEN REGIME USES, and nothing else.
-     * The alternative -- which this replaced -- was showing all of them and
-     * dimming the inert ones with a note saying why, which is the same
-     * information arranged so the reader has to assemble it. */
+    /* THE PANEL SHOWS THE FIELDS THE CHOSEN REGIME USES, and nothing else. */
     function renderRegime() {
         var explicit = regime() === "explicit";
         var derived = $("pv-derived-only");
@@ -168,30 +163,14 @@ export function init(viewer) {
      * An axis needs a FIRST and a SECOND -- reverse the pair and it negates --
      * and an origin needs exactly one atom.  Order and a count limit are what
      * the pick track promises; `selection` is a SET, for managing groups and
-     * labels, where "these forty atoms" has no first and no second.
-     *
-     * This used to read `selection`'s `pickOrder`, a click-order shadow kept
-     * in lock-step on the very store whose contract says order does not
-     * matter -- and that shadow existed for the ANGLE VERTEX, a measurement,
-     * so once measuring got its own track this gesture was its only user.
-     * Reading the track directly retires it (user, 2026-08-31: "having
-     * selection and this function overlapping seems functionally wrong").
-     *
-     * It also makes the direction PROVABLE.  The two fields could not be made
-     * to disagree through the UI, so a reader consulting the wrong one passed
-     * the whole suite; the ruler's list is ordered by construction and a test
-     * can drive it. */
+     * labels, where "these forty atoms" has no first and no second (user,
+     * 2026-08-31: "having selection and this function overlapping seems
+     * functionally wrong"). */
     function pickedInOrder() {
         var w = data();
         if (!w || !w.measurement) return [];
         return w.measurement.getState().picks;
     }
-    /* WHERE THE PICKED ATOMS ARE comes from the module (§ 11.6).
-     *
-     * This walked `getFrameAllAtoms(currentFrame())` itself, which was the
-     * SAME walk the module's own readout does, staleness guard included -- one
-     * question answered in two places, one of them outside the module that
-     * owns it.  `measurement.positions()` is that answer. */
 
     /* THE REFUSAL THIS GESTURE WILL ACTUALLY HIT, said before the request.
      *
@@ -302,12 +281,7 @@ export function init(viewer) {
      *
      * There is no counting policy here and there should not be -- the track
      * belongs to MolView and this page just asks it what is picked, in order
-     * (`molview.md` § 11.6).  Both buttons demanded an EXACT count until
-     * 2026-08-31, which turned the ruler's own behaviour into bookkeeping for
-     * the user: it holds up to three and drops the oldest at the fourth, so
-     * after two picks the count runs 2, 3, 3, 3 and never returns to one.  The
-     * origin button was then permanently dead for anyone who had measured
-     * anything, with the remedy -- the ruler's Clear -- named nowhere. */
+     * (`molview.md` § 11.6). */
     function refreshPickButtons() {
         var n = pickedInOrder().length;
         var ruler = rulerIsOn();
@@ -335,7 +309,7 @@ export function init(viewer) {
     /* THE ATOMS' SPAN ALONG THE CHOSEN AXIS, and the gap a person adds to it.
      *
      * `c` is measured and set, never invented (`junction-cell.md` § 6).  The
-     * builder stopped padding on 2026-08-31, so this is where a slab's box
+     * builder does not pad, so this is where a slab's box
      * gets its length along the transport axis -- and these two controls exist
      * to make the measuring cheap, not to make the decision.
      *
@@ -377,9 +351,8 @@ export function init(viewer) {
         return (hi > lo || hi === lo) ? hi - lo : null;
     }
 
-    /* WHAT GAP DID THE USER ASK FOR -- one reader, because two disagreed.
-       An empty box is UNANSWERED (NaN), not zero: `Number("")` is 0, which
-       enabled Use and printed "= 0" as though the user had chosen it. */
+    /* WHAT GAP DID THE USER ASK FOR -- one reader.  An empty box is
+       UNANSWERED (NaN), not zero: `Number("")` is 0. */
     function askedGap() {
         var box = $("pv-cell-gap");
         var raw = box ? box.value : "";
@@ -469,11 +442,10 @@ export function init(viewer) {
         /* BLANK MEANS THE DEFAULT, and the default is shown as the
          * PLACEHOLDER -- the same idiom the origin uses below, for the same
          * reason.  Vacuum has THREE states (§ 6.1): a number, zero, and never
-         * chosen.  Filling the boxes with the EFFECTIVE value collapsed the
-         * third into the first, so pressing Apply after changing something
-         * else stamped "3" into the structure as a value the user had chosen
-         * -- the box does not move, but the "(default)" mark goes, and with it
-         * the record that nobody had decided. */
+         * chosen.  Filling the boxes with the EFFECTIVE value would collapse the
+         * third into the first: pressing Apply after changing something
+         * else would stamp the default into the structure as a value the user
+         * had chosen. */
         var vac = used.vacuum || [0, 0, 0];
         ["pv-vac-a", "pv-vac-b", "pv-vac-c"].forEach(function (id, i) {
             var f = $(id);
@@ -485,20 +457,7 @@ export function init(viewer) {
         // `getVacuum()` answers null while `getUnitCellInfo()` still has a number
         // -- the raw-vs-effective pair this file's header describes.
         //
-        // The comment here read "vacuum ALWAYS has a value -- unset is not a state
-        // it has", which was true until 2026-08-03, when `vacuum` became Optional
-        // so that "I want no gap" and "I never chose one" could stop being the
-        // same value.
-        //
-        // ONLY `null` IS UNSET.  This also tagged an all-zero triple, on the
-        // grounds that pre-2026-08-03 sidecars said [0,0,0] and were READ as
-        // unset -- but that reader went in the same change
-        // (`structure._vacuum_from_stored`: "There is no legacy branch here...
-        // Removed 2026-08-03"), so this was the last copy of a deleted rule.
-        // It labelled a deliberate "no gap" as "derived, not set on this
-        // structure", which is the opposite of what the user chose, and it
-        // disagreed with MolView's own Cell page (`molview/ui.js`) about the
-        // same structure.  [0,0,0] is a value somebody picked (§ 2).
+        // ONLY `null` IS UNSET.  [0,0,0] is a value somebody picked (§ 2).
         //
         // With an explicit cell it grows nothing, so the group says so instead of
         // silently doing nothing.
@@ -544,13 +503,6 @@ export function init(viewer) {
         }
         refreshPickButtons();
         renderSpan();
-        /* "Use default" IS THE REGIME SWITCH NOW.  The button that stood here
-         * cleared the explicit cell, which a periodic axis cannot survive -- a
-         * bounding box is not a commensurate lattice -- so it had to disable
-         * itself on exactly the structures where a user is most likely to
-         * reach for it, with a tooltip as the only explanation.  Choosing
-         * "derived" beside an axis that needs a lattice is refused by the one
-         * gate, in a sentence, on Apply. */
 
         // § 6.0: the box's origin -- the corner it is drawn from, the server's
         // `box_corner`.  Typing it assigns the origin (stored as the offset);
@@ -559,9 +511,9 @@ export function init(viewer) {
         {
             /* BLANK MEANS AUTOMATIC, and the corner the rule placed the box
              * at is shown as the PLACEHOLDER rather than as content.  Filling
-             * the boxes with it made "no origin set" and "this exact origin
-             * set" look identical, so pressing Apply turned the automatic
-             * corner into an assigned one nobody had asked for.  The corner
+             * the boxes with it would make "no origin set" and "this exact
+             * origin set" look identical, and pressing Apply would turn the
+             * automatic corner into an assigned one nobody had asked for.  The corner
              * the box is drawn from is still on screen; it is just not
              * pretending to be your input. */
             var ov = used.box_corner || [0, 0, 0];
@@ -590,12 +542,6 @@ export function init(viewer) {
      *                   negate one" -- which is what the user needs to read
      *   null            there was nothing to do; nothing to say either
      *
-     * This used to expect a server envelope back — `{ok, error, notices}` — and
-     * got the cell block, so the error branch never ran; and on a refusal it got
-     * null and skipped both branches, so the Update button did nothing at all
-     * while the server had answered with exactly the sentence that would have
-     * explained it.
-     *
      * The notices are NOT in the answer: they are delivered inside the door and
      * MolView draws them (§ 6.8). Pushing them to the notification bar as well
      * would put one fact in two places. */
@@ -620,10 +566,6 @@ export function init(viewer) {
      * "The cell is one fact that travels together -- the vectors, the anchor,
      * how each axis is treated, how much vacuum an isolated axis gets -- which
      * is why there is one door and nothing writes a part of it on its own."
-     * The panel had FOUR commits onto that one fact, which is what made it
-     * unreadable: which button you pressed decided which of your typed values
-     * were sent and which were quietly dropped, and two of them reset the
-     * others as a side effect the user learned about from a modal.
      *
      * THE REGIME DECIDES WHAT IS SENT, and it is the thing the user chose:
      *   derived  -- no cell, no origin; the vacuum is authoritative.
@@ -631,13 +573,9 @@ export function init(viewer) {
      * Vacuum travels either way because it is part of the block; under an
      * explicit cell the server keeps it as the reference-only value it is.
      *
-     * THE TWO CONFIRM DIALOGS THAT STOOD HERE ARE GONE.  One asked before an
-     * edit that would "reset the explicit cell", which was a side effect of
-     * committing one field at a time and does not exist now -- choosing
-     * "derived" IS asking for the derived box.  The other said the change
-     * "cannot be undone", which stopped being true on 2026-09-07: a cell edit
-     * records a timeline point like every other edit (§ 11.2), so Retract
-     * brings the old box back.
+     * NO CONFIRM DIALOG: choosing "derived" IS asking for the derived box,
+     * and a cell edit records a timeline point like every other edit
+     * (§ 11.2), so Retract brings the old box back.
      */
     function applyCell() {
         var explicit = regime() === "explicit";
@@ -689,12 +627,11 @@ export function init(viewer) {
     }
 
     function wire() {
-        /* ONE COMMIT AND ONE DISCARD, where four commits and two resets used
-         * to be.  `applyCell` sends the whole block; Revert makes no request
+        /* ONE COMMIT AND ONE DISCARD.  `applyCell` sends the whole block;
+         * Revert makes no request
          * at all -- it redraws every field from the structure, which throws
          * away what has been typed and not sent.  Undoing an APPLIED cell is
-         * Retract's, and works here since a cell edit began recording a
-         * timeline point (§ 11.2, 2026-09-07). */
+         * Retract's: a cell edit records a timeline point (§ 11.2). */
         var apply = $("pv-apply");
         if (apply) apply.addEventListener("click", applyCell);
         var revert = $("pv-revert");
@@ -793,16 +730,7 @@ export function init(viewer) {
             var all = data().measurement.positions();
             if (!all || !all.length) return;
             var pos = [all[0]];          // the origin is the FIRST atom picked
-            /* Written DIRECTLY, not through `setIdle`.
-             *
-             * NOT A BUG FIX, and it is worth saying so: I changed this
-             * believing `setIdle` would skip a focused box and leave one third
-             * of the origin stale, then mutation-tested it — pressing the
-             * button BLURS the input first, so `setIdle` writes all three and
-             * the case cannot be reached by clicking.  The test that claimed
-             * otherwise was deleted rather than kept green over nothing.
-             *
-             * The direct write stays for the reason that does hold: a
+            /* Written DIRECTLY, not through `setIdle`: a
              * button-driven write should not consult `document.activeElement`
              * at all — the user asked for exactly this value — and
              * `setStagedRow` above already writes directly, so going the other
@@ -816,7 +744,7 @@ export function init(viewer) {
             });
         });
 
-        /* The nine inputs have NO commit of their own any more.  They are
+        /* The nine inputs have NO commit of their own.  They are
          * read by `applyCell` through `stagedCell()` -- the same reader the
          * length box and the handedness note already use -- so what the note
          * describes and what Apply sends cannot differ. */
@@ -831,16 +759,13 @@ export function init(viewer) {
         wire();
         refresh();
         // Refresh on ANY workspace change (load, modify op, or another periodicity edit):
-        // ws.subscribe fires on the canvas onChange too (dispatcher wires cs.onChange).
+        // the model's subscribe fires on every data change.
         var w = data();
         if (w && typeof w.subscribe === "function") w.subscribe(refresh);
         /* And the RULER, which `subscribe` above does not carry: it announces
          * data changes, and picking two atoms changes no data.  The two
          * buttons say how many atoms are picked, so without this they said it
-         * once and then went stale.
-         *
-         * This followed the SELECTION until 2026-08-31, which is where the
-         * picks used to come from.  Same reason, one track over. */
+         * once and then went stale. */
         if (w && w.measurement && typeof w.measurement.subscribe === "function") {
             w.measurement.subscribe(refreshPickButtons);
         }
@@ -857,16 +782,9 @@ export function init(viewer) {
                 sayRulerIsOn("Cell page");
             }
         });
-        /* NOT ON STARTUP, and this is a correction rather than an omission.
-         * It also ran here when the panel happened to be visible as the module
-         * loaded -- which turned measuring on, and announced it, before the
-         * person had touched anything.  A page that opens by telling you it
-         * changed a mode you never asked for is exactly what announcing the
-         * change was meant to prevent.  Caught by
-         * `test_app_notifications_e2e`, whose whole subject is that the
-         * notification bar stays empty until something happens.
-         *
-         * Opening the tab is the act; module load is not. */
+        /* NOT ON STARTUP: running here when the panel happened to be visible
+         * would turn measuring on, and announce it, before the person had
+         * touched anything.  Opening the tab is the act; module load is not. */
     }
 
     start();

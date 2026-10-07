@@ -58,8 +58,6 @@ def test_toc_returns_each_document_once(client):
     assert len(paths) == len(set(paths))
 
 
-
-
 def test_toc_build_survives_readonly_docs(tmp_path):
     """A read-only docs/ (site-packages install, hardened deploy) must
     not take the sidebar down: the repaired tree is served from memory
@@ -134,13 +132,6 @@ def test_img_rejects_non_image_files(client, tmp_path, monkeypatch):
 
 def test_img_missing_file_is_404(client):
     assert client.get("/api/docs/img/nope.png").status_code == 404
-
-
-# `/api/docs/list` and its two tests stood here.  The route was the tab's
-# original flat listing; the commit AFTER the one that added it replaced the
-# listing with the `toc.json` tree, and no browser has called it since.
-# `/api/docs/toc` also auto-discovers new documents, so it was not even a
-# fallback.  Deleted 2026-09-07.
 
 
 # --------------------------------------------------------------------- #
@@ -253,8 +244,6 @@ def test_a_new_archive_doc_appears_once_on_the_FIRST_render(tmp_path):
         + repr(sorted({p for p in first if first.count(p) > 1})))
     # ...and it stays right, which the old code also managed.
     assert paths_of() == first
-
-
 
 
 def test_two_groups_over_one_directory_do_not_each_append_it(tmp_path):

@@ -74,12 +74,9 @@ class TestResolveWorkflowGroup:
     def test_pyscf_per_rung_knobs_resolve_to_stage(self, field):
         """The knobs a rung varies land in the Stage card.
 
-        This asserted ``config.stages`` -- one field holding a whole ladder
-        -- until 2026-08-18.  `stages.md` § 1.1a moved the ladder to
-        ``task.json`` and made each rung its own deck, so what the config
-        carries is THIS rung's flat values, and it is each of them that must
-        be tagged.  A finding on one of them still has to reach the same
-        card; the card did not change, the thing being grouped did."""
+        `stages.md` § 1.1a: the ladder lives in ``task.json`` and each rung
+        is its own deck, so what the config carries is THIS rung's flat
+        values, and it is each of them that must be tagged."""
         cfg = PySCFConfig()
         assert resolve_workflow_group(f"config.{field}", cfg) == "stage"
 
@@ -112,8 +109,7 @@ class TestResolveWorkflowGroup:
         """``config.psml_lib.Au`` (one-per-element pseudo coverage
         finding) resolves via root ``psml_lib``'s metadata.
 
-        ``setup`` since 2026-08-15, when the pseudopotential directory moved
-        into the first card with the system label.  The VALUE is incidental;
+        The VALUE (``setup``) is incidental;
         what this pins is that a per-element sub-path still resolves through
         its ROOT field, so a coverage finding about one element lands on the
         card holding the control -- wherever that control has been moved to.
@@ -179,8 +175,7 @@ class TestIssuesToJsonEnrichment:
 
     def test_no_cfg_means_no_enrichment(self):
         """When cfg is None, the serialiser doesn't try to resolve
-        groups — it just emits severity / message / where (legacy
-        behaviour preserved)."""
+        groups — it just emits severity / message / where."""
         issues = [Issue("warn", "mesh_cutoff", "config.mesh_cutoff")]
         out = issues_to_json(issues)
         assert "workflow_group" not in out[0]
@@ -201,10 +196,3 @@ class TestIssuesToJsonEnrichment:
                         workflow_group="profile")]
         out = issues_to_json(issues, cfg=cfg)
         assert out[0]["workflow_group"] == "profile"
-
-
-# The integration-completeness class (`section` and `workflow_group` moving
-# together) was retired 2026-10-02 with its one remaining case,
-# `TransportConfig` (M5 step 3).  Every form is the catalogue's now, where
-# `test_catalogue_agreement.py::test_every_catalogue_item_declares_a_panel`
-# guards the same rule.

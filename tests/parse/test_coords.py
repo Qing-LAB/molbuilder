@@ -1,17 +1,10 @@
-"""L2/L3 tests for Phase E coords FileParsers.
+"""Tests for the coords FileParsers.
 
-# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
-# CPython refuses a non-frozen subclass of a frozen one on its own.
-# A test that mutates an instance to watch Python raise tests Python.
 
 Pins:
   * SiestaXVFileParser claims .XV by its name, and not an XML file;
   * PySCFGeomFileParser claims _optimized.xyz, not a plain .xyz;
   * a PDB is read, its sidecar kept, one holding no coordinates refused.
-
-The .XV readings -- the cell in Å, the elements from atomic numbers -- read a
-.XV written by hand and were retired 2026-10-04 (`process/testing.md` § 6); a
-.XV a run made on the road wrote is read by `tests/test_siesta_flat_run_e2e.py`.
 """
 
 from __future__ import annotations
@@ -27,9 +20,6 @@ from molbuilder.parse.registry import _registered_file_parsers
 
 
 REPO = Path(__file__).resolve().parents[2]
-# BUILT, NOT FOUND.  The fixture was a real run under projects/, behind a
-# `pytest.skip("fixture absent")` -- so it read the user's scientific record
-# on this machine and SKIPPED (green, proving nothing) anywhere else.
 
 
 # Registration --------------------------------------------------------- #
@@ -43,7 +33,7 @@ def test_coords_parsers_registered():
 
 
 # --------------------------------------------------------------------- #
-#  .pdb -- a reader that existed for years with no row in the registry   #
+#  .pdb                                                                 #
 # --------------------------------------------------------------------- #
 
 _PDB = ("HEADER    TEST\n"
@@ -55,12 +45,9 @@ _PDB = ("HEADER    TEST\n"
 
 
 def test_a_pdb_is_read_by_a_parser_so_the_picker_can_offer_it(tmp_path: Path):
-    """`structure.js` has claimed `.xyz` AND `.pdb` since it was written.
+    """`structure.js` claims `.xyz` AND `.pdb`, and the picker drops any
+    file the server registry cannot read.
 
-    Nothing in `parse/` claimed `.pdb`, and from 2026-09-18 the picker
-    drops any file the server registry cannot read -- so half that
-    presenter was unreachable from the Results tab.  The reader was
-    already here (`Structure.from_pdb`); the gap was the registration.
     `StructureCodec.load` says so in its own comment: *"the file picker
     accepts .xyz AND .pdb, and each needs its own parser"*.
     """
@@ -107,12 +94,7 @@ def test_a_pdb_keeps_what_its_author_put_in_the_sidecar(tmp_path: Path):
 
     A `.pdb` here is a PERSON'S structure, not an engine's output, so the
     `.molstruct.json` beside it carries their regions, frozen atoms and
-    cell.  This parser read the geometry with `from_pdb` and skipped the
-    sidecar, which is the failure `test_one_door_reads_a_structure`
-    records: *"a description was born with the author's regions, frozen
-    atoms and cell missing, and everything downstream was then
-    faithfully correct about the wrong thing."*  The guard caught it
-    within an hour of the parser landing.
+    cell.
 
     MUTATION THIS MUST FAIL AGAINST: read the file with `read_text` +
     `Structure.from_pdb` instead of `StructureCodec`.
@@ -182,13 +164,3 @@ def test_pyscf_geom_doesnt_claim_plain_xyz(tmp_path: Path):
     p.write_text("0\n\n")
     assert not PySCFGeomFileParser.can_parse(p)
 
-
-# Real-file parse + cell surface ---------------------------------- #
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 4 tests here parsed a .XV written by hand; a run made on the road writes
-# the `.XV` read in `tests/test_siesta_flat_run_e2e.py` (`process/testing.md` § 6).
-
-
-# Frozen invariant ------------------------------------------------- #

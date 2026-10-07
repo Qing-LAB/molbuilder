@@ -27,32 +27,20 @@ def _mol(off=(10.0, 10.0, 10.0), vacuum=(2.5, 2.5, 2.5)):
     )
 
 
-# ------------------------------------------------------------------ #
-#  § 6.1 state table (stored state)                                   #
-# ------------------------------------------------------------------ #
-
-
-
 # --------------------------------------------------------------------- #
 #  Keying on the ID, not the prose                                      #
 #                                                                       #
 #  The gate's own header says "callers surface notices; they never parse #
-#  the message text", and until 2026-08-03 four tests in this file did   #
-#  exactly that -- matching on "does NOT contain".  A reworded sentence  #
-#  broke them; a DELETED check would not have, which is the wrong way    #
-#  round for a regression test.  Notices now carry ``where``, the same   #
-#  stable id ``Issue`` uses, so a test can name the finding it means.    #
+#  the message text".  Notices carry ``where``, the same stable id       #
+#  ``Issue`` uses, so a test can name the finding it means.              #
 # --------------------------------------------------------------------- #
 
 
 def _problems(notices):
     """Findings that say something is WRONG -- warn or error.
 
-    "Legal" used to be spelled ``not notices``, which also forbade INFO.  That
-    broke the moment the gate started disclosing true-but-harmless facts, like
-    a vacuum you typed being inert under a cell you typed
-    (``cell.vacuum_ignored``).  A legal state may still have something worth
-    saying about it; what it may not have is a complaint.
+    A legal state may still have something worth saying about it (an INFO such
+    as ``cell.vacuum_ignored``); what it may not have is a complaint.
     """
     return [n for n in (notices or []) if n.get("severity") in ("warn", "error")]
 
@@ -108,8 +96,7 @@ class TestTheStateTable:
         molecule outside it, the 2026-07 hemeC symptom.
 
         Contract: `model/structure-periodicity.md` § 6.0 (absent means the
-        rule) + § 6.1 clause 1.  Replaces the row-2 / row-3 pair and the
-        reset-origin seam test, whose derived corner and op are retired.
+        rule) + § 6.1 clause 1.
         """
         s = _mol()                                   # atoms near (10,10,10)
         s.cell = np.eye(3) * 7.0
@@ -127,19 +114,6 @@ class TestTheStateTable:
                    for n in notes), notes
         assert all(n["about"] == "cell" for n in notes), notes
 
-    # `test_hemec_state_derives_the_corner_without_materialising_it`,
-    # `test_no_seam_materialises_a_resolved_corner` and
-    # `test_user_owned_origin_is_never_rewritten` RETIRED 2026-09-25 with the
-    # derived corner and the `cell_origin` op (§ 6.0; plan § 5q.4).  The first
-    # two are the test above; the third read back an attribute it had set on
-    # the object itself, so it could not fail -- an assigned origin kept
-    # verbatim is the test below.
-
-    # `test_a_manual_origin_gets_the_same_answer_from_either_direction` RETIRED
-    # 2026-09-25: `tools/verify_subsumption.py` confirmed it on all 12
-    # informative mutants against `TestTheBlockOp::test_an_origin_is_assigned_on_a_typed_cell_only`
-    # (P -> -P) and `TestTheLoadAnswerIsNotSilent::test_the_load_answer_carries_what_the_gate_found`
-    # (read off disk, warned).
 
     def test_too_small_cell_is_a_hard_error(self):
         """SCIENCE. A cell shorter than the molecule's extent is REFUSED outright,
@@ -154,26 +128,16 @@ class TestTheStateTable:
         Contract: `model/structure-periodicity.md` § 6.0, check 1 (a span wider
         than the cell along a non-periodic axis is refused naming the axis) +
         § 6.1a.
-
-        *(This carried a "KNOWN WEAK" note saying the axis half was asserted
-        as `"a" in str(exc)` -- any English sentence satisfies that.  Fixed
-        since: the assertions below require `"along a"` AND that b and c are
-        not named.  The note outlived the weakness by long enough to
-        contradict the code fifteen lines under it.)*
         """
         s = _mol()
         s.cell = np.eye(3) * 1.0                     # extent 2 Å can't fit
         s.__post_init__()
-        # Matched on the sentence ("cannot contain") until 2026-08-03.  What
-        # this test means is that the state is REFUSED and the user is told
-        # which axis -- not that a particular phrasing survives.
+        # What this test means is that the state is REFUSED and the user is
+        # told which axis -- not that a particular phrasing survives.
         with pytest.raises(ValueError) as exc:
             validate_periodicity(s)
-        # `"a" in str(exc.value)` stood here until 2026-09-09 and could not
-        # fail: the letter is in "than", "cannot", every English sentence, so
-        # a refusal naming the WRONG axis or no axis at all passed.  `along a`
-        # is the emitter's own phrasing and is the smallest string that can
-        # only come from naming this axis.
+        # `along a` is the emitter's own phrasing and is the smallest string
+        # that can only come from naming this axis.
         msg = str(exc.value)
         assert "along a" in msg, (
             f"the refusal does not name the offending axis: {msg}")
@@ -223,8 +187,8 @@ class TestApplyEditV3:
 
         Catches ``apply_edit`` growing a permissive fall-through: an unknown op
         that returns the structure unchanged tells the caller its edit landed
-        when nothing happened.  ``calibrate`` is the realistic one -- retired
-        in D3, and what a client from before it would still send.
+        when nothing happened.  ``calibrate`` is a retired op a client could
+        still send.
         (`tools/verify_subsumption.py`, 2026-09-25: the door's 400 test does
         not reach this refusal.)
 
@@ -346,10 +310,6 @@ class TestApplyEditV3:
         out, _ = apply_edit(s, "cell", (np.eye(3) * 12.0).tolist())
         np.testing.assert_allclose(out.engine_offset, [-0.5] * 3)
 
-    # `test_cell_edit_without_origin_respects_vacuum` RETIRED 2026-09-25: it
-    # pinned "origin first, then vacuum" and the vacuum-derived corner
-    # (§ 6.0 retires both: a vacuum places nothing under a typed cell).  That
-    # nothing is stored for the rule's offset is the state-table test above.
 
     def test_cell_null_returns_to_derived(self):
         """`cell: null` is the way back to the derived regime, and it clears the
@@ -370,9 +330,6 @@ class TestApplyEditV3:
         out, _ = apply_edit(s, "cell", None)
         assert out.cell is None and out.engine_offset is None
 
-    # `test_origin_edit_warns_vacuum_not_respected` RETIRED 2026-09-25: a
-    # vacuum is inert because the cell is typed, not because of an origin, and
-    # `test_cell.py` pins that finding (`cell.vacuum_ignored`) where it is made.
 
     def test_automatic_clears_a_stated_offset_on_a_box_sized_from_vacuum(self):
         """*Automatic* clears an engine's stated 0 on a box sized from the
@@ -422,13 +379,6 @@ class TestApplyEditV3:
             assert np.allclose(out.positions, s.positions), op
 
 
-# `test_calibrated_then_emit_equals_emit` RETIRED 2026-09-25 with calibrate
-# itself (`model/structure-periodicity.md` § 6.0, user: "we can retire the
-# calibrate button").  What it guarded -- emission independent of a prior
-# bake -- is the placement rule's idempotence, pinned by `tests/test_cell.py`
-# and, through prep, by `tests/test_engine_offset_reaches_every_deck.py`.
-
-
 # ------------------------------------------------------------------ #
 #  The unified endpoint                                               #
 # ------------------------------------------------------------------ #
@@ -451,7 +401,7 @@ class TestTheBlockOp:
     """
 
     def test_becoming_a_periodic_crystal_takes_one_request(self):
-        """Unreachable before: `axis_kind` refuses periodic with no cell, and
+        """Unreachable field at a time: `axis_kind` refuses periodic with no cell, and
         `cell` alone leaves the axes isolated."""
         s = _mol()
         assert s.cell is None
@@ -466,9 +416,7 @@ class TestTheBlockOp:
         assert any("explicit cell" in n["message"] for n in notes), notes
 
     def test_going_back_to_a_derived_box_takes_one_request(self):
-        """The other direction, and the one the panel's "Use default" button
-        could not offer: it had to disable itself on exactly the structures a
-        user most wants it for."""
+        """The other direction: back to a derived box in one request."""
         s = _mol()
         s.cell = np.diag([10.0, 10.0, 20.0])
         s.axis_kind = ("periodic", "periodic", "transport")
@@ -566,11 +514,6 @@ class TestPeriodicityDoor:
     returns the cell block the gate accepted -- raw values and the § 3 resolved
     views together, in the shape ``/api/build/load`` sends -- which the client
     adopts verbatim; an unknown op is a 400, never a silent no-op.
-
-    It took a ``{"data": {xyz, sidecar}}`` blob until 2026-07-31, which its one
-    caller could not produce: MolView writes no coordinate document (molview.md
-    § 11.7), so the one door the cell changes through answered 400 to every
-    request ever made of it.
     """
 
     @pytest.fixture
@@ -634,8 +577,8 @@ class TestPeriodicityDoor:
 
     def test_moving_one_atom_out_of_an_explicit_box_is_reported(self, client):
         """A PARTIAL translate moves atoms and leaves the box where it is
-        (``modify.py:422`` -- "``indices`` -> move ONLY those atoms, box
-        untouched"), so it is the op that can strand a manual box.  The user
+        (the translate route in ``modify.py``), so it can strand a manual
+        box.  The user
         typed this box, so nothing rewrites it; the validation at the single
         exit says what is now true of it.
         """
@@ -650,8 +593,7 @@ class TestPeriodicityDoor:
         # atom 0 went from 0 to 50 while the others stayed, so the structure is
         # now 49 Å across in a 4 Å box.  No corner can make that fit, and
         # `cell.unfittable` says exactly that -- where `cell.atoms_outside`
-        # would suggest moving the origin, which cannot help.  Before the two
-        # were split, this case reported the vaguer one.
+        # would suggest moving the origin, which cannot help.
         assert _said(body.get("notices"), "cell.unfittable"), (
             f"the stranded box was not reported: {_wheres(body.get('notices'))}")
 
@@ -689,10 +631,8 @@ class TestPeriodicityDoor:
         """Every atom moved 50 Å: a box whose origin the person ASSIGNED stays
         where they put it, and the atoms now outside it are named.
 
-        Until 2026-09-25 a whole-structure move carried the box along and there
-        was nothing to report; the user retired that -- *"leave the cell alone,
-        moving atoms only moves atoms"* (`model/structure-periodicity.md`
-        § 6.0).  Under *Automatic* the rule places the box around the atoms
+        The user's ruling: *"leave the cell alone, moving atoms only moves
+        atoms"* (`model/structure-periodicity.md` § 6.0).  Under *Automatic* the rule places the box around the atoms
         wherever they now are, so this holds for an assigned origin only.
         """
         s = self._explicit_box_structure()
@@ -915,9 +855,8 @@ class TestLoaderGate:
         pytest.importorskip("flask")
         from molbuilder.diagnostics import Capabilities, set_capabilities
         monkeypatch.chdir(tmp_path)
-        # The tree is THIS tmp one.  A chdir used to say that on its own,
-        # because `projects_root` was cwd-anchored; it resolves from the
-        # molbuilder root now (2026-08-22), so the door is told directly.
+        # The tree is THIS tmp one.  `projects_root` resolves from the
+        # molbuilder root, so the door is told directly.
         from molbuilder.projects import PROJECTS_ROOT_ENV
         monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
         sdir = tmp_path / "projects" / "P" / "structure"
@@ -980,8 +919,7 @@ class TestPeriodicAxesAreNeverContained:
         else.
 
         Contract: `model/structure-periodicity.md` § 2 (the axis-kind table) +
-        § 6.0, check 1. Review finding, 2026-07-29 (the crystal and junction
-        halves were two tests until 2026-09-25).
+        § 6.0, check 1. Review finding, 2026-07-29.
         """
         s = Structure(elements=["H", "H"],
                       positions=np.array([[0.0, 0, 0], [0.0, 0, 12.0]]),
@@ -994,9 +932,6 @@ class TestPeriodicAxesAreNeverContained:
             assert [(n["where"], n["severity"]) for n in _problems(notes)] == [
                 ("cell.beyond_periodic_face", "warn")], notes
 
-    # `test_stored_manual_origin_is_warned_never_rewritten` RETIRED 2026-09-25:
-    # the stored half of `test_a_manual_origin_gets_the_same_answer_from_either_
-    # direction` above, which asserts it.
 
     def test_unfittable_cell_edit_is_refused_naming_the_axis(self):
         """A cell the structure cannot fit is refused at the edit, naming the
@@ -1010,8 +945,8 @@ class TestPeriodicAxesAreNeverContained:
             apply_edit(_mol(), "cell", (np.eye(3) * 1.0).tolist())
 
     def test_reset_to_derived_survives_a_zero_extent_isolated_axis(self):
-        """Was a refusal ("axis would be degenerate"): a structure with a
-        zero-extent ISOLATED axis could not go back to the derived box.
+        """A structure with a zero-extent ISOLATED axis can go back to the
+        derived box.
 
         CLEARING the vacuum is the way back -- the § 6.1 default then gives that
         axis 3 Å per side.  Asking for an explicit zero there is still refused,
@@ -1052,12 +987,8 @@ class TestTabEmitContract:
 
     def test_preflight_sees_what_generate_sees(self, client):
         """A planar molecule with vacuum: preflight must NOT judge the vacuum-0
-        phantom (it used to error on a degenerate box) -- it judges the body's
-        own 4 Å, which SIESTA's advice calls thin (§ 6.1a: under 8 Å per side
-        is advised against, not refused).
-
-        The assertion this replaced -- "Thin vacuum" absent or "4.0" absent --
-        could not fail: the message prints the gap as "4 Å"."""
+        phantom -- it judges the body's own 4 Å, which SIESTA's advice calls
+        thin (§ 6.1a: under 8 Å per side is advised against, not refused)."""
         r = client.post("/api/build/preflight", json={
             "structure": _env_per(self._XYZ, {"cell": None,
                             "axis_kind": ["isolated"] * 3,
@@ -1074,14 +1005,9 @@ class TestTabEmitContract:
             "the body's vacuum never reached the judge", wheres)
 
 
-
-from pathlib import Path  # noqa: E402  (used by TestTabEmitContract)
-
 import sys as _sys, pathlib as _pl
 _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
-from support.envelope import (from_xyz as _env,
-                             from_xyz_with_periodicity as _env_per)
-
+from support.envelope import from_xyz_with_periodicity as _env_per
 
 
 class TestReadingDoesNotJudge:
@@ -1092,10 +1018,7 @@ class TestReadingDoesNotJudge:
     it cannot be reached without the structure on screen.
 
     What must never happen is a CALCULATION built on an impossible box, and that
-    is refused where it belongs -- by the validator, at every emitter. Both
-    halves are asserted here together, because either alone is the wrong
-    behaviour: opening without the refusal downstream would ship a bad deck;
-    refusing at the read is the trap.
+    is refused where it belongs -- by the validator, at every emitter.
     """
 
     def _pair(self, tmp_path, cell):
@@ -1120,8 +1043,7 @@ class TestReadingDoesNotJudge:
         in costs them the frozen-atom work they had already done.
 
         Contract: `model/structure-periodicity.md` § 8.2, "reading does not judge"
-        (2026-08-03). The other half -- that no calculation is generated from it --
-        is `test_but_no_calculation_is_generated_from_it`.
+        (2026-08-03).
         """
         from molbuilder.workingcopy_structure import StructureCodec
         path = self._pair(tmp_path, [[7, 0, 0], [0, 7, 0], [0, 0, -7]])
@@ -1136,29 +1058,13 @@ class TestReadingDoesNotJudge:
             "they were never shown"
         )
 
-    def test_but_no_calculation_is_generated_from_it(self):
-        """The other half, and the reason opening it is safe."""
-        from molbuilder.config.pyscf import PySCFConfig
-        from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.pyscf import render_script
-        from molbuilder.siesta import render_fdf
-        s = Structure(elements=["H", "H"],
-                      positions=np.array([[0.0, 0, 0], [1, 0, 0]]),
-                      cell=[[7, 0, 0], [0, 7, 0], [0, 0, -7]])
-        for name, render, cfg in (("SIESTA", render_fdf, SiestaConfig()),
-                                  ("PySCF", render_script, PySCFConfig())):
-            with pytest.raises(Exception, match="cell|determinant|hand"):
-                render(s, cfg)
-
 
 class TestTheLoadAnswerIsNotSilent:
     """§ 6.1 clause 6 (approved 2026-07-29): what the gate finds at the load
     door must never be silent — the answer carries it.
 
-    The clause was written when a load could REWRITE stored state, and asked for
-    a machine-readable marker so the client could dirty-mark the session.
-    Nothing rewrites anything now, so there is nothing to mark and no marker:
-    the answer reports, and the pair on disk is still what the user saved."""
+    Nothing rewrites stored state, so there is no correction marker: the answer
+    reports, and the pair on disk is still what the user saved."""
 
     def test_the_load_answer_carries_what_the_gate_found(self, tmp_path, monkeypatch):
         """A load of a pair whose assigned origin leaves the atoms outside the box
@@ -1166,7 +1072,7 @@ class TestTheLoadAnswerIsNotSilent:
         as stored -- and carries NO key claiming anything was corrected.
 
         Catches two failures at once: a load that gates silently (the user is never
-        told the box no longer wraps the atoms, cell-plan.md 3f), and a load that
+        told the box no longer wraps the atoms), and a load that
         "fixes" the origin and carries a correction marker -- a phantom dirty state
         that makes the session look edited and re-saves a file the user did not
         touch. `about` is what puts the sentence on the Cell page rather than
@@ -1180,9 +1086,8 @@ class TestTheLoadAnswerIsNotSilent:
         import json as _json
         from molbuilder.workingcopy_structure import StructureCodec
         monkeypatch.chdir(tmp_path)
-        # The tree is THIS tmp one.  A chdir used to say that on its own,
-        # because `projects_root` was cwd-anchored; it resolves from the
-        # molbuilder root now (2026-08-22), so the door is told directly.
+        # The tree is THIS tmp one.  `projects_root` resolves from the
+        # molbuilder root, so the door is told directly.
         from molbuilder.projects import PROJECTS_ROOT_ENV
         monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
         sdir = tmp_path / "projects" / "P" / "structure"
@@ -1290,7 +1195,7 @@ class TestDoorHygieneAndRemainingOps:
 
         Catches the gate's `ValueError` escaping the door as a 500. This is the
         Cell-page arm of the failure `TestARefusedCellIsA400` documents for the
-        other six doors: the refusal is the user's to fix, so the reason has to
+        other doors: the refusal is the user's to fix, so the reason has to
         survive the trip.
 
         Contract: `model/structure-periodicity.md` § 6.2 + § 8.2 (one way in, two
@@ -1306,11 +1211,6 @@ class TestDoorHygieneAndRemainingOps:
         assert r.status_code == 400
         assert "periodic" in r.get_json()["error"]
 
-    # `test_cell_op_anchors_origin_through_the_door` RETIRED 2026-09-25: a thin
-    # caller of `to_wire`, whose first assertion (`.get("cell_origin") is None`)
-    # could not fail once the key was retired.  What the wire sends for the
-    # rule's box is `test_the_load_door_serves_the_rules_box_corner` and
-    # `test_the_wire_carries_unset_and_the_resolved_view`.
 
     def test_axis_kind_op_resets_to_derived_through_the_door(self, client):
         """The `axis_kind` op's reset survives the door: the answer carries
@@ -1359,13 +1259,6 @@ class TestDoorHygieneAndRemainingOps:
         assert missing.status_code == 400, missing.get_json()
 
 
-# `TestDocMatchesTheDoor` RETIRED 2026-09-25 -- its two tests pinned the TEXT
-# of a shipped document (§ 6.2's op table) and of the door's docstring
-# (`process/testing.md` § 3a: a test asserts behaviour, not prose).  The op set
-# lives in `periodicity_gate.OPS`; an unknown op is refused
-# (`test_unknown_op_is_a_400`); the documents are kept true by review.
-
-
 class TestTheDefaultVacuumGap:
     """§ 6.1 (2026-08-03): vacuum has THREE states, and the third is what makes
     the rule sayable.
@@ -1377,13 +1270,6 @@ class TestTheDefaultVacuumGap:
     length.  3 A of empty space is 3 A whether the molecule is 2 A across or
     200, so a large molecule gets it too -- and a typed 1.0 A is kept, not
     raised.
-
-    WHAT THIS REPLACED.  Until 2026-08-03 the rule was a floor on the BOX:
-    ``extent + 2*vacuum < 3 -> vacuum = max(yours, 3)``.  It asked about the box
-    rather than about what the user wanted, and got both ends wrong -- it raised
-    a typed 1.0 to 3.0, OVERRIDING a stated value, and it left a large molecule
-    with NO gap at all because its box already exceeded 3 A.  Both are the same
-    confusion: a minimum box length is not a vacuum.
     """
 
     @staticmethod
@@ -1404,8 +1290,7 @@ class TestTheDefaultVacuumGap:
 
     @staticmethod
     def _big():
-        """A molecule 20 A across -- the case the old floor left with NO gap,
-        because its box already exceeded 3 A."""
+        """A molecule 20 A across: its box already exceeds 3 A."""
         return Structure(elements=["H", "H"],
                          positions=np.array([[0.0, 0.0, 0.0],
                                              [20.0, 20.0, 20.0]]))
@@ -1436,12 +1321,10 @@ class TestTheDefaultVacuumGap:
         assert min(np.diag(cell)) == pytest.approx(6.0)
 
     def test_a_large_molecule_gets_THE_SAME_gap(self):
-        """THE CORRECTION OF 2026-08-03, pinned.
+        """3 A is the vacuum DISTANCE, not the size of the molecule.
 
-        3 A is the vacuum DISTANCE, not the size of the molecule.  The old floor
-        asked "is the box under 3 A?" -- so a 20 A molecule, whose box was
-        already 20 A, got a gap of ZERO.  A big molecule needs the empty space
-        just as much as a small one; it needs MORE box, not less gap.
+        A big molecule needs the empty space just as much as a small one; it
+        needs MORE box, not less gap.
         """
         s = self._big()
         assert s.effective_vacuum() == (3.0, 3.0, 3.0), (
@@ -1453,8 +1336,7 @@ class TestTheDefaultVacuumGap:
     # -- a value that IS set: used verbatim --------------------------------- #
 
     def test_a_typed_vacuum_is_used_however_small(self):
-        """The old floor RAISED a typed 1.0 to 3.0.  You dictate what you want:
-        a thin gap is warned about (cell.vacuum_thin), never overridden."""
+        """You dictate what you want: a thin gap is warned about (cell.vacuum_thin), never overridden."""
         s = self._planar()
         s.vacuum = (1.0, 1.0, 1.0)
         s.__post_init__()
@@ -1464,8 +1346,7 @@ class TestTheDefaultVacuumGap:
 
     def test_setting_one_axis_sets_them_all(self):
         """Vacuum is stored as a whole triple, so a zero on one axis is a
-        DELIBERATE zero -- it does not fall back to the default there.  Under
-        the old floor this axis was silently topped up to 3."""
+        DELIBERATE zero -- it does not fall back to the default there."""
         s = self._planar()
         s.vacuum = (4.0, 4.0, 0.0)
         s.__post_init__()
@@ -1483,25 +1364,16 @@ class TestTheDefaultVacuumGap:
         assert eff[2] == 3.0
         assert s.defaulted_vacuum_axes() == [2]
 
-    # -- the box built from it ---------------------------------------------- #
-
-    # `test_the_derived_box_stays_centred_on_the_structure` RETIRED 2026-09-25:
-    # it pinned the derived corner's use of the effective vacuum.  Every box
-    # is centred by the one rule now (§ 6.0), asserted of the wire below and
-    # of the rule itself in `test_cell.py`.
-
     # -- it is never silent -------------------------------------------------- #
 
     def test_the_default_is_announced_on_every_hand_over(self):
         """A number the user did not choose is sizing their box, so it must be
         said -- and said by the check EVERY hand-over runs, not only by the edit
-        path.  Before 2026-08-03 you could load a structure and generate from it
-        without ever being told (cell-plan.md 3f)."""
+        path."""
         _, notes = validate_periodicity(self._planar())
         # BY ITS ID, not by a phrase in it. `where` is the stable finding id
-        # (validation contract); the sentence is wording and was rewritten
-        # 2026-08-04 for readability, which is exactly the edit a prose match
-        # turns into a false failure.
+        # (validation contract); the sentence is wording, and a rewording is
+        # exactly the edit a prose match turns into a false failure.
         said = [n for n in notes if n["where"] == "cell.vacuum_defaulted"]
         assert said, [n["message"][:70] for n in notes]
         assert said[0]["severity"] == "info"
@@ -1515,12 +1387,8 @@ class TestTheDefaultVacuumGap:
     def test_a_set_vacuum_is_not_announced(self):
         """Nothing was defaulted, so there is nothing to disclose.
 
-        BY ITS ID, for the reason the test above states in full -- and this
-        one is why that reason is not theoretical.  It matched the prose
-        ``"no vacuum was set"``; the note says *"No vacuum set"*, with no
-        "was", so the filter matched nothing and the assert was vacuous from
-        the day it was written.  A negative test that cannot see the thing it
-        denies passes whatever the code does.
+        BY ITS ID, for the reason the test above states in full.  A negative
+        test that cannot see the thing it denies passes whatever the code does.
         """
         s = self._planar()
         s.vacuum = (5.0, 5.0, 5.0)
@@ -1533,9 +1401,7 @@ class TestTheDefaultVacuumGap:
     # -- clearing it back to unset ------------------------------------------ #
 
     def test_null_clears_the_vacuum(self):
-        """molview.md 9.5 has always documented this payload as 'null clears'.
-        Until vacuum became Optional there was nothing to clear TO, and the op
-        answered 'must be 3 non-negative floats'."""
+        """A `null` payload clears the vacuum back to unset."""
         s = self._planar()
         s.vacuum = (4.0, 4.0, 4.0)
         s.__post_init__()
@@ -1545,9 +1411,8 @@ class TestTheDefaultVacuumGap:
         assert [n for n in notes if "cleared" in n["message"]]
 
     def test_a_planar_structure_can_reset_to_derived(self):
-        """It used to be refused ("axis 2 would be degenerate"): a planar
-        molecule with an explicit cell could not go back to the derived box.
-        Clearing the vacuum is the way back -- the default gives z a thickness.
+        """A planar molecule with an explicit cell can go back to the derived
+        box.  Clearing the vacuum is the way back -- the default gives z a thickness.
         """
         s = self._planar()
         s.cell = np.diag([9.0, 9.0, 9.0])
@@ -1612,10 +1477,7 @@ class TestTheDefaultVacuumGap:
     def test_a_stored_zero_means_a_deliberate_zero(self):
         """`None` and `[0,0,0]` are DIFFERENT and both are honoured.
 
-        A stored all-zero briefly read as UNSET, so that sidecars written
-        before vacuum gained its third state kept behaving as they had.  That
-        cost the ability to express a deliberate zero at all -- and bought
-        compatibility with files that are residue.  Removed 2026-08-03.
+        A stored all-zero is a deliberate zero, not UNSET.
         """
         s = self._planar()
         s.apply_metadata_dict({"vacuum": [0.0, 0.0, 0.0]})
@@ -1638,21 +1500,12 @@ class TestSiestaNeverReceivesAZeroVolumeCell:
     THREE independent layers stop one from ever being emitted; this pins each
     so a future change cannot quietly remove the last of them.
 
-    THERE WERE FOUR until 2026-09-21.  The first was `__post_init__` refusing
-    to construct one at all, and it was removed on purpose: § 8.2 says reading
-    does not judge, and a model that cannot HOLD a bad box cannot show one on
-    the Cell page either -- so a pair whose sidecar carried one could not be
-    opened, and the only ways out were to hand-edit the JSON outside
-    molbuilder or delete it and lose the labels with it.  What replaces it is
-    not silence: the box loads and the load REPORTS it, which is layer 0
-    below.  Refusing still happens, at the two doors that are actually about
-    to act on the box.
+    § 8.2 says reading does not judge, so a bad box can be HELD and the load
+    REPORTS it (layer 0); refusing happens at the doors about to act on it.
     """
 
     def test_layer0_it_can_be_held_and_is_reported_rather_than_hidden(self):
-        """The layer that replaced "cannot even be constructed".
-
-        A degenerate lattice may exist in memory -- that is what lets the
+        """A degenerate lattice may exist in memory -- that is what lets the
         Cell page show you the box you have to fix.  What must never happen
         is it existing QUIETLY, so the same checker that refuses at the edit
         and emit doors answers here too, as a finding.
@@ -1673,10 +1526,7 @@ class TestSiestaNeverReceivesAZeroVolumeCell:
                                              [-0.757, 0.586, 0.0]]))
 
     def test_layer2_the_gate_refuses_a_zero_volume_cell_edit(self):
-        """Matched on "right-handed" until 2026-08-03, which was an accident of
-        the old check order: ``det > 0`` fails for det == 0, so a FLAT cell was
-        reported as a HANDEDNESS problem.  It is a volume problem, and now says
-        so.  What this test means is that the edit is refused -- not which
+        """A FLAT cell is a volume problem, not a HANDEDNESS one.  What this test means is that the edit is refused -- not which
         sentence explains it."""
         with pytest.raises(ValueError) as exc:
             apply_edit(self._flat(), "cell",
@@ -1685,57 +1535,13 @@ class TestSiestaNeverReceivesAZeroVolumeCell:
             f"a flat cell is not a handedness problem: {exc.value}")
 
     def test_layer3_the_default_gap_makes_an_unset_isolated_axis_never_zero(self):
-        """The path that used to reach the emitter: a flat molecule with no
-        vacuum.  The § 6.1 default closes it -- for the UNSET case only.  A
-        deliberate zero is still honoured (that is the rule), which is why
-        layer 4 below has to stay."""
+        """A flat molecule with no vacuum: the § 6.1 default closes it -- for
+        the UNSET case only.  A deliberate zero is still honoured (that is the
+        rule)."""
         cell = self._flat().resolve_cell()
         assert abs(float(np.linalg.det(cell))) > 1e-6
         assert min(np.diag(cell)) == pytest.approx(6.0)
 
-    def test_layer4_the_emitter_refuses_the_one_remaining_case(self):
-        """A zero-extent TRANSPORT axis: vacuum does not pad it, so the floor
-        deliberately does not apply and the emitter is the last stop."""
-        import warnings
-        from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.siesta import render_fdf
-        s = self._flat()
-        s.axis_kind = ("isolated", "isolated", "transport")
-        s.__post_init__()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            with pytest.raises(ValueError, match="degenerate") as exc:
-                render_fdf(s, SiestaConfig())
-        msg = str(exc.value)
-        # It must name the offending axis AND its kind: "set a vacuum" is wrong
-        # advice for a transport axis, and that used to be what it said.
-        assert "axis 2" in msg and "transport" in msg
-        assert "device length" in msg
-
-    def test_no_emitted_fdf_ever_carries_a_zero_lattice_row(self):
-        """Belt across the shapes a user actually builds: flat, linear, and a
-        single atom -- each must emit a lattice with three real rows."""
-        import warnings
-        from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.siesta import render_fdf
-        shapes = {
-            "planar":  self._flat(),
-            "linear":  Structure(elements=["H", "H"],
-                                 positions=np.array([[0.0, 0.0, 0.0],
-                                                     [0.0, 0.0, 0.74]])),
-            "single":  Structure(elements=["He"],
-                                 positions=np.array([[0.0, 0.0, 0.0]])),
-        }
-        for name, s in shapes.items():
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                fdf = render_fdf(s, SiestaConfig())
-            rows = fdf.split("%block LatticeVectors")[1].split(
-                "%endblock")[0].strip().splitlines()
-            assert len(rows) == 3, name
-            for r, row in enumerate(rows):
-                length = max(abs(float(x)) for x in row.split())
-                assert length > 1e-6, f"{name}: lattice row {r} is zero"
 
 class TestEveryOpIsChecked:
     """The guarantee is not "this op can break the box" -- it is that the
@@ -1760,11 +1566,8 @@ class TestEveryOpIsChecked:
         "/api/modify/orient":      {"anchors": [0, 1]},
         "/api/modify/rotate":      {"axis": "z", "angle": 30.0},
         "/api/modify/translate":   {"dx": 1.0, "dy": 0.0, "dz": 0.0},
-        # The slab op (archive/2026-09-01-modify-redesign-plan.md § 3).  It reads no selection --
-        # dx, dy and start_z are absolute -- so unlike every op above it needs
-        # no `indices` to have something to do.  It replaced `electrode`,
-        # which centred on a picked group; that route went 2026-09-01 and its
-        # row here with it.
+        # The slab op.  It reads no selection -- dx, dy and start_z are
+        # absolute -- so it needs no `indices` to have something to do.
         # 2 x 2 is the smallest slab the builder accepts -- a one-wide
         # surface cell puts anything on it in contact with its own image.
         # The size is incidental here; this fixture is about the gate.
@@ -1796,8 +1599,7 @@ class TestEveryOpIsChecked:
         # the layer spacing and the bond length that follow from them.  No
         # structure is sent, none comes back, and nothing on the bench is
         # read -- it answers a question about a CRYSTAL, not about the
-        # thing being edited.  (It exists because the Slab panel used to
-        # compute those numbers in JavaScript and was missing d(110).)
+        # thing being edited.
         "/api/modify/spacings",
     }
 
@@ -1845,11 +1647,10 @@ class TestEveryOpIsChecked:
         validator on its way out.
         """
         from molbuilder.web.blueprints import _shared
-        # SPIES ON THE CHECKER, not on the gate (2026-08-03).  The modifying
-        # doors no longer call ``validate_periodicity`` -- that one RAISES, and
-        # a modify door reports rather than refuses (§ 8.2) -- so they ask
-        # ``cell.resolve_and_check`` directly.  Same invariant, one entry point
-        # further in: whatever these routes return went past the checker.
+        # SPIES ON THE CHECKER, not on the gate: ``validate_periodicity``
+        # RAISES, and a modify door reports rather than refuses (§ 8.2), so the
+        # doors ask ``cell.resolve_and_check``.  Whatever these routes return
+        # went past the checker.
         real, seen = _shared.resolve_and_check, []
 
         def spy(struct):
@@ -1866,27 +1667,15 @@ class TestEveryOpIsChecked:
             f"periodicity check.  Every op leaves through "
             f"_shared.ok_structure_response; this one found another way out.")
 
-    # `test_the_check_reaches_the_user_when_it_has_something_to_say` RETIRED
-    # 2026-09-25: `tools/verify_subsumption.py` confirmed it on all 12
-    # informative mutants against
-    # `TestPeriodicityDoor::test_translating_the_whole_molecule_leaves_the_box_and_says_so`
-    # -- the same route, op and outcome, which also checks the offset is kept.
-
 
 class TestARefusedCellIsA400:
     """A cell the gate REFUSES is the user's to fix, so the door has to say so.
 
     ``validate_periodicity`` raises ``ValueError`` for a state that cannot be
-    represented at all -- here a left-handed cell (det < 0).  SEVEN doors run the
-    gate on the way IN; the six below called it outside any try (the seventh,
-    the Cell-page door, has always handled it).  The refusal became an unhandled
-    exception, Flask answered 500 with an HTML page, and the browser's
-    ``r.json()`` reported it as a network failure -- so the one sentence that
-    said what was wrong ("swap two lattice vectors") never reached anybody.
-
-    The fix is not six try/excepts: ``_shared.checked_periodicity`` raises
-    ``PeriodicityRefused`` and ONE handler in ``web/app.py`` answers it, the way
-    the 413 handler beside it already works.  Each test asserts the gate's OWN
+    represented at all -- here a left-handed cell (det < 0).
+    ``_shared.checked_periodicity`` raises ``PeriodicityRefused`` and ONE
+    handler in ``web/app.py`` answers it, the way the 413 handler beside it
+    works.  Each test asserts the gate's OWN
     words come back, because a 400 from some earlier check would otherwise pass
     this test while the bug survived.
     """
@@ -1931,7 +1720,6 @@ class TestARefusedCellIsA400:
             f"{body.get('error')!r}")
 
 
-
     def test_the_preflight_door_refuses(self, client):
         """The preflight door answers a left-handed cell with 400 and the GATE's own
         sentence.
@@ -1946,22 +1734,14 @@ class TestARefusedCellIsA400:
         § 8.1 (the seven doors that run the gate on the way in).
         """
         self._assert_refused(client.post("/api/build/preflight", json={
-            # THE BOX IS PART OF THE STRUCTURE.  This stated it in a
-            # top-level `periodicity` block beside the envelope -- the legacy
-            # request shape, retired 2026-08-04 once nothing sent it.
+            # THE BOX IS PART OF THE STRUCTURE.
             "structure": _env_per(self.XYZ, {"cell": self.LEFT_HANDED}), "engine": "siesta",
             "calculation": "optimization",
             "params": {}}), "/api/build/preflight")
 
-    # The /api/spectra/render arm retired with the route (P3);
-    # the hand-over door runs the same gate and is pinned in
-    # test_task_setup_tab.py.
-
     def test_the_export_door_refuses(self, client):
-        """The export door reads the cell off the ENVELOPE rather than a
-        `periodicity` block, and called the gate directly -- so it is the one
-        door the shared entry helper does not cover, and it needs the same
-        wrapper."""
+        """The export door reads the cell off the ENVELOPE and runs the same
+        wrapper (``checked_periodicity``)."""
         s = Structure(elements=["H"], positions=np.zeros((1, 3)))
         s.cell = self.LEFT_HANDED
         s.__post_init__()
@@ -1969,14 +1749,11 @@ class TestARefusedCellIsA400:
             "structure": s.to_dict(), "name": "refused"}),
             "/api/structure/export")
 
-    # `test_the_transport_door_refuses` deleted 2026-09-17 with POST /api/transport/render.
-
-
 
 class TestTheCellPageCanRepairWhatItRefuses:
     """A bad box is ADMITTED at the load door precisely so it can be fixed
-    here (`blueprints/build.py`: *"a load that refused would leave a
-    structure with a bad box unopenable, and so unfixable"*).
+    here (`blueprints/build.py`: *"refusing would make it unopenable, and so
+    unfixable"*).
 
     The edit door then gated on the INCOMING state, so every op was
     refused with the very sentence that asks the user to perform it.
@@ -1996,7 +1773,7 @@ class TestTheCellPageCanRepairWhatItRefuses:
 
     def test_setting_a_good_cell_over_a_mirrored_one_is_ACCEPTED(self):
         """The fix the refusal asks for -- 'swap any two of the three
-        rows' -- was itself refused."""
+        rows' -- is accepted."""
         import numpy as np
         from molbuilder.periodicity_gate import apply_edit
         out, _receipts = apply_edit(self._mirrored(), "cell",

@@ -40,11 +40,6 @@ def test_no_deck_is_none(tmp_path):
     assert contract_of(tmp_path / "absent.fdf") is None
 
 
-# `test_two_decks_are_none_never_a_guess` retired 2026-10-04 (W56 review,
-# ruling 1): nothing searches a folder for its decks -- the caller hands the
-# run's own (`runs.declared`).
-
-
 def test_a_deck_stating_nothing_is_none(tmp_path):
     (tmp_path / "empty.fdf").write_text("SystemLabel x\n")
     assert contract_of(tmp_path / "empty.fdf") is None
@@ -66,58 +61,3 @@ def test_the_record_speaks_the_catalogues_names(tmp_path):
     assert not stray, (
         f"contract_of records {sorted(stray)}, which are not the settings' "
         f"own names")
-
-
-# --------------------------------------------------------------------- #
-#  engine_of — WHICH ENGINE RAN                                         #
-# --------------------------------------------------------------------- #
-#
-# `running-a-job.md` § 4.2 owns the rule and the resolution order.  What
-# these pin is the ORDER, because the order is the whole design: the
-# engine is DECLARED when the deck is generated (the only moment it is
-# known for certain) and the file-cluster sniff is a fallback for
-# directories molbuilder did not write.  A test that only checked "a
-# .fdf means siesta" would pass just as well against the constant this
-# replaced -- `decode_run_dir` answered `engine="siesta"` for every
-# directory until 2026-09-04, including every PySCF run.
-
-from molbuilder.parse.contract import engine_of      # noqa: E402
-
-# THREE TESTS WERE RETIRED HERE 2026-09-04, the day they were written.
-# They asserted what a directory says when it holds two engines' files at
-# once -- built by hand, because the product cannot produce one: engines
-# never share a run directory (user, and measured: 0 of 113 real run
-# directories disagree). To justify them I invented a workflow -- "you set
-# a folder up for SIESTA, then change your mind and set the same folder up
-# for PySCF" -- which nobody does. `engine_of` still answers "unknown"
-# rather than guessing if it ever meets one; that costs two lines and needs
-# no test dramatising a user who does not exist.
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 4 tests here named a folder's engine from a PySCF log, progress
-# logs or a run script written by hand (`process/testing.md` § 6).
-
-
-def test_a_bare_py_file_is_not_an_engine_signal(tmp_path):
-    """A person's own script can sit beside a run -- and the monitor's
-    modules did, as `.py` files, until they travelled in one file
-    (2026-09-26).  Any python file would match, so "there is a `.py` here"
-    says nothing about which engine ran.
-    """
-    (tmp_path / "mb_monitor.py").write_text("print(1)\n")
-    assert engine_of(tmp_path) == "unknown"
-
-
-# --------------------------------------------------------------------- #
-#  The relaxation record (model/parse.md § 5b.1) -- measured fixture     #
-# --------------------------------------------------------------------- #
-
-# Moved to the e2e tier 2026-10-06 (user: "when a test need siesta's output
-# why is it not part of a e2e test?"): the relaxation record is read off a
-# relaxation run on the road with the real SIESTA,
-# `tests/test_siesta_relax_run_e2e.py`; the force-constant output cut to its
-# first steps that showed a run with no record was retired with it
-# (`process/testing.md` § 6).
-
-

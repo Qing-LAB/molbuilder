@@ -84,9 +84,7 @@ def _get(port, timeout=5.0) -> str:
     """One real HTTPS request, cert checking off (it is self-signed).
 
     Reads to EOF: the answer comes back chunked, so a single ``recv`` returns
-    the headers and none of the body — which failed this file's own first run
-    with "the server does not serve at all" while the server had in fact
-    answered ``200 OK``.
+    the headers and none of the body.
     """
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.check_hostname = False
@@ -181,14 +179,10 @@ def test_the_handshake_deadline_is_not_left_on_the_request(tmp_path):
     turning a denial-of-service fix into one. A browser does exactly this:
     it pre-connects, then sends the request line when the user acts.
 
-    **This test asserted the wrong thing until 2026-09-05.** It ran a WSGI
-    app that slept past the deadline and checked the body came back whole.
-    That cannot fail: the sleep happens in application code, performs no
-    socket operation, and the reply fits the send buffer, so a per-operation
-    timeout never fires. Measured — deleting `conn.settimeout(None)`, the one
-    line the test exists to guard, left it PASSING. The idle client below
-    fails within a second of that same deletion, because the idle happens on
-    the socket, which is where the deadline lives.
+    An idle CLIENT, not a slow app: a sleep in application code performs no
+    socket operation, so a per-operation timeout never fires there. The idle
+    client below fails within a second of deleting `conn.settimeout(None)`,
+    because the idle happens on the socket, which is where the deadline lives.
     """
     from molbuilder.cli import HANDSHAKE_TIMEOUT_S
 

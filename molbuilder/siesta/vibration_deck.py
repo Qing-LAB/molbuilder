@@ -127,9 +127,8 @@ def start_state_lines(cfg) -> List[str]:
     so both answers are written, not left out.
 
     The keys are the restart group's own declaration (the catalogue's
-    ``[item.restart].expands``), so a member the engine gains is written
-    here without a second list; the optimizer's history has no member
-    because nothing here optimizes.
+    ``[item.restart].expands``); the optimizer's history has no answer
+    here because nothing here optimizes.
     """
     answer = {"DM.UseSaveDM": ".true.", "MD.UseSaveXV": ".false."}
     keys = _sc.parameter("restart", "siesta").writes

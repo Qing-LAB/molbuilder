@@ -1,15 +1,9 @@
 """One question, one answer, one interface, one output — `jobset/ask.py`.
 
-**The design this replaced was the mistake.**  The numbers used to arrive by
-themselves: 128 GB because SLURM grants 2 GB a core and the job had 64 of
-them; 38 minutes because a per-trial default nobody set was multiplied by a
-trial count nobody saw.  Both were correct arithmetic on inputs the person had
-never been offered.
-
-The first fix was a provenance system — five categories, an announcement rule,
-a display — machinery whose entire purpose was to *cope with* numbers nobody
-chose.  **Asking removes the problem instead of labelling it** (user,
-2026-08-23), and most of that machinery went with it.
+**Asking removes the problem instead of labelling it** (user, 2026-08-23): a
+number that arrives by itself -- 128 GB because SLURM grants 2 GB a core, a
+time from a per-trial default nobody set -- is correct arithmetic on inputs
+the person was never offered.
 
 Four things, and the CLI and the browser call the same four.  Two surfaces
 asking one question two ways is how they come to disagree about what was
@@ -60,13 +54,6 @@ def test_unanswered_is_None_and_never_zero():
     assert Ask(time_s=60)
 
 
-# The benchmark-arithmetic and render() tests that lived here are DELETED
-# with the code they pinned (user dictation, 2026-08-24): time is never
-# derived -- the user states it, or the target queue's own ceiling stands.
-# The one output is now the launch door's plan (the exact sbatch command of
-# every job); its tests live with the launch tests.
-
-
 # --------------------------------------------------------------------- #
 #  the one interface                                                     #
 # --------------------------------------------------------------------- #
@@ -85,8 +72,6 @@ def test_yes_is_a_decision_to_trust_not_an_absence_of_one():
         raise AssertionError("asked despite --yes")
     assert confirm("x", auto_yes=True, echo=said.append, prompt=_never)
     assert "(--yes)" in said[1], "the skip is recorded, not silent"
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -131,15 +116,10 @@ def test_a_queue_that_cannot_take_the_job_is_listed_WITH_THE_REASON():
     # queue".  A hand-written row with no `node_types` still falls back to
     # `max_cores`, which is what this fixture exercises.
     # The FACTS R10 asks for, not the phrasing: what was asked, what is
-    # allowed, and WHICH machine sets the ceiling.  This read
-    # `"needs 64 cores but general's largest machine has 48" in t` and broke
-    # on a rewording when the refusal started carrying its numbers as fields
-    # (2026-09-09) -- the claim survived, the sentence did not.
+    # allowed, and WHICH machine sets the ceiling.
     assert "64 cores" in t and "48 cores" in t
     assert "general" in t
     assert "largest machine" in t
-
-
 
 
 def test_it_says_how_to_choose_and_that_nothing_has_happened_yet():

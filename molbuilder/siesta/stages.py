@@ -1,8 +1,8 @@
 """SIESTA's stage knowledge — the shipped ladder, and what a stage's
 warm restart means (docs/execution/job-system.md).
 
-Three things live here, all consumed by the engine seam
-(`jobset/engines.py::engine_seam`) or by `describe`:
+Three things live here, read by `jobset init` and the engine seam
+(`jobset/engines.py::engine_seam`):
 
   * :func:`default_siesta_stages` — the shipped ladder as ``Stage`` objects,
     the science stated once in the presets table;
@@ -10,20 +10,6 @@ Three things live here, all consumed by the engine seam
     and ``.CG``, the last conditioned on the optimizer (`run-identity.md`
     § 4);
   * :func:`_traits` — the opaque per-job facts a warm file is conditioned on.
-
-**The producers that lived below these — ``stages_to_jobset``,
-``StageBundle``, ``build_siesta_stage_bundle`` — were DELETED 2026-08-12
-(plan step 6 u5).**  They had no production caller: the described route
-renders per-element inside `jobset prep`, and floor 3 is derived from the
-description, never emitted beside it (the one defect, closed at step 3).
-
-**What went with the edges.**  ``on_nonconvergence`` and its
-``DEFAULT_NONCONVERGENCE`` table: `engines/stages.md § 3` says *"its entire
-effect is the edge between one attempt and the next"*, so with no edge it had
-no effect -- and it was never reachable by a user anyway, being absent from
-`task.json`'s three stage fields.  The derived ``Carry`` projection went too:
-it existed only to render the declaration onto the one source a chain can know
-in advance.
 
 **Where the ladder comes from, and where it does not.**  An engine config
 carries no stage list (``engines/stages.md`` § 1.1) — the ladder is the
@@ -47,11 +33,8 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
     each carrying that tier's four values as its ``overrides``, enabled
     according to the named strategy preset.  So the science is stated once,
     in the presets table, and this only decides *which* tiers run and *how*
-    they are shaped for the description.
-
-    Replaces the deleted ``_default_siesta_stages`` + ``apply_siesta_stage_strategy``
-    pair: building the ladder and applying the enable-mask were never two
-    steps, they were one function split across a mutable default.
+    they are shaped for the description: building the ladder and applying
+    the enable-mask are one step.
 
     Raises ``ValueError`` on an unknown strategy.
     """
@@ -73,14 +56,8 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
         # time.  Every rung takes the shared default, ``continue``, which
         # means *read what is there*; with nothing there the engine starts
         # from the deck's own coordinates and says so.
-        #
-        # This set ``clean`` on the first rung positionally until 2026-08-18.
-        # That decided for the user: re-running a ladder in a folder holding
-        # a result would silently discard it, which is the one outcome a
-        # person who just looked at that result did not ask for.
-        # The tier's NAME, from the one table -- not ``f"stage{tier}"``, which
-        # this built until 2026-08-10.  Decision 27 puts the ordinal in the
-        # artifact token, so a name that is itself a position says the number
+        # The tier's NAME, from the one table: Decision 27 puts the ordinal in
+        # the artifact token, so a name that is itself a position says the number
         # twice (``<label>_01_stage1.fdf``) and the science none.
         out.append(Stage(name=SIESTA_STAGE_NAMES[tier],
                          enabled=bool(enables[i]) if i < len(enables) else False,
@@ -101,10 +78,9 @@ def _traits(eff) -> Dict[str, str]:
     layer compares it as a string and never learns what it means, which is what
     keeps SIESTA's restart group out of the engine-agnostic core.
     """
-    # normalized at the ONE producer (R11, 2026-08-12): the jobset layer
-    # compares this as a string, and "Broyden" vs "broyden" -- the same
-    # optimizer, spelled by two hands -- compared unequal and silently
-    # withheld the warm .CG the pair rule exists to carry
+    # normalized at the ONE producer: the jobset layer compares this as a
+    # string, so "Broyden" and "broyden" -- the same optimizer -- must
+    # compare equal, or the warm .CG the pair rule carries is withheld
     return {OPTIMIZER_TRAIT:
             str(getattr(eff, "relax_type", "") or "").strip().lower()}
 
@@ -126,9 +102,7 @@ def _warm_declaration(label: str, eff,
     The pair conditions (``requires_same`` -- only `.CG` carries one
     today) are DECLARED here and EVALUATED by
     :func:`~molbuilder.jobset.model.warm_carry`, the one interpreter,
-    once ``--from`` names the source and both stages are in hand.  The
-    hard-coded XV/DM/CG list this replaces was one of the three copies
-    § 4.2a's history records drifting.
+    once ``--from`` names the source and both stages are in hand.
     """
     from ..identity import continues
     from ..warmfiles import warm_list

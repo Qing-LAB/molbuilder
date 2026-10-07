@@ -2,9 +2,7 @@
 
     Included by:
       * results.html             -- the /results trajectory panel, fetched
-                                    from GET /partials/trajectory-inspector
-                                    (the /watch page that included it
-                                    server-side is gone).
+                                    from GET /partials/trajectory-inspector.
 
     This partial is the DOM contract for what lib/trajectory/core.js
     reaches via getElementById (the pinned set is
@@ -20,18 +18,10 @@
     (#trajectory-status), so it cannot collide with a page's #status.
 -#}
 
-<!-- Result-list dropdown lifted from this partial to the
-     /results tab header (2026-06-01); see
-     ``lib/results/file-picker.js`` + ``#results-file-picker-bar``
-     in ``templates/results.html``.  The old in-inspector dropdown
-     only handled SIESTA-style output (.out / .molwatch.log); the
-     tab-level picker covers every ``isResult:true`` inspector. -->
-
 <!-- Fixed-position run-state badge.  One obvious location for the
      "is the simulation finished or still running?" signal -- not
      buried in the bottom status banner.  Three states + initial-
-     blank; populated by viewer.js after the first /api/watch/load
-     response lands.  Authoritative when the writer emitted
+     blank; populated by core.js once the file is loaded.  Authoritative when the writer emitted
      end-of-run markers; defaults to "ongoing" otherwise. -->
 <div id="run-state-badge" class="run-state run-state-blank" hidden>
   <span class="run-state-label" id="run-state-label"></span>
@@ -44,7 +34,7 @@
   <span id="runtime-summary" class="runtime-summary"></span>
 </div>
 
-<!-- Parse-warnings panel (Level-3, 2026-05-28): non-fatal issues
+<!-- Parse-warnings panel: non-fatal issues
      the parser hit on this file (e.g. SIESTA dumped a malformed
      SCF line, or a future column layout we haven't seen yet).
      Hidden when empty.  Collapsed by default (<details>) so a
@@ -60,7 +50,7 @@
       aria-label="Parser issues"></ul>
 </details>
 
-<!-- Convergence-targets summary (2026-06-13).  Renders the threshold
+<!-- Convergence-targets summary.  Renders the threshold
      values the run was configured to chase + the current step's
      distance from them.  Populated by core.js from
      ``Trajectory.runtime_info.convergence_targets``; hidden until
@@ -79,10 +69,7 @@
      band). -->
 <!-- THE INSPECTOR'S OWN STATUS LINE: a refused load, a viewer that could
      not mount, the cell's provenance, an export's result.  core.js writes
-     it through setStatus; until 2026-09-28 /results had no such element and
-     every one of those messages was dropped, so a failed load showed an
-     empty skeleton and nothing else (the Results tab's design review).
-     Namespaced: a bare `#status` is the page-level banner some pages carry
+     it through setStatus.  Namespaced: a bare `#status` is the page-level banner some pages carry
      (modify.html), and this partial must not collide with one. -->
 <p id="trajectory-status" class="status trajectory-status" role="status" aria-live="polite"></p>
 <section id="convergence-summary" class="convergence-summary" hidden>
@@ -162,7 +149,7 @@
   </div>
 </section>
 
-<!-- 2026-06-12: plot-row toolbar — single Export All button at the
+<!-- Plot-row toolbar — single Export All button at the
      header so users can grab every plotted column (step, energy,
      max force, max force constrained, SCF cycle / energy / gnorm)
      in one CSV.  Header carries source-file metadata as ``#``
@@ -180,8 +167,7 @@
      engine launching and writing its first energy-bearing line).
      The trajectory module shows / hides this based on what's in
      state.data; CSS controls the appearance.  See _renderEmptyStatus
-     in lib/trajectory/core.js.  Added 2026-06-14 so a freshly-cold-
-     started run shows ``Initializing -- first energy estimate pending``
+     in lib/trajectory/core.js -- so a freshly-cold-started run shows ``Initializing -- first energy estimate pending``
      instead of two silently-blank plots that look like a broken UI. -->
 <aside id="trajectory-empty-status"
        class="trajectory-empty-status" role="status" hidden>

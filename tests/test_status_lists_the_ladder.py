@@ -5,7 +5,7 @@ PINS: ``docs/execution/job-system.md`` § 5.3 (the table is the description's
 ladder: every stage with its number from the moment `init` writes it, the ones
 not prepped yet as not-started, a disabled one never the stage to resume from;
 `status <stage>` is a stage in full -- its deck, what it declares, its
-resources -- since `plan` folded into it) and ``docs/web/results.md`` § 2.4
+resources) and ``docs/web/results.md`` § 2.4
 (the Results tab's ladder is `jobset_status`'s answer).
 
 PREVENTS, each read in the code before 2026-10-01:
@@ -50,8 +50,8 @@ def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
     traceback); stages joined to jobs by exact name; a stage folder told to
     run `init`."""
     from molbuilder.web.app import create_app
-    from support.road import describe_h2, jobset
-    bundle = describe_h2(tmp_path, monkeypatch)
+    from support.road import describe_calculation, jobset
+    bundle = describe_calculation(tmp_path, monkeypatch)
 
     template = next(bundle.glob("*.template.toml"))
     kept = template.read_text()

@@ -164,7 +164,7 @@ place; each names the file that holds it, so the claim is checkable.**
 1. **The stage token reaches the deck's name, the engine's log and the trajectory
    log** — the same three names it suffixes for SIESTA — so two rungs cannot write
    to one file. It is a render *argument*, never a config field, so the emitter
-   never learns the word *stage* (`pyscf/input.py`, `spec_for(..., stage_token=)`).
+   never learns the word *stage* (`pyscf/input.py`, `spec_for(..., names=)`, the stage's names).
 2. **The `JOB` literal stays unsuffixed**, exactly as `SystemLabel` does and for
    the same reason: the engine finds the previous rung's files by that name, so a
    name that changed per rung would hide them (§ 1, decision 26).
@@ -808,15 +808,11 @@ decks that are subtly wrong for the machine they run on.
 > a deck asking for an ELPA solver a build does not have fails when SIESTA runs,
 > which is the right place to fail. The generator does not check.
 >
-> **A value the machine has a say in is a different case** — `block_size`. An
-> explicit setting is honoured verbatim; unset means SIESTA's own automatic and
-> the keyword is not emitted at all; and `prep` **realigns** an explicit value to
-> a power of two when the target is GPU-ELPA, recording that it did. Both the
-> value and the target are in hand at that moment, which is why the
-> reconciliation belongs there ([`tuning.md § 2.11`](?doc=engines/tuning.md) owns
-> the rule; [`template.md`](?doc=engines/template.md) § 12). *(This note said the
-> default is **computed** at `prep` from the rank count until 2026-08-16 — the
-> middle state retired on 2026-08-15.)*
+> **`block_size`** is written verbatim when set, under every target; unset
+> means SIESTA's own automatic and the keyword is not emitted at all
+> ([`tuning.md § 2.11`](?doc=engines/tuning.md) owns the rule, and the GPU-ELPA
+> power-of-two case it leaves open; [`template.md`](?doc=engines/template.md)
+> § 12).
 
 > **Why the fourth row is not the third one wearing a hat** *(added 2026-08-08)*.
 > The third row's fields are **values the wrapper uses**: a rank count becomes an
@@ -888,64 +884,19 @@ Two consequences:
 
 ### 5.2 A deck line may depend on the launch
 
-**A deck's own values can be derived from resources the deck does not contain.**
-SIESTA's `BlockSize` is the standing example: PROVENANCE records it as
-`auto -> 256 (n_orbitals_est 2120 / mpi_np, capped pow2)` (`job-contracts.md
-§ 3.2`) — **orbitals over ranks**, because the block distributes the Hamiltonian
-([`tuning.md § 2.11`](?doc=engines/tuning.md)). A deck rendered for 8 ranks is
-not the right deck for 16.
+**A deck carries values tied to the launch it was rendered for.** SIESTA's
+BENCH-MARKS block (`job-contracts.md § 3.3`) records the rank count (`mpi_np`)
+and, when the deck carries a `BlockSize`, the window that rank count allows —
+**orbitals over ranks**, because the block distributes the Hamiltonian
+([`tuning.md § 2.11`](?doc=engines/tuning.md)). The `BlockSize` value itself is
+never derived: it is the person's, written verbatim, or absent.
 
-And the rank count is genuinely not settled at generate time.
-`running-a-job.md § 2.1` fixes the rule — at run time the wrapper reads the
-allocation and the hardware *"only to tune the launch … never to decide whether
-the job can run"* — and `running-a-job.md § 3.1` gives the precedence, so the
-ranks a job runs with
-are routinely not the ranks its deck was rendered against.
-
-> **A deck states which of its lines were derived from a launch quantity.** The
-> generator renders for the resources the description asked for, and the
-> BENCH-MARKS block (`job-contracts.md § 3.3`) declares the coupled fields —
-> anchor-based, with bounds — so anything that later changes the launch can
-> re-derive them instead of silently leaving them stale.
-
-That block already exists and already declares `BlockSize`, because the benchmark
-sweep varies ranks per point and has the same problem. This contract adopts it
-rather than inventing a second mechanism.
-
-> **Landed 2026-08-10, and adopting it turned up what it was missing.** A stage
-> ladder is the first thing that renders two decks at *different* rank counts,
-> so it is where "declares the coupled fields" got tested rather than assumed.
-> Two halves were absent:
->
-> - the block recorded `n_atoms` and `gpu_mode` but **not the rank count**,
->   and the picker takes three inputs — so nothing downstream could re-derive
->   the value the block was declaring;
-> - the declared **bound** was a module constant `[16,256]` while the value
->   beside it was derived, so the two disagreed whenever the ceiling fell under
->   16. The block advised climbing to 256 on a deck whose ranks empty long
->   before that.
->
-> Both are now derived from the same picker (`job-contracts.md § 3.3`). The
-> shape of the fix is this section's own rule seen once more: **whatever
-> derives the value derives the bound**, so there is one number and not two
-> that can drift.
->
-> > **And on 2026-08-11 that fix needed a correction of its own.** It wrote the
-> > ceiling as `floor(n_atoms / mpi_np)` — **atoms** — while the value beside it
-> > came from `10 × n_atoms`, the estimated orbital count. A block distributes
-> > the **Hamiltonian**, so **orbitals is the quantity** (user's call;
-> > [`tuning.md § 2.11`](?doc=engines/tuning.md)), and the bound is
-> > `floor(n_orbitals_est / mpi_np)`.
-> >
-> > **Which also shrinks the claim this bullet used to make.** *"Most
-> > small-and-wide runs, not a corner"* was true of the atom reading, where the
-> > ceiling drops under 16 as soon as ranks pass `n_atoms/16`. Under orbitals it
-> > takes ranks past **~0.6 × the atom count** — a small molecule on a big node.
-> > Still real, still worth fixing, and **ten times rarer than the sentence
-> > said**. Two documents held one derivation and neither noticed they had
-> > written different arithmetic, which is § 10.4 of
-> > [`architecture.md`](?doc=execution/architecture.md) happening to this very
-> > paragraph.
+**A deck meets only the launch it was rendered for.** `prep` renders the deck
+and the launch together; `prep` warns and `launch` refuses a deck whose recorded
+`mpi_np` differs from the job's (`jobset/agreement.py`), and the way back is the
+checkpoint saved before that prep and a new prep
+([`job-system.md`](?doc=execution/job-system.md) § 5.0). A benchmark uses the
+same block, because each of its trials is rendered at its own point.
 
 ---
 
@@ -1818,10 +1769,12 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   separate runs and nothing joins them — but the naming rule stands on its own
   and stands harder: separation is now the only thing keeping them readable.)*
   **The rule: a run's log is named for the deck that produced it** —
-  `<label>_<NN>_<name>.molwatch.log` beside `<label>_<NN>_<name>.fdf`. One
+  `<label>_<NN>_<name>.molwatch.log` beside `<label>_<NN>_<name>.fdf`, and in
+  the flat shape, where a stage's runs share its folder, the run's number
+  after it (`-run<N>`, `job-contracts.md` § 2.2). One
   naming, derived rather than declared, so there is nothing to keep in step.
-  **Landed 2026-08-10**: `molwatch_log_basename` takes the stage's artifact
-  token, the same one the deck carries, and every reader reads it back
+  **Landed 2026-08-10**: the stage's names (`runfiles.RunNames`; the helper
+  `molwatch_log_basename` until 2026-10-06) take the stage's artifact token, the same one the deck carries, and every reader reads it back
   through the one grammar, `runfiles.parse`, with the run's label rather
   than keeping a second regex *(through `identity.parse_stage_token` until
   2026-10-04)*.

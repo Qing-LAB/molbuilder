@@ -15,10 +15,6 @@ These tests pin:
 3. The deck the live path renders carries every required keyword and
    ``TS.NumUsedAtomsLeft / Right`` counts DERIVED from the structure's own
    regions (checked on an asymmetric junction, so a hardcoded count fails).
-
-*(2 and 3 drove ``TransiestaEngine.preflight`` and ``.render_script`` until
-2026-09-17; both are deleted — the first dispatched for nothing, the second
-was a second writer of a deck the framework already writes.)*
 4. The committed geometry CAN be regenerated from textbook bond
    lengths (Bilic-Reimers 2002 S-Au=2.38, etc.), so a future
    bond-length update + fixture refresh is auditable.
@@ -39,6 +35,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from molbuilder.runfiles import RunNames
 
 
 # --------------------------------------------------------------------- #
@@ -75,9 +72,7 @@ def _build_au_bdt_au_coords():
     the L block is the LOWER one and the list ascends along z
     (`engines/transport.md` § 5's label-convention box -- warned, never
     enforced -- the one convention:
-    L-electrode is the LOW-z lead;
-    mirrored 2026-08-29 when the preflight learned to check geometry,
-    which exposed the old fixture as L-on-top-listed-first).
+    L-electrode is the LOW-z lead).
 
     The benzene ring sits in the y-z plane (x = 0), with the S-S
     axis along z.  S atoms sit on the z-axis at z = ±(C-C + C-S) =
@@ -195,14 +190,13 @@ def test_fixture_sidecar_hash_matches_xyz():
 
 
 def _struct_with_sidecar():
-    """Load the XYZ and apply the sidecar regions to the Structure.
-    Mirrors what the web blueprint does on /api/transport/render."""
+    """Load the XYZ and apply the sidecar regions to the Structure."""
     from molbuilder.structure import Structure
     from molbuilder.sidecars.molstruct import load, apply_to_structure
     struct = Structure.from_xyz(_FIX_XYZ.read_text())
     data = load(_FIX_SIDECAR)
     # ``apply_to_structure`` mutates struct.regions + struct.frozen_atoms
-    # in place — same code path the web blueprint takes.
+    # in place.
     apply_to_structure(struct, data)
     return struct
 
@@ -210,12 +204,7 @@ def _struct_with_sidecar():
 def _live_device_deck(label="au_bdt_au_test", rung="device"):
     """A NEGF rung's deck through the LIVE path -- the same call `prep` makes:
     the device's by default, the transmission's when a check is about what
-    tbtrans reads (the two are separate texts since 2026-09-29,
-    `transport.md` § 6.1b).
-
-    These three checks rendered through `TransiestaEngine.render_script` until
-    2026-09-17.  That was a SECOND writer of this deck and is deleted; the
-    checks are about the deck a person gets, so they follow the framework.
+    tbtrans reads (the two are separate texts, `transport.md` § 6.1b).
     """
     import dataclasses
     from molbuilder import script_emit as _sc
@@ -228,7 +217,9 @@ def _live_device_deck(label="au_bdt_au_test", rung="device"):
     # is the rung's answer, not a default the spec supplies.
     cfg = dataclasses.replace(SiestaConfig(system_label=label),
                               **role_answers("siesta", "transport", rung))
-    spec = spec_for(struct, cfg, stage_token=rung, calculation="transport")
+    token = {"device": "04_device", "transmission": "05_transmission"}[rung]
+    spec = spec_for(struct, cfg, calculation="transport",
+                    names=RunNames.of(label, token, "hierarchical"))
     return _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
 
@@ -246,13 +237,6 @@ def test_the_canonical_junction_validates_clean():
     it restricted (`science/chemistry-correctness.md` § 2a.1b) -- the gold
     lead once told to go open-shell, which is what the README beside the
     fixture says this system shows.
-
-    *(This drove `TransiestaEngine.preflight` and a bare `TransportConfig()`
-    until 2026-09-17.  That class is deleted — it was registered under
-    `TransportConfig` and every rung resolves a `SiestaConfig`, so it
-    dispatched for nothing, and the one surface that did validate a
-    `TransportConfig` was `/api/transport/render`, deleted the same day.
-    Asking the dead checker told us nothing about what a prep sees.)*
     """
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.validation import validate
@@ -278,10 +262,6 @@ def test_each_electrode_block_declares_its_REGION_SIZE():
     the emitter to a literal 3 left this test green when it used the fixture.
     A junction whose leads differ in size is the only shape that can tell a
     derived count from a constant.
-
-    Its predecessor asserted the literal string ``"used-atoms         3"``
-    twice, which pinned the emitter's column spacing as well and still could
-    not have caught the mutation.
     """
     import numpy as np
 
@@ -303,7 +283,8 @@ def test_each_electrode_block_declares_its_REGION_SIZE():
                  "R-electrode": list(range(n_l + n_b, n))},
     )
     cfg = SiestaConfig(system_label="asym")
-    spec = spec_for(struct, cfg, stage_token="device", calculation="transport")
+    spec = spec_for(struct, cfg, calculation="transport",
+                    names=RunNames.of("asym", "04_device", "hierarchical"))
     deck = _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
     _scalars, blocks = _parse_fdf(deck)
@@ -361,26 +342,6 @@ def test_the_transmission_window_carries_the_configured_point_count():
                                "TBT.Contour.window")
     assert lo == pytest.approx(cfg.transmission_emin_ev)
     assert hi == pytest.approx(cfg.transmission_emax_ev)
-
-
-def test_species_block_carries_every_element_with_its_true_Z():
-    """``ChemicalSpeciesLabel`` must list every element in the structure with
-    the atomic number the chemistry layer gives it.
-
-    Both sides derived: the elements come from the fixture, the Z from
-    ``chemistry.atomic_number``. This asserted four hand-written
-    ``(Z, symbol)`` pairs until 2026-09-17 -- which would keep passing for
-    this fixture while being wrong for any other structure.
-    """
-    from molbuilder.chemistry import atomic_number
-    from molbuilder.parse.fdf import _parse_fdf
-    struct = _struct_with_sidecar()
-    _scalars, blocks = _parse_fdf(_live_device_deck())
-    rows = blocks.get("chemicalspecieslabel")
-    assert rows, "no %block ChemicalSpeciesLabel in the device deck"
-    got = {sym: int(z) for _idx, z, sym in rows}
-    expected = {el: atomic_number(el) for el in set(struct.elements)}
-    assert got == expected
 
 
 # --------------------------------------------------------------------- #

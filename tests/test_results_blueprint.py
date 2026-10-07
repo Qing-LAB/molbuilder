@@ -49,8 +49,7 @@ class TestResultsRoute:
 
     def test_page_has_single_inspector_host(self, web):
         """The registry-driven architecture mounts every inspector
-        inside ONE host element.  The previous 5-panel layout was
-        a different (now-retired) design."""
+        inside ONE host element."""
         body = web.get("/results").get_data(as_text=True)
         assert 'id="inspector-host"' in body
         # The fallback content lives inside the host until the
@@ -274,9 +273,7 @@ class TestPartialTrajectoryInspectorEndpoint:
         "force-plot",              # Plotly chart: max force
         "scf-energy-plot",         # Plotly chart: SCF history (hidden when no data)
         # The viewer + frame bar + selection/atom-pick UI + playback
-        # controls all moved INTO MolView (task #34): the partial no
-        # longer declares #viewer, the frame strip, #inspect-*, #speed/
-        # #loop, #show-cell, or #save-frame.  See
+        # controls live in MolView (task #34).  See
         # test_trajectory_inspector_partial.py for the authoritative set.
     )
 
@@ -472,19 +469,16 @@ class TestPartialSpectraInspectorEndpoint:
         spectra inspector JS queries via $().  A drift between this
         partial and the inspector's selectors silently breaks the
         inspector on /results.  We sample the most-load-bearing ids
-        from the inspect-side functions in static/spectra/viewer.js
-        (and, after step 2.4 lands, lib/spectra/core.js).
+        from the inspect-side functions in lib/spectra/core.js.
     """
 
     # Hand-picked from the inspect-side surface of
-    # static/spectra/viewer.js -- a representative slice covering
+    # lib/spectra/core.js -- a representative slice covering
     # every functional area (load controls, results summary, chart,
     # modes table + filter + CSV, mode viewer + animation, ES bar
-    # diagram).  Each id is queried by ``els.<key> = document.
-    # getElementById(...)`` near the top of the IIFE.
+    # diagram).
     REQUIRED_IDS = (
         # The run's progress: the status line and the phase dots (the
-        # path box and its three buttons went on 2026-09-28 -- the
         # dropdown is the one route to a file, web/spectra.md § 7).
         "watch-status",
         "phase-indicator",
@@ -509,10 +503,8 @@ class TestPartialSpectraInspectorEndpoint:
         "spectrum-controls",
         "spectrum-absent",
         # The intensity floor, and the methods block the spectrum is
-        # reported with.  Both arrived with the one-view rewrite
-        # (b337f91c) and the contract list was not extended with them,
-        # so this class failed on main until 2026-09-14.  All six are
-        # live: `lib/spectra/core.js` binds every one through `$()`.
+        # reported with.  All six are live: `lib/spectra/core.js` binds
+        # every one through `$()`.
         "display-floor",
         "display-floor-out",
         "methods-block",
@@ -608,13 +600,9 @@ class TestPartialSpectraInspectorEndpoint:
 
     def test_partial_has_no_undocumented_ids(self, web):
         """Bidirectional contract pin: every id in the partial body
-        must be in ``REQUIRED_IDS``.  Pre-2026-06-13 only the one-way
-        check existed; new template additions could drift in without
-        the test set being updated, defeating the "explicit contract"
-        invariant the trajectory-partial test pins.  Per
-        ``docs/process/testing.md`` § 8.8 the partial-pin tests
-        should mirror ``TestPartialIntegrity::test_partial_declares_*``
-        in both directions."""
+        must be in ``REQUIRED_IDS``, so a template addition cannot drift
+        in without the test set being updated -- the "explicit contract"
+        invariant the trajectory-partial test pins."""
         import re
         body = web.get("/partials/spectra-inspector").get_data(as_text=True)
         actual = set(re.findall(r'id="([^"]+)"', body))
@@ -672,54 +660,27 @@ class TestPartialSpectraInspectorEndpoint:
 
 
 class TestSpectraIssuesPanelSeverityCoverage:
-    """PINS: task #304's invariant — an ``info``-severity finding (the Pattern-B
-    regions notice, and anything future) must be VISIBLE on the Spectra panel,
-    never filtered out — now that the renderer it originally guarded is gone.
-
-    HISTORY, because this class is a worked example of pin rot.  #304 fixed
-    ``lib/spectra/core.js``, which filtered the issues array into ``errs +
-    warns`` and silently dropped ``info``.  The guard was written as two
-    SOURCE-TEXT greps: one for ``i.severity === "info"`` and ``.concat(infos)``
-    in that renderer, one for ``.issue.info`` colour rules in
-    ``spectra/style.css``.  On 2026-07-29 the per-tab renderers were replaced by
-    the single ``lib/validation-findings.js`` (contract R2,
-    docs/science/validation.md § 4.1) and the page's second row vocabulary
-    (``.issue`` / ``.badge``) was deleted with it — so both greps failed while
-    the invariant they protected was actually STRONGER than before.
-
-    A source-text pin outlives the code it describes; that is precisely what
-    makes it residue-prone.  These are behaviour + one-home pins now:
+    """PINS: task #304's invariant — an ``info``-severity finding must be
+    VISIBLE, never filtered out.
 
       * the RENDERING half — an ``info`` finding reaching the panel, and an
         unrecognised severity being coerced to ``info`` rather than dropped — is
         pinned against the shared module in
         ``tests/test_validation_findings_js.py::TestSeverityIsUniform``, executed
         under node, not grepped;
-      * this class pins that the Spectra page delegates to that module (so the
-        behaviour above governs it) and that ``info`` has visible styling in the
-        ONE stylesheet that owns the row vocabulary.
+      * this class pins that ``info`` has visible styling in the ONE
+        stylesheet that owns the row vocabulary.
     """
 
-    # test_the_spectra_page_delegates_to_the_shared_renderer retired
-    # at P3: the spectra findings panel left with the Generate flow
-    # (parameter checks run in Task setup now), so there is no
-    # renderer on this page to delegate.  The shared module's own
-    # severity guarantees stay pinned below and in
-    # test_validation_findings_js.py.
-
     def test_info_severity_is_visibly_styled_in_its_one_home(self):
-        """The row vocabulary is styled once — in lib/page-shell.css since
-        2026-09-11.  An ``info`` finding must be distinguishable there; the
-        original concern ("unstyled blocks") applies to whichever sheet owns
-        the rows.
+        """The row vocabulary is styled once — in lib/page-shell.css.  An
+        ``info`` finding must be distinguishable there.
 
-        THE OWNER MOVED, and that is the point of the move: these rules lived
-        in `form-components.css`, which only the FORM pages load, while the
-        renderer draws for every surface — `/results` loads no form sheet and
-        mounts MolView, whose notices go through the same module, so the rows
-        arrived there with no design at all.  `page-shell.css` is the sheet
-        every page has, which is the argument `ui-contract.md` § 5 already
-        makes for `.status.error`."""
+        The renderer draws for every surface — `/results` loads no form sheet
+        and mounts MolView, whose notices go through the same module — so the
+        rows are styled in `page-shell.css`, the sheet every page has, which
+        is the argument `ui-contract.md` § 5 already makes for
+        `.status.error`."""
         from pathlib import Path
         root = Path(__file__).resolve().parents[1]
         shared = (root / "molbuilder/web/static/lib/page-shell.css"
@@ -741,7 +702,7 @@ class TestSpectraIssuesPanelSeverityCoverage:
 
 
 class TestTheContractEndpoint:
-    """/api/results/contract (archive/2026-09-01-structure-info-plan.md I5): the
+    """/api/results/contract: the
     contract a run's own deck states (`model/parse.md` § 5b).  Isolated onto
     a tmp projects root -- tests never touch the real tree."""
 
@@ -754,11 +715,6 @@ class TestTheContractEndpoint:
         from molbuilder.web.app import create_app
         return root, create_app(config={}).test_client()
 
-    # `test_a_deck_beside_the_structure_answers` retired 2026-10-04 (W56
-    # review, ruling 1): it wrote a structure and a deck into a bare folder
-    # and read the contract off "the one deck beside it".  A run's contract
-    # is its own deck's, through the run door; both doors answering it for
-    # a measured run is `test_structure_info_bridge.py`'s.
 
     def test_a_directory_with_no_run_reports_no_run_state(self, isolated):
         """`run_status` cannot say *there is no run here*.
@@ -807,21 +763,16 @@ class TestTheContractEndpoint:
         * each file says what it is: the attempt's deck is the catalogue's,
           its launch record not there yet;
         * a BENCHMARK TRIAL's folder is a run of ours too, pending: prep
-          marks it as it marks a stage's attempt (§ 1.4a).  *(Its folders
-          carried no record until 2026-10-04, so the run door read a
-          trial as a folder nothing marks.)*
+          marks it as it marks a stage's attempt (§ 1.4a).
 
         *(The root's own PRODUCT -- a transport calculation's I–V record --
-        is transport's own case, on the minimal junction (plan Q5–Q7).  This
-        test laid one by hand, under a description `read_task` refuses, until
-        2026-10-04; and a prepped stage's pending state was asked of a deck
-        laid by hand.)*
+        is transport's own case, on the minimal junction (plan Q5–Q7).)*
         """
         from conftest import write_machine_record
-        from support.road import describe_h2, jobset
+        from support.road import describe_calculation, jobset
         root, client = isolated
         write_machine_record()
-        bundle = describe_h2(tmp_path, monkeypatch)
+        bundle = describe_calculation(tmp_path, monkeypatch)
         got = jobset("prep", "run", "coarse", "--bundle", bundle,
                      "--target", "this")
         assert got.exit_code == 0, got.output
@@ -850,10 +801,6 @@ class TestTheContractEndpoint:
                           + str(trial / "run-0")).get_json()
         assert body["place"]["role"] == "run", body["place"]
         assert body["status"]["state"] == "pending", body["status"]
-
-    # `test_a_measured_run_of_ours_is_answered_by_the_run_door` moved to the e2e
-    # tier 2026-10-06: the folder answer of a flat run made on the road with the
-    # real SIESTA, `tests/test_siesta_flat_run_e2e.py` (`process/testing.md` § 6).
 
 
     def test_no_deck_answers_null(self, isolated):

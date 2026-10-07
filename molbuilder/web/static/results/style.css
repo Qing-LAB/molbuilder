@@ -14,8 +14,8 @@
  *                              one-off surfaces
  *
  * Out of scope (handled by inspector-specific stylesheets):
- *   * lib/trajectory/trajectory-inspector.css -- trajectory's viewer-card / ctab /
- *     plots-row / frame-strip etc.  Those are LARGER concrete elements
+ *   * lib/trajectory/trajectory-inspector.css -- trajectory's viewer-card /
+ *     plots-row etc.  Those are LARGER concrete elements
  *     that wouldn't benefit from the generic .inspector-section frame.
  *   * lib/inspectors/spectra.css -- the spectra inspector partial's
  *     .modes-table / .mode-viewer-wrap / .spectrum-chart etc.  Same
@@ -39,11 +39,9 @@
      * their natural flow. */
     max-width: 1200px;
     margin: 0 auto;
-    /* PR 5 (2026-06-17 user-report-2): the system-load monitor moved
-     * INSIDE this flow container (see results.html), so the previous
-     * scroll-padding-bottom + padding-bottom: var(--monitor-height)
-     * compensations are no longer needed.  The monitor takes its own
-     * height naturally, never overlaps content. */
+    /* The system-load monitor sits INSIDE this flow container (see
+     * results.html): it takes its own height naturally, never overlaps
+     * content. */
     padding: var(--space-lg) var(--space-md);
     display: flex;
     flex-direction: column;
@@ -126,9 +124,7 @@
    extensions" cheatsheet for the user.
    =========================================================== */
 
-/* On page-shell's `.card`, the surface every viewer on this tab sits on; it
- * restated that surface by hand -- with a softer border and its own inset --
- * until 2026-09-28, the same restatement `.inspector-card` had. */
+/* On page-shell's `.card`, the surface every viewer on this tab sits on. */
 .results-fallback {
     color: var(--text-primary);
 }
@@ -210,8 +206,7 @@
 }
 
 /* Source-files hint — secondary block in the fallback explaining
- * that source listings live on the sidebar's View button (task
- * #309, 2026-06-09).  Visually softer than the main supported-list
+ * that source listings live on the sidebar's View button.  Visually softer than the main supported-list
  * so the user reads it as "alternate path" rather than "primary
  * action." */
 .results-fallback-source-hint {
@@ -256,12 +251,10 @@
    tokens above keep them visually compatible.
    =========================================================== */
 
-/* THE SURFACE IS page-shell's `.card`, which every inspector card now also
+/* THE SURFACE IS page-shell's `.card`, which every inspector card also
  * carries (`ui-contract.md` § 4: ".card is the canonical surface ... and it
- * is the only one").  This rule restated it -- a softer border and a wider
- * inset than `.card`'s -- so sibling boxes on one tab showed two border tones
- * and three insets (the Results tab's design review, 2026-09-28).  What
- * stays here is what is the inspector's own: the spacing between cards. */
+ * is the only one").  What stays here is what is the inspector's own: the
+ * spacing between cards. */
 
 .inspector-card + .inspector-card {
     /* Inspector mount points have at most one card on /results
@@ -386,7 +379,7 @@
 .inspector-error {
     padding: var(--space-md) var(--space-lg);
     /* The error colour at 8 %, from its token rather than a second spelling
-     * of it (the literal stood here until 2026-09-28). */
+     * of it. */
     background: color-mix(in srgb, var(--error) 8%, transparent);
     border: 1px solid var(--error);
     border-radius: var(--radius);
@@ -406,7 +399,7 @@
 
 /* ===========================================================
    Source inspector: read-only file viewer with paginated /
-   range-read scroll (task #119, 2026-06-02).
+   range-read scroll.
    ===========================================================
 
    DOM layout:
@@ -497,8 +490,8 @@
     overflow: hidden;
 }
 
-/* Slot the embed mounts into; the .selection-measurement-overlay
- * chip child is absolute-positioned, so the slot needs to be a
+/* Slot the embed mounts into; the measurement chip is
+ * absolute-positioned, so the slot needs to be a
  * positioning context to anchor the chip at the canvas corner
  * rather than the page body. */
 .structure-card .structure-viewer-slot {
@@ -513,11 +506,8 @@
 }
 
 /* ============================================================
- * Result-list bar (moved here 2026-06-09, task #303 — was in
- * lib/trajectory/trajectory-inspector.css since 2026-05-30).  The dropdown
- * is the /results page-level "Result file" picker; rules
- * co-located with results-specific styling so a future
- * trajectory CSS cleanup can't silently break the bar.
+ * Result-list bar.  The dropdown is the /results page-level
+ * "Result file" picker.
  *
  * The picker is the SOLE inspector dispatcher on /results: the
  * dropdown and Reload are the only triggers for a mount.  Tab
@@ -551,12 +541,11 @@
     flex-shrink:  0;
 }
 
-/* Refresh button — sits between the dropdown and the meta line.
- * Task #301 (2026-06-09): explicit user-driven rescan, since the
- * picker no longer auto-rescans on sidebar onChange.  Visual
- * weight low (ghost-style) so the dropdown stays the primary
- * affordance.  Border bumped to ``--accent`` 2026-06-09 (task
- * #303) for better discoverability against the dark card. */
+/* Refresh button — sits between the dropdown and the meta line:
+ * an explicit user-driven rescan, since the picker does not rescan
+ * on sidebar onChange.  Visual weight low (ghost-style) so the
+ * dropdown stays the primary affordance; an ``--accent`` border for
+ * discoverability against the dark card. */
 .result-list-refresh {
     flex-shrink:     0;
     padding:         var(--space-xs) var(--space-md);
@@ -630,22 +619,12 @@
     font-style:   normal;
 }
 
-/* The header is NOT hidden, and that is load-bearing.
- *
- * It was `display: none` whenever the dropdown was visible -- which is
- * always -- on the grounds that the readout was "redundant, the selected
- * option carries the same filename".  The option carries the BASENAME; the
- * folder appeared nowhere, and on 2026-08-04 the panel rendered a run from
- * a folder the user had left with nothing on screen saying so.  Since
- * 2026-09-19 the panel no longer follows the sidebar at all, so naming its
- * folder is the whole reason that is safe.  Do not re-hide this. */
+/* The header is NOT hidden, and that is load-bearing: the selected option
+ * carries only the BASENAME, and the panel does not follow the sidebar, so
+ * naming its folder is the whole reason that is safe.  Do not re-hide this. */
 .results-file-readout.is-diverged {
     /* `--warn-soft` is the palette's PASSIVE FLAG tone (tokens.css: "--warning
-     * = call-to-action, --warn-soft = passive flag"), which is what this is.
-     * It read `var(--warn-fg, #b26b00)` until 2026-09-19 -- a token that
-     * exists nowhere, so the hardcoded fallback always won and the warning
-     * state rendered at 3.84:1 against the card, DIMMER than the 13.28:1
-     * normal text it was meant to stand out from. */
+     * = call-to-action, --warn-soft = passive flag"), which is what this is. */
     color: var(--warn-soft);
     font-weight: 600;
 }
@@ -691,9 +670,8 @@
 }
 
 
-/* The word shown while an inspector loads.  Written by `results/viewer.js`
- * and unstyled until 2026-08-23, so it inherited whatever the host gave it
- * and read as content rather than as a wait. */
+/* The word shown while an inspector loads, written by `results/viewer.js`:
+ * it reads as a wait rather than as content. */
 .results-loading-text {
     color: var(--text-muted);
     font-size: var(--text-sm);

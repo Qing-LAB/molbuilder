@@ -2,8 +2,7 @@
 thing a test may put beside it: a machine whose record names queues, with a
 scheduler that queues nothing.  A run is made on the road or not at all: an
 output copied into a stage's folder, or a conclusion written by hand, is a
-run that never happened (user, 2026-10-03; `support.road.a_finished_run` and
-every test built on it were retired that day).
+run that never happened (user, 2026-10-03).
 
 WHY THIS FILE EXISTS.  A test drives the designed workflow (user, 2026-09-23:
 *"tests should be using our established jobset workflow, unless you have a
@@ -14,9 +13,9 @@ from the road it imitates.  The steps live here once.
 * :func:`jobset` -- the verbs, as a person types them;
 * :func:`each_is_taken` -- every command an output prints, typed back as
   printed (`job-system.md` § 5.3: what molbuilder prints, you can type);
-* :func:`describe_h2` -- `jobset init` of a held H2 in a box, SIESTA, the
-  shipped `publishable` ladder (coarse, medium; tight disabled) -- or
-  PySCF's own;
+* :func:`describe_calculation` -- `jobset init` of a held H2 in a box, or
+  the structure a row gives, SIESTA, the shipped `publishable` ladder
+  (coarse, medium; tight disabled);
 * :func:`a_machine_with_queues` -- a machine record naming queues, and an
   `sbatch` on PATH that writes down every call -- where it was made and
   what it said -- and refuses it: the basic tests send nothing to a
@@ -67,13 +66,31 @@ def each_is_taken(output: str) -> int:
     return len(printed)
 
 
-def describe_h2(tmp_path, monkeypatch, *, shape: str = "hierarchical",
-                name: str = "H2", calculation: str = "optimization",
-                engine: str = "siesta") -> Path:
-    """`jobset init` on a held H2 in a box -- the bundle, at
+#: Where the road writes its structure, under the projects tree.
+STRUCTURE = "P/structure/structure.xyz"
+
+#: THE ROAD'S STRUCTURE when a row names none: H2, its first atom held, in a
+#: 10 Å box -- the smallest calculation that shows a mechanism.
+H2 = {"elements": ["H", "H"],
+      "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]],
+      "regions": {"frozen_atoms": [0]},
+      "cell": [10.0, 10.0, 10.0]}
+
+
+def describe_calculation(tmp_path, monkeypatch, *,
+                         shape: str = "hierarchical", name: str = "H2",
+                         calculation: str = "optimization",
+                         engine: str = "siesta",
+                         structure: "dict | None" = None,
+                         stage_strategy: "str | None" = None) -> Path:
+    """`jobset init` on ``structure`` -- :data:`H2` unless given: its
+    ``elements``, ``positions`` (Å), ``regions`` (``frozen_atoms`` among
+    them), its box's three edges, ``cell`` (Å), and each axis's
+    ``axis_kind`` (isolated unless given) -- the bundle, at
     ``<projects>/P/<calculation>/<name>``: a SIESTA optimization's shipped
-    `publishable` ladder, a vibration's own (`relax`, `freq`), or PySCF's
-    own ladder.
+    `publishable` ladder, unless ``stage_strategy`` names another (``""``
+    for the one stage the template alone describes), or a vibration's own
+    (`relax`, `freq`).
 
     ITS RUN CARD STATES THE LAUNCH SHAPE -- two ranks and one thread for
     SIESTA, one thread for PySCF -- as a described calculation does: a run
@@ -86,23 +103,27 @@ def describe_h2(tmp_path, monkeypatch, *, shape: str = "hierarchical",
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
     (tree / "pseudopotential").mkdir()
-    write_pseudos(tree / "pseudopotential", ["H"])
+    s = structure or H2
+    write_pseudos(tree / "pseudopotential", sorted(set(s["elements"])))
     StructureCodec().write(
-        Structure(elements=["H", "H"],
-                  positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]]),
-                  regions={"frozen_atoms": [0]},
-                  cell=np.diag([10.0, 10.0, 10.0]),
-                  axis_kind=("isolated",) * 3),
-        tree / "P" / "structure" / "h2.xyz")
+        Structure(elements=list(s["elements"]),
+                  positions=np.array(s["positions"], dtype=float),
+                  regions={k: list(v)
+                           for k, v in s.get("regions", {}).items()},
+                  cell=np.diag([float(a) for a in s["cell"]]),
+                  axis_kind=tuple(s.get("axis_kind", ["isolated"] * 3))),
+        tree / STRUCTURE)
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
     siesta = engine == "siesta"
-    r = jobset("init", "--structure", "P/structure/h2.xyz",
+    strategy = (stage_strategy if stage_strategy is not None
+                else "publishable" if calculation == "optimization" and siesta
+                else "")
+    r = jobset("init", "--structure", STRUCTURE,
                "--bundle", f"P/{calculation}/{name}", "--engine", engine,
                "--shape", shape, "--name", name,
                "--calculation", calculation,
-               *(("--stage-strategy", "publishable")
-                 if calculation == "optimization" and siesta else ()),
+               *(("--stage-strategy", strategy) if strategy else ()),
                *(("--psml-lib", "pseudopotential") if siesta else ()))
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / calculation / name
@@ -124,9 +145,7 @@ def a_machine_with_queues(tmp_path, monkeypatch, domains,
 
     NO SCHEDULER TEXT (user, 2026-10-06: *"there should be no assumption
     what so ever about the text returned by slurm ... the whole default test
-    set should never be based on fabricated text"*): this `sbatch` answered
-    ``--test-only`` with Sol's prediction, refused a named shelf with Sol's
-    error and gave every other line the job id ``4242`` until then.  What a
+    set should never be based on fabricated text"*).  What a
     scheduler answers is read where one answers -- the field tier
     (`tests/field/`, `testing.md` § 0).  Refusing also keeps the basic suite
     from sending a real job when it runs on a cluster's login node."""
@@ -182,7 +201,7 @@ def strip_preamble_activation(text: str) -> str:
     person's machine would run it, short of entering an environment."""
     pre = text.find("# --- Baked preamble")
     assert pre >= 0, "baked-preamble marker not found in wrapper"
-    # Since U10 the bootstrap AND the post-activation state dump each sit
+    # The bootstrap AND the post-activation state dump each sit
     # inside a help guard (if [ "$_mb_help" = "0" ]); the cut must span
     # from the FIRST guard's opener through the SECOND guard's close, or
     # the truncated wrapper keeps an unopened fi.
@@ -195,9 +214,7 @@ def strip_preamble_activation(text: str) -> str:
     # ``set -u`` is restored explicitly: the real wrapper disables
     # nounset around the activation (NVCC_PREPEND_FLAGS) and re-enables
     # it INSIDE the region cut here, so without this line the stripped
-    # harness runs everything after the preamble with nounset off --
-    # which is how the unbraced-$_warm_label death (redo NEW-1) stayed
-    # invisible to every executed test in this file.
+    # harness runs everything after the preamble with nounset off.
     return (
         text[:start]
         + "# preamble + activation stripped for CI (no conda here).\n"
@@ -252,7 +269,9 @@ def calls_made(calls: Path):
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
 #      `header_absent`), the deck (`deck`), the run script (`run_sh`), the
 #      plan the prep wrote, `STAGE-PLAN.md` (`plan`), each
-#      with a `_lacks` twin; the `sbatch` line launch shows (`line`,
+#      with a `_lacks` twin -- and the first three with an `_order` twin
+#      (lines standing in that order) and a `_once` twin (lines standing
+#      once each); the `sbatch` line launch shows (`line`,
 #      `line_lacks`); a benchmark's trials (`bench_gres`,
 #      `bench_header_lacks`);
 #   3. WHAT THE RUN SCRIPT DOES HERE -- its dry run, given the GPUs the
@@ -283,13 +302,10 @@ def calls_made(calls: Path):
 # and over `record` when the row gives them; a `--name` among the flags names
 # the target.  A probe given as a table, `{flags = [...], answers = "n\n"}`,
 # runs WITHOUT `--yes` and is typed `answers` at its questions ("" is EOF);
-# `record_text` -- a file already at the path the first probe writes, as
-# text (a record that does not read); `probe_refused` -- the last probe is
+# `probe_refused` -- the last probe is
 # refused, saying each of these, and the row ends there.  A probe row's
 # machine holds the `molbuilder.json` `envs init-config` leaves -- its
 # `env_init` -- unless `machine_config` gives the file;
-# `calculation_record` -- the calculation's own copy of its
-# machine's record, there before prep (a table, or text for a broken file);
 # `saved_first` -- the folder's state saved before anything else, as a person
 # saves it (`molbuilder checkpoint init`); `before` -- the verbs a person typed
 # first, each a list of words (`["prep", "run", "coarse"]`), the calculation
@@ -309,7 +325,12 @@ def calls_made(calls: Path):
 # row's prep names, `coarse` unless given; `answers` -- what
 # the person types at the row's prep's question ("" is EOF, no terminal);
 # `calculation` -- the kind `jobset init` describes, an optimization unless
-# given; `shape` -- the shape it describes, hierarchical unless given.
+# given; `shape` -- the shape it describes, hierarchical unless given;
+# `structure` -- the structure it describes, H2 unless given
+# (`describe_calculation`: `elements`, `positions`, `regions`, `cell`,
+# `axis_kind`); `stage_strategy` -- the ladder `jobset init` is told,
+# `publishable` for a SIESTA optimization unless given, `""` for the one
+# stage the template alone describes.
 #
 # AFTER PREP, whatever it answered: the folders it left (`made`, paths
 # under the calculation that exist; `made_lacks`, ones that do not), the
@@ -326,13 +347,11 @@ def calls_made(calls: Path):
 # folder's saved states, newest first
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
 # leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
-# (`status_says`, and what it does not, `status_lacks`), the decisions
+# (`status_says`, and what it does not, `status_lacks`), and the decisions
 # its ledger holds and does not hold (`ledger_holds`, `ledger_lacks` -- a
 # decision, or a verb's, `"launch continues"`; in `ledger_holds`, a table
-# names one with its facts, `{decision = "launch launched", time = "3h"}`),
-# and what a stage's newest launch record holds (`run_json`: `stage`, and
-# `holds`, `run.json`'s fields as it nests them); a prep that was not
-# refused says nothing of `said_lacks`.
+# names one with its facts, `{decision = "launch launched", time = "3h"}`);
+# a prep that was not refused says nothing of `said_lacks`.
 # THEN, refused or not: the description saved through Task setup's Save with
 # `saved`'s fields changed (`{shape = "flat"}`) -- refused, with
 # `save_refused`'s words, or taken.  A REFUSED prep, its remedy done: this
@@ -364,16 +383,6 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
             "activation": "conda activate", "preamble": "true"}}, **case})
         if "record" in case:
             write_machine_record(**case["record"])
-        if "record_text" in case:
-            from molbuilder.config_dir import ensure_private_dir
-            from molbuilder.scheduler import (machine_scope_path,
-                                              named_environment_path)
-            first = case["probe"][0]
-            first = first["flags"] if isinstance(first, dict) else first
-            there = (named_environment_path(first[first.index("--name") + 1])
-                     if "--name" in first else machine_scope_path())
-            ensure_private_dir(there.parent)
-            there.write_text(case["record_text"])
         from datetime import datetime, timezone
         said, named = [], []
         for step in case["probe"]:
@@ -642,8 +651,6 @@ def _road_after_prep(case, bundle) -> None:
         _road_speaks(case["speaks"], bundle)
     if "progress_log_holds" in case:
         _road_progress_log_holds(case["progress_log_holds"], bundle)
-    if "run_json" in case:
-        _road_run_json(case["run_json"], bundle)
     if "status_says" in case or "status_lacks" in case:
         st = jobset("status", "--bundle", bundle)
         assert st.exit_code == 0, _one_line(st)
@@ -678,22 +685,6 @@ def _road_after_prep(case, bundle) -> None:
             assert decision in decided, f"the ledger holds: {decided}"
 
 
-def _road_run_json(want, bundle) -> None:
-    """What a stage's newest run's launch record holds -- its `run.json`,
-    read by its one door (`runrecord.launch_record`): each field of the
-    row's ``holds``, nested as the file nests it."""
-    from molbuilder.jobset.materialize import run_dir, stage_home
-    from molbuilder.runfiles import stem
-    from molbuilder.runrecord import launch_record
-    from molbuilder.task import read_task
-    task = read_task(bundle / "task.json")
-    home = stage_home(bundle, task, want["stage"])
-    got = (launch_record(bundle, basename=stem(task.label, home.token))
-           if task.shape == "flat" else launch_record(run_dir(home.dir)))
-    assert got is not None, f"{want['stage']} has no launch record"
-    _road_holds(got, want["holds"], "run.json")
-
-
 def _road_card_written(specs, bundle) -> None:
     """Every name the Task setup card gives a stage -- the catalogue's
     `manifest`, in the calculation's shape, for the moments asked -- is a file
@@ -713,9 +704,9 @@ def _road_card_written(specs, bundle) -> None:
         at_root = [p.name for p in bundle.iterdir() if p.is_file()]
         held = ([p.name for p in (bundle / token).rglob("*") if p.is_file()]
                 if task.shape == "hierarchical" else at_root)
-        for row in manifest(task.label, token, task.engine,
-                            tuple(spec["moments"]), task.calculation,
-                            task.shape):
+        for row in manifest(task.label, token, shape=task.shape,
+                            engine=task.engine, when=tuple(spec["moments"]),
+                            calculation=task.calculation):
             if row["only"]:
                 continue
             pattern = re.sub(r"<[a-z_]+>", "*", row["name"])
@@ -763,15 +754,18 @@ def _over_base(base, mine, unset):
 
 
 def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
-    """`jobset init` of H2, then the case's template values, description
-    blocks and this machine's `molbuilder.json`."""
+    """`jobset init` of H2 or the case's own structure, then the case's
+    template values, description blocks and this machine's
+    `molbuilder.json`."""
     import dataclasses
     import json
     engine = case.get("engine", "siesta")
     calculation = case.get("calculation", "optimization")
-    bundle = describe_h2(tmp_path, monkeypatch, engine=engine,
-                         calculation=calculation,
-                         shape=case.get("shape", "hierarchical"))
+    bundle = describe_calculation(tmp_path, monkeypatch, engine=engine,
+                                  calculation=calculation,
+                                  shape=case.get("shape", "hierarchical"),
+                                  structure=case.get("structure"),
+                                  stage_strategy=case.get("stage_strategy"))
     values = (dict(table.get("siesta_template", {}))
               if engine == "siesta" else {})
     values.update(case.get("template", {}))
@@ -823,8 +817,10 @@ def _write_machine_config(case) -> None:
 
 
 def _road_lines(case, key, text):
-    """``key``'s lines are in ``text``; ``key_lacks``'s are not -- read with
-    runs of blanks as one, since a deck aligns its values in columns."""
+    """``key``'s lines are in ``text``; ``key_lacks``'s are not;
+    ``key_order``'s stand in that order -- every one of a line before the
+    first of the next; ``key_once``'s stand once each -- read with runs of
+    blanks as one, since a deck aligns its values in columns."""
     import re
     flat = re.sub(r"[ \t]+", " ", text)
     for line in case.get(key, []):
@@ -833,6 +829,16 @@ def _road_lines(case, key, text):
     for line in case.get(f"{key}_lacks", []):
         assert line not in flat, \
             f"{key}: {line!r} present in: {_one_line(text)}"
+    order = case.get(f"{key}_order", [])
+    for line in order:
+        assert line in flat, \
+            f"{key}: {line!r} missing from: {_one_line(text)}"
+    for before, after in zip(order, order[1:]):
+        assert flat.rindex(before) < flat.index(after), \
+            f"{key}: {before!r} stands after {after!r}"
+    for line in case.get(f"{key}_once", []):
+        assert flat.count(line) == 1, \
+            f"{key}: {line!r} stands {flat.count(line)} times"
 
 
 def _road_runs(bundle: Path, pattern: str) -> "list[Path]":
@@ -841,8 +847,20 @@ def _road_runs(bundle: Path, pattern: str) -> "list[Path]":
             if "bench" not in p.relative_to(bundle).parts]
 
 
+def _stage_names(bundle: Path, stage: str):
+    """The names of ``stage``'s files -- the one composer's
+    (`runfiles.RunNames`): on the calculation's label, its token, in its
+    shape."""
+    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.runfiles import RunNames
+    from molbuilder.task import read_task
+    task = read_task(bundle / "task.json")
+    return RunNames.of(task.label, stage_home(bundle, task, stage).token,
+                       task.shape)
+
+
 def _the_runs(bundle: Path, pattern: str) -> Path:
-    """The file of this pattern the run's prep wrote -- in the stage's
+    """The file of this name the run's prep wrote -- in the stage's
     folder and its attempt, one text in both."""
     found = _road_runs(bundle, pattern)
     assert found and len({p.read_text() for p in found}) == 1, found
@@ -875,11 +893,6 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     if "given_gpus" in case:
         gpus_given(tmp_path, monkeypatch, case["given_gpus"])
     bundle = _road_describe(table, case, tmp_path, monkeypatch)
-    if "calculation_record" in case:
-        from molbuilder.scheduler.record import calculation_record
-        given = case["calculation_record"]
-        calculation_record(bundle).write_text(
-            given if isinstance(given, str) else json.dumps(given))
     if "own_warm_files" in case:
         _road_own_warm_files(case, bundle)
     if case.get("saved_first"):
@@ -942,11 +955,14 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     if case.get("header_absent"):
         assert not _road_runs(bundle, "*.sbatch"), _road_runs(bundle,
                                                               "*.sbatch")
-    deck = "*.py" if case.get("engine") == "pyscf" else "*.fdf"
-    for key, pattern in (("header", "*.sbatch"), ("deck", deck),
-                         ("run_sh", "*.run.sh")):
-        if key in case or f"{key}_lacks" in case:
-            _road_lines(case, key, _the_runs(bundle, pattern).read_text())
+    deck = ".py" if case.get("engine") == "pyscf" else ".fdf"
+    for key, role in (("header", ".sbatch"), ("deck", deck),
+                      ("run_sh", ".run.sh")):
+        if any(k in case for k in (key, f"{key}_lacks", f"{key}_order",
+                                   f"{key}_once")):
+            names = _stage_names(bundle, case.get("stage", "coarse"))
+            _road_lines(case, key,
+                        _the_runs(bundle, names.name(role)).read_text())
     # ...and the plan the prep wrote, `STAGE-PLAN.md`, which says under its
     # table what this prep's hand-over took (`job-system.md` § 5.4)
     if "plan" in case or "plan_lacks" in case:
@@ -959,7 +975,10 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         asked = sorted({j["resources"]["gres"]
                         for j in json.loads(plan.read_text())["jobs"]})
         assert asked == sorted(case.get("bench_gres", asked)), asked
-        for header in plan.parent.rglob("*.sbatch"):
+        headers = sorted(plan.parent.rglob("*.sbatch"))
+        assert headers or "bench_header_lacks" not in case, \
+            "bench_header_lacks: the benchmark wrote no .sbatch"
+        for header in headers:
             _road_lines({"h_lacks": case.get("bench_header_lacks", [])}, "h",
                         header.read_text())
     # ...and the `sbatch` line(s) launch shows -- one per shelf of a
@@ -1006,7 +1025,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
 
     # 3 · WHAT THE RUN SCRIPT DOES HERE -- its dry run, given the case's GPUs
     if "given_gpus" in case:
-        script = _the_runs(bundle, "*.run.sh")
+        script = _the_runs(bundle, _stage_names(
+            bundle, case.get("stage", "coarse")).name(".run.sh"))
         script.write_text(strip_preamble_activation(script.read_text()))
         # The rank and thread counts this shell may carry are scrubbed, so
         # what resolves is the script's own chain.
@@ -1015,8 +1035,11 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
                             "SLURM_NTASKS", "SLURM_JOB_ID", "PBS_NP",
                             "MOLBUILDER_USE_MPS")}
         env.update(MB_LAUNCHED_BY="manual")
-        done = subprocess.run(["bash", str(script), "--dry-run",
-                               *case.get("run_args", [])],
+        # ITS RUN'S NUMBER, as launch gives a prepped stage's first run
+        # (`project-layout.md` § 1.6.1): the script refuses to start
+        # without one.
+        done = subprocess.run(["bash", str(script), "--run", "0",
+                               "--dry-run", *case.get("run_args", [])],
                               cwd=script.parent, capture_output=True,
                               text=True, timeout=60, env=env)
         said = done.stdout + done.stderr

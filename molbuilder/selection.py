@@ -28,7 +28,7 @@ fields, so a tree of rules is just a nested object.  Evaluation
 walks the tree and returns a :class:`frozenset` of 0-based atom
 indices; everything composes off this single shape.
 
-The grammar is intentionally small.  The five "primitive" rules
+The grammar is intentionally small.  The eight "primitive" rules
 (``All``, ``ByElement``, ``ByResidueName``, ``ByIndexRange``,
 ``ByRegion``, ``ByAtomName``, ``ByChainId``, ``ByClick``) cover every
 selection scheme the modify / spectra / transport tabs need today;

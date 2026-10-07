@@ -168,6 +168,10 @@ const FIELDS = {
     launched_at:    { label: "Launched at", fmt: utc },
     continued_from: { label: "Continued from", style: MONO,
                       none: "nothing -- it started from the structure" },
+    // A WARM RETRY'S OWN RECORD names the run it retries -- the same job,
+    // a run of its own (`running-a-job.md` § 3.5); null for a launch.
+    retry_of:       { label: "Retry of run",
+                      none: "none -- launched, not a retry" },
     // time
     run_start_local:  { label: "Started (the node's clock)", fmt: local },
     run_end_local:    { label: "Ended (the node's clock)", fmt: local },
@@ -226,8 +230,7 @@ function ordered(part) {
 /* ---- DOM ---------------------------------------------------------------- */
 
 /* The one element builder the Results tab shares, `lib/dom.js` -- a classic
- * script, so it has run before this module does.  This was a fourth copy of
- * it, byte for byte. */
+ * script, so it has run before this module does. */
 function el(tag, cls, text) {
     return NS.dom.el(tag, cls, text);
 }

@@ -1,6 +1,6 @@
 """A class the JS writes is a class some stylesheet answers.
 
-`form-components.css` has a comment on one of its rules that names this defect
+`page-shell.css` has a comment on one of its rules that names this defect
 exactly: a finding's message was *"written by every renderer and styled by
 NONE"*.  It was not the only one.  On 2026-08-23 a sweep found 21 classes that
 JavaScript assigns and no stylesheet defines, of which ten were the two modal
@@ -101,8 +101,7 @@ def test_every_class_the_js_writes_is_defined_somewhere():
 def test_every_dialog_wears_the_shared_component():
     """A `<dialog>` without `.mb-dialog` is a white box in a dark app.
 
-    There were three independent scaffolds (`web/audit-2026-08-05-tab-ui.md`
-    § C8) and only one was styled at all.  This is checked at the point of
+    This is checked at the point of
     construction because a modal is invisible until someone opens it -- the
     kind of surface a person meets on a bad day, mid-save.
     """

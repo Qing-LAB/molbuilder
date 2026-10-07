@@ -972,7 +972,7 @@ that an absent `engines` key means every engine.)*
 | every row maps to a config field | yes | **yes** |
 | `warm-files.toml` in its package | yes | **yes** — `base` · `optimization` · `vibration` |
 | identity literal declared | `SystemLabel` | **`JOB`** (`config/pyscf.py`) |
-| the seam's form-builder (`spec_for`) | `(structure, config, stage_token=)` | **matches** |
+| the seam's form-builder (`spec_for`) | `(structure, config, names=)` -- the stage's names, `runfiles.RunNames` | **matches** |
 
 **The `stage_token` argument is what makes one writer serve a ladder.** It
 suffixes a script, an engine stdout and a trajectory log so that two stages never

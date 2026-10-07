@@ -1,8 +1,7 @@
 """Peptide builder smoke tests.
 
-Skipped cleanly if PeptideBuilder isn't installed in the test
-environment.  The protonation tests additionally need OpenBabel or
-RDKit; they soft-skip with a warning if neither is available.
+The protonation tests need OpenBabel or RDKit; they skip if neither is
+available.
 """
 
 from __future__ import annotations
@@ -61,7 +60,7 @@ def test_full_protonation_keeps_heavy_atom_counts(heavy_only_arndc):
     # the total is invariant under every protonation error that matters --
     # a pH-7.4 assignment (Arg+, Asp-, N-term+, C-term-) also gives 35, and
     # so does the aldehyde-vs-acid C-terminus.  A per-residue assertion is
-    # what would discriminate; see plan.md § 11.
+    # what would discriminate.
     assert n_h >= 25
     for el in ("C", "N", "O"):
         assert s_full.elements.count(el) == heavy_only_arndc.elements.count(el)

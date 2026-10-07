@@ -16,9 +16,8 @@ from the values the steps already return.  That is the same layering
 that acted on it appends the line*.  A ``print`` per engine would be two
 writers and, within a month, two formats.
 
-**Every prep writes one**, from either door (`script-preparation.md` § 4.5;
-until 2026-10-05 only a caller passing ``pipeline_log=True`` -- the command
-line's ``--pipeline-log`` -- got one).  A route that is not a prep -- a deck
+**Every prep writes one**, from either door (`script-preparation.md` § 4.5).
+A route that is not a prep -- a deck
 rendered on its own -- holds ``None``, and ``None`` means the framework skips
 the calls.  Nothing about a generated artifact depends on it -- the log
 observes the pipeline, it is not a step in it.
@@ -27,9 +26,7 @@ observes the pipeline, it is not a step in it.
 puts its text in the plan beside every other file, written once the whole
 plan stands -- so a refused prep writes no log, and a hook that raised says
 whose it was in the error it raises (`issues.calling`; `script-preparation.md`
-§ 4.5).  *(Until 2026-10-05 every line was flushed as it was told, never
-fatal, and a refused prep left a log ending at the step that refused, with a
-``!!`` row for a hook that raised.)*
+§ 4.5).
 
 Readable, and greppable, in that order
 --------------------------------------
@@ -75,16 +72,13 @@ def log_name(label: str, token: str, engine: str, shape: str) -> str:
     """This prep's log file name.
 
     ``token`` is the stage's ``<NN>_<name>`` -- every description has a
-    stage, so an empty one is refused (it named a stageless log until
-    2026-10-06).
+    stage, so an empty one is refused.
 
     THE NAME IS THE CATALOGUE'S (`runfiles.WRITTEN`, job-contracts.md
     § 2.2): the role ``.{engine}.{shape}.pipeline.log`` on the
-    ``<label>[_<token>]`` every run file is named from, its two facts about
+    ``<label>_<token>`` every run file is named from, its two facts about
     the prep declared fields -- so the file is a row like every other file
-    molbuilder writes, and `--cold` and the cards know it.  *(Until
-    2026-10-04 the tail was spelled here beside a composed stem, and the
-    file was on no list.)*
+    molbuilder writes, and `--cold` and the cards know it.
     """
     if not token:
         raise ValueError("a prep's log is its stage's -- no stage token was "
@@ -184,10 +178,10 @@ class PipelineLog:
 
     def _row(self, kind: str, name: str, detail: Any) -> None:
         d = _flat(detail)
-        # A GUARANTEED GAP, not a hoped-for one.  `format_provenance` learned
-        # this the hard way: a name wider than the hardcoded column printed
-        # `environment/home/...` with nothing between them, in a display whose
-        # whole job is making the source legible.  A long field name here
+        # A GUARANTEED GAP, not a hoped-for one: a name wider than a
+        # hardcoded column would print `environment/home/...` with nothing
+        # between them, in a display whose whole job is making the source
+        # legible.  A long field name here
         # pushes its value right; it never runs into it.
         self._write(
             f"  {kind:<{_W_KIND}}{str(name):<{_W_NAME}} {d}".rstrip())
@@ -212,8 +206,7 @@ def config_rows(values: Any, provenance: Mapping[str, str],
     """``[(field, value, source)]`` for one resolved element, decisions first.
 
     ``provenance`` is ``ResolvedConfig.provenance`` -- built by ``resolve`` on
-    every element since floor 2 existed and, until this file, read by nothing
-    on the production route.  ``folded`` is ``render_config()``: the fields it
+    every element.  ``folded`` is ``render_config()``: the fields it
     changes are the ALLOCATION's, which no config file names and which are
     therefore the ones a reader is most likely to be surprised by.
 

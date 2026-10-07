@@ -1,9 +1,9 @@
 """The vibration calculation's deck — PySCF, on the framework's seam.
 
-Contract: ``docs/archive/2026-08-20-spectra-migration-plan.md`` § 2 (the rulings of
-2026-08-20) + `script-preparation.md` § 4 (the seam this serves).
+Contract: `engines/vibration.md` + `script-preparation.md` § 4 (the seam
+this serves).
 
-WHAT THIS IS.  ``vibration_spec(struct, cfg, stage_token)`` returns the
+WHAT THIS IS.  ``vibration_spec(struct, cfg, names)`` returns the
 :class:`~molbuilder.script_emit.DeckSpec` for ``calculation = "vibration"``:
 one deck, one run — the relaxation as its mandatory first act (geomeTRIC
 straight into the Hessian, in-process; D3's final form), ONE harmonic
@@ -14,27 +14,17 @@ INDEPENDENT toggles over shared machinery, RRHO thermochemistry into the
 artifact's v5 ``thermo`` block, the per-mode electronic-structure loop,
 and the phase-writing ``.spectra.json`` the viewer live-watches.
 
-THE LIFT (the plan's § 2: *"the old code transitions onto the new
-framework"*).  The proven science emitters are IMPORTED from
-``spectra/pyscf_script.py`` and composed here — a move, not a rewrite.
-P3 (2026-08-21) deleted the old module; the surviving emitters live in
-this package (`vibration_emitters.py`) and this file is their one
-composer.
+THE EMITTERS.  The science emitters live in this package
+(`vibration_emitters.py`) and this file is their one composer.
 
-THE LIFT BOUNDARY'S ADAPTER (kept past P3, deliberately).  P3's plan had
-it dissolving with the old module; what P3 actually showed is that the
-adapter IS the seam's right shape — the kind's science and the emitters
-both read one view, so a check and the deck it checks cannot disagree
-about a value (`science_view`'s contract).  The lifted emitters read
-four names the shared config spells differently or does not hold:
-``charge`` (the shared item is ``net_charge``) and the three frozen
-SELECTORS — which are structure-side facts here (the sidecar three-stage
-contract, `engines/overview.md` § 3), so :class:`VibrationConfigView` feeds the
-frozen indices from the STRUCTURE's own label store and everything else
-straight through.  Modifying the old emitters instead would be repatching
-the old path — the direction the rulings forbid.
+THE ADAPTER.  The kind's science and the emitters both read one view, so
+a check and the deck it checks cannot disagree about a value
+(`science_view`'s contract).  :class:`VibrationConfigView` feeds the
+frozen indices from the STRUCTURE's own label store (the sidecar
+three-stage contract, `engines/overview.md` § 3) and everything else
+straight through.
 
-NEW BLOCKS (authored here, not lifted): the tracked relaxation
+THE BLOCKS AUTHORED HERE: the tracked relaxation
 (``phase_relaxation`` + step/max-force progress, complete-by-assertion
 under ``already_relaxed`` with the post-SCF gradient check that WARNS and
 never refuses), the thermochemistry (headline at (T, P), the documented
@@ -42,23 +32,20 @@ default temperature grid the viewer's G/H/S curves draw, and the regime
 word — ``rrho`` for a free molecule, ``vibrational-only`` when atoms are
 frozen: an anchored molecule does not rotate), and the IR-only
 displacement loop (a dipole read per displacement — far cheaper than
-Raman; the old ``compute_ir``-requires-``compute_raman`` coupling was an
-implementation artifact and retires with the old entry point).
+Raman).
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List
 
 from .. import script_emit as _sc
-from ..runfiles import tail as _rf_tail
 from ..structure import FROZEN_LABEL, Structure
-from .input import (GEOMETRIC_APPENDS, emit_bundle_imports,
+from .input import (emit_bundle_imports,
                     emit_constraints_file, emit_gpu_probe, emit_pyscf_threads,
                     emit_runtime_facts, emit_save_call, emit_script_head,
-                    ROLE_GEOM_TRAJ, ROLE_INITIAL, ROLE_OPTIMIZED,
-                    ROLE_SPECTRA)
+                    ROLE_INITIAL, ROLE_OPTIMIZED, ROLE_SPECTRA)
 
-# The lifted emitters — the old generator's proven blocks, composed anew.
+# The science emitters, composed here.
 from .vibration_emitters import (
     pyscf_methods_fragment,
     _emit_build_mol,
@@ -79,21 +66,18 @@ from .vibration_emitters import (
 
 class VibrationConfigView:
     # Public because it is the SHAPE, not an implementation detail: the
-    # emitters and the Methods fragment annotate against it now that
-    # `SpectraConfig` -- a 33-field dataclass nothing ever constructed --
-    # is retired.  Named `_LiftView` while it was private to this file.
-    """The lift boundary's adapter — see the module header (kept past P3
-    as the one view both the emitters and the kind's science read).
+    # emitters and the Methods fragment annotate against it.
+    """The adapter — see the module header: the one view both the
+    emitters and the kind's science read.
 
     ``dataclasses.asdict`` works on it (the lifted constants emitter
     records the config into the artifact that way) by advertising the
     REAL config's fields — which is also the right record: the artifact's
     ``config`` should say what the described PySCFConfig held, not the
-    adapter's four bridged spellings."""
+    adapter's."""
 
     #: WHOSE VIEW THIS IS -- `template.engine_name` reads it, so a reader
-    #: holding the view gets PySCF's answers, never the class name's (the K8
-    #: review: the frame door answered `vibrationconfigview` as in-cell).
+    #: holding the view gets PySCF's answers, never the class name's.
     ENGINE = "pyscf"
 
     def __init__(self, cfg, struct: Structure):
@@ -110,9 +94,6 @@ class VibrationConfigView:
                            (struct.regions or {}).get(FROZEN_LABEL, ()))
         except Exception:  # noqa: BLE001 -- absent store reads as none frozen
             frozen = ()
-        # Indices only.  `frozen_elements` / `frozen_residue_names` were
-        # set here as empty lists and read by one unreachable branch in the
-        # Methods renderer; both went with `SpectraConfig` (2026-08-22).
         self.frozen_indices = list(frozen)
         self._struct = struct
         self._state = None
@@ -124,9 +105,7 @@ class VibrationConfigView:
         and the SCF class the deck writes all come from it.  Lazily, because
         the kind's science reads this view too and must not fail on a label
         naming no element: the state is an electron count, and the label
-        check owns that finding.  (`net_charge or 0` stood here once and
-        silently dropped the phosphate rule, so a nucleic-acid vibration was
-        a different calculation from its optimization sibling.)"""
+        check owns that finding."""
         if self._state is None:
             from ..electronic_state import electronic_state
             self._state = electronic_state(self._struct, self._cfg,
@@ -139,8 +118,7 @@ class VibrationConfigView:
         § 2.1, plan § 5w K8): ``gto.M`` builds a molecule in free space, so a
         cluster's, whatever the structure's -- asked of the one door
         (`cell.engine_axis_kinds`), and read by the deck's count, the
-        Methods count and the settings check's note alike.  The latter two
-        counted the structure's own until 2026-10-01 (PS-C4)."""
+        Methods count and the settings check's note alike."""
         from ..cell import engine_axis_kinds
         from ..template import engine_name
         return engine_axis_kinds(engine_name(type(self._cfg)), self._struct)
@@ -237,7 +215,7 @@ def _vib_state_init() -> List[str]:
     ]
 
 
-def _vib_relax_block(cfg, stage_token=None) -> List[str]:
+def _vib_relax_block(cfg, names) -> List[str]:
     """The mandatory precondition (D3's final form): geomeTRIC, in-process,
     BEFORE the equilibrium SCF — which then runs on the relaxed geometry
     unchanged, because this block rebinds ``mol`` and ``COORDS_EQ_ANG``.
@@ -315,8 +293,7 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
     else:
         _cb = "_relax_cb"
     # The geomeTRIC keyword spellings come from the ONE mapping the
-    # optimization deck's section uses (layout._GEOM_KWARG) -- this dict
-    # was a hand-spelled second copy of five of its six rows.
+    # optimization deck's section uses (layout._GEOM_KWARG).
     from .layout import _GEOM_KWARG, GEOMETRY_SECTION
     _conv_rows = [
         f"'{_GEOM_KWARG[_n]}': GEOM_{_n[5:].upper()}"
@@ -338,9 +315,7 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
             "    # computed at is one where the fixed atoms never moved.",
             # THE ONE WRITER both decks use (`input.emit_constraints_file`):
             # the run wrapper reads the frozen set back off the deck by its
-            # comment line, and a second wording here once made every
-            # held-atom vibration run report "no frozen_atoms -- all atoms
-            # free" in its own header.
+            # comment line.
         ] + emit_constraints_file(_frozen, indent="    ")
         _opt_kw += ", constraints=str(_FROZEN_CONSTRAINTS_PATH)"
     if getattr(cfg, "write_trajectory", False):
@@ -349,18 +324,13 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
             "    # prefix (<prefix>_optim.xyz) -- the same file the",
             "    # optimization deck's rungs write.",
         ]
-        # THE PREFIX IS DERIVED FROM THE ROLE, exactly as the optimization
-        # deck's is (`pyscf/input.py`; `job-contracts.md` § 2.2a): compose the
-        # name the file will HAVE, then take off the tail geomeTRIC appends.
-        #
-        # It was `JOB + '_geom_<stage>'` until 2026-09-07 -- the token INSIDE
-        # the role, giving `<JOB>_geom_<stage>_optim.xyz`, which the declared
-        # role `_geom_optim.xyz` cannot match.  The optimization deck was
-        # fixed the same week and this one, the vibration deck, was missed:
-        # the same defect, in the second place that writes the same file.
-        _pfx = _rf_tail(ROLE_GEOM_TRAJ,
-                        stage_token or None)[:-len(GEOMETRIC_APPENDS)]
-        _opt_kw += f", prefix=str(_mb_outfile(JOB + {_pfx!r}))"
+        # THE PREFIX IS DERIVED FROM THE STAGE'S NAMES, exactly as the
+        # optimization deck's is (`pyscf/input.py`, `geometric_prefix_expr`;
+        # `job-contracts.md` § 2.2a): geomeTRIC's log's name, less the tail
+        # geomeTRIC appends -- the run's own where the stage's runs share a
+        # folder.
+        from .input import geometric_prefix_expr
+        _opt_kw += f", prefix=str(_mb_outfile({geometric_prefix_expr(names)}))"
     # THE ONE RELAXATION FUNCTION (`relax_policy.relax`, imported above):
     # it asks geomeTRIC whether it converged and applies this rung's
     # on_nonconvergence to the answer -- halt stops the run here, before
@@ -569,7 +539,7 @@ def _vib_ir_only_block(cfg) -> List[str]:
       is one it does not cover), so the dipole is finite-differenced
       over the free Cartesians: 6N extra SCFs for the same numbers.
 
-    Either way the LIFTED per-mode projection runs verbatim, so the two
+    Either way the one per-mode projection runs verbatim, so the two
     paths cannot disagree about the formula -- only about how dmu/dR was
     obtained, which ``state['ir_route']`` records for the reader.
     """
@@ -608,9 +578,7 @@ def _vib_ir_only_block(cfg) -> List[str]:
     ]
     # The projection emits ITS OWN per-mode loop (reading
     # NORM_MODES_CANONICAL, which the Hessian block defines on every
-    # path) -- wrapping it in a second per-mode loop here ran the whole
-    # projection once PER MODE: N² idempotent work whose outer loop
-    # variable nothing read.
+    # path).
     out.extend(_emit_ir_projection())
     out += [
         "state['phase_ir'] = PHASE_COMPLETE",
@@ -619,10 +587,11 @@ def _vib_ir_only_block(cfg) -> List[str]:
     return out
 
 
-def vibration_spec(struct: Structure, cfg, *,
-                   stage_token: Optional[str] = None) -> "_sc.DeckSpec":
+def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
     """The vibration calculation's DeckSpec — the seam's answer for
-    ``calculation = 'vibration'`` (PySCF first; the shape admits others)."""
+    ``calculation = 'vibration'`` (PySCF first; the shape admits others).
+    ``names`` are the stage's (`runfiles.RunNames`): every name the deck
+    chooses is theirs."""
     view = VibrationConfigView(cfg, struct)
     # THE ONE PLACEMENT, computed once (`model/structure-periodicity.md`
     # § 6.0): the molecule block writes these positions and the deck's
@@ -631,9 +600,8 @@ def vibration_spec(struct: Structure, cfg, *,
     _frame = _to_engine(struct)
 
     def _vib_deck(struct_, cfg_) -> str:
-        # THE COMPOSITION MIRRORS THE OLD GENERATOR'S (render_spectra_script
-        # 105-200) call for call -- the validation, the Methods prose, the
-        # shared runtime/threading/GPU glue, the aliasing block -- with the
+        # THE COMPOSITION: the Methods prose, the shared
+        # runtime/threading/GPU glue, the aliasing block, with the
         # vibration insertions at their run positions: the kind's constants,
         # the v5 state, the hoisted displaced helpers (pure defs; the
         # relaxation's driver needs `_build_mf_at` early), the relaxation
@@ -642,10 +610,7 @@ def vibration_spec(struct: Structure, cfg, *,
         # NO validation call here -- deliberately.  The settings gate is
         # ONE step of the pipeline (render_deck STEP 3.3), and it reads
         # `calculation` off this spec to compose the kind's science
-        # (validation/__init__._KIND_VALIDATORS).  The old generator
-        # validated inside its own body because it WAS the whole
-        # pipeline; under the framework a second call here is the
-        # two-gates drift the 2026-08-19 rule abolished.
+        # (validation/__init__._KIND_VALIDATORS).
         from ..spectra.methods import (extract_citation_keys,
                                        render_methods_md)
         methods_md = render_methods_md(
@@ -653,7 +618,7 @@ def vibration_spec(struct: Structure, cfg, *,
         bibliography_keys = extract_citation_keys(methods_md)
         out: List[str] = []
         out += _emit_header_docstring(struct, view, methods_md=methods_md,
-                                      stage_token=stage_token)
+                                      names=names)
         # The deck's anchor and the bundle first, then its threads and what
         # it records about itself -- the run's own set-up, from the bundle
         # (`input.emit_script_head`, `engines/pyscf.md` § 3).
@@ -707,7 +672,7 @@ def vibration_spec(struct: Structure, cfg, *,
             out.append("    _dft = dft")
         else:
             out.append("    _dft = None")
-        out += _emit_build_mol(struct, view, stage_token=stage_token or "",
+        out += _emit_build_mol(struct, view, names=names,
                                positions=_frame.positions)
         # Category 3 (integration plan): the standalone-geometry writer
         # and the live-watch emitter ride the same homes the
@@ -728,9 +693,7 @@ def vibration_spec(struct: Structure, cfg, *,
             # progress log states them as the optimization deck's does.
             from .input import (_emit_molwatch_emitter,
                                 emit_scf_criteria_readback)
-            # The probe is THIS run's class (`layout.scf_class`), not a
-            # hard-coded `scf.RHF` -- which PySCF turned into ROHF under a
-            # nonzero spin, and which was never the solver the run built.
+            # The probe is THIS run's class (`layout.scf_class`).
             from .layout import scf_module
             out.append(f"_mb_scf_probe = _mb_configure_scf("
                        f"{scf_module(view.state)}.{view.scf_class}(mol))")
@@ -740,8 +703,7 @@ def vibration_spec(struct: Structure, cfg, *,
             # (`_vib_relax_block`) -- go into its log's header, as the
             # optimization deck's do (`model/parse.md` § 5.3).
             out += _emit_molwatch_emitter(
-                bool(getattr(cfg, "verbose_comments", True)), cfg,
-                stage_token=stage_token,
+                bool(getattr(cfg, "verbose_comments", True)), cfg, names,
                 frozen_atoms=list(view.frozen_indices))
         out += _emit_frozen_mask()
         out += _emit_initial_state()
@@ -750,7 +712,7 @@ def vibration_spec(struct: Structure, cfg, *,
         # The VIEW, not the raw config: the relax block needs the frozen
         # set (a structure-side fact the view lifted), and the view
         # forwards every config field it does not bridge.
-        out += _vib_relax_block(view, stage_token=stage_token)
+        out += _vib_relax_block(view, names)
         out += _emit_equilibrium_scf(view, struct)
         out += _vib_gradient_check()
         out += _emit_gpu_coverage_probe(view)
@@ -782,7 +744,7 @@ def vibration_spec(struct: Structure, cfg, *,
         # The engine's own line/provenance answers, shared with the
         # optimization deck -- one syntax per engine, not per kind.
         # The DFT test reads the method item -- DFT or HF, nothing else
-        # since 2026-09-28 -- so a Hartree-Fock deck writes no mf.xc /
+        # -- so a Hartree-Fock deck writes no mf.xc /
         # grids lines.
         line=_layout.line(cfg,
                           is_dft=cfg.is_dft),

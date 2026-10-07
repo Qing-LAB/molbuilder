@@ -49,8 +49,8 @@ def test_the_three_asks_round_trip():
 
 def test_absent_is_a_state_and_writes_no_key():
     """A description that asks for nothing must round-trip BYTE-identical --
-    otherwise every file written before 2026-08-24 changes on first save,
-    and "unstated" acquires a second spelling on disk (submission.md S1)."""
+    otherwise a file that asks for nothing changes on first save, and
+    "unstated" acquires a second spelling on disk (submission.md S1)."""
     t = _task()
     assert not t.allocation
     assert "allocation" not in t.to_dict()
@@ -64,15 +64,11 @@ def test_a_partial_ask_writes_only_what_was_said():
 
 
 def test_the_record_holds_ONE_SPELLING_AND_IT_IS_SLURMS():
-    """Replaces `test_the_values_stay_AS_A_PERSON_TYPES_THEM` (2026-08-24,
-    user: *"your record should set unified time format while it is the UI
-    that can do some translation for human readability/input"*).
+    """User, 2026-08-24: *"your record should set unified time format while
+    it is the UI that can do some translation for human readability/input"*.
 
-    The old rule let the file hold whichever spelling arrived.  Nothing
-    could then read it correctly, because the two vocabularies DISAGREE --
-    `04:30` is four minutes thirty to SLURM and four and a half hours to a
-    person -- and `prep` copied the browser's `"4h"` straight into
-    `Resources.time`, which `sbatch` refused as `-t 4h`.
+    The two vocabularies DISAGREE -- `04:30` is four minutes thirty to SLURM
+    and four and a half hours to a person -- so the file holds one.
 
     A person still types `"0.5T"`; it is normalised at the door."""
     t = _task(allocation={"time": "7-00:00:00", "mem": "0.5T"})
@@ -93,9 +89,7 @@ def test_a_launch_shape_here_is_sent_to_the_block_that_owns_it():
 
     The refusal has to say that, because it is not a typo: `mpi_np` is a real
     setting in the wrong block, and "unknown key" alone sends a person
-    looking for a spelling mistake they did not make.  (It IS what this block
-    briefly held, on 2026-09-01; and the refusal sent a person to a one-point
-    `bench` entry, which no run reads, until 2026-10-01.)"""
+    looking for a spelling mistake they did not make."""
     for value in ([4, 8], 8):
         with pytest.raises(Exception) as e:
             _task(allocation={"mpi_np": value})
@@ -206,10 +200,4 @@ def test_a_queue_this_machine_never_heard_of_is_ACCEPTED():
 # leaving the file's answer standing -- is held through prep itself: the
 # launch table's "a prep flag states what the description does not"
 # (`launch_values.toml`) and the launch door's `--time 10m` sent as
-# `-t 0-00:10:00` (`test_launch_door.py`); the four tests of the fold's
-# private wrapper went with it (2026-10-05, unit 11).
-
-
-# --------------------------------------------------------------------- #
-#  Per stage, and the bench's own — §§ 6.8b, 6.8c                        #
-# --------------------------------------------------------------------- #
+# `-t 0-00:10:00` (`test_launch_door.py`).

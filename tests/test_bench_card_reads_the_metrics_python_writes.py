@@ -1,11 +1,9 @@
 """The Bench card and the instrument parser must agree on five key names.
 
 `util_csv_metrics` writes a metrics dict; it crosses to the browser as JSON
-and `bench-summary.js::_usageLine` reads it back.  Nothing held the two ends
-together: renaming `wall_s` to `monitored_elapsed_s` on 2026-09-05 required
-editing one line of JavaScript, and had I missed it the card would simply
-have stopped showing the duration — no error, no failing test, just a
-shorter line that still looks right.
+and `bench-summary.js::_usageLine` reads it back.  A key renamed at one end
+and not the other makes the card simply stop showing it — no error, no
+failing test, just a shorter line that still looks right.
 
 That is the write-then-read shape this project keeps getting caught by, so
 it gets the same treatment as the rest: the REAL function runs, on the REAL
@@ -59,10 +57,8 @@ def _real_metrics() -> dict:
     `summarize.parse_point` hands them to.
 
     Both halves come from the shipped code: `monitor._util_csv_header` and
-    `monitor._util_csv_row` compose the file, `util_csv_metrics` reads it.
-    Typing the columns by hand here produced `gpu_sm_pct` instead of
-    `gpu0_sm`, so the GPU keys were silently absent and this test covered
-    three of five names while appearing to cover all of them.
+    `monitor._util_csv_row` compose the file, `util_csv_metrics` reads it:
+    columns typed by hand here could leave the GPU keys silently absent.
 
     Epochs ASCENDING, as the monitor stamps them: the means are
     time-weighted, so a row out of order contributes a negative interval.
@@ -106,7 +102,7 @@ def test_the_card_renders_every_metric_the_parser_produces():
 def test_the_duration_reaches_the_card_under_its_current_name():
     """The rename's other end.
 
-    `monitored_elapsed_s` was `wall_s` until 2026-09-05 (P-T1: a time field's
+    `monitored_elapsed_s` is the duration's name (P-T1: a time field's
     suffix is its contract, and a duration may not wear a date's name).  The
     parser and the card are edited in different languages in different files;
     this is the only thing that fails if one moves without the other.

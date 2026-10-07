@@ -11,10 +11,6 @@ Driven the way a person drives it: the file picked in the sidebar, the Load
 button, a field typed into; on the Transport tab, a cited junction restored
 the way a returning person's tab restores it.  Headless chromium through
 pytest-playwright; no engine runs.
-
-Replaced ``test_auto_detect_button.py`` and ``test_auto_detect_chip_e2e.py``
-on 2026-09-28, with the button they tested: it copied a per-engine suggestion
-into the forms and overwrote them.
 """
 from __future__ import annotations
 
@@ -252,8 +248,6 @@ def test_a_periodic_structure_moves_the_spectrum_strip_to_siesta(
         "() => document.getElementById('spectra-tab-pyscf').hidden") is True
     # ...and the card is about THAT structure, sidecar and all: the pair's
     # periodicity reached the class through the envelope the viewer holds.
-    # (The route re-read the FILE until the M6 review; before 2026-09-28 it
-    # read the .xyz alone and every structure was a finite molecule.)
     _answered(page, "a repeating cell")
     assert "a repeating cell" in _blocks(page)["SIESTA"]
 

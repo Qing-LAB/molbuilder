@@ -16,10 +16,6 @@ frozen set stamped into it.  Measured 2026-08-22:
 
     dataclasses.replace(s, regions={"electrode_L": [1]})
     -> {"electrode_L": [1], "frozen_atoms": [0]}
-
-Nothing in production passed ``regions=`` to ``replace`` at the time, which is
-why this was scheduled rather than urgent — and written down rather than left
-for the next person to rediscover from a structure that would not unfreeze.
 """
 from __future__ import annotations
 
@@ -73,31 +69,17 @@ class TestStatingRegionsStatesTheWholeStore:
 
 class TestTheInterpreterHook:
     """WHICH stdlib helper dispatches through ``__replace__`` — and which
-    does not, which this class asserted backwards until 2026-09-22.
+    does not.
 
-    It claimed `dataclasses.replace` would route through the hook on 3.13+,
-    "so the door becomes automatic on a newer interpreter".  Checked against
-    the stdlib source: `dataclasses.replace` ends
+    Checked against the stdlib source: `dataclasses.replace` ends
     `return obj.__class__(**changes)` and never mentions `__replace__`, on
     any version.  The 3.13 addition is `copy.replace`, a different helper.
-
-    The consequence was not academic.  The trap test below was
-    `skipif(>=3.13)` on that belief, so a 3.13 upgrade would have SILENCED
-    the only guard on the aliasing while the aliasing was still there.
     """
 
     def test_the_replace_hook_is_installed(self):
         """For `copy.replace` (3.13+), which is the helper that honours it."""
         assert Structure.__replace__ is Structure.replace
 
-    # `test_the_stdlib_dataclasses_helper_never_routes_through_the_hook`
-    # was RETIRED the day it was written (2026-09-22).  It asserted that the
-    # string "__replace__" does not appear in
-    # `inspect.getsource(dataclasses.replace)` -- a grep over SOURCE TEXT,
-    # which `process/testing.md` disqualifies unless the goal has no other
-    # check.  It has one: the test below demonstrates the behaviour itself,
-    # on a real Structure, and would fail the moment the stdlib started
-    # dispatching.  The source check only restated it less directly.
 
     def test_the_stdlib_helper_carries_the_trap_on_every_version(self, held):
         """NOT skipped on 3.13 — there is no version where this stops being
@@ -115,12 +97,10 @@ class TestTheDerivedCopyIsACopy:
     written through.
 
     ``dataclasses.replace`` re-passes the mutable fields BY REFERENCE, so
-    the structure it returned shared ``positions``, ``cell``,
-    ``cell_origin`` and the ``info`` dict with its source — writing to one
-    wrote to the other.  That is what every hand-listed rebuild in the tree
-    was working around with its own ``.copy()`` calls, and enumerating
-    fields in order to copy them is how ``cell_origin`` and ``info`` came
-    to be left out of four of those lists (`model/structure.md` § 2.2a).
+    the structure it returns shares ``positions``, ``cell`` and the ``info``
+    dict with its source — writing to one writes to the other; enumerating
+    fields in order to copy them is how fields come to be forgotten
+    (`model/structure.md` § 2.2a).
     """
 
     @pytest.fixture
@@ -157,24 +137,6 @@ class TestTheDerivedCopyIsACopy:
         assert carrying.replace(info={}).info == {}
         assert carrying.info, "stripping the copy emptied the source"
 
-    # `test_a_stated_pbc_is_not_overruled_by_the_carried_kinds` and
-    # `test_kinds_that_agree_with_the_stated_pbc_are_kept` were RETIRED
-    # 2026-09-22, with the special case they pinned.
-    #
-    # They guarded a patch inside `replace()`: because the method seeded BOTH
-    # `pbc` and `axis_kind` from the source, and `__post_init__` let the kind
-    # win, a caller who stated only the boolean had it silently discarded --
-    # so `replace()` compared the two and dropped the carried kind when they
-    # contradicted.  A precedence rule in two places, which is what the door
-    # exists to prevent.
-    #
-    # `pbc` is no longer a field (user: "why the fuck need pbc when axis_kind
-    # fully contains this information and more").  There is one periodicity
-    # field to carry, nothing to reconcile, and `replace(pbc=...)` is a
-    # TypeError rather than a case to handle -- pinned by
-    # `test_structure_periodicity.py::TestAxisKindIsTheOnePeriodicityField`.
-
-
 
 def test_replace_carries_every_field_the_dataclass_declares():
     """COMPLETE BY CONSTRUCTION, not by memory.
@@ -183,8 +145,7 @@ def test_replace_carries_every_field_the_dataclass_declares():
     the five `_carry_nonatom()` supplies. That union is complete today —
     and only because someone remembered. Add a sixteenth field, forget it
     in both places, and every derived copy silently resets it to its
-    default: the exact failure `cell_origin` and `info` each had, in four
-    hand-written rebuilds, which is why this door exists at all.
+    default -- the failure this door exists to prevent.
 
     So the check iterates the LIVE field list rather than a copy of it. A
     field added tomorrow is covered the moment it is declared, and the

@@ -9,9 +9,6 @@
  * shows two chips that may differ, because the two forms may say different
  * things.  The Budget card's chip is a size hint.
  *
- * (Until 2026-09-28 the chip read one analyzer verdict for the whole page,
- * judged at charge 0, and never read the form's charge.)
- *
  * Exports (on window.molbuilder.detectionChip):
  *   buildText(resp, engine) → { profile, budget } — pure text helper
  *   render(resp, hosts) → number of headers patched (null resp: removed)

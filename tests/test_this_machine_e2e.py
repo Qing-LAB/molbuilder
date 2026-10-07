@@ -1,16 +1,6 @@
 """**What a person actually does on /this-machine, and what they see after.**
 
-Written 2026-09-03 to replace a source pin, and the replacement is not
-like-for-like: the pin read `this_machine.html` off disk and checked three
-substrings were in it, then said in its own docstring *"the behaviour itself
-is pinned by `test_config_dir_has_one_home.py`"*.
-
-**That file has never existed.**  So a page nothing tested carried a docstring
-telling the next reader it was tested elsewhere, which is worse than no test —
-it closes the question (`process/testing.md` § 3a.1).
-
-Nothing else visits this page either: it was the only route in the app with no
-browser test at all, while being the one page that handles credentials.
+This is the one page that handles credentials.
 
 **Everything here goes through the page's own controls** — typing in the
 fields, choosing the kind, pressing Save, opening the disclosure.  Driving
@@ -135,9 +125,8 @@ def _add_channel(page, name, url, *, kind="slack", key=None):
     ``kind`` is not decoration: **the Key box only exists for a listener.**
     `#tm-key-field` ships `hidden` and the kind radio reveals it, so asking
     a Slack channel for a key is asking for a control the page does not
-    offer -- which is how the first version of this file timed out on a
-    `page.fill` and taught me the two credential shapes are genuinely
-    different surfaces, not one surface with an optional extra.
+    offer: the two credential shapes are genuinely different surfaces, not
+    one surface with an optional extra.
     """
     page.fill("#tm-name", name)
     page.check(f"#tm-kind-{kind}")
@@ -374,11 +363,7 @@ def test_a_name_the_page_forbids_is_refused(page, flask_server):
     }""", sorted(_FORBIDDEN | _ALLOWED))
     accepted = {k for k, ok in verdicts.items() if ok}
 
-    # Report only what actually went wrong, on each side.  The first draft
-    # printed EVERY accepted name under "the form accepts names its own hint
-    # forbids", so a real failure listed `ok-name_1` and `plain` among the
-    # offenders and sent the reader hunting for a defect in names that were
-    # behaving perfectly.
+    # Report only what actually went wrong, on each side.
     leaked = sorted(_FORBIDDEN & accepted)
     assert not leaked, (
         f"the form accepts {leaked}, which its own hint forbids.  A "

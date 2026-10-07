@@ -4,23 +4,14 @@ MODULE: the workspace's on-disk half.  FORMAT-BLIND storage of one opaque JSON
 blob per ``{workspace_id, state_index}``, written and read back verbatim.  It
 never parses what it stores.
 
-WHAT IT IS NOT — and the old name said otherwise.  This was ``state_timeline.py``
-serving ``/api/state-timeline/*``, named after MolView's **timeline**: the
-sequence of saved points, the position on it, point 0, the badge, and the policy
+WHAT IT IS NOT: MolView's **timeline** -- the sequence of saved points, the position on it, point 0, the badge, and the policy
 of what a save records and what to prune.  **None of that is here.**  That is
 ``lib/molview/history.js``, MolView's own submodule, and nothing in this file
 knows a sequence exists — no order, no position, no notion that index 3 follows
 index 2.
 
-The name mattered because it misdirected readers about ownership, repeatedly and
-in both directions: once into reading this as a domain module worth promoting out
-of the web layer, once into reading it as MolView-private plumbing worth hiding.
-It is neither.  It is the **workspace's** storage, and the workspace is a public
-module several savers share.
-
-The proof that it is not MolView's: ``lib/inspectors/structure.js`` stores
-``{showing: "<path>"}`` under its own ``SHOWING_TAG`` through these exact routes —
-a file path, not a history.  Any tag may use it (workspace.md § 4).
+It is the **workspace's** storage, and the workspace is a public module several
+savers share.  Any tag may use it (workspace.md § 4).
 
 **States, not a timeline.**  The word kept in the internals is deliberate: this
 stores numbered *states*; the *timeline* is the sequence MolView makes of them.
@@ -37,10 +28,6 @@ USED BY:
     of these routes; every other saver reaches them through it.
 
 Contract: docs/web/workspace.md § 9.
-
-History: these routes lived at ``/api/workingcopy/*`` beside an obsolete
-structure-editor "door" (open/save/update/…).  The live persistence was extracted,
-misnamed ``state_timeline``, and renamed here to what it actually is.
 """
 from __future__ import annotations
 
@@ -87,8 +74,7 @@ _RESIDUE_WARN_FILES = 300                     # ~10 abandoned tabs' worth
 _residue_warned = False
 
 #: Top-level workspace home under the projects root (gitignore-able; created
-#: lazily).  Same on-disk name the module has always used, so existing state
-#: files keep their path ``<projects_root>/.molbuilder_workspace/states/``.
+#: lazily): ``<projects_root>/.molbuilder_workspace/states/``.
 SCRATCH_DIR = ".molbuilder_workspace"
 
 
@@ -206,13 +192,12 @@ def ws_read_state():
     ``data: null``, and 4xx is kept for a request that is actually wrong (a bad
     id or index) and 500 for a file that cannot be read.
 
-    It answered 404 with ``{"ok": true}`` in the body, which was two things
-    saying opposite things, and it cost twice.  A browser logs every 4xx
-    resource load as a console error, so a tab that asks "did I leave anything
-    here?" on arrival -- which is exactly what a tab restoring its own state
-    does -- printed an error on every clean boot and failed the no-JS-errors
-    gate.  Worse, the rate limiter counts 4xx (rate_limit.py): a page that
-    manufactures one per load is building a case against its own user.
+    A 4xx here would cost twice.  A browser logs every 4xx resource load as a
+    console error, so a tab that asks "did I leave anything here?" on arrival
+    -- which is exactly what a tab restoring its own state does -- would print
+    an error on every clean boot.  And the rate limiter counts 4xx
+    (rate_limit.py): a page that manufactured one per load would be building a
+    case against its own user.
     """
     b = _body()
     ws_id, idx = b.get("workspace_id"), _state_index(b.get("state_index"))

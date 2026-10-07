@@ -121,8 +121,7 @@ def test_it_refuses_a_folder_with_no_description(web_client, described,
 def test_silence_about_the_machine_is_still_refused(web_client, described):
     """C1 unchanged: the browser cannot offer a default the CLI rejects --
     asked of a calculation prep would otherwise take, so the refusal is the
-    machine's (it also accepted a refusal naming `task.json` until
-    2026-10-05, and passed on a folder refused for having no template)."""
+    machine's."""
     _make_preppable(Path(described))
     st, j = _post(web_client, dest=described, kind="run", stage="coarse",
                   plan=True)
@@ -133,9 +132,7 @@ def test_the_local_machine_can_be_NAMED(web_client, described):
     """The regression this closes: with a named record on file there was no
     spelling for "the box I am on" at all."""
     from molbuilder.scheduler.record import machine_for
-    # (`assert ... is None or True` stood here, unfailable and therefore
-    #  saying nothing.  The important half is below and always was.)
-    # the important half -- it does not raise the ambiguity refusal
+    # it does not raise the ambiguity refusal
     from molbuilder.scheduler.record import AmbiguousTarget
     try:
         machine_for(target=LOCAL_TARGET)
@@ -221,11 +218,8 @@ def test_there_is_no_launch_door_here(web_client):
 #  ONE prep entry, two doors (`job-system.md` § 5.3; plan W38 F7)       #
 # --------------------------------------------------------------------- #
 #
-# Until 2026-09-29 this door called the five steps alone: it skipped the
-# preflight, the question prep asks (*already under way*, until 2026-10-02;
-# the save since), the launch agreement and their ledger lines, refused an
-# axis-less bench, and showed only the folders.  Each test below runs the SAME prep through both doors -- the
-# command line and this route -- and compares what each says and records.
+# Each test below runs the SAME prep through both doors -- the command line
+# and this route -- and compares what each says and records.
 
 def _twin(calc, name):
     """A second, identical calculation beside *calc*, for the other door."""
@@ -496,10 +490,6 @@ def test_a_refusal_shows_what_it_points_at_on_both_doors(
         "crossed-out list"), r.output
 
 
-# `test_a_confirm_answers_only_the_evidence_it_was_shown` retired 2026-10-02 with
-# the question it pinned: a prepped stage is refused now (`job-system.md` § 5.0).
-
-
 def _pyscf_calc(root, name):
     """A described PySCF optimization -- its deck makes no claim about the
     launch it was rendered for (no BENCH-MARKS block)."""
@@ -537,8 +527,7 @@ def test_a_deck_that_makes_no_claim_gets_no_agreement_on_either_door(
     assert st == 200, j
     assert j["agreement"] is None and j["attempt"], j
     # ...AND ITS END POINT, A13, on a machine with no scheduler: the run
-    # script's stated count, read back by its writer's reader -- a PySCF
-    # run's was spelled where none read it until 2026-10-05.
+    # script's stated count, read back by its writer's reader.
     assert j["launch"]["header"] == [], j["launch"]
     assert "_omp_threads_default=1" in j["launch"]["run_script"], j["launch"]
     r = _cli("prep", "run", "coarse", "--bundle", str(cli),
@@ -549,18 +538,12 @@ def test_a_deck_that_makes_no_claim_gets_no_agreement_on_either_door(
         assert ("prep", "launch-agreement") not in _ledger_decisions(calc)
 
 
-
-# `test_the_terminal_is_asked_again_when_the_folder_changed_meanwhile` retired
-# 2026-10-02 with the question it pinned (`job-system.md` § 5.0).
-
-
 def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
         web_client, described):
     """A description that fails its own preflight -- a physics value in the
     run's `execution` block -- while its ladder also earns a note: each door
     refuses with the note beside the sentence.  The terminal's refusal is a
-    decision, and the ledger holds it, as for every other refusal (the one
-    entry dropped it until review, 2026-09-29); the page's comes at its
+    decision, and the ledger holds it, as for every other refusal; the page's comes at its
     Preview, which records nothing (`job-system.md` § 5.0), and Prep is not
     offered."""
     from molbuilder.task import FILENAME as TASK_FILENAME

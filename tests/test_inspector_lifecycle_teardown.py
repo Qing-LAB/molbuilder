@@ -133,18 +133,6 @@ def test_a_second_dispose_is_a_no_op():
 #  Structure: each core drains the scope it registers into              #
 # --------------------------------------------------------------------- #
 
-# `test_the_core_drains_the_scope_it_registers_into` stood here and asserted
-# two spellings: that `inspectorLifecycle.listeners()` appeared in each core,
-# and that `_listeners.disposeAll()` appeared inside a regex-sliced
-# `dispose()` body.  Both can be present while the scope is never emptied --
-# which is exactly what happened on 2026-08-23, the day the file exists for.
-# Both cores now have the claim driven instead:
-#   spectra     tests/test_inspector_registry_e2e.py::
-#               TestInspectorListenerTeardown::
-#               test_addremove_pair_balance_after_mount_dispose
-#   trajectory  ...::test_no_trajectory_listener_survives_dispose
-# What stays here is the half that quantifies over a whole file.
-
 
 @pytest.mark.parametrize("core", CORES)
 def test_no_core_registers_a_listener_outside_the_scope(core):
@@ -154,13 +142,6 @@ def test_no_core_registers_a_listener_outside_the_scope(core):
     `dispose()` cannot reach it however correctly it drains -- and no
     teardown test can see it, because from the scope's side it never
     existed.  Reading the file settles it; running the card cannot.
-
-    This was `tests/spectra/test_blueprint.py::
-    test_all_element_listeners_route_through_on_helper`, which has held
-    SPECTRA to this since 2026-05-18 and named the trajectory core in its
-    own docstring -- "the helper is now shared with the trajectory core...
-    so this file should contain none at all" -- without ever checking it.
-    Generalised here, in the file that owns the rule for both, 2026-09-06.
     """
     js = (STATIC / core).read_text()
     adds = re.findall(r"\.addEventListener\(", js)

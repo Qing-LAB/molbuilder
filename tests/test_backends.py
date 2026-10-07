@@ -142,8 +142,7 @@ def test_dispatch_unknown_backend_raises_value_error():
 
 
 # --------------------------------------------------------------------- #
-#  is_available() smoke tests -- run only when the backend's external   #
-#  dep is installed; otherwise skipped via importorskip.                #
+#  is_available() smoke tests                                           #
 # --------------------------------------------------------------------- #
 
 

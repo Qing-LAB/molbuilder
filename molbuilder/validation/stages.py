@@ -1,6 +1,6 @@
 """Validation across a ladder — the members, and the sequence.
 
-**Module:** L3. Imports ``issues``, ``template``-free; called by producers and
+**Module:** L3. Imports ``issues``, and ``template`` at call time; called by producers and
 by the web Build path. Imported by nothing below it.
 
 **Contract:** [`engines/stages.md`](?doc=engines/stages.md) § 4 — R2 (*a stage
@@ -17,11 +17,7 @@ reasonable and jointly wrong: a mesh cutoff that is fine, a basis that is fine,
 and a pair that is under-converged together. So each stage is judged as a
 *resolved whole* -- and the door that judges it is the RENDER gate
 (`script_emit.render_deck`, step 3.3): every rung's deck passes the shipped
-validator, with the calculation kind, before a line of it exists.  A batch
-per-stage aggregator (`validate_ladder`) lived here until 2026-08-21; it had
-no production caller, and its validate() call omitted ``calculation`` -- a
-vibration ladder routed through it would have skipped kind science -- so it
-retired in favor of the gate that was already doing the work per rung.
+validator, with the calculation kind, before a line of it exists.
 
 **R3 — is the ORDER sound?**  R2 makes every stage individually sound and says
 nothing about the order they are in, yet the order is the whole point of having
@@ -63,8 +59,7 @@ def check_ladder_does_not_loosen(
     § 2 gives a tier table and nowhere else: a direction invented without
     one would be a scientific claim with no source, and a false "your ladder
     loosens" is worse than a missing one — it teaches people to ignore the
-    check.  The table stood here, SIESTA's four alone, until 2026-09-30
-    (plan § 5w K4, M11 PO-C14).
+    check.
 
     **Only rungs of one ROLE are compared** (`template.stage_role`): a ladder
     tightens one calculation as it goes, and rungs that are different

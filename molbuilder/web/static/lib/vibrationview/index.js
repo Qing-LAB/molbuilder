@@ -13,9 +13,7 @@
  *     underscore on its name says so; a consumer that imports one has broken the
  *     module, not found a shortcut.
  *   - read or write `window.molbuilder`, in either direction. Nothing this module
- *     needs comes from a global, and nothing it holds is published to one. Both
- *     halves of that rule were broken by the module this replaces, which is why
- *     it could not mount at all.
+ *     needs comes from a global, and nothing it holds is published to one.
  *   - name the sealed layer. § 15: no consumer names its file and neither does
  *     the document.
  *
@@ -34,9 +32,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
 /* Every default, in one place. The BOUNDS live with the rate arithmetic, which
  * is a different thing: what a value falls back to when nobody said, versus what
- * this module can actually deliver. Splitting the four across two files — which is
- * what an earlier draft did, because its clamp function also supplied defaults —
- * makes four facts into two places to look. */
+ * this module can actually deliver. Splitting the four across two files would
+ * make four facts into two places to look. */
 const DEFAULTS = { amplitude: 0.15, fps: 30, cycleSec: 1.0, showLabel: true };
 
 function num(v, fallback) {
@@ -283,8 +280,8 @@ export async function mount(hostEl, opts) {
          * The two are different answers on purpose. `setFps("fast")` is a caller
          * bug and resetting to the default would hide it. `setFps(0)` is a slider
          * at its end stop — a value with a clear intention that this module simply
-         * cannot honour, so it is honoured as far as it goes. Leaving it raw is
-         * what made the clock divide by zero and stop for good. */
+         * cannot honour, so it is honoured as far as it goes. Left raw, the clock
+         * would divide by zero and stop for good. */
         setFps(n) {
             if (disposed || typeof n !== "number" || !isFinite(n)) return;
             reqFps = n;
@@ -307,7 +304,7 @@ export async function mount(hostEl, opts) {
 
         /* § 12. The context below is built HERE, from this closure, and reaches
          * the exporter as an argument — which is why the handle needs no accessor
-         * for the state, and why deleting the one it used to have cost nothing.
+         * for the state.
          *
          * ONE AT A TIME. Two exports would each resize the same surface and each
          * restore it to what IT believed was the original, and the loser leaves
@@ -343,18 +340,10 @@ export async function mount(hostEl, opts) {
 
         /* NO HATCH FOR THE EXPORT, and that is deliberate.
          *
-         * An earlier draft hung a `_capture` object off this handle so § 12's
-         * encoders could read the state and reach the drawing surface. It carried
-         * a comment saying it was not really part of the handle, which was simply
-         * untrue — it was a property of the object every host is given, and the
-         * test that enumerates the doors had to filter it out to stay green: a
-         * check laundering the thing it exists to catch.
-         *
-         * The export needs no hatch. It runs INSIDE this closure, which already
+         * The export runs INSIDE this closure, which already
          * holds the structure, the mode, the amplitude, the rate and the surface;
          * § 12's door hands them over as arguments at call time and none of them
-         * escapes. The sealed layer warns that every "just for tests" hatch it
-         * ever had became a production read, and this one was on its way.
+         * escapes.
          */
         dispose() {
             if (disposed) return;

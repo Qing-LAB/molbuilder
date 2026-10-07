@@ -7,8 +7,7 @@ Driven the way a person drives it: the page on a live server, the selection
 changed through its own control -- and first, the page as it loads, before any
 change: nothing chosen -- a new calculation's form holds what the person gives
 it, and a blank is not chosen (`web/form-schema.md`, plan K7) -- and the kind's
-`skip`, which then applies, locks all three.  *(This said the default `skip`
-stood in the box at load until 2026-10-03, two days after K7 made it blank.)*
+`skip`, which then applies, locks all three.
 
 MUTATIONS THIS MUST FAIL AGAINST: the window left out of the lock map (it stays
 editable under `skip` and `explicit`, where it enters nothing); the lock

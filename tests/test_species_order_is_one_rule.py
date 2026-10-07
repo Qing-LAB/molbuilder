@@ -12,19 +12,18 @@ other test asks `chemistry.species_order` instead of spelling an order out
 (user, 2026-09-23).  The split is not style:
 
 * here the order IS the subject, so deriving the expectation from the
-  function would assert the code equals itself and pin nothing -- the exact
-  tautology pulled out of `test_transport_wizard.py` the day before;
+  function would assert the code equals itself and pin nothing;
 * everywhere else the order is incidental -- a deck renders, a message names
   the elements, a sort put the lead first -- so a spelled-out order pins a
   contract that test has no opinion about, and goes red when the rule
-  changes.  Two did: `test_psml_anchor` and `test_transport_prep`, both on
-  2026-09-23, neither about species order.
+  changes.
 """
 from __future__ import annotations
 
 import pytest
 
 from molbuilder.chemistry import species_order
+from molbuilder.runfiles import RunNames
 
 
 @pytest.mark.parametrize("elements,expected,why", [
@@ -80,8 +79,9 @@ def test_the_override_reaches_a_transport_deck_too():
     def _declared(order):
         cfg = SiestaConfig(system_label="t", species_order=order)
         deck = _sc.render_deck(
-            spec_for(struct, cfg, stage_token="device",
-                     calculation="transport"), struct, cfg)
+            spec_for(struct, cfg, calculation="transport",
+                     names=RunNames.of("t", "04_device", "hierarchical")),
+            struct, cfg)
         return [ln.split()[2] for ln in deck.splitlines()
                 if ln.startswith("  ") and len(ln.split()) == 3
                 and ln.split()[0].isdigit()]

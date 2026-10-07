@@ -515,7 +515,7 @@ Two things, per engine, always:
 | | What it settles | SIESTA | PySCF |
 |---|---|---|---|
 | **the engine's job identity** | which prior state belongs to this run | the `SystemLabel` literal | the `JOB = "…"` literal |
-| **the parameters bound to it** | whether that state is honoured when found | `DM.UseSaveDM`, `MD.UseSaveXV`, `MD.UseSaveCG` — SIESTA reads the files *only* when these are set (`job-contracts.md § 4.2`) | the resume branches the generated script carries: `mf.chkfile = JOB + ".chk"` with `init_guess = "chkfile"` when it exists, and `<JOB>_optimized.xyz` overriding the literal geometry |
+| **the parameters bound to it** | whether that state is honoured when found | `DM.UseSaveDM`, `MD.UseSaveXV`, `MD.UseSaveCG` — SIESTA reads a `.DM` it finds *unless* told `.false.`, and an `.XV` or `.CG` only when told `.true.` (`Src/read_options.F90`, `Src/struct_init.F`), so every deck writes each one its run has a use for, with its answer: `MD.UseSaveCG` in a CG relaxation alone, the one branch where SIESTA reads it (`siesta/input.py::_restart_keys`; `job-contracts.md § 4.2`; measured 2026-08-18, `config/siesta.py::SIESTA_RESTART_GROUP`) | the resume branches the generated script carries: `mf.chkfile = JOB + ".chk"` with `init_guess = "chkfile"` when it exists, and `<JOB>_optimized.xyz` overriding the literal geometry |
 
 Read across: the identity is the same *idea* in both columns and a different
 *mechanism*; the bound parameters are a declared flag family in one and generated

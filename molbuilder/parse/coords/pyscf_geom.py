@@ -1,10 +1,5 @@
 """PySCF / geomeTRIC final-geometry ``<job>_optimized.xyz`` FileParser.
 
-Absorbed from the legacy ``molbuilder.parsers.pyscf_struct``
-``read_optimized_xyz``; that package was deleted 2026-06-21 and this is
-the only reader (provenance:
-`docs/archive/old_docs/protocols/parse-module.md` § 8).
-
 PySCF's optimized geometry comes back as a plain .xyz with the final
 coords.  The reader is a thin wrapper over
 :meth:`Structure.from_xyz` that adds a title from the file stem.
@@ -79,9 +74,6 @@ class PySCFGeomFileParser(FileParser):
 # --------------------------------------------------------------------- #
 #  Public-API re-exports                                                #
 # --------------------------------------------------------------------- #
-#
-# H4a (test-cleanup): the .py-initial-coords + JOB-extract helpers
-# them); re-export here for the natural per-file-type import path.
 read_optimized_xyz = _read_optimized_xyz
 
 __all__ = [

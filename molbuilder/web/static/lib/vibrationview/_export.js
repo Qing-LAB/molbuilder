@@ -12,15 +12,11 @@
  * it.
  *
  * NEVER (§ 7 level 3): work out a position itself, or name the drawing library —
- * not in code, and not in a comment either; a guard asserts it, and it caught
- * this line's first draft. This file knows about GIFs, zips and video
- * containers, which is knowledge about formats and not about graphics.
+ * not in code, and not in a comment either. This file knows about GIFs, zips and
+ * video containers, which is knowledge about formats and not about graphics.
  *
- * ── Carried, not invented ────────────────────────────────────────────────────
- * The two encoders came from the retired embed, where they worked. What is new is
- * the frame sequence they encode (this module's, not the drawing surface's), the
- * PNG-sequence zip, and the fact that all three read a picture that already has
- * the caption composited into it.
+ * All three formats encode this module's frame sequence, read from a picture
+ * that already has the caption composited into it.
  */
 "use strict";
 

@@ -2,12 +2,7 @@
 line a verb, a refusal, a next step or a status names, composed here once
 (`execution/job-system.md` § 5.3: *what molbuilder prints, you can type*).
 
-**Module:** L2 (jobset).  The W52 review read the same lines spelled in a
-dozen modules.  Some named the calculation and some did not, so a line pasted
-anywhere but inside the folder acted on another calculation or on none; one
-printed ``--mode submit|direct``, which bash runs as a pipe; others ended in a
-``(note)`` a shell cannot parse, or a ``<stage>`` nobody can type.  A line
-composed here is ONE command:
+**Module:** L2 (jobset).  A line composed here is ONE command:
 
 * the calculation named by its address from the projects root, every time
   (:func:`bundle_flag`);
@@ -35,8 +30,7 @@ def bundle_flag(base) -> str:
     is pasted where its reader is, and the reader moves: an omitted
     ``--bundle`` means the working folder (`job-contracts.md` § 2.5b), so a
     line that left it out because it was printed inside the calculation
-    acted on whatever calculation the next shell stood in.  *(It was left
-    out there until 2026-10-06.)*  A folder outside the projects tree is
+    acted on whatever calculation the next shell stood in.  A folder outside the projects tree is
     named by its full path, which `--bundle` refuses by name -- never a line
     with no calculation in it.  The address is quoted as the shell needs
     it: a folder name may hold a space."""
@@ -111,8 +105,7 @@ def launch_with(kind: str, *words, base, mode: str, typed=()) -> str:
     line says when it offers a launch again in another mode: the whole
     command, never *"the same command with --mode X"*, an edit to a line the
     person may never have typed -- a bare launch takes its mode from config
-    (`job-system.md` § 5.3; such lines stood in four places until
-    2026-10-06)."""
+    (`job-system.md` § 5.3)."""
     kept = [x for flag, value in typed
             if not (mode == "direct" and flag in QUEUE_FLAGS)
             for x in (flag, shlex.quote(str(value)))]
@@ -128,12 +121,7 @@ def launch_lines(kind: str, *words, base,
     machine takes (:func:`takes_a_queue`), each a command (never
     ``--mode submit|direct``, which bash reads as a pipe).  A calculation
     set to another machine is launched there, whose config this one does
-    not read: its lines state their mode *(they leaned on this machine's
-    ``launch.mode`` until 2026-10-06, and typed there were refused for want
-    of ``--mode``)*.  *(The line to the queue was printed on a machine with
-    none until 2026-10-05: typed, its launch was refused -- no header was
-    ever written -- and only a dry run, which planned less than a launch,
-    let it pass.)*"""
+    not read: its lines state their mode."""
     if configured_mode() and launches_here(base, target):
         return [command("launch", kind, *words, base=base)]
     here = launch_with(kind, *words, base=base, mode="direct") + "   # here"
@@ -154,16 +142,14 @@ def lines(verb: str, kind: str, *words, base) -> List[str]:
 
 def run_first(stage: str, *, base) -> List[str]:
     """Run ``stage`` first -- its prep, then its launch: the remedy every
-    refusal that waits on another stage gives (W52: written six times, one
-    with `--mode`, none naming the calculation)."""
+    refusal that waits on another stage gives."""
     return [command("prep", "run", stage, base=base)] + launch_lines(
         "run", stage, base=base)
 
 
 def name_a_stage(verb: str, kind: str, refs, *, base) -> str:
     """``name one -- coarse ('#1'), medium ('#2'):`` and the command for the
-    first -- what every verb that acts on ONE stage says when none was named
-    (W52: six wordings, two printing a ``<stage>`` nobody can type).
+    first -- what every verb that acts on ONE stage says when none was named.
     ``refs`` are the stages the verb takes, first the one to offer."""
     from ..identity import render_stage_choices
     refs = list(refs)

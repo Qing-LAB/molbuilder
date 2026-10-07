@@ -1,10 +1,5 @@
 """PySCF / geomeTRIC trajectory FileParser.
 
-Absorbed from the legacy ``molbuilder.parsers.pyscf.PySCFParser``; that
-package was deleted 2026-06-21 and this is the only PySCF trajectory
-parser (provenance: `docs/archive/old_docs/protocols/parse-module.md` §
-8).
-
 When molbuilder generates a PySCF script it hands geomeTRIC a prefix
 of ``JOB`` plus the stage token plus ``_geom`` (`job-contracts.md`
 § 2.2a: the token sits after the label, never inside the role), so
@@ -12,11 +7,6 @@ geomeTRIC streams a multi-frame XYZ to ``<JOB>_<NN>_<stage>_geom_optim.xyz``
 -- or ``<JOB>_geom_optim.xyz`` for a run with no stage -- one frame per
 accepted geom step.  Either way the ROLE is ``_geom_optim.xyz``, which is
 what `runfiles.parse` reports and what `warm-files.toml` declares.
-
-That agreement is new.  The prefix used to put the stage token
-inside the role,
-putting the token inside the role, so the name no one could match was the
-name every reader was told to look for.
 
 Frame format::
 
@@ -112,16 +102,9 @@ def _can_parse_xyz(path: str) -> bool:
                 parts = fh.readline().split()
                 if len(parts) < 4:
                     return False
-                # COLUMN 0 IS AN ELEMENT, and checking it is what this
-                # function's own docstring already promises -- "N atom lines
-                # of `element x y z` form".  It checked the `x y z` and never
-                # the element, and SIESTA's `.FA` is `N` then `index fx fy
-                # fz`: same count, same three floats, integer where the
-                # symbol goes.  So this claimed it, and `parse()` then died
-                # in `_resolve_job_token` with a `RunFileError` -- not a
-                # `ParseError`, so it escaped the route's handler as an HTTP
-                # 500.  Measured 2026-09-18: 67 real files (26 `.FA`, 21
-                # `.FAC`, 10 `.KP`, 10 extensionless).
+                # COLUMN 0 IS AN ELEMENT: SIESTA's `.FA` is `N` then
+                # `index fx fy fz` -- same count, same three floats, an
+                # integer where the symbol goes.
                 #
                 # "NOT A NUMBER" rather than a periodic-table lookup, and
                 # that is deliberate: a dummy atom (`X`), a ghost (`Bq`) or
@@ -158,10 +141,7 @@ def _run_stem_of(traj_path: str) -> Optional[str]:
     ``H2_01_coarse`` for ``H2_01_coarse_geom_optim.xyz`` -- or ``None`` for
     any other XYZ this reader is handed: the trajectory names its run's
     other files itself, and a file that names no run reads only itself
-    (`model/parse.md` § 5.3).  *(`_resolve_job_token` split the name into a
-    label and a stage with a stage pattern of its own, and took a stageless
-    file's stage from the newest progress log in its folder, until
-    2026-10-04: plan W56 4d.)*"""
+    (`model/parse.md` § 5.3)."""
     name = os.path.basename(traj_path)
     if len(name) <= len(_GEOM_TRAJ) or not name.endswith(_GEOM_TRAJ):
         return None
@@ -191,17 +171,10 @@ def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
 # step N begin ====`` block; footer markers (``# concluded:`` /
 # ``# error:``) appear after the last ``==== ... end ====`` block.
 # The step-begin marker and the footer grammar belong to the molwatch
-# format, so they are read through its grammar, `molwatch_grammar`.  Private
-# copies of all three stood here until 2026-09-05 -- byte for byte the
-# same, padding included -- which is exactly how the convergence header
-# below came to drift.
+# format, so they are read through its grammar, `molwatch_grammar`.
 from . import molwatch_grammar as _MG   # noqa: E402
 # The convergence-header grammar has ONE reader --
-# ``molwatch_grammar.parse_convergence_line``.  The private regex + coercion that
-# stood here, kept "to avoid coupling", were letter-first and
-# flat-only: a staged header's digit-first ``01_coarse.<leaf>`` keys
-# read as EMPTY on this path while the molwatch path read them fine
-# (2026-08-19).  The format's owner is the coupling.
+# ``molwatch_grammar.parse_convergence_line``.
 
 
 def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
@@ -222,8 +195,7 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
 
     Returns empty dict when there is no sibling .molwatch.log.
     Header read is bounded to the lines before the first step
-    begin; footer scan is bounded to the lines after the last step
-    end.  Cost is O(header + footer lines), NOT O(file size).
+    begin; the footer is read over the whole file in order.
 
     Mirrors the molwatch parser semantics so the PySCF parser can
     surface the same fields when the user is viewing the geomeTRIC
@@ -261,19 +233,12 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
 
     # THE FOOTER, through its one reader, over the whole file in order: a
     # log is appended across attempts, and an earlier attempt's error
-    # outranks a later `# concluded:` -- a tail-only read missed it.
+    # outranks a later `# concluded:`.
     try:
         out.update(_MG.read_conclusion(log_path))
     except OSError:
         pass
     return out
-
-
-# `_read_initial_energy_from_log` -- a lone ``<JOB>_initial.xyz``'s energy,
-# from the newest ``<JOB>-run<N>.pyscf.log`` beside it -- stood here until
-# 2026-10-04.  The initial geometry names no run (its name carries no
-# stage), so it reads only itself, and geomeTRIC's trajectory carries its
-# own energies (plan W56 4d).
 
 
 def _read_qdata_forces(
@@ -365,9 +330,7 @@ def _read_scf_history(
     dicts.  Empty list when no log is present."""
     base = os.path.dirname(traj_path) or "."
     # ``<stem>.log`` -- the pyscf stdout carries the run's stem
-    # (`pyscf/input.py`: ``_logname``); the ``_geom``-strip that stood
-    # here reproduced only the unstaged spelling, so a staged
-    # trajectory read the geomeTRIC opt log (no SCF cycles) instead.
+    # (`pyscf/input.py`: ``ROLE_LOG``).
     stem = _run_stem_of(traj_path)
     if stem is None:
         return []
@@ -405,9 +368,7 @@ def _read_scf_history(
                             # |g| is PySCF's orbital-gradient norm, an
                             # ENERGY (Hartree over dimensionless orbital
                             # rotations, `web/trajectory.md` § 3), converted
-                            # as the progress log's writer converts it -- the
-                            # force factor stood here until 2026-10-05, 1.89x
-                            # too large against its own tolerance.
+                            # as the progress log's writer converts it.
                             "gnorm":   float(g)  * _HARTREE_TO_EV,
                             "ddm":     float(ddm),
                         })
@@ -515,7 +476,7 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
 
     # THE ATOMS THE RUN HOLDS, as its own progress log states them -- the
     # field the SIESTA and molwatch parsers fill from their own files
-    # (`model/parse.md` § 5.3; a sidecar was looked for until 2026-10-04).
+    # (`model/parse.md` § 5.3).
     runtime_info: Dict[str, object] = {}
     if mw_meta.get("frozen_atoms"):
         runtime_info["frozen_atoms"] = list(mw_meta["frozen_atoms"])
@@ -585,11 +546,8 @@ class PySCFParser:
     round-trip); use :class:`PySCFOutFileParser` for a typed
     :class:`TrajectoryResult`.
 
-    Mirrors the API of the legacy ``PySCFParser`` it replaced:
     ``can_parse(path) -> bool`` + ``parse(path) -> Trajectory``,
-    plus ``name`` / ``label`` / ``hint`` class attributes so
-    introspecting callers (registry diagnostics, tests) see the same
-    surface they did on the legacy class."""
+    plus ``name`` / ``label`` / ``hint`` class attributes."""
 
     name  = "pyscf"
     label = "XYZ trajectory (PySCF / geomeTRIC / generic multi-frame XYZ)"
@@ -645,14 +603,8 @@ class PySCFOutFileParser(FileParser):
     @classmethod
     def can_parse(cls, path: Path) -> bool:
         # `<job>_optimized.xyz` IS a valid XYZ, and it belongs to
-        # `pyscf-geom`, whose own `can_parse` says so: *"Plain .xyz files
-        # (without the suffix) are intentionally NOT claimed here; the
-        # PySCFOutFileParser registered under engines/ handles
-        # _geom_optim.xyz trajectories."*  That division of labour was
-        # written on one side only, so both parsers claimed the file and
-        # `detect()` -- which is exactly-one-or-raise -- refused it.
-        # Opening PySCF's final geometry on the Results tab was an
-        # unhandled `AmbiguousFormatError`, i.e. an HTTP 500 (measured).
+        # `pyscf-geom`; were both parsers to claim it, `detect()` -- which
+        # is exactly-one-or-raise -- would refuse it.
         #
         # The split is right the way it is documented: `_optimized.xyz`
         # is ONE converged geometry (`pyscf/warm-files.toml`: *"latest
@@ -671,17 +623,11 @@ class PySCFOutFileParser(FileParser):
         # The body looks for companions -- the geomeTRIC log, the molwatch
         # log, the pyscf stdout -- by COMPOSING their names from this file's
         # stem, and `runfiles` refuses a stem that is not a legal label
-        # (§ 2.1: a dotted label cannot be read back out of a filename).  So
-        # `my.job_geom_optim.xyz`, a perfectly good XYZ this parser CLAIMS,
-        # raised `RunFileError` -- a `ValueError`, not a `ParseError` -- which
-        # escaped `/api/watch/load`'s handler as an HTTP 500 (reproduced
-        # 2026-09-18).
+        # (§ 2.1: a dotted label cannot be read back out of a filename) with
+        # a `RunFileError` -- a `ValueError`, not a `ParseError`.
         #
-        # Wrapped HERE rather than at each compose site, because fixing them
-        # one at a time is what this codebase calls a second implementation:
-        # the first patch moved the raise from the name splitter to
-        # `_read_scf_history`, and there are more.  The boundary is the one
-        # place the promise can be kept.
+        # Wrapped HERE rather than at each compose site: the boundary is the
+        # one place the promise can be kept.
         from molbuilder.runfiles import RunFileError
         try:
             traj = _parse_pyscf_xyz(str(path))

@@ -32,12 +32,9 @@ CH = "/api/notify/channels"
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
     app = create_app(config={"rate_limit": {"enabled": False}})
-    # ASK THE DOOR for the path.  This built ".config/molbuilder/notify" by
-    # hand, so every test taking `path` from this fixture asserted the
-    # location the TEST believed rather than the one the app uses -- and all
-    # seven broke the day the file moved.  Taken from the monitor's own
-    # resolver, each of those tests now additionally proves the page writes
-    # where the reader reads.
+    # ASK THE DOOR for the path.  Taken from the monitor's own resolver, each
+    # test taking `path` from this fixture also proves the page writes where
+    # the reader reads.
     from molbuilder.monitor import default_notify_path
     return app.test_client(), default_notify_path()
 
@@ -73,11 +70,8 @@ def test_the_key_is_never_readable_back(client):
 
 
 def test_a_webhook_address_is_masked_because_it_IS_the_credential(client):
-    """**The rule that was missing until 2026-08-31.** The route this
-    replaced returned every stored URL in full on the strength of *"an
-    address, not a secret"* — true of the listener URL it was written for,
-    and false of the Slack webhook actually in the file, which anyone signed
-    in could then read back out.
+    """For a Slack webhook the address IS the credential, so no stored URL
+    is returned in full.
 
     Enough survives to tell two webhooks apart; nowhere near enough to use.
     """
@@ -118,20 +112,9 @@ def test_every_address_is_masked_even_a_listeners(client):
 
 
 def test_the_kind_this_page_shows_is_the_one_the_SENDER_will_use(client):
-    """**Replaced the test that asserted the opposite** (2026-09-02).
-
-    It read `test_the_kind_is_derived_from_the_key_not_stored_beside_it`, on
-    the rule that *having a key* is the one thing that differs.  That held
-    while there were two kinds.  There are three wire formats now
-    (`run-reports.md` § 4.1b) and having a key cannot tell Slack from
-    Discord -- so the derivation collapsed the one distinction the sender
-    cannot avoid making, and a Discord channel was saved, listed and tested
-    as though it were a Slack one.
-
-    The rule now: this page reports `monitor.channel_kind`, the SAME
-    function that chooses the envelope.  A test that pinned the old
-    derivation would fail the next time the right thing is done, which is
-    what it just did."""
+    """There are three wire formats (`run-reports.md` § 4.1b) and having a
+    key cannot tell Slack from Discord, so this page reports
+    `monitor.channel_kind`, the SAME function that chooses the envelope."""
     from molbuilder.monitor import channel_kind
     c, path = client
     c.put(CH + "/team", json={"url": WEBHOOK})
@@ -197,10 +180,8 @@ def test_it_writes_where_the_MONITOR_reads(client):
     assert path.exists()
     # AND IT PARSES AS WHAT THE MONITOR EXPECTS.  Same directory but a shape
     # the reader rejects would fail in exactly the same silence.
-    # `load_channels()` takes no path -- its first parameter is `log`, so
-    # `load_channels(str(path))` silently passed the notify file as a LOG
-    # destination and proved nothing about which file was read.  It reads its
-    # own resolver, which is the point being made here.
+    # `load_channels()` takes no path: it reads its own resolver, which is
+    # the point being made here.
     assert list(load_channels()) == ["lab"]
 
 
@@ -468,9 +449,7 @@ def test_the_test_button_sends_what_the_MONITOR_would_send(client,
     -- and for Discord it did, twice over: no `User-Agent` (403 at
     Cloudflare) and no `content`/`embeds` (400 at Discord).
 
-    This asserted a SOURCE STRING until 2026-09-02, so it broke on a
-    refactor that kept the rule and would have passed on a copy-paste that
-    broke it.  It now sends for real, to a recording stand-in, and compares
+    It sends for real, to a recording stand-in, and compares
     the bytes against `monitor.webhook_request` -- the producer both senders
     call (`run-reports.md` § 4.1b)."""
     import urllib.request
@@ -741,14 +720,8 @@ def test_the_web_and_the_cli_issue_through_one_door(client, tmp_path):
     free to generate its own route segment from the same file, so issuing a
     second key moved the route and silenced everyone already set up.  The
     rule is that the segment is a property of the FILE, and whoever issues
-    next adopts it.
-
-    *Replaces `assert "issue_notify_key" in src and ... in cli`, 2026-09-06.*
-    That was true of two modules that each merely MENTIONED the name -- in a
-    comment, in an import they never called, in a docstring explaining the
-    rule they had stopped following.  It is also true today of a CLI that
-    calls the shared door and then overrides the segment afterwards.  This
-    runs both issuers against one file and compares the answers.
+    next adopts it.  This runs both issuers against one file and compares
+    the answers.
     """
     from click.testing import CliRunner
 
@@ -761,9 +734,8 @@ def test_the_web_and_the_cli_issue_through_one_door(client, tmp_path):
     keys = notify_keys_path()
     assert keys.exists(), "the web issuer wrote no key file to join"
 
-    # No --keys-file: it was removed 2026-09-12, and this call passed the
-    # DEFAULT path through it anyway -- the fixture already moves the config
-    # directory, which is what keeps this off the real key file.
+    # The fixture moves the config directory, which is what keeps this off
+    # the real key file.
     out = CliRunner().invoke(cmd_notify_token, ["bob"])
     assert out.exit_code == 0, out.output
 

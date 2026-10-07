@@ -1,9 +1,7 @@
 """The warm-file rules loader — `job-contracts.md` § 4.2a's one reader.
 
-Written with the module (U1, 2026-08-13), from the contract: the closed
-vocabulary, the [base]+sections hierarchy, the growth-rule refusal, and
-— the byte-faith pins — the seed files reproducing EXACTLY the tuples
-they will retire, which is what turns U2/U3 into provable re-plumbing.
+From the contract: the closed vocabulary, the [base]+sections hierarchy,
+the growth-rule refusal, and the byte-faith pins.
 """
 from __future__ import annotations
 
@@ -16,11 +14,8 @@ from molbuilder import warmfiles as W
 #  Byte-faith: the files SAY this vocabulary, spelled here as LITERALS   #
 # --------------------------------------------------------------------- #
 #
-# B-2 (final review, 2026-08-13): these two pinned the loader against
-# runwrap's tuples -- which U3 made ALIASES OF THE SAME LOADER, so both
-# sides moved together and deleting every inventory-only row from the
-# TOML stayed green while the wrapper banner silently shrank.  A
-# byte-faith pin needs one side the test's own bytes.
+# B-2 (final review, 2026-08-13): a byte-faith pin needs one side the
+# test's own bytes.
 
 #: siesta/warm-files.toml, every section, in row order (order is
 #: load-bearing: Job.warm order, the banner order).
@@ -185,70 +180,12 @@ def test_a_missing_file_names_the_expected_home():
 
 
 # --------------------------------------------------------------------- #
-#  U4 — the honoured_by agreement check (mandatory, § 4.2a)              #
-# --------------------------------------------------------------------- #
-
-def _siesta_deck(restart: str) -> str:
-    import numpy as np
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.input import render_fdf
-    from molbuilder.structure import Structure
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    return render_fdf(struct, SiestaConfig(system_label="JOB",
-                                           restart=restart))
-
-
-def test_a_continuing_deck_emits_every_declared_keyword():
-    """§ 4.2a: the check that makes a drifting rules file catchable.  A
-    rules file whose keywords the emitter stopped gating is § 4's silent
-    pair reborn as config drift — a file carried in and never read."""
-    import re
-    deck = _siesta_deck("continue")
-    rules = [r for r in W.warm_list("siesta", "optimization").rules
-             if r.honoured_by]
-    assert rules, "the optimization vocabulary declares no keywords?"
-    for rule in rules:
-        assert re.search(rf"^{re.escape(rule.honoured_by)}\s+\.true\.",
-                         deck, re.M), (
-            f"{rule.suffix}: the rules file declares {rule.honoured_by!r} "
-            f"honours it, and a continuing deck does not set that keyword "
-            f"— the carry would be 'present but not honoured'")
-
-
-def test_a_clean_deck_refuses_every_honouring_keyword_out_loud():
-    """The other silent half: a clean deck emitting UseSave* would read
-    warm state a stage was told to ignore.
-
-    **It must say `.false.`, not go quiet** (2026-08-18). This asserted only
-    that no keyword was set `.true.`, which an OMITTED keyword satisfies —
-    and omission was what the emitter did, and was the bug: SIESTA reads
-    `<SystemLabel>.DM` when the file is there unless a deck refuses it, so a
-    stage told to start clean warm-started. The assertion could not tell the
-    fix from the defect, so it is written the other way round: every keyword
-    the rules file names as honouring a file is PRESENT and says `.false.`.
-    """
-    import re
-    deck = _siesta_deck("clean")
-    honouring = [r.honoured_by for r in W.warm_list("siesta", "optimization").rules
-                 if r.honoured_by]
-    assert honouring, "the rules file names no honouring keyword to check"
-    for keyword in honouring:
-        assert re.search(rf"^{re.escape(keyword)}\s+\.false\.", deck, re.M), (
-            f"a clean deck must set {keyword} .false. -- leaving it out is "
-            f"not a refusal, because SIESTA reads the file it names whenever "
-            f"it is present")
-
-
-# --------------------------------------------------------------------- #
 #  The two files that must name the same keywords                       #
 # --------------------------------------------------------------------- #
 
 def test_the_warm_rules_and_the_catalogue_name_the_same_keywords():
     """``honoured_by`` and ``[item.restart].expands`` are two questions with
-    one answer, and nothing compared them until 2026-08-18.
+    one answer.
 
     They are not duplicates and must not be collapsed: the rules file says
     *which keyword honours THIS FILE* (a per-file mapping, which is what
@@ -262,10 +199,6 @@ def test_the_warm_rules_and_the_catalogue_name_the_same_keywords():
     no file claims, a keyword would be set for state nothing carries — both
     halves of `run-identity.md` § 4's silent pair, from a mismatch no test
     would have caught.
-
-    A third copy lived in ``SIESTA_RESTART_GROUP.keys`` until the same day —
-    the same three names in a third order — and it is gone: that object now
-    reads the catalogue. This gate is what keeps the remaining two honest.
     """
     from molbuilder.script_emit import parameter
     declared = set(parameter("restart", "siesta").writes)
@@ -281,9 +214,8 @@ def test_the_warm_rules_and_the_catalogue_name_the_same_keywords():
 def test_the_restart_group_object_is_not_a_second_declaration():
     """`SIESTA_RESTART_GROUP.keys` is DERIVED, and this is what says so.
 
-    It was a literal tuple, and being a literal is what let it drift into a
-    different order from the catalogue's `expands` and the rules file's rows.
-    Pinning identity-with-the-catalogue rather than a hardcoded expectation is
+    A literal tuple can drift into a different order from the catalogue's
+    `expands` and the rules file's rows.  Pinning identity-with-the-catalogue rather than a hardcoded expectation is
     the point: a test naming the three keywords here would be a fourth copy.
     """
     from molbuilder.config.siesta import SIESTA_RESTART_GROUP

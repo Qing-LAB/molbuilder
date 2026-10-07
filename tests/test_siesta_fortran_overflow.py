@@ -90,11 +90,6 @@ class TestParseFortranFloat:
             fortran_float(tok)
 
 
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 2 tests here parsed SCF rows invented as text or pasted out of
-# a real output (two classes) (`process/testing.md` § 6).
-
-
 # --------------------------------------------------------------------- #
 #  JSON-safety guard on the trajectory_to_legacy_dict adapter            #
 #                                                                       #

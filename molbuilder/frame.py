@@ -236,7 +236,7 @@ class Trajectory:
     # populate this from on-disk metadata (``# runtime.<key>:`` lines
     # in molwatch logs; future SIESTA / other parsers may grow their
     # own header readers).  Empty dict when the writer didn't emit
-    # the block -- older log files render with "—" rows.  Canonical
+    # the block -- such a log renders with "—" rows.  Canonical
     # keys: see :mod:`molbuilder.runtime_info`.
     runtime_info:  dict                 = field(default_factory=dict)
     # Non-fatal parse issues encountered while reading the file.  The

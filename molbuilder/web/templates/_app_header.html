@@ -2,9 +2,7 @@
 
    Included by every main tab template.  Each caller sets active_tab
    to one of the canonical key values defined in
-   ``molbuilder.web.tabs.TABS`` (currently: "molbuilder",
-   "structure-optimization", "spectrum-calculation",
-   "transport-calculation", "results").
+   ``molbuilder.web.tabs.TABS``.
 
    The project-wide tagline lives HERE -- one canonical sentence
    that describes what molbuilder is, shown on every page (so users
@@ -12,8 +10,8 @@
    NOT page-specific; per-page descriptions belong in the page body,
    not the banner.  Plain-text only: literal Unicode characters
    (em-dash, middle-dot) instead of HTML entities (``&mdash;`` /
-   ``&middot;``), because Jinja autoescape (pinned ON in Round 5
-   for XSS hygiene) writes ``&`` as ``&amp;`` and the entities then
+   ``&middot;``), because Jinja autoescape (pinned ON for XSS
+   hygiene) writes ``&`` as ``&amp;`` and the entities then
    render as visible "&mdash;" gibberish.
 
    Styling lives in static/lib/tabs.css.  The order + labels are the
@@ -26,12 +24,6 @@
    The bare ``/`` 302-redirects to whichever tab is first in TABS so
    the host root always lands on the canonical landing tab without
    hard-coding the path here.
-
-   Watch was retired 2026-05-19 -- the /watch route + template +
-   bootstrap are gone; trajectory inspection is /results-only via
-   the registry's trajectory adapter.  Picking a ``.molwatch.log``,
-   ``.out``, or other ``TrajectoryParser``-recognised file in the
-   sidebar on /results auto-mounts the inspector.
 -#}
 <header class="app-header">
   <div class="header-hero">
@@ -40,8 +32,8 @@
   </div>
 
   {#- Account strip lives in the hero banner, at the right of the title
-      row -- the standard "user menu top-right" spot, moved out of the
-      tabs nav (2026-07-25) so the nav is purely navigation.  Rendered
+      row -- the standard "user menu top-right" spot, out of the tabs
+      nav so the nav is purely navigation.  Rendered
       only when an auth session is active (current_user injected by
       molbuilder.web.auth._register_template_context); when auth is
       disabled in molbuilder.json this is omitted entirely. -#}

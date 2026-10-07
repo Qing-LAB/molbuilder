@@ -1,13 +1,12 @@
 """Round-trip invariant for the consolidated Structure authority
 (docs/model/structure.md).
 
-The one test that would have caught the recurring ``cell_origin -> 0`` bug at
-the source (that field is retired, 2026-09-25): build a Structure with EVERY
-metadata field set to a NON-default value (crucially a non-zero STATED
-``engine_offset``) and assert it survives each hop of the ONE codec unchanged:
+Build a Structure with EVERY metadata field set to a NON-default value
+(crucially a non-zero STATED ``engine_offset``) and assert it survives each
+hop of the ONE codec unchanged:
 
   * ``Structure.from_dict(s.to_dict())``      -- the pure Python round-trip unit
-  * ``Structure.read(s.write(path))``         -- the paired .xyz + .json file unit
+  * ``StructureCodec`` write, then read        -- the paired .xyz + .json file unit
   * ``s.to_wire()``                           -- the server->client view carries
                                                  the stated offset and the
                                                  box_corner the server resolved
@@ -45,12 +44,6 @@ _META = {
 # via metadata_to_dict so channel serialisation is included).
 # `regions` is the whole label store -- the reserved labels are in it, so there
 # is no `frozen_atoms` field to preserve separately (molview.md § 6.6).
-# `pbc` was here until 2026-09-22 and it made this loop BLIND.  It is a
-# method now, so `getattr(got, "pbc")` returned a bound method; two bound
-# methods off two instances are never equal, so the assertion failed on
-# every input -- and because it sat third, the loop stopped there and
-# `axis_kind`, `vacuum` and `regions` were no longer checked at all.  The
-# one test built to catch a field silently dropping could not have seen one.
 _METADATA_FIELDS = ("cell", "engine_offset", "axis_kind",
                     "vacuum", "regions")
 
@@ -107,9 +100,8 @@ def test_to_dict_metadata_nested_under_metadata_key():
 
 
 # --------------------------------------------------------------------------- #
-#  § 5.2  Paired .xyz + .molstruct.json file round-trip (L2 StructureCodec --  #
-#         the paired-file door; the pure codec is L1, the file door is L2      #
-#         because pairing needs the L2 sidecar codec, structure-authority §3.3)#
+#  § 5.2  Paired .xyz + .molstruct.json file round-trip (StructureCodec --     #
+#         the paired-file door)                                                #
 # --------------------------------------------------------------------------- #
 
 def test_read_write_pair_round_trip_preserves_all_metadata(tmp_path):
@@ -178,9 +170,8 @@ def test_to_wire_carries_the_stated_offset_and_the_box_corner():
 def test_to_wire_places_a_crystal_by_the_rule_not_at_the_world_origin():
     """An explicit cell and no stated offset -- an imported crystal: the RULE
     places it, the atom centred in the cell, so the box is drawn at
-    ``-engine_offset`` and not at the world origin.  Until 2026-09-25 this
-    case was special (atoms already in [0, cell) meant "no shift"); § 6.0 made
-    placement one rule, and this is the fixture that tells the two apart."""
+    ``-engine_offset`` and not at the world origin: § 6.0 makes placement one
+    rule."""
     s = Structure(elements=["C"], positions=np.array([[0.5, 0.5, 0.5]]))
     s.apply_metadata_dict({
         "cell": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]],
@@ -211,13 +202,6 @@ def test_an_assigned_origin_survives_deleting_every_atom():
     assert per["box_corner"] == [-2.0, -3.0, -4.0]
 
 
-# `test_stored_pair_without_an_origin_resolves_the_corner_not_the_world`
-# RETIRED 2026-09-25: it pinned § 6.1 row 3's derived wrapping corner through
-# the deleted `cell_origin` / `resolve_cell_origin` / `cell_contains_atoms`.
-# What it protected -- the placement is a view, never written as truth -- is
-# held by the save-endpoint test below, on the same fixture, one layer up.
-
-
 def test_derived_structure_round_trips_with_cell_still_null(tmp_path):
     """§ 6.1 clause 1: derived-ness SURVIVES the pair round-trip — a
     resolved view must never be persisted as truth."""
@@ -232,13 +216,6 @@ def test_derived_structure_round_trips_with_cell_still_null(tmp_path):
     back = codec.read(tmp_path / "d.xyz")
     assert back.cell is None and back.engine_offset is None
     assert back.vacuum == (3.0, 3.0, 3.0)
-
-
-# `test_to_wire_derived_keeps_cell_null_and_resolves_view` RETIRED 2026-09-25:
-# `tools/verify_subsumption.py` confirmed it on all 12 informative mutants
-# against `test_periodicity_gate.py::TestTheDefaultVacuumGap::test_the_wire_carries_unset_and_the_resolved_view`,
-# and it held the last literal corner `[7.5, 7.5, 7.5]` plan § 5q.4 lists for
-# retirement.
 
 
 def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
@@ -257,9 +234,8 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
     monkeypatch.chdir(tmp_path)
-    # The tree is THIS tmp one.  A chdir used to say that on its own,
-    # because `projects_root` was cwd-anchored; it resolves from the
-    # molbuilder root now (2026-08-22), so the door is told directly.
+    # The tree is THIS tmp one: `projects_root` resolves from the molbuilder
+    # root, not the cwd, so the door is told directly.
     from molbuilder.projects import PROJECTS_ROOT_ENV
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
     sdir = tmp_path / "projects" / "P" / "structure"
@@ -397,12 +373,8 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         Mesh cutoff is a grid density over the CELL and the transverse
         k-mesh samples the reciprocal cell, so changing the box is
         exactly what invalidates the inherited settings — as much as
-        moving an atom is.  This is the half the browser used to decide
-        for itself: `/api/structure/periodicity` returned only the
-        `periodicity` block, so `commitPeriodicityOp` marked the store
-        locally and Python marked nothing.  Now the door marks and the
-        answer carries it, which means the decision has to be pinned
-        HERE, in the language that makes it.
+        moving an atom is.  The door marks and the answer carries it,
+        so the decision is pinned HERE, in the language that makes it.
         """
         from molbuilder.periodicity_gate import apply_edit
         s = self._with_contract()
@@ -502,11 +474,9 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
             "the fragment's vacuum replaced the one the user typed"
         assert out.axis_kind == ("isolated", "isolated", "isolated"), \
             "the fragment's axis kinds replaced the canvas's"
-        # AND THE HALF THE DOCSTRING ASSERTED IN PROSE ONLY.  § 2.2b row 1 is
-        # the reason the section exists -- the slab's box IS adopted onto a
-        # canvas that states none -- and deleting the whole adoption block
-        # is assertable and was asserted nowhere: the two asserts above pin
-        # what must NOT ride in, and this pins what must.
+        # § 2.2b row 1: the slab's box IS adopted onto a canvas that states
+        # none.  The two asserts above pin what must NOT ride in, and this
+        # pins what must.
         assert out.cell is not None, \
             "the only lattice in play was not adopted at all"
         assert np.allclose(out.cell, np.diag([2.88, 2.88, 20.])), \
@@ -640,10 +610,7 @@ class TestTitleBelongsToTheGeometryFile:
 
     One test, not four: they are one rule's observable consequences, and
     splitting them would pin the same fact four times (`process/testing.md`
-    -- unifying must REDUCE the count).  Both halves of the fix were
-    mutation-checked and BOTH were green beforehand -- reverting the
-    keyword strip broke nothing across 116 tests, and putting `title` back
-    into the identity block broke nothing across 131.
+    -- unifying must REDUCE the count).
     """
 
     def _pair(self, tmp_path, name, comment):
@@ -672,19 +639,16 @@ class TestTitleBelongsToTheGeometryFile:
         p = self._pair(tmp_path, "human.xyz", "anneal at T=300K, run 3")
         assert codec.load(p).title == "anneal at T=300K, run 3"
 
-        # 3. A COMMENT LINE DOES NOT CONJURE A SIDECAR.  A non-empty title
-        # used to make `identity_to_dict` non-empty, hence `keep_sidecar`,
-        # so a `.molstruct.json` came into being to hold one string that was
-        # already in the file beside it.
+        # 3. A COMMENT LINE DOES NOT CONJURE A SIDECAR to hold one string
+        # that is already in the file beside it.
         p = self._pair(tmp_path, "named.xyz", "water dimer")
         codec.write(codec.load(p), p)
         assert not molstruct.sidecar_path_for(p).exists(), \
             "a comment line alone wrote a sidecar"
 
-        # 4. AND AN EDIT TO THAT LINE IS HONOURED.  The sidecar's copy used
-        # to win silently -- on the one line of a structure file a person
-        # can obviously edit.  Written here THROUGH the codec so a sidecar
-        # exists to be overridden.
+        # 4. AND AN EDIT TO THAT LINE IS HONOURED -- the one line of a
+        # structure file a person can obviously edit.  Written here THROUGH
+        # the codec so a sidecar exists to be overridden.
         s = codec.load(self._pair(tmp_path, "src.xyz", "before"))
         s.regions = {"L": [0]}                    # forces a real sidecar
         codec.write(s, tmp_path / "edited.xyz")

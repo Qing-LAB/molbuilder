@@ -1,9 +1,8 @@
 """One content-format sniffer, used by BOTH /api/build/molecule and /api/build/load.
 
-Regression: build.py used to carry two sniffers that disagreed on a leading "0"
-line -- ``_sniff_structure_format`` (``int(line) > 0`` -> pdb) vs an inline
-``first.strip().isdigit()`` (-> xyz).  Both load paths now delegate to the ONE
-helper, so the classification is identical everywhere.
+Both load paths delegate to the ONE helper, so the classification is identical
+everywhere -- two sniffers disagreed on a leading "0" line (``int(line) > 0``
+-> pdb vs ``first.strip().isdigit()`` -> xyz).
 """
 from __future__ import annotations
 
@@ -15,8 +14,7 @@ def test_positive_count_is_xyz():
 
 
 def test_leading_zero_line_is_pdb_not_xyz():
-    # int("0") > 0 is False -> pdb.  The old inline `"0".isdigit()` said xyz; the
-    # single helper removes that disagreement.
+    # int("0") > 0 is False -> pdb.
     assert _sniff_structure_format("0\n") == "pdb"
 
 

@@ -76,8 +76,8 @@ flowchart LR
         E1 --> E2 --> E3
     end
     subgraph GEN["At generation — enforcing"]
-        G1["render_fdf / render_script"]
-        G2["report(validate(struct, cfg))<br/>validation/__init__.py:115,180"]
+        G1["script_emit.render_deck<br/>(the deck spec_for describes)"]
+        G2["report(validate(struct, cfg))<br/>validation/__init__.py"]
         G3["raises ValidationError on any<br/>error-severity Issue → emission stops"]
         G1 --> G2 --> G3
     end
@@ -86,11 +86,13 @@ flowchart LR
 - **While editing** — `validate_geometry(struct)` runs on every editing response
   (Modify, `/api/modify/*`, `/api/build/*`). Its issues are shown in the UI but
   **never block**, so a half-built structure isn't nagged into a dead end.
-- **At generation** — `report(validate(struct, cfg))` runs before `render_fdf` /
-  `render_script`. `validate` (`validation/__init__.py:115`) aggregates every
-  applicable check via the engine registry; `report` (`:180`) prints warnings to
-  stderr and **raises `ValidationError`** (`issues.py:72`) if any Issue is
-  error-severity, stopping emission. **`report()` is the only gate.**
+- **At generation** — `report(validate(struct, cfg))` is the first step of
+  `script_emit.render_deck`, before a line of any deck exists. `validate`
+  (`validation/__init__.py::validate`) aggregates every applicable check via
+  the engine registry; `report` (`validation/__init__.py::report`) prints
+  warnings and advisories to stderr and **raises `ValidationError`**
+  (`issues.py::ValidationError`) if any Issue is error-severity, stopping
+  emission. **`report()` is the only gate.**
 
 Everything travels as the **L1** `Issue` dataclass (`issues.py:26`) — *L1* = the
 lowest layer: pure data types with no I/O or engine logic:
@@ -299,12 +301,9 @@ is part of correctness:
   for open-shell, `PAO.EnergyShift` default, post-processing templates, version
   pinning, ECP auto-emit, post-relax re-evaluation, `diis_space`/`damp` exposure)
   are **all closed** and pinned by `tests/test_science_gaps.py` (0 xfails).
-- **Pinned false positive (2026-05-05 review):** a claim that geomeTRIC's
+- **A false positive (2026-05-05 review):** a claim that geomeTRIC's
   `convergence_*` kwargs raise `TypeError` was wrong — PySCF's `geometric_solver`
-  forwards them into `geometric.optimize.OptParams`. Guarded by introspection
-  (no subprocess) in
-  `tests/test_pyscf.py:90::test_geometric_optparams_accepts_pyscf_optimize_kwargs`,
-  so a regression surfaces at unit-test time rather than user runtime.
+  forwards them into `geometric.optimize.OptParams`.
 
 ---
 

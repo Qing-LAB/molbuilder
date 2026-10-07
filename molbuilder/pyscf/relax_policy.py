@@ -7,18 +7,12 @@ deck for which relaxation is the measurement's precondition — and both honour
 imports from ``mb_pyscf.pyz`` beside it (``runwrap.PYSCF_COMPANIONS``), so one
 implementation runs and the tests exercise the one that runs.  This file
 travels as itself: the standard library at load, PySCF inside :func:`relax`.
-Until 2026-10-05 its source was pasted into each deck by
-``inspect.getsource``.
 
 **What it asks, and why it has to ask.**  geomeTRIC raises
 ``GeomOptNotConvergedError`` when its step cap is reached with its criteria
 unmet; PySCF's driver catches it, and ``geometric_solver.kernel`` returns the
 flag with the geometry.  ``geometric_solver.optimize`` returns ``kernel(...)[1]``
-— the geometry alone — so a deck that calls ``optimize`` cannot know.  Until
-2026-09-29 both decks called ``optimize`` and wired the policy to
-``assert_convergence``, which guards only each step's SCF (PySCF 2.14
-``geomopt/geometric_solver.py``): a rung that ran out of steps was recorded
-converged and handed on under every policy (the M11 review, plan § 5w K6).
+— the geometry alone — so a deck that calls ``optimize`` cannot know.
 
 **Why a module of its own.**  Code both decks run, living beside them rather
 than inside either.  Value-free: everything it needs arrives as an argument,
@@ -32,10 +26,8 @@ from typing import Tuple
 def policy_of(cfg) -> Tuple[str, int]:
     """``(on_nonconvergence, geom_continue_retries)`` read ONCE, the same way
     for both decks, as the template states them -- the catalogue gives both
-    their values (``halt``, 1).  A blank is refused: this filled ``halt``
-    and 0 until 2026-10-06, a second table of defaults, its 0 not the
-    catalogue's 1 (`generator.md` § 10.1).  Each deck spelled its own reading
-    until 2026-09-29 (the K6 review, R13)."""
+    their values (``halt``, 1).  A blank is refused (`generator.md`
+    § 10.1)."""
     policy = getattr(cfg, "on_nonconvergence", None)
     retries = getattr(cfg, "geom_continue_retries", None)
     if policy in (None, "") or retries is None:
@@ -117,8 +109,7 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
         return mol, False
     # THE WAY ON, as `status` and `launch` say it: a prepped stage is not
     # prepped again, so a setting changes from the state saved before its
-    # prep (`job-system.md` § 5.0) -- "prep this stage again" stood here
-    # until 2026-10-06, a command prep refuses.
+    # prep (`job-system.md` § 5.0).
     change = ("geom_max_steps or geom_continue_retries" if policy == "continue"
               else "geom_max_steps, or on_nonconvergence = continue")
     back = (f"to change {change}, go back to the state saved before this "

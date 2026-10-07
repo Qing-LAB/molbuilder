@@ -9,8 +9,7 @@
  *           at either destination: a browser download, or a dialog-chosen
  *           place in the project tree.
  * Called by: MolView's Export menu, through `opts.files` at mount.  ONE
- *           implementation; until 2026-08-19 no production page passed a
- *           door at all, so every Export row was a silent no-op.
+ *           implementation.
  *
  * NEVER: parse a structure (the server's codec writes the pair, § 11.7);
  *        invent a sidecar in the browser (the save-then-reload trap,
@@ -87,13 +86,11 @@ export const molviewFiles = {
                 // travel with them (§ 11.3).  As ONE artifact when there are
                 // two: a second programmatic download is exactly what
                 // browsers silently swallow (Chrome's multiple-download
-                // policy), and "the .json was missing" is how that loss was
-                // reported.  A store-zip named by the stem cannot lose its
+                // policy).  A store-zip named by the stem cannot lose its
                 // half.
                 const files = res.body.files;
-                // The gate's verdicts ride the result (2026-08-20): the
-                // server judged what is leaving, and dropping the sentence
-                // here was the one place the whole chain went quiet.
+                // The gate's verdicts ride the result: the server judged
+                // what is leaving, and its sentence is said.
                 const notices = Array.isArray(res.body.notices)
                     ? res.body.notices : null;
                 if (files.length === 1) {

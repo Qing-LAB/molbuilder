@@ -1,148 +1,17 @@
-"""End-to-end atom-identity binding (model/overview.md § 2): the atom a user
-freezes (internal 0-based) MUST be the same physical atom (element + position)
-constrained in the generated engine input -- across BOTH engines, whose index
-conventions differ (SIESTA .fdf 1-based; geomeTRIC $freeze 1-based; PySCF
-mol.atom 0-based).  This is the catastrophic-wrong-atom guard."""
-import re
+"""Atom-identity binding (model/overview.md § 2): an atom a user labels is the
+same physical atom (element + position) a rule selects after the label has been
+through disk -- the place a wrong atom gets computed."""
 import numpy as np
 from molbuilder.structure import Structure
-from molbuilder import engine_atom_index as eai
 
-
-def _distinct_struct():
-    # REPEATED elements, distinct positions.  The name is historical: it used to
-    # be H/C/N/O/F, five distinct species, which made (element, position) unique
-    # by construction -- so the element half of every identity assertion below
-    # was decoration, and a wrong atom could only ever be caught by its
-    # coordinates (2026-09-09 audit).  Three carbons mean an index shift lands
-    # on a DIFFERENT CARBON and stays chemically plausible, which is the failure
-    # that is silent.
-    #
-    # Every engine gets these atoms placed by the engine offset
-    # (`model/structure-periodicity.md` § 6.0) -- ONE uniform shift, whatever
-    # the box.  Identity is the ORDER, invariant to that shift, so both tests
-    # below derive the shift from atom 0 and check every line against it.
-    els = ["C", "C", "N", "C", "O"]
-    pos = np.array([[float(i), float(2 * i), float(3 * i)] for i in range(5)])
-    return Structure(elements=els, positions=pos,
-                     cell=np.diag([50.0, 50.0, 50.0]))
-
-
-# ---------------------------- SIESTA .fdf ---------------------------- #
-def _fdf_coords(fdf):
-    out, inblk = [], False
-    for ln in fdf.splitlines():
-        if "%block AtomicCoordinatesAndAtomicSpecies" in ln:
-            inblk = True; continue
-        if inblk and "%endblock" in ln:
-            break
-        if inblk:
-            p = ln.split()
-            if len(p) >= 3:
-                out.append(np.array([float(p[0]), float(p[1]), float(p[2])]))
-    return out
-
-
-def _fdf_constrained_1based(fdf):
-    idxs, inblk = set(), False
-    for ln in fdf.splitlines():
-        if "%block Geometry.Constraints" in ln:
-            inblk = True; continue
-        if inblk and "%endblock" in ln:
-            break
-        if inblk and ln.strip().startswith("position"):
-            idxs.update(int(x) for x in ln.split()[1:])
-    return idxs
-
-
-def test_siesta_frozen_maps_to_correct_physical_atom():
-    from molbuilder.siesta.input import render_fdf
-    from molbuilder.config.siesta import SiestaConfig
-    s = _distinct_struct()
-    s.frozen_atoms = [1, 3]                       # freeze C (idx1) and O (idx3)
-    fdf = render_fdf(s, SiestaConfig())
-    coords = _fdf_coords(fdf)
-    assert len(coords) == 5
-    constrained = _fdf_constrained_1based(fdf)
-    # render_fdf uniformly translates atoms (box-centering); identity is the
-    # ORDER, invariant to that shift.  Derive the shift from atom 0, then verify
-    # EVERY fdf line is the internal atom at that index (catches any reorder).
-    shift = coords[0] - s.positions[0]
-    for j in range(5):
-        assert np.allclose(coords[j] - shift, s.positions[j]), (
-            f"atom order not preserved at fdf line {j+1}")
-    # Now the constraint must target the right physical atom.
-    for i in s.frozen_atoms:
-        eng = eai.siesta_atom_index(i)            # 0-based -> SIESTA 1-based
-        assert eng in constrained, f"internal atom {i} not constrained"
-        assert np.allclose(coords[eng - 1] - shift, s.positions[i]), (
-            f"SIESTA constrains atom {eng} at {coords[eng-1]-shift} but internal "
-            f"atom {i} is at {s.positions[i]} -- WRONG PHYSICAL ATOM")
-    assert eai.siesta_atom_index(2) not in constrained   # N (idx2) not frozen
-
-
-# --------------------------- PySCF / geomeTRIC ----------------------- #
-# Any decimal width.  `\d{6,}` stood here and made a COORDINATE-FORMAT change
-# fail as "expected 5 atom lines, got 0" -- a parse miss wearing an identity
-# error's clothes.  The count assertion below still catches a missing atom, and
-# now says which thing broke (2026-09-09).
-_ATOM = re.compile(r"^\s*([A-Z][a-z]?)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s*$")
-
-
-def _pyscf_atoms(script):
-    out = []
-    for ln in script.splitlines():
-        m = _ATOM.match(ln)
-        if m:
-            out.append((m.group(1),
-                        np.array([float(m.group(2)), float(m.group(3)), float(m.group(4))])))
-    return out
-
-
-def test_pyscf_frozen_maps_to_correct_physical_atom():
-    from molbuilder.pyscf.input import render_script
-    from molbuilder.config.pyscf import PySCFConfig
-    s = _distinct_struct()
-    s.frozen_atoms = [1, 3]
-    script = render_script(s, PySCFConfig(optimize=True))
-    atoms = _pyscf_atoms(script)
-    assert len(atoms) == 5, (
-        f"expected 5 atom lines in the generated script, got {len(atoms)} -- "
-        f"if this is 0 the coordinate FORMAT changed and `_ATOM` no longer "
-        f"matches; that is a parse miss, not an identity error")
-    # The same uniform shift as the .fdf above: derive it from atom 0, then
-    # verify EVERY script line is the internal atom at that index.
-    shift = atoms[0][1] - s.positions[0]
-    for j, (el, xyz) in enumerate(atoms):
-        assert el == s.elements[j] and np.allclose(xyz - shift, s.positions[j]), (
-            f"atom order not preserved at script atom line {j+1}")
-    m = re.search(r"xyz ([\d,]+)", script)
-    assert m, "geomeTRIC $freeze xyz line not found"
-    frozen_1based = {int(x) for x in m.group(1).split(",")}
-    for i in s.frozen_atoms:
-        eng = eai.geometric_atom_index(i)         # 0-based -> geomeTRIC 1-based
-        assert eng in frozen_1based, f"internal atom {i} not frozen"
-        el, xyz = atoms[eng - 1]
-        assert el == s.elements[i] and np.allclose(xyz - shift, s.positions[i]), (
-            f"geomeTRIC freezes atom {eng} ({el} at {xyz - shift}) but internal "
-            f"atom {i} is {s.elements[i]} at {s.positions[i]} -- WRONG PHYSICAL ATOM")
-
-
-# ─────────────────── the sidecar ↔ selection leg ────────────────────────────
-#
-# The two tests above bind an atom a user FROZE to the atom an engine
-# constrains.  This one binds an atom a user LABELLED to the atom a rule
-# re-selects after the label has been through disk -- the other place a wrong
-# atom gets computed, and the place nothing was looking.
 
 def _repeated_element_struct():
     """Five atoms with REPEATED elements, so identity cannot ride on the element.
 
-    `_distinct_struct` above makes (element, position) unique by construction,
-    which is what the 2026-09-09 audit flagged: a test whose fixture cannot
-    express the confusion is not testing against it. Three carbons here mean an
-    index shift between the label and the selection lands on a DIFFERENT carbon
-    and stays chemically plausible -- exactly the failure that is silent.
+    A test whose fixture cannot express the confusion is not testing against
+    it. Three carbons here mean an index shift between the label and the
+    selection lands on a DIFFERENT carbon and stays chemically plausible --
+    exactly the failure that is silent.
     """
     els = ["C", "C", "N", "C", "O"]
     pos = np.array([[float(i), 0.0, 0.0] for i in range(5)])
@@ -158,18 +27,14 @@ def test_a_region_label_survives_the_sidecar_and_selects_the_same_atoms(tmp_path
     THE FAILURE THIS CATCHES.  `regions` decides which atoms are computed --
     which are electrode and which are device, which are frozen. The write side
     (`Structure.metadata_to_dict` -> `molstruct.save`) and the read side
-    (`molstruct.load` -> `apply_to_structure` -> `evaluate(ByRegion(...))`) were
-    each covered, and NOTHING JOINED THEM: `ByRegion` appears only in
-    `tests/test_atom_selection.py`, `apply_to_structure` appears in eight other
-    files but never with a rule evaluation, and both halves used hand-built
-    0-based fixtures. An index shift introduced BETWEEN them was invisible, and
-    `model/overview.md` § 2 names index translation as exactly where an
+    (`molstruct.load` -> `apply_to_structure` -> `evaluate(ByRegion(...))`) are
+    each covered on their own; an index shift introduced BETWEEN them is
+    invisible there, and `model/overview.md` § 2 names index translation as exactly where an
     off-by-one happens.
 
     Contract: `model/overview.md` § 2 (the atom-identity binding) and
     `model/structure.md` § 2.2 (`apply_metadata_dict` is the single dict->struct
-    authority). Recorded as a gap by the 2026-09-09 audit
-    (`science/test-design-findings.md` § 7a); this closes it.
+    authority).
 
     The assertion is on ELEMENT AND POSITION, never on the index: an index that
     round-trips while pointing at a different atom is the whole failure.

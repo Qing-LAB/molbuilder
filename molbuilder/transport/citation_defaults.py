@@ -11,11 +11,7 @@ recorded from the run it came out of (§ 3.1's three cases) — and returns the
 template from. After that the template is the answer and this module has no
 further part: `prep` reads the file, not the citation.
 
-**Why this is `init`'s job and not `prep`'s.** Until 2026-09-16 the citation
-was read at *prep*, every time, and the items it answered were written
-valueless into nothing (transport had no template at all). That is the SEALED
-reading — the person could not change a value because there was nowhere to put
-one. § 2a.7 reversed it: the physics requires the leads and the device to agree
+**Why this is `init`'s job and not `prep`'s.** The physics (§ 2a.7) requires the leads and the device to agree
 *with each other*, which needs the value to be **single**, not **inherited**.
 One template shared by every stage satisfies that exactly, and permits the
 ordinary practice of relaxing with a cheap description and transporting with an
@@ -56,8 +52,7 @@ _FROM_DECK = {
     "xc_authors":               "xc_authors",
     # THE SPIN THE CITED RUN CARRIED (`science/chemistry-correctness.md`
     # § 2a, ES7): shared by every rung, defaulted from the run the junction
-    # was relaxed in.  Until 2026-09-28 it started at the class default
-    # whatever that run was, under a caption naming it.  The CHARGE is not a
+    # was relaxed in.  The CHARGE is not a
     # transport item -- a cited charge is refused instead
     # (:func:`siesta_config_from_citation`).
     "spin_treatment":           "spin_treatment",
@@ -91,16 +86,13 @@ def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
 
     The transmission grid starts at the same transverse pair: tbtrans would
     inherit the SCF's grid on its own if the deck said nothing
-    (`m_tbt_kpoint.F90:800-812`), and that fallback used to be spelled
-    `0 0 0` in the form -- a sentinel in a field where every value is a
-    scientific fact.  The grid is KNOWN at this moment, so it is written
+    (`m_tbt_kpoint.F90:800-812`).  The grid is KNOWN at this moment, so it is written
     down.  A starting point, not an answer: a grid converged for a total
     energy is routinely too coarse for a transmission.
 
-    The OFFSET is carried since 2026-09-30 (plan § 5w K17's ruling): every
-    rung writes it, and TranSIESTA stops on a lead whose offset differs from
-    the device's.  A record written before then states none, and the item
-    stays unanswered -- the documented default fills it at prep.
+    The OFFSET is carried: every rung writes it, and TranSIESTA stops on a
+    lead whose offset differs from the device's.  A record that states none
+    leaves the item unanswered -- the documented default fills it at prep.
     """
     from ..kmesh import with_fixed
     try:
@@ -145,8 +137,6 @@ def citation_answers(cite_dir) -> CitationAnswers:
     * **a saved structure that remembers its run** -- its sidecar carries
       that run's own settings, recorded by the Results tab at export;
     * **a saved structure** -- answers none of it.
-
-    *(This said the second and third were one case until 2026-09-23.)*
     """
     from .compose import classify_citation
     from ..parse.fdf import parse_fdf_params
@@ -265,8 +255,8 @@ def _the_persons(chosen) -> Dict[str, Any]:
     """What the person chose on the shared panel, with what follows from it
     by the one k-mesh rule (:func:`_apply_kgrid`): a k-point mesh they set
     starts the transmission grid at its transverse pair, as the cited one
-    does.  Laid over the citation's derivation, a changed SCF mesh left the
-    transmission on the cited one (the M11 review's T-F1)."""
+    does.  Without it, a changed SCF mesh would leave the transmission on
+    the cited one."""
     mine = {k: v for k, v in chosen.items() if v is not None}
     if mine.get("kgrid") is not None:
         _apply_kgrid(mine, mine["kgrid"])
@@ -290,15 +280,10 @@ def transport_template_text(cite_dir, *, label: str, blank=(),
     choice (§ 6.6 obligation 4) -- that is `prep`'s to do, not this file's
     to pre-empt.
 
-    Until 2026-09-24 the CLI's `init` wrote those rows WITH the class
-    default while the describe door wrote them valueless: two roads, two
-    files, for one description.
-
     ``blank`` (:func:`siesta_config_from_citation`) is written valueless
     too: a row the person emptied on the shared panel is not chosen -- a
     spin among them the junction's to work out at prep, as the chemistry
-    card beside it says (the template wrote the citation's value there
-    until the M6 review).
+    card beside it says.
     """
     from .. import template as _T
     cfg = siesta_config_from_citation(cite_dir, label=label, blank=blank,
@@ -310,8 +295,7 @@ def transport_template_text(cite_dir, *, label: str, blank=(),
         it.name for it in _T.select(_T.catalogue(), engine="siesta",
                                     citation=True)
         if "transport" in it.citation and it.name not in answered)
-    # WHERE EACH VALUE CAME FROM (`template.md` § 6.6 obligation 2, plan
-    # § 5w K7): the citation's own answers -- from the run's deck, or from
+    # WHERE EACH VALUE CAME FROM (`template.md` § 6.6 obligation 2): the citation's own answers -- from the run's deck, or from
     # the record saved with the structure -- then what the person chose on
     # the shared panel over them, and the calculation's own name.  A value
     # the panel holds as the citation answered it is the citation's: the

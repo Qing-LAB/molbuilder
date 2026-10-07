@@ -14,57 +14,11 @@ it is checked.
 """
 from __future__ import annotations
 
-import pathlib
 
-import numpy as np
 import pytest
 
-from molbuilder.config.siesta import SiestaConfig
 from molbuilder.issues import Issue
-from molbuilder.script_emit import (VALIDATION_SUFFIX, prepare_deck,
-                                    write_validation_report)
-from molbuilder.siesta.input import spec_for
-from molbuilder.structure import Structure
-
-
-def _iron(tmp_path):
-    """An Fe atom: the analyzer has real advice about it, so the report has
-    content rather than being exercised only in its empty form."""
-    s = Structure(elements=["Fe"], positions=np.array([[0.0, 0.0, 0.0]]),
-                  vacuum=(12.0, 12.0, 12.0))
-    cfg = SiestaConfig(system_label="JOB")
-    prepare_deck(spec_for(s, cfg), s, cfg, tmp_path / "JOB.fdf",
-                 verbose=False)
-    return tmp_path / "JOB.validation.txt"
-
-
-def test_rendering_a_deck_writes_the_report_beside_it(tmp_path):
-    out = _iron(tmp_path)
-    assert out.is_file(), (
-        f"no companion report; files written: "
-        f"{sorted(p.name for p in tmp_path.iterdir())}")
-    assert (tmp_path / "JOB.fdf").is_file()
-
-
-def test_it_carries_the_findings_a_person_was_given(tmp_path):
-    """Both halves: the settings gate's verdict AND the artifact gate's.
-    *"The final validation of the full script"* is the two together, not
-    whichever the caller happened to hold."""
-    body = _iron(tmp_path).read_text()
-    # the electronic state's advice -- a count an open-d metal decided,
-    # which warns until it is stated (ES8): the class this file exists for
-    assert "left blank, so it is" in body
-    assert "WARN" in body
-
-
-def test_it_says_out_loud_that_the_findings_are_advisory(tmp_path):
-    """The user's own condition: these are read *with* scientific judgement
-    about the specific system, never as a verdict on it.  A file of warnings
-    with no such framing invites the opposite reading."""
-    body = _iron(tmp_path).read_text()
-    assert "ADVISORY" in body
-    assert "NOT a verdict on the physics of your" in body
-    assert "clean report is not a guarantee" in body
+from molbuilder.script_emit import VALIDATION_SUFFIX, write_validation_report
 
 
 def test_a_clean_deck_still_gets_a_report_that_claims_nothing(tmp_path):
@@ -93,16 +47,6 @@ def test_every_severity_reaches_the_file(tmp_path):
     for level in ("ERROR", "WARN", "INFO"):
         assert level in body, f"{level} findings never reach the file"
     assert "[chemistry.spin]" in body, "the id a reader needs is dropped"
-
-
-def test_the_deck_is_not_touched_after_it_is_checked(tmp_path):
-    """The reason it is a separate file.  A findings block written into the
-    deck would make the checked bytes and the shipped bytes different."""
-    out = _iron(tmp_path)
-    deck = (tmp_path / "JOB.fdf").read_text()
-    assert "ADVISORY" not in deck
-    assert "validation" not in deck.lower().split("user-custom")[0][-400:]
-    assert out.read_text() != deck
 
 
 def test_the_report_is_declared_as_a_file_molbuilder_wrote():

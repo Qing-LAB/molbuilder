@@ -1,8 +1,7 @@
 """The stores and the session history — every test derived from
 ``docs/web/molview.md``, never from the source it checks (§ 13).
 
-Step E of the rebuild (``docs/web/molview.md``). The rows of § 13.3
-guarded here:
+The rows of ``docs/web/molview.md`` § 13.3 guarded here:
 
     § 9.5  the selection survives an editor switch
     § 9.5  a half-typed row constrains nothing
@@ -137,21 +136,10 @@ def test_the_selection_survives_an_editor_switch():
 
 
 def test_invert_takes_the_complement_and_reports_no_pick_trail():
-    """`invert` was the one door on the selection store with NO test at all.
-
-    Two things about it are easy to get wrong, and both matter downstream.
-    It is the COMPLEMENT against the atom count it is handed -- not against
-    whatever happens to be drawn -- and, like All and an applied filter, it is
-    NOT a click, and after 2026-08-31 there is no pick order for it to carry.
-
-    **The trail half of this test is retired**, not weakened.  It asserted that
-    a bulk operation reports an EMPTY `pickOrder`, because a fabricated trail
-    was indistinguishable from a real one to the measurement readout.  That
-    readout no longer reads this store at all -- measuring has its own track --
-    and the field itself is gone: order and count limits belong to the ruler,
-    and this store is a SET (`molview.md` § 9.5).  Asserting a rule no document
-    states is how a test outlives its contract, so what is left is the half
-    that is still true.
+    """`invert` is the COMPLEMENT against the atom count it is handed -- not
+    against whatever happens to be drawn -- and, like All and an applied
+    filter, it is NOT a click: order belongs to the ruler, and this store is a
+    SET (`molview.md` § 9.5).
     """
     out = _run(
         """
@@ -176,8 +164,7 @@ def test_invert_takes_the_complement_and_reports_no_pick_trail():
 def test_isolate_survives_an_invert_that_empties_the_selection():
     """The switch is the user's, whichever operation emptied the selection.
 
-    Invert used to be the path nothing tested; it now checks the same rule as
-    Clear -- the setting stays, and `isolateInEffect` decides whether anything
+    Invert follows the same rule as Clear -- the setting stays, and `isolateInEffect` decides whether anything
     is actually hidden."""
     out = _run(
         """
@@ -320,19 +307,12 @@ def test_a_label_is_written_through_the_model_not_the_store():
 
 
 def test_the_panel_is_handed_one_settled_state_whole():
-    """§ 8.4: the panel is given ONE snapshot — what is selected and in what
-    order, which editor is showing, the rows and how they combine, and every
-    switch — handed over on subscribing and again after every change.
+    """§ 8.4: the panel is given ONE snapshot — what is selected, which editor
+    is showing, the rows and how they combine, and every switch — handed over
+    on subscribing and again after every change.
 
-    This is the fix for a real failure, not a style preference: the pick order
-    was maintained correctly in the store for months and simply LEFT OUT of the
-    snapshot, so the panel read nothing, fell back to guessing an angle's vertex
-    from geometry, and § 11.6's chemist's-pick rule was dead end to end while
-    looking implemented.
-
-    A FACT THE STORE KEEPS BUT DOES NOT HAND OVER DOES NOT EXIST. So the check is
-    not "does the store track the pick order" — it is "does the snapshot carry
-    it", which is the thing that was actually missing.
+    A FACT THE STORE KEEPS BUT DOES NOT HAND OVER DOES NOT EXIST, so the check
+    is what the snapshot carries.
     """
     out = _run(
         """
@@ -372,7 +352,7 @@ def test_the_panel_is_handed_one_settled_state_whole():
     assert out["filters"] == [{"kind": "by_element", "value": "Au"}]
     assert out["combinator"] == "or"
     # Everything the panel draws, in one object.
-    # `filterOutcome` joined 2026-08-04: what the last apply matched, so the
+    # `filterOutcome` is what the last apply matched, so the
     # panel can say "that rule found nothing" — which an empty selection alone
     # cannot distinguish from never having filtered.
     assert out["keys"] == ["combinator", "filterOutcome", "filters", "forceScale",
@@ -451,16 +431,8 @@ def test_isolate_stays_on_when_the_selection_empties():
     """Isolate is a preference, and it stays where you put it (user,
     2026-09-07).
 
-    It turned ITSELF OFF whenever the selection emptied -- "since there would
-    be nothing left to show" -- which made the button un-press itself: set it,
-    press Clear, and the switch was silently gone.  Nothing left to show is a
-    reason to draw everything, not to forget the setting, and the renderer
-    already says exactly that (`isolateInEffect`).
-
-    Two mechanisms answered one question and neither covered the other's path:
-    this one fired only on a SELECTION change, the renderer's affects only
-    DRAWING -- so the 3-D window's click gate, which is neither, read the raw
-    switch and dropped every click with nothing selected.  One answer now.
+    Nothing left to show is a reason to draw everything, not to forget the
+    setting, and the renderer says exactly that (`isolateInEffect`).
     """
     out = _run(
         """
@@ -545,9 +517,6 @@ def test_an_edit_refreshes_the_session_copy_and_lays_down_no_point():
     persistence explicit and an unsaved edit dies on a reload; make the timeline
     automatic and every keystroke becomes a milestone, so there is nothing left
     to come back *to*.
-
-    This replaced a test asserting that an edit wrote NOTHING, which was the rule
-    when the two were one thing.
     """
     out = _run(
         """
@@ -716,9 +685,7 @@ def test_load_zero_puts_back_the_point_you_are_on_without_moving():
     WHAT THIS DOES NOT SHOW, named rather than left as a silent hole: that a
     REOPENED PAGE comes back to where it was. That needs a second history over
     the same store — a fresh viewer, as a reload builds — and such a viewer has
-    no sequence to load from until something anchors one (§ 11.2a). This test
-    carried that promise in its name while exercising a single instance, so the
-    § 13.3 row above it was guarded by a test of something else.
+    no sequence to load from until something anchors one (§ 11.2a).
     """
     out = _run(
         """
@@ -963,13 +930,10 @@ def test_a_read_cannot_answer_from_before_a_write_that_is_under_way():
     so by the time `save` has returned to its caller the position has already
     moved — there is no instant in between for a read to land in.
 
-    It was not always so. When the history awaited a store's own `write`, a
-    Retract or a reopen arriving during that await chose its point from a
-    position the save had not yet moved, and then read bytes the save had not yet
-    written. The guard that waits for an unfinished write is still in the code,
-    because "the session copy is written synchronously" is the workspace's
-    promise rather than this module's, and a store that broke it would put the
-    window straight back.
+    The guard that waits for an unfinished write stays in the code, because
+    "the session copy is written synchronously" is the workspace's promise
+    rather than this module's, and a store that broke it would let a read land
+    between the save and the position moving.
 
     What is asserted here is the property, not the mechanism: interleaved as
     tightly as this module allows, the read answers about the point the save
@@ -1244,16 +1208,9 @@ def test_an_applied_filter_says_how_many_it_matched():
 
 
 def test_a_filter_that_empties_the_selection_says_isolate_is_not_in_effect():
-    """The store already turns isolate off when the selection empties ("there
-    would be nothing left to show", § 1.1) — so after a filter matches nothing,
-    `isolate` is ALREADY false and "it was on and switched off" cannot be told
-    from "it was off all along".
-
-    The panel needs that difference: a control changing state without the user
-    touching it is worth a sentence, and without it the message said isolate
-    "needs a selection, so the structure is still shown" — implying the switch
-    was still on. It is not. Every test passed while that sentence was wrong;
-    a browser caught it.
+    """After a filter matches nothing, isolate stays set but hides nothing
+    (`isolateInEffect`), so the outcome records it and the panel can say the
+    whole structure is still shown.
     """
     out = _run(
         """

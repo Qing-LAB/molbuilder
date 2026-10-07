@@ -1,7 +1,7 @@
 /* Shared Markdown → sanitised-HTML render (the ONE render + sanitise policy).
  *
- * Promoted out of lib/inspectors/markdown.js so the security-relevant
- * sanitise allow-list lives in exactly ONE place -- both the Results-tab
+ * The security-relevant sanitise allow-list lives in exactly ONE place --
+ * both the Results-tab
  * markdown inspector (edit + preview) and the Documents tab (read-only) render
  * through here, so they can never drift on what HTML is allowed.
  *

@@ -83,11 +83,9 @@ export function shiftExpression(expression, delta) {
  * (§ 6.2) — and the rule that keeps it that way is that the enumerated list and
  * the carried list MOVE TOGETHER. Neither can grow without the other.
  *
- * TWO CHANNELS THE OLD CODE HAD AND THIS DOES NOT, both because the contract
- * removed the special case rather than because they were forgotten:
+ * TWO CHANNELS ARE DELIBERATELY ABSENT:
  *
- *   `frozen` — the old atom carried an `isFrozen` field, so frozen needed a
- *              channel of its own. § 6.6 settles it the other way: `frozen
+ *   `frozen` — § 6.6: `frozen
  *              atoms` is an ORDINARY LABEL, stored, filtered and displayed
  *              exactly like any other, and "no code here acts on the name". It
  *              therefore arrives as a TAG through `labels` with no case of its
@@ -118,9 +116,8 @@ export function shiftExpression(expression, delta) {
 export function expressionToCode(expression) {
     // THROUGH `fromDisplay`, not through a delta written here. § 11.5 says this
     // file is the single home of the translation and that "MolView never writes
-    // a bare +1 of its own anywhere" — and this function contained the bare -1,
-    // reaching past the named reverse direction sitting beside it. One number,
-    // one place, including inside the file that owns it.
+    // a bare +1 of its own anywhere". One number, one place, including inside
+    // the file that owns it.
     return shiftExpression(expression, fromDisplay(0));
 }
 

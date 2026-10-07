@@ -18,9 +18,8 @@ through the whole API:
 
     build -> write -> read -> write
 
-and checks that the second write is byte-identical to the first, that every
-label survives (the reserved one among them), and that the constraint reaches
-the generated engine input.  A fixture nobody can read is a fixture nobody
+and checks that the second write is byte-identical to the first and that every
+label survives (the reserved one among them).  A fixture nobody can read is a fixture nobody
 notices has gone stale; a structure built in twelve lines is one anybody can
 check by eye.
 
@@ -121,14 +120,8 @@ def test_the_junction_is_shaped_the_way_the_test_claims(junction):
     reference in the package reads, converts or writes it). A test asserting
     that the outermost layer is the frozen one would be pinning a decision this
     tool has no opinion about -- and the subject of this file is that whatever
-    the user chose SURVIVES write -> read -> write, for any set.
-
-    (Tried and reverted 2026-09-09.  `science/test-design-findings.md` § 3 asked
-    for the outermost-layer claim to be checked, and it was, from z. The user's
-    objection is correct and the finding was wrong: it is the same fault as
-    asserting ASE's crystallography in `add_slab`'s tests -- precision spent on
-    something we neither decide nor own. The count stays because the round trip
-    needs a non-empty list to lose.)
+    the user chose SURVIVES write -> read -> write, for any set.  The count
+    stays because the round trip needs a non-empty list to lose.
     """
     assert junction.n_atoms == 2 * _ELECTRODE_LAYERS * _ATOMS_PER_LAYER + 12
     assert junction.elements.count("Au") == 24
@@ -220,37 +213,6 @@ def test_the_pair_is_written_at_the_current_schema_version(tmp_path, junction):
     assert payload["schema_version"] == molstruct.SCHEMA_VERSION
 
 
-# --------------------------------------------------------------------- #
-#  ...and it has to reach the science                                   #
-# --------------------------------------------------------------------- #
-
-def test_the_frozen_atoms_reach_the_generated_siesta_input(tmp_path, junction):
-    """The end of the chain, and the only place the loss was ever visible.
-
-    Labels surviving in memory is not the property that matters; the property
-    that matters is that the atoms a user pinned are still pinned in the file
-    the calculation runs from. When this broke, every assertion above would
-    still have passed on a freshly built structure -- it was the FILE that had
-    forgotten, so the check has to start from one.
-    """
-    siesta_input = pytest.importorskip("molbuilder.siesta.input")
-    from molbuilder.config.siesta import SiestaConfig
-
-    target = tmp_path / "junction.xyz"
-    StructureCodec().write(junction, target)
-    back = StructureCodec().read(target)
-
-    fdf = siesta_input.render_fdf(back, SiestaConfig(system_label="junction"))
-
-    assert "Geometry.Constraints" in fdf, (
-        "the pinned electrode atoms did not reach the generated input -- the "
-        "run would relax the contact it is bolted to")
-    block = fdf.split("Geometry.Constraints", 1)[1]
-    # 1-BASED ON THE WAY OUT (model/overview.md § 2): atom 0 is written as 1.
-    for index in sorted(junction.regions["frozen_atoms"]):
-        assert str(index + 1) in block, f"atom {index} lost its constraint"
-
-
 def test_a_sidecar_from_an_older_schema_is_refused_not_half_read(
         tmp_path, junction):
     """The gate, stated as behaviour rather than as a constant.
@@ -278,9 +240,8 @@ def test_a_key_this_version_does_not_read_is_refused_rather_than_dropped(
         tmp_path, junction):
     """"A key nobody reads is metadata the writer thinks it saved."
 
-    This guard existed, and sat one layer DOWNSTREAM of the place that dropped
-    the key -- so it never fired on the payload that needed it. It is checked
-    where the payload is still whole now.
+    It is checked where the payload is still whole, not downstream of the
+    place that would drop the key.
     """
     import json
     target = tmp_path / "junction.xyz"

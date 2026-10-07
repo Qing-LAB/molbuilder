@@ -1,23 +1,18 @@
-"""TLS bring-up for ``molbuilder serve`` and ``molbuilder watch serve``.
+"""TLS bring-up for ``molbuilder serve``.
 
-The CLI grew a pair of ``--cert`` / ``--key`` flags plus a
-``molbuilder.json`` config-file lookup so a deployment can flip the
-Flask dev server into HTTPS without code changes.  Precedence:
+A pair of ``--cert`` / ``--key`` flags plus a ``molbuilder.json``
+config-file lookup let a deployment flip the Flask dev server into HTTPS
+without code changes.  Precedence:
 
     CLI flag   >   the machine config   >   plain HTTP
 
-The middle term was ``./molbuilder.json`` until 2026-08-31; the machine scope
-now has one location and no working-directory step (`configuration.md`
-§ 2.1a).  The precedence is unchanged -- only where the file is found.
+The resolver lives at ``molbuilder.cli._resolve_tls``; ``serve`` passes
+the resolved pair to ``app.run(ssl_context=...)``.
 
-The resolver lives at ``molbuilder.cli._resolve_tls``; both serve
-commands pass the resolved pair to ``app.run(ssl_context=...)``.
-
-Tests cover (a) the resolver under every combination, (b) the two
-serve commands wire the resolved pair into Flask, and (c) the
-``--help`` surface advertises the new flags.  Every test ``chdir``s
-into ``tmp_path``; the resolver reads the config directory's
-``molbuilder.json`` alone, which conftest points at a temporary one.
+Tests cover (a) the resolver under every combination, (b) the serve
+command wires the resolved pair into Flask, and (c) the ``--help``
+surface advertises the flags.  The resolver reads the config directory's
+``molbuilder.json`` alone, which the fixture below points at ``tmp_path``.
 """
 
 from __future__ import annotations
@@ -36,10 +31,8 @@ from molbuilder.cli import _check_tls_readable, _resolve_tls
 def _tmp_path_is_the_config_root(monkeypatch, tmp_path):
     """These tests write their ``molbuilder.json`` into ``tmp_path``.
 
-    They arranged for it to be read by ``chdir``-ing there, which was the
-    reader's first candidate.  That step is gone, so the directory is named
-    outright instead -- and this file had NO other isolation, so without it
-    the resolver would answer from the developer's own machine config.
+    The directory is named outright: without it the resolver would answer
+    from the developer's own machine config.
 
     `conftest.config_root` is the general form; this file writes to
     ``tmp_path`` by name throughout.
@@ -101,9 +94,6 @@ def test_resolve_cli_flag_alone_without_pair_falls_back(
     assert "incomplete" in capsys.readouterr().err
 
 
-# `test_resolve_malformed_json_raises_usage_error` retired 2026-10-02 (W54): the door test in `test_auth_config.py` refuses the same file, naming its path; `test_a_malformed_molbuilder_json_is_refused_where_it_is_read` holds the CLI surface.
-
-
 def test_a_malformed_molbuilder_json_is_refused_where_it_is_read(
         monkeypatch, tmp_path, capsys):
     """A malformed ``molbuilder.json`` is said by the command that reads it
@@ -125,9 +115,6 @@ def test_a_malformed_molbuilder_json_is_refused_where_it_is_read(
     err = capsys.readouterr().err
     assert "Error:" in err
     assert "invalid JSON" in err
-
-
-# `test_resolve_refuses_unknown_keys` retired 2026-10-02 (W54): a row of `tests/data/molbuilder_json.toml`.
 
 
 # --------------------------------------------------------------------- #
@@ -252,7 +239,7 @@ def test_check_tls_readable_error_mentions_deployment_doc(tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  serve / watch serve -- end-to-end wiring                             #
+#  serve -- end-to-end wiring                                           #
 # --------------------------------------------------------------------- #
 
 
@@ -335,12 +322,6 @@ def test_serve_help_advertises_cert_and_key():
     assert res.exit_code == 0
     assert "--cert" in res.output
     assert "--key" in res.output
-
-
-# ``molbuilder watch serve`` (legacy alias of ``molbuilder serve``)
-# removed 2026-05-19 along with the /watch page; TLS-wiring tests
-# for the canonical ``molbuilder serve`` command above already
-# cover the same precedence + readability paths.
 
 
 # --------------------------------------------------------------------- #

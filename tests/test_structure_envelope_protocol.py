@@ -5,15 +5,9 @@
 the server would write — and the server is the only thing that turns a structure
 into a file.
 
-Before it, a structure went *out* of the browser in four different shapes, one
-per door family, and two of them required the caller to write a coordinate
-document first. That is the only reason a `.xyz` writer exists in the browser at
-all, and it had already drifted from `Structure.to_xyz`.
+These tests pin the **mechanics**:
 
-These tests pin the **mechanics**, because a transition rule that is only
-described is a second protocol in disguise:
-
-  * which shape a body is, and what wins when it carries both;
+  * that a body is the envelope and nothing else;
   * that responses carry both views, derived from one Structure;
   * that the envelope can express what the current designs need.
 """
@@ -22,7 +16,6 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.sidecars import molstruct
-from molbuilder.structure import Structure
 from molbuilder.web.blueprints._shared import struct_from_body
 from molbuilder.workingcopy_structure import StructureCodec
 
@@ -61,22 +54,7 @@ def client():
 # --------------------------------------------------------------------- #
 
 def test_a_body_without_the_envelope_is_refused():
-    """THE LEGACY SHAPE IS GONE, and this test used to be the reason to keep it:
-    "both shapes must work for as long as the legacy keys exist, because a
-    browser tab loaded before a deploy is still calling the old way."
-
-    That is what the contract protects UNTIL its condition is met, not a reason
-    to keep the shape after. § 1: "What ends the legacy. Not a date: the
-    condition is *no reader left*. A key goes when nothing reads it, WHICH IS A
-    QUESTION THE CODE CAN ANSWER — and until then a browser tab that was loaded
-    before a deploy keeps working."
-
-    The code was asked, 2026-08-04: no client sends `xyz` to any door. Every
-    caller had already moved to the envelope; only tests were holding the branch
-    up, and a compatibility path whose sole user is its own test is not
-    compatibility. Reading this docstring as an override of the retirement
-    condition is using a test to overrule the contract it serves.
-    """
+    """The envelope is the only way in: a flat body is refused."""
     with pytest.raises(ValueError) as exc:
         struct_from_body({"xyz": "3\n\nC 0 0 0\nO 1.4 0 0\nH 0 1 0\n"})
     assert "structure" in str(exc.value)
@@ -87,18 +65,7 @@ def test_a_body_without_the_envelope_is_refused():
 
 
 def test_a_stray_TOP_LEVEL_key_beside_the_envelope_changes_nothing():
-    """**Retired and rewritten, 2026-09-02.**
-
-    This was *"when a body carries both, the envelope wins and the legacy is
-    ignored"* — a rule about arbitrating between two accepted shapes. There is
-    only one shape now: `struct_from_body`'s own contract says so in as many
-    words, *"there is no second shape left for the both-keys rule to
-    arbitrate, and the rule went with it"*, and the test above proves the flat
-    body is refused outright. A test asserting a rule the code it tests
-    declares retired is the shape this audit exists to find.
-
-    **What survives is a weaker, true property**, and it is worth keeping: the
-    door reads `structure` and nothing else, so an unrecognised top-level key
+    """The door reads `structure` and nothing else, so an unrecognised top-level key
     neither contributes nor refuses. Ignored rather than refused **on
     purpose** — a request body is not a config file (where an unknown key IS
     refused, `runtime_config._normalise`), because a client one version ahead
@@ -125,10 +92,8 @@ def test_an_envelope_that_cannot_be_read_says_so_rather_than_guessing():
     reaches a calculation."""
     for broken, why in [
         ({"structure": {}}, "no atoms at all"),
-        # NOT here any more: an EMPTY envelope is legal (2026-08-31).  An
-        # empty structure is a structure -- `add_slab` builds the first thing
-        # onto one -- so refusing it is what stopped a blank canvas being a
-        # starting point.  The four below are still malformed: they claim
+        # An EMPTY envelope is legal: an empty structure is a structure --
+        # `add_slab` builds the first thing onto one.  The ones below claim
         # atoms and then fail to describe them.
         ({"structure": {"elements": ["C"]}}, "no positions"),
         ({"structure": {"elements": ["C"], "positions": []}}, "count mismatch"),
@@ -166,11 +131,8 @@ def test_the_metadata_a_coordinate_file_cannot_hold_arrives_with_the_atoms():
 def test_an_identity_column_is_honoured_only_at_full_length():
     """"A metadata column is sent only when every atom has one, otherwise `[]`."
 
-    A short column is REFUSED rather than partially applied. The legacy body
-    ignores a malformed column and keeps the default — a defensive choice for
-    callers that were already sending them — but an envelope is new, and a
-    caller sending three atoms and one residue name has a bug worth being told
-    about. The server also does `max(residue_ids)`, where a hole poisons the
+    A short column is REFUSED rather than partially applied: a caller sending
+    three atoms and one residue name has a bug worth being told about. The server also does `max(residue_ids)`, where a hole poisons the
     comparison; this project has shipped that once.
     """
     with pytest.raises(ValueError):
@@ -198,8 +160,7 @@ def test_a_subset_envelope_is_accepted_and_its_map_back_is_the_callers():
 # --------------------------------------------------------------------- #
 
 def test_a_response_carries_the_envelope_beside_todays_keys(client):
-    """"Added, not swapped." Nothing in the tabs changes on the day this lands,
-    which is the whole reason the transition is safe."""
+    """"Added, not swapped": the envelope rides beside the keys the tabs read."""
     answer = client.post("/api/build/load",
                          json={"text": "2\n\nC 0 0 0\nO 1 0 0\n",
                                "filename": "x.xyz"}).get_json()
@@ -262,7 +223,7 @@ def test_export_returns_what_a_save_would_write(client, tmp_path):
     """Save-to-project and download differ only in destination — a promise about
     BYTES, which holds because both come from `StructureCodec.pair`.
 
-    Since 2026-07-31 it is a promise about NAMES too. The door answers with the
+    It is a promise about NAMES too. The door answers with the
     files named, so the two paths agree on *which files exist* and *what each is
     called*, not merely on their contents — the gap that let a download go out
     under a name a save would never have written.
@@ -347,9 +308,7 @@ def test_export_names_the_files_so_no_caller_has_to(client):
 
 
 def test_export_is_born_in_the_envelope_and_takes_nothing_else(client):
-    """A new door has no callers owed compatibility, so it does not accept the
-    `{xyz, sidecar}` blob its neighbours still take. Compatibility is a debt to
-    existing callers, not a style."""
+    """The door takes the envelope alone, never a `{xyz, sidecar}` blob."""
     legacy = client.post("/api/structure/export",
                          json={"blob": {"xyz": "1\n\nC 0 0 0\n", "sidecar": {}}})
     assert legacy.status_code == 400
@@ -441,8 +400,8 @@ def test_the_envelope_defines_exactly_these_members(client):
     assert set(answer["structure"]) == {
         "title", "elements", "positions", "atom_names", "residue_ids",
         "residue_names", "chain_ids", "metadata",
-        # `info` joined 2026-08-29 (archive/2026-09-01-structure-info-plan.md I3): the
-        # free-form NON-structural store rides the envelope both ways.
+        # `info`: the free-form NON-structural store rides the envelope both
+        # ways.
         "info",
     }, f"the envelope's members drifted: {sorted(answer['structure'])}"
 
@@ -494,15 +453,6 @@ def test_an_op_that_keeps_the_atom_count_returns_every_label_unchanged(client, o
     assert answer["structure"]["elements"] == ["C", "O", "H", "N"], (
         f"{op} reordered or replaced the atoms"
     )
-
-
-# `test_a_rigid_move_carries_the_box_with_the_atoms` RETIRED 2026-09-25.  It
-# stated the design the user retired -- "leave the cell alone, moving atoms only
-# moves atoms" (`structure-periodicity.md` § 6.0, D6) -- and still passed,
-# because a box left verbatim has the volume and edges it asserted.  The box
-# staying put is pinned where the ops are: `test_modify.py`
-# `TestOpsPreservePeriodicity`, and on the route `test_web.py`
-# `test_modify_translate_recenter_of_*_leaves_the_box`.
 
 
 def test_moving_part_of_a_structure_is_an_argument_not_a_smaller_request(client):

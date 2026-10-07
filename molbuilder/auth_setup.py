@@ -5,10 +5,7 @@ one secret writer (`write_secret_file`) for the secrets that block does not
 name.  The Click-driven CLI wrapper lives in ``molbuilder.cli`` as
 ``cmd_auth_setup``; everything personal-data-handling lives here so
 it's testable without prompting.  The FILE is written by
-`runtime_config.write_config_scope`, the one door for it -- this module
-had a writer of its own, and a session-key generator the server never
-used (it has its own creator, `web/auth._install_secret_key`), until
-2026-09-13.
+`runtime_config.write_config_scope`, the one door for it.
 
 Privacy contract:
   * The OAuth client secret (and every secret `write_secret_file` is
@@ -22,7 +19,7 @@ Privacy contract:
     one: Google's secret goes to its fixed home,
     :func:`molbuilder.config_dir.client_secret`.
 
-    It is a property of the file format too, since 2026-10-02:
+    It is a property of the file format too:
     ``runtime_config._refuse_a_named_secret`` refuses ``client_secret`` and
     ``client_secret_file`` by name (user: "no secret in molbuilder.json
     except the cert files", `configuration.md` § 3.1).
@@ -44,32 +41,9 @@ from typing import Any, Dict, List, Optional
 from .config_dir import PRIVATE_FILE_MODE, ensure_private_dir
 
 
-
-# --------------------------------------------------------------------- #
-#  Path helpers                                                          #
-# --------------------------------------------------------------------- #
-
-
-# NO PATH HELPERS HERE, and that is the change (I8, 2026-09-13).  Three stood
-# here -- `default_secret_dir()` returning `config_dir()`, `secret_key_path()`
-# returning `config_dir.session_key()`, `google_client_secret_path()`
-# returning what is now `config_dir.client_secret("google")`.  Each was a one-line
-# pass-through, and each was a SECOND PUBLIC NAME for a door `config_dir`
-# already owns: § 3.1 spelled one and § 2.1e the other for the same file.
-# `default_secret_dir` had no production caller at all, only tests.
-#
-# A11: one home per filename.  A module that re-exports another module's
-# resolver has not given the file a home, it has given it two names -- which
-# is the shape `config_dir.py` was created to end, and this module's own
-# docstring is quoted in that file as one of the three that had to agree by
-# comment.  Callers ask `config_dir` directly now.
-
-
 # --------------------------------------------------------------------- #
 #  Secret generation + on-disk emission                                  #
 # --------------------------------------------------------------------- #
-
-
 
 
 def write_secret_file(path: Path, contents: str) -> None:
@@ -79,7 +53,7 @@ def write_secret_file(path: Path, contents: str) -> None:
     an empty secret (defense against accidentally truncating a real
     one with a placeholder).
 
-    **Atomic and private, which took two tries.**  Through
+    **Atomic and private.**  Through
     :func:`molbuilder.persist.write_bytes` with ``mode=0o600`` -- the one
     writer this package puts bytes through (`configuration.md` § 2.3).  It
     stages a ``mkstemp`` temp, which is owner-only from the moment it exists,
@@ -88,18 +62,8 @@ def write_secret_file(path: Path, contents: str) -> None:
     * there is **no window at a looser mode**, because no other mode is ever
       set on the inode the secret lands in;
     * a failed write -- full disk, crash, kill -- **leaves the previous secret
-      in place**.  This was the defect: until 2026-09-12 this function opened
-      the target ``O_TRUNC``, so an interrupted write destroyed it.  For
-      ``notify_keys`` that is every key ever issued.  R10 (2026-08-12) had
-      aligned what it called *"the last in-place ``O_TRUNC`` write"* with the
-      atomic writer; this was another one, and it could not be aligned then
-      because ``write_bytes`` widened the mode to 0644 on the way past;
-    * a symlink planted at the path is **replaced, not followed**, so the
-      earlier ``O_NOFOLLOW`` guard is no longer what carries that.
-
-    The previous attempt (2026-08-27) got the first point only: it opened the
-    target and ``fchmod``ed the descriptor before the first byte, which fixes
-    the mode of an inode that already exists and cannot make the write atomic.
+      in place**.  For ``notify_keys`` that is every key ever issued;
+    * a symlink planted at the path is **replaced, not followed**.
     """
     if not contents:
         raise ValueError(
@@ -107,15 +71,10 @@ def write_secret_file(path: Path, contents: str) -> None:
         )
     path = Path(path)
     # The parent through the ONE creator: made at 0700 when this call is what
-    # makes it, and otherwise left as the operator set it.  Until 2026-09-13
-    # this did its own `mkdir` and then `os.chmod(parent, 0o700)` -- which,
-    # for the session key, the notify keys and the Google secret, is the
-    # CONFIG ROOT: re-moded on every secret write, against the decision
-    # `ensure_private_dir` records (on a cluster `XDG_CONFIG_HOME=/scratch/
-    # $USER` is how a person keeps tokens off NFS `$HOME`, and silently
-    # re-moding what they set up is the program deciding for them).
-    # `write_config_scope` already honoured that; this writer contradicted
-    # it.  Seeding seeds; `envs doctor` reports what is loose.
+    # makes it, and otherwise left as the operator set it (on a cluster
+    # `XDG_CONFIG_HOME=/scratch/$USER` is how a person keeps tokens off NFS
+    # `$HOME`, and silently re-moding what they set up is the program deciding
+    # for them).  Seeding seeds; `envs doctor` reports what is loose.
     ensure_private_dir(path.parent)
     # ONE WRITER, and 0600 is a parameter of it rather than a second writer
     # (`configuration.md` § 2.3).  The temp mkstemp makes is owner-only before
@@ -241,10 +200,8 @@ def build_asu_cas_entry(asurite: str,
         "kind":                 "cas",
         "label":                label,
         "login_url":            _ASU_CAS_LOGIN_URL,
-        # NO `service_validate_url`.  It was written here and read nowhere --
-        # python-cas derives the validate endpoint from the login URL's root and
-        # takes no parameter for an explicit one.  Writing a key the client
-        # cannot consult told the operator a lie about what their config did.
+        # NO `service_validate_url`: python-cas derives the validate endpoint
+        # from the login URL's root and takes no parameter for an explicit one.
         "version":              3,
         "email_domain":         _ASU_EMAIL_DOMAIN,
         "allowed_users":        [f"{asurite}@{_ASU_EMAIL_DOMAIN}"],
@@ -309,16 +266,12 @@ def build_auth_block(providers: List[Dict[str, Any]]) -> Dict[str, Any]:
     page.  No secret, and no path to one: each kind's secret is at its fixed
     home in ``secrets/``.
 
-    **It carried ``secret_key_file`` until 2026-08-31**, and writing that key
-    is what made the session key configurable.  It now has one home,
-    :func:`molbuilder.config_dir.session_key`, where the server looks and
-    creates it -- the wizard does not touch it (`configuration.md` § 2.1e).
+    The session key has one home, :func:`molbuilder.config_dir.session_key`,
+    where the server looks and creates it -- the wizard does not touch it
+    (`configuration.md` § 2.1e).
     """
-    # NO EMPTINESS CHECK HERE.  It raised `ValueError("at least one provider
-    # is required")` until 2026-09-09 -- a SECOND implementation of
-    # `runtime_config._read_auth`'s "non-empty list" rule, with a different
-    # message and a different exception type, and nothing checking the two
-    # agreed.  The block is written through `write_config_scope`, which
-    # validates the merge with the server's own validator, so the rule has one
-    # home and the wizard reports it in the server's own words.
+    # NO EMPTINESS CHECK HERE.  The block is written through
+    # `write_config_scope`, which validates the merge with the server's own
+    # validator (`runtime_config._read_auth`'s "non-empty list" rule), so the
+    # rule has one home and the wizard reports it in the server's own words.
     return {"providers": list(providers)}

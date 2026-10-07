@@ -10,13 +10,9 @@ collided with a ``const r`` in the same function, and the module
 failed to parse.  ``init()`` therefore never ran and the parameter
 form was stuck at the ``Loading from schema...`` placeholder.
 
-No existing test caught it because:
-
-  * the unit / HTTP layers don't load the JS at all,
-  * ``test_molbuilder_e2e.py`` only loads ``/modify`` in a browser, and
-  * the static-asset string-pin tests grep the JS *source* for
-    expected names -- a syntactically-broken file still contains the
-    names, so the pins all passed.
+The unit / HTTP layers don't load the JS at all, and a string-pin test
+that greps the JS *source* for expected names passes on a syntactically
+broken file, which still contains the names.
 
 This file fills the gap.  It loads every served page, waits for the
 module scripts to execute, and asserts that no JS error fired.  For
@@ -40,7 +36,7 @@ pytest.importorskip("flask")
 
 # --------------------------------------------------------------------- #
 #  Live Flask server fixture                                            #
-#  (module-scoped so all four pages share one app + port)               #
+#  (module-scoped so all the pages share one app + port)                #
 # --------------------------------------------------------------------- #
 
 
@@ -66,8 +62,7 @@ _PAGE_BOOT_TIMEOUT_MS = 5000   # generous; module scripts on a cold
 
 _PAGES = [
     # Structure-optimization tab: SIESTA / PySCF script generator.
-    # Probe for the "Load from sidebar selection" button — sole
-    # structure entry after the 2026-06-08 Build-form retirement.
+    # Probe for the "Load from sidebar selection" button.
     ("/structure-optimization", "#load-from-sidebar-btn"),
     # Molbuilder tab: interactive build + edit workspace.  Probe
     # for the selection panel's host.
@@ -78,25 +73,15 @@ _PAGES = [
     # silent JS errors don't hide in the placeholder.
     ("/transport-calculation", "h2"),
     # Results tab: registry-dispatched inspector shell.  Trajectory
-    # inspection lives here via the inspector registry; the legacy
-    # /watch tab was retired with the migration.
-    # 2026-06-18: ready-selector was ``#results-current-file`` but
-    # that span is now hidden by the CSS rule at results/style.css
-    # line 597 ("hide the redundant top-of-page readout when the
-    # picker dropdown is shown") — task #471 made the picker bar
-    # always visible.  The picker bar itself is the right
-    # always-visible probe.
+    # inspection lives here via the inspector registry.  The picker bar
+    # is the always-visible probe.
     ("/results", "#results-file-picker-bar"),
-    # Documents tab: the in-app doc reader.  Added 2026-08-23 with the
-    # theme fix -- it was the second served page with no boot pin, and a
-    # renderer that throws leaves an empty pane rather than an error.
+    # Documents tab: the in-app doc reader.  A renderer that throws
+    # leaves an empty pane rather than an error.
     # `#docs-render` ships hidden until a doc is picked, so the tree is
     # the always-visible probe.
     ("/documents", "#docs-list"),
-    # Task-setup tab: the prep surface.  Added 2026-08-22 -- it was
-    # the one served page with no boot pin, which is how a duplicate
-    # `ts-machine-card` id could hide the whole bench panel without
-    # anything going red.  `#ts-dest-card` is the folder picker,
+    # Task-setup tab: the prep surface.  `#ts-dest-card` is the folder picker,
     # the only card that is never hidden.
     ("/task-setup", "#ts-dest-card"),
 ]

@@ -1,9 +1,8 @@
 /* codemirror-load.js — the ONE loader for the vendored CodeMirror 5 bundle.
  *
- * Extracted from ``lib/projects/preview.js`` on 2026-08-16, when the Task Setup
- * tab needed the same editor.  Two copies of a lazy-loader is two places for
- * the asset list to drift, and the vendor-integrity test pins that list — so
- * it has one home and both callers import it.
+ * Two copies of a lazy-loader is two places for the asset list to drift, and
+ * the vendor-integrity test pins that list — so it has one home and both
+ * callers import it.
  *
  * WHAT IS VENDORED, and what follows from it (`static/vendor/README.md`):
  * CodeMirror **5.65.16**, MIT, served locally — the project ships browser

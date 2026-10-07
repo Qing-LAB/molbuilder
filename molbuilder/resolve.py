@@ -16,12 +16,6 @@ with N.  Steps 3, 4 and 5 loop over it without ever asking which they are in, so
 there is no ``if benchmark:`` below floor 7 — there is nothing to ask, because
 the length is data.
 
-WHAT IT CLOSES.  Until this existed, floor 3 had no input: ``stages_to_jobset``
-took an in-memory config assembled from CLI flags, and the description was
-emitted *beside* the layout rather than consumed to produce it.  That is the one
-defect the 2026-08-11 source read found — *every floor writes its artifact and
-reads none of them* — and this module is the edge that was missing.
-
 PRECEDENCE, AND IT IS TOTAL (§ 5)::
 
     the template's values
@@ -38,10 +32,8 @@ shrug.
 
 THE ALLOCATION RIDES ON THE ELEMENT, and that is the point.  The deck writer
 needs the rank count — ``BlockSize``'s ceiling is orbitals ÷ ranks — and the
-wrapper writer needs the whole of it.  Both read **one object**, resolved once.
-Three call sites used to build the same wrapper from loose keyword arguments and
-one of them forgot ``max_memory_mb``; when the allocation is one object carried
-on the element, a call site cannot forget half of it.
+wrapper writer needs the whole of it.  Both read **one object**, resolved once,
+so a call site cannot forget half of it.
 """
 from __future__ import annotations
 
@@ -71,28 +63,15 @@ class ResolveError(Exception):
 #: is legitimately also a template item. The split this list drives is *"where
 #: does this value go"*, which is exactly the allocation's shape.
 #: The riders: fields that travel ON ``Resources`` without being machine
-#: axes.  The note above already drew this line -- *"the two are not the same
-#: set"* -- and the implementation did not, taking every field of the struct.
+#: axes (`execution/gpu.md` G7: ``use_gpu`` is also the bench's grid-family
+#: axis, so it must reach the config that renders the deck).
 #:
-#: ``continue_retries`` was the standing example and never bit, because
-#: nobody sweeps a retry budget.  ``use_gpu`` bit immediately: it rides here
-#: since 2026-08-23 so the wrapper is told rather than grepping the deck
-#: (`execution/gpu.md` G7) -- and it is ALSO the bench's grid-family axis, so
-#: classifying it as a machine axis sent the family flag to the allocation and
-#: it never reached the config that renders the deck.  Every GPU trial emitted
-#: ``Diag.ELPA.GPU .false.``: the sweep asked for a GPU family and measured a
-#: CPU one under GPU labels.
-#:
-#: A rider lands on the VALUES, and `resolve` copies it onto the allocation
-#: afterwards -- which is how one value legitimately reaches both the deck and
-#: the wrapper without being two facts.
-#: ``notify_*`` join them for the same reason ``continue_retries`` did: they
-#: ride ``Resources`` to reach the wrapper, and they name no machine.  They
-#: differ from both standing examples in where they come from -- not the
-#: template's values but the DESCRIPTION's own `notify` block, applied at the
-#: same seam as `task.allocation` -- so nothing resolves them and nobody
-#: sweeps them.  Listed here so `ALLOCATION_FIELDS` keeps meaning *the
-#: machine axes*, which is the question that list actually answers.
+#: ``continue_retries`` and ``use_gpu`` land on the VALUES, and `resolve`
+#: copies them onto the allocation afterwards -- which is how one value
+#: legitimately reaches both the deck and the wrapper without being two facts.
+#: ``notify_*`` ride ``Resources`` to reach the wrapper and name no machine;
+#: they come from the DESCRIPTION's own `notify` block, so nothing resolves
+#: them and nobody sweeps them.
 _RIDERS: Tuple[str, ...] = tuple(
     f.name for f in dataclasses.fields(Resources)
     if f.metadata.get("axis") == "rider")
@@ -104,9 +83,7 @@ ALLOCATION_FIELDS: Tuple[str, ...] = tuple(
 #: from :data:`ALLOCATION_FIELDS` and it must not be answered with that list:
 #: *"is this a machine axis?"* decides where a SWEEP AXIS lands, while *"can
 #: Resources hold this?"* decides whether a TRANSLATION's answer is
-#: representable.  They were one list until the riders were split out, and the
-#: translation check below would then have refused a rider with the reason
-#: *"names nothing on Resources"* -- which would have been false.
+#: representable.
 _RESOURCE_FIELDS: Tuple[str, ...] = tuple(
     f.name for f in dataclasses.fields(Resources))
 
@@ -119,12 +96,6 @@ def _emitter_fields(config_cls) -> tuple:
     reaches the wrapper and never the deck, and handing them to the emitter
     would invite it to render one.  The line between them is already drawn on
     the field itself, by the machine-answered flag, so this asks it.
-
-    It was ``_EMITTER_FIELDS = ("mpi_np", "max_memory_mb")`` until 2026-08-17
-    -- a hand-kept list of exactly the fields the catalogue already marks,
-    and the one that actually drove behaviour while the catalogue's own
-    marking was read by nothing.  Adding a fourth machine-answered setting
-    changed nothing anywhere; now it arrives here on its own.
     """
     import dataclasses
     return tuple(f.name for f in dataclasses.fields(config_cls)
@@ -171,16 +142,12 @@ class ResolvedConfig:
         that prompted it.
 
         So the machine facts are **not** on the description and **are** on the
-        emitter's argument. Those are different objects, and conflating them is
-        what put ``mpi_np`` in the template in the first place.
+        emitter's argument. Those are different objects.
         """
         # EACH MACHINE FIELD UNDER THE CONFIG'S OWN NAME, through the one
         # map (`jobset.model.AS_RESOURCE`, `job-contracts.md` § 6.2): a run's
         # cores per rank are SIESTA's ``omp_threads`` and PySCF's
-        # ``threads``, its GPU count the number in ``gres``.  This matched
-        # names alone until 2026-10-06, so only ``mpi_np`` and
-        # ``max_memory_mb`` arrived: every deck said its threads were
-        # ``auto``, and a PySCF deck run by hand took the node's cores.
+        # ``threads``, its GPU count the number in ``gres``.
         from .jobset.model import AS_RESOURCE
         from .scheduler.quantities import parse_gres_flag
         machine = {}
@@ -195,8 +162,6 @@ class ResolvedConfig:
                 machine[name] = value
         return (dataclasses.replace(self.values, **machine) if machine
                 else self.values)
-
-
 
 
 @dataclass(frozen=True)
@@ -238,7 +203,7 @@ class ParameterSet:
     #: run. Kept because *"what did we vary"* is a question the summary asks and
     #: re-deriving it from the points would be guessing at intent.
     axes: Tuple[str, ...] = ()
-    #: The stage this set resolves, or ``None`` for a description with no ladder.
+    #: The stage this set resolves.
     stage: Optional[str] = None
 
     def __len__(self) -> int:
@@ -300,8 +265,7 @@ def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
         if axis == "gres":
             # A GPU COUNT bounds a trial as a rank count does (§ 4.1a: the
             # allocation is ranks, cores per rank and GPUs), each read as the
-            # count it spells (`quantities.parse_gres_flag`).  It bounded
-            # nothing until 2026-10-05: `gpu:2` is no int.
+            # count it spells (`quantities.parse_gres_flag`).
             from .scheduler.quantities import parse_gres_flag
             value, ceiling = (None if v in (None, "") else parse_gres_flag(v)
                               for v in (value, ceiling))
@@ -331,11 +295,8 @@ def _refuse_a_stated_answer(template_text: str, engine: str,
     """A template value on an item the rung fixes is refused unless it IS
     the answer every rung gives (`engines/template.md` § 6.4).
 
-    The template writer leaves such an item valueless, so a value is a hand
-    edit or a template written before the item became fixed: the SIESTA
-    templates written before 2026-09-29 carry ``write_forces = true`` and
-    ``write_coor_step = true``, which state the one answer and are read as
-    it.  An item answered rung by rung -- the device's solver, the leads'
+    The template writer leaves such an item valueless; a value that states
+    the one answer every rung gives is read as it.  An item answered rung by rung -- the device's solver, the leads'
     ``TS.HS.Save``, the bias point each rung runs -- has no one answer a
     calculation-wide file could state, so any value there is refused; so is
     any other value, which the answer would be laid over without a word.
@@ -371,8 +332,7 @@ def _refuse_what_cannot_stand(values, provenance: Mapping[str, str],
     the kind fixes -- a transport calculation's third k component -- a
     choice the kind does not offer -- a vibration's relaxation set to
     ``Verlet`` -- or a value at or below its hard limit -- ``fc_displacement
-    = 0``.  One pass and one door, so one value draws one refusal: the
-    offered set and the limit were two passes here until 2026-09-30."""
+    = 0``.  One pass and one door, so one value draws one refusal."""
     from .template import catalogue, select, why_not
     for it in select(catalogue(), engine=engine, calculation=kind):
         have = getattr(values, it.name, None)
@@ -425,10 +385,8 @@ def resolve(template_text: str, task, config_cls, *,
 
     # THE TEMPLATE'S OWN REFUSALS ARE RESOLVE'S -- an item the schema does
     # not know, a value that is not one of today's choices, a pre-M6 item
-    # naming the migration.  They arrive as ValueError, and until 2026-09-28
-    # only transport's caller caught one: on every other kind a refused
-    # template reached the person as a traceback.  Translated here, once,
-    # so this function raises what its docstring says it raises.
+    # naming the migration.  They arrive as ValueError, translated here,
+    # once, so this function raises what its docstring says it raises.
     try:
         base = config_from_template(template_text, config_cls)
     except ValueError as exc:
@@ -438,10 +396,7 @@ def resolve(template_text: str, task, config_cls, *,
     # § 7's membership rule, spelled ONCE (template.template_fields): a
     # field tagged as the allocation's is a machine fact floor 2 must
     # never carry, so overrides, pins and parameter axes are all gated on
-    # the TEMPLATE-ELIGIBLE set.  Until 2026-08-13 every gate here used
-    # ``dataclasses.fields`` names, so a hand-edited override or pin
-    # naming ``mpi_np`` passed and the deck rendered for a rank count the
-    # allocation never granted (final review A-9).
+    # the TEMPLATE-ELIGIBLE set.
     from .template import template_fields
     known = template_fields(config_cls)
     machine_facts = ({f.name for f in dataclasses.fields(config_cls)}
@@ -454,9 +409,7 @@ def resolve(template_text: str, task, config_cls, *,
     # transport rung's solver, SIESTA's per-step forces and coordinates).
     # Asked ONCE: every door below that could set one refuses, and the
     # answers are laid on each element last, so the gate, the record and
-    # the deck read one value.  Until 2026-09-29 nothing here knew them: the
-    # walk skipped a role item and each rung's block typed its line, while
-    # the config it was validated and recorded from held the class default.
+    # the deck read one value.
     from .template import (engine_name, fixed_by_role, role_answers,
                            shared_by_every_stage, why_role, why_shared)
     _engine = engine_name(config_cls)
@@ -468,9 +421,7 @@ def resolve(template_text: str, task, config_cls, *,
     if stage_obj is not None and stage_obj.overrides:
         # A RUN SETTING is the rung's run card's (`engines/stages.md`
         # § 6.8d, plan § 5w K5) -- the machine's answers and a person's
-        # alike.  It arrives here as a pin, from `execution`; an override
-        # was a second home, and a rung's `use_gpu` set there reached the
-        # deck and not the scheduler's device ask (SO-C1).
+        # alike.  It arrives here as a pin, from `execution`.
         from .template import run_settings, why_run_setting
         bad = sorted(set(stage_obj.overrides) & run_settings(_engine))
         if bad:
@@ -481,9 +432,7 @@ def resolve(template_text: str, task, config_cls, *,
         # catalogue's `shared`, `template.md` § 6.4) -- for every kind: the
         # electronic state's four items everywhere (ES1), transport's shared
         # rows on its ladder.  Refused HERE, the one door every kind's prep
-        # goes through; transport refused its own at its own prep step until
-        # 2026-09-28, and no other kind refused at all -- a ladder could
-        # change the spin between rungs and carry the `.DM` across.
+        # goes through.
         bound = sorted(set(stage_obj.overrides)
                        & shared_by_every_stage(_engine, _kind))
         if bound:
@@ -507,8 +456,7 @@ def resolve(template_text: str, task, config_cls, *,
         # by the rung's role -- plan § 5w K4): a force-constant run's
         # relaxation settings, a seed's transmission window, an item the
         # kind does not carry at all.  Each would be written into a deck
-        # that ignores it; it was refused for transport alone, at its own
-        # prep step, until 2026-09-30.
+        # that ignores it.
         from .template import unread_overrides, why_unread
         unread = unread_overrides(_engine, _kind, stage_obj.name,
                                   sorted(stage_obj.overrides))
@@ -635,25 +583,15 @@ def resolve(template_text: str, task, config_cls, *,
         # POLICY, not a machine fact — ALLOCATION_FIELDS' own note).  An
         # explicitly stated allocation wins; otherwise the resolved
         # config's answer rides the element, exactly as the § 6.2 row
-        # ("translated at resolve.py") describes.  Until 2026-08-13 the
-        # note above CLAIMED the ride and nothing performed it: the web
-        # route handed the value straight to the wrapper writer while the
-        # CLI route resolved an allocation that never carried it, so the
-        # wrapper rendered NO retry loop and `job-system.md § 4.1`'s
-        # "travels the whole way" was true of one road out of two
-        # (final review A-5).
+        # ("translated at resolve.py") describes.
         if resources.continue_retries is None:
             budget = getattr(values, "continue_retries", None)
             if budget is not None:
                 resources = dataclasses.replace(resources,
                                                 continue_retries=budget)
 
-        # ``use_gpu`` RIDES THE SAME WAY, 2026-08-23 (`execution/gpu.md` G7).
-        # The catalogue item declares `read_by = ["wrapper"]` and the wrapper
-        # satisfied that by GREPPING the rendered deck for `Diag.ELPA.GPU` --
-        # a layer re-deriving what this one already holds, and doing it by
-        # matching a SIESTA keyword, so a PySCF GPU run could not route at
-        # all.  ALWAYS the values' answer, never an allocation's: it is what
+        # ``use_gpu`` RIDES THE SAME WAY (`execution/gpu.md` G7), ALWAYS
+        # the values' answer, never an allocation's: it is what
         # the deck renders, and the job's GPU request is read off it
         # (`jobset.model.gpu_request`) -- an allocation stating its own would
         # be a second answer, and nothing states one.
@@ -663,9 +601,7 @@ def resolve(template_text: str, task, config_cls, *,
                                             use_gpu=bool(wants_gpu))
         # A BENCHMARK'S GPU COUNT IS ITS CEILING (§ 4.1a: the allocation
         # bounds the sweep, `_check_fits`), never a trial's ask: a trial on
-        # the CPU asks no GPU, whatever the prep was allowed.  It inherited
-        # the count until 2026-10-05, and its wrapper refused a CPU deck that
-        # asked for GPUs (`gpu.md` G5).
+        # the CPU asks no GPU, whatever the prep was allowed (`gpu.md` G5).
         if point and not resources.use_gpu and resources.gres:
             resources = dataclasses.replace(resources, gres=None)
 
@@ -709,8 +645,7 @@ def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any
 
     Exists so the surface that surfaces those findings does not re-derive
     the resolution with primitives of its own — the caller-re-derivation
-    habit `job-system.md` § 9 diagnoses (added with A-8, 2026-08-13, which
-    found the § 6.6a warning had no production caller at all).
+    habit `job-system.md` § 9 diagnoses.
     """
     from .template import (config_from_template, engine_name, role_answers,
                            template_fields)
@@ -793,7 +728,7 @@ def _annotated(config, name: str):
     The fallback both predicates below share when the catalogue has no item
     for a name -- a config class used in a test fixture, or a field that is
     not a template item.  It resolves the annotation properly rather than
-    string-matching it, which is the bug they replaced.
+    string-matching it.
     """
     import typing
 
@@ -842,27 +777,21 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     is not.  It is deliberately not a parameter of the operation: the operator
     needs the cells, and the label is for the person reading the error.
 
-    **It takes a MAPPING, not a Stage** *(2026-08-14)*.  A stage is where
-    overrides usually come from, but the operator needs only the cells: a sweep
-    point and a pin are the same shape and neither is a stage.  ``resolve``
-    used to fabricate a ``Stage(name="resolve")`` purely to satisfy the old
-    signature — packaging invented to fit the parameter rather than the other
-    way round.
+    **It takes a MAPPING, not a Stage**.  A stage is where overrides usually
+    come from, but the operator needs only the cells: a sweep point and a pin
+    are the same shape and neither is a stage.
 
-    **It lives HERE, in floor 3, and not in an engine package** *(moved
-    2026-08-14, audit § 6.1 / § 25.1)*.  The body is entirely engine-agnostic —
-    it reads the dataclass's own fields — and while it sat under ``siesta/``,
-    floor 3 and the validation layer both imported from one engine to do
-    something neither engine owns: PySCF had to import SIESTA's module to
-    resolve its own stages.  ``generator.md`` § 7's test is that adding an
-    engine adds files and edits none.
+    **It lives HERE, in floor 3, and not in an engine package**.  The body is
+    entirely engine-agnostic — it reads the dataclass's own fields.
+    ``generator.md`` § 7's test is that adding an engine adds files and edits
+    none.
 
     Two rules from § 4 shape what this returns, and both are about keeping a
     stage from becoming a special case:
 
     **R1 — one object is validated and rendered.**  What comes back is an
-    ordinary ``SiestaConfig``, so the shipped validator (``validation.validate``)
-    and the shipped emitter (``render_fdf``) both take it unchanged.  Nothing
+    ordinary engine config of the template's own class, so the validator and
+    that engine's ``spec_for`` both take it unchanged.  Nothing
     downstream learns the word "stage".
 
     **R2 — a stage is validated as a resolved whole, never as a diff.**  Two
@@ -870,9 +799,7 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     the validator *this object*, with the stage's name only as a label.
 
     **A stage may name ANY field of the shared schema** (§ 1.2).  It is not a
-    privileged four: ``mesh_cutoff``, ``basis_size`` and ``kgrid`` were
-    unreachable before this function existed, and nothing about them is
-    special now.  An override naming a field the schema does not have is
+    privileged four.  An override naming a field the schema does not have is
     refused **by name**, which is the half of § 6.6's preflight that
     ``molbuilder/task.py`` could not reach — it has no schema.
 
@@ -909,38 +836,19 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     # reads the same however the description spelled it.
     #
     # NOTHING LOSSY is done.  A WHOLE float where a count is declared narrows
-    # (``8.0`` -> ``8``, lossless since 2026-09-30: it reached the settings
-    # gate as a float and was refused there as "not an integer", while the
-    # preflight had accepted it -- one value, two verdicts); ``100.7`` would
-    # have to be truncated, and a string would quietly parse; both are the
-    # caller's mistake and are refused BY NAME in the preflight
-    # (``validation/task.py``), which is where a wrong value belongs.  Found by
-    # the M2 seam walk, 2026-08-07.  The rule is ``template.as_declared``'s,
-    # the one place a described value meets its declared type.
-    # **The DECLARED TYPE decides, not the annotation** (audit § 25.3, fixed
-    # 2026-08-14).  This read ``f.type`` from the dataclass and compared it
-    # against the string ``"float"`` -- and under ``from __future__ import
-    # annotations`` a field's ``type`` is the SOURCE TEXT, so ``Optional[float]``
-    # is not ``"float"`` and two fields were silently never widened:
-    # ``spin_total`` (retired 2026-09-28) and ``md_target_temperature``.  A
-    # stage overriding ``spin_total: 2`` got an int where the deck wanted
-    # 2.0, while ``mesh_cutoff: 300`` next to it widened correctly.
+    # (``8.0`` -> ``8``); ``100.7`` would have to be truncated, and a string
+    # would quietly parse; both are the caller's mistake and are refused BY
+    # NAME in the preflight (``validation/task.py``), which is where a wrong
+    # value belongs.  The rule is ``template.as_declared``'s, the one place a
+    # described value meets its declared type.
+    # **The catalogue's DECLARED TYPE decides** (`template.md` § 5: what a
+    # parser cannot know).
     #
-    # The catalogue said ``float`` for all three, because that is what a
-    # declared type is FOR (`template.md` § 5: what a parser cannot know).  So
-    # the authority is the item, and the annotation is not consulted at all.
-    #
-    # AND JSON HAS ONE SEQUENCE, which is the same argument one shape up
-    # (2026-08-25).  ``kgrid`` declares ``Tuple[int, int, int]`` and a
-    # description can only spell it ``[4, 4, 1]``, so a stage that overrode
-    # it left the config holding a LIST while every stage that did not held
-    # the template's tuple -- one object, two shapes for one field,
-    # depending on a cell nobody thinks of as a type decision.  Nothing
-    # broke then, because the SIESTA deck wrote ``tuple(cfg.kgrid)`` before
-    # comparing -- that defensive call was the symptom (the k-point mesh
-    # reads the value now, `kmesh.mesh_for`).  ``list -> tuple`` is
-    # lossless, so it is done here, exactly as ``template._shape`` already
-    # does it for the template's own side of the ⊕.
+    # AND JSON HAS ONE SEQUENCE, the same argument one shape up: ``kgrid``
+    # declares ``Tuple[int, int, int]`` and a description can only spell it
+    # ``[4, 4, 1]``.  ``list -> tuple`` is lossless, so it is done here,
+    # exactly as ``template._shape`` does it for the template's own side of
+    # the ⊕.
     from .template import as_declared
 
     def _as_declared(k, v):
@@ -1009,10 +917,7 @@ def point_token(point: Mapping[str, Any]) -> str:
     **Concatenated, no inner separator** — `job-contracts.md` § 6.3 (the
     cross-layer authority) renders the benchmark's coordinate ``bench-G1K4C6``:
     the ``-`` announces ONE qualifier, so a separator inside the token would
-    read as more of them.  This joined with ``-`` until the bench fold (C6,
-    2026-08-11), which is when the G/K/C abbreviation stopped being a second
-    rendering in the benchmark module and became this function's ordinary
-    output.  The token is an identifier, never a parser target: what varied
+    read as more of them.  The token is an identifier, never a parser target: what varied
     lives in ``ParameterSet.axes`` and each element's ``point``, as data.
     """
     parts = []
@@ -1058,8 +963,7 @@ def point_token(point: Mapping[str, Any]) -> str:
 #: qualifier separator (§ 6.3).  A VALUE never reaches this check with one
 #: -- ``_flat`` drops it (``ELPA-1Stage`` -> ``ELPA1Stage``, and ``-2`` ->
 #: ``2``), the collision guard refusing two points that then read alike --
-#: so what it refuses is an AXIS name outside the charset.  *(It said a
-#: value carrying one was refused until 2026-10-06: true until 2026-08-21.)*
+#: so what it refuses is an AXIS name outside the charset.
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+\Z")
 
 
@@ -1069,7 +973,7 @@ def _flat(v: Any) -> str:
     # 2026-08-21): a value axis carries an engine's own spelling
     # ("ELPA-1Stage"), which the user cannot re-spell, so refusing it would
     # be unactionable.  Dropping is safe because `resolve` refuses two
-    # points whose rendered labels collide (the guard below).
+    # points whose rendered labels collide (the guard in `resolve`).
     return _DROP_RE.sub("", str(v).replace(".", "p").replace(" ", ""))
 
 

@@ -17,12 +17,10 @@ recorded once and inverted once, through one pair): a reader asks
 :meth:`Permutation.rows_to_input_order` and :meth:`Permutation.original_of`,
 and never inverts by hand.
 
-ITS OWN MODULE, because the record travels.  It sat in `transport/sort.py`
-until 2026-09-28, whose imports -- the structure among them -- do not exist
-beside a job; the SIESTA vibration's finish runs there and reads the
-record, and a reader that cannot import the record's class would have to
-invert by hand, which is what this module exists to end.  The sort still
-WRITES the record (`sort.write_permutation`), from the result it produced.
+ITS OWN MODULE, because the record travels: the SIESTA vibration's finish
+runs beside a job, where the sort's imports do not exist, and reads the
+record.  The sort WRITES the record (`sort.write_permutation`), from the
+result it produced.
 """
 from __future__ import annotations
 
@@ -64,8 +62,7 @@ class Permutation:
     """
     original_to_sorted: Tuple[int, ...]
     sorted_to_original: Tuple[int, ...]
-    #: the key the record names (``""`` on a record written before keys
-    #: were recorded)
+    #: the key the record names (``""`` when it names none)
     key: str = ""
 
     @property

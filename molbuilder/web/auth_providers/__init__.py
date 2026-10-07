@@ -1,9 +1,9 @@
 """Authentication backend implementations.
 
 Each backend "kind" (google, github, microsoft, orcid, cas) has its
-own module under this package.  ``auth.py`` calls :func:`start_flow`
-and :func:`finish_flow` here; this module dispatches to the
-appropriate backend.
+own module under this package.  ``auth.py`` calls :func:`start_flow`,
+:func:`finish_oauth` and :func:`finish_cas` here; this module
+dispatches to the appropriate backend.
 
 The runtime contract between ``auth.py`` and a backend module:
 

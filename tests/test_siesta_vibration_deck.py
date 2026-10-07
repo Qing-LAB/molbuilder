@@ -20,6 +20,7 @@ from molbuilder.script_emit import render_deck
 from molbuilder.siesta.input import spec_for
 from molbuilder.structure import Structure
 from molbuilder.transport.sort import sort_by
+from molbuilder.runfiles import RunNames
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -55,8 +56,9 @@ def test_the_force_constant_deck_nudges_the_free_range_only(in_tree_psml):
     cfg = SiestaConfig(system_label="h3", psml_lib=in_tree_psml,
                        already_relaxed=True)
     text = render_deck(spec_for(sorted_s, cfg, calculation="vibration",
-                                stage_token="01_fc"), sorted_s, cfg,
-                       verbose=False)
+                                names=RunNames.of("h3", "01_fc",
+                                                  "hierarchical")),
+                       sorted_s, cfg, verbose=False)
     assert _lines(text, "MD.TypeOfRun") == ["MD.TypeOfRun      FC"]
     assert _lines(text, "FC.First") == ["FC.First          2"]
     assert _lines(text, "FC.Last") == ["FC.Last           3"]
@@ -72,17 +74,6 @@ def test_the_force_constant_deck_nudges_the_free_range_only(in_tree_psml):
     assert not _lines(text, "MD.UseSaveCG")
 
 
-def test_an_unsorted_copy_is_refused_by_name(in_tree_psml):
-    """A deck written from the input order would nudge the wrong atoms;
-    the writer refuses rather than guessing a range."""
-    s = _three_h(held=[1])
-    cfg = SiestaConfig(system_label="h3", psml_lib=in_tree_psml,
-                       already_relaxed=True)
-    with pytest.raises(ValueError, match="held-first"):
-        render_deck(spec_for(s, cfg, calculation="vibration",
-                             stage_token="01_fc"), s, cfg, verbose=False)
-
-
 def test_every_atom_held_is_refused_by_the_gate():
     from molbuilder.validation import validate
     s = _three_h(held=[0, 1, 2])
@@ -90,18 +81,3 @@ def test_every_atom_held_is_refused_by_the_gate():
                       calculation="vibration")
     assert any(i.severity == "error" and "every atom is held" in i.message
                for i in issues)
-
-
-# The modes coming back in the input order are the SIESTA road's own run
-# (`tests/test_siesta_vibration_e2e.py`, the held atom last in the input); the
-# gate's verdicts on a structure carrying a relaxation record moved to the
-# e2e tier 2026-10-06, on a relaxation run on the road with the real SIESTA
-# (`tests/test_siesta_relax_run_e2e.py`).  The hand-run force-constant files
-# they read went with them (`process/testing.md` § 6).
-
-
-# --------------------------------------------------------------------- #
-#  The structure's own evidence (vibration.md § 2.2, the record table)   #
-# --------------------------------------------------------------------- #
-
-

@@ -6,8 +6,7 @@ it, ``prep`` derives floor 3 and everything below (the five steps of
 project-layout.md § 2.3.1), ``launch`` launches ONE stage's run -- or a
 benchmark's trials, one job per resource shelf to the queue, each in turn
 here -- and ``summarize`` reads a sweep's results back.  Nothing is produced on a host
-and shipped — a bundle carrying a pre-made ``job-set.json`` is the legacy
-route, and it narrows with every fold.
+and shipped.
 
 The verbs own no policy: ``launch`` PRINTS what it will do and the user
 picks the mode and domain explicitly (assistant, not nanny; never a silent
@@ -53,22 +52,11 @@ def _load(bundle: str) -> tuple:
     base = Path(bundle)
     jpath = base / _JOBSET_FILE
     if not jpath.is_file():
-        # WHAT IS HERE DECIDES WHAT TO SAY.  This answered "nothing to do ...
-        # run `jobset init` first" for every absence, which is wrong twice on
-        # a calculation that HAS been prepped: a sweep's set lives in its
-        # bench container, one directory down, so `status` reported nothing
-        # while `summarize` could read the whole thing -- and `init` is not
-        # the verb for a folder that is already described.  A refusal that
-        # names the wrong verb costs more than one that names none.
         from ..task import FILENAME as _TASK_FILE
         described = (base / _TASK_FILE).is_file()
         # WHERE A SWEEP'S SET LIVES IS ASKED FOR, not spelled here.
         # `materialize.sweep_set_paths` is the search counterpart of
         # `bench_container`, and lives beside it so the layout has one home.
-        # This walked the whole tree with `rglob` -- every attempt directory
-        # full of engine output -- to find files that can only be in two
-        # places; spelling those two places HERE would have been a third copy
-        # of the layout rule, which is the habit, not the fix.
         from .materialize import sweep_set_paths
         found = sweep_set_paths(base)
         # AND IT IS READ BEFORE IT IS NAMED.  Calling every set below the root
@@ -89,8 +77,7 @@ def _load(bundle: str) -> tuple:
             # rung is in hand -- the description is right there -- so naming
             # `<stage>` would be this refusal declining to read a file it has
             # already found.  A benchmark prepped here is named beside it --
-            # it is not the run (W52: the run was refused with a note about
-            # the sweep that named no way to prep the run).  A description
+            # it is not the run.  A description
             # that does not read leaves the stage out: `prep` then says what
             # is wrong with it, and never a `<stage>` nobody can type.
             _rung = None
@@ -121,8 +108,7 @@ def _load(bundle: str) -> tuple:
         # INSIDE A CALCULATION -- one of its stage or attempt folders -- is
         # not "nothing here": the folder says which calculation it belongs
         # to (`calcdirs.root_of`, `project-layout.md` § 1.4a), and that is
-        # where the verb works (W52: it was told to run `init`, which would
-        # describe a new calculation inside an attempt).
+        # where the verb works.
         from .. import calcdirs
         root = calcdirs.root_of(base)
         if root is not None and Path(root).resolve() != base.resolve():
@@ -140,13 +126,6 @@ def _load(bundle: str) -> tuple:
         raise click.ClickException(str(e))
 
 
-#  The group docstring below IS the `jobset --help` text, so it names verbs a
-#  user is about to type.  It said ``describe`` for days after that verb became
-#  ``init`` -- help recommending a command the CLI rejects.  Kept honest by
-#  `test_machines_listing.py::test_jobset_help_names_live_verbs`, which
-#  resolves every verb the text names against the registered commands.  (The
-#  note lives here rather than in the docstring: a user reading --help needs
-#  the verbs, not our rename history.)
 @click.group("jobset", short_help="run a job-set bundle (stage ladder / sweep)")
 def jobset_group() -> None:
     """The calculation's verbs, one grammar (job-system.md § 5.3):
@@ -203,11 +182,6 @@ def _echo_config_root() -> None:
     # above already names the resolved path; this says what that path is
     # standing in front of, which is the half a reader cannot infer.  To
     # stderr, so it reaches a person without entering piped output.
-    #
-    # THROUGH THE ONE FUNCTION.  This loop was where the pair was FOUND, and
-    # `machine_config_warnings` was extracted from it -- and then this site
-    # kept calling the two halves itself, so the placement findings added to
-    # that function later reached `serve` and not the jobset verbs (D6).
     for warning in machine_config_warnings():
         _click.echo(warning, err=True)
     from ..projects import projects_root_with_source
@@ -215,14 +189,6 @@ def _echo_config_root() -> None:
 
 
 #: The calculation folder, spelled the same way on every verb.
-#:
-#: It was a POSITIONAL on ``plan`` and ``status`` until 2026-08-10 while
-#: ``prep``/``launch`` took ``--bundle``, so one word meant the folder on two
-#: verbs and the stage on the other two.  `job-system.md` § 5.3 calls that *"a
-#: defect of this section's own making"*: the grammar is
-#: ``jobset <verb> <kind> [<stage>]``, and a positional that is sometimes a
-#: path has no place in it.  `jobset status tight` answered *"Directory 'tight'
-#: does not exist"*, which tells a user they mistyped a path they never meant.
 def _resolve_bundle(ctx, param, value, *, must_exist: bool = True):
     """``--bundle`` names a calculation, and a calculation is always inside
     the projects tree (user, 2026-08-22).
@@ -231,9 +197,7 @@ def _resolve_bundle(ctx, param, value, *, must_exist: bool = True):
       * anything else        -> read from the projects root, uniformly
       * either way           -> it must be INSIDE the projects root
 
-    **Uniform, with no escape hatch.**  A first cut let ``./x`` and ``../x``
-    mean *"beside me"*, mirroring `psml_lib`'s rule.  That was the wrong
-    borrowing: the two fields denote different kinds of thing.  `psml_lib`
+    **Uniform, with no escape hatch.**  `psml_lib`
     points at a LIBRARY OF DATA that legitimately lives anywhere -- a
     shared pseudopotential collection, ``/opt``, a home directory -- so its
     spellings must be able to leave the tree.  ``--bundle`` points at a
@@ -259,8 +223,6 @@ def _resolve_bundle(ctx, param, value, *, must_exist: bool = True):
         candidate = root / p
 
     # THE fence is `projects.contain`, shared with the sidebar backend.
-    # This function had its own copy for one revision -- a second fence
-    # around the same tree, and the weaker of the two.
     try:
         real = contain(candidate, root)
     except OutsideRoot as exc:
@@ -287,9 +249,7 @@ def _resolve_bundle(ctx, param, value, *, must_exist: bool = True):
     return str(real)
 
 
-#: ONE declaration for every verb.  Three verbs re-declared this option
-#: inline until 2026-08-22, so the anchor rule would have had to be added in
-#: four places -- and the help text had already drifted into two wordings.
+#: ONE declaration for every verb.
 #:
 #: ``must_exist`` is the ONLY axis on which the verbs differ: five of them
 #: act on a calculation that is already there, and `init` creates one.  That
@@ -447,16 +407,14 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
 
     # THE TEMPLATE'S TEXT FIRST -- before the folder exists -- so a
     # citation it refuses (one that carried a net charge, ES7,
-    # `science/chemistry-correctness.md` § 2a) leaves nothing behind: an
-    # empty folder was left until the M6 review.
+    # `science/chemistry-correctness.md` § 2a) leaves nothing behind.
     from ..transport.citation_defaults import transport_template_text
     try:
         _tmpl_text = transport_template_text(_P(resolved), label=task.label)
     except ValueError as exc:
         raise click.ClickException(str(exc))
     # THE DESCRIPTION'S OWN CHECK (gate ③), which every describe runs
-    # (`workflow.md` § 9) and this door skipped until 2026-09-30 (plan
-    # § 5w K3) -- refusing before the folder exists, and saying its warnings
+    # (`workflow.md` § 9) -- refusing before the folder exists, and saying its warnings
     # (a bias point outside its recommended range) the way `prep` says its
     # notes.
     from ..issues import ValidationError
@@ -472,9 +430,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     write_task(dest / TASK_FILENAME, task)
 
     # THE TEMPLATE -- transport's shared baseline, like every other kind's
-    # (TR1).  A transport folder carried no template at all until
-    # 2026-09-16, so the Class A values had nowhere to live and the stage
-    # table had nothing to inherit from (`engines/transport.md` § 2a.3).
+    # (`engines/transport.md` § 2a.3).
     #
     # Its values are DEFAULTED FROM THE CITED RUN, not sealed to it
     # (§ 2a.7): the person may change any of them afterwards, and a change
@@ -482,13 +438,8 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # ...and its TEXT comes through the same door the browser's describe
     # door uses (`citation_defaults.transport_template_text`): a `citation`
     # row the cited directory does not answer stays VALUELESS
-    # (`engines/transport.md` § 3.8.3).  This wrote the class default into
-    # such rows until 2026-09-24, so a hand-built structure described on
-    # the CLI claimed a basis no run had said.
-    # THE ONE DOOR that forms this name (`template.template_path`).  Six
-    # call sites spelled it by hand, in two incompatible ways, until
-    # 2026-08-17; `test_doc_claims` walks the AST to keep it at one, and
-    # caught this line the day it was written.
+    # (`engines/transport.md` § 3.8.3).
+    # THE ONE DOOR that forms this name (`template.template_path`).
     tmpl = _T.template_path(dest, task.label)
     tmpl.write_text(_tmpl_text, encoding="utf-8")
 
@@ -503,8 +454,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                "structure and pseudopotentials still arrive at prep from "
                "the citation.  On the machine that will run it:")
     # THE FIRST COMMAND A PERSON COPIES, as `init` prints it for every other
-    # calculation (W52: a `cd` to this host's path, which is not a path on
-    # the machine the text names).
+    # calculation.
     from .commands import command
     from .materialize import described_refs
     click.echo("  " + command("prep", "run", described_refs(dest, task)[0].name,
@@ -537,18 +487,11 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                    "derive from it. Default: the destination folder's name.")
 @click.option("--engine", required=True,
               type=click.Choice(("siesta", "pyscf")),
-              # STATED, as the shape is: a PySCF calculation described
-              # without it became a SIESTA one, silently, until 2026-10-06.
               help="whose parameters these are. REQUIRED -- never assumed.")
 @click.option("--psml-lib", default=None, metavar="DIR",
-              # NO click-level exists check, deliberately (2026-08-28): the
-              # anchor rule lives in pseudos.resolve_psml_lib (job-contracts
-              # § 2.5a) and describe.py validates through it with the
-              # teaching refusal.  A click Path(exists=True) checked the
-              # WORKING DIRECTORY instead, so from the repo root the two
-              # validators refused each other's accepted spelling -- click
-              # rejecting the bare in-tree name, the resolver rejecting the
-              # cwd-relative one click demanded.  One fact, one door.
+              # NO click-level exists check: the anchor rule lives in
+              # pseudos.resolve_psml_lib (job-contracts § 2.5a) and
+              # describe.py validates through it with the teaching refusal.
               help="where to read pseudopotentials from -- a path INSIDE "
                    "the projects tree, measured from the tree root (the "
                    "convention is `pseudopotential`).  The files travel "
@@ -558,9 +501,6 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                    "for a flat or linear molecule from a bare XYZ, which "
                    "otherwise has a degenerate cell.")
 @click.option("--calculation", "calculation", required=True, metavar="TYPE",
-              # STATED, as the engine is: a folder named for a frequency
-              # calculation, described without it, became an optimization
-              # until 2026-10-06 (W57 R10).
               help="which KIND of calculation this describes -- "
                    "optimization, vibration or transport; the key into the "
                    "engine's warm-file vocabulary (job-contracts 4.2a).  "
@@ -606,9 +546,7 @@ def init_cmd(structure, bundle: str, shape: str,
     run_name = name or out_dir.name
     # ONE CALCULATION PER FOLDER (user, 2026-10-01: refuse).  A folder that
     # already holds a description is changed in Task setup or its
-    # task.json; `init` over it re-described it silently, leaving whatever
-    # was prepped there describing a calculation that no longer existed
-    # (W52, P1a-12).  Refused before anything is read or written.
+    # task.json.  Refused before anything is read or written.
     from ..task import FILENAME as _TASK
     if (out_dir / _TASK).is_file():
         raise click.ClickException(
@@ -634,26 +572,21 @@ def init_cmd(structure, bundle: str, shape: str,
             "structure IS the junction citation).")
 
     try:
-        # THE PAIR, through the one door.  This called the top-level
-        # `load()` until 2026-09-07 -- a reader that predated the
-        # sidecar and returned the geometry alone, so a description
-        # was born without the regions, the frozen atoms or the cell
-        # the author had set in the viewer.
+        # THE PAIR, through the one door: the geometry with its regions,
+        # frozen atoms and cell.
         struct = StructureCodec().load(structure)
         if vacuum is not None:
             # The same channel the Modify -> Cell tab uses: the vacuum lives on
             # the STRUCTURE, not on the engine config, so every surface that
             # reads this structure sees the same isolation.
-            # THROUGH THE DOOR.  `dataclasses.replace` does not dispatch to
-            # `Structure.replace` on this interpreter, so it re-passed every
-            # mutable field BY REFERENCE -- the derived structure shared its
-            # `cell` and its `info` dict with the loaded one.
+            # THROUGH THE DOOR: `dataclasses.replace` does not dispatch to
+            # `Structure.replace`, and would share the loaded structure's
+            # `cell` and `info` dict by reference.
             struct = struct.replace(vacuum=(vacuum, vacuum, vacuum))
 
         # § 6.5 (2026-08-16): a job always has at least one stage.  Without
         # ``--stage-strategy`` the ladder is ONE stage carrying no overrides
-        # -- the calculation that is just the template -- rather than the
-        # stage-less shape that used to mean the same thing.  One shape, so
+        # -- the calculation that is just the template.  One shape, so
         # the artifact names, the tokens and the directories are the same
         # whether a job has one rung or three.
         # THE LADDER IS THE ENGINE'S, AND THE SHAPE OF IT IS NOT.
@@ -727,8 +660,7 @@ def init_cmd(structure, bundle: str, shape: str,
             value_sources=_said,
         )
         # The struct AS DESCRIBED travels: --vacuum replaced it in memory,
-        # and a raw copy of the source dropped that choice on the floor
-        # (prep re-rendered the 3 A-default cell over it, found 2026-08-12).
+        # and a raw copy of the source would drop that choice.
         written = write_description(desc, out_dir, psml_lib=psml_lib,
                                     struct=struct)
     except DescribeError as e:
@@ -736,15 +668,13 @@ def init_cmd(structure, bundle: str, shape: str,
     except (ValueError, OSError) as e:
         raise click.ClickException(str(e))
 
-    # Always a ladder now (§ 6.5), so there is no second phrasing: one stage
-    # reports as "1 stage: coarse", not as "one parameter set (no ladder)".
+    # Always a ladder (§ 6.5), so one stage and several share one phrasing.
     ladder = (f"{len(desc.task.stages)} stage(s): "
               f"{', '.join(s.name for s in desc.task.stages)}")
     click.echo(f"Described {desc.label!r} in {out_dir} -- {ladder}, "
                f"shape {shape}.", err=True)
     click.echo("  " + "\n  ".join(p.name for p in written), err=True)
-    # THE FIRST COMMAND A PERSON COPIES, real (W52: it printed `prep run
-    # <stage>`, which bash refuses, beside a `cd` to this host's path).
+    # THE FIRST COMMAND A PERSON COPIES, real.
     from .commands import command
     from .materialize import described_refs
     first = described_refs(out_dir, desc.task)[0].name
@@ -795,7 +725,7 @@ def status_cmd(stage, bundle: str) -> None:
         js, base = _load(bundle)
         if js.kind == "sweep":
             # A BENCH FOLDER is read against its calculation: its sweep names
-            # its trials from there, and what it prints names that (W52).
+            # its trials from there, and what it prints names that.
             from .materialize import bench_owner
             owner = bench_owner(base)
             if owner is not None:
@@ -805,7 +735,7 @@ def status_cmd(stage, bundle: str) -> None:
     try:
         status = jobset_status(js, base)
     except (OSError, ValueError, KeyError) as exc:
-        # A refusal, in the verb's voice -- never a traceback (W52).
+        # A refusal, in the verb's voice -- never a traceback.
         raise click.ClickException(str(exc))
     if name is None:
         click.echo(render_status(status))
@@ -832,10 +762,9 @@ _KINDS = ("run", "bench")
 def _check_kind(kind: str, js=None) -> None:
     """The KIND positional against the bundle's actual kind.
 
-    ``bench`` stopped refusing on 2026-08-12 (plan step 6, u2): ``prep
-    bench`` enumerates the grid on this machine and ``launch bench <stage>``
-    launches its trials -- or the one named -- through the same resolver as
-    everything else.  What remains checkable is AGREEMENT: a kind that
+    ``prep bench`` enumerates the grid on this machine and ``launch bench
+    <stage>`` launches its trials -- or the one named -- through the same
+    resolver as everything else.  What is checkable is AGREEMENT: a kind that
     contradicts the bundle's own is a typo about to act on the wrong thing.
     """
     if js is None:
@@ -855,10 +784,7 @@ def _described_stage(base, stage):
     (`identity.resolve_stage_ref`, `job-system.md` § 5.3) -- and what the
     verb then finds, records and PRINTS (a pasted ``#2`` would be a comment
     in bash).  Asked by the verbs that name a stage the description holds
-    whether or not it is prepped: the bench verbs, which matched the exact
-    name in a lookup of their own until K12, so `launch bench '#2'` refused
-    the stage `prep bench '#2'` had just prepared (plan § 5w K12), and
-    `status`.  ``None`` stays ``None``, and a folder with no description has
+    whether or not it is prepped: the bench verbs and `status`.  ``None`` stays ``None``, and a folder with no description has
     no ladder to resolve against: its name stands."""
     from ..identity import StageRef, resolve_stage_ref
     from ..task import FILENAME, read_task
@@ -889,9 +815,8 @@ def _refuse_disabled(base, stage) -> None:
 
 def _refuse_unprepped(base, stage) -> None:
     """A stage the description holds and no prep has prepared is refused by
-    NAME, with its prep and its launch -- what `status` says of it.  It read
-    *no stage named ... in this job-set* (W55 D4): the job-set holds the
-    prepped stages, and the description all of them.  Prepped is the prep
+    NAME, with its prep and its launch -- what `status` says of it.  The
+    job-set holds the prepped stages, and the description all of them.  Prepped is the prep
     entry's own answer (`prep.prepped_already`)."""
     from ..task import FILENAME, read_task
     from .commands import block, run_first
@@ -921,8 +846,7 @@ def _stage_bench_dir(base, stage, verb: str = "launch"):
     if not desc.is_file():
         # A FOLDER NO DESCRIPTION NAMES is not a calculation of ours: its
         # verbs are refused, as prep's are (`job-system.md` § 5.0's first
-        # checkpoint).  A job set built by hand at the root was loaded in
-        # its place until 2026-10-06.
+        # checkpoint).
         raise click.ClickException(
             f"{base} holds no {FILENAME} -- not a calculation molbuilder "
             f"described.  `molbuilder jobset init` describes one "
@@ -931,15 +855,14 @@ def _stage_bench_dir(base, stage, verb: str = "launch"):
     sh = Shape.named(task.shape)
     # A CALCULATION THAT HAS NO BENCHMARK says so first -- `prep bench`'s own
     # answer (`bench_refusal`) -- or the command offered next is refused in
-    # turn (W52: `launch bench` on PySCF offered `prep bench`).
+    # turn.
     from .prep_inputs import bench_refusal
     why = bench_refusal(task)
     if why:
         raise click.ClickException(why)
     if stage is None:
         # THE STAGES WITH A BENCHMARK TO ACT ON -- a prepped one -- or, with
-        # none, the prep that makes one (W52: every stage was offered, the
-        # disabled and the never-benched, and the first was then refused).
+        # none, the prep that makes one.
         from .commands import command, name_a_stage
         from .materialize import described_refs
         refs = described_refs(base, task)
@@ -956,23 +879,12 @@ def _stage_bench_dir(base, stage, verb: str = "launch"):
     return Path(base) / bench_container(sh, token), token
 
 
-# ``_bench_positionals`` lived here until 2026-08-16.  It re-bound a lone
-# name after ``bench`` to the TRIAL, because a stage-less calculation owned
-# no stage to name (final review A-4).  With § 6.5's rule that every
-# description has at least one stage, the two positionals after ``bench``
-# always mean (stage, trial) and the re-binding can never fire.
-
-
 def _pick_trial(js, trial):
     """Which trial this invocation launches.  NAMED → that one (how a single
     point is re-run); refused by name against the sweep's own list.  Bare →
     ``None``: under --mode direct the whole set runs, in order, and sent to
     a scheduler it goes one job per resource shelf (`submit.plan_launch`,
-    § 2.3.2).  The trial named rides the launch's own lines in the ledger --
-    a line of its own, written before anything was decided, went with a dry
-    run's on 2026-10-05.  A next-unlaunched picker arm stood here for the
-    pre-grouping shape; its own docstring called it unreachable, and it
-    retired 2026-08-21 (R2-4) with its imports.
+    § 2.3.2).  The trial named rides the launch's own lines in the ledger.
     """
     if trial is not None and not any(j.name == trial for j in js.jobs):
         raise click.ClickException(
@@ -997,30 +909,8 @@ def _load_bench_set(base, stage, verb: str = "launch"):
         raise click.ClickException(str(e))
 
 
-# `_ask_if_underway` stood here until 2026-09-29, and its successors
-# `prep.underway_evidence` and `_ask_underway` until 2026-10-02: a prepped
-# stage is refused now.  `_ask_save`, the question that followed, went
-# 2026-10-03: prep saves the folder's state always, and says so.
-
-
-# `_refuse_if_measured_elsewhere` and `_measured_on` stood here until
-# 2026-09-04.  They read `bench-result.json` to refuse applying a verdict
-# measured on a different machine kind (`submission.md` S3).  Nothing in
-# production ever called them -- the only caller was a test -- because the
-# premise died on 2026-09-02: see step 2 of `prep_inputs.prep_run_inputs`,
-# THERE IS NO SECOND RUNG.  No verdict reaches a launch on its own any more, so there
-# is no boundary left to cross, and a guard against a route that does not
-# exist is a guard nobody can trip.
-
-
 #: WHAT YOU MAY TYPE FOR THE TWO ASKS -- said ONCE, because `prep` and
-#: `launch` each take a `--time` and a `--mem` and each used to describe
-#: them differently: `prep --time` advertised `D-HH:MM:SS` while
-#: `launch --time` advertised "4h, 90m, or a bare number of minutes", and
-#: both accepted all of it.  Same tool, same flag name, two stories about
-#: what is allowed -- the defect roadmap 7.11 already recorded for `--mem`
-#: ("two flags of one name disagreeing about a spelling one of them
-#: advertises") and which `--time` was never swept for.
+#: `launch` each take a `--time` and a `--mem`.
 #:
 #: These describe the HUMAN edge only.  What the file stores and what
 #: reaches `sbatch` is SLURM's own spelling, always, and neither is any of
@@ -1051,8 +941,7 @@ def _duration(text):
 def _memory(text):
     """A stated memory as the record writes it -- SLURM's spelling, ``0``
     for all of the node's (`scheduler.quantities.canonical_mem`) -- refusing
-    in click's voice.  ``launch`` read it as a number of gigabytes until
-    2026-10-01 and so refused the ``0`` this help advertises (W52)."""
+    in click's voice."""
     from ..scheduler.quantities import canonical_mem
     try:
         return canonical_mem(text)
@@ -1060,19 +949,11 @@ def _memory(text):
         raise click.ClickException(f"--mem: {e}")
 
 
-# THE ASSEMBLY a prep receives -- `_declared_execution_pins` through
-# `bench_inputs`, the bench grid's cell checks and the run's condition --
-# moved to `jobset/prep_inputs.py` on 2026-09-29: the conductor's own
-# assembly, beside it (`architecture.md` § 2.1's note, A7, A12), so the one
-# prep entry can call it and the Task setup tab no longer reaches across to
-# this module.
-
-
 def _resolve_stage_name(js, stage: str) -> str:
     """The job ``stage`` names, through the ONE resolver (§ 8f).
 
-    Split out from :func:`_resolve_stage` because two different questions were
-    living in one function: *which job did the user name* (every verb that takes
+    Apart from :func:`_resolve_stage` because they are two different
+    questions: *which job did the user name* (every verb that takes
     a STAGE asks this) and *may this verb act on the whole set* (only
     ``launch`` asks -- `prep` takes its stage through the prep entry -- and
     ``status`` legitimately may). Keeping them together
@@ -1088,21 +969,11 @@ def _resolve_stage_name(js, stage: str) -> str:
         raise click.ClickException(str(e))
 
 
-# ``_lone_stageless_job`` lived here until 2026-08-16: the door's answer
-# when there was no stage name to type.  `engines/stages.md` § 6.5 now says
-# every description carries at least one stage, and one stage is named and
-# tokened like any other, so there is always a name to type and the bare
-# verbs have nothing to fall back to.  Deleted rather than left inert --
-# a helper whose docstring cites a rule that now says the opposite is worse
-# than no helper.
-
-
 def _resolve_stage(js, stage, verb: str, *, base):
     """Which jobs a verb acts on, and the refusal when that is ambiguous.
 
     A LADDER is a sequence you look at between steps, so acting on all of it is
-    not merely off by default -- **there is no way to ask for it**.  ``--chain``
-    was the way, and it was deleted 2026-08-10 (user) in both modes: whether a
+    not merely off by default -- **there is no way to ask for it**: whether a
     later stage should pick up an earlier one cannot be settled without
     reviewing the earlier one's result (`project-layout.md` § 1.6).
 
@@ -1119,9 +990,7 @@ def _resolve_stage(js, stage, verb: str, *, base):
 
     Both kinds go through the ONE resolver (§ 8f).  A sweep's refs simply carry
     no ordinal, so it resolves by name and the refusal stops offering numbers --
-    the same code path, not a second one.  Until 2026-08-10 the sweep had its
-    own lookup, its own refusal wording and its own listing format, so a user
-    could be shown two vocabularies for one question.
+    the same code path, not a second one.
     """
     from .commands import name_a_stage
     from .materialize import stage_refs
@@ -1131,8 +1000,7 @@ def _resolve_stage(js, stage, verb: str, *, base):
     ordered = [refs[j.name] for j in js.jobs]
     if js.kind == "ladder":
         raise click.ClickException(
-            # WHAT YOU CAN TYPE, never the token (`job-system.md` § 5.3):
-            # `01_coarse` listed here was refused when typed back, until K12.
+            # WHAT YOU CAN TYPE, never the token (`job-system.md` § 5.3).
             f"this is a ladder, so `{verb} run` acts on ONE stage; "
             + name_a_stage(verb, "run", ordered, base=base) + "\n"
             "Stages do not chain, and there is no flag that makes them: a "
@@ -1210,21 +1078,19 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
 
     A STAGE is required on a ladder — bare ``prep run`` is refused before
     anything is read of the machine or written, offering the stages by name
-    and the command for the first (`engines/stages.md` § 6.5; W52).
+    and the command for the first (`engines/stages.md` § 6.5).
     """
     # THE ONE ENTRY (`job-system.md` § 5.3, plan W38 F7): the Task setup
     # tab's Prep buttons call it too.  This verb collects what the person
     # said -- the flags -- and prints the answer; the act itself is
-    # `prep.prep_stage`'s, and it asks nothing (its one question, *already
-    # under way*, was retired on 2026-10-02).
+    # `prep.prep_stage`'s, and it asks nothing.
     from ..scheduler.quantities import (canonical_mem, canonical_time,
                                         parse_gres_flag)
     from .model import Resources as _Alloc
     from .prep import prep_stage
     base = Path(bundle).resolve()
     # A SPELLING THAT IS NO AMOUNT is refused in the verb's voice, naming the
-    # flag -- through the same readers the record uses (`Resources`), which
-    # raised it as a traceback until 2026-10-01 (W52).
+    # flag -- through the same readers the record uses (`Resources`).
     for _flag, _said, _read in (("--time", time_, canonical_time),
                                 ("--mem", mem, canonical_mem),
                                 ("--gpus", gres,
@@ -1302,10 +1168,8 @@ def _echo_prep_answer(ans, base) -> None:
             click.echo("  every trial's geometry: "
                        + ans.continuation.line())
         _echo_pipeline_log(ans, base)
-        # ONE COMMAND A LINE, prose after `#` (W52: a `(note)` after the
-        # command, which bash cannot parse; and the report described as a
-        # proposal `prep run` applies -- nothing applies it, the person
-        # copies its `execution` block into task.json, job-system.md § 7).
+        # ONE COMMAND A LINE, prose after `#`; the report's `execution`
+        # block is the person's to copy into task.json (job-system.md § 7).
         say_next("next -- launch the sweep (to the queue it goes as one "
                  "job per resource shelf):\n"
                  + block(launch_lines("bench", stage, base=base)))
@@ -1317,13 +1181,11 @@ def _echo_prep_answer(ans, base) -> None:
     next_line = "next:\n" + block(launch_lines("run", stage, base=base))
     # THE LAYOUT'S OWN LINES first -- the folder, the attempt or the points
     # -- then what every layout says alike: the resources, whether the deck
-    # agrees with its launch, the pipeline log, what to do next.  The flat
-    # and the scan answers returned before the shared lines until
-    # 2026-10-05, and said neither the resources nor the agreement.
+    # agrees with its launch, the pipeline log, what to do next.
     if ans.flat:
         click.echo(f"prepped {len(ans.dirs)} job dir(s) under {base}  "
-                   "(flat: no attempt to open; runs are told apart by "
-                   "the wrapper's output index)")
+                   "(flat: no attempt to open; each run carries the "
+                   "number launch gives it)")
         if ans.continuation is not None:
             click.echo("  " + ans.continuation.line())
     elif ans.points:
@@ -1345,9 +1207,7 @@ def _echo_prep_answer(ans, base) -> None:
         # (which, by default or named, what it was, what came across); a
         # cold start asked for; the files a transport rung gathered (said
         # below); or nothing from another run -- a linked stage's too: its
-        # kind's first rung, or the structure as given ("its input is
-        # prep's own" stood here until 2026-10-05, for rungs that take
-        # nothing).
+        # kind's first rung, or the structure as given.
         if ans.continuation is not None:
             click.echo("  " + ans.continuation.line(rep.copied))
         elif ans.cold:
@@ -1367,7 +1227,7 @@ def _echo_prep_answer(ans, base) -> None:
         r = ans.resources
         # WHAT IS STATED, and nothing else: no launch value is left for
         # the wrapper to decide (`architecture.md` § 5.2), and a PySCF run
-        # has no rank count at all -- `mpi_np auto` claimed one.
+        # has no rank count at all.
         asks = [f"{word} {r[key]}" for word, key in (("mpi_np", "mpi_np"),
                                                      ("omp", "cpus_per_task"))
                 if r.get(key)]
@@ -1527,19 +1387,10 @@ def summarize_cmd(kind: str, stage, bundle: str,
     container, _ = _stage_bench_dir(base, stage, "summarize")
     # The container's job-set holds ONLY this stage's trials (U1), so the
     # SET is the scope and the verdict goes back where they live -- there
-    # is no name filter anywhere (U12).  A description-less sweep has no
-    # stages to name at all:
-    if container is None and stage is not None:
-        from .commands import command
-        raise click.ClickException(
-            f"this sweep carries no description, so it has no stage named "
-            f"{stage!r} -- run it bare:\n    "
-            + command("summarize", "bench", base=base))
+    # is no name filter anywhere (U12).
     from ..runfiles import BENCH_RESULT_FILE
     res, out_path, report = run_summarize_jobset(
-        js, base,
-        out=(container / BENCH_RESULT_FILE) if container is not None
-            else None,
+        js, base, out=container / BENCH_RESULT_FILE,
         now_iso=utc_now_iso(), stage=stage)
     click.echo(summary_text(res, out_path, report=report, stage=stage,
                             base=base))
@@ -1553,10 +1404,7 @@ def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
                                  domain, time_text, mem_text, gpu_domain,
                                  trial_timeout_min, only_side) -> None:
     """A launch flag that would not be read is REFUSED by name, never
-    ignored (W52: ``--trial-timeout`` was read by the grouped bench alone,
-    ``--gpu-domain`` likewise, and ``--time``/``--mem`` meant nothing to a
-    direct run -- each silently, while ``--only`` was refused in exactly
-    those places as *a filter silently ignored*)."""
+    ignored."""
     flags = {"--domain": domain, "--time": time_text, "--mem": mem_text,
              "--gpu-domain": gpu_domain,
              "--trial-timeout": trial_timeout_min, "--only": only_side}
@@ -1722,8 +1570,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     # EVERY REFUSAL IS WRITTEN DOWN (`job-system.md` § 6.0, step 5): the
     # entry writes its own, and the verb the ones it says before it calls
     # the entry -- in a described calculation only, a folder that is not one
-    # getting no ledger of ours; a dry run writes nothing.  The refusals
-    # raised before the send went unrecorded until 2026-10-05 (W55 D14).
+    # getting no ledger of ours; a dry run writes nothing.
     said = {"kind": kind, "stage": stage, "trial": trial, "mode": mode}
     try:
         _launch(said, kind, stage, trial, bundle, mode, domain, dry_run,
@@ -1793,8 +1640,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         try:
             mode = get_launch_mode()
         except Exception as exc:
-            # A malformed config is ITS OWN error.  Swallowing it here told
-            # the user to set a value they may already have set.
+            # A malformed config is ITS OWN error.
             raise click.ClickException(
                 f"the launch block could not be resolved from config: "
                 f"{exc}\n  Fix the config (running-a-job.md § 5.4).") from exc
@@ -1802,8 +1648,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             # Unset is a refusal, never a derivation: deciding `submit` from
             # a DETECTED scheduler would gate submission on detection, which
             # running-a-job.md § 5.4 forbids.  THE WAY ON AS COMMANDS, one
-            # per mode the machine takes -- "pass --mode for this call"
-            # until 2026-10-06, an edit to the line typed.
+            # per mode the machine takes.
             from .commands import block, launch_with, takes_a_queue
             modes = (("direct", "submit") if takes_a_queue(base)
                      else ("direct",))
@@ -1825,8 +1670,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
 
     # THE QUEUE is the entry's to decide -- --domain as typed, else the one
     # the work's prep admitted (`submit.plan_launch`; floor 7 never works
-    # out a launch, `architecture.md` § 2.1).  It was decided here until
-    # 2026-10-05.
+    # out a launch, `architecture.md` § 2.1).
     # The same provenance line prep printed, at the LAST moment before the
     # launch -- the mode above may have come from config, and this names
     # which file said so (user request 2026-08-12).
@@ -1842,15 +1686,14 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                 else None)
 
     # 1 · THE PLAN, made once (`job-system.md` § 6.0): what is shown, what
-    # the question is about and what the send carries out are one object --
-    # each door planned, then planned again to send, until 2026-10-05.  The
+    # the question is about and what the send carries out are one object.  The
     # entry writes its own decisions down, with what this verb was told on
     # each line; a dry run writes nothing.
     told = dict(kind=kind, stage=stage, trial=trial, mode=mode,
                 mode_source=mode_source, flags=typed, domain=domain,
                 domain_source=domain_source, provenance=prov,
                 # A LAUNCH FLAG'S WALL AND MEMORY, as typed: the values it
-                # changes are recorded in `run.json` too (§ 6.0).
+                # changes are recorded in the launch record too (§ 6.0).
                 **({"time": time_text} if time_text else {}),
                 **({"mem": mem_text} if mem_text else {}),
                 **({"trial_timeout_s": _bound_s, "side": only_side}
@@ -1902,8 +1745,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         # contradiction (user, 2026-08-28): on a scheduler-less machine
         # nothing WOULD be sent, so nothing is previewed.
         # THE LAUNCH AS A COMMAND, its flags as typed (`commands.
-        # launch_with`) -- "the same command and `--mode submit`" until
-        # 2026-10-06, an edit to a line in the person's history.
+        # launch_with`).
         from .commands import block, launch_with
         if not all(p.no_scheduler for p in preds):
             click.echo("  would send: " + " ".join(asked.command))
@@ -1985,12 +1827,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
 
 
 # --------------------------------------------------------------------- #
-#  probe -- this machine's record, read off the machine.  It came from   #
-#  `molbuilder bench` on 2026-08-17 as `probe-scheduler`, the last        #
-#  inhabitant of a group whose lifecycle verbs went in the 2026-08-12     #
-#  fold (every verb lives under `jobset` -- user, 2026-08-17), and        #
-#  proposed a `scheduler` config block; that block is refused since      #
-#  2026-10-02, and the probe writes the machine's record instead.        #
+#  probe -- this machine's record, read off the machine.                #
 # --------------------------------------------------------------------- #
 
 #: Marks a key a row does not carry, so the field diff below can tell
@@ -2074,8 +1911,7 @@ def _probe_consent_merge(before, probed, *, yes: bool):
     # THE THREE FACTS THAT TRAVEL WITH A RECORD (`diagnostics.local_facts`:
     # how the machine enters its environment, which envs it holds, what they
     # were built for) are asked about like every other difference: a record
-    # edited by hand is a person's answer, and a probe replaced it unasked
-    # whatever was answered (W52).
+    # edited by hand is a person's answer.
     for _f in ("env_init", "conda_envs", "env_arch"):
         b, pv = getattr(before, _f), getattr(probed, _f)
         if b != pv:
@@ -2134,8 +1970,8 @@ def _probe_consent_merge(before, probed, *, yes: bool):
 
 @jobset_group.command("migrate",
                       short_help="rewrite a calculation an older molbuilder "
-                                 "wrote: its records whole, its charge and "
-                                 "spin items")
+                                 "wrote: its records whole, a flat one's run "
+                                 "files numbered, its charge and spin items")
 @_bundle_option()
 def migrate_cmd(bundle: str) -> None:
     """Rewrite a calculation an older molbuilder wrote.
@@ -2143,15 +1979,18 @@ def migrate_cmd(bundle: str) -> None:
     Its RECORDS (2026-10-06): task.json's `calculation` and a notify block's
     four values, and every job's `point`, `finish`, `resumes` and
     `placement` in each job-set.json -- each key the old file left out
-    written with what its absence meant.  Its TEMPLATE (2026-09-28): the
+    written with what its absence meant.  A flat calculation's RUN FILES
+    (2026-10-06): each run's trajectory log, launch record and
+    `.continued-from` carry the run's number, and those written before are
+    renamed for their stage's newest run.  Its TEMPLATE (2026-09-28): the
     electronic state's items (science/chemistry-correctness.md § 2a) --
     PySCF's `spin` and the R/U inside its `method`, SIESTA's
     `spin_treatment` spellings and `spin_total`.
 
     What the calculation was is KEPT -- every old value becomes a stated
-    one -- and each change is printed.  Each old file stays beside the new
-    one (`<name>.pre-w57`, `<name>.pre-m6`).  The readers refuse such a file,
-    naming this command."""
+    one -- and each change is printed.  Each old file rewritten stays beside
+    the new one (`<name>.pre-w57`, `<name>.pre-m6`); a renamed one keeps
+    every byte.  The readers refuse such a file, naming this command."""
     from .migrate import MigrateError, migrate_state
     try:
         said = migrate_state(bundle)
@@ -2168,9 +2007,7 @@ def cmd_machines() -> None:
     """Which machines a calculation can be prepared FOR, and where each lives.
 
     The answer to *"did the record I copied over actually arrive, and does it
-    parse?"* -- which until 2026-08-22 could only be had by running ``prep
-    --target`` and reading the refusal, because this list existed only in the
-    browser (`preparing-for-another-machine.md` § 5).
+    parse?"* (`preparing-for-another-machine.md` § 5).
 
     Prints the same list `GET /api/task-setup/machines` serves, from the same
     function, so the terminal and the tab cannot disagree.  An unreadable
@@ -2195,23 +2032,18 @@ def cmd_machines() -> None:
     click.echo("")
     if not named:
         # THE NAME IS THE PERSON'S, so it is asked for in words -- a
-        # `<name>` in a command is a redirect to bash (W52).
+        # `<name>` in a command is a redirect to bash.
         click.echo("No named targets yet.  To prepare for another machine, "
                    "run `molbuilder jobset probe --write --name` on THAT "
                    "machine with the name you will prep it by (`--target`), "
                    "then copy the file it writes into:\n    "
                    f"{environments_dir()}/")
     elif choice_required(machines):
-        # NAME THE LOCAL SPELLING HERE TOO.  The listing above shows
-        # `(this machine)`, which is a LABEL and not something anyone can
-        # type -- so a reader told that `prep` "requires --target <name>"
-        # was left with no name for the box in front of them.  The same
-        # gap the ambiguity refusal had (`record.LOCAL_TARGET`, 2026-08-24);
-        # a hint that names only half the options is half a hint.
+        # NAME THE LOCAL SPELLING HERE TOO, so the reader has a name to type
+        # for the box in front of them (`record.LOCAL_TARGET`).
         from ..scheduler.record import LOCAL_TARGET
         # ONLY BEFORE THE FIRST PREP: a calculation that holds its snapshot
-        # has its answer, and is asked nothing (`record.machine_for`'s C1;
-        # W52: this said `prep` requires the flag, always).
+        # has its answer, and is asked nothing (`record.machine_for`'s C1).
         click.echo("More than one machine could be meant, so a calculation's "
                    "first `prep` asks which, with `--target` (being asked "
                    "costs one flag; being given the wrong one costs a queue "
@@ -2345,9 +2177,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
 
     # THE THREE FACTS THAT TRAVEL WITH A RECORD -- how this machine enters
     # its environment, which envs exist here, and what they were built
-    # for.  `diagnostics.local_facts` owns them and states why; `envs
-    # init-config` became the second caller 2026-09-08, which is what
-    # took them out of this function.  The first is THIS machine's
+    # for.  `diagnostics.local_facts` owns them and states why.  The first is THIS machine's
     # `env_init`, declared in its molbuilder.json and copied into whichever
     # record this writes, this machine's or a named one (user, 2026-10-02) --
     # required, and checked above.
@@ -2355,8 +2185,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
     env, facts_notes = _local_facts(env, declared)
 
     # THE QUEUES -- `record.probe_queues`, the one queue probe; `envs
-    # init-config` seeds this machine's record through it too (M-3).  It was
-    # inline here until 2026-10-02, and init-config seeded a cluster with none.
+    # init-config` seeds this machine's record through it too (M-3).
     from ..scheduler.record import probe_queues
     notes, summary = probe_queues(env, user)
     if summary:
@@ -2365,12 +2194,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
     # A named target is a record ABOUT another machine, kept beside this
     # machine's rather than replacing it (P2): a workstation holds both its own
     # capability and the cluster's, and `prep --target NAME` says which.
-    # WHICH FILE, asked for -- not a directory plus a re-spelled name.  This
-    # used to read `target = machine_scope_path().parent` / `fname =
-    # f"{name}.json" if name else FILENAME`: the record's own resolver taken
-    # apart to get a directory, and its filename typed again beside it, with
-    # the bare `FILENAME` imported into a surface to do it (A11, I1).  Moving
-    # either file would have moved the reader and left this writer behind.
+    # WHICH FILE, asked for -- not a directory plus a re-spelled name.
     if name:
         from ..scheduler import named_environment_path
         record = named_environment_path(name)
@@ -2395,10 +2219,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
             click.echo(f"  {d.name:<10} <= {str(d.max_time):<12} "
                        f"{d.partition}/{d.qos}")
     # AFTER the queue probe, whose notes this extends (`record.probe_queues`
-    # builds them after `derive_domains`, which reassigns its list).  This
-    # line was composed and never shown: `notes_sg` was assigned and read
-    # by nothing, so the one machine that most needed the warning -- the
-    # one with no activation -- was the one told nothing.
+    # builds them after `derive_domains`, which reassigns its list).
     notes.extend(facts_notes)
     if notes:
         click.echo("\nNotes / assumptions (read before --write):")
@@ -2406,8 +2227,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
             click.echo(f"  - {n}")
 
     if not do_write:
-        # THE LINE THAT WRITES WHAT WAS SHOWN, its flags as typed -- "Re-run
-        # with --write" until 2026-10-06, an edit to the line typed
+        # THE LINE THAT WRITES WHAT WAS SHOWN, its flags as typed
         # (`job-system.md` § 5.3).
         import shlex
         from ..scheduler.record import probe_command
@@ -2422,9 +2242,8 @@ def cmd_probe(do_write: bool, name, yes: bool,
     if before is None:
         # Nothing to clobber: one consent creates the record -- unless a file
         # IS there and does not read, which is said, never treated as absent
-        # (W52: `read_environment` answers both with `None`, and a newer
-        # schema or a hand-fixed record was replaced unasked; `--yes` skips
-        # the question, never this line).
+        # (`read_environment` answers both with `None`; `--yes` skips the
+        # question, never this line).
         dest = target / fname
         if dest.exists() and not dest.is_file():
             # NOT A FILE AT ALL -- a directory: a record cannot replace it,
@@ -2454,11 +2273,9 @@ def cmd_probe(do_write: bool, name, yes: bool,
                 return
     else:
         env = _probe_consent_merge(before, env, yes=yes)
-    # 0700, through the one creator.  This was a bare `mkdir` with no mode, and
-    # `jobset probe --write` is the FIRST command the seeded `environments/
-    # README` tells a person to run on a target -- so the config directory that
-    # every later secret lands in was created world-readable, and `envs
-    # init-config` then reported it "kept" (A4).
+    # 0700, through the one creator: `jobset probe --write` is the FIRST
+    # command the seeded `environments/README` tells a person to run on a
+    # target, so it may create the config directory every later secret lands in.
     from ..config_dir import ensure_private_dir
     ensure_private_dir(target)
     path = write_environment(env, target / fname)

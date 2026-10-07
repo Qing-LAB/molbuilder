@@ -12,13 +12,12 @@
 
 /* ── A zip, with nothing compressed ──────────────────────────────────────────
  *
- * PNGs are already compressed, so storing them costs nothing and saves pulling in
- * a compressor. This is the whole of the format that a reader needs: a local
+ * This is the whole of the format that a reader needs: a local
  * header before each file, a central directory listing them, and an end record
  * pointing at that directory.
  *
- * The timestamp is a constant rather than the clock, so exporting the same
- * animation twice produces the same bytes. Nothing here needs to know when it ran.
+ * The timestamp is a constant rather than the clock, so archiving the same
+ * files twice produces the same bytes.
  */
 const ZIP_TIME = 0;      // 00:00:00
 const ZIP_DATE = 0x21;   // 1980-01-01, the epoch the format was born with

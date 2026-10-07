@@ -51,11 +51,9 @@ export const WRITING  = "writing";    // a write is on its way to storage
  *
  * Note what is NOT handed: anything that would let this look inside a state.
  *
- * IT CALLS THE WORKSPACE BY NAME, on purpose. The rebuild had it asking for a
- * two-call door of its own invention — `read(step)` / `write(step, bytes)` — which
- * nothing implemented, so nothing was ever saved and every stub in every test
- * satisfied it perfectly. A door shaped like the real dependency fails the moment
- * the two disagree; a door shaped like a wish does not.
+ * IT CALLS THE WORKSPACE BY NAME, on purpose. A door shaped like the real
+ * dependency fails the moment the two disagree; a door shaped like a wish does
+ * not.
  */
 export function createHistory(handed) {
     // 0 is the state the structure opened at.
@@ -365,13 +363,9 @@ export function createHistory(handed) {
              * lands.  Between those two moments the work genuinely IS off the
              * sequence, and that is not a hypothetical: `request` answers
              * `false` and HOLDS the write whenever a change is still in flight,
-             * so a save can sit un-landed for as long as that takes.
-             *
-             * It mattered little while saving was a button somebody pressed
-             * once in a while.  Now that every edit asks for a point (§ 11.2,
-             * 2026-09-07) the held case is ordinary, and a badge that stayed
-             * down through it would be saying "all your work is recorded" at
-             * precisely the moment some of it is not. */
+             * so a save can sit un-landed for as long as that takes, and a
+             * badge down through it would be saying "all your work is
+             * recorded" at precisely the moment some of it is not. */
             setBadge(true);
             const target = position + (step === 0 ? 0 : 1);
             return request(target, true);
@@ -394,11 +388,7 @@ export function createHistory(handed) {
              *
              * § 11.2 says the sequence is persistent — "it outlives the page" —
              * and a reopened page builds a NEW viewer, so `load(0)` is the one
-             * call that has to work before anything has been installed. It used
-             * to refuse here, which made "it outlives the page" false: the bytes
-             * were on disk and nothing could reach them, so every reopened tab
-             * had to be re-loaded from its file and a GENERATED structure was
-             * simply gone.
+             * call that has to work before anything has been installed.
              *
              * Only step 0 adopts. A step is a move along a sequence, and there
              * is nothing to move along until one has been taken up. */
@@ -407,14 +397,13 @@ export function createHistory(handed) {
              * out which point to fetch.
              *
              * Both halves matter. A save moves `position` and lowers the badge
-             * when it lands, and both are read below to decide the target — so a
-             * Retract pressed while a save was in flight used to aim at the point
-             * BEFORE the one just saved, and then fetch bytes the save had not
-             * written yet. Two wrong answers from one missing wait.
+             * when it lands, and both are read below to decide the target — so
+             * without the wait a Retract pressed while a save is in flight would
+             * aim at the point BEFORE the one just saved, and fetch bytes the
+             * save has not written yet.
              *
-             * The write machine could not prevent it: SETTLED / CHANGING /
-             * WRITING queue writes behind other writes, and a read is not a
-             * write, so it walked straight past them. */
+             * The write machine cannot prevent it: SETTLED / CHANGING / WRITING
+             * queue writes behind other writes, and a read is not a write. */
             await settled();
             let target;
             if (step === 0) {

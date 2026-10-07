@@ -8,10 +8,8 @@ phases per recipe:
   2. ``conda install -n <env> -c <ch1> ... <every other declared spec>``,
      dispatched only when the env is short of one of them.  A step of its
      own because `conda create` is skipped for an env that already exists,
-     and while the package list was an argument to that command the list
-     was skipped with it -- so a recipe that gained a dependency never
-     reached a machine that had already bootstrapped
-     (the rule is `env-framework.md` § 4.4).
+     so a list riding on it would never reach a machine that had already
+     bootstrapped (the rule is `env-framework.md` § 4.4).
   3. pip, from the recipe's :class:`PipPackage` records.  The PLAIN
      ones (default index, required, no forcing) go in one
      ``conda run -n <env> python -m pip install <pkgs>``; each package
@@ -26,10 +24,7 @@ phases per recipe:
      hooks are rendered into the env's ``etc/conda/`` tree.
   6. Verify -- an ordinary step like the others, built by
      :func:`verify_step_for` and run through the same door.  That
-     function lives HERE and :mod:`molbuilder.envs.doctor` imports it;
-     this line claimed the reverse ("re-uses molbuilder.envs.doctor")
-     until 2026-09-13, which is the direction the dependency ran
-     before the migration.
+     function lives HERE and :mod:`molbuilder.envs.doctor` imports it.
 
 The installer deletes an env only when asked (``--clean``, a REMOVE step
 at the front of the plan); otherwise, if the env already exists, phases
@@ -70,18 +65,10 @@ from .recipes import effective_name, PipPackage, Recipe
 class StepRole(str, Enum):
     """What a step is FOR.
 
-    The runner's branches key on THIS, never on ``label``.  They used to key
-    on the label -- ``== "conda create"`` decided whether the env-state
-    machine ran at all, and ``== "verify"`` decided which phase a step
-    belonged to -- while ``label``'s own docstring called it the CLI's
-    per-step header text.  Renaming a label for clarity silently disabled the
-    create-skip logic, and the install would then attempt `conda create` on
-    an existing env every run.
-
-    It is also residue of the shape the migration replaced: when each phase
-    was a hand-written block, the phase was implicit in code POSITION; one
-    loop has to ask what kind of step it is holding, and the only thing
-    available to ask was a display string.
+    The runner's branches key on THIS, never on ``label``: ``label`` is the
+    CLI's per-step header text, and renaming it for clarity must not change
+    what the runner does.  One loop runs every phase, so it has to ask what
+    kind of step it is holding.
     """
 
     CREATE = "create"      #: the env itself -- needs no prefix, there is none yet
@@ -160,9 +147,9 @@ class InstallStep:
 
         Exit code 0 is always required, and ``expect_contains`` adds a
         substring on top.  The rule rides on the STEP rather than being
-        read off the recipe at execution time.  That is what let verify
-        stop being a phase with its own loop: the runner needs no
-        knowledge of which phase it is serving.
+        read off the recipe at execution time.  That is what makes verify
+        an ordinary step: the runner needs no knowledge of which phase it
+        is serving.
 
         A process that never launched (``returncode is None``) is never
         accepted.
@@ -187,16 +174,7 @@ class InstallResult:
 class Outcome(str, Enum):
     """What became of one step.  Five states, and they are exhaustive.
 
-    The runner used to decide this with nested conditions -- is the
-    return code zero, is it None because the process never launched, are
-    there alternatives, is the step optional -- and every time that
-    tangle was edited a branch went missing.  Twice: a launch failure
-    skipped the optional check and aborted an install it should have
-    survived, and a recovered step was recorded under the command that
-    had failed.
-
-    Naming the states makes those omissions impossible to write.  There
-    is one transition rule and it fits in a sentence: try each argv in
+    There is one transition rule and it fits in a sentence: try each argv in
     turn; the first success is OK (or RECOVERED if it was not the first
     attempt); if none succeed the step is DEGRADED when optional and
     FAILED when not.
@@ -214,8 +192,7 @@ class Outcome(str, Enum):
         """The transition rule, and the only place it is written.
 
         :func:`run_step` decides a dispatched step with it, and the
-        build adapter decides a build phase's result with it -- which is
-        how build steps stopped arriving with no outcome at all.  A step
+        build adapter decides a build phase's result with it.  A step
         decided WITHOUT being dispatched does not come through here; see
         :func:`_undispatched`.
         """
@@ -248,12 +225,8 @@ class Outcome(str, Enum):
     def word(self) -> str:
         """The ONE name this outcome is printed under.
 
-        There were two.  The live line said ``UNAVAILABLE -- optional,
-        continuing`` while the recap of the same step said ``degraded``, and
-        ``OK via the declared alternative`` was ``recovered`` a few lines
-        later -- one run, two vocabularies, and a reader comparing them has to
-        work out that they are the same fact (H5).  The word lives on the
-        state, so a surface cannot invent a second one.
+        The word lives on the state, so a surface cannot invent a second
+        one (H5).
         """
         return self.name
 
@@ -278,9 +251,7 @@ def run_step(
 
     THE ONE DOOR every dispatched command goes through -- the installer
     and ``repair`` both, so neither can learn about alternatives or
-    optionality without the other.  They were separate procedures until
-    2026-09-11, and had already drifted: repair issued a bare pip
-    command that knew nothing of a package's fallbacks or its flags.
+    optionality without the other.
 
     Returns a copy of ``step`` carrying the outcome, the argv that
     ACTUALLY ran (not the one that was tried first), its exit code and
@@ -291,10 +262,7 @@ def run_step(
     combined = ""
     ran = attempts[0]
     # The environment every attempt runs in, primary or alternative: host
-    # leakage stripped, temp and pip cache inside the prefix.  It used to be
-    # `run_step`'s `env` parameter, which no caller ever passed -- so no pip
-    # step was ever sanitised -- and the temp dirs were set inside a shell
-    # string that only existed on the workaround path.
+    # leakage stripped, temp and pip cache inside the prefix.
     step_env = _builds.env_for_step(
         prefix, make_dirs=step.role is not StepRole.VERIFY)
 
@@ -315,8 +283,7 @@ def run_step(
                                        fatal=step.fatal))
 
     # `rc is None` -- the process never launched -- is not a special
-    # case here.  It is simply "not accepted", which is the whole reason
-    # the branch that used to treat it specially could forget `fatal`.
+    # case here.  It is simply "not accepted".
     return replace(
         step, argv=ran, returncode=rc,
         output=_rejection_output(step, rc, combined),
@@ -358,11 +325,6 @@ def pip_argv(conda: str, env_name: str, *specs: str,
 
     ``python -m pip`` rather than ``pip`` sidesteps the common Ubuntu
     pitfall where ``~/.local/bin/pip`` precedes the env's own on PATH.
-
-    It lives here because it had been WRITTEN OUT three times -- once in
-    the planner and twice in `repair` -- and the copies had already
-    drifted: repair knew nothing about a package's alternatives, so a
-    fix that taught the installer about fallbacks left repair behind.
     """
     return conda_run_argv(conda, env_name,
                           "python", "-m", "pip", "install", *flags, *specs)
@@ -401,8 +363,7 @@ def conda_argv(conda: str, subcommand: str, env_name: str,
     """The one shape of a conda command line.
 
     ``create`` and ``install`` differ only in the subcommand, so they are one
-    shape.  Writing it out twice is how the channel flags came to sit BEFORE
-    the specs in the planner and AFTER them in `repair`.
+    shape.
     """
     argv: List[str] = [conda, subcommand, "-n", env_name, "-y"]
     for ch in channels:
@@ -418,18 +379,17 @@ def create_step_for(recipe: Recipe, conda: str,
 
     Everything else the recipe declares is
     `conda_packages_step_for`'s, and the split is the whole point: this step
-    is SKIPPED for an env that already exists, and while the package list rode
-    on it the list was skipped too.
+    is SKIPPED for an env that already exists, so a package list riding on it
+    would be skipped too.
 
     A recipe declaring no python creates an EMPTY env rather than being a
     special case -- measured 2026-09-17, `conda create -n <env> -y` with no
     packages exits 0.  Every built-in recipe declares one (a rule with its own
     test), so that path is the guard rather than the route.
 
-    NO DEGRADATION HERE ANY MORE.  The optional-spec fallback -- full solve,
-    then the same solve without the optional specs -- moved to the packages
-    step with the specs it applies to.  It is unreachable from a create that
-    carries only `python=<X.Y>`: an optional interpreter is not a thing a
+    No degradation here: the optional-spec fallback -- full solve, then the
+    same solve without the optional specs -- lives on the packages step with
+    the specs it applies to, and an optional interpreter is not a thing a
     recipe can declare.
     """
     return InstallStep(
@@ -447,12 +407,10 @@ def conda_packages_step_for(recipe: Recipe, conda: str, env_name: str, *,
 
     `env-framework.md` § 4.4: this step exists because `conda create -n <env>
     pkg...`
-    does two jobs in one command, and the planner mirrored conda's CLI instead
-    of the recipe's meaning.  A recipe says *this env contains these packages*;
-    welded to the birth command the list could only ever be applied once, so a
-    recipe that gained a dependency never reached a machine that had already
-    bootstrapped -- measured 2026-09-17, `git` declared in every recipe since
-    2026-06-25 and absent from four envs, with `install` reporting success.
+    does two jobs in one command.  A recipe says *this env contains these
+    packages*; welded to the birth command the list could only ever be applied
+    once, so a recipe that gained a dependency would never reach a machine
+    that had already bootstrapped.
 
     THE ARGV IS THE FULL DECLARED SET, and that is what makes the gate safe to
     put in the runner.  `plan_install` is pure, so `--dry-run` prints this
@@ -460,8 +418,7 @@ def conda_packages_step_for(recipe: Recipe, conda: str, env_name: str, *,
     print one command and run another.  The runner decides only WHETHER to
     dispatch it (`_conda_decision`), never what it says.
 
-    Optionality degrades the same way it did on the create step, for the same
-    reason: conda solves everything at once, so an optional package cannot be
+    Optionality degrades here because conda solves everything at once, so an optional package cannot be
     its own step without paying a second solve.  The full set is attempted,
     and the set without the optional specs is the declared alternative.
     """
@@ -509,10 +466,7 @@ def verify_step_for(recipe: Recipe, conda: str,
 
     The one place a recipe's verify fields become a step, so the three
     callers that need one -- the planner, `run_install` and `doctor` --
-    cannot disagree about what verifying this recipe means.  They used to
-    each build the command and then each re-implement the accept rule;
-    `doctor` and the installer had already drifted to different output
-    limits, and a fourth copy would have been next.
+    cannot disagree about what verifying this recipe means.
 
     `verify_expect_contains` moves onto the STEP here.  That is the whole trick: after this, verify is an
     ordinary step and the runner needs no special case for it.
@@ -529,12 +483,9 @@ def verify_step_for(recipe: Recipe, conda: str,
 
 def pip_steps_for(recipe: Recipe, conda: str, env_name: str, *,
                   include_opt_in: bool = False) -> List[InstallStep]:
-    """Every pip step for a recipe -- ONE translator, as § 4.2 already says.
-
-    The batch and the per-package steps were built inline in the planner, so
-    *what a plain pip install means* lived in one place and *what a special one
-    means* in another, and § 4.2's pseudocode named a `pip_steps_for` that did
-    not exist.  A future per-step policy would have had to be written twice.
+    """Every pip step for a recipe -- ONE translator, as § 4.2 says, so
+    *what a plain pip install means* and *what a special one means* live in
+    one place.
     """
     wanted = recipe.pip_set(include_opt_in=include_opt_in)
     plain = [p for p in wanted if p.is_plain()]
@@ -551,11 +502,7 @@ def pip_steps_for(recipe: Recipe, conda: str, env_name: str, *,
 
 def extra_steps_for(recipe: Recipe, conda: str, env_name: str, *,
                     include_opt_in: bool = False) -> List[InstallStep]:
-    """What an ``extra_steps`` entry MEANS -- one place, per § 4.2.
-
-    It had no translator at all: the planner built the step, so there was
-    nowhere to say what an extra step is.
-    """
+    """What an ``extra_steps`` entry MEANS -- one place, per § 4.2."""
     return [InstallStep(label="extra", role=StepRole.EXTRA,
                         argv=conda_run_argv(conda, env_name, *extra.argv))
             for extra in recipe.extra_set(include_opt_in=include_opt_in)]
@@ -564,12 +511,9 @@ def extra_steps_for(recipe: Recipe, conda: str, env_name: str, *,
 def remove_step_for(env_name: str, conda: str) -> InstallStep:
     """Removing an env is a STEP, like everything else the installer does.
 
-    `env-framework.md` § 5.4 records it as a defect rather than an exception:
-    `--clean`'s wipe was a bare `subprocess.run`, so it carried no `Outcome`
-    and no line in the result the verdict is derived from (§ 5.3) -- and it was
-    an edge path for one GPU recipe until it was opened to every recipe, which
-    promoted a private dispatch to the door `installation.md` calls *"the one
-    door"* for wiping any env.
+    `env-framework.md` § 5.4: so it carries an `Outcome` and a line in the
+    result the verdict is derived from (§ 5.3), through the door
+    `installation.md` calls *"the one door"* for wiping any env.
 
     Addressed by name in the PLAN; the door re-addresses it at the
     directory the probe read (`builds.addressed_by_prefix`, M2) when the
@@ -578,20 +522,12 @@ def remove_step_for(env_name: str, conda: str) -> InstallStep:
     refused for a directory without ``conda-meta/history`` -- so the runner
     SKIPS this step when nothing is on disk, and the surface refuses
     ``--clean`` outright for a directory the manager will not own (ORPHAN,
-    BROKEN), naming ``rm -rf``.  A ``--prefix`` FALLBACK stood here for one
-    day (K-L9) on the premise that an orphan could be removed that way; it
-    cannot.  The caller has already refused the case where the name is the
+    BROKEN), naming ``rm -rf``.  The caller has already refused the case where the name is the
     env we are running from (`installation.md` M5).
 
-    **Its own role, and that is the fix** (2026-09-13).  It carried
-    ``StepRole.CREATE`` -- the one role the runner exempts from needing a
-    prefix -- and every CREATE-role step goes through `_create_decision`
+    **Its own role**: every CREATE-role step goes through `_create_decision`
     first, which answers *"already exists; skipping create"* for any env that
-    is PRESENT.  So the removal was skipped for exactly the envs it exists to
-    remove, the create after it was skipped for the same reason, and
-    ``--clean`` was a plain re-install that printed a wipe banner.  The one
-    test on the path faked the env absent, the single state the skip cannot
-    fire in.
+    is PRESENT -- exactly the envs a removal exists to remove.
     """
     return InstallStep(
         label=f"remove env {env_name}",
@@ -619,8 +555,7 @@ def _plan(recipe: Recipe, env_name: str, conda: str, *,
     # Phase 2: pip install.
     #
     # PLAIN packages (default index, no force, required) batch into ONE
-    # call -- the shape and the speed the registry had before sources
-    # existed.  Anything that needs different treatment gets its own
+    # call.  Anything that needs different treatment gets its own
     # step, because the treatment IS per-package:
     #
     #   * ``force``    -> --force-reinstall --no-deps, for a package
@@ -659,9 +594,8 @@ def plan_install(
     a fake binary or a temporary environment.
 
     ``clean`` puts the env removal at the FRONT of the plan, where it belongs:
-    the wipe is a step (§ 5.4), and a step the surface dispatched on the side
-    was a step ``--dry-run`` could not show and a reader could not check the
-    order of.  Now the order IS the plan.
+    the wipe is a step (§ 5.4), so ``--dry-run`` shows it and the order IS
+    the plan.
 
     Raises
     ------
@@ -686,8 +620,8 @@ def plan_install(
 def _prefix_under_envs_dirs(info: Mapping[str, Any],
                             env_name: str) -> Optional[Path]:
     """The directory ``<envs_dir>/<name>`` that exists, from the manager's
-    own search list -- or ``None``.  The one walk; the prefix resolver and
-    the state probe each spelled it until 2026-09-13 (K-D6)."""
+    own search list -- or ``None``.  The one walk, for the prefix resolver
+    and the state probe."""
     for envs_dir in info.get("envs_dirs", []) or []:
         candidate = Path(envs_dir) / env_name
         if candidate.is_dir():
@@ -742,9 +676,7 @@ def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
     found = _prefix_under_envs_dirs(info, env_name)
     if found is not None:
         return str(found)
-    # NO FIFTH STRATEGY, and that is the change (H10).  What stood here
-    # derived `<manager root>/envs/<name>` from the binary's own path and
-    # guessed at `~/.conda/envs` besides -- `installation.md` M2: the binary's
+    # NO FIFTH STRATEGY (H10).  `installation.md` M2: the binary's
     # location says where the MANAGER is installed, not where it keeps envs,
     # and on the machines `envs.manager` exists for the two differ.  Every
     # strategy above asks the manager (its registry, its `envs`, its own
@@ -811,13 +743,8 @@ class EnvState:
     @property
     def state(self) -> "EnvPresence":
         """Which of the five states this env is in -- the classification, made
-        ONCE and answered as an enum.
-
-        It used to be a display STRING, and `can_resume` compared that string
-        to ``"PRESENT"``: renaming a label for clarity would have turned it
-        False, which the code itself calls *"the worst answer for an env that
-        is already wreckage"*, and four sites branched on it (H7).  Same shape
-        `StepRole` was introduced to remove, on the other state machine.
+        ONCE and answered as an enum, so no reader branches on a display
+        string (H7).
         """
         reg = self.listed_in_registry
         dir_ok = self.dir_exists and self.has_conda_meta
@@ -887,17 +814,14 @@ class EnvState:
             lines.append("    conda-meta/history).  Remove it yourself, then re-run:")
             lines.append(f"      rm -rf {self.prefix}")
         elif s is EnvPresence.GHOST:
-            # BOTH HALVES OF THIS WERE FALSE until 2026-09-21.  It named
-            # `remove_cmd()` as the manual fix and said `--clean` "will do the
-            # same thing".  Measured: `conda env remove -n <name>` refuses with
+            # Measured: `conda env remove -n <name>` refuses with
             # `EnvironmentLocationNotFound` -- it resolves the name to a prefix
-            # and there is no directory there, which is what GHOST MEANS.  And
-            # `--clean` does not do the same thing: `_run_steps` skips the
-            # REMOVE step for exactly this state ("nothing to remove: no
-            # directory on disk", added because conda exits 1 on an absent env
-            # and that broke `--clean` on fresh machines).  It still FIXES the
-            # ghost, by the other route -- `can_resume` is PRESENT-only, so the
-            # create runs and restores the directory the entry names.
+            # and there is no directory there, which is what GHOST MEANS.
+            # `_run_steps` skips the REMOVE step for exactly this state
+            # ("nothing to remove: no directory on disk", because conda exits
+            # 1 on an absent env).  `--clean` still FIXES the ghost, by the
+            # other route -- `can_resume` is PRESENT-only, so the create runs
+            # and restores the directory the entry names.
             lines.append("  → GHOST: the registry lists this env but the directory")
             lines.append("    it names is gone.  `conda env remove` will not clear")
             lines.append("    it -- with no directory to act on the manager refuses.")
@@ -984,8 +908,8 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
     The ``envs_dirs`` search is the fallback for the opposite case -- a
     directory that no registry entry mentions, which is what ORPHAN and BROKEN
     are -- so it is only consulted when the registry does not list the env.
-    Measuring the search path *instead* of the named prefix is what made an env
-    created with ``--prefix`` outside ``envs_dirs`` report GHOST while carrying
+    Measuring the search path *instead* of the named prefix would report GHOST
+    for an env created with ``--prefix`` outside ``envs_dirs`` while carrying
     a healthy prefix, and GHOST prints a removal command.
     """
 
@@ -1005,7 +929,7 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
     # -- "the env the manager knows about, is it still on disk" (PRESENT vs
     # GHOST) and "is there a directory the manager does NOT know about"
     # (ORPHAN, BROKEN) -- and answering the first by searching the second's
-    # haystack is what reported GHOST for a healthy out-of-envs_dirs env.
+    # haystack would report GHOST for a healthy out-of-envs_dirs env.
     dir_exists = False
     has_conda_meta = False
     prefix_from_fs: Optional[str] = None
@@ -1030,17 +954,6 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
         prefix=prefix,
         manager=conda_binary,
     )
-
-
-# NOTE: the helpers ``_env_listed_now`` and ``_env_prefix_dir_exists``
-# used to live here.  Both were thin wrappers that duplicated logic
-# already inside ``probe_env_state`` (the ONE source of truth for env
-# presence).  Worse, they were combined via an ``OR`` in run_install
-# that fired True for orphan directories (which conda create would
-# then refuse with "prefix already exists"), shipping a false
-# positive that masked --clean failures.  Replaced by direct
-# ``probe_env_state(...).can_resume`` use in run_install; the helpers
-# are gone, not deprecated, because nothing else called them.
 
 
 # --------------------------------------------------------------------- #
@@ -1083,11 +996,11 @@ class _Dispatcher:
 
 #: `builds.py` keeps its own four-state verdict because it keeps its own
 #: executor (sentinel resume).  This is the ONE place the two vocabularies
-#: meet.  Deriving the outcome from the return code instead -- which the
-#: adapter used to do -- got two of the four wrong: a sentinel-skipped phase
-#: carries `returncode=0` and so reported OK, indistinguishable from having
-#: actually run it; and an abandoned phase carries `None` and so reported
-#: FAILED, inflating one real failure into one per remaining phase.
+#: meet.  Deriving the outcome from the return code instead would get two of
+#: the four wrong: a sentinel-skipped phase carries `returncode=0` and would
+#: report OK, indistinguishable from having actually run it; and an abandoned
+#: phase carries `None` and would report FAILED, inflating one real failure
+#: into one per remaining phase.
 _BUILD_STATUS_OUTCOME = {
     "ok": Outcome.OK,
     "fail": Outcome.FAILED,
@@ -1122,8 +1035,8 @@ def _undispatched(step: InstallStep, outcome: Outcome,
     """A step decided WITHOUT running it.
 
     ``returncode`` stays ``None``, because a step that did not run has no
-    exit code.  The conda-create skip used to report 0, which made "I did
-    not do this" indistinguishable from "I did this and it worked".
+    exit code: "I did not do this" must not read as "I did this and it
+    worked".
 
     ``why`` lands in ``output``, which is where :func:`_report` looks for
     the reason -- nothing streamed to the terminal for a step that never
@@ -1133,8 +1046,7 @@ def _undispatched(step: InstallStep, outcome: Outcome,
 
 
 #: The word the user sees for each outcome.  ONE mapping, so a step can
-#: never be announced in a word that contradicts its verdict: two
-#: failures used to print "SKIPPED" while aborting the install.
+#: never be announced in a word that contradicts its verdict.
 def _report(tag: str, done: InstallStep) -> None:
     """Announce one finished step on stderr."""
     rc = "" if done.returncode is None else f" (rc={done.returncode})"
@@ -1157,11 +1069,7 @@ def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,
     """Whether ``conda create`` needs to run, as an outcome.
 
     Asked unconditionally: an existing env is always resumed into, which is
-    what makes `install` idempotent.  A `skip_if_present` parameter stood here
-    until 2026-09-13, defaulting to False, whose docstring said "set False
-    only in tests" -- no test ever set it, and the one production caller that
-    could reach a CREATE step passed True (H8).  Three answers, and all three
-    are now states rather than a fabricated exit code plus a separate bool:
+    what makes `install` idempotent (H8).  Three answers, each a state:
 
       * the env is usable   -> ``SKIPPED``, claiming no exit code;
       * the env is wreckage -> ``FAILED``, carrying ``--clean`` as the
@@ -1170,9 +1078,8 @@ def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,
       * otherwise           -> ``None``, meaning dispatch it.
 
     ``state`` is the reading the CALLER already took, when it took one: the CLI
-    probes this env before it prints anything, and `run_install` then probed it
-    again one call later -- the same two JSON documents read twice back to back,
-    measured at three reads per install from the CLI (H6).  A caller that has
+    probes this env before it prints anything, and reading the same two JSON
+    documents again one call later is waste (H6).  A caller that has
     CHANGED the machine since its reading passes nothing, which is what
     ``--clean`` does after removing the env: the stale reading there says PRESENT
     about an env that is gone, and skipping create on it would install into
@@ -1253,9 +1160,7 @@ def _run_steps(
     caller's verdict can be derived from the steps alone.
 
     EVERY phase runs here: conda-create + pip + extra, and verify after
-    the build.  Verify used to have its own loop, which is how it came to
-    re-implement the prefix resolution, the bypass, the launch-failure
-    branch and the output trim, and to carry no outcome at all.
+    the build.
     """
     total = len(steps)
     for i, step in enumerate(steps, start=1):
@@ -1273,9 +1178,8 @@ def _run_steps(
         elif step.role is StepRole.REMOVE:
             # ONE decision: is there a directory to remove?  The manager
             # refuses `env remove` for an env that is not there (exit 1,
-            # measured on conda 26.7.1), so `--clean` on a fresh machine --
-            # or the re-run after a `--clean` whose create then failed --
-            # died at step 1 (review B-L1).  The reading is the surface's
+            # measured on conda 26.7.1), so with no directory on disk the
+            # step is skipped.  The reading is the surface's
             # (handed over), or taken here.
             reading = removal_state or probe_env_state(
                 dispatcher.env_name, dispatcher.conda_binary)
@@ -1312,7 +1216,7 @@ def _run_steps(
         sys.stderr.flush()
         # ONE DOOR, and the outcome decides what happens next -- no
         # nested conditions over return codes, alternatives and
-        # optionality, which is where branches kept going missing.
+        # optionality.
         done = run_step(
             step,
             # A removal is addressed at the directory the probe read (M2);
@@ -1330,9 +1234,7 @@ def _run_steps(
             # process snapshot still lists it -- `_env_prefix` reads that
             # snapshot FIRST, so left alone it would hand the next step the
             # old directory.  Cleared here, by the installer, because the
-            # installer is what changed the machine; the surface used to reset
-            # the snapshot itself, BEFORE the removal ran, which accounted for
-            # nothing.  `conda create` next puts the env wherever the manager
+            # installer is what changed the machine.  `conda create` next puts the env wherever the manager
             # decides, and `ensure_prefix` then asks afresh.
             dispatcher.prefix = None
             reset_capabilities()
@@ -1392,9 +1294,7 @@ def run_install(
     removal_state: Optional[EnvState] = None
     if clean:
         # The wipe is the FIRST step, in the plan (`plan_install` puts it
-        # there; this function inserted its own until 2026-09-14, so the plan
-        # `--dry-run` printed and the plan that ran could differ -- review
-        # A-3.1).  A state read BEFORE it is a reading of an env this run is
+        # there).  A state read BEFORE it is a reading of an env this run is
         # about to delete: `PRESENT` would skip the `conda create` that has
         # to follow (the 2026-06-15 regression), so the create decision is
         # made fresh after the removal, and the pre-removal reading goes to
@@ -1421,14 +1321,13 @@ def run_install(
             f"[install] env prefix: {cached_prefix}\n"
         )
         sys.stderr.flush()
-    # NOTE: ``env_exists`` is still never pre-computed from caps.  The
+    # NOTE: env existence is never pre-computed from caps.  The
     # capabilities snapshot can be stale -- notably right after --clean, when
     # ``get_capabilities()`` returns the bound snapshot rather than
     # re-detecting -- and trusting it caused the 2026-06-15 "env already exists;
     # conda may have failed silently" regression.  ``env_state`` is a different
     # thing: a reading of THIS env that the caller took itself and has not
-    # invalidated since, which is why the CLI stops paying for a second
-    # identical probe one call later (H6).  A caller that changed the machine
+    # invalidated since (H6).  A caller that changed the machine
     # passes nothing and the probe runs here.
     executed: List[InstallStep] = []
     dispatcher = _Dispatcher(env_name=effective, conda_binary=caps.conda_binary,
@@ -1437,10 +1336,7 @@ def run_install(
     # Reorder: conda-create + pip + extra_steps + (build_spec) + verify.
     # Verify is pulled out of `planned` and run AFTER the build phase so
     # it checks the built binary rather than the env that will hold it.
-    # Both groups go through the SAME runner -- verify's own loop is what
-    # used to re-implement the prefix resolution, the `conda run` bypass,
-    # the launch-failure branch and the output trim, and to leave every
-    # verify step carrying no outcome at all.
+    # Both groups go through the SAME runner.
     verify_steps = [s for s in planned if s.role is StepRole.VERIFY]
     pre_verify = [s for s in planned if s.role is not StepRole.VERIFY]
 
@@ -1499,15 +1395,13 @@ def run_install(
     if ok and verify_steps:
         _run_steps(verify_steps, dispatcher, tag="verify", executed=executed)
 
-    # DERIVED, not tracked alongside.  A separate `succeeded` bool was
-    # what let the word printed to the user disagree with the verdict --
-    # two failures announced themselves as "SKIPPED".  `stops_the_install`
+    # DERIVED, not tracked alongside, so the word printed to the user cannot
+    # disagree with the verdict.  `stops_the_install`
     # and not `is_success` is the right predicate: a DEGRADED optional
     # package is honestly absent without the install having failed.
     # The build's verdict is IN the steps: a failed phase is an adapted FAILED
     # step, and preflight errors or a declined warning are an undispatched
-    # one -- so the override that stood here ("builds.py owns its own verdict")
-    # could never change the answer.
+    # one.
     succeeded = not any(s.outcome.stops_the_install for s in executed)
 
     return InstallResult(

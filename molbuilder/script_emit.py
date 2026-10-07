@@ -5,20 +5,12 @@
 reads them back: the emitters are in the first half, the extractors in the
 second.
 
-The read half lived in :mod:`molbuilder.parse.scripts` until 2026-09-05,
-wrapped in `TextParser` classes so it could sit in `parse/`'s registry.
-That registry exists to answer *"which parser handles this file?"* for
+`parse/`'s registry answers *"which parser handles this file?"* for
 FOREIGN formats; these blocks are molbuilder's own, in a file molbuilder
-generated, and every caller already knows which block it wants -- so the
-classes were ceremony, and the split forced a circular import that a
-lazy-import table had to work around.  `plans/plan.md` § 5d has the
-measurement; `execution/job-contracts.md` § 3.1 owns the grammar.
-
-*(The write half was itself absorbed from a retired
-:mod:`molbuilder.script_contract` on 2026-06-21.  The name `script_emit`
-now understates the module: it emits AND reads.  Renaming it would touch
-54 files for no functional gain, so the docstring carries the truth
-instead.)*
+generated, and every caller already knows which block it wants -- so they
+are read here, beside the emitters.  `execution/job-contracts.md` § 3.1 owns
+the grammar.  The name `script_emit` understates the module: it emits AND
+reads.
 
 Public surface
 --------------
@@ -77,17 +69,12 @@ if TYPE_CHECKING:                       # annotations only -- `issues`
     from .issues import Issue           # is L1 and imports nothing
 
 
-# --------------------------------------------------------------------- #
-#  Block markers + names                                                #
-# --------------------------------------------------------------------- #
-
 # ---- The effective-parameters block's rows (`model/parse.md` § 5d.3a) --------
 #
 # ONE FORMAT, BOTH ENGINES, AND ITS READER BESIDE IT (§ 1a): a row per
 # catalogue item, ``[item, default, asked, used]`` as one JSON array after
 # :data:`PARAMETER_ROW_PREFIX`.  JSON so a blank value, or one with spaces,
-# cannot shift a column -- the fixed-width rows PySCF printed until 2026-09-26
-# did, on a real run's blank ``ecp``.  ``None`` is "this writer cannot know":
+# cannot shift a column.  ``None`` is "this writer cannot know":
 # SIESTA's wrapper prints its rows before SIESTA has started, so it states the
 # default and leaves ``asked`` to the deck and ``used`` to SIESTA's own fdf
 # log; PySCF's deck states all three, the last read off the live objects.
@@ -141,21 +128,16 @@ def same_calculation(a: str, b: str) -> bool:
     compute -- so a byte comparison answers "was this file written by the same
     invocation", which is a different and much narrower question.
 
-    This exists because the transport DAG asks the useful one.
+    This exists because the transport DAG asks the useful one:
     ``jobset/prep.py::transport_inputs`` will only carry a concluded
     rung's output forward if that rung ran *the deck this composition renders*,
-    and it compared full text: the moment transport's seed rung joined the
-    render pipeline (2026-09-15) and so gained a record section, re-prepping a
-    concluded seed -- or merely committing between the two preps, which moves
-    the sha -- made the device's gather refuse with a message blaming the
-    junction's contract for a changed timestamp.
+    and a re-prep -- or a commit between two preps, which moves the sha --
+    changes the stamps and nothing else.
 
     The stamps are masked by the one rule a plan's identity is asked by too
     (`deck_record.without_stamps`): fields, never whole fences -- the
     atom-metadata fence holds the region partition, and two decks that
-    disagree about THAT are emphatically not the same calculation.  *(A list
-    of its own stood here until 2026-10-05, beside the plan's, and the two
-    disagreed on the generator's version.)*
+    disagree about THAT are emphatically not the same calculation.
     """
     return (without_stamps(a.encode("utf-8"))
             == without_stamps(b.encode("utf-8")))
@@ -166,29 +148,15 @@ def same_calculation(a: str, b: str) -> bool:
 # --------------------------------------------------------------------- #
 
 
-#: The declaration line's ``type`` vocabulary.
-#:
-#: § 3.3 defined five for BENCH-MARKS, whose override surface is numeric.
-#: § 3.7 reuses the same grammar for a TEMPLATE's item blocks -- and a config
-#: is wider than a benchmark's knobs, so three names were missing.  Measured
-#: against ``SiestaConfig``'s 39 exposed fields on 2026-08-07: 7 booleans, 1
-#: integer triple (``kgrid``) and 1 optional boolean had no type at all.
+#: The declaration line's ``type`` vocabulary is `template.TYPES`, narrowed.
 #:
 #: ``pow2`` stays BENCH-MARKS-only: it is a constraint a benchmark puts on an
 #: override, not a type any config field has.
 #:
 #: **WHY A SHAPE CANNOT BE DECLARED TO A HARNESS**, keyed by the type and
-#: DERIVED from `template.TYPES` rather than re-typed beside it.
-#:
-#: This was a hand-written tuple until 2026-08-23, and it read as a second
-#: vocabulary -- which it never was.  `test_template_declarations` requires a
-#: BENCH-MARKS line's type to EQUAL its catalogue item's (bar one listed
-#: narrowing), so there has only ever been one vocabulary; this said which
-#: members of it a benchmark may be told about.  A permission list wearing a
-#: vocabulary's clothes, and it drifted exactly as one: it carried ``bool``
-#: and ``int3``, added 2026-08-07 when the template briefly shared this
-#: grammar for in-deck item blocks, kept after that sharing ended on
-#: 2026-08-11, and declared by no ``field`` line since.
+#: DERIVED from `template.TYPES` rather than re-typed beside it: there is one
+#: vocabulary, and this says which members of it a benchmark may be told
+#: about.
 _NOT_BENCHMARKABLE = {
     "int3":    "a shape, not a knob -- a harness has no ordering to sweep",
     "float3":  "same",
@@ -233,15 +201,8 @@ class BenchField:
     Per the contract: tools may override this field; the anchor locates the
     override site in ENGINE BODY by greping for the start of a code line.
 
-    **The same shape serves a template's item blocks** (§ 3.7), which is why
-    the last three fields exist. § 3.7 is explicit that its declaration is
-    *"the grammar § 3.3 already defines … extended with ``group=`` and
-    ``choices=``. Not a parallel notation: the same shape, in the same file,
-    parsed the same way."* So it is one class, not two.
-
     ``optional`` marks a field whose **unset** state is real and distinct from
-    every value it could hold (``Optional[int]`` and friends — 11 of them on
-    ``SiestaConfig``). Without it a reader cannot tell "the user left this
+    every value it could hold (``Optional[int]`` and friends). Without it a reader cannot tell "the user left this
     alone" from "the user chose the default", and those mean different things
     to an engine that omits the line entirely for the first.
     """
@@ -250,8 +211,8 @@ class BenchField:
     type_: str                                # benchmark_declarable_types()
     range_: Optional[Tuple[float, float]] = None
     unit: Optional[str] = None
-    group: Optional[str] = None               # workflow_group (§ 3.7)
-    choices: Optional[Tuple[str, ...]] = None  # the enum's members (§ 3.7)
+    group: Optional[str] = None               # workflow_group
+    choices: Optional[Tuple[str, ...]] = None  # the enum's members
     optional: bool = False                    # unset is a distinct state
 
     def __post_init__(self) -> None:
@@ -262,50 +223,27 @@ class BenchField:
                 f"{', '.join(_legal)} (job-contracts.md 3.3). A field "
                 "whose type has no name cannot be read back, so the type is "
                 "added to the grammar rather than left off the declaration.")
-        # NOT checked here: ``type=enum`` with no ``choices``.  § 3.7 adds
-        # ``choices=`` and an item block needs it -- a reader cannot validate
-        # an enum whose members it was not told -- but § 3.3's BENCH-MARKS
-        # shipped without it, and ``SIESTA_BENCH_FIELDS``' own
-        # ``Diag.Algorithm`` is exactly that case.  So the rule is enforced
-        # where the contract states it (the item-block emitter) rather than
-        # here, where it would refuse a block that ships today.
+        # NOT checked here: ``type=enum`` with no ``choices`` --
+        # ``SIESTA_BENCH_FIELDS``' own ``Diag.Algorithm`` is exactly that
+        # case, and refusing it would refuse a block that ships today.
         #
         # ⚠ That shipped block IS thin: a bench tool reading it learns the
-        # field is an enum and not which values are legal.  Recorded
-        # 2026-08-07 rather than fixed, because changing an emitted artifact
-        # is not this unit's business.
+        # field is an enum and not which values are legal.
 
 
 # Static field list for SIESTA .fdf.  PySCF and future engines get
 # their own list when their bench subcommands land.
 #
-# Anchor (post-2026-06-23 SIESTA keyword fix): ONE step-count keyword serves
-# CG / Broyden / FIRE -- the per-type aliases ``MD.NumBroydenSteps`` /
-# ``MD.NumFIRESteps`` do not exist and were silently dropped pre-fix.  So the
-# bench anchor is the same regardless of cfg.relax_type, so a trial's deck
-# needs no per-type dispatch.  (This named ``molbuilder bench siesta-gpu``
-# until 2026-08-17; that verb was deleted 2026-08-13 and its group with it --
-# a trial is rendered by ``jobset prep bench``.)  See
-# decision-log 2026-06-23 in design.md.  Task #486 is closed by
-# this realization.
-#
-# The keyword is ``MD.Steps`` since 2026-08-15.  The 5.4.2 manual marks
-# ``MD.NumCGsteps`` deprecated (``\fdfdeprecates``, Docs/tex/sections/
-# Relaxation_phonons_md/Structural_relaxation.tex) and keeps it only "for
-# historical reasons".  A BENCH-MARKS block written before that date names
-# the old one; ``parse/dirs/job.py`` reads either.
+# Anchor: ONE step-count keyword, ``MD.Steps``, bounds CG / Broyden / FIRE
+# alike (SIESTA 5.4.2 manual, Docs/tex/sections/Relaxation_phonons_md/
+# Structural_relaxation.tex), so a trial's deck -- rendered by
+# ``jobset prep bench`` -- needs no per-type dispatch.
 SIESTA_BENCH_FIELDS: List[BenchField] = [
     # NO range here, and that is the declaration.  BlockSize is the one field
     # in this list derived from a LAUNCH quantity (``engines/stages.md``
     # § 5.2), so its legal window is a fact about one deck's rank count, not
     # about the engine -- ``siesta/input.py`` supplies it per deck through
-    # ``_block_size_bounds``.  It carried ``(16, 256)`` until 2026-08-10, a
-    # constant that disagreed with the emitted default routinely rather than
-    # exceptionally (under the ATOMS-era derivation of the day,
-    # ``_auto_block_size(200, mpi_np=16)`` was 8; U18's orbital derivation
-    # gives 64 -- the history keeps the old number because it is what
-    # motivated the fix), so the block declared its own value out of
-    # bounds.  Leaving it None means a renderer that forgets emits NO
+    # ``_block_size_bounds``.  Leaving it None means a renderer that forgets emits NO
     # range rather than a wrong one.
     BenchField("BlockSize",        "BlockSize",        "pow2"),
     BenchField("MaxSCFIterations", "MaxSCFIterations", "int"),
@@ -396,12 +334,8 @@ def emit_bench_marks(metadata: Dict[str, Any],
         for key in metadata.keys():
             out.append(f"#   {key:<{max_key}}  {metadata[key]}")
         out.append("#")
-    # Through decl_line -- THE one renderer (R11, 2026-08-12: this loop
-    # hand-rolled its own dialect, silently dropping choices/optional/
-    # group -- a bench tool reading Diag.Algorithm's enum saw no legal
-    # values at all, the drift decl_line's own docstring says one
-    # renderer exists to prevent).  Column alignment went with the
-    # hand-roll; the parser never needed it and § 3.7 says one shape.
+    # Through decl_line -- THE one renderer (R11), so choices/optional/group
+    # reach a bench tool.
     for f in fields:
         out.append(decl_line(
             f, default=(defaults[f.name]
@@ -415,15 +349,12 @@ def decl_line(f: "BenchField", *, value=None, default=None,
               indent: str = "#   ") -> str:
     """Render one ``field …`` declaration line — `job-contracts.md § 3.3`/§ 3.7.
 
-    **One renderer, so BENCH-MARKS and a template's item blocks cannot drift
-    into two dialects** — § 3.7 is explicit that its declaration is not a
-    parallel notation but the same shape, in the same file, parsed the same way.
+    **One renderer**, so a declaration line has one dialect.
 
     ``value`` is the item's current value and ``default`` what it would be
     untouched. Both are rendered when given: the pair is what tells a surface
     whether the user set this field or left it alone, without a second marker
-    saying so. ``value`` is also **what the reader reads** — never the payload,
-    which may be absent, several lines, or a ``%block`` (§ 3.7 property 2).
+    saying so.
     """
     line = f"{indent}field {f.name}  anchor={f.anchor}  type={f.type_}"
     if f.range_ is not None:
@@ -496,14 +427,9 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
         return None
     # THE VERSION THE SIDECAR STAMPS, from the one constant -- never a literal.
     #
-    # This said 4 while the block was written in the CURRENT shape (the rule
-    # above: `regions` is the whole label store, reserved names included). A
-    # block that claims a version it is not written in is worse than one with no
-    # version at all, because a reader cannot refuse what it cannot recognise:
-    # a script generated before the label store was unified and one generated
-    # after it BOTH said 4 while holding different shapes, so nothing could tell
-    # them apart -- and a real run's fifty frozen electrode atoms came back as an
-    # empty list with the file looking perfectly fine.
+    # A block that claims a version it is not written in is worse than one
+    # with no version at all, because a reader cannot refuse what it cannot
+    # recognise.
     #
     # It is the sidecar's constant because it is the sidecar's shape ("the same
     # shape as the .molstruct.json sidecar", above); two numbers for one format
@@ -542,9 +468,8 @@ def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
 
     Written for EVERY deck, labelled or not.  ATOM-METADATA is the sidecar's
     shape and is emitted only when there are labels; this is a fact about the
-    emission -- the provenance § 6.1 clause 5 promised and no code wrote until
-    2026-09-25 -- and it is what a reader of the run asks instead of deriving a
-    corner of its own.
+    emission -- the provenance § 6.1 clause 5 promises -- and it is what a
+    reader of the run asks instead of deriving a corner of its own.
     """
     # AT 8 DECIMALS -- the transport rungs' geometry block (SIESTA's writes
     # 10) -- and never -0.0.  A re-prep that reloads the composed junction
@@ -575,8 +500,7 @@ def emit_vibration_record(payload: Mapping[str, Any]) -> str:
     ``relax_force_tol``), ``temperature_K`` (the thermochemistry's, from the
     template), ``already_relaxed`` (the person's statement, as made) and
     ``relaxation`` (the `relax` stage's relaxation record,
-    `parse.contract.relaxation_of`, or ``None``).  The format is ``v2`` since
-    ``temperature_K`` joined it (2026-09-28).  Written by the framework
+    `parse.contract.relaxation_of`, or ``None``).  Written by the framework
     from :attr:`DeckSpec.vibration`; read back by
     `deck_record.extract_vibration_record`, beside the job as on the host."""
     out: List[str] = [begin_marker(BLOCK_VIBRATION),
@@ -624,12 +548,12 @@ def machine_record_banner() -> str:
     Everything above it is the calculation: a scientist reads it, edits it, and
     it is the reason the file exists.  Everything below is how molbuilder reads
     the file BACK -- provenance, the benchmarking anchors, and the per-atom
-    labels that reconstruct the structure (parse/scripts).  Those are data, not
+    labels that reconstruct the structure.  Those are data, not
     settings, and hand-editing them does not change the calculation; it makes
     the file unreadable to the tool that wrote it.
 
     So it is marked, loudly, and placed at the END: a generated input opens on
-    the physics now instead of on three screens of index lists.
+    the physics.
     """
     rule = "# " + "=" * 70
     return "\n".join([
@@ -697,23 +621,6 @@ def generated_at_now() -> str:
     return datetime.now().astimezone().isoformat(timespec='seconds')
 
 
-# --------------------------------------------------------------------- #
-#  (The lazy extractor table stood here until 2026-09-05.)              #
-# --------------------------------------------------------------------- #
-#
-#  It re-exported six `_extract_*` functions from `parse/scripts/` under
-#  unprefixed names, resolved through a module-level `__getattr__` because
-#  -- in its own words -- *"an eager top-level import would deadlock:
-#  markers.py re-exports BLOCK_* + MARKER_RE from this module."*
-#
-#  The deadlock was the split, not the imports.  The readers now live
-#  above, beside the emitters and the constants they both need.
-#
-#  A `read_script` door was built over them and never wired up: it had zero
-#  callers for three weeks while carrying a version gate the live readers do
-#  not have, so the tree held two answers for one block. Deleted 2026-09-05
-#  with `ScriptSource` and `_gate_atom_metadata`; callers use the extractors.
-
 __all__ = [
     "benchmark_declarable_types", "decl_line", "deck_note",
     # Bench declarations
@@ -737,17 +644,8 @@ __all__ = [
 #  `engines/template.md` § 1.0 says the template exists because an engine #
 #  input "cannot be read without knowing the engine -- there is nowhere   #
 #  in the file to say what it is, what it is measured in, or what a       #
-#  sensible value looks like."  Both emitters answered that by writing    #
-#  their OWN prose beside each keyword and never consulting the           #
-#  catalogue: 392 of a 485-line SIESTA deck were hand-written comments,   #
-#  and `pyscf/input.py` carries 179 more.                                #
-#                                                                        #
-#  Two homes for one explanation drift, and had (found 2026-08-17 by      #
-#  reading a generated deck): the comment called 0.02 "typical            #
-#  production" while the deck emitted 0.01; it said "3 fine for most      #
-#  cases" while shipping 8; and the catalogue stated the § 5.2 DEVIATION  #
-#  for `SCF.Mixer.Weight` while the deck -- the file a scientist opens    #
-#  before a week of compute -- did not.                                   #
+#  sensible value looks like."  Two homes for one explanation drift, so   #
+#  the deck's note is the catalogue's.                                    #
 #                                                                        #
 #  It lives HERE, not in one engine, because § 2 of `engines/overview.md` #
 #  makes this module the shared script-contract wrapper both emitters     #
@@ -759,13 +657,9 @@ __all__ = [
 # --------------------------------------------------------------------- #
 
 
-
 def _catalogue():
-    """The parsed catalogue, through its one door.
-
-    This kept a module-level cache of its own until 2026-08-18 -- correct, and
-    a second answer to *"where do I get the catalogue?"*  ``template.catalogue``
-    is that answer now, and it caches for everybody.
+    """The parsed catalogue, through its one door: ``template.catalogue``,
+    which caches for everybody.
     """
     from . import template as _T
     return _T.catalogue()
@@ -839,26 +733,11 @@ class Parameter:
     """What a script writer may ask about ONE parameter of the calculation
     it is writing.
 
-    **Why this exists, and what it replaces.** A generator legitimately owns
-    its own logic — which parameters to write, in what order, with what
-    checks. What it must never own is the *information*: what a parameter
-    declares, what this calculation resolved it to, and which engine keywords
-    it therefore writes. Before this object each writer got that information
-    its own way, and the ways did not agree:
-
-    * ``siesta/input.py`` asked the catalogue for HELP (``deck_note``, 22
-      sites) and hand-kept everything else;
-    * ``runwrap.py`` asked nothing — it re-parsed the deck with awk for the
-      two facts it could cheaply re-parse, and asserted the rest from string
-      literals. Every re-parsed fact stayed true and every asserted one went
-      stale, five copies of one claim among them;
-    * ``pyscf/input.py`` asked nothing at all.
-
-    And the fact itself had three homes: ``[item.restart].expands``,
-    ``SIESTA_RESTART_GROUP.keys`` and ``warm-files.toml``'s ``honoured_by``
-    rows — the same three keywords in three different orders, with nothing
-    comparing them. *"Pull it from the source you know"* is not a thing a
-    writer can do when there are three sources.
+    **Why this exists.** A generator legitimately owns its own logic — which
+    parameters to write, in what order, with what checks. What it must never
+    own is the *information*: what a parameter declares, what this
+    calculation resolved it to, and which engine keywords it therefore
+    writes.
 
     So: one object, one question per attribute, and the catalogue is the
     declaration behind all of them.
@@ -889,9 +768,7 @@ class Parameter:
         ``DM.UseSaveDM`` / ``MD.UseSaveXV`` / ``MD.UseSaveCG``), the single
         ``anchor`` when it writes one, and empty when it writes none — a
         wrapper-only knob, or one whose effect is generated control flow.
-
-        **This is the declaration that had three copies.** A generator asks
-        here and there is nothing left to keep in step.
+        A generator asks here and there is nothing to keep in step.
         """
         if not self.known:
             return ()
@@ -908,8 +785,7 @@ class Parameter:
     def note(self, *lead, extra=()) -> List[str]:
         """This parameter's own note, as deck comment lines.
 
-        The same rendering :func:`deck_note` has always done — kept as one
-        implementation, reached now through the object rather than by name.
+        The same rendering as :func:`deck_note` — one implementation.
         """
         return deck_note(self.name, self.engine, *lead, extra=extra)
 
@@ -928,11 +804,8 @@ def declarations(engine: str = None, *, calculation: str = None,
     :func:`parameter` answers about one item by name; this answers *which items
     are there*, which is the question a record of the whole configuration asks.
 
-    **It exists so that nothing outside this module loads the catalogue.**  Two
-    callers reached through ``_catalogue()`` -- a private -- into
-    ``template.select`` to get this, which meant the catalogue OBJECT travelled
-    out of the one module that owns reading it.  A caller that holds the object
-    can ask it anything, including things the read API deliberately does not
+    **It exists so that nothing outside this module loads the catalogue.**  A
+    caller that holds the catalogue object can ask it anything, including things the read API deliberately does not
     offer, and that is how a second way of reading a declaration starts.
     """
     from . import template as _T
@@ -1000,7 +873,7 @@ def _deck_answers(decl, deck_text: str) -> Dict[str, Any]:
     / ``_`` insignificant) to that name alone, and keeps a block's BODY as its
     value.  First occurrence wins, as ``fdf_locate`` does.  **A scalar's value
     is the whole line after the keyword, unit included** -- ``200.0 Ry``, not
-    ``200.0``, which is what this answered until 2026-09-26.
+    ``200.0``.
     """
     keys = (tuple(decl.expands) if decl.expands
             else ((decl.anchor,) if decl.anchor else ()))
@@ -1015,9 +888,7 @@ def _deck_answers(decl, deck_text: str) -> Dict[str, Any]:
         if key.lower().startswith("%block"):
             # A BLOCK'S VALUE IS ITS BODY.  There is no `key value` line to
             # take a second token from: on `%block kgrid_Monkhorst_Pack` that
-            # token is the block's own NAME, which is what this returned until
-            # 2026-09-18 -- or rather never returned, because the anchor was
-            # matched whole, spaces and all, against a single token.
+            # token is the block's own NAME.
             body = blocks.get(_norm(key[len("%block"):].strip()))
             if body:
                 out[key] = body
@@ -1039,8 +910,6 @@ def deck_values(name: str, engine: str, deck_text: str) -> Dict[str, Any]:
     except KeyError:
         decl = None
     return _deck_answers(decl, deck_text) if decl is not None else {}
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -1074,14 +943,7 @@ class Section:
     #: Lines that sit BETWEEN the heading and the values — the section's own
     #: explanation, in the engine's comment syntax.
     #:
-    #: **It is here because that is where it goes in the deck**, and a walk
-    #: that emitted heading-then-values had nowhere to put it.  An engine with
-    #: an explanation used to write the heading AND the prose itself and then
-    #: suppress the framework's heading — which meant its sections could not
-    #: share one spec, and cost the section its NAME in the layout, since a
-    #: falsy title was the only way to ask for silence.  A reader of the layout
-    #: then could not tell what the section was without going to find the
-    #: writer.
+    #: **It is here because that is where it goes in the deck.**
     #:
     #: Dropped with the notes when ``verbose`` is off: it is explanation, and
     #: that is what the quiet deck leaves out.
@@ -1142,9 +1004,7 @@ class DeckSpec:
     #: ``spec_for`` holds ``(struct, cfg)`` and can answer that.  A section
     #: chosen inside a :class:`Block` instead is a section this table cannot
     #: name and :func:`render_deck` cannot collect from, and then the check
-    #: gate has nothing to compare the file against.  Both engines did exactly
-    #: that until 2026-08-19: SIESTA's whole deck was one ``Block``, so a
-    #: 728-line file reported zero written keywords.
+    #: gate has nothing to compare the file against.
     layout: Tuple[Any, ...]
     #: Door 2 — ``(Parameter) -> str | None``.  ``None`` means *not emitted
     #: for this configuration*, and that is the whole conditionality
@@ -1159,13 +1019,9 @@ class DeckSpec:
     #: **W10's one per-render context** — *what this deck derived* — carried on
     #: the form so it can be READ, not only closed over.
     #:
-    #: Both engines already keep exactly this dict: SIESTA fills it before the
+    #: Both engines keep exactly this dict: SIESTA fills it before the
     #: layout (its MEMBERSHIP depends on ``spin_fixed`` and ``relax_kind``),
-    #: PySCF fills it as its blocks render.  Until it was declared here, the
-    #: only readers were the engine's own closures — the syntax door, the
-    #: layout, the record blocks — so a value like ``block_size = 8`` reached
-    #: the deck with no way for anything outside the engine to say where 8 came
-    #: from.  W10 says *"every reader takes it whole"*; a reader that
+    #: PySCF fills it as its blocks render.  W10 says *"every reader takes it whole"*; a reader that
     #: re-derived these numbers instead would be W10's forbidden second
     #: channel, so the context is exposed rather than re-computed.
     #:
@@ -1186,10 +1042,7 @@ class DeckSpec:
     #: before writing, so the deck expresses coordinates the caller never
     #: handed in; judging the input would judge something nobody runs.
     #:
-    #: **It exists so step 3.3 has ONE owner.**  Both engines ran the gate
-    #: themselves inside ``spec_for`` while ``prepare_deck`` ran it again --
-    #: two owners, and on different subjects: the engine's call saw the placed
-    #: coordinates and the resolved cell, the framework's saw neither.  The
+    #: **It exists so step 3.3 has ONE owner** (:func:`render_deck`).  The
     #: order is the framework's (§ 4.3); what the order is applied TO can be
     #: the engine's, and that is what this carries.
     validate_subject: Optional[Callable] = None
@@ -1197,8 +1050,7 @@ class DeckSpec:
     #: engine overrides this** -- both write `#` comments -- and that is
     #: worth knowing rather than assuming: the slot is unexercised, kept
     #: because the comment character is an engine's syntax and the next
-    #: engine may not spell it this way.  Both restated the default
-    #: verbatim until 2026-08-19, which made it look like a variation.
+    #: engine may not spell it this way.
     section_title: Callable = lambda title: f"# --- {title} ---"
     #: ``(Parameter) -> tuple[str, ...]`` — lines to head this parameter's note
     #: with.  SIESTA heads each with the keyword it writes, because its notes
@@ -1232,21 +1084,16 @@ class RenderedDeck(str):
     ``emitted`` is what lets the **check** gate close its loop — the engine
     keywords the parameters step actually wrote, so the check can ask whether
     each one survived into the file rather than trusting that it did.  Without
-    it that rule has no input and passes silently, which is what it did on
-    every production route until 2026-08-18.
+    it that rule has no input and passes silently.
 
-    **It IS the text**, a ``str`` subclass rather than a wrapper around one.
-    The seam says a deck writer returns deck text (§ 4), three production
-    routes and twenty test files already have a string in hand, and changing
-    that return type to carry one extra tuple would be a rewrite of the test
-    suite wearing a migration's clothes (`archive/2026-08-18-preparation-backend-plan.md`
-    § 3.1a).  A caller that wants the text uses it as text; a caller that wants
-    to close the loop reads ``.emitted``.
+    **It IS the text**, a ``str`` subclass rather than a wrapper around one:
+    a deck writer returns deck text (§ 4).  A caller that wants the text uses
+    it as text; a caller that wants to close the loop reads ``.emitted``.
 
     ``findings`` carries step 3.3's verdict OUT, so the companion validation
     file can state what the checker said about this deck.  Those findings are
-    produced before a line of text exists and were reported to stderr and
-    dropped; the artifact gate's own findings arrive later, in
+    produced before a line of text exists; the artifact gate's own findings
+    arrive later, in
     :func:`prepare_deck`, and the file wants both — *"the final validation of
     the full script"* is the two halves together, not whichever one the caller
     happened to hold.
@@ -1286,15 +1133,8 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
     :class:`Block` members are SKIPPED here: they are text, and placing them
     in order is :func:`render_deck`'s job.
 
-    **PRIVATE since 2026-08-19, and that is the point.**  Both engines called
-    it -- nine times in one SIESTA deck, once in a PySCF one -- each passing a
-    one-section spec built with ``dataclasses.replace``.  So the sections were
-    rendered from INSIDE a block, where the layout could not name them and
-    :func:`render_deck` could not collect what they wrote: SIESTA's deck
-    reported zero written keywords for a 728-line file, and the check gate's
-    loop-closing rule ran on an empty list and passed.  There is one walk now,
-    and no door for an engine to start a second one
-    (`script-preparation.md` § 4.1).
+    **PRIVATE, and that is the point**: there is one walk, and no door for an
+    engine to start a second one (`script-preparation.md` § 4.1).
     """
     out: List[str] = []
     emitted: List[str] = []
@@ -1336,12 +1176,7 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
             # ...and a ROLE item is written like any other: its value in the
             # config IS the rung's own answer, laid on last by `resolve`
             # (`engines/template.md` § 6.4), so the note says it is fixed
-            # and nothing else differs.  The walk skipped it until
-            # 2026-09-29 and each rung's block typed its line -- a section
-            # then resolved the CONFIG DEFAULT, which is how a device deck
-            # came to say `SolutionMethod diagon` from the section and
-            # `transiesta` from the NEGF block (2026-09-16), and the gate and
-            # the record kept reading `diagon` after the skip.
+            # and nothing else differs.
             fixed = spec.calculation in tuple(getattr(_decl, "role", ()) or ())
             # EVERY ENGINE HOOK IS CALLED THROUGH THE BOUNDARY (§ 4.6).  This
             # walk is a walk over the engine's functions, so an exception with
@@ -1374,30 +1209,21 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
             # The line is exact evidence and needs no matching rules at all --
             # no case folding, no separator folding, no stripping comments or
             # (in a Python deck) string literals, and no deciding WHICH of an
-            # item's declared keywords this run took.  All of that existed only
-            # to feed this check.  The file is what molbuilder wrote moments
+            # item's declared keywords this run took.  The file is what molbuilder wrote moments
             # earlier, so a verbatim compare is the honest one.
             emitted.append(text)
         if body:
             out.append("")
             # A SECTION WITH NO TITLE GETS NO HEADING, and the engine is not
-            # asked to spell one.  This called ``section_title("")`` and tested
-            # the result, so an engine whose heading it writes itself had to
-            # pass a suppressing ``section_title`` -- which meant its OTHER
-            # sections could not share the spec, which is why one deck needed
-            # eight of them.
+            # asked to spell one.
             with _calling("section_title", engine=spec.engine,
                           where=f"section {section.title!r}"):
                 title = (spec.section_title(section.title)
                          if section.title else "")
-            # A falsy title means the caller has already written its own
-            # heading -- a section whose explanation must sit between the
-            # heading and the values, which the walk has no way to interleave.
             if title:
                 out.append(title)
             # The section's own explanation, between the heading and the
-            # values — where a reader of the deck needs it, and where a walk
-            # that only knew headings and values could not put it.
+            # values — where a reader of the deck needs it.
             if verbose:
                 out.extend(section.note)
             out.extend(body)
@@ -1437,8 +1263,6 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     # STEP 3.3, HERE, AND ONLY HERE.  The gate belongs to rendering because
     # its whole job is to refuse before a line exists -- and every route that
     # produces deck text must be gated, not only the one that also writes.
-    # It ran in TWO places until 2026-08-19: each engine called it inside
-    # `spec_for` and `prepare_deck` called it again, on a different subject.
     from .validation import report as _report, validate as _validate
     with _calling("validate_subject", engine=spec.engine):
         _subject, _kw = ((spec.validate_subject(struct, cfg))
@@ -1477,7 +1301,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
             # ``None`` is *nothing to say*; ``""`` is a blank line the block
             # meant to write.  Testing truthiness conflates them, and a block
             # whose whole content is one blank line joins to "" -- so the
-            # separator between two runs of settings silently disappeared.
+            # separator between two runs of settings would silently disappear.
             if text is not None:
                 parts.append(text)
             continue
@@ -1506,8 +1330,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
         resolved_defaults=_defaults,
         engine=spec.engine)]
     # NAMED AS THEY GO IN, not counted afterwards.  Re-deriving which blocks
-    # a list of three strings holds is the guess this file exists to replace,
-    # and the first version of it got the answer wrong.
+    # a list of three strings holds is the guess this file exists to replace.
     in_record: List[str] = ["PROVENANCE"]
     if spec.bench_marks is not None:
         with _calling("bench_marks", engine=spec.engine):
@@ -1572,9 +1395,8 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
 # --------------------------------------------------------------------- #
 
 
-
-#: The companion file's name, beside the deck it is about.  The one spelling
-#: is `identity.OUR_FILE_PATTERNS`; this is the suffix that builds it.
+#: The companion file's name, beside the deck it is about (the
+#: ``.validation.txt`` row of `runfiles.WRITTEN`).
 VALIDATION_SUFFIX = ".validation.txt"
 
 _VALIDATION_HEADER = """\
@@ -1670,13 +1492,6 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
     through the existing :class:`~molbuilder.issues.Issue` and
     ``validation.report``, so a refusal reads like every other refusal.
 
-    **One door.**  A second entry point, ``check_written``, took the same
-    arguments loose rather than as a spec, for a conductor that held an
-    engine's rules and a written deck but no ``DeckSpec``.  Both engines build
-    one now and `prep` calls :func:`prepare_deck`, so that caller no longer
-    exists; it was removed on 2026-08-19 rather than left as a public name with
-    one internal caller and an expired reason.
-
     ``text`` is the file as it WILL be written, for a deck `prep` has planned
     and not yet written (`jobset.planned`): the text the file will hold, the
     reader's section merged in -- so the gate still reads what the engine
@@ -1698,10 +1513,9 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
     # BOTH markers, not just BEGIN.  A block is delimited by a PAIR, and
     # counting one end let a stray END through: the USER-CUSTOM round-trip
     # carries a person's zone forward verbatim, so a marker line pasted into
-    # it lands in the written deck -- and until 2026-09-05 a stray BEGIN was
-    # caught here while a stray END was not.  This is the gate that refuses
-    # an ambiguous boundary (`job-contracts.md` § 3.5); the merge no longer
-    # guesses, it carries the outermost span forward and leaves the verdict
+    # it lands in the written deck.  This is the gate that refuses
+    # an ambiguous boundary (`job-contracts.md` § 3.5); the merge does not
+    # guess, it carries the outermost span forward and leaves the verdict
     # here, where a refusal reaches the validation report before `report`
     # raises.
     for block, label in ((BLOCK_USER_CUSTOM, "the section left for a reader"),
@@ -1734,12 +1548,8 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
     # ``line`` returns ``str | None`` and a str may hold a pair: a FIXED total
     # spin needs ``Spin.Fix`` and ``Spin.Total`` together, and the free-energy
     # section is titled *"a PAIR: the value + its switch"* for the same reason.
-    # Comparing the emission whole meant a two-line answer could never equal
-    # any member of a set of single lines, so the gate refused a deck that was
-    # correct -- every spin-polarized SIESTA run, from the moment this rule
-    # replaced the keyword search on 2026-08-19 until 2026-08-19.  It went
-    # unseen because the reference harness's own spin case was passing a field
-    # name ``SiestaConfig`` does not have and pinning the TypeError.
+    # Compared whole, a two-line answer could never equal any member of a set
+    # of single lines, and the gate would refuse a correct deck.
     for line in dict.fromkeys(
             ln for e in emitted for ln in e.splitlines() if ln.strip()):
         if line not in present:
@@ -1770,8 +1580,7 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     calculation?*; it is the existing framework, shared with the form's
     preflight, and nothing upstream of the final deck is re-checked here.
     **Check** reads the written file and asks *does this deck say what it was
-    meant to say?* -- a question that can only be asked of an artifact, which is
-    why no validator in this tree could ask it before.
+    meant to say?* -- a question that can only be asked of an artifact.
 
     ``findings``, when a caller hands in a list, receives both halves of the
     verdict too -- the one prep entry's answer carries them to the doors that
@@ -1784,9 +1593,8 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     from .validation import report
     if log is not None:
         _log_spec(spec, log)
-    # 3.3 validate now runs inside `render_deck`, on the subject the SPEC
-    # names -- one owner for the step, and the same one for every route that
-    # renders (`render_fdf` / `render_script` gate too, not just this one).
+    # 3.3 validate runs inside `render_deck`, on the subject the SPEC names --
+    # one owner for the step.
     rendered = render_deck(spec, struct, cfg, verbose=verbose, log=log,
                            dest_dir=dest_dir)
     written = write_script(path, rendered.text, plan=plan)     # 3.10 write
@@ -1820,10 +1628,7 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
 def _log_spec(spec: "DeckSpec", log) -> None:
     """Write down the FORM the engine handed over, before anything runs on it.
 
-    **This is readable only because a form crosses the seam.**  While engines
-    handed back finished text there was nothing here to describe: the layout,
-    the record's values and the check rules existed only as whatever the
-    writer had already done with them.  The same property that lets the check
+    **This is readable only because a form crosses the seam.**  The same property that lets the check
     gate re-derive what a deck was supposed to contain lets the log state it
     (`script-preparation.md` § 4.3).
     """
@@ -1855,33 +1660,15 @@ def _log_spec(spec: "DeckSpec", log) -> None:
 # --------------------------------------------------------------------- #
 #
 #  The inverse of the emitters above, and it lives HERE because a format
-#  has one owner.  These were `parse/scripts/` until 2026-09-05, six
-#  extractor functions each wrapped in a `TextParser` class that existed
-#  only to fit `parse/`'s registry -- a registry whose whole purpose is
-#  *"query it rather than knowing which parser to call"*, for blocks
-#  molbuilder writes itself and whose caller always knows which one it
-#  wants.  `ProvenanceTextParser.parse` built a ten-field `ScriptResult`
-#  so a caller could read back the one dict the function already returned.
-#
-#  THE SPLIT COST A CIRCULAR IMPORT.  `parse/scripts/markers.py` was forty
-#  lines re-exporting `BLOCK_*` + `MARKER_RE` from this module -- *"so the
-#  read-side parsers stay in lock-step with the write-side emitters"* --
-#  and this module imported the extractors back through a
-#  `_LAZY_EXTRACTORS` table, because *"an eager top-level import would
-#  deadlock."*  Both are gone: the readers sit beside the writers, and the
-#  block names, the fences and the one JSON reader moved below both on
-#  2026-09-28, into `deck_record`, so a job can read a block beside itself.
+#  has one owner.  The block names, the fences and the one JSON reader are
+#  `deck_record`'s, below both, so a job can read a block beside itself.
 #
 #  These functions take a STRING and do no I/O.  Reading the file is the
-#  caller's job -- the rule that used to be `parse.md` § 7 forbidden #2,
-#  kept because it is about this code, not about the ABC that carried it.
+#  caller's job.
 #
 #  Contract: `execution/job-contracts.md` § 3.1 (the block grammar and the
-#  emit matrix), `plans/plan.md` § 5d (why they moved).
+#  emit matrix).
 
-#: The atom-metadata schema this build WRITES, and the set it READS.
-
-# ---- from parse/scripts/header.py ----
 def _extract_header_text(text: str) -> Optional[str]:
     """Find the HEADER block and return its inner content as a single
     string (free-form prose, comment prefixes stripped).
@@ -1917,7 +1704,6 @@ def _extract_header_text(text: str) -> Optional[str]:
     return "\n".join(out_lines)
 
 
-# ---- from parse/scripts/provenance.py ----
 _PROVENANCE_KV_RE = re.compile(
     r"^#\s+(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
 
@@ -1972,7 +1758,6 @@ def _extract_provenance_dict(text: str) -> Optional[Dict[str, str]]:
     return out
 
 
-# ---- from parse/scripts/user_custom.py ----
 def _user_custom_span(text: str) -> Optional[Tuple[int, int]]:
     """``(begin_idx, end_idx)`` of the USER-CUSTOM block, or ``None``.
 
@@ -1982,12 +1767,6 @@ def _user_custom_span(text: str) -> Optional[Tuple[int, int]]:
     the framework's.  Everything between them is the person's content --
     including a line that happens to look like a marker, because a person
     pasting a snippet from another deck has pasted TEXT, not a boundary.
-
-    It took the INNERMOST span until 2026-09-05 -- resetting ``begin_idx`` on
-    each ``BEGIN`` and breaking on the first ``END`` after it -- so a stray
-    ``BEGIN`` silently discarded everything above it and a stray ``END``
-    discarded everything below.  No refusal, no warning: the file came back
-    well-formed and shorter.  Measured through the real save route, HTTP 200.
 
     Lossless and idempotent: re-merging the result yields the same content,
     because the outermost pair is stable under splicing.  The stray markers
@@ -2028,14 +1807,11 @@ def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
     return text.splitlines()[begin_idx + 1: end_idx]
 
 
-# ---- from parse/scripts/atom_metadata.py ----
-
 def _extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
     """The ATOM-METADATA block's payload; ``None`` when absent or broken."""
     return read_json_block(text, BLOCK_ATOM_METADATA)
 
 
-# ---- from parse/scripts/bench_marks.py ----
 def _coerce_scalar(s: str) -> Any:
     """Best-effort numeric coercion for BENCH-MARKS scalar values.
     Returns the original string when neither int nor float parses."""
@@ -2050,8 +1826,7 @@ def _coerce_scalar(s: str) -> Any:
 def _extract_bench_marks_dict(text: str) -> Optional[Dict[str, Any]]:
     """Find the BENCH-MARKS block and return its structured payload.
 
-    Returns ``None`` when no BENCH-MARKS block is present.  See the
-    module docstring for the payload shape.
+    Returns ``None`` when no BENCH-MARKS block is present.
     """
     lines = text.splitlines()
     begin_idx: Optional[int] = None
@@ -2111,29 +1886,11 @@ def _extract_bench_marks_dict(text: str) -> Optional[Dict[str, Any]]:
     return out
 
 
-# ---- from parse/scripts/source_dict.py ----
-
-
-
-
-
-
-
-
-
 # ===================================================================== #
 #  ROUND-TRIP — the operations that need BOTH halves                    #
 # ===================================================================== #
 #
-#  These come last because they are the only things here that both read
-#  and write, so they sit above everything they depend on rather than
-#  in the middle of it.  The file now reads in dependency order:
-#
-#      vocabulary  ->  emit  ->  read  ->  round-trip
-#
-#  They lived among the EMITTERS until 2026-09-05, which is where a
-#  reader would least expect the one function in this module that opens
-#  a file on disk.  Neither emits a block:
+#  The only things here that both read and write.  Neither emits a block:
 #
 #    * `merge_user_custom_from_target` reads the PREVIOUS OUTPUT to carry
 #      your USER-CUSTOM zone forward across a regeneration
@@ -2141,10 +1898,6 @@ def _extract_bench_marks_dict(text: str) -> Optional[Dict[str, Any]]:
 #      does not lose what you typed into it.
 #    * `apply_atom_metadata` reads a block and writes onto a
 #      Structure -- a post-process; it produces no script at all.
-#
-#  Measured before the move: these are the ONLY two call paths crossing
-#  from the write half to the read half, and nothing crosses back.
-#  Nothing references them at import time, so the order is free.
 
 def write_script(path, text: str, *, plan=None,
                  mode: Optional[int] = None) -> "Path":
@@ -2157,22 +1910,11 @@ def write_script(path, text: str, *, plan=None,
 
     **Every writer of a generated script goes through here.**  The deck says,
     in its own words, *"Your own additions go here.  molbuilder will preserve
-    this section verbatim across regenerations."*  That promise had exactly one
-    keeper until 2026-08-18 — the web file-editor's save route — so a person
-    who added ``WriteMullikenPop`` or a ``%block BandLines`` (the very things
-    the deck's own post-processing section invites) lost them at the next
-    ``prep``, silently, to a file that had promised otherwise.
+    this section verbatim across regenerations."*
 
-    The merge itself is :func:`merge_user_custom_from_target` and is unchanged;
-    what was missing was a door the generators actually open.  It is safe in
+    The merge itself is :func:`merge_user_custom_from_target`.  It is safe in
     every degenerate case — no target, no block on either side, unreadable
     target — so a first write behaves exactly like ``write_text``.
-
-    This is the third mechanism in this module to have been present and
-    uncalled: :func:`deck_note` (the deck writer uses it, the wrapper and the
-    PySCF writer do not) and ``StructureCodec`` (``prep`` and the web route use
-    it, the single-shot converters did not) were the others.  A shared writer
-    only shares what its callers ask it for.
     """
     from pathlib import Path as _P
     p = _P(path)
@@ -2190,13 +1932,10 @@ def write_script(path, text: str, *, plan=None,
 #  In-body atom-metadata: apply to Structure                            #
 # --------------------------------------------------------------------- #
 #
-# Step 3 (audit finding A1, 2026-06-16): molstruct_json.from_dict
-# validates ``structure_hash`` (>=16 chars).  The in-body
-# atom-metadata deliberately omits structure_hash per the contract
-# (metadata + coordinates are written by the same generator pass and
-# cannot drift apart by construction).  So molstruct_json's loader
-# is the wrong entry point for in-body payloads — we need a small
-# local apply that doesn't require the hash.
+# The in-body atom-metadata deliberately omits ``structure_hash`` per the
+# contract (metadata + coordinates are written by the same generator pass
+# and cannot drift apart by construction), so the sidecar's loader, which
+# validates the hash, is the wrong entry point for in-body payloads.
 
 
 def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
@@ -2218,12 +1957,6 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
     not fail loudly when applied -- it labels the wrong atoms and says
     nothing.  Same error type as the sidecar's identical guard: one name for
     one condition.
-
-    Until 2026-09-05 there were two readers of this one block and they
-    disagreed -- this one translated pre-v7 layouts, while ``/api/build/load``
-    applied the block through the sidecar's ``apply_to_structure`` and refused
-    it.  The same finished run kept its frozen set through one door and lost
-    it through the other.  One reader now, and no translation in it.
     """
     from molbuilder.sidecars.molstruct import MolstructPairingError
 
@@ -2244,15 +1977,11 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
     annotations = payload.get("annotations") or {}
     if not regions and not annotations:
         return False
-    # THROUGH THE DOOR, AND THE BLOCK IS COMPLETED FIRST.
+    # THROUGH THE DOOR, AND THE BLOCK IS COMPLETED FIRST: assigning the two
+    # fields straight onto the structure would skip `_validate_regions` /
+    # `_validate_annotations`.
     #
-    # These two fields were assigned straight onto the structure, which
-    # skipped `_validate_regions` / `_validate_annotations`: measured
-    # 2026-09-22, a block naming atom 99 of a 2-atom structure was ACCEPTED
-    # here and refused by `apply_metadata_dict`, then surfaced on the next
-    # `copy()` -- far from the file that caused it.
-    #
-    # It could not simply call that door, because `apply_metadata_dict` is a
+    # It cannot simply call that door, because `apply_metadata_dict` is a
     # FULL REPLACE and this block is a PARTIAL: it carries labels only, so
     # handing it over as-is would reset `cell`, a stated `engine_offset`,
     # `vacuum` and `axis_kind` to their defaults.  So the block is completed from what the structure
@@ -2261,9 +1990,7 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
     # compose.py` uses where it applies a sidecar over a `.XV`.
     # `metadata_to_dict()` emits annotations in their JSON form and
     # `apply_metadata_dict` parses them back, so the payload's raw JSON goes
-    # in AS-IS.  Converting here first handed the door `AtomChannel` objects
-    # to parse -- a double conversion, caught by
-    # `test_atom_annotations.py` on the full suite.
+    # in AS-IS.
     block = dict(struct.metadata_to_dict())
     if regions:
         # Normalise: sort + dedupe per label; coerce to int.  Reserved labels
@@ -2285,13 +2012,13 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
 # --------------------------------------------------------------------- #
 #
 # When the generator writes a fresh render over an existing target
-# file, preserve the user-custom block content byte-for-byte.  Callers
-# (typically the /api/files/write endpoint) chain
+# file, preserve the user-custom block content byte-for-byte.
+# `write_script` chains
 #
 #     final_text = merge_user_custom_from_target(rendered, target_path)
 #
-# before actually writing.  ``rendered`` is what render_fdf /
-# render_script / render_run_wrapper produced (carries the empty
+# before actually writing.  ``rendered`` is what render_deck /
+# render_run_wrapper produced (carries the empty
 # placeholder); ``target_path`` is where the file will live.  If the
 # existing target carries a user-custom block, its inner lines splice
 # into the new render's placeholder.  Edge cases (no existing file,
@@ -2304,10 +2031,9 @@ def replace_user_custom_inner(text: str, inner_lines: List[str]) -> str:
     replaced by ``inner_lines``.  If ``text`` has no USER-CUSTOM
     block, return it unchanged.
     """
-    # THE SAME SPAN THE EXTRACTOR USES.  A second copy of the boundary rule
-    # stood here until 2026-09-05, and two readers of one boundary is how the
-    # zone came to mean different things to the half that reads it and the
-    # half that replaces it.
+    # THE SAME SPAN THE EXTRACTOR USES: two readers of one boundary would let
+    # the zone mean different things to the half that reads it and the half
+    # that replaces it.
     lines = text.splitlines(keepends=False)
     span = _user_custom_span(text)
     if span is None:
@@ -2330,7 +2056,6 @@ def merge_user_custom_from_target(rendered: str,
       * Rendered has no USER-CUSTOM placeholder → return rendered.
       * Target is unreadable → return rendered.
     """
-    # `_extract_user_custom_inner` is defined below in THIS module.
     try:
         if not target_path.exists():
             return rendered

@@ -58,21 +58,12 @@ def _open_results(page, base_url):
 
 
 # --------------------------------------------------------------------- #
-#  Registry + picker contracts — DEMOTED 2026-06-13                     #
+#  Mount lifecycle                                                       #
 #                                                                       #
-#  28 pure dispatch/shape tests were migrated to                        #
-#  ``tests/test_inspector_registry_dispatch_js.py`` (L2 module tier).   #
-#  Each one called ``window.molbuilder.inspectors.pick(path)`` /        #
-#  ``.pickResult(path)`` / ``.list()`` and checked the return — pure   #
-#  JS function dispatch with no DOM dependency.  Per                   #
-#  docs/process/testing.md, that's the canonical L5 → L2  #
-#  shape: chromium adds ~1.8 s per test for a function call that runs #
-#  in 30 ms under Node.                                                 #
-#                                                                       #
-#  Kept e2e in this file: ``TestMountLifecycle`` +                     #
-#  ``TestResultsDispatchIntegration`` + ``TestInspectorListenerTeardown``#
-#  — those exercise real DOM mount + dispose + listener teardown that  #
-#  genuinely needs a browser.                                           #
+#  The pure dispatch/shape contracts (``pick`` / ``pickResult`` /       #
+#  ``list``) are ``tests/test_inspector_registry_dispatch_js.py``'s;    #
+#  this file keeps the real DOM mount + dispose + listener teardown    #
+#  that genuinely needs a browser.                                      #
 # --------------------------------------------------------------------- #
 
 
@@ -136,10 +127,8 @@ class TestResultsDispatchIntegration:
                 // proj.refresh() if exposed, else a small DOM event.
             }
         }""")
-        # The setShared is internal; the cleanest cross-tab trigger
-        # is the storage event, which fires for cross-window writes
-        # but not same-window.  For the integration test we exercise
-        # the dispatch directly via the public mount call.
+        # The integration test exercises the dispatch directly via the
+        # public mount call.
         page.evaluate("""() => {
             const host = document.getElementById("inspector-host");
             const reg  = window.molbuilder.inspectors;
@@ -411,8 +400,6 @@ class TestInspectorErrorCardRuntime:
         from A.
         """
         _open_results(page, flask_server)
-        # Trajectory partial: slow response (1.5 s) so the second
-        # mount has time to abort the first.
         page.route(
             "**/partials/trajectory-inspector",
             lambda route: route.fulfill(
@@ -445,67 +432,3 @@ class TestInspectorErrorCardRuntime:
             "triggered abort -- the AbortError guard in the .catch() "
             "handler is missing or broken"
         )
-
-
-# --------------------------------------------------------------------- #
-#  The CSV a person downloads must not name them                        #
-#                                                                       #
-#  Here, not in tests/test_trajectory_csv_redaction_js.py, because the   #
-#  claim needs a MOUNTED inspector holding a loaded run -- which is what #
-#  `ongoing_trajectory` + the registry give and a node harness does not. #
-#  That file keeps the pattern table (`_redactSourcePath` called         #
-#  directly, one path in, one path out); this is the other half: that    #
-#  the builder actually applies it on the way to the file.               #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
-#  NOT WRITTEN — it found a defect instead (plan row T1)                #
-#                                                                       #
-#  `tests/test_structure_info_bridge.py` reads three lines of            #
-#  trajectory/core.js as text, and its own note says a Playwright test   #
-#  is the real answer.  Written on 2026-09-07, it could not be made      #
-#  honest, because the path it needs is broken.  The recipe and the      #
-#  findings, so the next attempt starts here:                           #
-#                                                                       #
-#  THE FIXTURE.  A run directory needs no SIESTA to state a contract:    #
-#  `contract_of` answers from the run's own deck (`runs.declared`), and  #
-#  the trajectory can be the generic `*_geom_optim.xyz` fallback.  Two   #
-#  files, and `info.calculation` comes back on the load response.  The   #
-#  observable is the Metadata page -- `.molviewer-info-key` rows, which  #
-#  `installMolecule` fills only for a non-empty `input.info`.            #
-#                                                                       #
-#  DRIVING A POLL, three ways to get it wrong, all measured:            #
-#   * Appending a frame tests nothing -- a strict tail extension takes   #
-#     the cheap `addFrames` path and re-installs nothing.                #
-#   * "Wait until a poll has happened" is already true before the file   #
-#     is touched: polling starts at MOUNT.  Take a baseline at the       #
-#     moment of the change and wait to EXCEED it.                        #
-#   * To force the rebuild branch, move the frame at `oldLen - 1` -- the #
-#     one `_frameEqualAt` reads.  Moving the new tail leaves the         #
-#     boundary check satisfied and it appends instead.                   #
-#                                                                       #
-#  AND THEN THE REBUILD BRANCH DOES NOT UPDATE THE MOVIE.  With frame    #
-#  `oldLen - 1` moved and the feed grown 4 -> 6, the status line says    #
-#  "Loaded 6 ... frames" and the frame bar still holds 4.  The append    #
-#  path updates it correctly; only the rebuild path does not.  That is   #
-#  the feed's count and the movie's count disagreeing, which the file    #
-#  itself names as bug #35.  Plan row T1.                                #
-#                                                                       #
-#  TWO THINGS THAT MAKE IT HARD TO SEE, both worth their own look:      #
-#   * `setStatus` WAS a no-op on /results -- the partial had no status #
-#     line -- so `rebuildModel`'s catch ("Viewer failed to load the     #
-#     run") reported into nothing; since 2026-09-28 it writes into     #
-#     #trajectory-status.                                              #
-#   * "Loaded N frames" was written by `applyNewData` from the FEED's    #
-#     count, while `rebuildModel` runs unawaited beside it, so the tab   #
-#     could claim frames it was not showing.  That line went on          #
-#     2026-09-28: an ordinary load writes only the cell's provenance.    #
-#                                                                       #
-#  A test can be finished in minutes once the rebuild path updates the   #
-#  movie: mount, assert the Metadata rows, move frame `oldLen - 1` and   #
-#  grow the feed, wait past a poll baseline, assert the frame bar moved  #
-#  AND the rows survived.  Do not assert before the frame bar moves --   #
-#  `rebuildModel` also runs at LOAD, so without that the assertions      #
-#  describe the load and stay green through the guard being deleted.     #
-# --------------------------------------------------------------------- #

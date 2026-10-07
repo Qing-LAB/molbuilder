@@ -1,16 +1,9 @@
 """Pre-emission validation for SIESTA / PySCF / Spectra / Transport.
 
-The check list lives in ``docs/design.md`` § "Validation pass
-(pre-emission)" and the machinery in
-``docs/science/validation.md``.  Generators
-(siesta.input.render_fdf, pyscf.input.render_script, spectra
-preflight) call :func:`validate` before writing output; errors block
-emission, warnings print to stderr.
-
-*(This named a fourth, ``transport.transiesta.validate``, which has never
-existed under that or any name.  Transport's checks reach `validate` the
-same way every rung does -- each transport rung resolves a `SiestaConfig`
-and goes through the SIESTA validator.)*
+The machinery lives in ``docs/science/validation.md``.  Every deck is
+rendered by ``script_emit.render_deck``, which calls :func:`validate`
+before a line is written -- a transport rung's too, through the SIESTA
+validator; errors block emission, warnings print to stderr.
 
 Design principles realised by this module:
 
@@ -26,10 +19,9 @@ Design principles realised by this module:
 
 The output is a ``List[Issue]``.  Callers decide what to do with it;
 :func:`report` is the "raise errors, print warnings to stderr"
-helper that ``render_fdf`` / ``render_script`` use.
+helper ``script_emit.render_deck`` uses.
 
-Package layout (split 2026-06-13; see
-``docs/science/validation.md`` § 10):
+Package layout (see ``docs/science/validation.md`` § 10):
 
 * :mod:`molbuilder.validation.geometry`  — engine-agnostic geometry
 * :mod:`molbuilder.validation.metadata`  — dataclass-field driven
@@ -38,18 +30,6 @@ Package layout (split 2026-06-13; see
 * :mod:`molbuilder.validation.sidecar`   — frozen-atoms / region INFO
 * :mod:`molbuilder.validation.siesta`    — SIESTA-specific + aggregator
 * :mod:`molbuilder.validation.pyscf`     — PySCF-specific + aggregator
-
-Pre-split this all lived in one ``validation.py``.  The flat file
-worked while only ``validate()``/``_validate_siesta``/``_validate_pyscf``
-were callers; once Spectra + Transport preflights needed the shared
-open-shell check the import path through a private
-underscore-name in a 1326-LoC flat module became the smell that
-preceded the 2026-06-13 Au-BDT-Au drift incident.  The split is
-purely organisational — every function body, signature, and
-``_validate_<engine>`` internal call sequence is preserved verbatim
-from the pre-split source.  The behaviour-preservation invariant is
-pinned by the existing test suite, which imports from this package
-exactly as it imported from the flat module.
 """
 
 from __future__ import annotations
@@ -64,13 +44,7 @@ import numpy as np
 from ..issues import Issue, ValidationError
 from ..structure import Structure
 
-# Re-export the public + cross-module-imported names so the package
-# is a drop-in replacement for the pre-split ``validation.py``.  The
-# underscore-prefixed names are explicitly part of this surface
-# because external modules (pyscf/vibration_deck, transport/transiesta,
-# tests/test_validation) imported them by name pre-split; renaming
-# them is the follow-up promotion proposed in
-# `science/validation.md` § 7 and is out of scope for this commit.
+# Re-exported, so callers import these names from the package.
 from .chemistry import (_check_metal_basis_adequacy,
                         check_electronic_state)
 from .geometry import (_check_polymer_orientation,
@@ -135,12 +109,8 @@ def _structure_declares_a_box(struct: Structure) -> bool:
         return True
     if struct.vacuum is not None:
         # STATING one is the declaration -- including an all-zero triple, which
-        # since 2026-08-03 means "no gap, deliberately" and is a real (and
-        # unusable) box rather than an absence.  This tested `any(v > 0)`, which
-        # was the only thing possible while unset WAS (0,0,0); once the two
-        # became distinguishable it left a hole -- a deliberate zero produced a
-        # zero-volume box that validate() reported nothing about, so the user
-        # met it at the emitter instead of in the preflight panel.
+        # means "no gap, deliberately" and is a real (and unusable) box rather
+        # than an absence.
         return True
     return any(k != "isolated" for k in (struct.axis_kind or ()))
 
@@ -177,12 +147,6 @@ def validate(struct: Structure, cfg, *,
         argument.  Pass it only to validate a cell that differs from
         the structure's (a generator overriding the box); an explicit
         ``cell`` still wins.
-
-        This default is the fix for a real invisible failure: every
-        web caller omitted ``cell``, so the volume / determinant /
-        min-atom-to-nearest-image checks never ran in the browser --
-        a 2.5 A vacuum box reached SIESTA with nothing said
-        (2026-07-29).
     dest_dir
         Optional destination directory hint -- the path the user is
         about to save the rendered .fdf into.  Used by the SIESTA
@@ -196,17 +160,14 @@ def validate(struct: Structure, cfg, *,
         checks judge -- today, at a SIESTA force-constant stage, the ladder's
         `relax` stage's relaxation record (`engines/vibration.md` § 5.2a),
         handed in by the deck's spec from the `vibration` block `prep`
-        built.  ``None`` everywhere else.  *(It named the retired Spectra /
-        Transport engines' results until 2026-09-29, and nothing passed it.)*
+        built.  ``None`` everywhere else.
 
     design
         The structure AS THE PERSON HOLDS IT, when ``struct`` is the placed
         copy a deck writes (its validation subject: the coordinates plus the
         engine offset).  A fact recorded ABOUT the file -- the relaxation
         record's geometry fingerprint -- is judged against these, because a
-        placement is a rigid shift the record never saw (found by review,
-        2026-09-25: on the road every SIESTA vibration pair's record stopped
-        vouching).  None means ``struct`` is the file.
+        placement is a rigid shift the record never saw.  None means ``struct`` is the file.
     k_meshes
         The k-point meshes the deck writes (`kmesh.mesh_for`,
         `engines/siesta.md` § 6.1), when its spec built them: a transport
@@ -218,9 +179,9 @@ def validate(struct: Structure, cfg, *,
     checks first, generic config-field checks next, then engine-
     specific checks.  Callers can sort / filter as they please.
 
-    This is THE single per-engine validation gate: every engine
-    (SIESTA, PySCF, Spectra, Transport) registers ONE validator, so a
-    caller runs ``validate(struct, cfg)`` once instead of hand-
+    This is THE single per-engine validation gate: every engine config
+    (SiestaConfig, PySCFConfig) registers ONE validator, and a kind's
+    science joins through ``_KIND_VALIDATORS``, so a caller runs ``validate(struct, cfg)`` once instead of hand-
     concatenating a separate engine ``preflight()`` (the cross-tab
     silent-skip class the backend-architecture review flagged; V1/V2).
     """
@@ -228,7 +189,7 @@ def validate(struct: Structure, cfg, *,
     # WHETHER THE ENGINE COMPUTES IN THE BOX (`model/structure-periodicity.md`
     # § 2.1, plan § 5w K8): PySCF builds a molecule in free space, so the
     # box's advice about a calculation in it -- vacuum, images, faces -- is
-    # not its; it told a gas-phase molecule its vacuum was thin (PO-C13).
+    # not its.
     # What binds every engine it still hears (`cell.box_findings_for`).
     from ..cell import box_findings_for, computes_in_cell
     from ..template import engine_name
@@ -250,15 +211,9 @@ def validate(struct: Structure, cfg, *,
                 f"were skipped: this structure has no resolvable cell ({exc})",
                 "cell.unresolved"))
 
-    # THE STRUCTURAL CELL FACTS, from the one checker (cell-plan.md § 6a).
-    #
-    # This is what makes them reach GENERATE.  They were `notices` from the
-    # periodicity gate, and notices travel to the Cell page and nowhere else --
-    # so a box with no volume, or a 3 Å gap nobody chose, was invisible in the
-    # preflight panel that is the last thing a user sees before committing to a
-    # calculation.  As Issues they arrive on both surfaces with no special case,
-    # and `report()` turns the error-severity ones into the refusal the emit
-    # doors already promise.
+    # THE STRUCTURAL CELL FACTS, from the one checker.  As Issues they reach
+    # the preflight panel and the CLI alike, and `report()` turns the
+    # error-severity ones into the refusal the emit doors already promise.
     #
     # Only when the structure DECLARES a box, for the same reason the block
     # above is gated: `resolve_cell` hands back a bounding box for a gas-phase
@@ -266,9 +221,7 @@ def validate(struct: Structure, cfg, *,
     # findings about a cell the calculation does not have.
     # ``cell`` here is the box that will actually be EMITTED -- a generator may
     # have chosen one that differs from the structure's, and judging the
-    # structure's instead would answer about a box nobody runs.  That gap is
-    # real: geometry.py used to check the passed-in cell, and moving the verdict
-    # here without passing it on left an overridden degenerate box unreported.
+    # structure's instead would answer about a box nobody runs.
     if cell is not None or _structure_declares_a_box(struct):
         from ..cell import check as _check_cell, resolve as _resolve_cell
         issues += box_findings_for(
@@ -295,10 +248,7 @@ def validate(struct: Structure, cfg, *,
     issues += refusals
     # THE ELECTRONIC STATE, once, for every engine and every kind
     # (`science/chemistry-correctness.md` § 2a): the state the deck will be
-    # written from, judged by one family of findings.  It was asked by each
-    # engine validator and by the vibration kind's science in their own
-    # words until 2026-09-28 -- three parity checks, four closed-shell
-    # tests, one open-shell guard judging a neutral non-repeating structure.
+    # written from, judged by one family of findings.
     issues += check_electronic_state(struct, cfg, calculation=calculation)
 
     # Engine-specific dispatch via the registry.  isinstance() picks
@@ -328,8 +278,7 @@ def validate(struct: Structure, cfg, *,
     # The KIND rides along so an engine validator can defer a family the
     # kind's own science owns (the double-fire dedup, ruled 2026-08-21:
     # one fact, one finding -- on a vibration deck the grid and frozen-atom
-    # verdicts are the kind's, and the engine copy firing too gave each fact
-    # two findings, one of them reasoned from the wrong calculation).  The
+    # verdicts are the kind's).  The
     # charge and spin are neither's: they are the electronic state's one
     # family, asked once below for every engine and kind.  Validators that
     # do not branch on it ignore it through **_.
@@ -340,10 +289,8 @@ def validate(struct: Structure, cfg, *,
             break
 
     # The CALCULATION KIND's own science — the same step, keyed by the
-    # described fact.  Between P1 and P3 the vibration science silently
-    # skipped because it hung off a per-deck call instead of this
-    # dispatch (found 2026-08-21); a kind registered here cannot be
-    # forgotten, because every deck route ends in this function.
+    # described fact.  A kind registered here cannot be forgotten, because
+    # every deck route ends in this function.
     kind_fn = _KIND_VALIDATORS.get(calculation)
     if kind_fn is not None:
         issues += kind_fn(struct, cfg, cell, **engine_kw)
@@ -367,13 +314,9 @@ def report(issues: List[Issue], *,
     user see *all* of them even when an error is also present --
     helpful when triaging a misconfigured run.
 
-    **`info` reached no surface at all until 2026-08-23.**  This loop tested
-    ``severity == "warn"`` and dropped the rest, so an advisory -- *"Fe +
-    spin=4 -> high-spin Fe(II)"*, the class written precisely for a person to
-    weigh against their own system -- was computed on every render and printed
-    nowhere.  `science/validation.md` R4 is explicit: *"no surface downgrades
-    a severity to keep a screen quiet, and the CLI prints the same three."*
-    This printed two.  Errors still raise rather than print, which is R4's own
+    **`info` is printed too**: `science/validation.md` R4 is explicit: *"no
+    surface downgrades a severity to keep a screen quiet, and the CLI prints
+    the same three."*  Errors still raise rather than print, which is R4's own
     distinction and not a downgrade.
     """
     if stream is None:
@@ -385,18 +328,6 @@ def report(issues: List[Issue], *,
     errors = [i for i in issues if i.severity == "error"]
     if errors and raise_on_error:
         raise ValidationError(issues)
-
-
-# --------------------------------------------------------------------- #
-#  Engine-validator registration                                        #
-#                                                                        #
-#  Done at module bottom rather than via decorators on _validate_siesta #
-#  / _validate_pyscf because the config classes import from this        #
-#  module in some code paths (lift would create an import cycle).  A   #
-#  late lookup in this module is fine; both engines' renderers import  #
-#  validation.py before they call validate(), so by then the registry  #
-#  is populated.                                                        #
-# --------------------------------------------------------------------- #
 
 
 # --- The calculation kinds' validators ---------------------------------- #
@@ -416,9 +347,7 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
                              prior=None, design=None, **_) -> List[Issue]:
     """The vibration kind's science (grid / amplitude / frozen atoms /
     the relaxation record), over the deck's own config view -- the charge
-    and spin are the electronic state's one family, asked by ``validate``.
-    Lazy imports at call time, same cycle-avoidance as the engine
-    validators above."""
+    and spin are the electronic state's one family, asked by ``validate``."""
     from ..config.pyscf import PySCFConfig
     if isinstance(cfg, PySCFConfig):
         from ..pyscf.vibration_deck import science_view
@@ -443,12 +372,9 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
 def _validate_transport_kind(struct: Structure, cfg, cell, *,
                              prior=None, **_) -> List[Issue]:
     """The transport KIND's science — keyed on ``task.calculation``, so it
-    fires whatever config class the deck renders from.
-
-    It replaced ``_validate_transport``, which was keyed on
-    ``TransportConfig`` and therefore stopped firing for any rung that moved
-    onto the framework's seam (the seed, 2026-09-15). A rule that only runs
-    for one of two config classes is not a gate; this one runs for the kind.
+    fires whatever config class the deck renders from.  A rule that only
+    runs for one of two config classes is not a gate; this one runs for the
+    kind.
 
     Its science: the bias advisory, the pole energy against the temperature,
     the vacuum where the crystal continues (I12).  **The k-point sampling is
@@ -458,20 +384,9 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     ``template.why_not`` rather than on this one alone.
     """
     out: List[Issue] = []
-    # THE BIAS ADVISORY.  It had two homes from 2026-09-16 to 2026-09-17:
-    # here, and a copy in `TransiestaEngine.preflight` kept alive by the one
-    # surface that built and validated a `TransportConfig`,
-    # `POST /api/transport/render`.  That route and that class are both
-    # deleted, so this is the only home and the spelling split
-    # (`bias_voltages_v` there, `bias_voltage_v` here) is gone with it.
-    #
-    # Bias is the one axis a transport calculation exists to sweep, so a
-    # person could describe 3 V and be told nothing on the road that runs.
-    # The rest of what preflight carries survives elsewhere: the region
-    # partition and the atom order are `sort`'s refusals and are structural
-    # on the ladder path, and the open-shell check is the electronic state's
-    # (`check_electronic_state`, from `validate` for every kind) against the
-    # run's REAL spin treatment rather than that one's hardcoded closed shell.
+    # THE BIAS ADVISORY.  Bias is the one axis a transport calculation
+    # exists to sweep, so without it a person could describe 3 V and be told
+    # nothing on the road that runs.
     bias = getattr(cfg, "bias_voltage_v", None)
     if bias is not None and abs(float(bias)) > 2.0:
         out.append(Issue(
@@ -490,10 +405,9 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     # for the count it states beside the energy.  TranSIESTA stops a run under
     # twenty poles, after the queue wait; this says so before it.
     #
-    # 0 IS REFUSED TOO (M5 step 2, `engines/transport.md` § 6.1c).  It meant
-    # "write nothing and let TranSIESTA choose" until 2026-09-29, and
-    # TranSIESTA's choice -- about 42 poles at 300 K -- lost the charge on a
-    # real Au-BDT-Au device, where 10 eV (123 poles) held it.  So the energy is
+    # 0 IS REFUSED TOO (`engines/transport.md` § 6.1c): TranSIESTA's own
+    # choice -- about 42 poles at 300 K -- lost the charge on a real Au-BDT-Au
+    # device, where 10 eV (123 poles) held it.  So the energy is
     # always written; and an energy at or below zero is not taken as one --
     # TranSIESTA keeps its 8-pole count and stops (`pole_count` says why).
     #
@@ -536,21 +450,15 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
                     f"{need:.2f} eV.  The default is 10 eV "
                     f"(engines/transport.md 6.1c).",
                     where="config.negf_eq_pole_ev"))
-    # THE K-POINT SAMPLING IS NOT HERE (2026-09-30).  Three blocks stood
-    # here -- the transmission grid's axes, the transport axis of `kgrid`,
-    # the lead's `electrode_kz` -- beside a warning about the same transport
-    # axis in the SIESTA validator: one fact, two severities.  They are the
-    # k-point mesh's now (`kmesh.py`, `engines/siesta.md` § 6.1): the third
+    # THE K-POINT SAMPLING IS NOT HERE: it is the k-point mesh's
+    # (`kmesh.py`, `engines/siesta.md` § 6.1): the third
     # component of `kgrid` and `tbt_k_grid` is one a transport calculation
     # fixes, and a lead's count is refused at 1 by its own limit and warned
     # below 20 by its range -- every door, through `template.why_not`.
 
     # ---- I12: no vacuum where the crystal continues (§ 5, § 6.1c) ----
     #
-    # MEASURED FROM THE LEAD, since M5 step 2 (TD3, user 2026-09-29).  It was
-    # a warning above a fixed 3.0 Å along transport, and one number was wrong
-    # both ways: a lead spaced wider than 3 Å is warned at its perfect seam,
-    # and one spaced 1.44 Å passes a missing layer.  Now each rule reads the
+    # MEASURED FROM THE LEAD (TD3, user 2026-09-29): each rule reads the
     # lead's own spacing, and both are refusals -- a gap along transport
     # severs the lead, and vacuum on a periodic axis contradicts the
     # declaration.  An ISOLATED transverse axis is left alone: a wire or chain
@@ -639,40 +547,22 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
 def _register_default_engines() -> None:
     """Register each engine's validator and each kind's -- AT IMPORT, called
     just below.  The engine config classes come from `config/`, where they
-    are defined -- not through the engine packages, whose deck writers
-    loaded ASE's readers and SciPy for every import of validation until
-    2026-09-28 (plan W36 ④) -- and are imported in here only to keep the
-    registrations together: nothing in `siesta/`, `pyscf/` or `config/`
-    imports `validation`, so there is no cycle to avoid.  *(This said the
-    late import avoided one, and that it ran from `validate()`; neither was
-    true -- the layer review, 2026-09-27.)*
+    are defined, and are imported in here only to keep the registrations
+    together: nothing in `siesta/`, `pyscf/` or `config/` imports
+    `validation`, so there is no cycle to avoid.
 
     **An import that fails here RAISES.**  A missing engine config is a
-    broken install, and the ``except ImportError: pass`` that stood here
-    until 2026-09-27 would have left that engine's scientific validation
-    silently absent -- every deck of it passing a gate that checked nothing.
+    broken install, and swallowing it would leave that engine's scientific
+    validation silently absent -- every deck of it passing a gate that
+    checked nothing.
     Only the config CLASS is imported eagerly (as a registry key)."""
     from ..config.siesta import SiestaConfig
     from ..config.pyscf import PySCFConfig
     _ENGINE_VALIDATORS[SiestaConfig] = _validate_siesta
     _ENGINE_VALIDATORS[PySCFConfig] = _validate_pyscf
-    # NO SPECTRA ROW.  A vibration's science is the KIND's, keyed by
-    # `task.calculation` below -- `_validate_vibration_kind` runs
-    # `spectra_render_checks` against the deck's config view.  The row that
-    # stood here keyed on `SpectraConfig`, a class nothing in production
-    # ever constructed, so it only ever dispatched for a caller holding one
-    # by hand.  Retired with the class, 2026-08-22.
-    # NO TRANSPORT ROW EITHER, and for the same reason one step later.
-    # It keyed on `TransportConfig` and ran `TransiestaEngine.preflight`.
-    # Every transport rung resolves a `SiestaConfig` (`engines/transport.md`
-    # 2a.14), so it dispatched for nothing; the sites that built a
-    # `TransportConfig` then built it as a projection for the lifted NEGF
-    # emitter and never validated it (the last live one went 2026-09-29).
-    # It survived that because ONE surface did both
-    # -- `POST /api/transport/render` -- and that route was deleted
-    # 2026-09-17.  Transport's science is the KIND's, below.  Every check the
-    # engine preflight carried has a named live holder; the tombstone in
-    # `transport/transiesta.py` lists them one by one.
+    # A vibration's and a transport calculation's science is the KIND's,
+    # keyed by `task.calculation` below; every transport rung resolves a
+    # `SiestaConfig` (`engines/transport.md` 2a.14).
     _KIND_VALIDATORS["vibration"] = _validate_vibration_kind
     _KIND_VALIDATORS["transport"] = _validate_transport_kind
 

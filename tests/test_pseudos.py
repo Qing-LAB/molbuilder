@@ -18,10 +18,8 @@ Tests:
 """
 from __future__ import annotations
 
-import pathlib
 import re
 
-import pytest
 from pathlib import Path
 from tests.spectra._helpers import _spectra_cfg
 
@@ -60,8 +58,7 @@ def _make_pseudodojo_psml(element: str, *, z: int = None,
     Differs from _make_psml in two important ways the parser bug
     of 2026-05-23 missed:
       * Element + Z + relativity live on <pseudo-atom-spec>, NOT
-        <header>.  My original tests used <header>; real files use
-        the longer name.
+        <header>.
       * The libxc id is on <functional> CHILDREN of <libxc-info>,
         NOT directly on <libxc-info>.  Real files always nest.
     These tests pin the contract against real-world files so a
@@ -269,24 +266,12 @@ class TestCheckCoverage:
         assert {e.element for e in entries} == {"C", "H"}
 
 
-# (picker_root_at_tmp retired 2026-08-22 with the seven C-doors tests
-#  it served -- install-pseudos/install-wrapper are gone.  The analyze
-#  route's tests left this file in the M6 review, for
-#  test_structure_analyze_endpoint.py and the card's browser test.)
-
-
 class TestResolvePsmlLib:
-    """The user-facing anchoring rule for cfg.psml_lib (introduced
-    2026-05-24; three-stage since 2026-08-21): a relative path tries the
-    calculation folder first, then the ``projects/`` tree the calculation
-    lives in (walking up from the calculation folder), then
-    ``<cwd>/projects/``; absolute paths pass through, ``~/...`` expands.
-    Was motivated by a user typing ``../../../pseudopotential`` and
-    being confused that the validator resolved it against the Flask
-    server's CWD (repo root) rather than anything meaningful — and
-    completed by the 2026-08-21 Sol bug, where the cwd fallback anchored
-    a bare name at ``<calc>/projects/…`` (the module-level walk-up test
-    at the end of this file)."""
+    """The user-facing anchoring rule for cfg.psml_lib: a relative path is
+    read from the ``projects/`` tree (the walk-up from the calculation
+    folder is the module-level test at the end of this file); an absolute
+    path must be inside the tree, ``~/...`` expands; dotted spellings are
+    refused."""
 
     def test_absolute_inside_the_tree_passes_through(self, tmp_path):
         from molbuilder.pseudos import resolve_psml_lib
@@ -324,15 +309,11 @@ class TestResolvePsmlLib:
             assert "retired" in str(e.value)
 
 
-
-
-
-
 # --------------------------------------------------------------------- #
 #  Open-shell-metal-conditional script templates                       #
-#  (level_shift / spin-sweep added 2026-05-23 — discoverable hints in  #
-#   the emitted script ONLY when an Fe / Mn / Co / Cu / Ni / etc. is   #
-#   present.  Clean-organic scripts must NOT have them — noise.)       #
+#  (the level_shift hint appears in the emitted script ONLY when an    #
+#   Fe / Mn / Co / Cu / Ni / etc. is present.  Clean-organic scripts   #
+#   must NOT have it — noise.)                                         #
 # --------------------------------------------------------------------- #
 
 
@@ -352,52 +333,10 @@ class TestMetalAwareScriptTemplates:
                          positions=np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]]),
                          vacuum=(12.0, 12.0, 12.0))   # linear -> needs vacuum for a real box
 
-    def test_siesta_fe_emits_spin_sweep_template(self):
-        from molbuilder.siesta import render_fdf
-        from molbuilder.config.siesta import SiestaConfig
-        # The spin left blank: the electronic state decides unrestricted,
-        # 2S = 2 for Fe, and the sweep lists Fe's own common counts -- from
-        # the hints table, for any open-d metal (it printed the same Fe
-        # text for every metal until 2026-09-28).
-        fdf = render_fdf(self._fe(), SiestaConfig(net_charge=0))
-        assert "Spin-state sweep template (Fe)" in fdf
-        assert "Fe(II), high-spin" in fdf
-        assert "Fe(III), high-spin" in fdf
-        # Mossbauer / EPR / UV-Vis caveat -- user must verify.
-        assert "Mossbauer" in fdf or "ssbauer" in fdf
-
-    def test_siesta_organic_skips_spin_sweep_template(self):
-        from molbuilder.siesta import render_fdf
-        from molbuilder.config.siesta import SiestaConfig
-        fdf = render_fdf(self._water(), SiestaConfig(
-            net_charge=0, spin_treatment="unrestricted",
-            unpaired_electrons=0,
-        ))
-        assert "Spin-state sweep template" not in fdf
-
-    def test_build_pyscf_fe_emits_level_shift_template(self):
-        from molbuilder.pyscf.input import render_script
-        from molbuilder.config.pyscf import PySCFConfig
-        text = render_script(self._fe(), PySCFConfig(
-            spin_treatment="unrestricted", unpaired_electrons=2,
-            optimize=False,
-        ))
-        assert "Hard SCF (typical for open-shell metals like Fe)" in text
-        assert "# mf.level_shift = 0.2" in text   # commented template
-        # Compile-check: commented template must not break syntax.
-        compile(text, "<fe-build>", "exec")
-
-    def test_build_pyscf_organic_skips_level_shift_template(self):
-        from molbuilder.pyscf.input import render_script
-        from molbuilder.config.pyscf import PySCFConfig
-        text = render_script(self._water(), PySCFConfig(
-            spin_treatment="restricted", optimize=False,
-        ))
-        assert "Hard SCF (typical for open-shell metals" not in text
 
     def test_spectra_pyscf_fe_emits_level_shift_template(self):
-        # P3: the generator retired; the hint lives in the surviving
-        # equilibrium-SCF emitter the vibration deck composes.
+        # The hint lives in the equilibrium-SCF emitter the vibration
+        # deck composes.
         from molbuilder.pyscf.vibration_emitters import _emit_equilibrium_scf
         # The view resolves the state on the structure it is given -- the
         # metals the hint reads are that structure's.
@@ -604,8 +543,8 @@ class TestErrorStatusesSharedBySurfaces:
         res = CliRunner().invoke(
             pseudo_group, ["check", str(tmp_path), "--xc", "PBE"])
         assert res.exit_code == 1, res.output
-        # A word-boundary match: the bare substring "C" was satisfied by
-        # almost any output (a near-tautology, found 2026-08-12).
+        # A word-boundary match: the bare substring "C" is satisfied by
+        # almost any output.
         assert "ERROR" in res.output
         assert re.search(r"\bC\b", res.output), res.output
 
@@ -659,21 +598,17 @@ def test_a_relative_lib_resolves_through_the_calculations_own_tree(
     assert got == lib
 
     # A BARE NAME MEANS THE TREE EVEN WHEN A SAME-NAMED FOLDER SITS BESIDE
-    # THE CALCULATION.  This asserted the opposite until 2026-08-21 -- back
-    # then resolution tried the calculation folder first and took it if it
-    # existed, so what a spelling meant depended on what happened to be on
-    # disk.  That is the property A10 removes: the anchor is the spelling's,
-    # not the filesystem's.  (Since 2026-08-28 there is no local spelling
-    # at all: pseudos beside the calculation are used without the field.)
+    # THE CALCULATION: the anchor is the spelling's, not the filesystem's
+    # (A10).  There is no local spelling at all: pseudos beside the
+    # calculation are used without the field.
     local = calc / "mypseudos"
     local.mkdir()
     assert resolve_psml_lib("mypseudos", dest_dir=calc) == \
         tmp_path / "projects" / "mypseudos"
 
     # Outside any projects tree there is no tree to walk up to, so the
-    # server's own declared root answers (2026-08-28) -- NOT the working
-    # directory, and no longer the lone folder (the old cascade's last
-    # anchor, retired: in-folder pseudos are used without the field).
+    # server's own declared root answers -- NOT the working directory, and
+    # not the lone folder: in-folder pseudos are used without the field.
     from molbuilder.projects import PROJECTS_ROOT_ENV
     lone = tmp_path / "lone-calc"
     lone.mkdir()

@@ -6,18 +6,11 @@ muscle memory of MUST NOT appear and disappear based on data
 shape.  Their PRESENCE is a stable affordance; only their EFFECT
 depends on data.
 
-Pins from this session:
-  * trajectory-inspector hide-frozen toggle -- always visible.  (The
-    ``#hide-frozen-row`` wrapper + its ``refreshHideFrozenAvailability``
-    show/hide logic were retired in the MolView migration, task #34;
-    the toggle now lives in the always-rendered flat force-controls
-    block, so there is no JS visibility transition left to pin.)
+Pins:
   * spectra-inspector ``.modes-table .es-col`` headers -- visible
     whatever the data (no ``th.hidden = !anyES`` write); only a route
     with no probe at all, SIESTA's, shows none (`web/spectra.md`
     § 9b.3) -- a property of the route, not of the data.
-  * mol-viewer-embed Animation Export section -- always visible
-    (no ``sect.hidden = !hasAnim`` write).
 
 These tests scan the relevant JS source files for the assignment
 patterns that previously hid each element, and FAIL if the
@@ -72,17 +65,3 @@ def test_spectra_es_columns_not_hidden_on_no_es_data(spectra_core_src):
             f"are unconditionally visible per the 2026-06-14 "
             f"``UI presence is data-independent`` contract."
         )
-
-
-# RETIRED 2026-08-01: the two Animation-Export tests.
-#
-# They read `lib/viewer/mol-viewer-embed.js` and asserted on its source. NO PAGE
-# LOADS THAT FILE -- no template links it, no module imports it -- so both tests
-# passed while pinning nothing that runs. MolView draws its own Export menu and
-# its own frame bar now.
-#
-# What replaced them, derived from molview.md rather than from the source:
-#   * the frame bar appears only once there is more than one frame --
-#     tests/test_molview_mount.py::test_the_frame_bar_appears_only_once_there_is_more_than_one_frame
-#   * the Export menu is built and reachable --
-#     tests/test_molview_mount.py::test_an_open_menu_is_placed_against_its_own_trigger

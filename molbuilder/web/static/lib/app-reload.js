@@ -9,10 +9,7 @@
  * this page has is about to be dropped by design.
  *
  * WHY THE BUTTON IS DRAWN HIDDEN AND REVEALED, never the reverse: a control that
- * appears and then vanishes reads as a permission being taken away.  Almost
- * every session will never see it -- the route exists only when the server runs
- * under a supervisor AND ``rate_limit.admin_emails`` names somebody -- so the
- * quiet case has to be the tidy one.
+ * appears and then vanishes reads as a permission being taken away.
  */
 (function (root) {
     "use strict";

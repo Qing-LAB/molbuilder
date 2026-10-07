@@ -19,9 +19,7 @@ No existing test caught it, and one test actively hid it: the card's
 own test asserted ``'id="ts-machine-card"' in body``, which a duplicate
 satisfies twice over.  A substring pin cannot tell one card from two.
 
-The rule is the HTML sibling of the retired
-``test_css_no_duplicate_selectors.py`` (2026-09-10, ``082ba979``): one home
-per id, per page.  It is checked over EVERY served page rather
+The rule is one home per id, per page.  It is checked over EVERY served page rather
 than per tab, because nothing about this failure was Task-setup's --
 any page that hides a card and reaches for it by id can lose it the
 same way.

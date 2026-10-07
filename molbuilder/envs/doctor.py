@@ -64,8 +64,7 @@ class PackageAuditIssue:
     #: The package's own name, so a caller can find the RECORD that says
     #: how to fix it.  An issue carries what is WRONG; the recipe says
     #: what to do about it, and repair reads the second rather than a
-    #: flattened copy of the instruction.  Empty for conda issues, which
-    #: are still repaired from their spec string.
+    #: flattened copy of the instruction.
     name: str = ""
     reason: Optional[str] = None   # why the source is unusual, if it is
     #: The recipe calls the env usable without this package.  A FIELD, so a
@@ -110,8 +109,7 @@ class EnvReport:
     verify_ok
         ``True`` when the step's own accept rule was satisfied -- see
         :meth:`molbuilder.envs.install.InstallStep.accepts`, which is the
-        ONE place that rule lives.  Do not restate it here: the copy that
-        stood here had drifted from it once already.  ``None`` when the env is missing or the
+        ONE place that rule lives.  ``None`` when the env is missing or the
         verify command was not run (e.g., the recipe has no
         ``verify_argv`` set).
     verify_output
@@ -331,7 +329,7 @@ def absent_conda_specs(env_prefix: Path,
     """Which of ``specs`` has no ``conda-meta`` record in this env.
 
     PRESENCE ONLY -- name matched, version and build ignored.  That is the
-    question `install` asks before it dispatches a recipe's conda set
+    question `install` asks before it dispatches a recipe's conda set:
     absence is what `install` closes, and a version
     or build mismatch is `repair --include-version-fix`'s business because
     those rebuilds are destructive and opt-in.  :func:`audit_packages` is the
@@ -404,8 +402,7 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
             # It was never installed because the recipe says a default run
             # leaves it out, so failing the health check over it would make
             # `doctor` red on every machine that simply did not ask for it.
-            # Reported all the same -- absence nobody can see is how the test
-            # tooling came to be four commands in a help comment.
+            # Reported all the same.
             issues.append(PackageAuditIssue(
                 kind=("conda-missing-opt-in" if pkg.opt_in
                       else f"conda-missing{suffix}"),
@@ -523,15 +520,10 @@ def _run_verify(
     (:meth:`install.InstallStep.accepts`).  ``prefix`` is the caller's
     already-resolved env prefix, so this does not pay `_env_prefix` again.
     """
-    # THE INSTALLER'S STEP, THE INSTALLER'S RUNNER.  This function used
-    # to build the verify command itself, bypass ``conda run`` itself,
-    # and re-implement the accept rule (exit code gated by the recipe,
-    # then the substring) -- a fourth copy of a procedure that already
-    # existed, and one that had already drifted to a different output
-    # limit.  `verify_step_for` owns what verifying a recipe MEANS and
-    # `run_step` owns how a command is dispatched, so asking them is the
-    # only way this report can agree with what `install` just did.
-    #
+    # THE INSTALLER'S STEP, THE INSTALLER'S RUNNER.  `verify_step_for` owns
+    # what verifying a recipe MEANS and `run_step` owns how a command is
+    # dispatched, so asking them is the only way this report can agree with
+    # what `install` just did.
     step = _install.verify_step_for(recipe, conda_binary, env_name)
     if step is None:
         return None, ""

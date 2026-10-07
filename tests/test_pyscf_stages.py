@@ -5,15 +5,8 @@ stage list**) and § 1.1a (a PySCF ladder is N decks and N jobs, declared in
 ``task.json``, exactly as SIESTA's is), § 2 (a stage has four fields),
 § 4 (``template ⊕ overrides``).
 
-**This file replaced one that tested ``StageSpec``, ``_default_stages`` and
-``validate_stages``.**  Those are deleted, so tests naming that class's ten
-fields, its per-field defaults and its validator went with them -- a test
-that pins a mechanism the contract removed is not coverage, it is a second
-copy of the old design that fails the next time the right thing is done.
-
-What survived is every rule that was about the *ladder* rather than about
-that class, restated against the mechanism that carries it now.  **This file
-is deliberately the twin of ``test_siesta_stages.py``**: the two engines
+Every rule here is about the *ladder*, stated against the mechanism that
+carries it.  **This file is deliberately the twin of ``test_siesta_stages.py``**: the two engines
 differ in which parameters a rung varies and in nothing else, so a rule that
 holds for one and is untested on the other is where they drift apart.
 
@@ -43,12 +36,8 @@ from molbuilder.task import Stage
 # --------------------------------------------------------------------- #
 
 def test_the_config_has_no_stages_field():
-    """**The deletion, asserted directly.**
-
-    ``PySCFConfig.stages`` outlived ``SiestaConfig.stages`` on the strength
-    of one reader: the in-script ``for STAGE in STAGES:`` loop, which made
-    the list engine BEHAVIOUR rather than a rival declaration.  § 1.1a
-    retired that loop, and the field went with the premise that kept it."""
+    """**No stage list on the config, asserted directly** (§ 1.1a: the
+    ladder is declared in ``task.json``)."""
     names = {f.name for f in dataclasses.fields(PySCFConfig)}
     assert "stages" not in names
 
@@ -56,7 +45,7 @@ def test_the_config_has_no_stages_field():
 def test_no_field_of_the_config_is_a_list_of_dataclasses():
     """The stronger form: not merely *this* name, but the SHAPE.  A
     ``List[<dataclass>]`` on an engine config is what the form-schema
-    generator used to turn into a stage-table, so a differently-named
+    generator would turn into a stage-table, so a differently-named
     ladder would reopen § 1.2 just as wide."""
     import typing
     hints = typing.get_type_hints(PySCFConfig)
@@ -109,9 +98,8 @@ def test_each_stages_overrides_are_exactly_that_tiers_preset(tier):
     changed in exactly one place, and that place is checked against
     `tuning.md` § 2.4.
 
-    Nothing is added to that row.  ``restart`` was spliced in here
-    positionally until 2026-08-18; it is a property of neither the tier nor
-    the rung's index -- the folder answers it, at run time
+    Nothing is added to that row.  ``restart`` is a property of neither the
+    tier nor the rung's index -- the folder answers it, at run time
     (`run-identity.md` § 4 rule 3)."""
     stage = default_pyscf_stages("vib-quality")[tier - 1]
     assert stage.overrides == PYSCF_STAGE_PRESETS[tier]
@@ -129,19 +117,6 @@ def test_no_shipped_ladder_says_anything_about_restart():
     for strategy in sorted(STAGE_STRATEGY_PRESETS):
         for st in default_pyscf_stages(strategy):
             assert "restart" not in st.overrides, (strategy, st.name)
-
-
-# `test_a_stage_has_exactly_the_four_fields_of_section_2` stood here, byte-
-# identical to the copy in `test_siesta_stages.py` (verified 2026-09-09).
-# `Stage` lives in `molbuilder/task.py` and is ENGINE-AGNOSTIC, so asserting
-# its field list once per engine is one fact in two homes.  The siesta file
-# keeps it.
-#
-# Note what this does NOT retire: deriving `task.STAGE_FIELDS` from
-# `dataclasses.fields(Stage)` removed a second DEFINITION of a stage's shape,
-# and that drift is now unconstructible -- but the surviving test pins the
-# dataclass against § 2's "four fields and no others", which is a design
-# decision no type can express.  A tripwire on a deliberate choice stays.
 
 
 def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():
@@ -170,9 +145,8 @@ _VARIED = ("scf_conv_tol", "geom_gmax", "geom_grms", "geom_dmax",
 
 @pytest.mark.parametrize("key", _VARIED)
 def test_every_varied_field_is_a_catalogue_item_with_a_bound(key):
-    """§ 1.1a's derivation depended on these being catalogue items, and the
-    per-rung numeric checks the deleted ``validate_stages`` made now rest on
-    the ``range`` each item declares (`validation/task.py` checks every
+    """§ 1.1a's derivation depends on these being catalogue items, and the
+    per-rung numeric checks rest on the ``range`` each item declares (`validation/task.py` checks every
     override against it).  An item without one is a rung that can carry any
     number at all."""
     item = _catalogue_item(key)
@@ -194,14 +168,6 @@ def test_every_shipped_tier_value_is_inside_its_items_bound(tier):
 #  The strategy presets choose which tiers run, and nothing else        #
 # --------------------------------------------------------------------- #
 
-# `test_strategy_preset_names_match_siesta` stood here, with a twin in
-# `test_siesta_stages.py` asserting the same set equality in the other
-# direction, plus a whole file (`test_siesta_stage_strategy_presets_drift.py`)
-# comparing them value-for-value.  Three tests keeping one constant equal to
-# itself.
-#
-# There is one table since 2026-09-09 -- `config/stages.py` -- and both
-# engines import that object, so drift is not a state that exists.
 
 @pytest.mark.parametrize("strategy,expected", [
     ("publishable", [True, True, False]),

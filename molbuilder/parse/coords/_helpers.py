@@ -18,8 +18,7 @@ def build_structure_result(structure: Structure,
                            source_format: str = "unknown"
                            ) -> StructureResult:
     """Wrap a parsed Structure + cell in the typed StructureResult
-    envelope.  Source path is resolved to an absolute path for
-    cross-phase envelope consistency.
+    envelope.  Source path is resolved to an absolute path.
     """
     return StructureResult(
         **ParseResult.envelope(parser_name, source),

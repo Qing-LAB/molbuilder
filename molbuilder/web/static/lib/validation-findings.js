@@ -5,29 +5,14 @@
  * validating endpoint returns and puts every entry on screen.
  *
  * USED BY: the structure-optimization tab (SIESTA + PySCF panels), the
- * transport tab, the spectra tab/inspector, MolView's notices, and the Modify
- * tab's slab panel (the lattice measurement's notes).  Nothing else renders a
- * finding.
+ * transport tab, the spectra tab/inspector, the Task setup tab, MolView's
+ * notices, and the Modify tab's slab panel (the lattice measurement's notes).
+ * Nothing else renders a finding.
  *
- * WHY THIS EXISTS (contract R2, docs/science/validation.md § 4.1).  There were
- * FOUR implementations of this one job — one per tab plus the per-card panels
- * form-schema.js creates — and they had drifted into three different row
- * vocabularies, two empty-state behaviours, two bucket types and two orderings.
- * The drift was not cosmetic; each copy had lost findings:
+ * WHY THIS EXISTS (contract R2, docs/science/validation.md § 4.1): one
+ * renderer, so no surface drops, re-orders or re-styles a finding.
  *
- *   * ALL THREE dropped an issue whose ``workflow_group`` named a card the form
- *     schema had not rendered: they iterated the card PANELS and wrote only
- *     buckets that matched one, so a finding tagged with an unrendered role
- *     appeared nowhere at all.
- *   * spectra additionally dropped any issue whose severity was not exactly
- *     "error" / "warn" / "info" from its residual list, and re-ordered the rest.
- *   * transport returned early when the residual markup was missing, which also
- *     skipped clearing the per-card panels, so stale findings survived a
- *     re-Generate; its buckets were a bare object, so a group literally named
- *     "constructor" threw.
- *   * spectra had no null guard on its panel and threw AFTER clearing cards.
- *
- * So the contract's rules are the module's behaviour, with no knob to opt out:
+ * The contract's rules are the module's behaviour, with no knob to opt out:
  *
  *   R3 nothing is dropped.  An unroutable finding (no group, or a group with no
  *      rendered card) goes to the residual panel.  ``render`` returns the
@@ -53,11 +38,11 @@
  *   // summary = {total, residual, byGroup: {<role>: n},
  *   //            byField: {<where>: n}, counts: {error, warn, info}}
  *
- * PLACEMENT, most specific first (2026-08-15): beside the CONTROL when
+ * PLACEMENT, most specific first: beside the CONTROL when
  * ``fieldIds`` names it and the form rendered it; else on its CARD; else the
  * residual panel.  Each step is strictly less specific than the last, so a
  * finding never sits further from its field than it has to.  Omit ``fieldIds``
- * and the behaviour is exactly what it was — card, then residual.
+ * and it is card, then residual.
  *
  *   molbuilder.validationFindings.clear({panel, formScope});
  *
@@ -65,7 +50,7 @@
  * mounts inside a subtree and resolves its own ids against that root, so this
  * module must never reach for ``document`` itself.
  */
-/* TWO DELIVERY FORMS, ONE IMPLEMENTATION (2026-09-11).
+/* TWO DELIVERY FORMS, ONE IMPLEMENTATION.
  *
  * This module is imported two ways, because its consumers are two kinds of
  * code and neither should have to become the other to reuse it:
@@ -77,12 +62,13 @@
  *     global" and mounting a viewer must publish nothing.
  *   * `molbuilder.validationFindings` -- the namespace, for the classic
  *     scripts that cannot `import` at all (`lib/spectra/core.js`,
- *     `structure-optimization/viewer.js`).  All three read it at CALL time
+ *     `lib/transport/core.js`, `structure-optimization/viewer.js`).  All
+ *     three read it at CALL time
  *     inside a handler, so the module being deferred costs them nothing.
  *
  * THE NAMESPACE IS PUBLISHED BY A SECOND FILE, `validation-findings-global.js`,
  * and not by this one.  A module that registers itself on `window` makes every
- * importer publish, which is the § 4 breach MolView's own mount test caught:
+ * importer publish, which breaches § 4:
  * importing a renderer must not add a name to the app's namespace.  So the
  * registration is an entry point of its own, and a page that wants the
  * namespace loads that instead.
@@ -91,9 +77,8 @@
  * scope, and the two exports below are the very functions the namespace hands
  * out -- one implementation, no chance of the forms drifting.
  *
- * The argument is `globalThis` rather than the old `this`: at the top level of
- * an ES module `this` is `undefined`, so the previous fallback threw the moment
- * this file was imported rather than script-tagged.  `root` is still read, for
+ * The argument is `globalThis`, not `this`: at the top level of an ES module
+ * `this` is `undefined`.  `root` is read for
  * the `document` a caller's panel cannot supply. */
 const _module = (function (root) {
     "use strict";
@@ -141,20 +126,19 @@ const _module = (function (root) {
         while (el.firstChild) el.removeChild(el.firstChild);
     }
 
-    /* The control a finding is ABOUT, when we can name it (2026-08-15).
+    /* The control a finding is ABOUT, when we can name it.
      *
      * A card is the right neighbourhood and the wrong address.  "Effective
      * core potential is ignored without ECP atoms" sitting in a list at the
      * bottom of a card with twenty controls makes the reader hunt for the one
      * it means -- and a finding about a field whose card is unknown falls all
-     * the way to the residual panel, which is how the ECP warning ended up
-     * nowhere near the ECP box.
+     * the way to the residual panel.
      *
      * ``fieldIds`` maps a config field NAME to the DOM id the form gave it,
      * and the caller builds it from THE SAME SCHEMA IT RENDERED FROM.  That
      * matters: deriving the id here by rewriting ``config.mesh_cutoff`` into
      * ``p-mesh-cutoff`` would be a second implementation of a rule the schema
-     * already answers, and it would have been wrong for every field whose id
+     * already answers, and it would be wrong for every field whose id
      * is not its dashed name.
      *
      * Returns the ``.schema-field`` wrapper, not the input: a finding belongs
@@ -189,8 +173,8 @@ const _module = (function (root) {
     function clear(opts) {
         opts = opts || {};
         var panels = _cardPanels(opts.formScope);
-        // Clear the CARDS FIRST and unconditionally: transport's copy returned
-        // early on missing residual markup and left stale card findings up.
+        // Clear the CARDS FIRST and unconditionally, so a missing residual
+        // panel never leaves stale card findings up.
         Object.keys(panels).forEach(function (role) {
             _emptyPanel(panels[role]);
             panels[role].hidden = true;
@@ -244,9 +228,8 @@ const _module = (function (root) {
             return summary;
         }
 
-        // ONE pass over the FINDINGS (not over the panels): that inversion is
-        // the bug fix -- iterating panels is what silently dropped a finding
-        // whose group had no rendered card.
+        // ONE pass over the FINDINGS (not over the panels): iterating panels
+        // would silently drop a finding whose group had no rendered card.
         list.forEach(function (issue) {
             summary.counts[_severityOf(issue)] += 1;
             var group = issue && issue.workflow_group;
@@ -283,7 +266,7 @@ const _module = (function (root) {
                 panel.hidden = false;
             } else if (opts.emptyText) {
                 // Every finding landed on a card: say so rather than leaving a
-                // blank region (the behaviour the spectra panel wanted).
+                // blank region.
                 var note = doc.createElement("li");
                 note.className = "issues-empty";
                 note.textContent = opts.emptyText;

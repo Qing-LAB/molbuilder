@@ -2,12 +2,10 @@
 
 Pins the public API of ``molbuilder/web/static/modify/structure/
 page.js`` — the gate every Sources panel routes Load / Generate
-calls through.  The orchestrator's one load-bearing job is the
-unsaved-modifications check:
+calls through.  The orchestrator's load-bearing job is the load gate:
 
-  * empty canvas → set directly
-  * clean canvas → set directly
-  * dirty canvas → ask via warning-modal; set only on Discard
+  * empty canvas → install directly
+  * something open → the incoming structure is appended to it, no modal
 
 These tests use a fake canvas-state + warning-modal API so the
 state machine can be exercised without the real DOM / sessionStorage
@@ -252,11 +250,8 @@ class TestLoadGateNonEmptyCanvas:
     results into the molview structure instead of clear the existing one"*
     (user, 2026-09-07).
 
-    THE THREE TESTS THAT STOOD HERE ARE GONE, and they are gone because their
-    subject is: a clean canvas overwritten silently, a dirty one overwritten
-    after a confirm, and a cancel leaving it alone.  Nothing is discarded now,
-    so there is nothing to confirm and no cancel to make -- the modal is not
-    consulted in either case below.  Replacing rather than adding is a separate
+    Nothing is discarded, so there is nothing to confirm and no cancel to
+    make -- the modal is not consulted in either case below.  Replacing rather than adding is a separate
     gesture: Clear structure, then load.
     """
 
@@ -292,7 +287,7 @@ class TestLoadGateNonEmptyCanvas:
             f"the two structures did not both survive: {out['elements']}")
 
     def test_a_dirty_canvas_is_appended_to_without_asking(self):
-        """Unsaved work is not a reason to ask any more: an append does not
+        """Unsaved work is not a reason to ask: an append does not
         overwrite it.  It also cannot be lost -- every edit records a timeline
         point (§ 11.2, 2026-09-07), so there is nothing sitting off the
         sequence for a dialog to protect.
@@ -328,7 +323,7 @@ class TestLoadGateNonEmptyCanvas:
 class TestModifierHelpers:
 
     def test_the_edit_raises_the_badge_not_the_page(self):
-        """`markDirtyAfterModification` no longer touches the viewer.
+        """`markDirtyAfterModification` does not touch the viewer.
 
         "There is unsaved work here" is the viewer's own answer, raised inside
         its gate after a change lands (molview.md § 11.2). A panel setting it
@@ -355,7 +350,7 @@ class TestModifierHelpers:
         """The page chose the destination, so the page remembers it.
 
         The viewer tracks contents, not files (molview.md § 6.7): it was never
-        told where anything was written, and asking it produced `undefined`.
+        told where anything was written.
         """
         out = _run_node('''
             const canvas = _mkFakeCanvas({ empty: false, dirty: true });
@@ -491,8 +486,8 @@ class TestUnboundErrors:
     def test_the_helpers_that_need_a_viewer_refuse_without_one(self):
         """Only the two that ASK the viewer something.
 
-        `markDirtyAfterModification` and `markSavedTo` used to be here as well.
-        Neither touches the viewer any more — the first says something the
+        `markDirtyAfterModification` and `markSavedTo` do not touch the
+        viewer — the first says something the
         viewer already knows, the second records a fact the page owns — so
         neither has anything to refuse.
         """

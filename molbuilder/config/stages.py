@@ -1,11 +1,7 @@
 """The stage vocabulary both engines share (L1, no engine deps).
 
-`SIESTA_STAGE_STRATEGY_PRESETS` and `STAGE_STRATEGY_PRESETS` were separate
-tables with equal values, kept in step by a pair of drift-guard tests that
-asserted one constant equal to the other in both directions.  A strategy is
-not an engine's property -- it says WHICH TIERS RUN, which is the same
-question for SIESTA and PySCF -- so it has one home now and the guards have
-nothing left to compare.
+A strategy is not an engine's property -- it says WHICH TIERS RUN, which is
+the same question for SIESTA and PySCF -- so it has one home.
 """
 from __future__ import annotations
 

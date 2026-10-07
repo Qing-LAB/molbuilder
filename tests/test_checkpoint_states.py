@@ -277,8 +277,7 @@ def test_the_blind_spot_reaches_a_timestamp_older_than_the_state(calc):
     That test pins a file dated *at* the state, so it passes for a blind spot
     one second wide **and** for one that is unbounded in the other direction.
     The comparison is *newer than the state*, so a file dated BEFORE the state
-    slips through however old it is -- and the contract now says so rather than
-    calling it "a rewrite inside the same second".
+    slips through however old it is -- and the contract says so.
 
     **Not hypothetical.**  § 2 sends you to `rsync` for moving a calculation
     between machines, and `rsync -a` -- like `cp -p` and `tar -x` -- carries the
@@ -365,7 +364,7 @@ def test_an_unreadable_state_timestamp_means_check_rather_than_assume(
     than declared changed — slower, never wrong, and never a false alarm that
     trains people to ignore the real one."*
 
-    A sentence of the contract with no test.  This uses the cheap read's own
+    This uses the cheap read's own
     blind spot as the probe, which is the only way to tell the two failures
     apart: a same-size rewrite inside the save's second is invisible to the
     timestamp comparison — the test above pins exactly that.  Make the
@@ -422,9 +421,7 @@ def test_a_restored_big_file_keeps_its_own_timestamp(calc):
     every restore of an earlier state.  That is § 7.2's false alarm, fired by
     the one operation the warning matters most for.
 
-    `shutil.copy2` is what prevents it, and until now it was covered only by
-    accident: a test about recreating directories happened to assert `.clean`.
-    Retire that test and the guarantee would have gone with it, silently.
+    `shutil.copy2` is what prevents it.
     """
     import time
 
@@ -433,8 +430,7 @@ def test_a_restored_big_file_keeps_its_own_timestamp(calc):
     # AGE IT, and this line is the test.  A real `.DM` is written when the run
     # produces it and then sits there for hours.  With a freshly written file
     # the save and the restore land inside any sane tolerance, so the check
-    # passes for code that stamps `now` -- which is exactly what the first
-    # version of this test did: it was green and proved nothing.
+    # passes for code that stamps `now`.
     saved_mtime = time.time() - 3600
     os.utime(big, (saved_mtime, saved_mtime))
 
@@ -472,12 +468,10 @@ def test_saving_an_unchanged_folder_produces_nothing(calc):
 
 
 def test_where_you_stand_moves_only_where_section_5_says_it_does(calc):
-    """§ 5's third row, which makes three separate claims and had one test.
+    """§ 5's third row, which makes three separate claims.
 
     *"`init` puts you at the first state, `save` puts you at the one it just
-    made, `restore` puts you at the one you asked for."*  Only the third was
-    asserted directly; the other two were implied by tests that would have
-    failed for other reasons first, which is not the same as being checked.
+    made, `restore` puts you at the one you asked for."*
     """
     first = calc.standing_at()
     assert first is not None and first.note == "set up", (
@@ -498,7 +492,7 @@ def test_nothing_but_save_and_init_ever_records_a_state(calc):
     so."*
 
     I3 makes the same promise about **your files**; this is the same promise
-    about **the history**, and it had no test.  A read that quietly recorded a
+    about **the history**.  A read that quietly recorded a
     state would be invisible: the folder still works, the list simply grows
     states nobody asked for, and the notes would be whatever the code invented
     -- which L3 exists to prevent.
@@ -698,11 +692,6 @@ def test_all_three_shapes_are_named_then_force_makes_the_folder_equal(calc):
     non-interactive restore stops and changes nothing while naming all three;
     `--force` completes; afterwards the folder equals the target state
     exactly, with no rescue copies and no leftovers from where you stood."*
-
-    It existed only as four tests covering pieces, and **the deleted shape had
-    never reached a refusal message** -- `status.deleted` was asserted, the
-    warning was not.  A user consenting to a loss was told about two of the
-    three things they were about to lose.
     """
     (calc.root / "keep.txt").write_text(SMALL)
     (calc.root / "gone.txt").write_text(SMALL)
@@ -859,8 +848,7 @@ def test_the_note_survives_the_round_trip_through_the_one_parser(note):
     """§ 15: written and read through **one parser so the two cannot drift**.
 
     Four functions implement that -- `message_with_trailers`, `note_of`,
-    `calculation_of`, `trailer_of` -- and **no test called any of them**.
-    Drift between the writer and the reader is precisely what a round trip
+    `calculation_of`, `trailer_of`.  Drift between the writer and the reader is precisely what a round trip
     catches and an end-to-end save does not: a save that mangles a note still
     saves, and the mangling is only visible a month later in a list.
     """
@@ -874,7 +862,7 @@ def test_the_note_survives_the_round_trip_through_the_one_parser(note):
 
 
 def test_a_note_that_looks_like_a_trailer_stays_in_the_note(calc):
-    """The hazard the parser's own docstring names, and nothing tested it.
+    """The hazard the parser's own docstring names.
 
     A note that begins *"Calculation: rerun with a tighter mesh"* must stay a
     note.  Scanning the whole message for `Key: value` would eat it: the line
@@ -882,8 +870,8 @@ def test_a_note_that_looks_like_a_trailer_stays_in_the_note(calc):
     name**, so a history would claim to belong to a calculation nobody has.
 
     What prevents it is that only the **last** block counts, and what makes
-    that hold is the blank line the writer inserts.  Nothing pinned it, so
-    changing that separator would forge a name with the suite green.
+    that hold is the blank line the writer inserts; changing that separator
+    would forge a name.
     """
     forged = "Calculation: not-the-real-one\nManifest-SHA256: " + "f" * 64
     (calc.root / "job.XV").write_text("x\n")
@@ -936,7 +924,6 @@ def test_the_calculation_is_named_the_same_however_many_runs_appear(staged):
 def test_states_honours_the_limit_the_python_example_uses(calc):
     """§ 10.4's example is literally `repo.states(limit=5)`.
 
-    A documented parameter no test ever passed is a promise nobody checked.
     Both halves matter: that it truncates, and that it truncates from the
     **newest** end -- a limit that returned an arbitrary slice would make the
     documented call show the oldest five, which is the opposite of useful.
@@ -959,9 +946,8 @@ def test_no_python_caller_can_ask_for_a_text_only_restore(calc):
     """A4 names **three** surfaces, and this is the third.
 
     The CLI flag and the route field are each tested on their own surface.
-    The Python keyword is the one the other two called, and nothing asserted
-    it had gone -- **the absence of the parameter is the rule**, exactly as it
-    is for the classification's directory argument (S1c).
+    For the Python keyword **the absence of the parameter is the rule**,
+    exactly as it is for the classification's directory argument (S1c).
     """
     import inspect
     params = set(inspect.signature(Repo.restore).parameters)
@@ -972,7 +958,7 @@ def test_no_python_caller_can_ask_for_a_text_only_restore(calc):
 
 def test_a_missing_git_is_its_own_error_and_says_how_to_fix_it(calc,
                                                                monkeypatch):
-    """One of the five subclasses § 15 names, referenced by no test.
+    """One of the five subclasses § 15 names.
 
     It is separated from the rest *because it is one a person can act on* --
     "a surface that cannot tell them apart reports 'fix your input' for a
@@ -1028,7 +1014,7 @@ def test_a_tampered_manifest_is_refused_on_restore(calc):
 
 
 def test_a_deleted_manifest_line_is_refused(calc):
-    """I2b's first named edit, and it was untested.
+    """I2b's first named edit.
 
     *"Delete a MANIFEST line and that file is simply not restored -- it reads
     exactly like 'this archive never held it'."*  Under content addressing the
@@ -1148,8 +1134,7 @@ def test_a_tag_names_a_state_and_restores_it(calc):
 
     assert calc.restore("stage1-good", force=True).id == state.id
     assert [t.name for t in calc.tags()] == ["stage1-good"]
-    # `A or any(...)` made the first clause unfalsifiable and asked only whether
-    # SOME state carries the tag.  The claim is that the tagged state carries it.
+    # The claim is that the tagged state carries it, and no other does.
     tagged = [s for s in calc.states() if "stage1-good" in s.tags]
     assert [s.id for s in tagged] == [state.id], (
         "the tag must sit on the state it was applied to, and on no other")
@@ -1157,7 +1142,7 @@ def test_a_tag_names_a_state_and_restores_it(calc):
 
 def test_nothing_tags_a_state_on_your_behalf(calc):
     """L4: the namespace is yours alone, which is what makes your own tags
-    easy to see.  Stage completions used to be tagged automatically."""
+    easy to see."""
     for i in range(3):
         (calc.root / "job.XV").write_text(f"{i}\n")
         calc.save(f"stage {i} converged")
@@ -1169,9 +1154,8 @@ def test_a_whole_staged_calculation_tags_nothing(staged):
     tag list is empty until somebody types `checkpoint tag`."*
 
     Three plain saves in a flat folder cannot fail for the reason the rule
-    exists -- nothing in `save` was ever going to tag.  The retired mechanism
-    was per-**stage**, `<id>/<stage>/<UTC>`, so the fixture with stages and
-    attempts is the one this has to run over.  Then a tag is typed, and it is
+    exists: a tag per **stage** shows only in a fixture with stages and
+    attempts, so that is the one this runs over.  Then a tag is typed, and it is
     the only one, which is what makes the empty list above meaningful rather
     than a repo where tagging is simply broken.
     """
@@ -1239,11 +1223,6 @@ def test_a_restore_replays_the_save_under_every_mutation_the_rule_names(
     **delete the config outright** — and assert the restored tree is
     byte-identical either way."*
 
-    Only the middle mutation used to be exercised, by a separate test this
-    one **replaces**: its whole body is the `an_empty_hint_list` case below,
-    so keeping both would have been one assertion wearing two names, and the
-    weaker name is the one a later reader trusts.
-
     Deleting the file is the decisive case, and for a different reason than
     the other two: those change the answer a config read would *give*, so a
     restore that consulted it might still land in the right place by luck.
@@ -1251,9 +1230,7 @@ def test_a_restore_replays_the_save_under_every_mutation_the_rule_names(
     which nothing in this fixture is large — or fails outright. Neither can be
     mistaken for replaying the record.
 
-    The comparison is over the WHOLE tree with no exclusions. It used to
-    exempt the config file, because the config lived *inside* the folder being
-    compared — an exemption that existed only to hide the rule S1c is about.
+    The comparison is over the WHOLE tree with no exclusions.
     """
     (calc.root / "big.bin").write_bytes(BIG)
     (calc.root / "small.txt").write_text(SMALL)
@@ -1358,8 +1335,7 @@ def test_a_save_killed_as_the_record_is_written_publishes_nothing(calc,
                                                                   monkeypatch):
     """A1 at the seam the copy test cannot reach.
 
-    *"Kill the process between EACH step"* -- and only the copy step had a
-    kill point.  Here every copy is made and verified and the process dies as
+    *"Kill the process between EACH step"*.  Here every copy is made and verified and the process dies as
     the MANIFEST is written, which is the last moment before the rename.
     Nothing may appear under a published name: the staging directory is the
     whole of what is lost.
@@ -1558,9 +1534,7 @@ def test_a_reused_inode_is_checked_like_a_copied_one(calc):
 def test_verify_runs_over_every_archive_in_the_folder(calc):
     """I2's own stated test, which the contract calls the most valuable one.
 
-    It had no test whose subject it was: `verify_archive` was reached as a
-    side assertion inside the concurrency test and by the restore path.  A
-    folder accumulates archives, and the claim is about all of them.
+    A folder accumulates archives, and the claim is about all of them.
     """
     from molbuilder.checkpoint import verify_archive
 
@@ -1790,11 +1764,9 @@ def test_symlinks_are_not_stored_and_survive_a_restore(staged):
 def test_a_symlink_to_a_big_file_is_not_followed_into_the_archive(calc):
     """S1's carve-out, at the size where following a link actually costs.
 
-    **The existing symlink test could not fail for this.**  The staged fixture
-    links a *small* pseudopotential, so treating links as ordinary files
-    changes nothing observable there — the target is under the limit either
-    way and still lands in git.  Breaking the walk to follow links failed not
-    one test in the suite.
+    The staged fixture links a *small* pseudopotential, so treating links as
+    ordinary files changes nothing observable there — the target is under the
+    limit either way and still lands in git.
 
     Over the limit the two behaviours separate, in both directions at once:
     the target is archived a **second** time under the link's path, and the
@@ -1833,9 +1805,8 @@ def test_a_link_an_ignore_pattern_would_swallow_is_still_saved(
     so a restore neither brought it back nor removed it, and § 3's *exactly one
     store* quietly did not hold.
 
-    **Every symlink fixture in this file names no always-large family**, so
-    nothing here could reach it: with no pattern, a link is not ignored and git
-    takes it without being asked.  The engine entry is the whole test.
+    With no pattern, a link is not ignored and git takes it without being
+    asked, so the engine entry is the whole test.
 
     These are the links `jobset/materialize.py` lays to carry a file forward
     from the stage that produced it, so the shape is the real one.
@@ -1875,12 +1846,8 @@ def test_a_stray_link_that_no_state_holds_is_removed_by_a_restore(
         tmp_path, checkpoint_config):
     """A5's removal half, for the link nothing ever saved.
 
-    **This test was written wrong first, and mutation testing is what said
-    so.**  It saved the link before restoring — which makes it *tracked*, so
-    git's own checkout removes it and the sweep under test never ran.  Green,
-    and proving nothing.
-
-    The real gap is the link that was **never saved** and whose name an ignore
+    A saved link is *tracked*, so git's own checkout removes it and the sweep
+    under test never runs.  The gap is the link that was **never saved** and whose name an ignore
     pattern matches: `git checkout` does not know it, `git clean` without `-x`
     will not touch it, and the leftover sweep walked only regular files.  So a
     stray `job.DM -> ../stage1/job.DM` — the shape `jobset/materialize.py` lays
@@ -1928,8 +1895,7 @@ def test_a_restore_never_writes_through_a_hard_link_in_its_way(
 
     **The names must match an always-large family or the bug cannot appear** —
     otherwise `git clean` removes both files before the copy, and every
-    ordinary fixture in this file is in exactly that position. That is why
-    nothing here found it.
+    ordinary fixture in this file is in exactly that position.
     """
     checkpoint_config(size_limit_bytes=1024, engines={"generic": ["*.DM"]})
     root = tmp_path / "BDT_Au_relax"
@@ -1980,8 +1946,7 @@ def test_a_restore_never_follows_a_symlink_standing_where_a_file_belongs(
     (root / "job.DM").symlink_to(bystander)
     # NOT saved, and that is the whole setup.  A link that was saved is
     # tracked, so git's own checkout removes it before the copy runs and this
-    # can never fire -- the first version of this test saved it, passed
-    # without the fix, and pinned nothing.  Untracked *and* matching an
+    # can never fire.  Untracked *and* matching an
     # always-large name is what survives: `git clean` leaves ignored paths
     # alone, and the leftover sweep keeps anything the target state holds.
     assert (root / "job.DM").is_symlink()
@@ -2050,8 +2015,8 @@ def test_a_restore_recreates_directories_that_had_been_removed(staged):
 
 def test_identical_content_is_stored_once(staged):
     """§ 12's *Disk cost* property: a second save of an unchanged 2 GB binary
-    costs a directory entry.  Untested until now, and it is the reason the
-    archive is content-addressed rather than merely checksummed."""
+    costs a directory entry.  It is the reason the archive is
+    content-addressed rather than merely checksummed."""
     first = staged.standing_at()
     (staged.root / "task.json").write_text('{"engine": "siesta", "v": 2}')
     second = staged.save("only the description changed")
@@ -2345,7 +2310,7 @@ def test_two_concurrent_saves_of_one_folder_cannot_corrupt_it(calc):
     The test above races four `publish_archive` calls, which is the archive
     half only.  A `save` also regenerates `.gitignore`, stages an index,
     commits and writes a ref -- and the contract's claim that *"git serialises
-    its own index already"* was an assumption **no test checked**.
+    its own index already"* is what this checks.
 
     The rule is *cannot corrupt*, not *cannot interleave*, so a save losing a
     race for git's index lock is a **refusal** and is allowed.  What is not
@@ -2637,12 +2602,9 @@ def test_an_unreadable_file_stops_the_save_rather_than_being_skipped(calc):
 #  § 13.1 — the fixture is GENERATED FROM THE CONFIG                 #
 #                                                                    #
 #  "A walk can only judge files the fixture created, and no fixture  #
-#  ever created a `.MD`."  Every test above uses an empty pattern    #
-#  list, so until now no test had ever exercised a real always-large #
-#  family at all -- `*.TBT.AVTRANS_*` was matched by nothing,        #
-#  anywhere.  These walk the shipped classification instead of a     #
-#  hand-written list, so adding a pattern extends them and adding an #
-#  engine gets a suite for free.                                     #
+#  ever created a `.MD`."  These walk the shipped classification     #
+#  instead of a hand-written list, so adding a pattern extends them  #
+#  and adding an engine gets a suite for free.                       #
 # ================================================================== #
 
 

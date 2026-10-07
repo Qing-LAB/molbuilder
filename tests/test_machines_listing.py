@@ -100,11 +100,7 @@ class TestTheListingAnswersTheCopyQuestion:
         assert "environments" in r.output      # where to copy it TO
 
     def test_the_local_remedy_does_not_invent_a_name(self, home):
-        """This machine's record is written by a bare `probe --write`.
-
-        The message said ``--name (this machine)`` until 2026-08-22 -- not a
-        name, and not a runnable command.
-        """
+        """This machine's record is written by a bare `probe --write`."""
         r = _run(["machines"])
         assert "--name (this machine)" not in r.output
 
@@ -142,10 +138,7 @@ class TestTheTerminalAndTheBrowserCannotDisagree:
 class TestTheHelpNamesOnlyLiveVerbs:
 
     def test_jobset_help_names_live_verbs(self):
-        """The group help said ``describe`` for days after the verb became
-        ``init`` -- so `--help` recommended a command the CLI rejects.
-
-        Any ``verb`` in the group's help text that looks like one of ours must
+        """Any ``verb`` in the group's help text that looks like one of ours must
         resolve to a registered command.
         """
         import re

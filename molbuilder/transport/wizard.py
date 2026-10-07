@@ -1,4 +1,4 @@
-"""Electrode wizard — derive a bulk-lead ``.fdf`` from a labeled device.
+"""Electrode wizard — derive a bulk-lead model from a labeled device.
 
 What this solves (``engines/transport.md`` § 5, invariants I2/I5/I6/I10)
 =======================================================
@@ -8,7 +8,8 @@ electrode run must share **one geometry + one numerical contract**, yet
 the user assembles the electrode by hand and the couplings silently
 drift (invariant set § 6.7).  The wizard removes the hand-assembly: it
 extracts each lead's *exact* atoms (``L-electrode``, ``R-electrode``) from
-the device and emits the matching bulk-lead ``.fdf``, so the cross-run
+the device, and the electrode rung's deck is rendered from that model
+(`transport/deck.py`), so the cross-run
 invariants hold **by construction**, not by the user remembering to copy
 values.
 
@@ -20,29 +21,15 @@ Guaranteed-by-construction invariants
 * **I6 (lateral cell):** the electrode ``a, b`` are the device's own lattice
   vectors, **copied verbatim** -- character and all, so a hexagonal Au(111)
   surface stays hexagonal and the lead tiles the device cross-section.
-
-  *Read this line, not the one it replaced.* It named
-  ``_compute_cell_from_extents`` as the mechanism, which is the FALLBACK taken
-  only when the device states no cell -- and that fallback pads the atom
-  extents into a rectangle, which `engines/transport.md` § 7 calls wrong
-  rather than approximate ("padding fabricates an orthorhombic box that severs
-  the periodic gold").  The line described the code as it stood before
-  ``4c9ee506`` *"preserve hex Au(111) lattice, don't fabricate vacuum box"* and
-  was never swept.  On 2026-09-22 two separate reviews read it and reached
-  OPPOSITE wrong conclusions -- one that the fallback was the sanctioned path,
-  one that it was harmless dead code.  § 5 is the statement of record: I6 is
-  held by taking ``lat_a``/``lat_b`` verbatim.
 * **I7 (transverse k):** the electrode's ``(kx, ky)`` and offset are the
   device's -- one shared ``kgrid`` and ``kgrid_displacement``, which every
   rung's k-point mesh reads (``kmesh.mesh_for``, `engines/siesta.md` § 6.1).
 * **I1/I3/I4/I5 (XC/MeshCutoff/EnergyShift/basis):** the lead and the
   device render them from the **same catalogue sections**
   (``BASIS_SECTION`` / ``XC_SECTION`` + ``electronic_temperature``), so the
-  electronic contract is identical by construction.  *(This said "the same
-  ``_emit_basis_and_xc(cfg)``" until 2026-09-18; that emitter lost its
-  caller on 2026-09-17 and was deleted -- lifting it beside the catalogue
-  sections would write each keyword twice.)*
-* **I9 (electrode kz dense) / I13 (writes ``.TSHS``):** set here.
+  electronic contract is identical by construction.
+* **I9 (electrode kz dense) / I13 (writes ``.TSHS``):** set by the electrode
+  rung's deck (`transport/deck.py`).
 
 What the USER must still verify (warned, not guaranteed)
 -------------------------------------------------------
@@ -53,14 +40,13 @@ What the USER must still verify (warned, not guaranteed)
   checked rather than averaged) so the
   slab tiles seamlessly under uniform spacing, and **warn** that the user
   must confirm it matches the real bulk lattice (e.g. the layer count is a
-  whole stacking period — a multiple of 3 for FCC(111) ABC).  ``--z-period``
+  whole stacking period — a multiple of 3 for FCC(111) ABC).  ``z_period``
   overrides it.
-* **Thickness vs the principal layer (I11):** reported; the consistency
-  preflight (§ 6.3) gates on it.
+* **Thickness vs the principal layer (I11):** reported here;
+  `transport/compose.py` gates on it.
 
-This is the geometry+contract derivation only; it does NOT run SIESTA.
-The emitted electrode ``.fdf`` is a regular single-point bulk SCF that
-writes ``<label>.TSHS`` for the device's ``TS.Elec.<name>`` reference.
+This is the geometry derivation only; it does NOT run SIESTA or write a
+deck.
 """
 
 from __future__ import annotations
@@ -113,8 +99,7 @@ class ElectrodeModel:
     #: own periodicity honestly.  A slab electrode tiles the plane and is
     #: `periodic, periodic`; a nanowire or chain lead is vacuum-surrounded
     #: and is `isolated, isolated` -- and `as_structure` must not assert the
-    #: first about the second (user, 2026-09-23).  Defaulted so an older
-    #: caller constructing a model by hand still gets the common case.
+    #: first about the second (user, 2026-09-23).
     transverse_kind: Tuple[str, str] = ("periodic", "periodic")
     notes: List[str] = field(default_factory=list)
 
@@ -163,14 +148,9 @@ class ElectrodeModel:
         """
         cell = np.array([self.lat_a, self.lat_b,
                          [0.0, 0.0, float(self.z_period)]], dtype=float)
-        # STATED AT CONSTRUCTION, not assigned afterwards.  A field write
-        # skips `__post_init__`, so the cell was never checked and the
-        # periodicity was never settled: the lead carried `axis_kind`
-        # periodic beside a `pbc` field of (False, False, False), and
-        # `_lattice_block` read that boolean -- so every electrode deck
-        # shipped "the transport axis has
-        # vacuum / is not periodic; the electrode .TSHS cannot attach
-        # seamlessly" about a lead this very function declares periodic.
+        # STATED AT CONSTRUCTION, not assigned afterwards: a field write
+        # skips `__post_init__`, so the cell would go unchecked and the
+        # periodicity unsettled.
         #
         # THE TRANSPORT AXIS IS THE ONE A LEAD CHANGES.  The device is OPEN
         # along transport -- the leads enter as self-energies -- and the lead
@@ -183,19 +163,10 @@ class ElectrodeModel:
         # device of `isolated, isolated, transport` yields a lead of
         # `isolated, isolated, periodic` (user, 2026-09-23).
         #
-        # WHAT IT CHANGES: the deck stops printing "transverse axis a
-        # declared periodic but leaves N A empty" about a lead that is
-        # correctly vacuum-surrounded, the lead's metadata stops asserting a
-        # periodicity the device never claimed -- and, since 2026-09-30, the
-        # lead's k-point mesh reads these kinds (`kmesh.mesh_for`,
+        # The lead's k-point mesh reads these kinds (`kmesh.mesh_for`,
         # `engines/siesta.md` § 6.1): a transverse count above 1 on an
         # isolated axis is warned, and the transport axis is the lead's own,
-        # `electrode_kz`.  *(Until then nothing derived a mesh from
-        # `axis_kind`, so the kinds changed no sampling.)*
-        #
-        # It said `("periodic",) * 3` with the note "A LEAD IS PERIODIC IN
-        # ALL THREE" -- true of the transport axis, and an assertion about
-        # the other two that the structure already knew the answer to.
+        # `electrode_kz`.
         return Structure(
             elements=list(self.elements),
             positions=np.asarray(self.positions, dtype=float).copy(),
@@ -432,9 +403,8 @@ def extract_electrode_model(
     if z_period is not None:
         zper = float(z_period)
         # Still report the detected layer structure for the thickness check --
-        # measured through the SAME derivation, with only the period overridden.
-        # This used to recompute the median inline, which is a second copy of
-        # the rule cell.bulk_z_period owns (science/junction-cell.md § 5).
+        # measured through the SAME derivation, with only the period overridden
+        # (science/junction-cell.md § 5).
         if len(layer_z) >= 2:
             _derived, d_inter, n_layers = _spacing_or_refuse(layer_z, label)
         else:
@@ -463,12 +433,8 @@ def extract_electrode_model(
     # THE DEVICE'S OWN ANSWER, not a guess: the lead tiles the same
     # cross-section, so it is periodic across the wire exactly when the
     # device is (`engines/transport.md` § 5, I6).
-    # `("isolated",) * 3` LIKE ITS ELEVEN NEIGHBOURS.  Unreachable --
-    # `__post_init__` always fills `axis_kind` -- but the commit that wrote
-    # this fallback had just argued, thirty lines away, that every such
-    # fallback in the tree answers `isolated` and that the one which must
-    # not disagree is the one whose waking would relabel an emitted deck.
-    # This was the twelfth, and it disagreed.
+    # `("isolated",) * 3` like every other such fallback in the tree;
+    # unreachable -- `__post_init__` always fills `axis_kind`.
     dev_kind = tuple(getattr(device, "axis_kind", None)
                      or ("isolated",) * 3)
     return ElectrodeModel(
@@ -479,26 +445,6 @@ def extract_electrode_model(
         z_period=zper, z_span=z_span, n_layers=n_layers,
         d_interlayer=d_inter, n_atoms=len(elems), notes=notes)
 
-
-# --------------------------------------------------------------------- #
-#  .fdf emission                                                        #
-# --------------------------------------------------------------------- #
-
-
-# `render_electrode_fdf`, `electrode_wizard` and `format_models` DELETED
-# 2026-09-17 -- the three that existed for `molbuilder transport electrode`,
-# which is deleted with them (see `_cli.py`).
-#
-# `render_electrode_fdf` hand-wrote a bulk-lead `.fdf` in f-strings while
-# `transport/deck.py::_electrode_layout` writes that same deck through the
-# framework for the electrode_L / electrode_R rungs.  Two writers for one
-# deck, and the framework one is the path every real ladder takes.
-#
-# WHAT SURVIVES ABOVE IS THE LIVE HALF: `ElectrodeModel` and
-# `extract_electrode_model` are what `compose.py` uses to derive the leads
-# from the cited junction's labelled atoms at prep.  Extracting the model
-# from a structure and RENDERING a deck from it are different jobs; only the
-# second one had a duplicate.
 
 __all__ = [
     "ElectrodeModel",

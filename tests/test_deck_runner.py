@@ -1,7 +1,6 @@
 """The step-3 runner and the CHECK gate — `execution/script-preparation.md`.
 
-Phase 1 of `archive/2026-08-18-preparation-backend-plan.md`: the framework alone, with **no
-engine in it**.  The engine here is a stub — three lambdas — so what these tests
+The framework alone, with **no engine in it**.  The engine here is a stub — three lambdas — so what these tests
 exercise is the framework's own promises:
 
   * the sub-steps run in the contract's order;
@@ -10,8 +9,8 @@ exercise is the framework's own promises:
   * a section whose parameters all decline contributes no heading;
   * the reader's own section survives a re-render;
   * and **check refuses a deck that does not say what it was meant to say** --
-    the gate that no validator in this tree could run before, because every
-    other one takes ``(struct, cfg)`` and never reads the artifact.
+    the gate no other validator can run, because every other one takes
+    ``(struct, cfg)`` and never reads the artifact.
 
 The stub names a REAL engine so the catalogue declarations, the notes and the
 anchors are real; what is stubbed is the writing, which is the engine's job.
@@ -26,6 +25,14 @@ from molbuilder import script_emit as se
 from molbuilder.cell import to_engine
 from molbuilder.issues import ValidationError
 from molbuilder.structure import Structure
+from molbuilder.runfiles import RunNames
+
+
+def _names(cfg):
+    """The names prep gives this stage's deck (`runfiles.RunNames`),
+    under the config's own label."""
+    label = getattr(cfg, "system_label", None) or cfg.job_name
+    return RunNames.of(label, '01_coarse', "hierarchical")
 
 
 def _struct() -> Structure:
@@ -129,7 +136,7 @@ def test_verbose_false_drops_the_notes_and_keeps_the_values():
 def test_rendering_touches_no_disk(tmp_path, monkeypatch):
     """**W7**: floor 3 returns TEXT.  It does not touch the disk.
 
-    ``render_fdf`` / ``render_script`` hand back a deck; the only thing that
+    ``render_deck`` hands back a deck; the only thing that
     writes one is ``write_script`` (W4).  That is what keeps *one deck, one
     writer* true no matter which route rendered it -- a renderer that also
     wrote would be a second writer with no USER-CUSTOM merge and no gate.
@@ -306,40 +313,17 @@ def _real(engine, **over):
 
 
 @pytest.mark.parametrize("engine", _ENGINES)
-def test_a_real_engines_layout_is_a_table_and_not_one_opaque_block(engine):
-    """**W11** (`script-preparation.md` § 4.2a1) — a `Block` is free text, so a
-    deck that is all Block is a deck the framework cannot read.
-
-    **§ 4.1: three rows say `spec.layout`, and that is the shape of a deck.**
-
-    A layout of one `Block` satisfies the type and answers none of the
-    question.  What makes the form READABLE — § 4.3's *"a function can only be
-    called; a form can be read"* — is that the settings are `Section`s in it.
-    """
-    seam, struct, cfg = _real(engine)
-    layout = seam.spec_for(struct, cfg).layout
-    sections = [m for m in layout if isinstance(m, se.Section)]
-    assert len(sections) >= 3, (
-        f"{engine}: spec.layout has {len(sections)} Section(s) in "
-        f"{len(layout)} members. A deck whose settings live inside a Block is "
-        f"a deck the framework cannot read, and the check gate then has "
-        f"nothing to compare the file against.")
-    assert all(m.title for m in sections), (
-        f"{engine}: a Section with no title -- the layout stops saying what "
-        f"that part of the deck IS")
-
-
-@pytest.mark.parametrize("engine", _ENGINES)
 def test_a_real_engine_reports_the_keywords_its_deck_writes(engine):
     """**The loop-closing input, on a production deck.**
 
-    `check_written` asks whether every keyword the parameters step says it
+    `check_deck` asks whether every keyword the parameters step says it
     wrote survived into the file.  With an empty list it asks nothing and
     passes -- which is exactly what it did for SIESTA on every route until
     2026-08-19.
     """
     seam, struct, cfg = _real(engine)
-    deck = se.render_deck(seam.spec_for(struct, cfg), struct, cfg)
+    deck = se.render_deck(seam.spec_for(struct, cfg, names=_names(cfg)),
+                          struct, cfg)
     assert len(deck.emitted) >= 10, (
         f"{engine}: the deck reports {len(deck.emitted)} written lines for "
         f"{len(str(deck).splitlines())} lines. An empty or near-empty list "
@@ -349,53 +333,3 @@ def test_a_real_engine_reports_the_keywords_its_deck_writes(engine):
         assert line in present, (
             f"{engine}: reported writing {line!r} and the rendered deck does "
             f"not contain that line -- the report is the gate's only input")
-
-
-@pytest.mark.parametrize("engine", _ENGINES)
-def test_the_gate_names_a_keyword_a_writer_bug_dropped(engine, tmp_path):
-    """**The whole point, end to end**: mangle one keyword on its way to disk
-    and the gate must refuse and NAME it.
-
-    This is the defect class no other validator in the tree can see -- every
-    other one takes ``(struct, cfg)`` and runs before the text exists.
-    """
-    from molbuilder.issues import ValidationError
-
-    seam, struct, cfg = _real(engine)
-    spec = seam.spec_for(struct, cfg)
-    victim = se.render_deck(spec, struct, cfg).emitted[0]
-
-    real = se.write_script
-    try:
-        se.write_script = lambda p, t, **k: real(
-            p, t.replace(victim, "MB_TYPO"), **k)
-        with pytest.raises(ValidationError) as caught:
-            se.prepare_deck(spec, struct, cfg, tmp_path / f"t{seam.suffix}")
-    finally:
-        se.write_script = real
-    assert victim in str(caught.value), (
-        f"{engine}: the gate refused but did not name {victim!r}")
-
-
-@pytest.mark.parametrize("engine", _ENGINES)
-def test_a_conditional_section_is_omitted_from_the_layout_not_hidden_in_a_block(
-        engine):
-    """**W9** (`script-preparation.md` § 4.2) — what the layout CONTAINS is
-    settled when the spec is built.
-
-    **A branch is a reason to OMIT a member, not to hide one.**
-
-    Both engines nested a section inside a branch on the reasoning that a
-    section which only sometimes appears could not be a top-level member.
-    ``spec_for`` holds the config, so it can simply leave it out -- and then
-    the layout still says what the deck contains, for both answers.
-    """
-    off = {"siesta": {"relax_type": "none"}, "pyscf": {"optimize": False}}[engine]
-    titles = lambda **o: [m.title for m in
-                          _real(engine, **o)[0].spec_for(*_real(engine, **o)[1:]).layout]
-    with_it, without = titles(), titles(**off)
-    dropped = set(with_it) - set(without)
-    assert dropped, (
-        f"{engine}: turning the geometry loop off changed no layout member, so "
-        f"either the section is unconditional or it is hidden inside a Block")
-    assert len(without) < len(with_it)

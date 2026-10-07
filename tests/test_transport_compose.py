@@ -4,22 +4,6 @@ a directory citable) and § 1 (one citation, five derived stages).
 *(How it was designed: `archive/2026-09-01-transport-design.md`
 § 4.1–4.2, `transport/compose.py`).
 
-Properties under guard, each named for its failure:
-
-* the happy path: citation → relaxed geometry FROM THE .XV (never a
-  file copy), sorted canonical, electrode models extracted from the
-  sorted blocks, provenance with content hashes;
-* strict composition (ruling Q2): a missing attempt names the commands
-  to run first; an unconcluded attempt refuses without deciding;
-* frozen means unmoved (ruling Q3): a drifted electrode atom is
-  refused naming the atom, its label, and the distance;
-* the § 3 lead gates: a thin block (under the principal-layer floor)
-  and a block that does not tile are refused naming the numbers;
-* the .XV must describe the cited source (element mismatch refused);
-* the composed record travels: written whole (sorted pair + the
-  attempt's own deck + sidecars), loaded back without the cited tree,
-  and a re-pointed or incomplete record reads as NO record.
-
 (The prep arm itself — stage decks, wrappers, run dirs — is
 `test_transport_prep.py`'s subject.)
 """
@@ -190,24 +174,11 @@ class TestFormB:
 
 
     def test_a_form_B_pair_with_a_flat_box_is_refused_by_name(self, tmp_path):
-        """Form B asked only *"is the cell None?"*, and that was enough for
-        exactly as long as `Structure.__post_init__` refused a zero-volume
-        lattice outright.
-
-        That refusal was removed 2026-09-21 so a pair holding a bad box could
-        be OPENED and fixed on the Cell page (`structure-periodicity.md`
-        § 8.2, "reading does not judge") — and this guard had been relying on
-        it without saying so.
-
-        WHAT IT COSTS, stated correctly at the second attempt: not a crash.
-        `axis_vacuum` inverts the cell unguarded, but nothing reaches it with
-        a bad box — `render_deck` validates before the first block renders,
-        so the deck path already answers "[cell.no_volume] This box is flat".
-        The first write-up of this claimed the traceback, from probing that
-        function in isolation. What the guard buys is the refusal landing at
-        the CITATION door, naming the cited pair, the way form A has always
-        done — instead of surfacing later as a complaint about a box, several
-        steps from the file that holds it.
+        """A pair holding a bad box OPENS (`structure-periodicity.md` § 8.2,
+        "reading does not judge"), so the refusal lands at the CITATION door,
+        naming the cited pair, the way form A does — instead of surfacing
+        later as a complaint about a box, several steps from the file that
+        holds it.
         """
         import json as _json
         from molbuilder.workingcopy_structure import StructureCodec

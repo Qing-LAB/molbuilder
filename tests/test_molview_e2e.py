@@ -1,15 +1,11 @@
-"""MolView in a real page — `web/molview.md` § 13.2's THIRD level, which this
-module has
-never had.
+"""MolView in a real page — `web/molview.md` § 13.2's THIRD level.
 
     | Level | Runs | Derived from | Shows |
     | End to end | a real page | § 1.1 | what a user does: select, isolate,
       measure, scrub, play, export |
 
-The first two levels run in node against stand-ins, and both were green while
-six features were dead: the renderEngine was proven against a data source the
-model does not resemble, and nothing anywhere put a browser in front of the
-result. A level that cannot see a blank window cannot defend § 1.1.
+The first two levels run in node against stand-ins, and a level that cannot
+see a blank window cannot defend § 1.1.
 
 So every assertion here is about what a USER can see: a control that is on
 screen, a press that changes the picture, a number that reads correctly. Where
@@ -97,8 +93,7 @@ def _canvas_pixels(page):
 
 def test_the_rail_is_buttons_beside_the_window_not_over_it(demo):
     """§ 1.1 / § 8.5: icon buttons down the left edge, "always outside the
-    canvas, never on top of the molecule."  Seven since 2026-08-30 — the
-    measure toggle joined them (§ 11.6).
+    canvas, never on top of the molecule."
 
     Both halves are the design: one press each, visible without opening
     anything, and never covering what the user is looking at.
@@ -154,13 +149,6 @@ def test_showing_the_unit_cell_draws_the_box_the_structure_uses(demo):
     is given is the one "as it will actually be used... so it always has an
     answer", which means EVERY structure has a box to show, not only one that was
     handed an explicit lattice.
-
-    THIS TEST USED TO ASSERT THE OPPOSITE — that the canvas does not change — and
-    it passed, because the box was derived from the raw `cell` field, which is
-    null for every structure nobody gave an explicit lattice to. It then reasoned
-    from its own green run that the demo has no periodic sample. The drawing was
-    wrong and the test agreed with it, so "Show unit cell" did nothing at all and
-    nothing said so.
     """
     before = _canvas_pixels(demo)
     button = demo.locator(".molviewer-rail button").nth(4)
@@ -229,8 +217,8 @@ def test_isolate_hides_the_rest_and_gives_them_back(demo):
     assert _canvas_pixels(demo) != isolated, "the structure did not come back"
 
     # CLEARING WITH ISOLATE ON: the switch stays set, and every atom comes
-    # back -- there is nothing to hide, not nothing to show (changed
-    # 2026-09-07).  Asserted as a person sees it: the picture, and the button.
+    # back -- there is nothing to hide, not nothing to show.  Asserted as a
+    # person sees it: the picture, and the button.
     isolate.click()
     _settle(demo)
     demo.locator(".molviewer-selection-clear-btn").click()
@@ -266,7 +254,7 @@ def test_measuring_reads_one_two_and_three_atoms(demo):
     Benzene's ring carbons are 1.396 Å from the centre and 120° apart, so the
     numbers are checkable rather than merely present.
 
-    Since 2026-08-30 the ruler has its own toggle and its own track, so this
+    The ruler has its own toggle and its own track, so this
     walk starts by pressing the rail's seventh button — and ends by checking on
     screen that three atoms were measured and NONE was selected, which is the
     user's rule stated where only a page can show it.
@@ -624,8 +612,3 @@ def test_two_viewers_on_one_page_collide_over_nothing(demo, molview_server):
     assert first_pages.nth(0).is_visible(), (
         "choosing a page in the second viewer moved the first viewer's"
     )
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 1 test here loaded a structure carrying the record of a
-# relaxation nothing ran (`process/testing.md` § 6).

@@ -317,7 +317,7 @@ conclusion marker — one row each *(B13, user, 2026-10-04)*:
 | column | what it says |
 |---|---|
 | the name | a **role** on the label (`.molwatch.log`, composed by § 2.2a's grammar), or a **fixed name** (`task.json`, `calcdir.json`) |
-| where it sits | the level — the calculation root, a stage, a run, a benchmark, a launch folder — and **its spelling in each shape** where the two differ: an attempt's `run.json` and `.continued-from` are a flat stage's `<base>.run.json` and `<base>.continued-from` |
+| where it sits | the level — the calculation root, a stage, a run, a benchmark, a launch folder — and **its spelling in each shape** where the two differ: an attempt's `run.json` and `.continued-from` are a flat stage's run's `<base>-run<N>.run.json` and `<base>-run<N>.continued-from`, and its progress log a flat run's `<base>-run<N>.molwatch.log` (`attempt="shared"`: the run number in the flat shape's spelling alone — plan W57 decision 2) |
 | what it holds | one line a person reads |
 | who writes it, and when | the verb or the program, and the moment — setup, prep, launch, run, summarize |
 | its door | the one function its readers ask (`architecture.md` § 3.2) |
@@ -374,7 +374,10 @@ The `.molwatch.log` is the progress channel every run has. Prep seeds it — the
 initial geometry as step 0 — before the engine starts, so a viewer pointed at a
 prepped run finds something; PySCF's deck writes each step into it, and SIESTA
 never does, so a SIESTA run's trajectory is its `.out`, which a viewer is
-offered first (`runfiles.result_roles`, `model/parse.md` § 5.5).
+offered first (`runfiles.result_roles`, `model/parse.md` § 5.5). In the flat
+shape each run has its own, `-run<N>`: prep seeds the first run's; a later
+run's is its PySCF deck's to write, as a hierarchical stage's next attempt's
+is.
 
 > **Drift corrected (2026-07-27):** the old catalogue listed engine stdout as
 > a static `my-job.out` / `my-job.log`. The wrapper now writes a **run-indexed**
@@ -487,6 +490,7 @@ is:
 
 | you have… and you want… | call |
 |---|---|
+| a stage, in its calculation's shape → **the name each of its files has**, the run's number where the catalogue numbers it — what every writer of a stage's files, and every script rendered to write them, names them by | `RunNames.of(label, stage, shape, trial=False)` → `.name(role, run)`; `.template(role)` / `.tail(role)` leave the run's number as `{run}` for a rendered script to fill when it runs (`materialize.run_names` builds a job's; `runs.Run.names` a run's) |
 | a label, a role, maybe a stage and an attempt → **the name** | `compose(label, role, stage=None, run=None, **counters)` |
 | a filename → **its segments back** | `parse(filename, label, roles=())` — pass your engine's roles when a role of yours begins with `_` |
 | a label and a stage → **the part every role attaches to** (your tail is not a role: a log suffix, a directory) | `stem(label, stage=None)` |
@@ -531,6 +535,8 @@ find(directory, label, role=, stage=, run=) -> list[(Path, RunFile)]
 find_by_role(directory, role)               -> list[Path]  # dotted roles only
 latest_run(directory, label, stage=, role=) -> int | None
 role_of(name)                               -> str | None  # a known output's
+RunNames.of(label, stage, shape, trial=)    -> RunNames   # one stage's names,
+                                                          # .name / .template
 WRITTEN                                     # the catalogue (§ 2.2)
 patterns()                                  -> tuple[str] # the glob family
 manifest(label, stage, engine, when, calculation, shape) -> list # the names,
@@ -574,15 +580,14 @@ A staged relaxation (coarse → tight) keeps its stages together, and the
 and **there is one convention for it**:
 
 - **The staged ladder** — the ladder from `task.json` (an engine config carries
-  no stage list; that field was **deleted** 2026-08-07 —
-  [`engines/stages.md`](?doc=engines/stages.md) § 1.1), each stage's deck
-  rendered by `prep` step 3 through the engine seam (`jobset/prep.py`, calling
-  `siesta/input.py::render_fdf` per resolved element) and the plan written as
-  `job-set.json` by the same `prep` *(until 2026-08-12 this named
-  `render_siesta_stage_fdfs` and `stages_to_jobset` as the renderers — both
-  deleted in the fold, step 6 u5; the JobSet is derived from the description,
-  never emitted beside it)* — names each stage's input `.fdf`
-  and stdout `.out` from the stem **`<label>_<NN>_<name>`**: an **underscore**
+  no stage list — [`engines/stages.md`](?doc=engines/stages.md) § 1.1), each
+  stage's deck rendered by `prep` step 3 through the engine seam
+  (`jobset/prep.py::_plan_calculation`, calling the engine's `spec_for` —
+  `siesta/input.py::spec_for` for a `.fdf` — and `script_emit.prepare_deck` per
+  resolved element) and the plan written as `job-set.json` by the same `prep`,
+  derived from the description and never emitted beside it — names each
+  stage's input `.fdf` and stdout `.out` from the stem
+  **`<label>_<NN>_<name>`**: an **underscore**
   joining the label, the stage's assigned ordinal and its name (the shipped
   ladder's names are `coarse` / `medium` / `tight`).  The stdout additionally
   carries the wrapper's run counter — `<stem>-run<N>.out` — in EVERY shape
@@ -599,7 +604,7 @@ and **there is one convention for it**:
   ```
 
   > **The deck, the stdout and the monitor log all carry the same token.**
-  > `molwatch_log_basename` takes it, and every reader reads it back through
+  > The stage's names (`runfiles.RunNames`) take it, and every reader reads it back through
   > § 2.2a's `parse`, with the run's label from the run door
   > (`architecture.md` § 3.2) — so a stage's files can always be matched to
   > each other by name (`identity.stage_token` composes the token). **There is
@@ -617,14 +622,15 @@ and **there is one convention for it**:
 
 **One multi-stage execution shape, both engines** *(since 2026-08-18 —
 `stages.md § 1.1a`)*: each stage is a separate process invocation writing its
-own `<label>_<token>.molwatch.log`. *(A second shape existed until then —
+own `<label>_<token>.molwatch.log` — in the flat shape each run of it its own,
+`<label>_<token>-run<N>.molwatch.log` (§ 2.2). *(A second shape existed until then —
 PySCF's in-script ladder, `cfg.stages`, one process writing a single
 unsuffixed log. The field, the loop, and the `cfg.stage` marker are all
 retired.)*
 
 **STAGES ARE SEPARATE RUNS, AND NOTHING JOINS THEM** *(user ruling,
 2026-09-05)*. A ladder is separated **by filename** in a flat directory
-(`<label>_<NN>_<name>.molwatch.log`) or **by directory name** in a
+(`<label>_<NN>_<name>-run<N>.molwatch.log`) or **by directory name** in a
 hierarchical one. The person picks one stage, inspects it, and judges what it
 means — which stage to look at, and what to do next, is theirs to decide.
 There is no combined view, and the viewer offers none: a directory resolves
@@ -927,8 +933,10 @@ extension:
   true`) is re-routed to a third env, **`molbuilder-siesta-gpu`** — the one
   built from source. CPU-ELPA stays on the packaged build, which has ELPA
   ([`engines/siesta.md`](?doc=engines/siesta.md) § 7.2).
-- **`.py` → `molbuilder-pySCF`**, run as `python my-job.py` (OMP-only; the
-  script writes its own `.molwatch.log` / `.pyscf.log`).
+- **`.py` → `molbuilder-pySCF`**, run as `python my-job.py --run N` — the
+  run's number, which the script names its own files with where they carry it
+  (§ 2.2) — OMP-only; the script writes its own `.molwatch.log`, and the
+  wrapper its stdout into `.pyscf.log`.
 
 #### What a wrapper is made of
 
@@ -942,22 +950,22 @@ wrapper contains these and nothing else:
 | **Launch-door gate** | one launch door (`job-system.md` § 5.3): `launch` sets `MB_LAUNCHED_BY` (direct: child env; sbatch: `--export=ALL,MB_LAUNCHED_BY=jobset-launch`, robust to site export policy). Without it a terminal call warns and asks (a **yes is exported**, so the warm-retry re-exec keeps the answer; **EOF refuses** with the verdict line); a non-interactive call refuses with exit 2 and the fix; `-h`/`--help` is **scanned** before the gate (§ 5.5's verb — the gate steps aside; the usage text itself prints later, in the args loop) with no bootstrap run. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the verdict is recorded in the job's `.out` **and the runwrap log** either way *(user 2026-08-12; edges repaired U10)* |
 | **Baked preamble** | the target machine's own lines, verbatim from its record's preamble ([`running-a-job.md` § 5.2](?doc=execution/running-a-job.md)) |
 | **Activation** | the one activation statement, verbatim |
-| **Continuation flags** | the shared `--continue` / `--cold` / `--force` handling |
+| **Continuation flags** | the shared `--run N` (the run's number, as `launch` gives it), `--continue` / `--cold` / `--force` handling |
 | **SIESTA-specific argument parsing** | `-np` / `-omp` and friends |
 | **OpenMP thread sizing** | PySCF only. Resolves the thread count — `-omp` flag, else `OMP_NUM_THREADS`, else the scheduler's allocation, else the stated value baked at prep (an unstated one is refused at prep; the node's physical cores stood in until 2026-10-02 — `running-a-job.md` § 3.2) — and **exports** it, so the wrapper and the script cannot disagree. Added 2026-08-13 (P1b) because the wrapper deliberately left the variable unset and the script counted the whole node, so a job holding 8 cores of a 128-core node started 128 threads and time-sliced them onto its 8. PySCF is OpenMP-only, so `-np` is accepted, reported and ignored — `launch` passes it to every run script |
-| **Run index resolution** | picks `-runN` so a re-run never overwrites |
+| **Run index resolution** | the run's number, as `launch` gave it — `--run N` — refused without one, naming the launch command; it counted the `-runN` files beside it until 2026-10-06 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1, plan W57 decision 6) |
 | **Cold restart: SAY WHAT WOULD BE LOST, THEN STOP** | what `--cold` does — NAMES everything the id names, minus what molbuilder wrote (§ 4.1, U17), and refuses; `--force` proceeds and the engine overwrites them. It moved them into an aside directory until 2026-08-18; keeping a state is `molbuilder checkpoint save` and it is never automatic |
 | **Runtime status banner** | prints what it found — warm files, ranks |
 | **Probe SIESTA build at runtime** | reads the build's own capabilities |
 | **Record resolved launch command + placement** | writes down what it is about to do |
 | **What the engine will read** | *(SIESTA decks only)* echoes the deck into the log with comments and blanks stripped — exactly the lines libfdf parses — followed by the catalogue items the deck does **not** carry, each with the default that therefore applies. Read at launch rather than baked at generation, so a deck edited after `prep` records what the engine will really see. It is the `effective-parameters` fence, shared with the block PySCF's script prints for itself, so one reader serves either engine. Activating and execing is still all the wrapper does: this writes down what it is about to hand over, and decides nothing |
 | **SCF per-iteration timing instrument** | the benchmark sampler |
-| **Thread / BLAS pinning** | the OMP/MKL/OpenBLAS thread exports (and, hybrid GPU builds, the OMP bind vars) — real compute-node policy, headered and listed since 2026-08-13 (E-6: it rendered headerless, structurally invisible to the guard below) |
+| **Thread / BLAS pinning** | the OMP/MKL/OpenBLAS thread exports (and, hybrid GPU builds, the OMP bind vars) — real compute-node policy, headered and listed since 2026-08-13 (E-6: it rendered headerless) |
 | **GPU load-balance: rank <-> GPU matching** | *(GPU decks only)* maps MPI ranks onto visible GPUs (K ranks per device via MPS) so a 2-GPU node does not stack every rank on device 0 |
 | **MPS daemon** | *(GPU decks only)* starts the per-job Hyper-Q daemon when ranks share a GPU — per-job pipe/log dirs, readiness poll with a no-MPS fallback, torn down by the one EXIT trap (same E-6 repair as the pinning row) |
 | **GPU mode: placement** | *(GPU decks only)* whether NVIDIA's MPS is on the machine, and the NUMA node GPU 0 sits on — probed at prep, `MOLBUILDER_GPU_NUMA` overrides — for the socket wrap below.  It sets no rank or thread count: those are the stated ones (`running-a-job.md` § 3.3).  A policy that worked out its own stood here until 2026-10-02 |
 | **GPU<->CPU socket co-location** | *(GPU decks only)* pins ranks beside the GPU's own NUMA node so host<->device traffic stays on-socket |
-| **Geometry-cap check + warm-retry** | *(`continue_retries` > 0)* bounded re-exec with `--continue` on a geometry-step cap hit — the retry budget the deck records; the cap is asked of `_mb_ending` (below), never grepped |
+| **Geometry-cap check + warm-retry** | *(`continue_retries` > 0)* bounded re-exec with `--continue` and the next run's number, `--run N+1`, on a geometry-step cap hit — in the flat shape after writing that run's launch record (`mb_monitor.pyz retried`, [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) — the retry budget the deck records; the cap is asked of `_mb_ending` (below), never grepped |
 | **PySCF wrapper argument parsing** | *(PySCF wrappers)* the same flag handling for the `.py` route |
 | **Background job monitor** | launches `mb_monitor.pyz` beside the run at `nice 19`, watching the wrapper's own PID — the monitor and the framework readers it reads the run through, one file; the EXIT trap stops it and waits for its closing lines (`run-reports.md` §§ 2.4, 2.6). Opt out with `MB_MONITOR=0` |
 | **Dry-run preview** | the `--dry-run` inspection: resolved command, each value's SOURCE, the sbatch-header cross-check — then exit 0, nothing launched |
@@ -967,16 +975,12 @@ wrapper contains these and nothing else:
 
 *(Amended 2026-08-12, R9: the table claimed exhaustiveness while listing
 only the blocks of a minimal CPU wrapper — the five conditional rows above
-were emitted, headered, and undocumented, and the equality guard rendered
-only the minimal wrapper so it could not see them.  The guard now renders
-a maximal wrapper too.)*
+were emitted, headered, and undocumented.)*
 
 **Adding a block is a contract change, not an implementation detail**, because
 each one is work happening on a compute node — the place this design keeps
 narrow on purpose. Anything that computes, decides or arranges files belongs to
-Python on the host instead. Pinned by
-`tests/test_jobset.py::test_a_wrapper_is_made_of_exactly_these_blocks`, which
-reads this table.
+Python on the host instead.
 
 #### `_mb_ending` — the wrapper asks how a run ended, it does not grep
 
@@ -1012,18 +1016,22 @@ The wrapper is **plain, readable bash**. Two properties are load-bearing:
   module-load / venv scheme ([`running-a-job.md` § 5.2](?doc=execution/running-a-job.md)). (The old illustrative `conda run -n … --no-capture-output`
   example is outdated.)
 - **Outputs are run-indexed and never clobbered.** stdout goes to
-  `my-job-runN.out` (SIESTA) / `my-job-runN.pyscf.log` (PySCF). The first run
-  is `-run0`; **re-running auto-advances** to `max(N)+1` (default since
-  2026-06-26), so running the script again never errors and never overwrites a
-  prior result. `--force` restarts the sequence at `-run0` (clobbering it);
-  `--continue` warm-resumes into the next index (§ 4).
+  `my-job-runN.out` (SIESTA) / `my-job-runN.pyscf.log` (PySCF). The number is
+  `launch`'s: it decides it and hands it to the run script as `--run N`, and
+  the script refuses to start without one
+  ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1). The
+  first run is `-run0`; a flat stage launched again runs as one past its
+  newest launched run, and a warm retry as the next number, `--run N+1`
+  ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5), so no run
+  overwrites a prior run's output. `--continue` and `--force` leave the
+  number alone: `--continue` says this start continues the run before it, and
+  `--force` says yes to `--cold`'s refusal (§ 4).
 
-  > **`--force` is retired under the staged layout** (proposed —
-  > [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.2).
-  > There, each invocation gets its own `run-<n>/` directory, immutable once
-  > written, so there is nothing for a reset to overwrite: a redo is `run-2`.
+  > **In the hierarchy each launch has its own `run-<n>/` directory**,
+  > immutable once its launch has ended
+  > ([`project-layout.md`](?doc=execution/project-layout.md) § 1.5).
   >
-  > **`run-` becomes a reserved directory prefix there**, and its members are
+  > **`run-` is a reserved directory prefix there**, and its members are
   > numbers. Nothing else lives under it.
   >
   > **The attempt directory is created when the stage is *prepared*, in
@@ -1034,8 +1042,6 @@ The wrapper is **plain, readable bash**. Two properties are load-bearing:
   > directory it was handed, which is what
   > [`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a states in
   > general.
-  > A flag whose only purpose is to destroy a previous result has no place once
-  > results cannot collide. A flat run directory keeps today's behaviour.
 
 **Two-layer SLURM.** On a cluster the `.run.sh` is the *inner* launcher. The
 same `prep` step also emits an outer `my-job.sbatch` — the `#SBATCH`
@@ -1134,7 +1140,7 @@ block is emitted by every engine):
 | Block | SIESTA `.fdf` | PySCF `.py` | TranSIESTA `.fdf` | wrapper `.run.sh` |
 |---|:--:|:--:|:--:|:--:|
 | HEADER | — | — | — | — |
-| PROVENANCE | ✅ | ✅ | — | ✅ |
+| PROVENANCE | ✅ | ✅ | ✅ | ✅ |
 | BENCH-MARKS | ✅ | — | — | — |
 | ATOM-METADATA | ✅¹ | ✅¹ | ✅¹ | — |
 | ENGINE-OFFSET | ✅ | ✅ | ✅ | — |
@@ -1183,11 +1189,11 @@ generation time:
   is sniffed when there are none).
 
   **A TranSIESTA run declares `siesta`** — same engine, same `.fdf`
-  contract, different task — but **not from its deck**: § 3.1's table above
-  is right that a TranSIESTA `.fdf` carries no PROVENANCE, because
-  `jobset/prep.py` writes those decks with a bare `write_text` instead of
-  through `prepare_deck`. Its `.run.sh` carries the declaration, and is the
-  only artifact of that run that does.
+  contract, different task — from its deck, as every run does: its rungs
+  render through `spec_for` and `script_emit.render_deck`, which writes
+  PROVENANCE with the engine its spec names
+  (`transport/deck.py::transport_spec`, `DeckSpec(engine="siesta", …)`).
+  Its `.run.sh` carries the declaration too.
 
   This key is why the block exists at all. § 3 opens by saying generated
   input "gets **copied** out of the edit directory into project/run
@@ -1223,7 +1229,7 @@ what limits:
 #   n_atoms             212
 #   n_orbitals_est      2120       # 10 * n_atoms, rough DZP heuristic
 #   gpu_mode            true
-#   mpi_np              4          # the launch BlockSize was derived from
+#   mpi_np              4          # the rank count this deck was rendered for
 #
 #   field BlockSize        anchor=BlockSize        type=pow2  range=[8,256]  default=256
 #   field MaxSCFIterations anchor=MaxSCFIterations type=int   default=1000
@@ -1255,19 +1261,14 @@ a catalogue that says `1000` and `300.0`.)*
 - `type` ∈ `{int, float, str, pow2, enum}` (`pow2` = power of two; `enum` was
   added for `Diag.Algorithm`). `range=[a,b]` and `unit=…` are advisory bounds
   for validating a requested override.
-- **A bound on a derived field is derived too, and `default` is always inside
-  it** *(2026-08-10)*. `BlockSize` is the one field here computed from a
-  **launch** quantity rather than read off the config, so its window is a fact
-  about *this deck's* rank count — **`[1, floor(n_orbitals_est / mpi_np)]`**
-  rounded to powers of two on CPU, the ELPA-CUDA window on GPU. It was a fixed
-  `[16,256]` until this date, which the emitted `default` contradicted routinely
-  rather than exceptionally: **a 20-atom molecule on 16 ranks** has 200
-  estimated orbitals, so the ceiling is `200/16 = 12.5 → 8` — below the floor
-  the block declared legal. A reader could neither validate the block against
-  itself nor trust the advice, and the advice erred **upward** — past the point
-  where ranks start receiving no block at all. The rule now: whatever derives
-  the value derives the bound, so there is one number in the system and not two
-  that can drift.
+- **`BlockSize`'s window is derived from the launch, and `default` is always
+  inside it.** The value is the person's — set by hand or from a benchmark —
+  but its window is a fact about *this deck's* rank count: the largest power of
+  two under **`min(256, floor(n_orbitals_est / mpi_np))`** (on one CPU rank, a
+  size ladder up to 8), from 1 on CPU and from 8 on GPU, widened to contain the value the deck carries
+  (`siesta/input.py` `_block_size_bounds`). **A 20-atom molecule on 16 ranks**
+  has 200 estimated orbitals, so the ceiling is `200/16 = 12.5 → 8`; above it
+  some rank receives no block at all.
 
   **The quantity is `n_orbitals_est`, not `n_atoms`** *(settled 2026-08-11,
   user)*. ScaLAPACK and ELPA distribute the **Hamiltonian**, and its dimension is
@@ -1315,32 +1316,22 @@ a catalogue that says `1000` and `300.0`.)*
   > to watch it fail. A test that only reads the emitted block cannot catch this
   > — both readings produce a well-formed block.
 
-  > **`BlockSize` is *proposed*, not dictated — clarified 2026-08-11 (user).**
-  > The rule above is unchanged and is exactly why it survives: whatever derives
-  > the value derives the bound. What changed is that deriving it is the
-  > **fallback**, not the only path. `BlockSize` is a tunable knob a person may
-  > set and a benchmark may measure
-  > ([`tuning.md § 2.11`](?doc=engines/tuning.md)), so this block's `field` line
-  > may declare either of **two** states: a value the user set or a benchmark
-  > measured, or — when the keyword is deliberately omitted so SIESTA uses its own
-  > automatic — **no `field BlockSize` line at all**. A tool reading this block must
-  > treat an absent field as *"not offered for override"* rather than as an error,
+  > **`BlockSize` has two states.** It is a tunable knob a person may set and a
+  > benchmark may measure ([`tuning.md § 2.11`](?doc=engines/tuning.md) owns the
+  > rule), so this block's `field` line declares either a value the user set or
+  > a benchmark measured, written verbatim, or — when the keyword is omitted so
+  > SIESTA uses its own automatic — **no `field BlockSize` line at all**
+  > (`siesta/input.py::_parallel_facts`). A tool reading this block must treat
+  > an absent field as *"not offered for override"* rather than as an error,
   > which § 3.1's *"every reserved block is optional"* already requires of it.
-  >
-  > *(A third state sat between those two until 2026-08-16 — "a value `prep`
-  > proposed". It was retired on 2026-08-15: `render_fdf` no longer derives a
-  > block size at all, because unset means SIESTA's own automatic
-  > ([`tuning.md § 2.11`](?doc=engines/tuning.md), which owns the rule). What
-  > `prep` still does is **realign** an explicit value to a power of two when the
-  > target is GPU-ELPA, and record that it did — reconciling, not inventing.)*
 
-- **The metadata carries what a derived field was derived FROM.** `mpi_np`
-  joins `n_atoms` and `gpu_mode` for exactly this reason
-  ([`engines/stages.md`](?doc=engines/stages.md) § 5.2 — the block exists so a
-  later change of launch can *re-derive* the coupled lines instead of leaving
-  them stale, and re-derivation needs every input). PROVENANCE has recorded
-  the rank count since the beginning; that block is the record a **human**
-  reads, and this is the one a **tool** parses.
+- **The metadata carries the launch the deck was rendered for.** `mpi_np`
+  joins `n_atoms` and `gpu_mode`, so a deck meeting a different launch is
+  caught: `prep` warns and `launch` refuses when the deck's `mpi_np` differs
+  from the job's (`jobset/agreement.py`), and the way back is the checkpoint
+  saved before that prep and a new prep. PROVENANCE records the rank count too;
+  that block is the record a **human** reads, and this is the one a **tool**
+  parses.
 
 > **BENCH-MARKS and the template are emitted from ONE source, and that is a
 > rule rather than a convenience.** Both declare `type`, `range`, `unit` and
@@ -1516,9 +1507,8 @@ when that arm went — `script-preparation.md` § 3.0)*.
 |---|---|
 | the web Build tab, regenerating | **preserved** — merged twice over, harmlessly |
 | the web Build tab, edit-save | **preserved** — the merge is skipped on purpose, because you are committing your own text and a merge would undo edits *inside* the zone |
-| `jobset prep` (SIESTA / PySCF), re-prepping over an existing deck | **preserved** — `prepare_deck` → `write_script` |
-| `jobset prep` (SIESTA / PySCF), into a directory with no previous deck | **empty** — there is nothing to read back |
-| `jobset prep` **(transport)** | **preserved** — the same `prepare_deck` → `write_script` |
+| `jobset prep` of a stage already prepped | **refused** — a prepped stage is not prepped again; its redo is the state saved before its prep, restored, and a prep anew ([`job-system.md`](?doc=execution/job-system.md) § 5.0) |
+| `jobset prep`, every kind — transport too | **empty** — a stage is prepped once, so there is no previous deck to read back |
 
 > **This table listed `prep` and the CLI as LOSING the text until 2026-09-05,
 > and its first correction was wrong in the other direction.** The original
@@ -1762,9 +1752,11 @@ to ten entries under a comment claiming it matched the others.
 
 **Those three flags are one group, and one field sets them.** A description
 carries `restart` — `clean` or `continue` — and the renderer expands it into
-`DM.UseSaveDM` / `MD.UseSaveCG` / `MD.UseSaveXV` together
-(`run-identity.md § 4` rule 2). They are not individually settable, because the
-two ways they can disagree with each other are both silent: the deck claiming a
+`DM.UseSaveDM` / `MD.UseSaveXV` together, and `MD.UseSaveCG` with them for a
+CG relaxation only: SIESTA reads that one in its CG branch alone
+(`siesta/input.py::_restart_keys`; `run-identity.md § 4` rule 2). They are
+not individually settable, because the two ways they can disagree with each
+other are both silent: the deck claiming a
 resume the engine will not perform, and warm files sitting unread beside a run
 that was told to start clean. The group is declared in code as
 `config/siesta.py::SIESTA_RESTART_GROUP`, and PySCF's counterpart —
@@ -2132,7 +2124,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Template | `<label>.template.toml` | `molbuilder/template@2` | `template.template_with_values`, from the catalogue `molbuilder/data/catalogue.template.toml` ([`template.md`](?doc=engines/template.md) § 4.3) | `schema`, `engines`, `item.<name>` — *(`fingerprint` was a third top-level key until 2026-08-14; retired, `template.md` § 10)* — **every parameter of the calculation, each on a `category` and declaring which `engines` it applies to.** A value is *not* required: an item may state the question and leave the answer to a later floor (the `execution` category does exactly that — `prep` resolves it from `environment.json`). TOML because a person reads and edits it ([`engines/template.md`](?doc=engines/template.md)); the warm-file vocabulary two rows up shares the format for the same reason (§ 4.2a's UI-edit door) |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` — the structure→execution pair (a built/modified structure travelling into a description); the run→calculation use of this pair retired 2026-08-29 with `bundle_writer.py` (§ 5 — citations replaced it) | *(sidecar pair, bare-int `schema_version` from `sidecars/molstruct.SCHEMA_VERSION` — never typed in a doc)* | `workingcopy_structure.StructureCodec`, `sidecars/molstruct.py` | geometry; `regions` (frozen atoms are a label inside it) / `structure_hash` |
 | Checkpoint archive | `.binsnapshots/<digest>/MANIFEST.do_not_edit` | *(3-col tab-separated `<sha256>\t<bytes>\t<key>`)* | `checkpoint.py` | the directory is the sha256 of this file (§ 6.1) |
-| Run launch record | `<attempt>/run.json` — a trial keeps attempts as a stage does (`project-layout.md` § 1.5a), so a launched trial's attempt carries one too; a flat stage's own `<basename>.run.json` beside its deck (`project-layout.md` § 1.6.3); written at process **start** (a running job must read as launched) | `molbuilder/run-launch@1` | `runrecord.py` (`write_launch`, through `persist`; read by `launch_record` — one that does not read is an error naming the file) | every key, every time, its null an answer: `mode`, `command`, `job_id` (null for a run here), `launched_at`, `continued_from` (null: it started from the structure), `placed_on` (the queue — domain, partition, qos — and the wall and memory it was sent with; null for a run here, which no queue placed) *(the last two were left out in those cases until 2026-10-06)* |
+| Run launch record | `<attempt>/run.json` — a trial keeps attempts as a stage does (`project-layout.md` § 1.5a), so a launched trial's attempt carries one too; a flat stage's run's own `<basename>-run<N>.run.json` beside its deck, one per run number, a warm retry's included (`project-layout.md` § 1.6.3; one `<basename>.run.json` per stage until 2026-10-06, refused since, naming `molbuilder jobset migrate --bundle <calc>`); written at process **start** (a running job must read as launched) | `molbuilder/run-launch@1` | `runrecord.py` (`write_launch`, through `persist`, a retry's by `record_retry` beside the job; read by `launch_record` — one that does not read is an error naming the file) | every key, every time, its null an answer: `mode`, `command`, `job_id` (null for a run here), `launched_at`, `continued_from` (null: it started from the structure), `placed_on` (the queue — domain, partition, qos — and the wall and memory it was sent with; null for a run here, which no queue placed), `retry_of` (null for a launch; for a warm retry, the number of the run it retries — its other keys are that run's launch's, the same job, but its own start and `continued_from`, the run it retries) *(`continued_from` and `placed_on` were left out in those cases until 2026-10-06; `retry_of` is written since then, and a record without it was written by a launch)* |
 | Decision ledger | `jobset-decisions.log` — append-only JSONL at the bundle root; every verb records each decision it makes (config provenance, the mode and its source, the queue and its source, each question and its answer, each refusal, what a stage continues from), so a machine's behaviour is explained by reading the file, hours later, without the terminal | *(one JSON object per line, `at`/`verb`/`decision` + facts)* | `jobset/ledger.py` | `at`, `verb`, `decision` |
 | Pipeline log | `<label>_<token>.<engine>.<flat\|hierarchical>.pipeline.log` — beside this prep's `STAGE-PLAN.md` (bundle root for a run, the stage's `bench/` container for a sweep). **Written by every prep, from either door**; it observes the steps and no generated artifact depends on it. What each step RECEIVED, DECIDED and PRODUCED, so *where did this value come from* is answered by reading one file rather than re-running ([`script-preparation.md`](?doc=execution/script-preparation.md) § 4.5) | *(text; `in` / `⊕` / `out` in the first column, banner per step — W14)* | `pipeline_log.py` | `⊕ <name> <value> <- <source>` is the row that carries it |
 | Slot provenance | `slot-provenance.json` at the transport calculation's root — which attempt the composed junction came from, with content hashes; part of the § 4.1 travelling copy (`transport-design.md`). `files` names **every** file the junction was composed from, the one carrying its electrode labels included — on a form-A citation those may live in a `.molstruct.json` beside the deck, which is in none of the other slots and is the file the label rename rewrites | `molbuilder/slot-provenance@1` | `transport/compose.py` | `slot`, `citation`, `form`, `files` (name → sha256), `evidence` |
@@ -2271,7 +2263,7 @@ them; within a layer, one concept has exactly one name.
 | QoS | — *(the target's record)* | `qos` → `-q` | resolved from `domain` |
 | Routing domain | `domain` (`allocation`, the run card) | `domain` (in `jobset.Resources`) | `--domain` → `-p`/`-q` |
 | GPU request | `use_gpu`, `gpu_count` | `gres` → `--gres=gpu:<count>`, and `use_gpu` itself rides `Resources` | a COUNT, stated (`gpu_count`, `--gpus N`) and never defaulted, naming no card (`execution/gpu.md` G5, `scheduler.md` R2a); the ANSWER is carried, not read back out of the deck (2026-08-23, `execution/gpu.md` G7). *(This row named `diag_algorithm` as a second source until 2026-08-14. The solver choice decides no resource and no environment — the packaged SIESTA runs ELPA on CPU, `engines/siesta.md` § 7.2 — so `Diag.ELPA.GPU` is the one keyword read.)* |
-| Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `render_fdf` |
+| Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `siesta/input.py::spec_for` — its MPI section (`siesta/layout.py::mpi_section`, an ELPA solver only), rendered by `script_emit.render_deck` |
 | Non-convergence policy (**PySCF only**) | `on_nonconvergence` | *(no scheduler name)* | the emitted `.py`'s own control flow — PySCF's ladder ran as a loop in one process, so the policy was a branch inside the script (⚠ that loop is retired, [`stages.md § 1.1a`](?doc=engines/stages.md)). SIESTA's stages are separate jobs a person starts, so it has no equivalent; `engines/stages.md § 3` keeps the field out of the shared stage schema for that reason |
 | Warm-retry budget | `continue_retries` (0–5) | `continue_retries` — **not a SLURM flag** | `resolve.py` — rides the element's `Resources`; `prep` bakes it into the wrapper |
 
@@ -2454,11 +2446,14 @@ hierarchy that repeats what the directory says, and the repetition is the point:
 without it every stage directory holds an identically-named deck, and two
 swapped by a bad copy or a resumed `prep` disagree with nothing
 (`run-identity.md § 3.2`). **The trajectory log takes the deck's basename in
-both shapes**, which is why it needs no convention of its own. A file that
-belongs to the calculation rather than to a stage — `task.json`, the template,
-the structure pair, `job-set.json` — carries no stage, and neither does a run's
-own record inside its attempt (`run.json`, `.continued-from`), whose folder
-already names the run.
+both shapes**, which is why it needs no convention of its own — and in the
+flat shape, like every file of one run there, the run's number (§ 2.2). A file
+that belongs to the calculation rather than to a stage — `task.json`, the
+template, the structure pair, `job-set.json` — carries no stage, and neither
+does a run's own record inside its attempt (`run.json`, `.continued-from`),
+whose folder already names the run; a flat run's, with no folder of its own,
+is named on its stage and its number (`<base>-run<N>.run.json`,
+`<base>-run<N>.continued-from`).
 
 **`<NN>_<stage>` is one token, not two fields** — a stage's *artifact token*,
 built by `identity.stage_token` and used verbatim as a path segment in the

@@ -146,13 +146,10 @@ it: a ladder is N decks and that command wrote one, which is why
 > the machine that will run it
 > ([`project-layout.md § 2.1`](?doc=execution/project-layout.md)).
 >
-> **The emitter is untouched.** `render_fdf` and `convert`
-> ([`engines/siesta.md`](?doc=engines/siesta.md) § 2) are the Python API and stay
-> exactly as they are — what is deleted is the *top-level verb* that let a person
-> reach them without a description. `pyscf` survives for now because PySCF's
-> ladder runs inside one emitted script rather than as a job set
-> ([`stages.md § 1`](?doc=engines/stages.md)); it goes the same way when that
-> path is reworked.
+> **The engine describes the deck; `prep` writes it.** `siesta/input.py::spec_for`
+> and `pyscf/input.py::spec_for` return a `script_emit.DeckSpec`, and
+> `jobset prep` renders, writes and checks it through `script_emit.prepare_deck`
+> ([`engines/siesta.md`](?doc=engines/siesta.md) § 2).
 
 **6 sub-groups** *(re-derived 2026-09-17, not decremented — this row said
 seven and named `bench`, deleted 2026-08-17, and `transport`, deleted

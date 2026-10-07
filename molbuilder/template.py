@@ -25,23 +25,6 @@ get one.
 from the default.  TOML has no null, so absence is the only encoding, and it is
 unambiguous.
 
-WHAT CHANGED ON 2026-08-11, and why the old shape could not stay.  This module
-emitted the retired item-block format — ``# === molbuilder item <field> BEGIN
-===`` wrapping a copy of the deck's own lines — and it built that by taking a
-**rendered deck** and lifting payloads out of it with a regex.  Two things were
-wrong with it and both are structural:
-
-  * **the direction was inverted.**  The contract is schema → template → deck.
-    Deriving the template *from* a deck made the deck the source and the
-    catalogue a projection of it, so ``prep`` could not render from the template
-    without already having what it was about to render.
-  * **the payload was a second copy of every value**, which is exactly the
-    self-disagreement § 4.1 rejects.
-
-TOML has no payload key, so nothing needs a deck and the whole lifting
-apparatus — ``_anchor_token``, ``_payload_for``, ``_DECL_RE``, ``_coerce`` —
-is gone rather than ported.
-
 THE WRITER CHECKS ITSELF.  ``tomllib`` reads TOML and does not write it, so the
 emitter here is hand-rolled — and § 4.1 requires that whatever emits a template
 **read its own output back and compare it to what it meant to write**.
@@ -53,9 +36,7 @@ from an assumption into a property checked on every call.
 catalogue.template.toml`` is authored as TOML and holds every parameter both
 engines declare; :func:`template_with_values` narrows it to one engine and fills
 in what a config holds, which is what a surface produces once a person has
-answered.  ``render_template(config)`` — which reflected a Python class into a
-file, making the class the master and the file its printout — was **deleted
-2026-08-14**.  A config class is a translator on the way OUT: template → config
+answered.  A config class is a translator on the way OUT: template → config
 → deck.
 """
 from __future__ import annotations
@@ -77,9 +58,7 @@ from .persist import check_schema
 SCHEMA = "molbuilder/template@2"
 
 #: The suffix of a template's filename; the stem is the ``SystemLabel``.
-#: ``<label>.template.toml`` (`job-contracts.md` § 6.3).  It was
-#: ``<label>.fdf.template`` until 2026-08-11 — an engine-flavoured name for a
-#: file that is not an ``.fdf`` and never was.
+#: ``<label>.template.toml`` (`job-contracts.md` § 6.3).
 SUFFIX = ".template.toml"
 
 #: § 6 — closed. An unknown ``kind`` is refused, never skipped, because a reader
@@ -110,11 +89,8 @@ CATEGORIES = ("system", "method", "accuracy", "convergence",
 #: portable description states the question and never the answer, so a value
 #: on one is refused on read.
 #:
-#: There is no second vocabulary.  A `resolver` NAME key and an
-#: ``ALLOCATION_RESOLVERS`` list of which names counted were deleted
-#: 2026-08-17: nothing ever dispatched on a resolver name, half of them simply
-#: repeated the item's own name, and the flag below already said the same
-#: thing.  Ask ``Item.allocation``, or ``select(t, allocation=True)``.
+#: There is no second vocabulary.  Ask ``Item.allocation``, or
+#: ``select(t, allocation=True)``.
 
 #: § 5 — the validation vocabulary. TOML types the *storage*; this types what a
 #: reader must check, which a parser cannot know: that ``pow2`` is a power of
@@ -129,11 +105,8 @@ TYPES = ("int", "float", "str", "bool", "enum", "pow2",
 #: different axis from :data:`CATEGORIES`, which asks what QUESTION about the
 #: calculation an item answers.
 #:
-#: ``output`` was added 2026-08-15.  The three cards answered *what am I
-#: computing*, *how tight*, and *how much compute* -- and there were always
-#: FOUR questions: eleven items answer *what do I get back*, of which four sat
-#: mis-filed under ``profile`` and seven carried no group at all and rendered
-#: loose beneath the cards.
+#: ``output`` answers *what do I get back*, beside *what am I computing*,
+#: *how tight*, and *how much compute*.
 #:
 #: ``staging`` names a parameter set by the STAGING surface rather than by the
 #: tab that collects the physics (user, 2026-08-15). The item is a real
@@ -147,13 +120,9 @@ TYPES = ("int", "float", "str", "bool", "enum", "pow2",
 #: group is a parameter no surface can place.
 #: ``setup`` is FIRST because its members are the answers a calculation
 #: cannot be built without: what the run is called, and where its
-#: pseudopotentials come from (user, 2026-08-15). They lived in ``profile``,
-#: whose own subtitle promised "identity (label, pseudopotentials, charge)" --
-#: but a card is ordered by `category`, so the label sorted under *procedure*
-#: near the bottom and the pseudopotential directory under *method* in the
-#: middle. The two things a user must decide first were the two hardest to
-#: find. A card is the only fix: re-ordering within one card would have to
-#: break the shared legend order that every other card depends on.
+#: pseudopotentials come from (user, 2026-08-15). A card of their own,
+#: because a card is ordered by `category`, and re-ordering within one card
+#: would break the shared legend order that every other card depends on.
 GROUPS = ("setup", "profile", "stage", "budget", "output", "staging")
 
 
@@ -204,8 +173,8 @@ class Item:
     #: :attr:`anchor`, which is the bare leading keyword the deck writer
     #: matches on (§ 5: *"an anchor is a bare keyword, never a sentence"*).
     #:
-    #: The two are not interchangeable and collapsing them lost information
-    #: twice over on 2026-08-14, when the catalogue kept only the anchor:
+    #: The two are not interchangeable; keeping only the anchor loses
+    #: information:
     #:
     #:   * ``gto.M(basis=...)``, ``(charge=...)``, ``(spin=...)`` and
     #:     ``(symmetry=...)`` all reduce to ``gto.M`` — four controls showing
@@ -213,8 +182,8 @@ class Item:
     #:   * ``mf = mf.density_fit()`` / ``.PCM()`` / ``.add_dispersion(...)``
     #:     all reduce to ``mf``;
     #:   * and a **molbuilder note** — ``(molbuilder: .run.sh ``mpirun -np N``
-    #:     only; not in .fdf)`` — leads with no keyword at all, so eleven
-    #:     items lost their badge entirely. That note is the ONLY way a
+    #:     only; not in .fdf)`` — leads with no keyword at all. That note is
+    #:     the ONLY way a
     #:     reader learns the setting never reaches the deck, which is why
     #:     `web/form-schema.md` § 1a requires it always be present.
     #:
@@ -253,32 +222,22 @@ class Item:
     group:   Optional[str] = None           # workflow_group: profile/stage/budget
 
     # --- what a SURFACE needs (generator.md § 3.1a) -------------------- #
-    # Added 2026-08-11 with the decision that the UI is built FROM the
-    # template rather than merely generated from the same schema.  Without
-    # these three a template cannot name its own fields or group them, and
-    # ``optional`` says unset is a real state while nothing says how to show
-    # it.  They cost nothing -- they are already in the field metadata -- and
-    # adding them later would mean re-emitting every template written before.
+    # The UI is built FROM the template rather than merely generated from the
+    # same schema, so a template names its own fields and what UNSET is
+    # called.
     label:      str = ""                    # "MPI ranks (np)" -- the human name
     null_label: str = ""                    # "(auto)" -- what UNSET is called
 
     # --- § 6.2 / § 6.3 / § 6.4 (schema @2) ---------------------------- #
     #: Which questions this item answers.  FIRST is the panel; the rest make
-    #: it findable (§ 6.2).  Replaced ``section``, which held a free-text
-    #: fieldset name PER ENGINE ("SCF", "Compute & budget"), so two engines
-    #: expressing one idea disagreed on the label and no surface could group
-    #: across them.
+    #: it findable (§ 6.2).
     category: Tuple[str, ...] = ()
     #: Which engines this item applies to.  EMPTY MEANS ALL (§ 6.3).
     engines:  Tuple[str, ...] = ()
-    #: Which CALCULATION KINDS may select this item (spectra-migration plan
-    #: P0, 2026-08-20) -- the exact symmetry of ``engines``: empty means
-    #: every kind (the 80+ pre-existing items, unchanged), and a generated
-    #: per-calculation template carries the key on no item, because the
-    #: selection already happened (the same writer rule that strips
-    #: ``engines``).  Without this, the twelve vibration items leaked into
-    #: every optimization template the day they were added -- measured, not
-    #: assumed.
+    #: Which CALCULATION KINDS may select this item -- the exact symmetry of
+    #: ``engines``: empty means every kind, and a generated per-calculation
+    #: template carries the key on no item, because the selection already
+    #: happened (the same writer rule that strips ``engines``).
     calculations: Tuple[str, ...] = ()
     #: A KIND'S OWN RECOMMENDATION for this parameter, as ``(kind, value)``
     #: pairs (§ 6.3a): what a form built for that kind shows and what
@@ -323,15 +282,6 @@ class Item:
     #: True means the scheduler answers this, not the person -- so a portable
     #: description may state the question and never the answer (§ 2, G1).
     #:
-    #: This one fact used to be spelled SIX ways: this boolean on the config
-    #: field, a `resolver` NAME in the catalogue, an ``ALLOCATION_RESOLVERS``
-    #: list saying which of those names counted, a hand-typed
-    #: ``_EMITTER_FIELDS`` in `resolve.py`, and two more hand-typed lists in
-    #: the Task Setup page.  Half the resolver names repeated the item's own
-    #: name (``omp_threads``, ``block_size``) and half invented a new one
-    #: (``mpi_np`` -> ``rank_count``), so the second vocabulary bought nothing
-    #: and cost a permanent confusion between the two.
-    #:
     #: Ask it directly, or filter for it: ``select(t, allocation=True)``.
     allocation: bool = False
 
@@ -349,10 +299,8 @@ class Item:
     #: runs the job, exactly as it fills an allocation item from what the
     #: scheduler granted.
     #:
-    #: It replaces two hand-maintained Python sets and a predicate that was
-    #: spelled twice in two files with disagreeing formulations
-    #: (`engines/transport.md` § 3.3.3).  Any later kind whose values arrive
-    #: from a cited result inherits the behaviour by declaring it.
+    #: Any later kind whose values arrive from a cited result inherits the
+    #: behaviour by declaring it (`engines/transport.md` § 3.3.3).
     #:
     #: **A list of CALCULATION KINDS**, like `calculations` — not a boolean.
     #: `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`,
@@ -405,8 +353,8 @@ class Item:
     #: k-sampling are decided once and may not be overridden on one rung.
     #: Every `citation` row is shared; Class A is larger -- `species_order`,
     #: `spin_treatment`, `unpaired_electrons` and the pseudopotentials bind
-    #: every rung.  Filtering on `citation` for "shared" offered those as
-    #: per-rung overrides (2026-09-23), and a species order that differs
+    #: every rung.  Filtering on `citation` for "shared" would offer those as
+    #: per-rung overrides, and a species order that differs
     #: between the leads and the device is the disagreement
     #: `model/chemistry.md` § 3a exists to make impossible.
     #:
@@ -445,10 +393,7 @@ class Item:
     #: (`engines/transport.md` § 2a.3). A transmission energy window is the
     #: transmission rung's and nothing else's; a lead's transport-axis
     #: k-density is an electrode's. Without this there is no basis on which to
-    #: route an override to the rung that owns it, and a surface has to guess
-    #: — which is how every transport override came to be written onto the
-    #: `device` rung, so that a value the transmission owned never reached the
-    #: transmission's deck.
+    #: route an override to the rung that owns it, and a surface has to guess.
     #:
     #: THE NAMES ARE ROLES (:data:`KIND_ROLES`, plan § 5w K4): a transport
     #: rung by its name, a vibration's ``relaxation`` or ``force_constants``
@@ -461,13 +406,11 @@ class Item:
     #: whether one rung reads an item is :func:`reads`.
     stages: Tuple[str, ...] = ()
 
-    #: Whether *unset* is a state this item has at all — and since 2026-08-14
-    #: it IS written to the file.  A surface must offer *(auto)* / *(no cap)*,
-    #: and it cannot be inferred from ``null_label``: some optional items carry
-    #: none, and would silently lose the option.  (How many is stated once, in
-    #: ``engines/template.md`` § 5 and ``web/form-schema.md`` § 1.2, where
-    #: ``tests/test_doc_claims.py`` asserts it -- this comment said "16 and 11"
-    #: while the documents said 17 and 13.)
+    #: Whether *unset* is a state this item has at all — and it IS written
+    #: to the file.  A surface must offer *(auto)* / *(no cap)*, and it
+    #: cannot be inferred from ``null_label``: some optional items carry
+    #: none, and would silently lose the option.  (How many is stated once,
+    #: in ``engines/template.md`` § 5 and ``web/form-schema.md`` § 1.2.)
     optional: bool = False
 
     #: ``basic`` or ``advanced`` — a judgement about the PARAMETER, so a
@@ -510,9 +453,7 @@ class Item:
                     where=self.name)
         # § 3's fourth REQUIRED key, enforced here for the same reason as the
         # conditional three above: a producer building Items by hand must get
-        # the same refusal the parser gives.  It was missing until 2026-08-14
-        # (audit § 1.4) -- so the contract, the parser and `Item` disagreed
-        # about how many keys are required, and the object was the lenient one.
+        # the same refusal the parser gives.
         if not self.category:
             _refuse("no 'category' -- § 3 requires one on every item, and "
                     "without it a surface has no panel to put this on "
@@ -523,9 +464,7 @@ class Item:
                 _refuse(f"category {_c!r} is not one of "
                         f"{', '.join(CATEGORIES)}", where=self.name)
         # § 6.1: `read_by` names LAYERS, so it draws from the same closed
-        # vocabulary `kind` does.  Unchecked until 2026-08-14 (audit § 1.3a) --
-        # any string passed, on write and on read, while `engines` beside it is
-        # refused when unknown.
+        # vocabulary `kind` does.
         for _r in self.read_by:
             if _r not in KINDS:
                 _refuse(f"read_by names {_r!r}, which is not a layer -- the "
@@ -577,48 +516,15 @@ class Item:
 class Template:
     """A parsed template: the two top-level keys, and the items in order.
 
-    ``schema`` and ``engines``.  It was **three** until ``fingerprint`` was
-    retired on 2026-08-14 (`engines/template.md` § 10) -- a digest of the shape
-    the file was written against, whose only reader emitted a warning that
-    never blocked anything.
+    ``schema`` and ``engines``.
     """
     #: Every engine this calculation can run on (§ 6.3).  A @1 file yields a
     #: one-element list.
     engines: Tuple[str, ...] = ()
     items: Tuple[Item, ...] = ()
 
-    # ----------------------------------------------------------------- #
-    #  FOUR members were deleted here on 2026-08-17, and they were one   #
-    #  defect wearing four hats: a SECOND WAY TO READ THE FILE.          #
-    #                                                                    #
-    #  `engines/template.md` § 2.2 and § 8.0 say `select` and `one` are  #
-    #  THE read API, "because a second way to read the file is a second  #
-    #  answer to *what does this template say*, and the two will differ  #
-    #  eventually -- usually about the item that does not apply to the   #
-    #  engine being asked about."  This class shipped three more, and    #
-    #  that prediction came true in `jobset/_cli.py`, where a hand-rolled#
-    #  read of `.items` ignored `engines` and reported a GPU PySCF       #
-    #  description as CPU.                                               #
-    #                                                                    #
-    #    * ``get(name)``   -- duplicated ``one()`` minus its engine      #
-    #                        filter and minus Law A (``one`` tells       #
-    #                        *"not for this engine"* apart from *"no     #
-    #                        such item"*; ``get`` returned None for      #
-    #                        both).  ZERO callers.                       #
-    #    * ``values()``    -- ZERO callers, while TWO sites re-wrote its #
-    #                        body inline.  One idea, three copies, and   #
-    #                        the named one unused.                       #
-    #    * ``__iter__``    -- a fourth way to reach the items, bypassing #
-    #                        every filter.  ZERO callers.                #
-    #    * ``engine``      -- the @1 singular, commented "kept for       #
-    #                        callers".  ZERO callers, and it invited     #
-    #                        exactly the single-engine assumption @2     #
-    #                        exists to remove: `engines[0]` is not "the" #
-    #                        engine of a two-engine catalogue.           #
-    #                                                                    #
-    #  Read the items through ``select(t, ...)``; ask for one through    #
-    #  ``one(t, name, engine=...)``.                                     #
-    # ----------------------------------------------------------------- #
+    # Read the items through ``select(t, ...)``; ask for one through
+    # ``one(t, name, engine=...)`` (`engines/template.md` § 2.2, § 8.0).
 
 
 # --------------------------------------------------------------------- #
@@ -651,8 +557,7 @@ def _unwrap_optional(ann) -> Tuple[Any, bool]:
 
     ``X`` may itself be a union: ``Optional[Union[int, str]]`` -- the
     electronic state's count, a whole number or ``free`` -- is optional with
-    ``Union[int, str]`` inside.  This answered "not optional" for any union of
-    two types beside ``None`` until 2026-09-28, the first field to have one.
+    ``Union[int, str]`` inside.
     """
     if typing.get_origin(ann) in _UNION_ORIGINS:
         args = [a for a in typing.get_args(ann) if a is not type(None)]
@@ -708,49 +613,25 @@ def _decl_type(ann, choices) -> Optional[str]:
             return "strlist"
         if args[0] is int:
             return "intlist"
-    # NO ``strmap`` (``str | dict``).  It existed for exactly one field --
-    # PySCF's ``ecp``, where "lanl2dz" meant one ECP for every heavy atom and
-    # {"Au": "lanl2dz"} named them per element.  It modelled the SHAPE PySCF
-    # happens to accept rather than the question a person answers, and the
-    # question turned out to be two: which ECP, and which atoms.  ``ecp`` is
-    # now a plain ``str`` beside an ``ecp_atoms`` ``strlist``, so both halves
-    # are ordinary types, both render as controls a surface can validate, and
-    # the union case has no member left.  Retired with it 2026-08-13.
     return None
 
 
 def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
-    """The § 3 item for one config field, or ``None`` if it has no place here.
-
-    ``None`` means **excluded by § 7's named rows** — a machine fact, or the
-    ladder. Nothing else excludes an item: membership is total (D5).
+    """The § 3 item for one config field.  Membership is total (D5).
 
     Raises ``ValueError`` for an exposed field whose type has no name in the
     grammar: that is a gap in the vocabulary, and the loud version of it is the
     only one that gets fixed.
     """
-    # Membership is § 7's TOTAL rule (U16, 2026-08-12): every parameter
-    # the schema declares is an item, excluded only by the three rows
-    # below.  The form-placement gate that stood here until then was a
-    # fourth, unlisted exclusion, and it
-    # silently kept species_order (identity-sensitive, run-identity
-    # § 6a), write_forces, write_coor_step, write_molwatch_log and
-    # copy_psml out of every template.
-
-    # § 7 lists three things that are NOT items, and the first is "a machine
-    # fact -- ranks, GPUs, queue, partition, wall time".  A field that declares
-    # itself one is excluded HERE, by its own declaration: *"is it part of
-    # the calculation's description"* is not the question of where a surface
-    # shows it.
-    # § 6.4 (schema @2): a machine fact's VALUE is still forbidden, but the
+    # Membership is § 7's TOTAL rule (U16): every parameter the schema
+    # declares is an item.
+    #
+    # § 6.4 (schema @2): a machine fact's VALUE is forbidden, but the
     # ITEM is declared -- valueless, flagged as the scheduler's to answer.
     # A surface must know the question exists in order to ask it, and the
-    # wrapper writer must know to look.  Until @2 this returned None, so the
-    # question was invisible: a UI reading the execution panel had no way to
-    # ask for ranks, threads or memory at all.
+    # wrapper writer must know to look.
     #
-    # The protection is unchanged and lives where it always did: the value
-    # never reaches a config, because ``template_fields`` strips these names
+    # The protection: the value never reaches a config, because ``template_fields`` strips these names
     # on the rebuild path.  Declaring the question is portable; answering it
     # on the wrong machine is not.
     _alloc = bool(f.metadata.get("allocation"))
@@ -764,8 +645,7 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     choices = f.metadata.get("choices")
     # A field may DECLARE its type when the annotation cannot carry the
     # constraint -- § 5's reason for ``type`` existing: "what a parser cannot
-    # know".  No field declares one today; ``block_size`` was the
-    # example and became a plain ``int`` on 2026-08-15.
+    # know".
     declared = f.metadata.get("decl_type")
     if declared is not None:
         if declared not in TYPES:
@@ -829,9 +709,6 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
         kind=kind,
         type=type_,
         # THE CATALOGUE -- `help_for` is the one home for what a user reads.
-        # This read a dataclass's own copy until 2026-09-16, when the two had
-        # drifted apart on 149 of 158 fields; the last class copies went with
-        # `TransportConfig` (2026-10-02).
         help=help_for(f.name),
         default=(f.default if f.default is not dataclasses.MISSING else None),
         anchor=(anchor if kind == "engine" else ""),
@@ -859,18 +736,11 @@ def declarations_for(config_cls) -> List[Item]:
 
     ⚠ **This is the direction § 2.1 retired, and it has NO production caller.**
     A parameter is defined in the catalogue (§ 4.3); a config class is a
-    translator. This function survives for exactly two reasons, and both end:
-
-    * it is how ``data/catalogue.template.toml`` was extracted from the classes
-      on 2026-08-14 — a one-off that will not be repeated;
-    * the tests that compare a class's copies of the catalogue's facts with
-      the catalogue call it -- the two-homes debt of `template.md` § 2.1a,
-      whose production readers of the class copies are the validation pass
-      and finding placement (`web/form-schema.md` § 1a).  Every form has been
-      drawn from the catalogue since 2026-09-24, and the dataclass form
-      builder was deleted on 2026-10-02.
-
-    When the debt is paid, the copies go, and this function goes with them.
+    translator.  The tests that compare a class's copies of the catalogue's
+    facts with the catalogue call it -- the two-homes debt of `template.md`
+    § 2.1a, whose production readers of the class copies are the validation
+    pass and finding placement (`web/form-schema.md` § 1a).  When the debt is
+    paid, the copies go, and this function goes with them.
 
     Declaration order, not alphabetical: the config's field order is the form's
     order and the deck's order, and a template a person reads should not be a
@@ -1052,14 +922,7 @@ def template_filename(label: str) -> str:
 def template_path(base, label: str) -> "_Path":
     """``<base>/<label>.template.toml`` — **the one place this name is formed.**
 
-    The naming rule is `job-contracts.md` § 6.3's, and it was spelled at six
-    call sites in two INCOMPATIBLE ways before this existed (2026-08-17): three
-    derived the name from ``task.json``'s label, and two globbed
-    ``*.template.toml`` and took the first hit.  A folder holding two templates
-    therefore had the web tab and ``prep`` reading DIFFERENT FILES -- and
-    the folder answer's template reader (`_folder_template`) argues, correctly, that
-    the browser must not become "a second reader that disagrees about what a
-    value is".  It shared `prep`'s parser and not `prep`'s path.
+    The naming rule is `job-contracts.md` § 6.3's.
     """
     return _Path(base) / template_filename(label)
 
@@ -1074,9 +937,7 @@ def find_template(base, label: str) -> Optional["_Path"]:
     forms for the writers (`jobset init`, the hand-over, the Transport tab,
     `jobset migrate`).  So two templates, or one under another name, is a
     folder molbuilder did not leave, and it is refused by name rather than
-    read: ``sorted(glob(...))[0]`` answered that confidently and differently
-    from the label-built path, and the two doors stood side by side until
-    2026-10-05 (W38 M1).  *Nothing here* is ``None``, an answer.
+    read (W38 M1).  *Nothing here* is ``None``, an answer.
     """
     # `.template.toml` IS a role `runfiles.WRITTEN` declares -- the answers
     # file, written once at the bundle root -- so the search is the
@@ -1113,11 +974,8 @@ def load_catalogue() -> str:
 def catalogue() -> "Template":
     """**The parsed catalogue** — the one door for it, parsed once.
 
-    ``read_template(load_catalogue())`` was written out at five call sites, each
-    re-parsing the master file, and one of them kept a cache of its own.  The
-    two-step is not a fact anybody should have to remember: `select` and `one`
-    are the one door for an ITEM, and this is the one door for the file they
-    read from.
+    `select` and `one` are the one door for an ITEM, and this is the one door
+    for the file they read from.
 
     Cached because the catalogue ships with the package and does not change
     inside a process.  A caller holding a DIFFERENT catalogue text -- a test
@@ -1150,9 +1008,7 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
     carrying the values *config* holds (§ 4.3).
 
     This is what a surface produces once a person has answered — the questions
-    were already asked by the catalogue, so nothing here invents an item. It
-    replaced ``render_template(config)``, which reflected a Python class into a
-    file and thereby made the class the master (§ 2.1).
+    were already asked by the catalogue, so nothing here invents an item.
 
     **Allocation items stay valueless whatever the config holds** (§ 2, G1, and
     § 6.4): the scheduler answers them, and the answer belongs to the
@@ -1188,25 +1044,15 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             # happened, here.
             engines=(),
             calculations=(),
-            # Valueless for BOTH answerers outside floor 2: the scheduler
-            # (§ 7) and, since 2026-09-15, the citation (§ 6.4's sibling).
-            # Valueless for every answerer outside floor 2: the scheduler
-            # (§ 7), the citation (§ 6.4's sibling, 2026-09-15), and the
-            # stage's ROLE (2026-09-16) -- a role item has no value a
-            # description could legitimately claim to have set, because the
-            # rung decides it.
             # Valueless for the answerers that are not floor 2's: the
-            # scheduler (§ 7) and the stage's ROLE (§ 6.4, 2026-09-16).
+            # scheduler (§ 7) and the stage's ROLE (§ 6.4) -- a role item has
+            # no value a description could legitimately claim to have set,
+            # because the rung decides it.
             #
-            # `citation` is NOT among them, and stopped being on 2026-09-16.
-            # It marked an item the cited run answered AT PREP, written
-            # valueless here -- the SEALED reading.  `engines/transport.md`
-            # § 2a.7 ruled the other way: the cited run **defaults** these
-            # values and the person may change them, everywhere at once.
-            # So the citation is a source of defaults at `init`, and what it
-            # produces is an ordinary template value from then on.  The
-            # marker keeps its name because *which items are harvested from
-            # the cited run* is still exactly what it answers.
+            # `citation` is NOT among them: the cited run **defaults** these
+            # values and the person may change them, everywhere at once
+            # (`engines/transport.md` § 2a.7), so what it produces at `init`
+            # is an ordinary template value.
             # AND the rows the caller says nobody answered (``valueless``,
             # `engines/transport.md` § 3.8.3): a citation that carries no
             # deck answers no basis, and writing the class default there
@@ -1384,14 +1230,6 @@ def read_template(text: str) -> Template:
                 f"{type(table).__name__}")
 
     items = tuple(_item_from(name, body) for name, body in table.items())
-    # § 5: the ``type`` "types what a reader must check, which a parser
-    # cannot know".  Until the U-program follow-up (2026-08-12) NO reader
-    # checked: a hand-edit could put the string "three hundred" into a
-    # float item and it flowed through config_from_template into the
-    # engine config unrefused -- surfacing later, in rendering, with a
-    # message about anything but the edit that caused it.
-    # (value checking moved INTO _item_from at R4 -- raw, pre-shape; a
-    # loop here saw values _shape had already coerced.)
     # § 2 / G1: an allocation-backed item may be DECLARED but never
     # ANSWERED here.  Checked on read, not only on write, because a template
     # is a file a person is invited to edit (§ 4.1) -- and a hand-edited
@@ -1560,8 +1398,7 @@ def _above_from(name: str, body: Mapping, type_: str) -> Tuple[Any, ...]:
     itself.  Its VALUE is not held here: in a
     calculation's template that is a person's answer, and a value past the
     limit is refused where every value is, by the one per-value door
-    (:func:`why_not`) with its one message -- the parser refusing it too
-    gave one fact two messages."""
+    (:func:`why_not`) with its one message."""
     raw = body.get("above")
     if raw is None:
         return ()
@@ -1695,21 +1532,15 @@ def _shape(v: Any, type_: str) -> Any:
     which is the quietest kind of loss — and it is what the writer's own
     round-trip check cannot see, because the check compares the TOML payload
     with itself rather than the config with the config.
-
-    **This is not the deleted ``_coerce``.** That one parsed *strings* back
-    into values because the item-block format stored everything as text. TOML
-    types its own scalars; the only thing left to decide is list versus tuple,
-    and the declared type is what decides it.
     """
     if v is None:
         return None
     if type_ == "pow2":
         # Snap DOWN to the nearest power of two, so a snap can never hand an
         # engine a BIGGER block than was asked for.  No catalogue item is
-        # ``pow2`` since 2026-08-15 -- BENCH-MARKS keeps the constraint, for
-        # its own sweep (`script_emit.benchmark_declarable_types`) -- so this
-        # runs only for a
-        # hand-written template that declares one.
+        # ``pow2`` -- BENCH-MARKS keeps the constraint, for its own sweep
+        # (`script_emit.benchmark_declarable_types`) -- so this runs only for
+        # a hand-written template that declares one.
         n = int(v)
         if n <= 0:
             return 0 if n == 0 else n
@@ -1739,17 +1570,12 @@ def _item_from(name: str, body: Any) -> Item:
     # A key that must be a LIST is refused when it is a bare string, BY NAME.
     #
     # ``tuple("accuracy")`` is ``('a','c','c','u','r','a','c','y')``, so a
-    # hand-written ``category = "accuracy"`` used to reach the vocabulary check
+    # hand-written ``category = "accuracy"`` would reach the vocabulary check
     # one character at a time and refuse with *"category 'a' is not one of
     # system, method, ..."* -- an error that names the wrong problem and sends
-    # the reader looking for a category called `a`.  Both of this contract's
-    # own § 6.3 examples were written that way and were refused by their own
-    # reader (found 2026-08-17 by ``test_every_documented_item_matches_the_catalogue``).
-    #
-    # This is R4's bug one field over.  R4 (2026-08-12) fixed a scalar reaching
-    # a ``strlist`` VALUE; the same explosion on a list-valued KEY was never
-    # swept for.  Refusing here, before any of them is read, is what keeps the
-    # message about the key the author actually typed.
+    # the reader looking for a category called `a`.  Refusing here, before any
+    # of them is read, is what keeps the message about the key the author
+    # actually typed.
     for _k in ("category", "engines", "read_by", "expands", "choices"):
         if isinstance(body.get(_k), str):
             _refuse(f"{_k} must be a list, not the string "
@@ -1760,10 +1586,9 @@ def _item_from(name: str, body: Any) -> Item:
     rng = body.get("range")
     type_ = str(body["type"])
     # § 5's type check runs on the RAW TOML value, BEFORE _shape gives it
-    # a Python shape (R4, 2026-08-12: the check ran post-construction, so
-    # _shape mangled first -- a scalar on a strlist exploded "Au" into
-    # ['A','u'] and PASSED, and a scalar on int3 died as a raw TypeError
-    # naming no item).
+    # a Python shape (R4): after it, a scalar on a strlist would be exploded
+    # "Au" into ['A','u'] and pass, and a scalar on int3 would die as a raw
+    # TypeError naming no item.
     choices = body.get("choices")
     for key in ("value", "default"):
         _check_raw_value(name, key, body.get(key), type_,
@@ -1827,12 +1652,7 @@ def help_for(name: str, *, first_paragraph: bool = False) -> str:
     """The catalogue's help for one item — **the one home for what a user reads.**
 
     Every surface that shows a person what a setting means asks this, rather
-    than reading the copy in a config dataclass's ``metadata["help"]``. There
-    were two homes until 2026-09-16 and they had drifted to 149 of 158 fields
-    carrying different text, so which version somebody saw depended only on
-    which door they came through: the Build tab read the catalogue, the
-    Spectra and Transport tabs read the dataclass, and ``--help`` read the
-    dataclass too.
+    than reading the copy in a config dataclass's ``metadata["help"]``.
 
     ``first_paragraph`` takes the opening sentence only, which is what a CLI
     option line wants — the catalogue's entries carry per-tier tables and
@@ -1855,11 +1675,8 @@ def template_fields(config_cls) -> set:
     THE membership rule, spelled once (A-9, 2026-08-13).  A field tagged
     ``allocation: True`` is § 7's forbidden machine fact: it arrives as
     the ALLOCATION at `prep`, on the machine that will run it, and never
-    as a template item, a stage override, a pin, or a parameter sweep
-    axis.  :func:`declaration_for` already excluded such fields from the
-    WRITE side; every read-side gate used ``dataclasses.fields`` names
-    instead, so a hand-edited ``mpi_np`` item / override / pin passed and
-    the deck rendered for a rank count the allocation never granted.
+    as a template item's value, a stage override, a pin, or a parameter
+    sweep axis.
     """
     return {f.name for f in dataclasses.fields(config_cls)
             if not f.metadata.get("allocation")}
@@ -2084,8 +1901,7 @@ def fixed_on_every_rung(engine: str, kind: str) -> Dict[str, Any]:
 
     The one answer a calculation-wide statement CAN give, which is why two
     readers ask it: `resolve` reads a template value for one of these as
-    the answer when it equals it (the templates written before 2026-09-29
-    carry ``write_forces = true``), and refuses any template value for a
+    the answer when it equals it, and refuses any template value for a
     fixed item answered rung by rung; the settings gate refuses a config
     rendered with anything else, since only a render that skipped
     `resolve` can hold another value.
@@ -2171,8 +1987,7 @@ def why_not_offered(name: str, value: Any, engine: str, kind: str) -> str:
     """Why a ``kind`` calculation on ``engine`` is not offered ``value`` for
     ``name`` -- the clause a refusal puts after *"which a <kind> does not
     offer"*.  Each reason read from the engine's source (§ 6.3a;
-    `science/chemistry-correctness.md` § 2a.3), where `_CANNOT` beside the
-    retired `electronic_state.CAPABILITY` held the spin's until 2026-09-30."""
+    `science/chemistry-correctness.md` § 2a.3)."""
     if name == "spin_treatment":
         if value == "restricted-open" and engine == "siesta":
             return "SIESTA has no restricted open-shell formalism"
@@ -2277,9 +2092,7 @@ def select(t: "Template", *, category=None, engine=None,
     want_cat = _as_tuple(category)
     want_kind = _as_tuple(kind)
     # ``read_by`` filters the same way its siblings do -- any-of, scalar or
-    # sequence.  It took a SCALAR ONLY until 2026-08-14, so a caller asking for
-    # two layers got an empty list rather than an error: the tuple was compared
-    # against the item's members and never matched (audit § 1.3).
+    # sequence.
     want_read_by = _as_tuple(read_by)
     out: List[Item] = []
     for it in t.items:
@@ -2294,9 +2107,7 @@ def select(t: "Template", *, category=None, engine=None,
         if want_read_by and not (set(want_read_by) & set(it.read_by)):
             continue
         # THE machine-answered filter -- `select(t, allocation=True)` is the
-        # one API for *"which settings does the scheduler answer?"*.  Before
-        # this, four places hand-listed the answer and a fifth derived it from
-        # a second vocabulary of resolver names.
+        # one API for *"which settings does the scheduler answer?"*.
         if allocation is not None and bool(it.allocation) is not bool(allocation):
             continue
         # THE citation-answered filter -- the one API for *"which settings
@@ -2316,8 +2127,6 @@ def select(t: "Template", *, category=None, engine=None,
                 continue
         # A CALCULATION KIND, read as the stage is: "does this item apply to
         # it?".  An item declaring no calculations applies to every kind.
-        # The template writer and `apply_recommended` each spelled this as a
-        # filter of their own until 2026-09-26.
         if (calculation is not None and it.calculations
                 and calculation not in it.calculations):
             continue
@@ -2396,33 +2205,19 @@ def config_from_template(text: str, config_cls):
                      and any(f.name == k
                              for f in dataclasses.fields(config_cls)))
     if machine:
-        # The write side emits these VALUELESS (since @2 ``declaration_for``
-        # returns an item, not None -- § 6.4), so a VALUE on one is a hand
-        # edit -- refused with the § 7 story rather than the typo story.
+        # The write side emits these VALUELESS (§ 6.4), so a VALUE on one is
+        # a hand edit -- refused with the § 7 story rather than the typo story.
         raise ValueError(
             f"template names machine fact(s) "
             f"{', '.join(map(repr, machine))}, which floor 2 must never "
             f"carry (engines/template.md § 7): they arrive as the "
             f"ALLOCATION at `prep`, on the machine that runs the job.  "
             f"Remove them from the template and state them at prep.")
-    # NO CITATION REFUSAL HERE, and its absence is the ruling -- which is
-    # also why this function no longer takes a `calculation`.  It carried one
-    # ONLY to run that refusal, and kept taking it for hours after the refusal
-    # went, read by nothing: a parameter two callers threaded through and the
-    # body never looked at, while `engines/template.md` 6.4 pointed at it as
-    # *the* enforcement site.  A control that does nothing is the defect this
-    # programme keeps finding; it does not get an exemption for being ours.
-    #
-    # Until 2026-09-16 a template answering a `citation` item was refused:
-    # the write side emitted them valueless, so a value was a hand edit, and
-    # "the one edit that can make a device disagree with its own leads".
-    # `engines/transport.md` § 2a.7 reversed that.  The invariant it
-    # protected -- electrode and device unable to disagree -- is untouched,
-    # because ONE value shared by every stage cannot disagree with itself;
-    # what is withdrawn is the claim that the value must come from the cited
-    # run.  A person may relax with DZP and transport with TZP, and a
-    # template answering `basis_size` for a transport calculation is now the
-    # ordinary state rather than an error.
+    # NO CITATION REFUSAL HERE, and its absence is the ruling
+    # (`engines/transport.md` § 2a.7): electrode and device cannot disagree,
+    # because ONE value shared by every stage cannot disagree with itself,
+    # and the value need not come from the cited run -- a template answering
+    # `basis_size` for a transport calculation is the ordinary state.
     unknown = sorted(k for k in vals if k not in known)
     if unknown:
         # Refused, never dropped (U16): this is a file people edit by
@@ -2524,10 +2319,7 @@ RENAMED_ITEMS = {
 }
 
 
-#: The module's public surface.  It omitted `select` and `one` -- which § 8.0
-#: calls THE ONE READ API -- and the three closed vocabularies until
-#: 2026-08-14, so a surface wanting to order panels by the closed six had to
-#: hard-code them or reach past this line (audit § 1.5).
+#: The module's public surface.
 __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "Item", "Template",
            "declaration_for", "declarations_for", "help_for",

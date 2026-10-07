@@ -5,14 +5,12 @@ the session log's own line; a monitor that died loading says ``starting``, one
 ``ERROR`` line naming the exception, its traceback, and no ``started``.
 
 The monitor opens its `.monitor.log` only once it has loaded, so the session
-log is the one place a failed load can be seen at all.  Until 2026-09-27 the
-bundle's entry caught the import error and exited without a word; before
-that the wrapper sent the monitor's stderr to `/dev/null`.
+log is the one place a failed load can be seen at all.
 
 And the wrapper's ending door, which reads the same bundle: it asks the
 bundle ONCE whether it loads, so a bundle that cannot load prints its error
 once and the wrapper says the ending cannot be read (`job-contracts.md`
-§ 2.6) -- where every question printed the error again until 2026-09-28.
+§ 2.6).
 
 Driven through ``jobset init`` -> ``prep run`` -> ``launch run --mode
 direct``: an H2 PySCF run once as prepped and once with one of the bundle's

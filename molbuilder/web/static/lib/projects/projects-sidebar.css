@@ -13,19 +13,15 @@
  * Behaviour:        static/lib/projects/projects-sidebar.js
  */
 
-/* The --ps-* palette moved into lib/tokens.css (Phase 3, 2026-06-13)
- * so every page that loads tokens.css gets the same projects-sidebar
- * color system without having to import this file too.  The palette
- * now also includes --ps-accent / --ps-fg-dim that this file already
- * referenced via fallbacks AND --ps-danger / --ps-warn-* for the
- * red/amber severity surfaces. */
+/* The --ps-* palette lives in lib/tokens.css, so every page that loads
+ * tokens.css gets the same projects-sidebar color system without having
+ * to import this file too. */
 
 /* Desktop layout is owned by the app shell (lib/page-shell.css): the sidebar is
  * an in-flow flex child of the .sidebar-rail (see the app-shell override
  * below).  The ``position: fixed`` base here is the MOBILE-DRAWER base -- on a
  * narrow viewport (@media max-width: 785px) the sidebar slides in as a fixed
- * overlay.  (The old ``body.has-projects-sidebar { padding-left }`` shim was
- * retired when every tab moved to the app-shell flex layout.) */
+ * overlay. */
 
 .projects-sidebar {
   position: fixed;
@@ -51,7 +47,7 @@
  * every viewport), the palette, and the narrow-viewport DRAWER (position:fixed,
  * @media max-width: 785px, further down). */
 
-/* ---- Width-resize handle (2026-06-12) ------------------------------
+/* ---- Width-resize handle ------------------------------------------
  *
  * Thin draggable strip on the right edge.  4px hit area widened to
  * 8px via a transparent ::before so the cursor catches without
@@ -131,7 +127,7 @@ body.has-mobile-sidebar-open .ps-resize-handle {
  * State persists in sessionStorage per origin (key
  * ``molbuilder.projects_sidebar_collapsed``) so a refresh keeps
  * the user's preference.  Behaviour wired in
- * ``lib/projects-sidebar.js``. */
+ * ``lib/projects/projects-sidebar.js``. */
 
 /* Collapse / reopen are ONE symmetric control: two accent chevron tabs at the
  * SAME vertical mid-height.  The collapse tab (#ps-collapse-toggle) rides on the
@@ -139,7 +135,7 @@ body.has-mobile-sidebar-open .ps-resize-handle {
  * (#ps-collapsed-handle) sits at the screen's left edge and appears in its place
  * when collapsed.  Same size + palette; only the side + arrow differ, so retract
  * and unfold read as one toggle that flips as the panel slides.
- * Accent-coloured (a 2026-06 pass found a dim handle went unnoticed). */
+ * Accent-coloured: a dim handle goes unnoticed. */
 .ps-edge-tab {
   appearance: none;
   top: 50%;
@@ -199,7 +195,7 @@ body.is-projects-sidebar-collapsed .projects-sidebar {
 body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   display: flex;
 }
-/* Narrow-viewport drawer mode takes over below 640 px (the
+/* Narrow-viewport drawer mode takes over below 786 px (the
  * existing mobile toggle handles open/close there); hide the
  * desktop affordances so they don't double up. */
 @media (max-width: 785px) {
@@ -210,21 +206,12 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   body.is-projects-sidebar-collapsed .ps-edge-tab--reopen { display: none; }
 }
 
-/* ---- Foldable "+ New project" / "+ New subdir" sections -------- */
-/* Each section is a <details> in the partial; users click to expand
- * the form.  Two sections, separately collapsible.  Together they
- * cover the v1 file-manipulation surface:
- *   "+ New project" -- bootstrap full skeleton at projects/ root
- *   "+ New subdir"  -- single dir at the user's current location */
-
-/* ---- Create bar: three buttons (2026-06-12, v2) -------------------
+/* ---- Create bar ---------------------------------------------------
  *
- * Three visible action buttons (New project / New folder / Upload).
- * Each is a direct entry point — click opens its modal dialog.  The
- * earlier v1 single "+" dropdown was replaced because users couldn't
- * see at a glance what actions were available.
+ * Visible action buttons, each a direct entry point — click opens its
+ * modal dialog — so the actions available read at a glance.
  *
- * Layout: equal-width flex row.  Each button is icon-above-label
+ * Layout: a wrapping flex row.  Each button is icon-above-label
  * so it stays compact at narrow sidebar widths while keeping the
  * label readable.  Hover gives a clear "this is a button" cue
  * (accent border + accent background).
@@ -300,13 +287,6 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   color: var(--ps-selected-fg);
 }
 .ps-create-action-label {
-  /* The bar's stated intent is compact AND readable.  `nowrap` defeated the
-     second half: at the token default (--ps-w: 18rem) the button is 62px and
-     "New project" wants 61px of text inside 8px of padding, so it rendered
-     "New projec...".  The button is already icon-above-label, so the label
-     wraps onto the line it already has room for -- content deciding, per
-     ui-contract.md 3, with no width literal and no media query.  `ellipsis`
-     stays as the fallback for a single unbreakable word. */
   flex: 0 0 auto;
   font-size: var(--text-2xs);
   font-weight: 500;
@@ -317,11 +297,6 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   max-width: 100%;
 }
 
-/* Inline error slot kept for the rare legacy form usage; reused
- * also by the dialog component above for inline validation. */
-/* (.ps-mkdir-error removed 2026-07: the legacy inline mkdir form is gone;
-   dialogs use .molbuilder-projects-dialog-error.) */
-
 /* Inline error row shown in the entry list when a directory listing fails
  * (lib/projects/list.js openDir error path). */
 .ps-list-error {
@@ -329,7 +304,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     color:   var(--ps-danger-fg, #e07a7a);
 }
 
-/* ---- Modal dialogs (2026-06-12) --------------------------------
+/* ---- Modal dialogs ---------------------------------------------
  *
  * Used by projects/dialogs.js for: new project, new folder, upload,
  * rename, choose-destination-dir, confirm-destructive.  Styled
@@ -432,14 +407,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   cursor: not-allowed;
 }
 
-/* The dest-tree block (2026-06-12) moved to lib/dialog.css as the
- * shared tree-picker (tp-*) -- one pop-out picker for every surface
- * (lib/tree-picker.js, 2026-08-28). */
-
-/* ---- Per-entry kebab menu (2026-06-12) -------------------------
+/* ---- Per-entry kebab menu -------------------------------------
  *
- * Single ⋯ trigger per row that drops the action menu.  Replaces
- * the inline pair of view + × buttons.  The menu floats fixed so
+ * Single ⋯ trigger per row that drops the action menu.  The menu floats fixed so
  * it can extend past the sidebar's overflow:hidden.
  */
 .ps-entry-kebab {
@@ -491,7 +461,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   color: var(--ps-selected-fg);
 }
 
-/* ---- Breadcrumb (2026-06-12 pill upgrade) -----------------------
+/* ---- Breadcrumb ------------------------------------------------
  *
  * Each path segment is a pill-shaped clickable chip; the › separator
  * sits between them.  The current (last) segment uses an accent
@@ -734,12 +704,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   color: var(--ps-selected-fg);
 }
 
-/* (.ps-entry-preview / .ps-entry-delete removed 2026-07: the inline view/x
-   buttons were replaced by the kebab menu; zero producers remained.) */
-
 /* ---- File-preview modal -------------------------------------- */
 /* Floats centered over the whole page; hidden by default; opened
- * via the actions section's Preview button. */
+ * from an entry's menu (View). */
 
 .ps-preview-modal {
   position: fixed;
@@ -768,23 +735,13 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-preview-window {
   position: relative;
   width: min(900px, 92vw);
-  /* 2026-06-12: use ``height: 80vh`` instead of ``max-height: 80vh``
-   * so the modal ALWAYS fills 80% of the viewport, giving
-   * ``.ps-preview-cmview`` (flex: 1 1 auto, min-height: 0) a real
-   * slot to expand into.  Without a definite parent height the
-   * flex child collapses to 0 — the CodeMirror editor is mounted
-   * with the content set, but ``inset:0`` resolves to a 0-height
-   * box and the editor is invisible.  Symptom: modal opens
-   * showing only the title + filename; the editor area is empty
-   * and the user has no signal anything's wrong.
-   *
-   * Pre-f118818 the editor used ``height: 100%`` and contributed
-   * its own intrinsic height to the parent, so the modal could
-   * size itself from content + ``max-height`` was enough.  The
-   * f118818 fix switched CM to ``position: absolute`` (CodeMirror
-   * manual § "Fill the screen" recipe), which decouples it from
-   * the parent's intrinsic sizing — at which point the parent
-   * needs an explicit height for everything to flow correctly. */
+  /* ``height: 80vh``, not only ``max-height``, so the modal ALWAYS
+   * fills 80% of the viewport, giving ``.ps-preview-cmview`` (flex:
+   * 1 1 auto, min-height: 0) a real slot to expand into.  The
+   * CodeMirror editor is ``position: absolute`` (CodeMirror manual
+   * § "Fill the screen" recipe), so without a definite parent height
+   * its ``inset:0`` resolves to a 0-height box and the editor is
+   * invisible. */
   height: 80vh;
   max-height: 80vh;
   background: var(--ps-bg-tile);
@@ -800,8 +757,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-preview-header {
   /* flex-shrink: 0 prevents the header from collapsing to nothing
    * when the body has more content than the window can fit -- the
-   * default flex-shrink:1 was letting long files squash the header
-   * out of existence and make the body appear on top of it. */
+   * default flex-shrink:1 would let long files squash the header
+   * out of existence. */
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -852,19 +809,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  * wrapper just provides the flex slot.  ``.is-editing`` class is
  * toggled by preview.js when the editor enters edit mode so the
  * background subtly differs (cue to the user that typing now
- * mutates the buffer).
- *
- * 2026-06-09: switched to position: absolute for the .CodeMirror
- * child so the CM5+flex layout works reliably.  The previous
- * ``height: 100%`` recipe failed in three ways:
- *   (1) bottom of long files overflowed the modal window (CM
- *       miscomputed height on resize),
- *   (2) the vertical scrollbar wasn't visible on macOS because
- *       CM's default overflow:scroll auto-hides — we now force
- *       a visible thumb via ::-webkit-scrollbar styling,
- *   (3) the 1px cursor was nearly invisible against the dark
- *       theme — bumped to 2px and added caret-color so block-
- *       level rendering hints stay legible too.
+ * mutates the buffer).  The .CodeMirror child is position: absolute
+ * so the CM5+flex layout works reliably.
  */
 .ps-preview-cmview {
   /* ``position: relative`` is the anchor for the absolutely-
@@ -906,10 +852,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 
 /* Cursor: bump the caret to 2px so it's clearly visible against the
- * #0e0e0e background.  CM5 draws the cursor as ``border-left`` on a
+ * dark background.  CM5 draws the cursor as ``border-left`` on a
  * .CodeMirror-cursor span; the default 1px solid black is invisible
- * here.  Also style the JS-rendered ``CodeMirror-line-highlight``
- * (focused line) so the user can see which row their caret lives on. */
+ * here. */
 .ps-preview-cmview .CodeMirror-cursor {
   border-left-width: 2px;
   border-left-color: var(--ps-accent, #4f7ab8);
@@ -923,14 +868,10 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   background: rgba(74, 158, 255, 0.06);
 }
 .ps-preview-cmview .CodeMirror-selected {
-  /* 2026-06-12 contrast fix: the prior 22% accent-blue background
-   * had nearly the same luminance as the ``--ps-fg`` (#ddd) text
-   * on a dark canvas — selected ranges literally vanished.  Bump
-   * to ~55% so the selection reads as a clear block + keep the
-   * accent hue so it's obvious "this is the selected region".
-   *
-   * Forced via background-color rather than CM's ``background``
-   * so the gutter highlight doesn't bleed across. */
+  /* ~55% so the selection reads as a clear block (a low-alpha
+   * accent-blue has nearly the same luminance as the ``--ps-fg``
+   * text on a dark canvas) + keep the accent hue so it's obvious
+   * "this is the selected region". */
   background: rgba(74, 158, 255, 0.55);
 }
 /* Focused-editor selection is the user's primary attention target;
@@ -986,9 +927,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 /* View-only mode (file > 1 MB OR paginated).  Edit disabled (see
  * preview.js's ``_state.editable``).  Selection is NOT disabled
  * here — CodeMirror tracks its own selection state via mouse
- * events independent of the CSS user-select property, so the
- * earlier ``user-select: none`` rule had no effect on the perf
- * cliff.  Instead, ``beforeSelectionChange`` in preview.js caps
+ * events independent of the CSS user-select property.  Instead,
+ * ``beforeSelectionChange`` in preview.js caps
  * the selection length to MAX_SELECTION_LINES; the cap fires
  * regardless of which mode we're in so the perf cliff stays
  * unreachable across all paths. */
@@ -1066,21 +1006,16 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   cursor: not-allowed;
 }
 
-/* The lock banner + .is-locked modifier (2026-05-27) are GONE -- the
- * page-wide busy fence (lib/page-busy.css, ui-contract.md § 10) covers
- * the whole window, sidebar included. */
-
 /* ============================================================
- *  Narrow-viewport drawer pattern  (2026-06-02, task #182)
+ *  Narrow-viewport drawer pattern
  *
  *  At desktop widths the sidebar is an in-flow flex child of the
  *  ``.app-body`` row (app-shell layout, page-shell.css) 18 rem wide, so
  *  the content pane sits to its right and the row is exactly the viewport
- *  width.  At < 640 px an in-flow 288 px sidebar + a usable content pane
- *  would force the row past the viewport = a horizontal scrollbar
- *  (test_modify_layout_phone_width_no_horizontal_overflow caught this).
+ *  width.  At < 786 px an in-flow 288 px sidebar + a usable content pane
+ *  would force the row past the viewport = a horizontal scrollbar.
  *
- *  Drawer pattern: at <= 640 px the sidebar leaves the flow -- the
+ *  Drawer pattern: at <= 785 px the sidebar leaves the flow -- the
  *  ``.projects-sidebar`` fixed base takes over and it slides off-canvas
  *  via ``transform: translateX(-100%)``.  A small fixed hamburger button
  *  at the top-left
@@ -1101,9 +1036,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  *                              modal opened FROM the drawer is not
  *                              hidden behind the drawer)
  *
- *  Above 640 px the drawer plumbing is inert (display:none on the
+ *  Above 785 px the drawer plumbing is inert (display:none on the
  *  toggle + the backdrop; the sidebar is back in the app-shell flex flow).
- *  Desktop behaviour is exactly as before this rule block lands.
  *
  *  Markup in ``_projects_sidebar.html``:
  *    * ``<button id="ps-mobile-toggle" class="ps-mobile-toggle">``
@@ -1112,7 +1046,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  *    * ``<div id="ps-mobile-backdrop" class="ps-mobile-backdrop">``
  *      -- the overlay backdrop; click closes the drawer.
  *
- *  Behaviour wiring in ``lib/projects-sidebar.js``:
+ *  Behaviour wiring in ``lib/projects/projects-sidebar.js``:
  *    * Toggle button click toggles ``has-mobile-sidebar-open``
  *      on ``<body>``.
  *    * Backdrop click removes it.
@@ -1193,7 +1127,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   }
 }
 
-/* Run-history toggle (2026-08-19): lives in the filter bar, exists only
+/* Run-history toggle: lives in the filter bar, exists only
  * for a run dir, and its color IS the folder's checkpoint status -- the
  * same data-state vocabulary and tokens as the sensor pill, so the two
  * cannot drift.  aria-pressed mirrors which view holds the list space. */
@@ -1235,14 +1169,12 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 
 /* ---------------------------------------------------------------- */
-/*  Run-history view (2026-08-19)                                   */
+/*  Run-history view                                                */
 /*                                                                  */
 /*  Shares the file-list space inside the projects sidebar: the     */
 /*  toggle in the filter bar swaps #ps-list and this section, and   */
 /*  checkpoint.js owns that exclusivity.  Populated from the        */
-/*  /api/checkpoint/* routes.  (It was a fixed-width sibling dock   */
-/*  panel in the rail from 2026-07-25 to 2026-08-19 -- a second     */
-/*  column with no way to reclaim its space.)                       */
+/*  /api/checkpoint/* routes.                                       */
 /* ---------------------------------------------------------------- */
 .ps-checkpoint {
     flex:              1 1 auto;
@@ -1442,7 +1374,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     line-height:       1.3;
 }
 
-/* ---- View toggle (PR-B Phase 3, 2026-06-25): List | Graph -------- */
+/* ---- View toggle: List | Graph ---------------------------------- */
 
 .ps-checkpoint-view-toggle {
     display:           inline-flex;

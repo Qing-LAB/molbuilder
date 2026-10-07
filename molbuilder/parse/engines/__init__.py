@@ -7,11 +7,10 @@ the engine's own record of the settings it used (an
 two steps: new module here, import + ``register`` below.  The rest define no
 parser and are imported by the ones that read with them: ``siesta_grammar``,
 the SIESTA family's one table of output lines (§ 5d.5); ``tbtrans``, the
-transmission rung's readers, which the transport record calls rather than the
-registry; ``_run_ending`` and ``_helpers``.
+transmission rung's readers; ``_run_ending`` and ``_helpers``.
 
 Order matters: the registry tries parsers in insertion order, so
-more-specific parsers go first.  MolwatchLogParser leads because
+more-specific parsers go first.  MolwatchLogFileParser leads because
 its header marker is unambiguous and never false-matches an
 engine-native format.
 """

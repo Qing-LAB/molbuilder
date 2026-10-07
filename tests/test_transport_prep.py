@@ -2,32 +2,6 @@
 (`engines/transport.md` § 1 + § 3, the arm in `jobset/prep.py` +
 `transport/stages.py`).
 
-A fixture junction preps end-to-end; each gate refuses its mutation; the
-emitter's own order-preflight never fires, because prep sorted first
-(§ 4, *"in the composite it cannot fire in anger"*).
-
-Properties under guard, each named for its failure:
-
-* each stage's deck is born in its own stage directory, wrapper beside
-  it, through the SHARED prep tail (job-set merge, STAGE-PLAN, run
-  dirs) — no forked machinery;
-* the electronic contract (basis · XC · energy shift · mesh · k ·
-  electronic T) is read from the CITED attempt's own deck and lands in
-  every stage's deck — one template governs (§ 5's invariant set, baked
-  identically into all three fdfs; `transport/citation_defaults.py`,
-  fdf-is-truth);
-* the electrode deck's SystemLabel IS the ``.TSHS`` stem the device
-  deck references — one spelling, both writers;
-* the emitter's order-preflight never fires: a source whose atom order
-  would trip it preps clean, because prep sorted first (§ 4);
-* buffer atoms emit ``TS.Atoms.Buffer`` + explicit electrode positions
-  (§ 4, the ``buffer`` label: with padding outermost, TranSIESTA's default
-  first-N/last-N placement no longer holds);
-* the composed record is written once, reused by later stages, travels
-  with the folder, and a re-pointed citation recomposes;
-* refusals: unnamed/unknown/disabled stage, a sweep, a moved frozen
-  atom, a pseudopotential the citation cannot supply (§ 3.1 — a citation
-  names a directory, so the directory must hold what the stage consumes).
 """
 from __future__ import annotations
 
@@ -50,13 +24,8 @@ _STAGES = ("seed", "electrode_L", "electrode_R", "device", "transmission")
 def _says(text: str, keyword: str, value: str) -> bool:
     """Does *text* set *keyword* to *value*?  **Whitespace-insensitive.**
 
-    The column alignment of a deck line belongs to whoever wrote it: the
-    hand-written transport emitters padded to a fixed column, the framework's
-    syntax door (`siesta/layout.py::line`) does not, and libfdf cares about
-    neither.  Asserting the PAIR rather than the spacing is what lets these
-    tests mean the same thing before and after a rung moves onto the seam
-    (`engines/transport.md` § 3.6) -- otherwise every migrated rung breaks a
-    science assertion for a reason that has nothing to do with science.
+    The column alignment of a deck line belongs to whoever wrote it, and
+    libfdf cares about none of it.
     """
     want = (keyword + " " + value).split()
     head = re.escape(want[0])
@@ -72,11 +41,7 @@ def _says(text: str, keyword: str, value: str) -> bool:
 def _same_token(got: str, want: str) -> bool:
     """One token of a deck line, compared by VALUE where it is a number.
 
-    `250` and `250.0` are the same mesh cutoff.  They differ because the
-    framework's syntax door formats from the item's DECLARED type (a float)
-    while the hand-written emitters it is replacing formatted the Python
-    value they happened to hold (an int) -- so during the migration one
-    rung says one and another says the other, for a value they agree on.
+    `250` and `250.0` are the same mesh cutoff.
 
     Asserting the spelling would make a test fail for a reason that has
     nothing to do with the science, which is the same trap the column
@@ -130,17 +95,12 @@ def _junction_struct(*, order="canonical", buffers=False, across=_ACROSS,
         regions.setdefault(r[2], []).append(i)
     frozen = [i for i, r in enumerate(rows)
               if r[2] in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE)]
-    # THE CELL MUST CONTAIN THE ATOMS, and with buffers it did not: the
-    # buffer padding sits at z = -5 .. 39.5, a 44.5 A span in a 40 A box, so
-    # atoms overlapped their own periodic images along the transport axis.
-    # It went unnoticed because the device rung had NO settings gate until
-    # TR5b put it on the seam -- the first time anything looked.  Sized from
-    # the geometry so it cannot drift again.
+    # THE CELL MUST CONTAIN THE ATOMS (the buffer padding sits at
+    # z = -5 .. 39.5), so it is sized from the geometry.
     #
     # AND IT IS THE STRUCTURE A TRANSPORT RUN CAN USE (M5 step 2, § 6.1c).
     # The leads continue through the transport boundary into the image, so
-    # the room there is ONE of the lead's layer spacings -- this fixture left
-    # 5.5 A against a 2.5 A spacing, a missing layer the gate now refuses.
+    # the room there is ONE of the lead's layer spacings.
     # And the leads are a CHAIN, one gold atom per layer, in an 8 A box: a
     # wire, isolated across transport, which is what it states -- periodic
     # there would say the chain tiles a plane it does not.
@@ -172,8 +132,8 @@ def _describe_transport(root, *, cite, bias=(0.0, 0.2)):
         stages=tuple(Stage(name=n, enabled=True, overrides={})
                      for n in _STAGES)))
     # THE TEMPLATE, through the product's own doors -- `jobset init` writes
-    # one for a transport description since 2026-09-16 (TR1), and a fixture
-    # that skipped it would stop matching what this claims to reproduce.
+    # one for a transport description, and a fixture that skipped it would
+    # stop matching what this claims to reproduce.
     from molbuilder.transport.citation_defaults import (
         transport_template_text)
     (dest / "T.template.toml").write_text(
@@ -183,8 +143,7 @@ def _describe_transport(root, *, cite, bias=(0.0, 0.2)):
 
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch, tmp_path_factory):
-    """Same sandbox as test_prep_calculation: the wrapper writer must
-    read the fixture's bundle-scoped config, never this repo's."""
+    """Same sandbox as test_prep_calculation."""
     monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
 
 
@@ -198,15 +157,8 @@ class TestFormBContract:
         """SCIENCE. A form-B citation carries no deck, so nothing dictates its
         electronic description — and the person must still be able to state it.
 
-        **The mechanism changed on 2026-09-16 and the concern did not.** This
-        test used to set `basis_size` as a STAGE OVERRIDE, because that was the
-        only way in: the contract fields were sealed for form A and opened for
-        form B, so the override lane was where a pair's basis could be said.
-        Its worry was exact — *"if the field stayed sealed there would be no
-        way to state the basis at all"*.
-
-        `engines/transport.md` § 2a.7 answered it better. Every transport
-        calculation now carries a TEMPLATE: for form A it is filled from the
+        Every transport calculation carries a TEMPLATE (`engines/transport.md`
+        § 2a.7): for form A it is filled from the
         cited deck, for form B from the catalogue's own defaults, and either
         way the person may change it. So the basis is stateable for a pair —
         in the place where it applies to all five rungs at once, rather than

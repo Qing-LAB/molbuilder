@@ -14,8 +14,8 @@ second source off the request body is review's to refuse
 
 
 def test_labels_reach_the_structure_through_the_one_door():
-    """The property the old guard protected, asserted directly rather than by
-    checking that every route remembered a follow-up call."""
+    """Asserted directly rather than by checking that every route remembered
+    a follow-up call."""
     from molbuilder.web.blueprints._shared import struct_from_body
 
     struct = struct_from_body({"structure": {

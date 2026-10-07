@@ -102,8 +102,7 @@
 }
 /* `display:flex` on the class outranks the `hidden` attribute's own
    `display:none`, so a hidden field would stay in the layout while the code
-   believed it was gone -- the failure `test_css_hidden_attribute_audit.py`
-   existed for (retired 2026-09-10, `082ba979`; the guard is review's now). */
+   believed it was gone. */
 .tm-field[hidden] { display: none; }
 
 .tm-label {
@@ -172,10 +171,7 @@
     user-select: all;
 }
 
-/* WHAT THE OTHER MACHINE MUST ALREADY HAVE -- a statement, not a generator.
-   `.tm-elsewhere` was here and held a copy-paste shell block that wrote a
-   file with a key in it; both the block and the `execution.mode` gate that
-   revealed it went on 2026-09-01. */
+/* WHAT THE OTHER MACHINE MUST ALREADY HAVE -- a statement, not a generator. */
 .tm-expects { margin: var(--space-md) 0; }
 .tm-expects > summary {
     cursor: pointer;

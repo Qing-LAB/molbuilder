@@ -50,16 +50,13 @@ from typing import Any, Optional, Tuple
 # Every version / tag / repo URL in the source-build recipes is
 # overridable via a ``MOLBUILDER_*`` environment variable.  Defaults
 # are the **investigated stable values**: ELPA tag verified to exist
-# on MPCDF GitLab via ``git ls-remote``, SIESTA branch confirmed as
-# the canonical 5.x dev line (no numeric 5.x tags exist upstream),
-# version pairings cross-checked against SIESTA 5.4 INSTALL.md.
+# on MPCDF GitLab via ``git ls-remote``, SIESTA tag verified the same
+# way, version pairings cross-checked against SIESTA 5.4 INSTALL.md.
 #
 # These read once at module import time and bake into the
 # corresponding BuildComponent / Recipe instances -- all but the CUDA
 # version, which the registry resolves on its first ask
-# (`_resolve_cuda_version`, `builtin_recipes`).  Changing one
-# triggers a rebuild (the value participates in the toolchain
-# fingerprint via ``probe_toolchain`` and the resolved git SHA).
+# (`_resolve_cuda_version`, `builtin_recipes`).
 
 
 def _spec_name(spec: str) -> str:
@@ -159,11 +156,11 @@ _ELPA_TARBALL_BASE = _env_default(
     "https://elpa.mpcdf.mpg.de/software/tarball-archive",
 )
 # ---- netcdf-fortran: built from source, for the reason in
-#      _FORTRAN_ABI_CEILING above -----------------------------------------
+#      _FORTRAN_ABI_CEILING below -----------------------------------------
 #
 # The Fortran layer of NetCDF is the one prebuilt library in this env whose
 # `.mod` files conda-forge has already rebuilt with a newer gfortran than we
-# compile with.  The ceiling above keeps a USABLE build in reach today;
+# compile with.  The ceiling below keeps a USABLE build in reach today;
 # building it here removes the dependency on conda-forge's rebuild schedule
 # for this package entirely.  The C layer (`libnetcdf`) stays a conda
 # package: C headers are text and no compiler can object to them.
@@ -249,9 +246,8 @@ def _read_host_env(path: Path = _HOST_ENV_FILE) -> _HostEnv:
 
 _HOST_ENV = _read_host_env()
 
-#: THE PYTHON EVERY ENV IS BUILT ON.  One value, EVERY recipe -- a count
-#: went stale here twice, so the rule is stated instead and a test holds
-#: it (`test_every_recipe_declares_the_uniform_packages`).
+#: THE PYTHON EVERY ENV IS BUILT ON.  One value, EVERY recipe -- a test
+#: holds it (`test_every_recipe_declares_the_uniform_packages`).
 #:
 #: Read at IMPORT time, like `MOLBUILDER_GCC` and for the same forcing
 #: reason: the recipes are module-level data, so a Python-side flag would
@@ -261,7 +257,7 @@ _HOST_ENV = _read_host_env()
 #:
 #: **A MINOR PIN, not a major one.**  conda reads a bare ``3`` as ``3.*``, so
 #: two machines installing weeks apart would legitimately resolve different
-#: interpreters -- the same trap the gcc pin documents at length above.
+#: interpreters -- the same trap the gcc pin documents at length below.
 #:
 #: THE FLOOR IS REAL AND IS NOT ENFORCED HERE.  `pyproject.toml` says
 #: ``requires-python = ">=3.11"``, and `template.py` imports `tomllib`
@@ -348,11 +344,6 @@ def _spec(name: str, version_var: str = "") -> str:
 # into a silent wrong answer.  Pin the compiler instead; it costs
 # nothing and touches no source.
 #
-# (This used to read "we build -DSIESTA_WITH_TRANSIESTA=ON", which is
-# not why.  5.4.2's cmake reports that variable as UNUSED and builds
-# transport in regardless -- see the flag's own note below.  The
-# conclusion held; the mechanism cited for it did not.)
-#
 # A compiler-flag workaround (-O0 / -fno-inline, on the theory that
 # 14.4 mis-resolves the host-associated dummy while inlining the
 # CONTAINS'd setup_mp into kpoint_read at -O3) is UNTESTED -- it cannot
@@ -360,9 +351,7 @@ def _spec(name: str, version_var: str = "") -> str:
 # and would slow the whole build to work around one file.
 #
 # VERIFIED end-to-end on a clean machine 2026-08-14 (user): all ten
-# steps complete with the 14.3 pin.  Before that it was proven only in
-# parts -- the .comment section of a known-good object, and the failing
-# link on the other machine.
+# steps complete with the 14.3 pin.
 #
 # ⚠ THIS PIN IS SPECIFIC TO THE SIESTA VERSION WE BUILD, and the pin
 # without that qualifier reads as "molbuilder needs gcc 14.3", which is
@@ -557,8 +546,7 @@ _CUDA_DEFAULT_MAJOR = "13"
 # registry is built on its first ask (`builtin_recipes`), so this probe runs
 # for a command that reads a recipe -- `envs`, the notebook's start -- and
 # once at the server's start (`web/app.create_app`, so no request pays it),
-# and for no other.  It ran at import until 2026-09-29, on every command,
-# through `cli.py`'s `envs_group`.  One subprocess with a 2 s timeout and a
+# and for no other.  One subprocess with a 2 s timeout and a
 # graceful fallback, so a missing or hung nvidia-smi never blocks a recipe
 # lookup.
 def _detect_host_cuda_major() -> Optional[str]:
@@ -655,8 +643,8 @@ class BuildComponent:
         Short identifier, used in artifact paths and sentinel files.
         Must be unique within the BuildSpec.
     repo_url
-        Git URL to clone.  Anonymous HTTPS only; ssh:// is rejected
-        because conda installs run unattended.
+        Git URL to clone.  Anonymous HTTPS: conda installs run
+        unattended.
     ref
         Tag, branch, or SHA to ``git checkout``.  A pinned tag gives the
         same build every time; a branch re-resolves on every clone.
@@ -669,19 +657,12 @@ class BuildComponent:
         Template argv for the cmake install step.
     verify_argv
         Optional template argv for a post-install smoke check.  Empty
-        tuple means "skip" (executor still records a verify.done
-        sentinel so resume logic works).
-    (There is no ``needs_cuda``.  It was a per-component flag nothing read,
-    and its docstring said ELPA "needs CUDA" -- a misconception, corrected
-    2026-09-14: **ELPA is a diagonalization library with CPU kernels**, used
-    for its CPU eigensolver as much as its GPU one.  Nothing about building
-    it is gated on CUDA; it is simply built with the NVIDIA path ON so the
-    GPU is available to a run that asks for it and has one.)
+        tuple means "skip" (no verify phase is planned).
     clone_recurse_submodules
         When ``True``, ``git clone`` runs with
         ``--recurse-submodules --shallow-submodules`` so the
         component's ``External/`` submodules come along in one shot.
-        SIESTA's ``rel-5.4`` branch uses this to pull libfdf,
+        SIESTA uses this to pull libfdf,
         libpsml, xmlf90, libgridxc, ELSI, and libxc as on-the-fly
         compiled submodules (per SIESTA 5.4 INSTALL.md
         § "Required domain-specific libraries").
@@ -693,12 +674,12 @@ class BuildComponent:
     tarball_url
         When set, the clone phase downloads a tarball via curl + tar
         instead of ``git clone``.  Mutually exclusive with
-        ``repo_url`` for the clone step; ``ref`` still names the
-        release, through ``{ref}`` in the URL.  Used for ELPA, where conda-forge
+        ``repo_url`` for the clone step; the URL itself names the
+        release.  Used for ELPA, where conda-forge
         + Spack + EasyBuild all download from MPCDF's tarball archive
         at ``elpa.mpcdf.mpg.de/software/tarball-archive/Releases/``.
         Pre-bootstrapped (no autoreconf needed) and SHA256-pinnable.
-        Templated with ``{ref}`` so the URL bumps automatically when
+        The recipe builds the URL from its tag, so it bumps when
         ``MOLBUILDER_*_TAG`` overrides the version.
     tarball_sha256
         Optional SHA256 hex digest of the tarball for integrity
@@ -706,8 +687,8 @@ class BuildComponent:
         a tarball_url is being bumped via env-var override to a
         version with no recorded SHA).
     tarball_inner_dir
-        Templated name of the top-level directory inside the
-        tarball (e.g. ``"elpa-{ref}"``).  After extraction the
+        Name of the top-level directory inside the tarball
+        (e.g. ``"elpa-2024.05.001"``).  After extraction the
         executor renames this to a stable ``<src>`` path so the
         configure_argv ``{src}`` placeholder always resolves to
         the same location.
@@ -755,16 +736,6 @@ class BuildSpec:
         the GPU path -- which is why a missing driver is a preflight WARNING
         and never an error, and why it is listed under
         ``Recipe.system_preconditions`` as optional.
-    (There is no ``cuda_min_version``.  Retired 2026-09-14: it declared a
-    floor on the CUDA TOOLKIT, which arrives from conda inside the env and is
-    pinned by this file (``cuda-version=``), so it gated a number we set
-    ourselves.  The number it held (12.4) was never ELPA's requirement --
-    ELPA 2024.05.001 documents no minimum, and the only CUDA version its
-    changelog names is a workaround FOR versions below 12.1 -- it was a
-    fossil of an early belief that gcc 14 pairs with CUDA 12.4+, which the
-    pairing table later corrected to 12.8.  Whether nvcc accepts the chosen
-    gcc is `builds.check_cuda_gcc_compat`'s question, and it is asked
-    separately.)
 
     activate_hook
         Template body for ``$CONDA_PREFIX/etc/conda/activate.d/zz-<artifact_subdir>.sh``.
@@ -810,11 +781,8 @@ class CondaPackage:
     audit parses it -- unlike pip, where the URL had to be lifted out
     because a spec string could not hold identity and source apart.
 
-    What it does NOT stay is a bare string in a list beside a SECOND
-    list of names that are optional.  Optionality was expressed by
-    membership, matched by name, so an entry matching nothing quietly
-    left its package required; and a reader had to hold two lists in
-    their head to answer one question about one package.
+    Optionality is a field on the record, not membership in a second list
+    of names: a name-matched list quietly leaves a mistyped entry required.
     """
 
     spec: str
@@ -885,9 +853,8 @@ class PipPackage:
                      installed copy is the declared one
     ===============  ==========================================
 
-    They coincide for PyPI packages, which is why the registry got away
-    with plain strings for a long time.  ``pyscf-properties`` is the
-    first that splits them: the identity is ``pyscf-properties``, the
+    They coincide for PyPI packages.  ``pyscf-properties`` splits them:
+    the identity is ``pyscf-properties``, the
     source is a git URL, and the version does NOT identify the content
     (master and the only sdist both declare ``0.1.0``, so ``pip`` reads
     an install request as already satisfied and does nothing).
@@ -1014,8 +981,7 @@ class PipPackage:
     def is_plain(self) -> bool:
         """True when nothing about this package needs its own step.
 
-        Plain packages batch into one ``pip install`` -- the behaviour
-        (and the speed) the registry had before sources existed.
+        Plain packages batch into one ``pip install``.
         """
         return (self.source is None and not self.force
                 and not self.optional)
@@ -1073,13 +1039,9 @@ class Recipe:
         the row, and `doctor` says it where a missing env would otherwise read
         as a gap.
 
-        It replaced ``build_spec is not None`` as bootstrap's test on
-        2026-09-14.  That was a PROXY -- it meant "expensive, so ask first"
-        and happened to be true of the only opt-in env there was -- and the
-        notebook env is the case that separates them: cheap, conda-only, and
-        still not something to install on every machine because somebody
-        bootstrapped it.  The reason a recipe is opt-in is now stated rather
-        than inferred from its shape.
+        The reason a recipe is opt-in is stated rather than inferred from its
+        shape: the notebook env is cheap, conda-only, and still not something
+        to install on every machine because somebody bootstrapped it.
     extra_steps
         Arbitrary shell-command argv tuples to run AFTER pip installs
         but BEFORE the build_spec (if any) -- the host env's opt-in
@@ -1117,19 +1079,13 @@ class Recipe:
     channels: Tuple[str, ...]
     conda_packages: Tuple["CondaPackage", ...]
     pip_packages: Tuple[PipPackage, ...] = ()
-    # There is no parallel `optional_*` list for either kind any more.
     # Optionality is a FIELD on the package, because a fact about one
-    # package belongs to that package -- and because membership in a
-    # second list, matched by name, silently left a mistyped entry
-    # required.
+    # package belongs to that package.
     opt_in: Optional[str] = None
     #: Normalised to `ExtraStep` by `__post_init__` -- a BARE argv tuple
     #: is accepted and is the ordinary case, exactly as a bare string is
     #: for the two package kinds.  Annotated as what a reader GETS, not
-    #: what they may write: the old `Tuple[Tuple[str, ...], ...]` is what
-    #: a new call site consults before writing
-    #: `for argv in recipe.extra_steps: conda_run_argv(*argv)`, which is
-    #: precisely the shape that now raises.
+    #: what they may write.
     extra_steps: Tuple[Any, ...] = ()
     build_spec: Optional[BuildSpec] = None
     verify_argv: Tuple[str, ...] = ()
@@ -1171,11 +1127,7 @@ class Recipe:
         **THE INTERPRETER IS IN IT.**  It is also what `conda create` carries,
         and the overlap is deliberate: `create` is SKIPPED for an env that
         already exists, so a set that omitted python could never deliver it
-        to one -- which is verbatim the hole § 4.4 exists to close, and it was
-        reopened here for the very package that change adds to
-        `molbuilder-siesta` (found by review, 2026-09-18: an env created
-        before the pin, with no python, took `install` to a reported SUCCESS
-        and still had none).  On a fresh env the spec is already satisfied by
+        to one -- verbatim the hole § 4.4 exists to close.  On a fresh env the spec is already satisfied by
         the create, so naming it again costs nothing.
 
         It cannot silently move an interpreter, either: the gate is
@@ -1222,13 +1174,10 @@ class Recipe:
         stays a readable list of names, and the entries that are special
         LOOK special.
 
-        Three tests asserted this at the registry: non-empty required fields,
-        and that `extra_steps` is a tuple OF TUPLES.  Nothing type-checks
-        here, so the annotations refused none of it -- the shape test's own
-        docstring named the mistake it covered for,
-        `extra_steps=("python","-m","x")` instead of
-        `(("python","-m","x"),)`, which the installer runs as one command per
-        character.  Malformed raises where it is written now.
+        Malformed raises where it is written: nothing type-checks here, so
+        the annotations refuse nothing -- `extra_steps=("python","-m","x")`
+        instead of `(("python","-m","x"),)` would run as one command per
+        character.
         """
         object.__setattr__(self, "conda_packages", tuple(
             p if isinstance(p, CondaPackage) else CondaPackage(p)
@@ -1299,11 +1248,8 @@ _HOST = Recipe(
         #
         # Here because the `e2e` tests start the real server IN-PROCESS
         # (`create_app` + werkzeug `make_server`), so the process running them
-        # needs molbuilder's whole import stack.  A browser-tooling-only env
-        # was tried and deleted for exactly that (`molbuilder-tests`,
-        # 2026-07-13) -- and a SECOND full env is no answer either: the suite
-        # runs under whatever interpreter invokes `tools/testrun.py`, which is
-        # this one, so a dev env would sit unused while e2e kept failing.
+        # needs molbuilder's whole import stack -- and the suite runs under
+        # whatever interpreter invokes `tools/testrun.py`, which is this one.
         #
         # Opt-in rather than `optional`: `optional` means *attempted, failure
         # does not abort*, which is what the two packages above rely on.
@@ -1328,9 +1274,7 @@ _HOST = Recipe(
     # packages as root and is NOT run here and must not be: a missing system
     # library is a host prerequisite, the same class of thing as conda itself.
     extra_steps=(ExtraStep(("bash", "-c", 'set -e; D="$CONDA_PREFIX/share/ms-playwright"; H="$CONDA_PREFIX/etc/conda/activate.d"; mkdir -p "$D" "$H"; printf \'export PLAYWRIGHT_BROWSERS_PATH="$CONDA_PREFIX/share/ms-playwright"\\n\' > "$H/playwright-browsers.sh"; export PLAYWRIGHT_BROWSERS_PATH="$D"; python -m playwright install chromium; echo "[molbuilder] chromium -> $D (inside the env; removed with it, no sudo, nothing in ~/.cache)" >&2'), opt_in='test tooling -- a ~115 MB browser download, and nobody should pay for it by accident'),),
-    # NOT A NOTEBOOK KERNEL.  `ipykernel` and a kernelspec stood here from
-    # 2026-09-13 (5c780f18) until 2026-09-14, so a notebook could run on this
-    # env's python.  The user's design is the other one: the notebook env is
+    # NOT A NOTEBOOK KERNEL.  The user's design: the notebook env is
     # SELF-CONTAINED and no other env carries notebook tooling.  See
     # `_JUPYTER`.
     verify_argv=("python", "-c",
@@ -1402,13 +1346,7 @@ def _pyscf(cuda_version: str) -> Recipe:
                 #
                 # The fact is permanent and checkable from what is installed:
                 # the dist-info reads 0.1.0 while ``direct_url.json`` names a
-                # git commit.  (It cited a one-off 2026-09-11 observation
-                # until 2026-09-20; that had been made by installing the PyPI
-                # copy into the HOST env -- where pyscf must never be -- and
-                # was removed the next day along with the two empty
-                # directories pip left, which were making ``import pyscf``
-                # succeed there.  Nothing to go and look at, and nothing that
-                # needs to be put back.)
+                # git commit.
                 force=True,
                 # ``polarizability`` (required -- Raman has no fallback path)
                 # is byte-identical in the sdist, so an unreachable GitHub
@@ -1470,10 +1408,8 @@ def _pyscf(cuda_version: str) -> Recipe:
                      "scripts/install-env.sh repair molbuilder-pySCF "
                      "--include-optional')"),
         verify_expect_contains="prop: polarizability OK",
-        # NOT A NOTEBOOK KERNEL, DELIBERATELY.  `ipykernel` and a kernelspec
-        # stood here from 2026-09-13 (5c780f18) until 2026-09-14, so a notebook
-        # could `import pyscf` on the same python a deck runs on.  The user never
-        # asked for it and removed it: being a kernel costs this env `debugpy`,
+        # NOT A NOTEBOOK KERNEL, DELIBERATELY: being a kernel would cost this
+        # env `debugpy`,
         # `ipython`, `jupyter_client`, `pyzmq`, `tornado` and six more, inside the
         # one env whose job is running pySCF reproducibly.  **A job env stays a
         # job env.**  Notebook work belongs to `molbuilder-jupyternb`.
@@ -1483,7 +1419,7 @@ def _pyscf(cuda_version: str) -> Recipe:
 _SIESTA = Recipe(
     name=DEFAULT_ENV_NAMES["siesta"],
     category="siesta",
-    # "(future) Transport" until 2026-09-18.  Transport is built: the
+    # Transport is built: the
     # `molbuilder/transport/` package composes the decks and reads the
     # results, and this env ships the binaries that run them -- `siesta`
     # (which performs the TranSiesta electrode + scattering runs; 5.x has
@@ -1502,8 +1438,7 @@ _SIESTA = Recipe(
     #
     # Diagonalizer: ScaLAPACK **and ELPA on CPU**.  The conda-forge
     # ``siesta=5.4.2=mpi_openmpi_*`` build declares no ``elpa`` dependency
-    # and links no external ``libelpa`` -- which is what this comment used
-    # to observe, and then drew the wrong conclusion from.  ELPA is
+    # and links no external ``libelpa``.  ELPA is
     # compiled INTO the binary through ELSI: 279 defined ELPA symbols,
     # zero undefined, the whole ``elpa_api`` / ``elpa1_compute`` /
     # ``elpa2_compute`` set.
@@ -1517,9 +1452,8 @@ _SIESTA = Recipe(
     #
     # So GPU is the ONE thing this env cannot do, and it is a missing
     # BUILD OPTION (that ELPA was compiled without the GPU entry), not a
-    # missing device.  Adding an ``elpa`` conda package here would still
-    # be pointless, but for the opposite reason to the one recorded
-    # before: the solver is already here.
+    # missing device.  Adding an ``elpa`` conda package here would be
+    # pointless: the solver is already here.
     #
     # This env exists to be installable ANYWHERE -- packages only, no
     # toolchain.  ``molbuilder-siesta-gpu`` must be built from source,
@@ -1568,12 +1502,10 @@ _MDTOOLS = Recipe(
     # git: uniform across every env -- see the _HOST recipe for why it is
     # everywhere.
     conda_packages=(_PYTHON_SPEC, "dacase::ambertools-dac=26", "git"),
-    # FEED IT A `quit`, SO IT STOPS BY ITSELF.  `tleap -f /dev/null` sourced
-    # an empty script, fell through to its interactive prompt, found no
-    # terminal and exited 1 with "*** Error: tl_getline(): not interactive"
-    # -- printed under a "verify: OK" line on every install.  With `quit` as
-    # the script it exits 0 ("Exiting LEaP: Errors = 0"), so the exit code
-    # counts again, and "LEaP" in the banner proves it was THIS env's tleap.
+    # FEED IT A `quit`, SO IT STOPS BY ITSELF.  An empty script falls through
+    # to tleap's interactive prompt, finds no terminal and exits 1 with
+    # "*** Error: tl_getline(): not interactive".  With `quit` as the script
+    # it exits 0 ("Exiting LEaP: Errors = 0"), so the exit code counts, and "LEaP" in the banner proves it was THIS env's tleap.
     # /dev/stdin, not a temp file: nothing to clean up, and no leap.log is
     # written into the caller's directory (measured 2026-09-29).
     # ``bash -c`` (no -l) -- we don't need a LOGIN shell here.  -l would
@@ -1712,9 +1644,6 @@ _PIN_MPI_TOOLS = (
     "-DMPI_Fortran_COMPILER={env_prefix}/bin/mpifort",
 )
 
-# P1.E 2026-06-16 audit cleanup: ``_PIN_CUDA_TOOLS`` was a defunct
-# constant -- defined for a never-shipped cmake-based ELPA build path,
-# and never referenced anywhere (verified by ``grep _PIN_CUDA_TOOLS``).
 # ELPA uses autotools; SIESTA's CUDA acceleration is entirely via
 # ELPA's CUDA-enabled build, so SIESTA itself needs no CUDA pin.
 # The CUDA isolation we DO want (refuse to wander into /usr/local/cuda)
@@ -1761,8 +1690,7 @@ _PIN_MPI_TOOLS = (
 #:   * SIESTA appends `-Wl,--enable-new-dtags`, so it is **DT_RUNPATH, not
 #:     DT_RPATH** -- searched AFTER `LD_LIBRARY_PATH`, not before.
 #:
-#: THE ACTIVATE HOOK IS THEREFORE THE MECHANISM THAT DECIDES, not the
-#: "convenience copy" an earlier version of this note called it.  The hook
+#: THE ACTIVATE HOOK IS THEREFORE THE MECHANISM THAT DECIDES.  The hook
 #: is ordered components-first and that ordering is real (verified by
 #: sourcing the rendered hook).
 #:
@@ -1900,11 +1828,9 @@ _ELPA = BuildComponent(
         # _CONDA_CUDA_ENV_BRIDGE block at the top of this file for the
         # one explicit layout assumption.  Applied identically in the
         # configure / build / install steps below so libtool's replay
-        # of CPPFLAGS / LDFLAGS gets the same setup every time --
-        # which is what cured the ``cannon.c: cuda_runtime.h: No such
-        # file or directory`` error on the ELPA 2024.05.001 upgrade
-        # (the configure step had the include path, but the make step
-        # was using its own unset+empty prelude that erased it).
+        # of CPPFLAGS / LDFLAGS gets the same setup every time (a make
+        # step without it fails on ``cannon.c: cuda_runtime.h: No such
+        # file or directory``).
         + _CONDA_CUDA_ENV_BRIDGE +
         # CC-specific kernel selection.  ELPA ships a generic NVIDIA
         # kernel (--enable-nvidia-gpu) AND optimised variants for
@@ -2131,13 +2057,6 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         # submodule) gets a chance.  IGNORE_PATH + IGNORE_PREFIX_PATH
         # surgically skip /usr/local for THIS build only -- nothing on
         # the host is touched.
-        # P1.E 2026-06-16 audit cleanup: removed duplicate
-        # ``-DCMAKE_IGNORE_PATH=...`` + ``-DCMAKE_IGNORE_PREFIX_PATH``
-        # pair that used to follow this one.  cmake honors only the
-        # LAST value of any repeated ``-D`` flag, so the second copy
-        # was a no-op -- but readers had to verify that both copies
-        # carried identical values before being sure.  Kept the
-        # earlier copy + this single explanatory comment block.
         "-DCMAKE_IGNORE_PATH=/usr/local;/usr/local/lib;"
         "/usr/local/lib/cmake;/usr/local/include",
         "-DCMAKE_IGNORE_PREFIX_PATH=/usr/local",
@@ -2236,11 +2155,10 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         # lua.c does ``#include <readline/readline.h>``) and links
         # ``-lreadline``, both with an empty include/library path.
         #
-        # On a host carrying libreadline-dev that quietly resolved to
-        # /usr/include + /usr/lib -- another instance of the host
-        # assumption the bare-name toolchain shims exist to remove,
-        # and it stayed invisible while bare ``gcc`` still WAS the
-        # host gcc.  Once the shims point bare ``gcc`` at the conda
+        # On a host carrying libreadline-dev that would quietly resolve
+        # to /usr/include + /usr/lib -- another instance of the host
+        # assumption the bare-name toolchain shims exist to remove.
+        # With the shims pointing bare ``gcc`` at the conda
         # toolchain (whose only header dirs are its own and the
         # sysroot -- <env>/include is NOT among them), a clean machine
         # dies at
@@ -2316,14 +2234,10 @@ _SIESTA_GPU_BUILD = BuildSpec(
     # instead of a quarter of an hour.
     components=(_ELPA, _NETCDF_FORTRAN, _SIESTA_GPU_COMPONENT),
     cuda_required=True,
-    # (A twelve-line note about a `cuda_min_version` floor stood here until
-    # 2026-09-14, arguing about whether its 12.4 was right.  The FIELD was
-    # deleted the same day -- see `BuildSpec`'s docstring for why -- so the
-    # note described a setting nobody holds and left an open question about
-    # a number that no longer exists.  The toolkit version this build gets is
-    # `cuda-version=` in `_siesta_gpu`'s package list, which this file
-    # chooses; whether nvcc accepts the chosen gcc is
-    # `builds.check_cuda_gcc_compat`, asked separately.)
+    # The toolkit version this build gets is `cuda-version=` in
+    # `_siesta_gpu`'s package list, which this file chooses; whether nvcc
+    # accepts the chosen gcc is `builds.check_cuda_gcc_compat`, asked
+    # separately.
     activate_hook=_SIESTA_GPU_ACTIVATE_HOOK,
     deactivate_hook=_SIESTA_GPU_DEACTIVATE_HOOK,
 )
@@ -2345,7 +2259,7 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
         # CUDA TOOLKIT lives inside the env (cuda-nvcc + cuda-cudart-dev +
         # libcublas-dev etc., from conda-forge).  The host provides the
         # NVIDIA DRIVER + nvidia-smi (kernel-module-coupled, can't be a
-        # conda package).  System CUDA at /usr/local/cuda is no longer
+        # conda package).  System CUDA at /usr/local/cuda is not
         # consulted by the build.
         conda_packages=(
             # Toolchain.  gcc_linux-64=<N> compiler family pinned via
@@ -2371,16 +2285,14 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             # /usr/include and the host glibc, which is precisely the
             # assumption this env exists to remove.
             #
-            # NAMING A PACKAGE WITHOUT A VERSION DECIDES NOTHING.  An earlier
-            # revision of this comment claimed these lines "change no solve"
-            # and were declared only for completeness.  That was true and it
-            # was the bug: `sysroot_linux-64` unversioned let the solver take
-            # the newest sysroot (2.39 as of 2026-09), producing a toolchain
-            # that compiled and linked cleanly and then emitted binaries the
-            # host could not execute -- surfacing five steps later as ELPA's
+            # NAMING A PACKAGE WITHOUT A VERSION DECIDES NOTHING:
+            # `sysroot_linux-64` unversioned lets the solver take the newest
+            # sysroot (2.39 as of 2026-09), producing a toolchain that
+            # compiles and links cleanly and then emits binaries the host
+            # cannot execute -- surfacing five steps later as ELPA's
             # `configure: error: cannot run C++ compiled programs`.  See
             # _SYSROOT_VERSION above for the full reasoning and for why
-            # deleting the line would not have helped either.
+            # deleting the line would not help either.
             #
             # kernel-headers stays unversioned ON PURPOSE: sysroot_linux-64
             # pins it exactly (2.17 depends on kernel-headers 3.10.0), so a
@@ -2398,10 +2310,9 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             #     -DLUA_USE_LINUX (which turns on LUA_USE_READLINE, so
             #     lua.c includes <readline/readline.h>) and links
             #     ``SYSLIBS="-Wl,-E -ldl -lreadline"``.
-            # Until now it was in the env only because ``python`` happens
-            # to pull it in transitively -- the same "complete only by the
-            # solver's good manners" hazard the three lines above exist to
-            # close.  ncurses (libtinfo, readline's own dependency) comes
+            # Declared rather than left to ``python`` pulling it in
+            # transitively -- the same "complete only by the solver's good
+            # manners" hazard the three lines above exist to close.  ncurses (libtinfo, readline's own dependency) comes
             # with it.  See the C_INCLUDE_PATH/LIBRARY_PATH bridge in the
             # SIESTA build step for why having the package is necessary
             # but NOT sufficient.
@@ -2441,7 +2352,7 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             "cuda-nvrtc",
             "cuda-cccl",
             "libcublas-dev",
-            # MPI (unpinned -- SAT-solver picks one; fingerprint records it)
+            # MPI (unpinned -- SAT-solver picks one)
             "openmpi",
             # Math libs.  OpenBLAS (NOT MKL) keeps libgomp the only OpenMP
             # runtime; mixing libiomp5 + libgomp blows up at runtime.
@@ -2450,10 +2361,7 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             # against openblas, so libiomp5 never enters the env beside gcc's
             # libgomp (the two together give Intel's `OMP: Error #15`, or
             # silent thread-pool corruption).  A declaration, enforced by the
-            # solver.  A `forbidden_packages` denylist stood beside this until
-            # 2026-09-12, checked against this very list in this very file; it
-            # could not see what conda installs, cited no upstream requirement,
-            # never matched its own documentation, and never fired.
+            # solver.
             "openblas",
             "scalapack",
             # File I/O (parallel HDF5 + netcdf for SIESTA's NetCDF backend).
@@ -2481,9 +2389,7 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             # the modules this build just wrote win over the env's.  It is
             # that -J/-I precedence that saves it, not an include-dir
             # ordering.  (An autotools build of the same source
-            # does die there, and an earlier version of this comment cited
-            # that as evidence.  It was evidence about a build system we do
-            # not use.)
+            # does die there; it is not the build system we use.)
             #
             # THE MEASURED REASON IS THE ORIGINAL FAILURE, and it is enough:
             # SIESTA's OWN compile read `$CONDA_PREFIX/include/netcdf.mod`
@@ -2492,9 +2398,7 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             # at a fresh netcdf module, so nothing saves it the way the line
             # above saves this component's own build.
             #
-            # A LOAD-TIME ARGUMENT STOOD HERE AND IS WITHDRAWN.  It claimed
-            # the two libraries "export libnetcdff.so.7 at different
-            # versions".  They do not: measured, both are
+            # NOT A LOAD-TIME FAILURE: measured, both are
             # `libnetcdff.so.7.1.0`, both SONAME `libnetcdff.so.7`, both
             # export 578 dynamic symbols, and the symbol lists are
             # identical.  That makes loading the wrong copy UNDETECTABLE
@@ -2579,22 +2483,13 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             '  "$CONDA_PREFIX"/bin/*) ;; '
             '  "") echo "[molbuilder] note: no bare gcc on PATH" >&2 ;; '
             # NO BACKTICKS in this message.  Inside a double-quoted shell
-            # string they are command substitution, not punctuation: an
-            # earlier draft wrote "Re-run `molbuilder envs install
-            # siesta-gpu`" and would have EXECUTED that, recursively, from
-            # inside an install.  Caught reading the generated bash in full
-            # rather than the Python that generates it.
-            # AND THE RECIPE NAME MUST BE THE REGISTERED ONE.  This said
-            # `siesta-gpu`, which `recipe_by_name` does not match -- it takes
-            # canonical names only, so the remedy printed by the one warning that
-            # tells you your GPU env lacks its toolchain shims was itself a usage
-            # error ("unknown recipe `siesta-gpu`", exit 2).  Measured 2026-09-12.
-            # The launcher spelling is IMPORTED now (`hints.fix_cmd`, floor 1).
-            # It used to be written out here, on the grounds that this module is
-            # recipe DATA and may not depend on the CLI that formats hints -- true
-            # of the CLI, and the reason the speller moved below both rather than
-            # being copied.  The copy is exactly how this line came to name
-            # `siesta-gpu`, which `recipe_by_name` does not accept.
+            # string they are command substitution, not punctuation: a
+            # backticked `molbuilder envs install ...` would EXECUTE,
+            # recursively, from inside an install.
+            # AND THE RECIPE NAME MUST BE THE REGISTERED ONE: `recipe_by_name`
+            # takes canonical names only.  The launcher spelling is IMPORTED
+            # (`hints.fix_cmd`, floor 1) -- this module is recipe DATA and may
+            # not depend on the CLI that formats hints.
             f'  *) echo "[molbuilder] WARNING: bare gcc resolves to'
             ' $(command -v gcc), outside $CONDA_PREFIX.  Bundled Makefiles'
             ' that call gcc directly (flook/lua) would use the HOST'
@@ -2625,9 +2520,7 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             "(downloads.unidata.ucar.edu) + the SIESTA git clone "
             "(gitlab.com/siesta-project), which recursively pulls "
             "libfdf, libpsml, xmlf90, libgridxc, ELSI submodules",
-            # NO FIGURE.  This said "~30 GB", the number the disk GATE used before
-            # it was deleted on 2026-09-12 as undefendable -- how much a source
-            # build needs depends on what the packages are that week and on how
+            # NO FIGURE: how much a source build needs depends on what the packages are that week and on how
             # much the compile peaks above what the finished env keeps, neither of
             # which molbuilder can know.  `preflight` reports the free space it
             # measured and this machine's own largest env as a scale; the
@@ -2651,17 +2544,13 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
 # / matplotlib).  Jupyter is installed here, activated here, and works here.
 # **No other env carries notebook tooling.**
 #
-# That is the user's design, stated 2026-09-14, and it replaced mine.  Mine
-# put the stack in the host env and made each calculation env offer itself as
-# a kernel, so that a notebook would run on the same python as a deck.  The
-# cost was invisible until somebody named it: to be a kernel an env must
-# carry `ipykernel`, which drags in `debugpy`, `ipython`, `jupyter_client`,
-# `pyzmq`, `tornado` and six more -- into `molbuilder-pySCF`, whose one job is
-# running pySCF reproducibly.  **A job env stays a job env.**
+# That is the user's design (2026-09-14): to be a kernel an env must carry
+# `ipykernel`, which drags in `debugpy`, `ipython`, `jupyter_client`,
+# `pyzmq`, `tornado` and six more -- so no calculation env offers itself as
+# a kernel.  **A job env stays a job env.**
 #
 # What this env carries of SCIENCE is the FILE-LEVEL libraries and nothing
-# that runs a calculation (user ruling 2026-09-24, revising the 2026-09-14
-# one that kept every science package out).  **A notebook has to read the
+# that runs a calculation (user ruling 2026-09-24).  **A notebook has to read the
 # MD and trajectory formats calculations produce** -- extended-XYZ, ASE's
 # own .traj, plain xyz, pdb, cif, and the engine outputs ase's readers
 # cover -- and `ase` is that reader; `sisl` is the same for what SIESTA and
@@ -2687,7 +2576,7 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
 #
 # If a notebook cannot `import numpy`, the env predates this recipe:
 # `install molbuilder-jupyternb` delivers the conda packages an existing env
-# lacks (`env-framework.md` § 4.4, since 2026-09-17).
+# lacks (`env-framework.md` § 4.4).
 #
 _JUPYTER = Recipe(
     name=DEFAULT_ENV_NAMES["jupyter"],
@@ -2783,13 +2672,6 @@ def effective_name(recipe: Recipe, caps: Capabilities) -> str:
     recipe's is always its own, ``molbuilder``** *(user, 2026-10-02: "let's
     enforce one name")*: `install-env.sh` creates that env and nothing renames
     it (`configuration.md` § 2.1c).
-
-    *(Until that day the host env had two names' worth of machinery: a
-    per-invocation ``$MOLBUILDER_HOST_ENV`` and, from 2026-09-13, a
-    persistent ``envs.host``.  The shim read only the variable and this
-    function read both, so the twice-measured failure was one env built
-    under one name and reported under another -- a second full host env, the
-    one in use invisible to the health report (D13, D21).)*
     """
     if recipe.category is not None:
         # env_for_category falls back to DEFAULT_ENV_NAMES when no

@@ -22,11 +22,9 @@ the interesting one is easy to get wrong:
     default, and collapsing stops polling).  A fault that is only
     visible inside a folded-away card is a fault nobody sees.
 
-The server runs in-process here, and the fixture fakes the WHOLE
-broken-driver state (`_GPU_ERROR` + empty handles + `_NVML_OK` off) --
-faking only the flag was enough while the development host's own
-driver was dead, and failed the day it was repaired (see
-``_set_gpu_error``).  Nothing about the front-end path is stubbed.
+The server runs in-process here, and the fixture fakes the GPU sampler's
+one door (see ``_set_gpu_error``).  Nothing about the front-end path is
+stubbed.
 """
 from __future__ import annotations
 
@@ -67,7 +65,7 @@ def _open_results(page, base_url):
 def _set_gpu_error(monkeypatch, value):
     """Put the server in the broken-driver state -- the WHOLE state.
 
-    Since 2026-08-28 the GPU sampler is one function returning
+    The GPU sampler is one function returning
     ``(gpus, error)`` -- a subprocess-with-timeout behind a cache
     (the in-process NVML call froze the whole server once) -- so
     faking the state is faking that one door: error set means the

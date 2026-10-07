@@ -9,7 +9,7 @@
  * type=module) hasn't initialised yet.  Polling fixes the symptom;
  * this registry fixes the structure.
  *
- * Contract (design.md "Module init contract"):
+ * Contract:
  *
  *   PRODUCER (a module that exposes a global namespace):
  *     window.molbuilder.runtime.register("<name>", api);
@@ -30,17 +30,10 @@
  * modify, spectra, results) follows this rule.
  *
  * Naming: flat, dotted, lowercased -- "projects", "structure.save",
- * "structure.warningModal".  THIS HEADER DOES NOT LIST THEM.  It used to,
- * with the instruction "add the name to the list above", and it drifted
- * exactly as that instruction guarantees: four of the eight names it
- * carried (formSchema, selection.panel, selection.viewerAdapter,
- * inspectors) registered nothing, while six that do register
- * (structure.dna / .name / .peptide / .rna / .smiles,
- * structure.warningModal) were absent.  A comment that restates what the
- * code already knows is a second source of truth with no way to be wrong
- * out loud.
+ * "structure.warningModal".  THIS HEADER DOES NOT LIST THEM: a list here
+ * would be a second source of truth with no way to be wrong out loud.
  *
- * The live answer is `window.molbuilder.runtime.names()` -- a sorted
+ * The live answer is `window.molbuilder.runtime.listRegistered()` -- a sorted
  * snapshot of what has actually registered on this page.  Read it in the
  * console; it cannot be stale.
  *

@@ -2,7 +2,7 @@
  *
  * THE shared spectra-inspector implementation.  Two consumers:
  *
- *   * /spectra  -- the legacy single-purpose page (via
+ *   * /spectra  -- the spectrum-calculation page (via
  *                  spectra/viewer.js, which contains only the
  *                  DOMContentLoaded bootstrap that calls into this
  *                  module).
@@ -22,7 +22,6 @@
  *
  *   GET  /api/build/schema/pyscf?calculation=vibration -- the form
  *   POST /api/task-setup/handover       -- Send to Task setup
- *   (the old schema/spectra + spectra/render routes retired at P3)
  *   POST /api/spectra/load              -- parse a results JSON
  *
  * --- DOM scoping convention ----------------------------------------
@@ -56,13 +55,6 @@
      * /spectra's bootstrap holds the handle for completeness but
      * never disposes (the tab lives for the lifetime of the page).
      */
-    // Module-level holder for the structure bytes the user loaded
-    // via the Inspect-structure card's "Load from sidebar selection"
-    // button (task #309, 2026-06-09 follow-up to #296).  Pre-#309
-    // the bytes were stored in a hidden ``<textarea id="structure-
-    // text">``; then in a module-level ``_loadedStructureText`` holder.
-    // BOTH are gone (2026-07): the structure is read from the viewer
-    // OFF THE MODEL (molview.data) at call time -- no second copy.
 
     function mountInspector(rootEl, opts) {
     rootEl = rootEl || document;
@@ -82,17 +74,6 @@
         spectrumControls: null,
         spectrumAbsent: null,
         modesTable:     null,
-        // ``structureText`` slot removed 2026-06-10 along with the
-        // ``$("structure-text")`` lookup in init() — the underlying
-        // ``<textarea id="structure-text">`` was retired in task #309;
-        // the structure is read off the viewer (getTheStructure ->
-        // molview.data) at call time.
-        // xyzFile / xyzLoadBtn / xyzStatus removed 2026-05-18: the
-        // in-template <input type="file" id="xyz-file"> + sibling
-        // load-button were dropped when the projects sidebar took
-        // over file selection.  loadXyzFile() and its event-listener
-        // wiring are gone too (init had to null-check ``els.xyzLoadBtn``
-        // since the id no longer exists; the whole branch was dead).
         formContainer:  null,   // wraps both panels: the generate-side gate + the edit-listener scope
         form:           { pyscf: null, siesta: null },   // one schema-built form per engine
         engineStrip:    null,
@@ -100,10 +81,8 @@
         sendBtn:        null,
         sendStatus:     null,
         preflightPanel: null,
-        // resultsFile / loadResultsBtn / resultsStatus removed for the
-        // same reason as xyz* above; loadResults() also gone.  The
-        // /api/spectra/load endpoint stays -- loadByPath reads the file
-        // the Results tab's dropdown picked through it.
+        // loadByPath reads the file the Results tab's dropdown picked
+        // through /api/spectra/load.
         resultsSummary: null,
         resultsMeta:    null,
         methodsBlock:   null,
@@ -124,7 +103,6 @@
         esBarDiagram:   null,
         esSummary:      null,
         // The run's progress: one status line and the phase dots.  The
-        // path box and its three buttons went on 2026-09-28 -- the
         // dropdown is the one route to a file, and a running result is
         // followed by itself (web/spectra.md § 7).
         watchStatus:    null,
@@ -143,9 +121,8 @@
     };
 
     // Last successful render payload + interactive state.
-    // Bucketed state shape per docs/web/results.md
-    // PR 3 mirrors the trajectory inspector's shape (PR 2 + PR 2.1 +
-    // PR 2.2 + PR 2.3) for cross-inspector consistency.  Five disjoint
+    // Bucketed state shape per docs/web/results.md, mirroring the
+    // trajectory inspector's shape for cross-inspector consistency.  Five disjoint
     // buckets + a state-machine field; backward-compat aliases keep
     // existing render code working with the legacy flat ``state.X``
     // shape; transition() is the SINGLE entry-point for fileState /
@@ -178,8 +155,7 @@
         fileState: {
             // The file on screen, written by transition('LOADING') from
             // the path loadByPath was handed -- the dropdown's pick, a
-            // Refresh, or the registry's hot swap.  (`state.watchPath`
-            // was an alias of it, for a path box that is gone.)
+            // Refresh, or the registry's hot swap.
             path:    null,
             // results: SpectraResults dict from /api/spectra/load.
             // Replaced atomically inside transition('APPLY').
@@ -193,8 +169,7 @@
 
         viewState: {
             // 1-based index of the active mode, or null.  Survives
-            // watchTick re-renders when the pick remains valid
-            // (PR 2 audit follow-up D, 2026-06-17).
+            // watchTick re-renders when the pick remains valid.
             selectedMode: null,
         },
 
@@ -211,8 +186,8 @@
             animSpeed:      1.0,
             // WHICH pairing of eigenvector and amplitude (§ 12.2), and the
             // temperature the thermal one needs.  Preferences like the two above
-            // them, so they belong in the bucket the others live in -- otherwise
-            // they are simply left behind when this bucket learns to persist.
+            // them, so they belong in the bucket the others live in, which
+            // persists.
             animAmplitudeMode: "display",   // or "zero-point" / "thermal"
             animTemperature:   298,         // K
         },
@@ -234,9 +209,7 @@
 
         derived: {
             // Empty -- spectra has no per-iter rolling-window
-            // derived state today (trajectory has scfPollHistory
-            // for the per-iter time estimate; spectra has nothing
-            // equivalent).  Kept present-but-empty so the
+            // derived state.  Kept present-but-empty so the
             // five-bucket contract shape holds; tests can pin it.
         },
 
@@ -394,8 +367,7 @@
     // working unchanged.  See trajectory/core.js for the same
     // pattern + rationale.
     (function _wireBackcompatAliases() {
-        // The shared inspector helper (lib/inspectors/lifecycle.js): both
-        // cores spelled this out byte-identically.
+        // The shared inspector helper (lib/inspectors/lifecycle.js).
         function alias(key, bucket) {
             root.molbuilder.inspectorLifecycle.alias(state, key, bucket);
         }
@@ -452,8 +424,7 @@
     //   'IDLE'     -> {}:       full reset on dispose.
     //   'APPLY'    -> {path?, results?}: atomic fileState write.
     //                 Single canonical fileState writer per
-    //                 contract § 2 (closed by trajectory's PR 2.3;
-    //                 spectra mirrors that here).
+    //                 contract § 2.
     function transition(target, payload) {
         payload = payload || {};
         if (target === "LOADING") {
@@ -513,14 +484,11 @@
                 state.lifecycle.watchTimer = null;
             }
             // ABORT THE TICK ALREADY ON THE WIRE, as LOADING and IDLE
-            // both do.  Without it a stop did not stop: `stopWatch`
-            // cleared the timer, but a tick mid-flight then resolved
+            // both do.  Without it a tick mid-flight would resolve
             // with `signal.aborted` false and -- because LOADED keeps
-            // `fileState.path` on purpose -- passed the path guard too,
-            // so it rendered and called `_settlePostLoad()`, which
+            // `fileState.path` on purpose -- pass the path guard too,
+            // render, and call `_settlePostLoad()`, which
             // transitions back to WATCHING and starts a NEW interval.
-            // (Found when a Stop button still existed: it said stopped
-            // while the poll ran on.)
             //
             // Safe on the normal-completion path as well: `watchTick`
             // builds a fresh AbortController every tick, and the tick
@@ -555,8 +523,7 @@
             // which passes through LOADING first, and LOADING aborts -- so
             // nothing is ever in flight by the time we get here.
             //
-            // It is here because ERROR was the ONE branch that did not shut
-            // the door, and the door is what `watchTick`'s resolution guard
+            // It is here because the door is what `watchTick`'s resolution guard
             // depends on: `signal.aborted` is the only thing that catches a
             // tick which has already SETTLED but not yet continued, and a
             // path check alone lets it through (see the note there).  ERROR
@@ -577,19 +544,10 @@
         }
         if (target === "APPLY") {
             /* THE ONE WRITE: a name and the data that belongs to it,
-             * together, or neither.  `results.md` § 4 has always said
-             * fileState is "replaced atomically"; until 2026-09-03 it was
-             * not.  Every caller passed `{results}` alone, so the answer
-             * landed under whatever path happened to be sitting there, and
-             * A `fetchSeq` counter existed to survive that -- snapshotted
-             * before each fetch and re-checked after, in five places, to
-             * notice it had written into the wrong file.  It is gone
-             * (2026-09-04): once the answer carries its own name, the
-             * question "is this still the file on screen?" is asked of the
-             * data, and dispose -- which never bumped the counter -- is
-             * caught too.
+             * together, or neither (`results.md` § 4: fileState is
+             * "replaced atomically").
              *
-             * A payload MUST now say which file it is for.  A late answer
+             * A payload MUST say which file it is for.  A late answer
              * for a file we have moved off is dropped HERE, once, because
              * its own name no longer matches the one on screen.  That is
              * the guard: not a counter, the data's own identity. */
@@ -620,11 +578,7 @@
     // web/results.md § 4.1), for both callers, loadByPath and watchTick:
     // live -> transition('WATCHING') (the run is FOLLOWED,
     // web/spectra.md § 7), else -> transition('LOADED') (finished, failed,
-    // never launched, or no run: nothing more will arrive).  Until
-    // 2026-09-28 a load was a snapshot and following took a "Start
-    // watching" press; until 2026-10-03 the follow stopped only when every
-    // asked-for phase reported complete, so a run killed between phases
-    // was followed until the page closed.  The phase flags are the file's
+    // never launched, or no run: nothing more will arrive).  The phase flags are the file's
     // facts, drawn as the dots; the follow is the run's.
     function _settlePostLoad() {
         const run = state.fileState.run;
@@ -645,11 +599,8 @@
     /* THE PHYSICAL CONSTANTS THIS PAGE CONVERTS WITH ARE SERVED, not copied:
      * `/api/spectra/load` sends them with every result, from their one home
      * (`molbuilder.constants`; `web/blueprints/spectra.py::_page_constants`),
-     * and `renderResults` takes them in before any panel draws.  Four
-     * numbers stood here as copies until 2026-09-27 -- Hartree to eV, to
-     * kcal/mol, Boltzmann in Eh/K, and kelvin per cm-1 -- held equal to
-     * Python by a test that read this file (`architecture.md` § 3; user:
-     * one source per fact). */
+     * and `renderResults` takes them in before any panel draws
+     * (`architecture.md` § 3; user: one source per fact). */
     const K = {};
 
     // ----- Listener bookkeeping ---------------------------------
@@ -669,12 +620,7 @@
     // init() and would otherwise leak the previous round of
     // listeners.  Mirrors lib/trajectory/core.js's dispose contract.
     //
-    // THE SCOPE IS THE ONLY REGISTRY.  A local ``_cleanups`` array stood
-    // beside it for one commit on 2026-08-23 -- the leftover of the array
-    // ``_on`` used to push into before the scope was extracted -- and
-    // dispose() drained THAT while every listener sat in the scope, so a
-    // mount/dispose cycle removed nothing at all.  Two registries is the
-    // same defect as two readers: one of them is the one that gets used.
+    // THE SCOPE IS THE ONLY REGISTRY.
     var _listeners = root.molbuilder.inspectorLifecycle.listeners();
     function _on(target, event, handler, opts) {
         _listeners.on(target, event, handler, opts);
@@ -707,9 +653,7 @@
     //
     // The form is the CATALOGUE's vibration schema and depends on no
     // picked structure (frozen atoms are structure-side facts riding
-    // the hand-over -- § 8 of web/spectra.md; the sidecar pre-fill
-    // narration that stood here described the retired flow the two
-    // functions below explicitly say is gone).
+    // the hand-over -- § 8 of web/spectra.md).
 
     // Monotonic counter for in-flight schema fetches.  The fetches
     // could race -- a
@@ -783,8 +727,7 @@
     // WHICH ENGINE is the description's `engine` (task.json), chosen here
     // the way the Structure-optimization tab chooses it -- a strip over two
     // mounted forms -- and carried by the hand-over.  It is not a parameter
-    // of the deck: the catalogue item that once stood in for this strip
-    // (`engine`, one choice) retired with it (engines/vibration.md § 3.1).
+    // of the deck (engines/vibration.md § 3.1).
     function _activeEngine() {
         return state.engine === "siesta" ? "siesta" : "pyscf";
     }
@@ -832,8 +775,7 @@
     function structureLoaded() {
         // THE MODEL'S OWN DOOR for the axis kinds (molview.md § 9.3) -- never
         // the wire envelope, whose metadata is nested where no caller should
-        // know (it was read off `exportFile()` until 2026-09-24, from keys the
-        // envelope does not have, so the default never fired).
+        // know.
         const d = _viewer && _viewer.data;
         const ak = (d && typeof d.getAxisKind === "function") ? d.getAxisKind() : null;
         const periodic = Array.isArray(ak) && ak.some((k) => k && k !== "isolated");
@@ -857,9 +799,7 @@
     /* THE FORMS THE CHEMISTRY CARD ANSWERS FOR (`lib/chemistry.js`): each
      * engine's rendered form and its schema, so the card can ask for the
      * charge and spin of exactly what each form says.  The page asks; it
-     * never reaches into the containers (overview.md § 1).  This was
-     * `applySuggested` until 2026-09-28, which spread an Auto-detect
-     * suggestion onto both forms, overwriting them. */
+     * never reaches into the containers (overview.md § 1). */
     function stateForms() {
         const out = {};
         for (const engine of ["pyscf", "siesta"]) {
@@ -878,8 +818,7 @@
     // the selector would ignore.
     function _fieldIdByName(name) {
         // The catalogue owns id derivation (`_item_to_field`); this
-        // module never spells an id.  Hardcoded spellings once drifted
-        // from the real ids, so the lock below had never fired.
+        // module never spells an id.
         const schema = state.schemas.pyscf;
         const sections = (schema && schema.sections) || [];
         for (const sect of sections) {
@@ -1026,9 +965,8 @@
         const vf = (window.molbuilder || {}).validationFindings;
         if (!vf) return;
         /* fieldIds lands each finding beside its own control -- the same
-         * map the optimization tab passes; omitting it degraded every
-         * Spectrum finding to card-then-residual (validation-findings.js
-         * says so).  emptyText keeps the panel's no-findings copy alive:
+         * map the optimization tab passes; without it a finding falls to
+         * card-then-residual.  emptyText keeps the panel's no-findings copy alive:
          * the template's static row is destroyed by the first render. */
         const ids = {};
         const schema = state.schemas[engine];
@@ -1038,7 +976,7 @@
         }
         // Both forms stay mounted (one is shown), so the OTHER form's
         // field rows are cleared before this engine's are drawn -- a scope
-        // of one form left the hidden form's stale.
+        // of one form would leave the hidden form's stale.
         for (const e of ["pyscf", "siesta"]) {
             if (e !== engine && els.form[e] && typeof vf.clear === "function") {
                 vf.clear({ formScope: els.form[e] });
@@ -1054,7 +992,7 @@
 
     // ----- Send to Task setup (the hand-over) -------------------
     //
-    // The P2 substitution (spectra-migration-plan.md § 4): this tab
+    // This tab
     // DESCRIBES a vibration calculation and hands the description to
     // Task setup -- it renders no deck.  Guards, write order and
     // notice handling live in lib/task-handover.js, ONE door shared
@@ -1074,9 +1012,7 @@
         const _structure = structureForRequest();
         /* The engine is THE STRIP'S CHOICE -- the description's engine, the
          * same fact the Structure-optimization tab sends from its own strip
-         * -- and the params are that engine's form.  (It was a one-choice
-         * form field until 2026-09-24, which made a real choice look like a
-         * parameter of the deck.) */
+         * -- and the params are that engine's form. */
         const engine = _activeEngine();
         // A VALUE THAT WILL NOT READ AS ITS TYPE is refused here, naming its
         // field -- beside which its caption already says why.
@@ -1101,30 +1037,12 @@
         });
     }
 
-    // The Generate / Save / Methods-modal half of this module was
-    // REMOVED at P3 (spectra-migration plan, 2026-08-21) after the
-    // P2 substitution made it unreachable: the tab DESCRIBES a
-    // vibration calculation and hands it to Task setup
-    // (sendToTaskSetup above); the deck is written by `prep`.
-
-    // (loadResults removed 2026-05-18: the in-template multipart-
-    // upload affordance is gone, replaced by the server-side path
-    // loader below.  The /api/spectra/load endpoint still accepts
-    // multipart upload -- it just has no client today.)
-
     // ----- Load by server-side path ----------------------------
     //
-    // Same /api/spectra/load endpoint as the file-upload path, but
-    // with {path: "<server-side path>"} so the server reads the
-    // file directly -- no re-upload after every phase write.
-    /** THE one route to `/api/spectra/load` (`results.md` § 4).
-     *
-     *  There were two, and that was the defect underneath everything else:
-     *  `loadByPath` read the filename out of a DOM box and `watchTick` read
-     *  it out of the state (`state.fileState.path`).  Two sources of truth
-     *  for *which file is this*, each with its own copy of the abort +
-     *  sequence-guard dance.  (The box itself went on 2026-09-28; the path
-     *  is an argument now.)
+    // /api/spectra/load with {path: "<server-side path>"} so the server
+    // reads the file directly -- no re-upload after every phase write.
+    /** THE one route to `/api/spectra/load` (`results.md` § 4):
+     *  `loadByPath` and `watchTick` both come through here.
      *
      *  One door, and the answer comes back WITH the name it was asked for,
      *  so no caller is in a position to write it under another.
@@ -1164,12 +1082,9 @@
         const signal = state.lifecycle.loadAbort.signal;
         let body;
         try {
-            // Phase 6e seventh-review LANDMINE-4: the JSON parse used
-            // to live OUTSIDE this try, so a malformed / truncated body
-            // became an unhandled promise rejection.  It is inside
-            // `fetchResults`, which is called here, so the SyntaxError
-            // still lands on the same status-banner path as a network
-            // error.
+            // The JSON parse is inside `fetchResults`, which is called
+            // inside this try, so a malformed / truncated body lands on
+            // the same status-banner path as a network error.
             body = (await fetchResults(path, signal)).body;
         } catch (exc) {
             // AbortError: a newer loadByPath() superseded us, or
@@ -1183,11 +1098,9 @@
             return;
         }
         // Contract § 4 Invariant 1, asked of the ANSWER'S OWN IDENTITY.
-        // Two questions, and the pair is what a sequence counter used to
-        // approximate:
+        // Two questions:
         //   * is this still the file on screen?  A newer LOADING moved
-        //     `fileState.path`, and dispose set it to null -- which the
-        //     counter never caught, because IDLE did not bump it;
+        //     `fileState.path`, and dispose set it to null;
         //   * was this request superseded?  `signal.aborted` says so, and
         //     it is the only thing that can tell two loads of the SAME
         //     file apart, which a path comparison cannot.
@@ -1224,9 +1137,7 @@
     }
 
     /* THE LOAD HAS ENDED -- drawn, or refused with its reason on the status
-     * line (the shared inspector door, lib/inspectors/lifecycle.js); a
-     * refused load used to leave the cover over its own error for the tab's
-     * 15 s safety timer (the Results-tab review, 2026-09-28). */
+     * line (the shared inspector door, lib/inspectors/lifecycle.js). */
     function _announceReady(detail) {
         window.molbuilder.inspectorLifecycle.announceReady("spectra", detail);
     }
@@ -1280,8 +1191,8 @@
 
     async function watchTick() {
         if (!state.fileState.path) return;
-        // 2026-06-14 G4 in-flight guard: skip overlap ticks entirely.
-        // PR 3 keeps this guard; dispose() aborts via watchAbort.
+        // In-flight guard: skip overlap ticks entirely; dispose()
+        // aborts via watchAbort.
         if (state.lifecycle.watchInFlight) return;
         let body;
         state.lifecycle.watchAbort = new AbortController();
@@ -1310,13 +1221,11 @@
         } finally {
             state.lifecycle.watchInFlight = false;
         }
-        // TWO guards at resolution, the same pair `loadByPath` uses, and
-        // the reasoning that once justified only one of them was wrong.
+        // TWO guards at resolution, the same pair `loadByPath` uses.
         //
         // `watchInFlight` guards CONCURRENCY -- it stops a second tick
         // starting while one is out.  It cannot say anything about a tick
-        // that has already SETTLED, and the deletion of `fetchSeq`
-        // (2026-09-04) briefly rested on it doing both.  It does not:
+        // that has already SETTLED:
         //
         //   watching A -> tick resolves, continuation queued
         //   -> Refresh fires for A (a reload of the same file)
@@ -1328,10 +1237,9 @@
         //      poll timer the Refresh had just stopped.
         //
         // `signal.aborted` is what closes that, because the transition
-        // aborted this request; the counter used to catch it by being
-        // bumped.  The path answers the OTHER question -- a different
-        // file, or dispose, which sets it to null and never bumped the
-        // counter at all.  Both, or the pair is not equivalent.
+        // aborted this request.  The path answers the OTHER question -- a
+        // different file, or dispose, which sets it to null.  Both are
+        // needed.
         if (signal.aborted) return;
         if (myPath !== state.fileState.path) return;
         if (!body.ok) {
@@ -1506,7 +1414,7 @@
      * viewer hands it -- a strength on a REAL mode (spectrumchart.md
      * § 6.2, § 6.4) -- so the heading and the controls always name the
      * picture the chart draws.  Counting an imaginary mode's strength
-     * titled a positions picture "Spectrum". */
+     * would title a positions picture "Spectrum". */
     function _anyStrength(r) {
         return ((r && r.modes) || []).some(m => !m.has_imag
             && (Number.isFinite(m.raman_activity_a4_amu)
@@ -1553,7 +1461,7 @@
             state.selectedMode = null;
             return;
         }
-        // 2026-06-12 (audit #352): live-watch same-content guard.
+        // Live-watch same-content guard.
         // ``watchTick`` polls /api/spectra/load every WATCH_INTERVAL_MS
         // and most ticks return identical results (Hessian phase still
         // running, ES phase still cooking).  Without this gate the
@@ -1572,8 +1480,7 @@
             // downstream reads see the latest references (runtime_info
             // etc. can update even when the fingerprint is stable).
             // Contract § 2: route fileState writes through
-            // transition('APPLY') so this function is no longer a
-            // fileState writer in disguise (mirrors trajectory PR 2.3).
+            // transition('APPLY').
             transition("APPLY", { path: path, results: results });
             return;
         }
@@ -1727,8 +1634,7 @@
         // (web/spectra.md § 9b.3): a column the route can compute stays
         // up with its cells empty until they land, so a run whose
         // per-mode orbitals are still cooking does not lose and regain
-        // its headers (the 2026-06-14 hide-frozen-row lesson: UI
-        // presence tied to data); a column the route has no switch for
+        // its headers; a column the route has no switch for
         // -- SIESTA's -- is not shown at all (the class toggles below).
         const anyES = (results.modes || []).some(m => !!m.electronic_structure);
 
@@ -1736,15 +1642,10 @@
         // ES panel comes up populated (if any mode has ES).  If no
         // mode has ES, fall back to the lowest-index real mode.
         //
-        // 2026-06-17 Fix D: preserve the user's existing selection if
-        // it's still valid in the new modes list.  Pre-fix every
-        // renderResults call (including every live-watch tick that
-        // passed the fingerprint guard) unconditionally overwrote
-        // state.selectedMode via _pickDefaultMode -- so a user
-        // browsing mode 5 would have their pick silently reset to
-        // the auto-default the moment a new mode finished ES.  Only
-        // auto-pick when the prior selection is null OR no longer
-        // exists in the current modes list.
+        // The user's existing selection is preserved if it is still
+        // valid: a live-watch tick must not reset a pick to the
+        // auto-default.  Only auto-pick when the prior selection is
+        // null OR no longer exists in the current modes list.
         if (results.modes && results.modes.length) {
             const prior = state.selectedMode;
             const priorStillValid = (prior != null) && results.modes.some(
@@ -1806,10 +1707,8 @@
         // read-back recorded, in one line.  v4 files carry no block.
         const rx = results.relaxation || {};
         // THE JUDGED FORCE FIRST, whichever route measured it (vibration.md
-        // § 4.3 for PySCF, § 5.5 for SIESTA): an early return on
-        // `already_relaxed` used to hide it on exactly the runs that carry
-        // it -- every SIESTA run that passed the gate, and PySCF's asserted
-        // path.  The key says its unit.
+        // § 4.3 for PySCF, § 5.5 for SIESTA), on every path that carries
+        // it.  The key says its unit.
         let force = "";
         if (rx.max_force_eh_bohr != null) {
             force = " \u2014 max |F| on the free atoms "
@@ -1842,15 +1741,10 @@
         // Stable string makes equality cheap — bail without rerendering
         // when the live-watch poll returned an unchanged snapshot.
         //
-        // 2026-06-17 Fix C: include per-mode Raman + IR activity values
-        // and frequencies.  Pre-fix the fingerprint covered modes.length
-        // + ES bits + phase markers only; when Raman activities
-        // populated mid-phase (same mode count, phase still "running",
-        // no ES flip) the fingerprint was identical -> renderResults
-        // bailed -> the spectrum chart bar heights never refreshed
-        // until either modes grew or a phase marker changed.  Bar
-        // heights ARE what the user is watching; treating them as
-        // "no change" was the bug.
+        // Includes per-mode Raman + IR activity values and frequencies:
+        // activities populate mid-phase (same mode count, phase still
+        // "running", no ES flip), and the bar heights ARE what the user
+        // is watching.
         //
         // ``actBits`` is a folded checksum (sum of activity values
         // truncated to 3 decimals).  Sum is order-stable because we
@@ -1929,13 +1823,9 @@
         if (!state.results) return;
         const modes = _modesForTable();
         const anyES = (state.results.modes || []).some(m => !!m.electronic_structure);
-        // Build rows via createElement instead of innerHTML+string concat
-        // (audit #354 follow-up).  The data values are server-supplied
-        // numerics + booleans run through Number(...).toFixed() which is
-        // safe today, but the pattern violated the XSS audit's "prefer
-        // createElement" rule and a future schema change (e.g. a free-
-        // text "notes" column on a mode) would silently re-introduce
-        // an interpolation hazard.  textContent / appendChild keeps the
+        // Build rows via createElement instead of innerHTML+string concat:
+        // a future free-text column on a mode would otherwise be an
+        // interpolation hazard.  textContent / appendChild keeps the
         // surface trustworthy by construction.
         els.modesTbody.replaceChildren(
             ...modes.map(m => _renderModeRow(m, anyES)));
@@ -2055,12 +1945,6 @@
 
     function _renderModeRow(m, anyES) {
         // Returns an HTMLTableRowElement; caller appends to tbody.
-        // Pre-2026-06-13 this returned an interpolated <tr>...</tr>
-        // string that callers concatenated into ``innerHTML`` —
-        // worked because the values are numerics + booleans run
-        // through Number(...).toFixed(), but it violated the project-
-        // wide "prefer createElement" rule and would silently allow a
-        // future free-text column to bypass escaping.
         const fmt = (v, dp) => v == null ? "—" : Number(v).toFixed(dp);
         const raman = (m.raman_activity_a4_amu == null)
             ? "—"
@@ -2091,11 +1975,9 @@
         addCell(ir, "ir-col");
         addCell(m.has_imag ? "✓" : "");
         addCell(m.electronic_structure ? "✓" : "", "es-col");
-        /* ALWAYS FOUR CELLS, because the header always has four.  This was
-         * `if (anyES)`, while `_spectra_inspector.html` emits the four
-         * `es-col` <th> unconditionally -- so on a result where no mode
-         * carries electronic structure, every row was four columns short of
-         * its header (2026-09-10).  An empty cell says "no value"; a missing
+        /* ALWAYS FOUR CELLS, because the header always has four
+         * (`_spectra_inspector.html` emits the four `es-col` <th>
+         * unconditionally).  An empty cell says "no value"; a missing
          * cell shifts the whole row.  Where the ROUTE has no probe, the
          * table's `route-no-es` class hides the header and these cells
          * together (web/spectra.md § 9b.3), so the two still line up. */
@@ -2193,7 +2075,6 @@
         renderModeViewer();
         // The chart mirrors the selection through its cheap door: one mark
         // recoloured, no curve recomputed, no axis moved (spectrumchart § 5.1).
-        // This used to redraw the whole spectrum for every click.
         //
         // Queued on the mount rather than guarded by `if (chart)`: the mount is
         // asynchronous, so a row clicked in the first moments after a result
@@ -2206,10 +2087,7 @@
     function exportCSV() {
         if (!state.results) return;
         const anyES = (state.results.modes || []).some(m => !!m.electronic_structure);
-        // BOTH channels, beside each other.  IR joined the table on
-        // 2026-06-17 and the chart on 2026-09-11 and reached this row builder
-        // on neither, so ticking "Compute IR intensities" produced a file
-        // with every IR number missing and nothing saying so.
+        // BOTH channels, beside each other.
         // THE EXPORT FOLLOWS THE TABLE: a column the route cannot compute
         // is left out of both (web/spectra.md § 9b.3).
         const hasRaman = _routeHas(state.results, "compute_raman");
@@ -2258,23 +2136,16 @@
     // each plotting MO energies in eV as horizontal bars.  HOMO and
     // LUMO are highlighted; the gap drift Δ(LUMO−HOMO) between
     // displaced and equilibrium geometries is annotated underneath.
-    //
-    // We deliberately use plain SVG (no Plotly) for the bar diagram:
-    // it's a small static-ish picture and the SVG markup is easier
-    // to read in the page source than a Plotly trace soup.
     /* ---- the level diagram's own helpers ---------------------------------
      *
-     * Both of these served two figures until the spectrum became a module of
-     * its own (docs/web/spectrumchart.md), which took its palette and its box
-     * watcher with it.  What is left serves the electronic-structure diagram
-     * alone, so it lives beside the diagram and is named for it.
+     * They serve the electronic-structure diagram alone (the spectrum is its
+     * own module, docs/web/spectrumchart.md), so they live beside the diagram
+     * and are named for it.
      */
     /* THE CHART PALETTE, READ FROM THE STYLESHEET.
      *
      * Plotly takes colours as JavaScript values, so a chart cannot inherit them
-     * the way an element does -- which is how both charts on this tab ended up
-     * carrying their own copies of #1d2128, #2c313a and #cfd3da.  Three
-     * literals, in two places, that a theme change would silently leave behind.
+     * the way an element does.
      *
      * The tokens are the source of truth (lib/tokens.css), so this asks the
      * document for their computed values and hands Plotly the answer.  One read,
@@ -2304,14 +2175,6 @@
         return _theme;
     }
 
-    /* Plotly's `responsive: true` listens to the WINDOW, and the window is not
-     * what changes.  This chart lives in a grid that reflows when the box it is
-     * in gets wider or narrower -- the projects sidebar collapsing, the results
-     * panel resizing, the mode viewer moving from beside the chart to below it
-     * -- and none of those resize the window.  So the chart kept whatever width
-     * it was first drawn at and either overflowed its box or left a gap.
-     *
-     * One observer on the container, redrawing at its new size. */
     /* Plotly's `responsive: true` listens to the WINDOW, and the window is not
      * what changes here -- the sidebar collapses, the inspector panel resizes,
      * the container query flips the layout, and the window never moves.  So each
@@ -2354,8 +2217,7 @@
         const es = m.electronic_structure;
 
         /* THE DISPLACEMENT THE LEVELS WERE COMPUTED AT belongs in the header,
-         * beside the mode it describes.  It was a row in the numbers list, where
-         * it read as a result among results -- it is the INPUT every number
+         * beside the mode it describes: it is the INPUT every number
          * below depends on, and the one the coupling divides by.  Stated here it
          * labels the whole panel, which is what "±A" in the diagram means. */
         els.esModeFreq.textContent =
@@ -2372,7 +2234,7 @@
                 try { Plotly.purge(els.esBarDiagram); } catch (_) {}
             }
             // `.status` keeps newlines (white-space: pre-line), so the "\n"
-            // breaks the line where the <br> did.
+            // breaks the line.
             /* WHY THERE IS NONE, by role (web/spectra.md § 9b.3): a route
              * with no probe is told what its electronic response will be,
              * never an item it has no way to set. */
@@ -2432,9 +2294,7 @@
 
         /* THE NUMBERS, GROUPED BY THE QUESTION THEY ANSWER.
          *
-         * They were ten flat rows in one list, which made the reader do the
-         * sorting: an equilibrium energy, a displaced gap and a coupling
-         * constant sat side by side looking equally important.  Three groups
+         * Three groups
          * say what each number is FOR -- where the levels sit, how the gap
          * moves when the molecule does, and how strongly this mode couples --
          * and that is the order a reader asks them in.
@@ -2496,14 +2356,11 @@
 
     /* THE LEVEL DIAGRAM, drawn by the same library as the spectrum above it.
      *
-     * It was hand-rolled SVG, on the reasoning that a small static picture is
-     * easier to read as markup than a Plotly trace.  That held until the picture
-     * stopped being static: the level shifts this panel exists to show are tiny
-     * -- 0.018 meV against an 11.4 eV span in the BDT result, which is 1/4000 of
-     * a pixel -- so they cannot be seen without zooming, and zoom means pan,
-     * range memory, a reset control and a hover readout.  Writing all four by
-     * hand, next to a chart library already loaded on this very page and already
-     * drawing the spectrum, would be inventing a wheel in view of the wheel.
+     * The level shifts this panel exists to show are tiny -- 0.018 meV
+     * against an 11.4 eV span in the BDT result, which is 1/4000 of a pixel --
+     * so they cannot be seen without zooming, and zoom means pan, range
+     * memory, a reset control and a hover readout, which the chart library
+     * already loaded on this page provides.
      *
      * WHAT IS FIXED AND WHAT MOVES.  The x axis is three geometries, not a
      * quantity -- there is nothing between −A and eq -- so it is categorical and
@@ -2622,7 +2479,7 @@
                 gridcolor: th.grid,
                 zeroline: false,
                 color: th.ink,
-                // THE POINT OF THE REWRITE: this axis is free.  Scroll to zoom,
+                // This axis is free.  Scroll to zoom,
                 // drag to pan, double-click to come back.
                 fixedrange: false,
             },
@@ -2653,11 +2510,8 @@
     // just hands it the geometry + mode via vib.showMode; it never touches a
     // raw viewer.
     //
-    // Geometry source priority:
-    //   1. results.equilibrium.elements + positions_ang
-    //      (preferred; works after page reload).
-    //   2. Read off the viewer (getTheStructure -- the structure it holds,
-    //      molview.data.getStructure().text).
+    // Geometry source: results.equilibrium.elements + positions_ang
+    // (works after page reload).
     //
     // The mode shape is faithful (eigenvector_display carries the
     // direction + relative amplitudes correctly, with max(|L|)=1 per
@@ -2697,7 +2551,7 @@
     // The zero-point amplitude is READ FROM THE FILE, never recomputed here:
     // every mode carries `zero_point_amplitude_amu12_ang`, derived at every
     // serialisation from the one constant in constants.py (vibration.md
-    // § 6.3, § 6.6).  A second spelling of it stood here until 2026-09-24.
+    // § 6.3, § 6.6).
     // ħω / k_B per cm⁻¹, in kelvin -- the temperature at which a mode's
     // quantum is comparable to kT -- is `K.cm1_kelvin`, served (see `K`).
 
@@ -2736,16 +2590,10 @@
      * `.spectra.json` and the shape of a mode, which is what keeps VibrationView
      * from ever naming spectra and the server from ever naming VibrationView.
      *
-     * It returns null when the result cannot be animated, and the caller says so
-     * rather than finding a structure somewhere else.  There USED to be a
-     * fallback here: when a result carried no stored geometry, it read the
-     * structure off whatever MolView happened to be holding.  On /results that is
-     * "whatever the last inspection installed" — so a mode could be animated
-     * against a molecule it was not computed for, guarded only by an atom count,
-     * which any two molecules of the same size pass.  It was also unreachable and
-     * broken in two independent ways, so deleting it removed no working
-     * behaviour: it returned its coordinates under a key nothing read, and the
-     * viewer it read from is never handed to this page.
+     * When the result cannot be animated it says so, and the caller says so
+     * rather than finding a structure somewhere else: whatever MolView holds
+     * on /results is whatever the last inspection installed, and an atom
+     * count alone cannot tell two molecules of the same size apart.
      */
     /* ONE SHAPE, ALWAYS, so a caller cannot forget a case:
      *
@@ -2753,10 +2601,7 @@
      *     { ready: false, why: "…" }       selected, but it cannot be drawn
      *     { ready: true, structure, mode, amplitude, norm }
      *
-     * It used to answer three different shapes — null, an object carrying only a
-     * message, and a full result — and a caller that checked two of the three
-     * read a mode off the one that has none. Checking `ready` is now the only
-     * thing to remember, and there is no fourth case to miss.
+     * Checking `ready` is the only thing to remember.
      */
     function _animationInputs() {
         const nothing = { ready: false, why: null };
@@ -2798,9 +2643,8 @@
 
         /* WHICH PAIRING (§ 12.2). The array and the amplitude go together: a
          * display eigenvector with an amplitude in angstrom, or a canonical one
-         * with an amplitude in √amu·Å. Crossing them is the correctness bug the
-         * backend's own schema history records — v1 shipped one field used for
-         * both, and splitting it is why there are two. */
+         * with an amplitude in √amu·Å. Crossing them would be a correctness
+         * bug. */
         const wantPhysical = state.animAmplitudeMode !== "display";
         const physical = wantPhysical
             ? _physicalAmplitude(mode, state.animAmplitudeMode, state.animTemperature)
@@ -2961,11 +2805,6 @@
          * reasons that are not the user: installing a new structure ends the mode
          * running against the old one (§ 5.1), and a mode that cannot be shown
          * stops it too.
-         *
-         * Reading playback back as if it were the intent is what an earlier draft
-         * did, and it froze the molecule on the SECOND result you opened: the
-         * structure install stopped the clock, nothing had asked for that, and
-         * nothing started it again.
          *
          * The module still never touches play/pause on its own (§ 9.2).  Deciding
          * that a mode should be moving is policy, and policy is the tab's. */
@@ -3136,13 +2975,9 @@
 
     /* THE LINE UNDER THE VIEWER, in words rather than symbols.
      *
-     * It read "≤ 0.050 Å · display", then "max ±0.050 Å", and both were unreadable
-     * for the same reason: they gave a quantity without saying what it measured.
-     * Less than WHAT?  The maximum over WHAT?  A reader who has to ask cannot use
-     * the number, and a number nobody can use is decoration.
-     *
-     * So the line is a sentence now, and each clause answers one of those
-     * questions (spectra.md § 4.2):
+     * A quantity that does not say what it measured cannot be used, so the
+     * line is a sentence, and each clause answers one question (spectra.md
+     * § 4.2):
      *
      *   the motion is 91% C, 9% H · nothing moves further than 0.173 Å from
      *   rest, 16% of that atom's bond · drawn exaggerated
@@ -3216,10 +3051,8 @@
     /* THE THREE VIEWS OF ONE SELECTION.
      *
      * The modes table, the mode animation and the electronic structure all
-     * describe the same selected mode.  They used to be three bands stacked down
-     * the page, so comparing a mode's motion against its level shifts meant
-     * scrolling between two places and holding one in memory.  As tabs they
-     * share one position, and the selection is what moves.
+     * describe the same selected mode.  As tabs they share one position, and
+     * the selection is what moves.
      *
      * SELECTING A MODE DOES NOT SWITCH TAB.  All three update underneath; the
      * reader stays where they were looking.  A click that yanks the view away is
@@ -3228,8 +3061,7 @@
      * WHY THIS IS NOT JUST TOGGLING `hidden`.  A box inside a hidden panel has
      * no size, and both a 3-D canvas and a Plotly figure take their size FROM
      * their box.  Mounted or drawn while their tab was hidden, they come back
-     * with a zero-size drawing surface -- the same collapse that left the level
-     * diagram a 10px strip.  So becoming visible is an event, and each view is
+     * with a zero-size drawing surface.  So becoming visible is an event, and each view is
      * told to re-measure: the viewer re-fits its camera to the box
      * (vibrationview.md § 8 `refit`), the chart re-runs Plotly's resize.
      */
@@ -3343,23 +3175,15 @@
         _syncPlayButton();
     }
 
-    // ----- Spectrum chart (Plotly) -----------------------------
+    // ----- Spectrum chart --------------------------------------
     //
     // Draws frequency (cm⁻¹) against EVERY channel the run computed --
     // one stacked panel each, sharing the frequency axis (the chart's
-    // own contract, docs/web/spectrumchart.md).  It was Raman alone
-    // until 2026-09-11, which is what the hardcoded y-title recorded.
-    // Imaginary modes (frequency < 0) get a distinct red colour + a
-    // separate trace so a saddle-point geometry is visually obvious
-    // without consulting the table.
-    // Modes whose Raman activity isn't computed (cfg.compute_raman
-    // = False on the producing run) are shown at activity 0 with a
-    // grey marker so the user sees the mode density but understands
-    // there's no intensity data.
-    /* THE SPECTRUM CHART IS A MODULE NOW.
+    // own contract, docs/web/spectrumchart.md).
+    /* THE SPECTRUM CHART IS A MODULE.
      *
-     * Everything that used to be here -- the traces, the palette, the envelope,
-     * the click tolerance, the width watcher -- lives behind one door in
+     * The traces, the palette, the envelope, the click tolerance and the
+     * width watcher live behind one door in
      * lib/spectrumchart/, whose contract is docs/web/spectrumchart.md. What is
      * left in this file is what the CONTRACT says belongs to a tab: the modes,
      * the selection, and the broadening the user typed.
@@ -3377,10 +3201,9 @@
         if (chartReady) chartReady.then(handle => { if (handle) fn(handle); });
     }
 
-    /* The two channels the chart draws, declared once.  Raman up on the
-     * left axis, IR down on the right: both peak at the same frequencies,
-     * so one half-plane would make them collide, and absorption drawn
-     * downward reads the way absorption does. */
+    /* The two channels the chart draws, declared once.  Raman in the upper
+     * panel, IR ("down") in the lower one: both peak at the same
+     * frequencies, so one panel would make them collide. */
     /* THE IR AXIS IS AN ABSORPTION INDICATOR ON AN ARBITRARY SCALE, and
      * that is the honest label rather than a compromise.
      *
@@ -3433,11 +3256,7 @@
     // T-grid arrays are read off `results.thermo`, and the electronic
     // reference is the file's own equilibrium energy -- PySCF's SCF
     // energy, zero on a route that reports none (SIESTA), whose numbers
-    // are then the vibrational contributions alone.  (It was recovered
-    // from the grid as h - zpe - u_vib - k_B*T until 2026-09-28: a k_B*T
-    // the vibrational sums do not contain, and without the translational
-    // and rotational energies the RRHO sums do -- one formula for two
-    // constructions, so both regimes' curves were shifted.)
+    // are then the vibrational contributions alone.
     //
     // THE LABELS FOLLOW THE REGIME: `rrho` is the full gas-phase answer
     // (H, S, G); `vibrational-only` -- any atom held, and every SIESTA
@@ -3582,7 +3401,7 @@
             chartReady = import("/static/lib/spectrumchart/index.js")
                 .then(({ mount }) => mount(els.spectrumChart, {
                     // Declared at mount because they decide the LAYOUT --
-                    // how many axes, which half-plane each occupies.
+                    // how many panels, and which one each occupies.
                     channels: CHART_CHANNELS,
                     // A click enters the tab and comes back as setSelected;
                     // the chart never highlights on its own.
@@ -3623,10 +3442,8 @@
 
     // Refresh-button listener wiring (contract § 5).  Mirrors
     // trajectory's _wireRefreshListener: wired ONCE at mount; not
-    // re-wired per-load.  Spectra historically did not listen for
-    // EVENT_REFRESH_REQUESTED (the file picker's "Refresh" button
-    // fired into the void); PR 3 closes that gap so the Refresh
-    // button does what § 5 says: file-switch with the current path.
+    // re-wired per-load.  The Refresh button does what § 5 says:
+    // file-switch with the current path.
     function _wireRefreshListener() {
         const C = (window.molbuilder || {}).constants;
         if (!C || !C.EVENT_REFRESH_REQUESTED) return;
@@ -3644,10 +3461,6 @@
 
     // ----- Bootstrap -------------------------------------------
     function init() {
-        // ``xyz-file`` / ``xyz-load-btn`` / ``xyz-status`` lookups
-        // dropped 2026-05-18: those template ids no longer exist
-        // (sidebar took over file selection).  loadXyzFile() is also
-        // gone; see the comment at the els declaration above.
         els.formContainer  = $("spectra-form-container");
         els.form.pyscf     = $("spectra-form-pyscf");
         els.form.siesta    = $("spectra-form-siesta");
@@ -3656,8 +3469,6 @@
         els.sendBtn        = $("send-to-task-setup");
         els.sendStatus     = $("send-status");
         els.preflightPanel = $("spectra-issues");
-        // results-file / load-results-btn / results-status lookups
-        // dropped for the same reason as xyz* above.
         els.resultsSummary = $("results-summary");
         els.resultsMeta    = $("results-summary-list");
         els.methodsBlock   = $("methods-block");
@@ -3721,19 +3532,14 @@
         // --- Generate-side wiring (only present on /spectra) -------
         //
         // The /results inspector partial mounts only the inspect-side
-        // ids (load controls, results table, mode viewer, ES panel);
-        // generate-side ids (form container, generate-btn, methods
-        // modal, download/copy) live only in spectra.html.  Gate the
+        // ids (results table, mode viewer, ES panel);
+        // generate-side ids (form container, Send to Task setup)
+        // live only in spectra.html.  Gate the
         // whole generate block on formContainer's presence so a
         // /results-side mount stays a clean inspect-only inspector.
         const hasGenerateSide = Boolean(els.formContainer);
         if (hasGenerateSide) {
             _on(els.sendBtn, "click", sendToTaskSetup);
-            // The old form-dirty tracking left with its one reader
-            // (the discard-confirm died at P2); the P3 sweep removed
-            // the declaration but left three writers, which threw a
-            // strict-mode ReferenceError on every edit -- caught by
-            // the 2026-08-21 full-text review.
             // Live science check on every edit.
             _on(els.formContainer, "input",  refreshPreflightDebounced);
             _on(els.formContainer, "change", refreshPreflightDebounced);
@@ -3746,20 +3552,13 @@
         // drops the inspect-side partial entirely (the page becomes
         // generate-only), so this whole block must no-op when none of
         // the inspect-side ids exist; the same module mounts cleanly
-        // into either consumer.  (It gated on the path box until that
-        // went, 2026-09-28.)
+        // into either consumer.
         const hasInspectSide = Boolean(els.resultsSummary);
         if (hasInspectSide) {
             // FWHM-controlled broadening re-renders the chart in
             // place.
             /* THE METHODS COPY BUTTON AND THE DISPLAY FLOOR ARE
-             * INSPECT-SIDE.  Both were wired inside the generate-only
-             * block until 2026-09-11, which gates on `formContainer` --
-             * present only on /spectra.  Both controls live in the
-             * RESULTS panel, so on the one page that has them neither
-             * was connected: the slider moved and nothing redrew, and
-             * the copy button did nothing at all.  No test caught it;
-             * clicking it did. */
+             * INSPECT-SIDE: both controls live in the RESULTS panel. */
             _on(els.methodsCopy, "click", copyMethodsText);
             if (els.displayFloor) {
                 _on(els.displayFloor, "input", onDisplayFloor);
@@ -3820,9 +3619,8 @@
     // way in.  Nothing awaits it -- a slow read must not delay the form.
     _prefsRestore();
 
-    // PR 3 contract § 5: wire Refresh ONCE at mount.  Mirrors
-    // trajectory's _wireRefreshListener pattern (which fixed the
-    // per-load listener-pile-up bug there).
+    // Contract § 5: wire Refresh ONCE at mount.  Mirrors
+    // trajectory's _wireRefreshListener pattern.
     _wireRefreshListener();
 
     // The file the caller mounted us for -- /results passes the
@@ -3835,13 +3633,11 @@
 
     // ---- pageshow / visibilitychange: force-refresh on tab re-entry //
     //
-    // Same shape as the /results file-picker (#192) + trajectory
-    // inspector (#194): a bfcache restore or tab re-focus must
+    // Same shape as the /results file-picker + trajectory
+    // inspector: a bfcache restore or tab re-focus must
     // re-fetch the currently-loaded spectra file so a fresh result
-    // generated in another tab actually appears.  Without these
-    // handlers the user sees the cached snapshot from the previous
-    // visit until they manually re-pick the file in the dropdown
-    // -- the exact UX confusion #192 was filed for.
+    // generated in another tab actually appears, rather than the
+    // cached snapshot from the previous visit.
     //
     // Guard on ``state.results !== null`` so a never-loaded inspector
     // doesn't fire spurious /api/spectra/load on every visibility
@@ -3881,7 +3677,7 @@
             _listeners.disposeAll();
             // Contract § 2: dispose -> transition('IDLE').  Single
             // canonical site for the full reset matrix § 3 row
-            // "dispose / unmount" (aborts loadAbort + renderAbort +
+            // "dispose / unmount" (aborts loadAbort +
             // watchAbort, stops watchTimer, clears watchInFlight,
             // clears fileState + viewState, sets machine='IDLE').
             transition("IDLE");
@@ -3925,14 +3721,7 @@
         /* THE VIEWER THIS PAGE MOUNTED, handed over by the page that mounted
          * it.  On the handle, because the viewer it stores is per-mount state:
          * `_viewer` lives inside this function, so a module-level door would be
-         * writing into whichever mount happened to run last.
-         *
-         * It WAS module-level, in the export block below -- referencing a name
-         * declared in here, which does not exist out there.  The whole export
-         * threw `ReferenceError: useViewer is not defined` at load, so
-         * `molbuilder.spectraInspector` was NEVER ASSIGNED: the page could not
-         * find `.mount`, logged that core.js must be missing, and the entire
-         * Generate side of /spectrum-calculation never started. */
+         * writing into whichever mount happened to run last. */
         useViewer: useViewer,
         /* The engine strip's door, for the page that mounted this: which
          * engine is active, set it, tell the inspector a structure landed

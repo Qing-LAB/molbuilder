@@ -20,9 +20,7 @@ So the road is driven: the pair is saved through `StructureCodec` (the one
 door, `structure.md` § 2.4), `jobset init` describes it, `jobset prep` renders
 the deck -- no engine runs -- and the deck is read back.  A second reader
 anywhere on that road that takes the geometry and drops the sidecar shows up
-here as a deck that relaxes every atom in a box nobody chose.  *(This file read
-the package's source for direct calls to the low-level readers until
-2026-09-26, and wrote a probe file into the package to test itself.)*
+here as a deck that relaxes every atom in a box nobody chose.
 """
 from __future__ import annotations
 

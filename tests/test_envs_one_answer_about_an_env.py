@@ -197,16 +197,6 @@ def test_the_install_probes_this_env_once_not_three_times(monkeypatch, tmp_path)
         "create was dispatched for an env the probe called PRESENT")
 
 
-# RETIRED 2026-09-13: `test_after_clean_the_stale_reading_is_DROPPED_and_
-# create_still_runs` stood here.  It asserted the same fact as
-# `test_envs_install.py::test_clean_wipes_the_env_and_then_creates_it_again` --
-# that a wipe is followed by a real `conda create` -- but through three
-# monkeypatched internals, and with `conda env remove` behind them.  The
-# replacement drives the same path against a manager that writes down what it
-# was asked to do, with nothing patched, so it cannot remove anything even when
-# the code is wrong.  Two tests for one fact, and this was the weaker one.
-
-
 def test_a_manager_that_reports_no_details_hides_nothing(tmp_path):
     """mamba and micromamba may report only `envs`.  Nothing in that document
     says which prefix is an installation, so NOTHING is excluded -- and that is

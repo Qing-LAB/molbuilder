@@ -2,14 +2,8 @@
  *
  * Owns the "load a structure into the canvas" gate: every Sources
  * panel (Load from project, SMILES, name, DNA, RNA, peptide) calls
- * in here instead of touching ``canvas-state.setStructure``
- * directly.  The gate's
- * job is the unsaved-modifications check —
- *
- *   if canvas is empty → set immediately
- *   if canvas is clean → set immediately
- *   if canvas is dirty → ask the user via warning-modal, set
- *                         only on "Discard and continue"
+ * in here.  With nothing open the structure is installed; with one
+ * open it is appended (``loadIntoCanvas``).
  *
  * Public surface (mounted on ``window.molbuilder.structurePage``):
  *
@@ -21,18 +15,13 @@
  *                    endpoint already answers with. Never a document:
  *                    the browser does not write coordinates.
  *     ``source``:    ``{kind, file?, generator_input?}``
- *       (see canvas-state.js for the source schema)
  *
  *     Returns ``{ok: true}`` when the canvas was updated, or
- *     ``{ok: false, cancelled: true}`` when the user picked Cancel
- *     on the warning modal.  Caller branches on ``cancelled`` to
- *     decide whether to surface "no changes" status text vs. a
- *     real error.
+ *     ``{ok: false}`` when the append did not apply.
  *
  *   markDirtyAfterModification()
- *     -> void.  A NO-OP, kept only while the modifier panels still
- *     call it: the edit raised the unsaved badge itself, inside the
- *     viewer's gate, when it landed (molview.md § 11.2).
+ *     -> void.  A NO-OP: the edit raised the unsaved badge itself,
+ *     inside the viewer's gate, when it landed (molview.md § 11.2).
  *
  *   markSavedTo(path)
  *     -> void.  Records where the structure was last saved TO.  The
@@ -43,39 +32,28 @@
  *     (molview.md § 6.7).
  *
  *   getCanvasSnapshot()
- *     -> the full canvas snapshot from canvas-state.  Read-only;
- *     caller-side mutations don't leak through.
+ *     -> {isEmpty, isDirty, structure, lastSaveTo, loadedFrom}, read
+ *     from the viewer's model and the page's own note.
  *
  *   onCanvasChange(cb) -> unsubscribe()
- *     Subscribe to canvas state changes.  Direct passthrough to
- *     canvas-state.onChange — callers can use this OR subscribe
- *     to canvas-state directly; the page module re-exposes it so
- *     a future change to the orchestrator's notification model
- *     has one consumer-facing seam.
+ *     Subscribe to canvas state changes: the model's ``subscribe``.
  *
  * Used by:
  *   - The Sources panels (Load, Generate, ...).
  *   - The Save-to-project handler.
- *   - Existing modify-tab modifier ops (after migration; see B.3).
  *
- * Design ref: docs/web/tabs.md (no auto-load on
- * sidebar selection) + § 5.4 (warning-modal contract).
+ * Design ref: docs/web/tabs.md § 2 (Creating a structure — the in-gate).
  */
 (function (root) {
     "use strict";
 
     // The orchestrator works against the viewer this page mounted, through the
     // surface molview.md § 9.3 lists: installMolecule, getStructure, uncommitted,
-    // subscribe.  Its own public methods are unchanged, so the panels calling it
-    // see no difference.
+    // subscribe.
     /* THE VIEWER THIS PAGE MOUNTED, handed over by modify/selection-bootstrap.js
      * once it has one (`useViewer` below). This is a classic script — it loads
      * before that file and cannot import — so being TOLD is the only way it can
-     * have a viewer at all.
-     *
-     * It used to look one up in `window.molbuilder.molview.data`, which MolView
-     * has published nothing to since it was rebuilt, so every load, every dirty
-     * check and every save gate on this tab was reading `undefined`. */
+     * have a viewer at all. */
     var _viewer    = null;
     var _modal     = null;   // TEST override (set by _bind); production looks up (below)
 
@@ -102,7 +80,6 @@
     }
 
     /**
-     * Replace the canvas with ``structure``, gated on the dirty
      * ADD `structure` INTO THE CANVAS, or install it when the canvas is empty.
      *
      * @returns {Promise<{ok: bool, cancelled?: bool}>}
@@ -118,19 +95,10 @@
          *
          * IT IS HANDED THE ENVELOPE, not a document a browser wrote. A
          * generator has already built a Structure server-side, and
-         * `/api/build/molecule` returns it whole under `structure`. Posting the
-         * `xyz` string that sits beside it asked the server to parse back a
-         * flattened copy of what it had just built, and XYZ has no slots for
-         * the identity columns: a peptide came back with every residue named
-         * MOL and CA/CB collapsed to C, so `by_residue_name "ALA"` matched
-         * nothing on a structure the user had just generated. The envelope is
-         * loss-free and was in the same response all along -- web-api.md § 1,
-         * "the browser sends what it holds; it never sends a document it
-         * wrote".
-         *
-         * `periodicity`, `annotations` and `atoms` rode beside the text here to
-         * carry what the flattening destroyed. With the envelope there is
-         * nothing left for them to carry, so they are gone. */
+         * `/api/build/molecule` returns it whole under `structure`, loss-free,
+         * where XYZ has no slots for the identity columns (residue and atom
+         * names) -- web-api.md § 1, "the browser sends what it holds; it
+         * never sends a document it wrote". */
         var filename = (source && source.file) || null;
 
         /* ── ADDING, NOT REPLACING (user, 2026-09-07) ─────────────────────
@@ -148,11 +116,9 @@
          * places it on the world origin, merges the labels and lays down a
          * timeline point like any other edit.
          *
-         * REPLACING IS STILL REACHABLE and it is now a separate gesture:
-         * "Clear structure", then load.  Which is why the dirty-canvas warning
-         * that used to stand here is gone -- nothing is discarded any more, so
-         * there was nothing left for it to ask about.  The one place that
-         * question still belongs is Clear structure, which asks it.
+         * REPLACING is a separate gesture: "Clear structure", then load.
+         * Nothing is discarded here, so nothing is asked; the one place that
+         * question belongs is Clear structure, which asks it.
          */
         function _append() {
             return _model().applyOp("append", {
@@ -199,10 +165,7 @@
         return _append();
     }
 
-    /* NEITHER OF THESE MARKS THE VIEWER ANY MORE, and both are kept only so the
-     * panels that call them keep working while the tab is rewired.
-     *
-     * "There is unsaved work here" is the viewer's own answer, raised inside its
+    /* "There is unsaved work here" is the viewer's own answer, raised inside its
      * gate after a change lands and cleared when a state is saved (molview.md
      * § 11.2) — not a flag set from outside. And where a structure was saved TO
      * is a fact about a file operation the page performed, so the page keeps it
@@ -239,8 +202,6 @@
      * `installMolecule`, before the promise that call returns has resolved -- so
      * a readout listening there re-renders while this note still holds the
      * PREVIOUS load's filename, and nothing tells it to look again afterwards.
-     * That is how a molecule generated from SMILES came to sit under
-     * "Loaded: water.xyz".
      *
      * This is the page's own state with the page's own readers, so the channel
      * is the page's too -- not something asked of the viewer, which has no
@@ -307,15 +268,8 @@
         /* A LOAD ALSO RETIRES THE SAVE TARGET.
          *
          * `_lastSavedTo` means "where the thing on the canvas was written",
-         * and after a load the thing on the canvas is something else.  It
-         * was left standing, so the Save readout went on naming the
-         * PREVIOUS structure's file: build ethanol over a restored
-         * BDT-Au junction and the panel still said
-         * "Target: BDT-Au-junction.xyz" (browser walk, 2026-08-24).
-         *
-         * The overwrite confirmation inside `_saveDataset` means this
-         * misleads rather than silently destroys -- but a confirmation you
-         * answer while reading the wrong filename is not much of a guard.
+         * and after a load the thing on the canvas is something else, so the
+         * Save readout would name the PREVIOUS structure's file.
          * Cleared here because this is the one gate every generator and
          * the sidebar's own load come through. */
         _lastSavedTo = null;

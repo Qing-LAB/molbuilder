@@ -2,29 +2,25 @@
 
 L1 dataclass.  Its field metadata is read by the validation pass
 (``molbuilder/validation/``; the readers are `web/form-schema.md` § 1a's)
--- the forms are drawn from the catalogue; the SIESTA generator at
-``molbuilder/siesta/input.py:render_fdf`` is the only consumer of the
-configured values themselves.
+-- the forms are drawn from the catalogue; the SIESTA deck's spec,
+``molbuilder/siesta/input.py:spec_for``, renders the configured values.
 
 Defaults follow current SIESTA best-practice for a small / medium
 organic-or-inorganic system that's about to be relaxed:
 
     * MeshCutoff 300 Ry, PAO.BasisSize DZP, GGA-PBE.
-    * DM mixing weight 0.02 with Pulay history 3 (SIESTA tutorials
-      recommend these for relaxation; the older default of 0.01 is
+    * DM mixing weight 0.02 (SIESTA tutorials
+      recommend this for relaxation; the older default of 0.01 is
       stable but slow, the v5 default of 0.25 is too aggressive
       without the v5 mixing scheme).
     * DM tolerance 1e-5 plus a redundant DM.EnergyTolerance 1e-4 eV
       guard.
-    * MaxSCFIterations 500 -- typical relaxation runs need < 100
+    * MaxSCFIterations 1000 -- typical relaxation runs need < 100
       per geometry, but a generous limit avoids stalls on the first
       step where the DM is fresh.
     * Force tol 0.02 eV/Ang and CG max-displ 0.05 Ang -- tighter
       than SIESTA's defaults (0.04 / 0.20 Bohr) but appropriate for
       structures destined for property calculations afterwards.
-    * Continuation flags (UseSaveDM/CG/XV) all on -- SIESTA silently
-      ignores them when no checkpoint exists, but they're free
-      insurance for restartable jobs.
 """
 
 from __future__ import annotations
@@ -77,8 +73,6 @@ def _validate_kgrid(value):
                 f"kgrid[{i}] = {v!r} must be a whole count of k-points",
                 "config.kgrid",
             ))
-    # This warned a second time for the range, and only warned for 0, until
-    # 2026-09-30 (the docstring says where both live now).
     return out
 
 
@@ -87,10 +81,8 @@ def _validate_block_size(value):
 
     Two states (tuning.md § 2.11): unset is *auto* -- the keyword is not
     emitted and SIESTA uses its own automatic -- or a positive integer,
-    honoured verbatim.  ``0`` used to be a third state meaning *"omit the
-    keyword"*, which auto now covers; it is the catalogue's hard limit that
-    refuses it now (``above``), so this checks only that the value is an
-    integer.
+    honoured verbatim.  ``0`` is refused by the catalogue's hard limit
+    (``above``), so this checks only that the value is an integer.
     """
     from ..issues import Issue
     if value is None:
@@ -102,7 +94,7 @@ def _validate_block_size(value):
                       "config.block_size")]
     # 0 or below is the catalogue's hard limit (``above``,
     # `engines/template.md` § 5.3), refused on every door with one
-    # message -- this refused it here alone until 2026-09-30.
+    # message.
     return []
 
 
@@ -114,10 +106,7 @@ def _validate_kgrid_displacement(value):
     Its BOUNDS are declared, not checked here: the metadata range [0, 1],
     warned per component (`validation/metadata.py`, ``outside_range``) --
     the offset is periodic in one mesh spacing, so 1.5 names the point 0.5
-    does.  This warned that itself until 2026-09-30, half-open, and the
-    metadata pass stood aside for it, which is how `kgrid`'s range, whose
-    callable held only its shape, came to be warned nowhere (the K3 review).
-    **A shift on an axis sampled at a single k-point** -- which moves that
+    does.  **A shift on an axis sampled at a single k-point** -- which moves that
     point off Gamma to the zone boundary -- is the k-point mesh's check
     (`kmesh.check`, `engines/siesta.md` § 6.1), on the mesh the deck writes.
 
@@ -190,29 +179,11 @@ def _validate_basename(label: str):
 @dataclass
 class SiestaConfig:
     # System
-    # 2026-05-27 cleanup: SystemName / SystemLabel are functionally one
-    # field for our generated .fdf -- the web UI exposed a single "Job
-    # name" input and JS forced ``system_name = system_label`` before
-    # POST.  The Python API kept the duplicate dataclass field as a
-    # courtesy alias, but it was an attractive nuisance: a Python user
-    # who set system_name without system_label got an .fdf where the
-    # two diverged, and our own SIESTA wrappers (output names,
-    # SystemLabel-prefixed scratch files) would not match the
-    # SystemName header.  We drop ``system_name`` outright and emit
-    # ``SystemName {cfg.system_label}`` in the FDF.  No alias kept --
-    # per project "no backwards compatibility" mandate.
     system_label: str = field(default="siesta", metadata={
         "category": ("system", "procedure"),
-        # `system` FIRST (2026-08-15): the label is the identity of the
-        # calculation, and within the Setup card the primary category is
-        # what orders the fields -- filed under `procedure` it rendered
-        # BELOW the pseudopotential directory, which reads backwards for
-        # the first thing a user types.
-        # Run-profile identity — what the run IS named.  Lives in the
-        # Run profile workflow-group card alongside the system-character
-        # knobs (mixing weight, electronic temperature, spin) because
-        # the user sets these together at the start of a run and
-        # rarely revisits.
+        # `system` FIRST: the label is the identity of the calculation, and
+        # within the Setup card the primary category is what orders the
+        # fields.
         "workflow_group": "setup",
         "label":    "System label (output prefix)",
         "engine_key":  'SystemLabel',
@@ -222,24 +193,15 @@ class SiestaConfig:
 
     # NOTE: the vacuum box is NOT a SiestaConfig knob.  Vacuum comes with the
     # STRUCTURE (Structure.vacuum, per-side gap) -- the single source of truth for
-    # lattice/vacuum (structure-periodicity.md).  render_fdf derives the auto-cell
-    # from ``struct.resolve_cell()``; there is no cell_padding / center_in_vacuum.
+    # lattice/vacuum (structure-periodicity.md); the deck's cell is the
+    # structure's (`cell.to_engine`).
 
     # Basis
     basis_size: str = field(default="DZP", metadata={
         "category": ("method", "accuracy"),
-        # Workflow-group tag (2026-06-15): joined the Stage card so it
-        # sits alongside ``mesh_cutoff``, ``pao_energy_shift``, and
-        # ``kgrid`` — all of which are "how finely we sample the
-        # calculation" knobs that scale with the convergence target.
-        #
-        # Tagging ``stage`` puts basis_size in the same workflow-group
-        # card as the other "sampling-fidelity" knobs.  It is NOT in
-        # STAGE_PRESETS in viewer.js, so switching the relaxation
-        # stage (coarse / medium / tight) does NOT silently rewrite
-        # the basis size -- that stays the user's choice (which is
-        # what people expect: basis is part of the run's identity, not
-        # part of the stage refinement schedule).
+        # In the Stage card beside ``mesh_cutoff``, ``pao_energy_shift``
+        # and ``kgrid`` -- all "how finely we sample the calculation" knobs
+        # that scale with the convergence target.
         "workflow_group": "stage",
         "label": "Basis size",
         "engine_key":  'PAO.BasisSize',
@@ -251,12 +213,12 @@ class SiestaConfig:
         "workflow_group": "stage",
         "label": "Orbital confinement (energy shift)", "unit": "Ry",
         "engine_key":  'PAO.EnergyShift',
-        # Upper bound tightened to 0.05 (SP4): 0.1 Ry contracts PAO
+        # Upper bound 0.05: 0.1 Ry contracts PAO
         # cutoff radii to ~3 Bohr, putting bond energies hundreds of
         # meV off -- well outside any defensible production window.
         "range": (0.001, 0.05),
         "tier":  "advanced",
-        # Default tightened from 0.02 -> 0.01 Ry (gap #5).  SIESTA's
+        # Default 0.01 Ry.  SIESTA's
         # own internal default (0.02) is fine for screening / quick
         # scans but produces under-converged PAO tails for production
         # work; the SIESTA manual itself recommends 0.001-0.01 Ry for
@@ -269,22 +231,15 @@ class SiestaConfig:
 
     mesh_cutoff: float = field(default=300.0, metadata={
         "category": ("accuracy",),
-        # Workflow-group tag (2026-06-13): "stage" means switching the
-        # relaxation-stage preset MAY rewrite this field.  Three
-        # tag values exist (system / stage / budget) — see docs/web/
-        # results.md and viewer.js STAGE_PRESETS for the
-        # design rationale.  Untagged fields render bare (outside any
-        # workflow-group card) and STAGE_PRESETS never touches them.
         "workflow_group": "stage",
         "label": "Real-space grid cutoff", "unit": "Ry",
         "engine_key":  'MeshCutoff',
-        # 2026-05-28 tightening: slider lower bound raised from 50
-        # to 100 Ry.  50 Ry is a screening-grade value that produces
+        # Lower bound 100 Ry: 50 Ry is a screening-grade value that produces
         # noticeably wrong forces / energies for any production work;
         # letting it sit at the slider floor invited silent garbage.
         # 100 Ry is still a reasonable "I'm doing a quick estimate"
         # floor; the validation pass warns at < 150 Ry separately
-        # (see _check_siesta_mesh_cutoff in validation.py) so users
+        # (see _check_siesta_mesh_cutoff in validation/siesta.py) so users
         # picking a low-but-not-tiny value see a soft nudge.
         "range": (100.0, 1000.0),
         "tier":  "basic",
@@ -306,9 +261,6 @@ class SiestaConfig:
         # Choices feed the validator's authors->family map for the
         # pseudopotential coverage check (see
         # molbuilder/validation/siesta.py::_check_siesta_pseudo_coverage).
-        # Free-text was needed historically (unusual functionals);
-        # dropdown covers the 99% case and the user can still set
-        # unusual values via the Python API.
         "choices": ("PBE", "PBEsol", "revPBE", "RPBE", "BLYP",
                     "CA", "PZ", "PW", "DRSLL", "LMKLL"),
     })
@@ -390,10 +342,7 @@ class SiestaConfig:
     # default) or accept the unconverged density and continue with a
     # warning.  Optional and unset for ordinary work (the abort protects
     # the budget); the bench pins set False so a capped trial ends cleanly
-    # as the single-point measurement it is (project-layout.md 3.2).  This
-    # keyword had NO item until 2026-08-19 -- the retired deck-splicer used
-    # to invent the line -- so every properly-capped trial ended in
-    # ABNORMAL_TERMINATION and no sweep could ever produce a verdict.
+    # as the single-point measurement it is (project-layout.md 3.2).
     scf_must_converge: Optional[bool] = field(default=None, metadata={
         "category": ("convergence",),
         "workflow_group": "budget",
@@ -407,10 +356,7 @@ class SiestaConfig:
         # smearing width answers *what kind of system is this* -- does it
         # have a gap? -- which is the same question as net_charge and
         # spin_treatment, and it is set once from the chemistry rather than
-        # tightened by a ladder.  Filed under `accuracy` it also put a
-        # SECOND "accuracy" legend inside the Run profile card while the
-        # real one lived in Convergence targets, so the same word named two
-        # different places.
+        # tightened by a ladder.
         "category": ("system", "accuracy"),
         "workflow_group": "profile",
         "label": "Electronic temperature (smearing)", "unit": "K",
@@ -423,9 +369,8 @@ class SiestaConfig:
     # side-by-side inputs (kx / ky / kz).
     kgrid: Tuple[int, int, int] = field(default=(1, 1, 1), metadata={
         "category": ("accuracy",),
-        # Folded into the Stage card (a convergence knob: more
-        # k-points → tighter sampling → more cost) per the
-        # web-ui-coherence Rule 2 attachment pass on 2026-06-13.
+        # In the Stage card (a convergence knob: more
+        # k-points → tighter sampling → more cost).
         "workflow_group": "stage",
         "label": "k-point mesh",
         "engine_key":  '%block kgrid_Monkhorst_Pack',
@@ -443,8 +388,7 @@ class SiestaConfig:
     # = sum_j gridk(ix,j)*displ(j)").  Its own item rather than three more
     # numbers on ``kgrid``: it is a separate scientific decision (WHERE the
     # mesh sits, not how fine it is), and a stage may vary one without the
-    # other.  molbuilder wrote a hard-coded 0.0 here until 2026-08-14 and
-    # could not express the shift SIESTA's own manual example uses.
+    # other.
     kgrid_displacement: Tuple[float, float, float] = field(
         default=(0.0, 0.0, 0.0), metadata={
             "category": ("accuracy",),
@@ -463,24 +407,16 @@ class SiestaConfig:
 
     # Relaxation; relax_type="none" disables the MD block entirely.
     # SIESTA 5.4.2 step-count + max-displacement mapping (see
-    # siesta/input.py:render_fdf for the full emission code):
-    #   CG / Broyden / FIRE -> MD.Steps + MD.MaxDispl
-    #     (UNIVERSAL despite CG-prefixed names -- pre-2026-06-23 we
-    #      wrongly emitted MD.NumBroydenSteps + MD.MaxDispl, which
-    #      SIESTA silently dropped + ran as Single-point; see
-    #      decision-log 2026-06-23 in design.md)
+    # siesta/input.py:_relaxation_facts for the full emission code):
+    #   CG / Broyden / FIRE -> MD.Steps + MD.MaxDispl, one pair for all three
     #   Verlet / Nose -> MD.FinalTimeStep + MD.InitialTemperature
     # The labels below are generic; per-engine help text lives in the
     # FDF's verbose comments.
     relax_type: str = field(default="CG", metadata={
         "category": ("procedure",),
-        # 2026-08-07: was ``workflow_group="profile"``, on the reasoning that
-        # the relax/MD algorithm family is a run-shape identity choice.  It is
-        # not: a LADDER CHANGES THE OPTIMIZER ON PURPOSE -- CG to warm up, then
-        # Broyden once the geometry is close -- so the `profile` card's own
-        # claim, "doesn't change between stages", is false for this field.
-        # Retagged `stage`, which also puts its "vary per stage" box among the
-        # ones ticked by default (engines/stages.md § 1.3).
+        # A `stage` item, its "vary per stage" box ticked by default
+        # (engines/stages.md § 1.3): a LADDER CHANGES THE OPTIMIZER ON
+        # PURPOSE -- CG to warm up, then Broyden once the geometry is close.
         "workflow_group": "stage",
         "label": "Relaxation / MD algorithm",
         "engine_key":  'MD.TypeOfRun',
@@ -562,8 +498,7 @@ class SiestaConfig:
         "tier":  "advanced",
     })
 
-    # ``continue_retries`` -- the warm-retry budget.  It arrived here when
-    # ``SiestaStageSpec`` was deleted (P2 unit 2/3), and engines/stages.md § 3
+    # ``continue_retries`` -- the warm-retry budget.  engines/stages.md § 3
     # is why it is a SHARED field rather than a stage one: it passes both of
     # § 3's questions -- it survives without a scheduler (running-a-job.md
     # § 3.5: a SINGLE run's wrapper re-enters SIESTA with --continue), and a
@@ -578,21 +513,16 @@ class SiestaConfig:
     continue_retries: int = field(default=1, metadata={
         "category": ("execution",),
         "item_kind":  "wrapper",
-        # MOVED to the staging surface 2026-08-15 (user): it is spent OUTSIDE
+        # On the staging surface (user, 2026-08-15): it is spent OUTSIDE
         # the engine call.  Nothing here reaches the .fdf -- the wrapper
         # decides, after SIESTA has exited, whether to launch it again from
         # the geometry it reached.  That is a property of how the stage is
-        # RUN, which is the staging surface's question, and it sat in the
-        # budget card only because a retry costs compute.
+        # RUN, which is the staging surface's question.
         "workflow_group": "staging",
         "label":          "Warm-retry budget",
-        # 0 IS A REAL ANSWER: "run once, whatever happens".  The lower bound
-        # was 1, so there was no way to say it -- and a BENCHMARK TRIAL is
-        # exactly the run that must not retry.  A trial is capped at a few SCF
-        # cycles on purpose (3 since 2026-08-21), so it never converges, so the wrapper retried it
-        # every time and `summarize` timed the SECOND run.  The wrapper has
-        # always handled 0 (`continue_retries and > 0` gates the whole loop);
-        # only this bound refused to express it.
+        # 0 IS A REAL ANSWER: "run once, whatever happens" -- what a
+        # BENCHMARK TRIAL, capped at a few SCF cycles so it never converges,
+        # must say.
         "range":          (0, 5),
         "engine_key":     "(molbuilder: baked into the run wrapper at "
                           "install time; never an .fdf line and never an "
@@ -648,27 +578,27 @@ class SiestaConfig:
         "tier":  "advanced",
     })
 
-    # SCF / MD continuation flags (free insurance for restartable jobs)
-    # ``restart`` is the ONE field a user sets; the three ``use_save_*``
-    # flags below are what it expands into (docs/execution/run-identity.md
-    # § 4).  Nobody is asked to keep three engine keys in step -- they state
+    # SCF / MD continuation
+    # ``restart`` is the ONE field a user sets; it expands into the keys of
+    # SIESTA_RESTART_GROUP below (docs/execution/run-identity.md § 4).  Nobody is asked to keep three engine keys in step -- they state
     # the intent once and the generator does the rest.
     #
     # It is a shared-schema field, not a stage field: engines/stages.md § 3
     # ("One field arrives") -- a SINGLE run can mean "continue from what is
     # in this folder" too, which is question 2's test.  A stage may promote
     # it like any other field, and the stage table draws it as the
-    # "start from" row (web/task-setup-plan.md § 6).
+    # "start from" row.
     restart: str = field(default="continue", metadata={
         "category": ("convergence", "execution"),
         "item_kind":  "deck",
         "expands":    ['DM.UseSaveDM', 'MD.UseSaveXV', 'MD.UseSaveCG'],
-        # MOVED to the staging surface 2026-08-15 (user).  It is not a
+        # On the staging surface (user, 2026-08-15): it is not a
         # convergence target -- it is a LINK between two runs, and the other
         # half of that link (`prep --from <attempt>`) is named on the staging
         # side.  Set here, the two could disagree: 'continue' with no --from
         # copies nothing, and --from onto a 'clean' stage places files whose
-        # deck omits MD.UseSave* and leaves them unread (run-identity.md § 4,
+        # deck answers MD.UseSave* `.false.` and leaves them unread
+        # (run-identity.md § 4,
         # "present but not honoured").  One surface owns both halves.
         "workflow_group": "staging",
         "label": "Start from",
@@ -682,21 +612,6 @@ class SiestaConfig:
                        "either)"),
     })
 
-    # ``use_save_dm`` / ``use_save_cg`` / ``use_save_xv`` are DELETED here
-    # (P3 unit 4, 2026-08-08).  They were the group's members carried
-    # individually, which run-identity.md § 4 rule 2 forbids in as many
-    # words: "no description can carry its members individually and disagree
-    # with itself".  They also made ``restart`` inert -- the renderer read
-    # the three booleans and never the field, so `--restart clean` emitted
-    # all three flags as .true. and a stage told to start clean continued.
-    # Their absence is the proof; SIESTA_RESTART_GROUP below is what
-    # replaced them.
-
-    # Output + positioning flags (2026-06-13): all of these are set
-    # once per project and don't change between stages — tag them as
-    # workflow_group="profile" so they fold into the Run profile card
-    # alongside SystemLabel / pseudo / spin.
-
     # When True, every section in the emitted FDF carries inline tuning
     # hints (parameter ranges, what to change when SCF / CG misbehave,
     # etc.) plus a "Troubleshooting" block at the end.
@@ -708,9 +623,8 @@ class SiestaConfig:
         "engine_key":  '(molbuilder: comment-block control in the generated input)',
     })
 
-    # The ``stage`` FIELD left this schema 2026-08-12 (C7): a stage's
-    # artifact token ``<NN>_<name>`` is a RENDER ARGUMENT
-    # (``render_fdf(..., stage_token=)``), carried by `prep` -- which holds
+    # A stage's artifact token ``<NN>_<name>`` is a RENDER ARGUMENT
+    # (``spec_for(..., names=)``, the stage's names), carried by `prep` -- which holds
     # the StageRef -- to the emitter, never stored on the config.  "The
     # emitter that reads it never learns the word" (engines/stages.md
     # § 1.1): a config states WHAT to compute; which rung of a ladder it is
@@ -744,9 +658,7 @@ class SiestaConfig:
         "label": "Write MD history (.MD/.MDE)",
         "engine_key":  'WriteMDhistory',
     })
-    # THE .ANI FILE, which molbuilder silently switched off for two years.
-    # Added 2026-08-15 (user) after the deviation sweep traced why no run
-    # ever produced one.  Declared next to write_md_history because a reader
+    # THE .ANI FILE.  Declared next to write_md_history because a reader
     # who wants "the trajectory file" lands on that one first and needs to
     # see, in the same place, that the animation file is a different switch.
     write_md_xmol: bool = field(default=True, metadata={
@@ -773,20 +685,12 @@ class SiestaConfig:
 
     # ---------------- Parallel execution (MPI) ----------------
     # Only matter when running `mpirun -np N siesta`; single-rank runs
-    # ignore them.  Defaults below avoid the most common parallel
-    # failure mode -- `propor: ERROR: IMAX = 0` -- by overriding
-    # SIESTA's auto-picked BlockSize, which can be too coarse for
-    # the per-atom distribution pass on small molecules.
-    # Both default to None -> auto-detect.  Block-size auto picks a
-    # power-of-2 from n_atoms; over_k auto turns on when the k-grid
-    # has multiple k-points.
+    # ignore them.
     # MPI rank count for ``mpirun -np N siesta``.
-    # None / 0 / 1 -> single-process (no mpirun).
     # Don't confuse with block_size (BlockSize for ScaLAPACK
     # within a rank); rank count is the OUTER parallelism.
     # The parallel-execution family (MPI ranks, OMP threads, GPU count,
-    # BlockSize, parallel-over-k, memory cap; the machine-answered ones
-    # moved to workflow_group="staging" on 2026-08-15).  Compute layout
+    # BlockSize, parallel-over-k, memory cap).  Compute layout
     # is "how much compute am I willing to spend on this run" — same category as MaxSCFIterations and
     # MD.Steps.
     mpi_np: Optional[int] = field(default=None, metadata={
@@ -823,14 +727,10 @@ class SiestaConfig:
 
     block_size: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        # A PLAIN INT.  It was ``decl_type: "pow2"`` until 2026-08-15, and
-        # `pow2` does not merely check -- ``template._shape`` SNAPS the value
-        # down to the nearest power of two, so a benchmarked 24 silently
-        # became 16.  The power-of-two rule is real but it is not this
+        # A PLAIN INT.  The power-of-two rule is real but it is not this
         # keyword's: the manual states it for ``Diag.BlockSize``, only under
         # a GPU-enabled ELPA, and breaking it is not an error there either
-        # (ELPA falls back to the CPU).  `pow2` survives where it belongs --
-        # BENCH-MARKS, a constraint the benchmark puts on its own sweep.
+        # (ELPA falls back to the CPU).
         "validate": (lambda value, cfg: _validate_block_size(value)),
         "workflow_group": "budget",
         "label": "ScaLAPACK block size",
@@ -846,8 +746,7 @@ class SiestaConfig:
     # OpenMP threads per MPI rank -- the cores per rank a run states
     # (`cpus_per_task` on `Resources`, translated at `resolve`).  The run
     # script exports it as OMP_NUM_THREADS; None is unstated, which prep
-    # refuses (`architecture.md` § 5.2 -- it read "auto: physical cores"
-    # until 2026-10-06).  The run script pins BLAS to 1 thread per rank so
+    # refuses (`architecture.md` § 5.2).  The run script pins BLAS to 1 thread per rank so
     # OMP * BLAS doesn't oversubscribe.
     omp_threads: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
@@ -865,9 +764,6 @@ class SiestaConfig:
         "engine_key":  '(molbuilder: .run.sh OMP_NUM_THREADS + .fdf runtime_info comment)',
         "null_label": "(not stated: prep refuses)",
     })
-    # SIESTA SystemMemory directive: MB cap for the SCF/diag working
-    # set.  Not auto-set in the .fdf today; if set here, runtime_info
-    # records it so the /results trajectory inspector shows the cap.
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
         # NOT a template item: a machine fact, which floor 2 must never
@@ -882,10 +778,10 @@ class SiestaConfig:
         # parser can recover the cap via runtime_info.
         "engine_key":  '(molbuilder: memory cap for the run -- ulimit -v in .run.sh / mol.max_memory)',
         "unit":       "MB",
-        # Advisory bounds for a surface offering a cap.  Added 2026-08-14 to
-        # match PySCF's: the two engines declare ONE item (template.md § 6.3)
-        # and a merged item cannot carry two answers.  Advisory only -- the
-        # normal state is unset, which means the node's maximum.
+        # Advisory bounds for a surface offering a cap: the two engines
+        # declare ONE item (template.md § 6.3) and a merged item cannot carry
+        # two answers.  Advisory only -- the normal state is unset, which
+        # means no cap.
         "range":      (100, 1_000_000),
         "null_label": "(no cap)",
     })
@@ -911,12 +807,10 @@ class SiestaConfig:
         # G3) and the GPU runtime: the gres ask, MPS, the NUMA pin.  It is
         # TOLD the value, never reads the deck for it: `resolve` carries it
         # onto the job's resources and every reader asks the job's GPU
-        # request (`jobset.model.gpu_request`).  Declared 2026-08-13, when
-        # T8's walk found the wrapper scanning a deck keyword no item
-        # declared.
+        # request (`jobset.model.gpu_request`).
         "read_by": ("wrapper",),
-        # MERGED with PySCF's item 2026-08-23 (ruled 2026-08-13).  One
-        # question -- does this run use a GPU -- so one item, `kind="deck"`,
+        # ONE item with PySCF's (ruled 2026-08-13): one question -- does
+        # this run use a GPU -- so one item, `kind="deck"`,
         # each engine's writer rendering its own reach.  `net_charge` is the
         # worked example (`engines/template.md` § 6.3).
         "item_kind":   "deck",
@@ -926,10 +820,7 @@ class SiestaConfig:
     diag_algorithm: str = field(default="ScaLAPACK", metadata={
         "category": ("execution",),
         # NO ``read_by``, and that is the finding rather than an omission.
-        # It carried ``read_by = ("wrapper",)`` from 2026-08-11 until
-        # 2026-08-13, on the belief that an ELPA deck must run in
-        # molbuilder-siesta-gpu.  Measured: the packaged SIESTA runs both
-        # ELPA stages on CPU (ELPA is compiled in through ELSI), so the
+        # Measured: the packaged SIESTA runs both ELPA stages on CPU (ELPA is compiled in through ELSI), so the
         # solver choice decides no environment and the wrapper derives
         # NOTHING from this value.  ``use_gpu`` is the one item the
         # wrapper reads -- see its declaration above.
@@ -941,7 +832,7 @@ class SiestaConfig:
         "workflow_group": "budget",
         "label":     "Diagonalizer",
         # The EIGENSOLVER choice -- independent of hardware (engines/
-        # siesta.md § 7, rewritten 2026-06-29).  ELPA runs on CPU AND
+        # siesta.md § 7).  ELPA runs on CPU AND
         # GPU; ``use_gpu`` only moves an ELPA solve onto the GPU.
         #   * ScaLAPACK -> emit NOTHING (SIESTA's built-in Divide-and-
         #     Conquer default); runs in the precompiled ``molbuilder-siesta``.
@@ -957,9 +848,7 @@ class SiestaConfig:
         "tier":      "advanced",
     })
 
-    # Pseudopotentials -- psml_lib uses click.Path() in the CLI so it's
-    # hand-rolled there; species_order needs comma-string parsing on
-    # the CLI side, also hand-rolled.
+    # Pseudopotentials
     psml_lib: Optional[str] = field(default=None, metadata={
         "category": ("method",),
         "item_kind":  "produce",
@@ -978,11 +867,9 @@ class SiestaConfig:
             "engine_key":  '(molbuilder: triggers .psml staging step)',
         "item_kind": "produce",
     })
-    # ``List`` and not ``Sequence`` since U16: the template grammar names
-    # ``strlist`` for ``List[str]``, and this field is an ITEM -- it orders
-    # the ChemicalSpeciesLabel block, which run-identity § 6a calls
-    # identity-sensitive, so a template that omitted it did not pin the
-    # deck it claims to describe.
+    # ``List``: the template grammar names ``strlist`` for ``List[str]``,
+    # and this field is an ITEM -- it orders the ChemicalSpeciesLabel block,
+    # which run-identity § 6a calls identity-sensitive.
     species_order: Optional[List[str]] = field(default=None, metadata={
         "workflow_group": "profile",
         "category": ("system",),
@@ -1003,14 +890,11 @@ class SiestaConfig:
     # ================================================================== #
     #  The TRANSPORT kind's parameters                                    #
     #                                                                     #
-    #  Added 2026-09-15 with their catalogue rows (`calculations =        #
-    #  ["transport"]`).  They live on SiestaConfig and not on a class of  #
-    #  their own for the reason `engines/transport.md` 3.2 measures:      #
-    #  every transport stage IS a SIESTA run -- the seed is a plain SCF,  #
-    #  each electrode is an SCF, the device is an SCF with open           #
-    #  boundaries -- so transport is the siesta base minus the relaxation #
-    #  driver plus these.  A second config class for them was exactly     #
-    #  what `SpectraConfig` was, and it was retired for it.               #
+    #  They live on SiestaConfig and not on a class of their own for the  #
+    #  reason `engines/transport.md` 3.2 measures: every transport stage  #
+    #  IS a SIESTA run -- the seed is a plain SCF, each electrode is an   #
+    #  SCF, the device is an SCF with open boundaries -- so transport is  #
+    #  the siesta base minus the relaxation driver plus these.            #
     #                                                                     #
     #  The seven ELECTRONIC-CONTRACT parameters are not here: they are    #
     #  the shared rows (basis_size, mesh_cutoff, kgrid, pao_energy_shift, #
@@ -1225,58 +1109,13 @@ class SiestaConfig:
     })
 
 
-
-
-# --------------------------------------------------------------------- #
-#  SIESTA stage presets (minimum-viable per-stage defaults)             #
-#                                                                       #
-#  Anchors the 3-stage workflow ("stage1 CG warm-up -> stage2 Broyden   #
-#  publishable -> stage3 Broyden tight crystal-practical") into a       #
-#  single overlay applied via ``--stage {1,2,3}`` on the CLI.  Tier     #
-#  values match docs/engines/tuning.md sect. 2.3.1's      #
-#  system-type-aware framework.                                         #
-#                                                                       #
-#  These values are the ladder's SCIENCE, and they outlive every        #
-#  mechanism that has carried them: read as an overlay by ``--stage N`` #
-#  for a one-shot deck, and read again by                               #
-#  ``siesta/stages.py::default_siesta_stages`` as each stage's          #
-#  ``overrides`` in the shipped ladder.  One table, two readers.        #
-# --------------------------------------------------------------------- #
-
-
-# Per-stage value overlay.  Each entry is a partial dict of SiestaConfig
-# field overrides; the overlay leaves other fields (basis, mesh_cutoff,
-# psml_lib, etc.) untouched so the user's other choices ride through.
-#
-# Stage rationale (per tuning.md sect. 2.3.1):
-#   stage1 = loose preopt:    CG, ~0.05 eV/A, 0.2 A displacement cap
-#   stage2 = publishable:     Broyden, ~0.04 eV/A (Gaussian-OPT default),
-#                                      0.05 A displacement cap
-#   stage3 = tight crystal:   Broyden, ~0.01 eV/A (VASP EDIFFG=-0.01),
-#                                      0.02 A displacement cap, fewer
-#                                      max-steps (publishable->tight on
-#                                      the same warm-started geom needs
-#                                      fewer outer iters)
-#
-# All three preset CG/Broyden choices align with SIESTA's recommended
-# workflow per the tuning.md sect. 2.1 algorithm comparison
-# table: CG only for stage 1 (no memory / robust far from minimum),
-# Broyden for any production-tier work (quasi-Newton + best near minimum).
-#
-# WHY THE ONE-SHOT OVERLAY STAYS (``apply_siesta_stage``, below).  It is a
-# one-flag fast path to a SINGLE tier-N deck, which is a different request
-# from "run the ladder" -- and since both readers take their values from
-# this one table, the deck ``--stage 2`` writes and the deck stage2 of the
-# ladder writes cannot drift apart.
-#
-# ``SiestaStageSpec`` used to copy these values into its own field defaults,
-# which is the copy this table now replaces: a stage carries ``overrides``,
-# and the shipped ladder's overrides ARE these dicts (engines/stages.md
-# § 1.1 -- an engine config carries no stage list).
 #: § 4 rule 1 — SIESTA's identity group, declared in one place.
 #:
 #: The literal is what every warm file is keyed by (`job-contracts.md § 4.1`);
-#: the three keys are what SIESTA reads those files *only* when set (§ 4.2).
+#: the three keys tell SIESTA whether to read those files -- `.true.` to
+#: resume, `.false.` to start clean; it reads a .DM it finds unless told
+#: `.false.`, and an .XV or .CG only when told `.true.` (§ 4.2,
+#: ``mechanism`` below).
 #: Both halves are needed, and stating one without the other is how a deck
 #: comes to say it resumed while the engine started cold.
 #:
@@ -1288,22 +1127,20 @@ class SiestaConfig:
 #:
 #: This is `identity.OUR_FILE_PATTERNS`' arrangement and for the same reason:
 #: this module is **L1** and the catalogue reader is **L2**, so importing it
-#: here is the upward import review refuses (`process/code-audit.md` § 1c (e);
-#: tried 2026-08-18 and reverted).  The fact still has ONE authority -- `[item.restart].expands` --
+#: here is the upward import review refuses (`process/code-audit.md` § 1c (e)).
+#: The fact still has ONE authority -- `[item.restart].expands` --
 #: and every PRODUCTION reader goes there through `script_emit.parameter`; this
 #: tuple has no production reader left at all.
 #:
 #: What keeps it honest is a gate, not discipline:
 #: `test_the_restart_group_object_is_not_a_second_declaration` asserts identity
 #: with the catalogue rather than naming the keywords again, so a tuple that
-#: drifts fails rather than quietly becoming a fourth spelling -- which is what
-#: it was, in its own order, until 2026-08-18.
+#: drifts fails rather than quietly becoming a fourth spelling.
 SIESTA_RESTART_GROUP = RestartGroup(
     literal="SystemLabel",
     keys=("DM.UseSaveDM", "MD.UseSaveXV", "MD.UseSaveCG"),
-    # MEASURED, not assumed (2026-08-18).  This said "SIESTA reads .DM/.CG/.XV
-    # only when set", and a deck carrying NONE of these keys, with a `.DM`
-    # beside it, printed:
+    # MEASURED, not assumed (2026-08-18): a deck carrying NONE of these
+    # keys, with a `.DM` beside it, printed:
     #     Attempting to read DM from file... Succeeded...
     #     DM from file: <dSpData2D:IO-DM: bdt-e2e-K1C1.DM
     # -- so the read is not gated on the key being present.  Every member is
@@ -1316,7 +1153,7 @@ SIESTA_RESTART_GROUP = RestartGroup(
     # reason: what a keyword does when ABSENT is the engine's business, and
     # the only way to state an intention is to state it.
     mechanism="declared .fdf keys, written for both answers; SIESTA reads "
-              ".DM/.CG/.XV unless told .false.",
+              "a .DM unless told .false., an .XV or .CG only when told .true.",
     field="system_label",
 )
 
@@ -1324,16 +1161,41 @@ SIESTA_RESTART_GROUP = RestartGroup(
 #: What each tier is CALLED.  Decision 27 (2026-08-10) put the ordinal in the
 #: artifact token (``01_coarse``), which forces these to be descriptive rather
 #: than positional: ``bdt_au_01_stage1.fdf`` says the number twice and the
-#: science none.  These are the names the browser's preset dropdown has always
-#: shown (``index.html`` -- *Stage 1 — Coarse (fast descent)*) and the ones
-#: every worked example in ``engines/stages.md`` uses.
+#: science none.  These are the names every worked example in
+#: ``engines/stages.md`` uses.
 #:
-#: ONE table, read by both doors: ``default_siesta_stages`` builds the ladder
-#: from it and the CLI's ``--stage N`` resolves through it, so the deck
-#: ``--stage 2`` writes and the deck tier 2 of the ladder writes cannot drift.
+#: ONE table: the ladder builders, the build route and ``jobset init`` name
+#: tiers from it.
 SIESTA_STAGE_NAMES: Dict[int, str] = {1: "coarse", 2: "medium", 3: "tight"}
 
 
+# --------------------------------------------------------------------- #
+#  SIESTA stage presets (minimum-viable per-stage defaults)             #
+#                                                                       #
+#  The ladder's SCIENCE: ``siesta/stages.py::default_siesta_stages``    #
+#  reads each tier as a stage's ``overrides`` in the shipped ladder     #
+#  (engines/stages.md § 1.1 -- an engine config carries no stage list), #
+#  and the build route lists them.  Tier values follow                  #
+#  docs/engines/tuning.md's tier framework.                             #
+# --------------------------------------------------------------------- #
+#
+# Each entry is a partial dict of SiestaConfig field overrides; other
+# fields (basis, mesh_cutoff, psml_lib, etc.) ride through untouched.
+#
+# Stage rationale (per tuning.md § 2):
+#   stage1 = loose preopt:    CG, ~0.05 eV/A, 0.2 A displacement cap
+#   stage2 = publishable:     Broyden, ~0.04 eV/A (Gaussian-OPT default),
+#                                      0.05 A displacement cap
+#   stage3 = tight crystal:   Broyden, ~0.01 eV/A (VASP EDIFFG=-0.01),
+#                                      0.02 A displacement cap, fewer
+#                                      max-steps (publishable->tight on
+#                                      the same warm-started geom needs
+#                                      fewer outer iters)
+#
+# All three preset CG/Broyden choices align with SIESTA's recommended
+# workflow per the tuning.md § 2.1 algorithm comparison
+# table: CG only for stage 1 (no memory / robust far from minimum),
+# Broyden for any production-tier work (quasi-Newton + best near minimum).
 SIESTA_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
     1: {
         "relax_type":      "CG",
@@ -1356,41 +1218,8 @@ SIESTA_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
 }
 
 
-def apply_siesta_stage(cfg: SiestaConfig, stage: int) -> SiestaConfig:
-    """Return a copy of *cfg* with the per-stage tier-aligned values
-    overlaid for ``stage`` (1, 2, or 3).
-
-    Values overlaid: ``relax_type``, ``relax_steps``, ``relax_force_tol``,
-    ``relax_max_displ``.  Every other field is preserved verbatim from
-    the input config -- the overlay is intentionally narrow so user
-    choices on basis / mesh_cutoff / psml_lib / spin / k-grid ride
-    through unchanged.
-
-    The overlay is applied AFTER the user's explicit CLI / form values,
-    NOT before.  An explicit ``--relax-force-tol 0.003`` followed by
-    This function overlays the FOUR fields above only.  (The ``--stage``
-    CLI flag that used to drive it went with ``molbuilder fdf``,
-    2026-08-11; the filename suffix it also set is a RENDER argument now —
-    ``render_fdf(..., stage_token=)``, C7, 2026-08-12.)  The tier values
-    remain the shipped ladder's defaults: ``default_siesta_stages`` reads
-    the same presets table into ``Stage.overrides``.
-
-    Raises ``ValueError`` for stages outside {1, 2, 3}.
-    """
-    import dataclasses as _dc
-    if stage not in SIESTA_STAGE_PRESETS:
-        valid = ", ".join(map(str, sorted(SIESTA_STAGE_PRESETS)))
-        raise ValueError(
-            f"unknown SIESTA stage {stage!r}; choose from: {valid}")
-    overlay = SIESTA_STAGE_PRESETS[stage]
-    return _dc.replace(cfg, **overlay)
-
-
-# THE SHARED TABLE (`config/stages.py`).  This was a second copy with equal
-# values, and its own comment said "keep aligned with config/pyscf.py's
-# STAGE_STRATEGY_PRESETS (the drift-guard test fires if the two engines ever
-# diverge)" -- six tests keeping one constant equal to itself.  A strategy says
-# which TIERS run, which is not an engine's property.
+# THE SHARED TABLE (`config/stages.py`): a strategy says which TIERS run,
+# which is not an engine's property.
 from .stages import STAGE_STRATEGY_PRESETS
 
 
@@ -1398,6 +1227,5 @@ __all__ = [
     "SiestaConfig",
     "SIESTA_STAGE_NAMES",
     "SIESTA_STAGE_PRESETS",
-    "apply_siesta_stage",
     "STAGE_STRATEGY_PRESETS",
 ]

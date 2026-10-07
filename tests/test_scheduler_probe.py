@@ -2,22 +2,10 @@
 answer (a machine with none), the record's own `set` and its diff.  What the
 probe makes of a real scheduler's answers is the field test's
 (`tests/field/`).
-
-Renamed from ``test_bench_probe.py`` on 2026-08-17: the verb it names has not
-been ``molbuilder bench probe-scheduler`` since the `bench` group was deleted,
-and nothing it covers is a benchmark.
 """
 
 from molbuilder.scheduler.probe import (derive_domains, parse_allowed_qos,
                                         parse_qos, parse_sinfo)
-
-# THE PROBE'S READING OF A REAL SCHEDULER IS TESTED IN THE FIELD
-# (`tests/field/`), on a record probed on the machine itself -- never on
-# scheduler text in the suite (user, 2026-10-06: "there should be no
-# assumption what so ever about the text returned by slurm ... the whole
-# default test set should never be based on fabricated text").  Sixteen
-# parser tests on `sinfo` / `sacctmgr` text typed here -- some of it
-# copied from Sol, some of it made up -- retired that day.
 
 
 def test_empty_probe_is_safe():
@@ -26,7 +14,6 @@ def test_empty_probe_is_safe():
                                     parse_allowed_qos(""))
     assert domains == []
     assert any("no partitions" in n for n in notes)
-
 
 
 # --------------------------------------------------------------------- #
@@ -39,13 +26,6 @@ def _cli(args, **kw):
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     return CliRunner().invoke(jobset_group, ["probe", *args], **kw)
-
-
-# `test_set_declares_typed_facts_and_the_source_says_flag`,
-# `test_scheduler_flag_forces_the_kind_and_names_the_named_file` and
-# `test_a_record_that_does_not_read_is_said_before_it_is_replaced` retired
-# 2026-10-02 with `probe --out`, which each wrote through (user: "retire the
-# test with that retired --out flag").
 
 
 def test_set_refuses_unknown_keys_and_mistyped_values_by_name(tmp_path):
@@ -81,8 +61,7 @@ def _two_envs():
 
 # The consent tests -- No keeps the record, Yes takes the probe, EOF declines,
 # `--yes` asks nothing, an unchanged record is told so -- are rows of
-# `tests/data/machine_record.toml` since 2026-10-02, down the road (W54 T29);
-# they called the private `_probe_consent_merge` with `click.confirm` patched.
+# `tests/data/machine_record.toml`, down the road (W54 T29).
 
 
 def test_domains_diff_as_one_fact(monkeypatch, capsys):

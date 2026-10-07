@@ -6,8 +6,7 @@ alternative is running ``notify-token``, copying the JSON, reaching the
 machine that runs the jobs, ``mkdir -p -m 700``, pasting, ``chmod 600``, and
 remembering the directory.  **Four chances to be wrong, and every one fails
 silently** — absent or malformed means no notifier, which is indistinguishable
-from never having set it up.  A wrong-path defect found on 2026-08-27 came from
-exactly that.
+from never having set it up.
 
 **This is not `notify.py`, and the separation is deliberate.**  That module
 is the *public receiving end*: one route, no session, append-only, and its
@@ -27,15 +26,11 @@ server runs as; a molbuilder login is a person.  molbuilder does not manage
 that mapping and does not try to (user, 2026-08-27) — `access-control.md` § 8
 rule 3, *identity is borrowed, never stored*, applied to the filesystem.
 
-**IT ALWAYS WRITES, AND `launch.mode` HAS NOTHING TO SAY ABOUT IT.**  This
-gated on ``mode != "submit"`` from 2026-08-27 until 2026-09-01, reading
-``submit`` as *"the jobs run somewhere this server cannot reach"* and refusing
-to save.  That is not what the setting means: `running-a-job.md` § 5.4 defines
-it as ``direct`` (run in place) or through the scheduler, and it gates
-``.sbatch`` submission **on this machine** — so a login node with SLURM is
-``submit`` and is exactly where the file belongs.  The gate refused the
-machines that needed it most, and did not detect the real cross-machine case
-at all: a laptop preparing a bundle for a cluster is ``direct``.
+**IT ALWAYS WRITES, AND `launch.mode` HAS NOTHING TO SAY ABOUT IT.**
+`running-a-job.md` § 5.4 defines that setting as ``direct`` (run in place) or
+through the scheduler, and it gates ``.sbatch`` submission **on this
+machine** — so a login node with SLURM is ``submit`` and is exactly where the
+file belongs.
 
 The rule instead *(user, 2026-09-01)*: **every config file molbuilder manages
 is saved on the machine molbuilder runs on.**  Getting a secret to the machine
@@ -44,13 +39,9 @@ generated run script assumes the transfer happened and carries **no cleartext
 secret**, because embedding one would violate the security protocol.  So this
 page writes here, and offers no recipe for writing anywhere else.
 
-**Nothing here reads a secret back**, and that rule is now wider than it was.
-A stored key is reported as present and never as itself, and a **webhook
+**Nothing here reads a secret back.**  A stored key is reported as present and never as itself, and a **webhook
 address is masked too**: for Slack and Discord the URL *is* the credential
-(`run-reports.md` § 3), so returning it whole returns the secret.  The route
-this replaced returned every stored URL in full on the strength of *"an
-address, not a secret"* — true of the listener URL it was written for, and
-false of the Slack webhook that was actually in the file.
+(`run-reports.md` § 3), so returning it whole returns the secret.
 
 **One risk, named rather than hidden.**  :func:`test_channel` makes the
 *server* POST to a URL the caller supplied, which is a request-forgery shape.
@@ -88,10 +79,7 @@ def _dest_path() -> Path:
     """The channel file, from the **monitor's own** function.
 
     Imported rather than restated, so this page and the process that reads
-    the file on a compute node cannot name different directories.  They did
-    once: the Task-setup card said ``~/.molbuilder/notify`` while the
-    monitor read ``config_dir()/notify``, and following the card put the
-    file where nothing looks.
+    the file on a compute node cannot name different directories.
     """
     from ...monitor import default_notify_path
     return default_notify_path()
@@ -127,8 +115,7 @@ def _write(doc: Dict[str, Any]) -> None:
     0700 and writes a temp file that is owner-only from the moment it exists,
     then renames it over the target — so the secret is never on disk at a
     looser mode, and an interrupted write leaves the previous file whole.
-    The bytes are `persist.json_text`'s, every JSON artifact's one shape (it
-    was spelled here until 2026-10-02, W54 C25)."""
+    The bytes are `persist.json_text`'s, every JSON artifact's one shape."""
     from ...auth_setup import write_secret_file
     from ...persist import json_text
     write_secret_file(_dest_path(), json_text(doc))
@@ -183,13 +170,8 @@ def _row(name: str, spec: Dict[str, Any],
     same function the sender uses to choose an envelope, so what this page
     shows is what the wire will carry.
 
-    It was derived here instead, as ``"listener" if key else "webhook"``, on
-    the reasoning that *having a key* is the one thing that differs.  That
-    was true while there were two kinds and the question was *who holds the
-    credential*.  There are three wire formats (`run-reports.md` § 4.1b), and
-    having a key cannot tell Slack from Discord -- so the page collapsed the
-    one distinction the sender cannot avoid making, and a Discord channel was
-    saved, listed and tested as though it were a Slack one.
+    There are three wire formats (`run-reports.md` § 4.1b), and having a key
+    cannot tell Slack from Discord.
 
     ``has_key`` stays a field of its own, because *is a signature attached*
     is a genuinely separate question from *what shape is the body*.
@@ -208,13 +190,8 @@ def _row(name: str, spec: Dict[str, Any],
         "tested_at": spec.get("tested_at") if isinstance(
             spec.get("tested_at"), (int, float)) else None,
         # WILL THE MONITOR ACTUALLY USE IT.  Answered by `load_channels`, the
-        # reader a job runs -- not re-derived here.  This page listed every
-        # stored channel as fine while the monitor silently dropped the ones
-        # with no url or a non-string key: measured 2026-09-20, the page
-        # showed three channels and no problem while a job used one, and the
-        # Test button then denied one of the three existed.  A page that
-        # cannot be trusted about which channels work is worse than no page,
-        # and this module's own header says it exists to end that silence.
+        # reader a job runs -- not re-derived here.  A page that cannot be
+        # trusted about which channels work is worse than no page.
         "usable":    usable,
     }
 
@@ -236,10 +213,8 @@ def _state() -> Dict[str, Any]:
 
     Every route that touches them answers with this, and it is not tidiness:
     the page repaints from whatever the response carries, so a mutation that
-    replied with a narrower object left the painter reading fields that were
-    not there.  It said *"2 channels in undefined"* after a test -- found in
-    the browser on 2026-08-31, because `path` was in the GET's answer and in
-    no other.
+    replied with a narrower object would leave the painter reading fields
+    that are not there.
 
     A response is the state, or it is a trap for the next painter.
     """
@@ -248,9 +223,8 @@ def _state() -> Dict[str, Any]:
         file_mode = oct(path.stat().st_mode & 0o777)
     except OSError:
         file_mode = ""
-    # ONE READING, PASSED DOWN.  `_rows` and `_file_note` each asked the
-    # monitor independently, so a single GET opened the 0600 file three times
-    # and logged its skip reasons three times over.  One answer, shared.
+    # ONE READING, PASSED DOWN to `_rows` and `_file_note`: one answer,
+    # shared.
     usable = _usable()
     return {"path": str(path), "channels": _rows(usable),
             "problem": _file_note(usable), "mode": file_mode}
@@ -280,9 +254,8 @@ def _file_note(usable: Optional[Set[str]] = None) -> str:
         return "needs a 'channels' object"
     # PER-CHANNEL, FROM THE MONITOR'S READER.  The checks above are file-level
     # and have to read the raw text, because `load_channels` returning {} does
-    # not say WHY.  Per channel it does know, and re-implementing its rules
-    # here is what let the page call a file fine while the monitor skipped
-    # half of it.
+    # not say WHY.  Per channel it does know, so its rules are not
+    # re-implemented here.
     usable = _usable() if usable is None else usable
     skipped = sorted(set(_stored()) - usable)
     if skipped:
@@ -331,18 +304,16 @@ def save_channel(name: str):
     **A save merges, twice over, and both merges are load-bearing.**
 
     *Across* channels: this writes one name and leaves every other exactly
-    as it was.  The file used to hold a single destination, so a save was a
-    whole-file write; keeping that here would make configuring Slack delete
-    the listener — which is the shape of the bug the single destination
-    already had, promoted to a data loss.
+    as it was -- a whole-file write would make configuring Slack delete the
+    listener.
 
     *Within* a channel: the fields this page manages go over whatever that
-    channel already holds.  Writing a fresh object destroyed the rest of it
-    two ways, both found by round-tripping on 2026-08-27: the key (the page
+    channel already holds.  Writing a fresh object would destroy the rest of
+    it two ways: the key (the page
     clears that field after each save — a secret left in the DOM ends up in
     a screenshot — so the ordinary next action, fixing a typo in the
     address, arrived with none), and a ``headers`` block the monitor reads
-    and this page has no input for.  **Both failed silently**, because an
+    and this page has no input for.  **Both would fail silently**, because an
     unsigned report gets the listener's 404 and the notifier swallows it.
 
     Removing something deliberately is `DELETE`.
@@ -372,13 +343,11 @@ def save_channel(name: str):
     spec["url"] = url
     if key:
         spec["key"] = key
-    # WHICH WIRE FORMAT, in the file, in the monitor's own vocabulary.  The
-    # page offered "Slack or Discord" as ONE kind until 2026-09-02, which is
+    # WHICH WIRE FORMAT, in the file, in the monitor's own vocabulary --
     # a distinction the sender cannot avoid making: Slack renders a bare
     # `text` and Discord refuses a body without `content` or `embeds`
-    # (`run-reports.md` § 4.1b).  A page that collapses them makes the
-    # backend guess -- and guessing from the host is the DEFAULT, not the
-    # answer, so a proxied webhook had no way to be told apart.
+    # (`run-reports.md` § 4.1b).  Guessing from the host is the DEFAULT, not
+    # the answer, so a proxied webhook is told apart here.
     from ...monitor import _KINDS
     if kind:
         if kind not in _KINDS:
@@ -445,9 +414,7 @@ def test_channel(name: str):
     """Send one report to one channel and say what happened.
 
     **This is the only check that exercises the whole path** — the file,
-    the URL, the route segment, the signature, egress and TLS — and until
-    it existed the only way to know a setup worked was to run a job and
-    notice nothing arrived.
+    the URL, the route segment, the signature, egress and TLS.
 
     It signs with the monitor's own :func:`sign_report`, and reads the
     channel through the monitor's own :func:`load_channels`, so a signature
@@ -466,11 +433,9 @@ def test_channel(name: str):
         return jsonify({"ok": False,
                         "error": f"no channel called {name!r} is set up "
                                  f"here"}), 404
-    # THE MONITOR'S OWN PRODUCER, not a second one.  This function built the
-    # body and the headers itself until 2026-09-02, which made the button
-    # that exists to prove the path a DIFFERENT path -- it could pass while
-    # a real report failed, and for Discord both failed for two separate
-    # reasons the button could not have shown (`run-reports.md` § 4.1b).
+    # THE MONITOR'S OWN PRODUCER, not a second one: the button that exists
+    # to prove the path must not be a DIFFERENT path (`run-reports.md`
+    # § 4.1b).
     body, headers = webhook_request(dest, {
         "event": "test",
         "text": f"a test report from molbuilder, for the channel {name!r}",
@@ -567,8 +532,7 @@ def issue_key(user: str):
 
     Through `auth_setup.issue_notify_key`, the same door `notify-token`
     uses — so the two cannot generate different route segments from the same
-    file, which is the failure `run-reports.md` § 4.3 records from when the
-    route lived in two places.
+    file (`run-reports.md` § 4.3).
 
     **The key comes back once**, and that is the deliberate exception to
     this module's own rule.  A key that is never shown at the moment it is

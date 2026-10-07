@@ -6,13 +6,7 @@ output's own ``>> End of run``.
 
 ``jobset init`` -> ``prep run coarse`` -> ``launch run --mode direct`` on an
 H2 relaxation, then opened in the Results tab as a person opens it, in its
-folder.  Until 2026-09-27 the viewer estimated its own rate three ways
-(SIESTA's first-iteration timer, the browser's poll times, the output's file
-times), and dated an ended run by the output's file time, so a copy made
-three days later read "ended" at the copy's time.  *(An output copied alone
-into a folder of its own was opened here too until 2026-10-03; the badge
-reads the RUN now, and an output whose run's records are not beside it is a
-run that never concluded -- `web/results.md` § 4.1.)*
+folder.
 """
 from __future__ import annotations
 
@@ -145,8 +139,7 @@ def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
     SCF-timing log, through one reader -- and the badge dates the run by its
     output's end.
 
-    MUTATION THIS MUST FAIL AGAINST: the viewer computing its own rate (the
-    three estimates before 2026-09-27).
+    MUTATION THIS MUST FAIL AGAINST: the viewer computing its own rate.
     """
     time, ended = _the_runs_own_times(finished)
     _open(page, flask_server, finished, monkeypatch)

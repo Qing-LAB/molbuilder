@@ -17,8 +17,6 @@ limiter so unrelated tests don't trip the total-burst threshold.
 """
 from __future__ import annotations
 
-import time
-
 import pytest
 
 # The module under test relies on Flask.  Skip the whole file
@@ -41,9 +39,7 @@ def _build_client(rate_limit_cfg=None, environ_base=None, admins=None):
 
     ``admins`` goes in the TOP-LEVEL ``admin`` section, not inside
     ``rate_limit``: who may clear the block list is the same question "who may
-    restart the server" asks, and one list answers both (web/admin.py).  It
-    lived under ``rate_limit.admin_emails`` until 2026-08-03, where its empty
-    default meant "anyone signed in" here and had to be inverted there.
+    restart the server" asks, and one list answers both (web/admin.py).
     """
     from molbuilder.web.app import create_app
     cfg = {"rate_limit": {"enabled": True, **(rate_limit_cfg or {})}}
@@ -331,11 +327,6 @@ class TestAllowlist:
         r = client.get("/?<script>x</script>")
         assert r.status_code == 429
 
-    # `test_malformed_allowlist_entries_logged_and_skipped` retired 2026-10-02:
-    # a malformed entry is refused where the config is read, naming it, before
-    # a server starts on it (`tests/data/molbuilder_json.toml`; configuration.md
-    # § 4) -- no document stated the skip it pinned.
-
 
 # --------------------------------------------------------------------- #
 #  X-Forwarded-For trust                                                #
@@ -551,12 +542,7 @@ class TestAdminRoleGate:
     def test_naming_nobody_means_anyone_who_signed_in(self, ):
         """ONE VALUE, ONE READING -- and the reading is the useful one.
 
-        What was wrong in the original arrangement was never this default; it
-        was that the value lived inside the limiter's own settings and that the
-        reload route INVERTED it for itself, so the same list meant opposite
-        things depending on which subsystem asked.  Both of those are gone.
-
-        The default is back to "anyone who signed in", because signing in is
+        The default is "anyone who signed in", because signing in is
         already the gate: ``auth.providers[].allowed_users`` is a REQUIRED
         field, so a session exists only for someone an operator wrote down by
         hand.  Asking that operator to write the same address a second time, in
@@ -654,7 +640,6 @@ class TestAdminRoleGate:
         )
         assert r.status_code == 403
 
-    # `test_a_malformed_admin_list_does_not_crash_the_app` retired 2026-10-02 (W54): the reader refuses this list where the config is read (`runtime_config._read_admin`); it passed only because `create_app(config=)` skips validation.
 
     def test_the_admin_list_does_not_move_when_the_limiter_is_off(self):
         """It hung off the limiter's own object until 2026-08-03, so turning
@@ -693,9 +678,7 @@ class TestTheSignInCheckIsNotEvidence:
         pytest.importorskip("flask")
         from molbuilder.web.app import create_app
         # A config a server would start on: `create_app` validates a given
-        # one since 2026-10-02 (W54 C17).  This held a literal
-        # `client_secret`, a `secret_key_file` and an `enabled` key -- each
-        # refused by the reader.
+        # one (W54 C17).
         return create_app(config={
             "auth": {"providers": [{
                 "id": "g", "label": "Google", "kind": "google",

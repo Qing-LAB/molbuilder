@@ -15,21 +15,20 @@ stage that omits a varied field renders with the template's value (§ 4).  It
 **names no machine** either: ranks, queues and walltimes are decided by ``prep``
 on the target (``execution/project-layout.md`` § 2.1).
 
-LAYER.  L1: it imports ``persist``, ``identity`` and the standard library, and
-nothing else — both of those are themselves L1 on stdlib, so this stays a leaf.
+LAYER.  L1: at load it imports only stdlib-only L1 modules (``persist``,
+``identity``, ``paths``, ``runfiles``, ``config_dir``, ``report_fields``,
+``scheduler.quantities``) and the standard library, so this stays a leaf.
 That is deliberate rather than incidental — see *the split preflight* below.
-``identity`` joined the list on 2026-08-09, when ``run.id`` stopped being a free
-string and became something this module DERIVES and checks; it is the same
-normaliser the CLI and the browser call, which is what § 3 rule 1's *"it happens
-once"* actually requires.
+``identity`` is here because ``run.id`` is something this module DERIVES and
+checks; it is the same normaliser the CLI and the browser call, which is what
+§ 3 rule 1's *"it happens once"* actually requires.
 
 THE SPLIT PREFLIGHT.  § 6.6 lists eight checks "in order, and all of it before
 anything is written".  Four of them are answerable from the file alone and are
 enforced here; the other four need the engine's field schema, and importing an
 engine into an L1 codec is the upward import the layer rule forbids
 (`architecture.md` § 3, kept by review).
-Those belong to resolution (P2 of ``execution/staged-runs-implementation-plan.md``),
-which already has the schema in hand:
+Those belong to resolution (P2 below), which already has the schema in hand:
 
   here    the schema string's major · ``shape`` present and legal · stage names
           in ``[A-Za-z0-9_]+`` and unique case-insensitively · no ``overrides``
@@ -41,9 +40,7 @@ which already has the schema in hand:
           (``bias_token``)
   P2      the engine has a generator · every
           named field exists in the schema · every value is one that field's
-          DECLARED TYPE can hold (added 2026-08-25 — the row that let
-          ``"kgrid": "4,4,1"`` through, a string where the config declares
-          ``Tuple[int, int, int]``) · every value -- a stage's, an execution
+          DECLARED TYPE can hold · every value -- a stage's, an execution
           block's, a bench point -- may stand for its item on the kind (the
           one per-value door, ``template.why_not``: refused) and is inside
           its recommended range (warned), a bias point too ·
@@ -53,7 +50,7 @@ which already has the schema in hand:
           P2's verb
 
 WHY THE MESSAGES NAME THINGS.  A description is JSON sitting beside the decks,
-and as of 2026-08-07 editing it by hand is **supported** (the plan's decision 3).
+and editing it by hand is **supported** (the plan's decision 3).
 So a refusal owes a person what it owes the browser: the offending key by name,
 which stage it was in, and — where the key is one edit away from a real one —
 what they probably meant.
@@ -72,11 +69,8 @@ from . import report_fields as _report_fields
 from .config_dir import is_channel_name
 from .identity import normalise_id, run_id, stage_key
 from .persist import check_schema, read_json, write_json
-# The record's spelling for the two asks.  A TOP-LEVEL import because it is
-# now legal to have one: `scheduler.quantities` is a stdlib-only codec at
-# the same layer.  It was deferred into the function body while these lived
-# in `jobset/` -- a workaround for a placement that should not have been,
-# and the workaround is what hid the cycle from everything but the test.
+# The record's spelling for the two asks.  A TOP-LEVEL import:
+# `scheduler.quantities` is a stdlib-only codec at the same layer.
 from .scheduler.quantities import canonical_mem, canonical_time
 
 
@@ -92,12 +86,9 @@ from .paths import SHAPES
 #: § 2 — "three fields, and no others".  An ``overrides`` map naming one of
 #: these would be a stage redefining what a stage is.
 #:
-#: DERIVED FROM THE DATACLASS, not typed beside it.  A hand-written tuple here
-#: is a second definition of what a `Stage` is, and the only thing holding the
-#: two together was a test in each engine's file asserting they matched -- a
-#: bean count where a one-line derivation does the job (2026-09-09).  Adding a
-#: field to `Stage` now updates this, `_check_keys`, and every caller at once;
-#: forgetting to is no longer a state that exists.
+#: DERIVED FROM THE DATACLASS, not typed beside it: a hand-written tuple here
+#: would be a second definition of what a `Stage` is.  Adding a field to
+#: `Stage` updates this, `_check_keys`, and every caller at once.
 #:
 #: Defined after `Stage` (bottom of this module) because it reads its fields.
 
@@ -149,12 +140,9 @@ def bias_token(v: float) -> str:
     names — never the bench spelling).  Deck naming, the per-point
     attempt layout, the gather, the chain walker -- and this codec's
     refusal of two points that would share one folder -- all read this.
-    Here, beside the list it spells, since 2026-09-30: the codec is the
-    lowest reader, and it lived in `transport/stages.py` until then."""
+    Here, beside the list it spells: the codec is the lowest reader."""
     return f"v{v:g}"
 
-#: A channel NAME, as a description may carry one.
-#:
 _RUN_KEYS = ("name", "id", "created")
 _STRUCTURE_KEYS = ("source", "formula", "atoms")
 
@@ -168,12 +156,11 @@ class Run:
     """What the user called it, and what it is called on disk.
 
     ``id`` is derived once and then quoted everywhere
-    (``execution/run-identity.md`` § 2).  Since 2026-08-07 it does **not**
-    name the directory — the level-③ folder is typed by the user, and this
-    file is what says which calculation lives there (§ 3.0 there).
+    (``execution/run-identity.md`` § 2).  It does **not** name the
+    directory — the level-③ folder is typed by the user, and this file is
+    what says which calculation lives there (§ 3.0 there).
 
-    Since 2026-08-09 (§ 2.0a, decision 26) it does not name the **files**
-    either: the id is ``<label>_<formula>`` and lives here, while the label
+    Nor does it name the **files** (§ 2.0a, decision 26): the id is ``<label>_<formula>`` and lives here, while the label
     alone is the ``SystemLabel`` and the stem of everything on disk.  The
     label is not a field — it is :attr:`Task.label`, derived through the one
     normaliser — because storing it would be a second place for the same
@@ -202,9 +189,7 @@ class Allocation:
     **Every field is optional, and absent means UNSTATED** -- never a
     default wearing a number's clothes (`submission.md` S1).  A run sent to
     a queue states its queue, wall and memory, here or as a flag, or prep
-    refuses it (`architecture.md` § 5.2: nothing fills one in -- an unstated
-    wall took the queue's ceiling, and an unstated memory the scheduler's
-    default, until 2026-10-02).
+    refuses it (`architecture.md` § 5.2: nothing fills one in).
 
     **ONE SPELLING, AND IT IS SLURM'S** -- ``"0-04:00:00"``, ``"128G"``
     (user, 2026-08-24: *"your record should set unified time format while
@@ -216,16 +201,10 @@ class Allocation:
 
     Translation belongs at the edges where humans are -- the Task-setup
     tab's input box, the CLI's ``--time`` / ``--mem`` -- and every one of
-    them goes through `ask.canonical_time` / `ask.canonical_mem`.  A file
-    typed by hand is such an edge too, so the reader below accepts a human
-    spelling and normalises it on the way in; what it RETURNS is always
+    them goes through `quantities.canonical_time` / `quantities.canonical_mem`.
+    A file typed by hand is such an edge too, so the reader below accepts a
+    human spelling and normalises it on the way in; what it RETURNS is always
     the record's.
-
-    *Until 2026-08-24 this field was documented as holding what a person
-    types, and `prep` copied it verbatim into `Resources.time`, which is
-    documented as holding SLURM's.  Nothing translated between the two, so
-    the browser's own ``"4h"`` reached ``sbatch`` as ``-t 4h`` and was
-    refused -- the tool's written value, rejected by the tool.*
     """
     domain: str = ""
     time: str = ""
@@ -248,13 +227,8 @@ class Notify:
 
     The destination and its credential live on the machine that runs the job --
     in the config directory, at ``notify``, mode 0600 -- and never here.  The
-    path is `monitor.default_notify_path()`'s to answer, and this docstring used
-    to state two thirds of the rule itself (``$XDG_CONFIG_HOME/molbuilder/notify``
-    else ``~/.config/molbuilder/notify``), omitting ``MOLBUILDER_CONFIG_DIR``.
-    `cli.py` records that exact omission having silently written a key where the
-    monitor does not look, so the two-thirds version is not a harmless
-    simplification: a reader follows it and puts the file somewhere nothing
-    reads (`configuration.md` § 2.1c).  This file travels:
+    path is `monitor.default_notify_path()`'s to answer (`configuration.md`
+    § 2.1c).  This file travels:
     to a cluster, into a citation's composed copy, to whoever you hand the calculation
     to.  **A policy is safe to carry; a token is not**, and the split is what
     lets the rest of the record stay shareable.
@@ -268,8 +242,7 @@ class Notify:
     notification at all, not even the start and the end (user, 2026-09-26:
     nothing set up, nothing sent, `run-reports.md` § 2) -- and a ``Notify``
     is a block, which reports the start and the end at least, its four
-    values written whole (2026-10-06): a block whose values were all off
-    read as no block until then, so `{"every_hours": 0}` was read as off.
+    values written whole.
     ``channels`` and ``report`` ``None`` are EVERY channel and EVERY field,
     written ``["*"]``.
     """
@@ -279,8 +252,8 @@ class Notify:
     on_scf_converged: bool = False
     #: Fire every N hours -- HOURS, because the point of this is reassurance
     #: over a long run, not a live feed.  ``None`` is never, written
-    #: ``null``; a period is a positive number (W57 R10, 2026-10-06: ``0``
-    #: was "never", and "every 0 hours" reads as anything but).
+    #: ``null``; a period is a positive number (W57 R10: "every 0 hours"
+    #: reads as anything but never).
     every_hours: Optional[float] = None
     #: WHICH channels, **by name** -- and a name is all that travels.  What
     #: the name resolves to (an address, usually a credential) is the
@@ -348,9 +321,7 @@ class Task:
 
     **A Task read from disk always has both ``stages`` and ``varies``**, and
     ``stages`` always has at least one entry (§ 6.5, 2026-08-16): one stage is
-    the ordinary starting point, not a special shape.  Until that date this
-    docstring said the opposite — that the two were ``None`` together and
-    that meant a single-parameter-set calculation.
+    the ordinary starting point, not a special shape.
 
     They stay ``Optional`` on the dataclass all the same, and the asymmetry is
     deliberate rather than an oversight: the codec is the gate (:func:`read_task`
@@ -372,8 +343,7 @@ class Task:
     #: WHICH KIND of calculation this describes -- the key into the
     #: engine's warm-file vocabulary (`job-contracts.md` § 4.2a: [base] +
     #: one section per type).  Stated by every description and every
-    #: producer, never defaulted (W57 R10, 2026-10-06: an optimization's
-    #: was left out, and this field said "optimization" for it).
+    #: producer, never defaulted (W57 R10).
     #: Membership (does the engine have this section?) is the rules file's
     #: question, answered where the file is read -- this codec checks only
     #: the SHAPE (U0, 2026-08-13).
@@ -383,8 +353,7 @@ class Task:
 
     #: WHAT THIS CALCULATION ASKS THE SCHEDULER FOR -- the queue, the wall,
     #: the memory, the GPU binding (:class:`Allocation`).  Absent-is-a-state, like ``bench``:
-    #: an empty one writes no key, and every description written before
-    #: 2026-08-24 says exactly what it always said by omitting it.
+    #: an empty one writes no key.
     #:
     #: `prep` reads it as the BASE allocation and an explicit flag still
     #: wins, so the file answers once what the CLI would otherwise have to
@@ -399,8 +368,7 @@ class Task:
     notify: "Optional[Notify]" = None
 
     #: § 6.8 -- WHAT TO MEASURE before committing: field name -> the points to
-    #: try.  Empty means no benchmark is planned, which is what every
-    #: description written before 2026-08-15 says by omitting the key.
+    #: try.  Empty means no benchmark is planned.
     #:
     #: WHAT THE PERSON ASKED, NEVER WHAT A MACHINE FOUND (stages.md § 6.8,
     #: amended 2026-08-20).  ``{"mpi_np": (4, 8, 16)}`` is true on every
@@ -550,18 +518,10 @@ class Task:
         # The two LADDER-level refusals live here, in the codec, because
         # every route to a Task -- describe on a laptop, read_task on the
         # cluster, a hand-edited file -- passes through this constructor.
-        # Three comments claimed these checks existed here (the u5
-        # retirement in validation/siesta.py, init_cmd's help,
-        # describe._check's "codec's own checks") while NOTHING refused
-        # either: the claims are made true at the claimed home (U15,
-        # 2026-08-12).
         if self.stages is not None:
-            # CASE-INSENSITIVELY, like both parsers (D6, redo 2026-08-12):
-            # the names key filenames, and the filesystems these run on
-            # include case-insensitive ones -- "Tight" and "tight" are one
-            # deck there.  The constructor compared exact strings while
-            # the parsers folded case, so the seam disagreed with its own
-            # doors.
+            # CASE-INSENSITIVELY, like the reader (D6): the names key
+            # filenames, and the filesystems these run on include
+            # case-insensitive ones -- "Tight" and "tight" are one deck there.
             names = [stage_key(s.name) for s in self.stages]
             dups = sorted({n for n in names if names.count(n) > 1})
             if dups:
@@ -627,7 +587,7 @@ class Task:
         § 3 rule 1 is *"it happens once, and the result is stored"* -- which
         only means something if somebody checks the stored value against its
         inputs.  Without this, ``id`` is a free string: a hand-edited ``name``
-        (supported since 2026-08-07, decision 3) leaves the id behind, and the
+        (decision 3) leaves the id behind, and the
         description then says two different things about which calculation it
         is.  § 1's second failure mode is exactly that edit, and its cost is a
         run that silently starts cold.
@@ -678,12 +638,7 @@ class Task:
 # --------------------------------------------------------------------- #
 
 #: What a refusal calls the thing it is refusing -- ``task.json``, the file
-#: this module owns.  (The surface-supplied-ladder parse that renamed it per
-#: call, ``stages_from_dicts`` + its ``_refusals_name`` wrapper, was deleted
-#: 2026-08-13 (V22) with zero production callers -- the docstring's claimed
-#: callers used config/pyscf's same-named, different function.  The default
-#: is now the only name in use; the ContextVar shape stays because the web
-#: layer serves requests concurrently.)
+#: this module owns.
 _SOURCE: contextvars.ContextVar[str] = contextvars.ContextVar(
     "task_refusal_source", default=FILENAME)
 
@@ -911,10 +866,7 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
       see :class:`Allocation`), so a value that cannot be read AT ALL is
       refused now, by name, while it is still cheap to fix -- and one that
       can is stored in the record's spelling, so nothing downstream ever
-      meets two.  *This paragraph said "shape only -- whether "4h" parses
-      is a question for the surfaces that hold those answers" until
-      2026-08-24.  It was true then, and it is exactly how the browser's
-      "4h" travelled unread as far as ``sbatch``.*
+      meets two.
 
     * ``domain`` is NOT checked against this machine's queues.  A
       description written for one cluster is opened on another, and
@@ -930,8 +882,8 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
                 "the key entirely when nothing is asked for -- absent and "
                 "empty would be two spellings of one state")
     # A LAUNCH SHAPE LANDING HERE IS THE ORDINARY MISTAKE, not a typo: it is
-    # what the block held for one day in 2026-09-01, and what a person
-    # reasonably reaches for.  The refusal names the block it belongs in.
+    # what a person reasonably reaches for.  The refusal names the block it
+    # belongs in.
     _check_keys(raw, _ALLOCATION_KEYS + _ALLOCATION_SWITCHES,
                 where="allocation",
                 note=". Ranks, threads and GPUs are not asked here -- they "
@@ -989,9 +941,8 @@ def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
                 "key when nothing should be reported -- absent and empty "
                 "would be two spellings of one state")
     _check_keys(raw, _NOTIFY_KEYS, where="notify")
-    # A BLOCK STATES ALL FOUR (2026-10-06): "every channel" and "every
-    # field" are written `["*"]`, never a key left out -- an explicit choice
-    # and silence were the same bytes until then.
+    # A BLOCK STATES ALL FOUR: "every channel" and "every field" are
+    # written `["*"]`, never a key left out.
     missing = [k for k in _NOTIFY_KEYS if k not in raw]
     if missing:
         _refuse(f"notify states no {', '.join(repr(k) for k in missing)} -- "
@@ -1019,8 +970,7 @@ def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
 
     # EVERY, NONE, OR THESE -- three states, each written (`run-reports.md`
     # § 3.0, `stages.md` § 6.9): `["*"]` is every channel the running
-    # machine has (`None` here), `[]` is none, a list is those.  "Every"
-    # was the key left out until 2026-10-06.
+    # machine has (`None` here), `[]` is none, a list is those.
     chans = _every_or_these(
         raw["channels"], "channels", "channel NAMES",
         lambda item: (None if is_channel_name(item) else
@@ -1118,9 +1068,9 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
     # No key outside `varies`: a demoted parameter must not leave a value
     # hiding in a stage nobody can see.  But a varied key may be ABSENT, and
     # absent means "this stage uses the TEMPLATE's value" -- a real state, and
-    # the one the table draws as a quiet cell.  Requiring equality (as this did
-    # until 2026-08-07) both made `varies` redundant -- derivable as the key set
-    # of any stage -- and forced every cell to be filled with a copy.
+    # the one the table draws as a quiet cell.  Requiring equality would make
+    # `varies` redundant -- derivable as the key set of any stage -- and force
+    # every cell to be filled with a copy.
     extra = sorted(set(overrides) - set(varies))
     if extra:
         _refuse(f"override(s) {', '.join(repr(k) for k in extra)} not listed "
@@ -1144,11 +1094,6 @@ def varies_for(overrides_seq) -> Tuple[str, ...]:
     **The union, and not one stage's keys**, because a stage may leave a
     promoted cell empty — that means *"use the template's value"*, which is a
     real state § 6.2 protects, not an absence of intent.
-
-    One function so the two surfaces that build a ladder without a description
-    — a dict payload (``--stages-json``, the web) and a ready-made
-    :class:`Stage` list (``--stage-strategy``) — cannot derive different
-    columns from the same ladder.
     """
     out: list = []
     for overrides in overrides_seq:
@@ -1158,16 +1103,8 @@ def varies_for(overrides_seq) -> Tuple[str, ...]:
     return tuple(out)
 
 
-# (stages_from_dicts + _ladder_from_objs were deleted 2026-08-13, V22:
-#  zero production callers -- --stages-json reaches config/pyscf's
-#  same-named, different function.  Their duplicate-name refusal lives
-#  on below, on read_task's own path.)
-
-
 def _refuse_duplicate_stage_names(stages) -> None:
-    """ONE copy of the case-insensitive duplicate check (D10, 2026-08-13:
-    both parsers carried an identical loop, and the constructor a third
-    exact-string variant -- three checks, one rule, drifting apart).
+    """The reader's case-insensitive duplicate check (D10).
     Case folds because names key filenames (engines/stages.md § 2)."""
     seen: dict[str, str] = {}
     for st in stages:
@@ -1247,8 +1184,7 @@ def _task_to_dict(task: Task) -> dict:
     }
     if task.run.created:
         out["run"]["created"] = task.run.created
-    # EVERY DESCRIPTION STATES ITS KIND -- an optimization wrote no key
-    # until 2026-10-06, read back as one by a default in seven page sites.
+    # EVERY DESCRIPTION STATES ITS KIND.
     out["calculation"] = task.calculation
     # the composite's inputs ride where the design's example puts them
     # (transport-design.md 4.1): slots, then bias, then the stages.
@@ -1263,8 +1199,7 @@ def _task_to_dict(task: Task) -> dict:
     # Absent together, never empty -- an empty list would be a second way to
     # spell "one stage" (§ 6.5).
     # § 6.8: omitted when empty, so "no benchmark planned" has ONE spelling
-    # on disk and every description written before the key existed still says
-    # exactly what it always said.
+    # on disk.
     if task.bench:
         out["bench"] = {k: list(v) for k, v in task.bench.items()}
     # BESIDE IT, NEVER INSIDE IT (§ 6.8d): one value per parameter, and the
@@ -1273,8 +1208,7 @@ def _task_to_dict(task: Task) -> dict:
     if task.execution:
         out["execution"] = dict(task.execution)
     # Absent when nothing is asked for, and each field omitted when unset --
-    # so "unstated" has ONE spelling on disk (S1), and a description from
-    # before 2026-08-24 round-trips byte-identical.
+    # so "unstated" has ONE spelling on disk (S1).
     if task.allocation:
         out["allocation"] = {
             k: v for k, v in (("domain", task.allocation.domain),
@@ -1286,9 +1220,7 @@ def _task_to_dict(task: Task) -> dict:
             out["allocation"]["gpu_binding"] = task.allocation.gpu_binding
     if task.notify is not None:
         # THE BLOCK WHOLE: its four values, "every" written `["*"]`
-        # (`run-reports.md` § 3.0) -- the falsy ones and "every" were left
-        # out until 2026-10-06, so an explicit choice and silence were the
-        # same bytes.
+        # (`run-reports.md` § 3.0).
         n = task.notify
         out["notify"] = {
             "on_scf_converged": bool(n.on_scf_converged),

@@ -1,30 +1,22 @@
 """Submission domains — the named ``(partition, qos)`` menu ``submit --domain``
 resolves against.
 
-Renamed from ``test_bench_routing.py`` on 2026-08-17: the `bench` command group
-is gone, and routing was never a benchmark concern.
+The menu is ``domains`` in ``environment.json``, because a reachable domain is
+what ``sinfo``/``sacctmgr`` measured and `configuration.md` § 5 M-1 puts
+measurements in the machine record.
 
-**The menu moved house the same day** (N4). It was ``scheduler.routing`` in the
-person's ``molbuilder.json``; it is now ``domains`` in ``environment.json``,
-because a reachable domain is what ``sinfo``/``sacctmgr`` measured and
-`configuration.md` § 5 M-1 puts measurements in the machine record.
-
-**And the record is its ONLY home** *(2026-10-02)*: a declared
-``scheduler.routing`` stood in as a fallback when nothing was probed, and it
-described a machine its author was not on.  A target's queues are probed on
+**The record is its ONLY home** *(2026-10-02)*: a target's queues are probed on
 that machine and its record copied here; the whole ``scheduler`` block is
 refused by name (`configuration.md` § 4, § 5 M-1).
 """
 
-import json
 from pathlib import Path
 
 import pytest
 
 from molbuilder.scheduler import (FILENAME, Domain, Environment, Site,
                                     Topology, write_environment)
-from molbuilder.runtime_config import (RuntimeConfigError, get_routing,
-                                       read_config)
+from molbuilder.runtime_config import get_routing
 from molbuilder.scheduler.quantities import parse_walltime
 
 _DOMAINS = [
@@ -50,9 +42,7 @@ def _sandbox(tmp_path, monkeypatch):
 
     Both readers below consult the config directory's ``molbuilder.json`` and
     this machine's record, so without this the verdicts depend on the
-    developer's own (the cwd step they also consulted went 2026-08-31) — caught 2026-08-12 the moment that file gained a real
-    ``scheduler.routing``, and again on 2026-08-17 when N4 made that key an
-    error and thirteen tests in OTHER files failed for that reason alone.
+    developer's own.
     """
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
@@ -139,8 +129,6 @@ def test_an_unknown_column_survives_the_type(tmp_path):
 
 # ---- where a value came from is displayed, not inferred --------------- #
 
-# `test_a_refusal_names_WHICH_file_carries_the_key` retired 2026-10-02 (W54): a refusal naming its file (R10) is `test_auth_config.py`'s door test; the `scheduler` refusal a row of `tests/data/molbuilder_json.toml`.
-
 
 def test_provenance_shows_which_record_supplied_the_domains(tmp_path):
     """`config_provenance` exists to answer *"where did that setting come
@@ -163,8 +151,6 @@ def test_provenance_shows_which_record_supplied_the_domains(tmp_path):
     assert env_rows[0]["path"] == str(tmp_path / "environment.json")
     assert str(machine) in format_provenance(prov)
 
-
-# ---- no card in the person's config (`scheduler.md` R2a) ----------------- #
 
 # ---- the gpu column: two spellings, ONE reading ------------------------- #
 #

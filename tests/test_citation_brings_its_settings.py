@@ -1,12 +1,7 @@
 """What each of the three citable things brings — `engines/transport.md` § 3.1.
 
-The middle case is why this file exists.  It was ruled on 2026-08-29
-(`archive/2026-09-01-transport-design.md` § 4.1b, *"the condition has three
-shades"*), the live contract carried only two, and when the parameter path
-moved onto the template on 2026-09-16 the code that acted on it lost its
-caller and nothing noticed -- because every path that READS the record
-survived.  The tab went on printing "contract RECORDED" about settings
-nothing applied.
+The middle case is why this file exists: every path that READS the record
+can survive the code that acts on it losing its caller, unnoticed.
 
 Asserted through `siesta_config_from_citation`, which `template.md` § 6.4
 names as the whole of the filling, so this pins what the TEMPLATE is written

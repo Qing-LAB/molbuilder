@@ -2,8 +2,7 @@
  *
  * Module:    lib/vibrationview/ — INTERNAL. The leading underscore is the mark:
  *            nothing outside this directory may import this file. The module's
- *            one importable name is `index.js` (§ 4), and a guard test enforces
- *            it (tests/test_vibrationview_module_boundary.py).
+ *            one importable name is `index.js` (§ 4).
  * Called by: index.js — once per animation frame;
  *            _export.js — once per frame it encodes.
  *            Both ask the same question and get the same answer, which is what
@@ -17,9 +16,7 @@
  * function of its inputs.
  *
  * NEVER (§ 7 level 2): touch the DOM, keep state between calls, read a clock, or
- * name the drawing library — not in code, and not in a comment either. A guard
- * asserts it (tests/test_vibrationview_module_boundary.py), and it caught this
- * file's own header claiming innocence by naming the thing it disclaims.
+ * name the drawing library — not in code, and not in a comment either.
  */
 "use strict";
 
@@ -196,8 +193,8 @@ export function positionsAtFrame(equilibrium, displacements, amplitude,
  *
  * ONE call, one answer. A rate drives two things — how many frames a cycle has,
  * and how often the next one is due — and they must agree, so they are worked out
- * together and returned together. Clamping them apart is how the clock ended up
- * dividing by an unclamped zero.
+ * together and returned together. Clamped apart, the clock could divide by an
+ * unclamped zero.
  *
  * The caller passes real numbers; supplying defaults for missing ones is the
  * caller's job, so those live in one place and it is not this one.

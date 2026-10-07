@@ -38,12 +38,6 @@ Every door builds its scheduler line through ONE request
 (:func:`_sbatch_request`: what prep baked, what was said at launch, admitted
 on the queue, every value stated or refused).  The scheduler is handed one
 job per invocation -- a grouped bench one per shelf.
-
-*(Each door planned, then planned again to send, writing as it went, until
-2026-10-05: nothing compared what was shown with what was sent, and a dry
-run wrote ledger lines; W55 B5, D14.  This header described two paths, one
-job per invocation, and a module that never inspects prior output, until
-2026-10-01 -- each untrue of the body below it; W52.)*
 """
 
 from __future__ import annotations
@@ -58,8 +52,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 # The record's one spelling for a wall, written in ONE place.  A second
 # formatter here would be a second answer to "what does a walltime look
-# like on disk?" -- and there was one, until 2026-08-24, sitting beside a
-# field a human spelling could reach.
+# like on disk?".
 from ..scheduler.quantities import slurm_time as _slurm_time
 
 # NOTE: `job_dir_names` is NOT imported here.  It is the naming
@@ -72,7 +65,7 @@ from .placement import one_process
 from .continuation import Continuation
 from .planned import Plan, found
 from ..paths import attempt_dir
-from ..runfiles import LAUNCH_DIR
+from ..runfiles import FIRST_ATTEMPT, LAUNCH_DIR, GroupNames, RunNames
 from .commands import command as _cmd, rollback
 
 
@@ -143,13 +136,6 @@ def _sbatch_resource_flags(r: Resources, placement=None) -> List[str]:
     """The per-job ``sbatch`` flags — rendered by `scheduler.emit`, the ONE
     emitter (R1).
 
-    Was a second writer beside `runwrap`'s header, each deciding for itself
-    what queue and what wall to name.  That split is both Sol failures: a
-    header naming ``htc/debug`` while this side asked for 38 minutes, and a
-    header naming a queue while stating no wall at all.  Now both spellings
-    come off one :class:`~molbuilder.scheduler.emit.Directives`, so there is
-    nothing left for them to disagree about.
-
     CLI flags still WIN over the rendered header, which is what lets one
     ``.sbatch`` serve a whole sweep while each job gets its own ranks.
     """
@@ -157,21 +143,17 @@ def _sbatch_resource_flags(r: Resources, placement=None) -> List[str]:
     return Directives.of(placement, r).sbatch_flags()
 
 
-def _run_sh_args(r: Resources) -> List[str]:
-    """The per-job knobs for the local ``.run.sh`` (it accepts ``-np`` /
-    ``-omp``; runwrap.py § arg-parsing)."""
-    args: List[str] = []
+def _run_sh_args(r: Resources, run: int) -> List[str]:
+    """What every ``.run.sh`` is started with: its run's number, which
+    launch decides and the script refuses to start without (``--run N``,
+    `project-layout.md` § 1.6.1), and its job's ``-np`` / ``-omp``
+    (runwrap.py § arg-parsing)."""
+    args: List[str] = ["--run", str(run)]
     if r.mpi_np:
         args += ["-np", str(r.mpi_np)]
     if r.cpus_per_task:
         args += ["-omp", str(r.cpus_per_task)]
     return args
-
-
-def _wrapper_name(script: str, suffix: str) -> str:
-    """``bdt_stage1.fdf`` + ``.sbatch`` -> ``bdt_stage1.sbatch`` (mirrors
-    runwrap's stem + suffix rule)."""
-    return Path(script).stem + suffix
 
 
 # --------------------------------------------------------------------- #
@@ -194,9 +176,7 @@ def _scheduler_job_name(jobset: JobSet, name: str) -> str:
     The id first, because that is the thing you are trying to tell apart
     when several calculations are queued at once, and the job second
     because within one calculation that is the question.  EVERY door names
-    its job here -- the grouped bench and the bias chain spelled
-    ``<calc>_<name>`` beside the stage's ``<calc>/<stage>`` until 2026-10-01
-    (W52).
+    its job here.
     """
     return f"{jobset.name}/{name}"
 
@@ -214,25 +194,19 @@ def _no_sbatch(what: str, name: str, *, base, told) -> str:
     finds it missing (`job-system.md` § 6.1): prep withholds the
     ``.sbatch`` where the machine it prepped for names no queue, or where
     it was told to (``prep --no-sbatch``) -- each said with its own way
-    back.  Three doors
-    worded it three ways until 2026-10-01, one telling a person to "add a
-    scheduler block" -- a premise § 6 retired -- and one to "run
-    prep_jobset" (W52).  A machine with a queue is another machine, and a
+    back.  A machine with a queue is another machine, and a
     calculation is set to the machine of its first prep (`configuration.md`
     M-3): the way there is the state saved before that prep.
 
     THE RUN HERE AS A COMMAND -- the launch ``told`` names, with its flags
-    as typed that a run here reads (`commands.launch_with`).  It said "Run
-    it here with --mode direct" until 2026-10-06: an edit to a line that a
-    bare launch, its mode from config, never had."""
+    as typed that a run here reads (`commands.launch_with`)."""
     from .commands import block, launch_with, takes_a_queue
     here = block([launch_with(told["kind"], told["stage"], told["trial"],
                               base=base, mode="direct",
                               typed=told["flags"])])
     if takes_a_queue(base):
         # THE MACHINE NAMES A QUEUE, so prep was told to write no header
-        # (`prep --no-sbatch`, `job-system.md` § 6.1's second answer) --
-        # this blamed the machine until 2026-10-05 (the unit 11 review).
+        # (`prep --no-sbatch`, `job-system.md` § 6.1's second answer).
         return (f"{what}: there is no scheduler header ({name}) -- it was "
                 f"prepped with --no-sbatch.  To run it here:\n{here}\n"
                 f"  To send it to a queue, prep it again without "
@@ -269,13 +243,10 @@ def _sbatch_request(base: Path, *, envelope: Resources,
     Returns ``(envelope, placement, command)``: the envelope as sent, the
     `Placement` (``None`` on a machine with no menu -- the rendered header's
     own directives stand, R6), and the exact ``sbatch`` line, its resources
-    as flags that win over the header.  The stage's door built the queue
-    half of this alone until 2026-10-01: it sent the launch queue's
-    ``-p/-q`` under the wall prep's header had worked out for another queue,
-    and admitted nothing (W52).
+    as flags that win over the header.
 
-    ``run_args`` are the run script's own ``-np`` / ``-omp``
-    (`_run_sh_args`), set after the ``.sbatch`` name, which forwards them
+    ``run_args`` are the run script's arguments (`_run_sh_args`: ``--run
+    N``, ``-np``, ``-omp``), set after the ``.sbatch`` name, which forwards them
     (``bash <base>.run.sh "$@"``): every launch hands every run its own
     counts (`job-system.md` § 6.1).  A submission whose script walks several
     members -- a benchmark's shelf, a bias scan -- hands each member its own
@@ -300,17 +271,13 @@ def _sbatch_request(base: Path, *, envelope: Resources,
     gpus = _gpus(envelope, label)
     # THE ONE REQUEST a queue is asked, prep's and launch's alike
     # (`placement.request_of`): the envelope as it is sent -- its wall the
-    # one stated at launch, else prep's.  Launch built its own until
-    # 2026-10-05, and counted no cores for a PySCF run (``one_process``).
+    # one stated at launch, else prep's.
     from .placement import request_of
     asked = (dataclasses.replace(envelope, time=_slurm_time(needed_s))
              if needed_s is not None else envelope)
     placement = _place(base, request_of(asked, one_process=one_process),
                        gpu_side=gpus.uses, named=domain, label=label)
-    # THE WALL: what was stated at launch, else what prep baked.  The target
-    # queue's own ceiling stood in for neither until 2026-10-02 -- a wall
-    # nobody stated -- and the scheduler's default would stand in now if
-    # this let an unstated one through.
+    # THE WALL: what was stated at launch, else what prep baked.
     if time_s is not None:
         envelope = _dc_replace_time(envelope, _slurm_time(time_s))
     # EVERY VALUE IS STATED, asked of the request AS SENT by the one answer
@@ -376,17 +343,17 @@ def _ask(name: str, cmd: List[str], cwd: Path, *,
                                                 + (cp.stderr or "")))
 
 
-def _into_launch(header: str, name: str) -> str:
+def _into_launch(header: str, gn: "GroupNames") -> str:
     """A grouped bench's or a bias chain's header, pointed into ``launch/``
     (L3): the delegated script and SLURM's own output.  COUNT-ASSERTED, so a
     change in the emitter's spelling fails here rather than scattering files
-    among the runs -- one helper for both doors, each of which spelled it,
-    one without the check (W52)."""
-    for old, new in ((f"bash {name}.run.sh", f"bash launch/{name}.run.sh"),
+    among the runs -- one helper for both doors."""
+    run_sh = gn.name(".run.sh")
+    for old, new in ((f"bash {run_sh}", f"bash {LAUNCH_DIR}/{run_sh}"),
                      ("#SBATCH -o slurm.%j.out",
-                      "#SBATCH -o launch/slurm.%j.out"),
+                      f"#SBATCH -o {LAUNCH_DIR}/slurm.%j.out"),
                      ("#SBATCH -e slurm.%j.err",
-                      "#SBATCH -e launch/slurm.%j.err")):
+                      f"#SBATCH -e {LAUNCH_DIR}/slurm.%j.err")):
         if header.count(old) != 1:
             raise SubmitError(
                 f"the sbatch header no longer spells {old!r} exactly "
@@ -428,8 +395,13 @@ class _Member:
     #: or for a continuation the attempt it continues -- the new one is
     #: filled with the same files (`materialize.prepare_attempt`).
     read_from: Path
-    #: The set's kind, which says where its launch is recorded
-    #: (`materialize.launch_record_at`).
+    #: The names of its stage's files (`materialize.run_names`): what its
+    #: launch record, and what it continues from, are named by.
+    names: "RunNames"
+    #: Its run's number, decided here (`runrecord.next_run`) and handed to
+    #: its run script (``--run N``; `project-layout.md` § 1.6.1).
+    run: int
+    #: The set's kind.
     kind: str = "ladder"
     #: What the results and the ledger call it when the job's name does not
     #: -- a bias point's ``<stage>@<point>``.
@@ -456,17 +428,12 @@ class _Member:
         """It is a stage launched again, following a run of its own."""
         return self.continuation is not None
 
-    def record_at(self) -> Tuple[Path, Optional[str]]:
-        """Where its launch is recorded -- the one answer
-        (`materialize.launch_record_at`)."""
-        from .materialize import launch_record_at
-        return launch_record_at(self.kind, self.job, self.container,
-                                self.run_dir if self.has_attempt else None)
-
     def _where(self) -> str:
-        """Where it runs again: its next attempt, or its folder."""
+        """Where it runs again: its next attempt, or its folder, as the
+        run its number names."""
         return (f"into {self.run_dir.name}" if self.has_attempt
-                else "in the same folder, where its files are")
+                else f"in the same folder, as its run {self.run}, where its "
+                     f"files are")
 
     def _copied(self) -> List[str]:
         return list(self.carries) + list(self.gathered)
@@ -635,14 +602,15 @@ class LaunchPlan:
         return out
 
 
-def _launched(where, basename: Optional[str] = None) -> bool:
+def _launched(where, names: RunNames) -> bool:
     """Was this run launched -- the one door's answer
-    (`runrecord.launch_record`), every gate of launch asking it.  A record
-    that does not read is a refusal naming the file: launching over it could
-    send a job twice, and not launching could hide one in the queue."""
+    (`runrecord.launch_record`), asked in the folder it runs in with its
+    stage's names, every gate of launch asking it.  A record that does not
+    read is a refusal naming the file: launching over it could send a job
+    twice, and not launching could hide one in the queue."""
     from ..runrecord import LaunchRecordError, launch_record
     try:
-        return launch_record(where, basename) is not None
+        return launch_record(where, names) is not None
     except LaunchRecordError as e:
         raise SubmitError(str(e)) from e
 
@@ -658,11 +626,13 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
     THE SHAPE DECIDES, NOT THE KIND.  A hierarchical run -- ladder stage or
     sweep trial alike -- runs in ``run-<n>/``, because an attempt is
     immutable once it has run (`project-layout.md` § 1.5); a flat one keeps
-    no attempt directories (§ 1.5a) and runs in its own container.  Whether
-    it was launched is its launch record's answer -- ``run.json``, or a flat
-    stage's ``<basename>.run.json`` (`materialize.launch_record_at`): a
-    queued job has produced nothing yet, so absence of output proves
-    nothing (§ 1.6).
+    no attempt directories (§ 1.5a) and runs in its own container, each run
+    by its number.  Whether it was launched is its launch record's answer,
+    in the folder it runs in, named by its stage's names
+    (`materialize.run_names`) -- an attempt's ``run.json``, a flat stage's
+    newest run's own: a queued job has produced nothing yet, so absence of
+    output proves nothing (§ 1.6).  The run's number is decided here
+    (`runrecord.next_run`), once, and handed to its run script.
 
     A LADDER STAGE LAUNCHED BEFORE is launched again by continuing it (user,
     2026-08-21: *"a run stopped due to the server running out of time, and
@@ -673,26 +643,28 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
     A TRIAL is immutable once launched: a walk -- here, or a queue's
     shelves -- and a question to the scheduler pass the measured ones over
     by name; one the person NAMED (``named``) is refused when it is sent or
-    run here -- a run here passed it over, exit 0, until 2026-10-05 (the
-    unit 11 review) -- and a question to the scheduler says it already
-    ran.
+    run here, and a question to the scheduler says it already ran.
     """
     import functools
     from .commands import command
     from ..paths import attempts_in
-    from .materialize import (bench_stage_of, job_dir_names, launch_record_at,
-                              prepare_attempt, shape_of)
-    from ..runrecord import launch_record_path, write_continued_from
-    _member = functools.partial(_Member, kind=jobset.kind, base=base)
+    from .materialize import (bench_stage_of, job_dir_names, prepare_attempt,
+                              run_names, shape_of)
+    from ..runrecord import launch_record_path, next_run, write_continued_from
     sh = shape_of(jobset, base)
+    # THE NAMES OF ITS STAGE'S FILES, and the run's number in the folder it
+    # runs in (`runrecord.next_run`): every member is planned with both, so
+    # its run script is handed the number and its record named by it.
+    names = run_names(jobset, job, sh)
+    _member = functools.partial(_Member, kind=jobset.kind, base=base,
+                                names=names)
     container = base / job_dir_names(jobset, sh)[job.name]
     ns = attempts_in(container)
     if jobset.kind == "sweep":
-        run = _trial_run_dir(container)
-        where, basename = launch_record_at("sweep", job, container,
-                                           run if ns else None)
-        if not _launched(where, basename):
-            return _member(job, container, run, bool(ns), run)
+        where = _trial_run_dir(container)
+        if not _launched(where, names):
+            return _member(job, container, where, bool(ns), where,
+                           run=next_run(where, names))
         if mode == "ask" or not named:
             return JobResult(job.name, [],
                              "already run" if mode == "ask"
@@ -700,25 +672,24 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
         stage = bench_stage_of(base, container)
         read_back = (command("summarize", "bench", stage, base=base)
                      if stage else "`summarize bench` on the sweep's stage")
+        said = launch_record_path(where, names, FIRST_ATTEMPT)
         if not ns:
             raise SubmitError(
-                f"trial {job.name!r}: already launched -- "
-                f"{launch_record_path(where, basename)} records it.  A "
-                f"trial measures its point ONCE (project-layout.md § 1.5: "
-                f"immutable once it has run); read the sweep back with "
-                f"{read_back}.  To measure it again -- a prepped benchmark is "
-                f"not prepped again (job-system.md § 5.0): "
+                f"trial {job.name!r}: already launched -- {said} records "
+                f"it.  A trial measures its point ONCE (project-layout.md "
+                f"§ 1.5: immutable once it has run); read the sweep back "
+                f"with {read_back}.  To measure it again -- a prepped "
+                f"benchmark is not prepped again (job-system.md § 5.0): "
                 + rollback("the benchmark's prep", base=base))
         raise SubmitError(
-            f"trial {job.name!r}: {run.name} has already been launched "
-            f"({launch_record_path(where, basename)}).  A measurement is "
-            f"immutable once it has run.\n"
+            f"trial {job.name!r}: {where.name} has already been launched "
+            f"({said}).  A measurement is immutable once it has run.\n"
             f"  read what it measured:\n    {read_back}\n"
             f"  measure it again -- a prepped benchmark is not prepped again "
             f"(job-system.md § 5.0): "
             + rollback("the benchmark's prep", base=base))
     if not ns:
-        if sh is not None and sh.keeps_attempts_as_directories:
+        if sh.keeps_attempts_as_directories:
             # A HIERARCHICAL stage with no attempt open would launch in its
             # own container, write no run.json, and be silently
             # relaunchable -- everything § 1.5/1.6 exist to prevent.
@@ -728,24 +699,28 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
                 f"never in its own container (project-layout.md § 1.5, "
                 f"1.6), and a prepped stage is not prepped again: "
                 + rollback("its prep", base=base))
-        where, basename = launch_record_at("ladder", job, container, None)
-        if not _launched(where, basename):
-            return _member(job, container, container, False, container)
+        # A FLAT STAGE: its runs share the calculation's folder, each its
+        # number (`project-layout.md` § 1.6.1).
+        run = next_run(container, names)
+        if not _launched(container, names):
+            return _member(job, container, container, False, container,
+                           run=run)
         # A FLAT STAGE LAUNCHED AGAIN continues from its own latest run,
-        # where its files are, and its record says so -- as the hierarchy's
-        # next attempt names its own; one that does not continue from a run
-        # of its own is refused (the one door, `continuation.relaunch`).
-        # The marker prep left names what the stage's FIRST launch continued
-        # from, the stage before it, and was recorded again (W55 D5).
+        # where its files are, and its next run's record says so -- as the
+        # hierarchy's next attempt names its own; one that does not continue
+        # from a run of its own is refused (the one door,
+        # `continuation.relaunch`).  Its `.continued-from` is its own,
+        # named for the run that continues (plan W57 decision 2).
         cont = _relaunched(base, job)
         if cont.run is not None:
-            write_continued_from(where, cont.run, basename=basename,
+            write_continued_from(container, cont.run, names=names, run=run,
                                  plan=writes)
         return _member(job, container, container, False, container,
-                       continuation=cont)
+                       run=run, continuation=cont)
     last = attempt_dir(container, ns[-1])
-    if not _launched(last):
-        return _member(job, container, last, True, last)
+    if not _launched(last, names):
+        return _member(job, container, last, True, last,
+                       run=next_run(last, names))
     cont = _relaunched(base, job)
     source = cont.source
     try:
@@ -766,7 +741,8 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
             f"  Look at that run's logs.  To run the stage anew -- a "
             f"prepped stage is not prepped again (job-system.md § 5.0) -- "
             + rollback("its prep", base=base)) from e
-    return _member(job, container, opened.dir, True, last, continuation=cont,
+    return _member(job, container, opened.dir, True, last,
+                   run=next_run(opened.dir, names), continuation=cont,
                    carries=list(opened.copied),
                    gathered=_carry_the_gather(last, opened.dir, writes,
                                               base=base))
@@ -799,9 +775,7 @@ def _carry_the_gather(source: Path, attempt: Path, writes: Plan, *,
     for ``source`` -- each file, copied from it into ``attempt``, with the
     record (`.gathered-from`) that says where each came from: what a stage
     builds on is decided once, at its prep, and never gathered again
-    (`job-system.md` § 5.4).  ``[]`` for a run that gathered nothing.
-    *(Until 2026-10-05 the next attempt of a single-bias device was opened
-    without its electrodes' `.TSHS`.)*"""
+    (`job-system.md` § 5.4).  ``[]`` for a run that gathered nothing."""
     from ..runrecord import read_gathered_from, write_gathered_from
     took = read_gathered_from(source)
     for g in took:
@@ -823,13 +797,12 @@ def _carry_the_gather(source: Path, attempt: Path, writes: Plan, *,
 def _trial_run_dir(container):
     """**Where a trial's files are** — the attempt, or the trial itself.
 
-    ONE ANSWER TO ONE QUESTION.  Since 2026-08-27 a trial runs in its
+    ONE ANSWER TO ONE QUESTION.  A trial runs in its
     attempt when the shape keeps one (`project-layout.md` § 1.5a: *"a sweep
     trial keeps attempts exactly as a stage does, and the SHAPE decides
     how"*), and § 1.6 puts everything it needs there -- the deck, the
     wrapper, the monitor.  **Flat keeps no attempt directories**, so the
-    same call answers the container, and neither caller needs to know which
-    shape it is looking at.
+    same call answers the container.
 
     The rule itself lives in the layout layer (`materialize.run_dir`);
     this is `submit`'s name for it, kept because the questions asked of it
@@ -843,9 +816,7 @@ def _gpus(resources, what: str):
     """A job's GPU request -- `model.gpu_request`, the one door every reader
     asks (`execution/architecture.md` § 3.2) -- or a `SubmitError` naming
     ``what`` when it disagrees with itself, which a job prep wrote never
-    does (prep refuses it first).  *(`_job_wants_gpu` stood here until
-    2026-10-03: a job was a GPU job by its count OR by `use_gpu`, else by a
-    scan of its deck.)*"""
+    does (prep refuses it first)."""
     from .model import GpuRequestError, gpu_request
     try:
         return gpu_request(resources)
@@ -859,9 +830,7 @@ def _the_queue(jobs) -> Tuple[Optional[str], Optional[str]]:
     prep was told (`job-system.md` § 6.0, the placement) -- or ``(None,
     None)`` when it recorded none.  Several are
     refused: one launch goes to one queue (a benchmark's GPU side names its
-    own, ``--gpu-domain``).  *(The verb worked this out itself until
-    2026-10-05: floor 7, which never works out a launch, `architecture.md`
-    § 2.1.)*"""
+    own, ``--gpu-domain``)."""
     named = {(j.placement or {}).get("domain") or j.resources.domain
              for j in jobs} - {None, ""}
     # ADMITTED only where prep admitted it -- a run's placement; a
@@ -1075,7 +1044,7 @@ def _a_scan(jobset: JobSet, base: Path, stage: str):
     from ..transport.stages import scan_points
     desc = base / FILENAME
     if not desc.is_file():
-        return None                       # a hand-built ladder: no scan
+        return None
     try:
         task = read_task(desc)
     except Exception as exc:                                  # noqa: BLE001
@@ -1123,9 +1092,7 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
     refuses leaves the rest to go (``plan.tolerant``): its trials keep no
     launch record, so the next launch picks up exactly them.  Every refusal
     is written down."""
-    # WHAT WAS ASKED, as asked: the question was keyed on the mode until
-    # 2026-10-06, so every run here read "follow a run that never
-    # concluded" once a run here was asked at all (the unit 11 review).
+    # WHAT WAS ASKED, as asked.
     plan.record("question",
                 about=(("submit" if plan.mode == "submit" else "run here")
                        + ("; follows a run that never concluded"
@@ -1210,9 +1177,7 @@ def _go(s: Submission, record) -> List[JobResult]:
     a chain, here or to the scheduler: the line run where the plan said,
     each member's launch recorded by the one writer (:func:`_record_launch`),
     and the ledger told the moment it goes -- a run here when it STARTS, a
-    scheduler job when it is given its id.  *(Four places sent until
-    2026-10-05, each with its own record and its own wording of a
-    refusal.)*"""
+    scheduler job when it is given its id."""
     env = {**os.environ, "MB_LAUNCHED_BY": "jobset-launch"}
     names = [m.name for m in s.members]
     if s.direct:
@@ -1225,13 +1190,12 @@ def _go(s: Submission, record) -> List[JobResult]:
             raise SubmitError(
                 f"{s.name}: could not run {s.command[0]!r} ({exc})") from None
         # AT START, after the process exists: run.json answers "was this
-        # launched?", and a record written on completion left a running
+        # launched?", and a record written on completion would leave a running
         # attempt reading as never launched for its whole runtime.  A failed
         # START records nothing -- Popen raising means no process exists.
         for m in s.members:
-            where, basename = m.record_at()
-            _record_launch(where, mode="direct", command=s.command,
-                           basename=basename)
+            _record_launch(m.run_dir, names=m.names, run=m.run,
+                           mode="direct", command=s.command)
         record("launched", submission=s.name, command=s.command,
                members=names)
         rc = proc.wait()
@@ -1252,13 +1216,11 @@ def _go(s: Submission, record) -> List[JobResult]:
     jid = _parse_sbatch_id(cp.stdout)
     for m in s.members:
         # WHERE IT RUNS, not the container: `_launched` reads the attempt,
-        # so a record in the container left every grouped trial reading
-        # *never launched*, and a re-launch re-submitted work that had
-        # already measured its point.
-        where, basename = m.record_at()
-        _record_launch(where, mode="submit", command=s.command, job_id=jid,
-                       placement=s.placement, sent=s.sent,
-                       basename=basename)
+        # so a record in the container would leave every grouped trial
+        # reading *never launched*.
+        _record_launch(m.run_dir, names=m.names, run=m.run, mode="submit",
+                       command=s.command, job_id=jid,
+                       placement=s.placement, sent=s.sent)
     record("launched", submission=s.name, command=s.command, job_id=jid,
            domain=s.domain, members=names)
     return ([JobResult(s.name, s.command, "submitted", job_id=jid,
@@ -1270,16 +1232,13 @@ def _go(s: Submission, record) -> List[JobResult]:
 def _group_envelope(jobs) -> "Resources":
     """The allocation one shelf's grouped job asks for.
 
-    Since the shelf split (2026-08-21) every caller passes trials sharing
+    Every caller passes trials sharing
     ONE exact ask (`_shelf_key`: ranks, cores, GPUs), so this is the
     shelf's own ask read off its trials -- nothing is widened and nothing
     narrower exists inside a group.  The uniformity is ASSERTED rather
     than assumed: trials disagreeing here mean the shelf partition broke,
     and launching an allocation that fits only some of them would be the
-    silent repair this module never makes.  *(Until the split this
-    function computed the union of a whole side -- the widest trial's
-    ranks/cores/devices -- and narrower trials idled the difference; the
-    max() folds below survive as identities.)*
+    silent repair this module never makes.
     """
     keys = {(j.resources.mpi_np, j.resources.cpus_per_task,
              j.resources.gres or "") for j in jobs}
@@ -1295,10 +1254,7 @@ def _group_envelope(jobs) -> "Resources":
     exclusive = any(j.resources.exclusive for j in jobs)
     # PREP'S ANSWERS RIDE THE TRIALS (resolve.py: `replace(allocation,
     # **machine)` -- the sweep delta only touches ranks/cores/gres, so a
-    # `prep --mem/--time` is on every trial).  This function DISCARDED
-    # both, which is half of how five jobs went to Sol with no --mem and
-    # an invented 38-minute wall (62039301-05, 2026-08-24): the user's
-    # prep-time statement existed and never reached the sbatch command.
+    # `prep --mem/--time` is on every trial).
     mems = {j.resources.mem for j in jobs}
     times = {j.resources.time for j in jobs}
     # ...and the GPU binding, the description's switch for the whole
@@ -1334,9 +1290,8 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
                   side: Optional[str], mem: Optional[str],
                   time_s: Optional[int],
                   trial_timeout_s: Optional[int], told) -> LaunchPlan:
-    """ONE scheduler job per RESOURCE SHELF of the sweep (grouped
-    2026-08-20; split per side, then per shelf, 2026-08-21 --
-    `generator.md` § 4.3a).
+    """ONE scheduler job per RESOURCE SHELF of the sweep
+    (`generator.md` § 4.3a).
 
     The standing rule -- *a scheduler is handed few, deliberate jobs* --
     is kept by construction: each shelf IS one job, and the value axes
@@ -1362,8 +1317,7 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
     sequencer and its header -- planned here, written by the send -- and
     every included trial's launch record, stamped with the ONE job id, so
     `status` and a later single-trial re-run see the truth.  ``ask`` asks
-    the scheduler about each shelf -- the jobs the send would hand it (W52:
-    a sweep was asked about trial by trial while submit sent shelves).
+    the scheduler about each shelf -- the jobs the send would hand it.
     """
     from .materialize import job_dir_names, shape_of
     dirs = job_dir_names(jobset, shape_of(jobset, base))
@@ -1395,10 +1349,6 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
                 continue            # this shelf already rode a group
             # THE SHELF'S NAME IN ITS FULL FORM, always -- its side and its
             # machine cell (`generator.md` § 4.3a): `bench-group-cpu-G0K4C1`.
-            # Until 2026-10-06 the side and the cell were added only when the
-            # sweep needed them to tell shelves apart: one shelf had four
-            # names by what else the sweep held, and a sweep's one shelf sent
-            # to a queue wrote over the walk's own `launch/bench-group.*`.
             name = f"bench-group-{this}-{_shelf_token(shelves[key])}"
             named = (gpu_domain or domain) if this == "gpu" else domain
             if named is None:
@@ -1431,12 +1381,7 @@ def _place(base: Path, want, *, gpu_side: bool, named=None,
     """This side's placement — `scheduler.place`, walked with THIS machine's
     menu (`execution/scheduler.md` § 5).
 
-    Fetching the menu is this layer's job; deciding is not.  The routing walk
-    lived here until 2026-08-23, which is why the CPU and GPU sides were
-    written separately and disagreed: the GPU side looked only at the first
-    gpu-capable row, and when that row's 15-minute ceiling could not hold a
-    38-minute group it returned "no preference" and let the header's
-    directives -- naming that same row -- stand.
+    Fetching the menu is this layer's job; deciding is not.
 
     Returns ``None`` when this machine has no menu at all: nothing was
     promised, so the rendered header stands (R6).  Raises `SubmitError` when
@@ -1466,9 +1411,7 @@ def _place(base: Path, want, *, gpu_side: bool, named=None,
     except Unplaceable as exc:
         raise SubmitError(
             f"{label or 'this group'} cannot be placed on this machine:\n    "
-            # `.message` -- `exc.reasons` is List[Refusal] since 2026-09-09.
-            # Joining the objects raised TypeError instead of this SubmitError,
-            # so an unplaceable group lost both the reasons and the remedies.
+            # `.message` -- `exc.reasons` is List[Refusal].
             + "\n    ".join(r.message for r in exc.reasons)
             + "\n  Nothing was submitted -- the scheduler would refuse it.  "
               "Change the wall or the memory with --time / --mem, or name "
@@ -1491,13 +1434,7 @@ def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
     evidence is not evidence of a smaller limit (R3).
 
     ``local_only=True`` -- this asks what the box RUNNING THIS PROCESS knows,
-    never what the calculation is prepped for.  Bug found 2026-08-23: on a
-    workstation carrying named targets (``environments/sol.json``) but no
-    probe of its own, plain ``get_routing(project_dir=None)`` fell into
-    `machine_for`'s C1 guard -- "several machines could be meant" -- and
-    raised ``AmbiguousTarget`` out of a read-only re-check that names no
-    target at all.  This question has nothing to do with C1: no wrapper is
-    written here, nothing travels, there is nothing to be ambiguous about.
+    never what the calculation is prepped for.
     """
     from .. import runtime_config as _rc
     from ..scheduler import admits
@@ -1510,11 +1447,7 @@ def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
         return                       # this machine does not know that queue
     why = admits(mine[0], want)
     if why:
-        # THE REMEDY IS THE ASK, OR A NEW PREP.  It said "re-run `prep` here
-        # so the trials are sized against what this machine offers" until
-        # 2026-10-02 (W54 R6): prep keeps the calculation's snapshot (M-3)
-        # and sizes nothing -- the record checks an ask and supplies none of
-        # it (`architecture.md` § 5.2) -- so the same refusal came back.  A
+        # THE REMEDY IS THE ASK, OR A NEW PREP.  A
         # calculation is set to the record of its first prep (M-3), so this
         # machine's reaches it through a new prep from a saved state.
         raise SubmitError(
@@ -1558,13 +1491,9 @@ def _shelf_token(jobs) -> str:
     **THE SPELLING ITS TRIALS CARRY, read off a trial's own point**: every
     trial on a shelf shares one resource ask by construction, so any member
     answers, and the value axes that DO differ between them are dropped --
-    the shelf is the machine cell, not the point.  This produced
-    ``g2n48c1`` until 2026-08-24 -- lowercase, and ``n`` for the TOTAL rank
-    count -- beside directories named ``bench-G2K24C1…``, where ``K`` is
-    ranks PER GPU: two vocabularies for one thing, which § 6.3 exists to
-    prevent.  A trial whose point carries no machine cell is not one prep
-    wrote, and is refused by name -- a cell worked out from the shelf's key
-    stood here for such sets until 2026-10-06, in the ``N`` spelling."""
+    the shelf is the machine cell, not the point.  A trial whose point
+    carries no machine cell is not one prep wrote, and is refused by
+    name."""
     from ..resolve import point_token
     pt = jobs[0].point
     if not all(a in pt for a in _MACHINE_AXES):
@@ -1592,12 +1521,10 @@ def submitted_cap_notes(plans) -> List[str]:
     **A note, not a refusal**, and that is the design.  A refused shelf
     already costs nothing: its trials keep no launch record, so
     ``_launched`` leaves them pending and the next ``launch bench``
-    picks up exactly them.  What was missing was not enforcement, it was
-    being TOLD -- a sweep of six went to a queue that takes two, and the
-    person learned the cap from four red refusals after saying yes.
+    picks up exactly them.
 
     Silent when the record does not state a cap.  ``UNSET`` means the
-    probe never asked (a record older than 2026-08-30) and ``None`` means
+    probe never asked and ``None`` means
     it asked and the QoS states none; neither is a limit, and R3 forbids
     reading an unstated one as a bar.
     """
@@ -1622,9 +1549,7 @@ def submitted_cap_notes(plans) -> List[str]:
         # SAID AS A CONDITION, NOT A PREDICTION.  What is known here is the
         # cap and the size of this sweep; what is NOT known is how many jobs
         # are already queued under that QoS -- with one already there, only
-        # `cap - 1` of these get in.  Writing "the scheduler will accept 2"
-        # would be the same overclaim this whole change exists to remove:
-        # a sentence stated with more certainty than its evidence.
+        # `cap - 1` of these get in.
         notes.append(
             f"{name} takes {cap} submitted job(s) per user, and this sweep "
             f"is {n}. With nothing of yours already queued there, {cap} go "
@@ -1654,7 +1579,7 @@ def _bench_walk(name: str, trials, *, where: str, log: str,
     when = "$(date '+%Y-%m-%dT%H:%M:%S')"
     lines = [
         "#!/usr/bin/env bash",
-        f"# {name}.run.sh -- {where}, in sequence",
+        f"# {GroupNames(name).name('.run.sh')} -- {where}, in sequence",
         "# (generator.md § 4.3a; job-system.md § 6.0).  Regenerated at each",
         "# launch.  THE TWO-LAYER MODEL HOLDS (job-system.md § 6): this file",
         "# is the launcher layer only -- ordering and bounds.  Env activation",
@@ -1672,8 +1597,6 @@ def _bench_walk(name: str, trials, *, where: str, log: str,
         # STOPPED BY THE PERSON -- Ctrl-C, a lost terminal, a scancel --
         # the walk starts no further trial (bash runs this after the
         # running trial returns; one under a per-trial bound ends at it).
-        # Until 2026-10-05 the walk went on with the rest unseen (the
-        # unit 11 review).
         f'_walk_stopped() {{ echo "[group] {when} stopped -- no further '
         'trial" >> "$LOG"; exit 130; }',
         "trap _walk_stopped INT TERM HUP",
@@ -1710,9 +1633,7 @@ def _bench_walk(name: str, trials, *, where: str, log: str,
 def sides_of(jobset: JobSet) -> Dict[str, List[Job]]:
     """A sweep's trials by the side they run on -- ``{"cpu": [...],
     "gpu": [...]}`` -- each trial's GPU request (`model.gpu_request`, the one
-    door), read off the trial itself.  The grouped door splits on it.
-    *(It read each
-    trial's deck where the trial runs until 2026-10-03.)*"""
+    door), read off the trial itself.  The grouped door splits on it."""
     sides: Dict[str, List[Job]] = {"cpu": [], "gpu": []}
     for j in jobset.jobs:
         sides["gpu" if _gpus(j.resources, f"trial {j.name!r}").uses
@@ -1728,9 +1649,7 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
     its gates: its deck agrees with its launch, it starts cold, its run
     script is where it is run.  The walk here and a queue's shelves both
     send this answer; a trial launched before is passed over by name
-    (``plan.skipped``).  *(A queue's shelves read whether a trial was
-    launched for themselves, and built its member a second way, until
-    2026-10-06; the two agreed.)*"""
+    (``plan.skipped``)."""
     pending: List[_Member] = []
     for job in (jobset.jobs if jobs is None else jobs):
         m = _plan_member(jobset, base, job, mode=mode, writes=plan.writes)
@@ -1757,7 +1676,7 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
             check_trial_starts_cold(m.read_from, job)
         except DeckLaunchMismatch as e:
             raise SubmitError(str(e)) from e
-        run_name = _wrapper_name(job.script, ".run.sh")
+        run_name = m.names.name(".run.sh")
         if not (m.read_from / run_name).exists():
             raise SubmitError(
                 f"trial {job.name!r}: {run_name} is not in {m.read_from}, "
@@ -1775,8 +1694,9 @@ def _walk_of(members: List[_Member], container: Path) -> list:
     its run script, and its own counts, the shield against an allocation's
     SLURM_* variables.  One answer for the walk here and a queue's shelf."""
     return [(m.name, str(m.run_dir.relative_to(container)),
-             _wrapper_name(m.job.script, ".run.sh"),
-             " ".join(_run_sh_args(m.job.resources))) for m in members]
+             m.names.name(".run.sh"),
+             " ".join(_run_sh_args(m.job.resources, m.run)))
+            for m in members]
 
 
 def _plan_bench_here(jobset: JobSet, base: Path, *,
@@ -1786,8 +1706,7 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
     order, through the benchmark's walk (:func:`_bench_walk`) -- as a shelf
     walks its trials on a queue -- each under the per-trial bound when one
     is given; a trial launched before is passed over by name
-    (:func:`_bench_trials`).  *(Each trial ran as its own process, one
-    after another from Python, until 2026-10-05.)*"""
+    (:func:`_bench_trials`)."""
     plan = LaunchPlan(base, "direct", [])
     pending = _bench_trials(jobset, base, plan, mode="direct")
     if not pending:
@@ -1808,13 +1727,14 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
             f"{sorted(str(c) for c in containers)}")
     container = next(iter(containers))
     name = "bench-group"
-    log = f"{LAUNCH_DIR}/{name}.log"
-    plan.writes.text(container / LAUNCH_DIR / f"{name}.run.sh", _bench_walk(
+    gn = GroupNames(name)
+    log = f"{LAUNCH_DIR}/{gn.name('.log')}"
+    plan.writes.text(container / LAUNCH_DIR / gn.name(".run.sh"), _bench_walk(
         name, _walk_of(pending, container),
         where="this benchmark's unlaunched trials, run here", log=log,
         bound_s=trial_timeout_s))
     plan.submissions.append(Submission(
-        name, ["bash", f"launch/{name}.run.sh"], container, True, pending,
+        name, ["bash", f"{LAUNCH_DIR}/{gn.name('.run.sh')}"], container, True, pending,
         rides="rides the group", log=container / log))
     return plan
 
@@ -1835,16 +1755,14 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
     (`job-system.md` § 6.0, step 3), and an `ask` needs no header of the
     shelf's own: it asks over the first trial's.
 
-    Widest-first ordering lives one level up since the shelf split
-    (2026-08-21): every trial in a group shares one exact resource ask by
+    Widest-first ordering lives one level up: every trial in a group shares one exact resource ask by
     construction, so within a group the enumeration (declaration) order
     stands, and the SHELVES submit widest first.
     """
 
     # THE CONTAINER IS THE TRIAL'S PARENT, NOT THE ATTEMPT'S.  With an
     # attempt layer the attempt's parent is `bench-<point>` -- one per
-    # trial -- so the "they must share one container" check found N and
-    # refused every grouped submission.  The container question belongs to
+    # trial.  The container question belongs to
     # the trial's own folder, the files question to its attempt; they are
     # two questions and this asks each of the right thing.
     containers = {m.container.parent for m in pending}
@@ -1863,18 +1781,15 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
 
     envelope = _group_envelope([m.job for m in pending])
 
-    # THE ATTEMPT, NOT THE TRIAL.  The wrapper lives in `run-<n>` since the
-    # attempt layer landed (`project-layout.md` § 1.5a, 2026-08-27), and the
-    # sequencer went on naming the trial DIRECTORY -- so every grouped bench
-    # `cd`ed one level too high and every trial died instantly with *"No
-    # such file or directory"* (rc=127; Sol job 62372574).  Each member's
+    # THE ATTEMPT, NOT THE TRIAL (`project-layout.md` § 1.5a).  Each member's
     # ``run_dir`` is the one answer to "where does this trial run", and the
     # gates asked it (:func:`_bench_trials`).  Each trial is handed its own
     # -np / -omp: the shield against the envelope's SLURM_* variables.
+    gn = GroupNames(name)
     script = _bench_walk(
         name, _walk_of(pending, container),
         where="ONE allocation, this shelf's unlaunched trials",
-        log=f"{LAUNCH_DIR}/{name}.log", bound_s=trial_timeout_s)
+        log=f"{LAUNCH_DIR}/{gn.name('.log')}", bound_s=trial_timeout_s)
     # THE ONE REQUEST (`_sbatch_request`): prep's envelope, what was said at
     # launch, admitted on this side's queue (R9), every value stated.  The
     # side IS the envelope's GPU request -- every trial on the shelf shares
@@ -1883,7 +1798,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
         base, envelope=envelope, domain=domain, mem=mem,
         time_s=time_s, label=name,
         job_name=_scheduler_job_name(jobset, name),
-        script=f"launch/{name}.sbatch", run_args=(),
+        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
         one_process=one_process(jobset.engine))
 
     if plan.mode == "submit":
@@ -1894,29 +1809,29 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
         # lives at the bundle root.  The pair this submission
         # is ALREADY routing to is handed to the header emitter, so the
         # .sbatch and the `sbatch -p/-q` on the command line cannot name
-        # different queues.  The stem alone names the delegated run script,
-        # so the header still runs `bash {name}.run.sh` from the container.
-        header = _render_sbatch_for(base / f"{name}.sh",
+        # different queues.  The group's names name the delegated run
+        # script (`runfiles.GroupNames`), so the header runs it from the
+        # container.
+        header = _render_sbatch_for(base / f"{name}.sh", names=gn,
                                     project_dir=base,
                                     resources=envelope,
                                     domain_pq=((placement.partition,
                                                 placement.qos)
                                                if placement else None))
         if header is None:
-            raise SubmitError(_no_sbatch(name, f"launch/{name}.sbatch",
+            raise SubmitError(_no_sbatch(name, f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
                                          base=base, told=told))
-        plan.writes.text(launch_dir / f"{name}.run.sh", script)
-        plan.writes.text(launch_dir / f"{name}.sbatch",
-                         _into_launch(header, name))
+        plan.writes.text(launch_dir / gn.name(".run.sh"), script)
+        plan.writes.text(launch_dir / gn.name(".sbatch"),
+                         _into_launch(header, gn))
     elif plan.mode == "ask":
         # ASKED WITH THE FIRST TRIAL'S HEADER, the shelf's being written
         # only when it is sent: a benchmark prepped with --no-sbatch has
         # none, and a question about a file that does not exist answers
-        # nothing -- refused, saying why (the scheduler's "Unable to open
-        # file" stood here until 2026-10-06, the unit 11 review).
+        # nothing -- refused, saying why.
         first = pending[0]
         if not (first.read_from
-                / _wrapper_name(first.job.script, ".sbatch")).exists():
+                / first.names.name(".sbatch")).exists():
             raise SubmitError(
                 f"{name}: there is no header to ask the scheduler about -- "
                 f"the benchmark was prepped with --no-sbatch, and a "
@@ -1934,7 +1849,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
         name, cmd, container, False, pending,
         placement=placement, sent=envelope, rides="rides the group",
         ask_in=first.read_from,
-        ask_script=_wrapper_name(first.job.script, ".sbatch"),
+        ask_script=first.names.name(".sbatch"),
         refusal_hint=hint)
 
 
@@ -1970,7 +1885,8 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     """
     from ..task import bias_token
     from ..transport.stages import rung_containers, scan_points
-    from .materialize import latest_attempt
+    from ..runrecord import next_run
+    from .materialize import latest_attempt, run_names, shape_of
 
     points = scan_points(task, stage)
     if len(points) < 2:
@@ -1992,10 +1908,14 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     home = stage_home(base, task, stage)
     token, stage_dir = home.token, home.dir
     launch_dir = stage_dir / LAUNCH_DIR
-    run_name = _wrapper_name(job.script, ".run.sh")
-    name = f"{Path(job.script).stem}-chain"
 
     plan = LaunchPlan(base, mode, [])
+    # THE NAMES OF THE STAGE'S FILES, every point's -- each point's attempt
+    # its own folder, its run's number the one launch decides there.
+    names = run_names(jobset, job, shape_of(jobset, base))
+    run_name = names.name(".run.sh")
+    name = f"{names.stem}-chain"
+    gn = GroupNames(name)
     attempts: List[Tuple[float, Path, Path]] = []
     # Each point's folder, from the one door (`rung_containers`, plan § 5w
     # K10) -- the folders prep wrote the point's deck and attempt into.
@@ -2007,7 +1927,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                 f"{token}/{bias_token(v)}/ -- the scan launches whole, so "
                 f"every point needs one, and a prepped stage is not prepped "
                 f"again: " + rollback("its prep", base=base))
-        if _launched(att):
+        if _launched(att, names):
             raise SubmitError(
                 f"bias point {bias_token(v)}: {att.relative_to(base)} "
                 f"has already been launched.  An attempt is immutable once "
@@ -2021,17 +1941,15 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                        for f in (job.script, run_name)]
         attempts.append((v, vdir, att))
 
-    args = " ".join(_run_sh_args(job.resources))
     # WHAT A POINT TAKES FROM THE ONE BEFORE IT is what a continuing device
     # takes -- the device job's own declaration (`Job.warm`), which prep
     # recorded from the one restart-list door (`warmfiles.warm_list`,
     # `job-contracts.md` § 4.2a), the calculation's own list among it.
-    # `.TSDE` was spelled here by hand until 2026-10-03 (plan W38, W36 ⑧).
     import shlex as _shlex
     handed = " ".join(_shlex.quote(w.name) for w in (job.warm or ()))
     lines = [
         "#!/usr/bin/env bash",
-        f"# {name}.run.sh -- the bias chain: this scan's points in",
+        f"# {gn.name('.run.sh')} -- the bias chain: this scan's points in",
         "# sequence, each warm-started from what the previous point left",
         "# that a continuing device takes -- its declaration:",
         f"#   {handed or '(nothing)'}",
@@ -2041,7 +1959,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         "# failure poisoned (a benchmark's points are independent; a",
         "# chain's are not).",
         "set -u",
-        f'LOG="launch/{name}.log"',
+        f'LOG="{LAUNCH_DIR}/{gn.name(".log")}"',
         f'echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
         f'points={len(attempts)} job=${{SLURM_JOB_ID:-none}} '
         'node=$(hostname)" >> "$LOG"',
@@ -2086,24 +2004,24 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         "}",
     ]
     for v, _vdir, att in attempts:
-        # THE SAME IDIOM THE BENCH SEQUENCER USES.  Composing the path from
-        # its parts was correct here and wrong there, and two spellings of
-        # "where does this cd" is how the two came to disagree at all.
+        # THE SAME IDIOM THE BENCH SEQUENCER USES.
         rel = att.relative_to(stage_dir)
-        lines.append(f'run_point "{bias_token(v)}" "{rel}" "{run_name}"'
-                     + (f" {args}" if args else ""))
+        args = " ".join(_run_sh_args(job.resources, next_run(att, names)))
+        lines.append(f'run_point "{bias_token(v)}" "{rel}" "{run_name}" '
+                     f'{args}')
     lines += ['echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') done '
               'fails=${fails}" >> "$LOG"',
               'exit $(( fails > 0 ))', ""]
 
-    members = [_Member(job, vdir, att, True, att,
+    members = [_Member(job, vdir, att, True, att, names=names,
+                       run=next_run(att, names),
                        label=f"{stage}@{bias_token(v)}", base=base)
                for v, vdir, att in attempts]
     if mode != "ask":
-        plan.writes.text(launch_dir / f"{name}.run.sh", "\n".join(lines))
+        plan.writes.text(launch_dir / gn.name(".run.sh"), "\n".join(lines))
     if mode == "direct":
         plan.submissions.append(Submission(
-            name, ["bash", f"launch/{name}.run.sh"], stage_dir, True, members,
+            name, ["bash", f"{LAUNCH_DIR}/{gn.name('.run.sh')}"], stage_dir, True, members,
             rides="rides the chain"))
         return plan
 
@@ -2112,24 +2030,25 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         base, envelope=job.resources, domain=domain,
         mem=mem, time_s=time_s, label=name,
         job_name=_scheduler_job_name(jobset, name),
-        script=f"launch/{name}.sbatch", run_args=(),
+        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
         one_process=one_process(jobset.engine))
     if mode == "submit":
         from ..runwrap import _render_sbatch_for
-        header = _render_sbatch_for(base / f"{name}.sh", project_dir=base,
+        header = _render_sbatch_for(base / f"{name}.sh", names=gn,
+                                    project_dir=base,
                                     resources=envelope,
                                     domain_pq=((placement.partition,
                                                 placement.qos)
                                                if placement else None))
         if header is None:
-            raise SubmitError(_no_sbatch(name, f"launch/{name}.sbatch",
+            raise SubmitError(_no_sbatch(name, f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
                                          base=base, told=told))
-        plan.writes.text(launch_dir / f"{name}.sbatch",
-                         _into_launch(header, name))
+        plan.writes.text(launch_dir / gn.name(".sbatch"),
+                         _into_launch(header, gn))
     plan.submissions.append(Submission(
         name, cmd, stage_dir, False, members, placement=placement,
         sent=envelope, rides="rides the chain", ask_in=attempts[0][2],
-        ask_script=_wrapper_name(job.script, ".sbatch")))
+        ask_script=names.name(".sbatch")))
     return plan
 
 
@@ -2137,16 +2056,12 @@ def _placed_on(placement, sent=None) -> Optional[dict]:
     """A `Placement` -> where this run was SENT, and with what wall and
     memory (``sent``, the request as sent: a launch flag changes them,
     `job-system.md` § 6.0) -- or ``None`` when there was no placement (a
-    direct run).  *(The wall and memory were in the record's line alone
-    until 2026-10-06.)*
+    direct run).
 
     The QUEUE half of `scheduler.md` R12: domain, partition, qos -- known
     the moment ``sbatch`` accepts, and reachable before this field only by
     parsing the argv the same file records.  What the job LANDED ON is the
-    monitor's to record, on the node, because a queued job has no node yet
-    -- this dict carried a ``node_type`` until 2026-08-27, which was the
-    domain's opinion of itself, not a fact about the run, and the probe
-    never wrote it (R11).
+    monitor's to record, on the node, because a queued job has no node yet.
     """
     if placement is None:
         return None
@@ -2158,25 +2073,25 @@ def _placed_on(placement, sent=None) -> Optional[dict]:
                if getattr(sent, f, None) not in (None, "")}}
 
 
-def _record_launch(attempt: Path, *, mode: str, command: List[str],
-                   job_id: Optional[str] = None, placement=None, sent=None,
-                   basename: Optional[str] = None) -> None:
-    """Write the launch record where `materialize.launch_record_at` says --
-    the attempt's ``run.json``, or with ``basename`` a flat stage's own --
-    carrying its provenance.
+def _record_launch(where: Path, *, names: RunNames, run: int, mode: str,
+                   command: List[str], job_id: Optional[str] = None,
+                   placement=None, sent=None) -> None:
+    """Write run ``run``'s launch record in the folder it runs in, named by
+    its stage's names (`runrecord.write_launch`) -- carrying its
+    provenance.
 
-    ``continued_from`` is read back from what ``prep`` left -- the attempt's
-    ``.continued-from``, or a flat stage's own (`continued_from_marker`) --
+    ``continued_from`` is read back from what ``prep`` -- or a flat
+    re-launch -- left for this run (`runrecord.read_continued_from`)
     rather than passed down: prep is what knows, and re-deriving it here
     would be a second answer to one question.  ``placement`` is passed for
     the opposite reason: submission is what knows where the job went, and
     nothing downstream should have to work it out from a command line.
     """
     from ..runrecord import read_continued_from, write_launch
-    src = read_continued_from(attempt, basename)
-    write_launch(attempt, mode=mode, command=command, job_id=job_id,
-                 continued_from=src, placed_on=_placed_on(placement, sent),
-                 basename=basename)
+    src = read_continued_from(where, names, run)
+    write_launch(where, names=names, run=run, mode=mode, command=command,
+                 job_id=job_id, continued_from=src,
+                 placed_on=_placed_on(placement, sent))
 
 
 def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
@@ -2192,9 +2107,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
     about when a scheduler is here to ask -- and, for a scheduler, the one
     request (:func:`_sbatch_request`): the queue admitted, the line exact.
 
-    **There is no ``chain`` parameter** (deleted 2026-08-10, user): an
-    opt-in typed before any stage has run is typed at the moment you know
-    least.  A ladder is launched ONE stage at a time, in every mode -- direct
+    A ladder is launched ONE stage at a time, in every mode -- direct
     running stages in order would be local chaining.
     """
     if only is not None:
@@ -2227,8 +2140,8 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
             # M5: the refusal is the launch's -- the agreement floor states
             # the fact, this verb is what declines to act on it.
             raise SubmitError(str(e)) from e
-        run_name = _wrapper_name(job.script, ".run.sh")
-        sbatch_name = _wrapper_name(job.script, ".sbatch")
+        run_name = m.names.name(".run.sh")
+        sbatch_name = m.names.name(".sbatch")
         plan.reads += [_as_found(m.read_from / f, base)
                        for f in (job.script, run_name, sbatch_name)]
         if mode == "direct":
@@ -2244,7 +2157,8 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                     f"{m.read_from}, and a prepped stage is not prepped "
                     f"again: " + rollback(what, base=base))
             plan.submissions.append(Submission(
-                m.name, ["bash", run_name] + _run_sh_args(job.resources),
+                m.name, ["bash", run_name] + _run_sh_args(job.resources,
+                                                          m.run),
                 m.run_dir, True, [m], ask_in=m.read_from))
             continue
         # The header is required where it is SENT -- or ASKED about, when a
@@ -2267,7 +2181,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
             domain=named,
             mem=mem, time_s=time_s, label=job.name,
             job_name=_scheduler_job_name(jobset, job.name),
-            script=sbatch_name, run_args=_run_sh_args(job.resources),
+            script=sbatch_name, run_args=_run_sh_args(job.resources, m.run),
             one_process=one_process(jobset.engine))
         plan.submissions.append(Submission(
             m.name, cmd, m.run_dir, False, [m], placement=placement,

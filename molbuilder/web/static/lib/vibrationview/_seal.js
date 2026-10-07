@@ -2,8 +2,8 @@
  *
  * Module:    lib/vibrationview/ — INTERNAL, and the most internal of all. The
  *            contract deliberately does not name this file (§ 15): no consumer
- *            names it and neither does the document. The underscore and
- *            tests/test_vibrationview_module_boundary.py are what keep that true.
+ *            names it and neither does the document. The underscore is what
+ *            keeps that true.
  * Called by: index.js — every draw the handle causes;
  *            _export.js — the capture doors.
  *            Nothing else, ever.
@@ -19,10 +19,8 @@
  *
  * ── Carried, not invented ────────────────────────────────────────────────────
  * Three things below are hard-won knowledge about a library that punishes
- * guessing. Two are carried from the retired embed rather than derived from the
- * document; the third was MEASURED against a real browser after the document
- * asserted the opposite. All three are marked in place. The first cost ten rounds
- * of "animation fixes" to find.
+ * guessing; the third was MEASURED against a real browser. All three are marked
+ * in place.
  */
 "use strict";
 
@@ -64,9 +62,7 @@ const STYLESHEET_ID = "vibrationview-style";
  *
  * A `<link>` loads asynchronously, so the tokens it declares are not readable the
  * instant it is appended — and this layer reads two of them to build the drawing
- * surface. Appending and carrying on meant every first mount got the fallback,
- * and the only reason that was invisible is that the fallback happened to match
- * the token. It would have drifted the moment either changed.
+ * surface. Appending and carrying on would give every first mount the fallback.
  *
  * `mount` is asynchronous (§ 8), so waiting costs a caller nothing. */
 function ensureStylesheet() {
@@ -158,13 +154,11 @@ export async function create(hostEl) {
      * identities and the bond topology are established once, and the per-frame
      * cost is one style pass over the atoms — O(atoms), not O(1). At the few
      * hundred atoms this project targets that is the difference between smooth
-     * and smooth; it is not free, and pretending otherwise is how the animation
-     * stopped moving for ten rounds of fixes before anyone found it.
+     * and smooth; it is not free.
      */
     function restyle() {
-        // Always followed by a paint, so it does its own: three call sites wrote
-        // the pair, which is three chances to write only half of it — and half of
-        // it is a style rebuilt and never shown.
+        // Always followed by a paint, so it does its own: half of the pair is a
+        // style rebuilt and never shown.
         try { viewer.setStyle({}, STYLE); } catch (_) {}
         if (state.heldStill.length) {
             const grey = {
@@ -264,9 +258,8 @@ export async function create(hostEl) {
             const x      = (parseFloat(cs && cs.left) || 8) * k;
             const y      = (parseFloat(cs && cs.top)  || 8) * k;
 
-            // The line height is the sheet's as well. It was a literal here, which
-            // is the same defect as the corner was: change the CSS and the
-            // exported caption's box stops matching the one on screen.
+            // The line height is the sheet's as well, so the exported caption's
+            // box matches the one on screen.
             const lineH = parseFloat(cs && cs.lineHeight);
             const boxH  = (isFinite(lineH) ? lineH * k : fontPx * 1.35) + 2 * padY;
             g.font = fontPx + "px " + ((cs && cs.fontFamily) || "sans-serif");
@@ -399,8 +392,7 @@ export async function create(hostEl) {
          * It hands back the surface rather than a file, because encoding is not
          * this layer's business: one caller wants PNG bytes, one wants to add it
          * to a GIF, one wants to record a stream off it. Returning a picture
-         * serves all three; returning a blob served one and made the other two
-         * ask for something else.
+         * serves all three.
          */
         compositeCanvas() {
             return state.disposed ? null : compose();

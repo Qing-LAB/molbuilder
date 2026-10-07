@@ -3,36 +3,15 @@
 **What fdf's keyword rule actually is, and why one reader is worth having.**
 fdf matches a keyword case-insensitively AND ignoring ``.``, ``-`` and ``_``,
 so ``SystemLabel``, ``system_label``, ``System.Label`` and ``SYSTEMLABEL`` are
-one keyword.  :func:`_norm` is that rule; every other reader of a deck in this
-tree has been a hand-rolled regex that implements part of it.  Measured
-2026-09-17: **eight readers of deck content, and this was the only correct
-one** — four awk inside the emitted wrapper (`SystemLabel`, `JOB`, the GPU
-flag, a ``%block`` line counter) and four Python (`NumberOfAtoms`,
-``Diag.ELPA.(Use)?GPU``, `web/blueprints/watch.py`'s label pair, and this).
+one keyword.  :func:`_norm` is that rule.
 
 **Why it is HERE.**  The fdf format is SIESTA's, not molbuilder's, so reading
 it is `parse/`'s by `model/parse.md` § 1a — the same footing as
 :mod:`molbuilder.parse.ion` (SIESTA's ``.ion``), which `transport/compose.py`
-reads across exactly this boundary.  It sat in ``transport/preflight.py``
-until 2026-09-17 because that is where it was first needed, and
-`parse/contract.py` had to reach INTO the transport package for it with a
-function-level import whose comment apologised for doing so.  *(§ 1a's rule
+reads across exactly this boundary.  *(§ 1a's rule
 that "a block belongs to its writer" governs molbuilder's OWN reserved blocks
 — provenance, USER-CUSTOM, atom metadata — which `script_emit` both writes and
 reads.  A SIESTA keyword is not one of those.)*
-
-**What the old module was named for is gone.**  It was the TranSIESTA
-cross-run consistency preflight: it parsed two finished ``.fdf`` files and
-reported OK/WARN/ERROR per gate, because under the hand-assembly workflow a
-person wrote both decks and nothing else compared them.  The composite derives
-both from one citation, so there is no second deck to disagree with; the verb,
-the gates and the report formatter were deleted 2026-09-17 and § 5's
-invariants are held by construction or by ``_validate_transport_kind``.  Every
-symbol that survived is fdf parsing, which is what this module always was.
-
-Callers: `parse/contract.py` (the recorded electronic contract),
-`transport/compose.py` and `transport/citation_defaults.py` (what the cited
-deck states), `web/blueprints/transport.py`.
 """
 
 from __future__ import annotations
@@ -56,9 +35,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
 #: any SIESTA deck must know, not only the one spelling molbuilder's writer
 #: uses (`siesta/layout.SPIN_SPELLING`, among these).  A word outside them
 #: stops SIESTA ("Spin: unknown flag"), so a deck carrying one never ran.
-#: HERE, not beside the writer, because this reader travels (above).  Until
-#: the M6 review it knew only the writer's four, and read ``collinear`` as
-#: restricted.
+#: HERE, not beside the writer, because this reader travels (above).
 SPIN_WORDS = {
     "restricted":    ("none", "non-polarized", "non-polarised", "np", "n-p"),
     "unrestricted":  ("polarized", "polarised", "collinear", "colinear", "p"),
@@ -225,9 +202,9 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
             rows = bl["kgridmonkhorstpack"][:3]
             p.kgrid = tuple(int(float(rows[i][i])) for i in range(3))
             # ...AND ITS OFFSET: each row's fourth value, SIESTA's `displ`,
-            # optional and 0 when absent (`kpoint_t.F90`).  Read since
-            # 2026-09-30, so a cited run's offset reaches the template beside
-            # its grid (`engines/siesta.md` § 6.1).
+            # optional and 0 when absent (`kpoint_t.F90`), so a cited run's
+            # offset reaches the template beside its grid
+            # (`engines/siesta.md` § 6.1).
             p.kgrid_displacement = tuple(
                 float(rows[i][3]) if len(rows[i]) > 3 else 0.0
                 for i in range(3))
@@ -307,10 +284,7 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
     if coords:
         p.n_atoms = len(coords)
         # SIESTA's own default, measured: omit the keyword and it reports
-        # "Cartesian coordinates / (in Bohr units)".  This read `ang`, so a
-        # foreign deck relying on the default came back 1.89x out -- and
-        # `coords_ang` is the frozen gate's baseline, so a CORRECT junction
-        # was refused with "6 atoms MOVED".
+        # "Cartesian coordinates / (in Bohr units)".
         fmt = (sc.get("atomiccoordinatesformat")
                or ["notscaledcartesianbohr"])[0].lower()
         # Full positions in Ang (the frozen gate's baseline).  Three
@@ -360,55 +334,20 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
     return p
 
 
-# --------------------------------------------------------------------- #
-#  the gates                                                            #
-# --------------------------------------------------------------------- #
-
-
-# ===================================================================== #
-#  THE CROSS-DECK COMPARISON DELETED 2026-09-17
-#
-#  `Check`, `PreflightReport`, `preflight`, `preflight_files` and
-#  `format_report` compared two FINISHED `.fdf` files -- a device deck against
-#  an electrode deck -- and reported `engines/transport.md` 5's thirteen
-#  invariants as an error/warn/ok checklist.  They were written 2026-06-27 for
-#  the hand-assembly workflow, where a person wrote both decks and nothing else
-#  compared them: "Humans break exactly these couplings", as the header said.
-#
-#  Under the composite there is no second deck to disagree with.  Both are
-#  derived from ONE citation and resolved from ONE template, so eleven of the
-#  thirteen hold BY CONSTRUCTION or by a live gate, and I11 is held BETTER --
-#  `compose.py` reads real orbital interaction ranges from the citation's own
-#  `.ion` files, retiring the ~12 A floor this module used, which passes a
-#  4.8 A three-layer Au block.  The two that were held here alone, I9 and I12,
-#  moved to `_validate_transport_kind` on 2026-09-17, keyed on the calculation
-#  KIND so they fire on every prep rather than on a command somebody remembers.
-#
-#  WHAT SURVIVES ABOVE IS THE READER, and it is the reason this file stays:
-#  `parse_fdf_params` has four production callers (`citation_defaults`,
-#  `compose`, `parse/contract`, the transport blueprint) and `_BOHR_ANG` one.
-#  Reading an fdf and COMPARING two of them are different jobs; only the second
-#  one lost its subject.
-# ===================================================================== #
-
 def system_label(text: str) -> Optional[str]:
     """The deck's ``SystemLabel``, or ``None`` when it states none.
 
     **The one spelling-correct reader of this keyword.**  SIESTA names its
     output and warm-restart files from it, which is what its reader -- the
-    SIESTA vibration reader (`spectra/siesta_vibration.py`) -- needs; the
-    wrapper's cold-restart sweep and the Results search each hand-rolled a
-    regex for it until 2026-09-17.  Through :func:`_parse_fdf`, so fdf's
-    real matching rule applies: ``SystemLabel``, ``system_label`` and
-    ``System.Label`` are one keyword, which a regex anchored on the literal
-    word is not (measured 2026-09-17: neither hand-rolled reader matched the
-    last two).
+    SIESTA vibration reader (`spectra/siesta_vibration.py`) -- needs.
+    Through :func:`_parse_fdf`, so fdf's real matching rule applies:
+    ``SystemLabel``, ``system_label`` and ``System.Label`` are one keyword,
+    which a regex anchored on the literal word is not.
 
     **A surrounding pair of quotes is stripped, because SIESTA strips it.**
     ``SystemLabel "foo"`` is legal fdf and the engine then writes ``foo.DM``,
     so a reader that returned ``"foo"`` would look for files that do not
-    exist -- measured: the wrapper's cold sweep missed the warm files and
-    would have overwritten them without a word.  molbuilder never emits a
+    exist.  molbuilder never emits a
     quoted label (`config/siesta.py::_validate_basename` refuses anything
     outside ``[A-Za-z0-9_-]+`` before it can reach a deck), so this only ever
     matters for a hand-edited deck -- which is exactly when a reader must

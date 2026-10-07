@@ -54,6 +54,9 @@ def _name(a: Artifact) -> str:
     flat = f"`{head}{run}{_shown(a.role)}`"
     if a.hierarchical:
         return (f"`{a.hierarchical}` *(hierarchical)* · {flat} *(flat)*")
+    if a.attempt == "shared":
+        return (f"`{head}{_shown(a.role)}` *(hierarchical)* · {flat} "
+                f"*(flat)*")
     return flat
 
 

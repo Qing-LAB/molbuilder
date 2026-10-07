@@ -1,17 +1,13 @@
 """`transition()` — the two side effects nothing else was checking.
 
 `results.md` § 4 makes `transition()` the single entry point for state
-writes, and two of its side effects had no behavioural test anywhere.
-Both were found by mutation on 2026-09-04, while deciding whether the
-28 source-greps in `test_results_state_contract_js.py` could be deleted:
+writes; these pin two of its side effects:
 
-* **`IDLE` clears `fileState.path`** — nothing caught its removal. 84
-  tests passed with `dispose()` leaving the path set. It matters because
-  that null is what makes a late poll answer from a DISPOSED inspector
-  fail the path guard (`if (myPath !== state.fileState.path) return`).
-  Leave it set and a dead viewer gets painted.
-* **`LOADED` stops the poll timer** — caught only by a source-grep for
-  the string `stopPolling()`, which dies with a rename.
+* **`IDLE` clears `fileState.path`** — that null is what makes a late
+  poll answer from a DISPOSED inspector fail the path guard
+  (`if (myPath !== state.fileState.path) return`).  Leave it set and a
+  dead viewer gets painted.
+* **`LOADED` stops the poll timer**.
 
 The third behaviour in that group, § 4.1's settle by the run's state, is
 `test_trajectory_settle_post_load_js.py`'s case table, which drives
@@ -133,12 +129,7 @@ def test_idle_stops_the_timer_and_releases_the_requests():
 
 
 def test_loaded_stops_polling():
-    """A run that has settled is not polled again.
-
-    Checked by a source-grep for the string `stopPolling()` until
-    2026-09-04 — which a rename breaks and which says nothing about
-    whether the timer actually stopped.
-    """
+    """A run that has settled is not polled again."""
     out = _transition("LOADED")
     assert out["timerRunning"] is False, (
         "transition('LOADED') left the poll timer running. A finished run "
@@ -149,9 +140,7 @@ def test_loaded_stops_polling():
 def test_loading_releases_the_previous_files_requests():
     """A file switch must not carry the previous file's work forward: the
     in-flight requests are released, so a late answer for the old file
-    cannot arrive at all.  (The SCF line's rate rides the file's own data
-    since 2026-09-27 and is replaced with it; there is no estimate left in
-    the viewer to empty.)
+    cannot arrive at all.
     """
     out = _transition("LOADING")
     assert sorted(out["aborted"]) == ["load", "poll"], (
@@ -268,9 +257,7 @@ def test_refresh_reloads_the_file_on_screen():
 
     `results.md` § 5: Refresh is a clean reload, not a nudge — it goes
     through `loadByPath`, so `transition('LOADING')` runs the whole reset
-    matrix. Until 2026-09-04 the only guard on this was a grep for the
-    string `_wireRefreshListener();`, so deleting the registration left
-    the button inert with the suite green.
+    matrix.
     """
     out = _refresh(path="/p/run.molwatch.log")
     assert out["wired"] is True, (
@@ -359,16 +346,12 @@ def test_a_legacy_flat_name_writes_THROUGH_to_its_bucket():
 def test_every_target_lands_the_machine_and_settles_the_timer(target, timer):
     """Each target reaches its own branch and leaves the poll timer right.
 
-    Checked by grepping for `state.machine = "<NAME>"` until 2026-09-04,
-    which says a branch exists and nothing about what it does. WATCHING
-    is the one that must leave the timer RUNNING — a run still going is
+    WATCHING is the one that must leave the timer RUNNING — a run still going is
     the whole reason the viewer polls at all.
 
     **The harness starts the timer in the OPPOSITE state**, or the
     assertion is free: with the timer already running, "WATCHING leaves
-    it running" passes whether or not the branch starts it. Measured —
-    the first version of this test survived deleting `startPolling()`
-    from the WATCHING branch, which is a live run that never updates.
+    it running" passes whether or not the branch starts it.
     """
     out = _transition(target, timer_running=not timer)
     assert out["machine"] == target
@@ -379,25 +362,18 @@ def test_every_target_lands_the_machine_and_settles_the_timer(target, timer):
 
 
 def test_error_stops_the_poll_but_does_NOT_release_its_controller():
-    """What the ERROR branch actually does — which is not what I said.
+    """What the ERROR branch actually does.
 
-    This was `test_error_releases_the_request_that_failed`, asserting
-    *"a failed load must not leave its controller behind"*.  It does
-    leave it behind: `lib/trajectory/core.js`'s ERROR branch calls
-    `stopPolling()`, clears `pollInFlight` and never calls `.abort()` —
-    deliberately, per the branch's own comment: *"keeps last-good
-    fileState in place so the user still sees what they had."*  IDLE and
-    LOADING abort here; LOADED and ERROR do not.  The old test's one
-    assertion was `timerRunning is False` — an exact duplicate of the
-    `("ERROR", False)` row of the parametrized test above — so it passed
-    while its name and docstring taught the opposite of the code.
+    `lib/trajectory/core.js`'s ERROR branch calls `stopPolling()`, clears
+    `pollInFlight` and never calls `.abort()` — deliberately, per the
+    branch's own comment: *"keeps last-good fileState in place so the user
+    still sees what they had."*  IDLE and LOADING abort here; LOADED and
+    ERROR do not.
 
     **Mind which `core.js`.**  There are two, and they differ here:
     `lib/spectra/core.js` uses `watchAbort` / `watchTimer` and aborts on
-    IDLE, LOADING, LOADED **and** (since 2026-09-05) ERROR; this one uses
-    `loadAbort` / `pollAbort` / `pollTimer` and aborts on two.  The first
-    version of this docstring described the spectra file's branches while
-    testing this one.
+    IDLE, LOADING, LOADED **and** ERROR; this one uses
+    `loadAbort` / `pollAbort` / `pollTimer` and aborts on two.
 
     Asserted here as OBSERVED behaviour, not as a rule: no document
     states an abort contract for ERROR, and inventing one in a test is
@@ -412,7 +388,7 @@ def test_error_stops_the_poll_but_does_NOT_release_its_controller():
         "ERROR now aborts its in-flight requests — real behaviour changed, "
         f"and no document says which way is right: {out['aborted']}")
 
-    # The three that DO release, so the contrast is measured rather than
+    # The two that DO release, so the contrast is measured rather than
     # asserted from memory.
     for target in ("IDLE", "LOADING"):
         assert _transition(target, timer_running=True)["aborted"], (
@@ -422,12 +398,10 @@ def test_error_stops_the_poll_but_does_NOT_release_its_controller():
 def test_starting_the_poll_wires_no_listener():
     """`startPolling` is timer-only.
 
-    The Refresh listener is wired ONCE at mount. It used to be wired
-    here, so every load stacked another handler and one Refresh fired N
-    loads; only dispose tore them down. This runs the real function with
-    a spying registrar and asserts it registered nothing — the previous
-    guard was a regex over the function body, which a handler added
-    through any other spelling would slip past.
+    The Refresh listener is wired ONCE at mount: wired here, every load
+    would stack another handler and one Refresh would fire N loads. This
+    runs the real function with a spying registrar and asserts it
+    registered nothing.
     """
     node = shutil.which("node")
     if node is None:
@@ -470,9 +444,8 @@ def _poll_once(*, changed, run, held=None, path="/p/run.molwatch.log"):
 
     Everything it reaches is faked at the edge — `fetch`, the applier,
     the badge, the status line — except `_settlePostLoad`, which is lifted
-    from the module and run for real. That is the point: the previous guard
-    was a grep for the string `_settlePostLoad` inside `pollOnce`'s body,
-    which says the call is written and nothing about whether it happens.
+    from the module and run for real. That is the point: the call has to
+    happen, not merely be written.
 
     ``changed`` -- whether the answer brings new content; ``run`` -- the
     run's state it carries (``"absent"`` for none: a poll with new content

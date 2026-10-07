@@ -1,7 +1,7 @@
 """K1: narrow log filter for client-disconnect SSL EOFs.
 
-History
-=======
+Why
+===
 
 The trajectory pollOnce (60s cadence with in-flight guard) +
 spectra watchTick (2s cadence with in-flight guard) BOTH fire
@@ -11,10 +11,9 @@ sees ``ssl.SSLError: [SSL: UNEXPECTED_EOF_WHILE_READING]`` and
 logs the full ssl.c traceback at ERROR level.
 
 Under heavy live-poll use the user's log filled with these
-benign tracebacks.  Round-3 R3-C security audit flagged that a
-blanket SSL-error demote would silence real TLS-downgrade probes
-+ cipher-fingerprinting; the right fix is a NARROW filter that
-matches ONLY the ``UNEXPECTED_EOF_WHILE_READING`` symbol.
+benign tracebacks.  A blanket SSL-error demote would silence real
+TLS-downgrade probes + cipher-fingerprinting, so the filter is NARROW:
+it matches ONLY the ``UNEXPECTED_EOF_WHILE_READING`` symbol.
 
 What this file pins
 ===================

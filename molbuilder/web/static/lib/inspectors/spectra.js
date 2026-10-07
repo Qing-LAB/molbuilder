@@ -19,9 +19,7 @@
  * no extra click (web/spectra.md § 7).
  *
  * Mount flow + error-card rendering live in
- * lib/inspectors/_partial_inspector_factory.js (DRY'd 2026-06-09,
- * task #308; pre-fix this wrapper carried a ~150-LoC scaffold
- * identical to trajectory.js's).
+ * lib/inspectors/_partial_inspector_factory.js.
  */
 import { mount as mountVibrationView } from "/static/lib/vibrationview/index.js";
 

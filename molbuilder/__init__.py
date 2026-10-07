@@ -23,11 +23,10 @@ Public API -- each builder from its own module:
     >>> print(s.to_pyscf(as_string=True))
     >>> atoms = s.to_ase()
 
-    # SIESTA input file:
-    >>> from molbuilder.siesta import SiestaConfig, render_fdf
-    >>> print(render_fdf(s, SiestaConfig(system_label="bdt", kgrid=(1,1,1))))
+    # A SIESTA or PySCF deck is written by `molbuilder jobset prep`, from a
+    # calculation's description (docs/execution/running-a-job.md).
 
-    # Browser UI for interactive building + SIESTA input generation:
+    # Browser UI for interactive building:
     $ molbuilder serve
 """
 
@@ -40,11 +39,9 @@ __version__ = "1.1.0"
 
 #: THE BUILDERS ARE NOT RE-EXPORTED HERE.  Python loads this module before
 #: any module inside the package, so whatever it imports loads under every
-#: one of them: re-exporting the peptide and nucleic builders made
-#: `molbuilder.constants` -- which imports nothing -- load 9 molbuilder
-#: modules, and put the domain layer under every core module (the layer
-#: review, 2026-09-27; `architecture.md` § 3).  Each caller imports the
-#: builder it uses from its own module.
+#: one of them, and the domain layer would load under every core module
+#: (`architecture.md` § 3).  Each caller imports the builder it uses from its
+#: own module.
 __all__ = [
     "Structure",
     "__version__",
@@ -90,11 +87,6 @@ def repo_root() -> Path:
     that chain (``references.py``) may import it at module level.
     """
     return Path(__file__).resolve().parent.parent
-
-
-# --------------------------------------------------------------------- #
-#  load() -- read existing XYZ or PDB into a Structure                  #
-# --------------------------------------------------------------------- #
 
 
 # THERE IS NO `load()` HERE, and that is the rule, not an omission.  Reading a

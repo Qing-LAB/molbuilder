@@ -11,8 +11,8 @@ Properties under guard, each named for its failure:
 * the rulings are refusals, not conventions: junction required, the
   mandatory (Q1), bias starts at 0.0 (the .TSDE chain starts from
   equilibrium), slots/bias on a non-transport task refused;
-* `init --calculation transport` writes the five-stage task.json and
-  refuses every option whose answer arrives via the citation
+* `init --calculation transport` refuses every option whose answer
+  arrives via the citation
   (--structure / --psml-lib / --vacuum / --stage-strategy);
 * the identity derives from the citation — two transports of two
   junctions can never share an id.
@@ -127,10 +127,7 @@ def tree(tmp_path, monkeypatch):
     attempt = (root / "BDT-Au" / "optimization" / "JunctionRelax"
                / "01_coarse" / "run-2")
     attempt.mkdir(parents=True)
-    # Its deck and a `.XV` written by hand, to stand for a finished
-    # relaxation the one citing test read, went with that test 2026-10-04
-    # (`process/testing.md` § 6); the refusals below fire before a citation
-    # is read.
+    # The refusals below fire before a citation is read.
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
     return root
 
@@ -142,8 +139,6 @@ class TestInitCLI:
         return CliRunner().invoke(jobset_group,
                                   ["init", "--engine", "siesta"] + args)
 
-    # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-    # 1 test here cited a relaxation whose `.XV` was written by hand (`process/testing.md` § 6).
 
     def test_the_cited_calculation_must_exist_in_the_tree(self, tree):
         r = self._invoke([

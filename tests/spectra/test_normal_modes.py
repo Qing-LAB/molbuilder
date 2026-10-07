@@ -2,7 +2,7 @@
 
 ``science/normal-modes.md`` § 7 says the rules are checked through the
 results.  Tier 1 here needs no quantum chemistry: positions in, a count
-and a set of patterns out.  Every row of § 7.6's table is a system where
+and a set of patterns out.  Every row of § 7's table is a system where
 a table of cases gets the answer wrong somewhere -- the two collinear
 traps (CO2 with both O held, acetylene with both C held) and the
 water-dimer over-removal guard are the argument for computing a rank

@@ -5,7 +5,6 @@ Verifies that:
   * Structure round-trips through PDB (lossless for atom names,
     residue ids, residue names, chain ids, plus positions)
   * StructureCodec dispatches by extension AND reads the sidecar pair
-  * loaded structures feed render_fdf without further preparation
   * malformed inputs raise informative errors
 """
 
@@ -39,17 +38,8 @@ def test_from_xyz_text():
 
 
 def test_a_path_is_refused_and_the_door_is_named(tmp_path):
-    """These two tests read `Structure.from_xyz(path)` until 2026-09-07.
-
-    That reader took a path OR a document and told them apart with
-    `os.path.isfile`, which cost two things: a mistyped path came back as a
-    malformed document, and the project had a second way to read a structure
-    file -- one that skipped the `.molstruct.json`. The capability is gone, so
-    the test that covered it now covers what replaced it.
-
-    Both spellings of the mistake are refused, `Path` and `str`, because
-    `str(tmp_path / "pep.xyz")` is the one that used to slip through and
-    produce *"Expected xyz header but got: invalid literal for int()"*.
+    """A path is refused, naming the one door, `StructureCodec`, which also
+    reads the `.molstruct.json`; both spellings, `Path` and `str`.
     """
     s = build_peptide("ARNDC")
     p = tmp_path / "pep.xyz"
@@ -70,7 +60,7 @@ def test_a_path_is_refused_and_the_door_is_named(tmp_path):
 
 
 def test_the_text_the_file_holds_still_parses(tmp_path):
-    """The reader did not get narrower about DOCUMENTS, only about paths."""
+    """The text the file holds parses as a document."""
     s = build_peptide("ARNDC")
     p = tmp_path / "pep.xyz"
     p.write_text(s.to_xyz())
@@ -143,22 +133,12 @@ def test_from_pdb_first_model_only():
 
 
 # --------------------------------------------------------------------- #
-#  Top-level molbuilder.load                                            #
+#  StructureCodec                                                       #
 # --------------------------------------------------------------------- #
 
 
 def test_the_door_dispatches_by_extension_and_reads_the_pair(tmp_path):
-    """`StructureCodec` is the one reader, and it reads BOTH files.
-
-    This tested `molbuilder.load()` until 2026-09-07.  That function read the
-    geometry and not the `.molstruct.json` beside it, so everything it handed
-    back was quietly smaller than what was on disk -- which is how `jobset
-    init` came to write descriptions with the author's regions and frozen
-    atoms missing.  It is deleted; the codec is the door.
-
-    The pair half is asserted here rather than only the dispatch, because
-    dispatch is what the old function got right.
-    """
+    """`StructureCodec` is the one reader, and it reads BOTH files."""
     from molbuilder.workingcopy_structure import StructureCodec
 
     water = Structure.from_xyz(

@@ -1,0 +1,228 @@
+# WHAT A DECK SAYS -- each thing the description states, written as its
+# engine reads it: `docs/engines/siesta.md`, `docs/engines/pyscf.md`.
+#
+# A deck is written one way, by `jobset prep` -- the engine describes it, the
+# framework renders, writes and checks it (`script-preparation.md` § 4.3) --
+# so every row here is prepped on the road: `jobset init` of a held H2, or of
+# the structure the row gives, then `prep`, and the deck read where prep
+# wrote it (`process/testing.md` § 3a).  `tests/test_the_deck.py` runs every
+# case through the one runner every contract table shares
+# (`tests/support/road.py`, `run_road_case`, whose header names each key).
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+machine = "workstation"
+
+[run_base.siesta]
+mpi_np = 1
+omp_threads = 1
+
+[run_base.pyscf]
+threads = 1
+
+# ===================================================================== #
+#  SIESTA                                                                #
+# ===================================================================== #
+
+# A relaxation is bounded by MD.Steps whatever its algorithm: SIESTA 5.4.2
+# reads that one count for CG, Broyden and FIRE, and a count it does not
+# read leaves a single point that reports success.
+[[case]]
+name = "a CG relaxation is bounded by MD.Steps, the one count SIESTA reads"
+stage_strategy = ""
+template = { relax_type = "CG", relax_steps = 42 }
+deck = ["MD.TypeOfRun CG", "MD.Steps 42"]
+
+[[case]]
+name = "...a Broyden one too"
+stage_strategy = ""
+template = { relax_type = "Broyden", relax_steps = 42 }
+deck = ["MD.TypeOfRun Broyden", "MD.Steps 42"]
+
+[[case]]
+name = "...and a FIRE one"
+stage_strategy = ""
+template = { relax_type = "FIRE", relax_steps = 42 }
+deck = ["MD.TypeOfRun FIRE", "MD.Steps 42"]
+
+# One k-point has nothing to parallelise over; several do.
+[[case]]
+name = "a Gamma-only calculation's diagonaliser is not parallelised over k-points"
+deck = ["Diag.ParallelOverK .false."]
+
+[[case]]
+name = "...a periodic one sampling several is"
+structure = { elements = ["H", "H"], positions = [[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]], cell = [10.0, 10.0, 10.0], axis_kind = ["periodic", "periodic", "periodic"] }
+template = { kgrid = [4, 4, 4] }
+deck = ["Diag.ParallelOverK .true."]
+
+# The labels are the person's: the deck's record carries every one of them,
+# as the structure holds it (`model/structure-annotations.md`).
+[[case]]
+name = "every label the structure carries reaches the deck's record"
+structure = { elements = ["H", "H", "H", "H", "H", "H"], positions = [[3.0, 7.0, 7.0], [4.5, 7.0, 7.0], [6.0, 7.0, 7.0], [7.5, 7.0, 7.0], [9.0, 7.0, 7.0], [10.5, 7.0, 7.0]], cell = [14.0, 14.0, 14.0], regions = { frozen_atoms = [0, 5], left_lead = [0, 1], molecule = [2, 3], right_lead = [4, 5] } }
+deck = ['"frozen_atoms":[0,5]', '"left_lead":[0,1]', '"molecule":[2,3]', '"right_lead":[4,5]']
+
+# What the engine will read is recorded in the run's output, inside one
+# fence either engine's reader reads (`script-preparation.md` § 4.2b): a
+# SIESTA run's script echoes it, a PySCF deck prints it.
+[[case]]
+name = "a SIESTA run script records its effective parameters in the fence either engine's reader reads"
+run_sh = ["# === molbuilder effective-parameters BEGIN ===", "# === molbuilder effective-parameters END ==="]
+
+# ===================================================================== #
+#  PySCF                                                                 #
+# ===================================================================== #
+
+[[case]]
+name = "...a PySCF deck in the same fence"
+engine = "pyscf"
+deck = ["# === molbuilder effective-parameters BEGIN ===", "# === molbuilder effective-parameters END ==="]
+
+# A deck is one rung (`stages.md` § 1.1a), so it relaxes through one call,
+# `relax`, which returns geomeTRIC's converged flag, carrying the rung's six
+# convergence targets.
+[[case]]
+name = "a PySCF relaxation is one call, carrying the rung's six geomeTRIC targets"
+engine = "pyscf"
+deck = ["convergence_energy =", "convergence_grms =", "convergence_gmax =", "convergence_drms =", "convergence_dmax =", "maxsteps ="]
+deck_once = ["mol_eq, _GEOM_CONVERGED = _mb_relax("]
+
+[[case]]
+name = "...and the relaxed geometry is evaluated through mf.reset, which drops the integrals of the geometry before it"
+engine = "pyscf"
+deck = ["mf.reset(mol_eq)"]
+
+[[case]]
+name = "...a deck that does not optimize relaxes nothing and saves no relaxed geometry"
+engine = "pyscf"
+template = { optimize = false }
+deck = ["e = mf.kernel()"]
+deck_lacks = ["= _mb_relax(", "_save_structure(mol_eq"]
+
+# The targets the progress log draws, in its own units: geomeTRIC's
+# Ha/Bohr times 51.42208619 (the ASE convention) -- 2.0e-4 Ha/Bohr is
+# 0.0102844 eV/A, 1.0e-4 is 0.0051422.
+[[case]]
+name = "the rung's convergence targets reach its progress log in eV/A"
+engine = "pyscf"
+template = { geom_gmax = 2.0e-4, geom_grms = 1.0e-4, geom_max_steps = 100 }
+deck = ["'01_coarse': {", "'max_force_tol_eV_per_A': 0.0102844", "'rms_force_tol_eV_per_A': 0.0051422", "'max_geom_iter': 100,"]
+
+# The progress log's writer writes its whole header when it is built, so
+# a runtime fact written after it is lost.
+[[case]]
+name = "every runtime fact is written before the progress log's writer is built"
+engine = "pyscf"
+deck_order = ["_RUNTIME_INFO[", "_mb_MolwatchEmitter("]
+
+# The water permittivity is the Minnesota solvent set's (Gaussian's and
+# PySCF's own), 78.3553.
+[[case]]
+name = "a solvent stated puts the deck in PCM, with its permittivity"
+engine = "pyscf"
+template = { solvent = "water" }
+deck = ["from pyscf.solvent import pcm", "mf = mf.PCM()", "mf.with_solvent.eps = 78.3553"]
+
+[[case]]
+name = "density fitting turned off writes no density fit"
+engine = "pyscf"
+template = { density_fit = false }
+deck_lacks = ["mf = mf.density_fit("]
+
+[[case]]
+name = "a gradient tolerance stated is written, to two significant figures"
+engine = "pyscf"
+template = { scf_conv_tol_grad = 1.0e-6 }
+deck = ["mf.conv_tol_grad = 1.0e-06"]
+
+[[case]]
+name = "...and none stated writes none: PySCF derives its own -- nor a second-order solver none asked for"
+engine = "pyscf"
+deck_lacks = ["mf.conv_tol_grad =", "mf = mf.newton()"]
+
+# The second-order solver wraps the assembled mean field: after the GPU's
+# promotion, which wants the plain class, and before the stability check,
+# which must ask the object that runs.
+[[case]]
+name = "a second-order solver wraps the mean field after the GPU promotion and before the stability check"
+engine = "pyscf"
+template = { scf_soscf = true, spin_treatment = "unrestricted", unpaired_electrons = 2 }
+deck_order = ["mf = _mb_to_gpu(mf) if _USING_GPU else mf", "mf = mf.newton()", "_mb_stability = getattr(mf, 'stability', None)"]
+
+# An open shell's stability is checked before the optimizer moves an atom --
+# optimizing on a saddle gives a wrong geometry -- repaired rather than
+# reported, judged by the energy (a degenerate shell's orbitals rotate
+# freely), and said when it cannot run (`engines/pyscf.md` § 7.3).
+[[case]]
+name = "an open shell's stability is checked before the optimizer, repaired, judged by its energy, and said when it cannot be"
+engine = "pyscf"
+template = { method = "HF", spin_treatment = "unrestricted", unpaired_electrons = 2 }
+deck = ["mf.make_rdm1(_internal, mf.mo_occ)", "mf.kernel(mf.make_rdm1(", "if e < _e_prev - _MB_STABILITY_ETOL:", "if not callable(_mb_stability):", "except NotImplementedError", "NOT CHECKED"]
+deck_order = ["_internal = _mb_stability()[0]", "mol_eq, _GEOM_CONVERGED = _mb_relax("]
+
+[[case]]
+name = "...and an open-shell single point runs its SCF once"
+engine = "pyscf"
+template = { method = "HF", spin_treatment = "unrestricted", unpaired_electrons = 2, optimize = false }
+deck_once = ["e = mf.kernel()"]
+
+# Hartree-Fock has no functional and no grid; dispersion is not a DFT
+# question, so HF takes it like any method (`engines/pyscf.md` § 7a).
+[[case]]
+name = "a Hartree-Fock deck names no functional and no grid, and keeps its dispersion"
+engine = "pyscf"
+template = { method = "HF" }
+deck = ['mf.disp = "d3bj"']
+deck_lacks = ["mf.xc =", "mf.grids.level ="]
+
+[[case]]
+name = "...and dispersion none writes none"
+engine = "pyscf"
+template = { method = "HF", dispersion = "none" }
+deck_lacks = ["mf.disp ="]
+
+# A core potential is applied only where both halves are stated -- which
+# potential, on which atoms; either half empty means none, never one picked
+# (`docs/science/overview.md`, gap 8).
+[[case]]
+name = "no core potential stated writes none"
+engine = "pyscf"
+deck_lacks = ["ecp ="]
+
+[[case]]
+name = "...nor a potential named for no atoms"
+engine = "pyscf"
+template = { ecp = "lanl2dz", ecp_atoms = [] }
+deck_lacks = ["ecp ="]
+
+[[case]]
+name = "...nor atoms named with no potential"
+engine = "pyscf"
+template = { ecp = "", ecp_atoms = ["*"] }
+deck_lacks = ["ecp ="]
+
+# What a rung reads of the run before it is its `restart` answer's, and
+# nothing else's (`run-identity.md` § 4 rule 2): set to continue, it reads
+# the checkpoint's density and the relaxed geometry where they are -- the
+# geometry before PySCF builds the molecule from the deck's own atoms --
+# whether or not it writes a geometry of its own; set clean, it reads
+# neither, and still writes the checkpoint the next rung reads.
+[[case]]
+name = "a PySCF rung set to continue reads the density and geometry the run before it left, before it builds the molecule"
+engine = "pyscf"
+deck = ['mf.init_guess = "chkfile"']
+deck_order = ['_opt_path = _mb_outfile(JOB + "_optimized.xyz")', "mol = gto.M("]
+
+[[case]]
+name = "...whether or not it writes a geometry of its own"
+engine = "pyscf"
+template = { save_optimized_xyz = false }
+deck = ['_opt_path = _mb_outfile(JOB + "_optimized.xyz")']
+
+[[case]]
+name = "...set clean, it reads neither, and still writes its checkpoint"
+engine = "pyscf"
+template = { restart = "clean" }
+deck = ["mf.chkfile = "]
+deck_lacks = ['mf.init_guess = "chkfile"', '_opt_path = _mb_outfile(JOB + "_optimized.xyz")']

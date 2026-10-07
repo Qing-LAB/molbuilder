@@ -1,12 +1,6 @@
 """Shared fixtures for tests/validation/ — the per-submodule
 validator test files.  Per docs/process/testing.md, the
-tests/validation/ tree mirrors molbuilder/validation/.  The
-water_struct fixture + _vacuum_cell helper are used by tests across
-geometry, metadata, chemistry, sidecar, siesta, and pyscf modules.
-
-Split from the pre-2026-06-13 flat tests/test_validation.py (1479 LoC)
-on 2026-06-13 — see commit log.  The split is purely organisational;
-no test body or fixture was modified.
+tests/validation/ tree mirrors molbuilder/validation/.
 """
 
 
@@ -31,7 +25,7 @@ from molbuilder.validation import report, validate
 
 @pytest.fixture
 def water_struct():
-    # A planar molecule: give it a real per-side vacuum so render_fdf's
+    # A planar molecule: give it a real per-side vacuum so the deck's
     # derived cell isn't degenerate on the out-of-plane axis (vacuum=0 would
     # make a zero-thickness box -> hard error; structure-periodicity.md).
     return Structure(
@@ -44,12 +38,5 @@ def water_struct():
         title="water",
         vacuum=(12.0, 12.0, 12.0),
     )
-
-
-
-
-# --------------------------------------------------------------------- #
-#  Issue dataclass invariants                                           #
-# --------------------------------------------------------------------- #
 
 

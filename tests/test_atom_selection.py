@@ -468,7 +468,7 @@ class TestRoundTrip:
         """The wire form is `{"op": "<kind>", ...}` with JSON-able leaf values.
 
         A CROSS-LANGUAGE contract, which is why it is asserted rather than left to
-        review: `_filterToRule` in `_selection-store-impl.js` builds these dicts by
+        review: `rowToRule` in `lib/molview/stores.js` builds these dicts by
         hand (`structure-annotations.md` § 6 -- `by_element` to `by_element`,
         `by_index` to `by_index_range`, `by_residue` to `by_residue_name`,
         `by_label` to `by_region`), and nothing in Python fails when the two sides

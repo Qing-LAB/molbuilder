@@ -13,9 +13,7 @@
  *   * renderForm(container, schema) -- replaces container's
  *     contents with a stack of <fieldset> sections holding the
  *     schema's fields.  Each input's id matches schema field.id
- *     (typically "<prefix>-<field-name>"), so the existing
- *     compatibility engine + sessionStorage persistence keep
- *     working unchanged.
+ *     (typically "<prefix>-<field-name>").
  *
  *   * collectForm(container, schema) -- what the form HOLDS, one entry
  *     per field: ``{kgrid: [4,4,1], mesh_cutoff: null, ...}``.  A blank is
@@ -125,13 +123,7 @@
         // Skip the badge when the label IS the keyword.  Two forms
         // count as "is the keyword" -- (a) exact match
         // ("MeshCutoff") and (b) match with a unit suffix
-        // ("MeshCutoff (Ry)").  Without (b) the label-text rendered
-        // by labelText() includes the unit, and the comparison
-        // ``key.toLowerCase() === lbl.toLowerCase()`` would never
-        // hit for any unit-bearing field -- so MeshCutoff /
-        // PAO.EnergyShift / DM.Tolerance etc. all showed a duplicate
-        // badge of the same text right of the label.  Caught by the
-        // 2026-05-26 review.
+        // ("MeshCutoff (Ry)"), because a label may carry its unit.
         const lblBare = lbl.replace(/\s*\([^)]*\)\s*$/, "").trim();
         if (key.toLowerCase() === lbl.toLowerCase()) return null;
         if (key.toLowerCase() === lblBare.toLowerCase()) return null;
@@ -165,10 +157,7 @@
      * optional item's own blank (its `null_label`, "(auto)"); else the
      * kind's default.  Never the first choice of a list, never a zero in a
      * triple, never an unticked box -- a value the person did not choose is
-     * never presented as if they had.  (A select showed its first choice
-     * and a triple 0 0 0 until 2026-09-30, and both were sent: the M11
-     * review's T-F25.  The Build form drew every default as a value, so a
-     * template could not tell the person's 300 Ry from nobody's.) */
+     * never presented as if they had. */
     function fieldState(f, ctx) {
         const has = (v) => v !== undefined && v !== null;
         // A field the rung fixes shows the rung's answer and no hint: the
@@ -233,8 +222,7 @@
         const sel = el("select", { id: f.id });
         // THE BLANK OPTION, first and always: not chosen.  An optional
         // item's blank is its own answer and says so (`null_label`); any
-        // other says what then applies.  Without it a select nobody touched
-        // showed -- and sent -- its first choice (T-F25).
+        // other says what then applies.
         sel.appendChild(el("option", { value: "" },
             (f.optional || f.null_option) ? (f.null_label || "(default)")
                                            : "(" + blankWords(f, st, ctx) + ")"));
@@ -298,16 +286,6 @@
         return inp;
     }
 
-    /* (The stage-table field kind -- makeStageTable, its presets, the
-     * section wrapper and the collect/setValues arms -- retired at the
-     * U6 close, 2026-08-22.  Its Python producer
-     * ``_stagespec_to_field_schemas`` died when stages.md § 1.1a made a
-     * PySCF ladder N decks, so no schema could carry the kind; the
-     * renderer, reached by nothing, stayed until the user's cleanup ask.
-     * The live stage table is Task setup's own, hand-rolled in
-     * task-setup/viewer.js over task.json.) */
-
-
     // The two triple kinds, so the places that special-case a triple ask one
     // question instead of listing both.
     const TRIPLE_KINDS = ["int-triple", "float-triple"];
@@ -325,11 +303,8 @@
         // which is the Gamma-centred grid the user was moving off.
         //
         // THE FIELD'S OWN ID is on the wrapper -- one id per field, as every
-        // other kind has -- so a finding about the mesh lands beside it;
-        // with only the cells' ids it fell back to the card (the K3 review).
-        // A blank cell is blank, its hint the component that then applies:
-        // `[0, 0, 0]` stood in for a mesh nobody gave until 2026-09-30, and
-        // was sent (T-F25).
+        // other kind has -- so a finding about the mesh lands beside it.
+        // A blank cell is blank, its hint the component that then applies.
         const wrap = el("span", { class: "schema-int-triple", id: f.id });
         const drawn = Array.isArray(st.drawn) ? st.drawn : null;
         const hint = Array.isArray(st.hint) ? st.hint : null;
@@ -345,12 +320,8 @@
             });
             if (hint && hint[i] != null) cellInput.placeholder = String(hint[i]);
             // Bounds apply PER COMPONENT -- a triple's ``range`` bounds each
-            // axis, not their sum.  Missing until 2026-08-15: makeNumber
-            // honoured f.min/f.max and this did not, so kgrid accepted 0 and
-            // -4 (a Monkhorst-Pack count is a COUNT) and the displacement
-            // accepted anything at all, while both declared no range to
-            // honour either.  Same two lines as the scalar path, so the two
-            // controls cannot drift on what a bound means.
+            // axis, not their sum.  Same two lines as the scalar path, so
+            // the two controls cannot drift on what a bound means.
             if (f.min !== undefined) cellInput.min = f.min;
             if (f.max !== undefined) cellInput.max = f.max;
             // A COMPONENT THIS KIND FIXES (`kmesh.fixed`, engines/siesta.md
@@ -372,13 +343,9 @@
     }
 
     /**
-     * Long help-text strings (psml_lib at ~39 lines, basis_size's
-     * convergence advice, etc.) used to live in ``title=`` -- browsers
-     * truncate native tooltips to ~one OS-dependent line and the
-     * paragraph-length contents were unreadable.  For multi-line help
-     * we now render a click-to-expand ``<details>`` element with the
-     * full text in a styled ``.schema-help-body``.  Short help still
-     * goes into ``title=`` (single-line tooltip is fine for one-liners).
+     * Long help renders as a click-to-expand ``<details>`` with the full
+     * text in a styled ``.schema-help-body``, because browsers truncate
+     * native tooltips to about one line; short help goes into ``title=``.
      * Threshold: 80 chars or first newline.
      */
     function helpIsLong(help) {
@@ -496,17 +463,10 @@
                 }
                 input = makeText(f, st);
         }
-        // The caption is a SPAN, not a bare text node (2026-09-15).  A
-        // text node inside a flex/grid <label> becomes an ANONYMOUS item
-        // that no selector can reach, and three defects followed from
-        // that one fact: the `.is-advanced` bullet had to be a ::before
-        // on the label, which in a column layout is an item of its own
-        // and drew the "•" on a line by itself; the engine-key badge
-        // stretched to the label's full width and read as a second input
-        // box; and a checkbox row could only be `flex-direction: row`,
-        // so checkbox + caption + badge + help shared one line and the
-        // caption wrapped to three.  With the caption addressable,
-        // `form-schema.css` places all three.
+        // The caption is a SPAN, not a bare text node: a text node inside
+        // a flex/grid <label> becomes an ANONYMOUS item that no selector
+        // can reach.  With the caption addressable, `form-schema.css`
+        // places it, the badge and the help.
         const caption = el("span", {class: "schema-field-text"},
                            labelText(f));
         if (f.kind === "checkbox") {
@@ -561,9 +521,7 @@
         }
         // Long help: append the click-to-expand <details> AFTER the
         // input + badge so it doesn't push them out of the layout grid.
-        // f.refs rides along (U5, 2026-08-21): this is the path most
-        // fields take, and dropping the parameter here meant the
-        // catalogue's citations rendered nowhere reachable.
+        // f.refs carries the catalogue's citations.
         if (helpIsLong(f.help)) {
             labelEl.appendChild(makeHelpDetails(f.help, f.refs));
         }
@@ -572,20 +530,15 @@
 
     /* ---------- public API ---------- */
 
-    // Workflow-group metadata (2026-06-13).  Each .workflow-group--<role>
+    // Workflow-group metadata.  Each .workflow-group--<role>
     // card gets a label + a subtitle explaining "what changes when".
     // The roles come from each item's catalogue ``group``, emitted as
-    // ``workflow_group`` by ``_shared.catalogue_to_form_schema``.  Fields whose
-    // section contains only UNTAGGED fields render bare (no workflow-
-    // group wrapper).
+    // ``workflow_group`` by ``_shared.catalogue_to_form_schema``.  UNTAGGED
+    // fields render bare in their own section (no workflow-group wrapper).
     const WORKFLOW_GROUP_META = {
-        // Added 2026-08-15 (user).  These two are what a calculation cannot
-        // be built without -- it needs a name for its output files and a
-        // directory to find pseudopotentials in -- and they were the two
-        // hardest things on the page to find: a card orders its contents by
-        // `category`, so the label sorted under *procedure* near the bottom
-        // of Run profile and the pseudopotential directory under *method* in
-        // the middle, while Run profile's own subtitle promised both.
+        // These two are what a calculation cannot be built without -- it
+        // needs a name for its output files and a directory to find
+        // pseudopotentials in (user, 2026-08-15).
         "setup": {
             title:    "Setup",
             subtitle: "Start here.  What this run is CALLED, and where its "
@@ -613,13 +566,8 @@
                     + "OMP threads, memory).  Scales with system size; "
                     + "does NOT change what counts as converged.",
         },
-        // Added 2026-08-15.  Not a home for leftovers: FOUR of these were
-        // already on the form, mis-filed under "what you're computing"
-        // (write-coor-xmol, write-md-history, write-hs, verbose-comments on
-        // SIESTA; chkfile, log-file, verbose on PySCF), and seven more had no
-        // card at all and rendered loose below the three.  The three cards
-        // answer *what am I computing*, *how tight*, and *how much compute* —
-        // there were always four questions and only three cards.
+        // The three cards above answer *what am I computing*, *how tight*,
+        // and *how much compute*; this one answers *what do I get back*.
         "output": {
             title:    "Output files",
             subtitle: "What the run WRITES — trajectories, logs, geometry "
@@ -628,20 +576,18 @@
         },
     };
 
-    // Render-order of the three workflow-group cards (2026-06-13
-    // reorder, after user feedback):
-    //   1. Run profile — "what is this run?" identity + character
-    //   2. Stage       — "what am I converging to right now?"
-    //   3. Budget      — "how much patience?"
-    // Reads naturally top-to-bottom on first encounter; profile is
-    // the foundation that the other two iterate against.  Untagged
-    // sections render in their original schema order AFTER the
-    // three cards.
-    //   4. Output      — "what do I get back?"  Last because it is the
-    //                    only one you can decide after the physics.
+    // Render-order of the workflow-group cards:
     //   0. Setup       — "what is it called, and where are the pseudos?"
     //                    First because nothing downstream can be answered
-    //                    without it (2026-08-15).
+    //                    without it.
+    //   1. Run profile — "what is this run?" identity + character; the
+    //                    foundation the next two iterate against
+    //   2. Stage       — "what am I converging to right now?"
+    //   3. Budget      — "how much patience?"
+    //   4. Output      — "what do I get back?"  Last because it is the
+    //                    only one you can decide after the physics.
+    // Untagged sections render in their original schema order AFTER the
+    // cards.
     const WORKFLOW_GROUP_ORDER = ["setup", "profile", "stage", "budget",
                                   "output"];
 
@@ -653,8 +599,8 @@
         // `opts.foldable` draws each workflow-group card as a <details>
         // whose header is its <summary>, and `opts.folded(role, fields)`
         // says which start closed.  The Build tab passes nothing and gets
-        // the open <section> cards it always had; the transport tab folds
-        // per rung (transport.md § 3.8.2a).
+        // open <section> cards; the transport tab folds per rung
+        // (transport.md § 3.8.2a).
         opts = opts || {};
         const foldable = !!opts.foldable;
         // WHAT THIS SURFACE'S FIELDS HOLD (form-schema.md § 1.1): the
@@ -672,26 +618,17 @@
         _staleWarnings.clear();
         container.innerHTML = "";
 
-        // Two-pass strategy (2026-06-13 restructure):
+        // Two passes:
         //
         //   PASS 1: walk every field once, bucketing into
-        //     - tagged fields → one of three role buckets, keyed by
-        //       (role, original_section_name) so we can render with
-        //       a legend like "SCF" inside the "Stage convergence
-        //       target" card.
+        //     - tagged fields → their role's bucket, keyed by
+        //       (role, original_section_name) so a card renders with
+        //       a legend like "SCF" inside it.
         //     - untagged fields → original section, rendered bare
-        //       AFTER the three workflow-group cards.
+        //       AFTER the workflow-group cards.
         //
-        //   PASS 2: render in fixed order (stage → budget → system →
-        //     untagged sections) so the visual hierarchy makes the
-        //     "switching the stage selector touches the stage card
-        //     only" claim self-evident at a glance.
-        //
-        // Pre-2026-06-13 the form mixed stage / budget / system
-        // fields inside the same SCF + Relaxation fieldsets, so
-        // switching the stage preset silently rewrote budget +
-        // system fields too.  That was the bug class the user
-        // reported on Au-BDT-Au.
+        //   PASS 2: render the cards in WORKFLOW_GROUP_ORDER, then the
+        //     untagged sections.
         const tagged = {};
         for (const role of WORKFLOW_GROUP_ORDER) {
             tagged[role] = new Map();
@@ -771,8 +708,8 @@
             }
             // Per-card issues panel — appended at the bottom of the
             // card so validator findings tagged with this workflow-
-            // group land WITH the fields they concern.  Per
-            // docs/web/ui-contract.md Rule 2.  Hidden
+            // group land WITH the fields they concern
+            // (docs/web/ui-contract.md § 5.1).  Hidden
             // until ``renderIssues`` populates it; tagged with the
             // role so the JS render path can find it via
             // ``[data-workflow-group="<role>"]``.
@@ -817,8 +754,8 @@
 
     /* What ONE field holds, read as its type -- `null` when it is blank, not
      * chosen (form-schema.md § 1.1).  A value that will not read is refused,
-     * naming the field: a count with a fraction is never rounded (`parseInt`
-     * read 4.5 as 4, the K3 review), and a box holding text the browser
+     * naming the field: a count with a fraction is never rounded, and a box
+     * holding text the browser
      * cannot read is not "blank" (it reports an empty value, and
      * `validity.badInput` is the only witness). */
     function collectField(f, container) {
@@ -946,9 +883,8 @@
     /* What the form holds, FOR SAVING: field by field, a field that will
      * not read keeping the value it was last saved with (``kept``, the
      * previous save, or nothing).  One half-typed field must not cost the
-     * rest of the form its save -- a whole-form read that threw wiped a
-     * tab's saved form, and stopped every later edit being saved (the K7
-     * review).  The Send reads through `collectForm`, which refuses. */
+     * rest of the form its save.  The Send reads through `collectForm`,
+     * which refuses. */
     function heldValues(container, schema, kept) {
         if (!container || !schema || !Array.isArray(schema.sections)) {
             throw new Error("form-schema.heldValues: bad container/schema");
@@ -972,15 +908,9 @@
     async function fetchSchema(engine, opts) {
         // ``opts.calculation`` (optional) narrows the form to the
         // parameters that apply to that calculation KIND
-        // (template.md § 6.3's `calculations` key); absent means
-        // optimization, exactly as the server defaults it.
-        // (A ``structurePath`` forward and a ``body.notice`` hook
-        // stood here for the retired sidecar-prefill flow -- the
-        // server dropped the query silently and no route ever
-        // emitted the notice; both retired at the U6 close.)
+        // (template.md § 6.3's `calculations` key).
         // THE KIND IS STATED by every caller (2026-10-06): the server
-        // refuses a schema request with none, and defaulted it to an
-        // optimization until then.
+        // refuses a schema request with none.
         const calculation = opts && opts.calculation;
         if (!calculation) {
             throw new Error("form-schema.fetchSchema: the calculation kind "
@@ -1016,10 +946,7 @@
      * programmatic change.
      *
      * Used by the Recommended panel's "Reset ticked" (Optimization tab)
-     * and by a tab restoring its saved form.  (The Auto-detect button that
-     * also filled forms through here retired on 2026-09-28: a blank charge
-     * or spin is now the instruction "work it out", and the chemistry card
-     * shows the answer -- `lib/chemistry.js`.)
+     * and by a tab restoring its saved form.
      */
     function setValues(container, schema, values) {
         if (!container || !schema || !Array.isArray(schema.sections)) {

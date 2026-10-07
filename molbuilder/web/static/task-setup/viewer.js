@@ -16,14 +16,6 @@
  *      through the save door and the prep door (`…/save`, `…/prep`).
  *
  * The contract is `docs/web/task-setup.md`; where this disagrees, that wins.
- *
- * THIS HEADER SAID *"IT WRITES NOTHING.  Save is disabled and says why"*
- * until 2026-08-17, while `refreshSave()` computed the button's state per
- * folder and the hint under it read *"Writes task.json into this folder."*
- * The claim was true when the page was read-only and was never revisited when
- * saving landed.  A header drifts in one direction — it keeps describing the
- * smaller, earlier page — so the claim to distrust is always the categorical
- * one: *it writes nothing*, *these are the only calls*.
  */
 
 import { loadCodeMirror, modeFor } from "../lib/codemirror-load.js";
@@ -41,40 +33,20 @@ const TASK_JSON     = "task.json";
  * preflight. */
 const TASK_HANDOVER = "task.1st.json";
 
-/* Which items the MACHINE answers — DERIVED, never listed here.
+/* Which items the MACHINE answers (`machineAnswers` below) — DERIVED, never
+ * listed here.
  *
  * An item whose `resolver` is an allocation resolver may state the question
  * and never the answer (`engines/template.md` § 6.4), so on this page it can
  * only be a point to measure, never a choice.  The server already computes
  * exactly that (`/api/task-setup/sweepable` ships `machine_answers` per
- * item, from the item's own `allocation` flag) and this page already reads
- * that field in two other places.
- *
- * It was a hard-coded `new Set(["mpi_np", "omp_threads", "max_memory_mb"])`
- * until 2026-08-17 — a THIRD answer to a question the page already had two
- * answers to, and not even in the same vocabulary: the constant listed ITEM
- * names while `ALLOCATION_RESOLVERS` holds RESOLVER names, which collide on
- * `omp_threads` by coincidence.  Its own comment named the drift it invited:
- * *"a fourth one would show up as `chosen`, which reads wrong but breaks
- * nothing"* — that is a machine-answered value presented as a person's
- * choice, silently. */
+ * item, from the item's own `allocation` flag). */
 /* WHICH ENGINE the hand-over is for.
  *
  * `engine` is an OBJECT in every artifact this system writes -- `{name: ...}`
- * in `task.1st.json` and in `task.json` alike -- so the name is `.engine.name`.
- * This read `.engine` and wrapped it in `String()`, which produced the literal
- * `"[object Object]"`, and everything downstream of it went quiet rather than
- * loud: the sweepable fetch answered `400 unknown engine`, the cached answer
- * became the empty list, and the machine card then reported the OPPOSITE of
- * the truth -- *"every sweepable setting is already listed"*, disabled, with
- * nine settings available and none listed.  `use_gpu` is one of the nine,
- * so the surface `task-setup.md` § 6.2 makes the ONE place a GPU is chosen was
- * inert on the hand-over path, which is the only path the UI offers.
- *
- * `setShape` twelve lines down had always read it correctly.  Two accessors
- * for one field is the shape of this bug; one of them is now gone. */
+ * in `task.1st.json` and in `task.json` alike -- so the name is `.engine.name`. */
 /** The engine of the open description or hand-over -- `""` when the page
- *  holds neither, never a guess: it read SIESTA for that until 2026-10-06. */
+ *  holds neither, never a guess. */
 function _handoverEngine(over) {
     const from = (o) => (o && o.engine && o.engine.name) || "";
     return String(from(over) || from(_handover));
@@ -90,11 +62,6 @@ function machineAnswers(name) {
  * ships it (`/api/task-setup/sweepable`).  Whether the scheduler answers it is
  * the `machine_answers` flag beside it.  So the note is those two facts read
  * together, and there is nothing to keep in step.
- *
- * It was a hand-typed `ROW_NOTE` map until 2026-08-17 — the LAST of the
- * copies of "the scheduler answers mpi_np", which that one fact had been
- * written in six times across the tree.  Its own comment said what it was:
- * *"a name the catalogue carries would be better."*
  */
 function rowNote(name) {
     const it = (_sweep || []).find(i => i.name === name);
@@ -105,14 +72,9 @@ function rowNote(name) {
 }
 
 let _cm = null;
-/* WHAT IS ACTUALLY IN THE FOLDER -- "" when nothing is.  This replaced
- * `_loadedText`, the last text PUT INTO the editor, which the cards change all
- * the time; the question "is there something unsaved" is about the FILE, and
- * answering it from the last write said no every time a card had just
- * written the buffer.
- * That was invisible while the editor was always on screen with its Save
- * button; folding it (`task-setup.md` 9a.1) made it the difference between
- * seeing your unsaved work and not. */
+/* WHAT IS ACTUALLY IN THE FOLDER -- "" when nothing is.  The question "is
+ * there something unsaved" is about the FILE, never the last text put into
+ * the editor, which the cards change all the time. */
 let _diskText = "";
 let _dir        = "";     // the folder currently open
 let _shape      = "";     // "" until chosen — never defaulted (§ 4)
@@ -127,7 +89,6 @@ let _handover   = null;   // the parsed task.1st.json, in handover mode
  * § 9a) -- the model is a convenience for the table, never the source. */
 let _task       = null;
 let _reparse    = null;   // debounce for the editor -> model re-parse
-                          // (this page composes no token of its own)
 
 const $ = (id) => document.getElementById(id);
 
@@ -246,7 +207,7 @@ function renderStages(task) {
         // the server's answer for THIS folder's kind (`task-setup.md` § 9):
         // a kind whose rungs own none of a tier's fields -- transport --
         // gets an empty list, and a row draws no menu rather than one that
-        // would add columns `prep` refuses (plan W31, 2026-09-24; archived 2026-09-29).
+        // would add columns `prep` refuses.
         let preset = null;
         if ((_presets || []).length) {
             preset = el("select", { class: "ts-preset",
@@ -361,38 +322,24 @@ function renderStages(task) {
  *
  * THE BROWSER DOES NOT ENUMERATE IT.  `/api/task-setup/bench-grid` hands
  * the axes to `bench_inputs` -- the one enumerator, the same one `prep`
- * runs -- and returns its report.  A grid computed here would be the
- * second, drifting decider that the whole cross-out rule was rebuilt to
- * remove: the browser would say a cell is fine and `launch` would refuse
- * it, which is exactly the failure the person hit.
+ * runs -- and returns its report.  A grid computed here would be a second
+ * decider: the browser would say a cell is fine and `launch` would refuse it.
  *
  * THE AXES SENT ARE THE MODEL'S, NOT THE FILE'S, so the list tracks
  * typing rather than the last save. */
 let _fitTimer = null;
 let _fitSeq   = 0;
-/* THE AXES THE ROWS WERE PAINTED FROM.  `renderMachine` takes the task as
- * an ARGUMENT and is called with the handover object in handover mode --
- * so reading the module's `_task` here described a different object than
- * the rows above, which is the two-sources bug in miniature.  The rows and
- * the list answer from one value or they can disagree. */
 /* ===================================================================== *
  *  WHAT BELONGS TO THE OPEN FOLDER -- one object, replaced whole.
  *
  * `web/task-setup.md` § 2.1: *"the page holds no state of its own… no
  * in-progress buffer that outlives a directory change."*  These are the
- * buffers.  Unlike the facts in groups 1-2, they cannot come from the
- * folder's answer -- they are what the person has typed, chosen or opened,
- * and the answers the page has shown -- so the rule is kept by SCOPING
- * them rather than by fetching them.
+ * buffers.  They cannot come from the folder's answer -- they are what the
+ * person has typed, chosen or opened, and the answers the page has shown --
+ * so the rule is kept by SCOPING them rather than by fetching them.
  *
- * WHY AN OBJECT AND NOT SIX VARIABLES.  They were six, cleared by
- * `_resetPerFolderState()`: a hand-written list in a module with
- * twenty-five module variables.  A list only covers what someone
- * remembered to add, and twice it did not -- a SIESTA description leaked
- * into the next folder (U6), and on 2026-09-19 the previous calculation's
- * stage tab, prep command and job name were still on screen under a
- * heading naming the new one.  Replacing ONE object cannot half-happen,
- * and a field added here is cleared without anyone remembering.
+ * WHY AN OBJECT: replacing ONE object cannot half-happen, and a field added
+ * here is cleared without anyone remembering.
  *
  * Deliberately NOT in here: `_machine` (a choice about the box, not the
  * folder) and the engine-keyed caches `_cols` / `_presets` / `_sweep`
@@ -464,9 +411,8 @@ async function refreshFit() {
     }
     if (seq !== _fitSeq) return;
 
-    /* A LIST THAT CANNOT LOAD SAYS SO.  It used to hide, and the reasoning
-     * -- "the rows above are the substance" -- is exactly why hiding is
-     * wrong: a blank where a verdict belongs reads as *nothing objected*. */
+    /* A LIST THAT CANNOT LOAD SAYS SO: a blank where a verdict belongs
+     * reads as *nothing objected*. */
     if (!body || !body.ok || !Array.isArray(body.cells)) {
         sayUnknownFit(host, body && body.error);
         return;
@@ -475,15 +421,10 @@ async function refreshFit() {
 }
 
 /** SAY WHAT IS NOT KNOWN.  A check that could not run shows that it could
- *  not run, and the reason -- it does not disappear.
- *
- * Both fit panels used to set `hidden` on every failure, on the reasoning
- * that the rows above are the substance and the card should not break.  What
- * that produced is the worst of the three possible readings: an empty space
- * where an answer belongs is indistinguishable from *everything fits* and
- * from *this feature is gone*, and the one thing it never says is the true
- * one *(user, 2026-09-02: "we can't have a fit on. I just said, I don't
- * know. Lack of information.")*.
+ *  not run, and the reason -- it does not disappear: an empty space where an
+ *  answer belongs is indistinguishable from *everything fits* *(user,
+ *  2026-09-02: "we can't have a fit on. I just said, I don't know. Lack of
+ *  information.")*.
  *
  * The server's own words when there are any -- it knows why, and a
  * paraphrase here would be a second author for one sentence.
@@ -546,11 +487,8 @@ function paintFit(host, body) {
 
 /* ---------- what the RUN uses -- its own block (stages.md 6.8d) ---------- */
 /*
- * ONE VALUE EACH, and INDEPENDENT of the bench.  A design that made a
- * one-point bench row the run's shape shipped on 2026-09-01 and could not
- * express the ordinary case -- a grid to measure AND a decision to run, at
- * once -- because narrowing the row to say what the run uses destroyed the
- * plan to measure (user, 2026-09-02).
+ * ONE VALUE EACH, and INDEPENDENT of the bench: the ordinary case is a grid
+ * to measure AND a decision to run, at once (user, 2026-09-02).
  *
  * The rows OFFER the bench's parameters because the thing you measured is
  * the thing you are deciding about; they do not READ them.  What is written
@@ -578,13 +516,6 @@ function runConditionOf(task, stage) {
 }
 
 
-/** The parameters this card offers: every setting a bench MAY vary, plus
- *  whatever the condition already states, plus any the person added here.
- *
- *  OFFERED, NEVER READ (user, 2026-09-02): the bench's own points do not
- *  reach this card's values -- what the run uses is `execution`, and the
- *  grid is only what is worth deciding about.
- */
 /* THE RUN'S OWN SCHEDULER ASKS (`stages.md` § 6.8e).  A bench and a run want
  * different wall clocks -- a trial's steps are cut so it wants minutes, the
  * run wants days -- and `allocation` is folded by the shared prep path, so
@@ -602,6 +533,13 @@ const LANE_ASKS = [
       placeholder: "public" },
 ];
 
+/** The parameters this card offers: every setting the bench varies, plus
+ *  whatever the condition already states, plus any the person added here.
+ *
+ *  OFFERED, NEVER READ (user, 2026-09-02): the bench's own points do not
+ *  reach this card's values -- what the run uses is `execution`, and the
+ *  grid is only what is worth deciding about.
+ */
 function runRowNames(task, stage) {
     const out = [];
     const add = (n) => { if (out.indexOf(n) === -1) out.push(n); };
@@ -678,10 +616,8 @@ function stageRunCard(task, stage) {
 
     const bench = (task && task.bench) || {};
     // WHAT THE RUNG ITSELF SAYS is what the field holds; the calculation's
-    // own block is the PLACEHOLDER behind it.  Filling the field from the
-    // merged value made blank and × unreachable for an inherited row --
-    // `setRunValue("")` and `dropRunRow` both write `stages[i].execution`,
-    // so with nothing there they wrote nothing and the field snapped back.
+    // own block is the PLACEHOLDER behind it, because `setRunValue("")` and
+    // `dropRunRow` both write `stages[i].execution`.
     const own = (((task && task.stages) || [])
         .find((x) => x && x.name === stage) || {}).execution || {};
     const inherited = (task && task.execution) || {};
@@ -771,9 +707,7 @@ function stageRunCard(task, stage) {
     fillPicker(sel, (_sweep || []).concat(LANE_ASKS), names,
                "every setting is already listed");
     // WHETHER IT FITS THE MACHINE is the preview's to say, from the job the
-    // prep would write (`job-system.md` § 5.0's checkpoint 4): this card
-    // asked the bench grid with one-point axes until 2026-10-05, a second
-    // answer to a question the entry answers (W55 B3).
+    // prep would write (`job-system.md` § 5.0's checkpoint 4).
     return box;
 }
 
@@ -787,27 +721,16 @@ function renderMachine(task) {
 
     for (const name of names) {
         const pts = Array.isArray(bench[name]) ? bench[name] : [bench[name]];
-        /* THE TAB'S ONE IDEA: LENGTH DECIDES WHAT THIS ROW IS, and it now
-         * decides for EVERY row.  A machine-answered setting was pinned to
-         * "to try" at any length until 2026-09-01, on the rule that a
-         * description may never assert a machine's value -- so one point
-         * read as *a short list of one* and `prep run` dropped it, which is
-         * how the run's decision came to have nowhere to live.
-         * `generator.md` § 4.3a closed that: one point is a decision on
-         * every axis, and this row says so.
-         *
-         * `machine` survives as a look, not a meaning: those rows are tinted
-         * because WHICH KIND of setting it is stays worth seeing, and it is
-         * a fact about the item rather than about the points. */
+        /* `machine` rows are tinted because WHICH KIND of setting it is
+         * stays worth seeing, and it is a fact about the item rather than
+         * about the points. */
         const chosen = pts.length === 1 && !machineAnswers(name);
         const kind = machineAnswers(name) ? "machine"
                                           : (chosen ? "chosen" : "measured");
         // A ONE-POINT ROW IS THE TRIALS' VALUE, NEVER THE RUN'S.  `mpi_np:
         // [8]` is *measure eight*; `use_gpu: [true]` is what every trial
-        // runs with (`stages.md` § 6.8) -- and since 2026-09-30 neither is
-        // read by `prep run`: what the run uses is the card in the rung's
-        // own tab (§ 6.8d).  "chosen" told the person their run was decided
-        // by a row `prep run` never reads.
+        // runs with (`stages.md` § 6.8) -- neither is read by `prep run`:
+        // what the run uses is the card in the rung's own tab (§ 6.8d).
         const verdict = chosen
             ? "every trial · 1 point"
             : `measured · ${pts.length} point${pts.length === 1 ? "" : "s"}`;
@@ -822,7 +745,7 @@ function renderMachine(task) {
         // The adder follows the value SHAPE (user, 2026-08-20): a bool or
         // an enum offers exactly the legal values not already listed -- a
         // dropdown, never a number box -- and a numeric axis keeps the
-        // free input it always had.
+        // free input.
         const legal = legalValues(name);
         let add;
         if (legal) {
@@ -851,8 +774,7 @@ function renderMachine(task) {
                                        title: "Stop measuring " + name }, "\u00d7");
         dropRow.addEventListener("click", () => removeSetting(name));
 
-        // A VALUE axis with several points SWEEPS (generator.md § 4.3a,
-        // built 2026-08-21 -- it was refused by name until then): the
+        // A VALUE axis with several points SWEEPS (generator.md § 4.3a): the
         // points multiply the machine grid and every trial's deck
         // carries its coordinate.  use_gpu decides which trials run
         // on the GPU at all; submission groups trials by their exact
@@ -885,10 +807,7 @@ function renderMachine(task) {
     /* SAY WHEN THE LABELS ARE MISSING.  The rows above are the real setting
      * names and are usable as they are; the server-side vocabulary that turns
      * `mpi_np` into "MPI ranks (np)" is a separate fetch, and when it fails
-     * the honest thing is a card that works and admits what it lacks.  The
-     * alternative -- what happened on 2026-08-23, when the server was
-     * restarting under a loaded page -- is a card that never appears at all
-     * and a user who reports the feature as gone. */
+     * the honest thing is a card that works and admits what it lacks. */
     let note = $("ts-machine-labels-note");
     if (_vocabFailed) {
         if (!note) {
@@ -908,15 +827,9 @@ function renderMachine(task) {
 
 /* ---------- the editor ---------- */
 
-/* SINGLE-FLIGHT, because this is async and the guard used to be on the
- * RESULT.  Two callers arriving before the first finished both saw `_cm ===
- * null`, both awaited the loader, and both constructed an editor into
- * `#ts-editor` -- three of them stacked in the live page, the top two showing
- * text from before the shape was chosen.  Every edit went to the newest
- * instance and every reading came from the oldest, so the whole panel looked
- * dead: rows would not add, points would not drop, and the JSON on screen
- * never moved.  Caching the PROMISE is what makes the guard hold across the
- * await. */
+/* SINGLE-FLIGHT: two callers arriving before the first finished would both
+ * see `_cm === null` and both construct an editor into `#ts-editor`.
+ * Caching the PROMISE is what makes the guard hold across the await. */
 let _cmBooting = null;
 
 function ensureEditor() {
@@ -941,9 +854,7 @@ async function _bootEditor() {
         readOnly:    false,
     });
     /* THE FOLD REFRESHES THE EDITOR.  CodeMirror measures itself when it
-     * mounts, and inside a closed `<details>` every measurement is zero --
-     * so an editor first opened by hand painted one blank line and put the
-     * cursor in the wrong place until something else resized it. */
+     * mounts, and inside a closed `<details>` every measurement is zero. */
     const card = $("ts-editor-card");
     if (card) card.addEventListener("toggle", () => {
         if (card.open && _cm) _cm.refresh();
@@ -995,39 +906,9 @@ async function setEditorText(text, opts) {
 
 /* ---------- loading a folder ---------- */
 
-/* `readOptional` stood here -- a per-file read of `task.json` and then
- * `task.1st.json`.  Both arrive in the folder's ONE answer now
- * (`task-setup.md` § 2.1), so there is nothing left to read one file at a
- * time, and a helper kept "in case" is a second way to ask. */
-
-/* EVERY PER-FOLDER FACT, IN ONE PLACE.
- *
- * `loadFolder`'s own comment claimed "every per-folder fact resets before the
- * branch"; it reset three of them.  The rest are module state that outlived a
- * folder change, and `task-setup.md` § 2.1 is explicit -- *"the page holds no
- * state of its own ... no remembered form, no in-progress buffer that outlives
- * a directory change."*
- *
- * The one that corrupted data: `_fs.queue` and the two ask boxes feed
- * `askValues()`, which `applyAsksToDoc` writes into `task.allocation`.  Open
- * folder A with a wall and a memory, switch to B, touch any ask field or
- * notify tick -- and A's numbers were written into B's task.json.
- *
- * The one that destroyed work without warning: `_fs.pendingDrop` is the two-click
- * column-drop guard.  Arm `×` on A's `mesh_cutoff`, switch folder, and ONE
- * click removed B's column -- the warning had already been given, for a
- * different file.
- *
- * A list is a thing to forget to add to, so this is the only place that knows
- * it, and it is called before the branch rather than in each arm. */
 /** Forget the folder that was open — `web/task-setup.md` § 2.1.
  *
- * ONE ASSIGNMENT.  This was a hand-written list of eight clears in a module
- * with twenty-five variables, and a list only ever covers what someone
- * remembered to add to it.  It twice did not: a SIESTA description leaked
- * into the next folder (U6), and on 2026-09-19 the previous calculation's
- * stage tab, prep command and job name were still on screen under a heading
- * naming the new one.  Replacing the object cannot half-happen, and a field
+ * ONE ASSIGNMENT: replacing the object cannot half-happen, and a field
  * added to `freshFolderState` is cleared without anyone touching this.
  *
  * The two ask boxes are DOM, not state: they are inputs the person typed
@@ -1040,8 +921,7 @@ function _resetPerFolderState(keep) {
      * the open tab, the Continue-from choices and the prep answers.  It is
      * read again often -- this page's own Prep announces its write, and the
      * sidebar answers that announcement by re-publishing the same selection,
-     * so one Prep is two re-reads, which wiped the answer just given (the W37
-     * review).  A Save and another writer's restore RETIRE the answers: they
+     * so one Prep is two re-reads.  A Save and another writer's restore RETIRE the answers: they
      * describe a description, or files, the person has since changed.  A
      * DIFFERENT folder keeps nothing. */
     if (keep) {
@@ -1056,8 +936,7 @@ function _resetPerFolderState(keep) {
     { const b = $("ts-ask-gpu-binding"); if (b) b.checked = true; }
     /* THE PREP PLAN AND THE FILE LIST ARE THIS FOLDER'S TOO: a refresh the
      * last folder scheduled is cancelled, one in flight is discarded, and
-     * both cards stay hidden until this folder's description paints them
-     * -- a hand-over showed the previous calculation's plan and files. */
+     * both cards stay hidden until this folder's description paints them. */
     if (_planTimer) { clearTimeout(_planTimer); _planTimer = null; }
     _planSeq++;
     { const plan = $("ts-plan"); if (plan) plan.hidden = true; }
@@ -1069,12 +948,8 @@ async function loadFolder(projects, dir, opts) {
     const keep = (dir && dir === _dir)
         ? ((opts && opts.retire) ? "view" : "all") : null;
     _dir = dir;
-    /* EVERY per-folder fact resets before the branch (U6 close): the
-     * hand-over and empty branches never wrote _task/_shape, so a
-     * SIESTA description opened first leaked into the next folder --
-     * setShape(_shape) re-fired on the STALE _task, syncFromModel()
-     * overwrote the editor with the previous folder's task.json, and
-     * Save was enabled over the wrong calculation. */
+    /* EVERY per-folder fact resets before the branch, so no branch can
+     * act on the previous folder's. */
     _task = null;
     _shape = "";
     _handover = null;
@@ -1087,17 +962,12 @@ async function loadFolder(projects, dir, opts) {
         return;
     }
 
-    /* ONE ANSWER FOR THE FOLDER (`task-setup.md` § 2.1).  This read
-     * `task.json`, then `task.1st.json`, then listed the directory, then
-     * fetched the template values -- four round trips, four chances to land
-     * out of order, and four things to remember to clear.  The door answers
+    /* ONE ANSWER FOR THE FOLDER (`task-setup.md` § 2.1).  The door answers
      * all of it at once and NAMES THE FOLDER it answered for. */
     const said = await loadFolderAnswer(dir);
-    /* AND IF WE HAVE MOVED ON, THIS ANSWER IS NOT OURS.  The half a reset
-     * cannot cover: there was no `AbortController` anywhere among this
-     * page's twelve calls, so a reply for the folder you just left arrived
-     * and painted.  `dir` on the answer is what makes that checkable --
-     * `calcdir.json`'s rule (project-layout.md § 1.4a) on the wire. */
+    /* AND IF WE HAVE MOVED ON, THIS ANSWER IS NOT OURS.  `dir` on the
+     * answer is what makes that checkable -- `calcdir.json`'s rule
+     * (project-layout.md § 1.4a) on the wire. */
     if (!said || said.dir !== _dir) return;
 
     // The resolved-config view is per FOLDER (the folder's own machine
@@ -1111,7 +981,7 @@ async function loadFolder(projects, dir, opts) {
      * finally filled at the end of this function.  Loading paints cards, and
      * a card that paints can push the model into the buffer (`setShape` ->
      * `syncFromModel`) -- against the PREVIOUS folder's baseline, which reads
-     * as "unsaved" and forced the fold open on every folder opened. */
+     * as "unsaved" and forces the fold open. */
     _diskText = taskText;
     const overText = said.handover === null
         ? null : JSON.stringify(said.handover, null, 2);
@@ -1122,14 +992,10 @@ async function loadFolder(projects, dir, opts) {
     markFile("ts-f-task", !!taskText, "already here — saving would update it");
     /* THE TEMPLATE IS NOT SAVE'S.  `/api/task-setup/save` calls `write_task`
      * and writes `task.json` alone; the template arrives with the hand-over
-     * from the tab the structure came from, and Save leaves it as it is.
-     * This row said "saving would update it" until 2026-09-17, which is the
-     * one thing a person editing parameter values needs to be right. */
+     * from the tab the structure came from, and Save leaves it as it is. */
     markFile("ts-f-tmpl", !!templateName, "already here — Save leaves it alone");
-    /* WRITTEN EITHER WAY.  Guarded on truth, this row kept the PREVIOUS
-     * folder's template name whenever the new one has none -- which is
-     * exactly the hand-over case, where there is no template yet.  An
-     * absent name is a value to render, not a reason to skip rendering. */
+    /* WRITTEN EITHER WAY: an absent name is a value to render, not a reason
+     * to skip rendering. */
     $("ts-f-tmpl-name").textContent = templateName || "";
 
     /* THE STRUCTURE, by the name the description itself gives it.  Globbing
@@ -1143,8 +1009,7 @@ async function loadFolder(projects, dir, opts) {
     try {
         const doc = JSON.parse(taskText || overText || "{}");
         ref = (doc && doc.structure) || {};
-        // THE KIND AS THE DESCRIPTION STATES IT -- every kind writes it
-        // (2026-10-06); an optimization's was a default here until then.
+        // THE KIND AS THE DESCRIPTION STATES IT -- every kind writes it.
         docKind = doc.calculation;
     } catch (_) { /* a file that does not parse is refused further down */ }
     /* THE COMPOSITE HAS NO STRUCTURE PAIR OF ITS OWN: its structure is the
@@ -1152,9 +1017,7 @@ async function loadFolder(projects, dir, opts) {
      * listing "<label>.xyz ... not there yet" would be the page claiming a
      * file is missing that this kind never writes.  It DOES have a
      * template -- the shared electronic description the transport tab's
-     * shared panel writes (§ 3.8.2; TR1) -- so that row stays.  This card
-     * said "the composite has no template" until 2026-09-24, against the
-     * file sitting in the folder. */
+     * shared panel writes (§ 3.8.2; TR1) -- so that row stays. */
     for (const id of ["ts-f-struct", "ts-f-side"]) {
         const el = $(id);
         const li = el && el.closest("li");
@@ -1194,12 +1057,7 @@ async function loadFolder(projects, dir, opts) {
                  + `${awaiting} Saving writes task.json and removes `
                  + `this file.`);
         /* EVERY CARD THE DESCRIPTION BRANCH PAINTS IS PAINTED HERE TOO,
-         * with nothing to paint.  This branch hid two cards by hand and
-         * left the rest showing the LAST folder's description -- measured
-         * 2026-09-19 moving a described folder to a hand-over: the previous
-         * calculation's stage tab (`ts-steptab-0`), its prep command
-         * (`ts-cmd`) and its job name in the parameter chooser were all
-         * still on screen under a heading naming the new one.
+         * with nothing to paint.
          *
          * Through the same renderers rather than by hiding named hosts:
          * each already treats an absent task as *empty*, so a card added to
@@ -1224,12 +1082,8 @@ async function loadFolder(projects, dir, opts) {
         $("ts-shape-card").hidden = true;
         $("ts-next-card").hidden = true;
         refreshSave();
-        // EVERY DOOR THAT WRITES ONE, not just the first.  This named the
-        // Structure-optimization tab alone, and the Transport tab writes a
-        // `task.json` through its own door -- so somebody who had just
-        // described a transport calculation was told about a route they did
-        // not take and not about the one they did
-        // (`engines/transport.md` 3.4).
+        // EVERY DOOR THAT WRITES ONE: the Transport tab writes a `task.json`
+        // through its own door (`engines/transport.md` 3.4).
         setState("empty", "No description here yet",
                  "This folder carries no task.json and no hand-over.  Send "
                  + "parameters here from Structure optimization or Spectrum "
@@ -1269,8 +1123,7 @@ async function loadFolder(projects, dir, opts) {
     renderCameOver(task);
     /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1), and into
      * `_fs`, which `loadFolder` replaces wholesale.  A separate variable
-     * here would be a reset somebody has to remember -- these two were,
-     * and only the description branch cleared them. */
+     * here would be a reset somebody has to remember. */
     for (const [name, st] of Object.entries(
             (said.attempts && said.attempts.stages) || {})) {
         _fs.runs[name] = st.attempts;
@@ -1283,8 +1136,8 @@ async function loadFolder(projects, dir, opts) {
     _fs.continueFrom = said.continue_from || {};
     /* A CHOICE THE FOLDER NO LONGER OFFERS IS DROPPED -- a stage set clean
      * since, or one whose stage before it was turned off, offers none -- or
-     * every Preview sent it, and its command printed it, with no select
-     * left to clear it (until 2026-10-05). */
+     * every Preview would send it, and its command print it, with no select
+     * left to clear it. */
     for (const [name, chose] of Object.entries(_fs.continueChoice)) {
         const cf = _fs.continueFrom[name];
         const offered = !!(cf && cf.from_stage) && (chose === ""
@@ -1301,19 +1154,12 @@ async function loadFolder(projects, dir, opts) {
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
     setShape(_shape);                            // shows which one it carries
-    // THE CATALOGUE META COMES FIRST, and it is AWAITED (2026-08-24).
-    // `renderStages` asks `legalValues()` per cell to decide whether the
-    // column edits through a DROPDOWN of its legal values or a free input
-    // -- and `_meta` was still empty here, because the only two fills ran
-    // after it (`loadSweepChoices` on the next line, `refreshPickers`
-    // four lines down, unawaited, which also CLEARS `_meta` first).  So
-    // every enum and bool rendered as a text box and had to be typed by
-    // hand.  Rendering a widget from data that has not arrived is the
-    // defect; awaiting the data is the fix.
+    // THE CATALOGUE META COMES FIRST, and it is AWAITED: `renderStages`
+    // asks `legalValues()` per cell to decide whether the column edits
+    // through a DROPDOWN of its legal values or a free input.
     await refreshPickers();
     // Through the ONE accessor -- `String({name})` is "[object Object]",
-    // which 400s the sweepable fetch and sticks an empty cache for the
-    // whole page-load (2026-08-21 review, E-A1).
+    // which 400s the sweepable fetch.
     await loadSweepChoices(_handoverEngine(task));
     renderStages(task);
     renderNext(task);
@@ -1337,12 +1183,8 @@ async function syncFromModel() {
     if (!_task) return;
     await setEditorText(JSON.stringify(_task, null, 2) + "\n");
     renderStages(_task);
-    // THE MACHINE ROWS TOO.  Every bench verb -- addPoint, removePoint,
-    // removeSetting -- ends here, and this function re-rendered everything
-    // except the card those verbs act on.  So a point was added to the model,
-    // written into the JSON on screen, and the row it belonged to went on
-    // showing the old chips: the panel looked inert while the file underneath
-    // it was changing.
+    // THE MACHINE ROWS TOO: every bench verb -- addPoint, removePoint,
+    // removeSetting -- ends here.
     await loadSweepChoices(_handoverEngine(_task || {}));
     renderMachine(_task);
     renderNext(_task);
@@ -1465,40 +1307,13 @@ const _meta = Object.create(null);
 let _sweep = null;      // the ones a benchmark may sweep
 //: Whether ANY server-side vocabulary failed to load this page-load.
 //: One fact, one flag: the card's note says the names are raw, and it
-//: does not matter which of the four lookups was the one that failed.
+//: does not matter which lookup was the one that failed.
 let _vocabFailed = false;
 let _sweepKey = null;
 const _sweepInflight = {};  // key -> the pending fetch
 
-/** Every parameter that may become a column.
- *
- * `stages.md` § 6.2: anything the description is ALLOWED TO HOLD may be a
- * column; the settings the machine answers may not, because the description
- * may not hold them at all.  The server answers that from the catalogue —
- * there is no list here and none there.
- *
- * It read `/api/build/schema` until 2026-08-18, which is the PARAMETER FORM's
- * schema and filters the whole `staging` group out on purpose.  Filtering a
- * panel and limiting a table are different jobs, and borrowing the first
- * answer for the second cost this table `restart` — the field that decides
- * whether a ladder is a ladder — so a ladder built here ran every stage clean.
- */
-/** ONE guarded read of a server-side vocabulary (2026-08-23).
- *
- * Four functions here memoise a fetch of something the server names --
- * columns, sweepable settings and tier presets -- and, until 2026-09-19,
- * template values, which have since moved into the folder's one answer
- * because they are a fact about the FOLDER and not a vocabulary of the
- * engine's.  Three of the four wrote the fetch out by hand and NONE of
- * those three caught anything, so a request that failed rejected out
- * through `loadFolder` and stranded whatever card sat behind it.  The
- * fourth, the template one, had the try/catch -- the right answer was
- * already in this file and the copies did not get it, which is what copied
- * code does.
- *
- * That is how the bench card "disappeared" on 2026-08-23: the server was
- * restarting under a loaded page, the label lookup failed, and every card
- * above it painted while the one behind it never got its turn.
+/** ONE guarded read of a server-side vocabulary -- columns, sweepable
+ * settings and tier presets.
  *
  * Returns `{ok, body}`.  A failure is the CALLER'S to degrade around -- these
  * are vocabularies, and a page that has the substance can show it with the
@@ -1519,35 +1334,34 @@ async function fetchVocabulary(url, what) {
 }
 
 
+/** Every parameter that may become a column.
+ *
+ * `stages.md` § 6.2: anything the description is ALLOWED TO HOLD may be a
+ * column; the settings the machine answers may not, because the description
+ * may not hold them at all.  The server answers that from the catalogue —
+ * there is no list here and none there.
+ */
 async function loadColumnChoices(engine) {
     // The folder's KIND narrows the columns (template.md § 6.3's sibling
     // rule) -- a vibration description's picker offers the vibration
     // items beside the shared ones; an optimization's never sees them.
-    // The cache is keyed by (engine, kind): a bare `if (_cols)` served an
-    // optimization folder's columns to the vibration folder opened next.
+    // The cache is keyed by (engine, kind).
     const kind = _kindOf();
     // NOTHING DESCRIBED, NOTHING ASKED: with no description or hand-over
     // open, the page knows no engine and no kind, and the server refuses a
-    // request that states none (a SIESTA optimization's list was fetched
-    // for it until 2026-10-06).
+    // request that states none.
     if (!engine || !kind) return [];
     const key = engine + ":" + kind;
     if (_cols && _colsKey === key) {
-        // REFILL `_meta` EVEN ON THE CACHED PATH.  `refreshPickers` clears
-        // `_meta` before calling the loaders, so an early return here left
-        // it empty -- and `legalValues()` reads it to decide whether a cell
-        // is a DROPDOWN or a text box.  Every enum and bool in the stage
-        // table therefore had to be typed by hand from the second load on
-        // (reported 2026-08-24).  The cache is about not re-FETCHING; it
-        // was never meant to skip publishing what was fetched.
+        // REFILL `_meta` EVEN ON THE CACHED PATH: `refreshPickers` clears
+        // `_meta` before calling the loaders, and `legalValues()` reads it
+        // to decide whether a cell is a DROPDOWN or a text box.
         _fillMeta(_cols);
         return _cols;
     }
     /* ONE FETCH PER KEY, AND THE IN-FLIGHT ONE IS THE CACHE.  Two callers can
      * ask for the same key before the first answer lands (the hand-over's
-     * pickers and the hand-over itself), and a key set before the fetch made
-     * "in flight" read as "cached" -- the second caller took the PREVIOUS
-     * folder's list.  A pending promise per key is what every caller awaits;
+     * pickers and the hand-over itself).  A pending promise per key is what every caller awaits;
      * a newer key still owns the slot (the guard below), the way the other
      * in-flight guards in this file are sequences or memoised promises. */
     if (_colsInflight[key]) return _colsInflight[key];
@@ -1591,8 +1405,7 @@ function readsHere(col, name) {
 /** Publish a vocabulary's items into `_meta` -- the ONE place a cell's
  *  widget question (`legalValues`) gets its answer from.  A function, not
  *  a loop at each call site, because the two loaders each have a cached
- *  path and a fetching one: four places to remember, and the two cached
- *  ones were forgotten. */
+ *  path and a fetching one. */
 function _fillMeta(items) {
     for (const it of (items || [])) {
         if (it && it.name) _meta[it.name] = it;
@@ -1615,20 +1428,13 @@ function _fillMeta(items) {
  * worth making first. */
 const BENCH_START = { mpi_np: [4, 8, 16], omp_threads: [1, 2] };
 
-/** The sweepable set — `execution` category only (`stages.md` § 6.8).
- *  A separate read because the FORM filters `staging` out, and those are
- *  exactly the knobs a benchmark measures. */
+/** The sweepable set — `execution` category only (`stages.md` § 6.8). */
 async function loadSweepChoices(engine) {
-    /* Keyed by ENGINE, like `_cols` (R2-1): a bare `if (_sweep)` served
-     * the first folder's engine to every folder opened after it -- a
-     * PySCF description got SIESTA's machine rows.  And by KIND, as the
-     * columns are: a vibration's or a transport's run card was offered
-     * `restart`, which neither kind carries (the K5 review's C2). */
+    /* Keyed by ENGINE and by KIND, as the columns are. */
     const kind = _kindOf();
     // NOTHING DESCRIBED, NOTHING ASKED: with no description or hand-over
     // open, the page knows no engine and no kind, and the server refuses a
-    // request that states none (a SIESTA optimization's list was fetched
-    // for it until 2026-10-06).
+    // request that states none.
     if (!engine || !kind) return [];
     const key = engine + ":" + kind;
     if (_sweep && _sweepKey === key) {
@@ -1637,16 +1443,10 @@ async function loadSweepChoices(engine) {
     }
     if (_sweepInflight[key]) return _sweepInflight[key];   // one fetch per key (see loadColumnChoices)
     _sweepKey = key;
-    /* A LABEL LOOKUP MUST NOT BE ABLE TO STRAND THE PAGE (2026-08-23).
+    /* A LABEL LOOKUP MUST NOT BE ABLE TO STRAND THE PAGE.
      *
      * This is an ENRICHMENT: it turns `mpi_np` into "MPI ranks (np)".  It
-     * used to be an unguarded `await fetch` with `renderMachine` behind it as
-     * the last step of `loadFolder`, so a slow or failed request left every
-     * card above it painted and the bench card simply absent -- no error, no
-     * empty state, nothing to retry.  The user's report was "the bench setup
-     * is gone", and the page looked completely normal.
-     *
-     * Now it degrades: rows paint with their raw names and the card says the
+     * degrades: rows paint with their raw names and the card says the
      * labels are missing.  A surface that cannot get its nicety shows what it
      * has; only a surface that cannot get its SUBSTANCE may refuse. */
     const p = (async () => {
@@ -1666,8 +1466,7 @@ async function loadSweepChoices(engine) {
 }
 
 /** Fold the sweepable items into `_meta` WITHOUT overwriting a column's
- *  richer record -- `staging` items are filtered out of the form schema,
- *  so this is the only place their note arrives.  Called from both the
+ *  richer record.  Called from both the
  *  cached and the fetching path, for the reason `_fillMeta` records. */
 function _fillSweepMeta(items) {
     for (const i of (items || [])) {
@@ -1692,7 +1491,7 @@ function legalValues(name) {
 
 /* The value IN FORCE for a parameter -- what a new machine-card row is
  * born holding: this folder's template answer first, else the catalogue
- * default, else 1 (the numeric axes' old birth value).  RAW value --
+ * default, else 1.  RAW value --
  * `defaultText` below is its DISPLAY sibling (rendered, with the unit);
  * conflating the two puts "300 Ry" into a point list. */
 function valueInForce(name) {
@@ -1729,19 +1528,11 @@ function fillPicker(sel, items, taken, empty) {
 let _pickersSeq = 0;
 
 async function refreshPickers() {
-    /* THE ENGINE IS THE DESCRIPTION'S, AND ON A HAND-OVER THE HAND-OVER'S.
-     * This read `_task` alone and fell back to SIESTA, so a PySCF hand-over
-     * (where `_task` is still null) fetched SIESTA's columns, sweepable set
-     * and presets: the measure card offered ScaLAPACK knobs to PySCF and the
-     * proposal seeded `mpi_np` / `omp_threads`, which the page's own
-     * preflight then refused (measured on the Spectrum walk, 2026-09-24). */
+    /* THE ENGINE IS THE DESCRIPTION'S, AND ON A HAND-OVER THE HAND-OVER'S. */
     const engine = (_task && _task.engine && _task.engine.name)
         || _handoverEngine(null);
-    /* _meta is rebuilt from this engine's answers: its neighbours are
-     * keyed (_colsKey/_sweepKey/_presetsKey) but _meta accreted across
-     * engines -- a sweep-only item's record was written once and never
-     * refreshed, and the previous engine's names backed legalValues /
-     * valueInForce / helpText forever. */
+    /* _meta is rebuilt from this engine's answers, as its neighbours are
+     * keyed (_colsKey/_sweepKey/_presetsKey). */
     for (const k of Object.keys(_meta)) delete _meta[k];
     // A SEQUENCE, like the other in-flight guards here: a refresh that was
     // superseded while its answers were in flight paints nothing.
@@ -1839,15 +1630,11 @@ let _presetsKey = null;
 const _presetsInflight = {};  // key -> the pending fetch
 
 async function loadPresets(engine) {
-    /* Keyed by (ENGINE, KIND), like `_cols` (R2-1): a stale cache here
-     * APPLIED SIESTA tier values into a PySCF description opened second --
-     * and, keyed by engine alone, offered an optimization's tiers on every
-     * transport rung of the folder opened next (plan W31, archived 2026-09-29). */
+    /* Keyed by (ENGINE, KIND), like `_cols`. */
     const kind = _kindOf();
     // NOTHING DESCRIBED, NOTHING ASKED: with no description or hand-over
     // open, the page knows no engine and no kind, and the server refuses a
-    // request that states none (a SIESTA optimization's list was fetched
-    // for it until 2026-10-06).
+    // request that states none.
     if (!engine || !kind) return [];
     const key = engine + ":" + kind;
     if (_presets && _presetsKey === key) return _presets;
@@ -1979,24 +1766,11 @@ function removeColumn(name) {
     syncFromModel();
 }
 
-/* ---------- the hand-off: the next command ---------- */
-
-/** The exact commands, per stage, in order.
- *
- * `task-setup.md` § 1: this page "turns that into a description on disk and
- * **hands you the command to run it somewhere else**".  Half the tab's purpose,
- * and it has to be EXACT rather than a generic snippet — every verb is given
- * the stage's name (`stages.md` § 6.5).  What a stage continues from is the
- * prep's own answer, the stage before it by default (`job-system.md` § 5.4,
- * plan W37), shown once prep has run.
- */
 /* ---------- what a prep will write, per stage (§ 7.1) ---------- */
 /*
  * SERVED, NEVER COMPOSED.  Flat and hierarchical name directories
- * differently, and which `bench` rows are DECISIONS rather than questions is
- * `prep._declared_launch_shape`'s answer -- so both come from the door that
- * asks the producers.  A list built here would be a second account of the
- * same facts, free to promise a shape the run will not ask for.
+ * differently, so the names come from the door that asks the producers.  A
+ * list built here would be a second account of the same facts.
  */
 
 let _planTimer = null;
@@ -2046,8 +1820,7 @@ async function refreshPlan(task) {
  *
  *  The names arrive composed (`runfiles.compose`, one per catalogued
  *  role with this rung's token) and this only lays them out.  Nothing
- *  here builds a filename: the six-spellings failure the grammar was
- *  written for came from exactly this kind of second opinion.
+ *  here builds a filename.
  * ---------------------------------------------------------------- */
 
 function hideWritten() {
@@ -2057,8 +1830,7 @@ function hideWritten() {
 
 function fileRow(f) {
     /* A file written only sometimes says when (`only`, the catalogue's own
-     * words): the card named the queue header and the opt-in parse logs as
-     * files every run writes until 2026-10-04 (plan D22). */
+     * words). */
     return el("li", {},
         el("span", { class: "ts-file-name" }, f.name),
         el("span", { class: "ts-file-what" },
@@ -2161,12 +1933,8 @@ function paintPlan(box, host, body) {
         const axes = Object.keys(body.bench.axes || {})
             .map((k) => k + " " + (body.bench.axes[k] || []).join(","))
             .join(" \u00d7 ");
-        // WHERE IT LANDS IS ASKED FOR, NOT SPELLED HERE.  This rendered the
-        // literal "bench-<token>/" -- the only path this card ever composed,
-        // and wrong in every layout (the real container is bench_<NN>_<stage>
-        // flat, <NN>_<stage>/bench hierarchical; the dash form it showed is a
-        // TRIAL's name and sits INSIDE one).  `prep-plan` sends the rungs,
-        // each directory from `materialize.bench_container` -- the one
+        // WHERE IT LANDS IS ASKED FOR, NOT SPELLED HERE: `prep-plan` sends
+        // the rungs, each directory from `paths.bench_container` -- the one
         // spelling of that rule, and the same one prep lays the record with.
         //
         // ONE ROW PER RUNG, because `prep bench` takes a stage: each row is a
@@ -2182,9 +1950,15 @@ function paintPlan(box, host, body) {
 }
 
 
-//: WHICH RUNG'S TAB IS OPEN.  Page state, not the description's: which
-//: stage you are reading says nothing about the calculation.
-
+/** The exact commands, per stage, in order.
+ *
+ * `task-setup.md` § 1: this page "turns that into a description on disk and
+ * **hands you the command to run it somewhere else**".  Half the tab's purpose,
+ * and it has to be EXACT rather than a generic snippet — every verb is given
+ * the stage's name (`stages.md` § 6.5).  What a stage continues from is the
+ * prep's own answer, the stage before it by default (`job-system.md` § 5.4,
+ * plan W37), shown once prep has run.
+ */
 function renderNext(task) {
     const card = $("ts-next-card");
     const host = $("ts-next");
@@ -2195,11 +1969,6 @@ function renderNext(task) {
     // per folder opened, and `_syncPrepButtons` walks buttons nobody can
     // see.  Owned here because this is the one place they are created.
     _PREP_WIDGETS.length = 0;
-    // ORDINALS COME FROM THE FULL LADDER (`stages.md` § 6.5: seq is
-    // assigned once and never renumbered), so a disabled stage still
-    // occupies its number -- the enabled-filtered index mis-named the
-    // previous attempt's directory whenever one was skipped
-    // (2026-08-21 review, E-T4).
     const ladder = (task && task.stages) || [];
     const enabled = [];
     ladder.forEach((st, full) => {
@@ -2207,21 +1976,13 @@ function renderNext(task) {
     });
     if (!enabled.length) { card.hidden = true; return; }
 
-    // The bench lane, wherever `prep bench` takes the description (the
-    // folder answer's `bench_refusal` is null -- stages.md § 6.8): the whole
-    // sequence, taught once with the first stage as the example.  summarize
-    // writes bench-result.json (the record); the report is PRINTED
-    // (a REPORT nothing reads but you); `prep run` uses `execution` --
-    // template < the calculation's execution < the rung's < flags.
     /* ONE BLOCK PER ENABLED STAGE, and both things you can do with it
      * (`task-setup.md` § 11).  A stage is either something to MEASURE or
      * something to RUN, and which one is a decision only the user has.
      *
-     * The bench half used to be a single block hardwired to
-     * `enabled[0]` -- a guess dressed as an answer.  The bench axes are
-     * declared once for the calculation, so ANY enabled stage can be
-     * measured; which is worth measuring is a judgement, and the page
-     * hints rather than choosing. */
+     * The bench axes are declared once for the calculation, so ANY enabled
+     * stage can be measured; which is worth measuring is a judgement, and
+     * the page hints rather than choosing. */
     const benchKeys = Object.keys((task && task.bench) || {});
     // VARYING AND DECLARED ARE DIFFERENT THINGS: a one-point axis fixes
     // its value (`generator.md` § 4.3a), and only a longer one varies.
@@ -2272,8 +2033,7 @@ function renderNext(task) {
          *
          * OFFERED WITH NO AXES TOO: the target machine then proposes the grid
          * (`generator.md` § 4.3a), as `prep bench` does at the terminal --
-         * the two doors are one prep (`job-system.md` § 5.3).  Until
-         * 2026-09-29 this block, and its button, needed a declared axis.
+         * the two doors are one prep (`job-system.md` § 5.3).
          * And offered only where that prep takes it: the entry's own
          * refusal (a transport calculation, an engine the bench lane does
          * not speak) comes with the folder, and hides the block. */
@@ -2432,19 +2192,9 @@ const _PREP_WIDGETS = [];
 function prepButton(kind, stage) {
     /* TWO BUTTONS, AND ONE ENABLES THE OTHER.
      *
-     * This was ONE button that changed what it did between clicks: the first
-     * click planned and relabelled it "Write it", the second wrote.  The
-     * decision lived in a `planned` closure variable -- and `renderNext`
-     * rebuilds every stage panel, so any repaint (typing in the run card
-     * calls `syncFromModel` -> `renderNext`) destroyed the button and made a
-     * fresh one with `planned = null`.  The click you thought was the write
-     * was a new button's first click.  "Write it wrote absolutely nothing"
-     * (user, 2026-09-02), and nothing on screen said why.
-     *
-     * Now each button does ONE thing, always, and the only state is
-     * `disabled` -- which is on screen.  A repaint puts Prep back to
-     * disabled, which is the truth (nothing has been previewed yet) rather
-     * than a button that has silently changed its mind.
+     * Each button does ONE thing, always.  `renderNext` rebuilds every stage
+     * panel on any repaint, which puts Prep back to disabled -- the truth,
+     * since nothing has been previewed on the new panel.
      */
     const wrap = el("div", { class: "ts-prep" });
     const say = el("div", { class: "ts-prep-say" });
@@ -2482,8 +2232,7 @@ function prepButton(kind, stage) {
 
     /* WHAT A NEW ANSWER REPLACES: the last answer, its end point (A13) and
      * what it would write -- each of a plan the new one replaces, or of
-     * none.  A refusal left the last preview's box beside it until
-     * 2026-10-05. */
+     * none. */
     function retire() {
         for (const sel of [".ts-prep-answer", ".ts-emitted", ".ts-prep-writes"]) {
             const stale = wrap.querySelector(sel);
@@ -2503,8 +2252,7 @@ function prepButton(kind, stage) {
         if (no) return refuse(no);
         /* A NEW PREVIEW RETIRES THE LAST ANSWER -- its lines, its end point,
          * what it would write -- and the Prep that named its plan, until this
-         * one answers (Prep stayed enabled on the old plan, its box gone,
-         * until 2026-10-05). */
+         * one answers. */
         retire();
         delete _fs.answers[kind + ":" + stage];
         btnWrite.disabled = true;
@@ -2524,10 +2272,8 @@ function prepButton(kind, stage) {
                  * one renderer, worded as a preview: what it found (the
                  * deck's own checks among it), what the stage builds on,
                  * what the attempt would receive, whether the deck agrees
-                 * with its launch -- or the refusal with what it pointed at
-                 * (only the sentence, and a summary of the page's own, were
-                 * shown until 2026-10-05).  Prep is not offered for a plan
-                 * prep refuses. */
+                 * with its launch -- or the refusal with what it pointed at.
+                 * Prep is not offered for a plan prep refuses. */
                 const r = await _prepCall(kind, stage, true);
                 _showPrepAnswer(wrap, say, r);
                 if (!r.ok) return;
@@ -2581,8 +2327,7 @@ function prepButton(kind, stage) {
      * answer `molbuilder jobset prep` prints -- the state it saved first
      * among it (`checkpointing.md` § 9).  Under the page's fence, as the
      * preview is: the folder, the description and the stage cannot change
-     * under it (an answer landing after another folder was opened was
-     * guarded on its own until 2026-10-05). */
+     * under it. */
     function write() {
         btnWrite.disabled = true;
         btnPreview.disabled = true;
@@ -2638,11 +2383,10 @@ function prepButton(kind, stage) {
      * folder's answer, the way back in it -- and neither button, since a
      * prepped stage is not prepped again (`job-system.md` § 5.0).  Its lines
      * above are its launch.  It is said over a kept answer, whose lines stay
-     * below it: the kept "Prepared for" hid the way back until 2026-10-05. */
+     * below it. */
     /* WHICH STAGES ARE PREPPED could not be read -- the folder answer's
      * own `error` -- so nothing is offered as if none were: a Prep would
-     * meet a stage already prepped, or a folder that does not read.  The
-     * failure read as nothing prepped until 2026-10-06. */
+     * meet a stage already prepped, or a folder that does not read. */
     const unread = _fs.prepped.error;
     if (unread) {
         btnPreview.disabled = true;
@@ -2680,13 +2424,10 @@ function prepButton(kind, stage) {
  *  refusal to find out they missed a step.
  */
 function _syncPrepButtons() {
-    // NO CONNECTEDNESS TEST AT ALL.  Two attempts got this wrong: skipping
-    // detached widgets meant each one missed its OWN first sync (it is
-    // returned before the caller appends it), and pruning them dropped a
-    // stage's bench widget the moment its run widget was made, because the
-    // block holding both is not in the page until the stage finishes.  The
-    // list belongs to `renderNext`, which empties it when it rebuilds --
-    // one owner, no liveness guessing.
+    // NO CONNECTEDNESS TEST AT ALL: a widget is returned before the caller
+    // appends it, so it is detached at its OWN first sync.  The list
+    // belongs to `renderNext`, which empties it when it rebuilds -- one
+    // owner, no liveness guessing.
     for (const w of _PREP_WIDGETS) {
         const ready = !!_machine;
         w.btn.disabled = !ready;
@@ -2715,8 +2456,7 @@ async function _prepCall(kind, stage, plan, planId) {
     // `(this machine)` to it, so sending the label is enough and the two
     // surfaces keep one vocabulary.  A FOLDER SET TO ITS MACHINE names none:
     // its own copy of the record answers (`configuration.md` M-3), as the
-    // terminal's prep with no --target -- naming it was refused on a server
-    // holding no record by that name (until 2026-10-05).
+    // terminal's prep with no --target.
     if (_machine && !_fs.setTo) body.target = _machine;
     try {
         const r = await fetch("/api/task-setup/prep", {
@@ -2745,9 +2485,7 @@ function _showPrepAnswer(wrap, say, r) {
         return d;
     };
     /* THE FINDINGS, through the one renderer (science/validation.md § 4.1
-     * R2) -- the preflight's, and the settings gate's on each deck.  This
-     * listed them as lines of its own, severity as a word, until
-     * 2026-09-30: a second renderer. */
+     * R2) -- the preflight's, and the settings gate's on each deck. */
     const findingLines = (list) => {
         if (!(list || []).length) return;
         const ul = el("ul", { class: "issues-panel" });
@@ -2799,8 +2537,7 @@ function _showPrepAnswer(wrap, say, r) {
         // terminal's own words, off the same answer: a cold start asked
         // for, the files a transport rung gathered (said below), or nothing
         // from another run -- a linked stage's too: its kind's first rung,
-        // or the structure as given (W52; "its input is prep's own" stood
-        // here until 2026-10-05, for rungs that take nothing).
+        // or the structure as given.
         if (!r.continuation && !(r.gathered || []).length) {
             line(r.cold ? "cold start — nothing copied in"
                  : "takes nothing from another run"
@@ -2839,8 +2576,7 @@ function _showPrepAnswer(wrap, say, r) {
     }
     /* WHICH FILES ANSWERED, as the prep read them with the machine's record
      * (`configuration.md` § 2.2): the first found is the record that won.
-     * The terminal prints the table; the page said it nowhere until
-     * 2026-10-05, and its folder card named a record asked with no machine. */
+     * The terminal prints the table. */
     const prov = r.provenance;
     if (prov && (prov.sources || []).length) {
         const found = prov.sources.filter((s) => s.found)
@@ -2854,19 +2590,7 @@ function _showPrepAnswer(wrap, say, r) {
     if (box.childNodes.length) wrap.appendChild(box);
 }
 
-/* ---------- what has already run ---------- */
-
-/* `runsForStages` stood here -- a fetch of `/api/task-setup/attempts` from
- * inside `loadFolder`, which is a FIFTH round trip for something the
- * folder's own answer already carries (`task-setup.md` § 2.1).  Its
- * argument is preserved where it matters: attempts are read from the
- * DIRECTORY and need no target machine, which is why the question belongs
- * to the folder tier at all -- and the server half of it, which the page
- * used to work out for itself from four of our rules, is unchanged in
- * `build.py::_folder_attempts`.  The route it called is still there for
- * the CLI-shaped callers and is what the door composes. */
-
-/* ---------- the machine rows: a point is a choice, several a measurement ---- */
+/* ---------- the machine rows ---------- */
 
 /** Coerce a typed point to what `task.json` should carry.
  *  `bench` takes scalars only — the reader refuses a nested value. */
@@ -2958,7 +2682,7 @@ function proposedFromHandover(over, shape, varies, bench) {
         stages:    stages,
         bench:     bench || undefined,
     };
-    // EVERY KIND IS WRITTEN (2026-10-06): an optimization's was left out.
+    // EVERY KIND IS WRITTEN.
     out.calculation = kind;
     return JSON.stringify(out, null, 2) + "\n";
 }
@@ -3017,19 +2741,14 @@ function setMachine(name) {
      * `molbuilder.json`, which no machine choice changes.  Which machine
      * RECORD answers does depend on the choice -- and on whether the
      * calculation has its copy yet -- so it is the prep answer's, a
-     * preview's too (`_showPrepAnswer`), never this card's (it listed the
-     * record's scopes asked with no machine until 2026-10-05). */
+     * preview's too (`_showPrepAnswer`), never this card's. */
     /* AND THE COMMANDS THEMSELVES.  The machine reaches each stage's
      * lines at RENDER time (`commandsFor` asks the server with it), and
      * `renderNext` runs from `loadFolder` -- which finishes before anyone
-     * can click a machine.  Without this line the card said "sol"
-     * while the line a person copied said `prep bench coarse --bundle ...`
-     * with no `--target`, and prepping it would have baked THIS machine's
-     * width into a bundle bound for a cluster: invariant C1 in
-     * `preparing-for-another-machine.md`, the exact failure the flag
-     * exists to prevent.  `_fs.stepTab` is module state, so the open tab
-     * survives the rebuild.  Measured 2026-09-06 by
-     * test_choosing_a_machine_puts_it_in_the_command_you_copy. */
+     * can click a machine.  A copied line without the machine would bake
+     * THIS machine's width into a bundle bound for a cluster: invariant C1
+     * in `preparing-for-another-machine.md`.  `_fs.stepTab` is module
+     * state, so the open tab survives the rebuild. */
     if (_task) renderNext(_task);
     const chosen = _machines.find((m) => m.name === name);
     const st = $("ts-target-state");
@@ -3055,11 +2774,8 @@ function setMachine(name) {
  *  The queue, and what it allows  (user, 2026-08-24)                    *
  *                                                                       *
  *  Three facts, one card: WHICH queue, how long, how much memory.  The  *
- *  queue's own probed ceilings are the defaults -- the most that queue  *
- *  allows -- because a person sizing a job wants to start from what is  *
- *  possible and come down.  NOTHING is invented: a queue that states no *
- *  ceiling leaves the field empty and says so, and an empty field means *
- *  the scheduler decides (submission.md S1).                            *
+ *  queue's own probed ceilings are shown beside the fields and written  *
+ *  into none (submission.md S5).                                        *
  * ===================================================================== */
 
 
@@ -3082,8 +2798,9 @@ function _humanTime(sec) {
  *   _humanTime                -> what gets SHOWN in prose ("4h")
  *
  * Typing "4h" in the box still works -- that is the human edge, and
- * `_canonTime` is the door it goes through.  Mirrors `ask.slurm_time` /
- * `ask.canonical_time`; the parity test pins the two against each other.
+ * `_canonTime` is the door it goes through.  Mirrors
+ * `scheduler.quantities.slurm_time` / `canonical_time`; the parity test
+ * pins the two against each other.
  */
 
 /** seconds -> "D-HH:MM:SS", the spelling sbatch takes and the file holds. */
@@ -3097,16 +2814,16 @@ function _slurmTime(sec) {
     return d + "-" + p2(h) + ":" + p2(m) + ":" + p2(s);
 }
 
-/** GB -> "<n>G", or "<n>M" when not a whole GB.  Mirrors `ask.slurm_mem`. */
+/** GB -> "<n>G", or "<n>M" when not a whole GB.  Mirrors
+ *  `scheduler.quantities.slurm_mem`. */
 function _slurmMem(gb) {
     const v = Number(gb);
     if (!(v > 0)) return "0";
     const mb = Math.round(v * 1024);
     // A POSITIVE ASK NEVER ROUNDS TO ZERO -- SLURM reads `--mem=0` as ALL
     // the node's memory, so rounding a sliver down would turn the smallest
-    // request into the largest one.  Mirrors `ask.slurm_mem`; the parity
-    // test carries a sub-megabyte value precisely to hold the two together
-    // here, which it did not until 2026-08-24.
+    // request into the largest one.  Mirrors `slurm_mem`; the parity test
+    // carries a sub-megabyte value to hold the two together here.
     if (mb <= 0) return "1M";
     return (mb % 1024 === 0) ? (mb / 1024) + "G" : mb + "M";
 }
@@ -3192,8 +2909,7 @@ function renderQueues() {
         _fs.queue = "";
         // A MACHINE WITH NO QUEUES STILL HAS A MEMORY CEILING: its RAM,
         // shown beside the field (`paintAskNotes`) and written into none --
-        // a value is stated, never proposed (`submission.md` S1, S5; 95 %
-        // of the RAM was written into the field until 2026-10-05, D13).
+        // a value is stated, never proposed (`submission.md` S1, S5).
         paintAskNotes();
         return;
     }
@@ -3233,10 +2949,7 @@ function _fmtGB(gb) {
 
 /** Choosing a queue names it -- and FILLS NOTHING: its limits are shown
  *  beside the wall and memory fields (`paintAskNotes`), and an empty field
- *  stays empty until it is stated (`submission.md` S5).  Until 2026-10-05
- *  it wrote the queue's ceiling as the wall and 95 % of its memory into the
- *  description, which a Save made "stated" -- S1's default wearing a
- *  number's clothes (D13). */
+ *  stays empty until it is stated (`submission.md` S5). */
 function setQueue(name) {
     _fs.queue = name;
     for (const b of document.querySelectorAll("#ts-queue-choice .opt")) {
@@ -3252,9 +2965,7 @@ function setQueue(name) {
  *  fits -- while changing it is still free. */
 function paintAskNotes() {
     const d = _queuesOf(_machine).find((x) => x.name === _fs.queue);
-    // With no queue, the MACHINE's own RAM is the memory ceiling -- a
-    // workstation's field otherwise read "no queue chosen" and checked the
-    // ask against nothing at all.
+    // With no queue, the MACHINE's own RAM is the memory ceiling.
     const _me = _machines.find((x) => x.name === _machine);
     const _nodeMem = (!d && _me && !(_me.domains || []).length)
         ? _me.mem_total_gb : null;
@@ -3279,8 +2990,7 @@ function paintAskNotes() {
             msg = "not a value I can read";
         } else if (val === null) {
             // EMPTY, AND THE LIMIT STILL SHOWN: what the queue allows is
-            // what helps choose a value (`submission.md` S5; it was shown
-            // only once a value was typed until 2026-10-05).
+            // what helps choose a value (`submission.md` S5).
             state = "unset";
             msg = "left blank \u2014 stated nowhere"
                 + (d ? ", prep refuses it for a job sent to a queue" : "")
@@ -3312,9 +3022,7 @@ function askValues() {
     const out = {};
     if (_fs.queue) out.domain = _fs.queue;
     // THE RECORD GETS ONE SPELLING.  The box accepts "4h" because that is
-    // the human edge; the file never sees it.  Until 2026-08-24 this wrote
-    // the box verbatim, so the browser's own "4h" reached `sbatch` as
-    // `-t 4h` and SLURM refused the tool's written value.
+    // the human edge; the file never sees it.
     if (t.trim()) out.time = _canonTime(t);
     if (m.trim()) out.mem = _canonMem(m);
     // Ticked is the rule and writes nothing; unticked is the one value that
@@ -3327,11 +3035,7 @@ function askValues() {
  *
  * **Writing the editor's whole document moves the page.**  `cm.setValue`
  * followed by `setCursor` makes CodeMirror scroll the cursor into view,
- * and the browser drags the scrolling container (`.app-content`) with it
- * -- so ticking a checkbox in a card near the TOP threw the view 1704px
- * down to the editor at the bottom, every single time.  Measured in the
- * browser 2026-08-27, reported as *"the page always jumps off to another
- * place down"*, which is exactly what it did.
+ * and the browser drags the scrolling container (`.app-content`) with it.
  *
  * The invariant is the point: **a card edit must not move the page.**  A
  * person ticking a box has said nothing about where they want to be
@@ -3339,8 +3043,7 @@ function askValues() {
  * synchronously and on the next frame -- because CodeMirror's own
  * `refresh` can scroll again after this returns.
  *
- * Both card writers use it, not only the one that was reported: the asks
- * card wrote the document the same way and moved the page the same way.
+ * Both card writers use it.
  */
 function keepingPagePut(fn) {
     const sc = document.querySelector(".app-content");
@@ -3355,29 +3058,11 @@ function keepingPagePut(fn) {
 }
 
 
-/** Write the asks INTO the open `task.json`, which is what save sends.
- *
- * The page's one source of truth is the editor's text (this file's header
- * rule), so a control that kept its value beside it would be a second
- * answer to what the description says -- and the one that never reached
- * disk.  Written on `change` rather than on every keystroke: rewriting
- * the document under a moving cursor is how an editor fights its user.
- *
- * Absent-is-a-state, matching `task.py`: nothing asked writes NO key, so
- * a description that says nothing round-trips byte-identical.
- */
 /* THE DOCUMENT CHANGES IN ONE PLACE, AND BOTH COPIES MOVE TOGETHER.
  *
  * `_task` is the model the cards are a view of; the buffer is what `save`
- * sends.  Two writers patched the BUFFER ONLY -- the asks and the notify
- * ticks -- while `syncFromModel` serialises `_task` OVER the buffer.  So:
- * type a memory, blur (the buffer gains `allocation`, `_task` does not),
- * then touch anything that syncs -- add a stage, edit a run row -- and the
- * stale `_task` is written over the top.  The memory is gone, silently.
- *
- * The editor's own re-parse would have repaired it, but it is debounced
- * 400 ms: the loss window is real and it is exactly as long as it takes to
- * click the next control.
+ * sends, and `syncFromModel` serialises `_task` OVER the buffer -- so a card
+ * that patched the buffer alone would be overwritten by a stale `_task`.
  *
  * `patchDoc` is the one door for "change the open document from a card": it
  * reads the buffer (the newer of the two, since a hand edit lands there
@@ -3405,12 +3090,9 @@ function patchDoc(change) {
 
 /** Write one card's block INTO the open `task.json`, which is what Save sends.
  *
- * ONE FUNCTION FOR BOTH CARDS.  The queue card and the notify card were two
- * copies of the same eleven lines -- read the controls, compare, write the
- * key or delete it -- and the shape is not a coincidence: it is
- * `task.json`'s own rule for an optional block, so a third card would have
- * been a third copy.  What differs is the KEY and where the values come
- * from, which is what the two parameters are.
+ * ONE FUNCTION FOR BOTH CARDS, the queue card and the notify card: it is
+ * `task.json`'s own rule for an optional block.  What differs is the KEY and
+ * where the values come from, which is what the two parameters are.
  *
  * `read` returns the block as the controls now state it.  An EMPTY object
  * means the card says nothing, and a block that says nothing is DELETED
@@ -3428,12 +3110,9 @@ function patchDoc(change) {
  *
  * WHY A PARAMETER WRITE IS ONE OF THEM.  A card edit is three writes that
  * must land together: this rung's `execution` in `_task`, the editor buffer
- * that `Save` posts, and the panels rendered from both.  While that was
- * merely *fast*, a second edit arriving inside it interleaved -- type a
- * memory value, blur, click "+ Add stage" straight away, and the block the
- * first edit was writing was gone.  Reasoning about how fast is fast enough
- * is the wrong question: the framework already has a barrier, so the write
- * takes it and the question does not arise *(user, 2026-09-02: "before the
+ * that `Save` posts, and the panels rendered from both; a second edit
+ * arriving inside it would interleave.  The framework already has a
+ * barrier, so the write takes it *(user, 2026-09-02: "before the
  * parameter is ready or persistently saved, the user can't do anything …
  * what the fuck do you care about half a second")*.
  *
@@ -3492,10 +3171,8 @@ function readAsksFromTask(task) {
 /* ---------- when this run should tell you something ---------- */
 
 /** The calculation KIND of the open folder -- its description's, else the
- *  hand-over's, as each states it (every kind writes `calculation` since
- *  2026-10-06).  Never a default: a request that carries none is refused by
- *  the server, which names it (`build._unstated`); three sites here read it
- *  each with `|| "optimization"` until then. */
+ *  hand-over's, as each states it.  Never a default: a request that carries
+ *  none is refused by the server, which names it (`build._unstated`). */
 function _kindOf() {
     return (_task && _task.calculation)
         || (_handover && _handover.calculation) || "";
@@ -3521,8 +3198,7 @@ function notifyValues() {
     if (per && per.checked) {
         const n = parseFloat((hrs || {}).value);
         // A number, in HOURS, on both sides -- `task.py` refuses "6h" and a
-        // string, and it is right to: a value that changes meaning crossing
-        // a boundary is how "4h" reached sbatch as `-t 4h`.
+        // string.
         if (isFinite(n) && n > 0) hours = n;
     }
     // `null` from the two pickers is EVERY channel / EVERY field; `[]` is
@@ -3532,10 +3208,8 @@ function notifyValues() {
     // NOTHING SET UP WRITES NO BLOCK (`run-reports.md` § 2): no trigger,
     // and both pickers at "every".
     if (!scfOn && hours === null && chans === null && rep === null) return {};
-    // A BLOCK IS WRITTEN WHOLE (`run-reports.md` § 3.0, 2026-10-06): its
-    // four values, "every" spelled `["*"]` and "never" `null` -- the falsy
-    // ones and "every" were left out until then, so a choice and silence
-    // were the same bytes.
+    // A BLOCK IS WRITTEN WHOLE (`run-reports.md` § 3.0): its four values,
+    // "every" spelled `["*"]` and "never" `null`.
     return {
         on_scf_converged: scfOn,
         every_hours: hours,
@@ -3592,7 +3266,7 @@ function readNotifyFromTask(task) {
     // THIS CALCULATION'S FIELDS, asked before they are painted: the ticks
     // offered are the ones its engine and kind can state (§ 6.9) -- and
     // with no description open, or one mid-edit stating neither, there are
-    // none to ask for (it asked for SIESTA's until 2026-10-06).
+    // none to ask for.
     const engine = (task && task.engine && task.engine.name) || "";
     const calculation = (task && task.calculation) || "";
     if (!engine || !calculation) return;
@@ -3641,20 +3315,10 @@ function paintNotifyNote() {
  */
 /** Which file supplied each setting — rendered from the folder's answer.
  *
- * A PURE RENDER, and it was not one.  This fetched
- * `/api/task-setup/resolved` itself, asked `projects.getCurrentDir()` for
- * WHICH folder — a second source for the thing `loadFolder` already had in
- * hand — and was fired `setTimeout(..., 0)`, fire-and-forget, so its answer
- * could land after a move with nothing to check it against.  This
- * machine's `molbuilder.json` is the same whatever the folder is prepped
- * for, so it comes with the rest of the folder's answer; which machine
- * RECORD answers is the prep answer's (`_showPrepAnswer`), since it turns
- * on the machine a prep names.
- *
- * Caught 2026-09-19 by asking which parts of the door's payload anything
- * reads: `provenance` was sent and nobody took it, while the page went on
- * fetching the same facts separately — the DEAD PAYLOAD this session
- * flagged on `/api/results/dir`, shipped again a few commits later.
+ * A PURE RENDER.  This machine's `molbuilder.json` is the same whatever the
+ * folder is prepped for, so it comes with the rest of the folder's answer;
+ * which machine RECORD answers is the prep answer's (`_showPrepAnswer`),
+ * since it turns on the machine a prep names.
  */
 function renderResolved(d) {
     const facts = $("ts-resolved");
@@ -3682,8 +3346,7 @@ function renderResolved(d) {
      * path without these would be the worse half of an answer: a person with
      * a `molbuilder.json` in their working directory would see a card naming
      * a different file and nothing saying the one they are editing is never
-     * opened.  The terminal prints both; a tab that printed neither is how
-     * the two came to disagree.
+     * opened.  The terminal prints both.
      *
      * The words are the server's, verbatim -- rewording them here would put a
      * second author on a message that has one home (§ 2.1a, § 2.1b). */
@@ -3741,18 +3404,9 @@ function setShape(shape) {
     if (needs) needs.hidden = !!shape;
     /* A SHAPE CHANGE IS NOT A RESET.  Below, a hand-over is turned into a
      * proposal -- stages, varies and a seeded bench.  That has to happen ONCE.
-     * Re-running it on every click meant picking flat, building a two-stage
-     * table with its overrides and a bench grid, then changing your mind to
-     * hierarchical, threw all of it away and silently rebuilt the starting
-     * proposal.  Shape is one field of the description; changing it edits that
-     * field. */
-    /* WRITING IT THROUGH IS NOT THE HAND-OVER'S PRIVILEGE.  This required
-     * `_mode === "handover"`, so on a SAVED description the buttons repainted
-     * and the model was never touched: the page showed `flat` chosen while the
-     * buffer Save posts still said `hierarchical`, and the write was silently
-     * the old value.  `task-setup.md` § 4 says the shape is free to change
-     * before the first produce -- a refusal would have been a fair answer, and
-     * showing the new choice while writing the old one is not one.
+     * Shape is one field of the description; changing it edits that field. */
+    /* WRITING IT THROUGH IS NOT THE HAND-OVER'S PRIVILEGE: `task-setup.md`
+     * § 4 says the shape is free to change before the first produce.
      *
      * The condition that matters is whether there is a DESCRIPTION to edit,
      * which is what `_task.schema` asks; the hand-over branch below is about
@@ -3859,7 +3513,7 @@ function refreshSave() {
  * Its own surface: `ts-save-why` belongs to `refreshSave` (it says why the
  * button is enabled, and is rewritten on every repaint) and the state box
  * belongs to `loadFolder` -- a save ends by reopening the folder, which
- * painted "Loaded ..." over the confirmation the moment it appeared. */
+ * paints "Loaded ..." into it. */
 function saidSave(text, state) {
     const n = $("ts-save-said");
     if (!n) return;
@@ -3872,9 +3526,8 @@ function saidSave(text, state) {
  *  runs** (`ui-contract.md` § 10).
  *
  * It is the multi-step save § 10 names as its own example: a checkpoint,
- * then a POST, then a re-read of the folder.  Only the button was disabled,
- * so the sidebar stayed live and switching directories mid-save retargeted
- * the steps after the switch -- the exact failure the fence exists for.
+ * then a POST, then a re-read of the folder; switching directories mid-save
+ * would retarget the steps after the switch.
  *
  * The parameter writers take the same fence (`underFence`), so a card edit
  * and a save can never be in flight together: whichever is first covers the
@@ -3893,8 +3546,7 @@ async function _save() {
 
     /* STEP 1 — the folder's current state is the SERVER's (`task-setup.md`
      * § 8): the save route saves it first, always, through the function prep
-     * calls, and refuses the write when it cannot (`checkpointing.md` § 9).
-     * The page asked for it with a box of its own until 2026-10-03. */
+     * calls, and refuses the write when it cannot (`checkpointing.md` § 9). */
     setState(_mode === "handover" ? "handover" : "loaded", "Saving…", "");
     let body;
     try {
@@ -3945,11 +3597,7 @@ async function _save() {
      * after is skipped -- the file is on disk and the page never says so.
      * The confirmation belongs to the write, so it is said before the
      * reload, and a reload failure is reported as its own thing. */
-    /* ONE FILE, because the save door writes one.  This read
-     * `body.template_name` off the save reply, and that key belongs to
-     * `/api/task-setup/handover` -- the save route has never sent it, so the
-     * branch could not fire and the confirmation could not have been wrong
-     * by it.  Removed rather than corrected: there is no second file. */
+    /* ONE FILE, because the save door writes one. */
     const wrote = ["task.json"];
     saidSave("Saved " + wrote.join(" + ") + " into this folder"
              + (body.saved ? " · " + body.saved : "")
@@ -3974,10 +3622,7 @@ async function _save() {
         return;
     }
     /* Gate ③'s NON-refusing findings (sequence warnings) ride the OK
-     * response, exactly what the CLI would have echoed -- and until the
-     * U6 close they went on the floor while loadFolder repainted the
-     * box to "loaded": the warned-and-navigated-past failure mode the
-     * hand-over's notices arm just had fixed. */
+     * response, exactly what the CLI would have echoed. */
     const warns = (Array.isArray(body.findings) ? body.findings : [])
         .filter((f) => f && f.severity !== "error");
 
@@ -4014,14 +3659,12 @@ function start(projects) {
     // onCommit.  Both carry `dir`, and this page cares about the folder only.
     /* A restore rewrites the folder while we are showing it -- same
      * selection, different bytes -- so re-read on the folder-changed
-     * channel as well as on selection.  Without this the tab kept
-     * displaying a description the folder no longer had (2026-08-24). */
+     * channel as well as on selection. */
     if (typeof projects.onFolderChanged === "function") {
         projects.onFolderChanged((ev) => {
             /* THIS PAGE'S OWN WRITE re-reads where it is made, once.  A
-             * second read from here escaped a Save's fence and, landing
-             * after the next edit, replaced it with the disk's (found
-             * 2026-10-03: the GPU binding box ticked again after a Save). */
+             * second read from here would escape a Save's fence and, landing
+             * after the next edit, replace it with the disk's. */
             if (_ownPublish) return;
             const changed = (ev && ev.dir) || "";
             if (changed && _dir && changed !== _dir) return;   // not ours
@@ -4032,10 +3675,9 @@ function start(projects) {
     /* THE SELECTION MOVING replaces the folder (`task-setup.md` § 2.1) --
      * not a publish naming the folder already shown: `onChange` fires once
      * on subscribe, the sidebar re-publishes the selection after every
-     * re-list, and a file clicked in the folder publishes it too.  Each was
-     * a second read, and one landing after the person began typing replaced
-     * the unsaved edit with the disk's (found 2026-10-01, the startup pair
-     * racing a test's first edit).  The folder's FILES changing arrives on
+     * re-list, and a file clicked in the folder publishes it too.  Each would
+     * be a second read, and one landing after the person began typing would
+     * replace the unsaved edit with the disk's.  The folder's FILES changing arrives on
      * the folder-changed channel above. */
     const moved = (sel) => {
         const dir = (sel && sel.dir) || "";
@@ -4055,9 +3697,7 @@ function start(projects) {
         const sel = $("ts-add-setting");
         if (!sel || !sel.value) return;
         // A row starts as ONE point -- a choice -- and the choice starts
-        // at the value IN FORCE (template, else catalogue default).  It
-        // started as the literal 1 for every type until 2026-08-20, which
-        // for use_gpu or diag_algorithm was not a value at all.
+        // at the value IN FORCE (template, else catalogue default).
         addPoint(sel.value, String(valueInForce(sel.value)));
         sel.value = "";
     };
@@ -4081,9 +3721,7 @@ function start(projects) {
  * `runtime.whenReady("projects")` instead of polling."*  The sidebar is a
  * `type=module` script, so its deferred initialisation has NOT run at
  * DOMContentLoaded -- reading `window.molbuilder.projects` there finds
- * `undefined` and the page reported "the projects sidebar did not load" on
- * every load.  That is what the runtime registry exists to prevent, and
- * `structure-optimization/viewer.js` already waits this way.
+ * `undefined`.  That is what the runtime registry exists to prevent.
  */
 function boot() {
     const rt = window.molbuilder && window.molbuilder.runtime;
@@ -4103,18 +3741,15 @@ function boot() {
 
 /* ---------- which channels this calculation reports to ---------- */
 /*
- * NAMES ONLY.  Until 2026-08-31 this card also held the address and the key
- * and wrote a second file with them; both now live on the This-machine tab,
- * where they are a fact about the box rather than about a calculation
- * (`this-machine.md` 1).  What is left writes `task.json` and nothing else,
- * which is the rule the card used to hold with a comment.
+ * NAMES ONLY.  The address and the key live on the This-machine tab, where
+ * they are a fact about the box rather than about a calculation
+ * (`this-machine.md` 1); this card writes `task.json` and nothing else.
  *
  * The three states of `notify.channels` are three states of this control,
  * and they are not collapsible (`run-reports.md` 3.0):
  *
- *   the "every channel" box ticked  -> the key is ABSENT, and the
- *                                      description uses whatever is set up
- *                                      wherever it lands
+ *   the "every channel" box ticked  -> ["*"], and the description uses
+ *                                      whatever is set up wherever it lands
  *   some names ticked               -> ["those"]
  *   the box clear and none ticked   -> [], which means send nowhere
  */
@@ -4129,21 +3764,18 @@ let _machineChannels = [];
 //: warning about a channel that is in fact set up.
 let _channelsKnown = false;
 
-/** The names ticked right now, or `null` for "every channel". */
 /* WHAT A REPORT OF THIS CALCULATION MAY CARRY -- asked of the server, which
  * answers from the one declaration (`report_fields`, `stages.md` § 6.9): the
  * fields a run of this engine and kind can state, in the wire's own names
  * (`run-reports.md` § 4.1a), with the words to offer each by.  The page keeps
  * no list: the same table checks the description at save and travels beside
- * the job to the monitor.  It kept one until 2026-09-26, and offered every
- * field to every calculation -- seconds per iteration to PySCF, which has no
- * timing instrument, and a step to a transport rung.
+ * the job to the monitor.
  *
  * THE CALCULATION'S NAME IS NOT HERE, on purpose: it is always sent, so
  * offering a box for it would be offering a choice that does not exist. */
 //: ``null`` until the server has answered -- NOT KNOWN, which is not the
 //: same as "none": a card that took an unanswered question for an empty
-//: list rewrote a description's `notify.report` to `[]` on its next tick.
+//: list would rewrite a description's `notify.report` to `[]`.
 let _reportFields = null;
 //: The `<engine>/<calculation>` `_reportFields` answers, or `null`.
 let _reportFieldsFor = null;
@@ -4161,7 +3793,7 @@ async function loadReportFields(engine, calculation) {
                                         calculation: calculation });
         const d = await (await fetch("/api/notify/report-fields?" + q)).json();
         // NOTHING OFFERED rather than a guess on a malformed answer: a card
-        // that invented the list would be the second copy this replaced.
+        // that invented the list would be a second copy of it.
         if (d && Array.isArray(d.fields)) got = d.fields;
     } catch (e) {
         got = null;
@@ -4256,6 +3888,7 @@ function paintReportNote() {
     }
 }
 
+/** The names ticked right now, or `null` for "every channel". */
 function channelSelection() {
     const all = $("ts-notify-all");
     if (all && all.checked) return null;

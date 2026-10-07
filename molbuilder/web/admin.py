@@ -28,14 +28,6 @@ no configuration in which "anyone who can sign in" means the public: an operator
 who writes no auth config has no login at all, and one who writes it has had to
 name every person by hand.
 
-WHY IT IS NOT ``rate_limit.admin_emails`` ANY MORE (2026-08-03).  It lived
-inside the limiter's settings, and the restart route had to INVERT its meaning
-for itself -- one value, two opposite readings, depending on which subsystem
-asked.  And it was reached through the limiter's own object, so turning the
-limiter off silently changed who counted as an admin.  BOTH of those are what
-was wrong; the default itself was not, and it is restored here with one meaning
-in one place.
-
 WHAT THIS COSTS ON A LAPTOP: nothing.  Loopback is never rate-limited, so there
 is no block list to clear, and the restart button needs a supervisor before it
 exists at all.
@@ -56,7 +48,7 @@ _EXT_KEY = "molbuilder_admin_emails"
 def install_admins(app, emails: Iterable[str]) -> frozenset:
     """Hang the admin set on the app, once, at setup -- as
     `runtime_config.get_admin_emails` resolved it (lowercased, blanks
-    dropped: the rule's one home; this re-did it until 2026-10-02, W54 C21)."""
+    dropped: the rule's one home)."""
     resolved = frozenset(emails or ())
     app.extensions[_EXT_KEY] = resolved
     return resolved
@@ -77,8 +69,7 @@ def named_admins(app=None) -> frozenset:
 
 
 #: What a request that is not an admin's is told.  ONE sentence for both
-#: routes that ask -- the restart and the rate limiter's block list; they said
-#: two different things until 2026-10-02, one of them the reverse of the rule.
+#: routes that ask -- the restart and the rate limiter's block list.
 NOT_AN_ADMIN = ("admin auth required: sign in first -- or, if an `admin` "
                 "section in molbuilder.json names specific addresses, sign "
                 "in as one of them")

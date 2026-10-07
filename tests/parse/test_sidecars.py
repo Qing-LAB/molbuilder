@@ -1,4 +1,4 @@
-"""L2 tests for Phase D sidecar FileParsers.
+"""L2 tests for the sidecar FileParsers.
 
 Pins:
   * Each sidecar parser is registered + claims its filename
@@ -23,21 +23,14 @@ from molbuilder.parse.registry import _registered_file_parsers
 
 REPO = Path(__file__).resolve().parents[2]
 MOLSTRUCT_FX = REPO / "tests" / "data" / "au_bdt_au.molstruct.json"
-# NO PATH INTO projects/.  The spectra fixture was
-# projects/BDT/spectrum/BDT-only/spectra.spectra.json -- the user's scientific
-# record -- behind a `pytest.skip("fixture absent")`, which is the dangerous
-# half: on a machine without that run the test SKIPS and the suite still reads
-# green.  It is now WRITTEN by the application's own `dump_spectra_json`, so
-# the document is valid by construction and cannot go stale.
 
 
 def _need(p: Path) -> Path:
     """Assert the fixture is there.
 
-    This used to ``pytest.skip`` on a missing file.  Every fixture it guards is
-    COMMITTED under tests/ -- so absence means a broken checkout or a deleted
-    file, and skipping turned that into a green run that proved nothing.  A
-    missing committed fixture is a failure, loudly.
+    Every fixture it guards is COMMITTED under tests/ -- so absence means a
+    broken checkout or a deleted file, and a missing committed fixture is a
+    failure, loudly.
     """
     assert p.exists(), (
         f"committed fixture missing: {p}.  It is versioned with these tests; "
@@ -104,7 +97,7 @@ def test_sidecar_result_is_frozen():
         result.schema = "tampered/v0"   # noqa
 
 
-# ---- the transport record, and the predecessor it is not --------------- #
+# ---- the transport record ---------------------------------------------- #
 
 
 def _record(tmp_path, **over):
@@ -121,23 +114,13 @@ def _record(tmp_path, **over):
 
 
 def test_a_transport_record_is_read_by_a_parser_not_by_the_browser(tmp_path):
-    """`<label>.transport.json` was the one result kind no Python could read.
+    """`<label>.transport.json` is read by a Python parser.
 
-    `parse/sidecars/transport.py` was deleted 2026-09-17 and rightly: it
-    claimed a file only when the payload carried a top-level
-    `schema_version`, while the live writer (`transport/record.py`) emits
-    `schema` -- so it sat in the registry unable to claim the one file
-    molbuilder writes, and its own writer had zero production callers in
-    every revision.
-
-    What changed is that the reader now has a consumer.  `/api/results/dir`
-    asks the registry what reads each file, and the answer here was
-    *nothing* -- so the Results tab parsed it in the BROWSER
-    (`lib/inspectors/transport.js`: `JSON.parse(body.text)`), the only
-    result kind whose format was understood only in JavaScript.
+    `/api/results/dir` asks the registry what reads each file, so a result
+    kind no parser claims is understood only in the browser.
 
     The fixture goes through `write_record`, so this cannot drift from the
-    shape actually written -- which is exactly how the predecessor failed.
+    shape actually written.
     """
     from molbuilder.parse import detect
 
@@ -149,11 +132,6 @@ def test_a_transport_record_is_read_by_a_parser_not_by_the_browser(tmp_path):
     assert got.payload["label"] == "junction"
     assert got.payload["treatment"] == "single-bias"
     assert got.payload["iv"]["voltages_v"] == [0.0]
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 2 tests here refused a transport record or a job set written by
-# hand (`process/testing.md` § 6).
 
 
 def test_the_catalogue_row_lets_the_door_offer_it(tmp_path):
@@ -172,16 +150,14 @@ def test_the_catalogue_row_lets_the_door_offer_it(tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  A benchmark sweep's plan -- the same gap as the transport record,     #
-#  found two days later (2026-09-19)                                     #
+#  A benchmark sweep's plan                                             #
 # --------------------------------------------------------------------- #
 
 def _job_set(tmp_path, kind):
     """A real `job-set.json` of either kind, through `JobSet.write`.
 
     Same principle as `_record` above: the fixture goes through the
-    WRITER, so the parser cannot be tested against a shape nothing emits
-    -- the failure the deleted transport parser is the monument to.
+    WRITER, so the parser cannot be tested against a shape nothing emits.
     """
     from molbuilder.jobset.model import Job, JobSet, Resources
 
@@ -214,14 +190,14 @@ def test_a_sweep_is_read_by_a_parser_so_the_door_can_offer_it(tmp_path):
 
 
 def test_an_ordinary_ladder_is_refused_though_the_filename_matches(tmp_path):
-    """The DISCRIMINATOR, not the name -- and this is the half that was
-    used to justify dropping the file entirely.
+    """The DISCRIMINATOR, not the name.
 
     A calculation's stage ladder is also called `job-set.json`, and its
     `/api/bench/summary` answers 400 because there is no sweep to
     summarise.  Offering it would mount the bench viewer on a refusal.
     It is declined for the reason stated on disk (`kind: ladder`) rather
-    than by the whole name being excluded, which took the sweep with it.
+    than by the whole name being excluded, which would take the sweep with
+    it.
 
     MUTATION THIS MUST FAIL AGAINST: drop the `kind` test from
     `_load_sweep`, keeping only the schema check.

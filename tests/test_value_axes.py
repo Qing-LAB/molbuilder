@@ -8,8 +8,8 @@ gpu-capable row carries the sinfo inventory and the probed 48-core cap
 (the GPU node group's own core count; hand-editable).
 Every rule the section states is pinned here: the family split, the
 inventory fallback, the cap drop BY NAME, the per-trial coordinates in the
-decks and in ``job-set.json``, the per-side grouped submission with the
-routing preference, and the winner's coordinates riding ``run-config.toml``.
+decks and in ``job-set.json``, and the per-side grouped submission with the
+routing preference.
 """
 from __future__ import annotations
 
@@ -126,12 +126,10 @@ def test_the_users_matrix_enumerates_both_families(sol_calc):
     # every point carries the full value coordinate
     assert all({"diag_algorithm", "block_size"} <= set(p) for p in points)
     # The struck cells are named, with the queue and the number that
-    # struck them.  The wording changed on 2026-08-30 -- the machine used
-    # to print "dropped from the GPU family (domain 'general' allows 48
-    # cores/node)" and now prints the whole grid, kept and crossed out,
-    # each struck row carrying its own reason.  The CLAIM is unchanged:
-    # nothing is dropped silently -- the notes say it, which both prep
-    # doors show (`prep.prep_stage`).
+    # struck them: the machine prints the whole grid, kept and crossed out,
+    # each struck row carrying its own reason.  Nothing is dropped
+    # silently -- the notes say it, which both prep doors show
+    # (`prep.prep_stage`).
     out = "\n".join(notes)
     assert "crossed out" in out
     assert "general" in out and "48" in out
@@ -161,8 +159,7 @@ def test_a_queue_listing_several_cards_answers_the_most_gpus_a_node_holds(
         sol_calc):
     """A queue whose record lists two cards is no question to refuse: the
     GPU count a node can hold is the most any of its nodes holds -- here
-    the 16 of the second -- and no card is chosen (`scheduler.md` R2a).
-    It refused, asking the person to curate the record, until 2026-10-01."""
+    the 16 of the second -- and no card is chosen (`scheduler.md` R2a)."""
     env = json.loads((sol_calc / "environment.json").read_text())
     env["domains"][1]["gpu"] = {"a100": 4, "a100.20gb": 16}
     (sol_calc / "environment.json").write_text(json.dumps(env))
@@ -171,11 +168,6 @@ def test_a_queue_listing_several_cards_answers_the_most_gpus_a_node_holds(
     points, _pins, tr = bench_inputs(sol_calc, None)
     assert [p["G"] for p in points] == [8], points
     assert tr.to_resources(points[0], None)["gres"] == "gpu:8"
-
-
-# `test_a_hand_declared_device_row_enumerates_like_a_probed_one` retired
-# 2026-10-02 with the hand-declared device spelling it read (W54 R22,
-# `execution/scheduler.md` § 4: the probe's map is the one spelling).
 
 
 def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
@@ -229,11 +221,9 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     assert len(dirs) == 2 + 3 * 2       # cpu: 1 cell x2 blocks; gpu: G in 1,2,4
 
     def deck(sub):
-        # MATCHED ON THE PATH, not the leaf.  A trial keeps attempts since
-        # 2026-08-27 (`project-layout.md` § 1.5a), so the leaf is `run-0`
-        # and the coordinate names the directory above it.  The property
-        # under test -- that each trial's own coordinate reaches its deck
-        # -- is unchanged; only where the deck sits moved.
+        # MATCHED ON THE PATH, not the leaf.  A trial keeps attempts
+        # (`project-layout.md` § 1.5a), so the leaf is `run-0`
+        # and the coordinate names the directory above it.
         d = next(p for p in dirs if sub in str(p))
         return next(d.glob("*.fdf")).read_text()
 
@@ -298,10 +288,9 @@ def test_split_submission_one_group_per_side_and_shelf(sol_calc):
     assert len(plans) == 4
     cpu = next(l for l in plans if "bench-group-cpu-G0K4C1 " in l)
     assert "-p htc" in cpu and "--gres" not in cpu
-    # The shelf token is the SAME spelling its trials carry (2026-08-24):
+    # The shelf token is the SAME spelling its trials carry:
     # `G<gpus>K<ranks-per-gpu>C<cores>`, where 4 ranks over g devices is
-    # K = 4/g.  It was `g<gpus>n<TOTAL-ranks>c<cores>` -- the same three
-    # facts in a second vocabulary, beside directories using the first.
+    # K = 4/g.
     for g in (1, 2, 4):
         tok = f"G{g}K{4 // g}C1"
         line = next(l for l in plans if f"bench-group-gpu-{tok}" in l)
@@ -316,18 +305,10 @@ def test_split_submission_one_group_per_side_and_shelf(sol_calc):
 def test_only_submits_one_side_and_the_named_queue_wins(sol_calc):
     """``--only gpu`` carries just that side, and the queue named for that
     side is where it goes — nothing infers a preference over a stated answer.
-
-    *Migrated 2026-08-23.*  This passed `--domain htc` and expected it to
-    place the GPU shelves.  With a queue named per side, forcing the GPU side
-    means naming the GPU side's queue: a cpu-only partition cannot take a GPU
-    group, so one flag answering for both was exactly the conflation that made
-    `--gpu-domain` necessary.  The claim is unchanged — a stated queue wins —
-    only the spelling is per-side now.
     """
     # A SECOND QUEUE WITH GPUS, named for the GPU side: the stated queue
     # must win over the one placement would pick (`general`, first on the
-    # menu).  This named the cpu-only `htc` until 2026-10-01 -- the gap
-    # that let a GPU group onto a queue with no GPUs (`scheduler.md` R2a).
+    # menu).
     env = json.loads((sol_calc / "environment.json").read_text())
     env["domains"].append({"name": "public", "partition": "public",
                            "qos": "public", "max_time": "7-00:00:00",
@@ -356,9 +337,7 @@ def test_the_shelves_submit_widest_first(sol_calc):
     plans = [l for l in out.splitlines() if "WOULD run" in l]
     assert len(plans) == 2
     # The shelf token is the SAME spelling its trials carry
-    # (`G<gpus>K<ranks-per-gpu>C<cores>`, 2026-08-24) -- it was
-    # `g<gpus>n<TOTAL-ranks>c<cores>` while the directories that
-    # same job launches were named the other way.
+    # (`G<gpus>K<ranks-per-gpu>C<cores>`).
     # Named in full, side and cell (`generator.md` § 4.3a).
     assert "bench-group-cpu-G0K4C1" in plans[0] and " -n 4 " in plans[0]
     assert "bench-group-cpu-G0K2C1" in plans[1] and " -n 2 " in plans[1]
@@ -377,10 +356,8 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     _declare(sol_calc, {"mpi_np": [4], "omp_threads": [1],
                         "use_gpu": [False], "block_size": [64, 128]})
     _prep(sol_calc)
-    # The trial's ARTIFACT directory, not a hardcoded container: since
-    # 2026-08-27 the deck lives in the attempt (`project-layout.md`
-    # § 1.5a).  The gate this exercises -- submission verifies the deck it
-    # is about to launch starts cold -- is unchanged.
+    # The trial's ARTIFACT directory, not a hardcoded container: the deck
+    # lives in the attempt (`project-layout.md` § 1.5a).
     _c = sol_calc / "01_coarse" / "bench" / "bench-G0K4C1block_size64"
     deck = next((latest_attempt(_c) or _c).glob("*.fdf"))
     text = deck.read_text()
@@ -403,13 +380,6 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
                        str(sol_calc), "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert r.exit_code != 0
     assert "no restart group" in r.output
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# `test_the_winners_value_coordinates_reach_the_report`:
-# it wrote a SIESTA output and an SCF-timing log by hand into benchmark
-# trial folders that never ran, so the summary had a winner to pick: an
-# output invented as text (`process/testing.md` § 6).
 
 
 # --------------------------------------------------------------------- #
@@ -502,13 +472,6 @@ def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):
     assert points, "the probed ladder must survive the filter"
     assert {p["G"] for p in points} == {2}
     assert len({p["K"] for p in points}) > 1,         "K must still range over the machine's proposal"
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# `test_summarize_mid_flight_lists_unfinished_and_refreshes`:
-# it wrote a SIESTA output and an SCF-timing log by hand into benchmark
-# trial folders that never ran, so the summary had a winner to pick: an
-# output invented as text (`process/testing.md` § 6).
 
 
 # --------------------------------------------------------------------- #
@@ -614,10 +577,3 @@ def test_a_grouped_bench_on_a_flat_calculation(flat_sol_calc):
     assert len(plans) == 4, out    # one CPU shelf + three GPU shelves
     assert any("bench-group-cpu-G0K4C1 " in l for l in plans)
     assert sum("bench-group-gpu-" in l for l in plans) == 3
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# `test_a_gpu_winner_rides_run_config_on_a_mixed_sweep`:
-# it wrote a SIESTA output and an SCF-timing log by hand into benchmark
-# trial folders that never ran, so the summary had a winner to pick: an
-# output invented as text (`process/testing.md` § 6).

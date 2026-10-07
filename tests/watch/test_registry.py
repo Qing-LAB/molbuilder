@@ -12,11 +12,6 @@ from molbuilder.parse import UnknownFormatError, detect as detect_parser
 from molbuilder.parse.registry import _registered_file_parsers as _list_file_parsers
 
 
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 4 tests here detected a SIESTA output, a geomeTRIC trajectory, a
-# progress log or a PySCF log typed by hand (`process/testing.md` § 6).
-
-
 def test_detect_unknown_format(tmp_path):
     p = tmp_path / "garbage.txt"
     p.write_text("just some random text\n")

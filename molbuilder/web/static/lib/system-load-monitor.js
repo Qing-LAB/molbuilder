@@ -10,8 +10,8 @@
  * Behaviour:
  *   * Mounts at DOMContentLoaded against #system-load-monitor.  The HTML
  *     is templates/_system_load_monitor.html, included by results.html
- *     ALONE -- mounting it app-wide charged every page a 1 Hz hardware
- *     probe nobody was reading.
+ *     ALONE -- mounting it app-wide would charge every page a 1 Hz
+ *     hardware probe nobody reads.
  *   * Starts COLLAPSED on a first visit; the choice persists in
  *     sessionStorage so it survives navigation between tabs.
  *   * Pauses polling when document.hidden (browser-tab-backgrounded);
@@ -132,11 +132,10 @@
             if (cEl) drawSparkline(cEl, buf.items());
         }
 
-        /* 2026-06-21 user feedback: detail text used to live in browser
-         * ``cell.title`` tooltips that re-positioned on every 1 Hz
-         * redraw -- never stable, never readable.  Write it directly
-         * into the cell's ``[data-detail]`` slot instead so it's
-         * always on-screen.  The strings preserve their pre-formatted
+        /* Detail text goes directly into the cell's ``[data-detail]``
+         * slot so it's always on-screen (user, 2026-06-21: a tooltip
+         * re-positions on every 1 Hz redraw and is never readable).
+         * The strings preserve their pre-formatted
          * ``\n``-separated layout; the CSS uses ``white-space:
          * pre-line`` to render them as multi-line. */
         function setDetail(cell, text) {
@@ -152,7 +151,7 @@
          * The notice under the strip explains it to someone already
          * looking at the card.  The marker on the header pill exists
          * for someone who is NOT: the card is collapsed on first visit
-         * (results-state-contract § 9), so the pill is the only part
+         * (results.md § 6), so the pill is the only part
          * that is always on screen.  Without a mark there, a broken
          * driver is invisible to anyone who never opens the card --
          * which is the failure this whole thing was added to end.
@@ -327,10 +326,9 @@
                     //             no numbers to draw, so the cells stay
                     //             hidden, but the reason goes on screen.
                     //
-                    // 2026-08-04: without this, the two look identical
-                    // -- a tidy two-cell strip.  A driver/library
-                    // mismatch sat on the development host for five
-                    // weeks reading as "this machine has no GPU".
+                    // Without this, the two would look identical -- a
+                    // tidy two-cell strip reading as "this machine has
+                    // no GPU".
                     var gpus = d.gpus || [];
                     applyGpuStatus(d);
                     if (gpus.length === 0) {
@@ -344,7 +342,7 @@
                     cellVram.hidden  = false;
                     // Multi-GPU: report GPU 0 in the sparklines (the
                     // common case) and put the per-device breakdown in
-                    // the cell title (hover tooltip).
+                    // the cell's detail block.
                     var g0 = gpus[0];
                     var gUtil = (typeof g0.util_pct      === "number") ? g0.util_pct     : 0;
                     var gBw   = (typeof g0.util_mem_pct  === "number") ? g0.util_mem_pct : 0;
@@ -406,8 +404,7 @@
         // independent event sources (visibilitychange + toggle click)
         // so we OR-stop / AND-start instead of letting either source
         // unconditionally call startTimer() (which would resume polling
-        // even when the user has explicitly collapsed -- the original
-        // bug this commit closes).
+        // even when the user has explicitly collapsed).
         var timer       = null;
         var userClosed  = false;   // user clicked the collapse toggle
         function startTimer() {
@@ -438,16 +435,11 @@
         // browser close (this is a transient UI preference, not a
         // user setting).
         //
-        // Collapsing now ALSO stops polling (and aborts any in-flight
+        // Collapsing ALSO stops polling (and aborts any in-flight
         // request) -- with the widget hidden the snapshots are wasted
         // server work + wasted client bandwidth.  Expanding restarts
         // polling AND triggers an immediate first sample so the
         // sparklines re-populate without a 1 s wait.
-        // PR 5 (2026-06-17 user-report-2): --monitor-height CSS var
-        // retired -- the monitor moved INSIDE .results-main as a
-        // normal flow element, so scroll containers no longer need
-        // to reserve space.  See system-load-monitor.css for the
-        // in-flow layout.
 
         function applyCollapsed(collapsed) {
             userClosed = !!collapsed;
@@ -474,10 +466,7 @@
             });
             // web/results.md § 6: COLLAPSED BY DEFAULT
             // on first visit.  Users opt in to the expanded strip;
-            // it doesn't opt them in.  The expanded strip otherwise
-            // overlays the bottom 48px of plots on every fresh
-            // /results visit -- the bug that prompted the layout
-            // contract.  ``saved === "0"`` is explicit-opt-in to
+            // it doesn't opt them in.  ``saved === "0"`` is explicit-opt-in to
             // expanded; missing key OR explicit "1" -> collapsed.
             var saved = null;
             try { saved = sessionStorage.getItem(STORAGE_KEY_COLLAPSED); }

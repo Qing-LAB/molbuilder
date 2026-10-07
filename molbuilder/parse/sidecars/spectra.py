@@ -1,17 +1,12 @@
 """``.spectra.json`` sidecar FileParser.
 
-The READ side. Absorbed from the legacy
-``molbuilder.parsers.spectra_json`` (deleted 2026-06-21) with its
-validators and exception classes; the write side is
-:mod:`molbuilder.sidecars.spectra` (provenance:
-`docs/archive/old_docs/protocols/parse-module.md` § 8).
+The READ side; the write side is :mod:`molbuilder.sidecars.spectra`.
 
-The legacy ``parse_spectra_json`` returns a typed
+The reader returns a typed
 :class:`molbuilder.spectra.results.SpectraResults` dataclass.  The
 sidecar wrapper unwraps it back to a dict for the SidecarResult
 payload via ``results.to_dict()`` (NOT :func:`dataclasses.asdict`
-— that preserves ndarrays which then break ``json.dumps`` at
-webhook delivery + cache pickle).
+— that preserves ndarrays which then break ``json.dumps``).
 """
 
 from __future__ import annotations
@@ -77,10 +72,7 @@ def _strict_finite_float(s: str) -> float:
 # dropping support.  Per-version read-time handling lives in the typed-
 # class ``from_dict`` methods (see ``ModeData.from_dict`` for the
 # v1 -> v2 eigenvector remap).
-# ONE home for the readable set: `spectra/results.py` owns it (v5's own
-# introduction found this hardcoded {4} here -- the parse gate refused the
-# writer's current version while quoting it in its own error, "expected 5,
-# got 5").
+# ONE home for the readable set: `spectra/results.py` owns it.
 _READABLE_SCHEMA_VERSIONS = READABLE_SCHEMA_VERSIONS
 
 
@@ -219,8 +211,7 @@ class SpectraSidecarFileParser(FileParser):
         results = _parse_spectra_json(path)
         # Use .to_dict() (not dataclasses.asdict) so numpy ndarrays
         # convert to JSON-trivially-serialisable lists -- ndarrays
-        # leaked through asdict would break json.dumps at webhook
-        # delivery + cache pickle.
+        # leaked through asdict would break json.dumps.
         payload = results.to_dict()
         sv = payload.get("schema_version", 1)
         return build_sidecar_result(

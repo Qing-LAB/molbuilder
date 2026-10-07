@@ -7,29 +7,18 @@ cannot drift apart without a test going red (the pattern
 ``docs/process/testing.md`` § 6 calls a source-text invariant, already used by
 ``checkpoint_message()`` against § 7.3).
 
-WHAT P1 OWNS, AND WHAT IT DOES NOT.  § 6.6's preflight is eight rows, and they
-do not all belong to the same layer:
-
-  P1, here -- purely structural, answerable from the file alone:
+WHAT THIS FILE OWNS: the rows of § 6.6's preflight that are purely
+structural, answerable from the file alone:
     * the schema string's major (through ``persist.check_schema``)
     * ``shape`` present and one of the two legal values
     * stage names match ``[A-Za-z0-9_]+`` and are unique case-insensitively
-    * no ``overrides`` key names a stage field (§ 2's three)
-    * every stage's ``overrides`` holds exactly the keys in ``varies``
+    * no ``overrides`` key names a stage field (§ 2)
+    * every stage's ``overrides`` holds only keys in ``varies``
     * unknown keys refused, naming the key
 
-  P2, when resolution lands -- needs the engine's schema, which an L1 codec
-  must not import:
-    * the engine is one this backend has a generator for
-    * the schema fingerprint matches
-    * every named field exists in the shared schema
-    * every value is inside the schema's bounds
-    * the § 6.6a warning for two stages that RESOLVE identically -- the
-      comparison is over the resolved pair, and resolving is P2's verb
-
-Splitting it this way is not a weakening: the rows P1 skips are the rows that
-would force ``molbuilder/task.py`` to import an engine -- an L1 module
-reaching up a layer, which review refuses (`process/code-audit.md` § 1c).
+The rows that need the engine's schema are not here: they would force
+``molbuilder/task.py`` to import an engine -- an L1 module reaching up a
+layer, which review refuses (`process/code-audit.md` § 1c).
 """
 from __future__ import annotations
 
@@ -106,10 +95,7 @@ def test_the_contracts_own_example_is_a_valid_description(example):
     assert task.shape == "hierarchical"
     # Derived, not retyped.  The id in § 6's example is what
     # `run-identity.md § 2` builds from the run's name and the structure's
-    # formula, and asserting it as a literal is how this test went red on
-    # 2026-08-08 when the id became case-preserving (§ 8 #14) -- a fixture
-    # parsed from one document and compared to a constant copied out of
-    # another is only half the pattern.
+    # formula.
     assert task.run.id == run_id(task.run.name, task.structure.formula)
     assert [s.name for s in task.stages] == ["coarse", "tight"]
     assert task.varies == ("mesh_cutoff", "relax_force_tol", "relax_type")
@@ -140,7 +126,7 @@ def test_written_file_is_named_and_versioned(example, tmp_path):
 # --------------------------------------------------------------------- #
 
 def test_unknown_top_level_key_is_refused_by_name(example):
-    """§ 6.1 rule 1.  Reverses --stages-json's 'Unknown keys ignored'."""
+    """§ 6.1 rule 1."""
     example["mesh_cutof"] = 300
     with pytest.raises(ValueError) as e:
         Task.from_dict(example)
@@ -220,8 +206,8 @@ def test_a_same_major_minor_bump_is_tolerated(example):
 
 
 def test_overrides_may_not_name_a_stage_field(example):
-    """§ 6.6.  A stage has three fields (§ 2); an override naming one of
-    them would be a stage trying to redefine what a stage is."""
+    """§ 6.6.  An override naming a stage field (§ 2) would be a stage
+    trying to redefine what a stage is."""
     example["stages"][0]["overrides"]["enabled"] = False
     with pytest.raises(ValueError) as e:
         Task.from_dict(example)
@@ -242,10 +228,7 @@ def test_a_stage_may_omit_a_varied_key_and_that_means_base(example):
     """§ 6.2, corrected 2026-08-07: `overrides` is a SUBSET of `varies`.
 
     An absent key means *this stage uses base's value* -- a real state, and
-    the one § 6 of the tab plan draws as a quiet cell.  This replaces a test
-    that required equality; equality both made `varies` redundant (derivable
-    as any stage's key set) and forced every cell to be filled with a copy
-    of base, which is the table design it was supposed to serve.
+    the one § 6 of the tab plan draws as a quiet cell.
     """
     del example["stages"][0]["overrides"]["relax_type"]
     task = Task.from_dict(example)
@@ -263,18 +246,12 @@ def test_a_stage_may_omit_a_varied_key_and_that_means_base(example):
                          ids=["stages-only", "stages-and-varies"])
 def test_absent_stages_is_refused(example, drop):
     """§ 6.5 (2026-08-16): a job always has at least one stage, so there is no
-    stage-less form to read. It used to mean "one parameter set"; now the one
-    parameter set is spelled as the one stage it is.
+    stage-less form to read: the one parameter set is spelled as the one
+    stage it is.
 
     **Both shapes, and the first is the one that matters.** `varies` travels
     with `stages`, so a real description carries both -- which means the
     realistic way to reach this refusal is deleting `stages` alone by hand.
-    Until 2026-08-16 only the both-absent shape was tested, and it passed
-    while the realistic one hit a *different*, older refusal that fired first
-    and answered with the RETIRED rule ("a description with no stages is one
-    parameter set"), never saying to add a stage. A refusal that states the
-    opposite of the contract is worse than no refusal, and a test that only
-    exercises the unrealistic shape is how it survived.
     """
     obj = dict(example)
     for key in drop:
@@ -285,10 +262,8 @@ def test_absent_stages_is_refused(example, drop):
 
 def test_an_empty_stages_refusal_does_not_send_you_to_the_other_refusal(
         example):
-    """The two refusals must not form a loop. The empty-list message used to
-    read *"Omit it entirely for a single parameter set"* -- advice that lands
-    straight on the absent-`stages` refusal, so following it got you nowhere.
-    Each now names the same fix: give it one entry."""
+    """The two refusals must not form a loop: each names the same fix, give
+    it one entry."""
     obj = dict(example)
     obj["stages"] = []
     with pytest.raises(ValueError, match="at least one stage") as exc:
@@ -298,11 +273,9 @@ def test_an_empty_stages_refusal_does_not_send_you_to_the_other_refusal(
 
 def test_a_one_stage_description_round_trips_with_both_keys(example, tmp_path):
     """§ 6.5 (2026-08-16): one stage is an ordinary stage, so both keys are
-    written for it exactly as they are for three.
-
-    This asserted that neither key may reappear on write — the stage-less
-    spelling. Uniformity replaced it: one shape whatever the rung count, so
-    nothing downstream needs to know which case it is looking at."""
+    written for it exactly as they are for three: one shape whatever the
+    rung count, so nothing downstream needs to know which case it is
+    looking at."""
     p = tmp_path / FILENAME
     one = dict(example)
     one["stages"] = [{"name": "coarse", "enabled": True, "overrides": {}}]
@@ -311,15 +284,6 @@ def test_a_one_stage_description_round_trips_with_both_keys(example, tmp_path):
     written = json.loads(p.read_text())
     assert [s["name"] for s in written["stages"]] == ["coarse"]
     assert written["varies"] == []
-
-
-# ``test_varies_without_stages_is_refused`` was retired 2026-08-16.  It popped
-# `stages` and asserted the message mentioned "varies" -- pinning a check that
-# treated *varies without stages* as its own defect.  § 6.5 made `stages`
-# mandatory, so that input is simply a description with no stages, and the
-# check it pinned was the one firing ahead of the real refusal with the
-# retired rule's wording.  Its exact input is now the ``stages-only`` case of
-# ``test_absent_stages_is_refused``, asserting the message that names the fix.
 
 
 def test_an_empty_stage_list_is_refused(example):
@@ -340,13 +304,9 @@ def test_structure_is_a_reference_and_a_witness(example):
     task = Task.from_dict(example)
     assert task.structure.source.endswith("bdt_au.xyz")
     # Alphabetical, per `run-identity.md § 2.0` (decided 2026-08-08): Au, C,
-    # H, S.  The example used to read C6H4S2Au38 -- hand-grouped as "the
-    # molecule, then the gold", which matched no rule and which no code could
-    # therefore produce.
+    # H, S.
     assert task.structure.formula == "Au38C6H4S2"
-    # DERIVED from the formula rather than retyped.  The example said 46 for
-    # a formula that is 50 atoms, and this assertion held the wrong number in
-    # place -- found by P3's Review 1 (§ 5c finding 5).  A witness whose two
+    # DERIVED from the formula rather than retyped: a witness whose two
     # halves disagree cannot detect anything, which is the one job it has.
     counts = re.findall(r"([A-Z][a-z]?)(\d*)", task.structure.formula)
     assert task.structure.atoms == sum(int(n or 1) for _, n in counts)
@@ -387,8 +347,8 @@ def test_the_description_names_no_machine(example, tmp_path):
 
 def test_checkpoint_recognises_a_calculation_by_its_description(tmp_path,
                                                                 example):
-    """P1 unit 4.  checkpoint.py's _is_bundle_root arm was dead because no
-    producer wrote a description.  Writing one makes it live."""
+    """A written description is what checkpoint.py's ``_is_bundle_root``
+    recognises a calculation by."""
     from molbuilder.checkpoint import _is_bundle_root
     assert not _is_bundle_root(tmp_path)
     write_task(tmp_path / FILENAME, Task.from_dict(example))
@@ -493,9 +453,7 @@ def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
         engine="siesta",
         shape="flat",
         calculation="optimization",
-        # Derived, not retyped.  The literal here was ``h2_relax_h2``, which
-        # had been wrong since the id became case-preserving on 2026-08-08
-        # and was invisible while nothing checked it.
+        # Derived, not retyped.
         run=derive_run("H2 relax", "H2",
                        created="2026-08-07T10:00:00-07:00"),
         structure=StructureRef(source="projects/x/structure/h2.xyz",
@@ -556,11 +514,8 @@ def test_a_task_cannot_hold_an_empty_stage_tuple():
 
 
 def test_stages_with_nothing_varying_is_legal(example, tmp_path):
-    """§ 6.5 spells 'one parameter set' by omitting BOTH keys, so a
-    present-but-empty ``varies`` is not that second spelling -- it is
-    several stages that differ in nothing but their name, which § 6.6a
-    (2026-08-07) explicitly allows.  The object invariant must not
-    mistake one for the other."""
+    """A present-but-empty ``varies`` is several stages that differ in
+    nothing but their name, which § 6.6a (2026-08-07) explicitly allows."""
     example["varies"] = []
     for s in example["stages"]:
         s["overrides"] = {}
@@ -574,7 +529,7 @@ def test_stages_with_nothing_varying_is_legal(example, tmp_path):
     assert json.loads(p.read_text())["varies"] == []
 
 
-# ---- U15 (2026-08-12): the ladder-level refusals, at the codec -------- #
+# ---- the ladder-level refusals, at the codec ------------------------- #
 
 def _ladder_task(stages):
     from molbuilder.identity import run_id
@@ -589,11 +544,8 @@ def _ladder_task(stages):
 
 
 def test_duplicate_stage_names_are_refused_by_the_codec():
-    """Three comments claimed this check existed (validation/siesta's u5
-    retirement, describe's help, describe._check) while nothing refused
-    it: a hand-written task.json with two 'coarse' stages parsed fine
-    and one stage silently got the other's files.  The codec is the one
-    gate every route passes."""
+    """A task.json with two 'coarse' stages would give one stage the
+    other's files.  The codec is the one gate every route passes."""
     import pytest
     from molbuilder.task import Stage
     with pytest.raises(ValueError, match="duplicate stage name"):

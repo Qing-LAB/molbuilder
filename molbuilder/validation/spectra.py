@@ -1,8 +1,7 @@
 """The spectra render gate -- the science checks a vibration deck runs.
 
-One module, one body, two callers (see ``spectra_render_checks``'s
-docstring).  Lives in ``validation/`` beside the other engines' gates;
-the retired ``spectra/pyscf_engine.py`` carried it as a classmethod.
+Called from ``validation/__init__.py``'s vibration arm.  Lives in
+``validation/`` beside the other engines' gates.
 """
 
 from __future__ import annotations
@@ -26,36 +25,26 @@ def spectra_render_checks(struct: Structure,
     charge and the spin are the electronic state's one family, asked from
     `validate` for every kind.
 
-    MOVED at P3 (2026-08-21) from the retired
-    ``PySCFSpectraEngine.render_checks`` classmethod, unchanged in
-    substance.  Two callers, one body: ``validation/__init__.py``'s
-    vibration arm and ``pyscf/vibration_deck.py`` directly -- the
-    deck's config view is an ADAPTER over PySCFConfig, so the
-    type-keyed registry cannot see it (which is exactly how this gate
-    silently skipped between P1 and P3; the direct call closes that).
-    ``cfg`` is duck-typed to the spectra vocabulary for the same
-    reason.  (The third caller this docstring used to name,
-    ``_validate_spectra``, was the type-keyed SpectraConfig
-    validator; it retired with the class on 2026-08-22.)  No selector-availability checks; those were
-    preflight-only UX and retired with the preflight route."""
+    Called from ``validation/__init__.py``'s vibration arm, over the
+    deck's config view -- an ADAPTER over PySCFConfig, so ``cfg`` is
+    duck-typed to the spectra vocabulary."""
     issues: List[Issue] = []
 
     # -- PySCF-specific scientific advisories ------------------
 
-    # Grid level with a hybrid functional (spec § 11.4).  PySCF's
+    # Grid level with a hybrid functional.  PySCF's
     # default grid level is 3 ("screening"); level 4 is the
     # production minimum for hybrids.  Below that the XC numerical
     # integration noise dominates the Hessian and gives garbage
     # frequencies (~5-20 cm⁻¹ wander).  ONE shared gate/body with the
-    # Build-tab PySCF validator (was a duplicated rule; V4) -- the
+    # PySCF validator -- the
     # "spectra" context selects the frequency-error rationale.
     from .pyscf import check_dft_grid_level
     issues.extend(check_dft_grid_level(cfg, context="spectra"))
 
     # Displacement amplitude.  The [0.02, 0.20] Å acceptance
     # range is empirical -- not derived from a single source.
-    # The lower bound was relaxed from 0.04 to 0.02 on 2026-
-    # 05-19 to match the SpectraConfig default; 0.02 Å keeps
+    # 0.02 Å keeps
     # the probe inside the linear-response regime (ΔE_orbital
     # ∝ A), at the cost of needing a tight SCF tolerance to
     # resolve the smaller ΔE.  The script's default
@@ -113,9 +102,7 @@ def spectra_render_checks(struct: Structure,
     # The charge, the spin and the method are NOT judged here: they are the
     # electronic state's, and `validate` asks its one family once for every
     # engine and kind (`validation.chemistry.check_electronic_state`,
-    # `science/chemistry-correctness.md` § 2a).  This held a third parity
-    # copy with its own severity rule, a fourth closed-shell test, and a
-    # method whitelist the catalogue's choices already enforce.
+    # `science/chemistry-correctness.md` § 2a).
 
     # The explicit list, read by its one reader (`explicit_modes`).  Text
     # it cannot read is refused here, before a deck is written from it;
@@ -161,12 +148,8 @@ def spectra_render_checks(struct: Structure,
     except Exception:
         n_atoms = None
     if n_atoms is not None:
-        # FROZEN ATOMS ARE INDICES.  This subtracted an element-match
-        # count as well, which was always zero: the config this receives
-        # is the deck's view, and it supplies indices only.  The
-        # element/residue vocabulary went with `SpectraConfig`
-        # (2026-08-22) -- the region store holds indices, and that is
-        # what the deck writes into the constraints file.
+        # FROZEN ATOMS ARE INDICES: the region store holds indices, and
+        # that is what the deck writes into the constraints file.
         # A COST CLAIM IS A MEASUREMENT (science/normal-modes.md R8).  With
         # atoms held, the deck takes second derivatives for the free atoms
         # only (PySCF's atmlst reaches the coupled-perturbed solve) and runs
@@ -196,16 +179,14 @@ def spectra_render_checks(struct: Structure,
     # atoms, three turns about a single held atom -- and those leftovers are
     # not vibrations.  The deck projects them out before diagonalising, so
     # nothing here is a warning: it is the count the person will see missing
-    # from 3 N_free, said before the run is paid for.  A table of cases stood
-    # here ("6 - 2 x frozen ... -ish") and was wrong for CO2 with both O held.
+    # from 3 N_free, said before the run is paid for.
     _frozen_idx = sorted(int(i) for i in (cfg.frozen_indices or []))
     _positions = getattr(struct, "positions", None)
     if _frozen_idx and _positions is not None:
         from ..spectra.normal_modes import rigid_motions
         try:
             # ON THE AXES THE DECK COMPUTES ON -- the view's, a cluster's
-            # (`cell.engine_axis_kinds`, plan § 5w K8): the structure's own
-            # told a periodic structure a count its deck never removes.
+            # (`cell.engine_axis_kinds`, plan § 5w K8).
             _n_rigid = len(rigid_motions(
                 _positions, _frozen_idx, cfg.axis_kind,
                 cell=getattr(struct, "cell", None)))
@@ -278,21 +259,10 @@ def spectra_render_checks(struct: Structure,
     # `vibrational_modes`), so the calculation agrees with itself; what it
     # does not do is respect the cell, and the engine's one check,
     # `cell.periodic_in_gas_phase` (`validation/pyscf.py`), says that for every
-    # PySCF calculation, a vibration among them.  Until 2026-09-29 this gate
-    # refused a repeating axis instead.
-
-    # compute_ir advisory RETIRED 2026-08-21 -- it warned that IR
-    # was "not implemented", which P1 falsified (the deck computes IR
-    # via dipole derivatives, band-level validated against literature
-    # water intensities; archive/2026-09-01-roadmap.md § 5 records the closure).  Found
-    # by the honesty gate's render probe: a validator claiming a
-    # capability is absent is the same drift as a diagram drawing a
-    # file that is gone.
+    # PySCF calculation, a vibration among them.
 
     # Frozen-atom sanity: every explicit index must be within
-    # the structure's atom range.  Element / residue rules are
-    # checked at script-render time when we have the full
-    # frozen mask.
+    # the structure's atom range.
     if cfg.frozen_indices:
         n = struct.n_atoms if hasattr(struct, "n_atoms") else None
         if n is None:
@@ -314,22 +284,11 @@ def spectra_render_checks(struct: Structure,
                     where="structure.regions",
                 ))
 
-    # Boundary-condition guards (design.md "Sidecar-driven
-    # boundary conditions — the three-stage contract"):
-    #
-    # The contract:  sidecar -> form (cfg) -> script must be
-    # explicit, consistent, fully respected.  The script render
-    # itself emits cfg.frozen_indices verbatim (no silent merge);
-    # these two preflight checks make divergence + unconsumed
-    # labels visible so nothing is silently absorbed.
-
-    # (Pattern A -- the sidecar-vs-form divergence warn -- retired
-    # 2026-08-21 with the frozen-atoms ruling.  Its premise was the old
-    # form field: a SECOND copy of the frozen set that could disagree
-    # with the structure's.  Since P2 the set travels with the structure
-    # (`web/spectra.md` § 8) and the deck's view lifts it from there, so
-    # the comparison had become the sidecar against itself -- a check
-    # that could never fire.)
+    # Boundary-condition guards (the three-stage contract): sidecar ->
+    # form (cfg) -> script must be explicit, consistent, fully respected.
+    # The script render itself emits cfg.frozen_indices verbatim (no
+    # silent merge); the set travels with the structure (`web/spectra.md`
+    # § 8) and the deck's view lifts it from there.
 
     # THE FROZEN SET, SAID OUT LOUD (user ruling 2026-08-21: which atoms
     # to freeze is the user's own call -- honored, never second-guessed
@@ -370,9 +329,7 @@ def spectra_render_checks(struct: Structure,
     # Pattern B -- THE one home (validation/sidecar.py, U5): region
     # labels this run does not consume are named; the reserved frozen
     # label is excluded (the relaxation constrains it, the Hessian mask
-    # reads it).  A hand-written copy of the same rule stood here and
-    # had already diverged once (E-M7.1's false alarm was fixed in only
-    # one of the two).
+    # reads it).
     from .sidecar import check_unconsumed_region_labels
     issues.extend(check_unconsumed_region_labels(
         struct, engine="PySCF vibration"))
@@ -385,24 +342,23 @@ def spectra_render_checks(struct: Structure,
     # solvent's own term (`with_solvent.hess`).  The deck's OTHER routes
     # are built without it -- the held-atom Hessian (`hess_elec(atmlst=)`
     # + `hess_nuc`), the analytic IR block and Raman's polarizability loop
-    # (the M11 review, PS-C3) -- so PCM reaches one route, and the others
+    # -- so PCM reaches one route, and the others
     # are refused until built and measured (`engines/vibration.md` § 4.6;
     # plan § 5w K17).  SMD is compiled out of this build; ddCOSMO has no
     # analytic Hessian.
     _solv = str(getattr(cfg, "solvent", "") or "").lower()
     _smethod = str(getattr(cfg, "solvent_method", "") or "").upper()
     if _solv:
-        # (The SMD refusal is the ENGINE validator's since the U6 close:
-        # a compiled-out module is a build fact, not a vibration fact,
-        # and the optimization deck emits the same solvent lines.)
+        # (The SMD refusal is the ENGINE validator's: a compiled-out
+        # module is a build fact, not a vibration fact, and the
+        # optimization deck emits the same solvent lines.)
         if "DDCOSMO" in _smethod:
             # NOT bare "COSMO": that is a legal catalogue choice served
             # through pyscf.solvent.pcm (mf.PCM() + with_solvent.method
             # = "COSMO"), whose analytic Hessian this block itself
-            # vouches for below.  Matching it here refused a legal
-            # dropdown value with a rationale measured on a DIFFERENT
-            # module (pyscf.solvent.ddcosmo -- the mf.ddCOSMO() class
-            # this deck never constructs).
+            # vouches for below; the ddCOSMO rationale is measured on a
+            # DIFFERENT module (pyscf.solvent.ddcosmo -- the mf.ddCOSMO()
+            # class this deck never constructs).
             issues.append(Issue(
                 severity="error",
                 message=(
@@ -435,8 +391,8 @@ def spectra_render_checks(struct: Structure,
                          else []))
             _routes = [r for r, _off in _asked]
             if _routes and _solv in _SOLV_TABLE:
-                # PCM REACHES ONE ROUTE (ruled 2026-09-29, refused since
-                # 2026-09-30 -- `engines/vibration.md` § 4.6).  For a name the
+                # PCM REACHES ONE ROUTE (ruled 2026-09-29 --
+                # `engines/vibration.md` § 4.6).  For a name the
                 # dielectric table knows: an unknown one is the engine
                 # validator's refusal already.
                 issues.append(Issue(
@@ -696,11 +652,5 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     return issues
 
 
-# (_is_hybrid_functional removed 2026-07, V4: the hybrid detector +
-#  grid-floor gate now live once in validation.pyscf.is_hybrid_functional
-#  / check_dft_grid_level, called by spectra_render_checks above.)
-
-
-# The render-time checks are the module's public door (the retired
-# PySCFSpectraEngine's name here made `import *` raise).
+# The render-time checks are the module's public door.
 __all__ = ["spectra_render_checks"]

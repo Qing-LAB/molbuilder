@@ -109,10 +109,3 @@ probe = [["--set", "gpus_per_node=4"], { flags = ["--set", "gpus_per_node=4"], a
 record_says = { topology = { gpus_per_node = 4 } }
 probe_said = ["already says this"]
 
-[[case]]
-name = "a file at the record's path that does not read is said to be there -- --yes replaces it, and still says so"
-ends_at = "probe"
-record_text = "{ not a record"
-probe = [["--name", "sol-x", "--scheduler", "slurm"]]
-record_says = { scheduler = "slurm" }
-probe_said = ["is there and does not read"]

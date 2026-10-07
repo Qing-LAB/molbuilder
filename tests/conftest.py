@@ -30,20 +30,9 @@ from molbuilder.structure import Structure
 def config_root(tmp_path, monkeypatch) -> Path:
     """The directory this test's machine configuration lives in.
 
-    **Ask for this instead of arranging a config by hand.**  Before 2026-08-31
-    a test that wanted `molbuilder.json` read had to know the reader's lookup
-    and reproduce it -- ``monkeypatch.chdir`` into a sandbox, write the file
-    there, and then remember to isolate ``HOME`` and ``XDG_CONFIG_HOME`` so the
-    fallback did not reach the developer's own.  The suite grew four different
-    spellings of that, and files that used the shortest one read the real
-    machine's config.
-
-    When the working-directory step was deleted (`configuration.md` § 2.1a),
-    every one of those arrangements stopped working AT ONCE and almost none of
-    them failed: the writes still succeeded, into a file nothing opened, so the
-    assertions went on passing while configuring nothing.  **A green suite
-    cannot show you that**, which is why the arrangement belongs in one named
-    place rather than in forty.
+    **Ask for this instead of arranging a config by hand.**  A write into a
+    file nothing opens still succeeds, and **a green suite cannot show you
+    that**, which is why the arrangement belongs in one named place.
 
     Returns the directory.  Combine with :func:`machine_config` to write into
     it, or write ``config_root / "molbuilder.json"`` yourself when the test is
@@ -79,17 +68,11 @@ def checkpoint_config(tmp_path, monkeypatch):
     """Set the checkpoint classification for one test, where it really lives.
 
     **S1c: the classification has one home, and it is not beside the folder
-    being saved.**  The one home is this machine's molbuilder.json, and since
-    2026-08-31 it has ONE
-    location -- the config directory, with no working-directory step
+    being saved.**  The one home is this machine's molbuilder.json, and it has
+    ONE location -- the config directory, with no working-directory step
     (`configuration.md` § 2.1a).  So this points ``MOLBUILDER_CONFIG_DIR`` at
     the test's own sandbox and writes the real file there: the same resolution
     path production takes, with nothing mocked (checkpointing.md § 4, S1c).
-
-    It used to rely on the cwd step, and when that step was deleted the writes
-    kept succeeding into a file nothing read -- so every test using this
-    fixture went on passing while configuring NOTHING, which is the failure
-    mode a green suite cannot show you.
 
     Returns a setter, because several tests change the classification *during*
     a test -- narrowing it between a save and a restore is I2c's own scenario.
@@ -97,9 +80,8 @@ def checkpoint_config(tmp_path, monkeypatch):
     home = tmp_path / "config-home"
     home.mkdir()
     # THE SANDBOX IS THE CONFIG ROOT.  One variable answers for every door
-    # (§ 2.1c), which is what the three-line HOME/XDG dance below it used to
-    # approximate -- kept, because a test that reads $HOME for something else
-    # should still not find the developer's.
+    # (§ 2.1c); HOME and XDG move too, because a test that reads $HOME for
+    # something else should still not find the developer's.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(home))
     monkeypatch.setenv("HOME", str(tmp_path / "user-home"))
     (tmp_path / "user-home").mkdir()
@@ -149,37 +131,17 @@ def isolated_projects_root_module(tmp_path_factory):
 def isolated_projects_root(tmp_path, monkeypatch):
     """Point the ONE door at a per-test tree — **opt in, not autouse**.
 
-    ``projects_root`` resolves from the molbuilder root now, not the
-    working directory (2026-08-22), so the default a test sees is the
-    developer's REAL tree — which is exactly what the web-route tests that
-    build ``projects/_t_handover`` have always used, and what cwd-anchoring
-    gave them when they ran from the repo root.
-
-    A blanket autouse override broke 13 of those: they construct a tree and
-    then ask a route to serve it, and the route's root guard was pointed
-    somewhere else entirely.  So isolation is requested by the tests that
-    build their own tmp tree, and everything else keeps the real default.
-
-    **WHAT BREAKS IS THE HAND-BUILT PATH, NOT THE PLUMBING** (measured
-    2026-09-06).  This reads as though a served tree cannot live in ``tmp``;
-    it can.  ``file_picker_roots()`` calls ``projects_root()`` at CALL time
-    and nothing caches the answer, so a live server serves whatever this
-    fixture points at -- verified by driving the Task-setup page against a
-    two-stage calculation built here and watching it open the folder.  The 13
-    are broken by a blanket override because each hard-codes
-    ``ROOT / "projects/_t_..."``: the tree they build then sits OUTSIDE the
-    guard.  **All thirteen were converted on 2026-09-06** -- each requests
-    this fixture (or :func:`isolated_projects_root_module`, its module-scoped
-    sibling) and builds under the root it returns, so nothing in the suite
-    writes into the developer's tree any more.  The guard enforces it now: its
-    pattern required the literal ``"projects"`` and so had never matched
-    ``"projects/_t_..."`` at all.
+    ``projects_root`` resolves from the molbuilder root, not the working
+    directory, so the default a test sees is the developer's REAL tree; a
+    test that builds a tree requests this fixture (or
+    :func:`isolated_projects_root_module`, its module-scoped sibling) and
+    builds under the root it returns.
     """
     return _point_the_one_door_at(tmp_path, monkeypatch.setenv)
 
 
 # --------------------------------------------------------------------- #
-#  No test resolves the PRODUCT's toolchain from the host  (2026-08-25)  #
+#  No test resolves the PRODUCT's toolchain from the host              #
 # --------------------------------------------------------------------- #
 
 #: The binaries molbuilder resolves from the environment it ENTERS, never
@@ -190,12 +152,10 @@ _PRODUCT_TOOLCHAIN = ("siesta", "conda", "mamba", "mpirun")
 
 #: `conda activate` / `mamba activate` succeed silently -- that is all a
 #: wrapper running in a bare shell needs them to do, and it is the call
-#: that reached the host.  EVERYTHING ELSE IS DELEGATED to the real binary
-#: (2026-08-25): `molbuilder.diagnostics` asks `conda env list --json` which
-#: envs exist, and a stub answering that with silence made `env_available`
-#: report none -- so `test_siesta_keyword_smoke.py` and twelve others
-#: SKIPPED instead of running.  A guard that turns real tests into skips is
-#: worse than the hole it closes, because a skip is quiet.
+#: that reached the host.  EVERYTHING ELSE IS DELEGATED to the real binary:
+#: `molbuilder.diagnostics` asks `conda env list --json` which envs exist, and
+#: a stub answering that with silence would make `env_available` report none
+#: and turn real tests into quiet skips.
 _DELEGATING = ("conda", "mamba")
 
 _STUB_BODIES = {
@@ -204,11 +164,7 @@ _STUB_BODIES = {
     # suite that wants a real SIESTA addresses the env's binary by absolute
     # path (`test_siesta_keyword_smoke.py` does, and says so).
     "siesta": (
-        'if [ "${1:-}" = "--version" ]; then\n'
-        '    echo "Version         : 5.4.2-stub"\n'
-        '    echo "Parallelisations: MPI"\n'
-        "    exit 0\n"
-        "fi\n"
+        'if [ "${1:-}" = "--version" ]; then exit 0; fi\n'
         'echo "stub siesta: $*"\n'
         # WHAT A ROAD ROW ASKS OF THE ENGINE (`support.road`, the row's
         # `stand_in`), and nothing else: leave the restart file SIESTA leaves,
@@ -269,13 +225,8 @@ def _product_toolchain_stubs(tmp_path_factory) -> Path:
     real = {n: (shutil.which(n) or "") for n in _DELEGATING}
     for name in _PRODUCT_TOOLCHAIN:
         if name in _DELEGATING:
-            # A GUARD MUST NOT INVENT A TOOL THE MACHINE DOES NOT HAVE
-            # (2026-08-25).  `mamba` is absent on the dev workstation, and stubbing it
-            # anyway put one on PATH -- where `_locate_env_manager` PREFERS
-            # it to conda.  The invented mamba shadowed the real conda,
-            # answered `env list --json` with silence, and detection
-            # reported zero envs; thirteen tests that need
-            # `molbuilder-siesta` skipped instead of running, quietly.
+            # A GUARD MUST NOT INVENT A TOOL THE MACHINE DOES NOT HAVE: a
+            # stubbed mamba on PATH is PREFERRED to conda by detection.
             # Absent stays absent: there is no host binary to reach.
             if not real[name]:
                 continue
@@ -291,9 +242,8 @@ def _product_toolchain_stubs(tmp_path_factory) -> Path:
 #: The developer's REAL config directory, resolved once at import -- before
 #: any fixture redirects anything -- by the rule's one home.  `config_dir()`
 #: reads the variables at CALL time, so asked here it answers for the shell
-#: the suite was started from; the redirects move it only later.  This
-#: re-derived the three branches by hand until 2026-10-02 (W54 C24;
-#: `configuration.md` § 2.1c: no other module reads the variables itself).
+#: the suite was started from; the redirects move it only later
+#: (`configuration.md` § 2.1c: no other module reads the variables itself).
 from molbuilder.config_dir import config_dir as _config_dir  # noqa: E402
 _REAL_CONFIG_DIR = pathlib.Path(_config_dir())
 
@@ -363,17 +313,12 @@ def the_suite_leaves_your_checkout_alone():
 def the_suite_cannot_submit_a_job(tmp_path_factory, monkeypatch):
     """A scheduler this suite can reach is a job this suite can submit.
 
-    Nothing here may queue work: the tests that exercise submission stub
-    `subprocess.run`, and a stub covers the one function the code calls today
-    -- `jobset/submit.py` also uses `Popen`, which the same stub does not
-    touch.  On this workstation `sbatch` does not exist so the difference is
-    invisible; on a login node it is a real job in a real queue, against the
-    rule that submission is manual, one at a time.
+    Nothing here may queue work.  On this workstation `sbatch` does not
+    exist; on a login node it is a real job in a real queue, against the rule
+    that submission is manual, one at a time.
 
     So the suite gets its own `sbatch` / `srun` / `salloc` FIRST on PATH, and
-    they refuse.  A test that means to check what molbuilder would submit
-    reads what these wrote down; a test that reaches one by accident fails
-    where it stands.
+    they refuse: a test that reaches one fails where it stands.
     """
     import stat as _stat
 
@@ -410,9 +355,9 @@ def _env_fingerprint():
     caps = _diag.get_capabilities() if _diag._snapshot else _diag.detect()
     if not caps.conda_binary:
         return None                            # no manager: cannot tell
-    # `caps.conda_envs` IS the {name: prefix} map since 2026-09-12, so this
-    # reads the registry once rather than twice -- the manager is slow (1.2 s
-    # per call on a warm workstation) and this runs at both ends of a session.
+    # `caps.conda_envs` IS the {name: prefix} map, so this reads the
+    # registry once rather than twice -- the manager is slow (1.2 s per call
+    # on a warm workstation) and this runs at both ends of a session.
     out = {}
     for name, prefix in dict(caps.conda_envs).items():
         sig = []
@@ -431,10 +376,9 @@ def _env_fingerprint():
     # AN EMPTY REGISTRY IS "COULD NOT READ IT", NOT "EVERY ENV VANISHED".
     # `conda env list --json` gives a 10 s timeout ten seconds to answer and
     # returns `{}` on any failure (`diagnostics._conda_envs`), so one slow
-    # read -- a cold conda on a loaded box -- used to make the two ends of a
-    # session disagree about EVERY name, and this canary then accused the
-    # suite of destroying all of them.  Measured 2026-09-14, on a run where
-    # nothing touched an env.  A test that really removed one leaves the
+    # read -- a cold conda on a loaded box -- makes the two ends of a session
+    # disagree about EVERY name (measured 2026-09-14, on a run where nothing
+    # touched an env).  A test that really removed one leaves the
     # other names in place, so distinguishing the two costs nothing.
     return out or None
 
@@ -453,9 +397,8 @@ def the_suite_leaves_your_environments_alone():
 
     A test must never install into, or remove, a real environment.  When this
     fires, the fix is never to relax it: it is that some test reached the real
-    manager instead of a fake (`test_envs_install._recording_manager` is the
-    pattern -- a script in a temp directory, RECORDED as `envs.manager` so the
-    re-detection finds it too).
+    manager instead of a fake (a script in a temp directory, RECORDED as
+    `envs.manager` so the re-detection finds it too).
     """
     before = _env_fingerprint()
     yield
@@ -539,8 +482,7 @@ def config_root_is_never_the_developers(tmp_path_factory, monkeypatch):
     isolates every door at once: the machine config, the session key, the
     provider secret, `environment.json`, the notify tokens.
 
-    Isolating by ``HOME`` and ``XDG_CONFIG_HOME`` alone -- which is what most
-    fixtures did -- leaves this variable inherited from the shell, and a
+    Isolating by ``HOME`` and ``XDG_CONFIG_HOME`` alone leaves this variable inherited from the shell, and a
     developer who has set it would have the suite read their own machine's
     config.  Worse than reading: `web.auth._install_secret_key` CREATES a
     session key when none exists, so an unisolated test could write into a
@@ -561,55 +503,43 @@ def config_root_is_never_the_developers(tmp_path_factory, monkeypatch):
     monkeypatch.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
     # `tmp_path_factory`, NOT `tmp_path`: a config root inside the
     # directory a test builds and then WALKS shows up in that test's own
-    # listing.  It did not matter while the variable was only set and the
-    # directory never created; it does now that the machine record is
-    # written into it, and it surfaced as "unexpected temp files:
-    # [.../_xdg-config]" in an atomic-write test that lists its siblings.
+    # listing, because the machine record is written into it.
     monkeypatch.setenv("XDG_CONFIG_HOME",
                        str(tmp_path_factory.mktemp("xdg-config")))
 
-    # AND THE LAST FALLBACK, so forgetting is not enough to leak
-    # (2026-09-11).  `config_dir()` resolves $MOLBUILDER_CONFIG_DIR, then
+    # AND THE LAST FALLBACK, so forgetting is not enough to leak.
+    # `config_dir()` resolves $MOLBUILDER_CONFIG_DIR, then
     # $XDG_CONFIG_HOME/molbuilder, then ~/.config/molbuilder.  Clearing the
-    # first and redirecting the second left the THIRD pointing at the
-    # developer -- and 36 test files then deleted or overrode XDG in a
-    # fixture of their own, each also setting HOME: 36 places each
-    # remembering a rule, where the one that forgets writes into somebody's
-    # real ~/.config/molbuilder.  (Since 2026-10-02 only the files that test
-    # those variables, or hand a child process its environment, move them;
-    # W54 T15.)  Which is not hypothetical: a test doing exactly
-    # that REPLACED this developer's `molbuilder.json` (retired 2026-09-11,
-    # `test_task_setup_prep_e2e.py`), and the value then travelled into
+    # first and redirecting the second leaves the THIRD pointing at the
+    # developer, and a test that reached it REPLACED this developer's
+    # `molbuilder.json` (2026-09-11); the value then travelled into
     # `environment.json` through `jobset probe --write` and baked a
     # nonexistent conda hook into every wrapper.
     #
     # Redirecting HOME closes the fallback so the guarantee holds by
-    # construction rather than by 36 correct habits.  A test that sets its
+    # construction rather than by each test's habit.  A test that sets its
     # own HOME still wins -- its fixture runs after this one -- which is the
     # same deference the XDG line above keeps.
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))   # the Windows spelling
 
-    # AND THE RUNTIME ROOT (2026-09-15).  `runtime_dir()` is
+    # AND THE RUNTIME ROOT.  `runtime_dir()` is
     # `$XDG_RUNTIME_DIR/molbuilder` when that variable is set -- which it is
     # on any desktop session -- and redirecting HOME does NOT reach it.  It
     # holds the live `serve-<port>.pid` and `jupyter-<port>.pid` of the
     # developer's own servers.
     #
-    # It was harmless while nothing read that directory in a test.  It
-    # stopped being harmless on 2026-09-15: `config_dir.ports_with_pidfile`
-    # GLOBS it, and five call sites now reach it -- the two status surveys,
-    # the two "but a server IS running on ..." hints, and
-    # `jupyter.port_clash`, which `serve start` calls before detaching.  One
-    # of those then makes a REAL HTTP request to every port it finds, which
-    # on this machine is the developer's dev server.
+    # `config_dir.ports_with_pidfile` GLOBS it -- the status surveys, the
+    # "but a server IS running on ..." hints, and `jupyter.port_clash`, which
+    # `serve start` calls before detaching -- and one of those then makes a
+    # REAL HTTP request to every port it finds, which on this machine is the
+    # developer's dev server.
     #
     # So a test could read found state and prove nothing, which is the one
     # thing `feedback_confirm_data_relevance` forbids.  Pinned here so the
     # guarantee holds by construction rather than by each test remembering
-    # -- the same reasoning as the HOME line above, which exists because 36
-    # files were each remembering a rule.
+    # -- the same reasoning as the HOME line above.
     monkeypatch.setenv("XDG_RUNTIME_DIR",
                        str(tmp_path_factory.mktemp("xdg-runtime")))
 
@@ -631,15 +561,11 @@ def product_toolchain_is_the_suites_own(_product_toolchain_stubs, monkeypatch):
     and SIESTA reads its deck from stdin, so it did not fail -- it waited
     for a deck.  Eight tests in ``test_runwrap_cold_restart.py`` failed as
     20-second timeouts, each leaving a blocked process behind (28 had
-    accumulated).  A hostile-toolchain sweep then found the same hole in
-    ``test_launch_door_gate.py`` (conda), ``test_wrapper_preamble_preflight``
-    and ``test_runwrap.py``.
+    accumulated).
 
     So the suite brings its own, and they behave.  **A test that needs a
     HOSTILE binary builds its own stub and prepends it** -- it lands ahead of
-    this one and wins (``test_runwrap_engine_probe.py`` does exactly that,
-    and must, because a guard against hanging cannot be proven by a stub
-    that never hangs).  What no test gets is the host's.
+    this one and wins.  What no test gets is the host's.
 
     This does NOT stub the test harness's own tools -- ``bash``, ``node``,
     ``git``, ``timeout``.  Those are how the tests RUN; the product does not
@@ -740,7 +666,7 @@ def web_client():
 
 
 # --------------------------------------------------------------------- #
-#  Marker auto-application by file pattern (2026-06-24)                 #
+#  Marker auto-application by file pattern                              #
 #  Implements the marker discipline documented in                       #
 #  docs/process/testing.md  Tests can override at the     #
 #  function level by carrying an explicit @pytest.mark.<X>.            #
@@ -763,8 +689,7 @@ def pytest_runtest_makereport(item, call):
 def _capture_on_fail(request):
     """Persistent failure diagnostics for ``@pytest.mark.capture_on_fail``
     tests (any file).  On failure of a flagged test, dump the browser state
-    (viewer/store atom counts, source_file, dirty, mountRestoreTarget, the
-    persisted snapshot) + the console to a PERSISTENT ``test-artifacts/``
+    + the console to a PERSISTENT ``test-artifacts/``
     dir -- so a rare intermittent E2E is inspectable after the fact without
     a re-repro.  No-op (and no ``page`` dependency) for unflagged tests."""
     marked = request.node.get_closest_marker("capture_on_fail") is not None
@@ -790,13 +715,9 @@ def _capture_on_fail(request):
     snap = {"note": "no page for this test"}
     if page is not None:
         try:
-            # ASK THE VIEWER, NOT THE WORKSPACE.  This used to read five doors
-            # off ``window.molbuilder.workspace`` -- readPersistedSnapshot,
-            # getState, getSourceFile, isDirty, mountRestoreTarget -- none of
-            # which exist.  The workspace stores opaque bytes and never opens
-            # them (workspace.md § 4), so it cannot answer "how many atoms" at
-            # all; every field came back null and a failing e2e wrote a
-            # diagnostic that said nothing.
+            # ASK THE VIEWER, NOT THE WORKSPACE.  The workspace stores opaque
+            # bytes and never opens them (workspace.md § 4), so it cannot
+            # answer "how many atoms" at all.
             #
             # The structure lives in MolView.  The Results pages stash their
             # handle on the viewer host (``__molview_results_handle``) so the
@@ -860,15 +781,10 @@ def _worker_group(item, engine_files) -> str:
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config, items):
-    """Auto-apply ``e2e`` to ``*_e2e.py`` files + ``integration`` to
-    files that subprocess-run a real engine binary (siesta /
-    transiesta / pyscf).
+    """Auto-apply ``e2e`` to ``*_e2e.py`` files + ``integration`` and
+    ``smoke`` to ``*_smoke*`` files.
 
-    The pyproject.toml markers list registered ``unit / module /
-    interface / integration / smoke / e2e / slow`` but as of the
-    2026-06-24 audit zero tests carried any of them, so
-    ``pytest -m integration`` returned nothing.  This hook gives
-    every existing test file the right baseline marker so the doc-
+    This hook gives every test file its baseline marker so the doc-
     promised selectors work, without requiring per-test annotation.
     File-name pattern is a coarse pre-classifier; finer-grained
     decisions still belong on individual tests via explicit
@@ -888,16 +804,10 @@ def pytest_collection_modifyitems(config, items):
     # drives headless chromium through pytest-playwright's `page` fixture,
     # which only exists when that plugin is installed -- it is opt-in
     # (`install-env.sh install molbuilder --with-dev-tools`), so on a plain
-    # install it is absent.  21 of 23 e2e files opened with their own
-    # `pytest.importorskip("playwright.sync_api")`; the two that forgot
-    # (`test_task_setup_one_folder_e2e.py`, `test_vibration_e2e.py`) did not
-    # skip -- they ERRORED with "fixture 'page' not found", which reads as a
-    # broken suite rather than absent tooling, and cost a push to diagnose on
-    # 2026-09-20.  A guard that each new file must remember is a guard that
-    # gets forgotten; this hook already knows which files are e2e, so it is
-    # the one place that can apply the rule to all of them, including the
-    # next one.  The per-file `importorskip` lines are now redundant but
-    # harmless, and are left for a separate sweep.
+    # install it is absent, and a file without the skip ERRORS with "fixture
+    # 'page' not found", which reads as a broken suite rather than absent
+    # tooling.  This hook already knows which files are e2e, so it is the one
+    # place that can apply the rule to all of them, including the next one.
     _has_playwright = _ilu.find_spec("playwright") is not None
     _no_playwright = _pt.mark.skip(
         reason="e2e needs pytest-playwright + chromium; install them with "
@@ -964,7 +874,7 @@ _PSML_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
 def write_pseudos(dest, elements) -> None:
     """Put the ``.psml`` files a SIESTA calculation needs into *dest*.
 
-    Since 2026-08-18 `prep` REFUSES by element name when a species has no
+    `prep` REFUSES by element name when a species has no
     pseudopotential in the calculation and none in the library
     (`project-layout.md` § 2.6): SIESTA opens ``<element>.psml`` in the
     directory it runs from and has no search path, so a bundle without them is
@@ -978,26 +888,14 @@ def write_pseudos(dest, elements) -> None:
     appeared only at high rank counts.  An unparseable file reads as
     ``missing``, which blocks.  These parse, name their element and declare no
     null channel; the physics is not what the tests using this are about.
-
-    One home because four test files needed it within an hour of the refusal
-    landing.
     """
     from pathlib import Path as _P
 
     from molbuilder.chemistry import atomic_number
-    # The element's Z from molbuilder's own table -- a seven-element copy
-    # stood here until 2026-09-29, and a phosphate could not be prepped.
+    # The element's Z from molbuilder's own table.
     for el in elements:
         (_P(dest) / f"{el}.psml").write_text(
             _PSML_FIXTURE.format(el=el, z=atomic_number(el)))
-
-
-# `_isolated_machine_scope` -- a second autouse fixture setting
-# `XDG_CONFIG_HOME`, to a temp directory of its own -- retired 2026-10-02 (W54
-# T15): `config_root_is_never_the_developers` above isolates the config root
-# whole (the variable, its XDG branch, HOME's fallback), and with two of them
-# which won was fixture order.  Its story -- a real `sol.json` probed on Sol
-# turned two tests red on 2026-08-23 -- is why the root fixture exists.
 
 
 @pytest.fixture(autouse=True)
@@ -1005,13 +903,12 @@ def _this_machine_has_been_probed(config_root_is_never_the_developers):
     """**The box has a machine record**, as a real one does after one
     ``jobset probe --write``.
 
-    Since 2026-09-02 that is a PRECONDITION of prep rather than something
-    prep does for you: a machine with no record is refused, naming the
+    That is a PRECONDITION of prep rather than something prep does for
+    you: a machine with no record is refused, naming the
     command, so the numbers in a wrapper can always be traced to a file
     somebody can look at *(user: "all environments have to be explicitly
     probed and stored. no environment json, error"; `running-a-job.md`
-    § 3.1)*.  Before that, `machine.set_machine` probed and wrote the answer
-    itself, so every test got a machine for free.
+    § 3.1)*.
 
     **It asks `machine_scope_path()` where to write** rather than composing
     the path, and runs after `config_root_is_never_the_developers`, which
@@ -1031,8 +928,8 @@ def write_machine_record(at=None, **over):
     that test those variables, or point a child process at a directory of its
     own (``at``) -- since the move takes the scope out from under this file's
     record.  Such a file calls this at the end of its own fixture -- one line,
-    and it says out loud that the machine has been probed, which since
-    2026-09-02 is a precondition rather than something prep arranges.
+    and it says out loud that the machine has been probed, which is a
+    precondition rather than something prep arranges.
 
     ``over`` replaces fields on the modest default -- ``topology=`` for a
     machine with more cores, ``scheduler="slurm"`` for a queue system.

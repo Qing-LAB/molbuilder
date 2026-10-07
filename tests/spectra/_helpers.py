@@ -117,14 +117,6 @@ def _spectra_cfg(struct: "Structure" = None, **overrides):
     """The config shape the vibration deck and the Methods fragment
     actually read at run time.
 
-    **There is no `SpectraConfig` any more.**  It was a 33-field dataclass
-    that nothing in production ever constructed: 28 of its fields were
-    `PySCFConfig`'s, four more (`charge`, `frozen_indices`,
-    `frozen_elements`, `frozen_residue_names`) are what the deck's lift
-    boundary bridges, and the last one (`engine`) was read by nobody.  So
-    it was a second vocabulary for one shape -- and a test fixture that
-    could drift from what the emitters are handed for real.
-
     This builds the real thing: `PySCFConfig` seen through
     `pyscf.vibration_deck.science_view`, which is the object the emitters
     and the kind's validation both receive.  A test written against this

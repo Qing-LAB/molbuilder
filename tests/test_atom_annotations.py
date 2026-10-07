@@ -1,5 +1,5 @@
-"""Phase 1 of the viewer/selection merge (model/structure-annotations.md): the
-Structure per-atom annotations layer + all-channel remap."""
+"""model/structure-annotations.md: the Structure per-atom annotations layer +
+all-channel remap."""
 import numpy as np
 import pytest
 
@@ -47,8 +47,7 @@ def test_channels_unify_every_label_and_the_extras():
     ch = s.channels()
     assert ch["L-electrode"].kind == "tag" and ch["L-electrode"].data == [0, 1]
     # The reserved label is a `tag` like every other label -- same kind, same
-    # shape.  It was a `flag` channel synthesised beside the labels while it had
-    # a store of its own (model/structure-annotations.md § 2).
+    # shape (model/structure-annotations.md § 2).
     assert ch[FROZEN_LABEL].kind == "tag" and ch[FROZEN_LABEL].data == [4]
     assert ch["charge"].kind == "value" and ch["charge"].data == {0: -1.0, 1: 0.5}
 
@@ -132,11 +131,10 @@ def test_atom_metadata_block_roundtrips_annotations():
     block = sc.emit_atom_metadata(
         regions=s.regions,
         annotations=s.annotations, n_atoms_total=5)
-    # THE CURRENT schema, read from the one place that defines it.  This
-    # pinned the literal "v4" until 2026-08-03 and had been failing since the
-    # schema moved on -- a version bump is not a regression, and a test that
-    # hard-codes a version number reports one every time.  What this test is
-    # actually about is the ROUND TRIP below.
+    # THE CURRENT schema, read from the one place that defines it: a version
+    # bump is not a regression, and a test that hard-codes a version number
+    # reports one every time.  What this test is actually about is the ROUND
+    # TRIP below.
     from molbuilder.sidecars.molstruct import SCHEMA_VERSION
     assert f"molstruct-json/v{SCHEMA_VERSION}" in block
     assert '"annotations"' in block

@@ -215,10 +215,11 @@ FAILING_VERDICTS = ("owned", "unclassified")
 #: created at a call site, which `project-layout.md` § 2.6 alone may do.
 #: Shrinking it is the point; growing it is the failure.
 #:
-#: `pseudos` LEFT the set 2026-09-19: the name has one home
-#: (`pseudos.PSEUDO_DIRNAME`) and all five callers import it, which is the
-#: `checkpoint.ARCHIVE_DIR` arrangement exactly.  `launch` is the one left.
-GUARDED_UNDECLARED = ("launch",)
+#: Empty: each segment has one home its callers import -- `pseudos` in
+#: `pseudos.PSEUDO_DIRNAME`, `launch` in `runfiles.LAUNCH_DIR` (a launch
+#: group's files named by `runfiles.GroupNames`), the
+#: `checkpoint.ARCHIVE_DIR` arrangement.
+GUARDED_UNDECLARED = ()
 
 
 

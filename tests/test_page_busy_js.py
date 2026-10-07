@@ -1,10 +1,7 @@
 """The page busy fence — ``lib/page-busy.js`` (ui-contract.md § 10).
 
-The successor of the sidebar lock's behaviour suite
-(``test_sidebar_lock_api.py``, retired 2026-08-28 with the lock it
-pinned): one full-window cover for heavy user-triggered operations,
-carrying the lock's recovery contract verbatim.  Properties under
-guard, each named for its failure:
+One full-window cover for heavy user-triggered operations.  Properties
+under guard, each named for its failure:
 
 * while claimed, the COVER IS UP with the reason — a fence that holds
   state but paints nothing blocks nothing;
@@ -12,8 +9,7 @@ guard, each named for its failure:
   would tangle the Cancel semantics;
 * Cancel runs the cancelers and does NOT release — release belongs to
   the operation's ``finally``, after its abort path unwinds;
-* ``release()`` is idempotent and lowers the cover;
-* the DELETED sidebar-lock spelling stays dead (rename = delete).
+* ``release()`` is idempotent and lowers the cover.
 """
 from __future__ import annotations
 

@@ -6,8 +6,8 @@ documented in ``docs/web/spectra.md`` § 5 - § 6.  Runtime-cheap
 
   * round-trip fidelity (typed -> dict -> JSON -> dict -> typed
     equals the original);
-  * forward compatibility of the ``from_dict`` classmethods
-    (extra wire keys ignored, missing optional keys default sensibly);
+  * the ``from_dict`` classmethods (missing optional keys default
+    sensibly; an unknown wire key is refused by name);
   * type / shape normalisation in ``__post_init__``;
   * the ``complete`` flag semantics for the live-watch phase-checkpoint
     model.
@@ -114,9 +114,7 @@ class TestModeData:
 
     def test_ir_intensity_reserved_for_future(self):
         """When compute_ir is off (default), ir_intensity_km_mol is
-        None on every mode.  The slot is reserved at the schema
-        level so the IR add-on activation is a no-schema-change
-        change.  When compute_ir=True, the field is populated;
+        None on every mode.  When compute_ir=True, the field is populated;
         round-trip preserves the float value."""
         m = _make_mode()
         assert m.ir_intensity_km_mol is None
@@ -227,10 +225,9 @@ class TestSpectraResults:
         assert r.phase_es          == PHASE_EMPTY
 
     def test_from_dict_rejects_missing_or_wrong_schema_version(self):
-        """STRICT (2026-06-26): the decoder self-enforces the schema
-        version -- a missing or non-current schema_version raises
-        rather than reconstituting at whatever version the payload
-        claims (the outer sidecar reader is no longer the only gate)."""
+        """STRICT: the decoder self-enforces the schema version -- a
+        missing or unreadable schema_version raises rather than
+        reconstituting at whatever version the payload claims."""
         base = {
             "engine": "pyscf", "engine_version": "2.6.0",
             "molbuilder_version": "1.2.0", "timestamp": "t",
@@ -248,8 +245,7 @@ class TestSpectraResults:
     def test_schema_version_pinned(self):
         """Pin the current on-disk schema version.  A stray edit to
         SCHEMA_VERSION should fail this test and prompt the author
-        to add a parser-branch entry in spectra_json.py and a row
-        in results.py's SCHEMA_VERSION history comment.
+        to add a row in results.py's SCHEMA_VERSION history comment.
 
         v2: split eigenvector_free into eigenvector_canonical +
             eigenvector_display.
@@ -288,7 +284,7 @@ class TestSpectraResults:
         assert r2.engine_metadata == {"pyscf_dfttype": "RKS", "n_basis_funcs": 24}
 
     def test_modes_preserve_order_through_round_trip(self):
-        """The modes list is sorted by frequency ascending (archived-spec (docs/archive/old_docs/tabs/spectra/spec.md) §6).
+        """The modes list is sorted by frequency ascending.
         Round-trip must NOT shuffle them."""
         r = _make_results()
         freqs_before = [m.frequency_cm1 for m in r.modes]
@@ -731,7 +727,7 @@ class TestPostInitValidation:
 
 
 # --------------------------------------------------------------------- #
-#  Phase status + frequency-filter additions (archived-spec § 2.5 / § 8.1)       #
+#  Phase status                                                         #
 # --------------------------------------------------------------------- #
 
 
@@ -799,10 +795,10 @@ class TestPhaseStatus:
 
 
 def test_the_reader_refuses_a_key_it_does_not_know_by_name():
-    """design § 16.4: a misspelled key used to serve a chart titled 'not
-    computed' with every number present and thrown away.  Now the file is
-    refused, naming the key, at every block; and a file claiming 1e12 atoms
-    is refused without a range that size being built."""
+    """A misspelled key is refused, naming the key, at every block -- dropped,
+    it serves a chart titled 'not computed' with every number thrown away;
+    and a file claiming 1e12 atoms is refused without a range that size
+    being built."""
     from molbuilder.spectra.results import SpectraResults
     from tests.spectra._helpers import _make_results
     good = _make_results().to_dict()
@@ -823,9 +819,7 @@ def test_the_reader_refuses_a_key_it_does_not_know_by_name():
     with pytest.raises(ValueError, match="homo_index"):
         SpectraResults.from_dict(d)
 
-    # The per-mode electronic-structure block too: it used to ignore a key
-    # it did not know "for forward compatibility", which is the same silent
-    # drop one level down.
+    # The per-mode electronic-structure block too.
     d = json.loads(json.dumps(good))
     es = next(m for m in d["modes"] if m.get("electronic_structure"))
     es["electronic_structure"]["future_field"] = 1.0

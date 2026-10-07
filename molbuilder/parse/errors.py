@@ -19,8 +19,7 @@ class UnknownFormatError(ParseError):
 
     The error message lists every registered parser with its hint
     so the user can pick the right one OR install the missing
-    plugin.  Mirrors the legacy ``parsers.UnknownFormatError``
-    so existing handlers keep working during migration.
+    plugin.
     """
 
 
