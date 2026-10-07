@@ -2800,9 +2800,9 @@ def render_run_wrapper(script_path: Path, *,
             f"'{target_env}'.  Is SIESTA installed in this env?\" >&2\n"
             f"    exit 1\n"
             f"fi\n"
-            # THE PROBE CANNOT BLOCK THE JOB (2026-08-25).  Three things
-            # are needed and each one alone is insufficient; this is the
-            # order they were found in, live on the dev workstation:
+            # THE PROBE CANNOT BLOCK THE JOB (2026-08-25).  Each of these
+            # is needed and none alone is enough; this is the order they
+            # were found in, live on the dev workstation:
             #
             #  1. `|| true` catches a probe that FAILS.  It cannot catch
             #     one that never returns -- and this one can.  SIESTA reads
@@ -2824,6 +2824,13 @@ def render_run_wrapper(script_path: Path, *,
             #     Plain `timeout` sends TERM and then waits -- indefinitely,
             #     against anything that ignores it, which MPI launchers do.
             #     `-k 2` follows with KILL, and KILL cannot be declined.
+            #  5. The answer is READ from that file by awk, never piped
+            #     into it.  awk stops at its first match; bash's printf
+            #     writes a value line by line, so a writer still holding
+            #     the next line dies of SIGPIPE, and under pipefail +
+            #     set -e the wrapper ended there -- silently, before the
+            #     engine (2026-10-06: a direct launch under the full test
+            #     batch left a run with no output and no error).
             #
             # An unanswered probe leaves the file empty, which the launcher
             # choice below already treats as *probe failed* -> mpirun, the
@@ -2841,12 +2848,11 @@ def render_run_wrapper(script_path: Path, *,
             f'    {_prog} --version >"$_mb_probe_out" 2>/dev/null '
             f'</dev/null || true\n'
             f'fi\n'
-            f'_siesta_version_out="$(cat "$_mb_probe_out" 2>/dev/null || true)"\n'
+            f"_siesta_ver=\"$(awk -F': *' '/^Version/ {{print $2; exit}}' "
+            f'"$_mb_probe_out" 2>/dev/null || true)"\n'
+            f"_siesta_par=\"$(awk -F': *' '/^Parallelisations/ {{print $2; exit}}' "
+            f'"$_mb_probe_out" 2>/dev/null || true)"\n'
             f'rm -f "$_mb_probe_out"\n'
-            f'_siesta_ver="$(printf %s \"$_siesta_version_out\" '
-            f"| awk -F': *' '/^Version/ {{print $2; exit}}')\"\n"
-            f'_siesta_par="$(printf %s \"$_siesta_version_out\" '
-            f"| awk -F': *' '/^Parallelisations/ {{print $2; exit}}')\"\n"
             f"# Decide launcher from probe.  Default to mpirun (safe\n"
             f"# for any MPI-compiled binary) when the probe can't\n"
             f"# tell us anything.\n"
