@@ -4,8 +4,6 @@
 answer; a deck that states nothing, or none, is `None`, never a guess."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from molbuilder.parse.contract import contract_of
 
 _DECK = """SystemLabel Relax
@@ -115,50 +113,11 @@ def test_a_bare_py_file_is_not_an_engine_signal(tmp_path):
 #  The relaxation record (model/parse.md § 5b.1) -- measured fixture     #
 # --------------------------------------------------------------------- #
 
-_RELAX = Path(__file__).resolve().parents[1] / "fixtures" / "siesta_relax"
+# Moved to the e2e tier 2026-10-06 (user: "when a test need siesta's output
+# why is it not part of a e2e test?"): the relaxation record is read off a
+# relaxation run on the road with the real SIESTA,
+# `tests/test_siesta_relax_run_e2e.py`; the force-constant output cut to its
+# first steps that showed a run with no record was retired with it
+# (`process/testing.md` § 6).
 
 
-def test_a_finished_siesta_relaxation_answers_its_record():
-    """`tests/fixtures/siesta_relax`: H2 with the first atom held, relaxed
-    on SIESTA 5.4.2 through the jobset road (Broyden to 0.01 eV/Å, four
-    geometry steps; the `.out` says so).  The record reads the run's own
-    tolerance, the last reported forces over every atom and over the one
-    moved atom, the held set, the verdict, and pins itself to the final
-    geometry."""
-    from molbuilder.parse.contract import relaxation_of
-    from molbuilder.structure import Structure
-
-    rec = relaxation_of(_RELAX / "01_relax" / "run-0" / "H2_01_relax-run0.out")
-    assert rec is not None
-    assert rec["engine"] == "siesta"
-    assert rec["source"].endswith(".out")
-    assert rec["n_steps"] == 4
-    assert rec["force_tolerance_ev_ang"] == 0.01
-    # the last step's `siesta: Atomic forces` block: the held atom carries
-    # the constraint force, the moved one is what SIESTA judged
-    assert abs(rec["max_force_ev_ang"] - 0.004887) < 2e-6
-    assert abs(rec["max_force_free_ev_ang"] - 0.001042) < 2e-6
-    assert rec["held_atom_idxs"] == [0]
-    assert rec["held_atom_keys"] == ["H 5.000000 5.000000 5.000000"]
-    assert rec["converged"] is True
-    assert rec["run_state"] == "ended"
-    # the fingerprint is the FINAL geometry's -- the coordinates the run
-    # printed last, not the input's
-    final = Structure(elements=["H", "H"],
-                      positions=[[5.0, 5.0, 5.0], [5.0, 5.0, 5.774583]])
-    assert rec["geometry_sha256"] == final.geometry_fingerprint()
-    # the same atoms listed the other way round -- a deck's held-first copy
-    # -- fingerprint the same (§ 5b.1), so the gate can judge that copy
-    swapped = Structure(elements=["H", "H"],
-                        positions=[[5.0, 5.0, 5.774583], [5.0, 5.0, 5.0]])
-    assert swapped.geometry_fingerprint() == rec["geometry_sha256"]
-
-
-def test_a_run_that_relaxed_nothing_has_no_record():
-    """A force-constant run echoes no force tolerance and moves nothing on
-    purpose (`tests/fixtures/siesta_fc`): no record -- `None`, never a
-    guess."""
-    from molbuilder.parse.contract import relaxation_of
-    fc = Path(__file__).resolve().parents[1] / "fixtures" / "siesta_fc"
-    assert (fc / "h2_fc.out").is_file()
-    assert relaxation_of(fc / "h2_fc.out") is None

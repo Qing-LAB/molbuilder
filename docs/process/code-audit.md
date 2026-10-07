@@ -276,7 +276,7 @@ the two failures that matter at run time show up without one — an upward
 import at a module's top closes a cycle that fails every import of the module,
 and a file that ships beside a job and reaches into molbuilder fails there,
 where molbuilder is not installed, which
-`tests/test_monitor_bundle_runs_alone.py` runs. **The proof that the imports
+`tests/test_monitor_watches_a_live_run_e2e.py` runs. **The proof that the imports
 and the shipped files' dependencies comply is a workflow that finishes end to
 end** *(user, 2026-09-27)*: the road tests launch real runs through
 `jobset init → prep → launch` in each engine's own env and assert that the

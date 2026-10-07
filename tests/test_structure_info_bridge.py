@@ -32,29 +32,10 @@ import json
 import re
 from pathlib import Path
 
-import pytest
 
 from tests._node_esm import run_node
 
 _LIB = Path(__file__).resolve().parents[1] / "molbuilder" / "web" / "static" / "lib"
-
-
-@pytest.fixture()
-def client():
-    from molbuilder.web.app import create_app
-    return create_app(config={}).test_client()
-
-
-def _register_tmp_as_picker_root(tmp_path, monkeypatch):
-    """Watch's JSON-path mode constrains reads to the picker roots; point
-    them at the test's tree so its run folder is loadable."""
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset())
-    monkeypatch.setattr(
-        type(caps), "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),))
-    diagnostics.set_capabilities(caps)
 
 
 # --------------------------------------------------------------------- #
@@ -65,45 +46,10 @@ class TestTheComposer:
 
     # `test_a_deck_becomes_the_calculation_key` retired 2026-10-04 (W56
     # review, ruling 1): it laid a deck in a bare folder for the composer to
-    # find; the composer is handed the run's own deck now, and both its keys
-    # are pinned on the measured runs below.
-
-    def test_a_finished_run_answers_both_keys_at_both_doors(
-            self, client, monkeypatch):
-        """A run directory says two things about the structure it left
-        (`model/parse.md` § 5b, § 5b.1): the level of theory its deck
-        stated, and what the run did to the geometry -- read from the file
-        the viewer has open, so the two doors that ask answer one record:
-        the trajectory load, of the file it opened, and the structure
-        inspector's, of the file the Results tab opens in the structure's
-        folder (`runs.openable`).
-
-        WHY API-LEVEL: a measured fixture, read where it was measured --
-        the H2 relaxation under `tests/fixtures/siesta_relax`; the road
-        that produced it is the SIESTA e2e test."""
-        from molbuilder.parse.contract import contract_of
-        fixtures = Path(__file__).resolve().parent / "fixtures"
-        _register_tmp_as_picker_root(fixtures, monkeypatch)
-        run = fixtures / "siesta_relax" / "01_relax" / "run-0"
-
-        loaded = client.post("/api/watch/load",
-                             json={"path": str(run)}).get_json()
-        assert loaded["ok"] is True, loaded
-        asked = client.get("/api/results/contract",
-                           query_string={"path": str(run / "H2.XV")}
-                           ).get_json()
-        assert asked["ok"] is True, asked
-
-        record = loaded["info"]["relaxation"]
-        assert record["source"] == Path(loaded["path"]).name, (
-            "the record is of the file on screen", record)
-        assert record["converged"] is True, record
-        # THE ATOM IT HELD, as the run's own output states it -- SIESTA's
-        # constraints echo, `position 1` (`model/parse.md` § 5.3).
-        assert record["held_atom_idxs"] == [0], record
-        assert asked["relaxation"] == record
-        assert (asked["calculation"] == loaded["info"]["calculation"]
-                == contract_of(run / "H2_01_relax.fdf"))
+    # find; the composer is handed the run's own deck now.  Both its keys,
+    # answered alike at both doors, are asked of a relaxation run on the road
+    # with the real SIESTA (`tests/test_siesta_relax_run_e2e.py`, moved there
+    # 2026-10-06; `process/testing.md` § 6).
 
     def test_nothing_to_say_is_none_not_an_empty_dict(self, tmp_path):
         """``None`` reads like its two siblings on the same response
@@ -117,7 +63,7 @@ class TestTheComposer:
     # 2026-10-04 (W56 review): it laid a deck and a structure in a bare
     # folder and compared the route with the very function the route
     # calls; both doors answering one record of one run is
-    # `test_a_finished_run_answers_both_keys_at_both_doors`.
+    # `test_siesta_relax_run_e2e.py`'s.
 
 
 # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
@@ -129,74 +75,12 @@ class TestTheComposer:
 #  3. The results adapter -- one composer, three builders                #
 # --------------------------------------------------------------------- #
 
-class TestWatchLoadAnswersTheBlock:
-
-    # Retired 2026-10-04 (plan B11/B12): a run folder a test laid by hand -- a
-    # deck and a trajectory written beside it -- loaded as a directory.  A
-    # folder no calculation claims holds no run of ours; what a run of ours
-    # declared reaches the viewer through the run door, on the road
-    # (`process/testing.md` § 6).
-
-    def test_a_flat_run_reads_its_own_deck_and_nothing_else(
-            self, client, monkeypatch):
-        """Each run of a flat calculation takes what it declared -- its labels
-        and its box -- from ITS OWN deck, both from that one deck: the Results
-        load of the flat H2 run shows atom 0 held in the isolated 10 Å box,
-        each of the folder's two stages reads its own `.fdf` (user,
-        2026-10-04: *"make sure that it does make each run sees its own .fdf
-        and take information from there rather than mixing"*), and SIESTA's
-        own ``H2.xyz``, opened as a structure, carries the same box.
-
-        WHY API-LEVEL: a measured fixture, read where it was measured --
-        `tests/fixtures/siesta_flat_h2` (its README)."""
-        import numpy as np
-
-        from molbuilder.runs import declared, run_of
-        fixtures = Path(__file__).resolve().parent / "fixtures"
-        _register_tmp_as_picker_root(fixtures, monkeypatch)
-        flat = fixtures / "siesta_flat_h2"
-
-        d = client.post("/api/watch/load", json={"path": str(flat)}).get_json()
-        assert d["ok"] is True, d
-        held = json.loads(d["atom_metadata"])["regions"]["frozen_atoms"]
-        assert held == [0], d["atom_metadata"]
-        box = d["periodicity"]
-        assert box["axis_kind"] == ["isolated"] * 3, box
-        assert box["engine_offset"] == [0.0, 0.0, 0.0], box
-        np.testing.assert_allclose(box["cell"], np.eye(3) * 10.0, atol=1e-4)
-        # ITS OWN OUTPUT NAMES ITS COMPANIONS AND ITS HELD ATOMS: the history
-        # SIESTA wrote under the label the `.out` states, and the atom its
-        # echo says the engine held (`model/parse.md` § 5.3).
-        rt = d["data"]["runtime_info"]
-        assert rt.get("mdnc_source") == "H2.MD.nc", rt
-        assert rt.get("frozen_atoms") == [0], rt
-        # ITS OWN DECK STATES ITS CONTRACT, though the folder holds two decks
-        # (ruling 1, 2026-10-04: a folder search found two and said none).
-        calc = d["info"]["calculation"]
-        assert calc["source"] == "H2_01_coarse.fdf", calc
-        assert calc["contract"]["basis_size"] == "DZP", calc
-
-        # EACH RUN, ITS OWN DECK: the coarse run that wrote the output, and
-        # the medium stage prepped beside it in the same folder.
-        assert (declared(run_of(flat / "H2_01_coarse-run0.out")).deck.name
-                == "H2_01_coarse.fdf")
-        assert (declared(run_of(flat, stage="02_medium")).deck.name
-                == "H2_02_medium.fdf")
-
-        # THE ENGINE'S OWN STRUCTURE FILE has no sidecar -- SIESTA writes a
-        # bare XYZ -- so its box is its run's, from the same deck, at the
-        # engine's origin (`model/structure-periodicity.md` § 6.0).
-        from molbuilder.workingcopy_structure import StructureCodec
-        own = StructureCodec().load(flat / "H2.xyz")
-        assert own.cell is not None, "the run's box never reached its H2.xyz"
-        np.testing.assert_allclose(np.asarray(own.cell), np.eye(3) * 10.0,
-                                   atol=1e-4)
-        np.testing.assert_allclose(own.engine_offset, np.zeros(3))
-
-    # `test_pointing_at_the_log_itself_finds_the_deck_beside_it` retired
-    # 2026-10-04 (W56 review): a deck and a trajectory written into a bare
-    # folder -- the state the note above retires.  A run of ours, loaded by
-    # its own file, is the flat H2 test above.
+# What the load answers for a run of ours -- each run its own deck's labels
+# and box -- is asked of a flat run made on the road with the real SIESTA
+# (`tests/test_siesta_flat_run_e2e.py`, moved there 2026-10-06;
+# `process/testing.md` § 6).  A run folder a test laid by hand was retired
+# 2026-10-04 (plan B11/B12): a folder no calculation claims holds no run of
+# ours.
 
 
 # --------------------------------------------------------------------- #

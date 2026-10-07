@@ -5,7 +5,8 @@
 # A test that mutates an instance to watch Python raise tests Python.
 
 Pins docs/model/parse.md (registry + dispatch) and
-§ 3 (ParseResult discriminators) on real fixtures.
+§ 3 (ParseResult discriminators).  A SIESTA output's detection and parse are
+read off a run made on the road, `tests/test_siesta_flat_run_e2e.py`.
 """
 
 from __future__ import annotations
@@ -14,36 +15,14 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.parse import (
-    TrajectoryResult,
-    UnknownFormatError,
-    detect,
-    parse,
-)
-from molbuilder.parse.engines import SiestaOutFileParser
+from molbuilder.parse import UnknownFormatError, detect
 from molbuilder.parse.registry import _registered_file_parsers
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SIESTA_FIXTURE = REPO_ROOT / "tests" / "watch" / "fixtures" / "siesta_frozen" \
-    / "hemeC-stage2-run3-finished-42fr.out"
-# BUILT, NOT FOUND.  The fixture was a real run under projects/, behind a
-# `pytest.skip("fixture absent")` -- so it read the user's scientific record
-# on this machine and SKIPPED (green, proving nothing) anywhere else.
-
-
-def _need(p: Path) -> Path:
-    """Assert the fixture is there.
-
-    This used to ``pytest.skip`` on a missing file.  Every fixture it guards is
-    COMMITTED under tests/ -- so absence means a broken checkout or a deleted
-    file, and skipping turned that into a green run that proved nothing.  A
-    missing committed fixture is a failure, loudly.
-    """
-    assert p.exists(), (
-        f"committed fixture missing: {p}.  It is versioned with these tests; "
-        f"a checkout without it is broken, not a reason to skip.")
-    return p
+# The SIESTA output's detection and parse moved to the e2e tier 2026-10-06:
+# they read a run made on the road with the real SIESTA,
+# `tests/test_siesta_flat_run_e2e.py` (`process/testing.md` § 6).
 
 
 # Registration --------------------------------------------------------- #
@@ -69,12 +48,6 @@ def test_engine_parsers_registered():
 # Detection + dispatch ------------------------------------------------- #
 
 
-def test_detect_siesta_out_file():
-    """detect() on a SIESTA .out picks SiestaOutFileParser."""
-    cls = detect(_need(SIESTA_FIXTURE))
-    assert cls is SiestaOutFileParser
-
-
 def test_detect_unknown_extension_raises():
     """detect() on a non-engine file raises UnknownFormatError with
     the supported-formats list."""
@@ -86,18 +59,6 @@ def test_detect_unknown_extension_raises():
     msg = str(ei.value)
     # Hint list mentions each registered parser by label.
     assert "Supported" in msg
-
-
-def test_parse_siesta_out_returns_trajectoryresult():
-    """parse() on a SIESTA .out returns TrajectoryResult, not the
-    legacy Trajectory dataclass."""
-    result = parse(_need(SIESTA_FIXTURE))
-    assert isinstance(result, TrajectoryResult)
-    assert result.result_kind == "trajectory"
-    assert result.source_format == "siesta"
-    assert result.parser_name == "siesta"
-    # Frames carry over from the legacy parser.
-    assert len(result.frames) > 0
 
 
 def test_detect_refuses_a_directory_by_name(tmp_path):

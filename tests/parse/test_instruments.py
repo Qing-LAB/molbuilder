@@ -9,8 +9,6 @@ the first test here is that they claim their own files and nothing else's.
 """
 from __future__ import annotations
 
-import pytest
-
 from molbuilder.parse.instruments import utilisation
 
 
@@ -19,24 +17,10 @@ from molbuilder.parse.instruments import utilisation
 # .util.csv typed by hand (`process/testing.md` § 6).
 
 
-def test_a_relaxations_step_boundaries_are_not_iterations():
-    """The delta INTO a new SCF's first row holds the previous SCF's end, the
-    forces, the move and the next step's setup -- not an iteration, for the
-    reason the first delta is dropped.  A measured fixture: the timing log of
-    a real 2-rank H2 CG relaxation (2026-09-26, `fixtures/scf_timing/`),
-    five SCFs of 8, 6, 4, 6 and 6 iterations; its four boundaries took about
-    2.4 s each against 0.58 s an iteration within an SCF, and averaged in
-    they read 0.8 s.
-
-    MUTATION THIS MUST FAIL AGAINST: keep the deltas into iteration 1."""
-    from pathlib import Path
-    from molbuilder.parse.instruments.scf_timing_rows import scf_timing_metrics
-    text = (Path(__file__).parent / "fixtures" / "scf_timing"
-            / "h2mon_01_coarse-run0.scf-timing.log").read_text()
-    m = scf_timing_metrics(text)
-    # 29 deltas, 4 of them boundaries, the first dropped as warm-up
-    assert (m["iters_measured"], m["rows"]) == (24, 30), m
-    assert m["s_per_iter"] == pytest.approx(0.58, abs=0.005), m
+# `test_a_relaxations_step_boundaries_are_not_iterations` moved to the e2e
+# tier 2026-10-06: it reads the timing log of a relaxation run on the road
+# with the real SIESTA, `tests/test_siesta_flat_run_e2e.py`
+# (`process/testing.md` § 6).
 
 
 # ---------------------------------------------------------------------------

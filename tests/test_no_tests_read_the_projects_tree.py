@@ -28,8 +28,9 @@ number captured once.
 
 Engine OUTPUT is the one thing that cannot be constructed honestly -- a
 hand-written ``.out`` tests a guess at SIESTA's format rather than SIESTA's.
-Those live checked in at ``tests/watch/fixtures/siesta_frozen/``: real output,
-versioned with the tests, reviewed when it changes.
+A test that needs it makes the run, on the road with the real engine, in the
+e2e tier (`process/testing.md` § 6; frozen copies of older runs' outputs
+stood under ``tests/watch/fixtures`` until 2026-10-06).
 """
 from __future__ import annotations
 

@@ -11,7 +11,7 @@ Pins:
 
 The .XV readings -- the cell in Å, the elements from atomic numbers -- read a
 .XV written by hand and were retired 2026-10-04 (`process/testing.md` § 6); a
-.XV a real run wrote is read in place by `tests/test_xv2xyz.py`.
+.XV a run made on the road wrote is read by `tests/test_siesta_flat_run_e2e.py`.
 """
 
 from __future__ import annotations
@@ -187,8 +187,8 @@ def test_pyscf_geom_doesnt_claim_plain_xyz(tmp_path: Path):
 
 
 # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 4 tests here parsed a .XV written by hand; the measured flat H2
-# run's `H2.XV` is read in place by `tests/test_xv2xyz.py` (`process/testing.md` § 6).
+# 4 tests here parsed a .XV written by hand; a run made on the road writes
+# the `.XV` read in `tests/test_siesta_flat_run_e2e.py` (`process/testing.md` § 6).
 
 
 # Frozen invariant ------------------------------------------------- #

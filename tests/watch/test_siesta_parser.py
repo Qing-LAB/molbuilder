@@ -1,9 +1,9 @@
 """The SIESTA output parser declines a file that is not SIESTA's.
 
-What it reads from an output is tested on outputs real runs wrote, read
-where they lie: `tests/watch/fixtures/siesta_frozen`,
-`tests/fixtures/siesta_relax` and `tests/fixtures/siesta_flat_h2`.  The tests
-that parsed a synthetic output here were retired 2026-10-04
+What it reads from an output is asked of runs made on the road with the
+real SIESTA, in the e2e tier (`tests/test_siesta_flat_run_e2e.py`,
+`tests/test_siesta_relax_run_e2e.py`, `tests/test_siesta_stopped_run_e2e.py`).
+The tests that parsed a synthetic output here were retired 2026-10-04
 (`process/testing.md` § 6).
 """
 

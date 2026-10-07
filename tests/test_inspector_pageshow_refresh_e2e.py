@@ -41,12 +41,18 @@ NOT covered here:
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
+from _road import (conda_hook, env_available, h2_relaxed_for_vibration,
+                   live_siesta)
 
-pytestmark = pytest.mark.e2e
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.engine,
+    pytest.mark.skipif(
+        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
+        reason="needs the molbuilder-siesta env + a detectable conda hook"),
+]
 
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
@@ -81,24 +87,26 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
     monkeypatch.setattr(diagnostics, "_snapshot", _orig)
 
 
-_FIXTURE_SIESTA_OUT = (
-    Path(__file__).resolve().parent
-    / "watch" / "fixtures" / "siesta_frozen"
-    / "hemeC-stage1-scf_not_conv-5fr.out"
-)
+@pytest.fixture(scope="module")
+def live_output(isolated_projects_root_module, tmp_path_factory):
+    """A real run's output -- the trajectory inspector's primary file type
+    -- made on the road with the real SIESTA: an H2 relaxation, its moves
+    the frames (`process/testing.md` § 6; a frozen output of an older run,
+    copied into a folder of its own as ``run.out``, stood here until
+    2026-10-06)."""
+    tree = isolated_projects_root_module
+    with live_siesta(tree, tmp_path_factory):
+        yield (h2_relaxed_for_vibration(tree) / "01_relax" / "run-0"
+               / "H2_01_relax-run0.out")
 
 
 @pytest.fixture
-def project_with_trajectory(tmp_path, monkeypatch):
-    """Project directory containing a real (small) SIESTA .out -- the
-    trajectory inspector's primary file type.  Returns the absolute
-    path string."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    proj = tmp_path / "myproj" / "spectra" / "test"
-    proj.mkdir(parents=True)
-    target = proj / "run.out"
-    target.write_text(_FIXTURE_SIESTA_OUT.read_text())
-    return str(target)
+def project_with_trajectory(live_output, monkeypatch):
+    """The run's output, its projects tree the only picker root: the
+    absolute path string."""
+    root = next(p for p in live_output.parents if p.name == "projects")
+    _register_tmp_as_picker_root(root, monkeypatch)
+    return str(live_output)
 
 
 # --------------------------------------------------------------------- #

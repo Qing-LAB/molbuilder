@@ -159,6 +159,19 @@ def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
                                               SCF_NOT_CONV_MARKER), end
 
 
+def test_the_retry_hears_an_scf_stop_and_no_capped_relaxation(stopped):
+    """What the wrapper's two retries ask of a run (`running-a-job.md`
+    § 3.5), answered by the ending reader on this run's own outputs: each
+    stopped on the SCF -- the retriable case on the non-zero branch -- and
+    neither is a relaxation out of moves."""
+    from molbuilder.parse.engines._run_ending import QUESTIONS, ending_of
+    from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
+    for name in ("H2_01_coarse-run0.out", "H2_01_coarse-run1.out"):
+        end = ending_of(stopped / name)
+        assert QUESTIONS["stopped-by"](end, SCF_NOT_CONV_MARKER), (name, end)
+        assert not QUESTIONS["relaxation-capped"](end), (name, end)
+
+
 def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
                                                          monkeypatch):
     """The viewer's "Reason:" line is the server's: the file's cause as the

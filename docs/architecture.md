@@ -94,7 +94,7 @@ from growing back — and **review keeps it** (`process/code-audit.md` § 1c (e)
 against the index below, *(user, 2026-09-27: "a static code review problem")*.
 What it prevents at run time shows up by itself: an upward import at a module's
 top fails every import of that module, and a file that ships beside a job and
-reaches into molbuilder fails there (`tests/test_monitor_bundle_runs_alone.py`
+reaches into molbuilder fails there (`tests/test_monitor_watches_a_live_run_e2e.py`
 runs it). The proof that the current code complies is a workflow that finishes
 end to end, its monitor's report included (`process/code-audit.md` § 1c (e)).
 

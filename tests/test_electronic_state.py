@@ -26,11 +26,9 @@ import re
 
 import numpy as np
 import pytest
-from click.testing import CliRunner
 
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.jobset._cli import jobset_group
 from molbuilder.pyscf.stages import default_pyscf_stages, vibration_stages
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
@@ -471,77 +469,8 @@ def test_a_structure_carries_the_state_of_the_run_it_came_from(
 
 # ------------------------------------------------------- the migration (7)
 
-def test_an_old_template_is_refused_then_migrated(isolated_projects_root):
-    """A template written before 2026-09-28 is refused naming the command;
-    the command rewrites it keeping what the run was, and prep accepts it.
-    Such a file recorded no source, so every value the migration carries
-    out of it -- the person's name, the spin it maps -- is *not recorded*,
-    never *not chosen* (`engines/template.md` § 6.6; the K7 review)."""
-    def written_before_m6(dest):
-        tmpl = next(dest.glob("*.template.toml"))
-        text = re.sub(r"^source = .*\n", "", tmpl.read_text(), flags=re.M)
-        text = re.sub(r'\[item\.spin_treatment\].*?(?=\n\[item\.)',
-                      '[item.spin_treatment]\nkind = "engine"\n'
-                      'category = ["system"]\nanchor = "Spin"\n'
-                      'engine_key = "Spin"\ntype = "enum"\n'
-                      'choices = ["non-polarized", "polarized", '
-                      '"non-colinear", "spin-orbit"]\n'
-                      'value = "polarized"\ngroup = "profile"\n'
-                      'help = "old"\n', text, flags=re.S)
-        tmpl.write_text(text)
-    dest, stage, said = _siesta(isolated_projects_root, WATER(),
-                                before_prep=written_before_m6, refused=True)
-    assert "jobset migrate" in said, said
-
-    r = CliRunner().invoke(jobset_group, ["migrate", "--bundle", str(dest)])
-    assert r.exit_code == 0, r.output
-    assert "'polarized' -> 'unrestricted'" in r.output
-    assert "'free'" in r.output, "a polarized run with no total floated"
-    tmpl = next(dest.glob("*.template.toml")).read_text()
-    assert 'value = "unrestricted"' in tmpl
-    from molbuilder.template import one, read_template
-    migrated = read_template(tmpl)
-    for name in ("system_label", "spin_treatment"):
-        assert one(migrated, name).source is None, (
-            name, one(migrated, name).source)
-    assert next(dest.glob("*.template.toml.pre-m6")).is_file()
-    r = CliRunner().invoke(jobset_group, ["prep", "run", stage, "--bundle",
-                                          str(dest), "--no-sbatch"])
-    assert r.exit_code == 0, r.output
-
-
-def test_an_old_pyscf_template_names_its_retired_item(isolated_projects_root):
-    """The other refusal: an ITEM the state replaced (PySCF's ``spin``), not
-    only an old value.  A triplet written the old way -- the committed
-    catalogue's own declarations before 2026-09-28, ``method = "UKS"`` and
-    ``spin = 2`` -- is refused naming the item and the command, and comes
-    back the same triplet."""
-    def _block(name, body):
-        return lambda text: re.sub(
-            rf'\[item\.{name}\].*?(?=\n\[item\.|\Z)', body, text, flags=re.S)
-
-    def written_before_m6(dest):
-        tmpl = next(dest.glob("*.template.toml"))
-        text = _block("unpaired_electrons",
-                      '[item.spin]\nkind = "engine"\ncategory = ["system"]\n'
-                      'anchor = "gto.M"\nengine_key = "gto.M(spin=...)"\n'
-                      'type = "int"\nvalue = 2\ngroup = "profile"\n'
-                      'help = "old"\n')(tmpl.read_text())
-        text = _block("method",
-                      '[item.method]\nkind = "engine"\ncategory = ["method"]\n'
-                      'anchor = "RKS"\nengine_key = "RKS / UKS / RHF / UHF"\n'
-                      'type = "enum"\nchoices = ["RKS", "UKS", "RHF", "UHF"]\n'
-                      'value = "UKS"\ngroup = "profile"\nhelp = "old"\n')(text)
-        tmpl.write_text(text)
-    dest, stage, said = _pyscf(isolated_projects_root, O2(),
-                               before_prep=written_before_m6, refused=True)
-    assert "'spin' (PySCF's 2S" in said and "jobset migrate" in said, said
-
-    r = CliRunner().invoke(jobset_group, ["migrate", "--bundle", str(dest)])
-    assert r.exit_code == 0, r.output
-    assert "spin = 2 -> unpaired_electrons = 2" in r.output, r.output
-    r = CliRunner().invoke(jobset_group, ["prep", "run", stage, "--bundle",
-                                          str(dest), "--no-sbatch"])
-    assert r.exit_code == 0, r.output
-    deck = next(next(dest.glob(f"*_{stage}")).glob("*.py")).read_text()
-    assert "dft.UKS(mol)" in deck and "spin=2" in deck.replace(" ", "")
+# The two migration tests retired 2026-10-06: each edited a template made on
+# the road back into its pre-2026-09-28 shape by hand -- a record of ours put
+# into a shape our writer never writes (`process/testing.md` § 6).  The
+# migration is checked where it is used: `jobset migrate` on a calculation
+# an older molbuilder wrote.

@@ -217,8 +217,8 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
 
     tree = tmp_path / "projects"
     # The experimental bond, 0.741 A -- NOT the stationary point at this
-    # level of theory (fixtures/siesta_fc/README.md: 1.27 eV/A there, and
-    # 3358 cm-1 where the relaxed bond gives 3022).
+    # level of theory (measured 2026-09-24 on this road: 1.27 eV/A there,
+    # and 3358 cm-1 where the relaxed bond gives 3022).
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]])
     task = json.loads((bundle / "task.json").read_text())
     assert [s["name"] for s in task["stages"]] == ["relax", "freq"]
@@ -272,8 +272,8 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     assert d["phase_relaxation"] == "complete"
     assert d["relaxation"]["enabled"] is True and d["relaxation"]["n_steps"] >= 1
     freqs = [m["frequency_cm1"] for m in d["modes"]]
-    # the relaxed bond's frequency (fixtures/siesta_fc/README.md: 3022-3024
-    # across the measured tolerances), not the unrelaxed 3358
+    # the relaxed bond's frequency (3022-3024 across the tolerances measured
+    # 2026-09-24), not the unrelaxed 3358
     assert len(freqs) == 1 and 2950.0 < freqs[0] < 3100.0, freqs
     # the geometry in the file is the one the force constants were taken
     # at -- the RELAXED bond, read from the run's own reference step
@@ -299,7 +299,7 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     fixed at 298.15 K on SIESTA until 2026-09-28, V1.7).
     """
     tree = tmp_path / "projects"
-    # the relaxed bond (fixtures/siesta_fc/README.md)
+    # the relaxed bond (H-H 0.7745 A, measured 2026-09-24 on this road)
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]])
     task = json.loads((bundle / "task.json").read_text())
     task["stages"] = [s for s in task["stages"] if s["name"] == "freq"]

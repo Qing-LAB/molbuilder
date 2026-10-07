@@ -117,8 +117,8 @@ def start_state_lines(cfg) -> List[str]:
     density.  A stale density costs iterations, never the answer.
 
     THE GEOMETRY IS NEVER READ.  A force-constant run writes its LAST
-    DISPLACEMENT to ``<SystemLabel>.XV`` -- measured on the two-atom run
-    (``tests/fixtures/siesta_fc``): the last free atom sits
+    DISPLACEMENT to ``<SystemLabel>.XV`` -- measured on a two-atom run
+    (2026-09-23, SIESTA 5.4.2): the last free atom sits
     FC.Displacement off the input along z after the run.  A deck that
     honoured that file would take a nudged geometry as the stationary
     point and converge without complaint.  SIESTA reads a density it

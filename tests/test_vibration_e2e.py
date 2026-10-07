@@ -111,7 +111,8 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     # `notify.on_scf_converged`): asked for here the way a person asks, in
     # the description, so the monitor beside the run is told to send them.
     task = json.loads((bundle / "task.json").read_text())
-    task["notify"] = {"on_scf_converged": True}
+    task["notify"] = {"on_scf_converged": True, "every_hours": None,
+                      "channels": ["*"], "report": ["*"]}
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
     d = _prep_and_run(bundle)
 
@@ -201,6 +202,62 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     r = parse_spectra_json(str(bundle / "01_freq" / "run-0"
                                / "W.spectra.json"))
     assert r.engine == "pyscf" and len(r.modes) == 3
+
+
+def test_modes_are_matched_by_their_mass_weighted_shape_not_their_rank(
+        tmp_path, monkeypatch):
+    """A displacement sweep's question that needs modes over atoms of
+    UNEQUAL mass (`engines/vibration.md` § 5.9): which mode of one stage is
+    which mode of another.  Free water from the road -- three modes over an
+    oxygen and two hydrogens; the SIESTA road's sweep runs H2, whose one mode
+    can neither swap nor mix.  Two things a second stage can do to the
+    reference's modes, and the answer each must get:
+
+    * **swap rank** -- the same motions listed in another order: each
+      reference mode finds its own motion, overlap 1;
+    * **mix** -- two modes turned into each other by an angle θ in the
+      mass-weighted space, ``L' = cos θ L_a + sin θ L_b``: each still finds
+      the mode it mostly is, and the overlap is the mass-weighted cosine,
+      ``cos θ``, exactly.
+
+    MUTATIONS THIS MUST FAIL AGAINST: matching by rank (the swap is missed);
+    the overlap without the √m weighting -- the canonical vectors are
+    orthonormal only in the mass-weighted metric, so over an oxygen and two
+    hydrogens the unweighted cosine is not ``cos θ``."""
+    import math
+    from dataclasses import replace
+
+    from molbuilder.chemistry import atomic_mass
+    from molbuilder.sidecars.spectra import parse_spectra_json
+    from molbuilder.spectra.displacement_sweep import match_modes
+    bundle = _describe(tmp_path, monkeypatch)
+    _prep_and_run(bundle)
+    ref = parse_spectra_json(str(bundle / "01_freq" / "run-0"
+                                 / "W.spectra.json"))
+    m = ref.modes
+    masses = [atomic_mass(ref.equilibrium_elements[i])
+              for i in ref.free_atom_idxs]
+    assert len(m) == 3 and len(set(masses)) == 2, (len(m), masses)
+
+    swapped = replace(ref, modes=[m[0], m[2], m[1]])
+    index, overlap = match_modes(ref, swapped, masses)
+    assert index == [0, 2, 1], index
+    assert overlap == pytest.approx([1.0, 1.0, 1.0], abs=1e-9)
+
+    theta = math.radians(30.0)
+    la = np.asarray(m[0].eigenvector_canonical, float)
+    lb = np.asarray(m[1].eigenvector_canonical, float)
+    mixed = replace(ref, modes=[
+        replace(m[0], eigenvector_canonical=math.cos(theta) * la
+                + math.sin(theta) * lb),
+        replace(m[1], eigenvector_canonical=-math.sin(theta) * la
+                + math.cos(theta) * lb),
+        m[2]])
+    index, overlap = match_modes(ref, mixed, masses)
+    assert index == [0, 1, 2], index
+    assert overlap[0] == pytest.approx(math.cos(theta), abs=1e-9)
+    assert overlap[1] == pytest.approx(math.cos(theta), abs=1e-9)
+    assert overlap[2] == pytest.approx(1.0, abs=1e-9)
 
 
 def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(

@@ -25,7 +25,7 @@ item says so:
   file's imports that did until then earns no place (`testing.md`), and what an
   upward import breaks shows up by itself: a cycle that fails every import of the
   module, or a shipped monitor file that fails beside the job
-  (`tests/test_monitor_bundle_runs_alone.py`).
+  (`tests/test_monitor_watches_a_live_run_e2e.py`).
 - **The parse layer stays pure.** The memory-only text parsers do **no I/O**
   (`tests/parse/test_scripts.py::test_text_parsers_do_no_io`), the file parsers do
   **no subprocess / network / threads**, and the parse core carries **no
@@ -235,8 +235,8 @@ the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
 
 ## 4. Where the guards live (test map)
 
-- `test_monitor_bundle_runs_alone.py` — the monitor's shipped files run beside a
-  real run with molbuilder absent (the layering itself is review's).
+- `test_monitor_watches_a_live_run_e2e.py` — the monitor's shipped files run
+  beside a run made on the road, with molbuilder absent (the layering itself is review's).
 - `test_pyscf_bundle_runs_alone.py` — every module the PySCF script imports loads
   from `mb_pyscf.pyz` with molbuilder absent, and writes a pair the package's codec
   reads back.

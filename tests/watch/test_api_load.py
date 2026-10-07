@@ -162,35 +162,9 @@ def test_load_by_multipart_unrecognised_format(client):
 # --------------------------------------------------------------------- #
 
 
-def test_the_siesta_parser_reads_convergence_targets_from_the_input_echo():
-    """The first link of the chain: SIESTA's own input echo → runtime_info.
-
-    The hemeC stage-2 fixture tightened `MD.MaxForceTol` to 0.02 eV/Å from
-    the 0.04 default — a stage-2 run's whole point — so the parsed value
-    proves the echo was read rather than a default reproduced.
-    """
-    from pathlib import Path
-
-    from molbuilder.parse.engines.siesta import SiestaParser
-
-    path = (Path(__file__).resolve().parent
-            / "fixtures" / "siesta_frozen"
-            / "hemeC-stage2-run3-finished-42fr.out")
-    traj = SiestaParser.parse(str(path))
-    ct = traj.runtime_info.get("convergence_targets")
-    assert ct is not None, (
-        "SIESTA parser dropped its convergence_targets extraction.  The "
-        "Results-tab threshold line + summary block now have nothing to "
-        "render.  Check that _SIESTA_FORCE_TOL_RE et al. are still "
-        "matching 'redata: Force tolerance = ...'.")
-    assert ct.get("source") == "siesta_input_echo"
-    assert ct.get("max_force_tol_eV_per_A") == 0.02, (
-        "0.04 is the SIESTA default -- reading it back here means the echo "
-        "was not parsed and a default leaked through instead")
-    assert ct.get("max_scf_iter") == 500
-    # the SCF's own criteria beside them, per phase (`web/trajectory.md` § 3)
-    crit = traj.runtime_info["scf_criteria"]["periodic"]
-    assert crit["dDmax"]["tolerance"] == 1e-4
+# `test_the_siesta_parser_reads_convergence_targets_from_the_input_echo` moved
+# to the e2e tier 2026-10-06: the echo of a run made on the road with the real
+# SIESTA, `tests/test_siesta_flat_run_e2e.py` (`process/testing.md` § 6).
 
 
 # --------------------------------------------------------------------- #

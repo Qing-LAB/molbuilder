@@ -5,10 +5,10 @@ by ``FC.Displacement`` along x, y and z, both ways, and writes
 ``<SystemLabel>.FC``: one header line, then -- for each displaced atom in
 range order, each direction, each side (minus, then plus) -- one row per
 atom of the structure holding the force-constant contribution
-``-dF_b/dR_a`` in **eV/Å²**.  Measured on a two-atom run
-(``tests/fixtures/siesta_fc``): the z-block's two sides average to
-41.713, and two single points displaced by hand give −ΔF/2Δ = 41.713
-eV/Å² for the same element.
+``-dF_b/dR_a`` in **eV/Å²**.  Measured on a two-atom run (2026-09-23,
+SIESTA 5.4.2): the z-block's two sides average to 41.713, and two single
+points displaced by hand give −ΔF/2Δ = 41.713 eV/Å² for the same
+element.
 
 ``<SystemLabel>.FCC`` is the same file with the HELD atoms' force rows
 zeroed (SIESTA's "constrained" variant).  The free block is identical, so

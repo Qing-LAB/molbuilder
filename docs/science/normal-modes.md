@@ -731,9 +731,9 @@ spring, Hessian
                                          (1, −1) — against each other: the stretch
 ```
 
-Here is the same molecule out of the measured fixture (`tests/fixtures/siesta_fc`,
-H₂ at 0.741 Å, SIESTA GGA/DZP), with `k = 41.713 eV/Å²` read from the `.FC` file
-and `m = 1.008 amu`:
+Here is the same molecule out of a measured run (2026-09-23, H₂ at 0.741 Å,
+SIESTA GGA/DZP), with `k = 41.713 eV/Å²` read from its `.FC` file and
+`m = 1.008 amu`:
 
 | | what is diagonalised | motions removed | modes | ω |
 |---|---|---|---|---|

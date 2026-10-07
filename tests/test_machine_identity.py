@@ -18,7 +18,6 @@ nothing:
   cgroup shows only granted GPUs — so only the MODEL may appear.
 """
 import os
-from pathlib import Path
 
 import pytest
 
@@ -98,71 +97,10 @@ def test_no_tool_and_no_device_read_the_same(monkeypatch):
 # writer's payload (`process/testing.md` § 6).
 
 
-def _real_run(tmp_path):
-    """A copy of the measured H2 relaxation (`tests/fixtures/siesta_relax`)
-    as the run the monitor watches -- a real run's files, not written here."""
-    import shutil
-    src = (Path(__file__).parent / "fixtures" / "siesta_relax" / "01_relax"
-           / "run-0")
-    run = tmp_path / "run-0"
-    shutil.copytree(src, run)
-    return monitor.WatchedRun(label="H2", stage="01_relax", run=0,
-                              directory=run)
+# `test_the_machine_is_the_logs_first_line` and
+# `test_a_monitor_missing_its_companion_still_monitors` moved to the e2e tier
+# 2026-10-06: the monitor watches a run made on the road with the real
+# SIESTA, `tests/test_monitor_watches_a_live_run_e2e.py` (`process/testing.md`
+# § 6).
 
 
-def test_the_machine_is_the_logs_first_line(tmp_path):
-    """Written at START, not in the terminal block: a monitor killed with
-    its allocation must still have said where it died.  First line, so the
-    reader's cheapest scan finds it."""
-    watched = _real_run(tmp_path)
-    log = watched.path(".monitor.log")
-    it = iter([0.0, 0.0, 1.0, 2.0, 3.0, 4.0])
-    last = [0.0]
-
-    def clock():                       # holds the last value when drained
-        last[0] = next(it, last[0])
-        return last[0]
-
-    monitor.run_monitor(watched, interval=1,
-                        watch_pid=999_999_999,      # gone on tick 1
-                        sleep=lambda s: None, clock=clock)
-    first = log.read_text(encoding="utf-8").splitlines()[0]
-    assert "[MACHINE]" in first, (
-        "the machine record moved off the first line; a killed run "
-        "loses it if it waits for the terminal block")
-    assert f"node={os.uname().nodename[:128]}" in first
-
-
-def test_a_monitor_missing_its_companion_still_monitors(tmp_path, monkeypatch):
-    """`config_dir.py` travels beside the shipped monitor; when a staging
-    defect loses it, WHERE reports go cannot be answered -- and the answer
-    is *reports off* (`run-reports.md`: absent is off), never startup
-    death.  Death cost every [STATUS], the util series and the [MACHINE]
-    record of every production run for two days, silently
-    (its stderr went to /dev/null under the wrapper until 2026-09-27)."""
-    def _no_companion():
-        raise ModuleNotFoundError("config_dir")
-    # PATCH THE LIVE DOOR.  This patched `_config_dir` until 2026-09-20; when
-    # the credentials moved into `secrets/` the path functions started asking
-    # `_secrets_dir` instead, and patching the old name simulated nothing --
-    # the monitor resolved its file happily and never said "reports off".
-    # The test caught that, which is why `_config_dir` was deleted rather
-    # than left as a name something could go on patching.
-    monkeypatch.setattr(monitor, "_secrets_dir", _no_companion)
-    monkeypatch.delenv("MOLBUILDER_NOTIFY_FILE", raising=False)
-
-    watched = _real_run(tmp_path)
-    log = watched.path(".monitor.log")
-    it = iter([0.0, 0.0, 1.0, 2.0, 3.0, 4.0]); last = [0.0]
-
-    def clock():
-        last[0] = next(it, last[0]); return last[0]
-
-    monitor.run_monitor(watched, interval=1,
-                        watch_pid=999_999_999,
-                        sleep=lambda s: None, clock=clock)
-    text = log.read_text(encoding="utf-8")
-    assert "[MACHINE]" in text and "[MONITOR]" in text, (
-        "the monitor died over its missing notify companion")
-    assert "reports off" in text, (
-        "the absence must be SAID in the log the user reads")

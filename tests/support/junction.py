@@ -161,4 +161,4 @@ def spectra_sidecar(path):
 # that folder; a run's labels are its own deck's, through the run door
 # (`runs.declared`, plan B12).  `xv_file`, a SIESTA `.XV` written by a
 # hand-rolled writer, went the same day: a `.XV` is SIESTA's, and a test
-# reads one a real run wrote (`tests/fixtures/siesta_flat_h2/H2.XV`).
+# reads one a run made on the road wrote (`tests/test_siesta_flat_run_e2e.py`).

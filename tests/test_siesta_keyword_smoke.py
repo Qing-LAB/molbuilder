@@ -57,9 +57,8 @@ import pytest
 # rather than assumed: its PSML is real enough for prep's screening but
 # SIESTA does not start on it -- the swap failed five of this file's tests
 # with "SIESTA printed no k-grid read-back; it may have died".  So the file
-# is checked in beside the tests, which is what
-# `tests/watch/fixtures/siesta_frozen/` already does for what cannot be
-# honestly constructed.  See tests/fixtures/psml/README.md.
+# -- an INPUT, not a run's output -- is checked in beside the tests.  See
+# tests/fixtures/psml/README.md.
 _H_PSML_SOURCE = Path(__file__).resolve().parent / "fixtures" / "psml" / "H.psml"
 
 pytestmark = pytest.mark.engine

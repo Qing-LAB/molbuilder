@@ -3950,7 +3950,7 @@ def render_run_wrapper(script_path: Path, *,
 #: -- as `config_dir` always has, so the monitor reads a run with the readers
 #: the Results tab's directory door reads it with.  The rule for joining is
 #: `configuration.md`'s: *stdlib-only AND travels*, and
-#: `tests/test_monitor_bundle_runs_alone.py` runs the whole set with molbuilder
+#: `tests/test_monitor_watches_a_live_run_e2e.py` runs the whole set with molbuilder
 #: absent.
 #:
 #: They travel as ONE file, :data:`MONITOR_BUNDLE`, which `render_wrappers`

@@ -7,8 +7,10 @@ This file covers the SETUP commit: matcher helpers return
 backed matchers and plain callables; ``compile_rules`` builds a
 :class:`CompiledRules` dispatch table.
 
-End-to-end parser equivalence (the second commit's work) lives in
-``test_combined_dispatch.py``.
+What the parser reads from a real output is asked of runs made on the road
+with the real SIESTA (`tests/test_siesta_flat_run_e2e.py`); the second
+commit's parse-equivalence check against saved signatures of the parser's
+own output was retired 2026-10-06 (`process/testing.md` § 6).
 """
 from __future__ import annotations
 

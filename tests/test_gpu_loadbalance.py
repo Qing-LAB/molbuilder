@@ -230,10 +230,14 @@ def test_timing_read_guarded_when_no_output(tmp_path):
     assert 'if [ -f "$_scf_timing_log" ]; then' in t
 
 
-def test_omp_honors_slurm_cpus_per_task(tmp_path):
+def test_omp_honors_the_schedulers_reservation(tmp_path):
+    """The thread chain `running-a-job.md` § 3.2 states: ``OMP_NUM_THREADS``,
+    then the scheduler's reservation -- ``SLURM_CPUS_PER_TASK``,
+    ``PBS_NCPUS``, ``NSLOTS`` -- then the count stated at prep.  *(Its last
+    two rungs joined 2026-10-06; this pinned the two-rung chain until then.)*"""
     t = _gpu(tmp_path)
-    assert ('_omp_threads="${OMP_NUM_THREADS:-'
-            '${SLURM_CPUS_PER_TASK:-$_omp_threads_default}}"' in t)
+    assert ('_omp_threads="${OMP_NUM_THREADS:-${SLURM_CPUS_PER_TASK:-'
+            '${PBS_NCPUS:-${NSLOTS:-$_omp_threads_default}}}}"' in t)
 
 
 # --------------------------------------------------------------------- #
@@ -247,10 +251,11 @@ def test_scf_timing_instrument_present(tmp_path):
     with the .out, the piped launch + PIPESTATUS, and a wall-time log."""
     for t in (_gpu(tmp_path), _cpu(tmp_path)):
         assert "_mb_scf_tee() {" in t
-        # WHICH lines it stamps is a behaviour, pinned where it is exercised:
-        # `test_monitor.py::test_the_rendered_timing_tee_stamps_every_negf_iteration`
-        # runs this tee over a real device output (the pattern is the grammar's,
-        # `parse/engines/siesta_grammar.py`).
+        # WHICH lines it stamps is a behaviour, read where a run prints them:
+        # the timing log of a relaxation run on the road
+        # (`tests/test_siesta_flat_run_e2e.py`); a device's NEGF rows, with the
+        # transport road (plan Q5-Q7).  The pattern is the grammar's,
+        # `parse/engines/siesta_grammar.py`.
         assert '_scf_timing_log="${_out_file%.out}.scf-timing.log"' in t
         assert '| _mb_scf_tee "$_out_file" "$_scf_timing_log"' in t
         # PIPESTATUS so awk never masks SIESTA's exit code

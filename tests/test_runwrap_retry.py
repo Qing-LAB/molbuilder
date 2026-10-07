@@ -1,8 +1,9 @@
 """SIESTA warm-retry (``continue_retries``) — wrapper contract + ground truth.
 
 The retry feature re-execs the wrapper with ``--continue`` when a SIESTA run
-failed in a RETRIABLE way.  Two detection points, each grounded in the
-project's frozen real-output fixtures (``tests/watch/fixtures/siesta_frozen/``):
+failed in a RETRIABLE way.  Two detection points, each answered on a run made
+on the road with the real SIESTA (`tests/test_siesta_stopped_run_e2e.py`,
+`tests/test_siesta_flat_run_e2e.py`):
 
   * SCF abort — with ``SCF.MustConverge`` (SIESTA's default, and molbuilder
     emits no override) an unconverged SCF stops the run NON-zero with
@@ -32,7 +33,11 @@ from molbuilder.jobset.model import Resources
 from molbuilder.runwrap import render_run_wrapper
 
 REPO = Path(__file__).resolve().parents[1]
-FROZEN = REPO / "tests" / "watch" / "fixtures" / "siesta_frozen"
+# What the retries ask, answered on real output, moved to the e2e tier
+# 2026-10-06: an SCF stop on the stopped run made on the road
+# (`tests/test_siesta_stopped_run_e2e.py`), a relaxation out of moves on one
+# allowed a single move (`tests/test_siesta_flat_run_e2e.py`); the frozen
+# outputs of older runs they read went with them (`process/testing.md` § 6).
 
 # The exact idioms the wrapper renders (tested both as source text and,
 # below, behaviourally).  If these change in runwrap.py, change them here
@@ -149,30 +154,6 @@ class TestRenderedContract:
 # --------------------------------------------------------------------- #
 #  Marker ground truth — frozen real SIESTA output                       #
 # --------------------------------------------------------------------- #
-
-
-class TestTheDoorOnRealOutput:
-    """What the retries ask, answered by `_run_ending` on frozen real SIESTA
-    output -- if SIESTA's wording ever drifts, these fail first.  They pinned
-    the wrapper's own grep strings until 2026-09-26, when the wrapper began
-    asking the door."""
-
-    def test_the_scf_aborts_were_stopped_by_the_scf(self):
-        from molbuilder.parse.engines._run_ending import QUESTIONS, ending_of
-        for name in ("hemeC-stage1-scf_not_conv-5fr.out",
-                     "hemeC-stage3-scf_not_conv-1fr.out"):
-            end = ending_of(FROZEN / name)
-            # SIESTA stated the SCF fatal -- "(required)" -- and died: the
-            # retriable case, on the non-zero branch
-            assert QUESTIONS["stopped-by"](end, SCF_NOT_CONV_MARKER), name
-            assert not QUESTIONS["relaxation-capped"](end), name
-
-    def test_the_geometry_cap_is_capped_and_no_scf_abort(self):
-        from molbuilder.parse.engines._run_ending import QUESTIONS, ending_of
-        end = ending_of(FROZEN / "hemeC-stage2-run3-finished-42fr.out")
-        assert QUESTIONS["relaxation-capped"](end)
-        # ...and is NOT an SCF abort (exit 0 path).
-        assert not QUESTIONS["stopped-by"](end, SCF_NOT_CONV_MARKER)
 
 
 # --------------------------------------------------------------------- #

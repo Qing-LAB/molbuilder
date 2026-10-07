@@ -28,10 +28,14 @@ touched (§ 6.1), and a tier whole only when the change reaches that far.
 
 **What it holds**: molbuilder's own behaviour, driven the way a person drives it —
 the road (`jobset init → prep → launch`; the case tables, § 6), the suite's
-stand-in engine for a run's process, measured fixtures read where they were
-measured (`tests/fixtures/`), and machine records written in molbuilder's own
-format to describe a machine — its cores, its queues and their limits — to the
-logic that reads them.
+stand-in engine for a run's process, and machine records written in molbuilder's
+own format to describe a machine — its cores, its queues and their limits — to
+the logic that reads them.  **No engine output, saved or typed**: a test that
+needs what an engine writes — a `.out`, an `.MD.nc`, an `.XV`, a `.FC`, a
+spectrum a run derived — is a tier-3 test that makes the run *(user, 2026-10-06:
+"when a test need siesta's output why is it not part of a e2e test?")*.
+`tests/fixtures/` holds an engine's INPUTS only — the H pseudopotential a live
+run needs (`tests/fixtures/psml/README.md`).
 
 **What it never holds** *(user, 2026-10-04, 2026-10-06: "the whole default test set
 should never be based on fabricated text")*:
@@ -144,7 +148,7 @@ The one *structural* rule is **layering**, and **review keeps it, not a test**
 earn a place*, below), and the two failures that matter at run time show up
 without it — an upward import at a module's top fails every import of that
 module, and a file that ships beside a job and reaches into molbuilder fails
-there, which `tests/test_monitor_bundle_runs_alone.py` runs. **The proof is a
+there, which `tests/test_monitor_watches_a_live_run_e2e.py` runs. **The proof is a
 workflow that finishes end to end** *(user, 2026-09-27)*: the road tests that
 launch real runs in each engine's own env and assert the monitor's closing
 report (`test_siesta_vibration_e2e.py`, `test_vibration_e2e.py`). The question
@@ -707,10 +711,17 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   much as laid in a folder; a conclusion marker, launch record, monitor
   record, restart or product file written by hand, or one of ours edited by
   hand into a shape our writer never writes; a structure carrying the record
-  of a calculation nothing ran. A measured fixture is read where it was
-  measured, as itself — a parser on the file, the monitor replaying the
-  measured run's own files under their own names — never called another
-  run's result. *(282 tests and 10 case-table rows were retired for it that
+  of a calculation nothing ran. **Nor a run saved from another day**: the
+  run is made in the test's own session, so what it is read against is what
+  molbuilder writes today — a saved run's records drift with every change to
+  their writers (the relaxation kept under `tests/fixtures` from 2026-09-24
+  had met 54 changes to the run script and 13 to the description by
+  2026-10-06), and its engine output belongs to the engine's version. A
+  run's files may be replayed — the monitor shown the run's own output as it
+  grew, under its own names — when the run was made by the same test module
+  *(the measured fixtures and the frozen outputs of older runs left the suite
+  2026-10-06: user, "when a test need siesta's output why is it not part of
+  a e2e test? ... what's different about the one that remains")*. *(282 tests and 10 case-table rows were retired for it that
   day, the transport suite's citation fixture and the run-ending and viewer
   cases of plan W55 9b among them. The rest went on 2026-10-04 — user: "any
   fucking faking tests should be retired"; "if you find any such tests, need
@@ -718,7 +729,10 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   deleted whole: parser tests on made-up output text, refusals of
   hand-edited result files, restart files planted for the cold start and the
   carry, and the two fixtures that had been cut from their runs.)* **A test
-  that fakes output is kept only with its reason stated to the user first.**
+  that fakes output is kept only with its reason stated to the user first**
+  — and none is kept: the synthetic runtime-header lines, the parser's own
+  output saved as its expectation, an output cut to its first steps and the
+  templates edited back into an older shape went 2026-10-06.
 - **Framework and API tests; end-to-end only when the user asks** *(user,
   2026-10-04: "you have to rely on more api and framework test rather than
   fucking e2e test. e2e test is only necessary when i say so")*. A run a
@@ -731,12 +745,15 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   it, writes the run's records as it concludes — so what a stage builds on,
   what it continues from and whether a viewer follows a run are tested
   through our own code with no engine (`tests/data/hand_overs.toml`). What
-  depends on the ENGINE's own files — the `.MD.nc`, an `.XV` — is read from a
-  **measured fixture**: a real run of ours, the smallest that shows the
-  mechanism (H2; H2O at most — user, 2026-10-04: *"run are supposed to verify
-  mechanism ... a Au-BDT-Au is too much"*), made once on the road and kept
-  as itself with a README saying how (`tests/fixtures/siesta_flat_h2`). A
-  browser or a real engine in a test is for when the user asks for one.
+  depends on the ENGINE's own files — the `.MD.nc`, an `.XV`, how a run
+  ended, what the monitor makes of its output — is a tier-3 test that makes
+  the run on the road with the engine: the smallest that shows the mechanism
+  (H2; H2O at most — user, 2026-10-04: *"run are supposed to verify
+  mechanism ... a Au-BDT-Au is too much"*), one module-scoped run serving the
+  module's tests (`tests/test_siesta_flat_run_e2e.py`,
+  `tests/test_siesta_relax_run_e2e.py`,
+  `tests/test_monitor_watches_a_live_run_e2e.py`). A browser or a real
+  engine in a test is for when the user asks for one.
 - **State-composition tests** — the molview class of bug: a value is correct in
   isolation but wrong once composed with a sibling piece of state. These get an
   explicit test that exercises the *combination*, not each part alone.
@@ -881,8 +898,8 @@ deliberately not installed there.
 
 ## 8. Test map (the meta-tests)
 
-- `test_monitor_bundle_runs_alone.py` — the monitor's shipped files read a real
-  run with molbuilder absent (§ 2; the layer rule itself is review's).
+- `test_monitor_watches_a_live_run_e2e.py` — the monitor's shipped files read a
+  run made on the road, with molbuilder absent (§ 2; the layer rule itself is review's).
 - `test_pyscf_bundle_runs_alone.py` — every module the PySCF script imports loads
   from `mb_pyscf.pyz` with molbuilder absent, and writes a pair the package's
   codec reads back.

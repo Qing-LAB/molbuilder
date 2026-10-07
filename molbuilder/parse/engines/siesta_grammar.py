@@ -12,7 +12,7 @@ progress"* for 7.6 hours (2026-09-25).
 
 Every pattern is read off SIESTA 5.4.2's own writer, named beside it.  The
 one older spelling kept, the 5.0 betas' ``Siesta Version``, is off that
-build's own output (`tests/watch/fixtures/siesta_frozen/BDT_METAL-*`).
+build's own output (a BDT run's, read 2026-09-26).
 Stdlib only, and nothing of ours: it travels beside every job.
 """
 from __future__ import annotations

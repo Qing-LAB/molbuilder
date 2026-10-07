@@ -184,8 +184,8 @@ def test_no_table_silently_returns_the_input():
 
 def test_an_ARRAY_converts_elementwise():
     """A netCDF reader hands whole coordinate arrays through this door,
-    so coercing to a scalar breaks it — which it did, taking 12 tests in
-    `parse/test_siesta_mdnc.py` with it."""
+    so coercing to a scalar breaks it — which it did, taking 12 tests of the
+    `.MD.nc` reader with it."""
     import numpy as np
     out = length_ang(np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 2.0]]), "Bohr")
     assert out.shape == (2, 3)

@@ -21,156 +21,17 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-from pathlib import Path
 
 import pytest
 
 from molbuilder import monitor as M
-from molbuilder.monitor import NotifyPolicy
 
 
-def _clock(values):
-    """Clock returning successive values, holding the last when drained."""
-    it = iter(values)
-    box = {"last": values[0]}
-
-    def _c():
-        try:
-            box["last"] = next(it)
-        except StopIteration:
-            pass
-        return box["last"]
-    return _c
-
-
-#: The measured H2 relaxation (`tests/fixtures/siesta_relax`): label H2, stage
-#: 01_relax, run 0 -- four Broyden moves, their SCF rows at lines 385-394,
-#: 472-478, 548-551 and 620-623.  The policy is fed a REAL run as it grew; these
-#: tests wrote their own `scf:` lines until 2026-09-26.
-_H2 = (Path(__file__).parent / "fixtures" / "siesta_relax" / "01_relax"
-       / "run-0")
-_H2_OUT = "H2_01_relax-run0.out"
-#: Each tick adds one more SCF row of the first move; each adds one more move.
-_ROWS = (387, 388, 389, 390, 391, 392, 394)
-_MOVES = (478, 551, 623)
-
-
-def _replay(tmp_path, upto):
-    """The run's directory with its ``.out`` written to line ``upto``, and a
-    ``grow(to)`` that writes on, as SIESTA would."""
-    run = tmp_path / "run-0"
-    shutil.copytree(_H2, run, ignore=shutil.ignore_patterns(_H2_OUT))
-    lines = (_H2 / _H2_OUT).read_text().splitlines(keepends=True)
-    out = run / _H2_OUT
-    out.write_text("".join(lines[:upto]))
-    at = {"n": upto}
-
-    def grow(to):
-        with out.open("a") as fh:
-            fh.write("".join(lines[at["n"]:to]))
-        at["n"] = to
-    return M.WatchedRun(label="H2", stage="01_relax", run=0,
-                        directory=run), grow
-
-
-def _events(tmp_path, *, upto=386, chunks=(), notify_on_scf=False,
-            notify_every_hours=0.0, **kw):
-    """Run the monitor over the replayed run -- ``chunks`` are where the
-    output has grown to at each wake -- and return the events its notifiers
-    saw."""
-    watched, grow = _replay(tmp_path, upto)
-    it = iter(chunks)
-
-    def _sleep(_):
-        to = next(it, None)
-        if to is not None:
-            grow(to)
-
-    seen = []
-    M.clear_notifiers()
-    M.register_notifier(lambda st, ev: seen.append(ev))
-    try:
-        M.run_monitor(watched, interval=1,
-                      notify=NotifyPolicy(on_scf=notify_on_scf,
-                                          every_hours=notify_every_hours),
-                      sleep=_sleep, **kw)
-    finally:
-        M.clear_notifiers()
-    return seen
-
-
-# --------------------------------------------------------------------- #
-#  the defect itself                                                     #
-# --------------------------------------------------------------------- #
-
-def test_an_advancing_job_notifies_nothing_by_default(tmp_path):
-    """THE REGRESSION.  With no policy set, a job that is actively
-    progressing produces no notification at all beyond its start and end.
-
-    Before 2026-08-26 each of those wakes fired every registered notifier.
-    """
-    seen = _events(tmp_path, chunks=_ROWS, watch_pid=0, max_ticks=6,
-                   clock=_clock([0, 1, 2, 3, 4, 5, 6, 7]))
-    assert [e for e in seen if e not in ("start", "finish")] == [], (
-        f"a quiet policy still notified: {seen}")
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 3 tests here concluded the measured relaxation's output cut
-# short, once called a single point (`process/testing.md` § 6).
-
-
-# --------------------------------------------------------------------- #
-#  trigger: an SCF cycle converged                                       #
-# --------------------------------------------------------------------- #
-
-def test_one_message_per_geometry_step(tmp_path):
-    """A geometry step advancing means the previous SCF reached its
-    criterion -- SIESTA prints ``Begin CG move = N`` when it starts the
-    next one.
-
-    Read that way rather than by scanning for a convergence phrase: this
-    module no longer keeps a marker table, because the one it used to keep
-    decided the run was over and was wrong about it.
-    """
-    seen = _events(tmp_path, upto=394, chunks=_MOVES, watch_pid=0,
-                   max_ticks=3, notify_on_scf=True,
-                   clock=_clock([0, 1, 2, 3, 4, 5]))
-    assert seen.count("scf_converged") == 3, seen
-
-
-# --------------------------------------------------------------------- #
-#  trigger: every N hours                                                #
-# --------------------------------------------------------------------- #
-
-def test_periodic_counts_hours_not_wakes(tmp_path):
-    """Eight wakes an hour apart, a two-hour period: four messages, not
-    eight.  The wake interval and the reporting period are independent."""
-    seen = _events(tmp_path, chunks=_ROWS, watch_pid=0, max_ticks=8,
-                   notify_every_hours=2,
-                   clock=_clock([i * 3600.0 for i in range(0, 9)]))
-    assert 3 <= seen.count("periodic") <= 4, seen
-
-
-def test_the_first_period_is_a_full_period_in(tmp_path):
-    """"Every 6 hours" must not mean "now, and then every 6 hours".  The
-    clock starts at the job's start, so nothing is due on the first wake."""
-    seen = _events(tmp_path, watch_pid=0, max_ticks=2, notify_every_hours=6,
-                   clock=_clock([0.0, 60.0, 120.0]))
-    assert "periodic" not in seen, seen
-
-
-def test_a_step_and_a_period_on_one_wake_is_one_message(tmp_path):
-    """Both triggers coming due together is one thing worth saying, not
-    two.  The step is the more informative, so it wins and resets the
-    clock."""
-    seen = _events(tmp_path, upto=394, chunks=_MOVES, watch_pid=0,
-                   max_ticks=3, notify_on_scf=True, notify_every_hours=1,
-                   clock=_clock([i * 3600.0 for i in range(0, 5)]))
-    assert "periodic" not in seen, (
-        f"the step already said it; {seen}")
-    assert seen.count("scf_converged") == 3, seen
+# The policy asked of a real output stream -- nothing by default, a message
+# per geometry step, the period counted in hours -- moved to the e2e tier
+# 2026-10-06: the monitor watches a run made on the road with the real
+# SIESTA, `tests/test_monitor_watches_a_live_run_e2e.py` (`process/testing.md`
+# § 6).
 
 
 # --------------------------------------------------------------------- #
@@ -512,24 +373,6 @@ def test_an_unreachable_destination_costs_the_run_nothing(tmp_path):
     this runs beside compute ranks."""
     hook = M.make_webhook_notifier("http://127.0.0.1:9/nowhere")
     hook(M.JobStatus(), "finish")        # must simply return
-
-
-def test_a_relaxation_with_the_trigger_OFF_reports_no_steps(tmp_path):
-    """The other half of the default, and the one a weaker test misses.
-
-    `test_an_advancing_job_notifies_nothing_by_default` uses a job with no
-    geometry moves, so the SCF branch cannot fire there whatever the flag
-    says -- it proves nothing about the flag.  Mutation-testing found that:
-    hard-coding `notify_on_scf` to always-true left every test green.
-
-    Here the steps genuinely advance and the trigger is off, so a message
-    would be a message the user did not ask for.
-    """
-    seen = _events(tmp_path, upto=394, chunks=_MOVES, watch_pid=0,
-                   max_ticks=3, notify_on_scf=False,
-                   clock=_clock([0, 1, 2, 3, 4, 5]))
-    assert "scf_converged" not in seen, (
-        f"the trigger is off and it reported anyway: {seen}")
 
 
 # --------------------------------------------------------------------- #
