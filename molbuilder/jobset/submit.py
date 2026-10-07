@@ -533,8 +533,7 @@ class LaunchPlan:
     skipped: List[JobResult] = field(default_factory=list)
     #: What the send writes before anything goes: an attempt a re-launch
     #: opens and what is copied into it (`materialize.prepare_attempt`, the
-    #: one opener), a flat re-launch's marker, a shelf's or a chain's
-    #: scripts.
+    #: one opener), a shelf's or a chain's scripts.
     writes: Plan = field(default_factory=Plan)
     #: Each file read where it lies, as it was found -- every member's deck,
     #: run script and header (`planned.found`).
@@ -620,8 +619,7 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
     """Where ``job`` runs and what it follows -- read, never written: a
     :class:`_Member`, or the result of a trial passed over by name.  A
     re-launch's next attempt is opened in ``writes`` by the one opener
-    (`materialize.prepare_attempt`), and a flat re-launch's marker written
-    there -- the send carries both out.
+    (`materialize.prepare_attempt`), which the send carries out.
 
     THE SHAPE DECIDES, NOT THE KIND.  A hierarchical run -- ladder stage or
     sweep trial alike -- runs in ``run-<n>/``, because an attempt is

@@ -2721,7 +2721,7 @@ function mountPanel(doc, card, model) {
             : "The box is worked out from the molecule, your vacuum and the "
               + "axis kinds.";
 
-        /* WHAT EACH ROW DOES, not what it is (cell-plan.md § 7).  Kept as
+        /* WHAT EACH ROW DOES, not what it is.  Kept as
          * `title` so it is there on hover without spending four lines of a
          * narrow panel on prose. */
         const HINT = {

@@ -6,19 +6,16 @@ User-visible contract (job-contracts.md § 4.1 -- a NAME SWEEP, U17):
   * ``bash <name>.run.sh --cold`` NAMES everything matching the run's
     id -- minus what molbuilder itself wrote (deck, template, .psml,
     wrappers, molbuilder's logs) -- and **refuses**, changing nothing;
-    ``--force`` then proceeds and the run overwrites them as it goes.
+    ``--force`` says yes to that refusal, and the run overwrites them as
+    it goes.
     SIESTA's ``DM.UseSaveDM`` / ``MD.UseSaveCG`` / ``MD.UseSaveXV``
     find nothing surviving, so the calc starts strictly from the .fdf
     coords + conditions.
   * **Nothing is moved or copied** *(user, 2026-08-18)*.  Keeping a state
     is ``molbuilder checkpoint save`` and it is never automatic
     (`checkpointing.md` § 2).
-  * Distinct from ``--force``: ``--force`` only resets the
-    run-index sequence; the warm-start files stay on disk and the
-    engine still loads them.  ``--cold`` is about the engine state.
-  * Combinable with ``--force`` (cold + restart run-index) and
-    ``--continue`` (cold = no-op when there is nothing to name,
-    which is the typical case mid-run).
+  * Combinable with ``--continue`` (cold = no-op when there is nothing
+    to name, which is the typical case mid-run).
   * Idempotent: re-running with ``--cold`` on a directory that is
     already clean says so and proceeds.
 
@@ -30,35 +27,6 @@ inherit the contamination.  ``--cold`` lets the user re-run from a
 known clean state without having to manually ``rm`` the files.
 """
 from __future__ import annotations
-
-import pytest
-
-
-@pytest.fixture(autouse=True)
-def _autosetup_minimal_config(tmp_path, monkeypatch):
-    """Every wrapper render reads the activation off the machine's record
-    (`configuration.md` § 5 M-1) or refuses to emit.  Mirror
-    test_runwrap.py's fixture: the config root holds this machine's
-    record, with the canonical Sol activation, so write_run_wrapper can
-    emit."""
-    monkeypatch.chdir(tmp_path)
-    # THE SANDBOX IS THE CONFIG ROOT: without naming the directory the
-    # record lands in a file nothing opens (configuration.md § 2.1a).
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    # A PROBED MACHINE.  A rank count is read from a record
-    # and nowhere else -- no probe of the box that happens to be running, no
-    # fallback (`running-a-job.md` § 3.1, user: "so we are not guess at
-    # all").  A wrapper cannot be rendered on an unprobed machine, so a
-    # fixture that renders one must probe first, exactly as a person does:
-    #     molbuilder jobset probe --write
-    from molbuilder.scheduler import Environment as _Env, Topology as _Topo
-    (tmp_path / "environment.json").write_text(
-        _Env(scheduler="workstation",
-             topology=_Topo(sockets=2, cores_per_socket=32),
-             env_init={"preamble": "module load mamba",
-                                "activation": "source activate"}).to_json()
-        + "\n")
-    yield tmp_path
 
 
 # The engine/conda stubs this suite needs are `conftest.py`'s

@@ -402,17 +402,9 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
         created.append(d)
         if d.resolve() == base.resolve():
             # FLAT: depth 1 (`project-layout.md` § 1) -- the job runs in the
-            # bundle root, where every file it needs ALREADY SITS.  There is
-            # nothing to link, and linking would DESTROY: `relink` unlinks the
-            # existing entry first, and ``../<name>`` points outside the
-            # bundle.
-            #
-            # The carry is skipped for the same reason and a second one: flat's
-            # warm files are ONE SHARED SET at the root (§ 1), so the next
-            # stage finds them lying there; there is no producer directory to
-            # reach into.
-            #
-            # EXCEPT THE PSEUDOPOTENTIALS: they live in `pseudos/`, and SIESTA
+            # bundle root, where every file it needs ALREADY SITS, and flat's
+            # warm files are ONE SHARED SET there (§ 1) -- except the
+            # pseudopotentials: they live in `pseudos/`, and SIESTA
             # opens `<element>.psml` in the directory it runs from and has no
             # search path.
             for _ps in plan.glob(base / PSEUDO_DIRNAME, "*.psml"):

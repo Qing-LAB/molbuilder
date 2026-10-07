@@ -198,8 +198,7 @@ order), before that the engine header — so it does *not* start with
 
 ```fdf
 SystemName        hemeC
-SystemLabel       hemeC          # SystemName is ALWAYS == SystemLabel == system_label
-                                 # (the separate system_name was removed 2026-05-27)
+SystemLabel       hemeC
 NumberOfAtoms     42
 NumberOfSpecies   3
 ```
@@ -438,7 +437,7 @@ itself.
 `%block kgrid_Monkhorst_Pack` and `tbtrans`'s `%block TBT.k`, three rows of
 counts, each with its offset column. SIESTA reads a row of one to four values
 (`kpoint_t.F90`); `tbtrans` reads its block only when a row carries the offset
-column — a row of three counts is not read, and T(E) falls back to another grid
+column — a row of three counts is not read, and T(E) is computed at Γ alone
 (`m_tbt_kpoint.F90`, `read_kgrid`) — so the column is written always. The list
 form, `TBT.k [3 3 1]`, carries no offset, so the block is written always too —
 one form whether or not the grid is displaced (plan § 5w.3's ruling asked for
@@ -765,9 +764,6 @@ launch run <stage>`, or the wrapper beside the deck by hand — and then the pla
 lines, its two SCF phases, how it ended — is `model/parse.md` § 4a–4b, § 5d.5
 and § 2b.
 
-*(A second sibling module, `siesta/memory.py` — `parse_fdf_mem_inputs:181` — is a
-peak-memory estimator that reads a rendered `.fdf` to size an sbatch `--mem`
-request; it's a scheduler concern, covered in `execution/`.)*
 
 ---
 

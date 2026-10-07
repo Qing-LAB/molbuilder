@@ -208,9 +208,8 @@ def check_trial_starts_cold(job_dir, job) -> None:
     if not saves:
         raise DeckLaunchMismatch(
             f"trial {job.name!r}: {deck.name} carries no restart group at "
-            f"all, so its cold start cannot be vouched for (the clean "
-            f"group is always written -- a deck without one was edited or "
-            f"predates the pin).  " + _bench_anew(_calculation_of(job_dir)))
+            f"all, so its cold start cannot be vouched for (prep always "
+            f"writes the clean group).  " + _bench_anew(_calculation_of(job_dir)))
     warm = [k for k, v in saves
             if v.strip().lower().strip(".") in ("t", "true", "yes", "1")]
     # NAME THE DECK'S OWN SPELLING, not the normalised key.  `_parse_fdf`

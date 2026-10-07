@@ -477,17 +477,15 @@ def test_serve_no_auth_loopback_uses_config_empty(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_electrode_gap_is_refused_by_name_not_as_a_typo():
-    """Pairs are not built as one step any more (redesign plan § 3.4), and
-    `gap` was the PAIR's parameter — the electrode-to-electrode distance,
-    meaningless for one slab.
+    """`gap` is a PAIR's parameter -- the electrode-to-electrode distance,
+    meaningless for one slab -- and a pair is two electrodes.
 
     Refused by name rather than falling into the generic "unknown key", which
-    would read as a misspelling: this key existed, did something, and was
-    removed, so the message has to say what to do instead.
+    would read as a misspelling, and saying what to do instead.
     """
     import pytest as _pytest
     from molbuilder import cli
-    with _pytest.raises(Exception, match="no longer supported"):
+    with _pytest.raises(Exception, match=r"'@gap=' .*Pass --electrode twice"):
         cli._parse_electrode_spec("Au:111:3x3x2@gap=8.0:5,10")
 
 

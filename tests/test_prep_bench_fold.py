@@ -198,6 +198,8 @@ def test_the_pins_land_as_rendered_schema_values_not_splices(calc):
             / f"JOB-{_n0}_01_coarse.fdf").read_text()
     assert re.search(r"^MaxSCFIterations\s+3\s*$", deck, re.M)
     assert re.search(r"^Diag\.Algorithm\s+ELPA-1STAGE\s*$", deck, re.M)
+    # running-a-job.md § 3.5: a trial's capped SCF ends clean, never aborts.
+    assert re.search(r"^SCF\.MustConverge\s+\.false\.\s*$", deck, re.M)
     assert re.search(r"^Diag\.ELPA\.GPU\s+\.true\.\s*$", deck, re.M)
     assert re.search(r"^MD\.Steps\s+0\s*$", deck, re.M)
 

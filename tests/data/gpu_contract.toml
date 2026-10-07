@@ -214,6 +214,31 @@ run_sh = ['_mpirun_bind="--bind-to core --map-by package:PE=$_omp_threads"',
           "GPU resources : GPU mode (ELPA-CUDA, no NCCL) -- chosen $_mpi_np ranks × $_omp_threads threads",
           "(or measure it: prep bench, for this stage)"]
 
+# run-reports.md § 2.1a, § 2.6: the monitor samples GPUs (--gpu) exactly when the run uses one.
+[[case]]
+name = "a SIESTA GPU run's monitor samples its GPUs"
+run = { use_gpu = true, gpu_count = 1, mpi_np = 2 }
+run_sh = ['" --gpu --interval "${MB_MONITOR_INTERVAL:-10}" ']
+
+[[case]]
+name = "...a PySCF GPU run's too"
+engine = "pyscf"
+run = { use_gpu = true, gpu_count = 1, threads = 2 }
+run_sh = ['" --gpu --interval "${MB_MONITOR_INTERVAL:-10}" ']
+
+[[case]]
+name = "...and a SIESTA CPU run's samples none"
+run = { use_gpu = false }
+run_sh = ['" --interval "${MB_MONITOR_INTERVAL:-10}" ']
+run_sh_lacks = ["--gpu --interval"]
+
+[[case]]
+name = "...nor a PySCF CPU run's"
+engine = "pyscf"
+run = { use_gpu = false }
+run_sh = ['" --interval "${MB_MONITOR_INTERVAL:-10}" ']
+run_sh_lacks = ["--gpu --interval"]
+
 [[case]]
 name = "a CPU run on ScaLAPACK runs the packaged build"
 template = { diag_algorithm = "ScaLAPACK" }

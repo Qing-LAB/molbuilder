@@ -832,8 +832,8 @@ files reached (`runfiles.latest_run`).
 beside it, plus one — while one launch could start several runs: a warm retry
 re-runs the script, which took the next number, so the run that ended had no
 launch record of its own. And with each flat run's `.continued-from` written by
-`launch` before its run starts (§ 1.6.3), a script counting the files beside it
-would take the number after its own. A run script refuses to start without
+`launch` with its launch record (§ 1.6.3), a script counting the files beside
+it would take the number after its own. A run script refuses to start without
 `--run`, naming the launch command. One written before takes no `--run`:
 given one, it stops on the unknown argument, its own explicit error, and
 its stage is prepped anew, from the state saved before its prep
@@ -1567,10 +1567,8 @@ census that explains why instead.
 
 ```
 molbuilder jobset prep run tight
-
-  execution    mpi_np=4, omp_threads=6, gpu_count=1
-               pins: use_gpu=True, diag_algorithm=ELPA-1STAGE
-               (task.json -> stages[tight].execution)
+  ...
+  resources: mpi_np 4 | omp 6
 ```
 
 **Every number in that line came from `task.json`.** Not from the benchmark,

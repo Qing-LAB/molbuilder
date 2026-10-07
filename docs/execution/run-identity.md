@@ -130,9 +130,9 @@ formula — is written into `task.json` and never becomes a filename:
 | **label** | the user's name for it, normalised (§ 3) | the `SystemLabel` line inside the deck, and the stem of every file beside it |
 | **id** | `<label>_<formula>` | the `run` block of `task.json` |
 
-**This is what the code has always done.** `cli.py:700` builds the label with
-`normalise_id(typed_name)` — one string, the formula nowhere in it — and
-`input.py:550` writes `f"{cfg.system_label}{suffix}.fdf"`. The composite
+**This is what the code does.** The label is built with
+`normalise_id(typed_name)` — one string, the formula nowhere in it — and the
+deck is named from it through the stage's names (`runfiles.RunNames`). The composite
 `run_id(label, formula)` exists and its production callers are `task.py`'s
 two — `derive_run` builds the id and the codec's validation recomputes it
 (*this sentence said "thirteen places, every one a test" — false since the
@@ -449,9 +449,8 @@ shapes:**
 > designed away.
 >
 > *Retokenised 2026-08-09 (user).* The stem in these names was written `<id>`
-> until decision 26 separated the two: it is the **label**, and it always was —
-> `input.py:550` renders `f"{cfg.system_label}{suffix}.fdf"` and has never had the
-> formula to hand. § 2.0a is the split.
+> until decision 26 separated the two: it is the **label** — the deck is named
+> from it and never has the formula to hand. § 2.0a is the split.
 
 **Three rules keep normalisation from becoming a source of surprise:**
 
@@ -636,7 +635,7 @@ via rollback")*. `prep` refuses a stage the calculation's plan already holds
 and names the way back: the state saved before that prep, restored with
 `molbuilder checkpoint restore`
 ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7), and a prep
-anew — and before it writes, prep offers to save that state (§ 9 there).
+anew — and prep saves that state before it writes (§ 9 there).
 Its place among prep's checks is
 [`job-system.md`](?doc=execution/job-system.md) § 5.0.
 

@@ -247,6 +247,18 @@ name = "...an empty channel list survives -- report to none, never to every chan
 notify = { on_scf_converged = true, every_hours = 6, channels = [], report = ["*"] }
 run_sh = ['--notify-channels ""']
 
+# run-reports.md § 2.6, stages.md § 6.9: the report fields chosen reach the monitor line by name.
+[[case]]
+name = "...the report fields it names reach the monitor line"
+notify = { on_scf_converged = true, every_hours = 6, channels = ["*"], report = ["elapsed_s", "energy", "max_force"] }
+run_sh = ['--notify-report "elapsed_s,energy,max_force" --watch-pid $$']
+
+# run-reports.md § 2.6, stages.md § 6.9: an empty report list survives -- the summary line alone.
+[[case]]
+name = "...and an empty report list survives as one -- never as every field"
+notify = { on_scf_converged = true, every_hours = 6, channels = ["*"], report = [] }
+run_sh = ['--notify-report "" --watch-pid $$']
+
 [[case]]
 name = "...and a description without one leaves the run script without one"
 run_sh_lacks = ["--notify-"]

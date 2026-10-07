@@ -129,10 +129,9 @@ suffix = ".TSDE"                # the NEGF density -- THE warm state of a
                                 # device re-run, and the file the bias
                                 # chain hands from point to point
                                 # (transport-design.md 4.3).  No
-                                # honoured_by: TranSIESTA reads
-                                # <SystemLabel>.TSDE by PRESENCE, no deck
-                                # keyword involved -- same class as the
-                                # accumulative records above.
+                                # honoured_by: TranSIESTA reads it under
+                                # DM.UseSaveDM (m_new_dm.F90), which the
+                                # device deck always writes .true.
 carry  = "when-continuing"
 
 # ---- vibration: the force-constant run --------------------------------

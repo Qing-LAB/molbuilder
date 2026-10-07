@@ -605,7 +605,7 @@ def load_fcc_lattice_full() -> dict:
             raise RuntimeError(
                 f"FCC lattice table at {path!s} is neither v2 nor v3 (got "
                 f"{fmt!r}).  Each metal must carry a_experimental and "
-                f"a_pbe; the v1 'a'-only schema is no longer supported."
+                f"a_pbe."
             )
         metals: dict = {}
         for sym, entry in data["metals"].items():
@@ -723,8 +723,7 @@ def _ase_slab_builder(plane: str):
     The builders are the canonical, well-tested ASE functions for FCC
     surfaces; we lean on them rather than re-implementing the lattice
     geometry (principle #8 in ``docs/design.md``: "Don't reinvent
-    wheels").  Per-(plane, orthogonal) compatibility is enforced by
-    :func:`_validate_orthogonal_compat` before the builder is called.
+    wheels").
     """
     from ase.build import fcc100, fcc110, fcc111
     builders = {"100": fcc100, "110": fcc110, "111": fcc111}
@@ -783,7 +782,7 @@ def _finish_slab(struct, metal_pos, element, full):
     n_new = metal_pos.shape[0]
     new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
 
-    # Capture the electrode's cell (structure-periodicity.md § 4).  In-plane (x,y) = the ASE slab's lattice (rows 0,1; hexagonal for
+    # Capture the electrode's cell (structure-periodicity.md § 5).  In-plane (x,y) = the ASE slab's lattice (rows 0,1; hexagonal for
     # fcc(111)).  axis_kind = (periodic, periodic, transport): the transport z is
     # electrode-matched, never tiled/k-sampled.  Overwrites any prior cell -- the
     # electrode defines the junction's in-plane periodicity.  Skipped if the z

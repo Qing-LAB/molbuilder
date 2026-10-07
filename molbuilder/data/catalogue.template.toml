@@ -1305,7 +1305,7 @@ Adds the long-range attraction (London dispersion) that Hartree-Fock misses enti
   none    no correction at all -- plain DFT, or plain Hartree-Fock.
 BJ damping is the usual recommendation for D3: it does not go to zero at short range, which is where zero damping tends to under-bind. Use d3zero only to reproduce a published number that used it.
 It matters most for biomolecules and anything weakly bound: pi-stacking, van der Waals contacts and hydrogen-bond geometries are all under-bound without a correction, and the cost of adding one is negligible.
-The four choices are spellings PySCF 2.13 accepts (pyscf/scf/dispersion.py).  Anything else is refused when the template is read -- PySCF itself would refuse it only at run time, with a ValueError.
+The four choices are spellings PySCF 2.14 accepts (pyscf/scf/dispersion.py).  Anything else is refused when the template is read -- PySCF itself would refuse it only at run time, with a ValueError.
 """
 
 [item.ecp]

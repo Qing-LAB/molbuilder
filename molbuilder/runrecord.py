@@ -51,8 +51,8 @@ class LaunchRecordError(ValueError):
 
 def continued_from_marker(where: Path, names: "_rf.RunNames",
                           run: int) -> Path:
-    """Where `prep` leaves the run a stage continues from, for `launch` to
-    write into the launch record (`project-layout.md` § 1.6.3) -- named by
+    """Where the run a stage continues from is left -- by `prep`, or by
+    `launch` for a flat stage launched again -- for the launch record (`project-layout.md` § 1.6.3) -- named by
     the stage's names (`runfiles.RunNames`): an attempt's
     ``.continued-from``, or, where a stage's runs share a folder, run
     ``run``'s own ``<stem>-run<N>.continued-from``, named for the run that

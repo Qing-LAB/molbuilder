@@ -268,7 +268,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         try:
             launch = launch_record(observed, names)
         except LaunchRecordError as e:
-            read.append((home, volts, attempt, observed, None, "unknown",
+            read.append((home, volts, attempt, observed, None, "unreadable",
                          str(e)))
             continue
         read.append((home, volts, attempt, observed, launch)

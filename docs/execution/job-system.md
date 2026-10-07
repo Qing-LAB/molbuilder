@@ -1316,7 +1316,7 @@ launched and how, what geometry it continued from, and what it left behind:
 STAGE 03_tight -- running
 
   deck            bdt_relax_03_tight.fdf
-  carries         bdt_relax.XV, bdt_relax.DM, bdt_relax.MD.nc, bdt_relax.MD, bdt_relax.MDE, bdt_relax.ANI, bdt_relax.CG
+  declares        bdt_relax.XV, bdt_relax.DM, bdt_relax.MD.nc, bdt_relax.MD, bdt_relax.MDE, bdt_relax.ANI, bdt_relax.CG
   resources       n=32, c=2
   attempt         run-1   (of run-0, run-1)
   launched        submit as job 481923 at 2026-08-10T19:04:08Z
@@ -1331,10 +1331,9 @@ Directory: 03_tight/run-1
 None of that is inferred. It is only answerable because a try is a directory and
 a launch is a record (§ 1.5, § 1.6) — before those, *"has this been launched?"*
 had no honest answer and *"which try am I looking at?"* had no answer at all.
-A line is printed only when there is something to print: a run that started from
-the structure has **no** `continued from` line, because `continued_from` is
-*absent* rather than null, and absent is a different claim from *"continued from
-nothing"* (`checkpointing.md` S3).
+`continued from` is said every time: a run that started from the structure
+reads *nothing -- it started from the structure*, from the launch record's
+`continued_from: null` (`checkpointing.md` S3).
 
 - **`status <stage>`** is where a stage's deck, what it carries and its
   resources are read before a launch — the "look before you leap" step. That
@@ -1553,7 +1552,7 @@ anything is sent, and the send decides nothing.**
 
 | # | step | what happens |
 |:--:|---|---|
-| 1 | **the plan** — nothing is written | the work: a prepped stage, a benchmark's pending trials, a bias scan's points. Its **submissions** — each one scheduler job, or one process here, walking one or more **members**, each a prepared attempt: a run is one member; a benchmark's resource shelf, its pending trials; a bias scan, its points; a transport ladder's seed and leads, one submission ([`engines/transport.md`](?doc=engines/transport.md) § 2a.7). For each member: the attempt it runs in (a re-launch's next one), what it continues from — one `Continuation`, as prep's: a stage launched again, its own latest run, and a stage that does not continue from a run of its own refused (§ 5.4, *A stage launched again*) — and whether it follows a run that never concluded. The gates: the deck agrees with its launch; a trial starts cold. The placement — the job's own, recorded at prep, under what a launch flag changes, admitted: its queue the one `--domain` names, else the one its prep admitted, decided here and refused here when named nowhere *(the verb worked it out until 2026-10-05)*. The exact lines and scripts to send |
+| 1 | **the plan** — nothing is written | the work: a prepped stage, a benchmark's pending trials, a bias scan's points. Its **submissions** — each one scheduler job, or one process here, walking one or more **members**, each a prepared attempt: a run is one member; a benchmark's resource shelf, its pending trials; a bias scan, its points. For each member: the attempt it runs in (a re-launch's next one), what it continues from — one `Continuation`, as prep's: a stage launched again, its own latest run, and a stage that does not continue from a run of its own refused (§ 5.4, *A stage launched again*) — and whether it follows a run that never concluded. The gates: the deck agrees with its launch; a trial starts cold. The placement — the job's own, recorded at prep, under what a launch flag changes, admitted: its queue the one `--domain` names, else the one its prep admitted, decided here and refused here when named nowhere *(the verb worked it out until 2026-10-05)*. The exact lines and scripts to send |
 | 2 | **show** | the exact command of every submission (S4, [`submission.md`](?doc=execution/submission.md)) |
 | 3 | **ask** | one question for the whole plan — a run here asked as a submission is *(user, 2026-10-05)* — its default *no* when a member follows a run that never concluded; `--yes` is the answer given in advance, and with nobody to ask (no terminal) nothing goes and the launch is refused, so a script is never told it went. `--dry-run` stops here and writes nothing, the ledger included — a refused dry run too, as a refused preview (§ 5.0). `--mode ask` puts the plan's lines to the scheduler instead (`sbatch --test-only`) and writes down what it asked |
 | 4 | **send** — nothing is decided | the folder is checked against the one the plan was made from — the plan made again from the folder as it is, and compared line by line: each submission's line and where it runs, each member and what it follows and how that run ended, every file the send writes or copies and every file read where it lies, each by its size and write time. A member launched, a run ended or a file changed since is refused, saying which and to launch again to see the new plan. Then each attempt is opened through the one opener ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2), a submission with several members gets its sequencer's script, every script on disk before anything goes, and each submission goes out — `sbatch`, or the process here — through one function, each member's `run.json` written by the one writer |

@@ -523,8 +523,6 @@ def spec_for(struct: Structure,
                        f"({state.spin_treatment.said}) -- written explicitly,")
             out.append("# never left for PySCF to re-rule.")
         out.append(f"mf = {_layout.scf_module(state)}.{method_class}(mol)")
-        # THE FUNCTIONAL, THE GRID, DENSITY FITTING AND DISPERSION go through the
-        # one door.
         return "\n".join(out) if out else None
 
     def _science_b(struct, cfg) -> str:
@@ -541,11 +539,6 @@ def spec_for(struct: Structure,
             from .scf_setup import emit_solvent_lines
             out += emit_solvent_lines(cfg)
         out.append("")
-        # THE SCF SETTINGS GO THROUGH THE ONE DOOR
-        # (`execution/script-preparation.md` § 4.2).  ``layout.SCF_SECTION`` names
-        # the catalogue items and ``layout.line`` says how PySCF spells each one;
-        # the framework reads the declaration, writes the catalogue's note above
-        # the value, and skips whatever ``line`` declines.
         return "\n".join(out) if out else None
 
     def _science_c(struct, cfg) -> str:
@@ -809,6 +802,12 @@ def spec_for(struct: Structure,
         engine="pyscf",
         engine_frame=_frame,
         layout=(_sc.Block("system, molecule and the mean field", _science_a),
+                # THE FUNCTIONAL, THE GRID, DENSITY FITTING AND DISPERSION, and
+                # below THE SCF SETTINGS, go through the one door
+                # (`execution/script-preparation.md` § 4.2): the section names
+                # the catalogue items and ``layout.line`` says how PySCF spells
+                # each one; the framework writes the catalogue's note above the
+                # value, and skips whatever ``line`` declines.
                 _layout.THEORY_SECTION,
                 _sc.Block("solvent and the SCF preamble", _science_b),
                 _layout.SCF_SECTION,

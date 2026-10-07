@@ -695,8 +695,8 @@ class SiestaConfig:
     mpi_np: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
         # NOT a template item: a machine fact, which floor 2 must never
-        # name (engines/template.md 7).  It arrives as the ALLOCATION at
-        # `prep`, on the machine that will run it (project-layout.md M4).
+        # name (engines/template.md 7).  It is stated for the run -- its
+        # run card or a prep flag (template.md § 6.4, `allocation = true`).
         "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "staging",
@@ -749,8 +749,8 @@ class SiestaConfig:
     omp_threads: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
         # NOT a template item: a machine fact, which floor 2 must never
-        # name (engines/template.md 7).  It arrives as the ALLOCATION at
-        # `prep`, on the machine that will run it (project-layout.md M4).
+        # name (engines/template.md 7).  It is stated for the run -- its
+        # run card or a prep flag (template.md § 6.4, `allocation = true`).
         "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "staging",
@@ -765,8 +765,8 @@ class SiestaConfig:
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
         # NOT a template item: a machine fact, which floor 2 must never
-        # name (engines/template.md 7).  It arrives as the ALLOCATION at
-        # `prep`, on the machine that will run it (project-layout.md M4).
+        # name (engines/template.md 7).  It is stated for the run -- its
+        # run card or a prep flag (template.md § 6.4, `allocation = true`).
         "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "staging",

@@ -788,7 +788,7 @@ class TestTheContractEndpoint:
         body = client.get("/api/results/dir?path=" + str(attempt)).get_json()
         assert body["place"]["role"] == "run"
         assert (body["status"]["state"], body["status"]["detail"]) == (
-            "pending", "prepped, not launched (no run.json)"), body["status"]
+            "pending", "prepped, not launched (no launch record)"), body["status"]
         about = {f["name"]: f["about"] for f in body["files"]}
         assert about["H2_01_coarse.fdf"]["ours"] is True, about
         assert about["calcdir.json"]["ours"] is True, about

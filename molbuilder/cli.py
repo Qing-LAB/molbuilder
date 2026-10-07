@@ -516,7 +516,7 @@ def _parse_size3(size_str, flag):
 #: sequence runs forward, growing `-z` it runs backward, so both slabs are
 #: slices of the same crystal rather than one being reversed.
 #:
-#: IT IS THE WALK, NOT THE SEAM.  `junction-cell.md` § 3.1a records the
+#: IT IS THE WALK, NOT THE SEAM.  `junction-cell.md` § 3.2 records the
 #: measurement: `sequence` alone does not change the registry at the
 #: boundary, so with both slabs left on registry 0 every layer count the
 #: table calls *continues* comes out eclipsed on (100)/(110) and twinned on
@@ -599,12 +599,9 @@ def _parse_electrode_spec(spec):
         # generic "unknown key", which would read as a typo: the message says
         # what to do instead.
         raise click.BadParameter(
-            f"--electrode {spec!r}: '@gap=' is no longer supported.  It was "
-            f"the electrode-to-electrode distance of a PAIR, and pairs are "
-            f"not built as one step any more.  Pass --electrode twice, one "
-            f"per side, each with '@contact=NUM:+z=I' or ':-z=I' -- which is "
-            f"what the pair did internally, with the two positions now "
-            f"stated rather than derived from a gap.")
+            f"--electrode {spec!r}: '@gap=' is not an electrode field -- a "
+            f"pair is two electrodes.  Pass --electrode twice, one per side, "
+            f"each with '@contact=NUM:+z=I' or ':-z=I'.")
     try:
         distance = float(val)
     except ValueError:
@@ -619,7 +616,7 @@ def _parse_electrode_spec(spec):
         # A or B on (100)/(110), taken modulo the surface's own period by
         # `add_slab`.  It is the control that decides whether the seam
         # continues the crystal (`junction-cell.md` § 3.1, and the
-        # MEASURED FALSE note at § 3.1a): the two sides of a junction want
+        # MEASURED FALSE note at § 3.2): the two sides of a junction want
         # DIFFERENT registries, which is why this is per-flag and not one of
         # the uniform `--electrode-*` options.  Omitted means 0.
         start_registry = 0
@@ -770,7 +767,7 @@ def cmd_modify(input_path, output_path,
 
         # the two registries differ on purpose: with both slabs on the same
         # one the boundary twins instead of continuing the crystal
-        # (junction-cell.md 3.1a).  Omit `registry=` and both stay on A.
+        # (junction-cell.md 3.2).  Omit `registry=` and both stay on A.
 
     Stepped 3×3 + 4×4 contact on the same side:
 
@@ -906,7 +903,7 @@ def cmd_modify(input_path, output_path,
             # down from one is the backward walk -- which is the mapping
             # `_WALK_ALONG_GROWTH` above writes down once.  Which LAYER each
             # slab starts that walk on is `registry=` in the spec, because
-            # the walk alone does not decide the seam (§ 3.1a).
+            # the walk alone does not decide the seam (§ 3.2).
             offset_xy = _parse_xy_csv(electrode_offset, "--electrode-offset")
             for spec_str in electrode:
                 spec = _parse_electrode_spec(spec_str)
@@ -1849,9 +1846,8 @@ def cmd_notify_token(user, host, route, channel, replace):
                     "nothing to pass.")
     # THE WHOLE RULE, NOT TWO THIRDS OF IT (configuration.md § 2.1c).  The
     # config directory is $MOLBUILDER_CONFIG_DIR first, exactly as given, and
-    # only then the XDG pair.  The Task-setup card emits the same three
-    # branches (task-setup/viewer.js); it stays shell text on both surfaces
-    # because it resolves on the FAR machine, not this one.
+    # only then the XDG pair -- the order the This-machine page states
+    # (this_machine.html).
     # DERIVED, never spelled: `relative_home` answers from the monitor's own
     # resolver.
     from .config_dir import relative_home
@@ -2067,7 +2063,7 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
         for _warning in machine_config_warnings():
             click.echo(_warning, err=True)
 
-    # NO APPLICATION IMPORT ABOVE THE PARENT BRANCH: the supervisor's whole
+    # NO `web.app` IMPORT ABOVE THE PARENT BRANCH: the supervisor's whole
     # value is that a child which fails to import leaves the parent alive to
     # be fixed and reloaded, and a parent that imported the same broken module
     # first dies with it.  The import happens in the child, below.

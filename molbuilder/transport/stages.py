@@ -199,7 +199,8 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
     `launch` opening its next attempt after a stop -- the § 4.2a vocabulary
     rows for the transport type, on the stages where continuing means
     anything: the seed (its ``.DM``) and the device (its ``.TSDE``, the
-    NEGF density; read by presence, no deck keyword).  A rung takes no
+    NEGF density; read under ``DM.UseSaveDM``, which the device deck
+    writes ``.true.``).  A rung takes no
     ``--from`` at prep (`continuation._cannot_be_named`).
 
     The electrode single-points and the transmission post-processing

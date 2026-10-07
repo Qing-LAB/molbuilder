@@ -87,7 +87,7 @@ header = ["#SBATCH -p cpu"]
 [[case]]
 name = "the scheduler block is refused, saying where its values live now"
 machine_config = { scheduler = { kind = "slurm", directives = { partition = "cpu", qos = "public" }, defaults = { cpus_per_task = 8 } } }
-refused = "'scheduler' is no longer configured (retired 2026-10-02) -- delete the block"
+refused = "'scheduler' is no longer configured -- delete the block"
 
 [[case]]
 name = "script_generation is refused, showing the env_init block its values go in"
@@ -122,7 +122,7 @@ refused = ["'paths.logs' is no longer configured", "XDG_STATE_HOME"]
 [[case]]
 name = "a retired notify setting is refused, saying the key file carries its route"
 machine_config = { notify_keys_file = "~/.mb/notify_keys" }
-refused = ["'notify_keys_file' was retired on 2026-08-31", "molbuilder notify-token"]
+refused = ["'notify_keys_file' is no longer read", "molbuilder notify-token"]
 
 [[case]]
 name = "an unknown section is refused, naming the live ones and no retired one"

@@ -187,6 +187,22 @@ deck = ["_mb_cap_threads(6)"]
 run_sh = ["_omp_threads_default=6",
           '_omp_threads="$_omp_threads_default"; _omp_from="stated at prep"']
 
+# job-contracts.md § 6.2: a stated max_memory_mb is the wrapper's `ulimit -v`, in KiB.
+[[case]]
+name = "a stated memory cap is the run script's ulimit -v, in KiB"
+run = { max_memory_mb = 2048 }
+run_sh = ["\nulimit -v 2097152 "]
+
+# job-contracts.md § 6.2: none stated is no cap -- no ulimit line.
+[[case]]
+name = "...and none stated writes no ulimit line"
+run_sh_lacks = ["\nulimit -v"]
+
+# running-a-job.md § 3.2: BLAS is pinned to one thread per rank.
+[[case]]
+name = "a SIESTA run script pins BLAS to one thread"
+run_sh = ["\nexport MKL_NUM_THREADS=1\n", "\nexport OPENBLAS_NUM_THREADS=1\n"]
+
 [[case]]
 name = "a memory cap left unset is no cap -- nothing fills one in: the PySCF deck says it is not stated, and the run's facts record none"
 engine = "pyscf"

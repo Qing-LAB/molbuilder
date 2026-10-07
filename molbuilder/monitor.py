@@ -1193,9 +1193,7 @@ class NotifyPolicy:
 
     Not imported from `task.Notify`: this module ships to a compute node as
     a standalone file with no molbuilder importable (see the module
-    docstring).  The wire between them is the CLI flag pair, and
-    `tests/test_wrapper_notify_flags.py` pins that the wrapper only ever
-    emits flags this file accepts.
+    docstring).  The wire between them is the CLI flag pair.
     """
     #: WHAT each report carries beyond the name (`stages.md` § 6.9).
     #: `None` is every field this monitor could determine; `()` is the

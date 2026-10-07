@@ -1619,8 +1619,7 @@ def _install_one(recipe, effective: str, caps, *,
         # If the build_spec executor short-circuited on preflight errors,
         # print them PROMINENTLY before the per-step recap, which skips
         # build steps -- otherwise the user gets "install FAILED" with zero
-        # diagnostic info (2026-06-15: ELPA's empty repo_url caused a
-        # check_repo_reachable failure that never reached the terminal).
+        # diagnostic info.
         if (result.build_result is not None
                 and result.build_result.preflight_errors):
             click.echo("", err=True)

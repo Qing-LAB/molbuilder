@@ -160,7 +160,7 @@ and names them as the table does.
 
 The script's header `Outputs:` block lists **exactly** this set for the active
 config — no under- or over-promising. `job_name` stays unsuffixed so
-`.chk`/`.log`/`_optimized.xyz` transfer across stages.
+`.chk`/`_optimized.xyz` transfer across stages.
 
 > **This changed on 2026-08-18 and the code has caught up.** A PySCF
 > ladder is N decks and N jobs, like SIESTA's
@@ -619,7 +619,7 @@ that a single process running every rung can reach none of.
 ## 6. Publication-quality parameters
 
 The **current generator defaults are screening-tier**: `def2-SVP` basis, `B3LYP`
-functional, **`d3bj` dispersion on** (`config/pyscf.py,484,525`) — i.e.
+functional, **`d3bj` dispersion on** (`config/pyscf.py`'s `basis`, `functional` and `dispersion` defaults) — i.e.
 B3LYP-D3(BJ)/def2-SVP. That's fine for a first pass; for a defensible paper on a
 simple organic molecule (10–60 atoms), the one change that matters is the basis:
 
@@ -631,8 +631,8 @@ mf  = dft.RKS(mol).density_fit()                   # what molbuilder emits (auxb
                                                    # Coulomb + exact exchange, 5–10× faster
 mf.xc   = "b3lyp"
 mf.disp = "d3bj"          # Grimme-D3(BJ). Use the SPLIT form (mf.xc + mf.disp):
-                          # PySCF 2.13's parse_dft() rejects the merged "b3lyp-d3(bj)"
-                          # (parens); "b3lyp-d3bj" (no parens) also works.
+                          # PySCF 2.14's check_disp() refuses the merged "b3lyp-d3(bj)"
+                          # (ValueError); "b3lyp-d3bj" (no parens) also works.
 ```
 
 Convergence thresholds in the shipped script are already Gaussian-OPT defaults —
@@ -659,7 +659,7 @@ conventional form, e.g. "B3LYP-D3(BJ)", "ωB97M-V"):
   work) → `def2-TZVPP`/`def2-QZVP` (high-accuracy single points). `def2-TZVP` has
   built-in ECPs up to Rn.
 - Functional: `b3lyp` + `d3bj` (the most-cited combo); `wb97m-v` for
-  charge-transfer / π-stacked systems (**not** `wb97x-d` — PySCF 2.13 blacklists it,
+  charge-transfer / π-stacked systems (**not** `wb97x-d` — PySCF 2.14 blacklists it,
   raising `NotImplementedError`; `wb97m-v`/`wb97x-v` ship dispersion internally, no
   separate `mf.disp`); `pbe0`, `m06-2x`, `r²scan`+`d3bj` are alternatives. Plain
   `b3lyp` with no dispersion is no longer publishable above ~10 atoms (the
@@ -704,7 +704,7 @@ a value given with more figures is rounded to two (user, 2026-10-07; SIESTA's
 `DM.Tolerance` and `DM.EnergyTolerance` the same, [`siesta.md`](?doc=engines/siesta.md) § 3).
 
 When you leave `conv_tol_grad` unset, PySCF derives it — `scf/hf.py`, verified
-against the installed 2.13.0 source:
+against the installed 2.14.0 source:
 
 ```python
 if conv_tol_grad is None:

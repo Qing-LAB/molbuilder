@@ -1828,7 +1828,7 @@ def api_task_setup_prep_plan():
         #
         # AND WHERE THE SWEEP LANDS, asked of `bench_container`, which is the
         # ONE spelling of that rule: the container is `bench_<NN>_<stage>`
-        # flat, `<NN>_<stage>/bench` hierarchical, bare `bench` stageless.
+        # flat, `<NN>_<stage>/bench` hierarchical.
         #
         # ONE ENTRY PER RUNG, because that is what a sweep is: `prep bench`
         # takes a stage, the container lives inside the stage it measures,

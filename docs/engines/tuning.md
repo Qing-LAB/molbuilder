@@ -740,8 +740,8 @@ GPU marker. Where the two sides disagree on ranks, threads or solver, the
 trial is flagged and **barred from winning** — a trial that quietly fell
 back from the GPU must not be ranked as a GPU number. The block size is
 deliberately recorded but *not* treated as a disagreement, because SIESTA
-shrinking it to fit the rank count, and ELPA rounding it to a power of
-two, are documented behaviour of the engine — adaptation, not a lie
+shrinking it to fit the rank count, and rounding it to a power of
+two under GPU ELPA, are documented behaviour of the engine — adaptation, not a lie
 (`bench/result.py::parse_effective_run` / `compare_asked_to_ran`).
 
 **Would `WITH_NVIDIA_NCCL` help?** *(user question, 2026-08-21; read from
@@ -976,7 +976,7 @@ on. *(`MaxSCFIterations` read 500 here until 2026-08-16.)*
 |---|---|---|
 | Resume from the last accepted step | `MD.UseSaveCG .true.` + `MD.UseSaveXV .true.` (keep CG history + geometry; `MD.UseSaveCG` is CG-only) | the geometry each step reached, kept in `_optimized.xyz` (written after every geomeTRIC step, as SIESTA's `.XV`), and `<JOB>.chk`, which a continuing rung reads (geometry and density) — so a rung stopped short, halted or killed, continues from where it got to; geomeTRIC's own step history starts afresh (`pyscf.md` § 3) |
 | Restart with the geometry but reset optimizer history | `MD.UseSaveXV .true.` + `MD.UseSaveCG .false.` | drop the chkfile, or pass `runwrap`'s `--cold` / `--from-scratch` (resets the engine state too) |
-| Switch optimizer at a stage boundary | use the new algorithm's `MD.Use*Save*`; the old history file is now stale | not applicable — geomeTRIC is the one optimizer |
+| Switch optimizer at a stage boundary | Broyden and FIRE keep no history file; the deck writes `MD.UseSaveCG` for a CG stage only, so the old `.CG` is not read | not applicable — geomeTRIC is the one optimizer |
 
 **Why keep CG history on a resume but reset on a tier switch.** CG's conjugate basis
 builds up over moves; discarding it wastes ~5–10 moves of warm-up. But when you

@@ -82,6 +82,20 @@ name = "...and a set one is written as set, never snapped to a power of two"
 template = { block_size = 24 }
 deck = ["\nBlockSize 24\n"]
 
+# running-a-job.md § 4.2, job-contracts.md § 3.2: the engine is declared in PROVENANCE, deck and run script.
+[[case]]
+name = "a SIESTA deck and its run script declare their engine"
+deck = ["\n# engine siesta\n"]
+run_sh = ["\n# engine siesta\n"]
+
+# run-identity.md § 2, § 3.2: the label is the SystemLabel literal, unsuffixed on every rung.
+[[case]]
+name = "a later rung's deck carries the calculation's label, unsuffixed"
+before = [["prep", "run", "coarse"]]
+stage = "medium"
+prep = ["--cold"]
+deck = ["\nSystemLabel H2\n"]
+
 # ===================================================================== #
 #  PySCF                                                                 #
 # ===================================================================== #
@@ -249,3 +263,26 @@ engine = "pyscf"
 template = { restart = "clean" }
 deck = ["mf.chkfile = "]
 deck_lacks = ['mf.init_guess = "chkfile"', '_opt_path = _mb_outfile(JOB + "_optimized.xyz")']
+
+# running-a-job.md § 4.2, job-contracts.md § 3.2: the engine is declared in PROVENANCE, deck and run script.
+[[case]]
+name = "a PySCF deck and its run script declare their engine"
+engine = "pyscf"
+deck = ["\n# engine pyscf\n"]
+run_sh = ["\n# engine pyscf\n"]
+
+# run-identity.md § 2, § 3.2: the label is the JOB literal, unsuffixed on every rung.
+[[case]]
+name = "...and a later PySCF rung's deck carries the label unsuffixed"
+engine = "pyscf"
+stage_strategy = "publishable"
+before = [["prep", "run", "coarse"]]
+stage = "medium"
+prep = ["--cold"]
+deck = ["\nJOB = \"H2\""]
+
+# pyscf.md § 2: _initial.xyz is saved right after gto.M, before any optimization.
+[[case]]
+name = "a PySCF deck saves the input geometry right after building the molecule, before relaxing"
+engine = "pyscf"
+deck_order = ["mol = gto.M(", "\n_save_structure(mol, _mb_outfile(JOB + \"_initial.xyz\")", "= _mb_relax("]

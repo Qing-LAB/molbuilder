@@ -151,7 +151,7 @@ Only *how the block is obtained* differs. Everything after it is one function,
 things — the block, the masses, the geometry with its held set, and which
 axes repeat (`axis_kind`, with the cell when one does) — and which returns the
 modes with the surviving whole-body motions removed. The
-PySCF deck carries that function's source inside the generated script; the
+PySCF deck imports it from `mb_pyscf.pyz`; the
 SIESTA job's finish calls it beside the run (§ 5.5). There is no second path (R1–R4).
 
 ### 1.4 The smallest example, with real numbers
@@ -1317,7 +1317,7 @@ for a in FC.First .. FC.Last:
 | `<label>.FC` | one header (`n_atoms`, `δ` in Å), then `6·n_free·N` rows of three numbers in **eV/Å²**, in the order displaced atom → direction → side (−, +) → atom | the file's two sides average to 41.713 for the H₂ bond; two single points displaced by hand give −ΔF/2δ = 41.713 |
 | `<label>.FCC` | the same with the held atoms' force rows zeroed (SIESTA's "constrained" variant) | the free block is identical, so the reader takes `.FC` and slices |
 | `<label>.XV` | the **last displaced** geometry, not the input | the last free atom `FC.Displacement` off along z |
-| `<label>.DM`, the usual outputs | the density of the last displacement, the `.out` with the version line | |
+| `<label>.DM`, the usual outputs | the reference (undisplaced) step's density (`save_density_matrix.F90` writes it at the first step only), the `.out` with the version line | |
 | `<label>.spectra.json` | **the result**, written by the finish (§ 5.5) after SIESTA exits cleanly | |
 
 The wrapper `launch` writes treats the run like any SIESTA run: it activates
@@ -2436,7 +2436,7 @@ this document adds:
 | **the sorted copy** · **the record** | the structure SIESTA is given, and `atom-permutation.json` that undoes it |
 | **artifact** | `<label>.spectra.json` |
 | **route** | which way a strength was obtained (`ir_route`, `raman_route`); and, in the titles of §§ 4–5, an engine's whole way to the block |
-| **rung** · **ladder** · **tier** | one stage of a description, the list of them, and the coarse/medium/tight grades an optimisation's stages take; a vibration's ladder is one rung |
+| **rung** · **ladder** · **tier** | one stage of a description, the list of them, and the coarse/medium/tight grades an optimisation's stages take; a vibration's ladder is one rung on PySCF, and on SIESTA `relax` + one or more force-constant rungs |
 | **RRHO** | rigid-rotor harmonic-oscillator: the gas-phase thermochemistry of a free molecule — electronic, translational, rotational and vibrational sums |
 | **`axis_kind`** | the structure's own statement, per axis, of `isolated`, `periodic` or `transport`; with the cell it decides which turns cost nothing |
 | **Γ** | the centre of the Brillouin zone, `q = 0`: every repeated cell moving in phase — the only point this calculation computes at |

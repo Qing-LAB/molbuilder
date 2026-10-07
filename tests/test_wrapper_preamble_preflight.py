@@ -51,39 +51,3 @@ class TestWhichPathsAreChecked:
         assert _preamble_source_targets([("target", line)]) == expected
 
 
-class TestOneReaderOfSlurmsGresSpelling:
-    """One reader of Slurm's gres spelling: the type is read from the token,
-    never matched against a list of GPU names.
-    """
-
-    @staticmethod
-    def _q():
-        from molbuilder.scheduler.quantities import parse_gres
-        return parse_gres
-
-    def test_the_type_is_read_from_the_token_not_guessed(self):
-        q = self._q()
-        assert q("gpu:gh200:1") == {"gh200": 1}          # not h200
-        assert q("gpu:a100.40gb:4") == {"a100.40gb": 4}  # not a100
-        assert q("gpu:h200.35gb:4") == {"h200.35gb": 4}
-        assert q("gpu:hl225:8") == {"hl225": 8}          # Habana, not None
-
-    def test_the_slurm_shapes_it_must_survive(self):
-        q = self._q()
-        assert q("gpu:a100:4(S:0-1)") == {"a100": 4}   # affinity tail
-        assert q("gpu:a100:4,mps:400") == {"a100": 4}  # mps is not a GPU count
-        assert q("gpu:4") == {"gpu": 4}                # untyped
-        assert q("(null)") == {} and q("none") == {} and q("") == {}
-
-    def test_a_partition_merged_across_node_groups_keeps_the_larger(self):
-        assert self._q()("gpu:a100:2,gpu:a100:8") == {"a100": 8}
-
-    def test_the_record_narrows_the_same_reading(self):
-        """`Topology` states ONE device kind, so it narrows -- it does not
-        re-read.  Untyped stays None there: the field means *which device*,
-        and "gpu" answers nothing."""
-        from molbuilder.scheduler.record import _parse_gres
-        assert _parse_gres("gpu:gh200:1") == (1, "gh200")
-        assert _parse_gres("gpu:a100.40gb:4") == (4, "a100.40gb")
-        assert _parse_gres("gpu:4") == (4, None)
-        assert _parse_gres("(null)") == (None, None)

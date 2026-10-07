@@ -394,7 +394,7 @@ def _build_status(out_paths: List[Path],
         if launch is not _UNASKED:
             if launch is None:
                 return RunStatus(state="pending",
-                                 detail="prepped, not launched (no run.json)")
+                                 detail="prepped, not launched (no launch record)")
             jid = launch.get("job_id")
             return RunStatus(state="queued", detail=(
                 f"queued as job {jid}" if jid else

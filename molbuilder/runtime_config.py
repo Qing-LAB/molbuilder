@@ -54,9 +54,7 @@ from .config_dir import PRIVATE_FILE_MODE, config_dir
 
 if TYPE_CHECKING:                      # pragma: no cover - typing only
     # `get_routing` is annotated `List["Domain"]` and imports the real class
-    # inside its body, because a module-level import would close a cycle:
-    # `scheduler.record` imports `config_dir`, as this module does.  This is
-    # the binding static readers read.  It is NOT evaluated at run
+    # inside its body.  This is the binding static readers read.  It is NOT evaluated at run
     # time, so `typing.get_type_hints(get_routing)` still raises -- that is
     # the known cost of the idiom, and nothing calls it.
     from .scheduler.record import Domain
@@ -78,7 +76,7 @@ CONFIG_FILENAME = "molbuilder.json"
 #: target: a queue nobody named for that job, `-c`/`-t`/`--mem` defaults, a
 #: queue menu typed by hand, an order to pick queues by.
 _SCHEDULER_RETIRED = (
-    "{path}: 'scheduler' is no longer configured (retired 2026-10-02) -- "
+    "{path}: 'scheduler' is no longer configured -- "
     "delete the block.  Nothing in it may be set for every job:\n"
     "  * a job's queue, wall, memory, ranks and cores per rank are the JOB's "
     "own: its description (`allocation`, or the run card `execution` in "
@@ -90,10 +88,10 @@ _SCHEDULER_RETIRED = (
     "(docs/configuration.md § 4; docs/execution/architecture.md § 5.2)")
 
 #: The section is named for what it holds -- how a shell on THIS machine
-#: initialises a conda environment (user, 2026-10-02: the old name was
-#: "deceiving").  The machine record carries it under the same name.
+#: initialises a conda environment.  The machine record carries it under the
+#: same name.
 _SCRIPT_GENERATION_RENAMED = (
-    "{path}: 'script_generation' is now 'env_init' (renamed 2026-10-02) -- "
+    "{path}: 'script_generation' is now 'env_init' -- "
     "how a shell on this machine enters a conda environment, the same two "
     "keys.  Write\n"
     "    \"env_init\": {env_init}\n"
@@ -103,7 +101,7 @@ _SCRIPT_GENERATION_RENAMED = (
 #: queue.  This file used the same name for how a launch is sent, and carried a
 #: default queue (`domain`) every job without one received.
 _EXECUTION_RENAMED = (
-    "{path}: 'execution' is now 'launch' (renamed 2026-10-02), so that "
+    "{path}: 'execution' is now 'launch', so that "
     "`execution` means only the run card in task.json.  Write\n"
     "    \"launch\": {launch}\n"
     "instead.{dropped}  (docs/configuration.md § 4)")
@@ -114,12 +112,8 @@ _EXECUTION_RENAMED = (
 _SECRET_KEY_MOVED = (
     "{path}: 'secret_key_file' is no longer configured.  The session key has "
     "ONE home -- <config dir>/secrets/secret_key -- and is created "
-    "there on first run (docs/configuration.md § 2.1e).  A key naming its own "
-    "location is how it came to live in two places at once: this file pointed "
-    "at ~/.molbuilder/secret.key while `auth-setup` wrote "
-    "<config dir>/secrets/secret_key, so running the wizard made a key the server "
-    "never read.  Delete the line; move the file if you want the sessions it "
-    "signed to survive.")
+    "there on first run (docs/configuration.md § 2.1e).  Delete the line; "
+    "move the file there if you want the sessions it signed to survive.")
 
 
 class RuntimeConfigError(Exception):
@@ -364,14 +358,13 @@ def _validate_orcid(entry: Dict[str, Any], idx: int) -> Dict[str, Any]:
     return entry
 
 
-#: A key molbuilder's own wizard wrote until 2026-09-12 and nothing read.
+#: A key nothing reads.
 _CAS_VALIDATE_URL_RETIRED = (
     "{path}: auth.providers[{idx}]: 'service_validate_url' is no longer "
     "configured -- delete it.  Nothing ever read it: python-cas derives the "
     "validate endpoint from 'login_url' (its root, then p3/serviceValidate "
-    "for CAS v3) and takes no parameter for another one.  `molbuilder "
-    "auth-setup` stopped writing it on 2026-09-12; it was accepted and "
-    "ignored until 2026-10-02, and a key nothing reads looks effective.")
+    "for CAS v3) and takes no parameter for another one, and a key nothing "
+    "reads looks effective.")
 
 
 def _validate_cas(entry: Dict[str, Any], idx: int) -> Dict[str, Any]:
@@ -616,10 +609,10 @@ def _read_auth(raw: Mapping[str, Any]):
     return {"providers": validated, "trust_proxy": trust_proxy}
 
 
-#: The two notify settings, both retired 2026-08-31.  The listener is switched
-#: on by the key file itself, which now carries its own route.
+#: The two notify settings this file does not take.  The listener is switched
+#: on by the key file itself, which carries its own route.
 _NOTIFY_SETTINGS_MOVED = (
-    "{f}: '{key}' was retired on 2026-08-31 and is no longer read.\n"
+    "{f}: '{key}' is no longer read.\n"
     "\n"
     "The listener is switched on by the KEY FILE, which carries its own\n"
     "route: `<config dir>/secrets/notify_keys`, written by `molbuilder\n"
@@ -629,9 +622,8 @@ _NOTIFY_SETTINGS_MOVED = (
     "never registered, answering 404 to everything.\n"
     "\n"
     "Delete this key.  If you have no `notify_keys` yet, run\n"
-    "`molbuilder notify-token <user>`; if you have one from before the\n"
-    "change, re-issue with `--route <your existing segment>` so the\n"
-    "destinations already in service keep working."
+    "`molbuilder notify-token <user>`; to keep a route already in\n"
+    "service, re-issue with `--route <your existing segment>`."
 )
 
 
@@ -987,8 +979,7 @@ _RETIRED_FLAT_TLS = ("cert", "key")
 #: What to say when one of them turns up.
 _FLAT_TLS_RETIRED = (
     "{path}: 'tls' is a section, not top-level keys.  Found {found} at the "
-    "top level -- the flat spelling was removed on 2026-09-02 because two "
-    "spellings for one setting is two places to look.  Write:\n"
+    "top level -- one setting has one spelling.  Write:\n"
     '    "tls": {{"cert": "...", "key": "..."}}'
 )
 

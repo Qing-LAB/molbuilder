@@ -49,8 +49,8 @@ def test_unknown_format_fdf_suggests_out_file(tmp_path):
     else:
         raise AssertionError("expected UnknownFormatError")
     assert "INPUT" in msg or "input" in msg
-    assert "siesta.out" in msg
-    assert "siesta.molwatch.log" in msg
+    assert "siesta-run<N>.out" in msg
+    assert ".molwatch.log" in msg
 
 
 def test_unknown_format_generic_hint_points_at_docs(tmp_path):
