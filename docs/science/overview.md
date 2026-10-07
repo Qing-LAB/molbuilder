@@ -300,7 +300,9 @@ is part of correctness:
   `SpinTotal` keyword form + the `SpinPolarized` form — two of the ten — dispersion emission, `mf.stability_analysis`
   for open-shell, `PAO.EnergyShift` default, post-processing templates, version
   pinning, ECP auto-emit, post-relax re-evaluation, `diis_space`/`damp` exposure)
-  are **all closed** and pinned by `tests/test_science_gaps.py` (0 xfails).
+  are **all closed**. `tests/test_science_gaps.py` holds three (the
+  `PAO.EnergyShift` default, the version pin, ECP auto-emit); the dispersion
+  and the open-shell stability check are rows of `tests/data/the_deck.toml`.
 - **A false positive (2026-05-05 review):** a claim that geomeTRIC's
   `convergence_*` kwargs raise `TypeError` was wrong — PySCF's `geometric_solver`
   forwards them into `geometric.optimize.OptParams`.

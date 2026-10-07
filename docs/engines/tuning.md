@@ -130,9 +130,9 @@ For calibration, Gaussian's `OPT` defaults its step cap to 0.30 Bohr (≈ 0.16 �
 `Tight` tightens it to 0.02 Bohr (≈ 0.011 Å).
 
 - **SIESTA** `MD.MaxDispl` — **universal across CG / Broyden / FIRE** in SIESTA 5.4.2
-  despite the CG-prefixed name (`siesta/input.py` emits it for all three). The
-  per-type aliases `MD.MaxDispl` some references list are *not* applied to Broyden's
-  cap — recognized as an fdf key but silently mis-applied.
+  (`siesta/input.py` emits it for all three). 5.4.2 reads `MD.MaxCGDispl`
+  (default 0.2 Bohr) and lets `MD.MaxDispl` override it (`read_options.F90`); the
+  result is the one cap CG, Broyden (`broyden_optim.F`) and FIRE step by.
 - **PySCF / geomeTRIC** — no direct cap; controlled via `dmax` (max displacement at
   convergence, § 2.4) plus the optimizer's own line search.
 
@@ -307,9 +307,9 @@ conventional form in prose ("ωB97M-V"); the spelling traps are in
 | Loop | Engine | Shipped default | Rationale |
 |---|---|---|---|
 | **Geometry (outer)** | PySCF `geom_max_steps` | coarse **50**, medium **200**, tight **100** | a warm-up needing > 50 has a wrong starting geometry — stop and inspect; 200 is the publishable safety margin |
-| | SIESTA `relax_steps` | coarse **600**, medium **200**, tight **100** | universal across CG / Broyden / FIRE (the per-type aliases aren't recognized); SIESTA's coarse budget is more generous than PySCF's |
+| | SIESTA `relax_steps` | coarse **600**, medium **200**, tight **100** | written as `MD.Steps`, read for CG / Broyden / FIRE alike (5.4.2 lets it override `MD.NumCGsteps`); SIESTA's coarse budget is more generous than PySCF's |
 | **SCF (inner)** | PySCF `mf.max_cycle` | **100** | plenty for a well-conditioned SCF; hitting 100 means the *system* is the problem (broken-symmetry open shell, level-shift needed) — 500 won't help |
-| | SIESTA `MaxSCFIterations` | **1000** | molbuilder's own generous ceiling (SIESTA's is smaller); each outer step runs at most this many inner cycles until `DM.Tolerance` is met. *(This row said 500 until 2026-08-16; the catalogue and `SiestaConfig` both say 1000, range 10–5000.)* |
+| | SIESTA `MaxSCFIterations` | **1000** | a generous ceiling, the same value as SIESTA's own default (`read_options.F90`); each outer step runs at most this many inner cycles until `DM.Tolerance` is met. *(This row said 500 until 2026-08-16; the catalogue and `SiestaConfig` both say 1000, range 10–5000.)* |
 
 ### 2.11 Block size (SIESTA — the ScaLAPACK / ELPA distribution block)
 
@@ -416,19 +416,22 @@ Three qualifiers the `pow2` type dropped:
 1. it is **`Diag.BlockSize`** — a different keyword, which merely *defaults* to
    `BlockSize`;
 2. it applies **only to GPU-enabled ELPA**, not to ScaLAPACK and not to CPU ELPA;
-3. breaking it is **not an error** — ELPA silently falls back to the CPU.
+3. SIESTA 5.4.2 enforces it itself — with `Diag.ELPA.GPU` on, `diag_option.F90`
+   `elpa_gpu_block_size` rounds the diagonaliser's block **down** to a power of two,
+   and the changed block turns on the 2D distribution (`Use2D`). The manual's
+   *"only run on CPU"* does not describe 5.4.2.
 
 > **Decided 2026-08-15 (user): *"we don't want silent CPU fallback. If GPU is
 > enabled, we should align parameter with that target."*** So this is **not**
 > softened into advice. Asking for a GPU and being given a CPU run that reports
 > success is the silent-wrong-answer class this project refuses everywhere else.
 
-**When the GPU is on AND the diagonaliser is ELPA, `BlockSize` must be a power of
-two, and nothing makes it one.** A set value is written verbatim under every
-target (`siesta/input.py` `_parallel_facts`), so under GPU-ELPA a
-non-power-of-two value runs ELPA on the CPU. The decision that `prep` realign it
-— *"that's why this blocksize, if explicit set, needs to be realigned at
-bench/prep stage"* (user, 2026-08-15) — is open as plan K17 SO-C3.
+**When the GPU is on AND the diagonaliser is ELPA, SIESTA makes the
+diagonaliser's block a power of two itself.** A set value is written verbatim
+under every target (`siesta/input.py` `_parallel_facts`) and nothing in
+molbuilder rounds it; SIESTA 5.4.2 rounds `Diag.BlockSize` down under GPU ELPA
+(item 3 above), so a non-power-of-two value never moves ELPA to the CPU. Plan
+K17 SO-C3 (realign it at `prep`) is closed by that source fact.
 
 `use_gpu` and `mpi_np` are both answered on the **staging** surface rather than
 beside the physics, and they are not the same kind of answer. **`use_gpu` is the

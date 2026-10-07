@@ -815,7 +815,7 @@ optional = true
 help = """
 How many MPI processes SIESTA runs on: the N in ``mpirun -np N siesta`` the run script launches.
 Every run states it -- on its run card, or with ``prep --np N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in, not the machine's cores and not the scheduler.  Typically N = physical cores; for memory-bound jobs N = sockets x cores_per_socket / 2 is a common rule of thumb.
-For a run by hand the run script takes ``bash run.sh -np N``, to try another count without a new prep.  That matters because SIESTA can crash with ``propor: ERROR: IMAX = 0`` for certain mpi_np / molecule combinations: the crash depends on the ProcessorY x ProcessorX grid SIESTA picks for that rank count, which is hard to predict. If you hit propor, retry with a smaller -np (powers of 2 are usually safe). The run script prints a focused diagnostic on that crash with specific suggestions.
+For a run by hand the run script takes ``bash <stem>.run.sh --run N -np M``, to try another count without a new prep.  That matters because SIESTA can crash with ``propor: ERROR: IMAX = 0`` for certain mpi_np / molecule combinations: propor is a proportionality check in matel_table's MPI-deduplication of radial tables, which is hard to predict from the rank count. If you hit propor, retry with a smaller -np (powers of 2 are usually safe). The run script prints a focused diagnostic on that crash with specific suggestions.
 """
 
 [item.gpu_count]
@@ -852,7 +852,7 @@ help = """
 How many consecutive orbitals go to one MPI rank before the distribution moves to the next -- the ScaLAPACK block. It cannot change the answer, only how evenly the ranks are fed and therefore how long the run takes.
 It has two states. Left as (auto) the keyword is not written and SIESTA uses its own automatic, which is what its manual declares as the default. Set to a number, that number is written verbatim -- which is what you want after benchmarking, and a benchmark is the only thing that really answers this: the best block depends on the matrix size, the rank count, the interconnect and the node's memory layout at once.
 If you set one by hand: powers of two (16, 32, 64, 128); smaller for few orbitals, larger for thousands. Stay under n_orbitals / ranks or some rank gets no block at all.
-On GPU, an ELPA diagonaliser needs a power of two or ELPA silently runs on the CPU.
+On GPU, SIESTA rounds the ELPA diagonaliser's block down to a power of two itself.
 It does not fix ``propor: ERROR: IMAX = 0``. BS = 1, 2 and 4 all crash at the same mpi_np; propor is a vector-proportionality check in matel_table's MPI-deduplication step. Lower the rank count to clear it.
 """
 
@@ -1305,7 +1305,7 @@ Adds the long-range attraction (London dispersion) that Hartree-Fock misses enti
   none    no correction at all -- plain DFT, or plain Hartree-Fock.
 BJ damping is the usual recommendation for D3: it does not go to zero at short range, which is where zero damping tends to under-bind. Use d3zero only to reproduce a published number that used it.
 It matters most for biomolecules and anything weakly bound: pi-stacking, van der Waals contacts and hydrogen-bond geometries are all under-bound without a correction, and the cost of adding one is negligible.
-The four choices are spellings PySCF 2.13 accepts (pyscf/scf/dispersion.py).  Anything else is refused when the template is read -- PySCF itself would refuse it only at run time, with NotImplementedError.
+The four choices are spellings PySCF 2.13 accepts (pyscf/scf/dispersion.py).  Anything else is refused when the template is read -- PySCF itself would refuse it only at run time, with a ValueError.
 """
 
 [item.ecp]

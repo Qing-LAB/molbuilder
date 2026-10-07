@@ -695,18 +695,9 @@ def spec_for(struct: Structure,
                 out.append("# ============================================================")
                 out.append("# geomeTRIC is the one optimizer (translation-rotation-")
                 out.append("# invariant internal coords, robust on large steps).")
-                out.append("#")
-                out.append("# Per-tier convergence (Gaussian-OPT family):")
-                out.append("#   screening    gmax 2.0e-3 Ha/Bohr  conv_tol 1e-7  max_steps 30")
-                out.append("#   loose preopt gmax 2.0e-3 Ha/Bohr  conv_tol 1e-7  max_steps 50")
-                out.append("#   publishable  gmax 4.5e-4 Ha/Bohr  conv_tol 1e-9  max_steps 200")
-                out.append("#                (this is the Gaussian-OPT default and what reviewers expect)")
-                out.append("#   tight        gmax 1.5e-5 Ha/Bohr  conv_tol 1e-10 max_steps 100")
-                out.append("#                (vib / IR / NEB barriers)")
-                out.append("# The ladder in task.json ships these as its default rungs.")
-                out.append("# See")
-                out.append("# docs/engines/tuning.md sect. 4 for the full preset")
-                out.append("# table + SIESTA <-> PySCF crosswalk + citations.")
+                out.append("# This deck is one rung of the ladder in task.json; its")
+                out.append("# targets are the rung's, below.  docs/engines/tuning.md")
+                out.append("# sect. 2.4 has the shipped rungs and their citations.")
             # Frozen-atom constraints (three-stage contract carrier).  When
             # Structure.frozen_atoms is non-empty, write a sibling
             # <JOB>.constraints.txt at run time and pass it to geomeTRIC via

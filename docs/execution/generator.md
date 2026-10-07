@@ -974,8 +974,8 @@ that an absent `engines` key means every engine.)*
 | identity literal declared | `SystemLabel` | **`JOB`** (`config/pyscf.py`) |
 | the seam's form-builder (`spec_for`) | `(structure, config, names=)` -- the stage's names, `runfiles.RunNames` | **matches** |
 
-**The `stage_token` argument is what makes one writer serve a ladder.** It
-suffixes a script, an engine stdout and a trajectory log so that two stages never
+**The stage's names (`runfiles.RunNames`) are what make one writer serve a
+ladder.** They suffix a script, an engine stdout and a trajectory log so that two stages never
 write to one file, and a PySCF ladder is N scripts and N jobs
 ([`stages.md` § 1.1a](?doc=engines/stages.md)) — so its writer uses the token
 exactly as SIESTA's does.

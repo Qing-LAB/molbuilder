@@ -2740,7 +2740,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     }   // ----- end of mountInspector(rootEl, opts) -----
 
     // Export for the consumer (lib/inspectors/trajectory.js on
-    // /results).  Each consumer is
+    // /results).  The consumer is
     // responsible for picking when + where to mount; this module
     // does NOT self-bootstrap on page load.  Loading the script
     // alone is a no-op -- safe to include on any page that might

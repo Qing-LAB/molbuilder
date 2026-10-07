@@ -39,7 +39,6 @@ def _persist():
 #: *has this been launched?* -- a queued job has produced nothing yet, so
 #: "no output" and "not started" are indistinguishable from the directory alone.
 RUN_LAUNCH_SCHEMA = "molbuilder/run-launch@1"
-RUN_LAUNCH_FILE = _rf.LAUNCH_RECORD_FILE      # the catalogue's name
 
 
 class LaunchRecordError(ValueError):
@@ -418,4 +417,4 @@ def read_gathered_from(attempt_dir) -> List[dict]:
     return out
 
 
-__all__ = ["RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE", "LaunchRecordError", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_main", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
+__all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "next_run", "write_launch", "record_retry", "retried_main", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]

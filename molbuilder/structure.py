@@ -573,7 +573,7 @@ class Structure:
             if len(self.vacuum) != 3:
                 raise ValueError("Structure.vacuum must have exactly 3 entries")
 
-        # Validate transport metadata.
+        # Validate the labels and the extra channels.
         self._validate_regions(n)
         self._validate_annotations(n)
 

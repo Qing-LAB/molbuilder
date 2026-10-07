@@ -595,7 +595,7 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
         rows.append(("continued from",
                      src if src else "nothing -- it started from the structure"))
     else:
-        rows.append(("launched", "no  (no run.json -- prepared, not started)"))
+        rows.append(("launched", "no  (no launch record -- prepared, not started)"))
     rows.append(("warm files", ", ".join(s.warm_files) or "-"))
     rows.append(("detail", s.detail or "-"))
 

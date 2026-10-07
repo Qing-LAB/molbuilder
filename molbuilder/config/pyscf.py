@@ -194,9 +194,8 @@ class PySCFConfig:
         # item reads as, and an unset item takes the class default (d3bj).
         #
         # PySCF's own ``pyscf/scf/dispersion.py`` accepts exactly d3bj,
-        # d3bjm, d3op, d3zero, d3zerom and d4; anything else reaches
-        # ``raise NotImplementedError(f'{method_lower} is not supported
-        # yet.')``.  Confirmed against B3LYP, PBE and PBE0 on PySCF 2.13.
+        # d3bjm, d3op, d3zero, d3zerom and d4; anything else raises
+        # ``ValueError("Unknown dispersion version ...")`` (PySCF 2.14).
         "choices": ("d3bj", "d3zero", "d4", "none"),
     })
     # Effective Core Potential -- TWO plain fields, ONE format each.  The

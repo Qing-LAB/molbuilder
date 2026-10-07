@@ -21,9 +21,8 @@ the ladder started cold in silence.
 
     my-job.chk                        carried: no stage, no attempt
     my-job_optimized.xyz              carried, role-style separator
-    my-job_01_coarse.molwatch.log     this rung's
-    my-job-run2.out                   this attempt's
-    my-job_01_coarse-run2.out         this rung's second attempt
+    my-job_01_coarse.fdf              this rung's
+    my-job_01_coarse-run2.out         this rung's run 2
 
 THE TWO SEPARATORS ARE THE GRAMMAR (`job-contracts.md` § 6.3): *"a hyphen
 announces a counter follows... a stage is not a counter -- it is a name"*.  So
@@ -280,9 +279,8 @@ class RunFile:
 def stem(label: str, stage: Optional[str] = None) -> str:
     """``<label>[_<stage>]`` -- what every role attaches to.
 
-    The half of :func:`compose` a caller needs on its own when the tail is not
-    a role at all: the prep log appends ``.<engine>.<shape>.log``, and a deck's
-    directory is named from the stem before any suffix exists.
+    The half of :func:`compose` a caller needs on its own: a run's basename,
+    which every file of its rung begins with (:attr:`RunNames.stem`).
 
     ``stage`` is None for a file that CARRIES between rungs.  An empty string
     is refused rather than read as None: a caller holding ``token = ""`` for

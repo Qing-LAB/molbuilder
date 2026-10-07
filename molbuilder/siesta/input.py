@@ -45,8 +45,9 @@ from .. import script_emit as _sc
 def _auto_block_size(n_atoms: int,
                      mpi_np: Optional[int] = None,
                      gpu_mode: bool = False) -> int:
-    """Pick a SIESTA ``BlockSize`` for the ScaLAPACK orbital
-    distribution.  Affects cache efficiency at moderate rank counts.
+    """The largest ``BlockSize`` a deck's rank count allows -- the top of
+    the BENCH-MARKS window (:func:`_block_size_bounds`).  No deck is given
+    it: an unset ``block_size`` writes no line, and SIESTA picks its own.
 
     It does NOT guard against ``propor: ERROR: IMAX = 0``.  An empirical
     sweep on 2026-05-28: SIESTA crashes IDENTICALLY with
@@ -59,20 +60,18 @@ def _auto_block_size(n_atoms: int,
     of radial-function tables, not in any BLACS distribution.  It
     is a function of ``mpi_np`` vs the molecule's species count and
     radial-table size; predicting it from BlockSize is impossible
-    because BlockSize doesn't enter the matel_table loop.  See
-    ``runwrap.py``'s post-run diagnostic for the user-facing fix
-    (the wrapper's ``-np`` runtime override).
+    because BlockSize doesn't enter the matel_table loop.  The run
+    script's propor hint names the way out.
 
     What this function does
     -----------------------
-    Pick a power-of-2 BlockSize that gives ScaLAPACK good cache
+    The largest power-of-2 BlockSize that gives ScaLAPACK good cache
     behaviour at the requested rank count.  Larger BlockSize
     reduces communication overhead per orbital block; too-large
     leaves some ranks idle on the diag step.  The per-rank cap is
     stated in ORBITALS, not atoms: SIESTA distributes ORBITALS
     across ranks (BlockSize is a block of the ScaLAPACK orbital
-    distribution -- SIESTA's own auto-pick is ``ceil(Norb /
-    Nrank)``), so the bound is ``floor(n_orbitals_est / mpi_np)``
+    distribution), so the bound is ``floor(n_orbitals_est / mpi_np)``
     with ``n_orbitals_est = 10 * n_atoms`` -- the SAME rough DZP
     estimate the deck's BENCH-MARKS block records as
     ``n_orbitals_est`` (job-contracts.md § 3.2 provenance example
@@ -113,7 +112,7 @@ def _auto_block_size(n_atoms: int,
       Honest framing: the "right" GPU BlockSize is hardware- and
       problem-dependent.  Without measurement on the target box
       no single number can claim "the optimum".  256 is a
-      defensible default that's bigger than 64 (overhead-bound)
+      defensible ceiling that's bigger than 64 (overhead-bound)
       and smaller than 512 (load-imbalance-prone), measured in
       kernel launch latency × work-per-launch ratios.  See
       ``scripts/bench-siesta-blocksize.sh`` for an in-tree sweep
@@ -202,31 +201,15 @@ def _block_size_bounds(n_atoms: int,
     deck** — what BENCH-MARKS declares as ``range=[lo,hi]``.
 
     ``job-contracts.md`` § 3.3 calls ``range`` *"advisory bounds for
-    validating a requested override"*.  Advice about a value that was derived
-    from the launch has to be derived from the same launch, or the block
-    advises a *validator* that its own emitted value is illegal, and a
-    *bench tool* that it may climb past this deck's own rank constraint.
-    Climbing is the
-    dangerous direction: above ``floor(n_orbitals_est / mpi_np)`` some
-    ranks get no block at all.
+    validating a requested override"*, so they are drawn from the deck's own
+    rank count: above ``floor(n_orbitals_est / mpi_np)`` some ranks get no
+    block at all.  The upper bound is :func:`_auto_block_size`'s answer; the
+    floor is 1 on CPU and 8 in GPU mode.
 
-    **One derivation, not two.**  The upper bound IS
-    :func:`_auto_block_size`'s answer, because that function already picks the
-    largest legal power of two — so "the generator's choice" and "the top of
-    the window" are the same number by construction, and cannot drift
-    apart.  That gives the block a checkable
-    invariant: ``lo <= default <= hi``, always.
-
-    The floor is the picker's own: 1 on CPU (the empirical sweep in
-    :func:`_auto_block_size` swept 1, 2, 4), 8 in GPU mode, where the ELPA-CUDA
-    branch never goes below 8.
-
-    ``emitted`` is the value the deck actually carries.  It differs from the
-    derived one only when the user set ``block_size``, which
-    the deck writes verbatim; the window is widened to contain it,
-    because a block whose range excludes its own default is the defect this
-    function exists to end — the user's number is a *decision*, not an error
-    to advertise as out of bounds.
+    ``emitted`` is the value the deck carries -- one the person set or
+    benchmarked, written verbatim -- and the window is widened to contain
+    it: the person's number is a decision, not an error to advertise as out
+    of bounds.  A deck with no ``BlockSize`` draws no window.
     """
     hi = _auto_block_size(n_atoms, mpi_np, gpu_mode=gpu_mode)
     lo = 8 if gpu_mode else 1
@@ -449,8 +432,8 @@ def _parallel_facts(cfg, mesh) -> dict:
     # <automatic>``.  Omitting a keyword is a real answer, the same shape
     # as ``Diag.Algorithm ScaLAPACK`` emitting nothing (siesta.md § 7).
     #
-    # ``_auto_block_size`` is the upper bound of the BENCH-MARKS window (``_block_size_bounds``), which is
-    # where a power-of-two constraint belongs: the benchmark sweeps them.
+    # ``_auto_block_size`` is the upper bound of the BENCH-MARKS window
+    # (``_block_size_bounds``), drawn only for a value the deck carries.
     if cfg.block_size is None:
         block_size = None
     else:
@@ -469,9 +452,9 @@ def _parallel_facts(cfg, mesh) -> dict:
     #   * ScaLAPACK -> emit nothing (SIESTA's built-in Divide-and-Conquer).
     #   * ELPA-* -> emit ``Diag.Algorithm`` (required: Diag.ELPA.GPU alone
     #     is ignored without it, Src/diag_option.F90:213-225) AND
-    #     ``Diag.ELPA.GPU .true./.false.``.  The explicit ``.false.`` for
-    #     CPU-ELPA is load-bearing: the source ELPA defaults to the GPU
-    #     codepath, so an omitted flag crashes a CPU run (Sol job 57852378).
+    #     ``Diag.ELPA.GPU .true./.false.`` -- written either way, so the
+    #     deck states its answer (a CPU-ELPA run with the flag omitted
+    #     crashed on Sol, job 57852378).
     _algo = (cfg.diag_algorithm or "ScaLAPACK").strip()
     _is_elpa = _algo.upper().startswith("ELPA")
     if cfg.use_gpu and not _is_elpa:
@@ -508,7 +491,6 @@ def _relaxation_facts(cfg) -> Optional[dict]:
     # ``MD.MaxDispl 0.1 Ang``:
     #   redata: Dynamics option        = Broyden coord. optimization
     #   redata: Maximum number of optimization moves = 5
-    #   redata: Max atomic displ per move = 0.1000 Ang
     #
     # Verlet / Nose (NVE / NVT dynamics, not relaxation) bound their loop
     # by time instead -- ``MD.FinalTimeStep`` and the temperature block --
@@ -579,8 +561,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     `script_emit.render_deck` renders into its text.
 
     ``names`` are the stage's (`runfiles.RunNames`) -- a RENDER ARGUMENT, as
-    the kind is: its stage token, and every name the deck prints, the deck's
-    own among them, are theirs (`job-contracts.md` § 2.2a).
+    the kind is: its stage token, and the names the deck prints, the deck's
+    own among them, are theirs (`job-contracts.md` § 2.2a) -- all but the
+    unnumbered ``.out`` its by-hand ``mpirun`` line writes.
 
     ``trial`` is the benchmark trial this deck is, by its point's name
     (``G1K4C6``), or ``None`` for the run -- a render argument from `prep`,
@@ -1062,7 +1045,16 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 # WHAT THIS STAGE ACTUALLY DOES WITH THE PREVIOUS ONE'S STATE,
                 # from the same answer as its restart group: the banner is what
                 # a person reads to decide whether the ladder is chaining.
-                if continues(cfg):
+                # A force-constant stage's start state is its kind's
+                # (`vibration_deck.start_state_lines`), not ``restart``'s.
+                if _derived.get("fc"):
+                    out.append(
+                        "# This stage reads the density (.DM) it finds and "
+                        "never the geometry (.XV): a")
+                    out.append(
+                        "# force-constant run starts from its deck's "
+                        "coordinates (its restart keys, below).")
+                elif continues(cfg):
                     # WHERE THOSE FILES COME FROM (plan W37): `prep` copies the
                     # run it continues from into the folder this deck runs in
                     # -- the stage before it, newest, by default -- and the
@@ -1245,7 +1237,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         return "\n".join(out) if out else None
 
     def _restart_group(struct, cfg) -> Optional[str]:
-        """The three warm-start keys, written from one declaration.
+        """The warm-start keys this run reads, written from one declaration.
 
         A block and not a section because it is not a run of catalogue
         items: ONE field (``restart``) expands into three keywords, and
@@ -1559,7 +1551,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             "#",
             "# 1. Mulliken population analysis (per-atom charge breakdown;",
             "#    SIESTA 5's names -- WriteMullikenPop is the retired one):",
-            "# Charge.Mulliken         end   # when: none | end (of the SCF) | scf (every step)",
+            "# Charge.Mulliken         end   # when: none | geometry (each SCF) | scf (every step) | end (after the run)",
             "# Charge.Mulliken.Format  1     # 1 = atomic and orbital charges; 2, 3 add overlap populations",
             "#",
             "# 2. Band structure along high-symmetry path (set kgrid > 1):",

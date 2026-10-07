@@ -179,8 +179,9 @@ describes.
 **G6 — No silent fallback, in either direction.** A GPU deck that cannot
 run on a GPU **refuses**: SIESTA at prep (the wrapper gates env presence and
 names the install), PySCF at run start (the script exits with the reason).
-A CPU-ELPA deck writes `Diag.ELPA.GPU .false.` **explicitly** — source ELPA
-defaults to the GPU codepath, so an omitted flag crashes a CPU run.
+A CPU-ELPA deck writes `Diag.ELPA.GPU .false.` **explicitly**, never left to the
+engine's default (a CPU-ELPA run on Sol with the flag omitted crashed;
+[`engines/siesta.md`](?doc=engines/siesta.md) § 7).
 
 **G7 — The value travels; the deck is not re-read for it.** `use_gpu`
 declares `read_by = ["wrapper"]` precisely so the wrapper can be *handed* the

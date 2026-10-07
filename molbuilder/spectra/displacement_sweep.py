@@ -192,9 +192,9 @@ def collect_sweep(base_dir, task, *,
             continue
         spectrum = attempt / spectrum_name
         if not spectrum.is_file():
-            names = RunNames.of(task.label, token, task.shape)
-            st = run_status(attempt, names.stem,
-                            launch=launch_record(attempt, names))
+            rn = RunNames.of(task.label, token, task.shape)
+            st = run_status(attempt, rn.stem,
+                            launch=launch_record(attempt, rn))
             entry = {"stage": name, "attempt": rel(attempt),
                      "state": st.state, "detail": st.detail}
             if st.state in ("pending", "queued", "running"):

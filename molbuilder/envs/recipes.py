@@ -2626,8 +2626,7 @@ _JUPYTER = Recipe(
         "are not.  It has to: the tab is an IFRAME, so an http notebook "
         "under an https page is blocked by the browser as mixed content "
         "(docs/web/jupyter.md § 2).  It does NOT refuse to start without "
-        "TLS -- this line said it did until 2026-09-14, and a plain-http "
-        "molbuilder had been running one the whole time.",
+        "TLS.",
         "A free TCP port at <serve port> + 1 on this machine, bound to "
         "loopback unless you say otherwise.  A live kernel is arbitrary "
         "code execution as the account running the server, which is why "

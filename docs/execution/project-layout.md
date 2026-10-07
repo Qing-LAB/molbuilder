@@ -428,7 +428,7 @@ is because *depth* differs — never because the rule does.
 | | *both from template ⊕ the stage's values ⊕ this machine (§ 2.2)* | |
 | **Where the wrapper runs** | in the directory | in the attempt directory `prep` made |
 | **git tracks / the archive covers** | one directory is both — classified by **pattern** | containers are git's, runs are the archive's — by **depth** (§ 6.1) |
-| **`--force`** | still there: it resets the index and overwrites | **retired** — nothing can collide |
+| **`--force`** | says yes to `--cold`'s refusal | says yes to `--cold`'s refusal |
 
 The second row is the one to read twice. *"A result is never overwritten"* is a
 rule the flat shape keeps for the files it can and breaks for the files it must —
@@ -602,10 +602,9 @@ Three things follow:
 - **The saved history becomes append-only.** No archived file ever changes, so a
   new save point only has to store the attempts that appeared since the last one
   (§ 6).
-- **`--force` is retired.** It exists to reset the run index to `-run0` and
-  overwrite it (`job-contracts.md § 2.6`). With a directory per attempt there is
-  nothing to overwrite: a redo is `run-2`. A flag whose only purpose is to
-  destroy a previous result has no place once results cannot collide.
+- **`--force` only answers `--cold`.** It says yes to `--cold`'s refusal
+  (`job-contracts.md § 2.6`); with a directory per attempt a redo is `run-2`,
+  and in flat each run carries its own number, so nothing collides.
 
 Immutability is a contract, not a filesystem permission — but it is **checkable**,
 and § 7 makes it an invariant: an attempt that has been saved must never differ
@@ -856,17 +855,15 @@ can read it before committing a week of cluster time. That last one is why this
 belongs to prepare rather than submit: preparing is still design, and the split
 gives you somewhere to look; submitting is then a plain "yes, that one".
 
-**One opener makes every run folder** *(W55 B6, 2026-10-03)* —
-`jobset/materialize.py::open_run`: a stage's attempt at prep and at a re-launch,
-a benchmark trial's, a bias point's. It creates the folder and every container
+**One opener makes every stage's run folder** *(W55 B6, 2026-10-03)* —
+`jobset/materialize.py::prepare_attempt`: a stage's attempt at prep and at a
+re-launch, a bias point's; a benchmark trial's folder is resolved at prep by
+`trial_work_dir`, and both are stamped by the one `mark_run`. It creates the folder and every container
 above it that does not exist yet — the stage, a benchmark's `bench/`, a bias
 point's `v<V>/`, a submission's `launch/` — stamping each (§ 1.4a; invariant
 6b), seeds the run's progress channel, copies in what it runs from and what its
 `Continuation` carries, writes `.continued-from`, and gives the run script the
-run's own label — a trial's is the trial's. *(Until 2026-10-03 there were two:
-`prepare_attempt`, and `trial_work_dir` with a bare `mkdir` for trials, which
-stamped nothing; an attempt opened at launch, and a transport rung's, got no
-progress channel; a trial's run script was told the calculation's label.)*
+run's own label — a trial's is the trial's.
 
 **A stage is prepared once** *(user, 2026-10-02: "refuse it, redo via
 rollback")*. `prep` opens its attempt; a stage the calculation's plan already
@@ -926,9 +923,10 @@ Two small files answer the two questions *(the second decided by the user,
   script through the monitor's bundle (`runrecord.record_retry`,
   [`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5). The
   hierarchy's `run.json` is its attempt's and answers for every run in it.
-  **A flat calculation written before** — `<basename>.run.json`,
-  `<basename>.continued-from` or `<basename>.molwatch.log`, no run number —
-  is refused by the door, naming `molbuilder jobset migrate --bundle
+  **A flat calculation written before** — any file the catalogue numbers
+  where a stage's runs share a folder (every `attempt="shared"` row,
+  `runfiles.shared_numbered_roles()`) found with no run number — is refused
+  by the door, naming `molbuilder jobset migrate --bundle
   <calc>`, which gives each the number of its stage's newest run, 0 for a
   stage never launched (W57 decision 7's pattern). **One that does not
   read** — not JSON, or not a

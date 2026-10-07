@@ -2765,7 +2765,7 @@ def render_run_wrapper(script_path: Path, *,
         description = "PySCF run"
         # THE THREADS ARE STATED (user, 2026-10-02; `architecture.md`
         # § 5.2) -- the run card's `threads`, or `--cpus-per-task` on the
-        # prep, asked before anything is written (`prep_inputs.
+        # prep, asked before anything is written (`placement.
         # launch_refusal`).
         resolved_omp = int(omp_threads)
 

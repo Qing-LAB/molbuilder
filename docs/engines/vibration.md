@@ -1168,7 +1168,7 @@ vibration:
 | no enabled `relax`, the structure stated relaxed (`already_relaxed`) | nothing, or `--cold` | the structure as given; its relaxation record is shown and checked against this calculation (§ 2.2) | none | none |
 | | `--from` | refused: nothing in this ladder relaxes — the stage measures the structure as given | — | — |
 | no enabled `relax`, the structure not stated relaxed | anything | refused where every hand-over is decided (`continuation.continuation_answer`, so `status` says it before the prep), naming the two ways out — add `relax` before the stage and run it first, or state the structure relaxed: the box says *relax first* and the ladder holds nothing that would, so the description contradicts itself, and it is refused rather than measured at a geometry nobody chose | — | — |
-| the flat layout | nothing (`--from` and `--cold` name attempts, which flat keeps none of) | `relax`'s latest run in the folder, which must have finished | nothing copied: they lie in the folder | the stage's `<basename>.continued-from` |
+| the flat layout | nothing (`--from` and `--cold` name attempts, which flat keeps none of) | `relax`'s latest run in the folder, which must have finished | nothing copied: they lie in the folder | the run's `<basename>-run<N>.continued-from` |
 | a benchmark of the stage | — | `relax`'s newest attempt, as a run's default — every trial's deck at that geometry (§ 5.8) | none: a trial measures from its deck | the ledger's `continues`, and both doors say which run |
 
 A displacement sweep's stages each take the same rows; a stage prepped is not

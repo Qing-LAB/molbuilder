@@ -262,9 +262,10 @@ sequenceDiagram
     end
     E-->>W: exits with its return code
     alt a warm retry
+        W->>W: flat: write run N+1's launch record
         W->>M: SIGUSR1
         M->>M: log MONITOR stopped, ask run_status, then STATUS, UTIL-SUMMARY, UTIL-BASIS - no finish
-        W->>W: exec itself with --continue --run N+1 (flat: that run's launch record first), which starts its own monitor
+        W->>W: exec itself with --continue --run N+1, which starts its own monitor
     else the job ends
         W->>W: write -runN.concluded with the return code, on its main line
         W->>M: SIGTERM from its EXIT trap, then wait up to 10 s
@@ -344,7 +345,7 @@ The wrapper renders one line, the same for every engine
 ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2):
 
 ```bash
-nice -n 19 "$_mb_py" mb_monitor.pyz --label "<label>" --stage "<stage>" --run "$_run_n" \
+nice -n 19 "$_mb_py" mb_monitor.pyz --label "<label>" --stage "<stage>" [--shared] --run "$_run_n" \
     --util --cores "<cores>" [--gpu] --interval "${MB_MONITOR_INTERVAL:-10}" \
     [--notify-on-scf] [--notify-every-hours N] [--notify-channels "a,b"] \
     [--notify-report "f1,f2"] --watch-pid $$ >/dev/null 2>>"$_runwrap_log" &
@@ -391,7 +392,8 @@ Nothing else reaches stderr in a healthy run.
 
 | flag | from | meaning |
 |---|---|---|
-| `--label` · `--stage` · `--run` | the deck's label, its stage token, the run index `launch` gave the wrapper (`--run N`) | which run; every file named through `runfiles` |
+| `--label` · `--stage` · `--run` | the deck's label, its stage token, the run index `launch` gave the wrapper (`--run N`) | which run, all three required; every file named through `runfiles` |
+| `--shared` | the stage's runs share one folder (`RunNames.shared`) | name the files the catalogue marks `attempt="shared"` with the run number (`runfiles`) |
 | `--watch-pid` | `$$`, the wrapper's own PID | stop when it goes; `0` watches none |
 | `--dir` | not passed: the wrapper starts it in the run's directory | the run's directory, for `molbuilder monitor` pointed at a run from elsewhere |
 | `--util` | always | sample into `util.csv` |

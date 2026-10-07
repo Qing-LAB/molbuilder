@@ -810,9 +810,9 @@ decks that are subtly wrong for the machine they run on.
 >
 > **`block_size`** is written verbatim when set, under every target; unset
 > means SIESTA's own automatic and the keyword is not emitted at all
-> ([`tuning.md § 2.11`](?doc=engines/tuning.md) owns the rule, and the GPU-ELPA
-> power-of-two case it leaves open; [`template.md`](?doc=engines/template.md)
-> § 12).
+> ([`tuning.md § 2.11`](?doc=engines/tuning.md) owns the rule; under GPU ELPA
+> SIESTA rounds the diagonaliser's block down to a power of two itself;
+> [`template.md`](?doc=engines/template.md) § 12).
 
 > **Why the fourth row is not the third one wearing a hat** *(added 2026-08-08)*.
 > The third row's fields are **values the wrapper uses**: a rank count becomes an
@@ -1880,8 +1880,8 @@ its own stage directory, on the machine that will run it.
 
 **The deck is rendered where the machine is known, and that is not deferral for
 its own sake.** Some of what goes *inside* a `.fdf` is a fact about the hardware:
-`_auto_block_size(n_atoms, mpi_np, gpu_mode)` derives `BlockSize` from the rank
-count and whether there is a GPU, and `Diag.ELPA.GPU` picks both the numerics
+the BENCH-MARKS window a `BlockSize` may use is drawn from the rank count and
+whether there is a GPU (`siesta/input.py` `_block_size_bounds`), and `Diag.ELPA.GPU` picks both the numerics
 and the conda environment the wrapper activates (§ 5). A deck finished on a
 laptop is either wrong for the cluster or guessing. So the parent carries a
 **template** and `prep` completes it — the same shape `bench prep` already ships,

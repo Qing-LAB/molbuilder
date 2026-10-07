@@ -590,15 +590,15 @@ and **there is one convention for it**:
   **`<label>_<NN>_<name>`**: an **underscore**
   joining the label, the stage's assigned ordinal and its name (the shipped
   ladder's names are `coarse` / `medium` / `tight`).  The stdout additionally
-  carries the wrapper's run counter — `<stem>-run<N>.out` — in EVERY shape
-  (one emitter; the attempt directory disambiguates in the hierarchy and the
-  counter does in flat, but the filename is the same in both — D18d,
-  2026-08-12):
+  carries the run's number, which `launch` hands the run script —
+  `<stem>-run<N>.out` — in EVERY shape (one emitter; the attempt directory
+  disambiguates in the hierarchy and the number does in flat, but the
+  filename is the same in both):
 
   ```
   bundle-or-dir/
-  ├── my-job_01_coarse.fdf   my-job_01_coarse.out
-  ├── my-job_02_medium.fdf   my-job_02_medium.out
+  ├── my-job_01_coarse.fdf   my-job_01_coarse-run0.out
+  ├── my-job_02_medium.fdf   my-job_02_medium-run0.out
   ├── my-job.XV / .DM / .CG          ← unsuffixed, carried between stages
   └── my-job.STRUCT_OUT              ← final geometry, after the last stage
   ```
@@ -610,7 +610,7 @@ and **there is one convention for it**:
   > each other by name (`identity.stage_token` composes the token). **There is
   > no second grammar**: a reader that cuts the token out of a name its own
   > way reads no stage from `<base>-run0.scf-timing.log`,
-  > `<base>.runwrap-<stamp>.log` or `<base>.continued-from`, and a stage
+  > `<base>.runwrap-<stamp>.log` or `<base>-run0.continued-from`, and a stage
   > `coarse_geom` from geomeTRIC's log *(measured 2026-10-04; none reads a
   > name its own way now -- `runstatus._label_of` went with plan W56 3b.3, the
   > PySCF parser's `_resolve_job_token` with 4d)*. *(This
@@ -2039,8 +2039,8 @@ the same thing for SIESTA and PySCF):
 | `WARM-RESUME REQUESTED but no prior state found -- starting cold by necessity` | `--continue` but no warm files — degraded to cold |
 | `COLD (--cold --force; prior state overwritten)` | `--cold` was confirmed with `--force`; the files it named are overwritten as the run proceeds |
 
-(The flag spellings: `--continue` / `-c`; `--force` / `-f` resets the run
-index to `-run0`; `--cold` / `--from-scratch`.)
+(The flag spellings: `--continue` / `-c`; `--force` / `-f` says yes to
+`--cold`'s refusal; `--cold` / `--from-scratch`.)
 
 #### The required-file check, beside the banner
 

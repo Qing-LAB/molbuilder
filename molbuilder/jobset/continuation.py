@@ -559,6 +559,11 @@ def state_remedy(concluded: Optional[str], state: Optional[str],
     as `status` and `launch` say it."""
     again = (f"It is not launched again: {refused}" if refused else
              f"Launch it again --\n{launch_block}")
+    # A RECORD THAT DOES NOT READ is said as its reader says it -- which
+    # names the way out (`jobset migrate`) -- never read as an ending.
+    if state == "unknown":
+        return (f"whose records do not read -- {detail}",
+                "Do what that says first")
     # FAILED, IN THE STATUS DOOR'S WORDS -- why, as `status` says it: a
     # run that exited 0 while its output says the engine stopped is one
     # (`usable`)

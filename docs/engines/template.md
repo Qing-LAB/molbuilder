@@ -1877,7 +1877,7 @@ help       = "How many MPI ranks to run with."
 | the item | what it means | unset → | may it carry a value? |
 |---|---|---|---|
 | `allocation = true` | ranks, threads, memory — **stated for the run, not the template** | the run states its ranks and threads — on its run card or as a prep flag — or prep refuses the run (`architecture.md` § 5.2); a memory cap left unset is no cap -- a PySCF deck writes `max_memory = None`, which PySCF reads as not given, keeping its own setting (`PYSCF_MAX_MEMORY`, else 4000 MB); the vibration deck wrote 4000 for the blank until 2026-10-06. Nothing fills one *(prep filled them from what the machine granted until 2026-10-02)* | **no.** A reader refuses one (§ 2, G1) |
-| `optional = true`, no value | *unset is a legal answer* | the engine's own default, or `prep` proposes | yes |
+| `optional = true`, no value | *unset is a legal answer* | the engine's own default | yes |
 
 **Five items carry it** — `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads` — and
 `select(t, allocation=True)` is the one way to ask which. Nothing hand-lists
@@ -2911,8 +2911,8 @@ description.
   (auto) the keyword is NOT WRITTEN and SIESTA uses its own automatic; set to a
   number, that number is written verbatim.  Guidance if you set one by hand:
   powers of two (16, 32, 64, 128), smaller for few orbitals, larger for
-  thousands, under n_orbitals / ranks.  With ELPA on the GPU the block must be a
-  power of two or ELPA silently falls back to the CPU (tuning.md 2.11)."""
+  thousands, under n_orbitals / ranks.  On GPU, SIESTA rounds the ELPA
+  diagonaliser's block down to a power of two itself (tuning.md 2.11)."""
   ```
   *(The `help` above is abridged from the catalogue's own, which is longer and
   is the text a user actually reads.)*

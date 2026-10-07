@@ -760,8 +760,9 @@ are gone).
 > rendering, so a writer cannot build its deck into a list and wrap that list —
 > its layout has to render when the framework walks it. A body that renders late
 > then cannot hand values to the record blocks by closing over its own locals:
-> SIESTA derives `BlockSize` while writing, and the provenance and bench-marks
-> rows quote it afterwards. **The engine keeps a per-render context** — *what
+> SIESTA derives its parallel facts while writing (`_parallel_facts`; a set
+> `BlockSize` is carried verbatim), and the provenance and bench-marks rows quote
+> them afterwards. **The engine keeps a per-render context** — *what
 > this deck derived* — written as the body works and read by the syntax door and
 > the record blocks alike. An engine that derives nothing keeps an empty one.
 

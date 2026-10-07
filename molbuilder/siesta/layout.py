@@ -144,12 +144,9 @@ def mpi_section(*, block_size, algorithm) -> Section:
         "# k-points (.true.) or over orbitals (.false.).  Auto-",
         "# selected here from the kgrid above: .false. for 1x1x1",
         "# (molecule / vacuum), .true. for multi-k periodic runs.",
-        "# NOTE with ELPA (CPU or GPU): SIESTA's ELPA path solves per",
-        "# k-point over ORBITALS; with ParallelOverK .true. each",
-        "# k-group diagonalises its own k-points and the ELPA GPU",
-        "# offload applies within each group.  For few-k metallic",
-        "# slabs the .false. (orbital) split usually wins on GPU --",
-        "# if you hand-tune one, benchmark it (jobset prep bench).",
+        "# NOTE with ELPA (CPU or GPU): SIESTA sets ParallelOverK",
+        "# .false. itself (Src/diag_option.F90), so an ELPA run",
+        "# always splits over orbitals whatever this line says.",
         "",
     ))
 

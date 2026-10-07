@@ -1980,9 +1980,9 @@ def migrate_cmd(bundle: str) -> None:
     four values, and every job's `point`, `finish`, `resumes` and
     `placement` in each job-set.json -- each key the old file left out
     written with what its absence meant.  A flat calculation's RUN FILES
-    (2026-10-06): each run's trajectory log, launch record and
-    `.continued-from` carry the run's number, and those written before are
-    renamed for their stage's newest run.  Its TEMPLATE (2026-09-28): the
+    (2026-10-06): each run's files carry the run's number -- every one the
+    catalogue numbers where a stage's runs share a folder -- and those
+    written before are renamed for their stage's newest run.  Its TEMPLATE (2026-09-28): the
     electronic state's items (science/chemistry-correctness.md § 2a) --
     PySCF's `spin` and the R/U inside its `method`, SIESTA's
     `spin_treatment` spellings and `spin_total`.

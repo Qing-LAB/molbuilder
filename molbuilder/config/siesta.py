@@ -597,7 +597,7 @@ class SiestaConfig:
         # half of that link (`prep --from <attempt>`) is named on the staging
         # side.  Set here, the two could disagree: 'continue' with no --from
         # copies nothing, and --from onto a 'clean' stage places files whose
-        # deck answers MD.UseSave* `.false.` and leaves them unread
+        # deck answers its restart group `.false.` and leaves them unread
         # (run-identity.md § 4,
         # "present but not honoured").  One surface owns both halves.
         "workflow_group": "staging",
@@ -690,9 +690,8 @@ class SiestaConfig:
     # Don't confuse with block_size (BlockSize for ScaLAPACK
     # within a rank); rank count is the OUTER parallelism.
     # The parallel-execution family (MPI ranks, OMP threads, GPU count,
-    # BlockSize, parallel-over-k, memory cap).  Compute layout
-    # is "how much compute am I willing to spend on this run" — same category as MaxSCFIterations and
-    # MD.Steps.
+    # BlockSize, parallel-over-k, memory cap): how much compute this
+    # run is given.
     mpi_np: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
         # NOT a template item: a machine fact, which floor 2 must never
@@ -727,10 +726,9 @@ class SiestaConfig:
 
     block_size: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        # A PLAIN INT.  The power-of-two rule is real but it is not this
-        # keyword's: the manual states it for ``Diag.BlockSize``, only under
-        # a GPU-enabled ELPA, and breaking it is not an error there either
-        # (ELPA falls back to the CPU).
+        # A PLAIN INT, written verbatim.  Under a GPU-enabled ELPA, SIESTA
+        # itself rounds the diagonaliser's block down to a power of two
+        # (`Src/diag_option.F90`, ``elpa_gpu_block_size``).
         "validate": (lambda value, cfg: _validate_block_size(value)),
         "workflow_group": "budget",
         "label": "ScaLAPACK block size",
@@ -794,10 +792,9 @@ class SiestaConfig:
         # the ``diag_algorithm`` field.  use_gpu only decides where an
         # already-chosen ELPA solve runs:
         #   * ON  -> ``Diag.ELPA.GPU .true.``  (GPU-only, no CPU fallback)
-        #   * OFF -> ``Diag.ELPA.GPU .false.`` (CPU-ELPA -- explicit
-        #            .false. is load-bearing: the source ELPA defaults to
-        #            the GPU codepath, so an omitted flag crashes a CPU run;
-        #            verified Sol job 57852378).
+        #   * OFF -> ``Diag.ELPA.GPU .false.`` (CPU-ELPA, written
+        #            explicitly: a CPU-ELPA run with the flag omitted
+        #            crashed on Sol, job 57852378).
         # Only meaningful with an ELPA algorithm; GPU + ScaLAPACK is
         # rejected at render time.  Keyword Src/diag_option.F90:138-139
         # (``Diag.ELPA.GPU`` / older ``Diag.ELPA.UseGPU``; we emit the

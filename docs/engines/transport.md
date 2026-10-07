@@ -1708,7 +1708,7 @@ flowchart LR
     O["<b>this rung's overrides</b><br/>Class C"]
     T --> R["<b>resolve</b><br/>→ ParameterSet<br/><i>with provenance</i>"]
     O --> R
-    R --> S["<b>spec_for</b><br/>(struct, cfg, stage_token,<br/>calculation='transport')"]
+    R --> S["<b>spec_for</b><br/>(struct, cfg, names=,<br/>calculation='transport')"]
     ST["<b>the structure this<br/>rung describes</b>"] --> S
     S --> D["<b>DeckSpec</b><br/>layout as a table"]
     D --> P["<b>prepare_deck</b><br/>validate · render · write<br/>· read back · check gate"]
@@ -1817,8 +1817,9 @@ by a launch after a stop into a next attempt.)*
   which the device deck writes. That is a *hand-over between rungs*, not a
   restart — the arrow runs seed → device and never back.
 * A later point starts from the `.TSDE` of the closest converged point, copied
-  in as its own `<label>.TSDE`, and **TranSIESTA reads it by presence**: there
-  is no keyword to set, so a deck cannot decline it: finding a `.TSDE` in the
+  in as its own `<label>.TSDE`, and **TranSIESTA reads it under
+  `DM.UseSaveDM`**, the same keyword as the `.DM` and true by default (5.4.2's
+  `m_new_dm.F90` tries the `.TSDE` only when it is set): finding a `.TSDE` in the
   directory, TranSIESTA takes it as the starting density, and *"this is then
   considered a continuation run"*, skipping the periodic start (the manual's
   TranSIESTA *Description*). The binary's own words, measured
@@ -2405,9 +2406,8 @@ cannot be done first.** Each line is falsifiable.
 gained **one** dispatch line for `calculation == "transport"`, and the kind's own
 module (`transport/deck.py`) owns its layout — the exact arrangement PySCF's
 `vibration_deck` has, whose own note states the rule: *"the kind is a RENDER
-ARGUMENT, like the stage token: the seam stays ONE per engine."*  The seam was
-already built for this; `spec_for` has carried `stage_token` and `calculation`
-all along, and the optimization path already passes `calculation=task.calculation`.
+ARGUMENT, like the stage's names: the seam stays ONE per engine."*  The seam was
+already built for this; `spec_for` carries `names` and `calculation`, and the optimization path already passes `calculation=task.calculation`.
 Transport had simply never arrived.
 
 **Nothing was authored for the 21 keywords.**  They are in
@@ -2459,7 +2459,7 @@ fixed.**
 | ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warned SIESTA "will refuse to start" — **FIXED 2026-09-25**: `prep` hands the gate the calculation folder, and the gate reads the files the run will open, the folder first, by the one rule `prep` fetches by (`pseudos.psml_sources`, `job-contracts.md` § 2.5a). The deck still states the pseudopotential provenance itself. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. It asks now, and for transport the consumed set is `sort.PARTITION_LABELS` (plus any `*-electrode` name until 2026-10-02, when the leads became two exact names, § 4) — so a label transport genuinely cannot read is still named, which is § 4's rule |
 | ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` was keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatched for no rung (the engine was deleted 2026-09-17, the class 2026-10-02) — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and the open-shell question is the electronic state's one family, asked by `validate()` for every rung against the junction's resolved spin instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator *(the kz≠1 refusal it stood beside left it 2026-09-30: a component the kind fixes, `kmesh.fixed` — [`siesta.md`](?doc=engines/siesta.md) § 6.1)* |
 | `validate_subject` is unanswered, so the gate judges a frame the deck does not express | Narrowed 2026-09-25: `_emit_geometry` writes the frame `cell.to_engine` places, and the gate's `cell.resolve` places the box at the same `−engine_offset` of the design, so containment is judged in the deck's frame. Still open for a lead that states no cell, whose deck box is transport's own vacuum box and not the one the gate resolves. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
-| ~~the transport arm of `spec_for` silently drops `cell=`~~ | **Closed 2026-10-02 (M5 step 3).** The dispatch forwards only `(struct, config, stage_token)`, so it now refuses by name every render argument it does not read — `cell`, `vibration`, `relaxed_by`, `trial` — instead of dropping it: a transport deck's cell is the composed junction's own (§ 2a.9) |
+| ~~the transport arm of `spec_for` silently drops `cell=`~~ | **Closed 2026-10-02 (M5 step 3).** The dispatch forwards only `(struct, config)` and the stage token (`names.stage`), so it now refuses by name every render argument it does not read — `cell`, `vibration`, `relaxed_by`, `trial` — instead of dropping it: a transport deck's cell is the composed junction's own (§ 2a.9) |
 | ~~the projection narrows one range~~ | **One range since 2026-10-02.** `TransportConfig.energy_shift_ry` allowed `(0.0001, 0.1)` against `pao_energy_shift`'s `(0.001, 0.05)`; the class is gone, and a citation whose deck says `PAO.EnergyShift 0.0005 Ry` draws `pao_energy_shift`'s warn — warn-only, so it cannot refuse a prep |
 
 **The two configs, and the one fill.**  Floor 3 resolves a row by

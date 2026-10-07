@@ -495,8 +495,8 @@ consistently.
 The SIESTA preflight runs these checks automatically before every SIESTA deck is
 rendered (`validate`, the first step of `script_emit.render_deck`) — ERRORs
 block, WARNs print in the issues panel. To screen a directory yourself
-(the CLI entry point is the `pseudo check` subcommand — the `pseudo` group is at
-`cli.py:338`, the `check` command at `:342`):
+(the CLI entry point is the `pseudo check` subcommand — `cli.pseudo_group` and
+its `check` command):
 
 ```bash
 # screen a whole directory (CI gate; exits non-zero on any ERROR-status pseudo:

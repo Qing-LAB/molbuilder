@@ -722,7 +722,7 @@ written as the process starts). One killed before writing anything reads
 it; an engine that merely died still reaches the wrapper's marker and reads
 `failed`; a job that cannot run its finish stops before its engine and says
 so in its marker (`finish cannot load`), which reads `failed`; a flat stage
-reads `queued` the same way, from its own `<basename>.run.json`.
+reads `queued` the same way, from its own `<basename>-run<N>.run.json`.
 
 ```mermaid
 stateDiagram-v2

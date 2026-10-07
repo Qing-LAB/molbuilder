@@ -70,6 +70,18 @@ deck = ['"frozen_atoms":[0,5]', '"left_lead":[0,1]', '"molecule":[2,3]', '"right
 name = "a SIESTA run script records its effective parameters in the fence either engine's reader reads"
 run_sh = ["# === molbuilder effective-parameters BEGIN ===", "# === molbuilder effective-parameters END ==="]
 
+# BlockSize has two states: a number set or benchmarked, written verbatim,
+# or unset -- no line, and SIESTA uses its own automatic (`siesta.md` § 1.1,
+# `tuning.md` § 2.11).
+[[case]]
+name = "an unset BlockSize writes no BlockSize line"
+deck_lacks = ["\nBlockSize "]
+
+[[case]]
+name = "...and a set one is written as set, never snapped to a power of two"
+template = { block_size = 24 }
+deck = ["\nBlockSize 24\n"]
+
 # ===================================================================== #
 #  PySCF                                                                 #
 # ===================================================================== #
@@ -114,7 +126,7 @@ deck = ["'01_coarse': {", "'max_force_tol_eV_per_A': 0.0102844", "'rms_force_tol
 [[case]]
 name = "every runtime fact is written before the progress log's writer is built"
 engine = "pyscf"
-deck_order = ["_RUNTIME_INFO[", "_mb_MolwatchEmitter("]
+deck_order = ["_RUNTIME_INFO[", "_RUNTIME_INFO.update(", "_mb_MolwatchEmitter("]
 
 # The water permittivity is the Minnesota solvent set's (Gaussian's and
 # PySCF's own), 78.3553.
@@ -162,6 +174,11 @@ deck = ["mf.make_rdm1(_internal, mf.mo_occ)", "mf.kernel(mf.make_rdm1(", "if e <
 deck_order = ["_internal = _mb_stability()[0]", "mol_eq, _GEOM_CONVERGED = _mb_relax("]
 
 [[case]]
+name = "...and a closed shell's is not checked"
+engine = "pyscf"
+deck_lacks = ["_mb_stability"]
+
+[[case]]
 name = "...and an open-shell single point runs its SCF once"
 engine = "pyscf"
 template = { method = "HF", spin_treatment = "unrestricted", unpaired_electrons = 2, optimize = false }
@@ -184,7 +201,13 @@ deck_lacks = ["mf.disp ="]
 
 # A core potential is applied only where both halves are stated -- which
 # potential, on which atoms; either half empty means none, never one picked
-# (`docs/science/overview.md`, gap 8).
+# (`engines/pyscf.md` § 3).
+[[case]]
+name = "a core potential named for named atoms reaches the molecule"
+engine = "pyscf"
+template = { ecp = "lanl2dz", ecp_atoms = ["H"] }
+deck = ["ecp = {'H': 'lanl2dz'},"]
+
 [[case]]
 name = "no core potential stated writes none"
 engine = "pyscf"

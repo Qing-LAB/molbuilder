@@ -650,7 +650,7 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
     from ..paths import attempts_in
     from .materialize import (bench_stage_of, job_dir_names, prepare_attempt,
                               run_names, shape_of)
-    from ..runrecord import launch_record_path, next_run, write_continued_from
+    from ..runrecord import launch_record_path, next_run
     sh = shape_of(jobset, base)
     # THE NAMES OF ITS STAGE'S FILES, and the run's number in the folder it
     # runs in (`runrecord.next_run`): every member is planned with both, so
@@ -709,12 +709,10 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
         # where its files are, and its next run's record says so -- as the
         # hierarchy's next attempt names its own; one that does not continue
         # from a run of its own is refused (the one door,
-        # `continuation.relaunch`).  Its `.continued-from` is its own,
-        # named for the run that continues (plan W57 decision 2).
+        # `continuation.relaunch`).  Its `.continued-from` is written with
+        # its launch record, once the run is sent (`_record_launch`): a
+        # refused send leaves no file of a run that never started.
         cont = _relaunched(base, job)
-        if cont.run is not None:
-            write_continued_from(container, cont.run, names=names, run=run,
-                                 plan=writes)
         return _member(job, container, container, False, container,
                        run=run, continuation=cont)
     last = attempt_dir(container, ns[-1])
@@ -1195,7 +1193,8 @@ def _go(s: Submission, record) -> List[JobResult]:
         # START records nothing -- Popen raising means no process exists.
         for m in s.members:
             _record_launch(m.run_dir, names=m.names, run=m.run,
-                           mode="direct", command=s.command)
+                           mode="direct", command=s.command,
+                           continued_from=_flat_source(m))
         record("launched", submission=s.name, command=s.command,
                members=names)
         rc = proc.wait()
@@ -1220,7 +1219,8 @@ def _go(s: Submission, record) -> List[JobResult]:
         # reading *never launched*.
         _record_launch(m.run_dir, names=m.names, run=m.run, mode="submit",
                        command=s.command, job_id=jid,
-                       placement=s.placement, sent=s.sent)
+                       placement=s.placement, sent=s.sent,
+                       continued_from=_flat_source(m))
     record("launched", submission=s.name, command=s.command, job_id=jid,
            domain=s.domain, members=names)
     return ([JobResult(s.name, s.command, "submitted", job_id=jid,
@@ -2073,21 +2073,35 @@ def _placed_on(placement, sent=None) -> Optional[dict]:
                if getattr(sent, f, None) not in (None, "")}}
 
 
+def _flat_source(m: "_Member") -> Optional[str]:
+    """The run a flat stage launched again continues from -- its own latest
+    run -- or ``None``: in the hierarchy prep or the opener wrote the
+    attempt's marker before the send."""
+    if m.has_attempt or m.continuation is None:
+        return None
+    return m.continuation.run
+
+
 def _record_launch(where: Path, *, names: RunNames, run: int, mode: str,
                    command: List[str], job_id: Optional[str] = None,
-                   placement=None, sent=None) -> None:
+                   placement=None, sent=None,
+                   continued_from: Optional[str] = None) -> None:
     """Write run ``run``'s launch record in the folder it runs in, named by
     its stage's names (`runrecord.write_launch`) -- carrying its
     provenance.
 
-    ``continued_from`` is read back from what ``prep`` -- or a flat
-    re-launch -- left for this run (`runrecord.read_continued_from`)
-    rather than passed down: prep is what knows, and re-deriving it here
-    would be a second answer to one question.  ``placement`` is passed for
+    What the run continued from is read back from its marker
+    (`runrecord.read_continued_from`), which ``prep`` or the opener wrote;
+    a flat re-launch's source is passed as ``continued_from`` and written
+    as that marker first, so the record reads it the same way.
+    ``placement`` is passed for
     the opposite reason: submission is what knows where the job went, and
     nothing downstream should have to work it out from a command line.
     """
-    from ..runrecord import read_continued_from, write_launch
+    from ..runrecord import (read_continued_from, write_continued_from,
+                             write_launch)
+    if continued_from is not None:
+        write_continued_from(where, continued_from, names=names, run=run)
     src = read_continued_from(where, names, run)
     write_launch(where, names=names, run=run, mode=mode, command=command,
                  job_id=job_id, continued_from=src,

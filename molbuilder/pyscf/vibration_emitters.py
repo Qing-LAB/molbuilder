@@ -1495,8 +1495,10 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
                "; the free-atom Hessian was evaluated without it, on a "
                "plain mean field at the same geometry, because PySCF's "
                "density-fitted Hessian takes no atom list")
-            + f"; the auxiliary basis was selected automatically by "
-            f"PySCF for the production {cfg.basis} basis."
+            + (f"; the auxiliary basis was {cfg.auxbasis}."
+               if getattr(cfg, "auxbasis", None) else
+               f"; the auxiliary basis was selected automatically by "
+               f"PySCF for the production {cfg.basis} basis.")
         )
         if cfg.compute_raman:
             df_note += (

@@ -3,8 +3,8 @@
 template's electronic-state items (2026-09-28).
 
 **The run files** (`_migrate_run_numbers`): in the flat shape each run's
-trajectory log, launch record and `.continued-from` -- every row the
-catalogue numbers where a stage's runs share a folder -- carry the run's
+files -- every row the catalogue numbers where a stage's runs share a
+folder (`runfiles.shared_numbered_roles`) -- carry the run's
 number since 2026-10-06 (plan W57 decisions 2 and 6), and the launch
 record's door refuses a stage whose still do not, naming this command.  Each
 is renamed for its stage's newest run, and said.

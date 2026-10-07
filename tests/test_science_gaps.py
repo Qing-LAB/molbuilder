@@ -70,7 +70,7 @@ def test_gap_7_installation_documents_siesta_version():
 
 
 # --------------------------------------------------------------------- #
-#  Gap 8: no ECP support for non-def2 bases                             #
+#  Gap 8: a def2 basis on a heavy atom names its core potential         #
 # --------------------------------------------------------------------- #
 
 
@@ -115,7 +115,7 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
         assert r.exit_code == 0, r.output
         return r.output, next(bundle.rglob("A*.py")).read_text()
 
-    out, deck = prep("y\n\n")                 # the save prep offers, taken
+    out, deck = prep("y\n\n")
     assert "[config.ecp]" in out and "ecp = 'def2-SVP'" in out, out
     assert "ecp        =" not in deck
     # DECLARED AS IT SAYS, and prepped anew by going back (`job-system.md`

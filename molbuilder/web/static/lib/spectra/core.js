@@ -2,7 +2,7 @@
  *
  * THE shared spectra-inspector implementation.  Two consumers:
  *
- *   * /spectra  -- the spectrum-calculation page (via
+ *   * /spectrum-calculation -- the spectrum-calculation page (via
  *                  spectra/viewer.js, which contains only the
  *                  DOMContentLoaded bootstrap that calls into this
  *                  module).
@@ -81,8 +81,6 @@
         sendBtn:        null,
         sendStatus:     null,
         preflightPanel: null,
-        // loadByPath reads the file the Results tab's dropdown picked
-        // through /api/spectra/load.
         resultsSummary: null,
         resultsMeta:    null,
         methodsBlock:   null,
@@ -1975,9 +1973,9 @@
         addCell(ir, "ir-col");
         addCell(m.has_imag ? "✓" : "");
         addCell(m.electronic_structure ? "✓" : "", "es-col");
-        /* ALWAYS FOUR CELLS, because the header always has four
-         * (`_spectra_inspector.html` emits the four `es-col` <th>
-         * unconditionally).  An empty cell says "no value"; a missing
+        /* ALWAYS THE FOUR ES VALUE CELLS, because the header always has
+         * their four `es-col` <th> (`_spectra_inspector.html`, beside
+         * the ES? column).  An empty cell says "no value"; a missing
          * cell shifts the whole row.  Where the ROUTE has no probe, the
          * table's `route-no-es` class hides the header and these cells
          * together (web/spectra.md § 9b.3), so the two still line up. */

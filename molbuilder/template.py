@@ -631,9 +631,9 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     # A surface must know the question exists in order to ask it, and the
     # wrapper writer must know to look.
     #
-    # The protection: the value never reaches a config, because ``template_fields`` strips these names
-    # on the rebuild path.  Declaring the question is portable; answering it
-    # on the wrong machine is not.
+    # The protection: a value on one is refused, on read and on rebuild
+    # (``read_template``, ``config_from_template``).  Declaring the question
+    # is portable; answering it on the wrong machine is not.
     _alloc = bool(f.metadata.get("allocation"))
     _cited = tuple(f.metadata.get("citation") or ())
     _role = tuple(f.metadata.get("role") or ())

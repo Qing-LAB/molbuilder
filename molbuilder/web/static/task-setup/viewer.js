@@ -533,7 +533,7 @@ const LANE_ASKS = [
       placeholder: "public" },
 ];
 
-/** The parameters this card offers: every setting the bench varies, plus
+/** The parameters this card offers: every setting the bench declares, plus
  *  whatever the condition already states, plus any the person added here.
  *
  *  OFFERED, NEVER READ (user, 2026-09-02): the bench's own points do not
@@ -1404,8 +1404,8 @@ function readsHere(col, name) {
 
 /** Publish a vocabulary's items into `_meta` -- the ONE place a cell's
  *  widget question (`legalValues`) gets its answer from.  A function, not
- *  a loop at each call site, because the two loaders each have a cached
- *  path and a fetching one. */
+ *  a loop at each call site, because the column loader has a cached path
+ *  and a fetching one. */
 function _fillMeta(items) {
     for (const it of (items || [])) {
         if (it && it.name) _meta[it.name] = it;
@@ -2965,7 +2965,7 @@ function setQueue(name) {
  *  fits -- while changing it is still free. */
 function paintAskNotes() {
     const d = _queuesOf(_machine).find((x) => x.name === _fs.queue);
-    // With no queue, the MACHINE's own RAM is the memory ceiling.
+    // A machine that states no queues: its own RAM is the memory ceiling.
     const _me = _machines.find((x) => x.name === _machine);
     const _nodeMem = (!d && _me && !(_me.domains || []).length)
         ? _me.mem_total_gb : null;
@@ -3088,20 +3088,6 @@ function patchDoc(change) {
 }
 
 
-/** Write one card's block INTO the open `task.json`, which is what Save sends.
- *
- * ONE FUNCTION FOR BOTH CARDS, the queue card and the notify card: it is
- * `task.json`'s own rule for an optional block.  What differs is the KEY and
- * where the values come from, which is what the two parameters are.
- *
- * `read` returns the block as the controls now state it.  An EMPTY object
- * means the card says nothing, and a block that says nothing is DELETED
- * rather than written empty -- a description that asks for nothing
- * round-trips byte-identical (`task.Notify`, `task.Allocation`).
- *
- * Returns whether anything actually changed, so `patchDoc` does not move
- * the page's cursor for a keystroke that wrote the same text back.
- */
 /** Run a write of the description behind the page-wide fence.
  *
  * `ui-contract.md` § 10: **one cover for every heavy click**, and while it is
@@ -3142,6 +3128,20 @@ async function underFence(reason, write) {
 }
 
 
+/** Write one card's block INTO the open `task.json`, which is what Save sends.
+ *
+ * ONE FUNCTION FOR BOTH CARDS, the queue card and the notify card: it is
+ * `task.json`'s own rule for an optional block.  What differs is the KEY and
+ * where the values come from, which is what the two parameters are.
+ *
+ * `read` returns the block as the controls now state it.  An EMPTY object
+ * means the card says nothing, and a block that says nothing is DELETED
+ * rather than written empty -- a description that asks for nothing
+ * round-trips byte-identical (`task.Notify`, `task.Allocation`).
+ *
+ * Returns whether anything actually changed, so `patchDoc` does not move
+ * the page's cursor for a keystroke that wrote the same text back.
+ */
 function applyBlockToDoc(key, read) {
     return underFence("Writing " + key + "\u2026", async () => patchDoc((task) => {
         const want = read();

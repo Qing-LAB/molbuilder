@@ -241,7 +241,7 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 5 | **Frozen atoms** | `%block Geometry.Constraints` (1-based indices) | only if `struct.frozen_atoms`; the 3-stage boundary carrier (see [`model/structure-annotations.md`](?doc=model/structure-annotations.md)) |
 | 6 | Basis & grid | `MeshCutoff`, `PAO.BasisSize`, `PAO.EnergyShift` | |
 | 7 | XC (+ dispersion template) | `XC.functional`, `XC.authors` | commented DFT-D template for non-vdW XC |
-| 8 | SCF | `SolutionMethod`, `SCF.Mixer.Weight`, `SCF.Mixer.History`, `DM.Tolerance`, … | Pulay = the DM-mixing scheme using past iterations. An optimization and a vibration offer `diagon` and `OMM` (`offered`, [`template.md`](?doc=engines/template.md) § 6.3a): `transiesta` is a transport device's, fixed by its rung `DM.Tolerance` and `DM.EnergyTolerance` are written with two significant figures (`1.0e-05`), PySCF's tolerances the same ([`pyscf.md`](?doc=engines/pyscf.md) § 7.1) |
+| 8 | SCF | `SolutionMethod`, `SCF.Mixer.Weight`, `SCF.Mixer.History`, `DM.Tolerance`, … | Pulay = the DM-mixing scheme using past iterations. An optimization and a vibration offer `diagon` and `OMM` (`offered`, [`template.md`](?doc=engines/template.md) § 6.3a): `transiesta` is a transport device's, fixed by its rung. `DM.Tolerance` and `DM.EnergyTolerance` are written with two significant figures (`1.0e-05`), PySCF's tolerances the same ([`pyscf.md`](?doc=engines/pyscf.md) § 7.1) |
 | 9 | Spin | `Spin <option>` (v5 single-line) + `Spin.Fix`/`Spin.Total` for a pinned count | `Spin` always, `non-polarized` included — § 5 |
 | 10 | NetCharge | `NetCharge ±N` | always, at 0 too, beside where it came from; never on a transport rung (its junction is neutral by rule) — § 4 |
 | 11 | k-grid | `%block kgrid_Monkhorst_Pack` — the rung's mesh, counts and offset, from `kmesh.write` | § 6.1 |
@@ -526,9 +526,10 @@ Two **orthogonal** decisions (contract rewritten 2026-06-29):
   Diag.ELPA.GPU    .false.
   ```
 
-**The explicit `.false.` is load-bearing.** The source-built ELPA defaults to the
-GPU codepath, so an *omitted* flag makes a CPU-ELPA job initialise CUDA and crash
-(`cudaGetLastError: unknown error`; Sol job 57852378). `Diag.ELPA.GPU` alone (no
+**The `.false.` is written explicitly**, never left to the engine's default
+(SIESTA reads `Diag.ELPA.GPU` with a `.false.` default, `diag_option.F90`). A
+CPU-ELPA job on Sol with the flag omitted crashed with `cudaGetLastError: unknown
+error` (Sol job 57852378). `Diag.ELPA.GPU` alone (no
 ELPA `Diag.Algorithm`) is silently ignored — both keywords are required.
 
 ### 7.1 GPU is just a different setting — best performance & what to look for
@@ -561,8 +562,8 @@ quietly run every SCF step on the CPU while `nvidia-smi` still shows a clean, bu
 GPU. The canary is `molbuilder envs validate molbuilder-siesta-gpu`'s
 `elpa gpu codepath` probe — it runs a small ELPA solve and greps stderr for ELPA's
 own "GPU requested but kernel is non-GPU" warning; no other probe catches this.
-Also: the `cudaGetLastError: unknown error` crash on a CPU-ELPA job means the
-load-bearing `Diag.ELPA.GPU .false.` above was dropped; and old ELPA releases had a
+Also: the `cudaGetLastError: unknown error` crash on a CPU-ELPA job is the Sol
+failure § 7 cites, with `Diag.ELPA.GPU` omitted; and old ELPA releases had a
 multi-rank GPU-finalize deadlock (jobs hang after SCF iter 1), so if you rebuild the
 env, keep ELPA recent.
 
@@ -656,14 +657,14 @@ verb names its stage, on a one-rung ladder exactly as on three
   landed.)*
 - **The shipped ladder.** `siesta/stages.py::default_siesta_stages(strategy)`
   builds it: one stage per tier of `SIESTA_STAGE_PRESETS`, that tier's four
-  values as its `overrides`, enabled per `SIESTA_STAGE_STRATEGY_PRESETS` —
+  values as its `overrides`, enabled per `STAGE_STRATEGY_PRESETS` —
   `publishable` (1+2), `loose-only` (1), `vib-quality` (1+2+3). CG warm-up
   0.05 → Broyden publishable 0.04 → Broyden crystal-tight 0.01 eV/Å; the
   authoritative per-tier value table is [`tuning.md`](?doc=engines/tuning.md)
   § 4, and the presets are the one place those numbers enter, so no second
-  path can drift from them. The preset names + masks
-  also live in the PySCF config and `form-schema.js`, kept in lock-step by
-  `tests/test_siesta_stage_strategy_presets_drift.py`.
+  path can drift from them. The strategy names + masks
+  are one table both engines read, `molbuilder/config/stages.py`'s
+  `STAGE_STRATEGY_PRESETS`.
 - **Non-convergence policy does not exist for SIESTA**, and that is a decision
   rather than an omission. Its entire effect was the scheduler edge between one
   attempt and the next; a SIESTA ladder emits no edges
@@ -778,7 +779,7 @@ The emitter must **not**: (1) emit an `MD.TypeOfRun` block when
 coordinates block); (3) emit invalid SIESTA syntax for any standard config — every
 variant tested must render end-to-end without raising.
 
-**Tests:** `test_smiles_and_siesta.py` (the render round-trip),
+**Tests:** the SIESTA rows of `tests/data/the_deck.toml` (`tests/test_the_deck.py`),
 `test_review_fixes.py` (the thin-vacuum **warn** — D3, since `cell_padding`
 was removed 2026-07), `test_siesta_stages.py` (the ladder and its strategy
 presets), `test_siesta_use_gpu.py` (§ 7's
