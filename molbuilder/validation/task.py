@@ -139,6 +139,7 @@ def preflight(task, config_cls=None, *,
                  for i in (*unread, *stepless)}))
     out.extend(stepless)
     out.extend(_bias_points_in_range(task))
+    out.extend(_window_reaches_the_bias(task, ladder))
 
     # -- 5. the sequence's own findings (§ 6.4 / § 6.6a) -- warnings -------
     out.extend(check_ladder_does_not_loosen(ladder, engine=_engine,
@@ -539,6 +540,35 @@ def _bias_points_in_range(task) -> List[Issue]:
         f"the recommended range [{lo:g}, {hi:g}] V -- a recommendation, not "
         f"a limit (engines/template.md 5.3)",
         where="task.bias")] if out else []
+
+
+def _window_reaches_the_bias(task, ladder) -> List[Issue]:
+    """The transmission window reaches the largest listed voltage's bias
+    window, ±(|V|/2 + 5 kT) -- the one rule `record.window_short_of` states
+    (`engines/transport.md` § 2a.10, P2), judged here on the description as
+    the transmission rung resolves it, so a list that the window cannot
+    serve is refused where it is written: under the low-bias approximation
+    the record integrates every listed voltage over the one 0 V slice, and
+    a sweep's point writes its own voltage into that window.  Nothing to
+    say without the resolved ladder (no template in hand)."""
+    bias = tuple(getattr(task, "bias", ()) or ())
+    if not bias or not ladder:
+        return []
+    cfg = next((c for name, c in ladder if name == "transmission"), None)
+    if cfg is None:
+        return []
+    emin = getattr(cfg, "transmission_emin_ev", None)
+    emax = getattr(cfg, "transmission_emax_ev", None)
+    temp = getattr(cfg, "electronic_temperature", None)
+    if emin is None or emax is None or temp is None:
+        return []
+    from ..constants import BOLTZMANN_EV_K
+    from ..transport.record import window_short_of
+    largest = max(bias, key=lambda v: abs(float(v)))
+    short = window_short_of(emin, emax, largest, BOLTZMANN_EV_K * float(temp))
+    return [Issue("error", short + " (engines/transport.md 2a.10)",
+                  where="config.transmission_emax_ev",
+                  stage="transmission")] if short else []
 
 
 def _kind_of(task) -> str:

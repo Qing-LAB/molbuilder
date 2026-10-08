@@ -200,64 +200,6 @@ def check_junction_boundary(struct: Structure, cell=None, *,
     return []
 
 
-def check_unconsumed_region_labels(struct: Structure, *, engine: str,
-                                   calculation: str = "") -> List[Issue]:
-    """Pattern B (validation.md § 5): every
-    region label this calculation does NOT consume is named explicitly.
-
-    The /modify selection panel writes ``regions`` for transport workflows
-    (L-electrode, bridge, ...); an optimization deck reads none of them,
-    and silence would let a user believe their labels shaped the run.  The
-    reserved frozen label is EXCLUDED: both engines consume it (SIESTA's
-    ``Geometry.Constraints``, PySCF's geomeTRIC ``$freeze``), so warning
-    about it would be a false alarm.  Living HERE puts it on every deck
-    route through the one settings gate.
-
-    **WHAT IS CONSUMED DEPENDS ON THE KIND**: for transport the
-    ``L-electrode``/``bridge``/``R-electrode`` labels are the partition the
-    entire five-rung ladder is built from (`engines/transport.md` § 4).
-
-    For transport the consumed set is `sort.PARTITION_LABELS` -- asked of
-    the module that owns the partition, never re-listed here.  Anything
-    else is genuinely unread and is still named, which is § 4's own rule:
-    *"a label this engine does not consume is WARNED about, never dropped
-    in silence."*
-    """
-    from ..structure import FROZEN_LABEL
-    regions = getattr(struct, "regions", None) or {}
-    consumed = {FROZEN_LABEL}
-    if calculation == "transport":
-        from ..transport.sort import PARTITION_LABELS
-        consumed |= set(PARTITION_LABELS)
-        inert = sorted(name for name, idxs in regions.items()
-                       if idxs and name not in consumed)
-        what = "transport ladder"
-        # AND THE ADVICE IS THE KIND'S TOO.  Telling a transport calculation
-        # its labels "stay in the sidecar for /transport" is nonsense -- this
-        # IS /transport -- and offering `frozen_atoms` is the wrong remedy
-        # for a stray label on a junction.
-        advice = ("The partition it reads is "
-                  "L-electrode / R-electrode / bridge / buffer; anything "
-                  "else rides along untouched. "
-                  "Rename it to one of those if it was meant to be part of "
-                  "the junction.")
-    else:
-        inert = sorted(name for name, idxs in regions.items()
-                       if idxs and name not in consumed)
-        what = f"{engine} run"
-        advice = ("They stay in the sidecar for /transport but do not shape "
-                  "this calculation. If you meant those atoms to be held "
-                  "fixed, assign them to \"frozen_atoms\" in /modify.")
-    if not inert:
-        return []
-    return [Issue(
-        "warn",
-        (f"this structure carries region label(s) {inert}, which the "
-         f"{what} does NOT consume. {advice}"),
-        "structure.regions",
-    )]
-
-
 def _ev(x) -> str:
     """A measured force in eV/Å, readable at both ends of the range: four
     decimals down to half a milli-eV/Å, an exponent below that.  A

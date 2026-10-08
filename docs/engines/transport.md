@@ -1273,6 +1273,20 @@ fixed by the rung (`role`), never a value the template or a stage override
 states. A template value until then answered a single-bias calculation, a
 second home beside the list (§ 2a.14).
 
+**The transmission window reaches the bias window** *(P2, 2026-10-08)*. A
+current is TBtrans's integral of T(E) over the window the transmission deck
+writes (`transmission_emin_ev … emax_ev`), weighted by both leads' Fermi
+functions at μ = ±V/2 — and TBtrans says nothing when the window cuts that
+integral short. So the window must reach **±(|V|/2 + 5 kT)** at the deck's
+electronic temperature. One rule, `record.window_short_of`, said in three
+places: the transmission deck's settings gate refuses a point whose own
+voltage the window does not reach; the description's preflight refuses a
+bias list whose largest voltage the resolved transmission rung's window does
+not reach (under the low-bias approximation every listed voltage is
+integrated over the one 0 V slice); and the record leaves a voltage it cannot
+integrate blank, naming the reach (§ 2a.12). The fix is always the same:
+widen the window.
+
 ### 2a.11 The directory structure — one place per run, and the axes visible in it
 
 *The structure a person opens after a calculation finishes. If the folder does
@@ -2860,13 +2874,11 @@ device. The convention (the *vocabulary* is owned by
   `.TSHS` no rung writes — plan D4. Before that day this bullet said a
   `tip-electrode` worked "without code changes".)*
 
-**A label this engine does not consume is WARNED about, never dropped in
-silence.** TranSIESTA reads the canonical 2-terminal set plus `buffer`; a
-structure carrying any other region label still runs, and the preflight says
-which label played no part — so a person who labelled something on purpose
-finds out here rather than from a result that quietly ignored it. (The warning
-is raised before the missing-region check returns, so it surfaces even on an
-incomplete region set.)
+**Any other label is the user's.** TranSIESTA reads the canonical 2-terminal
+set plus `buffer`; a structure carrying any other region label still runs,
+that label rides along untouched, and nothing refuses it, warns about it or
+reads a meaning into its name ([`science/validation.md`](?doc=science/validation.md)
+§ 5; user, 2026-10-02).
 
 **Emitter behavior** (`transiesta.py::emit_electrode_declarations`,
 `_find_electrode_regions`): the two leads are found by name, **sorted by
@@ -2998,6 +3010,7 @@ run.
 | I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ must map atom-for-atom onto the device | **construction** — the extraction clones them |
 | I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `compose.py::_extract_and_gate_electrodes` — **refuses**, from orbital ranges READ out of the citation's `.ion` files |
 | I12 | no vacuum where the crystal continues — the room at the transport boundary is one layer spacing of the lead; a transverse axis declared periodic is reached across by the lead | every rung | a gap along transport = a severed lead, not a junction; vacuum on a periodic axis contradicts the declaration | **`cell.transport_vacuum`**, **`cell.transverse_vacuum`** — `_validate_transport_kind`, **error**, measured from the lead (§ 6.1c; re-homed 2026-09-17, measured from the lead since M5 step 2) |
+| P2 | the transmission window reaches the bias window — `transmission_emin_ev … emax_ev` covers ±(\|V\|/2 + 5 kT), both leads' Fermi tails at μ = ±V/2 | the transmission; the description | TBtrans integrates the current over its window and says nothing when the window cuts it short | **`config.transmission_emax_ev`** — one rule, `record.window_short_of`: the transmission deck's gate (**error**, its own V), the description's preflight (**error**, the largest listed V, the resolved transmission rung's window and temperature), the record (a voltage it does not integrate is blank with the reach named) (§ 2a.10; 2026-10-08) |
 | I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | **construction** — `TS.HS.Save` is a `role` item on the electrode rung |
 | I14 | The structure states its cell | citation | transport derives no box — the lateral pair is I6's, the period is the bulk repeat (§ 7), and a box from atom extents is neither (§ 2a.9) | `compose.py::_unusable_cell` — **refuses** at the citation door; `_validate_transport_kind`, **error** on every prep *(ruled 2026-09-23; the kind-gate row is owed in code)* |
 

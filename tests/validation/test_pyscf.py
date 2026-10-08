@@ -107,27 +107,3 @@ def test_basis_adequacy_fires_for_closed_shell_metal():
                and "Zn" in i.message for i in issues), (
         "STO-3G on a closed-shell Zn complex should warn on d-orbital "
         "basis inadequacy")
-
-
-def test_unconsumed_region_labels_are_named_on_every_deck_route(water_struct):
-    """Pattern B (validation.md § 5, C-shared 2026-08-21) runs inside the
-    engine validators, so the CLI's prep gate says it too.
-    The reserved frozen label is excluded -- the engines consume it."""
-    from molbuilder.structure import FROZEN_LABEL
-    s = water_struct
-    s.regions["L-electrode"] = [0]
-    s.regions[FROZEN_LABEL] = [1]
-    issues = validate(s, PySCFConfig())
-    named = [i for i in issues if i.where == "structure.regions"]
-    assert len(named) == 1
-    # The label LIST is what must exclude the consumed frozen label --
-    # the trailing advice sentence always spells "frozen_atoms".
-    listed = named[0].message.split("]", 1)[0]
-    assert "L-electrode" in listed
-    assert "frozen_atoms" not in listed, (
-        "the consumed frozen label is listed as unconsumed")
-    # SIESTA's validator runs the same body (same structure object on
-    # purpose -- the labels set above are the fixture).
-    from molbuilder.siesta import SiestaConfig
-    issues2 = validate(s, SiestaConfig(system_label="JOB"))
-    assert any(i.where == "structure.regions" for i in issues2)

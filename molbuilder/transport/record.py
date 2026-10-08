@@ -241,6 +241,27 @@ def deck_temperature_k(run_dir) -> float:
     return 300.0
 
 
+def window_short_of(emin_ev: float, emax_ev: float, volts: float,
+                    kt_ev: float) -> Optional[str]:
+    """ONE RULE for the transmission window against a bias
+    (`engines/transport.md` § 2a.10, P2): the window must reach
+    ±(|V|/2 + :data:`WINDOW_TAILS_KT`·kT) -- both leads' Fermi tails at
+    μ = ±V/2 -- or the current integrated over it is cut short without a
+    word from TBtrans.  ``None`` when it reaches; else the sentence naming
+    the reach and the fix, said alike by the record (a voltage it does not
+    integrate), the transmission deck's gate and the description's
+    preflight."""
+    half = abs(float(volts)) / 2.0
+    reach = half + WINDOW_TAILS_KT * float(kt_ev)
+    lo, hi = float(emin_ev), float(emax_ev)
+    if reach > hi or -reach < lo:
+        return (f"the transmission window [{lo:g}, {hi:g}] eV does not reach "
+                f"±{reach:.3f} eV for {float(volts):g} V (V/2 + "
+                f"{WINDOW_TAILS_KT:g} kT at kT = {float(kt_ev):.4f} eV); "
+                f"widen it -- transmission_emin_ev / transmission_emax_ev")
+    return None
+
+
 def linear_response_iv(energies: List[float], trans: List[float],
                        voltages: List[float], kt_ev: float) -> Dict:
     """**I(V) = (2e/h) ∫ T(E, 0) [f(E − μ_L) − f(E − μ_R)] dE**, μ = ±eV/2 --
@@ -255,17 +276,14 @@ def linear_response_iv(energies: List[float], trans: List[float],
     e = np.asarray(energies, dtype=float)
     t = np.asarray(trans, dtype=float)
     lo, hi = float(e.min()), float(e.max())
-    reach = WINDOW_TAILS_KT * kt_ev
     currents: List[Optional[float]] = []
     notes: Dict[str, str] = {}
     for v in voltages:
         half = abs(float(v)) / 2.0
-        if half + reach > hi or -half - reach < lo:
+        short = window_short_of(lo, hi, v, kt_ev)
+        if short:
             currents.append(None)
-            notes[f"{v:g}"] = (
-                f"the transmission window [{lo:g}, {hi:g}] eV does not "
-                f"reach ±{half + reach:.3f} eV (V/2 + {WINDOW_TAILS_KT:g} kT "
-                f"at kT = {kt_ev:.4f} eV); widen the window")
+            notes[f"{v:g}"] = short
             continue
         with np.errstate(over="ignore"):
             f_l = 1.0 / (1.0 + np.exp((e - half) / kt_ev))

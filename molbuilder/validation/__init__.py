@@ -121,7 +121,8 @@ def validate(struct: Structure, cfg, *,
              prior: "Optional[object]" = None,
              calculation: str = "optimization",
              design: "Optional[Structure]" = None,
-             k_meshes=None) -> List[Issue]:
+             k_meshes=None,
+             rung: Optional[str] = None) -> List[Issue]:
     """Run every applicable validation check and return the findings.
 
     Parameters
@@ -270,6 +271,11 @@ def validate(struct: Structure, cfg, *,
     # the one this configuration writes, through the same door.
     if k_meshes is not None:
         engine_kw["k_meshes"] = tuple(k_meshes)
+    # THE RUNG this deck is, when the rung's spec says (`transport/deck.py`'s
+    # `validate_subject`, as the k-meshes arrive): a kind's rule that holds
+    # on one rung alone -- the transmission's window -- is keyed on it.
+    if rung is not None:
+        engine_kw["rung"] = str(rung)
     # ...AND WHAT THE ONE PER-VALUE DOOR REFUSED, so a check on a value
     # built from a refused one stands aside: a value refused draws that
     # refusal alone (`engines/template.md` § 5.3).
@@ -370,7 +376,7 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
 
 
 def _validate_transport_kind(struct: Structure, cfg, cell, *,
-                             prior=None, **_) -> List[Issue]:
+                             prior=None, rung=None, **_) -> List[Issue]:
     """The transport KIND's science — keyed on ``task.calculation``, so it
     fires whatever config class the deck renders from.  A rule that only
     runs for one of two config classes is not a gate; this one runs for the
@@ -450,6 +456,24 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
                     f"{need:.2f} eV.  The default is 10 eV "
                     f"(engines/transport.md 6.1c).",
                     where="config.negf_eq_pole_ev"))
+    # THE TRANSMISSION WINDOW REACHES THE BIAS WINDOW (P2, `engines/
+    # transport.md` § 2a.10, § 6.1c): on the transmission rung alone, whose
+    # deck writes the window and the voltage.  One rule for the record, this
+    # gate and the description's preflight (`record.window_short_of`):
+    # TBtrans integrates the current over its window and says nothing when
+    # the window cuts it short.
+    if rung == "transmission" and bias is not None and temp is not None:
+        emin = getattr(cfg, "transmission_emin_ev", None)
+        emax = getattr(cfg, "transmission_emax_ev", None)
+        if emin is not None and emax is not None:
+            from ..constants import BOLTZMANN_EV_K
+            from ..transport.record import window_short_of
+            short = window_short_of(emin, emax, bias,
+                                    BOLTZMANN_EV_K * float(temp))
+            if short:
+                out.append(Issue("error",
+                                 short + " (engines/transport.md 2a.10)",
+                                 where="config.transmission_emax_ev"))
     # THE K-POINT SAMPLING IS NOT HERE: it is the k-point mesh's
     # (`kmesh.py`, `engines/siesta.md` § 6.1): the third
     # component of `kgrid` and `tbt_k_grid` is one a transport calculation

@@ -196,26 +196,6 @@ def test_the_frozen_regime_is_said_out_loud():
     assert "partial Hessian" in text
 
 
-def test_the_reserved_frozen_label_is_never_warned_unconsumed():
-    """E-M7.1: since schema 7 the frozen set lives INSIDE regions, and
-    this engine consumes it -- the relaxation constrains it and the
-    Hessian mask reads it.  Pattern B must not warn "NOT consumed"
-    about it, while a genuinely inert label still warns."""
-    from molbuilder.validation import validate
-    s = _frozen_water()
-    issues = validate(s, PySCFConfig(), calculation="vibration")
-    false_alarms = [i for i in issues
-                    if "does NOT consume" in i.message
-                    and "frozen_atoms" in i.message]
-    assert false_alarms == [], "Pattern B warns about the frozen label"
-    s2 = _water()
-    s2.regions["L-electrode"] = [1]
-    inert = [i for i in validate(s2, PySCFConfig(),
-                                 calculation="vibration")
-             if "does NOT consume" in i.message]
-    assert len(inert) == 1 and "L-electrode" in inert[0].message
-
-
 def test_one_fact_one_finding_on_a_vibration_deck():
     """The dedup ruling: each fact earns exactly one finding.  The parity
     of the electronic state is the state's one family, asked once by

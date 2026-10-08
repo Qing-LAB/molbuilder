@@ -208,3 +208,29 @@ class TestTheCellWrapsAlongTransport:
         assert not _find(validate(s, SiestaConfig(system_label="j"),
                                   calculation="optimization"),
                          "cell.transport_vacuum")
+
+
+def test_the_transmission_window_must_reach_the_bias_window(junction):
+    """`engines/transport.md` § 2a.10 (P2): the current is TBtrans's integral
+    over the deck's window, weighted by both leads' Fermi functions at
+    μ = ±V/2, and TBtrans says nothing when the window cuts it short -- so
+    the transmission deck's gate refuses a window that does not reach
+    ±(|V|/2 + 5 kT).  At 0.4 V and 300 K the reach is 0.2 + 5 × 0.02585 =
+    0.329 eV: ±0.3 eV is refused, ±0.4 eV passes, and the rule is the
+    transmission rung's alone -- the device writes no window.
+
+    Silent before this: the window gate was a catalogue note (plan P2);
+    above a few volts the current was cut without a word.
+    """
+    def issues(emax, rung):
+        cfg = SiestaConfig(system_label="t", bias_voltage_v=0.4,
+                           electronic_temperature=300.0,
+                           transmission_emin_ev=-emax,
+                           transmission_emax_ev=emax)
+        return validate(junction, cfg, calculation="transport", rung=rung)
+
+    short = _find(issues(0.3, "transmission"), "config.transmission_emax_ev",
+                  "error")
+    assert short and "0.329" in short[0].message and "widen" in short[0].message
+    assert not _find(issues(0.4, "transmission"), "config.transmission_emax_ev")
+    assert not _find(issues(0.3, "device"), "config.transmission_emax_ev")

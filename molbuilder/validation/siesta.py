@@ -529,20 +529,12 @@ def _validate_siesta(struct: Structure, cfg,
     """
     issues: List[Issue] = []
     # ONE FACT, ONE FINDING (science/validation.md § 7): the vibration kind
-    # names the unconsumed region labels and states the held atoms itself,
-    # from the rank rule, so this validator defers both families on that
-    # kind -- the same deferral the PySCF validator makes.
+    # states the held atoms itself, from the rank rule, so this validator
+    # defers that family on that kind -- the same deferral the PySCF
+    # validator makes.
     vibration = calculation == "vibration"
 
-    # Pattern B: region labels this run does not consume are named --
-    # the frozen label is excluded (SIESTA consumes it as
-    # Geometry.Constraints).
-    from .sidecar import check_unconsumed_region_labels
-    if not vibration:
-        issues += check_unconsumed_region_labels(
-            struct, engine="SIESTA", calculation=calculation)
-    # ...and the FIRST validation of a junction, beside it because it is
-    # the same question one step further: the labels say which atoms are
+    # THE FIRST VALIDATION OF A JUNCTION: the labels say which atoms are
     # leads, and a lead must come through the relaxation unmoved.  Asked
     # HERE, where it is cheap -- the compose-time gate that refuses a
     # MOVED lead is correct and runs after the relaxation is paid for.

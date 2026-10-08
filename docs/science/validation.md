@@ -413,21 +413,16 @@ number in the message.
 
 ---
 
-## 5. Pattern-B — regions the engine doesn't consume
+## 5. Labels are the user's
 
-When `struct.regions` carries labels the current run does not consume, the
-gate must NAME them so the user knows the labels were noticed but unused.
-The rule lives in the VALIDATORS since 2026-08-21 (it rode two web endpoints
-that were deleted, which silenced it on every route): one shared body —
-`validation/sidecar.py::check_unconsumed_region_labels` — called by
-`_validate_siesta` and `_validate_pyscf`, so it fires through the one
-settings gate on every deck route, CLI included. The reserved frozen label
-is excluded — both engines consume it (SIESTA's `Geometry.Constraints`,
-PySCF's geomeTRIC `$freeze`) — and the vibration kind runs its own copy
-over the deck's view with the same exclusion (`validation/spectra.py`).
-**Transport is deliberately not a caller**: it *is* the region consumer —
-the labels drive the whole device/electrode split, so the
-"noticed-but-unused" path doesn't apply. Pinned in `tests/validation/`.
+molbuilder reads the labels it **owns** — the reserved frozen label (SIESTA's
+`Geometry.Constraints`, PySCF's geomeTRIC `$freeze`, the vibration's Hessian
+mask) and a transport calculation's partition (`L-electrode`, `R-electrode`,
+`bridge`, `buffer`, [`engines/transport.md`](?doc=engines/transport.md) § 4)
+— and no other. Any other label in `struct.regions` is the user's: it rides
+along untouched, and no gate refuses it, warns about it or gives it a meaning
+by its name *(user, 2026-10-02; the "unconsumed label" notice that said
+otherwise went with F25, 2026-10-08)*.
 
 ---
 
@@ -472,7 +467,7 @@ validation/
 │                   # (check_electronic_state); metal-basis adequacy;
 │                   # peptide protonation
 ├── identity.py     # names and labels (run identity, basenames)
-├── sidecar.py      # frozen-atoms-consumed + unconsumed-region-label (Pattern-B) checks;
+├── sidecar.py      # frozen-atoms-consumed check; the junction's boundary (§ 6.1c);
 │                   # the relaxation-record check (engines/vibration.md § 2.2)
 ├── stages.py       # stage-ladder checks (shared by describe/dispatch)
 ├── task.py         # the TASK preflight — a description that is not one refuses

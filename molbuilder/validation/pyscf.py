@@ -217,18 +217,12 @@ def _validate_pyscf(struct: Structure, cfg,
             honored=_relaxes,
             reason_when_dropped=_drop_reason,
         )
-    # Pattern B: region labels this optimization run does not consume
-    # are named.  The vibration kind runs its own copy over the deck's
-    # view (with the same frozen-label exclusion), so this defers there.
+    # THE FIRST VALIDATION OF A JUNCTION: the labels say which atoms are
+    # leads, and a lead must come through the relaxation unmoved.  Asked
+    # HERE, where it is cheap -- the compose-time gate that refuses a
+    # MOVED lead is correct and runs after the relaxation is paid for.
+    # The vibration kind states its held atoms itself, so it is deferred.
     if not vibration:
-        from .sidecar import check_unconsumed_region_labels
-        issues += check_unconsumed_region_labels(
-            struct, engine="PySCF", calculation=calculation)
-        # ...and the FIRST validation of a junction, beside it because it is
-        # the same question one step further: the labels say which atoms are
-        # leads, and a lead must come through the relaxation unmoved.  Asked
-        # HERE, where it is cheap -- the compose-time gate that refuses a
-        # MOVED lead is correct and runs after the relaxation is paid for.
         from .sidecar import (check_electrode_labels_are_frozen,
                               check_junction_boundary)
         issues += check_electrode_labels_are_frozen(struct)

@@ -653,10 +653,12 @@ def transport_spec(struct: Structure, cfg, *,
         check_rules=_sl.check_rules,
         # WHAT THE SETTINGS GATE JUDGES besides the structure as it arrived:
         # the meshes this rung writes -- which the configuration alone cannot
-        # say, since the rung decides its transport axis.
+        # say, since the rung decides its transport axis -- and which rung
+        # this is, for the rule that holds on one rung alone (the
+        # transmission's window against its bias, § 2a.10).
         validate_subject=lambda s, c: (s, {"k_meshes": tuple(
             m for m in (derived["k_mesh"], derived["tbt_k_mesh"])
-            if m is not None)}),
+            if m is not None), "rung": shape}),
         created_by="molbuilder transport prep",
     )
 

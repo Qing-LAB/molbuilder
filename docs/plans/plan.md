@@ -1471,7 +1471,8 @@ calculation"):*
    want a saved structure to stay citable — then `init --psml-lib` must be
    allowed for a citation that brings none.)*
 8. **A transport calculation's root opens its report through its description,
-   `task.json`** (R7, 2026-10-08) — the report is composed on read, so it is
+   `task.json`** (R7, 2026-10-08; **approved**, user 2026-10-08: "yes to
+   both") — the report is composed on read, so it is
    there from `jobset init` on; the picker offers only a file the registry
    claims, so `parse.sidecars.task` claims a transport calculation's
    description (never a relaxation's — the discriminator is the
@@ -1666,7 +1667,13 @@ molecule's own label from the Molbuilder tab; molbuilder reads only the labels
 it owns and never warns about another (user, 2026-10-02) — the warning
 (`sidecar.check_unconsumed_region_labels`) and the two sentences that order it
 (`validation.md` § 5 pattern B; `transport.md` § 4 *"a label this engine does
-not consume is WARNED about"*) go (B7, B9) · a single
+not consume is WARNED about"*) go (B7, B9; **approved**, user 2026-10-08) ·
+**F26** the suite's runner: `tests/validation/test_siesta.py` run in one
+batch with `tests/test_transport_sort.py` and `tests/test_vibration_render_gate.py`
+under 8 workers loses every fixture of `tests/validation/conftest.py`
+(*fixture 'water_struct' not found*, 11 errors; the same at `924d68c7`
+with nothing changed; the pair `test_pyscf.py + test_siesta.py` passes) —
+B8's suite review · a single
 click on a record in the
 sidebar does **not** switch the report — `results.md` § 3b's rule (a click is a
 preview; the panel's dropdown chooses), not a defect.

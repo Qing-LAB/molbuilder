@@ -130,12 +130,12 @@ flowchart LR
   emitter unions, infers or drops an index, and no generated script reads the
   sidecar at run time ([`engines/vibration.md`](?doc=engines/vibration.md)
   § 2.3, invariant I6).
-- **Stage 3 — the preflight says what it cannot use.** The unconsumed-label
-  notice (`validation/sidecar.py::check_unconsumed_region_labels`) fires for
-  every kind: a label an engine does not consume is named — *these stay in the
-  sidecar for the engine that uses them* — never silently absorbed. The
-  divergence check that compared a form value against the sidecar retired with
-  the form value; with one source there is nothing to diverge.
+- **Stage 3 — labels are the user's.** molbuilder reads the labels it owns
+  (the frozen label; a transport calculation's partition) and no other: any
+  other label rides along untouched, and no preflight names it
+  ([`science/validation.md`](?doc=science/validation.md) § 5). The divergence
+  check that compared a form value against the sidecar retired with the form
+  value; with one source there is nothing to diverge.
 
 Each surfaces as a structured `Issue` in the form's panel, and the vibration
 kind's checks add what holding means for the numbers: how many whole-body
