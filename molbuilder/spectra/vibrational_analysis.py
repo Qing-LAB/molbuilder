@@ -277,7 +277,7 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
                 f"from the calculation's folder -- `{launch_as_typed(s)}` "
                 f"{LAUNCH_MODE_NOTE} -- it continues from its newest "
                 f"attempt, at the geometry it stopped at; then prep this "
-                f"stage once it has concluded.")
+                f"stage once it has finished.")
     first = ("untick `already_relaxed` and add the `relax` stage before "
              "this one (Task setup, or task.json)"
              if str(engine).lower() == "siesta" else

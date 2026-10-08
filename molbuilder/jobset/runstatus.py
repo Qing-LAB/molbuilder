@@ -458,7 +458,9 @@ def render_status(status: JobSetStatus) -> str:
                 + textwrap.indent(first.why or first.detail, "    "))
             return "\n".join(lines)
         lines.append(next_step(first, status.first_incomplete,
-                               base=status.base))
+                               base=status.base,
+                               pending={s.name for s in status.stages
+                                        if s.state == "pending"}))
     return "\n".join(lines)
 
 
@@ -482,16 +484,17 @@ def _sweep_next(status: JobSetStatus) -> str:
     return "Every trial has ended -- read what they measured:\n" + read
 
 
-def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
+def next_step(s: Optional[StageStatus], name: str, *, base,
+              pending=frozenset()) -> str:
     """What to do about a PREPARED stage that has not finished, by its state
     -- each a command that works.  molbuilder does NOT auto-resume; the
     person decides (`engines/stages.md`)."""
     state = s.state if s is not None else "stopped"
-    # A GROUP PREPARED AND NOT LAUNCHED goes as its one job: the line names
-    # every member.  Launched again, a member goes alone (D4) -- the others
-    # may have finished.
+    # A GROUP PREPARED AND NOT LAUNCHED goes as its one job -- every member
+    # still ``pending`` -- as `launch task` takes it (`_cli._launch_unit`).
+    # A member launched, or launched again, goes alone (D4).
     words = (s.group if s is not None and s.group and state == "pending"
-             else [name])
+             and all(g in pending for g in s.group) else [name])
     if state == "pending":
         return (f"First incomplete stage: {name}, prepared and not "
                 f"launched:\n" + block(launch_lines("task", *words, base=base)))

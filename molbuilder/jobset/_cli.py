@@ -1044,8 +1044,8 @@ def _resolve_stage(js, stage, verb: str, *, base):
                    "e.g. '01_coarse/run-0'.  Its warm files are COPIED in.  "
                    "Without it, a continuing stage takes the newest attempt "
                    "of the stage before it, which must have finished "
-                   "(job-system.md 5.4).  The flat layout and a bias scan "
-                   "have no single attempt to name.")
+                   "(job-system.md 5.4).  The flat layout and a transport "
+                   "rung have no attempt to name.")
 @click.option("--cold", is_flag=True,
               help="start this run from the calculation's structure -- "
                    "nothing is copied in.  On the flat layout a stage starts "
@@ -1166,7 +1166,7 @@ def prep_cmd(kind: str, words, stages, bundle: str, from_attempt,
                           last=(i == len(answers) - 1))
 
 
-def _launch_unit(base, js) -> list:
+def _launch_unit(base, js, *, dry_run: bool = False) -> list:
     """What `launch task` sends when --stage names nothing
     (`job-system.md`, *The task*): the stages prepared and not launched --
     the status door's ``pending`` -- one unit each, a group its prep made
@@ -1174,7 +1174,7 @@ def _launch_unit(base, js) -> list:
     stages launched before offered to launch again.  With nobody to ask,
     refused, naming each line."""
     from .ask import choose
-    from .commands import block, launch_lines
+    from .commands import block, command, launch_lines
     from .runstatus import jobset_status
     rows = [r for r in jobset_status(js, base).stages if r.prepared]
     waiting = [r for r in rows if r.state == "pending"]
@@ -1196,16 +1196,18 @@ def _launch_unit(base, js) -> list:
         again = [r.name for r in rows]
         if not again:
             raise click.ClickException(
-                "nothing is prepared yet -- `prep task` first.")
+                "nothing is prepared yet -- prepare first:\n    "
+                + command("prep", "task", base=base))
         text = ("nothing prepared is waiting; launched before, and launched "
                 "again warm or --cold:\n"
                 + "\n".join(f"  {r.name}  {r.state}" for r in rows))
         offered = [[n] for n in again]
         question = "which to launch again?"
     picked = choose(text, offered[0] if units else [], question=question)
-    if picked.asked and picked.picks:
+    if picked.asked and picked.picks and not dry_run:
         # THE QUESTION AND ITS ANSWER, written down as prep's are
-        # (`job-system.md`, *What molbuilder does for you*, 5).
+        # (`job-system.md`, *What molbuilder does for you*, 5) -- a dry run
+        # writes nothing (§ 6.0, step 3).
         from .ledger import record
         record(base, "launch", "question", about=question,
                offered=[", ".join(u) for u in offered], answer=picked.words)
@@ -1214,7 +1216,7 @@ def _launch_unit(base, js) -> list:
             text + "\nname which with --stage (repeated, several as one "
             "job):\n" + block([ln for u in offered
                                 for ln in launch_lines("task", *u,
-                                                       base=base)[:1]]))
+                                                       base=base)]))
     return list(picked.picks)
 
 
@@ -1232,26 +1234,30 @@ def _ask_which_stages(base, named) -> list:
     from .ready import ladder, ladder_text, preselected
     desc = base / FILENAME
     if not desc.is_file():
-        raise click.ClickException(
-            f"{base} is not a described calculation -- `jobset init` first.")
+        # NOT A DESCRIBED CALCULATION: the entry's own refusal, which names
+        # the calculation's folder when this is one of its stage folders
+        # (`job-system.md` § 5.0, checkpoint 1).
+        return list(named)
+
+    def _refuse(why: str) -> click.ClickException:
+        # EVERY REFUSAL IS WRITTEN DOWN (`job-system.md` § 5.0, rule 3).
+        record(base, "prep", "refused", kind="task",
+               stage=list(named) or None, reason=why)
+        return click.ClickException(why)
+
     # A DESCRIPTION OR TEMPLATE THAT DOES NOT READ is refused in its own
     # words, as prep refuses it.
     try:
         task = read_task(desc)
         answers = ladder(base, task)
     except ValueError as exc:
-        raise click.ClickException(str(exc)) from None
+        raise _refuse(str(exc)) from None
     text = "the task's stages:\n" + ladder_text(answers)
     if named:
         click.echo(text)
         return list(named)
     pre = preselected(base, task, answers)
     ready = [a.stage for a in answers if a.ready]
-
-    def _refuse(why: str) -> click.ClickException:
-        # EVERY REFUSAL IS WRITTEN DOWN (`job-system.md` § 5.0, rule 3).
-        record(base, "prep", "refused", kind="task", stage=None, reason=why)
-        return click.ClickException(why)
 
     if not pre:
         raise _refuse(
@@ -1800,7 +1806,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             # NOTHING NAMED: what is prepared and not launched, one unit --
             # a stage, or a group its prep made -- or the question
             # (`job-system.md`, *The task*, D3).
-            unit = _launch_unit(base, js)
+            unit = _launch_unit(base, js, dry_run=dry_run)
             if len(unit) > 1:
                 group = unit
             else:

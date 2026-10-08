@@ -1306,10 +1306,12 @@ and reused.
 attempts, `<NN>_<stage>/v<V>/run-<n>/` (`transport.stages.rung_containers`),
 all opened by the rung's prep. `launch task` sends one job that walks the
 points in the bias order (`submit._plan_chain`): the device's warm — each point
-after the first takes the `.TSDE` the point before it left — stopping at a
+after the first, opened fresh, takes the restart files the point before it
+left (the device job's declaration, the `.TSDE` among it) — stopping at a
 point that fails; the transmission's independent, walking on and saying which
 failed. Launched again, every point opens its next attempt, warm from its own
-latest or `--cold`. There is no `points.json`, no `--skip` / `--unskip`, and the
+latest — the walk hands nothing forward into it — or, `--cold`, fresh, the
+walk handing each the point before's. There is no `points.json`, no `--skip` / `--unskip`, and the
 points' shared inputs are not held once in a run. Under `low-bias` the device
 has no bias axis (§ 2a.10). The design below is what this becomes.
 

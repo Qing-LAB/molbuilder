@@ -618,7 +618,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     ``"01_coarse/run-0"``. **Which run is never a guess** (§ 1.6):
     continuing from ``run-0`` and from ``run-2`` are different scientific
     choices, so the callers pass one they can name -- `prep`, by default,
-    the stage before it's newest attempt, which must have concluded, or the
+    the stage before it's newest attempt, which must have finished, or the
     one a person named (`continuation.continuation_answer`,
     `job-system.md` § 5.4); the
     submission door, re-submitting a launched stage, the SAME stage's latest

@@ -116,9 +116,11 @@ both call (§ 5.3, *One prep, two doors*):
 2. **It asks which ready stage(s) to prepare.** `--stage NAME` answers without
    a terminal (repeat it for several); with no terminal and none named, the
    prep is refused, naming the ready stages and the line that picks them.
-   *What is offered pre-selected*: the first ready stage — and, for a kind that
-   declares parallel rungs (a transport ladder's seed and both leads), every
-   one of them (D2).
+   *What is offered pre-selected*: the first ready stage — and, for a kind
+   whose stages have roles (transport, a vibration: `template.KIND_ROLES`),
+   every ready stage that builds on nothing (D2): a transport ladder's seed
+   and both leads; a vibration's force-constant stages when its structure is
+   stated relaxed.
 3. **Several picked together are a group** — they share one job (`project-
    layout.md` § 1.6.6). Refused, by name, before anything is written: a pick in
    which one stage builds on another, or whose stages cannot share one
@@ -197,8 +199,8 @@ by listing stages at prep.)*
 4. **It tells you where each stage and run stands, from one check.** `jobset
    status`, the Results tab's ladder and every reader that needs a run's state
    ask the same door ([`architecture.md`](?doc=execution/architecture.md)
-   § 3.2): not launched, queued, running, finished, failed (with the reason the
-   run gave), or stopped without its conclusion (killed, out of time), and —
+   § 3.2): not launched, queued, running, finished, or failed — with the reason
+   the run gave, or that it stopped before its end (killed, out of time) — and —
    for an SCF — whether it converged. It says what launching again would do; it
    does not tell you whether to.
 5. **It writes every decision down** — what each prep and launch found, what
@@ -925,8 +927,8 @@ flowchart LR
     end
     subgraph target["TARGET — the run loop (summarize joins it for a benchmark, § 5.3)"]
       direction LR
-      PR["prep &lt;stage&gt;<br/>lay out one stage's folder<br/>(or a bench's points) + wrappers"]
-      SU["launch &lt;stage&gt;<br/>--mode direct, or submit"]
+      PR["prep task<br/>lay out the ready stage(s) you pick<br/>(prep bench: a bench's points) + wrappers"]
+      SU["launch task<br/>what is prepared and not launched<br/>--mode direct, or submit"]
       ST["status<br/>per-stage roll-up"]
       PR --> SU --> ST
     end

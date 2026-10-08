@@ -440,7 +440,10 @@ class _Member:
                      f"files are")
 
     def _copied(self) -> List[str]:
-        return list(self.carries) + list(self.gathered)
+        # EACH FILE ONCE: a transport rung's restart files and its gathered
+        # inputs may name the same file (a device's `.DM`), copied from the
+        # one run it continues.
+        return list(dict.fromkeys([*self.carries, *self.gathered]))
 
     def said(self) -> str:
         """The member as the plan holds it, in one line: where it runs, what
@@ -474,9 +477,9 @@ class _Member:
         if not self.again:
             return None
         return (f"launched again {self._where()}: it "
-                + self._takes(would=False) + ".  To start it afresh from "
-                "the stage before it, or the structure: "
-                + rollback("its prep", base=self.base))
+                + self._takes(would=False) + ".  To start it over, launch "
+                "it again with --cold; to take it from the stage before it "
+                "anew: " + rollback("its prep", base=self.base))
 
 
 @dataclass
@@ -1870,7 +1873,8 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     group's sequencer: it ``cd``s into each point's prepared attempt and
     runs the point's own ``.run.sh`` — env activation and the engine
     launch stay where they always live.  What it adds is the WARM CHAIN:
-    before each point after the first, what the previous point left that
+    before each point after the first that is opened fresh (a first launch,
+    or ``--cold``), what the previous point left that
     a continuing device takes -- the device job's declaration, the NEGF
     density ``.TSDE`` among it, from the one restart-list door -- is copied
     forward, so ``V_{i+1}`` converges from ``V_i``'s state instead of from
@@ -1986,8 +1990,8 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     lines = [
         "#!/usr/bin/env bash",
         f"# {gn.name('.run.sh')} -- the bias chain: this scan's points in",
-        "# sequence, each warm-started from what the previous point left",
-        "# that a continuing device takes -- its declaration:",
+        "# sequence, each opened fresh warm-started from what the previous",
+        "# point left that a continuing device takes -- its declaration:",
         f"#   {handed or '(nothing)'}",
         "# (archive/2026-09-01-transport-design.md 4.3).  Regenerated at each launch.",
         "# STOPS on a failed point: later points chain their density",
@@ -2002,9 +2006,14 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         "prev=''",
         "fails=0",
         "run_point() {",
-        '    _name="$1"; _dir="$2"; shift 2',
+        '    _name="$1"; _dir="$2"; _take="$3"; shift 3',
     ] + ([
-        '    if [ -n "$prev" ]; then',
+        # A POINT CONTINUING FROM ITS OWN RUN keeps its own state
+        # (`job-system.md` § 5.4, *A stage launched again*); one opened
+        # fresh -- a first launch, or --cold -- takes the point before.
+        '    if [ "$_take" = 0 ]; then',
+        '        echo "[chain] ${_name}: warm from its own latest run" >> "$LOG"',
+        '    elif [ -n "$prev" ]; then',
         '        _took=""',
         f'        for _f in {handed}; do',
         '            if [ -f "$prev/$_f" ]; then',
@@ -2043,8 +2052,9 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         # THE SAME IDIOM THE BENCH SEQUENCER USES.
         rel = m.run_dir.relative_to(stage_dir)
         args = " ".join(_run_sh_args(job.resources, m.run))
+        take = 0 if m.continuation is not None else 1
         lines.append(f'run_point "{m.label.split("@", 1)[1]}" "{rel}" '
-                     f'"{run_name}" {args}')
+                     f'{take} "{run_name}" {args}')
     lines += ['echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') done '
               'fails=${fails}" >> "$LOG"',
               'exit $(( fails > 0 ))', ""]
@@ -2165,8 +2175,9 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
     missing = [n for n in names if not any(j.name == n
                                            for j in jobset.jobs)]
     if missing:
-        raise SubmitError(f"{', '.join(missing)}: not prepared -- "
-                          f"prepare first: `prep task`.")
+        raise SubmitError(
+            f"{', '.join(missing)}: not prepared -- prepare first:\n    "
+            + _cmd("prep", *words_for("task", *missing), base=base))
     order = [j.name for j in jobset.jobs]
     names = sorted(names, key=lambda n: stage_home(base, task, n).seq
                    or order.index(n))

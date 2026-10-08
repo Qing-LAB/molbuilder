@@ -1475,7 +1475,7 @@ be taken first — if this stage is prepared, go back to the state saved before
 its prep (a prepared stage is not prepared again,
 [`job-system.md`](?doc=execution/job-system.md) § 5.0): when the ladder's stage
 relaxed it (the block's `relaxation_stage`), launch that stage again — it
-continues from its newest attempt — and prep this one once it has concluded;
+continues from its newest attempt — and prep this one once it has finished;
 when the person stated it relaxed, relax first — or keep the run knowing that.
 The finish says it in the session log, and the viewer's relaxation row shows
 the force.
@@ -1584,7 +1584,7 @@ this stage is prepared, go back to the state saved before its prep (a prepared
 stage is not prepared again, [`job-system.md`](?doc=execution/job-system.md)
 § 5.0; a preview's has not been), launch the `relax` stage again — it
 continues from its newest attempt, at the geometry it stopped at — and prep
-this stage once it has concluded; and a
+this stage once it has finished; and a
 held set changed between the two stages, which leaves free atoms that
 relaxation never balanced *(plan V1.36, the user's word 2026-09-29)*. A bench
 trial of that stage is written at the same geometry and told the same

@@ -94,8 +94,11 @@ def envelope(jobs: Sequence) -> "Resources":
     walls = [j.resources.time for j in jobs]
     wall = (slurm_time(sum(parse_walltime(str(w)) for w in walls))
             if all(walls) else None)
-    mems = [j.resources.mem for j in jobs if j.resources.mem]
-    mem = (max(mems, key=lambda m: parse_memory(str(m))) if mems else None)
+    # `0` ASKS FOR ALL OF THE NODE'S (`quantities.MEM_HELP`) -- the largest
+    # ask there is, so a member stating it gives the group it.
+    mems = [str(j.resources.mem) for j in jobs if j.resources.mem]
+    mem = ("0" if "0" in mems
+           else max(mems, key=parse_memory) if mems else None)
     r = first.resources
     import dataclasses
     return dataclasses.replace(

@@ -1278,15 +1278,18 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="summarize", level="bench", kind="record",
              writer="`jobset summarize` (`run_summarize_jobset`)"),
     Artifact(name="{group}.run.sh",
-             what="a launch group's sequencer: a benchmark's trials, or a "
-                  "bias scan's points, in order",
+             what="a launch group's sequencer: a benchmark's trials, a "
+                  "bias scan's points, or a task's stages sharing one job, "
+                  "in order",
              when="launch", level="launch", kind="derived",
              writer="launch (`jobset/submit.py`), written again at each "
                     "launch"),
     Artifact(name="{group}.sbatch", what="its queue header",
              when="launch", level="launch", kind="derived",
              writer="launch (`jobset/submit.py`), written again at each "
-                    "launch",
+                    "launch -- a task's group's by its prep "
+                    "(`prep.prep_group`), and by launch only for stages "
+                    "first named together there",
              only="launched to a queue"),
     Artifact(name="{group}.log", what="every member's output, in order",
              when="run", level="launch", kind="record",

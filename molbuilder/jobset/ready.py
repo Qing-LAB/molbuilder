@@ -11,8 +11,9 @@ finished, having run the deck it renders now).  A stage is **ready** when
 that door answers without refusing; **waiting** when it refuses, its words
 saying for what.  Nothing here decides a second way, and nothing is written.
 
-Readers: `prep task`'s offer and its check, `status`'s rows and next step,
-Task setup's Prep.
+Readers: `prep task`'s ladder and offer, `status`'s rows and next step,
+Task setup's Prep -- and prep itself asks the same two doors when it
+plans the stage.
 """
 from __future__ import annotations
 

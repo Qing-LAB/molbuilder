@@ -2065,7 +2065,7 @@ function renderNext(task) {
             + "command line state one, or override the card."));
         /* CONTINUE FROM (plan W37, `job-system.md` § 5.4): what this stage
          * starts from -- by default the stage before it's newest run, which
-         * must have concluded; a run of it, named; or the calculation's
+         * must have finished; a run of it, named; or the calculation's
          * structure.  The folder's answer, the one prep acts on, so the
          * choice shows what prep would take; the command and the buttons
          * follow it. */

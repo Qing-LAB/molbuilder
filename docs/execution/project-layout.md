@@ -590,8 +590,9 @@ the person skips (`launch --skip`) is marked so in the run's record;
 transport rung launched again opens its next attempt, and each bias point is
 its own folder of attempts.
 
-You say which attempt it continues from, and its files are copied in — the same
-explicit step you take when moving from one stage to the next (§ 1.6).
+Launched again warm, it continues from its own latest run, whose files are
+copied in — `--cold` copies none — the same explicit hand-over a stage takes
+from the stage before it (§ 1.6).
 
 Three things follow:
 
@@ -716,7 +717,7 @@ of it is in place before the engine sees the directory:
 
 | | How | Why |
 |---|---|---|
-| the deck, **the wrapper**, the monitor, the pseudopotentials | **copied** from the stage directory, refreshed by every prep until launch | the run directory holds everything its engine reads, and a link holds nothing once the folder moves. The deck is the stage's one deck because a different deck would mean different science, and different science is a stage (§ 1.5a) |
+| the deck, **the wrapper**, the monitor, the pseudopotentials | **copied** from the stage directory — into the first attempt by the stage's one prep, into a later one by the launch that opens it | the run directory holds everything its engine reads, and a link holds nothing once the folder moves. The deck is the stage's one deck because a different deck would mean different science, and different science is a stage (§ 1.5a) |
 | whatever this run continues from | **copied** | that run has already finished — you looked at it and chose it — and a link would let this engine write back over it |
 | everything the run writes | created in place | it is already the working directory |
 
@@ -1795,7 +1796,7 @@ sequenceDiagram
 
     U->>C: jobset prep bench tight
     C->>T: bench/ — decks made measurable
-    U->>C: submit
+    U->>C: jobset launch bench tight
     C->>E: run the trials
     E-->>T: timings
     U->>C: jobset summarize bench tight
@@ -1806,7 +1807,7 @@ sequenceDiagram
     U->>C: jobset prep task --stage tight --from 01_coarse/run-0 (uses `execution`)
     C->>T: 02_tight/<label>_02_tight.fdf · run-0/ · copied .XV
     C-->>U: what it resolved, and what it copied
-    U->>C: submit tight
+    U->>C: jobset launch task --stage tight
     C->>E: run it
     E-->>T: .XV .DM .out
 
@@ -1824,15 +1825,17 @@ its own, which is § 1.6 drawn rather than stated.
 | 1 | save the structure into the tree | **browser** |
 | 2 | describe the calculation — the template and `task.json` | **browser** |
 | 3 | write the portable package into the calculation folder | **browser** |
-| 4 | **`prep`** — resolve this machine, render the deck and wrapper, build the run directory | **CLI** |
-| 5 | submit or execute | **CLI** |
+| 4 | **`prep`** — resolve the target machine, render the deck and wrapper, build the run directory | **CLI**, or Task setup's Prep for a machine whose record is here |
+| 5 | **`launch`** — submit or run here | **CLI** |
 | 6 | look at what happened; save a checkpoint | CLI, with the browser for viewing results |
 | ↻ | back to 4, for a benchmark, a redo, or the next stage | |
 
 **Every step has a CLI equivalent** — `conventions.md § 3` makes the CLI a thin
 shell over the same functions the blueprints call, so a user with no browser can
-do 1–3 from a terminal. Steps 4 and 5 have no browser equivalent, and that is the
-real boundary rather than a gap: they need the target machine.
+do 1–3 from a terminal. Step 5 has no browser equivalent, and that is the real
+boundary rather than a gap: it spends the target machine's time. Step 4 has
+one, Task setup's Prep, because the target's half of prep is its record
+([`job-system.md`](?doc=execution/job-system.md) § 5.3, *One prep, two doors*).
 
 The save history is set up at step 4 for the same reason everything else is:
 which files count as big binaries depends on this machine's copy of the tree, not
@@ -2723,8 +2726,8 @@ keeps its machinery in a `launch/` folder beside them:
 <!-- manifest:launch -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, or a bias scan's points, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
-| `<group>.sbatch` — only: launched to a queue | its queue header | launch (`jobset/submit.py`), written again at each launch | none | derived |
+| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a bias scan's points, or a task's stages sharing one job, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
+| `<group>.sbatch` — only: launched to a queue | its queue header | launch (`jobset/submit.py`), written again at each launch -- a task's group's by its prep (`prep.prep_group`), and by launch only for stages first named together there | none | derived |
 | `<group>.log` | every member's output, in order | the group's sequencer, as it runs | none | record |
 <!-- /manifest -->
 
