@@ -66,7 +66,7 @@ class TestKnownAdvisorySitesAreHTTP200:
             "answering it 4xx would make the browser treat a valid reply as a "
             "transport failure")
         body = r.get_json()
-        assert body["form"] is None
+        assert body["citation"] is None
         assert body["summary"], "the refusal must NAME what is missing"
 
 

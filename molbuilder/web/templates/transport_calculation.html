@@ -86,7 +86,7 @@
     </p>
     <div class="action-row">
       <button id="transport-junction-btn" type="button"
-              title="Walk the projects tree and pick the directory holding the relaxed junction (.fdf+.XV together, or .xyz+.molstruct.json).">
+              title="Walk the projects tree and pick the finished relaxation run of the junction (a run of molbuilder's own: its .fdf and .XV with its run record).">
         Choose junction directory…
       </button>
       <span id="transport-junction-readout" class="muted">
@@ -94,6 +94,12 @@
       </span>
     </div>
     <p id="transport-junction-meta" class="hint" hidden></p>
+    {#- WHAT THE CITATION'S COMPOSITION MEASURED -- each lead's seam and
+        principal-layer measurements (info), the electrode orientation
+        (warn), a composition refusal (error) -- through the one renderer
+        (science/validation.md § 4.1 R2), never a run-on meta line. -#}
+    <ul id="transport-junction-findings" class="issues-panel" hidden
+        aria-live="polite"></ul>
     {#- The one refusal with a one-click fix: inverted electrode
         labels.  Populated by core.js from the describe's `fix` word. -#}
     <div id="transport-junction-fix" hidden></div>
@@ -145,12 +151,12 @@
     {#- THE BIAS LEADS, because it is the experiment and it GOVERNS the
         fields under it: at zero bias the whole non-equilibrium half of
         the density contour is inert, and more than one value asks how
-        each is computed -- low-bias or re-converged (`engines/transport.md`
-        § 2a.10). -#}
+        each is computed -- the low-bias approximation or a self-consistent
+        sweep (`engines/transport.md` § 2a.10). -#}
     <div class="action-row" id="transport-bias-row">
       <label for="transport-bias"><strong>Bias list (V):</strong></label>
       <input class="transport-bias-list" id="transport-bias" type="text" value="0.0"
-             title="Comma-separated volts, 0.0 first — the scan starts from equilibrium.  More than one value is a scan." />
+             title="Comma-separated volts, 0.0 first — a list starts from equilibrium.  Several values are a sweep, and ask how each is computed." />
     </div>
     {#- THE START / STOP / STEP BUILDER fills the list, which stays
         editable; 0 V is always first (user, 2026-09-30: "as long as the
@@ -186,11 +192,12 @@
       decides whether the rest matters.</strong>  At <code>0.0</code> the
       junction is at equilibrium and every field marked
       <em>non-equilibrium</em> below does nothing.  Several values are a
-      <strong>scan</strong>, and how each point is computed is the choice
-      above: <em>low-bias</em> converges the device once, at 0 V, and
-      runs the transmission at every voltage; <em>re-converged</em> runs
-      the device at every voltage too, one job walking them, each starting
-      from the one before it.
+      <strong>sweep</strong>, and how each point is computed is the choice
+      above: under the <em>low-bias approximation</em> the device and the
+      transmission run once, at 0 V, and the record computes each
+      voltage's current from T(E, 0); <em>self-consistent</em>, every
+      voltage gets its own device SCF and its own transmission, one job
+      walking the points, each starting from the one before it.
     </p>
     <p class="hint">
       <strong>One tab per rung, in the order they run.</strong>  Pick a
@@ -206,7 +213,7 @@
       Reference —
       <a href="/documents?doc=engines/transport.md" target="_blank"
          rel="noopener">Transport contract</a>:
-      § 3.3 every parameter and what it writes, § 0.2 the three k-grid
+      § 2a.13 every parameter and what it writes, § 0.2 the three k-grid
       axes, § 0.4 the four things that must agree.
     </p>
     {#- the host of card 4's rung strip and its panels (3.8.2a); each
@@ -236,14 +243,18 @@
       Reference —
       <a href="/documents?doc=engines/transport.md" target="_blank"
          rel="noopener">Transport contract</a>:
-      § 1 one citation → five derived stages, § 3.4 the workflow end to
+      § 1 one citation → five derived stages, § 1.1 the workflow end to
       end.
     </p>
     <div class="action-row">
-      <button id="transport-send-btn" class="full-btn" disabled
-              title="Writes the finished task.json into the folder selected in the Projects sidebar.  Prep it stage by stage from Task setup or the CLI.">
-        Describe this calculation
-      </button>
+      {#- A disabled button shows no tooltip; the wrapper does
+          (form-schema.css `.disabled-tip`). -#}
+      <span class="disabled-tip"
+            title="Writes the finished task.json into the folder selected in the Projects sidebar; enabled once a junction is cited.  Prep it stage by stage from Task setup or the CLI.">
+        <button id="transport-send-btn" class="full-btn" disabled>
+          Describe this calculation
+        </button>
+      </span>
       <span id="transport-send-status" class="status"
             role="status" aria-live="polite"></span>
     </div>
@@ -267,14 +278,17 @@
             newest finished runs before it.</li>
         <li><strong>Why five and not one:</strong> tbtrans needs each
             lead's converged bulk Hamiltonian before it can build that
-            lead's self-energy, and the device needs both.  A bias scan
-            is one job per stage that runs at each voltage — it walks the
-            voltages; re-converged, each device point warm-started from
-            the previous point's density.</li>
-        <li><strong>Read it back</strong> with <code>summarize task</code>,
-            which writes <code>&lt;label&gt;.transport.json</code>:
-            T(E) per bias, the conductance at E_F, and the I–V table
-            from tbtrans's own integral.</li>
+            lead's self-energy, and the device needs both.  A
+            self-consistent sweep is one run per stage with a point per
+            voltage — one job walks them, each device point starting from
+            the one before it; under the low-bias approximation the device
+            and the transmission run once, at 0 V.</li>
+        <li><strong>Read it back</strong> on the Results tab, or with
+            <code>summarize task</code>, which writes
+            <code>&lt;label&gt;.transport.json</code>: T(E) per point,
+            the conductance at E_F, and the I–V — each point's TBtrans
+            current, or the record's own from T(E, 0) under the
+            approximation.</li>
       </ol>
     </details>
   </section>

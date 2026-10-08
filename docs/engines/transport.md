@@ -1594,7 +1594,13 @@ Edited in one panel. Changing any of these rebuilds all five stages.
 
 **Every SCF stage carries its own** (seed, both leads, device — four independent
 answers). A bulk lead and an open-boundary NEGF cycle do not converge alike, so
-one set for all of them is a compromise none of them asked for.
+one set for all of them is a compromise none of them asked for. **Declared, not
+assumed** *(2026-10-08, B8 U1)*: each of these items carries `stages = [seed,
+electrode_L, electrode_R, device, relaxation, force_constants]` in the
+catalogue — every rung that runs an SCF, in transport and in vibration, and
+never the transmission, which runs none (§ 6.1b). So the transmission's tab
+does not offer them, its deck does not write them, and a per-rung override
+naming one there is refused where it is written (§ 3.8.9).
 
 | parameter | keyword | the decision it is | tier |
 |---|---|---|---|
@@ -1743,7 +1749,10 @@ had to change:
 
 Against the 13 keywords and 4 blocks § 3.2 measured. `MaxSCFIterations` and
 `DM.Tolerance` — the two that killed a real seed at 1000 iterations — now reach
-every rung from the description, with provenance.
+every rung from the description, with provenance. *The `05_transmission`
+column is the 2026-09-16 measurement; since 2026-10-08 the transmission deck
+carries no SCF setting at all (§ 6.1b: tbtrans runs none), so its
+`MaxSCFIterations` cell would read – today.*
 
 #### The lead's k-mesh, which is the physics made visible
 
@@ -2818,6 +2827,7 @@ door's question.
 | Task setup — the column picker (`/api/task-setup/columns`) | ✅ not a column *(2026-09-24)* | ✅ the payload names the owners | ✅ not a column | — | ✅ not a column |
 | Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)* | — | — | — |
 | Task setup — a read-only echo of every shared value, with its source (§ 6.6 obligation 3) | ❌ not built | — | — | ✅ the file records the source, and the hover names it *(K7)* | — |
+| Task setup — "What came over": the description's own parameters (the junction it cites, its bias list, its treatment — `single-bias` / `low-bias-approximation` / `self-consistent`, the folder answer's `treatment` from `Task.treatment`) *(built 2026-10-08, B8 U7)* | — | — | — | ✅ the citation, named | — |
 | the deck (`prep` → `prepare_deck`) | ✅ one value, every rung | ✅ each rung its own | ✅ the rung's answer, laid on its config by `resolve` | ❌ a value nobody chose is written as the documented default but not MARKED (obligation 4) | ✅ |
 
 ---
@@ -3466,14 +3476,20 @@ none of it: it was text `siesta` never read.
   them, and a reader of the deck would take them for settings of the run. The
   **transmission** deck carries its `TBT.*` settings AND the `TS.*`
   declarations `tbtrans` reads — the electrodes, the chemical potentials, the
-  voltage, the leads' bulk treatment. It also keeps the SIESTA settings the two
-  rungs share: `tbtrans` reads at least one of them (`ElectronicTemperature`),
-  and which others it reads is an audit of its source not yet made — so none is
-  removed until that audit says it may be. *Two groups are audited and removed
-  (2026-09-29, K1)*: `SolutionMethod` and the output group (`WriteForces` …
-  `SaveHS`) — `tbtrans` compiles none of the files that read them
-  (`read_options.F90`, `write_subs.F`, `outcoor.f`) and its own options read
-  none (`m_tbt_options.F90`; its solver is `TBT.SolutionMethod`).
+  voltage, the leads' bulk treatment. Of the SIESTA settings the rungs share
+  it keeps **what it reads** — the audit of its source, completed 2026-10-08
+  (B8 U1): `SystemLabel`, `SystemName`, `ElectronicTemperature` (its Fermi
+  functions start from it, `m_tbt_options.F90`), `Spin`, the basis and
+  functional lines that name the Hamiltonian it was built with. **It runs no
+  SCF**, so the SCF settings — the solver (`SolutionMethod`; its own is
+  `TBT.SolutionMethod`), the mixer, the tolerances, the iteration budget — and
+  the output group (`WriteForces` … `SaveHS`) are not written: `tbtrans`
+  compiles none of the files that read them (`read_options.F90`,
+  `write_subs.F`, `outcoor.f`) and its own options read none
+  (`m_tbt_options.F90`). The catalogue says the same with `stages`: the eight
+  SCF items declare the four SCF rungs (and vibration's two roles), so the
+  transmission's tab never offers them and `prep` refuses one there by name
+  (§ 2a.13 Class C, § 3.8.9).
 * **The leads' bulk treatment is ONE value for the device and the
   transmission** — `electrodes_bulk`, a shared value. TranSIESTA reads it for
   the device's self-consistent run, and `tbtrans` takes `TS.Elecs.Bulk` as the

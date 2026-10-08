@@ -255,7 +255,7 @@ const WORKSPACE_TAG = "results:transport";
         }
         state.points.forEach((p) => {
             if (computed) return;
-            const tr = _el("tr", "transport-iv-row");
+            const tr = _el("tr", "transport-iv-row is-pick");
             tr.dataset.bias = String(p.bias_v);
             tr.appendChild(_el("td", null, _fmt(p.bias_v, 3, false)));
             tr.appendChild(_el("td", null, _fmt(p.conductance_g0, 4, false)));

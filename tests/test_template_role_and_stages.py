@@ -97,9 +97,10 @@ class TestStages:
         """
         unconstrained = [i for i in T.select(cat, engine="siesta")
                          if not i.stages]
-        assert len(unconstrained) > 40, (
-            "most items declare no stage list; if this collapsed, something "
-            "constrained the optimization ladder by accident")
+        assert {"mesh_cutoff", "basis_size", "kgrid"} <= {
+            i.name for i in unconstrained}, (
+            "the optimization ladder's own items declare no stage list; if "
+            "one does, something constrained the ladder by accident")
         assert all(i.name in {x.name for x in
                               T.select(cat, engine="siesta", stages="coarse")}
                    for i in unconstrained), (
@@ -117,22 +118,30 @@ class TestStages:
                         T.select(cat, engine="siesta", stages=rung) if i.stages}
                  for rung in ("seed", "electrode_L", "electrode_R",
                               "device", "transmission")}
+        # THE SCF SETTINGS ARE EVERY SCF RUNG'S AND NEVER THE TRANSMISSION'S
+        # (`transport.md` § 6.1b: tbtrans runs no SCF; 2026-10-08, B8 U1):
+        # declared by `stages`, so no surface offers them on that rung and
+        # every door refuses them there by name.
+        scf = {"solution_method", "mixing_weight", "pulay_history",
+               "dm_tolerance", "dm_energy_tolerance", "scf_energy_converge",
+               "max_scf_iter", "scf_must_converge"}
+        assert scf.isdisjoint(owned["transmission"])
+        assert scf <= owned["seed"] and owned["seed"] == scf, (
+            "the seed owns nothing of its own but the SCF it runs")
         assert owned["electrode_L"] == owned["electrode_R"] == {
-            "electrode_kz", "ts_hs_save"}
+            "electrode_kz", "ts_hs_save"} | scf
         # The device writes the Hamiltonian the transmission attaches to
         # (`ts_hs_save`, the role item shared with the leads) and states the
         # self-energy broadening its NEGF loop uses (2026-10-08, F16).
         assert owned["device"] == {"negf_eq_pole_ev", "negf_neq_eta_ev",
                                    "bias_voltage_v", "ts_hs_save",
-                                   "ts_elecs_eta_ev"}
+                                   "ts_elecs_eta_ev"} | scf
         # THE LEADS' BULK TREATMENT IS NO RUNG'S ALONE (2026-09-29): tbtrans
         # takes it as the default of its own, so it is one shared value the
         # device and the transmission both write (`transport.md` § 6.1b).
         assert "electrodes_bulk" not in set().union(*owned.values())
         assert "transport" in T.one(cat, "electrodes_bulk",
                                     engine="siesta").shared
-        assert owned["seed"] == set(), (
-            "the seed owns nothing of its own -- it only obeys")
         assert "transmission_emin_ev" in owned["transmission"]
         assert "transmission_emin_ev" not in owned["device"], (
             "THE LIVE DEFECT, as a test: the T(E) window is the "

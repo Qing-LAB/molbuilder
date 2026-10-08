@@ -203,7 +203,7 @@ def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
         spec_for(struct, cfg, calculation="transport",
                  names=RunNames.of("kwcheck", token, "hierarchical")),
         struct, cfg)
-    assert "MaxSCFIterations" in deck, (
+    assert "PAO.BasisSize" in deck, (
         "this rung carries none of the engine's section set -- the test "
         "would pass vacuously on a deck that had fallen off the seam")
     _refuse_unknown_labels(deck, binary_text, rung)

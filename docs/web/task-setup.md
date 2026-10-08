@@ -169,8 +169,13 @@ guessing at the one thing the description exists to state.
 ## 3. What came over, and is not editable here
 
 The identity facts, read-only, from the parameter tab that wrote them: the
-calculation's name, the engine, the structure file, its formula and atom count,
-and the label every emitted file is stemmed on.
+calculation's name, the engine, and what it is OF — a structure's file, formula
+and atom count; for a transport calculation the junction it cites, the bias
+list it walks and how it treats that list (`single-bias`,
+`low-bias-approximation` or `self-consistent` — the folder answer's
+`treatment`, the one rule the record names it by) — and the label every
+emitted file is stemmed on. Every parameter of the description is echoed
+([`engines/template.md`](?doc=engines/template.md) § 6.6 obligation 3).
 
 **They are shown because you are about to commit a week of compute against
 them** — not so they can be changed. Changing them is changing what the

@@ -760,12 +760,10 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     prov_file = base / PROVENANCE_FILE
     if prov_file.is_file():
         provenance = json.loads(prov_file.read_text())
-    # THE DESCRIPTION'S, as stated (`task.low_bias_approximation`): a list
-    # of several voltages states the switch; one is a single bias.  Never
-    # inferred from how many points ran.
-    treatment = ("single-bias" if len(task.bias) <= 1
-                 else "low-bias-approximation" if task.low_bias_approximation
-                 else "self-consistent")
+    # THE DESCRIPTION'S, as stated (`Task.treatment`): a list of several
+    # voltages states the switch; one is a single bias.  Never inferred
+    # from how many points ran.
+    treatment = task.treatment
     record: Dict = {
         "schema": TRANSPORT_RESULT_SCHEMA,
         "label": task.label,

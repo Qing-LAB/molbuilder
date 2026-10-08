@@ -7,13 +7,20 @@
 
 .action-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-md);
     margin-top: var(--space-md);
 }
 
+/* A FINDING BESIDE A ROW'S CONTROL (the bias list's refusal, placed by
+   lib/validation-findings.js) takes a line of its own under the row. */
+.action-row > .field-issues {
+    flex-basis: 100%;
+}
+
 /* THE BIAS LIST takes the rest of its row: the builder fills it with a
-   scan, and a box cut at its fifth voltage hides the ones it holds. */
+   list, and a box cut at its fifth voltage hides the ones it holds. */
 .transport-bias-list {
     flex: 1;
     min-width: 0;

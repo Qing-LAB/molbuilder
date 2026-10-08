@@ -160,6 +160,7 @@ SIESTA's own default is PZ, the LDA parameterisation that goes with its LDA defa
 """
 
 [item.solution_method]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
 # role: a transport rung's SOLVER is its identity -- a closed periodic warm-up, a bulk lead, an NEGF device.
 role = ["transport"]
 role_values = { device = "transiesta" }
@@ -187,6 +188,7 @@ Which solver produces the density matrix each SCF step.
 """
 
 [item.mixing_weight]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]
@@ -208,6 +210,7 @@ Organic molecules with no metal converge happily at 0.1-0.25 and will run in far
 """
 
 [item.pulay_history]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]
@@ -228,6 +231,7 @@ SIESTA's own default is 2.  This catalogue starts at 8 because the manual puts 2
 """
 
 [item.dm_tolerance]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
 kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
@@ -255,6 +259,7 @@ SIESTA's own default is 1e-4; this catalogue starts at 1e-5, one decade tighter.
 """
 
 [item.dm_energy_tolerance]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
 kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
@@ -276,6 +281,7 @@ It only has an effect when the switch 'Also require the free energy to settle' i
 """
 
 [item.scf_energy_converge]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
 kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
@@ -298,6 +304,7 @@ The AND-combination, the per-criterion defaults and the gating are from SIESTA 5
 
 
 [item.max_scf_iter]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]
@@ -318,6 +325,7 @@ This is a runaway guard, not a budget -- the budget is wall time and continue_re
 """
 
 [item.scf_must_converge]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]   # every rung that runs an SCF; never the transmission -- tbtrans runs none (engines/transport.md 6.1b)
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]

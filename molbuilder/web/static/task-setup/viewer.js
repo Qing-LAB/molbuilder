@@ -711,6 +711,20 @@ function renderMachine(task) {
     const host = $("ts-machine-rows");
     host.textContent = "";
 
+    /* NO MEASURE STEP WHERE `prep bench` REFUSES ONE (`task-setup.md`
+     * § 11): the folder answer carries the entry's own reason, and the
+     * card says it in place of the rows and the adder -- the same answer
+     * `renderNext` reads, so the two never disagree. */
+    if (_fs.benchRefusal) {
+        host.appendChild(el("p", { class: "hint" }, _fs.benchRefusal));
+        const noActs = $("ts-machine-actions");
+        if (noActs) noActs.hidden = true;
+        const fit = $("ts-machine-fit");
+        if (fit) fit.hidden = true;
+        card.hidden = false;
+        return;
+    }
+
     const bench = (task && task.bench) || {};
     const names = Object.keys(bench);
 
@@ -1118,7 +1132,7 @@ async function loadFolder(projects, dir, opts) {
              + ` · ${(task.stages || []).length} stage(s)`);
 
     _mode = "description"; _handover = null; _task = task;
-    renderCameOver(task);
+    renderCameOver(task, said.treatment);
     /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1), and into
      * `_fs`, which `loadFolder` replaces wholesale.  A separate variable
      * here would be a reset somebody has to remember. */
@@ -1275,7 +1289,14 @@ function setCell(i, col, raw) {
  * read from the file and checked, which is what makes a rename DETECTABLE
  * rather than silent (`run-identity.md` § 3).
  */
-function renderCameOver(obj) {
+/* WHAT THE CALCULATION IS OF (`task-setup.md` § 3): for every kind its
+ * name, id and engine; then what identifies the subject -- a structure's
+ * file, formula and atom count, or, for a transport calculation, the
+ * junction it cites, the bias list it walks and how it treats that list
+ * (`treatment`, the folder answer's word from the one rule the record
+ * names it by).  Every parameter of the description is echoed here
+ * (`template.md` § 6.6 obligation 3). */
+function renderCameOver(obj, treatment) {
     const host = $("ts-facts");
     const card = $("ts-came-card");
     if (!host || !card) return;
@@ -1287,10 +1308,22 @@ function renderCameOver(obj) {
         ["Calculation", run.name || "\u2014"],
         ["Run id",      run.id   || "\u2014"],
         ["Engine",      (obj.engine && obj.engine.name) || "\u2014"],
-        ["Structure",   st.source ? String(st.source).split("/").pop() : "\u2014"],
-        ["Formula",     st.formula || "\u2014"],
-        ["Atoms",       (st.atoms === undefined ? "\u2014" : String(st.atoms))],
     ];
+    if (obj.calculation === "transport") {
+        const bias = (obj.bias && obj.bias.voltages_v) || [];
+        rows.push(
+            ["Junction",  (obj.slots && obj.slots.junction) || "\u2014"],
+            // 0 V keeps its full spelling, as the bias list is written.
+            ["Bias list", bias.length
+                ? bias.map((v) => (v === 0 ? "0.0" : String(v))).join(", ")
+                  + " V" : "\u2014"],
+            ["Treatment", treatment || "\u2014"]);
+    } else {
+        rows.push(
+            ["Structure", st.source ? String(st.source).split("/").pop() : "\u2014"],
+            ["Formula",   st.formula || "\u2014"],
+            ["Atoms",     (st.atoms === undefined ? "\u2014" : String(st.atoms))]);
+    }
     for (const [k, v] of rows) {
         host.appendChild(el("div", null,
             el("dt", null, k), el("dd", null, v)));
@@ -1419,22 +1452,6 @@ function _fillMeta(items) {
         if (it && it.name) _meta[it.name] = it;
     }
 }
-
-/* A STARTING SWEEP for the settings the machine answers.
- *
- * They can only ever be points to try -- a description may never carry a value
- * for one (`template.md` § 6.4) -- so an empty bench leaves the card with
- * nothing in it and the user typing point lists from scratch.  These are the
- * shipped starting points, and `stages.md` § 6.8's rule is what makes them
- * safe to propose: a MACHINE-ANSWERED `bench` entry records points to try
- * and never an answer (stages.md § 6.8 -- the one-point-is-a-pin rule is
- * for the non-machine entries only), so a proposed grid costs nothing but
- * a measurement, and every row can be edited or dropped.
- *
- * Powers of two for ranks because that is how the block distributes
- * (`tuning.md` § 2.11); 1 and 2 threads because hybrid runs are the comparison
- * worth making first. */
-const BENCH_START = { mpi_np: [4, 8, 16], omp_threads: [1, 2] };
 
 /** The sweepable set — `execution` category only (`stages.md` § 6.8). */
 async function loadSweepChoices(engine) {
@@ -2772,7 +2789,7 @@ function removeSetting(name) {
  * ordinary starting ladder (`stages.md` § 6.5): one stage is not a special
  * shape, and empty `varies` is a real state.
  */
-function proposedFromHandover(over, shape, varies, bench) {
+function proposedFromHandover(over, shape, varies) {
     const run = (over && over.run) || {};
     // THE KIND rides the hand-over, every kind, as task.json states it.
     // A vibration hand-over
@@ -2804,7 +2821,6 @@ function proposedFromHandover(over, shape, varies, bench) {
         structure: (over && over.structure) || {},
         varies:    varies || [],
         stages:    stages,
-        bench:     bench || undefined,
     };
     // EVERY KIND IS WRITTEN.
     out.calculation = kind;
@@ -3552,19 +3568,15 @@ function setShape(shape) {
          * it is a dead end.  The group is a DEFAULT, never a restriction: any
          * parameter can be added and any of these removed (§ 1.2). */
         const engine = _handoverEngine(null);
+        // NO BENCH IS PROPOSED (`task-setup.md` § 6.2a-b): a run needs no
+        // benchmark, and a grid is the target machine's to enumerate at
+        // `prep bench`, never the page's.  The sweep vocabulary is loaded
+        // for the pickers.
         Promise.all([loadColumnChoices(engine),
-                     loadSweepChoices(engine)]).then(([cols, sweep]) => {
+                     loadSweepChoices(engine)]).then(([cols]) => {
             const seed = cols.filter((c) => c.group === "stage")
                              .map((c) => c.name);
-            // Only propose a sweep for settings this engine actually has.
-            const grid = {};
-            for (const it of sweep) {
-                if (it.machine_answers && BENCH_START[it.name]) {
-                    grid[it.name] = BENCH_START[it.name].slice();
-                }
-            }
-            const text = proposedFromHandover(_handover, shape, seed,
-                             Object.keys(grid).length ? grid : undefined);
+            const text = proposedFromHandover(_handover, shape, seed);
             try { _task = JSON.parse(text); } catch (_) { _task = null; }
             return setEditorText(text).then(() => {
                 if (_task) { renderStages(_task); renderNext(_task);

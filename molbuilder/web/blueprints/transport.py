@@ -90,31 +90,36 @@ def _fence(raw: str):
 
 @bp.route("/api/transport/describe_attempt", methods=["GET"])
 def api_transport_describe_attempt() -> Any:
-    """Classify a picked directory against the § 4.1b citation
-    condition and describe what it provides — the `describe` seam the
-    shared tree-picker feeds on when the Transport tab picks the
-    junction slot (P7; user ruling: the condition is FILES, never
+    """Classify a picked directory against `engines/transport.md` § 3.1's
+    citation condition and describe what it provides — the `describe`
+    seam the shared tree-picker feeds on when the Transport tab picks
+    the junction slot (user ruling: the condition is FILES, never
     layout).
 
-    ``?path=`` is tree-relative.  The answer names the form the
-    directory satisfies ("relaxation" | "structure"), or — when it
-    satisfies neither — ``form: null`` with the refusal as the summary,
-    naming exactly which file is missing (the condition stated).  For a
-    relaxation it is honest about convergence (CONCLUDED / not / no
-    record at all), and it says whether the electronic contract is the
-    citation's ("cited") or the description's own ("open").
+    ``?path=`` is tree-relative.  ONE SHAPE of citation (decision 7): a
+    finished relaxation run of molbuilder's own.  A directory that is
+    not one answers ``citation: null`` with the refusal as the summary,
+    naming exactly which file is missing (the condition stated).  A
+    citation's ``summary`` is one line: how the run ended (CONCLUDED /
+    not / exit code) and the deck's facts.  What its composition
+    MEASURED rides ``findings`` -- rows of the one finding vocabulary
+    (`science/validation.md` § 4.1 R2): each lead's seam and
+    principal-layer measurements as ``info``, the electrode orientation
+    as ``warn``, a composition refusal as ``error`` -- so the tab
+    renders them through the one renderer, never a run-on string.
     ``structure`` carries the cited junction's labeled structure for
     the viewer (the /api/build/load ``{structure}`` envelope), so the
-    tab shows the citation whatever the form — **and whether or not it
-    composes**: a directory that classifies but cannot be built into a
-    calculation still answers with its junction, and the refusal is
-    appended to the summary above it.  ``fix`` is a word the tab can
-    act on (today only ``"swap_electrodes"``), never prose to match.
+    tab shows the citation **whether or not it composes**: a directory
+    that classifies but cannot be built into a calculation still
+    answers with its junction, and the refusal is a finding beside it.
+    ``fix`` is a word the tab can act on (today only
+    ``"swap_electrodes"``), never prose to match.
     """
     from molbuilder.transport.compose import (ComposeError,
                                               classify_citation,
                                               compose_junction,
                                               labeled_citation_structure)
+    from molbuilder.issues import Issue
     from molbuilder.parse.fdf import parse_fdf_params
     from molbuilder.transport.sort import (ORDER_INVERTED,
                                            electrode_orientation)
@@ -135,8 +140,8 @@ def api_transport_describe_attempt() -> Any:
     except ComposeError as exc:
         # Not citable -- the refusal IS the answer (it names the
         # missing file and states the whole condition).
-        return jsonify({"ok": True, "citation": None, "form": None,
-                        "summary": str(exc)}), 200
+        return jsonify({"ok": True, "citation": None,
+                        "summary": str(exc), "findings": []}), 200
 
     deck_text = cited.deck.read_text()
     try:
@@ -147,9 +152,10 @@ def api_transport_describe_attempt() -> Any:
         # appends what it could not read.  A deck stating a unit this
         # build cannot convert is a card with one line missing, not a
         # 500 on the tab.
-        return jsonify({"ok": True, "citation": citation,
-                        "form": "relaxation",
-                        "summary": f"the deck cannot be read: {exc}"}), 200
+        unread = f"the deck cannot be read: {exc}"
+        return jsonify({"ok": True, "citation": citation, "summary": unread,
+                        "findings": _issues_to_json([Issue("error", unread)])
+                        }), 200
     bits = []
     if p.basis_size:
         bits.append(str(p.basis_size))
@@ -189,7 +195,6 @@ def api_transport_describe_attempt() -> Any:
         "kgrid": list(p.kgrid) if p.kgrid else None,
         "n_atoms": p.n_atoms,
     }
-    contract = "cited"
     concluded = bool(cited.concluded)
 
 # TWO SEPARATE QUESTIONS, and the card needs both: *what is this
@@ -205,6 +210,11 @@ def api_transport_describe_attempt() -> Any:
     # and only the refusal path pays for a second look.
     structure_wire = None
     fix = None
+    # WHAT THE COMPOSITION MEASURED, as findings with the severity each
+    # has (`science/validation.md` § 4.1 R4): a measurement is `info`, the
+    # one convention warning `warn`, a refusal `error` -- so the page
+    # tells them apart instead of reading six confirmations as warnings.
+    findings: list = []
     try:
         composed = compose_junction(citation, tree_root=root,
                                     swap_electrodes=swap)
@@ -215,23 +225,25 @@ def api_transport_describe_attempt() -> Any:
         # THE CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user
         # ruling, 2026-08-29).  An inverted junction composes and runs
         # -- it biases the other end -- so the tab gets the observation
-        # (with the numbers, for the meta line) plus `fix` as a WORD it
-        # can act on without matching prose.
+        # (the sort's one note, with the numbers) plus `fix` as a WORD
+        # it can act on without matching prose.
         for note in composed.sorted.notes:
-            status = status + "  ⚠ " + note
-        # AND THE LEADS' OWN MEASUREMENTS.  `extract_electrode_model`
-        # measures the periodic seam and the principal-layer condition and
-        # writes both to `ElectrodeModel.notes`, the one place that says
-        # whether a lead is really bulk.  Same rule as the line above: checked and reported, never enforced.  Labelled,
-        # because "the seam is ECLIPSED" is useless without which end.
+            findings.append(Issue("warn", note))
+        # AND THE LEADS' OWN MEASUREMENTS.  `extract_electrode_model` and
+        # the compose gate measure the periodic seam and the
+        # principal-layer condition into `ElectrodeModel.notes`, the one
+        # place that says whether a lead is really bulk; a condition that
+        # FAILS is the gate's refusal, so what reaches here is measured
+        # and reported.  Labelled, because "the seam is ECLIPSED" is
+        # useless without which end.
         for model in (composed.electrode_left, composed.electrode_right):
             for note in (model.notes if model is not None else ()):
-                status = status + f"  ⚠ {model.label}: " + note
+                findings.append(Issue("info", f"{model.label}: {note}"))
         if (electrode_orientation(composed.sorted.structure)
                 == ORDER_INVERTED):
             fix = "swap_electrodes"
     except Exception as exc:  # noqa: BLE001 -- surfaced, never fatal
-        status = status + "  !! " + str(exc)
+        findings.append(Issue("error", str(exc)))
         # SHOW IT ANYWAY.  The labels may also be the wrong way round,
         # and the rename is still worth offering on a junction whose
         # refusal is about something else entirely.
@@ -250,10 +262,9 @@ def api_transport_describe_attempt() -> Any:
     return jsonify({
         "ok": True,
         "citation": citation,
-        "form": "relaxation",
-        "contract": contract,
         "concluded": concluded,
         "summary": status,
+        "findings": _issues_to_json(findings),
         "structure": structure_wire,
         "params": params_out,
         "fix": fix,
@@ -509,7 +520,18 @@ def api_transport_describe() -> Any:
             # § 6.4's `stages` declaration).
             stages=tuple(stages_for_transport(bags)))
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        # THE CODEC'S REFUSAL, as a finding BESIDE THE CONTROL that wrote
+        # it when the codec names where (`task.DescriptionError`: the
+        # bias list, its treatment) -- the tab maps `task.bias` to its
+        # rows (`science/validation.md` § 4.1 R2); the error line says it
+        # too, as every refusal does.
+        from molbuilder.issues import Issue
+        where = getattr(exc, "where", "")
+        return jsonify({
+            "ok": False, "error": str(exc),
+            "findings": _issues_to_json([Issue(
+                "error", str(exc), where=f"task.{where}" if where else "")]),
+        }), 400
     # The template's text through the one door the schema route draws both
     # surfaces from (`_panel_template`) -- a value its field cannot take, or
     # a citation it refuses (a cited run that carried a net charge, ES7),
@@ -629,7 +651,13 @@ def api_transport_schema() -> Any:
             return jsonify({"ok": False, "error": str(exc)}), 400
         answers = citation_answers(cited.path)
         source = {"kind": answers.source, "name": answers.source_name}
-    schema = catalogue_to_form_schema("siesta", "t", calculation="transport",
+    # ONE ID PER CONTROL ON THE PAGE: the five rung tabs render the same
+    # items, so a rung's controls carry the rung in their ids
+    # (`t-device-max-scf-iter`), and a finding's `stage` picks its own
+    # tab's (`validation-findings.js`); the shared panel's are `t-…`.
+    schema = catalogue_to_form_schema("siesta",
+                                      f"t-{rung}" if rung else "t",
+                                      calculation="transport",
                                       surface=surface, rung=rung,
                                       template=template)
     response: Dict[str, Any] = {"ok": True, "surface": surface,

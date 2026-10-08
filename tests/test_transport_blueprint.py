@@ -47,9 +47,17 @@ class TestTransportSchemaEndpoint:
         names = {f["name"] for f in fields}
         assert "transmission_n_points" not in names and "dm_tolerance" in names
         tr = web.get("/api/transport/schema?surface=rung&rung=transmission").get_json()
-        tr_names = {f["name"] for s in tr["schema"]["sections"] for f in s["fields"]}
-        assert {"transmission_n_points", "tbt_k_grid", "dm_tolerance"} <= tr_names
-        assert "electrode_kz" not in tr_names
+        tr_fields = [f for s in tr["schema"]["sections"] for f in s["fields"]]
+        tr_names = {f["name"] for f in tr_fields}
+        # tbtrans runs no SCF (`transport.md` § 6.1b): its tab offers none
+        # of the SCF settings.  (Its temperature is the shared value, on
+        # the shared panel -- never a rung's control.)
+        assert {"transmission_n_points", "tbt_k_grid"} <= tr_names
+        assert "dm_tolerance" not in tr_names and "electrode_kz" not in tr_names
+        # ONE ID PER CONTROL ON THE PAGE: a rung's ids carry the rung, so
+        # the five tabs' copies of one item never share an id.
+        assert all(f["id"].startswith("t-transmission-") for f in tr_fields)
+        assert all(f["id"].startswith("t-seed-") for f in fields)
         r = web.get("/api/transport/schema?surface=rung&rung=lead")
         assert r.status_code == 400 and "rung must name" in r.get_json()["error"]
 

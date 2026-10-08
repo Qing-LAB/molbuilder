@@ -31,6 +31,12 @@
  *       panel:     <element>,   // the row parent AND visibility owner
  *       formScope: <element>,   // optional: searched for .card-issues panels
  *       fieldIds:  {mesh_cutoff: "p-mesh-cutoff", ...},  // optional
+ *                  // -- or, when one form holds several stages' controls
+ *                  // (the transport tab's rungs), keyed by stage first:
+ *                  // {device: {max_scf_iter: "t-device-max-scf-iter"}};
+ *                  // the finding's `stage` picks its own tab's map.  A
+ *                  // `where` outside `config.` (`task.bias`) is looked up
+ *                  // whole, and its id may name the control's own row.
  *       emptyText: "No issues yet.",  // optional: shown instead of hiding
  *       reveal:    true,        // optional: bring the first error into view
  *                                // -- a Send's refusal, not a live check
@@ -147,16 +153,27 @@ const _module = (function (root) {
     function _fieldAnchor(formScope, issue, fieldIds) {
         if (!formScope || !fieldIds) return null;
         var where = (issue && issue.where) || "";
-        if (where.indexOf("config.") !== 0) return null;
+        if (!where) return null;
+        var ids = fieldIds;
+        // ONE FORM, SEVERAL STAGES' CONTROLS: the map is keyed by stage
+        // first, and the finding's `stage` picks its own tab's ids.
+        var stage = issue && issue.stage;
+        if (stage && ids[stage] && typeof ids[stage] === "object") {
+            ids = ids[stage];
+        }
         // `config.frozen_atoms` and friends can carry a sub-path; the FIELD is
-        // the first segment, which is what the schema names.
-        var name = where.slice("config.".length).split(".")[0];
-        var id = fieldIds[name];
-        if (!id) return null;
+        // the first segment, which is what the schema names.  Any other
+        // `where` (`task.bias`) is the key itself.
+        var name = where.indexOf("config.") === 0
+            ? where.slice("config.".length).split(".")[0] : where;
+        var id = ids[name];
+        if (typeof id !== "string" || !id) return null;
         var input = formScope.querySelector("#" + (root.CSS && root.CSS.escape
                                                    ? root.CSS.escape(id) : id));
         if (!input) return null;
-        return input.closest ? input.closest(".schema-field") : null;
+        // The whole control -- label, unit, help -- when the schema rendered
+        // it; the element itself when the id names the control's own row.
+        return (input.closest && input.closest(".schema-field")) || input;
     }
 
     /* The <ul> beside one control, created on demand. */
@@ -287,6 +304,15 @@ const _module = (function (root) {
                     && scopes[k].querySelector(
                         ".issue-item[data-severity='error']");
                 if (first && first.scrollIntoView) {
+                    // A FOLDED CARD IS OPENED FIRST: a form folds the
+                    // groups a stage does not own, and a row scrolled to
+                    // inside a closed <details> is not in view.
+                    var fold = first.closest ? first.closest("details") : null;
+                    while (fold) {
+                        fold.open = true;
+                        fold = fold.parentElement
+                            ? fold.parentElement.closest("details") : null;
+                    }
                     first.scrollIntoView({ block: "center" });
                     break;
                 }

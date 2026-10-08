@@ -2069,6 +2069,10 @@ def api_task_setup_folder():
         # answer (`prep_inputs.bench_refusal`), so the page offers the
         # Measure step exactly where `prep bench` would take it.
         "bench_refusal": _folder_bench_refusal(folder, described),
+        # HOW A TRANSPORT DESCRIPTION TREATS ITS BIAS LIST, by the one rule
+        # the record names it with (`Task.treatment`); null for every other
+        # kind.  The "What came over" card echoes it (`task-setup.md` § 3).
+        "treatment": getattr(_task, "treatment", None),
         # THE MACHINE IT IS SET TO -- its first prep's, read from its copy
         # of the record, or null before that (`configuration.md` M-3): the
         # page shows it fixed rather than offering a choice that can only be

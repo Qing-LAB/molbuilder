@@ -129,14 +129,15 @@ TS_ELECTRODE_SECTION = _sc.Section(
     "The Hamiltonian this rung exists to write",
     ("ts_hs_save",))
 
-#: The transmission's SCF settings: the engine's own section without
-#: ``SolutionMethod`` -- tbtrans runs no SCF, and the solver it reads is its
-#: own ``TBT.SolutionMethod`` (``m_tbt_options.F90``).  The rest stay until an
-#: audit of which SIESTA settings tbtrans reads says otherwise (§ 6.1b).
-_TRANSMISSION_SCF_SECTION = _sc.Section(
-    _sl.SCF_SECTION.title,
-    tuple(n for n in _sl.SCF_SECTION.items if n != "solution_method"),
-    note=_sl.SCF_SECTION.note)
+#: WHAT TBTRANS READS OF THE SCF SETTINGS: the electronic temperature alone
+#: -- its own starts from ``ElectronicTemperature`` (``m_tbt_options.F90``).
+#: It runs no SCF, so no solver, mixer, tolerance or iteration limit is
+#: written here (§ 6.1b's audit, 2026-09-29 / 2026-10-08: tbtrans compiles
+#: none of the files that read them); those items declare the SCF rungs as
+#: their `stages`, so no surface offers them on this rung either.
+_TRANSMISSION_TEMPERATURE_SECTION = _sc.Section(
+    "The electronic temperature tbtrans starts from",
+    ("electronic_temperature",))
 
 #: TBtrans's own settings -- read by `tbtrans` alone; `siesta` holds no
 #: `TBT.*` keyword, which is why the device deck carries none.
@@ -197,15 +198,15 @@ def _transmission_layout(derived, frame, state_block):
 
     Read by `tbtrans`, which reads the junction description (the electrode
     and reservoir blocks, the voltage, the bulk treatment) as TranSIESTA
-    wrote it and its own `TBT.*` settings.  **It keeps the SIESTA settings
-    the rungs share**: `tbtrans` reads at least one of them -- its
-    temperature starts from `ElectronicTemperature` (`m_tbt_options.F90`) --
-    and which others it reads is an audit of its source not yet made, so
-    none is dropped until that says it may be (§ 6.1b).  Two groups are
-    audited and dropped (2026-09-29): ``SolutionMethod`` and the output
-    group (``WriteForces`` ... ``SaveHS``) -- tbtrans compiles none of the
-    files that read them (``read_options.F90``, ``write_subs.F``,
-    ``outcoor.f``), and its own options read none (``m_tbt_options.F90``).
+    wrote it and its own `TBT.*` settings.  **Of the SIESTA settings the
+    rungs share it keeps what it reads** (§ 6.1b's audit of its source:
+    `SystemLabel`, `SystemName`, `ElectronicTemperature`, `Spin`, the
+    `TS.Elec*` / `TS.ChemPot*` blocks, `TS.Voltage`, `TS.Elecs.Bulk`, its
+    own `TBT.*`): the basis and functional sections name the Hamiltonian it
+    was built with, the temperature its Fermi functions start from
+    (`m_tbt_options.F90`).  The SCF settings, the solver and the output
+    group are not written -- tbtrans compiles none of the files that read
+    them (``read_options.F90``, ``write_subs.F``, ``outcoor.f``).
     """
     return (
         _sc.Block("identity and what this rung computes",
@@ -216,9 +217,7 @@ def _transmission_layout(derived, frame, state_block):
         _sl.XC_SECTION,
         _sc.Block("the ladder's k-point mesh (tbtrans reads TBT.k below)",
                   _k_mesh_block(derived["k_mesh"])),
-        _TRANSMISSION_SCF_SECTION,
-        _sl.FREE_ENERGY_SECTION,
-        _sl.SCF_TAIL_SECTION,
+        _TRANSMISSION_TEMPERATURE_SECTION,
         _sl.spin_section(fixed=derived["spin_fixed"]),
         state_block,
         _sl.mpi_section(block_size=derived.get("block_size"),

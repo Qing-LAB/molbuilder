@@ -427,6 +427,19 @@ class Task:
     #: voltage gets its own device SCF and transmission, a sweep.
     low_bias_approximation: Optional[bool] = None
 
+    @property
+    def treatment(self) -> Optional[str]:
+        """How this description treats its bias list, by the three names
+        every surface uses (`engines/transport.md` § 2a.10): `single-bias`
+        for one voltage; `low-bias-approximation` or `self-consistent` for
+        several, by the stated switch.  None for a kind without a bias.
+        Stated, never inferred from how many points ran."""
+        if self.calculation != "transport":
+            return None
+        return ("single-bias" if len(self.bias) <= 1
+                else "low-bias-approximation" if self.low_bias_approximation
+                else "self-consistent")
+
     def __post_init__(self) -> None:
         """§ 6.5 holds for the object too, not only for the file.
 
@@ -501,15 +514,16 @@ class Task:
         if self.bias:
             if any(not isinstance(v, (int, float)) or isinstance(v, bool)
                    for v in self.bias):
-                raise ValueError(
-                    f"task: bias voltages must be numbers (got {self.bias!r})")
+                raise DescriptionError(
+                    f"task: bias voltages must be numbers (got {self.bias!r})",
+                    where="bias")
             if float(self.bias[0]) != 0.0:
-                raise ValueError(
+                raise DescriptionError(
                     f"task: the bias list must start at 0.0 (got "
-                    f"{self.bias[0]!r}) -- a scan starts from equilibrium: "
+                    f"{self.bias[0]!r}) -- a list starts from equilibrium: "
                     "the low-bias approximation converges its device there, "
                     "and a sweep starts each point from the one before "
-                    "(engines/transport.md § 2a.10, § 2a.11)")
+                    "(engines/transport.md § 2a.10, § 2a.11)", where="bias")
             # TWO POINTS IN ONE FOLDER -- a repeated voltage, or two whose
             # folder names are one (`bias_token`: 0.1 and 0.1000001 are both
             # `v0.1/`) -- refused here, the one door every road reads a
@@ -526,29 +540,29 @@ class Task:
                 said = (f"repeats {vs[0]:g} V" if len(set(vs)) == 1 else
                         f"puts {' and '.join(repr(v) + ' V' for v in vs)} "
                         f"in one folder ({tok}/)")
-                raise ValueError(
+                raise DescriptionError(
                     f"task: the bias list {said} -- each point is one device "
                     f"run in its own folder, so they would share it "
-                    f"(engines/transport.md 2a.10)")
+                    f"(engines/transport.md 2a.10)", where="bias")
         # THE TREATMENT, STATED where there is a choice -- a list of more
         # than one voltage -- and nowhere else (`engines/transport.md`
         # § 2a.10, TD7): never inferred from the count.
         if (len(self.bias) > 1
                 and not isinstance(self.low_bias_approximation, bool)):
-            raise ValueError(
+            raise DescriptionError(
                 f"task: a bias list of {len(self.bias)} voltages states "
                 f"bias.low_bias_approximation -- true (the device and the "
                 f"transmission once, at 0 V; each voltage's current from "
                 f"T(E, 0), linear response) or false (every voltage its own "
                 f"device SCF and transmission); got "
                 f"{self.low_bias_approximation!r} (engines/transport.md "
-                f"2a.10)")
+                f"2a.10)", where="bias.low_bias_approximation")
         if len(self.bias) <= 1 and self.low_bias_approximation is not None:
-            raise ValueError(
+            raise DescriptionError(
                 f"task: bias.low_bias_approximation answers a list of "
                 f"several voltages; this one has "
                 f"{len(self.bias) or 'no'} point (engines/transport.md "
-                f"2a.10)")
+                f"2a.10)", where="bias.low_bias_approximation")
         if self.stages is not None and not self.stages:
             raise ValueError(
                 "task: 'stages' is present but empty. A job has at least one "
@@ -675,6 +689,18 @@ class Task:
 #: this module owns.
 _SOURCE: contextvars.ContextVar[str] = contextvars.ContextVar(
     "task_refusal_source", default=FILENAME)
+
+
+class DescriptionError(ValueError):
+    """A refusal of the description's own content that NAMES WHERE in the
+    file (`bias`, `bias.low_bias_approximation`), so a surface puts it
+    beside the control that wrote it (`science/validation.md` § 4.1 R2)
+    rather than in a status line.  A `ValueError` still: every door that
+    refuses a description keeps refusing it."""
+
+    def __init__(self, msg: str, *, where: str = "") -> None:
+        super().__init__(msg)
+        self.where = where
 
 
 def _refuse(msg: str, *, where: str = "") -> NoReturn:

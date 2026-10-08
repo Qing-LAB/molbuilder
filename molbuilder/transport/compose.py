@@ -227,7 +227,9 @@ CITATION_CONDITION = (
     "finished: exactly one .fdf and exactly one .XV together, launched by "
     "`jobset launch` so its run record says how it ended, its region labels "
     "in the deck's block or the .molstruct.json beside it "
-    "(engines/transport.md 3.1)")
+    "(engines/transport.md 3.1).  A saved structure is not one: relax the "
+    "junction through `jobset init` -> `prep task` -> `launch task` and "
+    "cite that run")
 
 
 def classify_citation(cite_dir: Path) -> CitedDir:
@@ -512,7 +514,7 @@ def labeled_citation_structure(cited: CitedDir):
         f"labels: the deck {cited.deck.name} has no in-body "
         f"ATOM-METADATA block and no .molstruct.json sits beside "
         f"it.  Transport derives the electrodes FROM the labels "
-        f"(L-electrode / R-electrode; transport-design.md 4.1b) "
+        f"(L-electrode / R-electrode; engines/transport.md 3.1, 4) "
         f"-- relabel and re-relax through molbuilder, or put the "
         f"structure's .molstruct.json in the same directory.")
 
@@ -616,7 +618,7 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
                     f"{model.z_period:.2f} A, block span "
                     f"{model.z_span:.2f} A) -- the self-energy would "
                     f"couple beyond adjacent cells "
-                    f"(transport-design.md 3).  Label more electrode "
+                    f"(engines/transport.md 3).  Label more electrode "
                     f"layers on the junction and re-relax, or re-label "
                     f"and re-cite.")
             model.notes.append(
@@ -667,7 +669,8 @@ def compose_junction(citation: str, *, tree_root,
             f"the cited relaxation {citation!r} has not CONCLUDED -- it is "
             f"still running, or it was force-stopped (the two look "
             f"identical on disk; project-layout.md 1.6).  Let it finish; "
-            f"transport never decides this over you (ruling Q2).")
+            f"transport never decides this over you (engines/transport.md "
+            f"3.1).")
     if cited.exit_code != 0:
         raise ComposeError(
             f"the cited relaxation {citation!r} ended with exit code "
@@ -735,8 +738,9 @@ def compose_junction(citation: str, *, tree_root,
             f"the deck {deck.name} carries no convertible "
             f"coordinate block (AtomicCoordinatesAndAtomicSpecies "
             f"in Ang/Bohr/Fractional), so the frozen gate cannot "
-            f"compare start against end.  Include coordinates in "
-            f"the deck, or cite an .xyz+.molstruct.json pair.")
+            f"compare start against end -- a deck molbuilder wrote "
+            f"carries them; relax the junction through jobset and cite "
+            f"that run (engines/transport.md 3.1).")
     src_pos = np.asarray(params.coords_ang, dtype=float)
     if len(src_pos) != len(xv_pos):
         raise ComposeError(

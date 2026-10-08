@@ -174,6 +174,7 @@ const WORKSPACE_TAG = "transport";
                 var ts = root.molbuilder && root.molbuilder.tabStrip;
                 if (ts && rungs.length) {
                     var api = ts.mount(strip, {});
+                    _rungTabs = api;
                     if (!api.select(keep)) api.select(rungs[0].name);
                 }
                 return Promise.all(panels.map(function (p) {
@@ -185,21 +186,13 @@ const WORKSPACE_TAG = "transport";
                                            folded: _foldedUnlessOwned,
                                            holds: "overrides" })
                         .then(function (b) {
-                            if (!b || seq !== _rungsSeq) return 0;
+                            if (!b || seq !== _rungsSeq) return;
                             _rungSchemas[p.rung] = b.schema;
                             _rungHosts[p.rung] = p.host;
                             _restoreFormValues(p.host, b.schema, formSchema, p.rung);
                             _wirePersistence(p.host, b.schema, formSchema, p.rung);
-                            return b.schema.sections.reduce(function (n, s) {
-                                return n + (s.fields ? s.fields.length : 0);
-                            }, 0);
                         });
-                })).then(function (counts) {
-                    if (seq !== _rungsSeq) return;
-                    _setStatus("Form loaded ("
-                        + counts.reduce(function (a, b) { return a + b; }, 0)
-                        + " settings over " + rungs.length + " rungs).");
-                });
+                }));
             })
             .catch(function (e) {
                 _renderErrorParagraph(formContainer,
@@ -390,9 +383,12 @@ const WORKSPACE_TAG = "transport";
                 _adoptCitation(b, "Restored your last session: ");
             });
         }).catch(function (e) {
-            if (root.console) {
-                root.console.error("[transport] session restore failed", e);
-            }
+            /* SAID ON THE PAGE, through the one status writer (F8): the
+             * citation of the last session is gone or no longer
+             * describes; the person cites again. */
+            _setStatus("Your last session's citation could not be read "
+                       + "(" + (e && e.message ? e.message : e)
+                       + ") -- cite the junction again.", "warn");
         });
     }
 
@@ -522,7 +518,7 @@ const WORKSPACE_TAG = "transport";
         btn.textContent = holds ? WITHDRAW_LABEL : SWAP_LABEL;
         btn.addEventListener("click", function () {
             btn.disabled = true;
-            btn.textContent = "Swapping…";
+            btn.textContent = _swapElectrodesChoice ? "Withdrawing…" : "Swapping…";
             _swapElectrodes(described.citation, btn);
         });
         host.appendChild(say);
@@ -532,7 +528,7 @@ const WORKSPACE_TAG = "transport";
     function _swapElectrodes(citation, btn) {
         function _failed(why) {
             btn.disabled = false;
-            btn.textContent = SWAP_LABEL;
+            btn.textContent = _swapElectrodesChoice ? WITHDRAW_LABEL : SWAP_LABEL;
             _setStatus(why, "error");
         }
         /* The choice is made HERE and read back through the SAME door the
@@ -555,13 +551,16 @@ const WORKSPACE_TAG = "transport";
     }
 
     function _adoptCitation(described, statusPrefix) {
-        if (!described || !described.form || !described.citation) {
+        var vf = (root.molbuilder || {}).validationFindings;
+        var fpanel = _$("transport-junction-findings");
+        if (!described || !described.citation) {
             // Not citable: the server's summary IS the condition,
             // naming the missing file.  Card 1, with the picker.
-            // Clear any offer first -- it belongs to the PREVIOUS
-            // citation, and a button left standing here would act on
-            // that one.
+            // Clear any offer and any findings first -- they belong to
+            // the PREVIOUS citation, and a button left standing here
+            // would act on that one.
             _offerFix(null);
+            if (vf && fpanel) vf.clear({ panel: fpanel });
             _setStatus((described && described.summary)
                 || "That directory is not citable.", "warn");
             return;
@@ -581,6 +580,10 @@ const WORKSPACE_TAG = "transport";
             meta.hidden = false;
             meta.textContent = described.summary || "";
         }
+        /* WHAT THE COMPOSITION MEASURED -- each lead's measurements, the
+         * orientation warning, a refusal -- through the one renderer
+         * (validation.md 4.1 R2), under the one-line summary. */
+        if (vf && fpanel) vf.render(described.findings || [], { panel: fpanel });
         _offerFix(described);
         _writePanelNote();
         _refreshSendButton();
@@ -588,8 +591,7 @@ const WORKSPACE_TAG = "transport";
          * PREP; describing ahead is legal).  The summary already says
          * CONCLUDED / not / no-record; add the road note only when
          * prep would refuse today. */
-        var late = (described.form === "relaxation"
-                    && described.concluded === false)
+        var late = described.concluded === false
             ? "  You can describe now, but prep will refuse this "
               + "citation until the relaxation finishes."
             : "";
@@ -617,18 +619,16 @@ const WORKSPACE_TAG = "transport";
             }
             /* THE one pop-out picker (lib/tree-picker.js): ANY
              * directory can be chosen -- what makes it citable is its
-             * FILES (4.1b, user ruling 2026-08-29: a finished
-             * relaxation's .fdf+.XV together, or a labeled
-             * .xyz+.molstruct.json pair), and the describe seam
-             * classifies each selection so the meta line answers
-             * before you confirm. */
+             * FILES and that it is a run of ours (transport.md \u00a7 3.1,
+             * decision 7: a finished relaxation run, launched through
+             * jobset), and the describe seam classifies each selection
+             * so the meta line answers before you confirm. */
             import("../tree-picker.js").then(function (mod) {
                 return mod.pickPath({
                     title: "Cite the relaxed junction",
-                    hint: "Pick the DIRECTORY holding the relaxed "
-                        + "junction: a finished relaxation (.fdf + .XV "
-                        + "together) or a labeled structure (.xyz + "
-                        + ".molstruct.json).  \u25b8 expands.",
+                    hint: "Pick the finished relaxation RUN of the "
+                        + "junction (<calculation>/<NN>_<stage>/run-<n>, "
+                        + "launched through jobset).  \u25b8 expands.",
                     mode: "dir",
                     describe: function (path) {
                         return _describeAttempt(toRel(path))
@@ -718,7 +718,23 @@ const WORKSPACE_TAG = "transport";
                 showFindings: function (issues) {
                     var vf = (root.molbuilder || {}).validationFindings;
                     var panel = _$("transport-send-findings");
-                    if (vf && panel) vf.render(issues, { panel: panel });
+                    if (!vf || !panel) return;
+                    // BESIDE THE CONTROL IT NAMES (validation.md 4.1 R2):
+                    // a rung's field by the schema its tab rendered, the
+                    // bias list and its treatment by their rows -- and
+                    // that rung's tab brought up first, so a refusal is
+                    // read where it is fixed.
+                    var first = (issues || []).filter(function (i) {
+                        return i && i.severity === "error" && i.stage
+                            && _rungHosts[i.stage];
+                    })[0];
+                    if (first && _rungTabs) _rungTabs.select(first.stage);
+                    vf.render(issues, {
+                        panel: panel,
+                        formScope: _$("parameters-card"),
+                        fieldIds: _fieldIds(),
+                        reveal: true,
+                    });
                 },
                 engine: "siesta",
                 calculation: "transport",
@@ -736,7 +752,28 @@ const WORKSPACE_TAG = "transport";
     // the Describe handler reads every rung's panel without re-fetching.
     var _rungSchemas = {};
     var _rungHosts = {};
+    var _rungTabs = null;          // the rung strip's handle (select(rung))
     var _rungsSeq = 0;             // the newest draw of the rung tabs
+
+    /* {stage -> {field name -> the DOM id its tab gave it}} from the schemas
+     * this page rendered -- the id rule is the schema's, never derived here
+     * -- plus the description's own two rows (`task.bias`, its treatment),
+     * whose ids name the row itself.  The map the findings renderer places
+     * by. */
+    function _fieldIds() {
+        var out = {
+            "task.bias": "transport-bias-row",
+            "task.bias.low_bias_approximation": "transport-bias-treatment",
+        };
+        Object.keys(_rungSchemas).forEach(function (rung) {
+            var m = {};
+            ((_rungSchemas[rung] || {}).sections || []).forEach(function (s) {
+                (s.fields || []).forEach(function (f) { m[f.name] = f.id; });
+            });
+            out[rung] = m;
+        });
+        return out;
+    }
     var _sharedSchema = null;      // the shared panel's, by _fetchAndRenderShared
 
     /* THE SHARED PANEL (engines/transport.md 3.8.2): the items the
@@ -785,10 +822,6 @@ const WORKSPACE_TAG = "transport";
                 : src.kind === "deck"
                 ? "Values from the run you cited (" + src.name + ").  Change "
                   + "any of them; a change applies to all five rungs at once."
-                : src.kind === "record"
-                ? "Values recorded with the structure you cited"
-                  + (src.name ? " (" + src.name + ")" : "") + ".  Change any "
-                  + "of them; a change applies to all five rungs at once."
                 : "The citation carries no deck and no record, so it answers "
                   + "none of these.  A blank field is not chosen: the "
                   + "template records no value for it and prep falls back to "

@@ -113,17 +113,20 @@
     border-bottom: 1px solid var(--border-subtle);
 }
 
-.transport-iv td { text-align: right; }
+/* A numeric table aligns a column's header with its cells. */
+.transport-iv td,
+.transport-iv th { text-align: right; }
 
 .transport-iv th,
 .transport-rungs th {
     color: var(--text-muted);
-    font-weight: 600;
-    text-align: left;
+    font-weight: var(--weight-semibold);
 }
+.transport-rungs th { text-align: left; }
 
-/* A row picks its bias point; the picked one is marked. */
-.transport-iv-row { cursor: pointer; }
+/* A row that picks a bias point says so; a computed row (the low-bias
+ * I-V, one slice behind every point) does not. */
+.transport-iv-row.is-pick { cursor: pointer; }
 .transport-iv-row.is-selected td { background: var(--surface-recessed); }
 
 /* A point without its transmission: its state chip says pending or failed,

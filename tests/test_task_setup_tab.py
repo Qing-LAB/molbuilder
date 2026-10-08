@@ -1323,20 +1323,24 @@ def test_the_leads_own_measurements_reach_the_card(
 
     Reported, never enforced -- the rule the electrode orientation is
     drawn under -- so the 4-layer case comes back as a description, not
-    a refusal.
+    a refusal: a measurement is an `info` finding of the answer
+    (`science/validation.md` § 4.1 R4), never a warning.
     """
     cite = _labelled_au_lead_junction(tmp_path, monkeypatch, n_layers)
     r = web_client.get(f"/api/transport/describe_attempt?path={cite}")
     assert r.status_code == 200
     body = r.get_json()
-    assert body["form"] == "relaxation", body
-    summary = body["summary"]
-    assert verdict in summary, f"the seam verdict must reach the card: {summary}"
+    assert body["citation"] == cite, body
+    measured = [f["message"] for f in body["findings"]
+                if f["severity"] == "info"]
+    assert any(verdict in m for m in measured), (
+        f"the seam verdict must reach the card as a measurement: {body}")
     # BOTH leads emit the same seam sentence, so without the prefix a
     # person reads the verdict twice with nothing saying which end it is
     # about.  Pin the prefix, not merely the label -- the principal-layer
     # note already contains "L-electrode", so a looser assertion passes
     # with the prefix deleted.
     for lead in ("L-electrode", "R-electrode"):
-        assert f"{lead}: the periodic seam" in summary, (
-            f"each lead's seam note must be attributed to it: {summary}")
+        assert any(m.startswith(f"{lead}: the periodic seam")
+                   for m in measured), (
+            f"each lead's seam note must be attributed to it: {measured}")
