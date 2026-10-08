@@ -71,8 +71,11 @@
             legend: { orientation: "h", y: -0.25 },
             xaxis: { title: { text: "SCF cycle", standoff: 4 },
                      zeroline: false, automargin: true, nticks: 6 },
+            /* NINE FIGURES: an SCF's last cycles differ in the fifth decimal
+             * of a few-thousand-eV energy, and six showed every tick the
+             * same. */
             yaxis: { title: { text: "E (eV)", standoff: 4 },
-                     tickformat: ".6~r", zeroline: false,
+                     tickformat: ".9~r", zeroline: false,
                      automargin: true, nticks: 5 },
         }, theme), { displayModeBar: false, responsive: true });
 
