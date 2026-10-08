@@ -39,6 +39,20 @@ name = "a stage set restart: clean answers .false. to every restart key its run 
 template = { restart = "clean" }
 deck = ["DM.UseSaveDM .false.", "MD.UseSaveXV .false.", "MD.UseSaveCG .false."]
 
+# The run script's Mode line says what the deck does with prior state
+# (`running-a-job.md` § 3.5): a clean deck reads none of what lies on disk.
+[[case]]
+name = "a clean stage's run script says its deck reads no prior state"
+template = { restart = "clean" }
+run_sh = ['_mode="CLEAN (this deck reads no prior state']
+run_sh_lacks = ['_mode="WARM-RESTART (silent; engine will load']
+
+[[case]]
+name = "...and a continuing stage's says what the engine will load"
+template = { restart = "continue" }
+run_sh = ['_mode="WARM-RESTART (silent; engine will load']
+run_sh_lacks = ['_mode="CLEAN (']
+
 [[case]]
 name = "...a stage that continues answers .true. -- and a Broyden stage writes no CG key"
 template = { restart = "continue" }

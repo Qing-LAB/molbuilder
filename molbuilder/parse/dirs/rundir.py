@@ -93,21 +93,22 @@ def openable_in(directory: str, calculation: Optional[str] = None
     return None, attempts
 
 
-def run_state_of(directory, names):
+def run_state_of(directory, names, run=None):
     """The run's state through the one door (`job.run_status`), asked with
     its launch record (`runrecord.launch_record`) as every reader asks it --
     the stage's newest run's, named by its stage's names
     (`runfiles.RunNames`).  A launch record that does not read is the state
     ``unreadable``, the file named in its detail -- never read as launched
     or not launched, and never followed.
-    The run door (`runs`) asks it, with the run's names."""
+    The run door (`runs`) asks it, with the run's names; ``run`` asks about
+    that run, by default the stage's newest."""
     from molbuilder.runrecord import LaunchRecordError, launch_record
     from .job import RunStatus, run_status
     try:
-        launch = launch_record(directory, names)
+        launch = launch_record(directory, names, run)
     except LaunchRecordError as e:
         return RunStatus(state="unreadable", detail=str(e))
-    return run_status(directory, names.stem, launch=launch)
+    return run_status(directory, names.stem, launch=launch, run=run)
 
 
 __all__ = ["openable_in", "run_state_of"]

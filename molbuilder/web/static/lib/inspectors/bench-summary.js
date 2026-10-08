@@ -40,6 +40,7 @@
         pending:       "busy",
         "not-started": "idle",
         unknown:       "warn",
+        unreadable:    "bad",
         failed:        "bad",
     };
 

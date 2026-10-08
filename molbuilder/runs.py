@@ -355,7 +355,7 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
     run = run_of(path)
     if run is None or run.stage is None:
         return None
-    st = run_state_of(run.folder, run.names)
+    st = run_state_of(run.folder, run.names, run.run)
     return {"state": st.state, "detail": st.detail,
             "live": st.state in LIVE_STATES}
 

@@ -1151,6 +1151,10 @@
             setStatus(els.watchStatus, _watchProgressLine(results)
                       + " — following, every "
                       + (WATCH_INTERVAL_MS / 1000) + " s.", "muted");
+        } else if (run && run.state === "unreadable") {
+            // A record that does not read, in its reader's words.
+            setStatus(els.watchStatus, "Run record unreadable — "
+                      + run.detail, "error");
         } else if (run && run.state === "failed") {
             // THE RUN STOPPED, in its own words -- between phases, the dot
             // for the one it was in still reads running.

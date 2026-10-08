@@ -2171,6 +2171,13 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // readers via aria, since title is announced by most).
                 if (errMsg) badgeDet.setAttribute("title", errMsg);
                 else        badgeDet.removeAttribute("title");
+            } else if (kind === "unreadable") {
+                // A record that does not read is said in its reader's words,
+                // which name the file and the way out (web/results.md § 4.1).
+                badge.classList.add("run-state-error");
+                badgeLab.textContent = "Record unreadable";
+                badgeDet.textContent = (run && run.detail) || "";
+                badgeDet.removeAttribute("title");
             } else if (kind === "queued" || kind === "pending") {
                 // Launched and silent, or prepped and never launched: the
                 // run's own words beneath -- "queued as job 481923".
@@ -2192,13 +2199,15 @@ import { molviewFiles } from "../projects/molview-doors.js";
 
     }
 
-    /* Which badge: finished | stopped | queued | pending | running -- the
+    /* Which badge: finished | stopped | queued | pending | unreadable |
+     * running -- the
      * run's state when the file belongs to one, else the file's own ending
      * (`run_state`, model/parse.md § 2b). */
     function _badgeKind(run, data) {
         if (run) {
             return ({ finished: "finished", failed: "stopped",
-                      queued: "queued", pending: "pending" })[run.state]
+                      queued: "queued", pending: "pending",
+                      unreadable: "unreadable" })[run.state]
                 || "running";
         }
         const rs = String((data && data.run_state)

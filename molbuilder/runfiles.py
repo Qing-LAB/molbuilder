@@ -653,9 +653,12 @@ def latest_run(directory, label: str, *,
     return max(runs) if runs else None
 
 
-def at_latest_run(directory, files, stem: str) -> "list[Path]":
-    """Those of ``files`` that belong to the run ``stem`` names at its LATEST
-    run index, newest first.
+def at_run(directory, files, stem: str,
+           run: Optional[int] = None) -> "list[Path]":
+    """Those of ``files`` that belong to run ``run`` of the stage ``stem``
+    names -- by default its LATEST run index -- newest first.  A file that
+    carries no run index (the hierarchy's folder-wide names) counts for
+    every run.
 
     A per-run file counts only at the HIGHEST index any per-run file of the
     run reached, across every role: a warm-retry chain execs a fresh wrapper
@@ -669,12 +672,12 @@ def at_latest_run(directory, files, stem: str) -> "list[Path]":
     run index orders; a file's time does not (`model/parse.md` § 5.1).
     """
     d = Path(directory)
-    newest = latest_run(d, stem)
+    wanted = latest_run(d, stem) if run is None else run
     kept = []
     for f in files:
         got = parse(f.name, stem)
         idx = got.run if got else None
-        if newest is not None and idx is not None and idx < newest:
+        if wanted is not None and idx is not None and idx != wanted:
             continue
         kept.append((idx if idx is not None else -1, f))
     return [f for _key, f in sorted(kept, key=lambda k: k[0], reverse=True)]

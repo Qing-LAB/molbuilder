@@ -120,7 +120,8 @@ sends with it ([`results.md`](?doc=web/results.md) § 4.1), the one the Run
 panel and `jobset status` read: *Finished*, *Stopped* (failed — the reason
 beneath: the output's own stop where it states one, else the run's own words,
 such as *stopped before its end: no exit recorded*), *Queued*, *Not launched*,
-else *Running*. A file that belongs to no run — an upload — is read by its own
+*Record unreadable* (the reader's own words beneath, naming the file and the
+way out), else *Running*. A file that belongs to no run — an upload — is read by its own
 ending (`run_state`, [`model/parse.md`](?doc=model/parse.md) § 2b): `ended` is
 *Finished*, `stopped` or `out_of_memory` *Stopped*, anything else *Running*.
 *(It read the file alone until 2026-10-03, so an output that ended read

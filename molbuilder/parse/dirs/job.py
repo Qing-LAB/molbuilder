@@ -132,7 +132,8 @@ FINISH_CANNOT_LOAD = "finish cannot load"
 MONITOR_ENDED = "[MONITOR] job ended"
 
 
-def _monitor_ended(run_dir: Path, basename: str) -> bool:
+def _monitor_ended(run_dir: Path, basename: str,
+                   run: Optional[int] = None) -> bool:
     """Did the latest run's monitor see its process go -- its log's closing
     record, :data:`MONITOR_ENDED`?
 
@@ -144,9 +145,9 @@ def _monitor_ended(run_dir: Path, basename: str) -> bool:
     ended (`run-reports.md` § 2.4).  A node that dies takes the monitor with
     it, and then no file says the run is over.
     """
-    for log in _rf.at_latest_run(
+    for log in _rf.at_run(
             run_dir, _of_run(_rf.find_by_role(run_dir, ".monitor.log"),
-                             basename), basename):
+                             basename), basename, run):
         try:
             with log.open(encoding="utf-8", errors="replace") as fh:
                 if any(MONITOR_ENDED in line for line in fh):
@@ -284,7 +285,8 @@ _UNASKED = object()
 
 
 def run_status(run_dir, basename: str, *,
-               launch: Any = _UNASKED) -> "RunStatus":
+               launch: Any = _UNASKED,
+               run: Optional[int] = None) -> "RunStatus":
     """How is this run doing?  ``{state, detail, last_change_at,
     active_source}``.
 
@@ -322,13 +324,19 @@ def run_status(run_dir, basename: str, *,
     # it counts only once its footer concludes -- otherwise a stage's seed
     # outvotes its own result (`model/parse.md` § 5.5, § 5.1).
     speaks = set(_rf.stdout_roles())
+    # ONE RUN SPEAKS: run ``run``, by default the newest index any file of
+    # the stage reached -- an earlier run's output beside a newer run's
+    # launch record is that earlier run's, and says nothing of the one now
+    # queued (`running-a-job.md` § 4.2).
     return replace(_build_status(
-        [p for role in _rf.run_output_roles() for p in files[role]
-         if role in speaks or states.get(p.name) in _re.CONCLUDED],
+        _rf.at_run(run_dir,
+                   [p for role in _rf.run_output_roles() for p in files[role]
+                    if role in speaks or states.get(p.name) in _re.CONCLUDED],
+                   basename, run),
         states,
-        _rr.ending(run_dir, basename),
+        _rr.ending(run_dir, basename, run),
         launch=launch,
-        monitor_ended=lambda: _monitor_ended(run_dir, basename),
+        monitor_ended=lambda: _monitor_ended(run_dir, basename, run),
         out_messages=messages,
         finish_started=lambda p: _finish_started(run_dir, p, basename),
         run_index=lambda p: _run_index(p, basename)),

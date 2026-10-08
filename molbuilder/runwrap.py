@@ -738,8 +738,13 @@ def _runtime_status_block(
     script_name: str,
     warm: Sequence[str],
     resumes: bool = True,
+    reads_prior: Optional[bool] = None,
 ) -> str:
     """Bash snippet that detects and emits the execution status banner.
+
+    ``reads_prior`` is the deck's own answer about prior state
+    (:func:`_fdf_honours_restart`, :func:`_py_deck_reads_prior`): False, and
+    the Mode line says the deck reads none of what lies on disk.
 
     Prints, at script launch time, AFTER cold/run-index resolution but
     BEFORE the engine launches:
@@ -904,6 +909,8 @@ def _runtime_status_block(
         f'    if [ "$_warmstart_present" = "1" ]; then\n'
         + (f'        _mode="{_retry_texts(False, None)["mode"]}"\n'
            if not resumes else
+           f'        _mode="{_CLEAN_DECK_MODE}"\n'
+           if reads_prior is False else
            f'        _mode="WARM-RESUME (--continue; engine will load {warm_files_label})"\n')
         + f"    else\n"
         + (f'        _mode="RE-RUN REQUESTED but no prior state found -- starting from the first step with nothing to read back"\n'
@@ -911,9 +918,10 @@ def _runtime_status_block(
            f'        _mode="WARM-RESUME REQUESTED but no prior state found -- starting cold by necessity"\n')
         + f"    fi\n"
         f'elif [ "$_warmstart_present" = "1" ]; then\n'
-        f'    _mode="WARM-RESTART (silent; engine will load existing {warm_files_label}.  '
-        f'Pass --cold to discard them.)"\n'
-        f"fi\n"
+        + (f'    _mode="{_CLEAN_DECK_MODE}"\n' if reads_prior is False else
+           f'    _mode="WARM-RESTART (silent; engine will load existing {warm_files_label}.  '
+           f'Pass --cold to discard them.)"\n')
+        + f"fi\n"
         f"{constraint_detection}"
         f"\n"
     )
@@ -1574,6 +1582,12 @@ def _gpu_runtime_block() -> str:
 #: how `_fdf_honours_restart` reads the deck's ``DM.UseSaveDM`` as SIESTA
 #: does.
 _FDF_TRUTHY = (".true.", "true", "yes", "t", "y", "1")
+
+
+#: The Mode line of a run whose deck reads no prior state, whatever lies on
+#: disk -- its restart answer is ``clean`` (`run-identity.md` § 4).
+_CLEAN_DECK_MODE = ("CLEAN (this deck reads no prior state; the files on "
+                    "disk are not read)")
 
 
 def _retry_texts(resumes: bool,
@@ -2351,6 +2365,7 @@ def render_run_wrapper(script_path: Path, *,
                                   label=names.label)
             + _runtime_status_block(basename, engine="siesta",
                                     resumes=resumes,
+                                    reads_prior=_restart_honoured,
                                     warm=_warm_in_effect("siesta", warm),
                                      script_name=script_name)
         )
@@ -2878,6 +2893,7 @@ def render_run_wrapper(script_path: Path, *,
             + _cold_restart_block(basename, engine="pyscf",
                                   label=names.label)
             + _runtime_status_block(basename, engine="pyscf",
+                                    reads_prior=_py_reads_prior,
                                     warm=_warm_in_effect("pyscf", warm),
                                      script_name=script_name)
         )

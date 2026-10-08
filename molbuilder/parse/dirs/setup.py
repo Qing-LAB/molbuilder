@@ -100,13 +100,17 @@ def differs(asked: Any, used: Any) -> Optional[bool]:
     return None if same is None else not same
 
 
-def _stage_name(f: "RunFiles") -> Optional[str]:
-    """The stage's NAME -- out of the token in the run's names, which the
-    run door gave the record (`RunFiles.names`), never cut from a deck's
-    name: the run's stage is known before any file of it is read."""
+def _stage_role(f: "RunFiles") -> Optional[str]:
+    """The ROLE the run's rung plays (`template.stage_role`) -- what the
+    catalogue's `stages` axis names, so the items a rung reads are the
+    ones its deck was written with.  Its stage's name comes out of the token
+    in the run's names, which the run door gave the record
+    (`RunFiles.names`): the run's stage is known before any file of it is
+    read."""
     from ...identity import parse_token
+    from ...template import stage_role
     got = parse_token(f.names.stage)
-    return got[1] if got else None
+    return stage_role(f.engine, f.calculation, got[1] if got else None)
 
 
 def _used_from_fdf_log(keys, params, blocks) -> Any:
@@ -163,7 +167,7 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
             pass
 
     items = _sc.declarations(engine=f.engine, calculation=f.calculation,
-                             stage=_stage_name(f))
+                             stage=_stage_role(f))
     rows: List[Dict[str, Any]] = []
     by_keys: Dict[tuple, Dict[str, Any]] = {}
     written: set = set()
