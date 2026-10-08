@@ -663,14 +663,17 @@ const WORKSPACE_TAG = "transport";
                 _setSendStatus("lib/task-handover.js is not loaded.");
                 return;
             }
-            var bias = String((_$("transport-bias") || {}).value || "0.0")
-                .split(",").map(function (s) { return s.trim(); })
-                .filter(Boolean).map(Number);
+            var bias = _biasList();
             if (bias.some(isNaN)) {
                 _setSendStatus("Bias must be comma-separated volts, "
                     + "e.g. 0.0,0.2");
                 return;
             }
+            // THE TREATMENT, for several voltages -- the person's choice,
+            // and the description's check refuses a list without one.
+            var picked = root.document.querySelector(
+                'input[name="transport-bias-treatment"]:checked');
+            var treatment = bias.length > 1 && picked ? picked.value : null;
             // A VALUE THAT WILL NOT READ AS ITS TYPE is refused here, naming
             // its field -- beside which its caption already says why.
             var bags, shared;
@@ -703,6 +706,7 @@ const WORKSPACE_TAG = "transport";
                 calculation: "transport",
                 junction: _junction,
                 bias: bias,
+                bias_treatment: treatment,
                 stages: bags,
                 shared: shared,
             });
@@ -804,6 +808,51 @@ const WORKSPACE_TAG = "transport";
         if (fc && fs) return _fetchAndRender(fc, fs);
     }
 
+    /** The bias list as typed: volts, in order. */
+    function _biasList() {
+        return String((_$("transport-bias") || {}).value || "0.0")
+            .split(",").map(function (s) { return s.trim(); })
+            .filter(Boolean).map(Number);
+    }
+
+    /** The treatment is asked when the list holds several voltages
+     *  (`engines/transport.md` § 2a.10). */
+    function _syncTreatment() {
+        var box = _$("transport-bias-treatment");
+        if (box) box.hidden = _biasList().length <= 1;
+    }
+
+    /* THE BUILDER: 0 V first, then start..stop by step, written into the
+     * list, which stays editable. */
+    function _wireBiasBuilder() {
+        var list = _$("transport-bias");
+        var fill = _$("transport-bias-fill");
+        if (!list || !fill) return;
+        list.addEventListener("input", _syncTreatment);
+        fill.addEventListener("click", function () {
+            var a = Number(_$("transport-bias-start").value);
+            var b = Number(_$("transport-bias-stop").value);
+            var d = Number(_$("transport-bias-step").value);
+            if (![a, b, d].every(isFinite) || d === 0
+                || (b - a) / d < 0) {
+                _setSendStatus("The builder needs a start, a stop and a "
+                    + "step that walks from one to the other.");
+                return;
+            }
+            var out = [0];
+            var n = Math.floor((b - a) / d + 1e-9);
+            for (var i = 0; i <= n; i++) {
+                var v = Math.round((a + i * d) * 1e6) / 1e6;
+                if (out.indexOf(v) === -1) out.push(v);
+            }
+            list.value = out.map(function (v) {
+                return v === 0 ? "0.0" : String(v);
+            }).join(", ");
+            _syncTreatment();
+        });
+        _syncTreatment();
+    }
+
     function _init() {
         var formContainer = _$("transport-form-container");
         if (!formContainer) return;
@@ -836,6 +885,7 @@ const WORKSPACE_TAG = "transport";
         _restoreSession();
         _wireJunctionPicker();
         _wireSendButton(formContainer);
+        _wireBiasBuilder();
         _refreshSendButton();
     }
 

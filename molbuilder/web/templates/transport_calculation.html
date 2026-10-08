@@ -150,8 +150,29 @@
     <div class="action-row" id="transport-bias-row">
       <label for="transport-bias"><strong>Bias list (V):</strong></label>
       <input id="transport-bias" type="text" value="0.0"
-             title="Comma-separated volts, 0.0 first — the chain starts from equilibrium.  More than one value is a scan: one attempt ladder per point, launched as one chain job." />
+             title="Comma-separated volts, 0.0 first — the chain starts from equilibrium.  More than one value is a scan." />
     </div>
+    {#- THE START / STOP / STEP BUILDER fills the list, which stays
+        editable; 0 V is always first (user, 2026-09-30: "as long as the
+        sweep can be easily setup in the UI"). -#}
+    <div class="action-row" id="transport-bias-builder">
+      <span>Fill from</span>
+      <label>start <input id="transport-bias-start" type="number" step="any" value="0.1" size="5" /></label>
+      <label>stop <input id="transport-bias-stop" type="number" step="any" value="0.5" size="5" /></label>
+      <label>step <input id="transport-bias-step" type="number" step="any" value="0.1" size="5" /></label>
+      <button type="button" class="btn" id="transport-bias-fill">Fill the list</button>
+    </div>
+    {#- THE TREATMENT, asked when the list holds more than one voltage
+        (`engines/transport.md` § 2a.10): nothing is chosen for you. -#}
+    <fieldset class="action-row" id="transport-bias-treatment" hidden>
+      <legend><strong>Several voltages — how is each computed?</strong></legend>
+      <label><input type="radio" name="transport-bias-treatment" value="low-bias" />
+        <strong>low-bias</strong> — one device converged at 0 V; every point's
+        current from its transmission, TBtrans integrating each voltage's window</label>
+      <label><input type="radio" name="transport-bias-treatment" value="re-converged" />
+        <strong>re-converged</strong> — the device converged again at every
+        nonzero voltage, a chain of runs each starting from the one before</label>
+    </fieldset>
     <p class="hint">
       <strong>The bias is the experiment, so it is asked first — and it
       decides whether the rest matters.</strong>  At <code>0.0</code> the

@@ -460,6 +460,13 @@ def api_transport_describe() -> Any:
         return jsonify({"ok": False,
                         "error": f"bias must be a list of volts, "
                                  f"got {bias_raw!r}"}), 400
+    # THE TREATMENT, as the person chose it -- the description's check
+    # below refuses a list of several without one, and one with a single
+    # voltage (`engines/transport.md` § 2a.10).
+    treatment = body.get("bias_treatment") or None
+    if treatment is not None and not isinstance(treatment, str):
+        return jsonify({"ok": False,
+                        "error": "bias_treatment is a word"}), 400
     # PER-RUNG BAGS, the shape `task.stages` carries (`engines/transport.md`
     # § 3.8.2a): a rung's tab writes that rung's bag, so the rung is the
     # person's answer and nothing here routes.
@@ -547,6 +554,7 @@ def api_transport_describe() -> Any:
                            stage_names=TRANSPORT_STAGES),
             structure=None, calculation="transport",
             slots={"junction": citation}, bias=bias,
+            bias_treatment=treatment,
             # the stages.md 6.2 rule holds here too: an override names
             # a PROMOTED field, and `varies` is the promotion
             varies=tuple(sorted({n for b in bags.values() for n in b})),

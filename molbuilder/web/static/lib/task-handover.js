@@ -40,6 +40,7 @@
  *     calculation,  // REQUIRED: "optimization" | "vibration" | "transport"
  *     junction,     // transport only: the citation string
  *     bias,         // transport only: [volts...], 0.0 first
+ *     bias_treatment, // transport only: "low-bias" | "re-converged" for several
  *     stages,       // transport only: {rung: {catalogue item: value}}, per-rung bags
  *     shared,       // transport only: {catalogue item: value}, the shared panel
  *   })
@@ -190,6 +191,9 @@
         if (isTransport) {
             req.junction  = o.junction;
             req.bias      = o.bias || [0.0];
+            // THE TREATMENT, as chosen -- none for a single voltage
+            // (`engines/transport.md` § 2a.10).
+            req.bias_treatment = o.bias_treatment || null;
             req.stages    = o.stages || {};      // {rung: {item: value}}
             req.shared    = o.shared || {};
         } else {

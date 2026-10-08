@@ -1235,9 +1235,12 @@ The Results surface shows that label beside the curve, not buried in metadata.
 
 **A list of several voltages states its treatment** in `task.json` —
 `"bias": {"voltages_v": [0.0, 0.2, 0.4], "treatment": "low-bias" |
-"re-converged"}` (`jobset init --bias … --bias-treatment …`) — and is refused
-without one: never inferred from the count. A list of one voltage is the single
-bias, and states none.
+"re-converged"}` (`jobset init --bias … --bias-treatment …`; the transport tab
+asks which, with nothing chosen, once its list holds a second voltage) — and is
+refused without one: never inferred from the count. A list of one voltage is
+the single bias, and states none. The tab's list is typed, or filled by its
+**start / stop / step** builder — 0 V first, then the walk — and stays editable;
+one list for both treatments.
 
 | treatment | the device | the transmission | what the record calls it |
 |---|---|---|---|
