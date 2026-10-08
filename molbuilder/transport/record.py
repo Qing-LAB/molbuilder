@@ -31,11 +31,11 @@ as it was.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..atom_permutation import PERMUTATION_FILE
+from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
 
 #: ``@3``: each rung's ``state`` is the status door's word (``finished``,
 #: ``failed``, ``running`` ...) with its ``detail``, and a point without a
@@ -80,12 +80,10 @@ CAVEAT = (
 _SCF_FIELDS = ("cycle", "energy", "delta_E", "dDmax", "dHmax", "ef",
                "phase", "dq", "vha_ev", "charges")
 
-#: TBtrans prints the Landauer current as its own integral -- one line
-#: per electrode pair.  Matched loosely on the unit scaffold so custom
-#: electrode names still parse; the numbers are Fortran-shaped
-#: (``0.309835E-04``, ``-.619664E-05``), which ``float`` accepts.
-_CURRENT_RE = re.compile(
-    r"V \[V\] / I \[A\]:\s*(\S+)\s*V\s*/\s*(\S+)\s*A")
+#: HOW FAR PAST THE BIAS WINDOW the transmission must reach for a current
+#: computed from T(E, 0) to be whole: the Fermi functions' tails, in kT
+#: (`engines/transport.md` § 2a.10; the window gate, plan § 5x P2).
+WINDOW_TAILS_KT = 5.0
 
 
 class RecordError(Exception):
@@ -156,26 +154,128 @@ def deck_spin(run_dir) -> str:
     return "non-polarized"
 
 
-def total_current(printed: Optional[float], spin: str) -> Optional[float]:
-    """The junction's total current from TBtrans's printed one-channel
-    figure (:data:`CURRENT_MEANS`): twice it, non-polarized; a polarized
-    junction's total is its two channels' sum (plan K21), so ``None`` here."""
-    if printed is None or spin != "non-polarized":
-        return None
-    return 2.0 * printed
+def point_transmission(where, label: str, spin: str) -> Dict:
+    """What TBtrans wrote at one point, read through the family's one reader
+    (`parse.engines.tbtrans.transmission_files`): ``energy_ev`` and
+    ``transmission`` -- **per spin channel, so G = G0 · T(E_F)** with
+    G0 = 2e²/h: the unpolarized file's T as it is; a polarized point's two
+    channels averaged, (T↑ + T↓)/2, each kept whole in ``channels`` -- and
+    ``transmission_file``.  :class:`RecordError` names what is missing: a
+    polarized deck whose run wrote one channel is not done
+    (`engines/transport.md` § 2a.12)."""
+    from ..parse.engines.tbtrans import transmission_files
+    files = transmission_files(where, label)
+    if spin == "polarized":
+        missing = [c for c in ("up", "down") if not files.get(c)]
+        if missing:
+            raise RecordError(
+                f"the deck is spin-polarized and the run wrote no "
+                f"{' or '.join(missing)} channel transmission")
+        e_up, t_up = parse_avtrans(files["up"][0].read_text())
+        e_dn, t_dn = parse_avtrans(files["down"][0].read_text())
+        if e_up != e_dn:
+            raise RecordError("the two spin channels' energy grids differ")
+        return {"energy_ev": e_up,
+                "transmission": [(a + b) / 2.0 for a, b in zip(t_up, t_dn)],
+                "channels": {"up": t_up, "down": t_dn},
+                "transmission_file": [files["up"][0].name,
+                                      files["down"][0].name]}
+    if not files.get("unpolarized"):
+        raise RecordError("the run wrote no transmission file")
+    energies, trans = parse_avtrans(files["unpolarized"][0].read_text())
+    return {"energy_ev": energies, "transmission": trans,
+            "transmission_file": files["unpolarized"][0].name}
 
 
-def parse_current_a(out_text: str) -> Optional[float]:
-    """The current (amps) from TBtrans's own ``.out`` line, or ``None``
-    when the run printed none (an equilibrium-only window prints
-    I = 0, which parses as the honest 0.0)."""
-    m = _CURRENT_RE.search(out_text)
-    if not m:
-        return None
-    try:
-        return float(m.group(2))
-    except ValueError:
-        return None
+def point_currents(where, token: str, spin: str) -> Dict:
+    """The current TBtrans printed at one point -- its own Landauer integral,
+    parsed, never recomputed -- as the record says it
+    (:data:`CURRENT_MEANS`): ``current_a_printed``, the first figure it
+    printed (one spin channel's); ``current_a``, the junction's total --
+    twice it for a non-polarized run, the two channels' sum for a polarized
+    one -- and the run's ``k_points`` / ``k_method``.  Read from the point's
+    newest output through the family's reader
+    (`parse.engines.tbtrans.read_tbtrans_out`); ``None`` where the run
+    printed none."""
+    from ..parse.engines.tbtrans import read_tbtrans_out
+    out: Dict = {"current_a": None, "current_a_printed": None}
+    for path in _outs_newest_first(where, token):
+        facts = read_tbtrans_out(path.read_text(errors="replace"))
+        rows = facts.get("currents") or []
+        for k in ("k_points", "k_method"):
+            if k in facts:
+                out[k] = facts[k]
+        if not rows:
+            continue
+        # ONE ELECTRODE PAIR -- the first printed; a channel per pass.
+        pair = (rows[0]["from"], rows[0]["to"])
+        mine = [r for r in rows if (r["from"], r["to"]) == pair
+                and r.get("current_a") is not None]
+        if not mine:
+            continue
+        out["current_a_printed"] = mine[0]["current_a"]
+        if spin == "polarized":
+            by = {r.get("channel"): r["current_a"] for r in mine}
+            if "up" in by and "down" in by:
+                out["current_a"] = by["up"] + by["down"]
+        else:
+            out["current_a"] = 2.0 * mine[0]["current_a"]
+        break
+    return out
+
+
+def deck_temperature_k(run_dir) -> float:
+    """The electronic temperature the point's own deck states, in kelvin
+    (`units.temperature_k`: ``300 K`` or an energy), SIESTA's default 300 K
+    when the deck states none."""
+    from ..parse.fdf import _parse_fdf
+    from ..runfiles import find_by_role
+    from ..units import temperature_k
+    for deck in find_by_role(run_dir, ".fdf"):
+        scalars, _blocks = _parse_fdf(deck.read_text(encoding="utf-8",
+                                                     errors="replace"))
+        said = scalars.get("electronictemperature")
+        if said:
+            return temperature_k(float(said[0]),
+                                 said[1] if len(said) > 1 else "K")
+    return 300.0
+
+
+def linear_response_iv(energies: List[float], trans: List[float],
+                       voltages: List[float], kt_ev: float) -> Dict:
+    """**I(V) = (2e/h) ∫ T(E, 0) [f(E − μ_L) − f(E − μ_R)] dE**, μ = ±eV/2 --
+    the low-bias approximation's current, computed by the record from the
+    one zero-bias slice for each listed voltage (`engines/transport.md`
+    § 2a.10): G0 times the integral in eV, ``trans`` per spin channel as
+    :func:`point_transmission` gives it.  A voltage whose window plus the
+    Fermi tails (:data:`WINDOW_TAILS_KT`) reaches past the transmission's
+    energy window gets ``None`` and a note naming the reach -- the record
+    never integrates a slice it does not have."""
+    import numpy as np
+    e = np.asarray(energies, dtype=float)
+    t = np.asarray(trans, dtype=float)
+    lo, hi = float(e.min()), float(e.max())
+    reach = WINDOW_TAILS_KT * kt_ev
+    currents: List[Optional[float]] = []
+    notes: Dict[str, str] = {}
+    for v in voltages:
+        half = abs(float(v)) / 2.0
+        if half + reach > hi or -half - reach < lo:
+            currents.append(None)
+            notes[f"{v:g}"] = (
+                f"the transmission window [{lo:g}, {hi:g}] eV does not "
+                f"reach ±{half + reach:.3f} eV (V/2 + {WINDOW_TAILS_KT:g} kT "
+                f"at kT = {kt_ev:.4f} eV); widen the window")
+            continue
+        with np.errstate(over="ignore"):
+            f_l = 1.0 / (1.0 + np.exp((e - half) / kt_ev))
+            f_r = 1.0 / (1.0 + np.exp((e + half) / kt_ev))
+        currents.append(float(CONDUCTANCE_QUANTUM_S
+                              * np.trapz(t * (f_l - f_r), e)))
+    return {"voltages_v": [float(v) for v in voltages],
+            "current_a": currents,
+            "computed": "linear-response", "kt_ev": kt_ev,
+            "window_ev": [lo, hi], "notes": notes}
 
 
 def conductance_g0(energies: List[float], trans: List[float]
@@ -199,16 +299,18 @@ def _outs_newest_first(where: Path, token: str) -> List[Path]:
     return run.outputs if run is not None else []
 
 
-def result_folders(base: Path, task, stage: str
+def result_folders(base: Path, task, stage: str, run: Optional[Path] = None
                    ) -> List[Tuple[float, Optional[Path], Optional[Path]]]:
     """``(voltage, folder, run)`` of each result ``stage`` holds now: a swept
     rung's latest run, a point folder per voltage; any other rung's latest
     run, at 0 V -- ``folder`` ``None`` while no run is open
     (`engines/transport.md` § 2a.11).  ``run`` is where the launch record
-    lies."""
+    lies; given, that run is read instead of the latest (the device run
+    the transmission gathered, § 2a.12)."""
     from ..jobset.materialize import latest_attempt, stage_home
     from .stages import points_in, sweep_points
-    run = latest_attempt(stage_home(base, task, stage).dir)
+    if run is None:
+        run = latest_attempt(stage_home(base, task, stage).dir)
     if sweep_points(task, stage):
         if run is None:
             return [(v, None, None) for v in sweep_points(task, stage)]
@@ -251,6 +353,10 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
                            base)
     by_name = {s.name: s for s in status.stages}
     tokens = {h.name: h.token for h in ladder_homes(base, task)}
+    # THE DEVICE RUN THE TRANSMISSION READ, when it has one -- the device
+    # facts shown beside T(E) are that run's, never the newest by itself
+    # (`engines/transport.md` § 2a.12).
+    device_run = gathered_device_run(base, task)
     out: List[Dict] = []
     for name in TRANSPORT_STAGES:
         s = by_name.get(name)
@@ -261,8 +367,14 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         token = tokens.get(name)
         fact: Dict = {"stage": name, "token": token, "state": s.state,
                       "detail": s.detail}
-        if s.attempt and s.dir:
+        run = None
+        if name == "device" and device_run is not None:
+            run = device_run
+            fact["attempt"] = str(run.relative_to(base))
+            fact["gathered_by"] = "transmission"
+        elif s.attempt and s.dir:
             fact["attempt"] = f"{s.dir}/{s.attempt}"
+            run = base / s.dir / s.attempt
         # WHICH QUESTION THIS RUNG ANSWERS -- a column, not a branch on the
         # name (`stages.STAGE_FACT`).  The transmission's answer is its
         # points; TBtrans converges nothing and reports no total energy.
@@ -271,7 +383,8 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             # A SWEPT RUNG, POINT BY POINT -- the report's convergence card
             # follows the selected bias (`web/results.md` § 2.5); the rung's
             # own facts are its first point's.
-            fact["by_point"] = _rung_points(base, task, name, token, answers)
+            fact["by_point"] = _rung_points(base, task, name, token, answers,
+                                            run=run)
             first = next((p for p in fact["by_point"]
                           if p.get("energy_ev") is not None), None)
             if first is not None:
@@ -280,14 +393,34 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
                                           "detail")})
             out.append(fact)
             continue
-        outs = (_outs_newest_first(base / s.dir / s.attempt, token)
-                if answers != "product" and s.attempt and s.dir else [])
+        outs = (_outs_newest_first(run, token)
+                if answers != "product" and run is not None else [])
         if not outs:
             out.append(fact)
             continue
         fact.update(_science(outs[0], answers))
         out.append(fact)
     return out
+
+
+def gathered_device_run(base: Path, task) -> Optional[Path]:
+    """The device run the transmission's newest run gathered its
+    Hamiltonians from -- read from the transmission's first point's own
+    ``.gathered-from`` (`runrecord.read_gathered_from`), the run above the
+    point named there -- or ``None`` while the transmission has gathered
+    nothing (`engines/transport.md` § 2a.12: the provenance is what was
+    gathered, never the newest run by file time)."""
+    from ..runrecord import read_gathered_from
+    from .stages import sweep_points
+    for _v, where, _run in result_folders(base, task, "transmission"):
+        if where is None:
+            continue
+        for g in read_gathered_from(where):
+            if g["file"].endswith(".TS.HSX"):
+                src = base / g["from"]
+                # A SWEPT DEVICE names its point: the run is the folder above.
+                return src.parent if sweep_points(task, "device") else src
+    return None
 
 
 def _science(out: Path, answers: str) -> Dict:
@@ -328,28 +461,31 @@ def _science(out: Path, answers: str) -> Dict:
                                                 "energy") if k in last}}
     if frames:
         fact["energy_ev"] = frames[-1].energy
-        # THE LEAD'S FERMI LEVEL, from the last SCF cycle of the last frame
-        # -- the converged one.  Asked by the COLUMN, so adding a third lead
-        # one day is a table row and not a third name here.
-        if answers == "fermi":
-            for cyc in reversed(hist):
-                if cyc.get("ef") is not None:
-                    fact["fermi_ev"] = cyc["ef"]
-                    break
+        # THE RUN'S FERMI LEVEL, from the last SCF cycle of the last frame
+        # -- the converged one: a lead's is the reference energy the whole
+        # junction is measured against, the seed's is the periodic
+        # junction's, the device's its NEGF loop's (the last row is NEGF).
+        # Asked by the COLUMN, so adding a third lead one day is a table
+        # row and not a third name here.
+        for cyc in reversed(hist):
+            if cyc.get("ef") is not None:
+                fact["fermi_ev"] = cyc["ef"]
+                break
     return fact
 
 
 def _rung_points(base: Path, task, name: str, token: str,
-                 answers: str) -> List[Dict]:
+                 answers: str, run: Optional[Path] = None) -> List[Dict]:
     """``[{bias_v, attempt, state, detail, ...science}]`` -- each bias
     point of a scan's rung, its state the run door's (`run_status`) and its
-    own answer (:func:`_science`)."""
+    own answer (:func:`_science`); ``run`` names the run to read instead
+    of the latest."""
     from ..parse.dirs import run_status
     from ..runfiles import RunNames
     from ..runrecord import LaunchRecordError, launch_record
     names = RunNames.of(task.label, token, task.shape)
     out: List[Dict] = []
-    for v, where, run in result_folders(base, task, name):
+    for v, where, run in result_folders(base, task, name, run=run):
         entry: Dict = {"bias_v": v}
         if where is None or not where.is_dir():
             from ..jobset.runstatus import MISSING
@@ -450,27 +586,23 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                            "state": "unreadable", "why": str(exc)})
             continue
         st = run_status(where, names.stem, launch=launch)
-        avtrans = sorted(where.glob(f"{task.label}.TBT.AVTRANS_*"))
-        if st.state != "finished" or not avtrans:
+        if st.state != "finished":
             entry = {"bias_v": v, "attempt": rel, "state": st.state,
                      "why": st.detail}
-            if st.state in ("pending", "queued", "running"):
-                pending.append(entry)
-            else:
-                if st.state == "finished":
-                    entry["why"] = (f"the run finished without writing its "
-                                    f"transmission ({st.detail})")
-                failed.append(entry)
-            continue
-        # A TRANSMISSION THAT DOES NOT READ is that point's failure, said in
-        # its words -- the other points still read.
-        try:
-            energies, trans = parse_avtrans(avtrans[0].read_text())
-        except (OSError, ValueError, RecordError) as exc:
-            failed.append({"bias_v": v, "attempt": rel, "state": "unreadable",
-                           "why": f"{avtrans[0].name}: {exc}"})
+            (pending if st.state in ("pending", "queued", "running")
+             else failed).append(entry)
             continue
         spin = deck_spin(where)
+        # WHAT TBTRANS WROTE, through the family's one reader -- a point
+        # that does not read is that point's failure, said in its words; the
+        # other points still read.
+        try:
+            read = point_transmission(where, task.label, spin)
+        except (OSError, ValueError, RecordError) as exc:
+            failed.append({"bias_v": v, "attempt": rel, "state": "finished",
+                           "why": f"the run finished without its "
+                                  f"transmission: {exc} ({st.detail})"})
+            continue
         # THE DOS, ITS PARTS AND THE EIGENCHANNELS, from the point's own
         # `.TBT.nc` (`tbtnc.point_dos`; `web/results.md` § 2.5).
         nc = tbt_file(where, task.label)
@@ -483,22 +615,19 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                 dos = point_dos(nc, regions)
             except TbtError as exc:
                 dos_why = str(exc)
-        current = None
-        # THE NEWEST RUN'S, by its number (`_outs_newest_first`).
-        for out in _outs_newest_first(where, token):
-            current = parse_current_a(out.read_text())
-            if current is not None:
-                break
+        energies = read["energy_ev"]
         points_out.append({
             "bias_v": v,
             "attempt": rel,
-            "transmission_file": avtrans[0].name,
-            "energy_ev": energies,
-            "transmission": trans,
-            "conductance_g0": conductance_g0(energies, trans),
-            # THE TOTAL, and the figure it came from (`CURRENT_MEANS`).
-            "current_a": total_current(current, spin),
-            "current_a_printed": current,
+            **read,
+            "conductance_g0": conductance_g0(energies, read["transmission"]),
+            # THE TOTAL, and the figure it came from (`CURRENT_MEANS`), with
+            # the run's k-sampling.
+            **point_currents(where, token, spin),
+            # THE WINDOW AND ITS POINTS, as written (`engines/transport.md`
+            # § 2a.12).
+            "window_ev": [min(energies), max(energies)],
+            "n_energies": len(energies),
             "spin": spin,
             **({"dos": dos} if dos is not None else {"dos_why": dos_why}),
         })
@@ -557,11 +686,10 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         # name (`runfiles.JUNCTION_FILE`) -- what the report draws.
         "junction_file": JUNCTION_FILE,
         "points": points_out,
-        "iv": {
-            "voltages_v": [p["bias_v"] for p in points_out],
-            "current_a": [p["current_a"] for p in points_out],
-            "current_a_printed": [p["current_a_printed"] for p in points_out],
-        },
+        # THE I-V: each point's own TBtrans current -- or, under the low-bias
+        # approximation, computed by the record from the one 0 V slice for
+        # every listed voltage (`linear_response_iv`, § 2a.10).
+        "iv": _iv(base, task, treatment, points_out),
         # WHAT THE CURRENT IS, in the record's own words -- for each spin the
         # points were run with (one, for a junction decided once).
         "current_means": {s: CURRENT_MEANS[s]
@@ -625,6 +753,32 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
         # A FILE THAT DOES NOT READ is a refusal in its words, as the record
         # says every other one.
         raise RecordError(f"{nc.name}: {exc}") from exc
+
+
+def _iv(base: Path, task, treatment: str, points_out: List[Dict]) -> Dict:
+    """The record's I-V block.  ``computed`` says where the currents came
+    from: ``tbtrans`` -- each point's own printed integral -- or
+    ``linear-response`` -- the record's integral of the 0 V slice for each
+    listed voltage, with the Fermi tails at the electronic temperature the
+    0 V point's own deck states (`engines/transport.md` § 2a.10)."""
+    if treatment == "low-bias-approximation":
+        zero = next((p for p in points_out if abs(p["bias_v"]) < 1e-9), None)
+        if zero is None:
+            return {"voltages_v": [float(v) for v in task.bias],
+                    "current_a": [None for _ in task.bias],
+                    "computed": "linear-response",
+                    "notes": {"all": "the 0 V transmission has not run"}}
+        kt = BOLTZMANN_EV_K * deck_temperature_k(base / zero["attempt"])
+        iv = linear_response_iv(zero["energy_ev"], zero["transmission"],
+                                list(task.bias), kt)
+        iv["current_a_printed"] = [zero["current_a_printed"]
+                                   if abs(v) < 1e-9 else None
+                                   for v in iv["voltages_v"]]
+        return iv
+    return {"voltages_v": [p["bias_v"] for p in points_out],
+            "current_a": [p["current_a"] for p in points_out],
+            "current_a_printed": [p["current_a_printed"] for p in points_out],
+            "computed": "tbtrans"}
 
 
 def write_record(base_dir, record: Dict) -> Path:

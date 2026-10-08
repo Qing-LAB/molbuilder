@@ -52,6 +52,12 @@ BOLTZMANN_EV_K: float = 8.617333262e-5
 #: deck's spelling and the validation gate's cannot drift apart.
 BOLTZMANN_HARTREE_K: float = BOLTZMANN_EV_K / HARTREE_EV
 
+#: The conductance quantum G0 = 2e²/h in siemens (both spin channels).
+#: CODATA 2018.  TBtrans's transmission is per spin channel and its
+#: AVTRANS energies are in eV, so a current in amperes is G0 times the
+#: integral of T over energy in eV (`engines/transport.md` § 1.1).
+CONDUCTANCE_QUANTUM_S: float = 7.748091729e-5
+
 #: 1 Hartree in wavenumbers (cm⁻¹).  CODATA 2018.  The vibrational decks
 #: speak wavenumbers; the engines compute in Hartree.
 HARTREE_CM1: float = 219474.6313632
