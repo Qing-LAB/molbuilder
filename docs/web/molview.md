@@ -2499,7 +2499,12 @@ What no layer above it does is *track* it: it is the one thing a user changes
 without telling MolView (a drag rotates it directly in the window), and no
 saved **state** ever carries it. On load, and on Reset, the camera is
 **fitted to the structure**, which is the only orientation guaranteed to show
-the molecule.
+the molecule. A viewer can be told to **look along an axis** (the handle's
+`lookAlong`): from then on every fit — the load's, Reset's — looks along it.
+A transport report says `x`, because looked at down its own axis a junction
+is a square with the molecule hidden inside it (`engines/transport.md`
+§ 2a.12). The pose the lane puts back on a matching reopen (below) still
+wins, as it does over any fit.
 
 **It is, however, recorded — in the view context, not in any state**
 *(user-decided 2026-08-19, reversing the earlier refusal that stood here)*.
@@ -2536,8 +2541,8 @@ column, because it is in neither place.
 
 "Here is the data", "here is where to read it from", "a switch changed", "draw it
 this way", "here is the cell", "add these frames", "the forces changed", "show
-this frame", "draw", "point the camera at it again", "throw it away". Every one
-of them is an instruction. None of them is a question **about the data** — the
+this frame", "draw", "point the camera at it again", "look along this axis",
+"throw it away". Every one of them is an instruction. None of them is a question **about the data** — the
 renderEngine is told what to draw and is never consulted about what the data
 is. The two exceptions are askings of the *window*, not the data, and both are
 bounded: *report the camera pose* (§ 9.6's lane reads it at a gesture's end)
@@ -2563,7 +2568,8 @@ Load frames, swap to a frame, append frames, apply the overlays, set this frame'
 arrows, set the cell geometry, show or hide the "Updating view…" cover, batch a
 group of changes so the screen updates once, apply the drawing settings (the
 style and the projection of § 9.6, which reach the drawing without the frame
-calculation ever seeing them), fit the camera, report a clicked atom upward, tear
+calculation ever seeing them), fit the camera or look along an axis and fit,
+report a clicked atom upward, tear
 it all down — and **produce a picture of what is currently drawn**, since only the
 bottom can do that (§ 11.4). Each one translates finished data into something the
 layer below can act on. None of them decides anything — which operation to use is
@@ -2995,7 +3001,7 @@ flowchart LR
     IDLE(["IDLE<br/>the drawing matches the data"])
     REB(["REBUILDING<br/>the cover is up"])
     IDLE -->|"a change that needs a rebuild (§ 10.5)"| REB
-    REB -->|"a seek, new forces or new frames arrive:<br/>held, not applied"| REB
+    REB -->|"a seek, new forces, new frames or a camera action arrive:<br/>held, not applied"| REB
     REB -->|"a switch changes:<br/>nothing is held"| REB
     REB -->|"a full load arrives:<br/>drop everything held, rebuild from it"| REB
     REB -->|"finished: replay what was held,<br/>in arrival order"| IDLE
@@ -3006,6 +3012,7 @@ flowchart LR
 | a **switch** change | nothing is held. The rebuild reads the switches *when it runs*, not when it was scheduled | the latest value is the one it should use, so there is nothing to replay |
 | a **seek** — a new displayed frame | held; only the last one survives | only the frame you end on matters |
 | **new forces** | held; only the last set survives | the same: only the last is the current answer |
+| a **camera action** — Reset, *look along this axis*, *point the camera here* | held; only the last survives, and it lands **after** the rebuild's own fit | a load's rebuild runs in a later turn than the load, so a camera action issued right after a load would land on the drawing being replaced and be undone by the load's fit (§ 9.6); replayed afterwards it lands on the drawn structure. Only the pose you end on matters |
 | **appended frames** | held, and they **accumulate** | each poll tick's frames are a distinct piece of the run, and losing one would leave a hole in the middle of it |
 | a **full load** | everything held is dropped, and the load supersedes the rebuild under way | it replaces the atom set, so anything held refers to atoms or frames that no longer exist. A full load is never itself refused: it is the more authoritative statement about what the structure is |
 
@@ -4693,7 +4700,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 10.6 — shapes move with the frames | after a swap, labels and the highlight sit on the atoms' new positions, not where frame 0 left them |
 | § 10.7 — a selection never restyles the model | a click adds or removes shapes and issues no model restyle, and its cost does not grow with atom count |
 | § 10.8 — same atoms, every frame | a frame with a different atom count is a hard error, never coerced |
-| § 10.9 — nothing is lost during a rebuild | frames that arrive mid-rebuild all appear afterwards; a seek and a force update keep only the last; a full load cancels what was queued and supersedes the rebuild |
+| § 10.9 — nothing is lost during a rebuild | frames that arrive mid-rebuild all appear afterwards; a seek and a force update keep only the last; a camera action lands after the rebuild's fit; a full load cancels what was queued and supersedes the rebuild |
 | § 10.10 — the offered frames are drawable | appending to a structure with no movie rebuilds instead of extending nothing; a short drawing heals |
 | § 10.10 — only the master copy's count is offered | the count a consumer reads never comes from the drawing |
 | § 11.1 — the count requirement is checked first | `orient` with one atom and `delete` with none are refused locally, with no request sent |

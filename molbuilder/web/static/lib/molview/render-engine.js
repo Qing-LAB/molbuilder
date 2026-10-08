@@ -567,7 +567,7 @@ export function createRenderEngine(embed) {
         embed.showFrame(at);
         applyOverlaysFor(processed[at]);
         applyScene();
-        if (fit) embed.fitCamera();
+        if (fit) fitNow();
         embed.endBatch();
         costLog.push(REBUILD);
         healIfShort();
@@ -743,11 +743,33 @@ export function createRenderEngine(embed) {
     // frames ACCUMULATE, because each poll tick's frames are a distinct piece of
     // the run and losing one would leave a hole in the middle of it.
     function hold(kind, fn) {
-        if (kind === "seek" || kind === "forces") {
+        if (kind === "seek" || kind === "forces" || kind === "camera") {
             held = held.filter((h) => h.kind !== kind);
         }
         fn.kind = kind;
         held.push(fn);
+    }
+
+    /* A CAMERA ACTION DURING A REBUILD IS HELD, LIKE A SEEK (§ 10.9).  A
+     * load's rebuild runs in a later turn than the load itself, so a camera
+     * action issued right after the load -- the report's "look along x",
+     * a lane's "point the camera here" -- would land on the drawing being
+     * replaced and be undone by the rebuild's own fit.  Held, it lands on
+     * the drawn structure after that fit; only the last one survives,
+     * because only the pose you end on matters. */
+    function camera(fn) {
+        if (phase === REBUILDING) { hold("camera", fn); return; }
+        fn();
+    }
+
+    /* THE FIT (§ 9.6): on load and on Reset the camera is fitted to the
+     * structure.  A viewer told to look along an axis fits looking along
+     * it from then on -- the one home view a load, a Reset and the asking
+     * report agree on. */
+    let homeAxis = null;
+    function fitNow() {
+        if (homeAxis && embed.lookAlong) embed.lookAlong(homeAxis);
+        else embed.fitCamera();
     }
 
     return {
@@ -862,14 +884,25 @@ export function createRenderEngine(embed) {
          * is fitted to the structure on load AND ON RESET, and § 9.9 keeps it
          * down in the seal where nothing above can read it. Nothing is derived
          * and no frame moves. */
-        resetView() { embed.fitCamera(); },
+        resetView() { camera(fitNow); },
+
+        /* "Look along this axis."  The viewer's home view from now on: this
+         * fit and every later one -- a load's, Reset's -- look along it.
+         * The camera stays in the seal (§ 9.9). */
+        lookAlong(axis) {
+            homeAxis = axis || null;
+            camera(fitNow);
+        },
 
         /* The pose pair (§ 9.6 / § 11.2b): passthroughs with no derivation --
          * the view context reads the pose at a gesture's end and points the
-         * camera back on a matching restore.  Nothing here keeps a copy. */
+         * camera back on a matching restore.  Nothing here keeps a copy.
+         * `setCamera` answers whether the pose was accepted. */
         getCamera() { return embed.getCamera ? embed.getCamera() : null; },
         setCamera(pose) {
-            return embed.setCamera ? embed.setCamera(pose) : false;
+            if (!embed.setCamera || !Array.isArray(pose)) return false;
+            camera(() => embed.setCamera(pose));
+            return true;
         },
 
         /* "Hand over the image" -- § 9.7's other bounded asking of the

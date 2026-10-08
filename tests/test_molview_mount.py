@@ -512,6 +512,9 @@ def test_the_switches_are_a_rail_of_buttons_outside_the_window():
         // ...and pressing it must not have moved anything in the selection.
         const selectionUntouched = viewer.data.selection.get();
 
+        // The load's rebuild runs in its own turn and a press cannot reach
+        // the window until its cover is down (§ 10.9), so the turn is given.
+        await new Promise((r) => setTimeout(r, 0));
         globalThis.__resetCalls();
         buttons[0].click();                       // Reset view
         const refit = globalThis.__countCalls("zoomTo");

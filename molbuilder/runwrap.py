@@ -3107,15 +3107,18 @@ def render_run_wrapper(script_path: Path, *,
         f"}}\n"
         f"trap _mb_cleanup EXIT\n"
         f"_mb_on_signal() {{\n"
-        f'    _log WARN "caught SIGTERM/SIGINT (scheduler kill or '
-        f'Ctrl-C) -- cleaning up" || true\n'
-        # WRITTEN TO THE LOG DIRECTLY TOO: `_log` goes through the tee, and
-        # a kill of the whole process group takes the tee with it, so the
-        # line above never lands in the session log (seen on the
-        # 2026-10-08 road walk, plan § 5x.7) -- the append below does.
+        # THE LINE GOES TO THE LOG FILE FIRST, AND PIPE IS IGNORED: `_log`
+        # writes through the tee, and a kill of the whole process group
+        # takes the tee with it -- a write to the dead pipe then kills bash
+        # by SIGPIPE before anything else runs, so nothing landed in the
+        # session log of a killed point (the 2026-10-08 road walk, plan
+        # § 5x.7 F11).  The direct append cannot die that way.
+        f"    trap '' PIPE\n"
         f"    printf '{LOG_LINE}\\n' \"$(date '+{LOG_CLOCK}')\" WARN "
         f'"caught SIGTERM/SIGINT -- stopped before its end" '
         f'>> "$_runwrap_log" 2>/dev/null || true\n'
+        f'    _log WARN "caught SIGTERM/SIGINT (scheduler kill or '
+        f'Ctrl-C) -- cleaning up" 2>/dev/null || true\n'
         f"    _mb_cleanup\n"
         f"    exit 143\n"
         f"}}\n"

@@ -217,16 +217,43 @@ const WORKSPACE_TAG = "results:transport";
     }
 
     function _fillIV(panel, rec, pending, failed, state) {
+        /* THE TREATMENT, NAMED BESIDE THE I-V (`engines/transport.md`
+         * § 2a.10, § 2a.12): the two kinds of I-V look identical on a plot,
+         * so the record's own words stand on this tab too. */
+        panel.appendChild(_el("p", "transport-note", rec.treatment_note));
         panel.appendChild(state.nodes.iv);
         const table = _el("table", "transport-iv");
         const head = _el("tr");
+        const iv = rec.iv || {};
+        const computed = iv.computed === "linear-response";
         /* THE CURRENT IS THE JUNCTION'S TOTAL, both spin channels, beside
          * the figure TBtrans printed -- one channel's (`engines/
-         * transport.md` § 2a.4; `record.py` CURRENT_MEANS). */
-        ["Bias [V]", "G(E_F) [G0]", "Current, total [A]",
+         * transport.md` § 2a.4; `record.py` CURRENT_MEANS).  Under the
+         * low-bias approximation the record computed it from T(E, 0) for
+         * each listed voltage (`record.linear_response_iv`). */
+        ["Bias [V]", "G(E_F) [G0]",
+         computed ? "Current, computed from T(E, 0) [A]" : "Current, total [A]",
          "TBtrans printed [A]"].forEach((h) => head.appendChild(_el("th", null, h)));
         table.appendChild(head);
+        if (computed) {
+            const zero = state.points.find((p) => Math.abs(p.bias_v) < 1e-9);
+            (iv.voltages_v || []).forEach((v, k) => {
+                const tr = _el("tr", "transport-iv-row");
+                tr.dataset.bias = String(v);
+                tr.appendChild(_el("td", null, _fmt(v, 3, false)));
+                tr.appendChild(_el("td", null,
+                    Math.abs(v) < 1e-9 && zero ? _fmt(zero.conductance_g0, 4, false) : "—"));
+                const i = (iv.current_a || [])[k];
+                const note = (iv.notes || {})[String(Number(v))];
+                tr.appendChild(_el("td", null, i === null || i === undefined
+                    ? (note || "—") : _fmt(i, 4, true)));
+                tr.appendChild(_el("td", null,
+                    _fmt(((iv.current_a_printed || [])[k]), 4, true)));
+                table.appendChild(tr);
+            });
+        }
         state.points.forEach((p) => {
+            if (computed) return;
             const tr = _el("tr", "transport-iv-row");
             tr.dataset.bias = String(p.bias_v);
             tr.appendChild(_el("td", null, _fmt(p.bias_v, 3, false)));
@@ -353,6 +380,12 @@ const WORKSPACE_TAG = "results:transport";
             table.appendChild(tr);
         });
         card.appendChild(table);
+        /* EACH FERMI LEVEL IN ITS RUN'S OWN FRAME -- the record's one
+         * sentence (`record.fermi_frames`), so 5.17 eV beside −1.92 eV is
+         * never read as a mismatch (§ 2a.12). */
+        if (rec.fermi_frames && rec.fermi_frames.note) {
+            card.appendChild(_el("p", "transport-note", rec.fermi_frames.note));
+        }
 
         /* TWO LEADS THAT DISAGREE is a defect nothing else shows -- the
          * record's comparison (`record.leads_agreement`). */
@@ -669,6 +702,11 @@ const WORKSPACE_TAG = "results:transport";
             molHost.appendChild(_el("p", "transport-note",
                 "The composed junction could not be opened: " + (res.error || "")));
         }
+        /* SIDE-ON: the transport axis is c = z, and looked at down z a
+         * junction is a square with the molecule hidden inside it (the
+         * 2026-10-08 road walk, plan § 5x.7 F3).  The window's one camera
+         * action beyond reset (`mount` handle `lookAlong`). */
+        if (typeof handle.lookAlong === "function") handle.lookAlong("x");
         /* THE FRAME'S ONE OWNER is the model; the report follows it.  One
          * frame until the frame axis -- the record carries no frame yet. */
         if (handle.data && typeof handle.data.onFrameChange === "function") {

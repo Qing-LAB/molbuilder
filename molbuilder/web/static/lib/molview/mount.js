@@ -372,6 +372,13 @@ export async function mount(hostEl, workspace, opts) {
          * second home for anything.) */
         resetView() { engine.resetView(); },
 
+        /* Look along one axis of the structure's frame -- `"x"`, `"y"` or
+         * `"z"` -- and fit: the other action on the window (§ 9.6), for a
+         * presenter whose structure has a direction (a transport junction's
+         * axis is z, shown side-on).  Nothing is derived and no frame
+         * moves. */
+        lookAlong(axis) { engine.lookAlong(axis); },
+
         /* A picture of the window as drawn (§ 11.3's Image; § 9.2: the
          * handle owns actions on the window).  `{width, height}` asks for a
          * size; omitted, the window's own. */

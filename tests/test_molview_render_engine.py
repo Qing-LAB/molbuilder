@@ -69,6 +69,7 @@ globalThis.makeEmbed = function () {
         beginBatch()      { rec("beginBatch", []); },
         endBatch()        { rec("endBatch", []); },
         fitCamera()       { rec("fitCamera", []); },
+        lookAlong(a)      { rec("lookAlong", [a]); },
         capture()         { return Promise.resolve(null); },
         onPick()          {},
         // The only two questions (§ 9.9), and they are COHERENT with each other.
@@ -458,6 +459,50 @@ def test_a_switch_change_during_a_rebuild_is_not_held():
     assert out["labelsDrawn"] == 4, (
         "the rebuild must read the switch value as it stood WHEN IT RAN, so the "
         "labels turned on mid-rebuild are drawn"
+    )
+
+
+def test_a_camera_action_during_a_rebuild_lands_after_the_fit():
+    """§ 10.9: a camera action -- Reset, "look along this axis", "point the
+    camera here" -- arriving during a rebuild is held and lands AFTER the
+    rebuild's own fit; only the last survives.
+
+    Silent on the page: a report that opens a junction and asks for the
+    side-on view in the same breath got the end-on view (plan § 5x.7 F3).
+    The load's rebuild runs in a later turn than the load, so the action
+    landed on the drawing being replaced and the load's fit undid it.
+    Reading the engine does not show it: the order is across event-loop
+    turns, which is what this harness runs.
+    """
+    out = _run(
+        """
+        const { engine } = wired(4, 3);
+        const cam = () => globalThis.__embedCalls
+            .filter(c => c.name === "lookAlong" || c.name === "fitCamera")
+            .map(c => c.name === "lookAlong" ? "lookAlong:" + c.args[0] : c.name);
+        const rebuilding = engine.dataChanged();       // not awaited
+        engine.lookAlong("y");                         // superseded...
+        engine.lookAlong("x");                         // ...by the last
+        const during = cam();
+        await rebuilding;
+        const afterLoad = cam();
+        globalThis.__embedCalls = [];
+        engine.resetView();                            // idle: at once, and
+        const onReset = cam();                         // along the home axis
+        console.log(JSON.stringify({ during, afterLoad, onReset }));
+        """
+    )
+    assert out["during"] == [], (
+        f"a camera action was applied during the rebuild, onto the drawing "
+        f"being replaced: {out['during']}"
+    )
+    assert out["afterLoad"] and all(c == "lookAlong:x" for c in out["afterLoad"]), (
+        f"after the load every fit must look along the last axis asked for, "
+        f"and nothing may be left end-on: {out['afterLoad']}"
+    )
+    assert out["onReset"] == ["lookAlong:x"], (
+        f"Reset must re-fit along the viewer's home axis, at once when idle: "
+        f"{out['onReset']}"
     )
 
 

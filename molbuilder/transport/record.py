@@ -456,9 +456,12 @@ def _science(out: Path, answers: str) -> Dict:
     negf = [c for c in hist if c.get("phase") == "negf"]
     if negf:
         last = negf[-1]
+        # `vha_ev` is TranSIESTA's Hartree potential on the boundary plane,
+        # the shift between the device's frame and the seed's (§ 2a.12).
         fact["negf"] = {"cycles": len(negf),
                         **{k: last[k] for k in ("ef", "dq", "charges",
-                                                "energy") if k in last}}
+                                                "energy", "vha_ev")
+                           if k in last}}
     if frames:
         fact["energy_ev"] = frames[-1].energy
         # THE RUN'S FERMI LEVEL, from the last SCF cycle of the last frame
@@ -680,8 +683,10 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         # two kinds of I-V are different claims and look identical on a plot".
         "treatment": treatment,
         "treatment_note": TREATMENT_NOTE[treatment],
-        # THE TWO LEADS' FERMI LEVELS, compared here once.
+        # THE TWO LEADS' FERMI LEVELS, compared here once -- and every
+        # rung's E_F said in its frame (`fermi_frames`).
         "leads": leads_agreement(stages),
+        "fermi_frames": fermi_frames(stages),
         # THE COMPOSED JUNCTION the device was built from, by its catalogue
         # name (`runfiles.JUNCTION_FILE`) -- what the report draws.
         "junction_file": JUNCTION_FILE,
@@ -808,6 +813,54 @@ def leads_agreement(stages: List[Dict]) -> Optional[Dict]:
             "tolerance_ev": LEAD_EF_TOLERANCE_EV}
 
 
+def fermi_frames(stages: List[Dict]) -> Optional[Dict]:
+    """THE FERMI LEVELS, EACH IN ITS RUN'S OWN FRAME, said once for every
+    reader (`engines/transport.md` § 2a.12; the 2026-10-08 road walk showed
+    the device's 5.17 eV beside the leads' −1.92 eV with no word).  The
+    seed's and the leads' E_F are in their periodic cells, where the
+    cell-average potential is zero.  TranSIESTA fixes the Hartree potential
+    on the boundary plane instead and reports the device's E_F in that
+    frame: ``device_ef + vha`` is the device's E_F back in the seed's frame,
+    and the NEGF loop holds E_F fixed while the charge floats, so it equals
+    the seed's.  The leads' Hamiltonians are aligned to μ = E_F ± V/2
+    inside TranSIESTA; T(E) is measured relative to the leads' E_F.  Nothing
+    printed tests the physical alignment of the device's electrode region
+    against the bulk.  ``None`` until the device has a NEGF E_F."""
+    by = {st["stage"]: st for st in stages}
+    dev = (by.get("device") or {}).get("negf") or {}
+    if dev.get("ef") is None:
+        return None
+    out: Dict = {"device_ef_ev": dev["ef"], "frame": "transiesta"}
+    seed_ef = (by.get("seed") or {}).get("fermi_ev")
+    leads = {n: by[n].get("fermi_ev") for n in ("electrode_L", "electrode_R")
+             if n in by and by[n].get("fermi_ev") is not None}
+    if seed_ef is not None:
+        out["seed_ef_ev"] = seed_ef
+    if leads:
+        out["lead_ef_ev"] = leads
+    vha = dev.get("vha_ev")
+    note = ("Fermi levels are in each run's own frame: the seed's and the "
+            "leads' in their periodic cells (cell-average potential zero); "
+            "the device's after TranSIESTA fixes the Hartree potential on "
+            "the boundary plane")
+    if vha is not None:
+        out["vha_ev"] = vha
+        out["device_ef_in_seed_frame_ev"] = dev["ef"] + vha
+        note += (f" (ts-Vha {vha:+.3f} eV) -- in the seed's frame it is "
+                 f"{dev['ef'] + vha:.3f} eV")
+        if seed_ef is not None:
+            out["device_minus_seed_ev"] = dev["ef"] + vha - seed_ef
+            note += (f", against the seed's {seed_ef:.3f} eV"
+                     + (" (equal: the NEGF loop holds E_F and lets the "
+                        "charge float)"
+                        if abs(out["device_minus_seed_ev"]) < 0.01 else
+                        f" ({out['device_minus_seed_ev']:+.3f} eV apart)"))
+    note += ("; the leads' Hamiltonians are aligned to E_F ± V/2 inside "
+             "TranSIESTA and T(E) is measured relative to the leads' E_F.")
+    out["note"] = note
+    return out
+
+
 #: WHAT EACH TREATMENT'S I-V IS ENTITLED TO BE CALLED, beside the curve
 #: (`engines/transport.md` § 2a.10, § 2a.12) -- the one wording, which the
 #: record carries and both the Results report and `summarize` print.
@@ -854,7 +907,20 @@ def iv_table_text(record: Dict) -> str:
         for p in record.get(what, ()):
             lines.append(f"  {p['bias_v']:>8.3f}  {what:>12}  "
                          f"{p['state']:>12}  ({p['why']})")
+    iv = record.get("iv") or {}
+    if iv.get("computed") == "linear-response":
+        # THE RECORD'S OWN I-V, from the one 0 V slice (`linear_response_iv`).
+        lines.append(f"  I(V) computed from T(E, 0), kT = {iv.get('kt_ev', 0):.4f} eV, "
+                     f"window {iv.get('window_ev')} eV:")
+        for v, i in zip(iv.get("voltages_v", ()), iv.get("current_a", ())):
+            note = (iv.get("notes") or {}).get(f"{v:g}")
+            lines.append(f"  {v:>8.3f}  {'':>12}  "
+                         + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
+                         + (f"  ({note})" if note else ""))
     for spin, means in sorted((record.get("current_means") or {}).items()):
         lines.append(f"  {spin}: {means}")
     lines.append(f"  {record['treatment']}: {record['treatment_note']}")
+    frames = record.get("fermi_frames")
+    if frames and frames.get("note"):
+        lines.append(f"  E_F: {frames['note']}")
     return "\n".join(lines)

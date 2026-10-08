@@ -1465,9 +1465,28 @@ surface should present both.
 **The curve, and what it is.** T(E) for a single-bias calculation, or the family
 T(E, V) for a sweep — shown **with its treatment named** (§ 2a.10). An I–V
 obtained by integrating the single zero-bias slice is labelled *linear response*,
-beside the curve and not in metadata: the two kinds of I–V are different claims
-and look identical on a plot. A sweep's point not done is a gap in the family
-and in the I–V, said as not done — never filled in (§ 2a.11).
+beside the curve **and beside the I–V table** — not in metadata: the two kinds
+of I–V are different claims and look identical on a plot. Under the low-bias
+approximation the I–V table is the record's own (`record.linear_response_iv`):
+one current per listed voltage, computed from T(E, 0) with the Fermi tails at
+the deck's electronic temperature, and a voltage the window does not reach
+is a blank with the reach it would need. A sweep's point not done is a gap in
+the family and in the I–V, said as not done — never filled in (§ 2a.11).
+
+**The Fermi levels, each in its run's own frame.** The seed's and the leads'
+E_F are in their periodic cells, where the cell-average potential is zero;
+TranSIESTA fixes the Hartree potential on the boundary plane instead and
+reports the device's E_F in that frame — on the 2026-10-08 walk 5.17 eV beside
+the leads' −1.92 eV, a convention and not a mismatch. The record says so in one
+sentence (`record.fermi_frames`: the device's E_F, `ts-Vha`, its value back in
+the seed's frame against the seed's own), printed by `summarize` and shown under
+the rungs table, so no reader compares the two numbers raw. The lead
+Hamiltonians are aligned to μ = E_F ± V/2 inside TranSIESTA; T(E) is measured
+relative to the leads' E_F.
+
+**The device, side-on.** The transport axis is c = z; looked at down z a
+junction is a square with the molecule hidden inside it, so the report's Device
+view looks along x (the viewer's `lookAlong`), the leads at the two ends.
 
 **The provenance chain.** Which device run, which lead runs, which relaxation
 the junction came from. A transmission curve without its chain cannot be

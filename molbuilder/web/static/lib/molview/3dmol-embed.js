@@ -786,6 +786,23 @@ export function create(hostEl, opts) {
             paint();
         },
 
+        // "Look along this axis, then fit."  The library's camera looks
+        // down the model's z by default; turning the model a quarter turn
+        // about the screen's vertical brings z across the screen (the view
+        // along x), about its horizontal brings z up it (along y); along z
+        // is the default.  Fitted afterwards like reset.
+        lookAlong(axis) {
+            if (state.disposed) return;
+            const turn = { x: [90, "y"], y: [90, "x"], z: null }[axis];
+            if (turn === undefined) return;
+            try {
+                state.viewer.setView([0, 0, 0, 0, 0, 0, 0, 1]);
+                if (turn) state.viewer.rotate(turn[0], turn[1]);
+                state.viewer.zoomTo();
+            } catch (_) {}
+            paint();
+        },
+
         // "Report the pose" -- § 9.7's bounded asking of the WINDOW.  The
         // answer is the library's own opaque view array, carried verbatim;
         // null when there is nothing to report.
