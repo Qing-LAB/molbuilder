@@ -108,7 +108,7 @@
      * These are the one answer, so a new control inherits the size instead of
      * picking its own. */
     --molviewer-control-font:   11px;
-    --molviewer-control-family: system-ui, sans-serif;
+    --molviewer-control-family: var(--molviewer-font-ui);   /* one family: the app's */
     --molviewer-control-line:   1.15;
     --molviewer-control-height: 22px;      /* the row height buttons/selects/inputs share */
     --molviewer-control-pad-y:  0.18rem;
@@ -352,6 +352,13 @@
     --molviewer-size-window-extent: max(var(--molviewer-size-window-min),
                          min(var(--molviewer-size-window-edge),
                              calc(100cqw - var(--molviewer-size-panel-min) - var(--molviewer-size-fold-width))));
+    /* THE PANEL'S FLOORS -- its height is its content's, never pinned (plan
+     * § 5x F5): the extent is its MINIMUM, so it lines up with the viewer and
+     * grows past it when the pinned sections need the room; and the fill
+     * region (the atom list, the filter rows) keeps a few rows of its own
+     * under them, so two notices never squeeze it to nothing. */
+    --molviewer-size-panel-floor:   18rem;
+    --molviewer-size-fill-rows:     6rem;
 }
 
 /* Viewer: a 1:1 square sized to --molviewer-size-window-extent (== card leftover, capped at --molviewer-size-window-edge).
@@ -409,14 +416,15 @@
      * (that does not change the card width), so switching tabs never resizes. */
     flex: 1 1 auto;
     min-width: var(--molviewer-size-panel-min);
-    /* HEIGHT == the viewer square's extent -- the SAME value the viewer uses, so the two
+    /* HEIGHT >= the viewer square's extent -- the SAME value the viewer uses, so the two
      * bottom-align at EVERY width with no JS and no fixed magic number.  The viewer's
      * View/Export bar is an OVERLAY inside its square (adds no height), so the panel's
-     * bottom lines up with the viewer's.  Switching atom-list <-> filter (or Selection <->
-     * Cell) never resizes it; the inner list/filter is the scroll region.  A ``min-height``
-     * floor keeps it usable if the viewport (hence the extent) is very short. */
-    height: var(--molviewer-size-window-extent);
-    min-height: 18rem;
+     * bottom lines up with the viewer's.  The extent is the panel's MINIMUM, not its
+     * height: the pinned sections (header, mode toggle, notices, the assign block) plus
+     * the fill region's floor decide how far it grows past it, and the card row's
+     * flex-start lets it (plan § 5x F5).  The panel floor keeps it usable when the
+     * viewport (hence the extent) is very short. */
+    min-height: max(var(--molviewer-size-window-extent), var(--molviewer-size-panel-floor));
     /* ONE scroll, not nested: the panel is a flex column that does not scroll
      * itself (overflow hidden); the ACTIVE page inside is the single scroll
      * region (below), so there is one bar over the atom list, not two. */
@@ -481,8 +489,11 @@
  * single scroll region -- the atom list in click mode, the filter rows in filter mode.  It
  * is one role, and the page may only ever have one. */
 .molviewer-panel .molviewer-panel-tab > [data-fill]:not([hidden]) {
-    flex: 1 1 auto;
-    min-height: 0;
+    /* A ZERO BASIS: the region takes the panel's leftover height and never
+     * asks for its own content's -- so the panel is max(the extent, the
+     * pinned sections + this floor), and the list inside scrolls. */
+    flex: 1 1 0;
+    min-height: var(--molviewer-size-fill-rows);
     display: flex;
     flex-direction: column;
 }
@@ -490,9 +501,8 @@
  * fill, so the list scrolls while the header + Clear/Invert + assign stay pinned. */
 .molviewer-panel .molviewer-selection-list-wrap,
 .molviewer-panel .molviewer-filter-rows {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none;
+    flex: 1 1 0;
+    min-height: var(--molviewer-size-fill-rows);
     overflow-y: auto;
 }
 
@@ -599,14 +609,14 @@
         height: var(--molviewer-size-stack-extent);
     }
     .molviewer-panel {
-        /* Same width as the viewer square (columns align), and a height that MATCHES the
-         * square too -- a generous, stable frame (so the atom list is usable, not a sliver)
-         * that an atom-list <-> filter switch never resizes; the inner list scrolls, and the
-         * page scrolls if the stacked pair exceeds the viewport (the narrow case). */
+        /* Same width as the viewer square (columns align), and AT LEAST the square's
+         * height -- a generous frame (so the atom list is usable, not a sliver) that
+         * grows only when its pinned sections need the room; the inner list scrolls, and
+         * the page scrolls if the stacked pair exceeds the viewport (the narrow case). */
         width: var(--molviewer-size-stack-extent);
-        height: var(--molviewer-size-stack-extent);
-        min-height: 22rem;
-        transition: height 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
+        --molviewer-size-panel-floor: 22rem;
+        min-height: max(var(--molviewer-size-stack-extent), var(--molviewer-size-panel-floor));
+        transition: min-height 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
     }
     .molviewer-panel-fold-btn {
         /* THE SAME WIDTH AS THE TWO THINGS IT SITS BETWEEN, which is what the row
@@ -638,7 +648,7 @@
        row (the knob bar is flex-wrap:wrap) once View/Export leave it less than that -- so a small
        viewer stacks the bar instead of overflowing the canvas. */
     flex: 1 1 15rem;
-    font: var(--molviewer-text-2xs)/1.2 system-ui, sans-serif;
+    font: var(--molviewer-text-2xs)/1.2 var(--molviewer-font-ui);
     color: var(--molviewer-color-text-dim);
 }
 /* Playback buttons -- ‹ prev, ▶/⏸ play-loop, › next (controls.js). */
@@ -815,7 +825,7 @@
  *   1. Header        -- title + live count.
  *   2. Mode toggle   -- Click vs Filter (segmented control).
  *   3. Mode body     -- exactly ONE of these is visible at a time:
- *      * Click mode    -> scrollable atom list (max-height ~340px).
+ *      * Click mode    -> scrollable atom list (the page's fill region).
  *      * Filter mode   -> combinator + filter rows + Apply filter.
  *   4. Clear selection.
  *   5. Assign block  -- Target + Assign / Add / Remove.
@@ -890,7 +900,7 @@
 }
 .molviewer-selection-mode-option > span {
     color: var(--molviewer-color-panel-text-dim);
-    font: 600 12px/1.2 system-ui, sans-serif;
+    font: 600 12px/1.2 var(--molviewer-font-ui);
     letter-spacing: 0.03em;
     text-transform: uppercase;
 }
@@ -935,7 +945,7 @@
 .molviewer-selection-mini-label,
 .molviewer-cell-readout dt {
     color: var(--molviewer-color-panel-text-dim);
-    font: 600 11px/1.2 system-ui, sans-serif;
+    font: 600 11px/1.2 var(--molviewer-font-ui);
     letter-spacing: 0.04em;
     text-transform: uppercase;
     white-space: nowrap;
@@ -948,7 +958,7 @@
     border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 3px;
     padding: 0.18rem 0.4rem;
-    font: 11px system-ui, sans-serif;
+    font: 11px var(--molviewer-font-ui);
 }
 
 /* Filter-mode action row: + Add filter (left) + Apply filter
@@ -972,7 +982,7 @@
 .molviewer-selection-apply-filter-btn {
     flex: 1;
     padding: 0.18rem 0.5rem;
-    font: 600 11px/1.15 system-ui, sans-serif;
+    font: 600 11px/1.15 var(--molviewer-font-ui);
     background: var(--molviewer-color-pick-bg-mid);
     color: var(--molviewer-color-pick-text);
     border: 1px solid var(--molviewer-color-pick);
@@ -995,7 +1005,7 @@
 .molviewer-filter-empty {
     margin: 0;
     color: var(--molviewer-color-panel-text-dim);
-    font: italic 11px/1.3 system-ui, sans-serif;
+    font: italic 11px/1.3 var(--molviewer-font-ui);
 }
 
 /* Grid layout so kind selector + text input + × align in a column
@@ -1018,7 +1028,7 @@
     border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 3px;
     padding: 0.18rem 0.4rem;
-    font: 11px system-ui, sans-serif;
+    font: 11px var(--molviewer-font-ui);
     min-width: 0;
 }
 
@@ -1028,7 +1038,7 @@
     border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 3px;
     padding: 0.18rem 0.4rem;
-    font: 11px ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    font: 11px var(--molviewer-font-mono);
     min-width: 0;
 }
 
@@ -1059,7 +1069,6 @@
     border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 4px;
     background: var(--molviewer-color-panel-well);
-    max-height: 340px;
     overflow: auto;
 }
 
@@ -1080,7 +1089,7 @@
 .molviewer-atoms-table {
     width: 100%;
     border-collapse: collapse;
-    font: 12px/1.3 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    font: 12px/1.3 var(--molviewer-font-mono);
     /* THE ROWS ARE PICKED, NOT READ.  Without this, dragging a box over them
      * also drags a native text selection, so the words go blue underneath and
      * two highlights argue about what is chosen.  Every list you pick from
@@ -1104,7 +1113,7 @@
     padding: 0.35rem 0.5rem;
     font-weight: 600;
     color: var(--molviewer-color-panel-text-dim);
-    font-family: system-ui, sans-serif;
+    font-family: var(--molviewer-font-ui);
     font-size: 11px;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -1156,7 +1165,7 @@
     gap: 0.25em;
     padding: 0.05em 0.25em 0.05em 0.5em;
     margin: 0 0.25em 0.15em 0;
-    font: 600 10px/1.4 system-ui, sans-serif;
+    font: 600 10px/1.4 var(--molviewer-font-ui);
     letter-spacing: 0.04em;
     text-transform: uppercase;
     border-radius: 3px;
@@ -1268,7 +1277,7 @@
     border: 1px solid var(--molviewer-color-panel-edge-strong);
     border-radius: 3px;
     padding: 0.18rem 0.5rem;
-    font: 600 11px/1.15 system-ui, sans-serif;
+    font: 600 11px/1.15 var(--molviewer-font-ui);
     letter-spacing: 0.02em;
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
@@ -1366,7 +1375,7 @@
     border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 3px;
     padding: 0.18rem 0.4rem;
-    font: 11px system-ui, sans-serif;
+    font: 11px var(--molviewer-font-ui);
     min-width: 0;
 }
 .molviewer-selection-new-label {
@@ -1453,7 +1462,7 @@
 }
 .molviewer-panel-tab-option > span {
     color: var(--molviewer-color-panel-text-dim);
-    font: 700 13px/1.2 system-ui, sans-serif;
+    font: 700 13px/1.2 var(--molviewer-font-ui);
     letter-spacing: 0.01em;
 }
 .molviewer-panel-tab-option:hover > span { color: var(--molviewer-color-panel-text); }
@@ -1466,7 +1475,7 @@
 .molviewer-cell-regime {
     margin: 0 0 0.5rem;
     color: var(--molviewer-color-panel-muted, var(--molviewer-color-panel-text));
-    font: 11px/1.45 var(--molviewer-font-ui, system-ui, sans-serif);
+    font: 11px/1.45 var(--molviewer-font-ui);
 }
 
 /* Cell readout -- read-only display of the resolved periodicity (stage 2). */
@@ -1480,7 +1489,7 @@
 .molviewer-cell-readout dd { margin: 0; }
 .molviewer-cell-value {
     color: var(--molviewer-color-panel-text);
-    font: 12px/1.4 ui-monospace, monospace;
+    font: 12px/1.4 var(--molviewer-font-mono);
     word-break: break-word;
     white-space: pre;                    /* the 3x3 keeps its rows (§3b) */
     font-variant-numeric: tabular-nums;  /* columns line up between redraws */
@@ -1493,7 +1502,7 @@
 .molviewer-cell-value--inert { opacity: 0.55; }
 .molviewer-cell-inert-tag {
     opacity: 0.8;
-    font: 10px/1 var(--molviewer-font-ui, system-ui, sans-serif);
+    font: 10px/1 var(--molviewer-font-ui);
     font-style: italic;
 }
 
@@ -1590,7 +1599,7 @@
 .molviewer-window-busy[hidden] { display: none; }
 .molviewer-window-busy-msg {
     padding:        0.35rem 0.8rem;
-    font:           var(--molviewer-text-xs)/1.3 system-ui, sans-serif;
+    font:           var(--molviewer-text-xs)/1.3 var(--molviewer-font-ui);
     color:          var(--molviewer-color-text);
     background:     var(--molviewer-color-surface-raised);
     border:         1px solid var(--molviewer-color-edge);

@@ -170,18 +170,16 @@
     </div>
     {#- THE TREATMENT, asked when the list holds more than one voltage
         (`engines/transport.md` § 2a.10): nothing is chosen for you. -#}
-    {#- A RADIO GROUP, NOT A FIELDSET: this page loads form-schema.css,
-        whose fieldset rules are the parameter form's. -#}
-    <div class="transport-choices" id="transport-bias-treatment"
+    <div class="choice-list" id="transport-bias-treatment"
          role="radiogroup" aria-labelledby="transport-bias-treatment-q" hidden>
       <strong id="transport-bias-treatment-q">Several voltages — the low-bias approximation?</strong>
-      <label class="transport-choice">
+      <label class="choice-row">
         <input type="radio" name="transport-bias-treatment" value="true" />
         <span><strong>yes</strong> — the device and the transmission run once,
           at 0 V, and each voltage's current is computed from that T(E): the
           linear-response approximation</span>
       </label>
-      <label class="transport-choice">
+      <label class="choice-row">
         <input type="radio" name="transport-bias-treatment" value="false" />
         <span><strong>no</strong> — every voltage gets its own device SCF and
           its own transmission, each starting from the voltage before</span>

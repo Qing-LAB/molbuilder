@@ -24,7 +24,7 @@
 .app-grid > .card { margin: 0; }
 
 @media (max-width: 785px) {
-    .app-grid { margin: 10px; gap: 10px; }
+    .app-grid { margin: var(--space-sm2); gap: var(--space-sm2); }
 }
 
 /* ---- Card header (layered on page-shell's .card base) ---- */
@@ -154,13 +154,13 @@ button.danger:disabled {
 .chemistry-why { color: var(--text-secondary); }
 .chemistry-metals-box { margin-top: var(--space-sm); }
 .chemistry-metals-box summary { cursor: pointer; font-weight: 600; }
-.chemistry-metals { margin: 0.3rem 0; }
+.chemistry-metals { margin: var(--space-xs) 0; }
 .chemistry-metals dt {
     font-weight: 600;
     margin-top: var(--space-xs);
 }
 .chemistry-metals dd {
-    margin: 0 0 0 1.2em;
+    margin: 0 0 0 var(--space-lg);
     color: var(--text-secondary);
 }
 
@@ -181,12 +181,36 @@ button.danger:disabled {
     font-size: var(--text-xs);
 }
 .schema-field > .field-issues .issue-item {
-    padding: var(--space-xs) var(--space-sm) var(--space-xs) 10px;
+    padding: var(--space-xs) var(--space-sm) var(--space-xs) var(--space-sm2);
 }
 /* The stable id is worth showing in a card list, where a row has to say what
    it is about.  Beside the field it IS the field -- the label is right there
    -- so repeating it is noise. */
 .schema-field > .field-issues .issue-where { display: none; }
+
+/* ---- Choice list: a radio or checkbox beside its sentence, one choice a
+ * line.  The one owner of the shape This machine's kinds and the transport
+ * tab's bias treatment share (ui-contract.md § 1: a widget used on more than
+ * one page lives in a shared sheet). ---- */
+.choice-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+/* `display: flex` outranks the `hidden` attribute (code-audit.md, the
+ * [hidden] precedence rule); a page shows the list by `.hidden`. */
+.choice-list[hidden] { display: none; }
+.choice-row {
+    display: flex;
+    align-items: start;
+    gap: var(--space-sm);
+    cursor: pointer;
+}
+/* The box sits on the sentence's first line, not the row's top. */
+.choice-row > input {
+    margin-top: var(--space-xs);
+    flex: none;
+}
 
 /* ---- Viewer card chrome (3Dmol canvas lives in .viewer-wrap) ---- */
 .card-viewer {
@@ -194,10 +218,10 @@ button.danger:disabled {
     gap: var(--space-sm2);
 }
 .viewer-header {
-    display: flex; flex-direction: column; gap: 6px;
+    display: flex; flex-direction: column; gap: var(--space-sm);
 }
 .viewer-info {
-    display: flex; flex-wrap: wrap; gap: 6px 14px;
+    display: flex; flex-wrap: wrap; gap: var(--space-sm) var(--space-md);
     font-size: var(--text-sm);
     color: var(--text-secondary);
     align-items: baseline;
@@ -208,7 +232,7 @@ button.danger:disabled {
     word-break: break-all;
 }
 .viewer-info .meta {
-    display: inline-flex; gap: 6px; align-items: baseline;
+    display: inline-flex; gap: var(--space-sm); align-items: baseline;
     flex-wrap: wrap;
 }
 .viewer-info .sep { color: var(--border-strong); }
@@ -238,7 +262,7 @@ button.danger:disabled {
 }
 .fdf-output {
     margin-top: var(--space-sm2);
-    padding: 12px var(--space-md);
+    padding: var(--space-sm2) var(--space-md);
     background: var(--bg-code);
     color: var(--text-mono);
     font-family: var(--font-mono);
@@ -262,7 +286,7 @@ button.danger:disabled {
     border: none;
     border-radius: var(--radius-sm);
     padding: var(--space-sm) 0;
-    font: var(--weight-semibold) 0.92rem/1 var(--font-sans);
+    font: var(--weight-semibold) var(--text-base)/1 var(--font-sans);
     cursor: pointer;
 }
 .full-btn:disabled {

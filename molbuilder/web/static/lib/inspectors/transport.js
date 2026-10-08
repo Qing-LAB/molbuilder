@@ -61,18 +61,24 @@ const WORKSPACE_TAG = "results:transport";
     /* PANEL TABS -- the page's `.panel-tabs` markup (`ui-contract.md`); a
      * panel's charts are resized when it is shown, since a chart drawn
      * hidden has no width. */
+    let _tabsSeq = 0;
     function _tabs(names) {
         const bar = _el("div", "panel-tabs");
         bar.setAttribute("role", "tablist");
         const panels = {};
         const buttons = {};
         const box = _el("div", "transport-tabpanels");
+        // The ARIA tabs pattern (ui-contract.md § 4.1): ids pair each tab
+        // with its panel, one tab stop, the arrows move the selection.
+        const prefix = "transport-tab-" + (++_tabsSeq) + "-";
+        const keys = names.map((n) => n[0]);
         function show(name) {
             Object.keys(panels).forEach((n) => {
                 const on = n === name;
                 panels[n].hidden = !on;
                 buttons[n].classList.toggle("is-active", on);
                 buttons[n].setAttribute("aria-selected", on ? "true" : "false");
+                buttons[n].tabIndex = on ? 0 : -1;
             });
             if (root.Plotly) {
                 panels[name].querySelectorAll(".js-plotly-plot").forEach((p) => {
@@ -83,12 +89,27 @@ const WORKSPACE_TAG = "results:transport";
         names.forEach(([key, label]) => {
             const b = _el("button", "panel-tab", label);
             b.type = "button";
+            b.id = prefix + key;
             b.setAttribute("role", "tab");
+            b.setAttribute("aria-controls", prefix + key + "-panel");
             b.addEventListener("click", () => show(key));
+            b.addEventListener("keydown", (ev) => {
+                const i = keys.indexOf(key);
+                const to = ev.key === "ArrowRight" ? keys[(i + 1) % keys.length]
+                    : ev.key === "ArrowLeft" ? keys[(i - 1 + keys.length) % keys.length]
+                    : ev.key === "Home" ? keys[0]
+                    : ev.key === "End" ? keys[keys.length - 1] : null;
+                if (!to) return;
+                ev.preventDefault();
+                show(to);
+                buttons[to].focus();
+            });
             bar.appendChild(b);
             buttons[key] = b;
             const p = _el("div", "panel-tabpanel");
+            p.id = prefix + key + "-panel";
             p.setAttribute("role", "tabpanel");
+            p.setAttribute("aria-labelledby", prefix + key);
             box.appendChild(p);
             panels[key] = p;
         });
@@ -183,7 +204,9 @@ const WORKSPACE_TAG = "results:transport";
         const name = _el("input", "transport-pdos-name");
         name.type = "text";
         name.placeholder = "name (e.g. S, ring C)";
+        name.setAttribute("aria-label", "name for the selection");
         const orb = _el("select", "transport-pdos-orb");
+        orb.setAttribute("aria-label", "orbital type");
         (menu.types || ["all"]).forEach((t) => {
             const o = _el("option", null, t === "all" ? "all orbitals" : t);
             o.value = t;
@@ -257,7 +280,15 @@ const WORKSPACE_TAG = "results:transport";
             if (computed) return;
             const tr = _el("tr", "transport-iv-row is-pick");
             tr.dataset.bias = String(p.bias_v);
-            tr.appendChild(_el("td", null, _fmt(p.bias_v, 3, false)));
+            // THE PICK IS A BUTTON (ui-contract.md § 4.1): the bias cell
+            // names the point and takes the keyboard; the row's click is
+            // the mouse's wider target for the same pick.
+            const pick = _el("button", "transport-iv-pick", _fmt(p.bias_v, 3, false));
+            pick.type = "button";
+            pick.setAttribute("aria-label", "show the " + _fmt(p.bias_v, 3, false) + " V point");
+            const biasCell = _el("td", null);
+            biasCell.appendChild(pick);
+            tr.appendChild(biasCell);
             tr.appendChild(_el("td", null, _fmt(p.conductance_g0, 4, false)));
             tr.appendChild(_el("td", null, _fmt(p.current_a, 4, true)));
             tr.appendChild(_el("td", null, _fmt(p.current_a_printed, 4, true)));
@@ -634,7 +665,10 @@ const WORKSPACE_TAG = "results:transport";
         }
         if (state.nodes.table) {
             state.nodes.table.querySelectorAll(".transport-iv-row").forEach((tr) => {
-                tr.classList.toggle("is-selected", Number(tr.dataset.bias) === state.bias);
+                const on = Number(tr.dataset.bias) === state.bias;
+                tr.classList.toggle("is-selected", on);
+                const pick = tr.querySelector(".transport-iv-pick");
+                if (pick) pick.setAttribute("aria-pressed", on ? "true" : "false");
             });
         }
         _drawConvergence(state);

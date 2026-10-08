@@ -286,6 +286,10 @@
     --ts-refuse-bg:     rgba(248, 113, 113, 0.10);
     --ts-refuse-fg:     var(--error);
 
+    /* --- Transport tab (transport/style.css) --- */
+    --tr-bias-num-w:    8ch;     /* a start / stop / step box: the volts it holds */
+    --tr-offer-min-w:   12rem;   /* the swap-electrodes offer's button */
+
     /* --- Global names --------------------------------------------------
      * Unprefixed names live here, never in a component's `:root`: a
      * `:root` block is global wherever the sheet is loaded, so two

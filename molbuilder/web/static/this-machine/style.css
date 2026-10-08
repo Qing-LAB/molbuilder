@@ -120,16 +120,6 @@
    it holds is what stops a two-word field spanning the card. */
 .tm-input-name { max-width: 22ch; }
 
-.tm-kinds { display: flex; flex-direction: column; gap: var(--space-xs); }
-
-.tm-kind {
-    display: flex;
-    align-items: start;
-    gap: var(--space-sm);
-    cursor: pointer;
-}
-.tm-kind input { margin-top: 0.25em; flex: none; }
-
 .tm-sub-note {
     display: block;
     font-size: var(--text-sm);

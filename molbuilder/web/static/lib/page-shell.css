@@ -59,7 +59,7 @@ body {
  * summary, the sidebar's checkpoint row) would take the banner's padding,
  * rule and gradient with it, against ui-contract.md § 4's one-inset rule. */
 .app-header {
-    padding: var(--space-md) 22px 12px;
+    padding: var(--space-md) var(--space-lg2) var(--space-sm2);
     border-bottom: 1px solid var(--border-strong);
     background: linear-gradient(180deg,
                                 var(--header-gradient-top) 0%,
@@ -141,7 +141,7 @@ body {
 /* ---- Main layout container -------------------------------------- */
 
 main {
-    padding: var(--gap) 22px 22px;
+    padding: var(--gap) var(--space-lg2) var(--space-lg2);
     display: flex;
     flex-direction: column;
     gap: var(--gap);
@@ -285,7 +285,7 @@ body[data-sidebars][data-sidebars-hidden] .sidebar-rail {
     background: var(--bg-card);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
-    padding: var(--space-md) 18px 18px;
+    padding: var(--space-md) var(--space-lg) var(--space-lg);
     box-shadow: var(--shadow-card);
 }
 
@@ -366,7 +366,7 @@ input[type="range"] {
     cursor: pointer;
 }
 input[type="file"] {
-    padding: var(--space-xs) 6px;
+    padding: var(--space-xs) var(--space-sm);
     cursor: pointer;
     color: var(--text-secondary);
 }
@@ -379,7 +379,7 @@ button {
     background: var(--bg-input);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
-    padding: var(--space-xs) 12px;
+    padding: var(--space-xs) var(--space-sm2);
     transition: background 120ms, border-color 120ms, color 120ms;
 }
 button:hover {
@@ -435,9 +435,11 @@ button:disabled {
  * copy of the rules.
  *
  * The markup contract: a `role="tablist"` of `<button role="tab">` carrying
- * `is-active` + `aria-selected`, and panels with `role="tabpanel"` shown and
- * hidden through the `hidden` PROPERTY.  Which is why the panel rule below
- * exists at all -- see the note on it. */
+ * `is-active` + `aria-selected`, each with an `id` and `aria-controls` naming
+ * its panel, and panels with `role="tabpanel"` (`aria-labelledby` the tab)
+ * shown and hidden through the `hidden` PROPERTY; one tab stop, the arrow
+ * keys moving the selection (ui-contract.md § 4.1).  Which is why the panel
+ * rule below exists at all -- see the note on it. */
 .panel-tabs {
     display: flex;
     flex-wrap: wrap;
@@ -499,7 +501,7 @@ button:disabled {
 
 /* ---- Custom scrollbars (WebKit only; Firefox uses its own) ------ */
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar { width: var(--space-sm); height: var(--space-sm); }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
     background: var(--border-strong);

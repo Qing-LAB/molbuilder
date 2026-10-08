@@ -160,6 +160,7 @@ function renderStages(task) {
             class: "ts-rowbtn ts-rowbtn-drop"
                    + (_fs.pendingDrop === col ? " is-pending" : ""),
             title: "Remove this column",
+            "aria-label": "Remove column " + col,
         }, "\u00d7");
         x.addEventListener("click", () => removeColumn(col));
         const th = el("th", { title: helpText(col) }, col, x);
@@ -193,6 +194,7 @@ function renderStages(task) {
         const drop = el("button", {
             type: "button", class: "ts-rowbtn ts-rowbtn-drop",
             title: "Remove this stage",
+            "aria-label": "Remove stage " + name,
         }, "\u00d7");
         drop.addEventListener("click", () => removeStage(i));
 
@@ -665,7 +667,8 @@ function stageRunCard(task, stage) {
 
         const drop = el("button", { type: "button",
                                     class: "ts-rowbtn ts-rowbtn-drop",
-                                    title: "Stop stating " + name }, "\u00d7");
+                                    title: "Stop stating " + name,
+                                    "aria-label": "Stop stating " + name }, "\u00d7");
         drop.addEventListener("click", () => dropRunRow(name, stage));
 
         rows.appendChild(el("div", { class: "ts-row",
@@ -746,7 +749,8 @@ function renderMachine(task) {
 
         const chips = pts.map((p, i) => {
             const drop = el("button", { type: "button", class: "ts-pt-x",
-                                        title: "Remove this point" }, "\u00d7");
+                                        title: "Remove this point",
+                                        "aria-label": "Remove point " + String(p) }, "\u00d7");
             drop.addEventListener("click", () => removePoint(name, i));
             return el("span", { class: "ts-pt" }, String(p), drop);
         });
@@ -780,7 +784,8 @@ function renderMachine(task) {
         }
 
         const dropRow = el("button", { type: "button", class: "ts-rowbtn ts-rowbtn-drop",
-                                       title: "Stop measuring " + name }, "\u00d7");
+                                       title: "Stop measuring " + name,
+                                       "aria-label": "Stop measuring " + name }, "\u00d7");
         dropRow.addEventListener("click", () => removeSetting(name));
 
         // A VALUE axis with several points SWEEPS (generator.md § 4.3a): the

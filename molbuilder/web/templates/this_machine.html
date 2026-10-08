@@ -52,14 +52,14 @@
           updates it.</span>
       </div>
 
-      <fieldset class="tm-field tm-kinds">
+      <fieldset class="tm-field choice-list">
         <legend class="tm-label">Kind</legend>
         {#- THREE KINDS: Slack versus Discord is a distinction the sender
             cannot avoid making: Slack renders a bare `text`, Discord refuses a body
             without `content` or `embeds` (`run-reports.md` § 4.1b).  The
             value each radio carries is the MONITOR'S own kind, so the page
             and the wire use one vocabulary. -#}
-        <label class="tm-kind" for="tm-kind-slack">
+        <label class="choice-row" for="tm-kind-slack">
           <input type="radio" name="tm-kind" id="tm-kind-slack"
                  value="slack" checked>
           <span>Slack webhook
@@ -67,7 +67,7 @@
               there is no separate key &mdash; and this page shows it back
               only masked</span></span>
         </label>
-        <label class="tm-kind" for="tm-kind-discord">
+        <label class="choice-row" for="tm-kind-discord">
           <input type="radio" name="tm-kind" id="tm-kind-discord"
                  value="discord">
           <span>Discord webhook
@@ -75,7 +75,7 @@
               credential. Reports arrive as an embed, coloured by state, the
               same card Slack gets</span></span>
         </label>
-        <label class="tm-kind" for="tm-kind-listener">
+        <label class="choice-row" for="tm-kind-listener">
           <input type="radio" name="tm-kind" id="tm-kind-listener"
                  value="molbuilder">
           <span>A molbuilder listener
@@ -159,7 +159,7 @@
         <span class="hint">It becomes a filename in the report log, so it is
           limited to letters, digits and <code>. _ @ + -</code>.</span>
       </div>
-      <label class="tm-kind" for="tm-replace">
+      <label class="choice-row" for="tm-replace">
         <input type="checkbox" id="tm-replace">
         <span>Replace an existing key
           <span class="tm-sub-note">the old one stops working immediately,

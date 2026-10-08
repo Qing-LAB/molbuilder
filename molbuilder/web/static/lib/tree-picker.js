@@ -99,12 +99,17 @@ export async function pickPath(opts) {
   async function _setChosen(path, entry) {
     chosenPath = path;
     if (confirmBtn) confirmBtn.disabled = !path;
-    tree.querySelectorAll(".is-selected").forEach(
-      (n) => n.classList.remove("is-selected"));
+    tree.querySelectorAll(".is-selected").forEach((n) => {
+      n.classList.remove("is-selected");
+      n.setAttribute("aria-selected", "false");
+    });
     if (path) {
       const node = tree.querySelector(
         `[data-path="${path.replace(/"/g, '\\"')}"]`);
-      if (node) node.classList.add("is-selected");
+      if (node) {
+        node.classList.add("is-selected");
+        node.setAttribute("aria-selected", "true");
+      }
     }
     if (!opts.describe || !path) { meta.hidden = true; return; }
     const seq = ++describeSeq;
@@ -133,20 +138,56 @@ export async function pickPath(opts) {
     return true;
   };
 
+  /* THE KEYBOARD PATH (ui-contract.md § 4.1): a row is the tab stop of its
+   * treeitem; Enter picks it (or opens a folder that cannot be picked), the
+   * arrows move between the rows on screen, open a folder and close it. */
+  function _rowsOnScreen() {
+    return Array.from(tree.querySelectorAll(".tp-row"))
+      .filter((r) => r.tabIndex === 0 && r.offsetParent !== null);
+  }
+  function _rowKey(ev, n) {
+    const rows = _rowsOnScreen();
+    const i = rows.indexOf(n.row);
+    if (ev.key === "Enter" || ev.key === " ") {
+      ev.preventDefault();
+      if (n.canPick) _setChosen(n.path, { name: n.name, kind: n.kind });
+      else if (n.isDir) n.toggle();
+    } else if (ev.key === "ArrowRight") {
+      ev.preventDefault();
+      if (n.isDir && !n.expanded()) n.toggle();
+      else if (rows[i + 1]) rows[i + 1].focus();
+    } else if (ev.key === "ArrowLeft") {
+      ev.preventDefault();
+      if (n.isDir && n.expanded()) { n.toggle(); return; }
+      const parent = n.li.parentElement && n.li.parentElement.closest(".tp-node");
+      const prow = parent && parent.querySelector(":scope > .tp-row");
+      if (prow) prow.focus();
+    } else if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      if (rows[i + 1]) rows[i + 1].focus();
+    } else if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (rows[i - 1]) rows[i - 1].focus();
+    }
+  }
+
   function _buildNode(name, path, kind) {
     const li = _el("li", "tp-node");
     li.dataset.path = path;
     li.dataset.kind = kind;
     li.setAttribute("role", "treeitem");
+    li.setAttribute("aria-selected", "false");
 
     const row = _el("div", "tp-row");
     const canPick = selectable(kind, path, name);
     if (!canPick) row.classList.add("tp-row--inert");
 
     const isDir = kind === "directory";
+    if (isDir) li.setAttribute("aria-expanded", "false");
     const tw = _el("button", "tp-twisty", isDir ? "▸" : "");
     tw.type = "button";
     tw.setAttribute("aria-label", "Expand");
+    tw.tabIndex = -1;            // the row is the tab stop; ArrowRight opens
     if (!isDir) tw.classList.add("tp-twisty--leaf");
     row.appendChild(tw);
     row.appendChild(_el("span", "tp-icon", isDir ? "📁" : "📄"));
@@ -163,6 +204,8 @@ export async function pickPath(opts) {
       expanded = !expanded;
       sub.hidden = !expanded;
       tw.textContent = expanded ? "▾" : "▸";
+      tw.setAttribute("aria-label", expanded ? "Collapse" : "Expand");
+      li.setAttribute("aria-expanded", expanded ? "true" : "false");
       li.classList.toggle("is-open", expanded);
       if (expanded) await _expand(li);
     }
@@ -171,6 +214,11 @@ export async function pickPath(opts) {
       if (canPick) _setChosen(path, { name, kind });
     });
     row.addEventListener("dblclick", () => { if (!expanded) toggle(); });
+    row.tabIndex = (canPick || isDir) ? 0 : -1;
+    row.addEventListener("keydown", (ev) => _rowKey(ev, {
+      li, row, isDir, canPick, path, name, kind, toggle,
+      expanded: () => expanded,
+    }));
     return li;
   }
 

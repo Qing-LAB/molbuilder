@@ -29,28 +29,13 @@
 /* THE BIAS BUILDER's start / stop / step: a box sized to the volts it
    holds (`0.05`), not the row's width. */
 .transport-bias-num {
-    width: 8ch;
+    width: var(--tr-bias-num-w);
     font-variant-numeric: tabular-nums;
 }
 
-/* THE TREATMENT, asked once the list holds several voltages: one choice a
-   line, the radio beside its sentence (This Machine's kinds, the same
-   shape). */
-.transport-choices {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-    margin-top: var(--space-md);
-}
-/* `display:flex` outranks the `hidden` attribute (code-audit.md, the
-   [hidden] precedence rule); core.js shows it by `.hidden`. */
-.transport-choices[hidden] { display: none; }
-.transport-choice {
-    display: flex;
-    align-items: start;
-    gap: var(--space-sm);
-    cursor: pointer;
-}
+/* THE TREATMENT, asked once the list holds several voltages -- the shared
+   choice list (form-components.css), set off from the bias rows above. */
+#transport-bias-treatment { margin-top: var(--space-md); }
 
 /* THE ONE OFFER: inverted electrode labels are a naming
  * mistake with a one-click fix, so card 1 shows the reason and the
@@ -75,7 +60,7 @@
 }
 #transport-junction-fix .full-btn {
     width: auto;
-    min-width: 12rem;
+    min-width: var(--tr-offer-min-w);
     padding-left: var(--space-md);
     padding-right: var(--space-md);
 }

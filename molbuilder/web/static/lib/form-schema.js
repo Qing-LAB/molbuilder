@@ -319,6 +319,9 @@
                 value: drawn && drawn[i] != null ? drawn[i] : "",
             });
             if (hint && hint[i] != null) cellInput.placeholder = String(hint[i]);
+            // ONE label wraps the three cells, so each cell names itself
+            // (ui-contract.md § 4.1): "k-point mesh y".
+            cellInput.setAttribute("aria-label", `${f.label || f.name} ${lab}`);
             // Bounds apply PER COMPONENT -- a triple's ``range`` bounds each
             // axis, not their sum.  Same two lines as the scalar path, so
             // the two controls cannot drift on what a bound means.

@@ -148,6 +148,10 @@
 .tp-row:hover {
     background: var(--bg-card);
 }
+.tp-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
 .tp-row--inert {
     cursor: default;
     color: var(--text-secondary);
@@ -155,7 +159,7 @@
 .tp-node.is-selected > .tp-row {
     background: var(--accent-soft, var(--bg-card));
     color: var(--accent);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .tp-twisty {
     appearance: none;

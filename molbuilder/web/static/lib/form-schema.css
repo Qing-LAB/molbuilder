@@ -10,27 +10,32 @@
  * tokens.css BEFORE this file.
  */
 
-/* ---- Fieldsets in parameter forms ---- */
+/* ---- The renderer's sections (`<fieldset class="schema-section">`) ----
+ *
+ * SCOPED TO THE RENDERER'S OWN CLASS, never to the element: this sheet is
+ * loaded by every page that renders a schema form, and a bare `fieldset`
+ * rule would restyle any other fieldset on those pages as a parameter form
+ * (ui-contract.md § 1: a module sheet is class-prefixed). */
 
-fieldset {
+.schema-section {
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm, 4px);
-    padding: 12px 16px var(--space-md);
+    padding: var(--space-sm2) var(--space-md) var(--space-md);
     margin: 0;
     background: var(--bg-fieldset);
     min-width: 0;     /* allow grid items to shrink below content width */
 }
 /* Canonical legend + stacked-label rules live HERE: ONE owner -- page
  * sheets carry page-specific overrides only (e.g. #generate-card legend). */
-fieldset legend {
-    font-weight: 600;
+.schema-section legend {
+    font-weight: var(--weight-semibold);
     padding: 0 var(--space-sm);
     font-size: var(--text-sm);
     color: var(--accent);
     letter-spacing: 0.01em;
 }
 /* Stacked label: name above input (fixes long-label column overflow). */
-fieldset label {
+.schema-section label {
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -44,21 +49,21 @@ fieldset label {
      * (measured on the transport form, 2026-09-15). */
     align-items: flex-start;
 }
-fieldset label > .schema-field-text {
+.schema-section label > .schema-field-text {
     line-height: var(--line-snug);
 }
 
 
-fieldset label > input,
-fieldset label > select {
+.schema-section label > input,
+.schema-section label > select {
     width: 100%;
     margin-top: 1px;
     max-width: none;
     min-width: 0;
 }
-fieldset label > input,
-fieldset label > select,
-fieldset label > .schema-int-triple {
+.schema-section label > input,
+.schema-section label > select,
+.schema-section label > .schema-int-triple {
     align-self: stretch;          /* the control still fills its column */
 }
 /* Checkboxes: native rendering at a comfortable 16px so the
@@ -67,14 +72,14 @@ fieldset label > .schema-int-triple {
  * in Chromium) which on a dark theme reads as a small dot and gets
  * confused with a bullet.  The
  * accent-color in page-shell.css drives the checked-state fill. */
-fieldset label > input[type="checkbox"] {
+.schema-section label > input[type="checkbox"] {
     width: 16px;
     height: 16px;
     flex: 0 0 16px;
     align-self: center;
     cursor: pointer;
 }
-fieldset label:has(> input[type="checkbox"]) {
+.schema-section label:has(> input[type="checkbox"]) {
     /* TWO COLUMNS: the box in column one, everything else -- caption,
      * engine-key badge, help disclosure, the findings about this field --
      * stacked under each other in column two. */
@@ -89,12 +94,12 @@ fieldset label:has(> input[type="checkbox"]) {
     border-radius: var(--radius-sm);
     transition: background 100ms ease;
 }
-fieldset label:has(> input[type="checkbox"]) > :not(input[type="checkbox"]) {
+.schema-section label:has(> input[type="checkbox"]) > :not(input[type="checkbox"]) {
     grid-column: 2;
     justify-self: start;
     min-width: 0;
 }
-fieldset label:has(> input[type="checkbox"]):hover {
+.schema-section label:has(> input[type="checkbox"]):hover {
     background: var(--bg-input-focus, rgba(255, 255, 255, 0.04));
 }
 
@@ -102,12 +107,12 @@ fieldset label:has(> input[type="checkbox"]):hover {
  *
  * Compatibility-engine locks one field based on another's value.
  * Locked fields stay visible but dim, with a "↳" reason hint. */
-fieldset label.is-locked {
+.schema-section label.is-locked {
     opacity: 0.55;
     transition: opacity 120ms;
 }
-fieldset input:disabled,
-fieldset select:disabled {
+.schema-section input:disabled,
+.schema-section select:disabled {
     cursor: not-allowed;
     background: var(--bg-fieldset);
     color: var(--text-muted);
@@ -234,8 +239,8 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 .workflow-group-count {
     margin-left: auto;
     color: var(--text-muted);
-    font-size: 0.85em;
-    font-weight: normal;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-normal);
 }
 
 /* A fieldset inside a card tiles its own fields, for the same reason one
@@ -460,7 +465,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 
 .schema-help-body {
     margin-top: var(--space-xs);
-    padding: 6px var(--space-sm);
+    padding: var(--space-sm);
     background: var(--bg-code);
     border-left: 2px solid var(--accent);
     border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;

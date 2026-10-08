@@ -275,6 +275,22 @@ own `[hidden]` guard (§ 6).
   dimension, not spacing. And a deliberate calm: no harsh gradients,
   and no animation longer than ~120 ms on a hover.
 
+### 4.1 Named, and reachable without a mouse
+
+Every control has an **accessible name** — the text inside it, a `<label>`,
+or an `aria-label` when the visible text is a glyph (`×`) or a placeholder;
+a `title` is a tooltip, not a name. Every action a click performs has a
+**keyboard path**: a control is a `<button>`, a link or an input, never a
+`div` or a table row with a click handler alone. A tab strip follows the
+ARIA tabs pattern — `role="tablist"` / `tab` / `tabpanel`, each tab with an
+`id` and `aria-controls`, the panel `aria-labelledby` its tab, one tab stop
+with the arrow keys moving the selection (page-shell's markup contract). A
+tree's rows are focusable `treeitem`s carrying `aria-expanded` and
+`aria-selected`, Enter picking, the arrows moving and opening. A control that
+holds a state says so with `aria-pressed`. *(Written 2026-10-08 — B8 F7 /
+U14 / R1-12: the browser driver the walks use and a screen reader have the
+same blind spot, and a control without a name was found by both.)*
+
 ## 5. Why an error looks the same on every tab
 
 A validation error uses `class="status error"`. Only `lib/page-shell.css` defines

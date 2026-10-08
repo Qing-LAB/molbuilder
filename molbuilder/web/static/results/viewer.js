@@ -66,6 +66,7 @@
     let rootDir = "";
     let rootSel = null;
     let pickedRun = false;
+    let pickedFile = "";        // the file the picked run opened
 
     /* PICK A RUN IN PLACE: ask the run door for that run's folder -- the
      * same answer the picker builds a folder's menu from -- and announce
@@ -82,6 +83,7 @@
                 const name = file.split("/").pop();
                 const hit = (body.files || []).find((f) => f.name === name);
                 pickedRun = true;
+                pickedFile = file;
                 document.dispatchEvent(new CustomEvent(
                     window.molbuilder.constants.EVENT_FILE_SELECTED,
                     { detail: {
@@ -103,6 +105,7 @@
     function _backToRoot() {
         if (!rootSel) return;
         pickedRun = false;
+        pickedFile = "";
         document.dispatchEvent(new CustomEvent(
             window.molbuilder.constants.EVENT_FILE_SELECTED,
             { detail: Object.assign({}, rootSel, { force: true }) }));
@@ -271,14 +274,19 @@
                 row.appendChild(td(r.detail || ""));
                 const result = td("");
                 if (r.opens && rootDir) {
+                    const path = rootDir + "/" + r.dir + "/" + r.opens;
                     const open = document.createElement("button");
                     open.type = "button";
                     open.className = "results-ladder-open";
                     open.textContent = "open";
                     open.title = r.opens + " — shown here; the sidebar "
                         + "stays on the calculation.";
-                    open.addEventListener("click", () =>
-                        _pickRun(rootDir + "/" + r.dir + "/" + r.opens));
+                    // N identical "open" buttons name their run, and the one
+                    // showing says so (ui-contract.md § 4.1).
+                    open.setAttribute("aria-label", "open " + s.name + " " + name);
+                    open.setAttribute("aria-pressed",
+                                      pickedRun && pickedFile === path ? "true" : "false");
+                    open.addEventListener("click", () => _pickRun(path));
                     result.appendChild(open);
                 }
                 row.appendChild(result);
@@ -369,6 +377,7 @@
          * announcement never replaces it. */
         if (!(sel && sel.picked_run)) {
             pickedRun = false;
+            pickedFile = "";
             if (ladder) { rootSel = sel; rootDir = scope.dir; }
             else { rootSel = null; rootDir = ""; }
         }
