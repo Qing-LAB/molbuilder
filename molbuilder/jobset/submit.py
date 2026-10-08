@@ -421,6 +421,10 @@ class _Member:
     #: The inputs a transport rung's kind gathered for that run, copied with
     #: their record (`.gathered-from`) -- never gathered again.
     gathered: List[str] = field(default_factory=list)
+    #: A bias point whose last run never started -- the walk stopped
+    #: before it -- opened fresh: it takes the point before it in the walk,
+    #: as on a first launch (:func:`_plan_chain`).
+    never_started: bool = False
     #: The calculation's folder, so what the plan says names it.
     base: Optional[Path] = None
 
@@ -464,6 +468,10 @@ class _Member:
         if self.cold:
             return (f"{start} cold -- from its deck alone, nothing taken "
                     f"from a run of its own{gathered}")
+        if self.never_started:
+            return (f"{start} fresh -- its last run never started (the walk "
+                    f"stopped before it), so it takes what the point before "
+                    f"it in the walk leaves{gathered}")
         return (f"{start} over -- nothing is handed on from a run of its "
                 f"own{gathered}")
 
@@ -1974,11 +1982,18 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         # LAUNCHED BEFORE: the point's next attempt, warm from its own
         # latest or cold, with the inputs its kind gathered for it.
         cont = None
+        never_started = False
         if not cold and job.relaunch_continues:
             c, st, conv, _ = read_run(base, task, stage, att)
-            cont = Continuation(stage=stage, source=str(att.relative_to(base)),
-                                by_default=True, concluded=c, state=st,
-                                converged=conv, own=True)
+            # A POINT THE WALK NEVER REACHED: launched with the one job, no
+            # output -- the run door's `queued`.  Nothing of its own to
+            # continue, so it opens fresh and takes the point before it.
+            never_started = st == "queued"
+            if not never_started:
+                cont = Continuation(stage=stage,
+                                    source=str(att.relative_to(base)),
+                                    by_default=True, concluded=c, state=st,
+                                    converged=conv, own=True)
         try:
             opened = prepare_attempt(
                 jobset, base, stage, container=vdir,
@@ -1997,6 +2012,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
             job, vdir, opened.dir, True, att, names=names,
             run=next_run(opened.dir, names), label=label, base=base,
             again=True, cold=cold, continuation=cont,
+            never_started=never_started,
             carries=list(opened.copied),
             gathered=_carry_the_gather(att, opened.dir, plan.writes,
                                        base=base)))

@@ -88,7 +88,8 @@ let _handover   = null;   // the parsed task.1st.json, in handover mode
  * this when it is valid.  The BUFFER stays what `save` sends (`task-setup.md`
  * § 9a) -- the model is a convenience for the table, never the source. */
 let _task       = null;
-let _reparse    = null;   // debounce for the editor -> model re-parse
+let _reparse    = null;   // debounce for the table's repaint after a hand edit
+let _bufferParses = true; // does the editor's text parse -- may a card write over it?
 
 const $ = (id) => document.getElementById(id);
 
@@ -855,16 +856,18 @@ async function _bootEditor() {
     });
     _cm.on("change", () => {
         _setDirty(_cm.getValue() !== _diskText);
-        // A hand edit in the editor re-parses into the model, so the table
-        // keeps showing what the buffer says.  Debounced, and silent when the
-        // text is mid-typing and does not parse — an editor that flashed a
-        // refusal on every keystroke would be unusable.
+        // THE BUFFER IS THE SOURCE (§ 9a): a hand edit that parses is the
+        // model AT ONCE, so a card edit made the next instant starts from it
+        // and never writes an older model over it.  Only the table's repaint
+        // waits for a pause, and a text that does not parse -- mid-typing --
+        // is remembered, so a card does not write over it (`syncFromModel`).
+        let next = null;
+        try { next = JSON.parse(_cm.getValue()); } catch (_) { next = null; }
+        _bufferParses = !!(next && typeof next === "object");
+        if (!_bufferParses) return;
+        _task = next;
         clearTimeout(_reparse);
         _reparse = setTimeout(() => {
-            let next = null;
-            try { next = JSON.parse(_cm.getValue()); } catch (_) { return; }
-            if (!next || typeof next !== "object") return;
-            _task = next;
             renderStages(_task);
             refreshSave();
         }, 400);
@@ -1064,6 +1067,7 @@ async function loadFolder(projects, dir, opts) {
         // be here before they paint.  `loadSweepChoices` is memoised, so this
         // costs one fetch per engine per page-load, and nothing on repeat.
         await loadSweepChoices(_handoverEngine(over));
+        if (said.dir !== _dir) return;          // moved on while it loaded
         renderMachine(over || {});
         if (!_shape) await setEditorText(overText, { fromDisk: true });
         refreshSave();
@@ -1160,6 +1164,10 @@ async function loadFolder(projects, dir, opts) {
     // Through the ONE accessor -- `String({name})` is "[object Object]",
     // which 400s the sweepable fetch.
     await loadSweepChoices(_handoverEngine(task));
+    // MOVED ON WHILE IT LOADED: every await above can land after another
+    // folder was opened; this folder's description must not paint, or set
+    // the baseline Save compares against, under that folder's path.
+    if (said.dir !== _dir) return;
     renderStages(task);
     renderNext(task);
     renderMachine(task);
@@ -1180,6 +1188,16 @@ async function loadFolder(projects, dir, opts) {
 /** Push the model into the buffer and repaint. */
 async function syncFromModel() {
     if (!_task) return;
+    // A CARD NEVER WRITES OVER TEXT THAT DOES NOT PARSE: that text is a hand
+    // edit in progress, and the model is older than it.  The card's change
+    // is refused, said, and the editor left as typed.
+    if (_cm && !_bufferParses) {
+        setState("refuse", "The editor's text does not parse",
+                 "A card cannot change the description while the text below "
+                 + "is not valid JSON -- it would write over your edit. Fix "
+                 + "the text (or revert it), then make the change again.");
+        return;
+    }
     await setEditorText(JSON.stringify(_task, null, 2) + "\n");
     renderStages(_task);
     // THE MACHINE ROWS TOO: every bench verb -- addPoint, removePoint,
@@ -2867,8 +2885,10 @@ function setMachine(name) {
     st.setAttribute("data-state", chosen.readable ? "loaded" : "refuse");
     const title = $("ts-target-state-title");
     const body = $("ts-target-state-body");
+    // CHOSEN, NOT PREPARED: nothing is prepared until a Prep -- and once
+    // one is, the machine is the calculation's (`_fs.setTo`).
     if (title) title.textContent = chosen.readable
-        ? "Prepared for " + chosen.name
+        ? (_fs.setTo ? "Set to " : "To prepare for ") + chosen.name
         : "Cannot prepare for " + chosen.name;
     if (body) body.textContent = chosen.readable
         ? chosen.summary + (chosen.detected_at
