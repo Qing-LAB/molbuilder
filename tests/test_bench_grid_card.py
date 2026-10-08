@@ -345,12 +345,12 @@ def test_the_prep_door_reads_the_FILE_and_not_a_posted_document(client, bundle):
     (bundle / "task.json").write_text(json.dumps(d, indent=2))
 
     r = client.post("/api/task-setup/prep", json={
-        "dest": str(bundle), "kind": "task", "stage": "coarse", "plan": True,
+        "dest": str(bundle), "kind": "task", "stages": ["coarse"], "plan": True,
         # a document saying something ELSE -- it must be ignored
         "task": {"stages": [{"name": "coarse", "execution": {"mpi_np": 999}}]},
     })
     assert r.status_code == 200, r.get_data(as_text=True)
-    header = (r.get_json().get("launch") or {}).get("header") or []
+    header = (r.get_json()["answers"][0].get("launch") or {}).get("header") or []
     assert "#SBATCH -n 7" in header, (
         "the prep door honoured a POSTED document -- it must read the file, "
         f"or the CLI and the browser are two assemblies: {header}")
@@ -368,10 +368,10 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
     def test_a_bench_preview_carries_no_launch(self, client, bundle):
         _runnable(bundle)
         r = client.post("/api/task-setup/prep", json={
-            "dest": str(bundle), "kind": "bench", "stage": "coarse",
+            "dest": str(bundle), "kind": "bench", "stages": ["coarse"],
             "plan": True})
         assert r.status_code == 200, r.get_data(as_text=True)
-        body = r.get_json()
+        body = r.get_json()["answers"][0]
         assert body.get("launch") is None, (
             "the bench preview named the run's launch: "
             + repr(body.get("launch")))
@@ -383,15 +383,15 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
         Prep of that plan writes, and no other."""
         _runnable(bundle)
         r = client.post("/api/task-setup/prep", json={
-            "dest": str(bundle), "kind": "task", "stage": "coarse",
+            "dest": str(bundle), "kind": "task", "stages": ["coarse"],
             "plan": True})
         assert r.status_code == 200, r.get_data(as_text=True)
         pv = r.get_json()
-        header = (pv.get("launch") or {}).get("header") or []
+        header = (pv["answers"][0].get("launch") or {}).get("header") or []
         assert "#SBATCH -n 4" in header and "#SBATCH -p short" in header, (
             "the run lost its A13 block: " + repr(header))
         r = client.post("/api/task-setup/prep", json={
-            "dest": str(bundle), "kind": "task", "stage": "coarse",
+            "dest": str(bundle), "kind": "task", "stages": ["coarse"],
             "plan_id": pv["plan_id"]})
         assert r.status_code == 200, r.get_data(as_text=True)
         written = [ln.strip() for sb in bundle.rglob("01_coarse/*.sbatch")

@@ -94,9 +94,16 @@ def _make_preppable(calc):
         _T.template_with_values(cfg, engine="siesta"))
 
 
-def _post(client, **body):
-    r = client.post("/api/task-setup/prep", json=body)
-    return r.status_code, (r.get_json() or {})
+def _post(client, *, stage, **body):
+    """One stage's Prep, as the page sends it -- ``stages``, the pick -- and
+    its answer: the refusal, or that stage's own answer (``answers``' one
+    entry) with the pick's ``plan_id``."""
+    r = client.post("/api/task-setup/prep", json=dict(body, stages=[stage]))
+    j = r.get_json() or {}
+    if r.status_code != 200:
+        return r.status_code, j
+    (one,) = j["answers"]
+    return r.status_code, dict(one, ok=j["ok"], plan_id=j["plan_id"])
 
 
 def _prep(client, **body):
@@ -198,10 +205,10 @@ def test_an_unknown_machine_is_refused_by_name(web_client, described):
     assert st == 400 and "no-such-box" in j["error"], j
 
 
-def test_kind_must_be_run_or_bench(web_client, described):
+def test_kind_must_be_task_or_bench(web_client, described):
     st, j = _post(web_client, dest=described, kind="launch",
                   stage="coarse", target=LOCAL_TARGET, plan=True)
-    assert st == 400 and "run" in j["error"] and "bench" in j["error"]
+    assert st == 400 and "task" in j["error"] and "bench" in j["error"]
 
 
 def test_there_is_no_launch_door_here(web_client):

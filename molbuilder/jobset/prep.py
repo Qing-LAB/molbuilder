@@ -2900,10 +2900,50 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         raise _refused(_as_prep_error(exc)) from exc
 
 
+def prep_task(base, kind: str, stages: Sequence[str], *,
+              target: Optional[str] = None, allocation=None,
+              from_attempt: Optional[str] = None, cold: bool = False,
+              env: Optional[str] = None, emit_sbatch: bool = True,
+              on_found=None, preview: bool = False,
+              plan_id: Optional[str] = None) -> List[PrepAnswer]:
+    """**`prep task`, the verb, for the stages picked** -- what `jobset
+    prep` and the Task setup tab's Prep both call once the question
+    *which stage(s)?* is answered (`job-system.md`, *The task*): one stage
+    through :func:`prep_stage`, several as one group through
+    :func:`prep_group`.  ``from_attempt`` / ``cold`` describe one stage's
+    attempt, so a group is refused them."""
+    stages = list(stages)
+    if len(stages) > 1:
+        if from_attempt or cold:
+            from .ledger import record as ledger
+            why = ("--from / --cold describe one stage's attempt; a group's "
+                   "stages each start as the description says "
+                   "(project-layout.md § 1.6.6).  Prep that stage apart.")
+            ledger(Path(base).resolve(), "prep", "refused", kind=kind,
+                   stage=stages, reason=why)
+            raise PrepError(why)
+        return prep_group(base, kind, stages, target=target,
+                          allocation=allocation, env=env,
+                          emit_sbatch=emit_sbatch, on_found=on_found,
+                          preview=preview, plan_id=plan_id)
+    return [prep_stage(base, kind, stages[0] if stages else None,
+                       target=target, allocation=allocation,
+                       from_attempt=from_attempt, cold=cold, env=env,
+                       emit_sbatch=emit_sbatch, on_found=on_found,
+                       preview=preview, plan_id=plan_id)]
+
+
+def group_plan_id(previews: Sequence[PrepAnswer]) -> str:
+    """A group's plan, named: its members' plans in order -- what a group's
+    preview shows and its Prep is held to."""
+    return "+".join(a.plan_id or "" for a in previews)
+
+
 def prep_group(base, kind: str, stages: Sequence[str], *,
                target: Optional[str] = None, allocation=None,
                env: Optional[str] = None, emit_sbatch: bool = True,
-               on_found=None) -> List[PrepAnswer]:
+               on_found=None, preview: bool = False,
+               plan_id: Optional[str] = None) -> List[PrepAnswer]:
     """**A GROUP's prep** -- stages named together to share one job
     (`project-layout.md` § 1.6.6; `job-system.md` § 5.0, checkpoint 2).
 
@@ -2914,7 +2954,12 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
     folder is saved ONCE, each member is prepared through the one entry with
     that state, and the group is written on each member's job, with the
     group's one header where the machine has a scheduler.  A refusal is the
-    entry's, or the group's, in the ledger like every other."""
+    entry's, or the group's, in the ledger like every other.
+
+    ``preview``: the members' previews, the group's checks passed, nothing
+    saved or written -- each carrying the group's plan, named
+    (:func:`group_plan_id`); a Prep naming ``plan_id`` is refused when the
+    members' plans made now differ from it (`job-system.md` § 5.0)."""
     from ..checkpoint import CheckpointError, save_before
     from ..task import FILENAME as TASK_FILENAME, read_task
     from ..template import find_template
@@ -2956,6 +3001,15 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
         shared = envelope([a.job for a in previews])
     except GroupError as exc:
         raise _refuse(str(exc)) from None
+    identity = group_plan_id(previews)
+    if preview:
+        for a in previews:
+            a.plan_id = identity
+        return previews
+    if plan_id is not None and plan_id != identity:
+        raise _refuse("what prep would write now differs from the plan you "
+                      "previewed -- something it is made from changed "
+                      "since.  Preview again (job-system.md § 5.0).")
     # 3 · THE SAVE, ONCE, before anything is written.
     try:
         with _user_error_as_prep():
@@ -3005,5 +3059,6 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
     return answers
 
 
-__all__ = ["prep_stage", "prep_group", "PrepAnswer", "prepared_already",
+__all__ = ["prep_stage", "prep_task", "prep_group", "group_plan_id",
+           "PrepAnswer", "prepared_already",
            "prepared_stages"]

@@ -216,25 +216,27 @@ def target_flags(base, target: Optional[str]) -> tuple:
     return ("--target", target)
 
 
-def stage_lines(kind: str, stage: str, *, base, from_attempt=None,
+def stage_lines(kind: str, stages, *, base, from_attempt=None,
                 cold: bool = False, target: Optional[str] = None,
                 prepared: bool = False) -> List[str]:
-    """What a person types next for ``stage``: its prep -- what it continues
-    from and the machine, as chosen -- unless it is ``prepared`` already,
-    which prep would refuse (`job-system.md` § 5.0); then its launch, and for
-    a benchmark the verdict's read.  The lines Task setup shows beside each
-    stage, composed here as the terminal composes its own (`task-setup.md`
-    § 11; W55 B4: the page composes none)."""
+    """What a person types next for ``stages`` -- one, or several picked as
+    one group: their prep -- what it continues from and the machine, as
+    chosen -- unless they are ``prepared`` already, which prep would refuse
+    (`job-system.md` § 5.0); then their launch, and for a benchmark the
+    verdict's read.  The lines Task setup shows, composed here as the
+    terminal composes its own (`task-setup.md` § 11; W55 B4: the page
+    composes none)."""
+    stages = list(stages)
     out = []
     if not prepared:
         flags = ((("--from", from_attempt) if from_attempt else ())
                  + (("--cold",) if cold else ())
                  + target_flags(base, target))
-        out.append(command("prep", *words_for(kind, stage), base=base,
+        out.append(command("prep", *words_for(kind, *stages), base=base,
                            flags=flags))
-    out += launch_lines(kind, stage, base=base, target=target)
+    out += launch_lines(kind, *stages, base=base, target=target)
     if kind == BENCH:
-        out.append(command("summarize", BENCH, stage, base=base))
+        out.append(command("summarize", BENCH, *stages, base=base))
     return out
 
 

@@ -351,9 +351,11 @@ function freshFolderState() {
         benchRefusal: null,       // why `prep bench` refuses here, or null
         continueFrom: {},         // stage -> what it can continue from (W37)
         continueChoice: {},       // stage -> the person's choice: "", a run, "--cold"
-        answers:      {},         // "<kind>:<stage>" -> the last prep answer shown
+        answers:      {},         // "task" / "bench:<stage>" -> the last prep answer shown
         setTo:        null,       // the machine its first prep set, or null (M-3)
-        prepared:      { run: {}, bench: {}, placed: {} },  // kind -> stage -> prep's own sentence
+        prepared:      { task: {}, bench: {}, placed: {} },  // kind -> stage -> prep's own sentence
+        ladder:       { stages: [], offer: [] },  // the ready door's answer per stage
+        prepPick:     null,       // the stages picked for the task's Prep; null = the offer
     };
 }
 
@@ -1142,6 +1144,11 @@ async function loadFolder(projects, dir, opts) {
      * not change (`configuration.md` M-3), so the card shows it fixed. */
     _fs.setTo = said.set_to || null;
     _fs.prepared = said.prepared;
+    /* THE TASK'S LADDER, the ready door's (`job-system.md`, *The task*):
+     * each stage prepared, ready or waiting -- and the pick starts again
+     * from the offer, since what is ready changes with every prep. */
+    _fs.ladder = said.ladder || { stages: [], offer: [] };
+    _fs.prepPick = null;
     applySetMachine();
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
@@ -1976,6 +1983,10 @@ function renderNext(task) {
      * page won't extend too long").  The alternative grows the page by one
      * block per stage, and a five-rung ladder becomes a page nobody
      * scrolls to the bottom of. */
+    /* THE TASK'S PREP, ONE FOR THE LADDER (`job-system.md`, *The task*):
+     * the stages, where each stands, the ready ones to pick -- the same
+     * question `prep task` asks at the terminal. */
+    host.appendChild(taskPrepCard(task));
     const nav = el("nav", { class: "ts-steptabs", role: "tablist",
                             "aria-label": "stages to prepare" });
     const panels = el("div", { class: "ts-steppanels" });
@@ -2035,8 +2046,8 @@ function renderNext(task) {
                 "Then launch it — one job per resource shelf; wait for the "
                 + "queue — and summarize it, which writes the record and a "
                 + "report for you to read."));
-            block.appendChild(commandsFor("bench", name));
-            block.appendChild(prepButton("bench", name));
+            block.appendChild(commandsFor("bench", [name]));
+            block.appendChild(prepButton("bench", [name]));
         }
 
         /* WHAT THIS RUN WILL USE, IMMEDIATELY ABOVE THE COMMAND THAT USES
@@ -2048,9 +2059,10 @@ function renderNext(task) {
         block.appendChild(stageRunCard(task, name));
 
         block.appendChild(el("p", { class: "hint" },
-            "Run it \u2014 at what the card above says. A launch value no "
-            + "row states is refused at prep; --np / --cpus-per-task / --time "
-            + "on the command line state one, or override the card."));
+            "Run it \u2014 at what the card above says, prepared with the "
+            + "task's Prep at the top. A launch value no row states is "
+            + "refused at prep; --np / --cpus-per-task / --time on the "
+            + "command line state one, or override the card."));
         /* CONTINUE FROM (plan W37, `job-system.md` § 5.4): what this stage
          * starts from -- by default the stage before it's newest run, which
          * must have concluded; a run of it, named; or the calculation's
@@ -2063,14 +2075,81 @@ function renderNext(task) {
         // (`jobset/commands.stage_lines`, W55 B4): the calculation named
         // from the projects root, what it continues from and the machine as
         // chosen, and a launch line per mode where the config sets none.
-        block.appendChild(commandsFor("task", name));
-        /* THE BUTTON WRITES WHAT THE COMMAND DOES: the same prep, with the
-         * same choice. */
-        block.appendChild(prepButton("task", name));
+        block.appendChild(commandsFor("task", [name]));
         panels.appendChild(block);
     });
 
     card.hidden = false;
+}
+
+/** The task's Prep (`job-system.md`, *The task*): the ladder as the ready
+ *  door answers it -- each stage prepared, ready with what it takes, or
+ *  waiting with what for -- the ready ones to pick, the offer (D2) picked
+ *  at first; then the command for the pick and the Preview / Prep that do
+ *  what it does.  Several picked are one group, one job; a stage's own
+ *  Continue-from choice goes with it when it is picked alone. */
+function taskPrepCard(task) {
+    const wrap = el("div", { class: "ts-task-prep" });
+    const lad = _fs.ladder || {};
+    if (lad.error) {
+        const p = el("p", { class: "hint" },
+                     "The task's stages cannot be read: " + lad.error);
+        p.setAttribute("data-state", "bad");
+        wrap.appendChild(p);
+        return wrap;
+    }
+    const rows = lad.stages || [];
+    const ready = rows.filter((r) => r.state === "ready").map((r) => r.stage);
+    if (_fs.prepPick === null) _fs.prepPick = (lad.offer || []).slice();
+    _fs.prepPick = _fs.prepPick.filter((st) => ready.indexOf(st) !== -1);
+    wrap.appendChild(el("p", { class: "hint" },
+        "Prepare the task \u2014 pick the ready stage(s). Several picked "
+        + "together share one job; a stage that builds on another is ready "
+        + "once that one's newest run has finished."));
+    const list = el("div", { class: "ts-ladder" });
+    for (const r of rows) {
+        const box = el("input", { type: "checkbox",
+                                  "aria-label": "prepare " + r.stage });
+        box.checked = _fs.prepPick.indexOf(r.stage) !== -1;
+        box.disabled = r.state !== "ready";
+        box.addEventListener("change", () => {
+            const at = _fs.prepPick.indexOf(r.stage);
+            if (box.checked && at === -1) _fs.prepPick.push(r.stage);
+            if (!box.checked && at !== -1) _fs.prepPick.splice(at, 1);
+            renderNext(_task || task);
+        });
+        const state = el("span", { class: "ts-ladder-state" }, r.state);
+        state.setAttribute("data-state", r.state);
+        const detail = el("span", { class: "ts-ladder-detail" },
+                          r.detail || "");
+        if (r.why) detail.title = r.why;
+        list.appendChild(el("label", { class: "ts-ladder-row" }, box,
+                            el("span", { class: "ts-ladder-stage" }, r.stage),
+                            state, detail));
+    }
+    wrap.appendChild(list);
+    // IN LADDER ORDER, as a group's job walks them.
+    const picks = rows.map((r) => r.stage)
+        .filter((st) => _fs.prepPick.indexOf(st) !== -1);
+    if (!picks.length) {
+        wrap.appendChild(el("p", { class: "hint" }, ready.length
+            ? "Pick a ready stage to prepare."
+            : "No stage is ready to prepare \u2014 each is prepared, or "
+              + "waits for what it says."));
+        /* THE LAST ANSWER STAYS until a new preview replaces it. */
+        const kept = _fs.answers.task;
+        if (kept) {
+            const host = el("div", { class: "ts-prep" });
+            const say = el("div", { class: "ts-prep-say" });
+            host.appendChild(say);
+            _showPrepAnswers(host, say, kept);
+            wrap.appendChild(host);
+        }
+        return wrap;
+    }
+    wrap.appendChild(commandsFor("task", picks));
+    wrap.appendChild(prepButton("task", picks));
+    return wrap;
 }
 
 /** The Continue-from choice for one stage (plan W37): a select over the
@@ -2125,16 +2204,16 @@ function continueFromChoice(task, name, cf) {
     return wrap;
 }
 
-/** One stage's command lines -- the server's, from the terminal's own
+/** The command lines for ``stages`` -- the server's, from the terminal's own
  *  composer (`/api/task-setup/commands`, W55 B4): its prep as chosen (what
  *  it continues from, the machine), its launch, a benchmark's summarize.
  *  The block is filled when the answer lands; a block rebuilt since is no
  *  longer on the page, and its late answer fills nothing anyone sees. */
-function commandsFor(kind, stage) {
+function commandsFor(kind, stages) {
     const pre = el("pre", { class: "ts-cmd", "data-state": "loading" }, "…");
-    const body = Object.assign({ dest: _dir, kind, stage,
+    const body = Object.assign({ dest: _dir, kind, stages,
                                  target: _machine || null },
-                               kind === "task" ? continueBody(stage) : {});
+                               _continueOf(kind, stages));
     fetch("/api/task-setup/commands", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2154,12 +2233,21 @@ function continueBody(name) {
     return c === "--cold" ? { cold: true } : c ? { from: c } : {};
 }
 
+/** What ``stages`` continue from, as the door takes it: a run's stage
+ *  picked alone carries its choice; a group's stages each start as the
+ *  description says (`project-layout.md` § 1.6.6). */
+function _continueOf(kind, stages) {
+    return kind === "task" && stages.length === 1
+        ? continueBody(stages[0]) : {};
+}
+
 //: Every prep widget on the page, so the machine choice can reach them.
 //: Declared ABOVE its users: a `const` is hoisted but not initialised, so
 //: a push from `prepButton` before this line would throw.
 const _PREP_WIDGETS = [];
 
-/** A "Prep this here" button for one stage.
+/** The Preview / Prep pair for ``stages`` -- the task's pick (one stage,
+ * or several as one group) or a benchmark's stage.
  *
  * **Prep, never launch** (user, 2026-08-24).  `prep` writes files into the
  * calculation and can be run again; `launch` spends a queue slot and
@@ -2171,7 +2259,7 @@ const _PREP_WIDGETS = [];
  * scheduler for -- and shows it; the second click runs it.  The same rule
  * the launch door keeps (`submission.md` S4), for the same reason.
  */
-function prepButton(kind, stage) {
+function prepButton(kind, stages) {
     /* TWO BUTTONS, AND ONE ENABLES THE OTHER.
      *
      * Each button does ONE thing, always.  `renderNext` rebuilds every stage
@@ -2180,6 +2268,9 @@ function prepButton(kind, stage) {
      */
     const wrap = el("div", { class: "ts-prep" });
     const say = el("div", { class: "ts-prep-say" });
+    // ONE ANSWER FOR THE TASK'S PREP, whatever it picked; a bench's per stage.
+    const key = kind === "task" ? "task" : kind + ":" + stages.join("+");
+    const what = kind + " " + stages.join(", ");
     const btnPreview = el("button", { type: "button", class: "btn" },
                           "Preview " + kind);
     const btnWrite = el("button", { type: "button", class: "btn", disabled: "" },
@@ -2217,8 +2308,7 @@ function prepButton(kind, stage) {
      * none. */
     function retire() {
         for (const sel of [".ts-prep-answer", ".ts-emitted", ".ts-prep-writes"]) {
-            const stale = wrap.querySelector(sel);
-            if (stale) stale.remove();
+            for (const stale of wrap.querySelectorAll(sel)) stale.remove();
         }
     }
 
@@ -2236,7 +2326,7 @@ function prepButton(kind, stage) {
          * what it would write -- and the Prep that named its plan, until this
          * one answers. */
         retire();
-        delete _fs.answers[kind + ":" + stage];
+        delete _fs.answers[key];
         btnWrite.disabled = true;
         planned = null;
         say.textContent = "Previewing\u2026";
@@ -2245,7 +2335,7 @@ function prepButton(kind, stage) {
         /* UNDER THE PAGE'S FENCE, as every write is (`task-setup.md` § 7a):
          * a Save, a stage tab or another folder taken mid-call would plan,
          * or show, something other than what the person is looking at. */
-        return underFence("Previewing " + kind + " " + stage + "\u2026",
+        return underFence("Previewing " + what + "\u2026",
                           async () => {
             try {
                 /* THE ENTRY'S PREVIEW (`job-system.md` § 5.0): the plan,
@@ -2256,46 +2346,53 @@ function prepButton(kind, stage) {
                  * what the attempt would receive, whether the deck agrees
                  * with its launch -- or the refusal with what it pointed at.
                  * Prep is not offered for a plan prep refuses. */
-                const r = await _prepCall(kind, stage, true);
-                _showPrepAnswer(wrap, say, r);
+                const r = await _prepCall(kind, stages, true);
+                _showPrepAnswers(wrap, say, r);
                 if (!r.ok) return;
                 planned = r.plan_id || null;
-
-                /* A13 -- THE END POINT, as the plan holds it, line for line:
-                 * the header where a scheduler runs the job -- the run script
-                 * takes its counts from the allocation there -- else the run
-                 * script's stated counts.  Nothing worked out again
-                 * (`architecture.md` § 5.2). */
-                const launch = r.launch || {};
-                const lines = (launch.header || []).length
-                    ? launch.header : (launch.run_script || []);
-                if (lines.length) {
-                    const box = el("div", { class: "ts-emitted" });
-                    box.appendChild(el("div", { class: "ts-emitted-head" },
-                        "What this run will actually be launched with"));
-                    // NAME THE DOCUMENT.  These come from `task.json` ON DISK,
-                    // and saying so is the difference between a contradiction
-                    // and a fact.
-                    box.appendChild(el("div", { class: "hint" },
-                        "from the saved task.json — save the card above to "
-                        + "change these"));
-                    for (const line of lines) {
-                        box.appendChild(el("div", { class: "ts-emitted-line" },
-                            el("code", {}, line)));
+                const several = r.answers.length > 1;
+                /* EACH PICKED STAGE'S END POINT AND FILES, in order -- a
+                 * group's members one after another. */
+                for (const a of r.answers) {
+                    /* A13 -- THE END POINT, as the plan holds it, line for line:
+                     * the header where a scheduler runs the job -- the run script
+                     * takes its counts from the allocation there -- else the run
+                     * script's stated counts.  Nothing worked out again
+                     * (`architecture.md` § 5.2). */
+                    const launch = a.launch || {};
+                    const lines = (launch.header || []).length
+                        ? launch.header : (launch.run_script || []);
+                    if (lines.length) {
+                        const box = el("div", { class: "ts-emitted" });
+                        box.appendChild(el("div", { class: "ts-emitted-head" },
+                            "What " + (several ? a.stage : "this run")
+                            + " will actually be launched with"));
+                        // NAME THE DOCUMENT.  These come from `task.json` ON DISK,
+                        // and saying so is the difference between a contradiction
+                        // and a fact.
+                        box.appendChild(el("div", { class: "hint" },
+                            "from the saved task.json — save the card above to "
+                            + "change these"));
+                        for (const line of lines) {
+                            box.appendChild(el("div", { class: "ts-emitted-line" },
+                                el("code", {}, line)));
+                        }
+                        wrap.appendChild(box);
                     }
-                    wrap.appendChild(box);
-                }
-                /* WHAT IT WOULD WRITE, every file the plan leaves
-                 * (`job-system.md` § 5.0), folded: the count is the glance,
-                 * the list the check. */
-                const writes = r.writes || [];
-                if (writes.length) {
-                    const det = el("details", { class: "ts-prep-writes" });
-                    det.appendChild(el("summary", {}, "writes " + writes.length
-                        + " file" + (writes.length === 1 ? "" : "s")));
-                    det.appendChild(el("pre", { class: "ts-prep-answer-notes" },
-                                       writes.join("\n")));
-                    wrap.appendChild(det);
+                    /* WHAT IT WOULD WRITE, every file the plan leaves
+                     * (`job-system.md` § 5.0), folded: the count is the glance,
+                     * the list the check. */
+                    const writes = a.writes || [];
+                    if (writes.length) {
+                        const det = el("details", { class: "ts-prep-writes" });
+                        det.appendChild(el("summary", {},
+                            (several ? a.stage + " " : "") + "writes "
+                            + writes.length + " file"
+                            + (writes.length === 1 ? "" : "s")));
+                        det.appendChild(el("pre", { class: "ts-prep-answer-notes" },
+                                           writes.join("\n")));
+                        wrap.appendChild(det);
+                    }
                 }
 
                 btnWrite.disabled = false;
@@ -2313,18 +2410,18 @@ function prepButton(kind, stage) {
     function write() {
         btnWrite.disabled = true;
         btnPreview.disabled = true;
-        return underFence("Prepping " + kind + " " + stage + "\u2026",
+        return underFence("Prepping " + what + "\u2026",
                           async () => {
             try {
                 say.textContent = "Preparing\u2026";
                 say.setAttribute("data-state", "ok");
-                const r = await _prepCall(kind, stage, false, planned);
+                const r = await _prepCall(kind, stages, false, planned);
                 if (!r.ok) retire();
-                _showPrepAnswer(wrap, say, r);
+                _showPrepAnswers(wrap, say, r);
                 if (r.ok) {
                     // KEPT, for the re-read below: it rebuilds this panel,
                     // and the new one shows it again.
-                    _fs.answers[kind + ":" + stage] = r;
+                    _fs.answers[key] = r;
                     // The folder now holds decks and wrappers it did not
                     // before -- the same announcement a restore makes, so
                     // every other open view re-reads rather than showing the
@@ -2359,8 +2456,8 @@ function prepButton(kind, stage) {
      * re-reads the folder and rebuilds the panel, and so does every repaint
      * -- the answer stays until a new preview, a Save or a restore retires
      * it, or another folder is opened (`_resetPerFolderState`). */
-    const kept = _fs.answers[kind + ":" + stage];
-    if (kept) _showPrepAnswer(wrap, say, kept);
+    const kept = _fs.answers[key];
+    if (kept) _showPrepAnswers(wrap, say, kept);
     /* PREPARED ALREADY (W55 B4): the prep entry's own sentence, from the
      * folder's answer, the way back in it -- and neither button, since a
      * prepared stage is not prepared again (`job-system.md` § 5.0).  Its lines
@@ -2376,14 +2473,15 @@ function prepButton(kind, stage) {
             + String(unread);
         say.setAttribute("data-state", "bad");
     }
-    const prepared = !unread && (_fs.prepared[kind] || {})[stage];
+    const prepared = !unread && stages.map((st) => (_fs.prepared[kind] || {})[st])
+        .find(Boolean);
     if (prepared) {
         btnPreview.disabled = true;
         say.textContent = String(prepared);
         say.setAttribute("data-state", "warn");
         /* ...AND WHERE IT WAS ADMITTED, as its job records it -- the line
          * both prep doors print (`job-system.md` § 6.0). */
-        const placed = (_fs.prepared.placed || {})[stage];
+        const placed = (_fs.prepared.placed || {})[stages[0]];
         if (kind === "task" && placed) {
             wrap.appendChild(el("div", { class: "hint" }, String(placed)));
         }
@@ -2427,13 +2525,13 @@ function _syncPrepButtons() {
     }
 }
 
-async function _prepCall(kind, stage, plan, planId) {
-    const body = { dest: _dir, kind, stage, plan };
+async function _prepCall(kind, stages, plan, planId) {
+    const body = { dest: _dir, kind, stages, plan };
     // THE PREVIEW'S PLAN, NAMED: prep refuses a plan that differs from the
     // one previewed -- the folder changed between (`job-system.md` § 5.0).
     if (planId) body.plan_id = planId;
     // WHAT IT CONTINUES FROM, as chosen (plan W37) -- a run's only.
-    if (kind === "task") Object.assign(body, continueBody(stage));
+    Object.assign(body, _continueOf(kind, stages));
     // The local machine has a NAME, not just a label: the server maps
     // `(this machine)` to it, so sending the label is enough and the two
     // surfaces keep one vocabulary.  A FOLDER SET TO ITS MACHINE names none:
@@ -2454,11 +2552,29 @@ async function _prepCall(kind, stage, plan, planId) {
     }
 }
 
-/** Show one prep answer under its buttons -- the command line's report,
- *  from the same data (`job-system.md` § 5.3, `task-setup.md` § 11.1). */
-function _showPrepAnswer(wrap, say, r) {
-    const old = wrap.querySelector(".ts-prep-answer");
-    if (old) old.remove();
+/** Show the entry's answer under its buttons: a refusal, or each picked
+ *  stage's answer in order -- a group's members one after another, the
+ *  command line's report from the same data (`_echo_prep_answer`). */
+function _showPrepAnswers(wrap, say, r) {
+    for (const old of wrap.querySelectorAll(".ts-prep-answer")) old.remove();
+    if (!r.ok) return _showPrepAnswer(wrap, say, r);
+    const all = r.answers || [];
+    for (const a of all) {
+        _showPrepAnswer(wrap, say, Object.assign({ ok: true }, a),
+                        all.length > 1 ? a.stage : null);
+    }
+    if (all.length > 1 && say.getAttribute("data-state") === "ok") {
+        say.textContent = (all[0].preview ? "Previewed " : "Prepared ")
+            + all.map((a) => a.stage).join(", ") + " as one job for "
+            + all[0].machine
+            + (all[0].preview ? " — nothing is written until Prep." : ".");
+    }
+}
+
+/** Show one stage's prep answer -- the command line's report, from the
+ *  same data (`job-system.md` § 5.3, `task-setup.md` § 11.1); ``head``
+ *  names the stage when it is one of a group's. */
+function _showPrepAnswer(wrap, say, r, head) {
     const box = el("div", { class: "ts-prep-answer" });
     const line = (text, state) => {
         const d = el("div", { class: "ts-prep-answer-line" }, text);
@@ -2474,6 +2590,7 @@ function _showPrepAnswer(wrap, say, r) {
         renderFindings(list, { panel: ul });
         box.appendChild(ul);
     };
+    if (head) box.appendChild(el("div", { class: "ts-prep-answer-head" }, head));
     findingLines(r.findings);
     if ((r.notes || []).length) {
         box.appendChild(el("pre", { class: "ts-prep-answer-notes" },

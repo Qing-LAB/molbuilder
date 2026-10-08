@@ -1113,7 +1113,7 @@ def prep_cmd(kind: str, words, stages, bundle: str, from_attempt,
     from ..scheduler.quantities import (canonical_mem, canonical_time,
                                         parse_gres_flag)
     from .model import Resources as _Alloc
-    from .prep import prep_group, prep_stage
+    from .prep import prep_task
     base = Path(bundle).resolve()
     bench_stage, _trial, stages = _stage_words(kind, words, stages, "prep")
     if kind == "bench":
@@ -1123,12 +1123,6 @@ def prep_cmd(kind: str, words, stages, bundle: str, from_attempt,
         # each stage prepared, ready or waiting, then which ready stage(s)
         # to prepare -- answered here, or by --stage.
         stages = _ask_which_stages(base, stages)
-    stage = stages[0] if len(stages) == 1 else None
-    if len(stages) > 1 and (from_attempt or cold):
-        raise click.ClickException(
-            "--from / --cold describe one stage's attempt; a group's stages "
-            "each start as the description says (project-layout.md "
-            "§ 1.6.6).  Prep that stage apart.")
     # A SPELLING THAT IS NO AMOUNT is refused in the verb's voice, naming the
     # flag -- through the same readers the record uses (`Resources`).
     for _flag, _said, _read in (("--time", time_, canonical_time),
@@ -1159,16 +1153,10 @@ def prep_cmd(kind: str, words, stages, bundle: str, from_attempt,
             click.echo(line)
 
     try:
-        if len(stages) > 1:
-            answers = prep_group(base, kind, stages, target=target,
-                                 allocation=allocation, env=env,
-                                 emit_sbatch=emit_sbatch, on_found=_show)
-        else:
-            answers = [prep_stage(base, kind, stage, target=target,
-                                  allocation=allocation,
-                                  from_attempt=from_attempt, cold=cold,
-                                  env=env, emit_sbatch=emit_sbatch,
-                                  on_found=_show)]
+        answers = prep_task(base, kind, stages, target=target,
+                            allocation=allocation,
+                            from_attempt=from_attempt, cold=cold, env=env,
+                            emit_sbatch=emit_sbatch, on_found=_show)
     except PrepError as e:
         _show(e.findings, e.notes)
         raise click.ClickException(str(e))

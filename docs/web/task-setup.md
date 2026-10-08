@@ -1038,12 +1038,24 @@ be prepared, prepare it for the chosen machine, and hand you the exact command
 — and it does that **in a tab strip keyed by stage**, because the alternative grows the page by one block per
 rung and a five-rung ladder becomes a page nobody scrolls to the bottom of.
 
-**One tab per stage.** Inside a tab, everything you do with that rung:
+**The task's one Prep, above the tabs** *(Q13, 2026-10-08;
+[`job-system.md`](?doc=execution/job-system.md), *The task*)*. It lists every
+stage as the ready door answers it — *prepared*; *ready*, with what its prep
+would take; *waiting*, with what for — the folder's `ladder`, the answer `prep
+task` shows before it asks. The ready stages have a box each, the ones `prep
+task` offers pre-selected (D2: a transport ladder's seed and both leads) ticked
+when the folder opens; under them the command for the pick
+(`prep task --stage … --stage …`) and the Preview / Prep pair that does what it
+does. Several ticked are one group, one job (`project-layout.md` § 1.6.6); a
+stage ticked alone takes the Continue-from choice its tab shows. After a Prep
+the folder is read again, and the boxes start again from the new offer.
+
+**One tab per stage.** Inside a tab, everything else you do with that rung:
 
 | | |
 |---|---|
 | **measure it** | `prep bench <stage>` → `launch bench` → `summarize bench`, and the hint that says which rung is worth measuring |
-| **run it** | `prep run <stage>` → `launch run` — the last line for every kind: a run writes its own result, and a SIESTA vibration's force-constant job derives its modes itself after SIESTA ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5; the `summarize run freq` line this printed from 2026-09-24 went with the host read-back, 2026-09-28) |
+| **run it** | the run card, the Continue-from choice, and the lines `prep task --stage <stage>` → `launch task --stage <stage>` — prepared with the task's Prep above; the last line for every kind: a run writes its own result, and a SIESTA vibration's force-constant job derives its modes itself after SIESTA ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5; the `summarize run freq` line this printed from 2026-09-24 went with the host read-back, 2026-09-28) |
 
 **What each stage will PRODUCE is not in the tab** — it is § 7.1's list, in the
 travelling rail (§ 9a.1). A tab is one rung and that list is the whole ladder:
@@ -1053,7 +1065,7 @@ stays on screen while you work through the tabs, so both are visible at once
 without either being duplicated.
 
 **What the run will use is asked HERE, in the rung's own tab**, immediately
-above the `prep run` line that consumes it *(user, 2026-09-02: "that selection
+above the `prep task` line that consumes it *(user, 2026-09-02: "that selection
 panel card should be next to the prep for run button such that it's obvious
 that this is designed for the run. This is not mixed up with the existing
 functional bench setup")*. It writes that rung's `stages[i].execution`
@@ -1068,7 +1080,7 @@ decides for, which reads as part of the bench setup.
 2026-10-01)*. A rung that continues from the stage before it — a continuing
 stage of an independent ladder ([`job-system.md`](?doc=execution/job-system.md)
 § 5.4), or a vibration's force-constant stage, which builds on `relax` — shows
-a **Continue from** choice above its `prep run` line: *the stage before it, its
+a **Continue from** choice above its `prep task` line: *the stage before it, its
 newest run* (the default — *the relaxation it builds on* for a force-constant
 stage), each run of that stage with what it was, or the
 calculation's structure (`--cold`, where the layout has one and the stage may
@@ -1096,7 +1108,7 @@ a decision only you can make** — unchanged from the card this replaces:
 | | what it does | when |
 |---|---|---|
 | **benchmark this stage** | `prep bench` → `launch bench` → `summarize bench` | you do not yet know what shape this stage wants. The verdict is PRINTED by `summarize` for **you** to read; nothing applies it, so the run uses it only once you have written it into this card |
-| **prepare the run** | `prep run` → `launch run` | you know what it wants — from a benchmark you read, from § 6.2b's card, or from flags |
+| **prepare the run** | `prep task` → `launch task` | you know what it wants — from a benchmark you read, from § 6.2b's card, or from flags |
 
 **Any stage may be benchmarked, not only the first.** The bench axes are
 declared once for the calculation (§ 6.3), so every stage can be
@@ -1105,7 +1117,7 @@ rung that still has the expensive stage's shape — and the page states that as
 a hint rather than choosing.
 
 **The order is shown because it is load-bearing.** `summarize bench` writes a
-report you read; **you** then fill these rows, and `prep run` uses them.
+report you read; **you** then fill these rows, and `prep task` uses them.
 Skipping the middle step is no longer silent: the rows are right there, filled
 or blank, above the command that consumes them — and a blank launch row
 reads as *prep will refuse this* rather than as nothing.
@@ -1119,9 +1131,9 @@ rung continues from and the machine as chosen, and a launch line per mode
 the calculation's machine takes where this machine's `molbuilder.json` sets no
 `launch.mode` — the queue's only where that machine names one. The page composed
 them itself until 2026-10-03, and its one launch line, with no mode, was
-refused when typed (D11). **A stage already prepped** shows the prep entry's
+refused when typed (D11). **A stage already prepared** — a benchmark's — shows the prep entry's
 own sentence under its two buttons, neither enabled — the way back in it —
-and, for a run prepped for a queue, where it was admitted and where each value
+and, for one prepared for a queue, where it was admitted and where each value
 came from, read from its job's record ([`job-system.md`](?doc=execution/job-system.md)
 § 6.0); its lines are its launch, as `jobset status` prints them; a prep of it would be refused
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0).

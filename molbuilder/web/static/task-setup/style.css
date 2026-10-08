@@ -682,6 +682,7 @@
     font-size: var(--text-sm);
     color: var(--text-secondary);
 }
+.ts-prep-answer-head { font-weight: 600; color: var(--text-primary); }
 .ts-prep-answer-line { overflow-wrap: anywhere; }
 .ts-prep-answer-line[data-state="warn"] { color: var(--warn-soft); }
 .ts-prep-answer-notes {
@@ -984,3 +985,30 @@
     color: var(--text-secondary);
 }
 .ts-warm-howto code { overflow-wrap: anywhere; }
+
+/* The task's Prep (`job-system.md`, *The task*): the ladder as the ready
+   door answers it, a row per stage -- the box, the name, where it stands,
+   what it takes or waits for. */
+.ts-task-prep {
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-md);
+    border-bottom: 1px solid var(--border-soft);
+}
+.ts-ladder {
+    display: grid;
+    grid-template-columns: auto auto auto 1fr;
+    gap: var(--space-xs) var(--space-sm);
+    align-items: baseline;
+    font-size: var(--text-sm);
+    margin: var(--space-xs) 0;
+}
+.ts-ladder-row { display: contents; }
+.ts-ladder-stage { font-family: var(--font-mono); }
+.ts-ladder-state { color: var(--text-secondary); }
+.ts-ladder-state[data-state="ready"]   { color: var(--success); }
+.ts-ladder-state[data-state="waiting"] { color: var(--warn-soft); }
+.ts-ladder-detail {
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+    min-width: 0;
+}

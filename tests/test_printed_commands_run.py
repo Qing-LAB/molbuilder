@@ -68,7 +68,7 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
 
     def lines(stage, **choice):
         r = client.post("/api/task-setup/commands", json=dict(
-            dest=str(bundle), kind="task", stage=stage, target="this",
+            dest=str(bundle), kind="task", stages=[stage], target="this",
             **choice))
         assert r.status_code == 200, r.get_json()
         return r.get_json()["lines"]
