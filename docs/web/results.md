@@ -407,9 +407,11 @@ finished, and its detail names the point
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11).
 
 The page's empty-state card draws it: one row per rung in ladder order, the
-state in the bench summary's own chip (`inspectors.stateChip`), in `jobset
-status`'s words ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2),
-the detail beside it, and the rung to resume from named in the title. A person
+state in the one state chip (`lib/state-chip.js`), in `jobset status`'s words
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2), whether its run
+converged (`SCF yes` / `NO`, `geometry yes` / `NO` for a relaxation, `—` before
+its output says or for a run that converges nothing, TBtrans's) beside it, then
+the detail, and the rung to resume from named in the title. A person
 who opens a five-rung transport calculation therefore sees which of the five is
 outstanding — `engines/transport.md` § 2a.12's third
 requirement — instead of *pick a file*. A rung's files are read by opening the

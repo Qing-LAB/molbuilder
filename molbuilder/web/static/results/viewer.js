@@ -174,6 +174,15 @@
         host.appendChild(title);
         const table = document.createElement("table");
         table.className = "results-ladder-table";
+        // THE COLUMNS, named -- the state and whether the run converged are
+        // two facts (`runstatus.StageStatus.converged`), side by side.
+        const head = document.createElement("tr");
+        ["#", "stage", "state", "converged", "detail"].forEach((h) => {
+            const th = document.createElement("th");
+            th.textContent = h;
+            head.appendChild(th);
+        });
+        table.appendChild(head);
         stages.forEach((s, i) => {
             const tr = document.createElement("tr");
             if (s.name === ladder.first_incomplete) tr.className = "is-next";
@@ -186,6 +195,7 @@
             tr.appendChild(td(String(s.seq != null ? s.seq : i + 1)));
             tr.appendChild(td(String(s.name)));
             tr.appendChild(td(chip(s.state)));
+            tr.appendChild(td(s.converged || "\u2014"));
             tr.appendChild(td(s.detail || ""));
             table.appendChild(tr);
         });

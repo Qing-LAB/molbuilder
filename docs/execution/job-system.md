@@ -200,8 +200,10 @@ by listing stages at prep.)*
    status`, the Results tab's ladder and every reader that needs a run's state
    ask the same door ([`architecture.md`](?doc=execution/architecture.md)
    § 3.2): not launched, queued, running, finished, or failed — with the reason
-   the run gave, or that it stopped before its end (killed, out of time) — and —
-   for an SCF — whether it converged. It says what launching again would do; it
+   the run gave, or that it stopped before its end (killed, out of time) — and,
+   in a column of its own, whether it converged: `SCF yes` / `NO`, or for a
+   relaxation `geometry yes` / `NO` — read from the same scan of its output,
+   never folded into the state (a run can finish and not converge). It says what launching again would do; it
    does not tell you whether to.
 5. **It writes every decision down** — what each prep and launch found, what
    each run continued from, what you were asked and what you answered — in the

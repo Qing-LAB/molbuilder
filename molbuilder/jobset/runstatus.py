@@ -105,6 +105,12 @@ class StageStatus:
     #: Whether anything has prepared it -- a description's stage before its
     #: first prep is listed all the same (`job-system.md` § 5.3).
     prepared: bool = True
+    #: Whether the run converged, as its output ended -- ``SCF yes`` /
+    #: ``SCF NO``, ``geometry yes`` / ``geometry NO`` for a relaxation --
+    #: or ``None`` before an output says (`job-system.md`, *What molbuilder
+    #: does for you*, 4).  Beside the state, never folded into it: a run can
+    #: finish and not converge (`parse.dirs.run_status`).
+    converged: Optional[str] = None
     #: For one not prepared, the ready door's answer whole
     #: (`ready.readiness`): what its prep would take, one line each, or what
     #: it waits for -- the refusal prep would print, with its commands.
@@ -190,7 +196,22 @@ def _warm_present(stage_dir: Path, label: str, engine: str,
 #: A PREPARED stage whose folder is not on disk -- against the design, said
 #: as such (a stage not prepared is the ready door's `ready` / `waiting`).
 MISSING = ("missing", "the job set names this run's folder; it is not on "
-                      "disk")
+                      "disk", None)
+
+
+def converged_of(st) -> Optional[str]:
+    """What the run's active output says it converged -- the run door's
+    one scan (`RunStatus.endings`): a relaxation's geometry, else its
+    SCF -- or ``None`` when it says neither yet."""
+    end = (st.endings or {}).get(st.active_source) if st.active_source \
+        else None
+    if end is None:
+        return None
+    if end.relaxed is not None:
+        return "geometry " + ("yes" if end.relaxed else "NO")
+    if end.scf_converged is not None:
+        return "SCF " + ("yes" if end.scf_converged else "NO")
+    return None
 
 
 def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
@@ -223,10 +244,10 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
         # state.
         st = run_status(observed, basename, launch=launch)
     except Exception as e:                    # fail-soft; stay informative
-        return ("unknown", f"could not decode: {e}")
+        return ("unknown", f"could not decode: {e}", None)
     # The "unknown" fallback lives in the except clause above, which is the
     # only way this can fail to have an answer.
-    return (st.state, st.detail)
+    return (st.state, st.detail, converged_of(st))
 
 
 def _rung_homes(base: Path, task, job_name: str, d: Path) -> list:
@@ -269,7 +290,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
             launch = launch_record(observed, names)
         except LaunchRecordError as e:
             read.append((home, volts, attempt, observed, None, "unreadable",
-                         str(e)))
+                         str(e), None))
             continue
         read.append((home, volts, attempt, observed, launch)
                     + _stage_state(observed, launch, basename))
@@ -279,7 +300,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
     # resume from, and the row names the point (`web/results.md` § 2.4;
     # `engines/transport.md` § 2a.12, *which of five runs is the one
     # still outstanding*).  Any other rung has one folder, which speaks.
-    home, volts, attempt, observed, launch, state, detail = next(
+    home, volts, attempt, observed, launch, state, detail, converged = next(
         (r for r in read if r[5] != _DONE), read[-1])
     where = attempt.name if attempt else None
     if volts is not None:
@@ -287,7 +308,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         where = f"{home.name}/{where}" if where else None
     return StageStatus(
         ref=refs[job.name], dir=d.name, state=state, detail=detail,
-        attempt=where,
+        converged=converged, attempt=where,
         attempts=attempts_in(home),
         launch=launch,
         relaunch_continues=job.relaunch_continues,
@@ -418,9 +439,10 @@ def render_status(status: JobSetStatus) -> str:
     # says "finished" without saying finished *when* -- and after a re-run the
     # difference between run-0 and run-2 is the whole question.  `-` for a flat
     # run, which happens in the container itself (project-layout.md § 1.5).
-    hdr = ("seq", "stage", "attempt", "state", "warm files", "detail")
+    hdr = ("seq", "stage", "attempt", "state", "converged", "warm files",
+           "detail")
     rows = [(s.ref.seq_text, s.ref.name, s.attempt or "-", s.state,
-             ", ".join(s.warm_files) or "-", s.detail)
+             s.converged or "-", ", ".join(s.warm_files) or "-", s.detail)
             for s in status.stages]
     # Widths and the rule are both driven off `hdr`, never off a literal count.
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(len(hdr))]
@@ -573,6 +595,7 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
                      src if src else "nothing -- it started from the structure"))
     else:
         rows.append(("launched", "no  (no launch record -- prepared, not started)"))
+    rows.append(("converged", s.converged or "-"))
     rows.append(("warm files", ", ".join(s.warm_files) or "-"))
     rows.append(("detail", s.detail or "-"))
 
