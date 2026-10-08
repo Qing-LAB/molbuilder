@@ -723,10 +723,13 @@ const WORKSPACE_TAG = "results:transport";
         displayName: "Transport result",
         isResult:    true,
         resultCategory: () => "Transport",
-        // THE ROLE, when the server gave one (see the spectra inspector).
-        match: (file, meta) => (meta && meta.role)
-            ? meta.role === ".transport.json"
-            : String(file).toLowerCase().endsWith(".transport.json"),
+        /* THE HANDLE IS THE CALCULATION'S DESCRIPTION at its root -- the
+         * server's registry says so (`parse.sidecars.task`, parser
+         * `transport-task`): the report is composed on read from the
+         * folder (`engines/transport.md` § 2a.12), so it is there before
+         * any `summarize task`; `<label>.transport.json` is that command's
+         * copy and opens as a file, not as this report. */
+        match: (file, meta) => !!(meta && meta.parser === "transport-task"),
 
         mount(host, file, ctx) {
             const state = { bias: null, points: [], pdos: [], nodes: {},

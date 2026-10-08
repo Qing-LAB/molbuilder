@@ -59,6 +59,55 @@
     //: erase it.  See `_renderStatus`.
     let _scope = null;
 
+    /* THE ROOT'S OWN ANNOUNCEMENT, kept while a run picked off its ladder
+     * is on screen (results.md § 2.4): `rootDir` names the calculation the
+     * ladder belongs to, `rootSel` is what *back to the calculation*
+     * re-announces, `pickedRun` says a run is showing in its place. */
+    let rootDir = "";
+    let rootSel = null;
+    let pickedRun = false;
+
+    /* PICK A RUN IN PLACE: ask the run door for that run's folder -- the
+     * same answer the picker builds a folder's menu from -- and announce
+     * its file with the root's ladder kept, so the Run panel reads that
+     * run's record and the ladder stays above it; the sidebar is not
+     * moved. */
+    function _pickRun(file) {
+        const folder = _dirOf(file);
+        fetch("/api/results/dir?path=" + encodeURIComponent(folder),
+              { cache: "no-store" })
+            .then((r) => r.json())
+            .then((body) => {
+                if (!body || body.ok !== true) return;
+                const name = file.split("/").pop();
+                const hit = (body.files || []).find((f) => f.name === name);
+                pickedRun = true;
+                document.dispatchEvent(new CustomEvent(
+                    window.molbuilder.constants.EVENT_FILE_SELECTED,
+                    { detail: {
+                        file: file,
+                        meta: hit ? { role: hit.role, label: hit.label,
+                                      stage: hit.stage, parser: hit.parser,
+                                      engine: body.engine } : null,
+                        place: body.place,
+                        dir: rootDir, diverged: false,
+                        ladder: rootSel ? rootSel.ladder : null,
+                        record: body.record, files: body.files,
+                        force: true,
+                        picked_run: true,
+                    } }));
+            })
+            .catch(() => { /* the folder answered nothing; the ladder stays */ });
+    }
+
+    function _backToRoot() {
+        if (!rootSel) return;
+        pickedRun = false;
+        document.dispatchEvent(new CustomEvent(
+            window.molbuilder.constants.EVENT_FILE_SELECTED,
+            { detail: Object.assign({}, rootSel, { force: true }) }));
+    }
+
     function _dirOf(path) {
         const p = String(path || "");
         const cut = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
@@ -177,29 +226,68 @@
         // THE COLUMNS, named -- the state and whether the run converged are
         // two facts (`runstatus.StageStatus.converged`), side by side.
         const head = document.createElement("tr");
-        ["#", "stage", "state", "converged", "detail"].forEach((h) => {
+        ["#", "stage", "state", "converged", "detail", "result"].forEach((h) => {
             const th = document.createElement("th");
             th.textContent = h;
             head.appendChild(th);
         });
         table.appendChild(head);
+        const td = (content) => {
+            const c = document.createElement("td");
+            if (typeof content === "string") c.textContent = content;
+            else c.appendChild(content);
+            return c;
+        };
         stages.forEach((s, i) => {
             const tr = document.createElement("tr");
             if (s.name === ladder.first_incomplete) tr.className = "is-next";
-            const td = (content) => {
-                const c = document.createElement("td");
-                if (typeof content === "string") c.textContent = content;
-                else c.appendChild(content);
-                return c;
-            };
             tr.appendChild(td(String(s.seq != null ? s.seq : i + 1)));
             tr.appendChild(td(String(s.name)));
             tr.appendChild(td(chip(s.state)));
             tr.appendChild(td(s.converged || "\u2014"));
             tr.appendChild(td(s.detail || ""));
+            tr.appendChild(td(""));
             table.appendChild(tr);
+            /* EVERY RUN OF THE RUNG, picked in place (results.md \u00a7 2.4):
+             * each attempt and, for a swept rung, each attempt's points,
+             * with its own state -- the run door's reading -- and the
+             * file that run's folder opens.  Picking one shows that
+             * result here while the sidebar stays on the calculation. */
+            (Array.isArray(s.runs) ? s.runs : []).forEach((r) => {
+                const row = document.createElement("tr");
+                row.className = "is-run";
+                row.appendChild(td(""));
+                const name = r.run + (r.point != null
+                    ? " \u00b7 " + Number(r.point) + " V" : "");
+                row.appendChild(td(name));
+                row.appendChild(td(chip(r.state)));
+                row.appendChild(td(r.converged || "\u2014"));
+                row.appendChild(td(r.detail || ""));
+                const result = td("");
+                if (r.opens && rootDir) {
+                    const open = document.createElement("button");
+                    open.type = "button";
+                    open.className = "results-ladder-open";
+                    open.textContent = "open";
+                    open.title = r.opens + " — shown here; the sidebar "
+                        + "stays on the calculation.";
+                    open.addEventListener("click", () =>
+                        _pickRun(rootDir + "/" + r.dir + "/" + r.opens));
+                    result.appendChild(open);
+                }
+                row.appendChild(result);
+                table.appendChild(row);
+            });
         });
         host.appendChild(table);
+        if (pickedRun) {
+            const back = document.createElement("button");
+            back.type = "button";
+            back.className = "results-ladder-back";
+            back.textContent = "\u2190 back to the calculation";
+            back.addEventListener("click", _backToRoot);
+            host.appendChild(back);
+        }
         const note = document.createElement("p");
         note.className = "inspector-card-note";
         // EACH RUNG'S RUN WRITES ITS OWN RESULT in its directory (a
@@ -270,6 +358,14 @@
         const ladder = (sel && sel.ladder) || null;
         const scope = { dir: (sel && sel.dir) || "",
                         diverged: !!(sel && sel.diverged) };
+        /* THE PICKER'S ANNOUNCEMENT OF A ROOT is remembered whole, so a run
+         * picked off the ladder can be left again; a picked run's own
+         * announcement never replaces it. */
+        if (!(sel && sel.picked_run)) {
+            pickedRun = false;
+            if (ladder) { rootSel = sel; rootDir = scope.dir; }
+            else { rootSel = null; rootDir = ""; }
+        }
         // THE LADDER, ABOVE THE PANEL, on every answer: a root's product is
         // shown with it, and anything that is not a root hides it.
         _renderLadder(ladder);

@@ -1536,6 +1536,9 @@ plots — the transmission deck asks TBtrans for all of them.
 
 **Composed on read, so a ladder in progress has a report**: the transport
 record is composed from whichever rungs' records exist, each time it is read.
+The Results tab opens it at the calculation's root through its description,
+`task.json` (`web/results.md` § 0.1) — there from `jobset init` on;
+`<label>.transport.json` is what `summarize task` writes for the command line.
 **The provenance is what was gathered**, read from each rung's `.gathered-from`
 — never the newest run by file time — and, for a sweep's points, what each
 started from, read from each point's `.continued-from` (§ 2a.11). The device

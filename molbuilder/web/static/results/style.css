@@ -171,6 +171,30 @@
 }
 .results-ladder-table tr.is-next td:nth-child(2) { font-weight: 600; }
 .results-ladder-table td:last-child { color: var(--text-muted); }
+/* Every run of a rung, under it (results.md § 2.4): the row steps in by
+ * one rhythm unit and reads as secondary; its "open" sits at the end of
+ * the detail, sized as a caption. */
+.results-ladder-table tr.is-run td { border-top-style: dashed; }
+.results-ladder-table tr.is-run td:nth-child(2) {
+    padding-left: calc(var(--space-sm) + var(--space-md));
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    white-space: nowrap;
+}
+/* The result column holds one control per run: it never wraps and is
+ * sized to that control alone (the smallest share the auto layout can
+ * give a column), so the detail column keeps the rest of the width. */
+.results-ladder-table td:last-child,
+.results-ladder-table th:last-child { width: 1%; white-space: nowrap; }
+.results-ladder-open,
+.results-ladder-back {
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    padding: 0 var(--space-sm);
+    line-height: var(--line-loose);
+}
+.results-ladder-back { margin-top: var(--space-xs); }
 
 .results-fallback .inspector-card-note {
     color: var(--text-secondary);

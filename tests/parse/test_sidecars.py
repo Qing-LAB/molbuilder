@@ -189,6 +189,55 @@ def test_a_sweep_is_read_by_a_parser_so_the_door_can_offer_it(tmp_path):
     assert got.payload["jobs"][0]["name"] == "p1"
 
 
+def _task(tmp_path, calculation):
+    """A real `task.json` of the given kind, through `write_task` -- the
+    writer, so the parser is never tested against a shape nothing emits."""
+    from molbuilder.task import (Stage, StructureRef, Task, derive_run,
+                                 write_task)
+    transport = calculation == "transport"
+    stages = (("seed", "electrode_L", "electrode_R", "device", "transmission")
+              if transport else ("coarse",))
+    dest = tmp_path / calculation
+    dest.mkdir(exist_ok=True)
+    write_task(dest / "task.json", Task(
+        engine="siesta", shape="hierarchical",
+        run=derive_run("T", "J/structure/junc" if transport else "H2",
+                       stage_names=stages),
+        structure=None if transport
+        else StructureRef(source="J/structure/h2.xyz", formula="H2", atoms=2),
+        calculation=calculation,
+        slots={"junction": "J/structure/junc"} if calculation == "transport"
+        else {},
+        bias=(0.0, 0.2) if transport else (),
+        low_bias_approximation=False if transport else None,
+        varies=(), execution={"mpi_np": 4, "omp_threads": 1},
+        stages=tuple(Stage(name=n, overrides={}) for n in stages)))
+    return dest / "task.json"
+
+
+def test_a_transport_description_is_read_by_a_parser_so_the_root_opens_its_report(tmp_path):
+    """`web/results.md` § 0.1, § 2.5: a transport calculation's report is
+    composed on read, so the root opens it before any `summarize task` --
+    through its description, the one file there from `jobset init` on.
+    The picker drops a file no parser claims, so `task.json` needs the
+    registry's word; and only a TRANSPORT calculation's, read off the
+    description's own `calculation`, never the name -- a relaxation's root
+    opens no report.
+
+    Silent before this: a transport ladder in progress listed as *no result
+    files yet* until its first summarize, against § 2.5's rule.
+    """
+    from molbuilder.parse.errors import UnknownFormatError
+
+    kind = detect(str(_task(tmp_path, "transport")))
+    assert kind.name == "transport-task"
+    got = kind.parse(_task(tmp_path, "transport"))
+    assert got.schema == "transport-task/v1"
+    assert got.payload["calculation"] == "transport"
+    with pytest.raises(UnknownFormatError):
+        detect(str(_task(tmp_path, "optimization")))
+
+
 def test_an_ordinary_ladder_is_refused_though_the_filename_matches(tmp_path):
     """The DISCRIMINATOR, not the name.
 

@@ -420,10 +420,34 @@ def openable(directory) -> Tuple[Optional[str], List[str]]:
         return openable_in(str(d))
     attempts: List[str] = [f"calculation: {place.task.calculation}"]
     label, stage, _trial = _position(d, place)
+    if place.role == calcdirs.CONTAINER:
+        return _container_product(d, place, label, stage, attempts), attempts
     if place.role == calcdirs.RUN and stage is None:
         stage, _n = speaking(d, label)
     return _openable(d, label, stage, place.task.calculation,
                      attempts), attempts
+
+
+def _container_product(folder: Path, place: Place, label: str,
+                       stage: Optional[str], attempts: List[str]
+                       ) -> Optional[str]:
+    """What a CONTAINER opens.  A transport calculation's root opens its
+    description, ``task.json`` -- the report is composed on read from the
+    folder (`engines/transport.md` § 2a.12), and the description is the file
+    that makes it one (`parse.sidecars.task`), as a benchmark's root opens
+    its ``job-set.json``; ``<label>.transport.json`` is `summarize task`'s
+    copy for the command line.  Any other container: the first result role
+    the calculation produces that is present (`_openable`)."""
+    from molbuilder.parse.dirs.rundir import _claimed
+    is_root = place.root is not None \
+        and folder.resolve() == Path(place.root).resolve()
+    if is_root and place.task.calculation == "transport":
+        handle = folder / _rf.TASK_FILE
+        if _claimed(str(handle)):
+            attempts.append(f"*{_rf.TASK_FILE}: a transport calculation's "
+                            f"report, composed on read from this folder")
+            return str(handle)
+    return _openable(folder, label, stage, place.task.calculation, attempts)
 
 
 def folder_answer(directory) -> Dict[str, Any]:
@@ -481,7 +505,7 @@ def folder_answer(directory) -> Dict[str, Any]:
                 attempts.append("no run here yet: nothing has been launched "
                                 "in this folder")
         elif place.role == calcdirs.CONTAINER:
-            chosen = _openable(d, label, stage, calc, attempts)
+            chosen = _container_product(d, place, label, stage, attempts)
             attempts.append(
                 "this directory is a container, not a run -- it has no run "
                 "state; its runs are the directories below it "

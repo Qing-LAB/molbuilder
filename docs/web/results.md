@@ -42,7 +42,7 @@ flowchart LR
 | **one run** — an attempt directory, or one rung's files in a flat calculation | the run's result: its product if it made one (a spectrum, an optimized structure), else the engine's output (`-runN.out`, `-runN.pyscf.log`), else its progress log (§ 2.3) | the viewer for that file — trajectory (steps, energy, forces, SCF, how the run ended), spectra or structure | `/api/watch/*` parses the one file through the registry ([`trajectory.md`](?doc=web/trajectory.md)); `/api/spectra/*`; the structure's file door |
 | **a calculation root** | a result file at the root if it holds one, **beside** the **ladder** — each rung's state and **every run of the calculation**, any of which is opened here when picked (§ 2.4) | the ladder card, and the picked run's presenter | `/api/results/dir` → `ladder` (`jobset/runstatus.py`) |
 | **a benchmark** | its `job-set.json` (`kind: sweep` — a ladder's `job-set.json` is not openable) | the bench summary: its trials compared ([`bench-summary.md`](?doc=web/bench-summary.md)) | `/api/bench/summary` (`jobset/summarize.py`) |
-| **a transport calculation** | its `<label>.transport.json` | the transport report: each rung's state (the ladder's own answer, its chip and detail), the I–V table, each point pending or failed in its run's words, and what is not drawn | `/api/transport/record` — composed on read from the rungs as they are now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), never the copy `summarize task` wrote |
+| **a transport calculation** | its **`task.json`** — the description is the report's handle, as a benchmark's `job-set.json` is (the registry's `transport-task` parser claims only a transport calculation's); `<label>.transport.json` is `summarize task`'s copy for the command line, opened as a file | the transport report: each rung's state (the ladder's own answer, its chip and detail), the I–V table, each point pending or failed in its run's words, and what is not drawn | `/api/transport/record` — composed on read from the rungs as they are now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), never the copy `summarize task` wrote |
 | **a SIESTA vibration with a displacement sweep** | its `<label>.fc-sweep.json`, once `summarize task` has written it | the sweep: each force-constant stage and what it varied, each mode's frequency per stage, the force-constant changes, the paths of each stage's own files ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) | the record file itself |
 | **a folder not marked as part of a calculation** | whatever result it holds, read alone | as above | as above |
 
@@ -425,11 +425,15 @@ show them (don't have to get into individual run dir to probe, and rather
 result can display the result by simply select which run to pick")*. The
 root's answer lists every run of the calculation under its stage — each stage's
 attempts, a benchmark's trials, a bias scan's points — each with its state, its
-folder and the file it opens; the states are status's, which reads **every**
-attempt, so a launched run that has not ended is never hidden behind a newer
-one. **Picking a run shows its result in this panel** — the file that run's
-own folder would open, with its Run panel — while the sidebar stays on the
-calculation; *back to the calculation* returns to the ladder. A calculation's
+folder and the file it opens (`runstatus.every_run`: under each `stages[]` row,
+`runs: [{run, point, dir, state, converged, detail, opens}]`); the states are
+status's reading of each run (`run_state_of`), which reads **every** attempt,
+so a launched run that has not ended is never hidden behind a newer one.
+**Picking a run shows its result in this panel** — the file that run's own
+folder would open, with its Run panel: the page asks the run door for that
+folder (`/api/results/dir`) and announces its file with the root's ladder kept
+— while the sidebar stays on the calculation; *back to the calculation*
+re-announces the root. A calculation's
 own product — a transport I–V, a displacement sweep — is shown **with** the
 ladder, never instead of it, and its rows name the attempt and the point each
 fact came from. A flat calculation's root lists its stages' runs the same way,
@@ -452,9 +456,9 @@ of it) — whether or not `summarize task` has written `<label>.transport.json`:
 the report is the root's product, composed on read
 (`/api/transport/record`, [`engines/transport.md`](?doc=engines/transport.md)
 § 2a.12), so a ladder in progress has one and a rung that ran since is shown as
-it is now. *(Built: the route reads the calculation's folder. Not yet built: the root
-opens the report through its record file, `<label>.transport.json`, so it shows
-only after a first `summarize task`.)*
+it is now. The root opens it through its **description**, `task.json` (§ 0.1),
+which is there from `jobset init` on — never through the record file, which
+exists only after a first `summarize task`.
 
 **Where it stands** *(2026-10-07)*: built — the record's fields
 (`transport/record.py`, `transport/tbtnc.py`), `/api/transport/record` and

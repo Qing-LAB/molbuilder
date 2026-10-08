@@ -195,7 +195,8 @@ def api_results_dir():
             and Path(root).resolve() == directory.resolve()):
         from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME
         from molbuilder.jobset.model import JobSet
-        from molbuilder.jobset.runstatus import jobset_status
+        from molbuilder.jobset.runstatus import every_run, jobset_status
+        from molbuilder.runs import place_of
         try:
             jpath = directory / JOBSET_FILENAME
             got_status = jobset_status(
@@ -204,8 +205,18 @@ def api_results_dir():
             attempts.append(f"the ladder could not be read: {exc}")
         else:
             # THE ONE WIRE FORM (`JobSetStatus.to_dict`), the next prep's
-            # answer included.
+            # answer included -- and under each rung EVERY RUN of it, each
+            # with its state and the file it opens (`runstatus.every_run`,
+            # `web/results.md` § 2.4), so a run is picked here in place.
             ladder = got_status.to_dict()
+            task = place_of(directory).task
+            for row, st in zip(ladder["stages"], got_status.stages):
+                try:
+                    row["runs"] = every_run(directory, task, st)
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    row["runs"] = []
+                    attempts.append(f"{st.ref.name}: its runs could not be "
+                                    f"listed: {exc}")
 
     return jsonify({
         "ok":       True,

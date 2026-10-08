@@ -208,6 +208,46 @@ MISSING = ("missing", "the job set names this run's folder; it is not on "
                       "disk", None)
 
 
+def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
+    """EVERY RUN OF A STAGE, each with its own state -- the root's bird's-eye
+    (`web/results.md` § 2.4): each attempt in order and, for a swept rung,
+    each attempt's points (`transport.stages.points_in`), read as `status`
+    reads a run (`run_state_of`), with the file the run door opens for it
+    (`runs.openable`).  ``[]`` for a stage nothing has prepared."""
+    from ..runs import openable, run_of
+    from ..parse.dirs.rundir import run_state_of
+    if not st.dir:
+        return []
+    root = Path(base)
+    stage_dir = root / st.dir
+    rows: List[Dict[str, Any]] = []
+    for n in attempts_in(stage_dir):
+        run_dir = stage_dir / attempt_name(n)
+        folders: List[tuple] = []
+        if getattr(task, "calculation", None) == "transport":
+            from ..transport.stages import points_in
+            folders = [(p, v) for p, v in points_in(run_dir, task, st.ref.name)
+                       if p.is_dir()]
+        if not folders:
+            folders = [(run_dir, None)]
+        for folder, volts in folders:
+            run = run_of(folder)
+            if run is None or run.stage is None:
+                continue
+            got = run_state_of(run.folder, run.names, run.run)
+            opens, _trail = openable(folder)
+            rows.append({
+                "run": attempt_name(n),
+                "point": volts,
+                "dir": str(folder.relative_to(root)),
+                "state": got.state,
+                "detail": got.detail,
+                "converged": converged_of(got),
+                "opens": Path(opens).name if opens else None,
+            })
+    return rows
+
+
 def converged_of(st) -> Optional[str]:
     """What the run's active output says it converged -- the run door's
     one scan (`RunStatus.endings`): a relaxation's geometry, else its
