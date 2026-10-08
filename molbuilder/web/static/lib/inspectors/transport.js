@@ -123,7 +123,10 @@ const WORKSPACE_TAG = "results:transport";
         head.appendChild(_el("h3", "transport-title",
             "Transport — " + (rec.label || "(unlabelled)")));
         head.appendChild(_el("p", "transport-sub",
-            (rec.treatment === "single-bias" ? "single bias" : "finite bias")
+            ({"single-bias": "single bias",
+              "low-bias": "low-bias approximation",
+              "re-converged": "re-converged at every voltage"}[rec.treatment]
+             || rec.treatment)
             + " · " + pts.length + " point" + (pts.length === 1 ? "" : "s")
             + " with a transmission"
             + (pending.length ? " · " + pending.length + " pending" : "")
@@ -175,15 +178,22 @@ const WORKSPACE_TAG = "results:transport";
          * transport.md` § 2a.10, § 2a.12): an I-V read off ONE zero-bias
          * slice is the linear-response approximation; a re-converged scan
          * is not. */
-        const single = rec.treatment === "single-bias";
-        panel.appendChild(_el("p", "transport-note", single
-            ? "One device SCF. An I–V derived from this curve is the "
-              + "LINEAR-RESPONSE approximation: integrating a zero-bias slice "
-              + "cannot reproduce a resonance entering the bias window, nor "
-              + "that resonance moving under the field."
-            : "The device SCF was re-converged at every voltage, so each "
-              + "slice is its own solution and the I–V carries no "
-              + "approximation beyond the method."));
+        const NOTE = {
+            "single-bias": "One device SCF. An I–V derived from this "
+                + "curve is the LINEAR-RESPONSE approximation: integrating a "
+                + "zero-bias slice cannot reproduce a resonance entering the "
+                + "bias window, nor that resonance moving under the field.",
+            "low-bias": "LOW-BIAS (linear-response) approximation: the "
+                + "device SCF converged once, at 0 V, and each point's current "
+                + "is TBtrans's integral over that point's bias window on the "
+                + "zero-bias Hamiltonian — a resonance entering the window "
+                + "is not re-converged, nor moved by the field.",
+            "re-converged": "The device SCF was re-converged at every "
+                + "voltage, so each slice is its own solution and the "
+                + "I–V carries no approximation beyond the method.",
+        };
+        panel.appendChild(_el("p", "transport-note",
+            NOTE[rec.treatment] || ("treatment: " + rec.treatment)));
         panel.appendChild(state.nodes.te);
         panel.appendChild(state.nodes.eig);
     }

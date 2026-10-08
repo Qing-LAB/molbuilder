@@ -1715,7 +1715,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
     ``.gathered-from`` beside the copies, so a result can always say
     which electrode run fed it.
     """
-    from ..transport.stages import (per_point_rungs, rung_container,
+    from ..transport.stages import (rung_container, scan_points,
                                      stage_inputs)
     from .continuation import usable
 
@@ -1793,7 +1793,11 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
             composed = _composed_junction(base, task)
         now = _rung_deck_now(base, task, upstream, composed,
                              template_text=template_text,
-                             volts=(bias if upstream in per_point_rungs()
+                             # THE UPSTREAM'S OWN AXIS (`scan_points`):
+                             # under the low-bias treatment the device
+                             # has none -- it ran at 0 V -- whatever point
+                             # the transmission is gathered at.
+                             volts=(bias if scan_points(task, upstream)
                                     else None))
         matching = [d for d in concluded
                     if (d / current_deck.name).is_file()

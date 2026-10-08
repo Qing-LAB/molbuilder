@@ -192,6 +192,15 @@ def _migrate_records(base: Path):
         if key not in obj:
             obj[key] = meant
             lines.append(f"{key} = {meant!r} (it was left out)")
+    bias = obj.get("bias")
+    if (isinstance(bias, dict) and len(bias.get("voltages_v") or []) > 1
+            and "treatment" not in bias):
+        # A LIST OF SEVERAL VOLTAGES, RUN BEFORE ITS TREATMENT WAS STATED,
+        # was re-converged at each: the device ran at every point
+        # (`engines/transport.md` § 2a.10).
+        bias["treatment"] = "re-converged"
+        lines.append("bias.treatment = 're-converged' (the device ran at "
+                     "every voltage)")
     notify = obj.get("notify")
     if isinstance(notify, dict) and notify:
         for key, meant in _NOTIFY_ABSENT.items():

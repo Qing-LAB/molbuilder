@@ -522,8 +522,10 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         # Recorded here, not decided in the browser: § 2a.12 requires the
         # treatment NAMED BESIDE THE CURVE and not in metadata, because "the
         # two kinds of I-V are different claims and look identical on a plot".
-        "treatment": ("finite-bias"
-                      if len(points_out) + len(pending) + len(failed) > 1
+        # THE DESCRIPTION'S, as stated (`task.bias_treatment`, TD7): a list
+        # of several voltages states `low-bias` or `re-converged`; one is a
+        # single bias.  Never inferred from how many points ran.
+        "treatment": (task.bias_treatment if len(task.bias) > 1
                       else "single-bias"),
         "points": points_out,
         "iv": {

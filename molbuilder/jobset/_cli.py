@@ -312,6 +312,7 @@ def _resolve_bundle_may_be_new(ctx, param, value):
 
 def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                     bias_opt, structure, psml_lib, vacuum,
+                    treatment=None,
                     stage_strategy) -> None:
     """`init --calculation transport` -- floor 2 is task.json ALONE.
 
@@ -400,6 +401,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                            stage_names=TRANSPORT_STAGES),
             structure=None, calculation="transport",
             slots={"junction": citation}, bias=bias,
+            bias_treatment=treatment,
             varies=(), stages=stages)
     except ValueError as exc:
         raise click.ClickException(str(exc))
@@ -511,12 +513,20 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                    "attempt is named explicitly, never picked "
                    "(archive/2026-09-01-transport-design.md, ruling Q1).")
 @click.option("--bias", "bias_opt", default=None, metavar="V0,V1,...",
-              help="transport only: the bias sweep in volts, starting at "
-                   "0.0 -- each point warm-starts from the previous one's "
-                   ".TSDE (archive/2026-09-01-transport-design.md 4.3).")
+              help="transport only: the bias points in volts, starting at "
+                   "0.0 (engines/transport.md 2a.10).  Several state their "
+                   "treatment, --bias-treatment.")
+@click.option("--bias-treatment", "treatment", default=None,
+              type=click.Choice(["low-bias", "re-converged"]),
+              help="transport only, with several --bias points: low-bias -- "
+                   "the device converged once, at 0 V, and each point's "
+                   "current TBtrans's integral over its window on that "
+                   "zero-bias Hamiltonian (the linear-response "
+                   "approximation); re-converged -- the device converged "
+                   "again at every voltage (engines/transport.md 2a.10).")
 def init_cmd(structure, bundle: str, shape: str,
                  stage_strategy, name, engine: str, psml_lib, vacuum,
-                 calculation: str, slots_opt, bias_opt) -> None:
+                 calculation: str, slots_opt, bias_opt, treatment) -> None:
     """Write the portable description: the template, ``task.json``, and the
     data files.
 
@@ -556,13 +566,15 @@ def init_cmd(structure, bundle: str, shape: str,
     if calculation == "transport":
         _init_transport(out_dir=out_dir, shape=shape, run_name=run_name,
                         engine=engine, slots_opt=slots_opt,
-                        bias_opt=bias_opt, structure=structure,
+                        bias_opt=bias_opt, treatment=treatment,
+                        structure=structure,
                         psml_lib=psml_lib, vacuum=vacuum,
                         stage_strategy=stage_strategy)
         return
-    if slots_opt or bias_opt:
+    if slots_opt or bias_opt or treatment:
         raise click.ClickException(
-            "--slot / --bias belong to --calculation transport alone "
+            "--slot / --bias / --bias-treatment belong to --calculation "
+            "transport alone "
             "(archive/2026-09-01-transport-design.md 4.1).")
     if structure is None:
         raise click.ClickException(

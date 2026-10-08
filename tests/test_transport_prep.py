@@ -127,7 +127,8 @@ def _describe_transport(root, *, cite, bias=(0.0, 0.2)):
         engine="siesta", shape="hierarchical",
         run=derive_run("T", cite, stage_names=_STAGES),
         structure=None, calculation="transport",
-        slots={"junction": cite}, bias=bias, varies=(),
+        slots={"junction": cite}, bias=bias,
+        bias_treatment="re-converged" if len(bias) > 1 else None, varies=(),
         execution=dict(_RUN_CARD),
         stages=tuple(Stage(name=n, overrides={})
                      for n in _STAGES)))

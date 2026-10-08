@@ -122,7 +122,15 @@ def per_point_rungs() -> frozenset:
 def scan_points(task, stage: str) -> Tuple[float, ...]:
     """The bias points ``stage`` runs at -- the scan's (:func:`bias_points`)
     for a rung that runs once per point (:func:`per_point_rungs`), ``()``
-    for every other rung and every calculation that is not a scan."""
+    for every other rung and every calculation that is not a scan.
+
+    UNDER THE LOW-BIAS TREATMENT the device runs once, at 0 V -- no axis --
+    and the transmission at every point reads that one zero-bias
+    Hamiltonian, TBtrans integrating each point's own window
+    (`engines/transport.md` § 2a.10)."""
+    if (stage == "device"
+            and getattr(task, "bias_treatment", None) == "low-bias"):
+        return ()
     return bias_points(task) if stage in per_point_rungs() else ()
 
 

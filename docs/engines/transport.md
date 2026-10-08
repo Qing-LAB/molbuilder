@@ -1231,6 +1231,26 @@ So: the record names the treatment, the bias point or points, and — where the
 I–V was obtained by integrating a single slice — that it is linear response.
 The Results surface shows that label beside the curve, not buried in metadata.
 
+#### The choice, as stated and as run *(plan § 5u.1 step 6, TD7; built 2026-10-08)*
+
+**A list of several voltages states its treatment** in `task.json` —
+`"bias": {"voltages_v": [0.0, 0.2, 0.4], "treatment": "low-bias" |
+"re-converged"}` (`jobset init --bias … --bias-treatment …`) — and is refused
+without one: never inferred from the count. A list of one voltage is the single
+bias, and states none.
+
+| treatment | the device | the transmission | what the record calls it |
+|---|---|---|---|
+| **`low-bias`** | **once, at 0 V** — no bias axis, `04_device/run-0` | at every voltage, each point gathering that one zero-bias Hamiltonian (`.TS.HSX`); TBtrans takes the point's bias from its deck (`TBT.Voltage`, defaulting to `TS.Voltage`, `m_tbt_hs.F90`) with chemical potentials ±V/2 and integrates its own current over that window | `low-bias` — the linear-response approximation, said beside the curve |
+| **`re-converged`** | at every voltage, `04_device/v<V>/run-0`, each warm from the point before | at every voltage, each reading **its own** point's Hamiltonian | `re-converged` |
+
+Both currents are TBtrans's own integral, never recomputed (§ 2a.12). Measured
+on the 16-atom carbon chain (SZ, 100 Ry), I(0.2 V) = 3.0980e-05 A under
+`low-bias` against 3.0987e-05 A `re-converged` — a metallic chain, where the
+two agree, as § *The advice* expects. A description written before the
+treatment was stated, with several voltages, ran re-converged; `jobset
+migrate` writes that.
+
 #### Where bias sits in the map
 
 | parameter | class | decided at | binds | tier |
