@@ -1234,7 +1234,9 @@ verdict) → unscheduled · E14 (two uncited references) → the document sweep
 closed** (`au-dta-junction`, c = 32.249 Å) and walked to its record and its
 Results tab — all three cases (§ 5x.7, *The closed-cell walk*, *The low-bias
 case*, *The single-bias case*); **B6 is complete** (`ac2d5741`,
-`fc413816`). Open: B7, B8, B9; the wrapper's kill line
+`fc413816`); **B7 is complete** (`16409a44` gates, `548b4c74` decks and the
+rename, `77c74450` decision 7, F15 the take-over). Open: B8 (its condition,
+B2–B7 complete, is now met), B9; the wrapper's kill line
 (F11) is written but not yet seen on a killed point. **The condition for the
 milestone review (B8) — the workflow, the backend and the CLI complete — is
 not met**: it is B2–B7.
