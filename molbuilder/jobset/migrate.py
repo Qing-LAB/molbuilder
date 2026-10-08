@@ -11,11 +11,12 @@ is renamed for its stage's newest run, and said.
 
 **The records** (`_migrate_records`): `task.json` states its `calculation`
 and a notify block its four values, and every job in a `job-set.json` its
-`point`, `finish`, `resumes` and `placement`, since 2026-10-06 -- the readers
-refuse a file that does not, naming this command (plan W57, decision 7).
-Each key an older file left out is written with the meaning its absence had
--- `optimization`, every channel and every field (`["*"]`), off, an empty
-point, no finish, resumes, no placement -- and each is printed; the old file
+`point`, `finish`, `resumes` and `placement` since 2026-10-06, and its
+`group` since 2026-10-07 -- the readers refuse a file that does not, naming
+this command (plan W57, decision 7).  Each key an older file left out is
+written with the meaning its absence had -- `optimization`, every channel and
+every field (`["*"]`), off, an empty point, no finish, resumes, no placement,
+prepped alone -- and each is printed; the old file
 is kept beside the new as ``<name>.pre-w57``.
 
 **The template**, as follows.
@@ -161,7 +162,7 @@ _TASK_ABSENT = {"calculation": "optimization"}
 _NOTIFY_ABSENT = {"on_scf_converged": False, "every_hours": None,
                   "channels": ["*"], "report": ["*"]}
 _JOB_ABSENT = {"point": {}, "finish": None, "resumes": True,
-               "placement": None}
+               "placement": None, "group": None}
 
 
 def _never_as_zero(hours) -> bool:
@@ -227,7 +228,7 @@ def _migrate_records(base: Path):
                                    f"refused, so nothing was written: {exc}")
             writes.append((js_path, json_text(body)))
             said.append(f"{js_path.relative_to(base)}: {filled} job(s) given "
-                        f"every key -- point, finish, resumes, placement "
+                        f"every key -- {', '.join(_JOB_ABSENT)} "
                         f"(those left out, as their absence meant)")
     return said, writes, task
 

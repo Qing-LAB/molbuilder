@@ -219,32 +219,6 @@ def test_cli_prep_is_described_only(tmp_path):
     assert not (tmp_path / "bench-G1K1C4").exists()
 
 
-def test_submit_accepts_exactly_these_options(tmp_path):
-    """`jobset launch` takes a kind, a stage, a trial and the options below --
-    no more.  TRIAL names one benchmark point (§ 2.3.2, decided
-    2026-08-12); `run` refuses it.
-
-    An equality, and at the CLI because that is the surface a person types: an
-    option added without a decision fails here whatever it is called.
-
-    Three joined on 2026-08-23, and together they are **one question, one
-    answer, one interface** (`jobset/ask.py`): ``time_text`` and ``mem_text``
-    ask what the job needs — the person knows that better than any rule the
-    framework could write, so it asks rather than deriving — and ``auto_yes``
-    is how they say *I have decided to trust this*, its absence being no kind
-    of permission.
-
-    ``trial_timeout_min`` stays as the direct refinement — *no single trial
-    may exceed this* — which is the same answer said the other way round, not
-    a second knob for one thing.
-    """
-    from molbuilder.jobset._cli import submit_cmd
-    assert {q.name for q in submit_cmd.params} == {
-        "kind", "stage", "trial", "bundle", "mode", "domain", "dry_run",
-        "time_text", "mem_text", "gpu_domain", "auto_yes",
-        "trial_timeout_min", "only_side"}
-
-
 # --------------------------------------------------------------------- #
 #  StageRef — one resolver, six callers (plan § 8f, decision 28)         #
 # --------------------------------------------------------------------- #

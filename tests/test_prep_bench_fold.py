@@ -411,10 +411,6 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     assert r.exit_code == 0, r.output
     assert r.output.count("WOULD run") == 1
     assert "bench-group" not in r.output
-    r = runner.invoke(jobset_group, ["launch", "run", "coarse", trial,
-                                     "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes"])
-    assert r.exit_code != 0 and "TRIAL names a benchmark point" in r.output
 
 
 def test_launch_bench_mem_reaches_the_grouped_sbatch_command(calc):

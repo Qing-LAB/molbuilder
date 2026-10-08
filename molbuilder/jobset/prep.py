@@ -2273,6 +2273,10 @@ class PrepAnswer:
     preview: bool = False
     plan_id: Optional[str] = None
     writes: List[str] = dataclasses.field(default_factory=list)
+    #: THE JOB AS PLANNED -- a run's row of `job-set.json` -- what a group's
+    #: prep checks its members' shared allocation by, before anything is
+    #: written (`group.envelope`).
+    job: Optional[object] = None
 
     def as_dict(self, base) -> dict:
         """The answer as JSON, paths relative to the calculation folder --
@@ -2395,7 +2399,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                from_attempt: Optional[str] = None, cold: bool = False,
                env: Optional[str] = None, emit_sbatch: bool = True,
                on_found=None, preview: bool = False,
-               plan_id: Optional[str] = None) -> PrepAnswer:
+               plan_id: Optional[str] = None, saved=None) -> PrepAnswer:
     """**`prep`, the verb** -- what `molbuilder jobset prep` and the Task setup
     tab's Prep buttons both call (`job-system.md` § 5.3).
 
@@ -2433,7 +2437,9 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     written or recorded (`job-system.md` § 5.0: *a preview is the same
     entry*).  ``plan_id`` is a preview's plan, named (`Plan.identity`):
     a prep that makes a different one -- the folder changed between -- is
-    refused, saying to preview again.
+    refused, saying to preview again.  ``saved`` is the state a group's prep
+    saved once before its members (:func:`prep_group`), so a member does not
+    save again.
     """
     from ..scheduler import AmbiguousTarget, UnknownTarget
     from ..task import FILENAME as TASK_FILENAME, read_task
@@ -2799,6 +2805,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             # that exists so there are no surprises there (`agreement.py`).
             # A13: the end point, as the header and the run script carry it.
             job = next((j for j in js.jobs if j.name == rep_stage), None)
+            out.job = job
             if job is not None and run_dir is not None:
                 r = job.resources
                 out.resources = {"mpi_np": r.mpi_np,
@@ -2830,8 +2837,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             # A molbuilder.json that does not read is the person's to fix,
             # said in its own words (the save reads it again).
             with _user_error_as_prep():
-                kept = save_before(base, f"prep {kind} {stage}",
-                                   engine=str(task.engine))
+                kept = saved if saved is not None else save_before(
+                    base, f"prep {kind} {stage}", engine=str(task.engine))
         except CheckpointError as exc:
             raise PrepError(f"the folder's state could not be saved, so "
                             f"nothing was prepped: {exc}")
@@ -2900,4 +2907,110 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         raise _refused(_as_prep_error(exc)) from exc
 
 
-__all__ = ["prep_stage", "PrepAnswer", "prepped_already", "prepped_stages"]
+def prep_group(base, kind: str, stages: Sequence[str], *,
+               target: Optional[str] = None, allocation=None,
+               env: Optional[str] = None, emit_sbatch: bool = True,
+               on_found=None) -> List[PrepAnswer]:
+    """**A GROUP's prep** -- stages named together to share one job
+    (`project-layout.md` § 1.6.6; `job-system.md` § 5.0, checkpoint 2).
+
+    Each member passes every checkpoint as it would alone -- a preview of
+    each through the one entry, before anything is written -- then the
+    group's own checks: no member builds on another (`group.refuse_feeding`)
+    and the members share one allocation (`group.envelope`).  Then the
+    folder is saved ONCE, each member is prepped through the one entry with
+    that state, and the group is written on each member's job, with the
+    group's one header where the machine has a scheduler.  A refusal is the
+    entry's, or the group's, in the ledger like every other."""
+    from ..checkpoint import CheckpointError, save_before
+    from ..task import FILENAME as TASK_FILENAME, read_task
+    from ..template import find_template
+    from .group import GroupError, envelope, names_of, refuse_feeding
+    from .ledger import record as ledger
+    base = Path(base).resolve()
+
+    def _refuse(why: str) -> PrepError:
+        ledger(base, "prep", "refused", kind=kind, stage=list(stages),
+               reason=why)
+        return PrepError(why)
+
+    if kind != "run":
+        raise _refuse("a group is of a calculation's stages -- a benchmark "
+                      "measures one stage (project-layout.md § 1.6.6).")
+    # 1 · THE MEMBERS, by the one grammar -- and none builds on another,
+    #     the group's first question, asked before any member is planned.
+    from ..identity import StageRef, resolve_stage_ref
+    try:
+        task = read_task(base / TASK_FILENAME)
+        refs = [StageRef(h.seq, h.name) for h in ladder_homes(base, task)]
+        names = [resolve_stage_ref(refs, st).name for st in stages]
+    except ValueError as exc:
+        raise _refuse(str(exc)) from None
+    if len(set(names)) != len(names):
+        raise _refuse(f"a stage is named twice: {', '.join(stages)}.")
+    tpl = find_template(base, task.label)
+    template_text = tpl.read_text(encoding="utf-8") if tpl else None
+    why = refuse_feeding(base, task, names, template_text)
+    if why:
+        raise _refuse(why)
+    # 2 · EVERY MEMBER, PLANNED -- through the one entry, nothing written --
+    #     and the one allocation they share.
+    previews = [prep_stage(base, kind, st, target=target,
+                           allocation=allocation, env=env,
+                           emit_sbatch=emit_sbatch, preview=True)
+                for st in names]
+    try:
+        shared = envelope([a.job for a in previews])
+    except GroupError as exc:
+        raise _refuse(str(exc)) from None
+    # 3 · THE SAVE, ONCE, before anything is written.
+    try:
+        with _user_error_as_prep():
+            kept = save_before(base, f"prep {kind} {' '.join(names)}",
+                               engine=str(task.engine))
+    except CheckpointError as exc:
+        raise _refuse(f"the folder's state could not be saved, so nothing "
+                      f"was prepped: {exc}") from None
+    # 4 · EACH MEMBER, written through the one entry with that state.
+    answers = [prep_stage(base, kind, st, target=target,
+                          allocation=allocation, env=env,
+                          emit_sbatch=emit_sbatch, on_found=on_found,
+                          saved=kept)
+               for st in names]
+    # 5 · THE GROUP, WRITTEN: on each member's job, the members in order...
+    js_path = base / JOBSET_FILENAME
+    js = JobSet.load(js_path)
+    for j in js.jobs:
+        if j.name in names:
+            j.group = list(names)
+    js.write(js_path)
+    # ...and the group's one header, where the machine has a scheduler.
+    from .materialize import open_container
+    from ..runfiles import LAUNCH_DIR
+    gn = names_of(task.label, [stage_home(base, task, n).token
+                               for n in names])
+    header = None
+    environment = machine_record(base, target)
+    placement = next((a.placement for a in answers if a.placement), None)
+    if emit_sbatch and environment.scheduler == "slurm":
+        from ..runwrap import _render_sbatch_for
+        from .planned import Plan
+        from .submit import _into_launch
+        text = _render_sbatch_for(
+            base / f"{gn.stem}.sh", names=gn, project_dir=base,
+            resources=shared, machine_record=environment,
+            domain_pq=((placement["partition"], placement["qos"])
+                       if placement else None))
+        if text is not None:
+            plan = Plan()
+            launch_dir = open_container(base, base / LAUNCH_DIR, plan)
+            header = launch_dir / gn.name(".sbatch")
+            plan.text(header, _into_launch(text, gn))
+            plan.carry_out()
+    ledger(base, "prep", "grouped", stages=names, job=gn.stem,
+           header=(str(header.relative_to(base)) if header else None))
+    return answers
+
+
+__all__ = ["prep_stage", "prep_group", "PrepAnswer", "prepped_already",
+           "prepped_stages"]

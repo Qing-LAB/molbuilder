@@ -1044,6 +1044,27 @@ job; `jobset` cannot thread one and there is no flag that asks for it.
 depends on what stage 1 actually produced, and that is a judgement — so no field
 in a description, and no flag at launch, is permitted to make it.
 
+**Stages that do not build on one another can share one job** *(plan § 5u.1
+step 5, TD2; user, 2026-10-07: "group at prep")*. No judgement stands between
+them — a transport ladder's seed and its two leads each start from the
+structure — so waiting in the queue three times buys nothing. You group them
+**at prep**, by naming them: `jobset prep run seed electrode_L electrode_R`.
+Each is prepped as it would be alone — its own attempt, deck, run script and
+record — and the three are written down as one **group** (each member's job in
+`job-set.json` carries `group`, the members in the order named), with one
+header for the group's job. `jobset launch run seed electrode_L electrode_R`
+sends that one job, walking the members in that order, each run in its own
+attempt with its own launch record; one that fails does not stop the others.
+Prep refuses, by name, a member another member builds on (its upstream, the
+one fact § 2.3.4 and `transport.stages.stage_inputs` already state) and members
+that cannot share one allocation — another queue, another count of ranks,
+cores per rank or GPUs; the group's wall is the sum of its members', its memory
+the largest. A member is launched with its group, never alone; to prep it alone,
+restore the state saved before the group's prep
+([`checkpointing.md`](?doc=execution/checkpointing.md)). Nothing groups unless
+you name the stages; a stage that builds on another is still launched after
+you have looked at it.
+
 #### 1.6.7 `--cold`, and running a stage by hand
 
 `--cold` means *start this run clean*. With a directory per attempt that is

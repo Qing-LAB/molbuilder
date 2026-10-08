@@ -42,7 +42,10 @@ entry for both doors, whose checkpoints and agreement
 [`job-system.md`](?doc=execution/job-system.md) § 5.0 states,
 rendering from the facts of the machine you chose in § 6, never from the
 browser's. **Launching stays at the terminal**: it spends a queue slot, one job
-per invocation, by hand. What the page writes:
+per invocation, by hand. The Prep buttons prep one stage; stages that share one
+job — a transport ladder's seed and leads — are grouped at the terminal's
+`prep`, by naming them ([`project-layout.md`](?doc=execution/project-layout.md)
+§ 1.6.6). What the page writes:
 
 ```text
 projects/BDT-Au/optimization/au111-series/bdt_au/

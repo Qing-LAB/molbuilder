@@ -335,7 +335,9 @@ class Job:
     job directory (``bench-<name>/``) and the SLURM ``-J`` name.  ``script``
     is the per-job input filename (e.g. the rendered ``.fdf``).
 
-    **A Job names no other Job.**  What a job declares instead is ``warm``: *what would this job take from a run it
+    **A Job names no other Job as its source or its dependency** -- its
+    ``group`` names the stages it shares one queue wait with, never a file.
+    What a job declares instead is ``warm``: *what would this job take from a run it
     continues, whichever run that turns out to be* -- which is what `prep`
     reads, because `--from` names the source and a produce-time edge cannot
     (see :class:`WarmFile`).  ``traits`` are the opaque per-job values a
@@ -374,6 +376,10 @@ class Job:
     #: `job-system.md` § 6.0) -- what its header renders and launch sends to.
     #: ``None`` with no queue: a trial, a machine with no scheduler.
     placement:  Optional[Dict[str, Any]] = None
+    #: THE GROUP IT WAS PREPPED IN: the stages that share one job, named
+    #: together at prep, in that order -- this one among them
+    #: (`project-layout.md` § 1.6.6); ``None`` for a stage prepped alone.
+    group:      Optional[List[str]] = None
 
     @property
     def relaunch_continues(self) -> bool:
@@ -387,8 +393,8 @@ class Job:
 
     def to_dict(self) -> Dict[str, Any]:
         # EVERY KEY, EVERY JOB (`job-contracts.md` § 6.1): `point` empty for
-        # a job that is no trial, `finish` and `placement` null where there
-        # is none, `resumes` true or false.
+        # a job that is no trial, `finish`, `placement` and `group` null
+        # where there is none, `resumes` true or false.
         return {
             "name": self.name,
             "script": self.script,
@@ -401,6 +407,7 @@ class Job:
             "placement": ({k: (dict(v) if isinstance(v, dict) else v)
                            for k, v in self.placement.items()}
                           if self.placement is not None else None),
+            "group": (list(self.group) if self.group is not None else None),
         }
 
     @classmethod
@@ -427,6 +434,8 @@ class Job:
             resumes=bool(d["resumes"]),
             placement=(dict(d["placement"]) if d["placement"] is not None
                        else None),
+            group=([str(n) for n in d["group"]] if d["group"] is not None
+                   else None),
         )
 
 
@@ -490,7 +499,7 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
 #: Every key a job in `job-set.json` carries, always (`job-contracts.md`
 #: § 6.1) -- the one list the writer's dict and the reader's check share.
 JOB_KEYS = ("name", "script", "resources", "warm", "traits", "point",
-            "finish", "resumes", "placement")
+            "finish", "resumes", "placement", "group")
 
 
 class WrittenBefore(ValueError):

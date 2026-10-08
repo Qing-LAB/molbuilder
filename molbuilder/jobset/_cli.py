@@ -987,7 +987,9 @@ def _resolve_stage(js, stage, verb: str, *, base):
     if js.kind == "ladder":
         raise click.ClickException(
             # WHAT YOU CAN TYPE, never the token (`job-system.md` § 5.3).
-            f"this is a ladder, so `{verb} run` acts on ONE stage; "
+            f"this is a ladder, so `{verb} run` acts on ONE stage -- or on "
+            f"stages named together as a group (project-layout.md "
+            f"§ 1.6.6); "
             + name_a_stage(verb, "run", ordered, base=base) + "\n"
             "Stages do not chain, and there is no flag that makes them: a "
             "run that continues on its own can spend a week refining a "
@@ -998,7 +1000,7 @@ def _resolve_stage(js, stage, verb: str, *, base):
 
 @jobset_group.command("prep", short_help="set a stage up to run")
 @click.argument("kind", type=click.Choice(_KINDS))
-@click.argument("stage", required=False, default=None)
+@click.argument("stages", nargs=-1)
 @_bundle_option()
 @click.option("--from", "from_attempt", default=None,
               metavar="NN_STAGE/run-N",
@@ -1051,10 +1053,11 @@ def _resolve_stage(js, stage, verb: str, *, base):
                    "target's record says `workstation` -- job-system.md "
                    "§ 6).  --no-sbatch writes none, and then no queue, wall "
                    "or memory is asked for.")
-def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
+def prep_cmd(kind: str, stages, bundle: str, from_attempt, cold: bool, env,
              mpi_np, cpus_per_task, gres, time_, mem, max_memory_mb,
              domain, target, emit_sbatch: bool) -> None:
-    """Set a stage up to run, and report what was done.
+    """Set a stage up to run, and report what was done -- or SEVERAL, named
+    together, as one group sharing one job (`project-layout.md` § 1.6.6).
 
     Renders the deck and its wrappers, makes that stage's next ``run-<n>``,
     copies the deck and the shared package in, and copies in what it
@@ -1073,8 +1076,14 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     from ..scheduler.quantities import (canonical_mem, canonical_time,
                                         parse_gres_flag)
     from .model import Resources as _Alloc
-    from .prep import prep_stage
+    from .prep import prep_group, prep_stage
     base = Path(bundle).resolve()
+    stage = stages[0] if len(stages) == 1 else None
+    if len(stages) > 1 and (from_attempt or cold):
+        raise click.ClickException(
+            "--from / --cold describe one stage's attempt; a group's stages "
+            "each start as the description says (project-layout.md "
+            "§ 1.6.6).  Prep that stage apart.")
     # A SPELLING THAT IS NO AMOUNT is refused in the verb's voice, naming the
     # flag -- through the same readers the record uses (`Resources`).
     for _flag, _said, _read in (("--time", time_, canonical_time),
@@ -1105,32 +1114,44 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             click.echo(line)
 
     try:
-        ans = prep_stage(base, kind, stage, target=target,
-                         allocation=allocation, from_attempt=from_attempt,
-                         cold=cold, env=env, emit_sbatch=emit_sbatch,
-                         on_found=_show)
+        if len(stages) > 1:
+            answers = prep_group(base, kind, stages, target=target,
+                                 allocation=allocation, env=env,
+                                 emit_sbatch=emit_sbatch, on_found=_show)
+        else:
+            answers = [prep_stage(base, kind, stage, target=target,
+                                  allocation=allocation,
+                                  from_attempt=from_attempt, cold=cold,
+                                  env=env, emit_sbatch=emit_sbatch,
+                                  on_found=_show)]
     except PrepError as e:
         _show(e.findings, e.notes)
         raise click.ClickException(str(e))
-    _echo_prep_answer(ans, base)
+    group = [a.stage for a in answers] if len(answers) > 1 else None
+    for i, ans in enumerate(answers):
+        _echo_prep_answer(ans, base, group=group,
+                          last=(i == len(answers) - 1))
 
 
-def _echo_prep_answer(ans, base) -> None:
+def _echo_prep_answer(ans, base, *, group=None, last: bool = True) -> None:
     """The prep report, from the entry's answer -- `job-system.md` § 5.3:
     *"prep prints what it resolved, which is what makes launch a plain
     yes"*.  Where the configuration came from, what was written, the attempt
     and what it carries, what it will launch with, whether the deck agrees
     -- then the next command, naming the bundle so it works from anywhere
     (job-contracts.md § 2.5b).  The Task setup tab shows the same answer.
+    A ``group``'s members are reported one after another, its saved state
+    once, and its one launch after the ``last``.
     """
     def say_next(line):
         click.echo(line)
 
     from ..runtime_config import format_provenance
     from .ledger import rel_to as _rel
-    if ans.saved:
+    if ans.saved and (group is None or ans.stage == group[0]):
         # THE STATE A REDO RESTORES, named where the person reads it --
-        # saved now, or the one the folder already stood at.
+        # saved now, or the one the folder already stood at; a group's,
+        # once.
         click.echo(ans.saved)
     if ans.provenance is not None:
         # WHERE the effective config came from (user request 2026-08-12;
@@ -1236,6 +1257,12 @@ def _echo_prep_answer(ans, base) -> None:
             f"    launch WILL REFUSE this -- " + disagreement_note(a, base),
             fg="yellow"), err=True)
     _echo_pipeline_log(ans, base)
+    if group is not None:
+        if not last:
+            return
+        next_line = ("next -- the group's one job, walking "
+                     + ", ".join(group) + " in order:\n"
+                     + block(launch_lines("run", *group, base=base)))
     say_next(next_line)
 
 
@@ -1485,8 +1512,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
 
 @jobset_group.command("launch", short_help="launch a prepped stage")
 @click.argument("kind", type=click.Choice(_KINDS))
-@click.argument("stage", required=False, default=None)
-@click.argument("trial", required=False, default=None)
+@click.argument("words", nargs=-1)
 @_bundle_option()
 @click.option("--mode", type=click.Choice(["submit", "direct", "ask"]),
               default=None,
@@ -1545,7 +1571,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "spans CPU and GPU trials (generator.md § 4.3a).  The "
                    "other side stays pending; a later `launch bench` "
                    "collects it -- here or on the cluster that reaches it.")
-def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
+def submit_cmd(kind: str, words, bundle: str, mode: str, domain,
                dry_run: bool, time_text, mem_text, gpu_domain,
                auto_yes, cold, trial_timeout_min, only_side) -> None:
     """Launch a prepped stage: run it here (direct), hand it to the machine's
@@ -1559,11 +1585,21 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     # entry writes its own, and the verb the ones it says before it calls
     # the entry -- in a described calculation only, a folder that is not one
     # getting no ledger of ours; a dry run writes nothing.
-    said = {"kind": kind, "stage": stage, "trial": trial, "mode": mode}
+    # WHAT WAS NAMED: a benchmark's stage and, optionally, one trial; a
+    # run's stage -- or a group's stages, as its prep named them
+    # (`project-layout.md` § 1.6.6).
+    if kind == "bench" and len(words) > 2:
+        raise click.ClickException(
+            "`launch bench` takes a stage and, optionally, one trial.")
+    stage = words[0] if words and (kind == "bench" or len(words) == 1) else None
+    trial = words[1] if kind == "bench" and len(words) > 1 else None
+    group = list(words) if kind == "run" and len(words) > 1 else None
+    said = {"kind": kind, "stage": group or stage, "trial": trial,
+            "mode": mode}
     try:
         _launch(said, kind, stage, trial, bundle, mode, domain, dry_run,
                 time_text, mem_text, gpu_domain, auto_yes, trial_timeout_min,
-                only_side, cold)
+                only_side, cold, group)
     except SubmitError as e:
         # the entry's refusal, which the entry wrote down
         raise click.ClickException(str(e)) from None
@@ -1577,7 +1613,8 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
 
 def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             domain, dry_run: bool, time_text, mem_text, gpu_domain,
-            auto_yes, trial_timeout_min, only_side, cold: bool) -> None:
+            auto_yes, trial_timeout_min, only_side, cold: bool,
+            group=None) -> None:
     """The launch verb's body (:func:`submit_cmd`, which writes down any
     refusal it raises).  ``said`` is what that line names, filled in as the
     body learns it: the mode and where it came from, the stage as the
@@ -1602,10 +1639,6 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         stage = said["stage"] = _described_stage(bundle, stage)
         js, base = _load_bench_set(bundle, stage, "launch")
     else:
-        if trial is not None:
-            raise click.ClickException(
-                "a TRIAL names a benchmark point; `launch run` takes a "
-                "stage only (job-system.md § 5.3).")
         js, base = _load(bundle)
     _check_kind(kind, js)
     if kind == "bench":
@@ -1618,10 +1651,25 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         # The description's spelling from here on -- what the ledger
         # records and every line prints (plan § 5w K12) -- and a stage it
         # holds that is not prepped, said so (W55 D4).
-        stage = said["stage"] = _described_stage(bundle, stage)
-        _refuse_unprepped(base, stage)
-        only = stage = said["stage"] = _resolve_stage(js, stage, "launch",
-                                                      base=base)
+        if group:
+            # A GROUP, by the names its prep was told -- each a described,
+            # prepped stage (`project-layout.md` § 1.6.6).
+            group = [_described_stage(bundle, s) for s in group]
+            for s in group:
+                _refuse_unprepped(base, s)
+            group = said["stage"] = [_resolve_stage(js, s, "launch",
+                                                    base=base)
+                                     for s in group]
+            only = None
+        else:
+            stage = said["stage"] = _described_stage(bundle, stage)
+            _refuse_unprepped(base, stage)
+            only = stage = said["stage"] = _resolve_stage(js, stage,
+                                                          "launch", base=base)
+    # THE WORDS EVERY PRINTED LAUNCH REPEATS: the stage and its trial, or
+    # the group's stages.
+    words = tuple(group) if group else tuple(w for w in (stage, trial)
+                                             if w is not None)
     grouped = kind == "bench" and trial is None
     # This machine's `launch.mode` when no --mode is given (running-a-job
     # § 5.4) -- asked once the work is known, so the refusal can say the
@@ -1648,7 +1696,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                 "  'direct' runs it here with bash; 'submit' hands it to the "
                 "scheduler.  Set launch.mode once for this machine "
                 "(running-a-job.md § 5.4), or say the mode on the line:\n"
-                + block([launch_with(kind, stage, trial, base=base, mode=m,
+                + block([launch_with(kind, *words, base=base, mode=m,
                                      typed=typed) for m in modes]))
         mode_source = "launch.mode (config)"
     said.update(mode=mode, mode_source=mode_source)
@@ -1692,7 +1740,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     plan = plan_launch(js, base, mode=mode, only=only, domain=domain,
                        gpu_domain=gpu_domain, side=only_side, mem=mem,
                        time_s=time_s, trial_timeout_s=_bound_s, told=told,
-                       record=not dry_run, cold=cold)
+                       record=not dry_run, cold=cold, group=group)
     from .commands import command
     if mode == "ask":
         results = ask_launch(plan)
@@ -1739,11 +1787,11 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         if not all(p.no_scheduler for p in preds):
             click.echo("  would send: " + " ".join(asked.command))
             click.echo("  to send it, when the answer suits you:\n"
-                       + block([launch_with(kind, stage, trial, base=base,
+                       + block([launch_with(kind, *words, base=base,
                                             mode="submit", typed=typed)]))
         else:
             click.echo("  run it here instead:\n"
-                       + block([launch_with(kind, stage, trial, base=base,
+                       + block([launch_with(kind, *words, base=base,
                                             mode="direct", typed=typed)]))
         return
 

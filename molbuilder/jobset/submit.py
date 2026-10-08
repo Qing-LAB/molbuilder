@@ -904,7 +904,8 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
                 trial_timeout_s: Optional[int] = None,
                 told: Dict[str, object],
                 record: bool = True,
-                cold: bool = False) -> LaunchPlan:
+                cold: bool = False,
+                group: Optional[Sequence[str]] = None) -> LaunchPlan:
     """STEP 1 of `job-system.md` § 6.0 -- the whole launch of a prepped
     ``jobset`` rooted at ``base_dir``, planned with nothing written: the
     work, its submissions and their members, the gates, the queue, the exact
@@ -927,7 +928,8 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     what it launches as the verb does.  ``record`` is false for a dry run,
     which writes nothing (§ 6.0, step 3) -- a refusal is written down
     otherwise.  ``cold``: a stage launched again takes nothing from a run of
-    its own (`job-system.md` § 5.4).
+    its own (`job-system.md` § 5.4).  ``group``: the stages a group's prep
+    named, sent as its one job (`project-layout.md` § 1.6.6).
 
     THE WORK IS READ OFF WHAT IS LAUNCHED.  A sweep with no trial named,
     sent to (or asked of) a scheduler, goes as ONE job per resource shelf
@@ -943,7 +945,7 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
         plan = _planned(jobset, base, mode=mode, only=only, domain=domain,
                         gpu_domain=gpu_domain, side=side, mem=mem,
                         time_s=time_s, trial_timeout_s=trial_timeout_s,
-                        told=told, cold=cold)
+                        told=told, cold=cold, group=group)
     except SubmitError as exc:
         if record:
             _record(base, told, "refused", reason=str(exc))
@@ -956,7 +958,7 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
 
 def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
              side, mem, time_s, trial_timeout_s, told,
-             cold: bool = False) -> LaunchPlan:
+             cold: bool = False, group=None) -> LaunchPlan:
     """:func:`plan_launch`'s body -- the plan, or the refusal it records."""
     errs = jobset.validate()
     if errs:
@@ -985,7 +987,7 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
         return plan_launch(jobset, base, mode=mode, only=only, domain=told_q,
                            gpu_domain=gpu_domain, side=side, mem=mem,
                            time_s=time_s, trial_timeout_s=trial_timeout_s,
-                           told=told, record=False, cold=cold)
+                           told=told, record=False, cold=cold, group=group)
 
     # THE QUEUE, decided here and nowhere else (`job-system.md` § 6.0, the
     # placement): --domain when typed, else the one the work's prep
@@ -995,8 +997,17 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
     source = "--domain flag" if domain else None
     if mode in ("submit", "ask") and not domain:
         domain, source = _the_queue(
-            [j for j in jobset.jobs if only is None or j.name == only])
+            [j for j in jobset.jobs
+             if ((j.name in group) if group
+                 else (only is None or j.name == only))])
 
+    if group:
+        plan = _plan_group(jobset, base, list(group), mode=mode,
+                           domain=domain, mem=mem, time_s=time_s,
+                           told=told, cold=cold)
+        plan.remake = again
+        plan.queue = (domain, source)
+        return plan
     if jobset.kind == "sweep" and only is None and mode in ("submit", "ask"):
         plan = _plan_shelves(jobset, base, mode=mode, domain=domain,
                              gpu_domain=gpu_domain, side=side, mem=mem,
@@ -2130,6 +2141,122 @@ def _record_launch(where: Path, *, names: RunNames, run: int, mode: str,
                  placed_on=_placed_on(placement, sent))
 
 
+def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
+                mode: str, told, domain: Optional[str] = None,
+                mem: Optional[str] = None, time_s: Optional[int] = None,
+                cold: bool = False) -> LaunchPlan:
+    """ONE submission walking a GROUP's members -- the stages its prep
+    named together, in that order (`project-layout.md` § 1.6.6).  Each
+    member is planned as a stage alone is (:func:`_plan_member`: its
+    attempt, launched before or not, warm or ``cold``), its deck agreeing
+    with its launch; the walk runs each member's own run script in its own
+    attempt, and one that fails does not stop the others -- they build on
+    nothing of each other's.  The header is the one the group's prep wrote
+    (`launch/<group>.sbatch`); the walker is written at the send, with each
+    run's number."""
+    from .commands import block, launch_lines
+    from .group import GroupError, envelope, names_of
+    from .materialize import stage_home
+    from ..task import FILENAME as TASK_FILENAME, read_task
+    jobs = [next((j for j in jobset.jobs if j.name == n), None)
+            for n in names]
+    recorded = jobs[0].group if jobs[0] is not None else None
+    if not recorded or set(recorded) != set(names) or any(
+            j is None or j.group != recorded for j in jobs):
+        raise SubmitError(
+            f"{', '.join(names)} were not prepped as one group -- a group "
+            f"is named at prep, and launched by the names its prep was told "
+            f"(project-layout.md § 1.6.6)."
+            + (f"  {names[0]}'s group:\n"
+               + block(launch_lines("run", *recorded, base=base))
+               if recorded else ""))
+    names = list(recorded)
+    jobs = [next(j for j in jobset.jobs if j.name == n) for n in names]
+    try:
+        shared = envelope(jobs)
+    except GroupError as exc:
+        raise SubmitError(str(exc)) from None
+    task = read_task(base / TASK_FILENAME)
+    gn = names_of(task.label, [stage_home(base, task, n).token
+                               for n in names])
+    plan = LaunchPlan(base, mode, [])
+    members: List[_Member] = []
+    for job in jobs:
+        m = _plan_member(jobset, base, job, mode=mode, writes=plan.writes,
+                         named=True, cold=cold)
+        try:
+            check_launch_matches_deck(m.read_from, job)
+        except DeckLaunchMismatch as e:
+            raise SubmitError(str(e)) from e
+        plan.reads += [_as_found(m.read_from / f, base)
+                       for f in (job.script, m.names.name(".run.sh"))]
+        members.append(m)
+
+    lines = [
+        "#!/usr/bin/env bash",
+        f"# {gn.name('.run.sh')} -- a group's one job: "
+        + ", ".join(names) + ", in this order,",
+        "# each its own run in its own attempt (project-layout.md 1.6.6).",
+        "# Regenerated at each launch.  One that fails does not stop the",
+        "# others: none builds on another.",
+        "set -u",
+        f'LOG="{LAUNCH_DIR}/{gn.name(".log")}"',
+        f'echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
+        f'members={len(members)} job=${{SLURM_JOB_ID:-none}} '
+        'node=$(hostname)" >> "$LOG"',
+        "fails=0",
+        "run_member() {",
+        '    _name="$1"; _dir="$2"; shift 2',
+        '    echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') -> '
+        '${_name} starts" >> "$LOG"',
+        '    ( cd "${_dir}" && bash "$@" ) >> "$LOG" 2>&1',
+        "    _rc=$?",
+        '    if [ "${_rc}" -ne 0 ]; then',
+        '        echo "[group] ${_name} FAILED rc=${_rc} -- the others '
+        'build on nothing of it; the walk continues" >> "$LOG"',
+        "        fails=$((fails+1))",
+        "    else",
+        '        echo "[group] ${_name} done" >> "$LOG"',
+        "    fi",
+        "}",
+    ]
+    for m in members:
+        args = " ".join(_run_sh_args(m.job.resources, m.run,
+                                     cold=m.cold and not m.has_attempt))
+        lines.append(f'run_member "{m.name}" '
+                     f'"{m.run_dir.relative_to(base)}" '
+                     f'"{m.names.name(".run.sh")}" {args}')
+    lines += ['echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') done '
+              'fails=${fails}" >> "$LOG"',
+              'exit $(( fails > 0 ))', ""]
+    launch_dir = base / LAUNCH_DIR
+    if mode != "ask":
+        open_container(base, launch_dir, plan.writes)
+        plan.writes.text(launch_dir / gn.name(".run.sh"), "\n".join(lines))
+    if mode == "direct":
+        plan.submissions.append(Submission(
+            gn.stem, ["bash", f"{LAUNCH_DIR}/{gn.name('.run.sh')}"], base,
+            True, members, rides="rides the group"))
+        return plan
+    header = launch_dir / gn.name(".sbatch")
+    if mode == "submit" and not header.is_file():
+        raise SubmitError(_no_sbatch(gn.stem, f"{LAUNCH_DIR}/"
+                                     f"{gn.name('.sbatch')}",
+                                     base=base, told=told))
+    if header.is_file():
+        plan.reads.append(_as_found(header, base))
+    sent, placement, cmd = _sbatch_request(
+        base, envelope=shared, domain=domain, mem=mem, time_s=time_s,
+        label=gn.stem, job_name=_scheduler_job_name(jobset, gn.stem),
+        script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
+        one_process=one_process(jobset.engine))
+    plan.submissions.append(Submission(
+        gn.stem, cmd, base, False, members, placement=placement, sent=sent,
+        rides="rides the group", ask_in=members[0].read_from,
+        ask_script=members[0].names.name(".sbatch")))
+    return plan
+
+
 def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                 domain: Optional[str], gpu_domain: Optional[str],
                 only: Optional[str], mem: Optional[str],
@@ -2162,6 +2289,17 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
     plan = LaunchPlan(base, mode, [])
     sbatch_here = shutil.which("sbatch") is not None
     for job in jobset.jobs:
+        if job.group:
+            # A GROUP'S MEMBER goes with its group, never alone
+            # (`project-layout.md` § 1.6.6).
+            from .commands import block, launch_lines
+            raise SubmitError(
+                f"`{job.name}` was prepped in a group with "
+                f"{', '.join(n for n in job.group if n != job.name)} -- "
+                f"they share one job, launched together:\n"
+                + block(launch_lines("run", *job.group, base=base))
+                + "\n  To launch it alone, prep it alone: "
+                + rollback("the group's prep", base=base))
         m = _plan_member(jobset, base, job, mode=mode, writes=plan.writes,
                          named=only is not None, cold=cold)
         if isinstance(m, JobResult):

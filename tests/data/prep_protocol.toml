@@ -237,3 +237,14 @@ run_sh_lacks = ["--notify-"]
 name = "a benchmark's declared grid states its ranks and its cores per rank -- one alone is refused, never filled"
 bench = { mpi_np = [1, 2] }
 refused = ["declares mpi_np and not omp_threads", "Declare omp_threads's points too"]
+
+# ===================================================================== #
+#  A GROUP: STAGES THAT SHARE ONE JOB -- `project-layout.md` § 1.6.6    #
+# ===================================================================== #
+
+[[case]]
+name = "stages named together where one builds on another are refused, by name, before anything is written"
+stage = "coarse"
+prep = ["medium"]
+refused = ["`medium` builds on `coarse`, so they cannot share one job", "Prep them apart"]
+made_lacks = ["job-set.json", "01_coarse"]

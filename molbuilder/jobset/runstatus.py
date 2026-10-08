@@ -96,6 +96,9 @@ class StageStatus:
     #: asks too, so the status says what launching it again will do
     #: (`job-system.md` § 5.4, *A stage launched again*).
     relaunch_continues: bool = True
+    #: The group it was prepped in, its members in order -- launched with
+    #: them, never alone (`project-layout.md` § 1.6.6) -- or ``None``.
+    group: Optional[List[str]] = None
     #: Whether anything has prepped it -- a description's stage before its
     #: first prep is listed all the same (`job-system.md` § 5.3).
     prepped: bool = True
@@ -288,6 +291,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         attempts=attempts_in(home),
         launch=launch,
         relaunch_continues=job.relaunch_continues,
+        group=(list(job.group) if job.group else None),
         # THE SAME LABEL THE STATE WAS READ WITH -- the stage's names'.
         warm_files=_warm_present(observed, names.label, jobset.engine,
                                  base),
@@ -486,9 +490,12 @@ def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
     -- each a command that works.  molbuilder does NOT auto-resume; the
     person decides (`engines/stages.md`)."""
     state = s.state if s is not None else "stopped"
+    # A GROUP'S MEMBER is launched with its group (`project-layout.md`
+    # § 1.6.6): the line names every member.
+    words = (s.group if s is not None and s.group else [name])
     if state == "pending":
         return (f"First incomplete stage: {name}, prepped and not "
-                f"launched:\n" + block(launch_lines("run", name, base=base)))
+                f"launched:\n" + block(launch_lines("run", *words, base=base)))
     if state in ("queued", "running"):
         return (f"First incomplete stage: {name}, {state} -- let it "
                 f"finish; `{command('status', name, base=base)}` shows its "
@@ -500,7 +507,7 @@ def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
             if s is None or s.relaunch_continues
             else "it starts over, nothing handed on from a run of its own")
     how = (f"launch it again -- {warm}:\n"
-           + block(launch_lines("run", name, base=base))
+           + block(launch_lines("run", *words, base=base))
            + "\n  or start it over with `--cold`; or, to change it first, "
            + rollback("its prep", base=base))
     return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
