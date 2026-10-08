@@ -271,7 +271,7 @@ def linear_response_iv(energies: List[float], trans: List[float],
             f_l = 1.0 / (1.0 + np.exp((e - half) / kt_ev))
             f_r = 1.0 / (1.0 + np.exp((e + half) / kt_ev))
         currents.append(float(CONDUCTANCE_QUANTUM_S
-                              * np.trapz(t * (f_l - f_r), e)))
+                              * np.trapezoid(t * (f_l - f_r), e)))
     return {"voltages_v": [float(v) for v in voltages],
             "current_a": currents,
             "computed": "linear-response", "kt_ev": kt_ev,

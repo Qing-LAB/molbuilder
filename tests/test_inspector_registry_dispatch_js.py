@@ -154,15 +154,13 @@ _DISPATCH_CASES = [
     # results.html makes spectra register before source.
     ("/projects/foo/spectrum/water.spectra.json", "spectra",
      "compound_spectra_json→spectra"),
-    # The SECOND compound `.json`, and the same precedence question: a
-    # finished conductance run's record must reach the transport viewer and
-    # not the text pane.  Before this presenter existed (2026-09-18) it
-    # matched NOTHING with `isResult`, so the picker dropped it entirely and
-    # the deliverable of a five-rung run was invisible on the Results tab.
-    ("/projects/BDT/transport/bdt.transport.json", "transport",
-     "compound_transport_json→transport"),
-    # ...and the cut-both-ways half: claiming `.transport.json` must not take
-    # any other `.json` from the text viewer.
+    # The transport record is `summarize task`'s copy for the command line
+    # and opens as a FILE (`web/results.md` § 0.1, decision 8): the report's
+    # handle is the calculation's description, claimed on the registry's
+    # word (`transport-task`, the meta-carrying table below), never on a
+    # name -- so by name alone the record is the text pane's.
+    ("/projects/BDT/transport/bdt.transport.json", "source",
+     "transport_json_by_name→source"),
     ("/projects/BDT/transport/atom-permutation.json", "source",
      "other_json_still→source"),
     # Plain .json → source (first-match-wins after spectra missed).
@@ -211,14 +209,11 @@ _PICK_RESULT_CASES = [
      "molwatch_log→trajectory"),
     ("/projects/foo/raman.spectra.json", "spectra",
      "spectra_json→spectra"),
-    # THE BUG THIS PRESENTER EXISTS FOR.  A conductance run's record has to
-    # be a RESULT, not merely matched: `pickResult` is what the picker calls,
-    # and until 2026-09-18 nothing with `isResult` claimed `.transport.json`,
-    # so it returned null and the deliverable of a five-rung run never
-    # appeared in the dropdown at all.  Matching without this flag reproduces
-    # exactly that, and the dispatch case above cannot see the difference.
-    ("/projects/BDT/transport/bdt.transport.json", "transport",
-     "transport_json→transport"),
+    # The transport record by name alone is no result: the report's handle
+    # is the description, claimed on the registry's word (decision 8; the
+    # meta-carrying table below has that case).
+    ("/projects/BDT/transport/bdt.transport.json", None,
+     "transport_json_by_name→null"),
     # The third compound `.json`: a SIESTA vibration's displacement sweep
     # (`engines/vibration.md` § 5.9).  It must be claimed by a RESULT
     # presenter registered ahead of source.js, or the picker never offers it.
@@ -303,6 +298,13 @@ _RESULT_CATEGORY_CASES = [
      "optim_xyz+unknown→unclaimed"),
 
     # --- the other presenters, whose headings take no engine ---
+    # A transport calculation's report is opened through its DESCRIPTION,
+    # on the registry's word for it (`parse.sidecars.task`, decision 8) --
+    # `task.json` by name is every calculation's and claims nothing.
+    ("/projects/BDT/transport/task.json", {"parser": "transport-task"},
+     "Transport", "task_json+transport_task→transport"),
+    ("/projects/BDT/relax/task.json", None, None,
+     "task_json_alone→null"),
     ("/projects/foo/r.spectra.json", None, "Vibrational spectrum",
      "spectra_json→pyscf_spectrum"),
     ("/projects/foo/q.xyz", None, "Structure", "xyz→structure"),

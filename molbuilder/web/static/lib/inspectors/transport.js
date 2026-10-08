@@ -113,6 +113,7 @@ const WORKSPACE_TAG = "results:transport";
         const failed = Array.isArray(rec.failed) ? rec.failed : [];
         const stages = Array.isArray(rec.stages) ? rec.stages : [];
         state.points = pts;
+        state.iv = rec.iv || {};
         if (state.bias === null && pts.length) state.bias = pts[0].bias_v;
 
         const wrap = _el("div", "transport-record");
@@ -573,15 +574,29 @@ const WORKSPACE_TAG = "results:transport";
         }
         _drawPdosList(state);
 
-        /* I-V: the curve, its points clickable, the selected one marked. */
-        const iv = pts.filter((q) => q.current_a !== null && q.current_a !== undefined);
+        /* I-V: the curve, its points clickable, the selected one marked.
+         * Under the low-bias approximation the curve is the record's own
+         * I(V) computed from T(E, 0) (`record.linear_response_iv`), one
+         * value per listed voltage, the measured 0 V slice its only point
+         * (`engines/transport.md` § 2a.12). */
+        const computed = state.iv && state.iv.computed === "linear-response";
+        const iv = computed
+            ? (state.iv.voltages_v || []).map((v, k) => (
+                  { bias_v: v, current_a: (state.iv.current_a || [])[k] }))
+                  .filter((q) => q.current_a !== null && q.current_a !== undefined)
+            : pts.filter((q) => q.current_a !== null && q.current_a !== undefined);
         if (iv.length) {
             _plot(state.nodes.iv, [{
                 x: iv.map((q) => q.bias_v), y: iv.map((q) => q.current_a),
-                mode: "lines+markers", name: "I (total)",
-                line: { color: t.accent, width: 1.5 },
+                mode: "lines+markers",
+                name: computed ? "I computed from T(E, 0)" : "I (total)",
+                line: { color: t.accent, width: 1.5,
+                        dash: computed ? "dash" : "solid" },
                 marker: { size: iv.map((q) => (q.bias_v === state.bias ? 12 : 6)) },
-                meta: iv.map((q) => q.bias_v),
+                /* A click selects the slice behind the point: under the
+                 * low-bias approximation every point comes from the one
+                 * 0 V slice. */
+                meta: iv.map((q) => (computed ? 0 : q.bias_v)),
             }], {
                 margin: { l: 8, r: 12, t: 8, b: 34 }, height: 300,
                 xaxis: { title: { text: "Bias (V)", standoff: 4 }, automargin: true },
@@ -740,6 +755,12 @@ const WORKSPACE_TAG = "results:transport";
                 try {
                     const r = await fetch("/api/transport/record?path="
                                           + encodeURIComponent(file));
+                    /* A SERVER FAULT ANSWERS A PAGE, NOT JSON: said as the
+                     * status it is, never as a JSON syntax error. */
+                    if (!r.ok && !/json/.test(r.headers.get("content-type") || "")) {
+                        throw new Error("the record could not be composed: the "
+                                        + "server answered " + r.status);
+                    }
                     const body = await r.json();
                     if (!body || !body.ok) {
                         throw new Error("could not read " + file + ": "

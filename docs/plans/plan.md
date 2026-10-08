@@ -1654,7 +1654,19 @@ says where the walk script is (B9) · **F23** a transmission point's folder
 opens nothing — no parser claims TBtrans's output, so a point picked off the
 root's ladder has no *open* (its result is the root's T(E) and I–V): either a
 reader claims the file or `results.md` § 0.1 says a transmission point is read
-at the root (B9) · a single click on a record in the
+at the root (B9) · **F24** the Transport tab's step 4 copy still says *several
+values are a **scan** … low-bias converges the device once … **re-converged**
+runs the device at every voltage* — the record's words are
+*low-bias-approximation* / *self-consistent* and the design's word is *sweep*
+(B9's sweep of "scan" reaches the tab's copy; B8's fact-check) · **F25** the
+group launch prints *warn [structure.regions]: this structure carries region
+label(s) ['SC#CS#'], which the transport ladder does NOT consume* — the
+molecule's own label from the Molbuilder tab; molbuilder reads only the labels
+it owns and never warns about another (user, 2026-10-02) — the warning
+(`sidecar.check_unconsumed_region_labels`) and the two sentences that order it
+(`validation.md` § 5 pattern B; `transport.md` § 4 *"a label this engine does
+not consume is WARNED about"*) go (B7, B9) · a single
+click on a record in the
 sidebar does **not** switch the report — `results.md` § 3b's rule (a click is a
 preview; the panel's dropdown chooses), not a defect.
 
