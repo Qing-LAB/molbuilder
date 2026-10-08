@@ -1,20 +1,27 @@
-/* Transport-result presenter — the ladder and its deliverable on one page.
+/* Transport report — a transport calculation's whole result on one page
+ * (`web/results.md` § 2.5).
  *
- * Spec: docs/web/presenters.md § 1 (the row) and plans/plan.md § 5p.3p step 5.
- * Arrangement only: page-shell owns the surfaces, tokens.css owns every
- * colour (ui-contract.md § 1–2).  No raw hex here, on purpose.
+ * Arrangement only: page-shell owns the surfaces (`.card`, `.card-row`,
+ * `.panel-tabs`), tokens.css owns every colour (ui-contract.md § 1–2).  No
+ * raw hex here, on purpose.
  */
 
 .transport-record {
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
-    /* No padding: the element is also page-shell's `.card`, which states the
-     * one inset every Results-tab viewer shares (ui-contract.md, "one inset
-     * per card"); a padding here, loaded after page-shell, would replace it. */
 }
 
-.transport-title { margin: 0; }
+.transport-title,
+.transport-card-title,
+.transport-prov-title { margin: 0; }
+
+.transport-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    min-width: 0;
+}
 
 .transport-sub,
 .transport-note {
@@ -23,63 +30,105 @@
     font-size: var(--text-sm);
 }
 
-/* The I–V table: numbers in columns, so they compare by eye. */
-.transport-iv {
-    border-collapse: collapse;
-    font-variant-numeric: tabular-nums;
+/* ROW 1 — the device beside the curves: the curves take the spare width,
+ * the device keeps room for MolView's square window; below the two minima
+ * the row wraps and the curves follow the device. */
+.transport-device-card {
+    --card-weight: 1;
+    --card-basis: 420px;
+    --card-min: 360px;
 }
 
-.transport-iv th,
-.transport-iv td {
-    padding: var(--space-xs) var(--space-sm);
-    text-align: right;
-    border-bottom: 1px solid var(--border-subtle);
+.transport-curves-card {
+    --card-weight: 2;
+    --card-basis: 520px;
+    --card-min: 360px;
 }
 
-.transport-iv th { color: var(--text-muted); font-weight: 600; }
+.transport-plot {
+    width: 100%;
+    min-height: 18rem;
+}
 
-/* A point without its transmission: its state chip says pending or failed,
- * and the row reads quieter than a point with a result. */
-.transport-pending td { color: var(--text-muted); font-style: italic; }
-
-.transport-stages-title { margin: 0; }
-
-/* One card per rung, in ladder order.  They wrap rather than scroll: five is
- * the whole ladder and a reader should see it at once. */
-.transport-stages {
+/* The convergence pair: energy and residual side by side, stacking when
+ * narrow. */
+.transport-conv-plots {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-sm);
 }
 
-.transport-stage {
-    flex: 1 1 12rem;
-    padding: var(--space-sm);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface-recessed);
+.transport-plot-half {
+    flex: 1 1 320px;
+    min-width: 280px;
+    min-height: 16rem;
 }
 
-.transport-stage-name {
-    font-weight: 600;
-    margin-bottom: var(--space-xs);
-}
-
-/* The rung's state: the ladder's chip, then its detail. */
-.transport-stage-state {
+.transport-conv-line {
     font-size: var(--text-sm);
-    margin-bottom: var(--space-xs);
 }
 
 .transport-stage-detail { color: var(--text-muted); }
 
-.transport-stage-facts {
-    font-size: var(--text-sm);
-    font-variant-numeric: tabular-nums;
+/* The PDOS of a selection: name, orbital type, add — one line. */
+.transport-pdos-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm);
 }
 
-/* A rung that has not finished reads quieter; its chip says why. */
-.transport-stage-facts.is-pending { color: var(--text-muted); }
+.transport-pdos-name { min-width: 12rem; }
+
+.transport-pdos-msg {
+    color: var(--warning);
+    font-size: var(--text-sm);
+}
+
+.transport-pdos-list {
+    margin: 0;
+    padding-left: var(--space-lg);
+    font-size: var(--text-sm);
+}
+
+.transport-pdos-item {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: baseline;
+}
+
+/* The I–V and rung tables: numbers in columns, so they compare by eye. */
+.transport-iv,
+.transport-rungs {
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--text-sm);
+}
+
+.transport-iv th,
+.transport-iv td,
+.transport-rungs th,
+.transport-rungs td {
+    padding: var(--space-xs) var(--space-sm);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.transport-iv td { text-align: right; }
+
+.transport-iv th,
+.transport-rungs th {
+    color: var(--text-muted);
+    font-weight: 600;
+    text-align: left;
+}
+
+/* A row picks its bias point; the picked one is marked. */
+.transport-iv-row { cursor: pointer; }
+.transport-iv-row.is-selected td { background: var(--surface-recessed); }
+
+/* A point without its transmission: its state chip says pending or failed,
+ * and the row reads quieter than a point with a result. */
+.transport-pending td { color: var(--text-muted); font-style: italic; }
 
 /* Two leads are bulk runs of the same metal; their Fermi levels disagreeing
  * is a real defect, so it wears the warning vocabulary rather than prose. */
@@ -91,16 +140,20 @@
     font-size: var(--text-sm);
 }
 
-.transport-curve-title { margin: 0; }
-
-/* The curve gets real height: T(E) over a window is the deliverable, and a
- * squashed strip cannot show a resonance. */
-.transport-curve {
-    width: 100%;
-    min-height: 18rem;
+/* The DFT–NEGF caveat travels with every result. */
+.transport-caveat {
+    margin: 0;
+    padding: var(--space-sm);
+    border-left: 3px solid var(--border-strong);
+    background: var(--surface-recessed);
+    font-size: var(--text-sm);
 }
 
-.transport-prov-title { margin: 0; }
+.transport-chain {
+    margin: 0;
+    padding-left: var(--space-lg);
+    font-size: var(--text-sm);
+}
 
 .transport-prov {
     display: flex;

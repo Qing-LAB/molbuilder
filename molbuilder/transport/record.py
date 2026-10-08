@@ -237,8 +237,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     from ..jobset.materialize import ladder_homes
     from ..jobset.model import FILENAME as JOBSET_FILENAME, JobSet
     from ..jobset.runstatus import jobset_status
-    from ..parse import detect
-    from .stages import STAGE_FACT, TRANSPORT_STAGES
+    from .stages import STAGE_FACT, TRANSPORT_STAGES, rung_containers
 
     jpath = base / JOBSET_FILENAME
     status = jobset_status(JobSet.load(jpath) if jpath.is_file() else None,
@@ -266,50 +265,95 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         if not outs:
             out.append(fact)
             continue
-        try:
-            res = detect(str(outs[0])).parse(str(outs[0]))
-        except Exception as exc:               # a refusal is an ANSWER here
-            # THE FIRST SENTENCE, not the essay: `UnknownFormatError` lists
-            # every registered parser, which buries the other four rungs.
-            fact["unreadable"] = (str(exc).split(". ")[0].strip()
-                                  or str(exc))
-            out.append(fact)
-            continue
-        fact["scf_converged"] = res.scf_converged
-        frames = res.frames or []
-        info = res.runtime_info or {}
-        # THE RUN'S SCF, AS IT RAN (`web/results.md` § 2.5): every row of the
-        # last step, phase-tagged -- a device's periodic start and its NEGF
-        # loop apart -- with what each phase had to reach and how it ended.
-        hist = (frames[-1].scf_history or []) if frames else []
-        fact["scf"] = [{k: c[k] for k in _SCF_FIELDS if k in c}
-                       for c in hist]
-        if info.get("scf_criteria"):
-            fact["scf_criteria"] = info["scf_criteria"]
-        if info.get("scf_phases"):
-            fact["scf_phases"] = info["scf_phases"]
-        # THE NEGF PHASE'S OWN FIGURES -- never the periodic start's
-        # (`engines/transport.md` § 2a.12): its last row's E_F and charge,
-        # and how many cycles it ran.
-        negf = [c for c in hist if c.get("phase") == "negf"]
-        if negf:
-            last = negf[-1]
-            fact["negf"] = {"cycles": len(negf),
-                            **{k: last[k] for k in ("ef", "dq", "charges",
-                                                    "energy")
-                               if k in last}}
-        if frames:
-            fact["energy_ev"] = frames[-1].energy
-            # THE LEAD'S FERMI LEVEL, from the last SCF cycle of the last
-            # frame -- the converged one.  Asked by the COLUMN, so adding a
-            # third lead one day is a table row and not a third name here.
-            if answers == "fermi":
-                hist = frames[-1].scf_history or []
-                for cyc in reversed(hist):
-                    if cyc.get("ef") is not None:
-                        fact["fermi_ev"] = cyc["ef"]
-                        break
+        fact.update(_science(outs[0], answers))
+        if len(rung_containers(base, task, name)) > 1:
+            # A SCAN'S RUNG, POINT BY POINT -- the report's convergence
+            # card follows the selected bias (`web/results.md` § 2.5).
+            fact["by_point"] = _rung_points(base, task, name, token, answers)
         out.append(fact)
+    return out
+
+
+def _science(out: Path, answers: str) -> Dict:
+    """A rung run's own answer, read from its engine output: its SCF as it
+    ran (every row of its last step, phase-tagged, with each phase's
+    criteria and how it ended), whether it converged and at what energy,
+    a NEGF phase's own figures, a lead's E_F -- or ``unreadable`` with the
+    parser's first sentence."""
+    from ..parse import detect
+    fact: Dict = {}
+    try:
+        res = detect(str(out)).parse(str(out))
+    except Exception as exc:                   # a refusal is an ANSWER here
+        # THE FIRST SENTENCE, not the essay: `UnknownFormatError` lists
+        # every registered parser, which buries the other four rungs.
+        fact["unreadable"] = str(exc).split(". ")[0].strip() or str(exc)
+        return fact
+    fact["scf_converged"] = res.scf_converged
+    frames = res.frames or []
+    info = res.runtime_info or {}
+    # THE RUN'S SCF, AS IT RAN (`web/results.md` § 2.5): every row of the
+    # last step, phase-tagged -- a device's periodic start and its NEGF
+    # loop apart -- with what each phase had to reach and how it ended.
+    hist = (frames[-1].scf_history or []) if frames else []
+    fact["scf"] = [{k: c[k] for k in _SCF_FIELDS if k in c} for c in hist]
+    if info.get("scf_criteria"):
+        fact["scf_criteria"] = info["scf_criteria"]
+    if info.get("scf_phases"):
+        fact["scf_phases"] = info["scf_phases"]
+    # THE NEGF PHASE'S OWN FIGURES -- never the periodic start's
+    # (`engines/transport.md` § 2a.12): its last row's E_F and charge, and
+    # how many cycles it ran.
+    negf = [c for c in hist if c.get("phase") == "negf"]
+    if negf:
+        last = negf[-1]
+        fact["negf"] = {"cycles": len(negf),
+                        **{k: last[k] for k in ("ef", "dq", "charges",
+                                                "energy") if k in last}}
+    if frames:
+        fact["energy_ev"] = frames[-1].energy
+        # THE LEAD'S FERMI LEVEL, from the last SCF cycle of the last frame
+        # -- the converged one.  Asked by the COLUMN, so adding a third lead
+        # one day is a table row and not a third name here.
+        if answers == "fermi":
+            for cyc in reversed(hist):
+                if cyc.get("ef") is not None:
+                    fact["fermi_ev"] = cyc["ef"]
+                    break
+    return fact
+
+
+def _rung_points(base: Path, task, name: str, token: str,
+                 answers: str) -> List[Dict]:
+    """``[{bias_v, attempt, state, detail, ...science}]`` -- each bias
+    point of a scan's rung, its state the run door's (`run_status`) and its
+    own answer (:func:`_science`)."""
+    from ..jobset.materialize import latest_attempt, run_dir
+    from ..parse.dirs import run_status
+    from ..runfiles import RunNames
+    from ..runrecord import LaunchRecordError, launch_record
+    from .stages import rung_containers
+    names = RunNames.of(task.label, token, task.shape)
+    out: List[Dict] = []
+    for d, v in rung_containers(base, task, name):
+        att = latest_attempt(d)
+        entry: Dict = {"bias_v": v}
+        if att is None:
+            entry.update(state="not-started", detail="not prepped")
+            out.append(entry)
+            continue
+        where = run_dir(d)
+        entry["attempt"] = str(att.relative_to(base))
+        try:
+            st = run_status(where, names.stem,
+                            launch=launch_record(where, names))
+            entry.update(state=st.state, detail=st.detail)
+        except LaunchRecordError as exc:
+            entry.update(state="unreadable", detail=str(exc))
+        outs = _outs_newest_first(where, token)
+        if outs:
+            entry.update(_science(outs[0], answers))
+        out.append(entry)
     return out
 
 
@@ -361,7 +405,8 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from ..runfiles import RunNames
     from ..runrecord import LaunchRecordError, launch_record
     from .compose import PROVENANCE_FILE
-    from .tbtnc import TbtError, point_dos, tbt_file
+    from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
+                        tbt_file)
 
     base = Path(base_dir)
     points_out: List[Dict] = []
@@ -499,6 +544,10 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             "chain": _chain(base, stages),
         },
         "caveat": CAVEAT,
+        # THE ORBITAL MENU of the PDOS of a selection, and what it cannot
+        # form (`tbtnc`; `web/results.md` § 2.5).
+        "pdos_orbitals": {"types": ["all", *ORBITAL_TYPES],
+                          "note": ORBITAL_NOTE},
     }
     # EVERY KEY, EVERY RECORD: an empty list where there is none.
     record["pending"] = pending

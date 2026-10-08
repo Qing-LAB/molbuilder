@@ -81,9 +81,9 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 ### 0.4 Designed, not built yet
 
-- **A transport calculation's report** (§ 2.5) — the device structure, T(E),
-  DOS, the I–V curve and every rung's convergence, synced on the selected
-  frame and bias.
+- **A transport calculation's report** (§ 2.5) is built and not yet seen on a
+  real calculation; the root offers it only once `summarize run` has written
+  the record file; the frame axis waits for plan § 5u.1 step 11.
 
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
@@ -435,7 +435,7 @@ by run number. *(Until 2026-10-03 the ladder's rows were text: a run was read
 by moving the sidebar into its folder, a root's product hid the ladder, and
 status read only each stage's newest attempt.)*
 
-### 2.5 A transport calculation's report — designed, not built *(plan § 5u.1 step 9, 2026-10-07)*
+### 2.5 A transport calculation's report *(plan § 5u.1 step 9; designed and built 2026-10-07)*
 
 > *"we need the result to render not just the single numbers, but plot the scf
 > converging process, display the structure of the device of the selected frame
@@ -451,7 +451,18 @@ the report is the root's product, composed on read
 (`/api/transport/record`, [`engines/transport.md`](?doc=engines/transport.md)
 § 2a.12), so a ladder in progress has one and a rung that ran since is shown as
 it is now. *(Today the route answers only once the file exists, so the report
-mounts only after a first `summarize run`.)*
+mounts only after a first `summarize run`: the route takes the calculation's
+folder, and the root's picker does not yet offer the report where no record
+file is.)*
+
+**Where it stands** *(2026-10-07)*: built — the record's fields
+(`transport/record.py`, `transport/tbtnc.py`), `/api/transport/record` and
+`/api/transport/pdos`, the one SCF plot (`lib/scfplot/scfplot.js`) with the
+trajectory viewer on it, the charts' theme (`lib/plot-theme.js`), the report
+(`lib/inspectors/transport.js`, a module, and its sheet), the ladder above the
+panel. **Not yet seen on a real calculation**: no transport run with a
+`.TBT.nc` is on this machine, so the DOS, PDOS and eigenchannel readers and the
+report's drawing are unchecked against one. The frame axis waits for step 11.
 
 **Two selections, each with one owner** — the spectra tab's pattern (one state
 owner, every view mirrors it through a cheap door; [`spectra.md`](?doc=web/spectra.md)

@@ -138,10 +138,10 @@
 }
 
 /* ---- The ladder of a calculation root (results.md § 2.4) ------------ */
-.results-fallback .results-ladder {
-    margin: var(--space-md) 0;
+.results-ladder {
+    margin-bottom: var(--space-md);
 }
-.results-fallback .results-ladder-title {
+.results-ladder-title {
     margin: 0 0 var(--space-sm);
     font-size: 1rem;
     font-weight: 600;

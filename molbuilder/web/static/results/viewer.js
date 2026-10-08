@@ -157,8 +157,7 @@
      * (`inspectors.stateChip`) -- one vocabulary of words and tones
      * (`running-a-job.md` § 4.2); a third copy is what § 5c.3 forbids. */
     function _renderLadder(ladder) {
-        const host = els.fallback
-            && els.fallback.querySelector(".results-ladder");
+        const host = $("results-ladder");
         if (!host) return;
         host.textContent = "";
         const stages = ladder && Array.isArray(ladder.stages) ? ladder.stages : [];
@@ -212,7 +211,7 @@
         host.hidden = false;
     }
 
-    function _showFallback(file, place, ladder) {
+    function _showFallback(file, place) {
         if (currentHandle) {
             try { currentHandle.dispose(); } catch (_) { /* swallow */ }
             currentHandle = null;
@@ -224,7 +223,6 @@
         if (els.fallback) {
             els.host.appendChild(els.fallback);
             _renderPlaceNote(place);
-            _renderLadder(ladder || null);
         }
         _renderStatus(file, null);
     }
@@ -268,11 +266,14 @@
         const ladder = (sel && sel.ladder) || null;
         const scope = { dir: (sel && sel.dir) || "",
                         diverged: !!(sel && sel.diverged) };
+        // THE LADDER, ABOVE THE PANEL, on every answer: a root's product is
+        // shown with it, and anything that is not a root hides it.
+        _renderLadder(ladder);
         const reg  = (window.molbuilder || {}).inspectors;
         if (!reg) {
             _hideLoading();
             _clearMounted();
-            _showFallback(file, place, ladder);
+            _showFallback(file, place);
             _renderStatus("", "", scope);
             return;
         }
@@ -304,7 +305,7 @@
         if (!inspector) {
             _hideLoading();
             _clearMounted();
-            _showFallback(file, place, ladder);
+            _showFallback(file, place);
             _renderStatus("", "", scope);
             return;
         }

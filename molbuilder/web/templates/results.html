@@ -115,6 +115,11 @@
      new one; the host's contents are exclusively owned by the
      active inspector while mounted.  See
      docs/web/results.md for the contract. #}
+  {# A CALCULATION ROOT'S LADDER (results.md 2.4): filled by
+     results/viewer.js::_renderLadder from `/api/results/dir` -> `ladder`,
+     above the panel, so a root's product -- a transport report -- is shown
+     WITH it, never instead of it; hidden for anything that is not a root. #}
+  <div id="results-ladder" class="card results-ladder" hidden></div>
   <section id="inspector-host" class="results-inspector-host">
     {# Fallback content shown by results/viewer.js whenever the
        registry's pick() returns null OR no file is selected.  The
@@ -132,10 +137,6 @@
          product yet, and a folder nobody described all read as the one
          generic sentence below. #}
       <p class="inspector-card-note results-place-note" hidden></p>
-      {# A CALCULATION ROOT'S LADDER (results.md 2.4): filled by
-         results/viewer.js::_renderLadder from `/api/results/dir` ->
-         `ladder`; hidden for anything that is not a root. #}
-      <div class="results-ladder" hidden></div>
       <p class="inspector-card-note">
         Open a directory in the <strong>Projects</strong> sidebar on the
         left, then click <strong>Reload from current project dir</strong>.
@@ -260,7 +261,7 @@
 {# A COMPOUND suffix (`.transport.json`) -- specific, so it must register
    ahead of the `.json` catch-all in source.js, or a finished conductance
    run is shown as a text pane. #}
-<script defer src="{{ url_for('static', filename='lib/inspectors/transport.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/inspectors/transport.js') }}"></script>
 {# A SIESTA vibration's displacement sweep (`.fc-sweep.json`) -- compound, so
    ahead of the `.json` catch-all too (engines/vibration.md 5.9). #}
 <script defer src="{{ url_for('static', filename='lib/inspectors/fc-sweep.js') }}"></script>
