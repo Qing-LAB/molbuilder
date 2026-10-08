@@ -1321,7 +1321,7 @@ def summarize_cmd(kind: str, stage, bundle: str,
             click.echo(f"-> {out}")
             _ledger(_P(bundle), "summarize", "transport-record",
                     out=str(out), points=len(rec["points"]),
-                    pending=len(rec.get("pending", ())))
+                    pending=len(rec["pending"]), failed=len(rec["failed"]))
             return
         if _is_vibration:
             # A DISPLACEMENT SWEEP'S SUMMARY (engines/vibration.md § 5.9): the

@@ -38,8 +38,8 @@
 
 .transport-iv th { color: var(--text-muted); font-weight: 600; }
 
-/* A point that has not run is not a failure — the record is written by a
- * reader, so a queued transmission stage reads as pending. */
+/* A point without its transmission: its state chip says pending or failed,
+ * and the row reads quieter than a point with a result. */
 .transport-pending td { color: var(--text-muted); font-style: italic; }
 
 .transport-stages-title { margin: 0; }
@@ -65,13 +65,20 @@
     margin-bottom: var(--space-xs);
 }
 
+/* The rung's state: the ladder's chip, then its detail. */
+.transport-stage-state {
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-xs);
+}
+
+.transport-stage-detail { color: var(--text-muted); }
+
 .transport-stage-facts {
     font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
 }
 
-/* Sequential dependence: a rung that has not run is stated plainly and
- * reads as quieter than one that has, without reading as an error. */
+/* A rung that has not finished reads quieter; its chip says why. */
 .transport-stage-facts.is-pending { color: var(--text-muted); }
 
 /* Two leads are bulk runs of the same metal; their Fermi levels disagreeing

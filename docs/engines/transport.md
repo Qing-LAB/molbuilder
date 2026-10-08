@@ -587,6 +587,17 @@ from. And the caveat that goes with any DFT-NEGF conductance: plain GGA puts the
 molecule's levels too close to E_F and overestimates a molecular junction's
 conductance, often by one to two orders of magnitude (§ 2).
 
+**What it holds today** *(2026-10-07)*: each rung's state and detail — the one
+status door's, as `jobset status` and the ladder say it — with a seed's and a
+device's energy and SCF convergence and each lead's E_F; per bias point T(E),
+T(E_F), the conductance and the current (total and as printed), and the points
+without a transmission as `pending` or `failed` in their run's words; the
+treatment; the citation's provenance slot. The Results tab composes it on read
+(`/api/transport/record`); `summarize run` writes the same composition to the
+file. **Not yet** — plan § 5u.1 step 9: the DOS and eigenchannels, the
+provenance from each rung's `.gathered-from`, the device's NEGF-phase figures,
+the E_F reference checked, and the DFT-NEGF caveat.
+
 ---
 
 ## 2. The physics in one page

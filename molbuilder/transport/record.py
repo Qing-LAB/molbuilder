@@ -8,7 +8,7 @@ integral — parsed, never recomputed).  Both formats were pinned against
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@2``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@3``): T(E)
 per bias point, the I–V table -- the junction's TOTAL current, with the
 figure TBtrans printed and the factor between them (:data:`CURRENT_MEANS`)
 -- and the provenance that says which junction built it — the citation (from ``slot-provenance.json``) and
@@ -17,8 +17,16 @@ mapped back to the relaxation's identities.
 
 Reading is ASYNCHRONOUS by design, the same doctrine as the bench
 summarizer: a point whose transmission has not run yet reads as
-*pending*, never as a failure of the set — `summarize` is a reader,
-and nothing is produced on a host that has produced nothing.
+*pending*, never as a failure of the set, and one whose run ended without
+its transmission reads as *failed*, in its run's own words — `summarize`
+is a reader, and nothing is produced on a host that has produced nothing.
+
+**COMPOSED ON READ** (`engines/transport.md` § 2a.12): every rung's state is
+the one status door's (`runstatus.jobset_status`, what `jobset status` and
+the Results tab's ladder say), and every point's its run's (`run_status`);
+the Results tab asks `/api/transport/record`, which composes the record
+each time it is opened, so a rung that ran since `summarize` is never shown
+as it was.
 """
 from __future__ import annotations
 
@@ -29,12 +37,14 @@ from typing import Dict, List, Optional, Tuple
 
 from ..atom_permutation import PERMUTATION_FILE
 
-#: ``@2``: ``current_a`` is the junction's TOTAL current -- both spin
-#: channels -- with TBtrans's printed figure beside it
-#: (``current_a_printed``).  An ``@1`` record's ``current_a`` is the printed
-#: figure, one spin channel's, so it is refused by its version, and
-#: `summarize run` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@2"
+#: ``@3``: each rung's ``state`` is the status door's word (``finished``,
+#: ``failed``, ``running`` ...) with its ``detail``, and a point without a
+#: transmission is ``pending`` or ``failed`` by its run's state.
+#: ``current_a`` is the junction's TOTAL current -- both spin channels --
+#: with TBtrans's printed figure beside it (``current_a_printed``).  An
+#: older record is refused by its version, and `summarize run` writes it
+#: again.
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@3"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -190,11 +200,16 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
 
     **A transport result is FIVE calculations, and the record says so**, so
     a reader can tell a run that has not started from one stalled at the
-    device.  The ladder is the
-    structure of the result (`engines/transport.md` § 1), and a parser that
-    understands the format reports that structure rather than its final line.
+    device (`engines/transport.md` § 1).
 
-    **Each rung's own key fact, which is not the same fact:**
+    **WHERE EACH RUNG STANDS is the one status door's answer**
+    (`runstatus.jobset_status` -- what `jobset status` prints and the
+    Results tab's ladder draws): its ``state`` and ``detail`` in that
+    door's words, a bias scan's rung speaking from its first point not
+    finished.  Nothing here reads a run's state a second way.
+
+    **Each rung's own key fact, which is not the same fact**, read from the
+    run's engine output once it has one:
 
     * *seed* / *device* -- did the SCF converge, and at what energy.  The seed
       hands the device a density; the device hands TBtrans a Hamiltonian.
@@ -203,114 +218,55 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
       BULK run whose *"E_F is the reference energy"* (§ 2a.13), T(E) is
       measured relative to it, and `G = G0 * T(E_F)` is evaluated at it.  Two
       leads that disagree is a defect nothing else on the Results tab shows.
-    * *transmission* -- has its own `points` / `pending` blocks already.
-
-    **Honest, not optimistic.**  A rung with no attempt reads ``not_run``; one
-    with an attempt but no `.out` reads ``no_output``; one whose parser
-    refuses reads ``unreadable`` with the reason.  Nothing is inferred from a
-    neighbour: `stage_inputs` makes the ladder sequential, so an unfinished
-    rung explains the ones after it, but this reports what each directory
-    says rather than reasoning about the order.
+    * *transmission* -- has its own `points` / `pending` / `failed` blocks.
     """
-    from ..jobset.materialize import latest_attempt, run_dir
+    from ..jobset.materialize import ladder_homes
+    from ..jobset.model import FILENAME as JOBSET_FILENAME, JobSet
+    from ..jobset.runstatus import jobset_status
     from ..parse import detect
     from .stages import STAGE_FACT, TRANSPORT_STAGES
 
-    from ..jobset.materialize import ladder_homes
-    ladder = {h.name: h.token for h in ladder_homes(base, task)}
+    jpath = base / JOBSET_FILENAME
+    status = jobset_status(JobSet.load(jpath) if jpath.is_file() else None,
+                           base)
+    by_name = {s.name: s for s in status.stages}
+    tokens = {h.name: h.token for h in ladder_homes(base, task)}
     out: List[Dict] = []
     for name in TRANSPORT_STAGES:
-        token = ladder.get(name)
-        fact: Dict = {"stage": name, "token": token}
-        if token is None:                      # the description omits it
-            fact["state"] = "not_described"
-            out.append(fact)
+        s = by_name.get(name)
+        if s is None:                          # the description omits it
+            out.append({"stage": name, "token": None,
+                        "state": "not_described"})
             continue
-        # WHERE THIS RUNG RAN -- the one door's answer (`rung_containers`).
-        # A bias SCAN puts the device and the transmission under one v-dir
-        # per point (`<token>/v<V>/run-<n>`, § 4.2/4.3).
-        from .stages import rung_containers
-        containers = [d for d, _v in rung_containers(base, task, name)]
-        cand = [(c, latest_attempt(c)) for c in containers]
-        cand = [(c, a) for c, a in cand if a is not None]
-        if not cand:
-            fact["state"] = "not_run"
-            out.append(fact)
-            continue
-        # A SCAN'S RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED, in the
-        # scan's order, and from its last once every point has -- status's
-        # rule (`runstatus._job_status`), each point asked the one door
-        # (`runrecord.ending`).
-        from ..runfiles import RunNames
-        from ..runrecord import ending
-        names = RunNames.of(label, token, task.shape)
-        basename = names.stem
-        container, att = next(
-            ((c, a) for c, a in cand
-             if not ending(run_dir(c), basename).ok), cand[-1])
-        if len(containers) > 1:
-            fact["points"] = len(cand)
-        fact["attempt"] = str(att.relative_to(base))
+        token = tokens.get(name)
+        fact: Dict = {"stage": name, "token": token, "state": s.state,
+                      "detail": s.detail}
+        if s.attempt and s.dir:
+            fact["attempt"] = f"{s.dir}/{s.attempt}"
         # WHICH QUESTION THIS RUNG ANSWERS -- a column, not a branch on the
-        # name (`stages.STAGE_FACT`).  A rung whose fact is its own PRODUCT
-        # is not an SCF and is not asked one: TBtrans converges nothing and
-        # reports no total energy, so parsing its `.out` for either could
-        # only ever fail.
+        # name (`stages.STAGE_FACT`).  The transmission's answer is its
+        # points; TBtrans converges nothing and reports no total energy.
         answers = STAGE_FACT.get(name, "scf")
-        outs = _outs_newest_first(run_dir(container), token)
-        # PRODUCED ANYTHING AT ALL is asked of every rung the same way, and
-        # before the split below: a prepped rung that has not run reads
-        # `no_output` whatever question it would have answered.
+        outs = (_outs_newest_first(base / s.dir / s.attempt, token)
+                if answers != "product" and s.attempt and s.dir else [])
         if not outs:
-            fact["state"] = "no_output"
-            out.append(fact)
-            continue
-        if answers == "product":
-            # ITS `.out` IS EVIDENCE IT RAN, NOT SOMETHING TO PARSE.  TBtrans
-            # converges nothing and reports no total energy, so the state
-            # comes from the run's own conclusion -- the door's answer, no
-            # parser involved -- and the RESULT is the transmission this
-            # record already carries in its `points` blocks.
-            # THE ONE RUN-STATE DOOR, asked as every reader asks it: the
-            # rung's run by its name and with its launch record (plan W38
-            # M4) -- one that does not read is said, never guessed past.
-            from ..parse.dirs import run_status
-            from ..runrecord import LaunchRecordError, launch_record
-            where = run_dir(container)
-            try:
-                launch = launch_record(where, names)
-            except LaunchRecordError as exc:
-                fact["state"] = "unreadable"
-                fact["why"] = str(exc)
-                out.append(fact)
-                continue
-            st = run_status(where, basename, launch=launch)
-            fact["state"] = "ran" if st.state == "finished" else st.state
-            if st.state != "finished":
-                fact["run_state"] = st.state
-            fact["detail"] = st.detail
             out.append(fact)
             continue
         try:
             res = detect(str(outs[0])).parse(str(outs[0]))
         except Exception as exc:               # a refusal is an ANSWER here
-            fact["state"] = "unreadable"
-            # THE FIRST SENTENCE, not the essay.  `UnknownFormatError` lists
-            # every registered parser on purpose -- right for someone who
-            # pointed at a file and has to pick, wrong for one cell of a
-            # five-row ladder, where it buried the other four.
-            fact["why"] = str(exc).split(". ")[0].strip() or str(exc)
+            # THE FIRST SENTENCE, not the essay: `UnknownFormatError` lists
+            # every registered parser, which buries the other four rungs.
+            fact["unreadable"] = (str(exc).split(". ")[0].strip()
+                                  or str(exc))
             out.append(fact)
             continue
-        fact["state"] = "ran"
-        fact["run_state"] = res.run_state
         fact["scf_converged"] = res.scf_converged
         frames = res.frames or []
         if frames:
             fact["energy_ev"] = frames[-1].energy
             # THE LEAD'S FERMI LEVEL, from the last SCF cycle of the last
-            # frame -- the converged one.  Kept by the SIESTA parser for
-            # exactly this.  Asked by the COLUMN, so adding a
+            # frame -- the converged one.  Asked by the COLUMN, so adding a
             # third lead one day is a table row and not a third name here.
             if answers == "fermi":
                 hist = frames[-1].scf_history or []
@@ -322,33 +278,62 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     return out
 
 
-def collect_record(base_dir, task) -> Dict:
+def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     """Walk the transmission attempts and build the record dict.
 
-    Reads each point's LATEST attempt; a point with no attempt or no
-    transmission output lands in ``pending`` by name.  Raises
-    :class:`RecordError` only when NOTHING has run — an empty record
-    would say less than the refusal.
+    Reads each point's LATEST attempt, its state the run door's
+    (`parse.dirs.run_status`): a point with its transmission is in
+    ``points``; one not launched, queued or running is ``pending`` -- never
+    a failure; one whose run failed, stopped, or ended without its
+    transmission is ``failed``, saying which (the displacement sweep's
+    split, `spectra.displacement_sweep`).  Raises :class:`RecordError` when
+    no point has its transmission -- an empty record would say less than
+    the refusal -- unless ``partial``: the Results tab's read, where a
+    ladder in progress has a report (`engines/transport.md` § 2a.12).
     """
     from ..jobset.materialize import latest_attempt, run_dir, stage_home
+    from ..parse.dirs import run_status
+    from ..runfiles import RunNames
+    from ..runrecord import LaunchRecordError, launch_record
     from .compose import PROVENANCE_FILE
 
     base = Path(base_dir)
     points_out: List[Dict] = []
     pending: List[Dict] = []
+    failed: List[Dict] = []
     token = stage_home(base, task, "transmission").token
+    names = RunNames.of(task.label, token, task.shape)
     opened = False                        # an attempt open: it is prepped
     for v, container in _point_dirs(base, task):
         att = latest_attempt(container)   # None is the ANSWER: prepared?
         opened = opened or att is not None
+        if att is None:
+            pending.append({"bias_v": v, "state": "not-started",
+                            "why": "no attempt opened yet -- prep and "
+                                   "launch the transmission"})
+            continue
         where = run_dir(container)        # ...and this is where to look
+        rel = str(att.relative_to(base))
+        # THE POINT'S STATE, the run door's -- asked as every reader asks
+        # it, with its launch record; one that does not read is said.
+        try:
+            launch = launch_record(where, names)
+        except LaunchRecordError as exc:
+            failed.append({"bias_v": v, "attempt": rel,
+                           "state": "unreadable", "why": str(exc)})
+            continue
+        st = run_status(where, names.stem, launch=launch)
         avtrans = sorted(where.glob(f"{task.label}.TBT.AVTRANS_*"))
-        if att is None or not avtrans:
-            pending.append({
-                "bias_v": v,
-                "why": ("no attempt open" if att is None
-                        else "no transmission output in "
-                             f"{att.relative_to(base)}")})
+        if st.state != "finished" or not avtrans:
+            entry = {"bias_v": v, "attempt": rel, "state": st.state,
+                     "why": st.detail}
+            if st.state in ("pending", "queued", "running"):
+                pending.append(entry)
+            else:
+                if st.state == "finished":
+                    entry["why"] = (f"the run finished without writing its "
+                                    f"transmission ({st.detail})")
+                failed.append(entry)
             continue
         energies, trans = parse_avtrans(avtrans[0].read_text())
         spin = deck_spin(where)
@@ -370,22 +355,24 @@ def collect_record(base_dir, task) -> Dict:
             "current_a_printed": current,
             "spin": spin,
         })
-    if not points_out:
+    if not points_out and not partial:
         # THE WAY ON, by what the stage's state says: prepped (an attempt is
         # open), it is launched or let finish -- a prepped stage refuses a
         # second prep (`job-system.md` § 5.0); else prepped, then launched.
         from ..jobset.commands import block, launch_lines, run_first
         raise RecordError(
-            "no transmission point has produced output yet -- "
+            "no transmission point has its transmission yet -- "
             + ("launch the transmission stage, or let it finish:\n"
                + block(launch_lines("run", "transmission", base=base_dir))
                if opened else
                "run the transmission stage first:\n"
                + block(run_first("transmission", base=base_dir)))
             + "\n"
-            + ("  (pending: "
-               + "; ".join(f"{p['bias_v']:g} V ({p['why']})"
-                           for p in pending) + ")" if pending else ""))
+            + "".join(f"  ({what}: "
+                      + "; ".join(f"{p['bias_v']:g} V, {p['state']} "
+                                  f"({p['why']})" for p in got) + ")\n"
+                      for what, got in (("pending", pending),
+                                        ("failed", failed)) if got))
 
     provenance = None
     prov_file = base / PROVENANCE_FILE
@@ -409,7 +396,8 @@ def collect_record(base_dir, task) -> Dict:
         # Recorded here, not decided in the browser: § 2a.12 requires the
         # treatment NAMED BESIDE THE CURVE and not in metadata, because "the
         # two kinds of I-V are different claims and look identical on a plot".
-        "treatment": ("finite-bias" if len(points_out) + len(pending) > 1
+        "treatment": ("finite-bias"
+                      if len(points_out) + len(pending) + len(failed) > 1
                       else "single-bias"),
         "points": points_out,
         "iv": {
@@ -426,8 +414,9 @@ def collect_record(base_dir, task) -> Dict:
             "atom_permutation": PERMUTATION_FILE,
         },
     }
-    if pending:
-        record["pending"] = pending
+    # EVERY KEY, EVERY RECORD: an empty list where there is none.
+    record["pending"] = pending
+    record["failed"] = failed
     return record
 
 
@@ -445,7 +434,9 @@ def iv_table_text(record: Dict) -> str:
     lines = [f"transport record — {record['label']}: "
              f"{len(record['points'])} point(s)"
              + (f", {len(record['pending'])} pending"
-                if record.get("pending") else "")]
+                if record.get("pending") else "")
+             + (f", {len(record['failed'])} failed"
+                if record.get("failed") else "")]
     lines.append(f"  {'V [V]':>8}  {'G(E_F) [G0]':>12}  "
                  f"{'I total [A]':>12}  {'I printed [A]':>13}")
     for p in record["points"]:
@@ -458,9 +449,10 @@ def iv_table_text(record: Dict) -> str:
             + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
             + "  "
             + (f"{i0:>13.4e}" if i0 is not None else f"{'--':>13}"))
-    for p in record.get("pending", ()):
-        lines.append(f"  {p['bias_v']:>8.3f}  {'pending':>12}  "
-                     f"{'':>12}  ({p['why']})")
+    for what in ("pending", "failed"):
+        for p in record.get(what, ()):
+            lines.append(f"  {p['bias_v']:>8.3f}  {what:>12}  "
+                         f"{p['state']:>12}  ({p['why']})")
     for spin, means in sorted((record.get("current_means") or {}).items()):
         lines.append(f"  {spin}: {means}")
     return "\n".join(lines)

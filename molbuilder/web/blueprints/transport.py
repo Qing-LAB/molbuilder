@@ -16,6 +16,12 @@ hand-over — nothing is awaiting, so the tab selects and decides):
     POST /api/transport/swap_electrodes   swap L-electrode / R-electrode
                                           on a cited junction, once the
                                           person agrees to the offer
+    GET  /api/transport/record            a calculation's transport
+                                          record, COMPOSED ON READ
+                                          (`engines/transport.md`
+                                          § 2a.12): every rung's state
+                                          and every point's, as they are
+                                          now
     POST /api/transport/describe          the FINISHED task.json text —
                                           the web spelling of `jobset
                                           init --calculation transport`;
@@ -271,6 +277,49 @@ def api_transport_describe_attempt() -> Any:
         "params": params_out,
         "fix": fix,
     })
+
+
+@bp.route("/api/transport/record", methods=["GET"])
+def api_transport_record() -> Any:
+    """The transport record of the calculation ``?path=`` names -- its
+    ``<label>.transport.json`` -- composed from its rungs as they are now
+    (`transport.record.collect_record`, ``partial``: a ladder in progress
+    has a report), never the copy `summarize run` wrote, which stays the
+    command line's deliverable.  The bench summary's door, for a transport
+    calculation (`/api/bench/summary`).
+
+    Errors: 400 for a path outside the projects tree, or one that is not a
+    transport calculation's record; 404 for no such file.
+    """
+    from pathlib import Path
+    from molbuilder.task import FILENAME, read_task
+    from molbuilder.transport.record import RecordError, collect_record
+    from .files import _PickerError, _resolve_within_roots
+
+    raw = str(request.args.get("path") or "")
+    try:
+        path = _resolve_within_roots(raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not path.is_file():
+        return jsonify({"ok": False, "error": f"no such file: {raw}"}), 404
+    base = Path(path).parent
+    try:
+        task = read_task(base / FILENAME)
+    except Exception as exc:                                  # noqa: BLE001
+        return jsonify({"ok": False, "error": (
+            f"{path.name}: its calculation's description does not read -- "
+            f"{type(exc).__name__}: {exc}")}), 400
+    if task.calculation != "transport":
+        return jsonify({"ok": False, "error": (
+            f"{path.name}: {base.name} is a {task.calculation} "
+            f"calculation, not a transport one")}), 400
+    try:
+        record = collect_record(base, task, partial=True)
+    except (RecordError, OSError, ValueError) as exc:
+        return jsonify({"ok": False, "error": (
+            f"the record could not be composed: {exc}")}), 400
+    return jsonify({"ok": True, "record": record})
 
 
 @bp.route("/api/transport/swap_electrodes", methods=["POST"])

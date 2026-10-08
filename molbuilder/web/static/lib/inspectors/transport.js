@@ -8,8 +8,10 @@
  * collapses siblings within ONE directory and cannot express it; that is
  * § 5c.1's open question and not a presenter's to answer.
  *
- * Reads through `ctx.readFile` — the one shared reader every presenter uses
- * (`web/presenters.md` § 2) — so it opens no route of its own.
+ * COMPOSED ON READ (`engines/transport.md` § 2a.12): the record arrives from
+ * `/api/transport/record`, which composes it from the rungs as they are now
+ * -- every rung's state the one status door's, every point's its run's --
+ * never the copy `summarize run` wrote.  The bench summary's pattern.
  */
 (function (root) {
     "use strict";
@@ -26,18 +28,29 @@
      * still registers this viewer and fails only where it draws. */
     const _el = (tag, cls, text) => root.molbuilder.dom.el(tag, cls, text);
 
+    /* THE ONE STATE CHIP -- the ladder's and the bench summary's words and
+     * tones (`inspectors.stateChip`), so a rung reads here as it reads in
+     * the ladder. */
+    function _chip(state) {
+        const reg = (root.molbuilder || {}).inspectors || {};
+        if (typeof reg.stateChip === "function") return reg.stateChip(state);
+        return _el("span", null, String(state));
+    }
+
     function render(host, rec) {
         host.innerHTML = "";
         const wrap = _el("div", "transport-record card");
 
         const pts = Array.isArray(rec.points) ? rec.points : [];
         const pending = Array.isArray(rec.pending) ? rec.pending : [];
+        const failed = Array.isArray(rec.failed) ? rec.failed : [];
 
         wrap.appendChild(_el("h3", "transport-title",
             "Transport — " + (rec.label || "(unlabelled)")));
         wrap.appendChild(_el("p", "transport-sub",
             pts.length + " bias point" + (pts.length === 1 ? "" : "s")
-            + (pending.length ? ", " + pending.length + " pending" : "")));
+            + (pending.length ? ", " + pending.length + " pending" : "")
+            + (failed.length ? ", " + failed.length + " failed" : "")));
 
         const table = _el("table", "transport-iv");
         const head = _el("tr");
@@ -59,13 +72,15 @@
             tr.appendChild(_el("td", null, _fmt(p.current_a_printed, 4, true)));
             table.appendChild(tr);
         });
-        /* A pending point is a point that has not RUN, not a failure: the
-         * record is written by a reader, so a transmission stage still in the
-         * queue reads as pending rather than as a broken set. */
-        pending.forEach((p) => {
+        /* A POINT WITHOUT ITS TRANSMISSION, in its run's words: pending is
+         * still to come -- not launched, queued, running -- never a
+         * failure; failed is a run that ended without it, and says why. */
+        pending.concat(failed).forEach((p) => {
             const tr = _el("tr", "transport-pending");
             tr.appendChild(_el("td", null, _fmt(p.bias_v, 3, false)));
-            tr.appendChild(_el("td", null, "pending"));
+            const st = _el("td");
+            st.appendChild(_chip(p.state));
+            tr.appendChild(st);
             const why = _el("td", null, p.why || "");
             why.setAttribute("colspan", "2");
             tr.appendChild(why);
@@ -79,11 +94,10 @@
         });
 
         /* THE LADDER, in order.  A transport result is FIVE calculations and
-         * the record says so (`transport/record.py::_stage_facts`); this
-         * renders that structure rather than only its last rung.  Sequential
-         * dependence means an unfinished rung explains the ones after it, so
-         * the honest statement per rung is enough -- no inference, no
-         * progress bar. */
+         * the record says so (`transport/record.py::_stage_facts`): each
+         * rung's state is the status door's -- the ladder's chip and its
+         * detail -- and beside it the rung's own answer once its run has
+         * one: converged or not, its energy, a lead's E_F. */
         const stages = Array.isArray(rec.stages) ? rec.stages : [];
         if (stages.length) {
             wrap.appendChild(_el("h4", "transport-stages-title", "Stages"));
@@ -92,36 +106,32 @@
                 const card = _el("div", "transport-stage");
                 card.appendChild(_el("div", "transport-stage-name",
                                      st.token ? st.token : st.stage));
-                const bits = [];
-                if (st.state === "ran") {
-                    bits.push(st.scf_converged === true ? "converged"
-                            : st.scf_converged === false ? "NOT converged"
-                            : "ran");
-                    if (st.run_state && st.run_state !== "ended")
-                        bits.push(st.run_state);
-                    /* The lead's Fermi level is the reference the whole
-                     * junction is measured against, so it leads the line for
-                     * an electrode rather than trailing the energy. */
-                    if (st.fermi_ev !== undefined && st.fermi_ev !== null)
-                        bits.unshift("E_F = " + _fmt(st.fermi_ev, 3, false)
-                                     + " eV");
-                    if (st.energy_ev !== undefined && st.energy_ev !== null)
-                        bits.push("E = " + _fmt(st.energy_ev, 4, false)
-                                  + " eV");
-                } else if (st.state === "not_run") {
-                    bits.push("not run yet");
-                } else if (st.state === "no_output") {
-                    bits.push("prepared, no output yet");
-                } else if (st.state === "unreadable") {
-                    bits.push("could not be read" + (st.why ? ": " + st.why : ""));
-                } else if (st.state === "not_described") {
-                    bits.push("not in this description");
+                const head = _el("div", "transport-stage-state");
+                if (st.state === "not_described") {
+                    head.appendChild(_el("span", null,
+                                         "not in this description"));
                 } else {
-                    bits.push(String(st.state));
+                    head.appendChild(_chip(st.state));
+                    if (st.detail) head.appendChild(
+                        _el("span", "transport-stage-detail", " " + st.detail));
                 }
+                card.appendChild(head);
+                const bits = [];
+                /* The lead's Fermi level is the reference the whole junction
+                 * is measured against, so it leads the line for an electrode
+                 * rather than trailing the energy. */
+                if (st.fermi_ev !== undefined && st.fermi_ev !== null)
+                    bits.push("E_F = " + _fmt(st.fermi_ev, 3, false) + " eV");
+                if (st.scf_converged === true) bits.push("SCF converged");
+                else if (st.scf_converged === false)
+                    bits.push("SCF NOT converged");
+                if (st.energy_ev !== undefined && st.energy_ev !== null)
+                    bits.push("E = " + _fmt(st.energy_ev, 4, false) + " eV");
+                if (st.unreadable)
+                    bits.push("its output could not be read: " + st.unreadable);
                 const body = _el("div", "transport-stage-facts",
                                  bits.join(" \u00b7 "));
-                if (st.state !== "ran") body.classList.add("is-pending");
+                if (st.state !== "finished") body.classList.add("is-pending");
                 card.appendChild(body);
                 list.appendChild(card);
             });
@@ -325,15 +335,15 @@
             (async function () {
                 let rec;
                 try {
-                    // ctx.readFile answers an envelope {ok, text, error?},
-                    // not a string (registry.js).
-                    const body = await ctx.readFile(file);
+                    const r = await fetch("/api/transport/record?path="
+                                          + encodeURIComponent(file));
+                    const body = await r.json();
                     if (!body || !body.ok) {
                         throw new Error(
                             "could not read " + file + ": " +
                             ((body && body.error) || "unknown"));
                     }
-                    rec = JSON.parse(body.text || "");
+                    rec = body.record;
                 } catch (e) {
                     if (disposed) return;
                     if (ctx && ctx.showError) ctx.showError(String(e));

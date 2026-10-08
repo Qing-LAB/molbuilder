@@ -209,8 +209,10 @@ Six of the eight presenters are simple, but two — **trajectory** and
   going until its phases finish ([`spectra.md`](?doc=web/spectra.md) § 7);
 - **bench-summary** is self-contained: it reads a sweep's `job-set.json`,
   renders the trials and a chart, and re-polls on its own cadence;
-- **transport** is self-contained too: it reads a `<label>.transport.json` and
-  draws the I–V table and transmission plot, once, with no polling;
+- **transport** is self-contained too: for a `<label>.transport.json` it asks
+  `/api/transport/record`, which composes the record from the rungs as they
+  are now, and draws each rung's state with the ladder's chip, the I–V table
+  and the transmission plot, once, with no polling;
 - **fc-sweep** likewise: it reads a `<label>.fc-sweep.json` and draws the
   stages' and modes' tables, once (bench-summary, transport and fc-sweep build
   their elements through one shared helper, `lib/dom.js`);
