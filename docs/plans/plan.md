@@ -1229,11 +1229,14 @@ verdict) → unscheduled · E14 (two uncited references) → the document sweep
 
 **State at a glance (2026-10-08).** B0 and B1 are committed. B2–B4 are
 **committed** (`ddf12a43`) and verified on the road junction (§ 5x.7); B5
-(`50631c8a`) and B6's record half (`cf26ac24`) are committed. Open: B6's
-Results-tab half, B7, B8, B9 — and the road junction must be rebuilt with
-its cell closed to one layer spacing (§ 5x.7, the reviews' blocker). **The
-condition for the milestone review (B8) — the workflow, the backend and the CLI
-complete — is not met**: it is B2–B7.
+(`50631c8a`), B6's record half (`cf26ac24`) and B6's Results half
+(`6d4ea7c4`) are committed. **The road junction was rebuilt with its cell
+closed** (`au-dta-junction`, c = 32.249 Å) and walked to its record and its
+Results tab — the sweep case (§ 5x.7, *The closed-cell walk*). Open: B6's R7
+and its single-bias and low-bias cases, B7, B8, B9; the wrapper's kill line
+(F11) is written but not yet seen on a killed point. **The condition for the
+milestone review (B8) — the workflow, the backend and the CLI complete — is
+not met**: it is B2–B7.
 
 ### 5x.0 The final goal
 
@@ -1423,7 +1426,7 @@ when" seen on **the road junction**, through the page and the printed verbs.
 | **B2–B4 gate** | the targeted tests judged: `tests/test_transport_prep.py`, `test_transport_task.py`, `test_transport_record.py`, `test_launch_protocol.py`, `test_launch_door.py`, `test_launch_values.py`, `test_launch_ask_mode.py`, `test_prep_protocol.py`, `test_prep_bench_fold.py` (the walker), `test_status_lists_the_ladder.py`, plus every test naming a moved name (grep `tests/` recursively for `_bench_walk`, `rung_container`, `_plan_chain`, `scan_points`, `never_started`); then **one commit** naming S1–S10 and P4 | `tests/` | the tests judged; the server restarted; the commit | **done**: 206 tests passed, nothing to judge; commit `ddf12a43`; the record `NameError` the walk found fixed in `8dc08851` |
 | **the road junction** | built on the Molbuilder tab in Chrome, relaxed through `init`/`prep`/`launch`, cited on the Transport tab (§ 5x.0) — the subject of every "done when" from here | `projects/claude-transport-walk/…` (a new calculation) | the relaxation finished; the transport described from its citation | **done 2026-10-08** (§ 5x.7): `structure/au-dithioacetylene` built and labelled on the page; `optimization/au-dta-relax` relaxed (finished, geometry NO); cited; `transport/au-dta-t` run to its record |
 | B5 | `status <stage>`: the points (done / why / started from) and the gather shown on every rung (R5); the sweep row's converged column — `SCF yes` when every point is done, `SCF NO` when a point finished unconverged (today: empty unless all done) — settled at B5 | `jobset/runstatus.py`, `jobset/_cli.py` (status) | `jobset status` and `status device` on the road junction, after (i) and (ii) | **done 2026-10-08** (`status device`: the gather, *0 V, 0.2 V taken over from run-1; the rest walked*, each point's start; a transmission point's *took*; the ready line's gather once; `SCF NO` when a point finished unconverged) |
-| B6 | the record and the Results tab: `tbtrans.transmission_files` (the channels) replaces `record.py`'s own glob (R1); the low-bias I(V) from T(E,0) (P1's record half); device facts from the run the transmission gathered (R4); E_F of device vs leads **checked** (R3); the treatment label beside the I–V (R2); R6's facts (the seed's E_F, the contour and poles, the window, points, TBT k-grid); the report composed on read and every run listed at the root, as § 2a.12 and `results.md` § 2.4 already say (R7); **R9 — the 3D viewer draws nothing in a real browser: its cause read before anything else on this tab** | `transport/record.py`, `parse/engines/tbtrans.py`, `inspectors/transport.js`, `results/viewer.js` | `summarize task` and the Results tab on the road junction, the three cases | not started |
+| B6 | the record and the Results tab: `tbtrans.transmission_files` (the channels) replaces `record.py`'s own glob (R1); the low-bias I(V) from T(E,0) (P1's record half); device facts from the run the transmission gathered (R4); E_F of device vs leads **checked** (R3); the treatment label beside the I–V (R2); R6's facts (the seed's E_F, the contour and poles, the window, points, TBT k-grid); the report composed on read and every run listed at the root, as § 2a.12 and `results.md` § 2.4 already say (R7); **R9 — the 3D viewer draws nothing in a real browser: its cause read before anything else on this tab** | `transport/record.py`, `parse/engines/tbtrans.py`, `inspectors/transport.js`, `results/viewer.js` | `summarize task` and the Results tab on the road junction, the three cases | record half committed (`cf26ac24`); Results half committed (`6d4ea7c4`): R2, R3 (the E_F frames), R9 (side-on), P1's table; **open: R7, and the single-bias and low-bias cases on the road junction** |
 | B7 | the small ones, each through the road: the swap applied to the calculation's copy (C1, § 4); the lead's file stem from `task.label` alone (C2); **the citation is a finished molbuilder relaxation run, nothing else** (C4; decision 7) — § 3.1's two saved-structure rows go, the Transport tab's picker offers runs, `compose` refuses the rest naming the relaxation to run first; C3 falls with form B; the window gate ± V/2 + 5 kT in the settings gate (P2) | `transport/compose.py`, `transiesta.py`, `web/blueprints/transport.py`, the tab, `validation/` | each refusal and each pass seen through the road | not started |
 | **B8** | **the milestone review** *(user, 2026-10-08)* — two rounds, fresh agents, the full code TEXT, every finding verified, one revision each: **the backend** (`jobset/`: prep, launch, status, continuation, materialize, runstatus, ledger; `transport/`: stages, compose, record, deck); **the CLI** (`init` / `prep` / `launch` / `status` / `summarize` for transport, the printed lines); **the UI, fact-checked against the contracts** — the Transport tab (the citation, the bias list and its builder, the switch, the template: is every parameter in its logical place, named by the contract's word, with no second home), Task setup (the stages, `execution`, `allocation`, the Prep ladder), the Results tab (the ladder with its points, T(E) per channel, the I–V with its label, the viewer — R9); **the checkpoint** (`molbuilder checkpoint save / restore` against *How the checkpoint supports you* and rule 1: a state before every prep; rollback as the only redo); **the stage/run configs** (`task.json`'s stages and run cards — `restart`, `continue_retries`, threads, `time`; the catalogue's stage rows; what prep states or refuses); **the CSS** — tokens only, the shared components (`lib/state-chip`, `ts-planlist`, `tm-kinds`), `[hidden]` guards, no magic numbers, the global sheets' reach | all of the above | both rounds clean | not started — **its condition is B2–B7 done** |
 | B9 | the doc sweep: `transport.md`'s "scan" passages (the orientation at :40, § 2a.7's grouping row, § 2a.9's axis rule, § 2a.10's advice, § 3's example and table, § 5's bias rule, § 6a, § 8) → "sweep" and this design; § 2a.14's table, § 3.2, § 3.4, § 3.6a; "attempt" in `project-layout.md` § 1.5–1.6 — the folder's word is **run**, `attempt` stays the code's identifier, said once in *Words*; R8's two links; the 18 contradictions (T) re-read | `docs/` | a reader finds one rule per concept | not started |
@@ -1602,6 +1605,45 @@ detected and the endings unified; the currents parsed with the spin factor.
 As a junction result it is **not trustworthy** (F12): the cell was fused. The
 test subject is the mechanism, not the physics (SZP, Γ, a 3-step
 relaxation): the numbers are not a result.
+
+**The closed-cell walk (2026-10-08, `au-dta-junction` → `au-dta-relax2` →
+`au-dta-t2`; the sweep case).** The junction rebuilt on the Cell page (*Span +
+gap*, c = 32.249 Å); the new gate seen both ways on the road — the fused cell
+refused on the transport rungs and warned at the relaxation, naming the c to
+set. The relaxation (run-0 killed, run-1 finished, geometry **NO** at 1.878
+eV/Å — loose on purpose), the citation, seed + leads, then the device sweep in
+**three bounded launches**: run-0 and run-1 killed at 0.4 V (a point not done
+restarts from the same start, by design — this one alone needs ~9 min, ~10 s a
+NEGF step), run-2 *takes over 0 V, 0.2 V done in run-1; runs 0.4 V (from
+0.2 V's .TSDE)* and finished, **3 of 3 points, SCF yes**; the transmission
+run-0 at its three points (~2.5 min each, 4 ranks); `summarize task`; the
+Results tab. The record: G(E_F) 0.083 / 0.024 / 0.021 G0, I 0 / 8.64e-7 /
+1.22e-6 A (both channels, the printed one doubled); ts-Vha +0.257 eV at 0 V,
+the device's −2.803 eV is −2.547 eV in the seed's frame against the seed's
+−2.542 eV — one sentence under the rungs, printed by `summarize`. The Results
+tab: *5 rungs, every rung finished*, the Device **side-on**, the I–V tab with
+its treatment beside the table. **Read in the logs and decks** (the user's
+ask): the tbtrans deck's window −2 … 2 eV, 401 points, `TBT.Elecs.Eta` 0.001
+eV, `TS.Voltage` and the chemical potentials per point, the Γ `TBT.k`; the
+*ensure entire Fermi function window* line is met at 0.4 V (±0.2 eV + 5 kT ≪
+2 eV); the device logs carry no *FORCES WRONG*; the *Removed N elements* line
+is the leads' coupling through the image, in every closed cell (F12, F14).
+
+**Found on this walk:** **F21** the Results report's camera — the view
+context put back the **end-on** pose this card had persisted before the
+side-on view existed (its restore lands after the report's camera action; a
+switch flip or the post-restore write persists whatever pose is current);
+**fixed** as the viewer's home view (`lookAlong` — the load's fit and Reset
+look along it; a camera action during a rebuild is held, `molview.md` § 10.9),
+so Reset gives the side-on and the lane records it · **F22** a sweep's walk
+script lives in `<stage>/launch/` and `run.json`'s command is relative to the
+stage folder, while `status` prints *Directory: <stage>/run-0* — no document
+says where the walk script is (B9) · a single click on a record in the
+sidebar does **not** switch the report — `results.md` § 3b's rule (a click is a
+preview; the panel's dropdown chooses), not a defect.
+
+**Not run on this walk:** `launch --cold`; the low-bias and single-bias cases
+(B6); no point was killed, so F11's kill line (`6d4ea7c4`) is still unseen.
 
 ## 5v. Documents that lag the code — the document sweeps' input *(2026-09-29)*
 
