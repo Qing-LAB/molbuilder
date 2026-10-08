@@ -43,16 +43,6 @@ launch_sends = true
 launch_refused = "--time: what a scheduler is asked for"
 after_launch = { ledger_holds = ["refused"] }
 
-# A ladder's launch acts on ONE stage: none named is refused, offering the
-# stages by name -- stages do not chain (`project-layout.md` § 1.6,
-# `job-system.md` § 5.3).
-[[case]]
-name = "a launch that names no stage is refused, offering the stages by name"
-launch = []
-launch_stage = ""
-launch_mode = "direct"
-launch_sends = true
-launch_refused = ["acts on ONE stage", "Stages do not chain"]
 
 [[case]]
 name = "a refused dry run writes nothing"
@@ -109,3 +99,13 @@ launch = []
 launch_mode = "direct"
 launch_sends = true
 listing = ["G0K1C1", "skipped -- already launched", "[ran]"]
+
+# A LAUNCH NAMING NO STAGE sends what is prepared and not launched -- the
+# one unit (`job-system.md`, *The task*, D3).
+[[case]]
+name = "a launch naming no stage sends the one stage prepared and not launched"
+launch = []
+launch_stage = ""
+launch_mode = "direct"
+launch_sends = true
+after_launch = { made = ["01_coarse/run-0/run.json"] }

@@ -91,4 +91,36 @@ def ladder(base, task, *, template_text: Optional[str] = None
             for h in ladder_homes(Path(base), task)]
 
 
-__all__ = ["Readiness", "readiness", "ladder"]
+def preselected(base, task, answers: List[Readiness]) -> List[str]:
+    """The stages `prep task` offers pre-selected (D2, `job-system.md`, *The
+    task*): for a kind whose stages each have a role -- transport, a
+    vibration (`template.KIND_ROLES`) -- every ready stage that builds on
+    nothing (`group.upstream_of`), which may share one job; for any other
+    kind, the first ready stage."""
+    from ..template import KIND_ROLES
+    from .group import upstream_of
+    ready = [a.stage for a in answers if a.ready]
+    if not ready:
+        return []
+    if getattr(task, "calculation", None) in KIND_ROLES:
+        free = [s for s in ready if not upstream_of(base, task, s)]
+        return free or ready[:1]
+    return ready[:1]
+
+
+def ladder_text(answers: List[Readiness]) -> str:
+    """The ladder as `prep task` shows it before it asks: each stage, where
+    it stands, and for one waiting the first line of what it waits for."""
+    width = max([len(a.stage) for a in answers] + [5])
+    out = []
+    for a in answers:
+        line = f"  {a.stage:<{width}}  {a.state:<8}"
+        if a.state == "waiting" and a.why:
+            line += "  " + a.why.splitlines()[0].rstrip(" -")
+        elif a.state == "ready" and a.takes:
+            line += "  takes " + "; ".join(a.takes)
+        out.append(line)
+    return "\n".join(out)
+
+
+__all__ = ["Readiness", "readiness", "ladder", "preselected", "ladder_text"]

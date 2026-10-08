@@ -248,3 +248,13 @@ stage = "coarse"
 prep = ["--stage", "medium"]
 refused = ["`medium` builds on `coarse`, so they cannot share one job", "Prep them apart"]
 made_lacks = ["job-set.json", "01_coarse"]
+
+# ===================================================================== #
+#  THE TASK'S QUESTION -- `job-system.md`, *The task*                   #
+# ===================================================================== #
+
+[[case]]
+name = "a prep naming no stage shows the ladder and, with nobody to ask, is refused naming the line that picks the ready stage -- writing nothing"
+stage = ""
+refused = ["the task's stages:", "coarse", "ready", "nobody to ask which stage(s) to prepare", "prep task --stage coarse"]
+made_lacks = ["job-set.json", "01_coarse"]

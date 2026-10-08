@@ -870,7 +870,7 @@ def _one_line(text) -> str:
 def _named(kind: str, stage) -> tuple:
     """How a row's stage is typed: a task's by ``--stage`` (a list, several),
     a benchmark's by position (`job-system.md` § 5.3)."""
-    if stage is None:
+    if not stage:
         return ()
     stages = stage if isinstance(stage, list) else [stage]
     if kind == "bench":

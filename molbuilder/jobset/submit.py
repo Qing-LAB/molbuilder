@@ -2145,38 +2145,41 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
                 mode: str, told, domain: Optional[str] = None,
                 mem: Optional[str] = None, time_s: Optional[int] = None,
                 cold: bool = False) -> LaunchPlan:
-    """ONE submission walking a GROUP's members -- the stages its prep
-    named together, in that order (`project-layout.md` § 1.6.6).  Each
-    member is planned as a stage alone is (:func:`_plan_member`: its
-    attempt, launched before or not, warm or ``cold``), its deck agreeing
-    with its launch; the walk runs each member's own run script in its own
-    attempt, and one that fails does not stop the others -- they build on
-    nothing of each other's.  The header is the one the group's prep wrote
-    (`launch/<group>.sbatch`); the walker is written at the send, with each
-    run's number."""
-    from .commands import block, launch_lines
-    from .group import GroupError, envelope, names_of
+    """ONE submission walking several stages -- a group its prep made, or
+    stages named together at launch -- in the ladder's order
+    (`project-layout.md` § 1.6.6).  They pass the group's checks here as at
+    prep: none builds on another (`group.refuse_feeding`), one allocation
+    (`group.envelope`).  Each is planned as a stage alone is
+    (:func:`_plan_member`: its attempt, launched before or not, warm or
+    ``cold``), its deck agreeing with its launch; the walk runs each one's
+    own run script in its own attempt, and one that fails does not stop the
+    others.  The header is the one the group's prep wrote
+    (`launch/<group>.sbatch`), or for stages first named together here,
+    rendered now; the walker is written at the send, with each run's
+    number."""
+    from .group import GroupError, envelope, names_of, refuse_feeding
     from .materialize import stage_home
     from ..task import FILENAME as TASK_FILENAME, read_task
-    jobs = [next((j for j in jobset.jobs if j.name == n), None)
-            for n in names]
-    recorded = jobs[0].group if jobs[0] is not None else None
-    if not recorded or set(recorded) != set(names) or any(
-            j is None or j.group != recorded for j in jobs):
-        raise SubmitError(
-            f"{', '.join(names)} were not prepared as one group -- a group "
-            f"is named at prep, and launched by the names its prep was told "
-            f"(project-layout.md § 1.6.6)."
-            + (f"  {names[0]}'s group:\n"
-               + block(launch_lines("task", *recorded, base=base))
-               if recorded else ""))
-    names = list(recorded)
+    from ..template import find_template
+    task = read_task(base / TASK_FILENAME)
+    missing = [n for n in names if not any(j.name == n
+                                           for j in jobset.jobs)]
+    if missing:
+        raise SubmitError(f"{', '.join(missing)}: not prepared -- "
+                          f"prepare first: `prep task`.")
+    order = [j.name for j in jobset.jobs]
+    names = sorted(names, key=lambda n: stage_home(base, task, n).seq
+                   or order.index(n))
+    tpl = find_template(base, task.label)
+    why = refuse_feeding(base, task, names,
+                         tpl.read_text(encoding="utf-8") if tpl else None)
+    if why:
+        raise SubmitError(why)
     jobs = [next(j for j in jobset.jobs if j.name == n) for n in names]
     try:
         shared = envelope(jobs)
     except GroupError as exc:
         raise SubmitError(str(exc)) from None
-    task = read_task(base / TASK_FILENAME)
     gn = names_of(task.label, [stage_home(base, task, n).token
                                for n in names])
     plan = LaunchPlan(base, mode, [])
@@ -2240,9 +2243,21 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
         return plan
     header = launch_dir / gn.name(".sbatch")
     if mode == "submit" and not header.is_file():
-        raise SubmitError(_no_sbatch(gn.stem, f"{LAUNCH_DIR}/"
-                                     f"{gn.name('.sbatch')}",
-                                     base=base, told=told))
+        # STAGES FIRST NAMED TOGETHER HERE: their header rendered now, as
+        # the bias chain's is -- the members' own placement, the shared
+        # allocation.
+        from ..runwrap import _render_sbatch_for
+        placed = next((j.placement for j in jobs if j.placement), None)
+        text = _render_sbatch_for(
+            base / f"{gn.stem}.sh", names=gn, project_dir=base,
+            resources=shared,
+            domain_pq=((placed["partition"], placed["qos"])
+                       if placed else None))
+        if text is None:
+            raise SubmitError(_no_sbatch(gn.stem, f"{LAUNCH_DIR}/"
+                                         f"{gn.name('.sbatch')}",
+                                         base=base, told=told))
+        plan.writes.text(header, _into_launch(text, gn))
     if header.is_file():
         plan.reads.append(_as_found(header, base))
     sent, placement, cmd = _sbatch_request(
@@ -2289,17 +2304,6 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
     plan = LaunchPlan(base, mode, [])
     sbatch_here = shutil.which("sbatch") is not None
     for job in jobset.jobs:
-        if job.group:
-            # A GROUP'S MEMBER goes with its group, never alone
-            # (`project-layout.md` § 1.6.6).
-            from .commands import block, launch_lines
-            raise SubmitError(
-                f"`{job.name}` was prepared in a group with "
-                f"{', '.join(n for n in job.group if n != job.name)} -- "
-                f"they share one job, launched together:\n"
-                + block(launch_lines("task", *job.group, base=base))
-                + "\n  To launch it alone, prep it alone: "
-                + rollback("the group's prep", base=base))
         m = _plan_member(jobset, base, job, mode=mode, writes=plan.writes,
                          named=only is not None, cold=cold)
         if isinstance(m, JobResult):

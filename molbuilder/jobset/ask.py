@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 if TYPE_CHECKING:
     from ..scheduler.admit import Refusal
@@ -345,6 +345,38 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
                                               default=True))
     yes = bool(prompt())
     return Said(yes, "yes" if yes else "no")
+
+
+@dataclass(frozen=True)
+class Picked:
+    """A choice's answer: what was picked, and the words the ledger keeps.
+    ``asked`` is false when there was nobody to ask -- no terminal -- which
+    the caller refuses, naming the flag that answers it (`job-system.md`,
+    *The task*)."""
+    picks: Tuple[str, ...]
+    words: str
+    asked: bool = True
+
+
+def choose(text: str, preselected, *, echo=None, prompt=None,
+           question: str = "which?") -> Picked:
+    """**The one choice** -- show ``text``, then ask which, Enter taking
+    ``preselected``: names, comma-separated, as the person types them
+    (resolved by the caller, through the one stage grammar).  ``echo`` /
+    ``prompt`` are injected as :func:`confirm`'s are; with no terminal and
+    no ``prompt``, nobody is asked."""
+    import click
+    from ..envs.hints import stdin_can_answer
+    echo = echo or click.echo
+    echo(text)
+    if prompt is None and not stdin_can_answer():
+        return Picked((), "no answer (not a terminal)", asked=False)
+    default = ",".join(preselected)
+    prompt = prompt or (lambda: click.prompt(f"  {question}", default=default,
+                                             show_default=bool(default)))
+    raw = str(prompt() or "").strip() or default
+    picks = tuple(w.strip() for w in raw.split(",") if w.strip())
+    return Picked(picks, "picked " + (", ".join(picks) or "nothing"))
 
 
 # --------------------------------------------------------------------- #

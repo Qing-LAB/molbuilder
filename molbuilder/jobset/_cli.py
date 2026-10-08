@@ -1123,6 +1123,11 @@ def prep_cmd(kind: str, words, stages, bundle: str, from_attempt,
     bench_stage, _trial, stages = _stage_words(kind, words, stages, "prep")
     if kind == "bench":
         stages = [bench_stage] if bench_stage else []
+    else:
+        # THE TASK'S QUESTION (`job-system.md`, *The task*): the ladder,
+        # each stage prepared, ready or waiting, then which ready stage(s)
+        # to prepare -- answered here, or by --stage.
+        stages = _ask_which_stages(base, stages)
     stage = stages[0] if len(stages) == 1 else None
     if len(stages) > 1 and (from_attempt or cold):
         raise click.ClickException(
@@ -1176,6 +1181,96 @@ def prep_cmd(kind: str, words, stages, bundle: str, from_attempt,
     for i, ans in enumerate(answers):
         _echo_prep_answer(ans, base, group=group,
                           last=(i == len(answers) - 1))
+
+
+def _launch_unit(base, js) -> list:
+    """What `launch task` sends when --stage names nothing
+    (`job-system.md`, *The task*): the stages prepared and not launched --
+    the status door's ``pending`` -- one unit each, a group its prep made
+    taken whole; one unit is sent; several, the question which; none, the
+    stages launched before offered to launch again.  With nobody to ask,
+    refused, naming each line."""
+    from .ask import choose
+    from .commands import block, launch_lines
+    from .runstatus import jobset_status
+    rows = [r for r in jobset_status(js, base).stages if r.prepared]
+    waiting = [r for r in rows if r.state == "pending"]
+    names = {r.name for r in waiting}
+    units: list = []
+    for r in waiting:
+        if any(r.name in u for u in units):
+            continue
+        whole = r.group and all(g in names for g in r.group)
+        units.append(list(r.group) if whole else [r.name])
+    if len(units) == 1:
+        return units[0]
+    if units:
+        text = ("prepared and not launched -- each one job:\n"
+                + "\n".join("  " + ", ".join(u) for u in units))
+        offered = units
+        question = "which to launch?"
+    else:
+        again = [r.name for r in rows]
+        if not again:
+            raise click.ClickException(
+                "nothing is prepared yet -- `prep task` first.")
+        text = ("nothing prepared is waiting; launched before, and launched "
+                "again warm or --cold:\n"
+                + "\n".join(f"  {r.name}  {r.state}" for r in rows))
+        offered = [[n] for n in again]
+        question = "which to launch again?"
+    picked = choose(text, offered[0] if units else [], question=question)
+    if not picked.asked or not picked.picks:
+        raise click.ClickException(
+            text + "\nname which with --stage (repeated, several as one "
+            "job):\n" + block([ln for u in offered
+                                for ln in launch_lines("task", *u,
+                                                       base=base)[:1]]))
+    return list(picked.picks)
+
+
+def _ask_which_stages(base, named) -> list:
+    """The stages `prep task` prepares: the ladder shown every time
+    (`ready.ladder_text`); the ones --stage ``named``, or else the question
+    -- the ready ones offered, the pre-selected ones Enter's answer (D2),
+    the question and its answer written down.  With nobody to ask, refused,
+    naming the line that picks them; with nothing ready, refused, the ladder
+    saying why."""
+    from ..task import FILENAME, read_task
+    from .ask import choose
+    from .commands import block, lines
+    from .ledger import record
+    from .ready import ladder, ladder_text, preselected
+    desc = base / FILENAME
+    if not desc.is_file():
+        raise click.ClickException(
+            f"{base} is not a described calculation -- `jobset init` first.")
+    # A DESCRIPTION OR TEMPLATE THAT DOES NOT READ is refused in its own
+    # words, as prep refuses it.
+    try:
+        task = read_task(desc)
+        answers = ladder(base, task)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from None
+    text = "the task's stages:\n" + ladder_text(answers)
+    if named:
+        click.echo(text)
+        return list(named)
+    pre = preselected(base, task, answers)
+    if not pre:
+        raise click.ClickException(
+            text + "\nno stage is ready to prepare -- each one above is "
+            "prepared, or waits for what it says.")
+    picked = choose(text, pre, question="which stage(s) to prepare?")
+    if not picked.asked:
+        raise click.ClickException(
+            "nobody to ask which stage(s) to prepare (not a terminal) -- "
+            "name them with --stage:\n"
+            + block(lines("prep", "task", *pre, base=base)))
+    record(base, "prep", "question", about="which stage(s) to prepare",
+           offered=[a.stage for a in answers if a.ready],
+           answer=picked.words)
+    return list(picked.picks)
 
 
 def _echo_prep_answer(ans, base, *, group=None, last: bool = True) -> None:
@@ -1704,9 +1799,18 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         # The description's spelling from here on -- what the ledger
         # records and every line prints (plan § 5w K12) -- and a stage it
         # holds that is not prepared, said so (W55 D4).
+        if not group and stage is None:
+            # NOTHING NAMED: what is prepared and not launched, one unit --
+            # a stage, or a group its prep made -- or the question
+            # (`job-system.md`, *The task*, D3).
+            unit = _launch_unit(base, js)
+            if len(unit) > 1:
+                group = unit
+            else:
+                stage = unit[0]
         if group:
-            # A GROUP, by the names its prep was told -- each a described,
-            # prepared stage (`project-layout.md` § 1.6.6).
+            # SEVERAL, AS ONE JOB -- each a described, prepared stage, the
+            # group's checks at the plan (`project-layout.md` § 1.6.6).
             group = [_described_stage(bundle, s) for s in group]
             for s in group:
                 _refuse_unprepared(base, s)
