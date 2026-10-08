@@ -100,7 +100,7 @@ STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _TOP_KEYS = ("schema", "engine", "shape", "run",
              "structure", "varies", "stages", "calculation", "bench",
              "allocation", "execution",
-             "notify", "slots", "bias")
+             "notify", "slots", "bias", "swap_electrodes")
 _BIAS_KEYS = ("voltages_v", "low_bias_approximation")
 
 #: A slot citation names a DIRECTORY, explicitly, by its tree-relative
@@ -405,6 +405,14 @@ class Task:
     #: Absent-is-a-state: empty writes no key.
     slots: Dict[str, str] = field(default_factory=dict)
 
+    #: THE ELECTRODE RENAME IS THIS CALCULATION'S OWN (`engines/transport.md`
+    #: § 4; user, 2026-10-04): ``True`` says the cited junction's
+    #: ``L-electrode`` / ``R-electrode`` trade names in THIS calculation's
+    #: copy of it -- compose applies it, the cited run is never written, and
+    #: another calculation citing the same run makes its own choice.  Only
+    #: a transport description carries it; false writes no key.
+    swap_electrodes: bool = False
+
     #: THE BIAS SWEEP AXIS, volts (transport-design.md § 4.3) -- like
     #: ``bench``, a list of points the description asks for, not a
     #: machine's answer.  Empty means zero-bias only (the default every
@@ -467,6 +475,11 @@ class Task:
                 raise ValueError(
                     f"task: 'slots' belongs to calculation='transport' "
                     f"alone (this is {self.calculation!r})")
+            if self.swap_electrodes:
+                raise ValueError(
+                    f"task: 'swap_electrodes' belongs to "
+                    f"calculation='transport' alone (this is "
+                    f"{self.calculation!r})")
             if self.bias:
                 raise ValueError(
                     f"task: 'bias' belongs to calculation='transport' "
@@ -784,6 +797,10 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 f"{type(bias_raw).__name__}", where="bias")
     bias = tuple(bias_raw)
     low_bias_approximation = bias_obj.get("low_bias_approximation")
+    swap_electrodes = obj.get("swap_electrodes", False)
+    if not isinstance(swap_electrodes, bool):
+        _refuse(f"swap_electrodes is true or false, got "
+                f"{type(swap_electrodes).__name__}", where="swap_electrodes")
 
     has_stages = "stages" in obj
 
@@ -840,7 +857,8 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 notify=_notify_from_obj(obj, engine=engine,
                                         calculation=calc),
                 slots=slots, bias=bias,
-                low_bias_approximation=low_bias_approximation)
+                low_bias_approximation=low_bias_approximation,
+                swap_electrodes=swap_electrodes)
 
 
 def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
@@ -1221,6 +1239,8 @@ def _task_to_dict(task: Task) -> dict:
     # (transport-design.md 4.1): slots, then bias, then the stages.
     if task.slots:
         out["slots"] = dict(sorted(task.slots.items()))
+    if task.swap_electrodes:
+        out["swap_electrodes"] = True
     if task.bias:
         out["bias"] = {"voltages_v": [float(v) for v in task.bias],
                        **({"low_bias_approximation":

@@ -13,7 +13,6 @@ hand-over — nothing is awaiting, so the tab selects and decides):
                                           attempt's own .fdf, plus the
                                           server-spelled citation and
                                           the calculation's source file
-    POST /api/transport/swap_electrodes   swap L-electrode / R-electrode
                                           on a cited junction, once the
                                           person agrees to the offer
     GET  /api/transport/record            a calculation's transport
@@ -124,6 +123,11 @@ def api_transport_describe_attempt() -> Any:
     raw = str(request.args.get("path") or "")
     if not raw:
         return jsonify({"ok": False, "error": "no path given"}), 400
+    # THE RENAME THE TAB HOLDS (`engines/transport.md` § 4): described WITH
+    # it, so the viewer and the meta line show the junction as this
+    # calculation will compose it; the cited run is read, never written.
+    swap = str(request.args.get("swap_electrodes") or "").lower() in (
+        "1", "true", "yes")
     citation, cite_dir, root, refusal = _fence(raw)
     if refusal is not None:
         return refusal
@@ -228,7 +232,8 @@ def api_transport_describe_attempt() -> Any:
     structure_wire = None
     fix = None
     try:
-        composed = compose_junction(citation, tree_root=root)
+        composed = compose_junction(citation, tree_root=root,
+                                    swap_electrodes=swap)
         rel_struct = (composed.relaxed
                       if composed.relaxed is not None
                       else composed.sorted.structure)
@@ -278,6 +283,9 @@ def api_transport_describe_attempt() -> Any:
         "structure": structure_wire,
         "params": params_out,
         "fix": fix,
+        # THE RENAME THIS ANSWER WAS COMPOSED WITH, so the tab shows the
+        # choice it holds and offers to withdraw it (§ 4).
+        "swap_electrodes": swap,
     })
 
 
@@ -362,49 +370,6 @@ def api_transport_pdos() -> Any:
     return jsonify({"ok": True, **got})
 
 
-@bp.route("/api/transport/swap_electrodes", methods=["POST"])
-def swap_electrodes():
-    """Swap ``L-electrode`` / ``R-electrode`` on a cited junction --
-    the fix the person AGREED to after describe offered it.
-
-    It edits their finished run's label block and nothing else (two
-    arrays of indices in molbuilder's own metadata; no coordinate, no
-    keyword, no result), which is why relabeling does not invalidate
-    the relaxation.  Fixed at the source, so every later citation of
-    that directory is right too.
-    """
-    from molbuilder.transport.compose import (ComposeError,
-                                              resolve_citation,
-                                              swap_electrode_labels)
-
-    body = request.get_json(silent=True) or {}
-    raw = str(body.get("path") or "")
-    if not raw:
-        return jsonify({"ok": False, "error": "no path given"}), 400
-    citation, _cite_dir, root, refusal = _fence(raw)
-    if refusal is not None:
-        return refusal
-    # RESOLVE AND CLASSIFY THROUGH THE ONE DOOR prep composes through
-    # (`resolve_citation`), not a hand-rolled repeat of its three steps
-    # with its own wording.  Unlike `describe_attempt` -- which must
-    # answer 200 with the refusal as its summary, because describing an
-    # unciteable directory is how a person LEARNS the condition -- a
-    # rename asked of a directory that is not a citation is simply a
-    # bad request.
-    try:
-        _dir, cited = resolve_citation(citation, root)
-        changed = swap_electrode_labels(cited)
-    except ComposeError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-    return jsonify({
-        "ok": True,
-        "changed": changed,
-        "message": (f"Swapped L-electrode and R-electrode in {changed} "
-                    f"-- labels only; no coordinate, keyword or result "
-                    f"was touched."),
-    })
-
-
 # ===================================================================== #
 # /api/transport/describe  --  the tab writes the DESCRIPTION itself   #
 # ===================================================================== #
@@ -467,6 +432,13 @@ def api_transport_describe() -> Any:
     if approx is not None and not isinstance(approx, bool):
         return jsonify({"ok": False,
                         "error": "low_bias_approximation is true or false"}), 400
+    # THE ELECTRODE RENAME, as the person chose it on the tab -- this
+    # calculation's own (`engines/transport.md` § 4): the description
+    # records it and compose applies it to the calculation's copy.
+    swap = body.get("swap_electrodes", False)
+    if not isinstance(swap, bool):
+        return jsonify({"ok": False,
+                        "error": "swap_electrodes is true or false"}), 400
     # PER-RUNG BAGS, the shape `task.stages` carries (`engines/transport.md`
     # § 3.8.2a): a rung's tab writes that rung's bag, so the rung is the
     # person's answer and nothing here routes.
@@ -555,6 +527,7 @@ def api_transport_describe() -> Any:
             structure=None, calculation="transport",
             slots={"junction": citation}, bias=bias,
             low_bias_approximation=approx,
+            swap_electrodes=swap,
             # the stages.md 6.2 rule holds here too: an override names
             # a PROMOTED field, and `varies` is the promotion
             varies=tuple(sorted({n for b in bags.values() for n in b})),

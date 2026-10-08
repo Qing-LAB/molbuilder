@@ -259,8 +259,9 @@ step 5).
 record — **and `POST /api/transport/render`**, described here as *"the engine
 registry's validation surface"*. There is no engine registry; the route's last
 browser caller stopped on 2026-08-29 and both went on 2026-09-17. The tab's
-four live routes are `/describe`, `/describe_attempt`, `/schema` and
-`/swap_electrodes`.
+three live routes are `/describe`, `/describe_attempt` (which also describes
+a citation with the electrode rename, `&swap_electrodes=1`) and `/schema`
+*(the `/swap_electrodes` POST, which rewrote the cited run, went 2026-10-08)*.
 
 ## 5. Documents — the in-app reader (this page)
 

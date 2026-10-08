@@ -119,8 +119,12 @@ class TestStages:
                               "device", "transmission")}
         assert owned["electrode_L"] == owned["electrode_R"] == {
             "electrode_kz", "ts_hs_save"}
+        # The device writes the Hamiltonian the transmission attaches to
+        # (`ts_hs_save`, the role item shared with the leads) and states the
+        # self-energy broadening its NEGF loop uses (2026-10-08, F16).
         assert owned["device"] == {"negf_eq_pole_ev", "negf_neq_eta_ev",
-                                   "bias_voltage_v"}
+                                   "bias_voltage_v", "ts_hs_save",
+                                   "ts_elecs_eta_ev"}
         # THE LEADS' BULK TREATMENT IS NO RUNG'S ALONE (2026-09-29): tbtrans
         # takes it as the default of its own, so it is one shared value the
         # device and the transmission both write (`transport.md` § 6.1b).

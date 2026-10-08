@@ -450,9 +450,17 @@ const WORKSPACE_TAG = "transport";
      *  composed structure for the viewer, and the citation spelling
      *  (the server's).  ``rel`` is tree-relative
      *  (proj.relativeToProjects). */
+    /* THE RENAME IS THIS CALCULATION'S OWN (transport.md § 4; user,
+     * 2026-10-04): the choice lives here until Describe writes it into the
+     * description (`swap_electrodes: true`), and every describe of the
+     * citation is read WITH it, so the viewer, the lane and the meta line
+     * show the junction as this calculation will compose it.  The cited
+     * run is never written. */
+    var _swapElectrodesChoice = false;
     function _describeAttempt(rel) {
         return root.fetch("/api/transport/describe_attempt?path="
-                          + encodeURIComponent(rel.replace(/^\/+/, "")))
+                          + encodeURIComponent(rel.replace(/^\/+/, ""))
+                          + (_swapElectrodesChoice ? "&swap_electrodes=1" : ""))
             .then(function (r) { return r.json(); })
             .then(function (b) {
                 if (!b || b.ok === false) {
@@ -481,10 +489,15 @@ const WORKSPACE_TAG = "transport";
      * The server answers `fix` as a WORD; nothing here matches prose. */
     var SWAP_LABEL = "Swap L-electrode and R-electrode";
 
+    var WITHDRAW_LABEL = "Withdraw the rename";
     function _offerFix(described) {
         var host = _$("transport-junction-fix");
         if (!host) return;
-        if (!described || described.fix !== "swap_electrodes") {
+        /* Shown while the composed junction is inverted (the offer), and
+         * while this calculation holds the rename (so it can be withdrawn
+         * and so it is never a silent state); hidden otherwise. */
+        var holds = !!(described && described.swap_electrodes);
+        if (!described || (described.fix !== "swap_electrodes" && !holds)) {
             host.hidden = true;
             host.textContent = "";
             return;
@@ -493,14 +506,20 @@ const WORKSPACE_TAG = "transport";
         host.textContent = "";
         var say = root.document.createElement("span");
         say.className = "hint";
-        say.textContent = "A rename, nothing else: the two labels trade "
-            + "names in the cited folder.  No coordinate, keyword or "
-            + "result is touched, and the relaxation stays valid.";
+        say.textContent = (holds
+            ? "This calculation composes the junction with L-electrode and "
+              + "R-electrode traded (swap_electrodes: true); the cited run "
+              + "is unchanged.  "
+            : "")
+            + "A rename in this calculation's own copy of the junction: "
+            + "the two labels trade names when it is composed, and the "
+            + "description records it.  The cited run is never written; "
+            + "another calculation citing it makes its own choice.";
         var btn = root.document.createElement("button");
         btn.type = "button";
         btn.id = "transport-swap-electrodes-btn";
         btn.className = "full-btn";
-        btn.textContent = SWAP_LABEL;
+        btn.textContent = holds ? WITHDRAW_LABEL : SWAP_LABEL;
         btn.addEventListener("click", function () {
             btn.disabled = true;
             btn.textContent = "Swapping…";
@@ -516,33 +535,23 @@ const WORKSPACE_TAG = "transport";
             btn.textContent = SWAP_LABEL;
             _setStatus(why, "error");
         }
-        root.fetch("/api/transport/swap_electrodes", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: citation })
-        }).then(function (r) { return r.json(); }).then(function (out) {
-            if (!out || !out.ok) {
-                _failed((out && out.error) || "The swap failed.");
-                return;
-            }
-            /* Re-describe through the SAME door the picker uses: the
-             * citation is unchanged, its labels are not, and every
-             * answer (viewer, lane, meta line) must come from the
-             * server's fresh reading -- never from patching what the
-             * page already had.
-             *
-             * RETURNED, so the outer .catch covers it: a failed re-read
-             * must not leave the button disabled reading "Swapping…"
-             * with nothing said. */
-            return root.fetch("/api/transport/describe_attempt?path="
-                + encodeURIComponent(citation))
-                .then(function (r) { return r.json(); })
-                .then(function (d) {
-                    _adoptCitation(d, out.message + "  Re-cited: ");
-                });
-        }).catch(function (e) {
-            _failed("The swap failed: " + e);
-        });
+        /* The choice is made HERE and read back through the SAME door the
+         * picker uses: the citation is unchanged, this calculation's
+         * reading of its labels is not, and every answer (viewer, lane,
+         * meta line) comes from the server's composition with the swap --
+         * never from patching what the page already had. */
+        _swapElectrodesChoice = !_swapElectrodesChoice;
+        _describeAttempt(citation)
+            .then(function (d) {
+                _adoptCitation(d, (_swapElectrodesChoice
+                    ? "L-electrode and R-electrode trade names in this "
+                      + "calculation (swap_electrodes: true).  Re-cited: "
+                    : "The rename is withdrawn.  Re-cited: "));
+            })
+            .catch(function (e) {
+                _swapElectrodesChoice = !_swapElectrodesChoice;
+                _failed("The swap failed: " + e);
+            });
     }
 
     function _adoptCitation(described, statusPrefix) {
@@ -714,6 +723,7 @@ const WORKSPACE_TAG = "transport";
                 engine: "siesta",
                 calculation: "transport",
                 junction: _junction,
+                swap_electrodes: _swapElectrodesChoice,
                 bias: bias,
                 low_bias_approximation: approx,
                 stages: bags,

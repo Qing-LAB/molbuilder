@@ -198,6 +198,7 @@ _UNIT = {
     "bias_voltage_v":         "eV",
     "negf_eq_pole_ev":        "eV",
     "negf_neq_eta_ev":        "eV",
+    "ts_elecs_eta_ev":        "eV",
     "tbt_elecs_eta_ev":       "eV",
     "tbt_contours_eta_ev":    "eV",
 }
@@ -221,7 +222,7 @@ _PAD = {
     "max_scf_iter": 18, "spin_treatment": 18,
     # The NEGF and transmission settings read as one column.
     "bias_voltage_v": 23, "electrodes_bulk": 23, "negf_eq_pole_ev": 23,
-    "negf_neq_eta_ev": 23, "tbt_elecs_eta_ev": 23,
+    "negf_neq_eta_ev": 23, "ts_elecs_eta_ev": 23, "tbt_elecs_eta_ev": 23,
     "tbt_contours_eta_ev": 23, "tbt_spin": 23, "tbt_dos_gf": 23,
     "tbt_dos_a": 23, "tbt_dos_elecs": 23, "tbt_t_eig": 23, "tbt_t_bulk": 23,
     "tbt_t_all": 23, "tbt_verbosity": 23,
@@ -231,7 +232,8 @@ _PAD = {
 #: is the engine's business and lives beside the rest of the spelling.
 _FMT = {"dm_tolerance": ".1e", "dm_energy_tolerance": ".1e",
         "bias_voltage_v": ".4f", "negf_eq_pole_ev": ".4f",
-        "negf_neq_eta_ev": ".6f", "tbt_elecs_eta_ev": ".6f",
+        "negf_neq_eta_ev": ".6f", "ts_elecs_eta_ev": ".6f",
+        "tbt_elecs_eta_ev": ".6f",
         "tbt_contours_eta_ev": ".6f"}
 
 #: Items whose 0 means LEAVE IT TO THE ENGINE, so 0 writes nothing.  Each of

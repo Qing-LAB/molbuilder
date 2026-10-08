@@ -2495,7 +2495,7 @@ Each transmission point must read its own point's converged Hamiltonian, never a
 """
 
 [item.ts_hs_save]
-stages = ["electrode_L", "electrode_R"]
+stages = ["electrode_L", "electrode_R", "device"]
 role = ["transport"]
 kind = "engine"
 category = ["procedure"]
@@ -2508,14 +2508,14 @@ type = "bool"
 value = true
 default = true
 group = "output"
-label = "Write the TranSIESTA .TSHS"
+label = "Write the TranSIESTA Hamiltonian"
 tier = "advanced"
 help = """
-Write `<SystemLabel>.TSHS` -- the Hamiltonian and overlap a device run's `TS.Elec.<name>` reference reads.
-This is the ELECTRODE rungs' essential output, and it is the stage's ROLE rather than a preference: a lead run that omits it converges happily and produces nothing the device can attach to.  So its value, true, is the answer of the two rungs its `stages` names, and nobody is offered a switch.
-Three similar names, and only this one is the lead's job:
+Write the Hamiltonian and overlap the next rung attaches to: a lead's `<SystemLabel>.TSHS`, which the device's `TS.Elec.<name>` reference reads, and the device's `<SystemLabel>.TS.HSX`, which the transmission's `TBT.HS` reads.
+This is the rung's essential output, and it is the stage's ROLE rather than a preference: a lead run that omits it converges happily and produces nothing the device can attach to.  So its value, true, is the answer of the three rungs its `stages` names, and nobody is offered a switch.  A device run forces it on anyway -- TranSIESTA sets TS.HS.Save true in TS mode (`m_ts_options.F90`) -- and the deck says so rather than relying on it.
+Three similar names, and only this one is the rung's job:
 
-  TS.HS.Save   this row -- writes `.TSHS`, the Hamiltonian the device attaches to.
+  TS.HS.Save   this row -- writes `.TSHS` (a lead) or `.TS.HSX` (the device), the Hamiltonian the next rung attaches to.
   SaveHS       writes `.HSX`, a post-processing file the ladder does not consume.  On by default for every SIESTA run; it costs disk, not correctness.
   TS.DE.Save   writes the lead's DENSITY MATRIX.  The device reads it only when `TS.Elecs.DM.Init` asks for the bulk density -- `bulk` at zero bias, `force-bulk` at any bias (the manual's electrode options); the default is `diagon`, and no deck here writes another, so this ladder never reads it.
 """
@@ -2539,6 +2539,28 @@ label = "Non-equilibrium broadening"
 tier = "advanced"
 help = """
 The small imaginary part added to the energy along the non-equilibrium contour, which smooths that integration.  0 leaves the engine's own default in place.  It is inert at zero bias, where there is no non-equilibrium window to integrate.
+"""
+
+[item.ts_elecs_eta_ev]
+stages = ["device"]
+kind = "engine"
+category = ["convergence"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.Elecs.Eta"
+engine_key = "TS.Elecs.Eta"
+manual = "SIESTA 5.4.2 TranSIESTA §'Electrode options'"
+type = "float"
+value = 0.001
+default = 0.001
+unit = "eV"
+range = [0.0, 1.0]
+group = "stage"
+label = "Electrode self-energy broadening (device)"
+tier = "advanced"
+help = """
+The small imaginary part added to the energy when TranSIESTA builds the leads' self-energies for the device's NEGF loop, in eV -- a numerical broadening.
+Written explicitly because it decides the self-energies every density this rung integrates is built from: TranSIESTA's own default is 0.001 eV (`m_ts_options.F90`), and the deck says it rather than relying on it.  The transmission's TBtrans has its own, `TBT.Elecs.Eta` (tbt_elecs_eta_ev): the two are the same quantity in two programs, not one value, and may legitimately differ -- a sharper T(E) is often read with a smaller one.
 """
 
 [item.electrodes_bulk]

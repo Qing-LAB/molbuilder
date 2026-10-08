@@ -1531,8 +1531,12 @@ def _transport_parts(task, stage: str, composed, config):
         struct, label = composed.sorted.structure, task.label
 
     def labelled(cfg):
-        return (cfg if label == task.label
-                else dataclasses.replace(cfg, system_label=label))
+        # THE RUNG FIXES ITS LABEL (C2): every rung's `SystemLabel` is spelt
+        # from `task.label` -- the junction's rungs by it, a lead by
+        # `electrode_hs_stem` -- so the device deck's `TS.Elec.<name> HS`
+        # line and the gather name the file the lead wrote.  The template's
+        # `system_label` never reaches a transport deck.
+        return dataclasses.replace(cfg, system_label=label)
     # THE ELECTRONIC STATE BELONGS TO THE CALCULATION (ES1,
     # `science/chemistry-correctness.md` § 2a) -- and on a transport ladder
     # that is physics, not bookkeeping: TranSIESTA joins the leads'
@@ -1620,7 +1624,8 @@ def _composed_for_prep(base, task, plan):
         root = find_projects_root(base)
         why: list = []
         composed = load_compose_record(base, citation=citation,
-                                       tree_root=root, why=why)
+                                       tree_root=root, why=why,
+                                       swap_electrodes=task.swap_electrodes)
         if composed is not None:
             return composed
         if root is None:
@@ -1648,9 +1653,11 @@ def _composed_for_prep(base, task, plan):
         import tempfile
         with tempfile.TemporaryDirectory(prefix="molbuilder-compose-") as tmp:
             names = write_compose_record(
-                tmp, compose_junction(citation, tree_root=root))
+                tmp, compose_junction(citation, tree_root=root,
+                                      swap_electrodes=task.swap_electrodes))
             composed = load_compose_record(tmp, citation=citation,
-                                           tree_root=root, why=why)
+                                           tree_root=root, why=why,
+                                           swap_electrodes=task.swap_electrodes)
             if composed is None:
                 raise PrepError(
                     f"the composed junction was written and could not be "
@@ -1851,7 +1858,8 @@ def _composed_junction(base, task):
     why: list = []
     composed = load_compose_record(base, citation=task.slots["junction"],
                                    tree_root=find_projects_root(base),
-                                   why=why)
+                                   why=why,
+                                   swap_electrodes=task.swap_electrodes)
     if composed is None:
         # THE RECORD IS THE FIRST RUNG'S PREP'S TO WRITE, and a prepared rung
         # is not prepared again (`job-system.md` § 5.0): the way on is the

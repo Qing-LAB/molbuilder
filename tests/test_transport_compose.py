@@ -213,3 +213,48 @@ class TestTheRecordedContract:
         assert "recorded_contract" not in out.provenance
 
 
+
+
+class TestTheRenameIsTheCalculationsOwn:
+    """`transport.md` § 4 (user, 2026-10-04): the electrode rename is stated
+    in the description (`swap_electrodes: true`) and applied to the
+    calculation's own copy of the junction when it is composed; the cited
+    files are read, never written, and a record composed with the other
+    choice does not serve the description.
+
+    Silent before this: the rename rewrote the label block inside the cited
+    run's finished attempt, so every later citation of that run -- another
+    calculation's included -- read the labels the other way round.
+    """
+
+    def test_the_copy_is_swapped_and_the_cited_files_are_untouched(self, tmp_path):
+        from molbuilder.transport.compose import (load_compose_record,
+                                                  write_compose_record)
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        d = root / "cited"
+        d.mkdir(parents=True)
+        StructureCodec().write(_junction_struct(), d / "junction.xyz")
+        before = {p.name: p.read_bytes() for p in d.iterdir()}
+
+        out = compose_junction("cited", tree_root=root, swap_electrodes=True)
+        regions = out.sorted.structure.regions
+        zs = out.sorted.structure.positions[:, 2]
+        # The high-z block is now the LEFT electrode: traded names, nothing
+        # else -- no coordinate moved.
+        assert min(zs[regions[REGION_LEFT_ELECTRODE]]) > max(
+            zs[regions[REGION_RIGHT_ELECTRODE]])
+        assert out.provenance["swap_electrodes"] is True
+        assert {p.name: p.read_bytes() for p in d.iterdir()} == before, (
+            "the cited files were written")
+
+        # The record answers for the choice it was composed with.
+        rec = tmp_path / "calc"
+        rec.mkdir()
+        write_compose_record(rec, out)
+        why: list = []
+        assert load_compose_record(rec, citation="cited", tree_root=root,
+                                   why=why, swap_electrodes=False) is None
+        assert "swap_electrodes" in why[-1]
+        assert load_compose_record(rec, citation="cited", tree_root=root,
+                                   swap_electrodes=True) is not None

@@ -1239,7 +1239,9 @@ the transport tab asks, with nothing chosen, once its list holds a second
 voltage) — and is refused without it: never inferred from the count. A list of
 one voltage is the single bias, and states none. The tab's list is typed, or
 filled by its **start / stop / step** builder — 0 V first, then the walk — and
-stays editable; one list either way.
+stays editable; one list either way. Beside the junction slot,
+`"swap_electrodes": true` states the electrode rename this calculation makes
+in its own copy of the cited junction (§ 4); false writes no key.
 
 | `low_bias_approximation` | the device | the transmission | the I–V | what the record calls it |
 |---|---|---|---|---|
@@ -2950,11 +2952,14 @@ expansion in the shipped 2-terminal scope.)
 > offers a one-click rename.  *(How that was settled: [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1a.)*
 >
 > **The rename is the transport calculation's own, and a cited run is never
-> written** *(user, 2026-10-04, plan Q6)*. Accepting it states the swap in the
-> calculation's description — the junction slot's `swap_electrodes: true` — and
-> compose applies it to the calculation's own copy of the junction
-> (`junction.molstruct.json`, recorded in `slot-provenance.json`); the cited
-> relaxation's deck and sidecar are read, never changed
+> written** *(user, 2026-10-04, plan Q6; built 2026-10-08)*. Accepting it
+> states the swap in the calculation's description — `swap_electrodes: true`,
+> beside the junction slot (§ 2a.14) — and compose applies it to the
+> calculation's own copy of the junction (`junction.molstruct.json`; recorded
+> in `slot-provenance.json`, whose record serves only a description with the
+> same choice); the Transport tab describes the citation with the choice, so
+> the viewer and the meta line show the junction as it will be composed; the
+> cited relaxation's deck and sidecar are read, never changed
 > ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.5: an
 > attempt is never modified). Another calculation citing the same run makes its
 > own choice. *(Until then the rename rewrote the label block in the cited run's
@@ -3937,8 +3942,8 @@ single-point, or a relaxation if those layers are not frozen.
   per ENGINE** since 2026-09-15 — § 3.8.8, and the follow-up below is where
   its second panel comes from.  Task setup reads the saved
   description as the run surface (machine, queue, prep).  **The tab's live
-  routes are four** — `/describe`, `/describe_attempt`, `/schema` and
-  `/swap_electrodes` (`web-api.md` § 3).  *(This said "the render endpoint
+  routes are three** — `/describe`, `/describe_attempt` (with its
+  `swap_electrodes` flag, § 4) and `/schema` (`web-api.md` § 3).  *(This said "the render endpoint
   (`/api/transport/render`) remains as the engine's validation surface" until
   2026-09-17.  That route is deleted: no browser had called it since
   2026-08-29, and the "engine" whose validation surface it was is not a

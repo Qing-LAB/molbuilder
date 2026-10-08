@@ -615,112 +615,6 @@ def labeled_citation_structure(cited: CitedDir):
         f"structure's .molstruct.json in the same directory.")
 
 
-def swap_electrode_labels(cited: CitedDir) -> str:
-    """Rename ``L-electrode`` ↔ ``R-electrode`` on the CITED files.
-    Answers the name of the file that changed.
-
-    The person agrees to this in the tab -- it edits their finished
-    run's label block, and nothing else.  What moves is two arrays of
-    indices in molbuilder's own metadata; no coordinate, no engine
-    keyword, no result is touched, which is why a relabel does not
-    invalidate the relaxation it annotates.  Renaming at the SOURCE
-    (rather than compensating inside the composite) is what makes every
-    later citation of the same directory read the same way.
-
-    NO GEOMETRY IS CONSULTED (user ruling, 2026-08-29).  A swap is a
-    rename, and whether the labels *should* be the other way round is
-    the author's judgement about their own experiment -- the tab warns
-    and offers, this performs.  The only condition is that both labels
-    exist, because otherwise there is no pair to rename.
-    """
-    from ..deck_record import BLOCK_ATOM_METADATA, begin_marker, end_marker
-    from ..script_emit import emit_atom_metadata
-
-    _struct, source = labeled_citation_structure(cited)
-
-    def _swapped(regions):
-        out = dict(regions or {})
-        for lab in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE):
-            if lab not in out:
-                raise ComposeError(
-                    f"{source.name} does not carry {lab}, so there is "
-                    f"no pair here to swap.")
-        out[REGION_LEFT_ELECTRODE], out[REGION_RIGHT_ELECTRODE] = (
-            list(out[REGION_RIGHT_ELECTRODE]),
-            list(out[REGION_LEFT_ELECTRODE]))
-        return out
-
-    # THE FILE THAT CARRIES THE LABELS IS THE FILE THAT CHANGES.  Which
-    # one that is came from the same door that read them, so the swap
-    # can never rewrite a block the composition does not read (form A
-    # accepts either an in-body block OR a sidecar beside the deck).
-    from ..sidecars.molstruct import is_sidecar
-    if is_sidecar(source):
-        # THE SIDECAR'S OWN READER AND WRITER, AND ITS LOCK: the envelope
-        # validated, and a non-ASCII region label kept a literal
-        # (`molstruct.dumps`).
-        #
-        # And it is a read-modify-write, which `save` says must hold the lock:
-        # "if you're doing a read-modify-write cycle, wrap the entire cycle in
-        # `with_lock`".
-        from ..sidecars import molstruct as _molstruct
-        with _molstruct.with_lock(source):
-            data = _molstruct.load(source)
-            data["regions"] = _swapped(data.get("regions"))
-            _molstruct.save(source, data)
-        return source.name
-
-    from ..script_emit import _extract_atom_metadata_dict
-    text = source.read_text(encoding="utf-8")
-    payload = _extract_atom_metadata_dict(text)
-    if payload is None:
-        raise ComposeError(
-            f"{source.name} carries no atom-metadata block, so "
-            f"there are no labels here to swap.")
-    n_atoms = payload.get("n_atoms_total")
-    if not isinstance(n_atoms, int) or n_atoms <= 0:
-        raise ComposeError(
-            f"the atom-metadata block in {source.name} states no atom "
-            f"count, so a rewrite would lose it -- refusing to touch "
-            f"the file.")
-    # Everything the block carried that the swap did not come to change
-    # rides through verbatim: the selection rules, the extensible
-    # channels, and WHEN the labels were made.  Only `created_by`
-    # gains a line, because that field is the block's own record of
-    # who wrote it and this write is part of that history.
-    block = emit_atom_metadata(
-        regions=_swapped(payload.get("regions")),
-        n_atoms_total=n_atoms,
-        created_by=(str(payload.get("created_by") or "molbuilder")
-                    + " (L/R swapped by molbuilder transport relabel)"),
-        created_at=payload.get("created_at"),
-        selection_rules=payload.get("selection_rules") or None,
-        annotations=payload.get("annotations") or None)
-    if not block:
-        raise ComposeError(
-            f"the rewritten atom-metadata block came out empty -- "
-            f"{source.name} was NOT changed.")
-    begin, end = (begin_marker(BLOCK_ATOM_METADATA),
-                  end_marker(BLOCK_ATOM_METADATA))
-    i, j = text.find(begin), text.find(end)
-    if i < 0 or j < 0 or j < i:
-        raise ComposeError(
-            f"the atom-metadata fence in {source.name} is not "
-            f"where its own markers say -- refusing to rewrite it.")
-    _write_atomically(source,
-                      text[:i] + block.rstrip("\n") + "\n"
-                      + text[j + len(end):].lstrip("\n"))
-    return source.name
-
-
-def _write_atomically(path: Path, text: str) -> None:
-    """Same-directory temp + replace: a half-written label block would
-    make a finished run unreadable to the tool that wrote it."""
-    tmp = path.with_suffix(path.suffix + ".mb-tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
-
-
 def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
                                  atom_ids=None, ion_dir=None):
     """Extract both leads from the sorted device, then measure the one
@@ -831,7 +725,30 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     return models
 
 
-def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
+def _with_swapped_leads(struct, source_name: str):
+    """THIS CALCULATION'S COPY with ``L-electrode`` ↔ ``R-electrode`` traded
+    (`engines/transport.md` § 4; user, 2026-10-04): the description's
+    ``swap_electrodes: true``, applied to the junction as it is composed --
+    two arrays of indices in molbuilder's own metadata, no coordinate, no
+    keyword, no result -- and never to the cited run's files.  NO GEOMETRY
+    IS CONSULTED (user ruling, 2026-08-29): a swap is a rename, and whether
+    the labels should be the other way round is the author's judgement;
+    the only condition is that both labels exist."""
+    regions = dict(struct.regions or {})
+    for lab in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE):
+        if lab not in regions:
+            raise ComposeError(
+                f"{source_name} does not carry {lab}, so there is no pair "
+                f"to swap -- the description says swap_electrodes, and "
+                f"the cited junction has one lead label.")
+    regions[REGION_LEFT_ELECTRODE], regions[REGION_RIGHT_ELECTRODE] = (
+        list(regions[REGION_RIGHT_ELECTRODE]),
+        list(regions[REGION_LEFT_ELECTRODE]))
+    return struct.replace(regions=regions)
+
+
+def compose_junction(citation: str, *, tree_root,
+                     swap_electrodes: bool = False) -> ComposedJunction:
     """The whole § 4.1–4.2 compose: citation → sorted, gated, extracted.
 
     Raises :class:`ComposeError` (refusals naming what to run first) or
@@ -855,6 +772,8 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
     if cited.form == "structure":
         # ---- form B: the labeled pair IS the final structure ---------
         struct = StructureCodec().load(cited.xyz)
+        if swap_electrodes:
+            struct = _with_swapped_leads(struct, cited.sidecar.name)
         _bad = _unusable_cell(struct)
         if _bad:
             raise ComposeError(
@@ -901,6 +820,8 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         # was belongs in the provenance: it is a file this junction was
         # composed from, and the one the rename endpoint rewrites.
         struct, label_source = labeled_citation_structure(cited)
+        if swap_electrodes:
+            struct = _with_swapped_leads(struct, Path(label_source).name)
         # THE GUARD FORM B HAS HAD ALL ALONG.  `Structure.cell`'s setter
         # is permissive, so an unusable box travels to the construction
         # below and raises a bare ValueError there -- and `prep` catches
@@ -970,6 +891,9 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
 
     provenance = {
         "schema": "molbuilder/slot-provenance@1",
+        # THE RENAME THIS COPY CARRIES (§ 4): the record answers for the
+        # choice it was composed with, as it answers for its citation.
+        "swap_electrodes": bool(swap_electrodes),
         "slot": "junction",
         "citation": citation,
         "form": cited.form,
@@ -1040,7 +964,8 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
 
 
 def load_compose_record(base_dir, *, citation: str, tree_root=None,
-                        why: "Optional[list]" = None
+                        why: "Optional[list]" = None,
+                        swap_electrodes: bool = False
                         ) -> Optional[ComposedJunction]:
     """The travelled copy, loaded back — or ``None`` when there is no
     complete record for THIS citation (prep then composes fresh).
@@ -1090,6 +1015,13 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
         return _no(f"the record beside it was composed from "
                    f"{provenance.get('citation')!r}, and this task now "
                    f"cites {citation!r}")
+    # THE RENAME IS PART OF THE RECORD'S IDENTITY (§ 4): a copy composed
+    # with the leads one way round does not serve a description that now
+    # says the other.
+    if bool(provenance.get("swap_electrodes", False)) != bool(swap_electrodes):
+        return _no(f"the record beside it was composed with "
+                   f"swap_electrodes {bool(provenance.get('swap_electrodes', False))}, "
+                   f"and this task now says {bool(swap_electrodes)}")
     form = provenance.get("form", "relaxation")
     missing = [n for n in record_files(form)
                if not (base_dir / n).is_file()]

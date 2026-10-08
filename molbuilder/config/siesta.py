@@ -955,6 +955,17 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
+    ts_elecs_eta_ev: float = field(default=0.001, metadata={
+        "category": ("convergence", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Electrode self-energy broadening (device)",
+        "engine_key":  "TS.Elecs.Eta",
+        "unit":        "eV",
+        "range":       (0.0, 1.0),
+        "tier":        "advanced",
+    })
+
     tbt_elecs_eta_ev: float = field(default=0.001, metadata={
         "category": ("convergence", ),
         "item_kind":  "engine",
@@ -1068,7 +1079,7 @@ class SiestaConfig:
         "category": ("procedure", ),
         "item_kind":  "engine",
         "workflow_group": "output",
-        "label":       "Write the TranSIESTA .TSHS",
+        "label":       "Write the TranSIESTA Hamiltonian",
         "engine_key":  "TS.HS.Save",
         "tier":        "advanced",
     })

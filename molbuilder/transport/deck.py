@@ -98,8 +98,8 @@ def rung_of(stage_token: Optional[str]) -> str:
 #: the rung's config (`engines/template.md` § 6.4).
 TS_DEVICE_SECTION = _sc.Section(
     "TranSIESTA -- how the device's open-boundary run is solved",
-    ("bias_voltage_v", "electrodes_bulk", "negf_eq_pole_ev",
-     "negf_neq_eta_ev"),
+    ("bias_voltage_v", "electrodes_bulk", "ts_elecs_eta_ev",
+     "negf_eq_pole_ev", "negf_neq_eta_ev"),
     note=(
         "# Read by siesta in its NEGF mode (TranSIESTA) -- this rung.  An item",
         "# absent below was left at 0, which leaves it to TranSIESTA: its own",
@@ -120,11 +120,13 @@ TS_READ_BY_TBTRANS_SECTION = _sc.Section(
         "# at, and the leads are treated as the device run treated them.",
     ))
 
-#: What a lead exists to write -- ``TS.HS.Save``, a `role` item whose value is
-#: the two leads' answer (`engines/template.md` § 6.4); its note says why it is
-#: this keyword and not ``SaveHS`` or ``TS.DE.Save``.
+#: What a lead and the device exist to write -- ``TS.HS.Save``, a `role` item
+#: whose value is the three rungs' answer (`engines/template.md` § 6.4): a
+#: lead's ``.TSHS`` the device attaches to, the device's ``.TS.HSX`` the
+#: transmission attaches to.  Its note says why it is this keyword and not
+#: ``SaveHS`` or ``TS.DE.Save``.
 TS_ELECTRODE_SECTION = _sc.Section(
-    "The Hamiltonian this lead exists to write",
+    "The Hamiltonian this rung exists to write",
     ("ts_hs_save",))
 
 #: The transmission's SCF settings: the engine's own section without
@@ -184,6 +186,7 @@ def _device_layout(derived, frame, state_block):
         _sc.Block("the junction: its electrodes and reservoirs",
                   _emit_electrode_block),
         TS_DEVICE_SECTION,
+        TS_ELECTRODE_SECTION,
         _sl.OUTPUT_SECTION,
     )
 
