@@ -62,7 +62,7 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 | the Run panel | `lib/results/run-panel.js` (§ 3a) | the run the folder's files came from — its `record` — above whichever presenter is mounted; hidden for a container and a folder with no run |
 | the controller | `results/viewer.js` | picks the presenter for the announced file, disposes the old one, mounts the new one; with nothing to show, the card that says what the folder is, and its ladder |
 | the presenters | `lib/inspectors/*.js`, through `registry.js` ([`presenters.md`](?doc=web/presenters.md)) | one per kind of result; each loads its own data |
-| their data | trajectory: `/api/watch/load`, `/api/watch/data` (`watch.py`) · spectra: `/api/spectra/*` · bench: `/api/bench/summary` · transport, the displacement sweep: `/api/files/*` | each reads its file through the registry — the readers the rest of molbuilder uses ([`model/parse.md`](?doc=model/parse.md)) |
+| their data | trajectory: `/api/watch/load`, `/api/watch/data` (`watch.py`) · spectra: `/api/spectra/*` · bench: `/api/bench/summary` · transport: `/api/transport/record`, composed on read · the displacement sweep: `/api/files/*` | each reads its file through the registry — the readers the rest of molbuilder uses ([`model/parse.md`](?doc=model/parse.md)) |
 
 ### 0.3 The rules that keep it right
 
@@ -80,6 +80,10 @@ answers its own question — *which rung is next*, *which setting is fastest*,
   name** (§ 2.3).
 
 ### 0.4 Designed, not built yet
+
+- **A transport calculation's report** (§ 2.5) — the device structure, T(E),
+  DOS, the I–V curve and every rung's convergence, synced on the selected
+  frame and bias.
 
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
@@ -430,6 +434,147 @@ fact came from. A flat calculation's root lists its stages' runs the same way,
 by run number. *(Until 2026-10-03 the ladder's rows were text: a run was read
 by moving the sidebar into its folder, a root's product hid the ladder, and
 status read only each stage's newest attempt.)*
+
+### 2.5 A transport calculation's report — designed, not built *(plan § 5u.1 step 9, 2026-10-07)*
+
+> *"we need the result to render not just the single numbers, but plot the scf
+> converging process, display the structure of the device of the selected frame
+> (transport support multiframe), and synced with the selected frame, the
+> transport TE plot, and PDOS plot etc. … use cards, tabs, and modules we have
+> already built such as molview and embedded plotly … in a good css system"*
+> (user, 2026-10-07)
+
+**What it is.** A transport calculation's root shows one report of the whole
+calculation, **below the ladder card** (§ 2.4 — with the ladder, never instead
+of it) — whether or not `summarize run` has written `<label>.transport.json`:
+the report is the root's product, composed on read
+(`/api/transport/record`, [`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.12), so a ladder in progress has one and a rung that ran since is shown as
+it is now. *(Today the route answers only once the file exists, so the report
+mounts only after a first `summarize run`.)*
+
+**Two selections, each with one owner** — the spectra tab's pattern (one state
+owner, every view mirrors it through a cheap door; [`spectra.md`](?doc=web/spectra.md)
+§ 3–4):
+
+| selection | its one owner | what follows it |
+|---|---|---|
+| **the frame** — which structure of the calculation's frame set (W32; one frame today, so the bar is hidden as MolView hides it for one frame) | MolView's model: `data.setCurrentFrame(i)` / `data.onFrameChange(fn)` ([`molview.md`](?doc=web/molview.md) § 6.4) — nothing keeps its own copy | the structure, T(E), DOS, I–V and the device's convergence, each redrawn for that frame |
+| **the bias point** — one of the scan's voltages (one for a single-bias calculation) | the report: one `selectedBias`, set by clicking a T(E) curve, an I–V point or a row of the points table | the highlighted curve in T(E) and DOS, the marked I–V point, the points table's row, and the device convergence tab, which shows that point's device run |
+
+**The layout** — the page's cards (`.card`, `.card-row`; [`ui-contract.md`](?doc=web/ui-contract.md)
+§ 4) and panel tabs (`.panel-tabs`, `.panel-tab`, `.panel-tabpanel`), every
+colour a token, the presenter owning its sheet (`lib/inspectors/transport.css`):
+
+```
+┌ the ladder card (§ 2.4) ─────────────────────────────────────────────────┐
+└──────────────────────────────────────────────────────────────────────────┘
+┌ Transport — <label> ─── treatment · frames · points · pending · failed ──┐
+│ ┌ Device (MolView, read-only) ─────┐ ┌ [ T(E) | DOS | I–V ] ───────────┐ │
+│ │ the device's structure at the     │ │ T(E): one curve per bias, log T, │ │
+│ │ selected frame, its box, its      │ │ E − E_F; the selected bias bold, │ │
+│ │ labels (L-electrode · bridge ·    │ │ its eigenchannels beneath; DOS:  │ │
+│ │ R-electrode) on the Selection     │ │ total, PDOS by label, PDOS of    │ │
+│ │ page; select atoms here for PDOS  │ │ selections you add; leads' DOS;  │ │
+│ │ the frame bar when there          │ │ I–V: the curve, its points       │ │
+│ │ are several frames                │ │ clickable, the table below it    │ │
+│ └───────────────────────────────────┘ └──────────────────────────────────┘ │
+│ ┌ Convergence [ seed | electrode L | electrode R | device ] ─────────────┐ │
+│ │ each rung's SCF: energy and residual per iteration; the device's two    │ │
+│ │ phases — periodic start, then NEGF — as separate traces; its NEGF E_F,  │ │
+│ │ iterations and charge; the tolerance line; how the run ended (its chip) │ │
+│ └─────────────────────────────────────────────────────────────────────────┘ │
+│ ┌ Rungs and provenance ──────────────────────────────────────────────────┐ │
+│ │ one row per rung: state chip, detail, E_F, energy, iterations,          │ │
+│ │ converged, the attempt it came from; the leads' E_F agreement; the      │ │
+│ │ chain — relaxation → seed, leads → device → transmission, read from     │ │
+│ │ each rung's `.gathered-from`; the DFT–NEGF caveat                       │ │
+│ └─────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+Below the width where two cards fit side by side, the cards stack in this
+order. A card whose data is not there says why in one line — *the transmission
+has not run* — never a blank plot.
+
+**Each part, and where its data comes from** — every number from a door that
+exists or is named here; nothing worked out in the browser:
+
+| part | data | door |
+|---|---|---|
+| ladder, rung states | `stages[]` — the status door's state and detail | `/api/transport/record` (built) |
+| device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) |
+| T(E) | per point and spin channel, from `.TBT.AVTRANS_<L>-<R>` (and `TBT_UP` / `TBT_DN`, plan K21) | `points[].transmission` in the record (built for non-polarized) |
+| DOS and PDOS | from the transmission run's `<label>.TBT.nc` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12): **DOS** — the device's total density of states, its Green-function DOS (`TBT.DOS.Gf`, written per device orbital, energy and k); **PDOS** — the same DOS split by region, summing each label's orbitals (L-electrode, bridge, R-electrode — the labels molbuilder owns, [`molview.md`](?doc=web/molview.md) § 6.6), so the bridge's PDOS shows where the molecule's levels sit against E_F; the **left** lead's spectral DOS (`TBT.DOS.A` — TBtrans writes it for the first electrode only unless `TBT.DOS.A.All`, which the catalogue does not carry yet, plan § 5u.1 step 7); both leads' bulk DOS (`TBT.DOS.Elecs`) | **new**: read on the server with sisl's TBtrans reader (sisl 0.16 and netCDF4 are in the `molbuilder` env), k-averaged, added per point to the record as `dos: {total, by_label: {label: [...]}, lead_spectral: {L: [...]}, lead_bulk: {L: [...], R: [...]}}` on T(E)'s energy grid, E − E_F |
+| PDOS of a selection | the same per-orbital DOS, summed over **the atoms you choose**, optionally only their orbitals of one type — below | **new**: `GET /api/transport/pdos?path=&point=&atoms=&orbitals=` — stateless, read from that point's `.TBT.nc` and the device run's `.ORB_INDX` on request, on T(E)'s grid |
+| eigenchannels | `TBT.T.Eig` (4 by default): the transmission of each channel at each energy — eigenvalues only; TBtrans writes no channel wavefunctions with this deck | **new**, from the same `.TBT.nc`: per point `eigenchannels: [[...], ...]`, drawn under T(E) on the same axis |
+| I–V | `iv` in the record | built (table); the curve is new, drawn from the same arrays |
+| convergence | each rung's SCF history, phase-tagged: `cycle, energy, delta_E, dDmax, dHmax, ef, phase` (`periodic` / `negf`), and on a NEGF row the charges, `dq` and `vha_ev` (the SIESTA reader, `siesta_reader.py`) | **new** in the record: per rung `scf: [...]`, read by the same parse the record already makes of each rung's output. `/api/watch/*` cannot serve it: it holds one file for the whole server, the trajectory viewer's |
+| device NEGF figures | the NEGF phase's E_F, iterations, and charge | **new** in the record's device stage, read from the same parse (the periodic start's never shown as the device's, § 2a.12) |
+| provenance chain | each rung's `.gathered-from` (`runrecord.read_gathered_from`) | **new** in the record: `provenance.chain` |
+
+**PDOS of the atoms you choose** *(user, 2026-10-07: "what if we want to be
+able to show PDOS of selected atoms/labels? such as S atom, or carbon atoms or
+some pi system we are interested in?")*. The DOS tab draws the total and the
+three regions by default, and **any set of atoms you select** as a curve of
+its own:
+
+* **You select in the device card** — MolView's Selection page, as anywhere
+  else: atoms picked one by one, *by element* (every S, every C), *by label*
+  (any label of the structure, yours included — a label is only a set of atoms
+  here, read and never interpreted). The report reads the selection through
+  MolView's handle (`data.selection.get()`, `subscribe`) and keeps nothing of
+  its own.
+* **Add it as a curve** — the DOS tab's *Add selection*, named by you (`S`,
+  `ring C`), its colour the next of the plot theme's; several overlaid; each
+  removable. They follow the selected bias point and frame like every other
+  curve, and stay while the report is open.
+* **Computed on the server, on request** — the per-orbital DOS summed over
+  those atoms' orbitals (`.TBT.nc` holds it per orbital), k-averaged, through
+  sisl. Nothing is precomputed for selections nobody asked for.
+* **And by orbital type** — one menu beside *Add selection*: *all*, *s*,
+  *p*, *d*, *p_x*, *p_y*, *p_z*. The curve is then the selected atoms'
+  orbitals of that type. Each orbital's type is the device run's own
+  `<label>.ORB_INDX`, which SIESTA writes by default (`WriteOrbitalIndex`,
+  `read_options.F90:1909`): one row per orbital — its atom, species, `n`, `l`,
+  `m`, zeta, whether it is a polarization orbital, and its name (`s`, `px`,
+  `pz`, `dxy` …). **A π system** is the selected atoms' *p_x*, *p_y* or *p_z*
+  — the one perpendicular to the ring, which is exact when the ring lies in a
+  coordinate plane. TBtrans writes each orbital's own DOS and not the terms
+  between orbitals, so a *p* orbital pointing any other way cannot be formed;
+  the tab says so in one line under the menu.
+
+**Shared, not copied** — what this needs from modules that exist:
+
+* **The SCF plots move out of the trajectory viewer into one module**,
+  `lib/scfplot/`, that draws into the element it is given (today
+  `trajectory/core.js` draws by document id, so two cannot share a page) and
+  takes the phase-tagged history it already receives. The trajectory viewer
+  and this report both mount it. It draws **each phase as its own trace** — what
+  [`trajectory.md`](?doc=web/trajectory.md) § 2 already states and the code does
+  not yet do — so the fix lands once, for both.
+* **One Plotly theme**: the charts here read their colours from the tokens
+  through one small helper, `lib/plot-theme.js` (paper, plot, grid, axis, ink,
+  the trace palette), which the transport, SCF and bench charts use; the
+  spectra tab's `_esTheme` is its model. SpectrumChart keeps its own sealed
+  palette ([`spectrumchart.md`](?doc=web/spectrumchart.md) § 11).
+* **MolView unchanged**: mounted read-only, the frame through its own API. It
+  does not colour atoms by label in the scene today; the labels are on its
+  Selection page, and `by label` selects a region. Colouring the regions in
+  the scene is MolView's to add if wanted — a separate decision, not part of
+  this view.
+* **The state chip** is the ladder's (`inspectors.stateChip`).
+
+**What it does not do.** It decides nothing about the physics: no fit, no
+smoothing, no number the record does not carry. A curve it cannot draw — a
+point not run, an output not written — is said in its card.
+
+**Built in this order**, each a milestone with its review: ① the record's new
+fields (DOS, eigenchannels, NEGF figures, the chain) and the SCF-plot module with
+the phase split, the trajectory viewer moved onto it; ② the report's cards and
+tabs, the two selections; ③ the frame axis when W32 lands (plan § 5u.1 step 11) —
+the bar and the per-frame record. Checked on the dev server against a real
+transport calculation, through the road.
 
 ## 3. Showing the file
 
