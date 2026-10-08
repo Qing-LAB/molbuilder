@@ -491,7 +491,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                 break
         points_out.append({
             "bias_v": v,
-            "attempt": str(att.relative_to(base)),
+            "attempt": rel,
             "transmission_file": avtrans[0].name,
             "energy_ev": energies,
             "transmission": trans,
