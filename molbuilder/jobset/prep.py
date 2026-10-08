@@ -1703,17 +1703,17 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
     ruling Q2 — transport never runs its pieces for you):
 
     * the upstream stage must have been PREPARED (its deck rendered);
-    * it must hold a CONCLUDED attempt **whose deck matches the deck that
-      rung renders NOW** -- from the current template, junction and run
-      card, through the rung's own door (`_transport_rung`), never the
-      stage folder's last render, which a change since leaves as it was
-      (plan § 5w K11).  A mismatch is a mistake: refused by name;
-    * the concluded, matching attempt must actually hold the file.
+    * its NEWEST run must have FINISHED -- the one rule every kind's default
+      keeps (`job-system.md`, *The task*, D5): an older run never stands
+      in, because a rung launched again is the run you mean;
+    * that run must have run **the deck that rung renders NOW** -- from the
+      current template, junction and run card, through the rung's own door
+      (`_transport_rung`), never the stage folder's last render, which a
+      change since leaves as it was (plan § 5w K11) -- and hold the file.
 
-    The newest attempt that passes all three wins (identical decks →
-    identical single-point results).  What was taken from where lands in
-    ``.gathered-from`` beside the copies, so a result can always say
-    which electrode run fed it.
+    A run that fails a gate is refused by name, with what to do.  What was
+    taken from where lands in ``.gathered-from`` beside the copies, so a
+    result can always say which electrode run fed it.
     """
     from ..transport.stages import (rung_container, scan_points,
                                      stage_inputs)
@@ -1757,27 +1757,21 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         from ..paths import attempt_dir as _adir
         from ..paths import attempts_in as _ain
         attempts = [_adir(up_dir, n) for n in reversed(_ain(up_dir))]
-        # ONE TO BUILD ON -- the one status door says it finished
-        # (`continuation.usable`): exit code 0 and nothing in its output
-        # saying the engine stopped.
-        concluded = [d for d in attempts
-                     if usable(read_run(base, task, upstream, d,
-                                        verdict=False)[1])]
-        if not concluded:
-            # WORDED BY THE NEWEST ATTEMPT'S STATE, as a stage's own default
-            # is (`continuation.state_remedy`).
-            newest = attempts[0] if attempts else None
-            c, s, _v, d = (read_run(base, task, upstream, newest,
-                                    verdict=False)
-                           if newest is not None
-                           else (None, "pending", None, None))
+        # THE NEWEST RUN, and only it (D5): the one status door says it
+        # finished (`continuation.usable`) -- exit code 0 and nothing in its
+        # output saying the engine stopped -- or the refusal is worded by
+        # its state, as a stage's own default is (`state_remedy`).
+        newest = attempts[0] if attempts else None
+        c, st, _v, d = (read_run(base, task, upstream, newest, verdict=False)
+                        if newest is not None
+                        else (None, "pending", None, None))
+        if not usable(st):
             why, first = state_remedy(
-                c, s, block(launch_lines("task", upstream, base=base)),
+                c, st, block(launch_lines("task", upstream, base=base)),
                 detail=d)
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
-                f"and {upstream} has no attempt that finished: the "
-                f"newest"
+                f"whose newest run"
                 + (f", {newest.relative_to(base)}," if newest else "")
                 + f" {why}.  {first}{q2}")
         # THE SAME CALCULATION, not the same bytes.  A deck that renders
@@ -1799,27 +1793,22 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
                              # the transmission is gathered at.
                              volts=(bias if scan_points(task, upstream)
                                     else None))
-        matching = [d for d in concluded
-                    if (d / current_deck.name).is_file()
-                    and _sc.same_calculation(
-                        (d / current_deck.name).read_text(), now)]
-        if not matching:
+        ran = newest / current_deck.name
+        if not (ran.is_file()
+                and _sc.same_calculation(ran.read_text(), now)):
             raise PrepError(
-                f"{upstream} has {len(concluded)} concluded attempt(s), "
-                f"but none ran the deck {upstream} renders now -- its "
-                f"template, its junction or its run card changed since "
-                f"they ran, so their {filename} answers a different "
-                f"calculation.  To run it as it is described now, {redo}")
-        # ...AND HOLDS THE FILE: the newest that passes all three
-        # (`engines/transport.md` § 6.1).
-        holding = [d for d in matching if (d / filename).is_file()]
-        if not holding:
+                f"{upstream}'s newest run, {newest.relative_to(base)}, did "
+                f"not run the deck {upstream} renders now -- its template, "
+                f"its junction or its run card changed since it ran, so its "
+                f"{filename} answers a different calculation.  To run it as "
+                f"it is described now, {redo}")
+        # ...AND HOLDS THE FILE (`engines/transport.md` § 6.1).
+        if not (newest / filename).is_file():
             raise PrepError(
-                f"{upstream}'s concluded attempt(s) that ran this deck -- "
-                f"newest {matching[0].relative_to(base)} -- did not write "
-                f"{filename}: the run concluded without producing what "
+                f"{upstream}'s newest run, {newest.relative_to(base)}, did "
+                f"not write {filename}: it finished without producing what "
                 f"the {stage} stage consumes.  To run it again, {redo}")
-        gathered.append((str(holding[0].relative_to(base)), filename))
+        gathered.append((str(newest.relative_to(base)), filename))
     return gathered
 
 
