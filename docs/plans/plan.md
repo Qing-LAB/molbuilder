@@ -93,7 +93,7 @@ re-ordered without saying who ruled it.
 | **Q10** | **W52's open**: (11) prep's transactional produce; (8) the conductor imported below the surfaces | open | taken into Q2d: (8) → unit 9 (B7), (11) → unit 10 (B1) |
 | **Q11** | **W53's parked**: the next-step lines offering `--mode submit` for a target with no queue; the named-queue check in two doors (`launch_refusal`, `place`); `gpu_partition` and `~/.config/molbuilder.backup/` decided 2026-10-02 (§ 0b, item 10) | open | W53's row |
 | **Q13** | **THE TASK — `prep task` / `launch task`, one protocol** *(user, 2026-10-07/08: "prep the whole task and ask the user which stage it intend to do"; "one unified framework and protocol and verb design and api ... systematic and holistic"; D1–D5 agreed 2026-10-08)* | **built 2026-10-08** — T1–T8 committed and two review rounds (code and docs, fresh agents) fixed (`214cc19d`, `91629b67`). **Left**: Task setup's Prep card seen in a real browser (the extension was down); `tests/test_task_setup_prep_e2e.py` drives the per-tab Prep buttons that are gone (e2e on the user's word); a group's header under a real scheduler (Sol); `prep_group` re-plans each member after the save (no refusal found reachable on the road). Contract written 2026-10-08 (`job-system.md` *The task*, § 5.0, § 5.3; `project-layout.md` § 1.6.6; `architecture.md` § 3.2); the review (three agents on conflicts, two on the doc sweep and the code inventory) found ~335 doc passages and ~30 code sites; its open points settled by the agreed rules: a kind with stage roles pre-selects its ready stages that build on nothing (transport's seed and leads); stages named together at prep OR launch go as one job when they pass the group checks (none builds on another, one allocation) -- no "never alone"; a stage not prepared reads `ready` / `waiting`; the ledger line `prepared`; `summarize task` takes no stage. **Milestones, each checked on the road:** T1 the low-bias gather fix and step 6's core (the treatment in `task.json`, the device without an axis); T2 the vocabulary -- kind `task`, `--stage`, `summarize task`, the `prepared` door, every printed command, the road and its rows; T3 the `ready` door (`continuation.ready`, the gather as an answer or a refusal, D5 newest-only); T4 the `prep task` entry -- the ladder offer, `ask.choose`, the no-terminal refusal, groups by pick, `prep_group` held to rule 3; T5 `launch task` -- the waiting units, the question, relaunch by name, the group checks at launch; T6 status -- ready / waiting rows, next lines, the wire form, the chips; T7 the web -- Task setup's one Prep with the ready stages, routes, handover text; T8 the doc sweep (~335 passages, the review's list); then the two review rounds |
-| **Q14** | **Transport, made whole** — the sweep as one run, the low-bias physics, composition, the record (§ 5x) *(user, 2026-10-08: "You need a clear picture, a contract, how transport is done ... see where it's missing and what is wrong")* | **planned 2026-10-08** — four-reviewer sweep, three validators; awaiting the user's yes on § 5x.5 | § 5x |
+| **Q14** | **Transport, made whole** — the sweep as one run, the low-bias physics, composition, the record (§ 5x) *(user, 2026-10-08: "You need a clear picture, a contract, how transport is done ... see where it's missing and what is wrong")* | **approved 2026-10-08** — building, B0 first | § 5x |
 | **Q12** | **the rest of the work order below**: M2e–M2n, M3, M6 P5, M8, M10 | open | the table below — M2e, M2h, M2j and M2l's doors are the same code as Q2d's units 10–12 and are designed with them; M2m, M2n, M3, M6 P5, M8, M10 after |
 
 **Why transport comes before M11's remainder** *(2026-10-02)*: the user's word
@@ -5139,17 +5139,20 @@ folders inside, and "continues from its own latest run" read at the point.
 Today's patches on the sweep (the never-started point, the summed scan wall)
 go in B4; no tombstones.
 
-### 5x.5 Decisions before B0
+### 5x.5 Decisions — answered *(user, 2026-10-08: "go ahead. yes to all. low-bias should be low-bias-approximation, and when this is set to false, all bias will need a scf calculation")*
 
-1. **Low-bias = one device and one transmission at 0 V; the record computes
-   I(V) from T(E,0)** (your step-6 definition: *"one device converged at 0 V;
-   every I–V point from its T(E)"*). The per-voltage TBtrans runs go.
+1. **The treatment is one explicit switch, `low_bias_approximation`** in
+   `task.json`'s bias block (required when the list holds more than one
+   voltage; never inferred). `true`: one device and one transmission, at 0 V;
+   the record computes I(V) = (2e/h)∫T(E,0)[f(E−μ_L)−f(E−μ_R)]dE for each
+   listed V. `false`: every voltage gets its own device SCF (a sweep) and its
+   own transmission. The words `low-bias` / `re-converged` go everywhere, no
+   alias (`jobset migrate` writes the switch for a description that states
+   the old word).
 2. **No skip.** A point is done or not done.
-3. **A point not done is redone from the same start as on the first walk**
-   (your words today), not from its own last density.
-4. ~~A sweep whose points are all done, launched again~~ — settled by rule 3:
-   the plan shows a run that takes every point over and runs none, and asks;
-   the person decides (`--cold` to redo).
+3. **A point not done is redone from the same start as on the first walk.**
+4. **A swept stage launched again is rule 3**: warm takes the done points over
+   and runs the rest; `--cold` runs every point.
 
 ### 5x.6 The sweep's evidence — every confirmed finding, by id
 
@@ -5206,6 +5209,7 @@ S and go with it.
 | R5 | `status` never shows what a transport rung gathered (every rung "started from the structure") | `runstatus.py:591-595` |
 | R6 | the record lacks: the seed's E_F; the contour and pole count (already parsed); the window, points and TBT k-grid | `record._science` |
 | R7 | no report until a first `summarize task`; every run of the calculation not listed at the root (both doc'd as built) | `transport.js:688-691`; `results.md` § 2.4 |
+| R9 | **the 3D viewer draws nothing on the Results tab in a real browser** (2026-10-08, the user's Chrome, AMD GPU, WebGL context alive, no console error): the transport report's Device view and the plain structure viewer both show an empty scene with "16 atoms" loaded and a full-size canvas; Reset view changes nothing | seen in the browser; cause not yet read |
 | R8 | two wrong section links on the transport tab | `transport_calculation.html:210, 240` |
 
 **T — Contract text** (sweep A): 18 internal contradictions, the main ones —
