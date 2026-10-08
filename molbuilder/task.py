@@ -101,15 +101,7 @@ _TOP_KEYS = ("schema", "engine", "shape", "run",
              "structure", "varies", "stages", "calculation", "bench",
              "allocation", "execution",
              "notify", "slots", "bias")
-_BIAS_KEYS = ("voltages_v", "treatment")
-
-#: THE BIAS TREATMENTS a list of more than one voltage states
-#: (`engines/transport.md` § 2a.10, plan TD7): ``low-bias`` -- the device
-#: converged once, at 0 V, and every point's current TBtrans's own integral
-#: over that point's window on the zero-bias Hamiltonian, the linear-response
-#: approximation; ``re-converged`` -- the device converged again at every
-#: voltage.
-BIAS_TREATMENTS = ("low-bias", "re-converged")
+_BIAS_KEYS = ("voltages_v", "low_bias_approximation")
 
 #: A slot citation names a DIRECTORY, explicitly, by its tree-relative
 #: path (transport-design.md 4.1 as amended 2026-08-29: what makes the
@@ -418,12 +410,14 @@ class Task:
     #: machine's answer.  Empty means zero-bias only (the default every
     #: transport description says by omitting the key).  When present
     #: the first entry must be 0.0: the treatment's one zero-bias device
-    #: run, or the re-converged chain's start from equilibrium.
+    #: run, or the sweep's start from equilibrium.
     bias: Tuple[float, ...] = ()
-    #: HOW THE BIAS IS TREATED, one of :data:`BIAS_TREATMENTS` -- stated for
-    #: a list of more than one voltage, and only for one
-    #: (`engines/transport.md` § 2a.10).
-    bias_treatment: Optional[str] = None
+    #: THE LOW-BIAS APPROXIMATION, stated for a list of more than one
+    #: voltage and only for one (`engines/transport.md` § 2a.10): ``True`` --
+    #: the device and the transmission run once, at 0 V, and the record
+    #: computes each voltage's current from T(E, 0); ``False`` -- every
+    #: voltage gets its own device SCF and transmission, a sweep.
+    low_bias_approximation: Optional[bool] = None
 
     def __post_init__(self) -> None:
         """§ 6.5 holds for the object too, not only for the file.
@@ -500,8 +494,8 @@ class Task:
                 raise ValueError(
                     f"task: the bias list must start at 0.0 (got "
                     f"{self.bias[0]!r}) -- a scan starts from equilibrium: "
-                    "low-bias converges its device there, and re-converged "
-                    "warm-starts each point from the one before "
+                    "the low-bias approximation converges its device there, "
+                    "and a sweep starts each point from the one before "
                     "(engines/transport.md § 2a.10, § 2a.11)")
             # TWO POINTS IN ONE FOLDER -- a repeated voltage, or two whose
             # folder names are one (`bias_token`: 0.1 and 0.1000001 are both
@@ -526,21 +520,22 @@ class Task:
         # THE TREATMENT, STATED where there is a choice -- a list of more
         # than one voltage -- and nowhere else (`engines/transport.md`
         # § 2a.10, TD7): never inferred from the count.
-        if len(self.bias) > 1 and self.bias_treatment not in BIAS_TREATMENTS:
+        if (len(self.bias) > 1
+                and not isinstance(self.low_bias_approximation, bool)):
             raise ValueError(
-                f"task: a bias list of {len(self.bias)} voltages states its "
-                f"treatment -- bias.treatment {BIAS_TREATMENTS[0]!r} (the "
-                f"device converged once at 0 V; each point's current from "
-                f"that zero-bias Hamiltonian, the linear-response "
-                f"approximation) or {BIAS_TREATMENTS[1]!r} (the device "
-                f"converged again at every voltage); got "
-                f"{self.bias_treatment!r} (engines/transport.md 2a.10)")
-        if len(self.bias) <= 1 and self.bias_treatment is not None:
+                f"task: a bias list of {len(self.bias)} voltages states "
+                f"bias.low_bias_approximation -- true (the device and the "
+                f"transmission once, at 0 V; each voltage's current from "
+                f"T(E, 0), linear response) or false (every voltage its own "
+                f"device SCF and transmission); got "
+                f"{self.low_bias_approximation!r} (engines/transport.md "
+                f"2a.10)")
+        if len(self.bias) <= 1 and self.low_bias_approximation is not None:
             raise ValueError(
-                f"task: bias.treatment {self.bias_treatment!r} answers a list "
-                f"of several voltages; this one has "
-                f"{len(self.bias) or 'no'} point -- a single bias is the "
-                f"one treatment it has (engines/transport.md 2a.10)")
+                f"task: bias.low_bias_approximation answers a list of "
+                f"several voltages; this one has "
+                f"{len(self.bias) or 'no'} point (engines/transport.md "
+                f"2a.10)")
         if self.stages is not None and not self.stages:
             raise ValueError(
                 "task: 'stages' is present but empty. A job has at least one "
@@ -788,7 +783,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         _refuse(f"voltages_v must be a list, got "
                 f"{type(bias_raw).__name__}", where="bias")
     bias = tuple(bias_raw)
-    bias_treatment = bias_obj.get("treatment")
+    low_bias_approximation = bias_obj.get("low_bias_approximation")
 
     has_stages = "stages" in obj
 
@@ -844,7 +839,8 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 allocation=_allocation_from_obj(obj),
                 notify=_notify_from_obj(obj, engine=engine,
                                         calculation=calc),
-                slots=slots, bias=bias, bias_treatment=bias_treatment)
+                slots=slots, bias=bias,
+                low_bias_approximation=low_bias_approximation)
 
 
 def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
@@ -1227,8 +1223,10 @@ def _task_to_dict(task: Task) -> dict:
         out["slots"] = dict(sorted(task.slots.items()))
     if task.bias:
         out["bias"] = {"voltages_v": [float(v) for v in task.bias],
-                       **({"treatment": task.bias_treatment}
-                          if task.bias_treatment is not None else {})}
+                       **({"low_bias_approximation":
+                           task.low_bias_approximation}
+                          if task.low_bias_approximation is not None
+                          else {})}
     if task.structure is not None:
         out["structure"] = {"source": task.structure.source,
                             "formula": task.structure.formula,

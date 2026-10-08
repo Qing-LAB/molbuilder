@@ -682,11 +682,13 @@ const WORKSPACE_TAG = "transport";
                     + "e.g. 0.0,0.2", "error");
                 return;
             }
-            // THE TREATMENT, for several voltages -- the person's choice,
-            // and the description's check refuses a list without one.
+            // THE LOW-BIAS APPROXIMATION, for several voltages -- the
+            // person's choice, true or false; the description's check
+            // refuses a list without it.
             var picked = root.document.querySelector(
                 'input[name="transport-bias-treatment"]:checked');
-            var treatment = bias.length > 1 && picked ? picked.value : null;
+            var approx = bias.length > 1 && picked
+                ? picked.value === "true" : null;
             // A VALUE THAT WILL NOT READ AS ITS TYPE is refused here, naming
             // its field -- beside which its caption already says why.
             var bags, shared;
@@ -713,7 +715,7 @@ const WORKSPACE_TAG = "transport";
                 calculation: "transport",
                 junction: _junction,
                 bias: bias,
-                bias_treatment: treatment,
+                low_bias_approximation: approx,
                 stages: bags,
                 shared: shared,
             });

@@ -168,18 +168,17 @@
         whose fieldset rules are the parameter form's. -#}
     <div class="transport-choices" id="transport-bias-treatment"
          role="radiogroup" aria-labelledby="transport-bias-treatment-q" hidden>
-      <strong id="transport-bias-treatment-q">Several voltages — how is each computed?</strong>
+      <strong id="transport-bias-treatment-q">Several voltages — the low-bias approximation?</strong>
       <label class="transport-choice">
-        <input type="radio" name="transport-bias-treatment" value="low-bias" />
-        <span><strong>low-bias</strong> — one device converged at 0 V; every
-          point's current from its transmission, TBtrans integrating each
-          voltage's window</span>
+        <input type="radio" name="transport-bias-treatment" value="true" />
+        <span><strong>yes</strong> — the device and the transmission run once,
+          at 0 V, and each voltage's current is computed from that T(E): the
+          linear-response approximation</span>
       </label>
       <label class="transport-choice">
-        <input type="radio" name="transport-bias-treatment" value="re-converged" />
-        <span><strong>re-converged</strong> — the device converged again at
-          every nonzero voltage, a chain of runs each starting from the one
-          before</span>
+        <input type="radio" name="transport-bias-treatment" value="false" />
+        <span><strong>no</strong> — every voltage gets its own device SCF and
+          its own transmission, each starting from the voltage before</span>
       </label>
     </div>
     <p class="hint">

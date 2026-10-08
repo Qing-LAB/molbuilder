@@ -42,7 +42,7 @@ def _task(**over):
                                           stage_names=_STAGES)),
               structure=None, calculation="transport",
               slots={"junction": _CITE}, bias=(0.0, 0.2),
-              bias_treatment="re-converged",
+              low_bias_approximation=False,
               varies=(), stages=_stages())
     kw.update(over)
     return Task(**kw)
@@ -57,7 +57,7 @@ class TestCodec:
             "a transport description's structure IS its citation")
         assert d["slots"] == {"junction": _CITE}
         assert d["bias"] == {"voltages_v": [0.0, 0.2],
-                             "treatment": "re-converged"}
+                             "low_bias_approximation": False}
         t2 = Task.from_dict(d)
         assert t2.slots == t.slots and t2.bias == (0.0, 0.2)
         assert t2.structure is None

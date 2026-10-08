@@ -193,14 +193,17 @@ def _migrate_records(base: Path):
             obj[key] = meant
             lines.append(f"{key} = {meant!r} (it was left out)")
     bias = obj.get("bias")
-    if (isinstance(bias, dict) and len(bias.get("voltages_v") or []) > 1
-            and "treatment" not in bias):
-        # A LIST OF SEVERAL VOLTAGES, RUN BEFORE ITS TREATMENT WAS STATED,
-        # was re-converged at each: the device ran at every point
-        # (`engines/transport.md` § 2a.10).
-        bias["treatment"] = "re-converged"
-        lines.append("bias.treatment = 're-converged' (the device ran at "
-                     "every voltage)")
+    if isinstance(bias, dict) and len(bias.get("voltages_v") or []) > 1:
+        # THE SWITCH, from the word it replaced (`engines/transport.md`
+        # § 2a.10): `low-bias` was the approximation; `re-converged`, and a
+        # list written before either was stated, ran the device at every
+        # voltage.
+        if "low_bias_approximation" not in bias:
+            old = bias.pop("treatment", None)
+            bias["low_bias_approximation"] = old == "low-bias"
+            lines.append(f"bias.low_bias_approximation = "
+                         f"{bias['low_bias_approximation']} (from "
+                         f"{'treatment ' + repr(old) if old else 'a list run at every voltage'})")
     notify = obj.get("notify")
     if isinstance(notify, dict) and notify:
         for key, meant in _NOTIFY_ABSENT.items():

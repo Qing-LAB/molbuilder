@@ -312,7 +312,7 @@ def _resolve_bundle_may_be_new(ctx, param, value):
 
 def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                     bias_opt, structure, psml_lib, vacuum,
-                    treatment=None,
+                    low_bias_approximation=None,
                     stage_strategy) -> None:
     """`init --calculation transport` -- floor 2 is task.json ALONE.
 
@@ -401,7 +401,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                            stage_names=TRANSPORT_STAGES),
             structure=None, calculation="transport",
             slots={"junction": citation}, bias=bias,
-            bias_treatment=treatment,
+            low_bias_approximation=low_bias_approximation,
             varies=(), stages=stages)
     except ValueError as exc:
         raise click.ClickException(str(exc))
@@ -514,19 +514,20 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                    "(engines/transport.md § 3.1).")
 @click.option("--bias", "bias_opt", default=None, metavar="V0,V1,...",
               help="transport only: the bias points in volts, starting at "
-                   "0.0 (engines/transport.md 2a.10).  Several state their "
-                   "treatment, --bias-treatment.")
-@click.option("--bias-treatment", "treatment", default=None,
-              type=click.Choice(["low-bias", "re-converged"]),
-              help="transport only, with several --bias points: low-bias -- "
-                   "the device converged once, at 0 V, and each point's "
-                   "current TBtrans's integral over its window on that "
-                   "zero-bias Hamiltonian (the linear-response "
-                   "approximation); re-converged -- the device converged "
-                   "again at every voltage (engines/transport.md 2a.10).")
+                   "0.0 (engines/transport.md 2a.10).  Several state "
+                   "--low-bias-approximation or --no-low-bias-approximation.")
+@click.option("--low-bias-approximation/--no-low-bias-approximation",
+              "low_bias_approximation", default=None,
+              help="transport only, with several --bias points: with the "
+                   "approximation, the device and the transmission run once, "
+                   "at 0 V, and each voltage's current is computed from T(E, 0) "
+                   "(linear response); without it, every voltage gets its own "
+                   "device SCF and transmission (engines/transport.md 2a.10).  "
+                   "Required with several points, never inferred.")
 def init_cmd(structure, bundle: str, shape: str,
                  stage_strategy, name, engine: str, psml_lib, vacuum,
-                 calculation: str, slots_opt, bias_opt, treatment) -> None:
+                 calculation: str, slots_opt, bias_opt,
+                 low_bias_approximation) -> None:
     """Write the portable description: the template, ``task.json``, and the
     data files.
 
@@ -566,14 +567,15 @@ def init_cmd(structure, bundle: str, shape: str,
     if calculation == "transport":
         _init_transport(out_dir=out_dir, shape=shape, run_name=run_name,
                         engine=engine, slots_opt=slots_opt,
-                        bias_opt=bias_opt, treatment=treatment,
+                        bias_opt=bias_opt,
+                        low_bias_approximation=low_bias_approximation,
                         structure=structure,
                         psml_lib=psml_lib, vacuum=vacuum,
                         stage_strategy=stage_strategy)
         return
-    if slots_opt or bias_opt or treatment:
+    if slots_opt or bias_opt or low_bias_approximation is not None:
         raise click.ClickException(
-            "--slot / --bias / --bias-treatment belong to --calculation "
+            "--slot / --bias / --low-bias-approximation belong to --calculation "
             "transport alone "
             "(engines/transport.md § 3.1).")
     if structure is None:

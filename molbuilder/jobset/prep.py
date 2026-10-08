@@ -1715,7 +1715,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
     taken from where lands in ``.gathered-from`` beside the copies, so a
     result can always say which electrode run fed it.
     """
-    from ..transport.stages import (rung_container, scan_points,
+    from ..transport.stages import (rung_container, sweep_points,
                                      stage_inputs)
     from .continuation import usable
 
@@ -1787,11 +1787,11 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
             composed = _composed_junction(base, task)
         now = _rung_deck_now(base, task, upstream, composed,
                              template_text=template_text,
-                             # THE UPSTREAM'S OWN AXIS (`scan_points`):
+                             # THE UPSTREAM'S OWN AXIS (`sweep_points`):
                              # under the low-bias treatment the device
                              # has none -- it ran at 0 V -- whatever point
                              # the transmission is gathered at.
-                             volts=(bias if scan_points(task, upstream)
+                             volts=(bias if sweep_points(task, upstream)
                                     else None))
         ran = newest / current_deck.name
         if not (ran.is_file()
@@ -2771,11 +2771,11 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                           if Path(at.dir).parent.resolve()
                           == Path(c).resolve()), None), volts, inputs)
                    for c, volts, inputs in (gather or ())]
-            from ..transport.stages import scan_points
+            from ..transport.stages import sweep_points
             if flat:
                 out.flat = True
                 run_dir, rep_stage = base, stage
-            elif is_transport and scan_points(task, stage):
+            elif is_transport and sweep_points(task, stage):
                 out.points = got
                 # EVERY POINT LAUNCHES THE ONE JOB, with one shape: the first
                 # point's attempt says what it is (A13).

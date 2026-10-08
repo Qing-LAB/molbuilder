@@ -517,11 +517,12 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     prov_file = base / PROVENANCE_FILE
     if prov_file.is_file():
         provenance = json.loads(prov_file.read_text())
-    # THE DESCRIPTION'S, as stated (`task.bias_treatment`, TD7): a list of
-    # several voltages states `low-bias` or `re-converged`; one is a single
-    # bias.  Never inferred from how many points ran.
-    treatment = (task.bias_treatment if len(task.bias) > 1
-                 else "single-bias")
+    # THE DESCRIPTION'S, as stated (`task.low_bias_approximation`): a list
+    # of several voltages states the switch; one is a single bias.  Never
+    # inferred from how many points ran.
+    treatment = ("single-bias" if len(task.bias) <= 1
+                 else "low-bias-approximation" if task.low_bias_approximation
+                 else "self-consistent")
     record: Dict = {
         "schema": TRANSPORT_RESULT_SCHEMA,
         "label": task.label,
@@ -534,7 +535,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         # claimed.  One slice is T(E), and an I-V read off it is the
         # LINEAR-RESPONSE approximation -- integrating a zero-bias curve
         # cannot reproduce a resonance entering the window, nor that
-        # resonance moving under the field.  A re-converged scan is T(E, V)
+        # resonance moving under the field.  A self-consistent sweep is T(E, V)
         # and its I-V carries no such caveat.
         #
         # Recorded here, not decided in the browser: § 2a.12 requires the
@@ -593,7 +594,7 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
     def _at(stage: str) -> Optional[Path]:
         # A RUNG WITH NO BIAS AXIS has one folder, which serves every
         # point -- a single-bias calculation's, and a low-bias device's
-        # (`stages.scan_points`), as the gather reads it.
+        # (`stages.sweep_points`), as the gather reads it.
         for d, v in rung_containers(base, task, stage):
             if v is None or abs(v - float(bias_v)) < 1e-9:
                 return run_dir(d)
@@ -654,14 +655,15 @@ TREATMENT_NOTE = {
                     "LINEAR-RESPONSE approximation: integrating a zero-bias "
                     "slice cannot reproduce a resonance entering the bias "
                     "window, nor that resonance moving under the field."),
-    "low-bias": ("LOW-BIAS (linear-response) approximation: the device SCF "
-                 "converged once, at 0 V, and each point's current is "
-                 "TBtrans's integral over that point's bias window on the "
-                 "zero-bias Hamiltonian -- a resonance entering the window is "
-                 "not re-converged, nor moved by the field."),
-    "re-converged": ("The device SCF was re-converged at every voltage, so "
-                     "each slice is its own solution and the I-V carries no "
-                     "approximation beyond the method."),
+    "low-bias-approximation": (
+        "LOW-BIAS (linear-response) approximation: the device SCF converged "
+        "once, at 0 V, and each voltage's current is the zero-bias "
+        "transmission T(E, 0) integrated over that voltage's window -- a "
+        "resonance entering the window is not re-converged, nor moved by "
+        "the field."),
+    "self-consistent": ("The device SCF was converged at every voltage, so "
+                        "each slice is its own solution and the I-V carries "
+                        "no approximation beyond the method."),
 }
 
 

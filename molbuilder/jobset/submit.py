@@ -1069,12 +1069,12 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
 
 def _a_scan(jobset: JobSet, base: Path, stage: str):
     """The description, when ``stage`` is a transport rung a bias scan runs
-    once per point (`transport.stages.scan_points`) -- launched as ONE job
+    once per point (`transport.stages.sweep_points`) -- launched as ONE job
     walking the points -- else ``None``."""
     if jobset.kind != "ladder":
         return None
     from ..task import FILENAME, read_task
-    from ..transport.stages import scan_points
+    from ..transport.stages import sweep_points
     desc = base / FILENAME
     if not desc.is_file():
         return None
@@ -1082,7 +1082,7 @@ def _a_scan(jobset: JobSet, base: Path, stage: str):
         task = read_task(desc)
     except Exception as exc:                                  # noqa: BLE001
         raise SubmitError(f"{desc}: {exc}") from None
-    if task.calculation != "transport" or not scan_points(task, stage):
+    if task.calculation != "transport" or not sweep_points(task, stage):
         return None
     return task
 
@@ -1923,13 +1923,13 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     are planned here, and written by the send.
     """
     from ..task import bias_token
-    from ..transport.stages import rung_containers, scan_points
+    from ..transport.stages import rung_containers, sweep_points
     from ..runrecord import next_run
     from .continuation import read_run
     from .materialize import (latest_attempt, prepare_attempt, run_names,
                               shape_of)
 
-    points = scan_points(task, stage)
+    points = sweep_points(task, stage)
     if len(points) < 2:
         raise SubmitError("not a bias scan -- the plain launch owns "
                           "a single-point device.")

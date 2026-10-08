@@ -119,17 +119,15 @@ def per_point_rungs() -> frozenset:
                      for rung in one(catalogue(), name, engine="siesta").stages)
 
 
-def scan_points(task, stage: str) -> Tuple[float, ...]:
-    """The bias points ``stage`` runs at -- the scan's (:func:`bias_points`)
-    for a rung that runs once per point (:func:`per_point_rungs`), ``()``
-    for every other rung and every calculation that is not a scan.
-
-    UNDER THE LOW-BIAS TREATMENT the device runs once, at 0 V -- no axis --
-    and the transmission at every point reads that one zero-bias
-    Hamiltonian, TBtrans integrating each point's own window
-    (`engines/transport.md` § 2a.10)."""
-    if (stage == "device"
-            and getattr(task, "bias_treatment", None) == "low-bias"):
+def sweep_points(task, stage: str) -> Tuple[float, ...]:
+    """The voltages ``stage`` runs at, as a sweep -- the bias list
+    (:func:`bias_points`) for a rung the bias item names
+    (:func:`per_point_rungs`: the device, the transmission) when the
+    calculation states ``low_bias_approximation: false``; ``()`` for every
+    other rung, a single bias, and the low-bias approximation, under which
+    the device and the transmission each run once, at 0 V
+    (`engines/transport.md` § 2a.10, § 2a.11)."""
+    if getattr(task, "low_bias_approximation", None) is not False:
         return ()
     return bias_points(task) if stage in per_point_rungs() else ()
 
@@ -145,7 +143,7 @@ def rung_containers(base, task, stage: str) -> List[Tuple[Path, Optional[float]]
     # THE STAGE'S FOLDER, from the one door -- its number read off the disk
     # (`execution/architecture.md` § 3.2; W38 F4).
     stage_dir = stage_home(base, task, stage).dir
-    points = scan_points(task, stage)
+    points = sweep_points(task, stage)
     if not points:
         return [(stage_dir, None)]
     return [(stage_dir / bias_token(v), float(v)) for v in points]
