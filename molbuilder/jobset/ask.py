@@ -314,18 +314,13 @@ class Said:
 
 
 def confirm(text: str, *, auto_yes: bool = False, echo=None,
-            prompt=None, default: bool = True,
-            question: str = "submit this?") -> Said:
+            prompt=None, question: str = "submit this?") -> Said:
     """**The one interface** — show it, then act on the answer.
 
     ``auto_yes`` is how a person says *I have decided to trust this*; its
     absence is not permission.  ``echo``/``prompt`` are injected so the same
     function serves a terminal, a test, and anything else that can show a
-    string and read a yes — the browser included.  ``default`` is the answer
-    Enter gives: "no" where the question carries a judgement only the
-    person can make -- following a run that may still be running
-    (`project-layout.md` § 1.6.4) -- so a bare Enter does not make it.
-    ``question`` is what is asked: a run here is asked as a submission is
+    string and read a yes — the browser included.  ``question`` is what is asked: a run here is asked as a submission is
     (`submission.md` S4).
     """
     import click
@@ -347,7 +342,7 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
         return Said(False, "no answer (not a terminal): nothing sent",
                     asked=False)
     prompt = prompt or (lambda: click.confirm(f"  {question}",
-                                              default=default))
+                                              default=True))
     yes = bool(prompt())
     return Said(yes, "yes" if yes else "no")
 

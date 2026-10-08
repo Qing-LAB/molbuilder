@@ -1163,7 +1163,7 @@ vibration:
 | an enabled `relax` — whatever the box says (§ 2.2) | nothing: the default | `relax`'s newest attempt, which must have finished — refused while it has not (not launched, queued, running, stopped without its marker, failed), naming the command, and the newest earlier run of `relax` that did when there is one | that run's, by the hand-over's rule | `.continued-from`, the ledger's `continues`, `run.json` at launch |
 | | `--from <a run of relax>` | that run, taken as said — prep states what it is (failed, not concluded, not converged: *expect imaginary frequencies*), and refuses only what cannot be done: a run holding none of the files the hand-over carries, an output that holds no geometry, or one whose atoms are not this calculation's in this order | that run's | the same |
 | | `--from` a run of another stage | refused: the stage builds on `relax` | — | — |
-| | `--cold` | refused: the stage measures at the geometry `relax` reached; to measure the structure as given, disable `relax` and state the structure relaxed | — | — |
+| | `--cold` | refused: the stage measures at the geometry `relax` reached; to measure the structure as given, remove `relax` and state the structure relaxed | — | — |
 | | `--from` naming a run, at `relax` itself | refused: `relax` is the kind's first rung and builds on the structure — a run of another stage (a `freq` run's displaced `.XV`) is not its input | — | — |
 | no `relax`, the structure stated relaxed (`already_relaxed`) | nothing, or `--cold` | the structure as given; its relaxation record is shown and checked against this calculation (§ 2.2) | none | none |
 | | `--from` | refused: nothing in this ladder relaxes — the stage measures the structure as given | — | — |

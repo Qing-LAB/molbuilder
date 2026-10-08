@@ -7,7 +7,7 @@ to; the queue named once, for the work being launched; `-J
 launch value is stated -- the queue, the wall, the memory -- and a launch
 flag overrides what prep baked, never fills what nobody stated);
 ``docs/execution/submission.md`` S4 (nothing is submitted unseen -- every
-door; a judgement only the person can make takes "no" as Enter's answer);
+door);
 ``docs/execution/running-a-job.md`` § 5.5 (a flag the launch would not read
 is refused) and § 5.3.1 (`--mem 0` is the whole node); plan W52.
 

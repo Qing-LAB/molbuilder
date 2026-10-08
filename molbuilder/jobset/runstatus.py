@@ -139,7 +139,7 @@ class JobSetStatus:
     engine:          str
     stages:          List[StageStatus]
     first_incomplete: Optional[str]   # name of the first non-finished stage (resume here)
-    complete:        bool             # every enabled stage finished
+    complete:        bool             # every described stage finished
     #: The run the first incomplete stage's prep will continue from, when
     #: nothing has prepped it -- `continuation.continuation_answer`'s, the answer
     #: prep itself asks (`job-system.md` § 5.4) -- or ``None``: a linked
@@ -493,18 +493,16 @@ def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
         return (f"First incomplete stage: {name}, {state} -- let it "
                 f"finish; `{command('status', name, base=base)}` shows its "
                 f"run.")
-    # A PREPPED STAGE IS NOT PREPPED AGAIN (user, 2026-10-02): changing it
-    # first is a rollback.
-    if s is not None and s.relaunch_continues:
-        how = ("launch it again -- it continues from its own latest run:\n"
-               + block(launch_lines("run", name, base=base))
-               + "\n  or, to change it first, " + rollback("its prep",
-                                                          base=base))
-    else:
-        # THE SAME SENTENCE `launch` refuses a second launch with -- one
-        # fact (`Job.relaunch_continues`), one answer (C10).
-        from .continuation import no_relaunch
-        how = no_relaunch(s is None or not s.carries, base=base)
+    # A PREPPED STAGE IS NOT PREPPED AGAIN (user, 2026-10-02); it is
+    # launched again, however it ended, warm or cold -- the person's choice
+    # (`job-system.md` § 5.4, *A stage launched again*).
+    warm = ("it continues from its own latest run"
+            if s is None or s.relaunch_continues
+            else "it runs again from its deck alone")
+    how = (f"launch it again -- {warm}:\n"
+           + block(launch_lines("run", name, base=base))
+           + "\n  or start it over with `--cold`; or, to change it first, "
+           + rollback("its prep", base=base))
     return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
             f"auto-resume -- you decide: {how}")
 

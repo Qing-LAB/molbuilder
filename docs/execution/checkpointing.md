@@ -722,10 +722,9 @@ exists. *(It added "never on the compute node, which would need git there
 retired, below.)*
 
 > **The launcher points here; it does not act** *(user, 2026-08-18)*. A run
-> started with `--cold`, or from a deck that says `restart: clean`, overwrites
-> the prior state as it proceeds. The wrapper names those files, tells you to
-> run `molbuilder checkpoint save`, and **exits without changing anything**;
-> `--force` proceeds. That is the shape § 9 requires and a queue tolerates: a
+> started with `--cold` removes the prior state before the engine starts. The
+> wrapper names those files, tells you to run `molbuilder checkpoint save`,
+> and **exits without changing anything**; `--force` removes them. That is the shape § 9 requires and a queue tolerates: a
 > refusal fails the job immediately with the reason in the log, where a prompt
 > would hang.
 >

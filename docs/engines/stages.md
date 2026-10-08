@@ -584,10 +584,9 @@ written twice: every tab already has a schema, so every tab gets this.
 | `execution` | map | *(added 2026-09-02)* what THIS rung runs at, when it differs from the calculation's own answer — one value per parameter, laid over the top-level block field by field (§ 6.8d). Absent means *"runs at what the calculation says"* |
 
 **There is no `enabled`** *(W38 F5, agreed 2026-09-27 — user: "remove on/off
-for optimization and vibration", "yes, drop the seed switch too"; 2026-10-03:
-"mark the dir as disabled and never allow use would be the correct way")*. A
-stage is in the description or it is not. Removing one that left files marks
-its folder `.disabled` and keeps its number taken
+for optimization and vibration", "yes, drop the seed switch too")*. A
+stage is in the description or it is not. Removing one that left files leaves
+them untouched and keeps its number taken
 ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2); a transport
 ladder's seed is skipped by removing it. A description written before carries
 `"enabled": true` on every stage — read and ignored; `"enabled": false` is
@@ -1999,13 +1998,10 @@ a run directory under a git-backed history — text tracked (including the small
 archived by content and deduped:
 
 > **A replacing produce checkpoints the folder before it writes anything.**
-> What the description no longer contains is then marked, never left looking
-> described — a removed stage's folder becomes `NN_name.disabled/`
-> ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) — and
+> A stage the description no longer contains keeps its files, untouched
+> ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2), and
 > nothing is lost, because the prior state is a commit — restore it, or
-> branch from it. *(This said "removes" until 2026-10-05; nothing in prep
-> removes a stage's files, and the marking is unit 12's,
-> [`plans/plan.md`](?doc=plans/plan.md).)*
+> branch from it.
 
 A produce that only rewrites decks changes only text, so that half is cheap.
 **The binary half is not, today.** The archive is keyed by commit sha and copies

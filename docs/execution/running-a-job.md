@@ -440,7 +440,7 @@ sources recommend, and how to design a benchmark matrix around it — is
 | `--run N` | both | **the run's number**, which `launch` decides and gives every run script it starts ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1, § 5.5 below); every file of the run carries it as `-run<N>`. Without one the script refuses to start, naming the launch command — `-h` answers without one |
 | `--continue` / `-c` | both | this start continues the run before it — a warm retry's (§ 3.5) — and the banner says so; whether the engine reads the warm files (`.DM`/`.CG`/`.XV`, `.chk`) is the deck's to say. It advanced the run index too until 2026-10-06: the number is `launch`'s |
 | `--force` / `-f` | both | what says *yes, overwrite* to `--cold`'s refusal. It reset the run index to `-run0` until 2026-10-06 |
-| `--cold` / `--from-scratch` | both | start the engine from the deck alone, **overwriting** the prior state it names (§ `job-contracts § 4`). Names the files and **refuses**; `--force` proceeds |
+| `--cold` / `--from-scratch` | both | start the engine from the deck alone, **removing** the prior state it names first (§ `job-contracts § 4`). Names the files and **refuses**; `--force` removes them |
 | `-np` / `--np N` | both | SIESTA: override MPI ranks. PySCF: accepted, and anything but 1 is said to be ignored — PySCF is OpenMP-only |
 | `-omp` / `--omp N` | both | override OMP threads (SIESTA also takes `-t` / `--threads N`) |
 | `--mps` / `--no-mps` | SIESTA (GPU) | force MPS on / off |

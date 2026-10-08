@@ -391,12 +391,13 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
         prior state is the deck's to say.
       * ``--force`` / ``-f``: say yes to ``--cold``'s refusal.
       * ``--cold`` / ``--from-scratch``: start the engine strictly
-        from the .fdf / .py, OVERWRITING everything named after the
-        run's id as the run proceeds (`job-contracts.md` § 4.1: a
-        list of extensions is a snapshot of one build, and a file
-        nobody listed is a file --cold walks past, so the sweep is
-        by name).  It NAMES those files and refuses; ``--force``
-        proceeds.  Keeping them is `molbuilder checkpoint save`.
+        from the .fdf / .py -- everything named after the run's id
+        REMOVED first, since a deck that reads its restart files reads
+        whatever lies there (`job-contracts.md` § 4.1: a list of
+        extensions is a snapshot of one build, and a file nobody listed
+        is a file --cold walks past, so the sweep is by name).  It
+        NAMES those files and refuses; ``--force`` removes them.
+        Keeping them is `molbuilder checkpoint save`.
 
     Added 2026-06-14 after the BDT-stage-2 incident where stage 2
     ran without the user's frozen-atom constraints (contract bug
@@ -428,13 +429,11 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
         f"# ``--force``    / ``-f``: say yes to --cold's refusal.\n"
         f"# ``--cold`` / ``--from-scratch``:\n"
         f"#                          start purely from the .fdf/.py,\n"
-        f"#                          OVERWRITING everything named\n"
-        f"#                          after the run's id -- minus what\n"
+        f"#                          REMOVING everything named after\n"
+        f"#                          the run's id first -- minus what\n"
         f"#                          molbuilder itself wrote.  Names\n"
         f"#                          them and refuses; --force\n"
-        f"#                          proceeds.  Use when the prior\n"
-        f"#                          run was bad and its restart\n"
-        f"#                          files would corrupt the next.\n"
+        f"#                          removes them.\n"
         f"# Self-identity for the warm-retry re-exec: an ABSOLUTE path to\n"
         f"# this wrapper.  Under ``bash x.run.sh`` $0 is a bare relative\n"
         f"# name -- bash's ``exec`` PATH-searches slash-less words (never\n"
@@ -507,8 +506,8 @@ def _force_usage_entry() -> str:
     """The ``--force`` entry -- one writer for both engines."""
     return (
         "  --force, -f      say yes to --cold's refusal (below):\n"
-        "                   the run then proceeds, and the engine\n"
-        "                   overwrites the files --cold named.\n"
+        "                   the files --cold named are removed and\n"
+        "                   the run proceeds.\n"
     )
 
 
@@ -526,12 +525,12 @@ def _cold_usage_entry(*, warm_examples: str) -> str:
         "  --from-scratch   start the engine from the deck alone.\n"
         "                   Everything named after the run's id --\n"
         "                   minus what molbuilder itself wrote --\n"
-        f"                   is OVERWRITTEN as the run proceeds\n"
-        f"                   ({warm_examples}).  So --cold NAMES\n"
-        "                   those files and REFUSES; --force then\n"
-        "                   proceeds.  Nothing is moved or copied:\n"
-        "                   keep a state with `molbuilder\n"
-        "                   checkpoint save` before you discard it.\n"
+        f"                   is REMOVED first ({warm_examples}),\n"
+        "                   since the deck reads what lies there.\n"
+        "                   --cold NAMES those files and REFUSES;\n"
+        "                   --force removes them.  Keep a state\n"
+        "                   with `molbuilder checkpoint save` before\n"
+        "                   you discard it.\n"
         "                   Swept BY NAME, never by a list of\n"
         "                   extensions (job-contracts.md 4.1) -- a\n"
         "                   file nobody listed is a file --cold\n"
@@ -546,10 +545,10 @@ _WRAPPER_LABEL_RE = re.compile(r"[A-Za-z0-9._-]+")
 
 
 def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
-    """Bash snippet that NAMES the prior state a cold run would overwrite.
+    """Bash snippet that NAMES the prior state a cold run removes.
 
-    **It reports and stops; ``--force`` proceeds** *(user, 2026-08-18)*: the
-    launcher does not keep something nobody asked it to keep.  Keeping one
+    **It reports and stops; ``--force`` removes them** *(user, 2026-08-18)*:
+    the launcher does not keep something nobody asked it to keep.  Keeping one
     is `molbuilder checkpoint save`, it is never automatic
     (`checkpointing.md` § 2), and this message says so.
 
@@ -569,8 +568,9 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
     enumeration, plus ``*.psml`` (element-named).  One list, two languages,
     no second copy to drift.
 
-    Nothing is moved, copied or deleted here.  The engine overwrites what it
-    overwrites, once the user has said to.
+    REMOVED, not left for the engine to overwrite: a deck that reads its
+    restart files (``DM.UseSaveDM``, ``MD.UseSaveXV``) reads whatever lies
+    there, and the run would not be cold.
     """
     # THE LABEL IS BAKED, NOT RE-READ.  `execution/gpu.md` G7 -- *"the value
     # travels; the deck is not re-read for it"*.
@@ -640,8 +640,9 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
     return (
         f"# --- Cold restart: SAY WHAT WOULD BE LOST, THEN STOP ------\n"
         f"# --cold starts the engine from the deck alone, so everything\n"
-        f"# named after the run's id is about to be overwritten.  This\n"
-        f"# NAMES those files and refuses; --force proceeds.\n"
+        f"# named after the run's id is removed first -- the deck reads\n"
+        f"# what lies there.  This NAMES those files and refuses; --force\n"
+        f"# removes them.\n"
         f"#\n"
         f"# Keeping a state is `molbuilder checkpoint save` and it is\n"
         f"# never automatic (`checkpointing.md` § 2).\n"
@@ -653,6 +654,7 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
         + label_extract +
         f'if [ "$_cold" = "1" ]; then\n'
         f"    _clobber=0\n"
+        f"    _mb_swept=()\n"
         f"    shopt -s nullglob 2>/dev/null || true\n"
         f"    echo \"[molbuilder] --cold: name sweep over "
         f"\\\"$_warm_label\\\".* and \\\"{basename}\\\".* -- everything the id "
@@ -666,21 +668,23 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
         f"            {_exceptions}) continue ;;\n"
         f"        esac\n"
         f'        if [ "$_clobber" = "0" ]; then\n'
-        f'            echo "[molbuilder] --cold would OVERWRITE prior state:" >&2\n'
+        f'            echo "[molbuilder] --cold would REMOVE prior state:" >&2\n'
         f"            _clobber=1\n"
         f"        fi\n"
         f'        echo "[molbuilder]     $_f" >&2\n'
+        f'        _mb_swept+=("$_f")\n'
         f"    done\n"
         f"    shopt -u nullglob 2>/dev/null || true\n"  # D18c: restore
         f'    if [ "$_clobber" = "1" ]; then\n'
         f'        if [ "$_force" = "1" ]; then\n'
-        f'            echo "[molbuilder] --force given: overwriting the files above." >&2\n'
+        f'            echo "[molbuilder] --force given: removing the files above." >&2\n'
+        f'            rm -f -- "${{_mb_swept[@]}}"\n'
         f"        else\n"
         f'            echo "[molbuilder] Refusing: nothing has been changed." >&2\n'
         f'            echo "[molbuilder] To keep this state, save it first:" >&2\n'
         f"            echo \"[molbuilder]     molbuilder checkpoint save -m "
         f"'before a clean rerun'\" >&2\n"
-        f'            echo "[molbuilder] Then run again with --force to overwrite." >&2\n'
+        f'            echo "[molbuilder] Then run again with --force to remove them." >&2\n'
         f"            exit 1\n"
         f"        fi\n"
         f"    else\n"
@@ -751,7 +755,7 @@ def _runtime_status_block(
 
       * **Mode** -- one of:
         - ``COLD`` (``--cold`` was confirmed with ``--force``; the prior
-          state it named is overwritten as the run proceeds)
+          state it named is removed)
         - ``WARM-RESUME`` (``--continue`` with prior state on disk)
         - ``WARM-RESUME REQUESTED but no prior state`` (``--continue``
           with nothing to resume from -- the user probably intended
@@ -904,7 +908,7 @@ def _runtime_status_block(
         + f"if {warmstart_test}; then _warmstart_present=1; fi\n"
         f'_mode="initial-run (clean state)"\n'
         f'if [ "$_cold" = "1" ]; then\n'
-        f'    _mode="COLD (--cold --force; prior state overwritten)"\n'
+        f'    _mode="COLD (--cold --force; prior state removed)"\n'
         f'elif [ "$_continue" = "1" ]; then\n'
         f'    if [ "$_warmstart_present" = "1" ]; then\n'
         + (f'        _mode="{_retry_texts(False, None)["mode"]}"\n'

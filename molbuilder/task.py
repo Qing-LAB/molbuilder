@@ -1048,7 +1048,7 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
             _refuse("\"enabled\": false -- a stage has no on/off switch: it "
                     "is in the description or it is not.  Remove the stage "
                     "instead (Task setup's stage table), and its folder is "
-                    "kept, marked .disabled (engines/stages.md 2)",
+                    "kept (engines/stages.md 2)",
                     where=where)
         obj = {k: v for k, v in obj.items() if k != "enabled"}
     _check_keys(obj, STAGE_FIELDS, where=where)

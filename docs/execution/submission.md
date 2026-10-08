@@ -84,9 +84,7 @@ bench, a bias chain, a run here
 `prep`'s printout had been the look; a launch flag can change the queue and
 the wall after it, so the line as sent was never seen — ruled that day)*. `--yes` is how a person
 says *I have decided to trust this*; its absence is not permission — with
-nobody to ask (no terminal), nothing goes and the launch is refused. A
-question that carries a judgement only the person can make — following a run
-that was launched and never concluded — takes **no** as Enter's answer.
+nobody to ask (no terminal), nothing goes and the launch is refused.
 
 **S5 — The queue is named, never inferred — and checked where it is named.** Which queue to spend a day of
 wall-clock in is a judgement about priority, contention and what else is

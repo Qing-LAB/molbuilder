@@ -978,8 +978,7 @@ over a launched attempt**, reads the marker:
 
 | the latest attempt's latest run | behaviour |
 |---|---|
-| carries the marker | continue, saying so: *"WOULD launch it again into run-2: it continues from 01_coarse/run-1 (its own latest run; concluded rc=0 …)"* — when its kind continues from a run of its own; one that does not is refused, its redo the rollback ([`job-system.md`](?doc=execution/job-system.md) § 5.4) |
-| launched, **no marker** | **warn and ask.** It may still be running (continuing would copy torn warm files under a live engine) — or it was force-stopped, in which case the saved state is *valid* and continuing is exactly what a person wants after a walltime kill. **The user judges; molbuilder never decides over them.** Interactive: a confirm that states both possibilities. Non-interactive: refused with the same story; `--yes` is the recorded judgement |
+| ended, or launched with **no marker** | launch it again, saying how that run ended: *"WOULD launch it again into run-2: it continues from 01_coarse/run-1 (its own latest run; concluded rc=0 …)"* — warm, or cold with `--cold`; whether it is still running, and whether its state is worth continuing, is the person's ([`job-system.md`](?doc=execution/job-system.md) § 5.4) |
 
 > **This answers a PROCESS question, never a chemistry one.** *Did the
 > wrapper get to finish* is what the marker knows; *did the SCF converge*
@@ -1722,18 +1721,14 @@ what the engine does when it finds state under the name it was given.* All
 molbuilder contributes is putting the right file in the right place under the
 right name.
 
-> **A redo is the same instruction.** A stage that continues from its own
-> runs is launched again — `launch` opens its next attempt from where the last
-> reached: the coordinates it got to, not the ones it started from — and needs
-> no prep (`job-system.md` § 5.4); both that and continuing to the next stage
-> are *"copy this finished run's warm files into a new attempt"*. A stage that
-> does not continue from its own runs — set `restart: clean`, or a kind whose
-> rerun starts over — is not launched again (§ 5.4 there, *A stage launched
-> again*). A stage
-> prepped is not prepped again: a redo of its prep is the state saved before
-> it, restored ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
-> *(This offered `--from 02_tight/run-0`, a prep of the same stage, until
-> 2026-10-05 — refused since 2026-10-02.)*
+> **A redo is the same instruction.** A stage launched again warm opens its
+> next attempt from where the last reached — the coordinates it got to, not
+> the ones it started from — and needs no prep (`job-system.md` § 5.4); both
+> that and continuing to the next stage are *"copy this run's warm files into
+> a new attempt"*. Launched again cold, or a stage that takes nothing from its
+> own runs, its next attempt holds no warm file. A stage prepped is not
+> prepped again: a redo of its prep is the state saved before it, restored
+> ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 
 #### 2.3.5 What goes in, what comes out
 
@@ -2268,21 +2263,14 @@ the stage's place in the description until then, so a removal renumbered
 the stages after it: status read `02_tight` for a job in `03_tight` and
 called it not prepped.)*
 
-**Gaps are honest, and a removed stage's folder says so** *(W38 F5, agreed
-2026-09-27 — user: "why don't we add a suffix .disabled to the dir or to the
-script"; 2026-10-03: "mark the dir as disabled and never allow use would be
-the correct way")*. A stage has no on/off switch: it is in the description or
-it is not. Removing one that left files marks them — Task setup's Save, which
-writes the description, does it: `02_medium/` becomes
-`02_medium.disabled/` in the hierarchy; in the flat shape its deck and run
-script take the `.disabled` suffix — and leaves its outputs untouched. Its
-number stays taken: the stage-number door reads the disk, `.disabled` folders
-included, so `tight` stays `03_tight` and a stage added later takes `04`. The
-folder is never prepped, launched or continued from, and status shows it as
-removed and kept. Removing a stage whose job is launched and not finished is
-refused. *(Until 2026-10-03 a stage carried `"enabled"`, the Task setup row an
-on/off button; a turned-off stage left its folder unmarked, and one removed
-renumbered the stages after it.)*
+**Gaps are honest** *(W38 F5, 2026-09-27; user, 2026-10-07: "we practically
+can always use checkpoint")*. A stage has no on/off switch: it is in the
+description or it is not. Removing one that left files leaves them where they
+are, untouched, and its number stays taken: the stage-number door reads the
+disk, so `tight` stays `03_tight` and a stage added later takes `04`. Nothing
+lists, preps, launches or continues from a stage the description no longer
+holds. To have it back, restore the state saved before it was removed
+([`checkpointing.md`](?doc=execution/checkpointing.md)).
 
 **Renaming is not a rename** — a stage's name is its identity, so renaming one
 that has run is creating a different stage. The rule and its reasoning are

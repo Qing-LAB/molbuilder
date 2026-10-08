@@ -377,12 +377,12 @@ class Job:
 
     @property
     def relaunch_continues(self) -> bool:
-        """Whether this stage, launched again, continues from its own latest
-        run -- its kind resumes (:attr:`resumes`) and it takes something
-        from a run (:attr:`warm`; a stage set ``restart: clean`` takes
-        nothing).  The one fact `status` words a stopped stage's next step
-        by and `launch` refuses a second launch by (`job-system.md` § 5.4,
-        *A stage launched again*)."""
+        """Whether this stage, launched again warm, continues from its own
+        latest run -- its kind resumes (:attr:`resumes`) and it takes
+        something from a run (:attr:`warm`; a stage set ``restart: clean``
+        takes nothing).  One that does not runs again from its deck alone,
+        as a cold launch does (`job-system.md` § 5.4, *A stage launched
+        again*)."""
         return self.resumes and bool(self.warm)
 
     def to_dict(self) -> Dict[str, Any]:

@@ -204,13 +204,13 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
     the run was is read and reported; `prepare_attempt` refuses only what
     cannot be done (no restart files in it).  **By default**, for a
     continuing stage of an independent ladder (`_stage_before`): the NEWEST
-    attempt of the enabled stage before it, which must have ended on its own
+    attempt of the stage before it, which must have ended on its own
     with exit code 0 (:func:`usable`) -- an older one never stands in,
     because a stage re-launched to tighten is the run the person means.  Otherwise the refusal, worded by
     what the run's state says and naming the commands that work on this
     layout.  ``(None, None)`` for ``--cold``, a linked kind's default, the
-    first stage, a stage that starts clean, and one the description disables
-    (which prep refuses at its checkpoint 2).  ``verdict=False`` leaves the
+    first stage, a stage that starts clean, and one the description does
+    not hold (which prep refuses at its checkpoint 2).  ``verdict=False`` leaves the
     relaxation unread -- for a reader that never prints it.
 
     A force-constant stage with no `relax` before it builds on nothing: the
@@ -364,7 +364,7 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
         elif cold:
             return (f"--cold: `{stage}` builds on `{relax}` -- it measures "
                     f"at the geometry `{relax}` reached.  To measure the "
-                    f"structure as given, disable `{relax}` and state the "
+                    f"structure as given, remove `{relax}` and state the "
                     f"structure relaxed (`already_relaxed` in the "
                     f"template) (engines/vibration.md 5.2a).")
         elif from_attempt and named != relax:
@@ -446,7 +446,6 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     what = (f"the newest attempt of `{prev}`, {source}," if source
             else f"`{prev}`'s latest run,")
     why, first = state_remedy(concluded, state, launch_prev,
-                              refused=not_launched_again(base, prev),
                               detail=detail)
     other = None
     if not (flat or bench):
@@ -467,92 +466,53 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
                   f"{what} {why}.  {first}\n{alt}{clean}{rule}")
 
 
-def no_relaunch(takes_nothing: bool, *, base) -> str:
-    """Why a stage that does not continue from a run of its own is not
-    launched again, and the way back -- `status`'s next step for it and
-    `launch`'s refusal, one sentence (`job-system.md` § 5.4, *A stage
-    launched again*).  ``takes_nothing``: it takes nothing from a run (set
-    ``restart: clean``); otherwise its kind's rerun starts over."""
-    from .commands import rollback
-    # NOTHING TO TAKE has two causes, and the job cannot tell them apart:
-    # a stage set `restart: clean`, or a kind that declares no restart
-    # files (a transport lead, the transmission) -- so both are named.
-    why = ("it takes nothing from a run -- it is set `restart: clean`, or "
-           "its kind declares no restart files" if takes_nothing
-           else "a rerun of its kind starts over (its restart-file list's "
-                "`resumes`)")
-    return (f"it does not continue from a run of its own -- {why} -- and a "
-            f"prepped stage is not prepped again: "
-            + rollback("its prep", base=base))
-
-
-def relaunch(base, task, job) -> Tuple[Optional[Continuation], Optional[str]]:
-    """``(continuation, refusal)`` for ``job``'s stage LAUNCHED AGAIN -- the
-    door `launch` asks for a re-launch's hand-over, as prep asks
-    :func:`continuation_answer` (`job-system.md` § 5.4, *A stage launched
-    again*).  A stage that continues from a run of its own
-    (`Job.relaunch_continues`) continues from its OWN latest run: its newest
-    attempt, or on the flat layout its latest run in the folder, by the name
-    every file of it carries -- what it was read in the run door's order
-    (:func:`read_run`), one `Continuation` as prep's is.  One that does not
-    is refused, worded as `status` words it (:func:`no_relaunch`)."""
+def relaunch(base, task, job, *, cold: bool = False
+             ) -> Optional[Continuation]:
+    """What ``job``'s stage, LAUNCHED AGAIN, continues from -- the door
+    `launch` asks, as prep asks :func:`continuation_answer`
+    (`job-system.md` § 5.4, *A stage launched again*).  Any stage is
+    launched again, however its last run ended: warm, from its OWN latest
+    run -- its newest attempt, or on the flat layout its latest run in the
+    folder, by the name every file of it carries -- when its kind resumes
+    and it takes something from a run (`Job.relaunch_continues`); cold
+    (``cold``), or a stage that takes nothing, continues from nothing:
+    ``None``.  How that run ended is read in the run door's order
+    (:func:`read_run`) and said, never judged."""
     from ..paths import Shape
     from ..runfiles import latest_run, run_name
     from .materialize import latest_attempt, stage_home
     base = Path(base)
     stage = job.name
-    if not job.relaunch_continues:
-        return None, (f"`{stage}` was launched, and "
-                      + no_relaunch(not job.warm, base=base))
+    if cold or not job.relaunch_continues:
+        return None
     home = stage_home(base, task, stage)
     if Shape.named(task.shape).keeps_attempts_as_directories:
         latest = latest_attempt(home.dir)
         if latest is None:
-            return None, None                        # never launched
+            return None                              # never launched
         concluded, state, converged, _ = read_run(base, task, stage,
                                                   latest)
         return Continuation(stage=stage, source=str(latest.relative_to(base)),
                             by_default=True, concluded=concluded, state=state,
-                            converged=converged, own=True), None
+                            converged=converged, own=True)
     n = latest_run(base, task.label, stage=home.token, role=".run.json")
     concluded, state, converged, _ = read_run(base, task, stage, base)
     return Continuation(stage=stage, source=None, by_default=True,
                         concluded=concluded, state=state, converged=converged,
                         own=True,
                         run=(run_name(task.label, home.token, n)
-                             if n is not None else None)), None
-
-
-def not_launched_again(base, stage: str) -> Optional[str]:
-    """Why ``stage``, prepped, is not launched again (:func:`no_relaunch`,
-    the one sentence `status` and `launch` say) -- or ``None`` when it is,
-    or is not prepped.  Read off its job (`Job.relaunch_continues`), so
-    the way on another stage's refusal names is the one launch takes."""
-    from .model import JobSet
-    path = Path(base) / "job-set.json"
-    if not path.is_file():
-        return None
-    job = next((j for j in JobSet.load(path).jobs if j.name == stage), None)
-    if job is None or job.relaunch_continues:
-        return None
-    return no_relaunch(not job.warm, base=base)
+                             if n is not None else None))
 
 
 def state_remedy(concluded: Optional[str], state: Optional[str],
                  launch_block: str, *,
-                 refused: Optional[str] = None,
                  detail: Optional[str] = None) -> Tuple[str, str]:
     """``(why, what to do first)`` for a run a stage would build on and may
     not: worded by what the run's state says, the way on a command you can
     type (`job-system.md` § 5.3) -- the hand-over's default and a transport
     rung's gather say it alike.  A run that ended with an error, or stopped,
-    is LAUNCHED again: a prepped stage is not prepped again
-    (`job-system.md` § 5.0) --
-    unless it is not launched again either (``refused``,
-    :func:`not_launched_again`), when the way back is its rollback, said
-    as `status` and `launch` say it."""
-    again = (f"It is not launched again: {refused}" if refused else
-             f"Launch it again --\n{launch_block}")
+    is LAUNCHED again, never prepped again (`job-system.md` § 5.0, § 5.4)."""
+    again = f"Launch it again --\n{launch_block}"
     # A RECORD THAT DOES NOT READ is said as its reader says it -- which
     # names the way out (`jobset migrate`) -- never read as an ending.
     # Its words come last: they end on the command to type.
@@ -615,7 +575,7 @@ def _independent(task) -> bool:
 
 
 def _ladder(base, task, template_text: Optional[str] = None) -> list:
-    """``[(stage, resolved config)]`` of the enabled stages, as `prep`
+    """``[(stage, resolved config)]`` of the described stages, as `prep`
     resolves them (`resolve.resolved_ladder`: template ⊕ stage overrides ⊕
     the run card) -- from ``template_text`` as the caller read it, else the
     template read here; ``[]`` with no template."""
@@ -640,11 +600,11 @@ def _stage_config(base, task, stage: str, template_text: Optional[str] = None):
 
 def _stage_before(base, task, stage: str,
                   template_text: Optional[str] = None) -> Optional[str]:
-    """The enabled stage ``stage`` continues from by default -- the one
+    """The stage ``stage`` continues from by default -- the one
     before it in the ladder, resolved as `prep` resolves it (template ⊕
     stage overrides ⊕ the run card, so a card's ``restart: clean`` is read)
     -- or ``None``: a linked kind, the first stage, one that starts clean,
-    one the description disables (which prep refuses at its checkpoint
+    one the description does not hold (which prep refuses at its checkpoint
     2)."""
     from ..identity import continues
     if not _independent(task):

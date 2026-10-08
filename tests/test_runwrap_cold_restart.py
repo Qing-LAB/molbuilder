@@ -6,12 +6,11 @@ User-visible contract (job-contracts.md § 4.1 -- a NAME SWEEP, U17):
   * ``bash <name>.run.sh --cold`` NAMES everything matching the run's
     id -- minus what molbuilder itself wrote (deck, template, .psml,
     wrappers, molbuilder's logs) -- and **refuses**, changing nothing;
-    ``--force`` says yes to that refusal, and the run overwrites them as
-    it goes.
+    ``--force`` says yes to that refusal and removes them, so
     SIESTA's ``DM.UseSaveDM`` / ``MD.UseSaveCG`` / ``MD.UseSaveXV``
-    find nothing surviving, so the calc starts strictly from the .fdf
+    find nothing surviving, and the calc starts strictly from the .fdf
     coords + conditions.
-  * **Nothing is moved or copied** *(user, 2026-08-18)*.  Keeping a state
+  * **Nothing is kept aside** *(user, 2026-08-18)*.  Keeping a state
     is ``molbuilder checkpoint save`` and it is never automatic
     (`checkpointing.md` § 2).
   * Combinable with ``--continue`` (cold = no-op when there is nothing

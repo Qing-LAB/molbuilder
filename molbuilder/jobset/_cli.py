@@ -1474,15 +1474,12 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
         # R14 -- the cap this sweep will meet, said while no is still free.
         if r.detail and "  " + r.detail.strip() not in warn:
             warn.append("  " + r.detail.strip())
-    judged = [r.judgement for r in plan if r.judgement]
-    lines += warn + list(footer) + ["  " + j for j in judged]
+    lines += warn + list(footer)
     if dry_run:
-        for line in warn + list(footer) + ["  " + j for j in judged]:
+        for line in warn + list(footer):
             click.echo(line)
         return None
-    # A JUDGEMENT ONLY THE PERSON CAN MAKE is not made by Enter.
     return confirm("\n".join(lines), auto_yes=auto_yes,
-                   default=not judged,
                    question="run this here?" if here else "submit this?")
 
 
@@ -1526,9 +1523,14 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="take what is shown without being asked.  The request is "
                    "still printed -- --yes skips the question, never the "
-                   "output (submission.md S4) -- and it is also your "
-                   "recorded judgement to continue a run that was launched "
-                   "and never concluded (project-layout.md § 1.6.4).")
+                   "output (submission.md S4).")
+@click.option("--cold", is_flag=True,
+              help="a stage launched before: its next run takes nothing "
+                   "from a run of its own -- it starts from its deck alone "
+                   "(on the flat layout its run script sweeps the files its "
+                   "runs left).  Without it, launching a stage again "
+                   "continues from its own latest run, however that run "
+                   "ended (job-system.md 5.4).")
 @click.option("--trial-timeout", "trial_timeout_min", default=None,
               type=click.IntRange(min=1), metavar="MINUTES",
               help="a benchmark's walk (`launch bench <stage>`, here or "
@@ -1545,7 +1547,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "collects it -- here or on the cluster that reaches it.")
 def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                dry_run: bool, time_text, mem_text, gpu_domain,
-               auto_yes, trial_timeout_min, only_side) -> None:
+               auto_yes, cold, trial_timeout_min, only_side) -> None:
     """Launch a prepped stage: run it here (direct), hand it to the machine's
     scheduler (submit), or ask the scheduler when it would start (ask).
     Run ``prep`` first.  Before anything is sent the exact ``sbatch`` line is
@@ -1561,7 +1563,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     try:
         _launch(said, kind, stage, trial, bundle, mode, domain, dry_run,
                 time_text, mem_text, gpu_domain, auto_yes, trial_timeout_min,
-                only_side)
+                only_side, cold)
     except SubmitError as e:
         # the entry's refusal, which the entry wrote down
         raise click.ClickException(str(e)) from None
@@ -1575,7 +1577,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
 
 def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             domain, dry_run: bool, time_text, mem_text, gpu_domain,
-            auto_yes, trial_timeout_min, only_side) -> None:
+            auto_yes, trial_timeout_min, only_side, cold: bool) -> None:
     """The launch verb's body (:func:`submit_cmd`, which writes down any
     refusal it raises).  ``said`` is what that line names, filled in as the
     body learns it: the mode and where it came from, the stage as the
@@ -1588,7 +1590,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     typed = [[f, v] for f, v in (
         ("--domain", domain), ("--gpu-domain", gpu_domain),
         ("--time", time_text), ("--mem", mem_text),
-        ("--trial-timeout", trial_timeout_min), ("--only", only_side))
+        ("--trial-timeout", trial_timeout_min), ("--only", only_side),
+        ("--cold", True if cold else None))
         if v is not None]
 
     # ------------------------------------------------------------------ #
@@ -1606,6 +1609,10 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         js, base = _load(bundle)
     _check_kind(kind, js)
     if kind == "bench":
+        if cold:
+            raise click.ClickException(
+                "--cold: a stage launched again -- a benchmark's trial "
+                "starts cold always.")
         only = _pick_trial(js, trial)            # None: every trial
     else:
         # The description's spelling from here on -- what the ledger
@@ -1685,7 +1692,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     plan = plan_launch(js, base, mode=mode, only=only, domain=domain,
                        gpu_domain=gpu_domain, side=only_side, mem=mem,
                        time_s=time_s, trial_timeout_s=_bound_s, told=told,
-                       record=not dry_run)
+                       record=not dry_run, cold=cold)
     from .commands import command
     if mode == "ask":
         results = ask_launch(plan)
@@ -1715,8 +1722,6 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                 # attempt opens at launch), and the line asked about is
                 # the one that attempt would send.
                 click.echo(f"  {r.name}: {r.status}")
-                if r.judgement:
-                    click.echo("  " + r.judgement)
         if not preds:
             click.echo("\n  nothing left to ask about here.")
             if ran:

@@ -78,7 +78,7 @@ name = "...and it never starts from the structure while the ladder holds a relax
 calculation = "vibration"
 stage = "freq"
 prep = ["--cold"]
-refused = ["--cold: `freq` builds on `relax`", "disable `relax` and state the structure relaxed"]
+refused = ["--cold: `freq` builds on `relax`", "remove `relax` and state the structure relaxed"]
 
 [[case]]
 name = "...and with no relax it measures the structure as given only when stated relaxed: not stated, it is refused by the one hand-over door, so status says so before the prep"
@@ -89,8 +89,8 @@ refused = ["is not stated to be relaxed", "Either add the `relax` stage before `
 status_says = ["its prep refuses for now", "is not stated to be relaxed"]
 
 # ---- A STAGE LAUNCHED AGAIN (job-system.md § 5.4, *A stage launched again*):
-#      its own latest run, one hand-over as prep's -- or, for a stage that
-#      does not continue from a run of its own, refused, as status says.
+#      however it ended, warm -- its own latest run, one hand-over as prep's --
+#      or cold, nothing from a run of its own (user, 2026-10-07).
 
 [[case]]
 name = "a stage launched again continues from its own latest run, recorded as prep's hand-over is"
@@ -107,7 +107,20 @@ listing = ["launched again into run-1: it continues from 01_coarse/run-0 (its ow
 after_launch = { made = ["01_coarse/run-1/H2.XV", "01_coarse/run-1/.continued-from"], ledger_holds = ["launch continues"] }
 
 [[case]]
-name = "a stage whose kind's rerun starts over is not launched again: refused, saying the way back"
+name = "...launched again --cold, its next attempt takes nothing from a run of its own"
+stand_in = { leaves_restart = true }
+before = [["prep", "run", "coarse"],
+          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+stage = "medium"
+launch = ["--cold"]
+launch_stage = "coarse"
+launch_mode = "direct"
+launch_sends = true
+listing = ["launched again into run-1: it starts cold -- from its deck alone"]
+after_launch = { made = ["01_coarse/run-1"], made_lacks = ["01_coarse/run-1/.continued-from"] }
+
+[[case]]
+name = "a stage whose kind's rerun starts over, launched again, runs from its deck alone"
 own_warm_files = { resumes = false }
 stand_in = { leaves_restart = true }
 before = [["prep", "run", "coarse"],
@@ -117,22 +130,21 @@ launch = []
 launch_stage = "coarse"
 launch_mode = "direct"
 launch_sends = true
-launch_refused = ["`coarse` was launched, and it does not continue from a run of its own -- a rerun of its kind starts over",
-                  "molbuilder checkpoint list"]
-after_launch = { made_lacks = ["01_coarse/run-1"] }
+listing = ["launched again into run-1: it starts cold -- from its deck alone"]
+after_launch = { made = ["01_coarse/run-1"], made_lacks = ["01_coarse/run-1/.continued-from"] }
 
 [[case]]
-name = "...and status says the same of it, stopped: one fact, one sentence"
+name = "...and status says what launching it again does, however it ended"
 own_warm_files = { resumes = false }
 stand_in = { rc = 1 }
 before = [["prep", "run", "coarse"],
           ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
 refused = "not prepped again"
 status_says = ["coarse, failed",
-               "it does not continue from a run of its own -- a rerun of its kind starts over"]
+               "launch it again -- it runs again from its deck alone"]
 
 [[case]]
-name = "a flat stage set restart: clean is not launched again"
+name = "a flat stage set restart: clean, launched again, runs again in its folder taking nothing"
 shape = "flat"
 run = { restart = "clean" }
 stand_in = { leaves_restart = true }
@@ -143,7 +155,7 @@ launch = []
 launch_stage = "coarse"
 launch_mode = "direct"
 launch_sends = true
-launch_refused = "it takes nothing from a run -- it is set `restart: clean`"
+listing = ["launched again in the same folder, as its run 1"]
 after_launch = { made_lacks = ["H2_01_coarse-run1.continued-from"] }
 
 [[case]]

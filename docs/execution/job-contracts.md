@@ -954,7 +954,7 @@ wrapper contains these and nothing else:
 | **SIESTA-specific argument parsing** | `-np` / `-omp` and friends |
 | **OpenMP thread sizing** | PySCF only. Resolves the thread count — `-omp` flag, else `OMP_NUM_THREADS`, else the scheduler's allocation, else the stated value baked at prep (an unstated one is refused at prep; the node's physical cores stood in until 2026-10-02 — `running-a-job.md` § 3.2) — and **exports** it, so the wrapper and the script cannot disagree. Added 2026-08-13 (P1b) because the wrapper deliberately left the variable unset and the script counted the whole node, so a job holding 8 cores of a 128-core node started 128 threads and time-sliced them onto its 8. PySCF is OpenMP-only, so `-np` is accepted, reported and ignored — `launch` passes it to every run script |
 | **Run index resolution** | the run's number, as `launch` gave it — `--run N` — refused without one, naming the launch command; it counted the `-runN` files beside it until 2026-10-06 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1, plan W57 decision 6) |
-| **Cold restart: SAY WHAT WOULD BE LOST, THEN STOP** | what `--cold` does — NAMES everything the id names, minus what molbuilder wrote (§ 4.1, U17), and refuses; `--force` proceeds and the engine overwrites them. It moved them into an aside directory until 2026-08-18; keeping a state is `molbuilder checkpoint save` and it is never automatic |
+| **Cold restart: SAY WHAT WOULD BE LOST, THEN STOP** | what `--cold` does — NAMES everything the id names, minus what molbuilder wrote (§ 4.1, U17), and refuses; `--force` removes them, since a deck that reads its restart files reads whatever lies there. It moved them into an aside directory until 2026-08-18; keeping a state is `molbuilder checkpoint save` and it is never automatic |
 | **Runtime status banner** | prints what it found — warm files, ranks |
 | **Probe SIESTA build at runtime** | reads the build's own capabilities |
 | **Record resolved launch command + placement** | writes down what it is about to do |
@@ -1645,7 +1645,7 @@ owned by `execution/job-system.md`.
 | **Project ID** | Every script declares its ID in one literal (`SystemLabel` / `JOB = "…"`). This ID keys all warm files as `<ID>.<ext>`. |
 | **Warm-restart (auto)** | If warm files named by the ID exist in the directory, the engine resumes from them — no flag, and this is the default (`run-identity.md` § 4 rule 3). Absent files ⇒ clean cold start. |
 | **`--continue`** | Same as auto, but *asserts* the warm files must be present: if none exist it prints "…starting cold by necessity" rather than silently cold-starting. |
-| **`--cold`** | Forces a clean start regardless of on-disk state, **overwriting** the prior state as the run proceeds. It NAMES those files and **refuses**; `--force` proceeds. |
+| **`--cold`** | Forces a clean start regardless of on-disk state, **removing** the prior state before the engine starts. It NAMES those files and **refuses**; `--force` removes them. |
 
 The critical safety property of `--cold` is unchanged — **nothing the engine
 could read may survive it**, or `--cold` silently leaks prior state into a
@@ -1665,8 +1665,8 @@ sweep changed on 2026-08-08 for the reason below.
 > starts writing something new.
 >
 > **The safety net for the other direction is a REFUSAL, not a copy**
-> *(user, 2026-08-18)*. `--cold` names every file it would overwrite and exits
-> without changing anything; `--force` proceeds. It moved them into a
+> *(user, 2026-08-18)*. `--cold` names every file it would remove and exits
+> without changing anything; `--force` removes them. It moved them into a
 > timestamped `<basename>-restart-aside-<UTC>/` instead, until it was pointed
 > out that this is the launcher deciding to keep something nobody asked it to
 > keep — and that it left two mechanisms for preserving a state, with different
@@ -1794,7 +1794,7 @@ the working directory, through the one definition every PySCF deck carries
 (`pyscf/input.emit_outfile_helper`; the vibration deck resolved against the
 working directory until 2026-09-28, plan W36 ⑩).
 
-> **Pinned in code:** `--cold` names every file a re-run would overwrite —
+> **Pinned in code:** `--cold` names every file a re-run would remove —
 > a sweep by NAME since U17 (§ 4.1), so a new warm-restart hook needs no glob
 > of its own. `tests/test_runwrap.py` plants what a PySCF optimization leaves
 > (`_PYSCF_WARM_RESTART_INVENTORY`: its warm state, and geomeTRIC's trajectory
@@ -2037,7 +2037,7 @@ the same thing for SIESTA and PySCF):
 | `WARM-RESTART (silent; engine will load existing <files>. Pass --cold to discard them.)` | warm files present, no flag — auto-resume |
 | `WARM-RESUME (--continue; engine will load <files>)` | `--continue` + warm files present |
 | `WARM-RESUME REQUESTED but no prior state found -- starting cold by necessity` | `--continue` but no warm files — degraded to cold |
-| `COLD (--cold --force; prior state overwritten)` | `--cold` was confirmed with `--force`; the files it named are overwritten as the run proceeds |
+| `COLD (--cold --force; prior state removed)` | `--cold` was confirmed with `--force`; the files it named are removed |
 
 (The flag spellings: `--continue` / `-c`; `--force` / `-f` says yes to
 `--cold`'s refusal; `--cold` / `--from-scratch`.)
@@ -2477,7 +2477,7 @@ for not clobbering a previous output, not a name for a stage.
 | **attempt** *(hierarchical)* | `run-<n>` — **not** padded | a counter of invocations that happened, not a designed sequence; `run-` is reserved and its members are numbers, full stop |
 | **benchmark** | `bench/` inside the stage it measures; **flat**, where no stage directory exists, `bench_<seq>_<stage>/` at the root | a benchmark nests in what it measures (`project-layout.md § 3`) — and in flat the token qualifies the container's own name, or two stages' benchmarks would share one directory and overwrite each other (2026-08-12 plan A5).  Underscore-joined, so it cannot be read as a trial's dash-joined `bench-<point>` |
 | **trial** | `bench-G<gpus>K<ranks-per-gpu>C<cores>` | a sweep has no order, so the name carries **what was tried** — which is what lets `summarize` map a directory back to its point |
-| ~~**warm state moved aside**~~ | ~~`<label>-restart-aside-<UTC>/`~~ | **RETIRED 2026-08-18 (user).** `--cold` moved prior state here rather than overwriting it; keeping a state is `molbuilder checkpoint save` and it is never automatic, so a second preservation mechanism with its own name was one too many. `--cold` names what it would overwrite and refuses; `--force` proceeds. *(The name stayed reserved, the sweep skipping it, until 2026-10-04 -- for folders written before the change: old runs are not a design input, user 2026-10-03; plan D27.)* |
+| ~~**warm state moved aside**~~ | ~~`<label>-restart-aside-<UTC>/`~~ | **RETIRED 2026-08-18 (user).** `--cold` moved prior state here rather than overwriting it; keeping a state is `molbuilder checkpoint save` and it is never automatic, so a second preservation mechanism with its own name was one too many. `--cold` names what it would remove and refuses; `--force` removes it. *(The name stayed reserved, the sweep skipping it, until 2026-10-04 -- for folders written before the change: old runs are not a design input, user 2026-10-03; plan D27.)* |
 
 #### History
 

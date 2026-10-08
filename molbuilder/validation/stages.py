@@ -51,7 +51,7 @@ def check_ladder_does_not_loosen(
     """§ 4 R3. One ``warn`` per parameter that goes backwards along the ladder.
 
     ``resolved`` is ``[(stage name, effective config), ...]`` **in ladder
-    order**, enabled stages only — the order is the thing being checked, so a
+    order** — the order is the thing being checked, so a
     caller that sorts or filters differently is asking a different question.
 
     **Which parameters, and which way, is the catalogue's** — each item's
@@ -166,7 +166,7 @@ _RESTART = "restart"
 def check_identical_stages(resolved: Sequence[Tuple[str, Any]]) -> List[Issue]:
     """§ 6.6a. Warn where a stage recomputes the one before it and discards it.
 
-    **Two enabled stages may resolve to identical settings, and that is
+    **Two stages may resolve to identical settings, and that is
     allowed.** `tight` followed by `tight` where the second *continues* is
     simply *more steps at these settings* — the honest way to say *keep going*
     after a stage ran out of its step budget. Refusing it would make someone

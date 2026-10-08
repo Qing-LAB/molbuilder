@@ -1741,8 +1741,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         # its prep (§ 5.0).
         from .commands import (block, launch_lines, rollback,
                                run_first as _run_first)
-        from .continuation import (not_launched_again, read_run,
-                                   state_remedy)
+        from .continuation import read_run, state_remedy
         q2 = ("\n  (strict composition, ruling Q2: transport never runs its "
               "pieces for you.)")
         redo = rollback(f"`{upstream}`'s prep", base=base)
@@ -1774,7 +1773,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
                            else (None, "pending", None, None))
             why, first = state_remedy(
                 c, s, block(launch_lines("run", upstream, base=base)),
-                refused=not_launched_again(base, upstream), detail=d)
+                detail=d)
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
                 f"and {upstream} has no attempt that finished: the "

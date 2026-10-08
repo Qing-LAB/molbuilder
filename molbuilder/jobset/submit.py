@@ -9,15 +9,14 @@ order § 6.0 states:
 1. **the plan** (:func:`plan_launch`), nothing written -- the work and its
    SUBMISSIONS, each one scheduler job or one process here walking one or
    more MEMBERS, each a prepared attempt: the attempt it runs in, what it
-   follows and whether that run concluded; the gates; the queue; the exact
+   follows and how that run ended; the gates; the queue; the exact
    line and every script the send will write.  Three shapes of work, one
    plan (:class:`LaunchPlan`):
 
    * **a stage** -- a ladder's stage, or a sweep's named trial.  A stage
-     launched before is launched again by
-     CONTINUING it (user, 2026-08-21): the next attempt opens from its
-     latest, and a run that never concluded is followed only on the
-     person's judgement;
+     launched before is launched again, however it ended -- warm, from its
+     own latest run, or cold (user, 2026-10-07: "run continue warm or cold
+     is user's decision, and error or not, that's user's responsibility");
    * **a benchmark's walk** -- ONE job per resource shelf of a sweep sent
      to a queue, or its unlaunched trials run here, the trials in sequence
      (`generator.md` § 4.3a, `_bench_walk`);
@@ -119,11 +118,6 @@ class JobResult:
     #: It did, and the person who ran it believed a debug sweep had gone to
     #: the wrong queue.  The name is the fact; the flags are its rendering.
     domain:     Optional[str] = None
-    #: What only the person can decide before this goes -- a re-launch over
-    #: a run that never concluded (`project-layout.md` § 1.6.4) -- or
-    #: ``None``.  The CLI shows it in the one question it asks, and asks
-    #: with "no" as the answer Enter gives.
-    judgement:  Optional[str] = None
 
     def to_dict(self) -> Dict[str, object]:
         return dataclasses.asdict(self)
@@ -144,12 +138,17 @@ def _sbatch_resource_flags(r: Resources, placement=None) -> List[str]:
     return Directives.of(placement, r).sbatch_flags()
 
 
-def _run_sh_args(r: Resources, run: int) -> List[str]:
+def _run_sh_args(r: Resources, run: int, *, cold: bool = False
+                 ) -> List[str]:
     """What every ``.run.sh`` is started with: its run's number, which
     launch decides and the script refuses to start without (``--run N``,
-    `project-layout.md` § 1.6.1), and its job's ``-np`` / ``-omp``
-    (runwrap.py § arg-parsing)."""
+    `project-layout.md` § 1.6.1), its job's ``-np`` / ``-omp``
+    (runwrap.py § arg-parsing), and ``--cold --force`` for a flat stage
+    launched again cold -- the person said so at launch, and was shown the
+    line (`job-system.md` § 5.4)."""
     args: List[str] = ["--run", str(run)]
+    if cold:
+        args += ["--cold", "--force"]
     if r.mpi_np:
         args += ["-np", str(r.mpi_np)]
     if r.cpus_per_task:
@@ -407,9 +406,13 @@ class _Member:
     #: What the results and the ledger call it when the job's name does not
     #: -- a bias point's ``<stage>@<point>``.
     label: Optional[str] = None
-    #: What it continues from when it is a stage launched again -- its own
-    #: latest run, one `Continuation` from the one door
-    #: (`continuation.relaunch`; `job-system.md` § 5.4) -- or ``None``.
+    #: It is a stage launched before, launched again (`job-system.md` § 5.4).
+    again: bool = False
+    #: Launched again cold: it takes nothing from a run of its own.
+    cold: bool = False
+    #: What it continues from when it is a stage launched again warm -- its
+    #: own latest run, one `Continuation` from the one door
+    #: (`continuation.relaunch`) -- or ``None``.
     continuation: Optional[Continuation] = None
     #: The restart files that continuation copies, as the opener planned
     #: them -- what that run holds of what the stage declares.
@@ -426,8 +429,8 @@ class _Member:
 
     @property
     def follows(self) -> bool:
-        """It is a stage launched again, following a run of its own."""
-        return self.continuation is not None
+        """It is a stage launched again -- what it takes is said."""
+        return self.again
 
     def _where(self) -> str:
         """Where it runs again: its next attempt, or its folder, as the
@@ -443,40 +446,33 @@ class _Member:
         """The member as the plan holds it, in one line: where it runs, what
         it follows, how that run ended and what is copied from it."""
         line = f"{self.name}: runs in {_rel(self.run_dir, self.base)}"
-        if self.continuation is not None:
-            line += "; it " + self.continuation.line(self._copied(),
-                                                     would=True)
+        if self.again:
+            line += "; it " + self._takes(would=True)
         return line
 
-    def judgement(self) -> Optional[str]:
-        """What only the person can decide before this goes, or ``None``."""
-        c = self.continuation
-        if c is None or c.concluded is not None:
-            return None
-        return (f"{self.name}: {c.where()} was launched and never "
-                f"CONCLUDED -- it may still be RUNNING, or it was "
-                f"force-stopped (walltime, kill).\n"
-                f"  Continuing reads its warm files AS THEY ARE: valid after "
-                f"a forced stop, torn if it is still running.  Check the "
-                f"queue, and `{_cmd('status', self.job.name, base=self.base)}`, "
-                f"first.")
+    def _takes(self, *, would: bool) -> str:
+        """What it takes, warm or cold."""
+        if self.continuation is not None:
+            return self.continuation.line(self._copied(), would=would)
+        start = "would start" if would else "starts"
+        gathered = (f", with the inputs its kind gathered "
+                    f"({', '.join(self.gathered)})" if self.gathered else "")
+        return (f"{start} cold -- from its deck alone, nothing taken from a "
+                f"run of its own{gathered}")
 
     def would(self) -> str:
         """What it follows, said before anything is sent."""
-        return (f"WOULD launch it again {self._where()}: it "
-                + self.continuation.line(self._copied(), would=True))
+        return f"WOULD launch it again {self._where()}: it " + self._takes(
+            would=True)
 
     def note(self) -> Optional[str]:
         """The line that says what this launch follows, once it is sent, or
         ``None``."""
-        c = self.continuation
-        if c is None:
+        if not self.again:
             return None
-        judged = ("" if c.concluded is not None else
-                  " -- on your judgement: that run never concluded")
-        return (f"launched again {self._where()}{judged}: it "
-                + c.line(self._copied()) + ".  To start it afresh instead "
-                "-- from the stage before it, or the structure: "
+        return (f"launched again {self._where()}: it "
+                + self._takes(would=False) + ".  To start it afresh from "
+                "the stage before it, or the structure: "
                 + rollback("its prep", base=self.base))
 
 
@@ -578,14 +574,9 @@ class LaunchPlan:
                 for line in self.writes.described()]
         return out + list(self.reads)
 
-    def judgements(self) -> List[str]:
-        """What only the person can decide before this goes."""
-        return [j for s in self.submissions for m in s.members
-                for j in (m.judgement(),) if j]
-
     def shown(self) -> List[JobResult]:
         """The plan as the question and a dry run show it: the trials passed
-        over, what each member follows and what only the person can judge,
+        over, what each member follows,
         each submission's exact line and queue -- with what the record
         predicts of its cap (R14) -- and the members riding it."""
         caps: Dict[str, str] = {}
@@ -593,7 +584,7 @@ class LaunchPlan:
             caps[n.split(" takes ", 1)[0]] = n
         out: List[JobResult] = list(self.skipped)
         for s in self.submissions:
-            out += [JobResult(m.name, [], m.would(), judgement=m.judgement())
+            out += [JobResult(m.name, [], m.would())
                     for m in s.members if m.follows]
             out.append(JobResult(s.name, s.command, "planned",
                                  domain=s.domain, detail=caps.get(s.domain)))
@@ -616,7 +607,7 @@ def _launched(where, names: RunNames) -> bool:
 
 
 def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
-                 writes: Plan, named: bool = False):
+                 writes: Plan, named: bool = False, cold: bool = False):
     """Where ``job`` runs and what it follows -- read, never written: a
     :class:`_Member`, or the result of a trial passed over by name.  A
     re-launch's next attempt is opened in ``writes`` by the one opener
@@ -633,12 +624,13 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
     output proves nothing (§ 1.6).  The run's number is decided here
     (`runrecord.next_run`), once, and handed to its run script.
 
-    A LADDER STAGE LAUNCHED BEFORE is launched again by continuing it (user,
-    2026-08-21: *"a run stopped due to the server running out of time, and
-    you can submit again and by default it continues"*): the hierarchy
-    opens the next attempt from the latest -- the one source that is never a
-    guess -- and the flat layout simply runs again where its files are.  A
-    run that never concluded is followed only on the person's judgement.
+    A LADDER STAGE LAUNCHED BEFORE is launched again, however it ended
+    (user, 2026-10-07: *"run continue warm or cold is user's decision, and
+    error or not, that's user's responsibility"*): warm by default -- the
+    hierarchy opens the next attempt from the latest, the flat layout runs
+    again where its files are -- or ``cold``, taking nothing from a run of
+    its own: the next attempt opened empty but for the stage's deck and the
+    inputs its kind gathered, the flat run script told ``--cold --force``.
     A TRIAL is immutable once launched: a walk -- here, or a queue's
     shelves -- and a question to the scheduler pass the measured ones over
     by name; one the person NAMED (``named``) is refused when it is sent or
@@ -704,52 +696,52 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
         if not _launched(container, names):
             return _member(job, container, container, False, container,
                            run=run)
-        # A FLAT STAGE LAUNCHED AGAIN continues from its own latest run,
-        # where its files are, and its next run's record says so -- as the
-        # hierarchy's next attempt names its own; one that does not continue
-        # from a run of its own is refused (the one door,
-        # `continuation.relaunch`).  Its `.continued-from` is written with
-        # its launch record, once the run is sent (`_record_launch`): a
-        # refused send leaves no file of a run that never started.
-        cont = _relaunched(base, job)
+        # A FLAT STAGE LAUNCHED AGAIN runs where its files are: warm, from
+        # its own latest run, and its next run's record says so -- as the
+        # hierarchy's next attempt names its own -- or cold, its run script
+        # told to sweep them.  Its `.continued-from` is written with its
+        # launch record, once the run is sent (`_record_launch`): a refused
+        # send leaves no file of a run that never started.
+        cont = _relaunched(base, job, cold)
         return _member(job, container, container, False, container,
-                       run=run, continuation=cont)
+                       run=run, again=True, cold=cold,
+                       continuation=cont)
     last = attempt_dir(container, ns[-1])
     if not _launched(last, names):
         return _member(job, container, last, True, last,
                        run=next_run(last, names))
-    cont = _relaunched(base, job)
-    source = cont.source
+    cont = _relaunched(base, job, cold)
+    source = cont.source if cont is not None else None
     try:
         # THE ONE OPENER, planned (`project-layout.md` § 1.6.2): the next
         # attempt, the stage's files and what it carries from ``source`` --
-        # written by the send, never before the person has said yes.
+        # nothing, cold -- written by the send, never before the person has
+        # said yes.
         opened = prepare_attempt(jobset, base, job.name,
-                                 continue_from=source, named=False,
-                                 plan=writes, shape=sh)
+                                 continue_from=source, cold=cont is None,
+                                 named=False, plan=writes, shape=sh)
     except ValueError as e:
-        # Continuing is impossible -- no state to carry, or the stage's deck
-        # would not read it.  Both are SIGNALS (a launched run that left
-        # nothing likely died at startup), so the door refuses with the
-        # story rather than silently starting fresh.
+        # WARM IS IMPOSSIBLE -- its latest run left nothing the stage
+        # takes.  Said, with the cold launch that is possible.
         raise SubmitError(
-            f"{job.name}: {source} was launched, so launching it again "
-            f"continues from it -- but that is impossible here:\n  {e}\n"
-            f"  Look at that run's logs.  To run the stage anew -- a "
-            f"prepped stage is not prepped again (job-system.md § 5.0) -- "
-            + rollback("its prep", base=base)) from e
+            f"{job.name}: launched again warm, it continues from {source} "
+            f"-- which is impossible here:\n  {e}\n  Launch it again cold "
+            f"instead:\n    "
+            + _cmd("launch", "run", job.name, base=base, flags=("--cold",))
+            ) from e
     return _member(job, container, opened.dir, True, last,
-                   run=next_run(opened.dir, names), continuation=cont,
+                   run=next_run(opened.dir, names), again=True,
+                   cold=cont is None, continuation=cont,
                    carries=list(opened.copied),
                    gathered=_carry_the_gather(last, opened.dir, writes,
                                               base=base))
 
 
-def _relaunched(base: Path, job) -> Continuation:
+def _relaunched(base: Path, job, cold: bool) -> Optional[Continuation]:
     """What ``job``'s stage, launched again, continues from -- the one door
     (`continuation.relaunch`), asked with the calculation's description;
-    its refusal, a stage that does not continue from a run of its own, is
-    the launch's (`job-system.md` § 5.4, *A stage launched again*)."""
+    ``None`` cold, or for a stage that takes nothing from a run
+    (`job-system.md` § 5.4, *A stage launched again*)."""
     from ..task import FILENAME, read_task
     from .continuation import relaunch
     desc = base / FILENAME
@@ -760,10 +752,7 @@ def _relaunched(base: Path, job) -> Continuation:
             f"{job.name} was launched, and launching it again reads what it "
             f"continues from through its description -- {desc}: "
             f"{exc}") from None
-    cont, why = relaunch(base, task, job)
-    if why:
-        raise SubmitError(why)
-    return cont
+    return relaunch(base, task, job, cold=cold)
 
 
 def _carry_the_gather(source: Path, attempt: Path, writes: Plan, *,
@@ -911,7 +900,8 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
                 time_s: Optional[int] = None,
                 trial_timeout_s: Optional[int] = None,
                 told: Dict[str, object],
-                record: bool = True) -> LaunchPlan:
+                record: bool = True,
+                cold: bool = False) -> LaunchPlan:
     """STEP 1 of `job-system.md` § 6.0 -- the whole launch of a prepped
     ``jobset`` rooted at ``base_dir``, planned with nothing written: the
     work, its submissions and their members, the gates, the queue, the exact
@@ -933,7 +923,8 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     offers the launch in another mode; required, so a library caller says
     what it launches as the verb does.  ``record`` is false for a dry run,
     which writes nothing (§ 6.0, step 3) -- a refusal is written down
-    otherwise.
+    otherwise.  ``cold``: a stage launched again takes nothing from a run of
+    its own (`job-system.md` § 5.4).
 
     THE WORK IS READ OFF WHAT IS LAUNCHED.  A sweep with no trial named,
     sent to (or asked of) a scheduler, goes as ONE job per resource shelf
@@ -949,7 +940,7 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
         plan = _planned(jobset, base, mode=mode, only=only, domain=domain,
                         gpu_domain=gpu_domain, side=side, mem=mem,
                         time_s=time_s, trial_timeout_s=trial_timeout_s,
-                        told=told)
+                        told=told, cold=cold)
     except SubmitError as exc:
         if record:
             _record(base, told, "refused", reason=str(exc))
@@ -961,7 +952,8 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
 
 
 def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
-             side, mem, time_s, trial_timeout_s, told) -> LaunchPlan:
+             side, mem, time_s, trial_timeout_s, told,
+             cold: bool = False) -> LaunchPlan:
     """:func:`plan_launch`'s body -- the plan, or the refusal it records."""
     errs = jobset.validate()
     if errs:
@@ -990,7 +982,7 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
         return plan_launch(jobset, base, mode=mode, only=only, domain=told_q,
                            gpu_domain=gpu_domain, side=side, mem=mem,
                            time_s=time_s, trial_timeout_s=trial_timeout_s,
-                           told=told, record=False)
+                           told=told, record=False, cold=cold)
 
     # THE QUEUE, decided here and nowhere else (`job-system.md` § 6.0, the
     # placement): --domain when typed, else the one the work's prep
@@ -1021,11 +1013,11 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
                 raise SubmitError(why)
         plan = (_plan_chain(jobset, base, task, mode=mode, stage=only,
                             domain=domain, mem=mem, time_s=time_s,
-                            told=told)
+                            told=told, cold=cold)
                 if task is not None else
                 _plan_stage(jobset, base, mode=mode, domain=domain,
                             gpu_domain=gpu_domain, only=only, mem=mem,
-                            time_s=time_s, told=told))
+                            time_s=time_s, told=told, cold=cold))
     plan.remake = again
     plan.queue = (domain, source)
     return plan
@@ -1058,7 +1050,7 @@ def ask_launch(plan: LaunchPlan) -> List[JobResult]:
     :data:`ASK_MAX_QUERIES` the rest are named, never dropped."""
     out: List[JobResult] = list(plan.skipped)
     for n, s in enumerate(plan.submissions):
-        out += [JobResult(m.name, [], m.would(), judgement=m.judgement())
+        out += [JobResult(m.name, [], m.would())
                 for m in s.members if m.follows]
         if n >= ASK_MAX_QUERIES:
             out.append(JobResult(s.name, [], "not asked"))
@@ -1091,9 +1083,7 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
     is written down."""
     # WHAT WAS ASKED, as asked.
     plan.record("question",
-                about=(("submit" if plan.mode == "submit" else "run here")
-                       + ("; follows a run that never concluded"
-                          if plan.judgements() else "")),
+                about=("submit" if plan.mode == "submit" else "run here"),
                 answer=said.words)
     if not said.asked:
         why = ("not a terminal, so there is nobody to ask -- nothing was "
@@ -1856,7 +1846,8 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
 
 def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                 told, domain: Optional[str] = None, mem: Optional[str] = None,
-                time_s: Optional[int] = None) -> LaunchPlan:
+                time_s: Optional[int] = None, cold: bool = False
+                ) -> LaunchPlan:
     """ONE submission that walks a transport bias scan's points in
     order (`archive/2026-09-01-transport-design.md` § 4.3; layout ruled 2026-08-29: plain
     v-dirs, one attempt ladder per point).
@@ -1875,9 +1866,11 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     failure poisoned — a benchmark's points are independent, a chain's
     are not.
 
-    Every point's attempt must be OPEN and unlaunched (``prep run
-    device`` opens them all); the deck/launch agreement gate guards this
-    door like every other.  ``run.json`` lands in every point's attempt
+    Every point's attempt must be OPEN (``prep run device`` opens them
+    all); a scan launched before is launched again as a stage is -- each
+    point's next attempt opened, warm from its own latest or ``cold``
+    (`job-system.md` § 5.4) -- and the deck/launch agreement gate guards
+    this door like every other.  ``run.json`` lands in every point's attempt
     when the one job goes -- they are all launched by it.  The job's
     request is the one every door sends (:func:`_sbatch_request`); ``ask``
     asks the scheduler about it, over the first point's own header, since
@@ -1887,7 +1880,9 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     from ..task import bias_token
     from ..transport.stages import rung_containers, scan_points
     from ..runrecord import next_run
-    from .materialize import latest_attempt, run_names, shape_of
+    from .continuation import read_run
+    from .materialize import (latest_attempt, prepare_attempt, run_names,
+                              shape_of)
 
     points = scan_points(task, stage)
     if len(points) < 2:
@@ -1917,9 +1912,8 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     run_name = names.name(".run.sh")
     name = f"{names.stem}-chain"
     gn = GroupNames(name)
-    attempts: List[Tuple[float, Path, Path]] = []
-    # Each point's folder, from the one door (`rung_containers`, plan § 5w
-    # K10) -- the folders prep wrote the point's deck and attempt into.
+    sh = shape_of(jobset, base)
+    members: List[_Member] = []
     for vdir, v in rung_containers(base, task, stage):
         att = latest_attempt(vdir)
         if att is None:
@@ -1928,19 +1922,46 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                 f"{token}/{bias_token(v)}/ -- the scan launches whole, so "
                 f"every point needs one, and a prepped stage is not prepped "
                 f"again: " + rollback("its prep", base=base))
-        if _launched(att, names):
-            raise SubmitError(
-                f"bias point {bias_token(v)}: {att.relative_to(base)} "
-                f"has already been launched.  An attempt is immutable once "
-                f"it has run, and a prepped stage is not prepped again: "
-                + rollback("its prep", base=base))
         try:
             check_launch_matches_deck(att, job)
         except DeckLaunchMismatch as e:
             raise SubmitError(str(e)) from e
         plan.reads += [_as_found(att / f, base)
                        for f in (job.script, run_name)]
-        attempts.append((v, vdir, att))
+        label = f"{stage}@{bias_token(v)}"
+        if not _launched(att, names):
+            members.append(_Member(job, vdir, att, True, att, names=names,
+                                   run=next_run(att, names), label=label,
+                                   base=base))
+            continue
+        # LAUNCHED BEFORE: the point's next attempt, warm from its own
+        # latest or cold, with the inputs its kind gathered for it.
+        cont = None
+        if not cold and job.relaunch_continues:
+            c, st, conv, _ = read_run(base, task, stage, att)
+            cont = Continuation(stage=stage, source=str(att.relative_to(base)),
+                                by_default=True, concluded=c, state=st,
+                                converged=conv, own=True)
+        try:
+            opened = prepare_attempt(
+                jobset, base, stage, container=vdir,
+                continue_from=cont.source if cont else None,
+                cold=cont is None, named=False, plan=plan.writes, shape=sh)
+        except ValueError as e:
+            raise SubmitError(
+                f"bias point {bias_token(v)}: launched again warm, it "
+                f"continues from {att.relative_to(base)} -- which is "
+                f"impossible here:\n  {e}\n  Launch it again cold "
+                f"instead:\n    "
+                + _cmd("launch", "run", stage, base=base, flags=("--cold",))
+                ) from e
+        members.append(_Member(
+            job, vdir, opened.dir, True, att, names=names,
+            run=next_run(opened.dir, names), label=label, base=base,
+            again=True, cold=cont is None, continuation=cont,
+            carries=list(opened.copied),
+            gathered=_carry_the_gather(att, opened.dir, plan.writes,
+                                       base=base)))
 
     # WHAT A POINT TAKES FROM THE ONE BEFORE IT is what a continuing device
     # takes -- the device job's own declaration (`Job.warm`), which prep
@@ -1962,7 +1983,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         "set -u",
         f'LOG="{LAUNCH_DIR}/{gn.name(".log")}"',
         f'echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
-        f'points={len(attempts)} job=${{SLURM_JOB_ID:-none}} '
+        f'points={len(members)} job=${{SLURM_JOB_ID:-none}} '
         'node=$(hostname)" >> "$LOG"',
         "prev=''",
         "fails=0",
@@ -2004,20 +2025,16 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         '    prev="${_dir}"',
         "}",
     ]
-    for v, _vdir, att in attempts:
+    for m in members:
         # THE SAME IDIOM THE BENCH SEQUENCER USES.
-        rel = att.relative_to(stage_dir)
-        args = " ".join(_run_sh_args(job.resources, next_run(att, names)))
-        lines.append(f'run_point "{bias_token(v)}" "{rel}" "{run_name}" '
-                     f'{args}')
+        rel = m.run_dir.relative_to(stage_dir)
+        args = " ".join(_run_sh_args(job.resources, m.run))
+        lines.append(f'run_point "{m.label.split("@", 1)[1]}" "{rel}" '
+                     f'"{run_name}" {args}')
     lines += ['echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') done '
               'fails=${fails}" >> "$LOG"',
               'exit $(( fails > 0 ))', ""]
 
-    members = [_Member(job, vdir, att, True, att, names=names,
-                       run=next_run(att, names),
-                       label=f"{stage}@{bias_token(v)}", base=base)
-               for v, vdir, att in attempts]
     if mode != "ask":
         open_container(base, launch_dir, plan.writes)
         plan.writes.text(launch_dir / gn.name(".run.sh"), "\n".join(lines))
@@ -2049,7 +2066,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                          _into_launch(header, gn))
     plan.submissions.append(Submission(
         name, cmd, stage_dir, False, members, placement=placement,
-        sent=envelope, rides="rides the chain", ask_in=attempts[0][2],
+        sent=envelope, rides="rides the chain", ask_in=members[0].read_from,
         ask_script=names.name(".sbatch")))
     return plan
 
@@ -2113,7 +2130,8 @@ def _record_launch(where: Path, *, names: RunNames, run: int, mode: str,
 def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                 domain: Optional[str], gpu_domain: Optional[str],
                 only: Optional[str], mem: Optional[str],
-                time_s: Optional[int], told) -> LaunchPlan:
+                time_s: Optional[int], told, cold: bool = False
+                ) -> LaunchPlan:
     """The stage door's plan -- a ladder's stage, or a sweep's named
     trial: one submission.
 
@@ -2142,7 +2160,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
     sbatch_here = shutil.which("sbatch") is not None
     for job in jobset.jobs:
         m = _plan_member(jobset, base, job, mode=mode, writes=plan.writes,
-                         named=only is not None)
+                         named=only is not None, cold=cold)
         if isinstance(m, JobResult):
             plan.skipped.append(m)             # a trial measured before
             continue
@@ -2173,8 +2191,9 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                     f"{m.read_from}, and a prepped stage is not prepped "
                     f"again: " + rollback(what, base=base))
             plan.submissions.append(Submission(
-                m.name, ["bash", run_name] + _run_sh_args(job.resources,
-                                                          m.run),
+                m.name, ["bash", run_name] + _run_sh_args(
+                    job.resources, m.run,
+                    cold=m.cold and not m.has_attempt),
                 m.run_dir, True, [m], ask_in=m.read_from))
             continue
         # The header is required where it is SENT -- or ASKED about, when a
@@ -2197,7 +2216,9 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
             domain=named,
             mem=mem, time_s=time_s, label=job.name,
             job_name=_scheduler_job_name(jobset, job.name),
-            script=sbatch_name, run_args=_run_sh_args(job.resources, m.run),
+            script=sbatch_name,
+            run_args=_run_sh_args(job.resources, m.run,
+                                  cold=m.cold and not m.has_attempt),
             one_process=one_process(jobset.engine))
         plan.submissions.append(Submission(
             m.name, cmd, m.run_dir, False, [m], placement=placement,

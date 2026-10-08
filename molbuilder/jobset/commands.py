@@ -100,7 +100,8 @@ QUEUE_FLAGS = ("--domain", "--time", "--mem", "--gpu-domain", "--only")
 
 def launch_with(kind: str, *words, base, mode: str, typed=()) -> str:
     """The launch of ``words`` with ``mode`` stated, and the flags it was
-    typed with (``typed``, ``(flag, value)`` pairs as the verb records them)
+    typed with (``typed``, ``(flag, value)`` pairs as the verb records them,
+    a switch's value ``True``)
     that ``mode`` reads -- a run here leaves off :data:`QUEUE_FLAGS`.  What a
     line says when it offers a launch again in another mode: the whole
     command, never *"the same command with --mode X"*, an edit to a line the
@@ -108,7 +109,8 @@ def launch_with(kind: str, *words, base, mode: str, typed=()) -> str:
     (`job-system.md` § 5.3)."""
     kept = [x for flag, value in typed
             if not (mode == "direct" and flag in QUEUE_FLAGS)
-            for x in (flag, shlex.quote(str(value)))]
+            for x in ((flag,) if value is True
+                      else (flag, shlex.quote(str(value))))]
     return command("launch", kind, *words, base=base,
                    flags=(*kept, "--mode", mode))
 

@@ -564,7 +564,7 @@ scheduler's business.
    > **Keeping the old state is a separate tool and a separate decision**:
    > `molbuilder checkpoint save` ([`checkpointing.md`](?doc=execution/checkpointing.md)),
    > which is never automatic. The launcher names what a clean run would
-   > overwrite and refuses; `--force` proceeds. Two mechanisms for preserving a
+   > remove and refuses; `--force` removes it. Two mechanisms for preserving a
    > state would be one too many, which is why `--cold` no longer moves anything
    > aside.
 4. **What `continue` implies is a short fixed set; what a stage needs *beyond*
