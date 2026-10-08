@@ -699,7 +699,8 @@ def init_cmd(structure, bundle: str, shape: str,
 @_bundle_option()
 def status_cmd(stage, bundle: str) -> None:
     """Show every stage of the description -- its run state (finished /
-    running / failed / queued / pending / not-started), which warm-restart
+    running / failed / queued / pending, or ready / waiting before its
+    prep), which warm-restart
     files are present -- and the FIRST incomplete stage (the one to resume
     from).  The stages are listed from the moment `init` writes them, the
     ones not prepared yet among them (job-system.md § 5.3).  Read-only --
@@ -715,9 +716,7 @@ def status_cmd(stage, bundle: str) -> None:
     (project-layout.md § 1.5, § 1.6).
     """
     from ..task import FILENAME as _TASK_FILE
-    from .runstatus import stage_continuation
     base = Path(bundle)
-    task = None
     if (base / _TASK_FILE).is_file():
         # THE DESCRIPTION'S LADDER (job-system.md § 5.3, 2026-10-01): every
         # stage it names, before the first prep and as prep reaches each.
@@ -729,7 +728,7 @@ def status_cmd(stage, bundle: str) -> None:
         name = _described_stage(base, stage)
         from ..task import read_task
         try:
-            task = read_task(base / _TASK_FILE)
+            read_task(base / _TASK_FILE)
         except Exception as exc:                        # noqa: BLE001
             raise click.ClickException(f"{_TASK_FILE}: {exc}")
     else:
@@ -751,11 +750,7 @@ def status_cmd(stage, bundle: str) -> None:
     if name is None:
         click.echo(render_status(status))
         return
-    row = next(s for s in status.stages if s.name == name)
-    click.echo(render_stage_status(
-        status, name,
-        stage_continuation(base, task, name)
-        if task is not None and not row.prepared else None))
+    click.echo(render_stage_status(status, name))
 
 
 # --------------------------------------------------------------------- #

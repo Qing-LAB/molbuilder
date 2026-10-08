@@ -395,10 +395,10 @@ and a SIESTA vibration's displacement sweep, once `summarize` has compared its
 force-constant stages (§ 5.9 there).
 `GET /api/results/dir` answers
 such a root with `ladder: {complete, first_incomplete, stages: [{name, seq,
-state, detail, dir, attempt, …}], resume_from, resume_refused}` —
+state, detail, dir, attempt, …}], offer}` —
 `JobSetStatus.to_dict`, the one wire form of `jobset_status`, the ladder door the
 CLI's `status` verb reads — consumed, never copied: every stage of the
-description, the ones not prepped yet among them
+description, the ones not prepared yet among them, `ready` or `waiting`
 ([`execution/job-system.md`](?doc=execution/job-system.md) § 5.3), before
 anything is prepped too — and `null` for anything else (a rung's directory). A **flat** calculation
 root is itself the run: it answers a state and a record like any run directory

@@ -339,7 +339,10 @@ def _rung_points(base: Path, task, name: str, token: str,
         att = latest_attempt(d)
         entry: Dict = {"bias_v": v}
         if att is None:
-            entry.update(state="not-started", detail="not prepared")
+            # PREP OPENS EVERY POINT AT ONCE: one missing from a prepared
+            # rung is against the design, said as such.
+            from ..jobset.runstatus import MISSING
+            entry.update(state=MISSING[0], detail=MISSING[1])
             out.append(entry)
             continue
         where = run_dir(d)
@@ -415,14 +418,18 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     token = stage_home(base, task, "transmission").token
     names = RunNames.of(task.label, token, task.shape)
     regions = device_regions(base)
+    stages = _stage_facts(base, task, task.label)
+    # A POINT NOT OPENED stands where its rung does -- the ready door's
+    # `ready` / `waiting` and what for, on the rung's row (prep opens every
+    # point at once).
+    rung = next(f for f in stages if f["stage"] == "transmission")
     opened = False                        # an attempt open: it is prepared
     for v, container in _point_dirs(base, task):
         att = latest_attempt(container)   # None is the ANSWER: prepared?
         opened = opened or att is not None
         if att is None:
-            pending.append({"bias_v": v, "state": "not-started",
-                            "why": "no attempt opened yet -- prep and "
-                                   "launch the transmission"})
+            pending.append({"bias_v": v, "state": rung["state"],
+                            "why": rung.get("detail") or ""})
             continue
         where = run_dir(container)        # ...and this is where to look
         rel = str(att.relative_to(base))
@@ -499,7 +506,6 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                       for what, got in (("pending", pending),
                                         ("failed", failed)) if got))
 
-    stages = _stage_facts(base, task, task.label)
     provenance = None
     prov_file = base / PROVENANCE_FILE
     if prov_file.is_file():

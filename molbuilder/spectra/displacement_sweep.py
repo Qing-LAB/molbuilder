@@ -183,9 +183,12 @@ def collect_sweep(base_dir, task, *,
         token = stage_home(base, task, name).token
         attempt = latest_attempt(base / shape.stage_dir(token))
         if attempt is None:
-            pending.append({"stage": name, "state": "not-started",
-                            "detail": "no attempt opened yet -- prep and "
-                                      "launch it"})
+            # NOT PREPARED, in the ready door's words: ready, and what it
+            # takes, or waiting, and what for (`jobset.ready`).
+            from ..jobset.ready import readiness
+            r = readiness(base, task, name, verdict=False)
+            pending.append({"stage": name, "state": r.state,
+                            "detail": r.detail})
             continue
         spectrum = attempt / spectrum_name
         if not spectrum.is_file():

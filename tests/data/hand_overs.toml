@@ -86,7 +86,7 @@ calculation = "vibration"
 removed = ["relax"]
 stage = "freq"
 refused = ["is not stated to be relaxed", "Either add the `relax` stage before `freq`"]
-status_says = ["its prep refuses for now", "is not stated to be relaxed"]
+status_says = ["First incomplete stage: freq, waiting", "is not stated to be relaxed"]
 
 # ---- A STAGE LAUNCHED AGAIN (job-system.md § 5.4, *A stage launched again*):
 #      however it ended, warm -- its own latest run, one hand-over as prep's --

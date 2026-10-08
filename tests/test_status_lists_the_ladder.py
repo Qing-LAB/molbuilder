@@ -3,7 +3,7 @@
 
 PINS: ``docs/execution/job-system.md`` § 5.3 (the table is the description's
 ladder: every stage with its number from the moment `init` writes it, the ones
-not prepared yet as not-started, a disabled one never the stage to resume from;
+not prepared yet as `ready` or `waiting`, a disabled one never the stage to resume from;
 `status <stage>` is a stage in full -- its deck, what it declares, its
 resources) and ``docs/web/results.md`` § 2.4
 (the Results tab's ladder is `jobset_status`'s answer).
@@ -58,7 +58,7 @@ def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
     template.write_text("this is not a template [\n")
     r = jobset("status", "--bundle", bundle)
     assert r.exit_code == 0 and r.exception is None, r.output
-    assert "refuses for now" in r.output, r.output
+    assert "First incomplete stage: coarse, waiting" in r.output, r.output
     assert "continues from cannot be read" in r.output, r.output
     template.write_text(kept)
 

@@ -42,13 +42,28 @@ class Readiness:
         return ("prepared" if self.prepared
                 else "ready" if self.ready else "waiting")
 
+    @property
+    def detail(self) -> str:
+        """One line beside the state -- what a ready stage takes (or that
+        it builds on nothing), the first line of what one waiting waits
+        for: `status`'s detail column and `prep task`'s ladder."""
+        if self.prepared:
+            return ""
+        if not self.ready:
+            return (self.why or "").splitlines()[0].rstrip(" -") if self.why \
+                else "waiting"
+        return "takes " + "; ".join(self.takes) if self.takes \
+            else "builds on nothing"
+
 
 def readiness(base, task, stage: str, *, template_text: Optional[str] = None,
-              from_attempt: Optional[str] = None,
-              cold: bool = False) -> Readiness:
+              from_attempt: Optional[str] = None, cold: bool = False,
+              verdict: bool = True) -> Readiness:
     """``stage``'s answer (`job-system.md`, *The task*) -- ``from_attempt``
     and ``cold`` asked as prep would take them: a run named is taken as
-    said, so it makes a stage ready that waits for its default."""
+    said, so it makes a stage ready that waits for its default.
+    ``verdict=False`` leaves a relaxation's convergence unread -- for
+    `status`, read far more often than prep."""
     from .prep import PrepError, gather_sources, prepared_already
     base = Path(base)
     if prepared_already(base, task, "task", stage):
@@ -69,6 +84,7 @@ def readiness(base, task, stage: str, *, template_text: Optional[str] = None,
     from .continuation import continuation_answer
     cont, refused = continuation_answer(base, task, stage,
                                         from_attempt=from_attempt, cold=cold,
+                                        verdict=verdict,
                                         template_text=template_text)
     if refused:
         return Readiness(stage, why=refused)
@@ -77,8 +93,8 @@ def readiness(base, task, stage: str, *, template_text: Optional[str] = None,
                             else []))
 
 
-def ladder(base, task, *, template_text: Optional[str] = None
-           ) -> List[Readiness]:
+def ladder(base, task, *, template_text: Optional[str] = None,
+           verdict: bool = True) -> List[Readiness]:
     """Every stage of the description, in ladder order, with its answer --
     what `prep task` shows before it asks, and `status` beside each stage
     not prepared."""
@@ -87,7 +103,8 @@ def ladder(base, task, *, template_text: Optional[str] = None
         from ..template import find_template
         tpl = find_template(Path(base), task.label)
         template_text = tpl.read_text(encoding="utf-8") if tpl else None
-    return [readiness(base, task, h.name, template_text=template_text)
+    return [readiness(base, task, h.name, template_text=template_text,
+                      verdict=verdict)
             for h in ladder_homes(Path(base), task)]
 
 
@@ -114,12 +131,7 @@ def ladder_text(answers: List[Readiness]) -> str:
     width = max([len(a.stage) for a in answers] + [5])
     out = []
     for a in answers:
-        line = f"  {a.stage:<{width}}  {a.state:<8}"
-        if a.state == "waiting" and a.why:
-            line += "  " + a.why.splitlines()[0].rstrip(" -")
-        elif a.state == "ready" and a.takes:
-            line += "  takes " + "; ".join(a.takes)
-        out.append(line)
+        out.append(f"  {a.stage:<{width}}  {a.state:<8}  {a.detail}")
     return "\n".join(out)
 
 

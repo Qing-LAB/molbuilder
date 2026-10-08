@@ -1646,7 +1646,7 @@ root; it adds only what the comparison derives:
 | `modes[]` | per mode of the reference stage (the first with a result): its frequency at every stage, the matched mode's index there, the shapes' overlap, the change from the reference, the spread across stages, and a flag when a tolerance was given | modes matched **by shape**: the overlap of the mass-weighted eigenvectors over the free atoms, assigned one-to-one so the total overlap is largest (`scipy.optimize.linear_sum_assignment`) — ranks swap between displacements when two modes are near-degenerate, and matching by rank would compare different motions |
 | `force_constants[]` | per stage against the reference: the largest change of any force constant over the block both nudged, in eV/Å², and that change relative to the largest constant | `H(δ)` from each stage's raw `.FC`, through the one reader (`parse/engines/siesta_fc.py`) |
 | `tolerance_cm1` | the threshold a person gave (`summarize run --tolerance-cm1 X`), or `null` | a mode is flagged when its spread exceeds it; without one nothing is flagged — the numbers are stated and the judgement is the person's |
-| `pending[]` | stages whose result is still to come: the stage, its attempt, its state (`not-started`, `pending`, `queued`, `running`) and `run_status`'s detail | |
+| `pending[]` | stages whose result is still to come: the stage, its attempt, its state (`ready` / `waiting` before its prep, the ready door's; `pending`, `queued`, `running`) and the detail of the door that answered | |
 | `failed[]` | stages whose run ended without a readable result: the stage, its attempt, its state (`failed`, `finished` without the spectrum, `unreadable`) and why | |
 
 `stages[]` also carries `varies_units` — the catalogue's unit for each value

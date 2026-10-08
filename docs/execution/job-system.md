@@ -1499,20 +1499,21 @@ molbuilder jobset status '#3'                # the same stage, by its number
 **The table is the description's ladder** *(2026-10-01)*: one row per stage
 `task.json` names, in its order and with its number, from the moment `init`
 writes it — so it lists the stages before anything is prepped, and a ladder
-prepped one stage at a time (transport) shows every stage, the ones not prepped
-yet as `not-started — no directory yet (not prepped)`. A stage removed from the
+prepared one stage at a time (transport) shows every stage, the ones not prepared
+yet as the ready door answers them — `ready`, with what its prep would take, or
+`waiting`, with what for (*The task*). A stage removed from the
 description after its prep is not listed; its folder is kept, untouched
 ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2). The table
-ends with the stage to resume from, and one nothing has prepped yet is named
-with the command that prepares it — for an independent stage, beside the run
-that command will continue from, or with why its prep would refuse, whole, its
-commands included (§ 5.4). A prepped one is told what its state calls for: not
+ends with the stage to resume from. When nothing has prepared it, the next step
+is the `prep task` line for the ready stages it would offer pre-selected (D2),
+each with what it takes; when none is ready, what the stage waits for, whole,
+its commands included (§ 5.4). A prepared one is told what its state calls for: not
 launched — launch it; queued or running — let it finish; stopped or failed —
 launch it again, warm or `--cold`, or change it first by going back to the
 state saved before its prep (§ 5.4, *A stage launched again*). `status
 <stage>` asks the same door for the stage it names. The Results tab's ladder is
 this same answer ([`web/results.md`](?doc=web/results.md) § 2.4) — its wire form,
-`JobSetStatus.to_dict`, the next prep's answer included. A job set with no
+`JobSetStatus.to_dict`, the stages `prep task` would offer (`offer`) included. A job set with no
 description beside it — a hand-built one, a benchmark's sweep — lists its own
 jobs; a benchmark's sweep is read against the calculation it measures, from
 its bench folder too, and its next step is its own verbs for that stage —
