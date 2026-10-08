@@ -805,13 +805,16 @@
 
 /* THE TASK'S PREP (`job-system.md`, *The task*) is the same list, a row per
    stage with a box to pick it: the box | the stage | where it stands (the
-   one state chip, `lib/state-chip.css`) | what it takes or waits for, the
-   elastic column as the ask is above.  A row is its label, so the name
-   ticks the box too. */
+   one state chip, `lib/state-chip.css`), and on the line below the name what
+   it takes or waits for.  A row is its label, so the name ticks the box too. */
 .ts-planrow--pick {
-    grid-template-columns: max-content max-content max-content minmax(0, 1fr);
+    grid-template-columns: max-content max-content minmax(0, 1fr);
 }
+/* WHAT IT TAKES OR WAITS FOR is a sentence, often a long one: its own line
+   under the stage's name, never a column squeezed beside it -- the card sits
+   between the sidebar and the rail and is narrow. */
 .ts-plan-detail {
+    grid-column: 2 / -1;
     min-width: 0;
     color: var(--text-secondary);
     overflow-wrap: anywhere;

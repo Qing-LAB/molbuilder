@@ -11,6 +11,10 @@
     border: 1px solid var(--border-soft);
     color: var(--text-secondary);
     white-space: nowrap;
+    /* ITS OWN WIDTH, wherever it sits: a grid or flex cell would otherwise
+       stretch it into a bar. */
+    justify-self: start;
+    align-self: center;
 }
 .state-chip.is-ok   { color: var(--success);   border-color: var(--success); }
 .state-chip.is-bad  { color: var(--error);     border-color: var(--error); }
