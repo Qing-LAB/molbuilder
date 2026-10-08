@@ -120,7 +120,7 @@ listing = ["launched again into run-1: it starts cold -- from its deck alone"]
 after_launch = { made = ["01_coarse/run-1"], made_lacks = ["01_coarse/run-1/.continued-from"] }
 
 [[case]]
-name = "a stage whose kind's rerun starts over, launched again, runs from its deck alone"
+name = "a stage whose kind's rerun starts over, launched again, starts over"
 own_warm_files = { resumes = false }
 stand_in = { leaves_restart = true }
 before = [["prep", "run", "coarse"],
@@ -130,7 +130,7 @@ launch = []
 launch_stage = "coarse"
 launch_mode = "direct"
 launch_sends = true
-listing = ["launched again into run-1: it starts cold -- from its deck alone"]
+listing = ["launched again into run-1: it starts over -- nothing is handed on from a run of its own"]
 after_launch = { made = ["01_coarse/run-1"], made_lacks = ["01_coarse/run-1/.continued-from"] }
 
 [[case]]
@@ -141,7 +141,7 @@ before = [["prep", "run", "coarse"],
           ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
 refused = "not prepped again"
 status_says = ["coarse, failed",
-               "launch it again -- it runs again from its deck alone"]
+               "launch it again -- it starts over, nothing handed on from a run of its own"]
 
 [[case]]
 name = "a flat stage set restart: clean, launched again, runs again in its folder taking nothing"
@@ -155,7 +155,7 @@ launch = []
 launch_stage = "coarse"
 launch_mode = "direct"
 launch_sends = true
-listing = ["launched again in the same folder, as its run 1"]
+listing = ["launched again in the same folder, as its run 1, where its files are: it starts over"]
 after_launch = { made_lacks = ["H2_01_coarse-run1.continued-from"] }
 
 [[case]]

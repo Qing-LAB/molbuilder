@@ -498,7 +498,7 @@ def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
     # (`job-system.md` § 5.4, *A stage launched again*).
     warm = ("it continues from its own latest run"
             if s is None or s.relaunch_continues
-            else "it runs again from its deck alone")
+            else "it starts over, nothing handed on from a run of its own")
     how = (f"launch it again -- {warm}:\n"
            + block(launch_lines("run", name, base=base))
            + "\n  or start it over with `--cold`; or, to change it first, "

@@ -42,8 +42,135 @@ jobset status      every stage of the description: where it stands + the
 | **one grouped job** | a bench sweep is ONE submission that runs trials in sequence, each recording its own `run.json` | § 7 |
 | **refuse before the scheduler** | a header the record says will bounce is not emitted (design decision #4 — the mechanism is `scheduler.md`) | § 6 |
 | **ladder = stages** | coarse feeds tight through declared warm files; the resume point is read, not guessed | § 3, § 5 |
+| **runs are yours** | any stage launched again, warm or `--cold`, however it ended; molbuilder keeps every run, says how each ended, and saves the folder's state before every prep — going back or branching is a `checkpoint restore` | *Runs, stages and checkpoints* |
 
 ---
+
+## Runs, stages and checkpoints — what molbuilder does for you, and what stays yours
+
+> *"the contract really should be a rule for the user: what you should do and
+> what you should not do otherwise things could be broken, and here are the
+> tools for you to keep track of intermediate known good states"* · *"run
+> continue warm or cold is user's decision, and error or not, that's user's
+> responsibility"* · *"checkpoint is used for the rollover and branching"*
+> (user, 2026-10-07)
+
+**molbuilder is a research tool, not a guard.** It keeps your runs apart, tells
+you truthfully where each stands and how it ended, and keeps the states you can
+go back to. It never decides for you whether a result is good, whether to run
+again, or how. This section is the whole contract for runs and stages; the
+sections after it say how each part works, and none of them adds a rule this
+one does not state.
+
+### The words
+
+| word | what it is |
+|---|---|
+| **calculation** | one folder, described once by `task.json` and its template |
+| **stage** | one step of the calculation's ladder — `coarse`, `relax`, `device` — named in the description, prepped once (`jobset prep run <stage>`) |
+| **run** | one launch of a stage (`jobset launch run <stage>`). Every launch is a new run, numbered on from the last: on the hierarchical layout its own folder, `01_coarse/run-0`, `run-1`, …; on the flat layout its own numbered files in the calculation's folder, `H2_01_coarse-run0.out`, `-run1.out`, … |
+| **warm / cold** | what a run starts from. **Warm**: the restart files (density, geometry, optimiser history — the restart-file list, [`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a) a run left. **Cold**: none of them — the engine starts from the deck alone |
+| **saved state** | a checkpoint of the whole calculation folder ([`checkpointing.md`](?doc=execution/checkpointing.md)): an id, a note, the time. `molbuilder checkpoint save / list / restore / tag` |
+
+### What molbuilder does for you
+
+1. **Before every prep, it saves the folder's state** — always, the note led by
+   the time it was taken (`2026-10-03 14:05:12 · before prep run tight`) — and
+   tells you which (§ 5.0, checkpoint 5). So whatever a prep or the runs after
+   it do, the state before it is one `checkpoint restore` away.
+2. **It keeps every run.** A new launch never writes into an earlier run's
+   folder (hierarchical) or over its numbered files (flat): its output, logs,
+   launch record and conclusion stay what they were. *On the flat layout the
+   restart files are the exception, by what flat is:* they carry the label's
+   name, `H2.DM`, `H2.XV`, so every run and every stage in that folder reads
+   and writes the same ones — a later run replaces them.
+3. **It launches any stage again, however its last run ended** — finished,
+   failed, stopped, or still running — **warm by default, or cold when you say
+   `--cold`**:
+   * warm, it continues from **that stage's own latest run**: on the
+     hierarchical layout the next `run-<n>` is opened with the restart files
+     the latest one left; on the flat layout the run runs again where its
+     files lie. A stage that takes nothing from a run (its run card says
+     `restart: clean`) or whose kind restarts from the beginning anyway (a
+     force-constant run, a PySCF vibration) starts over: nothing is handed on
+     from a run of its own;
+   * cold, it takes nothing from a run of its own: the next `run-<n>` is opened
+     with none of them; on the flat layout its run script is started with
+     `--cold --force`, which **removes** the restart files lying in the folder
+     before the engine starts (a deck that reads them would otherwise read
+     them);
+   * either way a transport rung keeps the inputs its prep gathered (the
+     leads' Hamiltonians, the seed's density), copied with their record.
+
+   Before anything is sent, `launch` shows you the exact line, which run it
+   follows, **how that run ended**, and what is copied — and asks once
+   (§ 6.0). It does not refuse because of how a run ended, and it does not
+   ask a second question about it.
+4. **It tells you where each stage and run stands, from one check.** `jobset
+   status`, the Results tab's ladder and every reader that needs a run's state
+   ask the same door ([`architecture.md`](?doc=execution/architecture.md)
+   § 3.2): not launched, queued, running, finished, failed (with the reason the
+   run gave), or stopped without its conclusion (killed, out of time), and —
+   for an SCF — whether it converged. It says what launching again would do; it
+   does not tell you whether to.
+5. **It writes every decision down** — what each prep and launch found, what
+   each run continued from, what you were asked and what you answered — in the
+   calculation's `jobset-decisions.log`.
+6. **It continues a run that used up its budget only as your template says.**
+   A SIESTA template's `continue_retries` (the catalogue's default is 1; set
+   `0` and the run script has no retry) lets one job re-run its stage warm, as
+   its next run, when the engine stopped because it used its budget without
+   converging — the SCF's
+   iteration limit under `SCF.MustConverge`, or a relaxation's step limit —
+   never after a crash ([`running-a-job.md`](?doc=execution/running-a-job.md)
+   § 3.5).
+
+### What stays yours
+
+* **Whether a run is good enough to use** — its convergence, its geometry, its
+  physics. molbuilder reports; you judge.
+* **Whether to launch again, warm or cold, and when.** Launching again while
+  the last run is still running is not stopped: both run.
+* **Which run a later stage builds on.** `prep` takes, by default, the newest
+  run of the stage before it when that run finished, and says which; you can
+  name any run with `--from` (taken as said — prep states what it sees there,
+  failed or not converged) or none with `--cold` (§ 5.4).
+* **Keeping a state you trust** — `molbuilder checkpoint save -m "…"` at any
+  moment, and `checkpoint tag` to name it.
+
+### How the checkpoint supports you
+
+A prepped stage keeps the deck and scripts its runs ran with, so every run's
+record stays true to what ran — `prep` does not rewrite a stage it prepped. To
+change something about a stage — a setting, its resources, the machine, the run
+it builds on — **go back to the state saved before its prep and prep it anew**:
+
+```
+molbuilder checkpoint list                 # the states, newest first, each with its time
+molbuilder checkpoint restore <id>         # the folder as it was before that prep
+molbuilder jobset prep run <stage> ...     # prepped as you now want it
+```
+
+Going back is not losing: restoring a state and working from it is how you
+**branch** — the state you left stays listed, and you can restore it again. Use
+it the same way to try two settings side by side, to undo a stage you no longer
+want, or to return to a result you tagged.
+
+A stage you remove from the description leaves its files where they are,
+untouched, and its number stays taken (`tight` stays `03_tight`); nothing lists,
+preps or launches it. To have it back, restore a state saved before you removed
+it ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2).
+
+### Use the jobset commands
+
+These promises hold for what the `jobset` commands do. A deck or run script run
+by hand, a file edited in a run's folder, a folder copied elsewhere — molbuilder
+reads what it finds and says what it sees, but it did not write it and cannot
+vouch for it. Use the checkpoint verbs rather than bare `git` in a calculation
+folder ([`checkpointing.md`](?doc=execution/checkpointing.md) § 2.0).
+
+---
+
 
 ## 1. What the job system is, and why it exists
 
@@ -780,7 +907,7 @@ A calculation is described **once**, and prep only ever reads that description.
 |:--:|---|---|---|
 | | ***the plan — nothing is written*** | | |
 | 1 | **a described calculation** | the folder holds `task.json` and its template — the one template, named for the label | refused: `jobset init` first — or, from one of its stage or attempt folders, the calculation's own folder named |
-| 2 | **one stage, named** | a stage of the description, by its name or `#N` — its folder's number (§ 5.3, *The grammar*) — that the description does not disable; for `prep bench`, a calculation the benchmark can measure, and no `--from` / `--cold` (a trial starts from its deck: the structure, or a force-constant stage's relaxed geometry, § 5.4) | refused, listing the stages it takes |
+| 2 | **one stage, named** | a stage of the description, by its name or `#N` — its folder's number (§ 5.3, *The grammar*) — that the description holds; for `prep bench`, a calculation the benchmark can measure, and no `--from` / `--cold` (a trial starts from its deck: the structure, or a force-constant stage's relaxed geometry, § 5.4) | refused, listing the stages it takes |
 | 2a | **not prepped before** | the calculation's plan holds no job for the stage — what `status` calls prepped; for `prep bench`, the stage's bench folder holds no sweep (one door, [`architecture.md`](?doc=execution/architecture.md) § 3.2) | refused: a prepped stage is not prepped again. The refusal names the way back — the folder's saved states (`molbuilder checkpoint list`), the one before the stage's prep restored (`molbuilder checkpoint restore`), and the prep anew |
 | 3 | **the description's own checks** — the preflight ([`engines/stages.md`](?doc=engines/stages.md) § 6.6) | no error | refused, with the errors; warnings are shown and carried in the answer |
 | 4 | **the machine, and the job's placement** | the calculation's own copy of its machine's record answers — or, at its first prep, the record of the machine you named (`--target`; the machine you are on when none other is on file); it says how a shell enters an environment there; the stage resolves — its parameters and the job they make, once ([`script-preparation.md`](?doc=execution/script-preparation.md) § 3.0, steps 1–2: the record, the description and the template each read once, and every step after reads what was read); every launch value is stated; and a run **fits** the queue it names — wall, memory, ranks, cores, GPUs — admitted on the target's record by the binding launch asks too (§ 6.0, *the placement*). A benchmark's cells are checked where its grid is enumerated, against the target's queues and against this prep's own ask; a cell either refuses is crossed out by name ([`generator.md`](?doc=execution/generator.md) § 4.3a) | refused, naming what is missing or what does not fit: which machine, when several are on file and none is named; the probe that writes a record; the machine the calculation is set to; the setting that does not resolve; the file and key where each value is stated; what was asked and what the queue offers |
@@ -1416,8 +1543,8 @@ next run, numbered on from the last. **Warm**, by default, it continues from
 force-constant run's does not: a rerun restarts at `FC.First`,
 [`engines/vibration.md`](?doc=engines/vibration.md) § 5.3; nor a PySCF
 vibration's) and it takes something from a run (a stage set `restart: clean`
-takes nothing) — `Job.relaunch_continues`; one that does not runs again from its
-deck alone. **Cold** (`launch --cold`) it takes nothing from a run of its own.
+takes nothing) — `Job.relaunch_continues`; one that does not
+starts over, nothing handed on from a run of its own. **Cold** (`launch --cold`) it takes nothing from a run of its own.
 The plan says which, and how the run it follows ended, before you are asked
 (§ 6.0). On the hierarchical layout the next `run-<n>` is opened through the one
 opener — warm with the restart files the latest run left, cold with none; a

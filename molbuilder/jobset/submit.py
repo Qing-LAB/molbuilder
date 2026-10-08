@@ -457,8 +457,11 @@ class _Member:
         start = "would start" if would else "starts"
         gathered = (f", with the inputs its kind gathered "
                     f"({', '.join(self.gathered)})" if self.gathered else "")
-        return (f"{start} cold -- from its deck alone, nothing taken from a "
-                f"run of its own{gathered}")
+        if self.cold:
+            return (f"{start} cold -- from its deck alone, nothing taken "
+                    f"from a run of its own{gathered}")
+        return (f"{start} over -- nothing is handed on from a run of its "
+                f"own{gathered}")
 
     def would(self) -> str:
         """What it follows, said before anything is sent."""
@@ -731,7 +734,7 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
             ) from e
     return _member(job, container, opened.dir, True, last,
                    run=next_run(opened.dir, names), again=True,
-                   cold=cont is None, continuation=cont,
+                   cold=cold, continuation=cont,
                    carries=list(opened.copied),
                    gathered=_carry_the_gather(last, opened.dir, writes,
                                               base=base))
@@ -1958,7 +1961,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         members.append(_Member(
             job, vdir, opened.dir, True, att, names=names,
             run=next_run(opened.dir, names), label=label, base=base,
-            again=True, cold=cont is None, continuation=cont,
+            again=True, cold=cold, continuation=cont,
             carries=list(opened.copied),
             gathered=_carry_the_gather(att, opened.dir, plan.writes,
                                        base=base)))
