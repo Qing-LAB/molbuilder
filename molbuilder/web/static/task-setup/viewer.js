@@ -2111,7 +2111,8 @@ function taskPrepCard(task) {
         "Prepare the task \u2014 pick the ready stage(s). Several picked "
         + "together share one job; a stage that builds on another is ready "
         + "once that one's newest run has finished."));
-    const list = el("div", { class: "ts-ladder" });
+    // THE PLAN LIST'S OWN ROWS (`ts-planlist`), a box column added.
+    const list = el("ul", { class: "ts-planlist" });
     for (const r of rows) {
         const box = el("input", { type: "checkbox",
                                   "aria-label": "prepare " + r.stage });
@@ -2123,14 +2124,15 @@ function taskPrepCard(task) {
             if (!box.checked && at !== -1) _fs.prepPick.splice(at, 1);
             renderNext(_task || task);
         });
-        const state = el("span", { class: "ts-ladder-state" }, r.state);
-        state.setAttribute("data-state", r.state);
-        const detail = el("span", { class: "ts-ladder-detail" },
+        const detail = el("span", { class: "ts-plan-detail" },
                           r.detail || "");
         if (r.why) detail.title = r.why;
-        list.appendChild(el("label", { class: "ts-ladder-row" }, box,
-                            el("span", { class: "ts-ladder-stage" }, r.stage),
-                            state, detail));
+        list.appendChild(el("li", {},
+            el("label", { class: "ts-planrow ts-planrow--pick" }, box,
+               el("span", { class: "ts-plan-stage" }, r.stage),
+               // THE ONE STATE CHIP (`lib/state-chip.js`).
+               window.molbuilder.stateChip(r.state),
+               detail)));
     }
     wrap.appendChild(list);
     // IN LADDER ORDER, as a group's job walks them.

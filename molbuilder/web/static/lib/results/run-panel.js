@@ -235,9 +235,9 @@ function el(tag, cls, text) {
     return NS.dom.el(tag, cls, text);
 }
 
+/* THE ONE STATE CHIP (`lib/state-chip.js`). */
 function chip(state) {
-    const lent = (NS.inspectors || {}).stateChip;
-    return typeof lent === "function" ? lent(state) : el("span", "rp-state", state);
+    return NS.stateChip(state);
 }
 
 /** One field as a row: its label, its value through its formatter. */

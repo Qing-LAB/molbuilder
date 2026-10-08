@@ -29,23 +29,6 @@
                       && root.molbuilder.path.basename)
                    || ((p) => String(p || "").split(/[\\/]/).pop());
 
-    /* The state words runstatus hands out, and how each should read.  A
-     * word missing from here still renders -- as itself, in the neutral
-     * tone -- because inventing a severity for a state we do not know is
-     * worse than showing the state. */
-    const TONE = {
-        finished:      "ok",
-        running:       "busy",
-        queued:        "busy",
-        pending:       "busy",
-        ready:         "idle",
-        waiting:       "idle",
-        missing:       "bad",
-        unknown:       "warn",
-        unreadable:    "bad",
-        failed:        "bad",
-    };
-
     /* The one element builder, `lib/dom.js`, loaded before this file on
      * /results.  Looked up when called, so a page that has not loaded it
      * still registers this viewer and fails only where it draws. */
@@ -383,8 +366,8 @@
 
         const head = el("div", "bench-trial-head");
         head.appendChild(el("span", "bench-trial-label", t.label));
-        const tone = TONE[t.state] || "idle";
-        head.appendChild(el("span", `bench-state is-${tone}`, t.state));
+        // THE ONE STATE CHIP (`lib/state-chip.js`).
+        head.appendChild(root.molbuilder.stateChip(t.state));
         const s = el("span", "bench-siter", `${_sPerIter(t.s_per_iter)} s/iter`);
         if (typeof t.s_per_iter === "number") s.title = String(t.s_per_iter);
         head.appendChild(s);
@@ -684,11 +667,6 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.inspectors = root.molbuilder.inspectors || {};
     root.molbuilder.inspectors.benchSummaryInspector = inspector;
-    // THE ONE STATE CHIP, lent to the Results page's ladder view
-    // (results.md § 2.4): the same words and tones, so the
-    // ladder is not a third copy of this vocabulary (plan.md § 5c.3).
-    root.molbuilder.inspectors.stateChip = (state) =>
-        el("span", "bench-state is-" + (TONE[state] || "idle"), String(state));
     if (root.molbuilder.inspectors.register) {
         root.molbuilder.inspectors.register(inspector);
     }

@@ -38,12 +38,9 @@ const WORKSPACE_TAG = "results:transport";
         return exp ? n.toExponential(digits) : n.toFixed(digits);
     }
 
-    /* THE ONE STATE CHIP -- the ladder's and the bench summary's words and
-     * tones (`inspectors.stateChip`). */
+    /* THE ONE STATE CHIP (`lib/state-chip.js`). */
     function _chip(state) {
-        const reg = (root.molbuilder || {}).inspectors || {};
-        if (typeof reg.stateChip === "function") return reg.stateChip(state);
-        return _el("span", null, String(state));
+        return root.molbuilder.stateChip(state);
     }
 
     function _dirOf(file) {

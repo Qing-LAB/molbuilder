@@ -1,0 +1,18 @@
+/* state-chip.css — the ONE state chip's look (`state-chip.js`).
+
+   State never travels by colour alone — the word IS the state, so it
+   survives a monochrome screen.  The tone only says how it should read. */
+.state-chip {
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 1px var(--space-xs);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-soft);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.state-chip.is-ok   { color: var(--success);   border-color: var(--success); }
+.state-chip.is-bad  { color: var(--error);     border-color: var(--error); }
+.state-chip.is-warn { color: var(--warn-soft); border-color: var(--warn-soft); }
+.state-chip.is-busy { color: var(--accent);    border-color: var(--accent); }

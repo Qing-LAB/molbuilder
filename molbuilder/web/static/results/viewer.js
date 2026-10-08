@@ -153,22 +153,16 @@
      * c-d).  `/api/results/dir` answers a root with `ladder`, the ladder
      * door's own reading, and the empty-state card draws it: one row per
      * rung in ladder order, its state and detail, the rung to resume from
-     * named in the title.  The state chip is the bench summary's
-     * (`inspectors.stateChip`) -- one vocabulary of words and tones
-     * (`running-a-job.md` § 4.2); a third copy is what § 5c.3 forbids. */
+     * named in the title.  The state chip is the one chip
+     * (`lib/state-chip.js`) -- one vocabulary of words and tones
+     * (`running-a-job.md` § 4.2). */
     function _renderLadder(ladder) {
         const host = $("results-ladder");
         if (!host) return;
         host.textContent = "";
         const stages = ladder && Array.isArray(ladder.stages) ? ladder.stages : [];
         if (!stages.length) { host.hidden = true; return; }
-        const reg = (window.molbuilder || {}).inspectors || {};
-        const chip = (state) => {
-            if (typeof reg.stateChip === "function") return reg.stateChip(state);
-            const s = document.createElement("span");
-            s.textContent = String(state);
-            return s;
-        };
+        const chip = window.molbuilder.stateChip;
         const title = document.createElement("h3");
         title.className = "results-ladder-title";
         title.textContent = "This calculation's ladder \u2014 " + stages.length

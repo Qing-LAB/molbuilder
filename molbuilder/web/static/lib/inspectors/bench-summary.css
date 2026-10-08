@@ -94,22 +94,6 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* State never travels by colour alone — the word IS the state, so it
-   survives a monochrome screen (the call task-setup/style.css makes for
-   its own three readings). */
-.bench-state {
-    font-size: var(--text-2xs);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    padding: 1px var(--space-xs);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-soft);
-    color: var(--text-secondary);
-}
-.bench-state.is-ok   { color: var(--success); border-color: var(--success); }
-.bench-state.is-bad  { color: var(--error);   border-color: var(--error); }
-.bench-state.is-warn { color: var(--warn-soft); border-color: var(--warn-soft); }
-.bench-state.is-busy { color: var(--accent);  border-color: var(--accent); }
 
 /* What the trial actually consumed, measured by the monitor.  Tabular
    figures because these are read in a column down the card list and a
