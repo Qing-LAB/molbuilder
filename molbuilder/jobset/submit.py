@@ -1229,7 +1229,7 @@ def _go(s: Submission, record) -> List[JobResult]:
                            mode="direct", command=s.command,
                            continued_from=_flat_source(m))
         record("launched", submission=s.name, command=s.command,
-               members=names)
+               members=names, **_member_facts(s))
         rc = proc.wait()
         return ([JobResult(s.name, s.command, "ran" if rc == 0 else "failed",
                            returncode=rc)]
@@ -1255,7 +1255,7 @@ def _go(s: Submission, record) -> List[JobResult]:
                        placement=s.placement, sent=s.sent,
                        continued_from=_flat_source(m))
     record("launched", submission=s.name, command=s.command, job_id=jid,
-           domain=s.domain, members=names)
+           domain=s.domain, members=names, **_member_facts(s))
     return ([JobResult(s.name, s.command, "submitted", job_id=jid,
                        domain=s.domain)]
             + ([JobResult(m.name, [], s.rides, job_id=jid)
@@ -1966,6 +1966,14 @@ def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                                shape=sh, next_run=True)
         run, points = sweep.dir, sweep.points
         _carry_sweep_gather(prev, run, points, plan.writes, base)
+        if not cold:
+            # THE RUN CONTINUES FROM THE STAGE'S LATEST RUN (rule 3), read at
+            # the point below -- said once at the run too, so its launch
+            # record carries what it continued from (`project-layout.md`
+            # § 1.6.3) like every other run's.
+            write_continued_from(run, str(prev.relative_to(base)),
+                                 names=names, run=FIRST_ATTEMPT,
+                                 plan=plan.writes)
     # WHAT A POINT HANDS ON, by data: the calculation's `along` row, of the
     # files this rung itself declares (the device's `.TSDE`; the
     # transmission declares none).
@@ -2131,6 +2139,17 @@ def _flat_source(m: "_Member") -> Optional[str]:
     if m.has_attempt or m.continuation is None:
         return None
     return m.continuation.run
+
+
+def _member_facts(s: "Submission") -> Dict[str, object]:
+    """What the ledger records of each member beyond its name
+    (`feedback_decision_ledger`): the run it goes into, and a walked
+    member's plan -- which points are taken over and which walked, from
+    what (`_plan_sweep`'s ``walk``) -- so a sweep's history reads from the
+    ledger, not the terminal alone."""
+    runs = {m.name: _rel(m.run_dir, m.base) for m in s.members}
+    walks = {m.name: m.walk for m in s.members if m.walk}
+    return {"runs": runs, **({"walks": walks} if walks else {})}
 
 
 def _record_launch(where: Path, *, names: RunNames, run: int, mode: str,

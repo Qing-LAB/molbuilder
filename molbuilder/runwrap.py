@@ -3109,6 +3109,13 @@ def render_run_wrapper(script_path: Path, *,
         f"_mb_on_signal() {{\n"
         f'    _log WARN "caught SIGTERM/SIGINT (scheduler kill or '
         f'Ctrl-C) -- cleaning up" || true\n'
+        # WRITTEN TO THE LOG DIRECTLY TOO: `_log` goes through the tee, and
+        # a kill of the whole process group takes the tee with it, so the
+        # line above never lands in the session log (seen on the
+        # 2026-10-08 road walk, plan § 5x.7) -- the append below does.
+        f"    printf '{LOG_LINE}\\n' \"$(date '+{LOG_CLOCK}')\" WARN "
+        f'"caught SIGTERM/SIGINT -- stopped before its end" '
+        f'>> "$_runwrap_log" 2>/dev/null || true\n'
         f"    _mb_cleanup\n"
         f"    exit 143\n"
         f"}}\n"

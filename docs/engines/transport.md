@@ -3544,7 +3544,7 @@ declaration says the crystal continues:
 
 | axis | declared | the settings gate | why |
 |---|---|---|---|
-| transport (`c`) | any | **refuses** a room at the boundary above 1.5 of the lead's interlayer spacings | the leads continue through the boundary into the periodic image, so the room there is exactly one layer spacing of the lead (2.40 Å on the Au–BDT–Au junction), not zero; more is a gap, and a gap makes the lead a surface (I12) |
+| transport (`c`) | any | **refuses** a room at the boundary above 1.5 of the lead's interlayer spacings (vacuum), or below 1/1.5 of one (a collision: the two leads' end layers meet through the image) | the leads continue through the boundary into the periodic image, so the room there is exactly one layer spacing of the lead (2.40 Å on the Au–BDT–Au junction), not zero; more is a gap, and a gap makes the lead a surface (I12) |
 | transverse (`a`, `b`) | `periodic` | **refuses** a lead that does not reach across the boundary: its closest approach there above 1.5 of its own nearest-neighbour distance — **each lead on its own**, and named | periodic says the crystal continues across the boundary, and vacuum contradicts the declaration |
 | transverse | `isolated` | **allows** it | a wire or chain lead is vacuum-surrounded across the transport axis — the standard TranSIESTA setup — and the vacuum is the one the structure states |
 

@@ -178,6 +178,26 @@ class TestTheCellWrapsAlongTransport:
                                   calculation="transport"),
                          "cell.transport_vacuum")
 
+    def test_a_fused_cell_is_refused_and_its_relaxation_warned(self, junction):
+        """I12 the other way: c equal to the atoms' span puts the two leads'
+        end layers in one plane through the image -- a collision the engines
+        only note by removing couplings (the 2026-10-08 road walk ran its
+        whole ladder on one).  A transport rung refuses it, naming the c
+        that closes the boundary to one spacing; the junction's relaxation
+        is warned, since the structure has not committed to transport."""
+        span = float(junction.positions[:, 2].max()
+                     - junction.positions[:, 2].min())
+        s = self._with_c(junction, span)
+        refused = _find(validate(s, SiestaConfig(system_label="j"),
+                                 calculation="transport"),
+                        "cell.transport_collision")
+        assert refused and refused[0].severity == "error"
+        assert f"{span + 2.36:.3f}"[:4] in refused[0].message
+        warned = _find(validate(s, SiestaConfig(system_label="j"),
+                                calculation="optimization"),
+                       "cell.transport_collision")
+        assert warned and warned[0].severity == "warn"
+
     def test_an_isolated_molecule_is_not_told_the_opposite(self, junction):
         """The same roomy cell, as an OPTIMIZATION, draws no transport
         complaint -- the two pieces of advice contradict each other and must

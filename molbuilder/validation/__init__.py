@@ -471,9 +471,14 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     # `cell.vacuum_thin` is right for a molecule and is gated on `axis_kind`.
     _cell = cell if cell is not None else getattr(struct, "cell", None)
     if _cell is not None and getattr(struct, "n_atoms", 0):
-        from ..cell import (SEAM_VACUUM_FACTOR, transport_room,
-                            transverse_reach)
+        from ..cell import SEAM_VACUUM_FACTOR, transverse_reach
         from ..transport.sort import ELECTRODE_LABELS
+        from .sidecar import check_junction_boundary
+        # THE ROOM ALONG TRANSPORT, one rule both ways (vacuum, collision)
+        # -- a refusal on every transport rung; the same rule warns at a
+        # labelled junction's relaxation (`sidecar.check_junction_boundary`).
+        out += check_junction_boundary(struct, _cell, severity="error",
+                                       whole_structure_is_the_lead=True)
         # THE LEAD: the electrode-labelled atoms of a junction, one list per
         # lead; an electrode rung's structure IS the lead and carries no
         # labels, so all of it.
@@ -482,27 +487,6 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
                  if label in ELECTRODE_LABELS and idx]
         if not leads:
             leads = [list(range(struct.n_atoms))]
-        room, spacing = transport_room(struct.positions, _cell, leads)
-        if spacing is None:
-            out.append(Issue(
-                "warn",
-                f"the lead has fewer than two atomic layers, so its layer "
-                f"spacing -- and whether the {room:.2f} Å at the transport "
-                f"boundary is a seam or vacuum -- cannot be measured "
-                f"(engines/transport.md 6.1c).",
-                where="cell.transport_vacuum"))
-        elif room > SEAM_VACUUM_FACTOR * spacing:
-            out.append(Issue(
-                "error",
-                f"the cell leaves {room:.2f} Å at the transport boundary -- "
-                f"{room / spacing:.1f} of the lead's {spacing:.2f} Å layer "
-                f"spacings.  The leads continue through that boundary into "
-                f"the periodic image, so the room there is one layer "
-                f"spacing, not a gap; above {SEAM_VACUUM_FACTOR:g} spacings "
-                f"it is vacuum, and the lead is a surface rather than a lead "
-                f"(engines/transport.md 6.1c, I12).  Set the cell's c so "
-                f"the boundary closes to one spacing (the Cell page).",
-                where="cell.transport_vacuum"))
         # LEAD BY LEAD, as the rule is stated: pooled, two leads answer for
         # each other -- one that tiles hides one that does not on the
         # junction's rungs, while the electrode rung that sees it alone

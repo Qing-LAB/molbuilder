@@ -117,6 +117,89 @@ def check_electrode_labels_are_frozen(struct: Structure, *,
     )]
 
 
+def check_junction_boundary(struct: Structure, cell=None, *,
+                            severity: str = "warn",
+                            whole_structure_is_the_lead: bool = False,
+                            vacuum: bool = True) -> List[Issue]:
+    """**The room at the transport boundary is one layer spacing of the
+    lead** — I12, both ways (`engines/transport.md` § 6.1c): the leads
+    continue through the boundary of ``c`` into the periodic image, so the
+    room there is one interlayer spacing of the lead.  Above
+    `cell.SEAM_VACUUM_FACTOR` spacings it is vacuum, and the lead is a
+    surface; below the same factor's inverse the two leads' end layers meet
+    through the image — a collision — and the seed's SCF, TranSIESTA's
+    Hamiltonian and its Hartree reference plane are all taken on a fused
+    cell (TranSIESTA then "removes the elements which connect electrodes
+    across the device region"; found on the 2026-10-08 road walk, plan
+    § 5x.7).
+
+    Measured from the lead (TD3): the spacing is the lead's own, the room
+    the cell's.  A junction is a structure carrying electrode labels; an
+    electrode rung's structure IS the lead and carries none, which the
+    transport kind gate says with ``whole_structure_is_the_lead``.  Asked
+    at a junction's relaxation as a **warning** (the structure has not
+    committed to transport) and at every transport rung as a **refusal**
+    (`validation._validate_transport_kind`).  ``vacuum=False`` leaves the
+    vacuum half unsaid: a junction relaxed in a padded cell is told to add
+    vacuum by the molecule's own advice (`cell.vacuum_thin`), and the two
+    must never both fire -- only the transport rungs call a padded
+    boundary wrong.
+    """
+    from ..cell import SEAM_VACUUM_FACTOR, transport_room
+    from ..transport.sort import ELECTRODE_LABELS
+    regions = getattr(struct, "regions", None) or {}
+    leads = [list(idx) for label, idx in regions.items()
+             if label in ELECTRODE_LABELS and idx]
+    n = getattr(struct, "n_atoms", 0)
+    if not leads:
+        if not whole_structure_is_the_lead or not n:
+            return []
+        leads = [list(range(n))]
+    box = cell if cell is not None else getattr(struct, "cell", None)
+    if box is None or not n:
+        return []
+    room, spacing = transport_room(struct.positions, box, leads)
+    if spacing is None:
+        return [Issue(
+            "warn",
+            f"the lead has fewer than two atomic layers, so its layer "
+            f"spacing -- and whether the {room:.2f} Å at the transport "
+            f"boundary is a seam or vacuum -- cannot be measured "
+            f"(engines/transport.md 6.1c).",
+            where="cell.transport_vacuum")]
+    if room > SEAM_VACUUM_FACTOR * spacing:
+        if not vacuum:
+            return []
+        return [Issue(
+            severity,
+            f"the cell leaves {room:.2f} Å at the transport boundary -- "
+            f"{room / spacing:.1f} of the lead's {spacing:.2f} Å layer "
+            f"spacings.  The leads continue through that boundary into "
+            f"the periodic image, so the room there is one layer "
+            f"spacing, not a gap; above {SEAM_VACUUM_FACTOR:g} spacings "
+            f"it is vacuum, and the lead is a surface rather than a lead "
+            f"(engines/transport.md 6.1c, I12).  Set the cell's c so "
+            f"the boundary closes to one spacing (the Cell page).",
+            where="cell.transport_vacuum")]
+    if room < spacing / SEAM_VACUUM_FACTOR:
+        import numpy as np
+        c_now = float(np.asarray(box, dtype=float).reshape(3, 3)[2, 2])
+        return [Issue(
+            severity,
+            f"the cell leaves {room:.2f} Å at the transport boundary -- "
+            f"{room / spacing:.1f} of the lead's {spacing:.2f} Å layer "
+            f"spacings.  The leads continue through that boundary into "
+            f"the periodic image, so the room there is one layer spacing; "
+            f"below 1/{SEAM_VACUUM_FACTOR:g} of it the two leads' end layers "
+            f"meet through the image -- a collision: the seed's SCF and "
+            f"TranSIESTA's Hamiltonian are taken on a fused cell "
+            f"(engines/transport.md 6.1c, I12).  Set the cell's c to "
+            f"{c_now - room + spacing:.3f} Å so the boundary closes to one "
+            f"spacing (the Cell page).",
+            where="cell.transport_collision")]
+    return []
+
+
 def check_unconsumed_region_labels(struct: Structure, *, engine: str,
                                    calculation: str = "") -> List[Issue]:
     """Pattern B (validation.md § 5): every

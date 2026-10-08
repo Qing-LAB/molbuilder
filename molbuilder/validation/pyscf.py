@@ -229,8 +229,11 @@ def _validate_pyscf(struct: Structure, cfg,
         # leads, and a lead must come through the relaxation unmoved.  Asked
         # HERE, where it is cheap -- the compose-time gate that refuses a
         # MOVED lead is correct and runs after the relaxation is paid for.
-        from .sidecar import check_electrode_labels_are_frozen
+        from .sidecar import (check_electrode_labels_are_frozen,
+                              check_junction_boundary)
         issues += check_electrode_labels_are_frozen(struct)
+        if calculation != "transport":
+            issues += check_junction_boundary(struct, vacuum=False)
 
     # Solvation, engine-side: these are facts about the BUILD and the
     # vocabulary, not about the vibration -- both decks emit the same
