@@ -245,13 +245,6 @@ def axis_vacuum(cell: np.ndarray,
     return out
 
 
-# Above this much empty space (Å) on a periodic axis we flag it: a
-# real bulk lattice leaves ~one interlayer spacing (a few Å); much
-# more usually means the axis is actually vacuum (or the cell is
-# mis-sized), which changes the physics.
-_VACUUM_FLAG_ANG = 5.0
-
-
 def _lattice_block(struct: Structure, cell: np.ndarray, *,
                    fabricated: bool = False) -> List[str]:
     """Emit the LatticeVectors block.
@@ -301,23 +294,10 @@ def _lattice_block(struct: Structure, cell: np.ndarray, *,
             lines.append(
                 f"#   {names[ax]:<14} {kind:<8} | empty span "
                 f"{vac[ax]:.2f} Å")
-        # Transport axis (c) must be periodic / seamless for the leads.
-        # A transport axis is the device length matched to the leads -- the
-        # seam question is about vacuum at the boundary, not about the kind.
-        # `isolated` here IS the failure this warns about.
-        if vac[2] > _VACUUM_FLAG_ANG or kinds[2] == "isolated":
-            lines.append(
-                "# WARNING: the transport axis (c) has vacuum / is not "
-                "periodic;")
-            lines.append(
-                "#   the electrode .TSHS cannot attach seamlessly "
-                "(Brandbyge 2002 § III).")
-        for ax in (0, 1):
-            if kinds[ax] != "isolated" and vac[ax] > _VACUUM_FLAG_ANG:
-                lines.append(
-                    f"# NOTE: transverse axis {names[ax]} declared periodic "
-                    f"but leaves {vac[ax]:.1f} Å empty — confirm the surface "
-                    f"actually tiles (else it is an isolated cluster).")
+        # WHETHER THE ROOM IS RIGHT IS THE GATE'S ONE RULE, measured from the
+        # lead (`engines/transport.md` § 6.1c, I12 both ways; its findings
+        # land in the deck's `.validation.txt`) -- the lines above are the
+        # measurement, and this block judges nothing.
         lines.append("%block LatticeVectors")
         for ax in range(3):
             v = cell[ax]

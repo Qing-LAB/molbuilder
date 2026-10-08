@@ -742,9 +742,12 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   framework test needs is made on the road with the suite's **stand-in
   engine** (`conftest._STUB_BODIES`), which plays the engine's part and no
   other: a road row says how it ends (`stand_in`: the exit code, whether it
-  leaves the restart file SIESTA leaves, empty, and whether it waits until
-  the calculation's ledger holds a decision — what a launch has written
-  down while its run runs), and our wrapper, running
+  leaves the restart file SIESTA leaves — the `.XV`, carrying the deck's
+  lattice and coordinates in SIESTA's own format, as a relaxation that moved
+  nothing would leave it, so a run of ours on this road is a citable
+  relaxation (`engines/transport.md` § 3.1, 2026-10-08) — and whether it
+  waits until the calculation's ledger holds a decision — what a launch has
+  written down while its run runs), and our wrapper, running
   it, writes the run's records as it concludes — so what a stage builds on,
   what it continues from and whether a viewer follows a run are tested
   through our own code with no engine (`tests/data/hand_overs.toml`). What
@@ -819,6 +822,15 @@ tests are collected:
    file holding one shares one worker. Two computations never overlap (the
    same one-at-a-time rule as job submission), and an engine's threads never
    compete with another engine's.
+3. **A targeted set is handed to pytest ordered by directory**, stably
+   (`tools/testrun.py`, 2026-10-08, plan § 5x.7 F26). pytest parses a
+   subdirectory's `conftest.py` once, into the first collector it builds for
+   that directory; a later bare file argument from the parent directory
+   re-collects the parent and builds a second collector, and the files named
+   after it then lack that conftest's fixtures (*fixture 'water_struct' not
+   found*, on `tests/validation/` files listed after a `tests/` file). Grouped
+   by directory, every file of a subdirectory follows the one that bound
+   them. A batch names directories and is never bitten.
 
 `run lf` stays in one process: it re-runs a handful of tests, picked by their
 ids as they are collected. It runs only when pytest's last-failed list names a

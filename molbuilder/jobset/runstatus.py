@@ -721,10 +721,12 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
         # SAID EVERY TIME (checkpointing.md S3): the run it continued from,
         # or null -- it started from the structure, or from what it gathered.
         # A sweep's run continues at the point (rule 3, `engines/transport.md`
-        # § 2a.11): the points taken over name the run they came from.
+        # § 2a.11): its row says which points were taken over from which
+        # runs, never the run-level marker alone.
         src = s.launch.get("continued_from")
         rows.append(("continued from",
-                     src if src else _sweep_took_over(s) if s.points
+                     _sweep_took_over(s) if s.points
+                     else src if src
                      else "nothing -- it started from what it gathered"
                      if s.gathered else
                      "nothing -- it started from the structure"))

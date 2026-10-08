@@ -142,6 +142,11 @@
                 text = dir + " / (nothing selected)";
             } else if (_dirOf(file) === dir) {
                 text = dir + " / " + _basename(file);
+            } else if (pickedRun && dir && file.startsWith(dir + "/")) {
+                /* A RUN PICKED OFF THE ROOT'S LADDER (results.md § 2.4):
+                 * its folder under the calculation, by design -- not the
+                 * divergence the readout below warns about. */
+                text = dir + " / " + file.slice(dir.length + 1);
             } else {
                 /* THE FILE IS NOT IN THE BOUND FOLDER, so do not write it as
                  * if it were.  `<bound>/<basename>` is a path that does not
@@ -158,7 +163,8 @@
             els.fileReadout.textContent = text;
             els.fileReadout.classList.toggle(
                 "is-diverged",
-                !!sc.diverged || (!!file && !!dir && _dirOf(file) !== dir));
+                !!sc.diverged || (!!file && !!dir && _dirOf(file) !== dir
+                                  && !(pickedRun && file.startsWith(dir + "/"))));
             // the whole line, warning included -- the ellipsis may hide it
             els.fileReadout.title = text;
         }
@@ -295,10 +301,10 @@
         // 5.5); only a calculation that gathers its rungs -- transport's I-V
         // record -- has one here (web/results.md 2.4).
         note.textContent = "Each rung runs in its own directory below this one; "
-            + "open a rung in the sidebar to read its files and its result.  "
-            + "A calculation that gathers its rungs into one result -- a "
-            + "transport calculation's I\u2013V record -- has it here, and "
-            + "this panel opens it.";
+            + "every run of it is listed under the rung, and its \u201copen\u201d "
+            + "shows that run's result here.  A calculation that gathers its "
+            + "rungs into one result -- a transport calculation's report -- "
+            + "has it below, opened through the calculation's description.";
         host.appendChild(note);
         host.hidden = false;
     }

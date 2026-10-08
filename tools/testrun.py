@@ -336,6 +336,14 @@ def cmd_run(args):
         # treat the batch token as an explicit target path
         sel = [args.batch] + list(extra)
         batch_file = "custom"
+    # A TARGETED SET IS ORDERED BY DIRECTORY, stably (plan § 5x.7 F26,
+    # diagnosed 2026-10-08): pytest parses a subdirectory's conftest once,
+    # into the first collector it builds for that directory, and a later bare
+    # file argument from the parent re-collects the parent and builds a
+    # second one -- the files after it then lack that conftest's fixtures
+    # ("fixture 'water_struct' not found").  Grouped by directory, every
+    # file of a subdirectory follows the one that bound them.
+    sel = sorted(sel, key=os.path.dirname)
     prog = _progress_path(batch_file)
     if workers > 1 and importlib.util.find_spec("xdist") is None:
         print("[testrun] REFUSING: spreading the run needs pytest-xdist, which "

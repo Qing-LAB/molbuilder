@@ -167,9 +167,11 @@
           asked for beside what it ran, and the verdict
         </li>
         <li>
-          <code>*.transport.json</code>
-          &mdash; a transport calculation: the I&ndash;V table, G(E<sub>F</sub>)
-          and what is not drawn
+          <code>task.json</code> at a transport calculation's root
+          &mdash; the calculation's report, composed on read: each rung's
+          state, the I&ndash;V, T(E), the DOS and what is not drawn
+          (<code>*.transport.json</code> is <code>summarize task</code>'s
+          copy of it, opened as a file)
         </li>
         <li>
           <code>*.fc-sweep.json</code>

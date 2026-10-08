@@ -377,7 +377,14 @@ const WORKSPACE_TAG = "results:transport";
                 st.scf_converged === true ? "converged"
                 : st.scf_converged === false ? "NOT converged"
                 : (st.unreadable ? "unreadable: " + st.unreadable : "—")));
-            tr.appendChild(_el("td", null, st.attempt || "—"));
+            /* THE RUN THE TRANSMISSION GATHERED answers for the device
+             * (§ 2a.12): said beside its attempt, with the contour its
+             * density was integrated on. */
+            const where = (st.attempt || "—")
+                + (st.gathered_by ? " · gathered by the " + st.gathered_by : "")
+                + (st.negf && st.negf.contour && st.negf.contour.poles
+                    ? " · " + st.negf.contour.poles + " poles" : "");
+            tr.appendChild(_el("td", null, where));
             table.appendChild(tr);
         });
         card.appendChild(table);
@@ -413,6 +420,25 @@ const WORKSPACE_TAG = "results:transport";
                     c.gathered.length
                         ? c.gathered.map((g) => g.file + " ← " + g.from).join(", ")
                         : "nothing gathered"));
+                /* A SWEPT RUN'S POINTS: what each started from (a point
+                 * taken over names the run that computed it; a walked
+                 * point the point before it) and what it alone took
+                 * (§ 2a.11, § 2a.12). */
+                if (Array.isArray(c.points) && c.points.length) {
+                    const pts = _el("ul", "transport-chain-points");
+                    c.points.forEach((p) => {
+                        const bits = [];
+                        if (p.started_from) bits.push("from " + p.started_from);
+                        /* `took` is the status door's own sentence per
+                         * file ("<file> <- <run>"). */
+                        (p.took || []).forEach((g) => bits.push(String(g)));
+                        pts.appendChild(_el("li", null,
+                            Number(p.bias_v) + " V: "
+                            + (bits.length ? bits.join(", ")
+                               : "started from what the run gathered")));
+                    });
+                    li.appendChild(pts);
+                }
                 ul.appendChild(li);
             });
             card.appendChild(ul);
@@ -434,19 +460,17 @@ const WORKSPACE_TAG = "results:transport";
             dl.appendChild(r);
         }
         if (prov.citation) row("cited run", prov.citation);
-        if (prov.form) row("cited as", prov.form);
-        /* EVIDENCE IS THE HONEST FIELD: "no-record" when a relaxation's .XV
-         * was taken as final without a concluding record; "given" for a
-         * cited structure pair that never claimed to be relaxed. */
-        if (prov.evidence !== undefined && prov.evidence !== null) {
-            const weak = prov.evidence === "no-record" || prov.evidence === "given";
-            row("relaxation evidence",
-                prov.evidence === "no-record"
-                    ? "no concluding record — the .XV was taken as final"
-                    : prov.evidence === "given"
-                        ? "a cited structure pair, not a relaxation"
-                        : prov.evidence,
-                weak ? "transport-prov-val is-weak" : "transport-prov-val");
+        /* HOW THE CITED RUN ENDED AND WHAT IT CONVERGED (§ 3.1): its
+         * record's line, and the status verb's reading of its geometry. */
+        if (prov.evidence) row("concluded", prov.evidence);
+        const relaxed = prov.relaxation || {};
+        if (relaxed.converged) {
+            row("converged", relaxed.converged
+                + (/NO$/.test(relaxed.converged)
+                    ? " — the .XV cited is the last geometry SIESTA wrote, "
+                      + "not a converged minimum" : ""),
+                /NO$/.test(relaxed.converged)
+                    ? "transport-prov-val is-weak" : "transport-prov-val");
         }
         const files = prov.files || {};
         const names = Object.keys(files);

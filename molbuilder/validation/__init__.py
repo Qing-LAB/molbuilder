@@ -390,20 +390,10 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     ``template.why_not`` rather than on this one alone.
     """
     out: List[Issue] = []
-    # THE BIAS ADVISORY.  Bias is the one axis a transport calculation
-    # exists to sweep, so without it a person could describe 3 V and be told
-    # nothing on the road that runs.
+    # THE BIAS: no threshold voltage is invented here (`engines/transport.md`
+    # § 2a.10) -- the treatment is the description's switch, and the point's
+    # voltage is read below by the window rule alone.
     bias = getattr(cfg, "bias_voltage_v", None)
-    if bias is not None and abs(float(bias)) > 2.0:
-        out.append(Issue(
-            "warn",
-            f"bias |V| = {abs(float(bias)):.2f} V is above the ~2 V "
-            f"linear-response limit for typical molecular junctions.  "
-            f"TranSIESTA will still converge, but read the result as a "
-            f"single point on a NONLINEAR I-V curve, not as a linearized "
-            f"Landauer conductance (di Ventra, Electrical Transport in "
-            f"Nanoscale Systems, 2008; Reed et al. 2006).",
-            where="config.bias_voltage_v"))
     # THE POLE ENERGY AND THE TEMPERATURE ARE ONE QUESTION, so neither can be
     # checked alone.  The rule is TranSIESTA's own -- SIESTA 5.4.2
     # `Src/m_ts_chem_pot.F90`, read 2026-09-16 rather than inferred -- and it

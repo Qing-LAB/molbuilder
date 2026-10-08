@@ -467,11 +467,14 @@ class _Member:
         start = "would start" if would else "starts"
         gathered = (f", with the inputs its kind gathered "
                     f"({', '.join(self.gathered)})" if self.gathered else "")
+        # A SWEEP'S WALK SAYS WHICH POINTS RUN AND FROM WHAT, warm or cold
+        # (`engines/transport.md` § 2a.11: "Launch shows which points it
+        # takes over and which it runs"); cold, it is every point.
+        if self.walk is not None:
+            return self.walk
         if self.cold:
             return (f"{start} cold -- from its deck alone, nothing taken "
                     f"from a run of its own{gathered}")
-        if self.walk is not None:
-            return self.walk
         return (f"{start} over -- nothing is handed on from a run of its "
                 f"own{gathered}")
 
@@ -2011,8 +2014,14 @@ def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         for f in sorted(src.iterdir()):
             if f.is_file() and f.name not in scratch:
                 plan.writes.copy(f, pdir / f.name)
-        origin = (read_continued_from(src, names, FIRST_ATTEMPT)
-                  or str(src.relative_to(base)))
+        # The source's own marker is its ORIGIN only when it names a point of
+        # another run (it was taken over itself); a point the source run
+        # walked carries its START there -- the point before it in that run
+        # -- and the run that computed it is the source run.
+        marker = read_continued_from(src, names, FIRST_ATTEMPT)
+        here = f"{prev.relative_to(base)}/"
+        origin = (marker if marker and not marker.startswith(here)
+                  else str(src.relative_to(base)))
         write_continued_from(pdir, origin, names=names,
                              run=FIRST_ATTEMPT, plan=plan.writes)
     # THE WALK: each point in bias order, its start the point before it.

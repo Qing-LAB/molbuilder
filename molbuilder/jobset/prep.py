@@ -1441,10 +1441,10 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
                 f"{', '.join(f'{m}.psml' for m in missing)} and there is "
                 f"none in {base.name}/pseudos/ or in the cited "
                 f"directory ({citation}).  The pseudopotentials travel "
-                f"with the citation (engines/transport.md § 3.1) -- the "
-                f"junction ran with them, so its calculation folder "
-                f"should hold them; prep the junction there, or put the "
-                f"files in {base.name}/pseudos/ yourself.")
+                f"with the citation (engines/transport.md § 3.1): a "
+                f"relaxation run of molbuilder's own holds the .psml it "
+                f"ran with, so relax the junction through `jobset init` -> "
+                f"`prep task` -> `launch task` and cite that run.")
     _screen_pseudos(species, cfg, pdir)
 
 

@@ -125,30 +125,6 @@ class TestThePoleEnergyIsTiedToTheTemperature:
                          "config.negf_eq_pole_ev", "error")
 
 
-class TestTheLinearResponseAdvisory:
-    """|V| > 2 V is outside the Landauer regime — a warn, never a refusal.
-
-    Bias is the one axis a transport calculation exists to sweep.
-    """
-
-    def test_a_high_bias_point_is_advised(self, junction):
-        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1),
-                           bias_voltage_v=3.0)
-        found = _find(validate(junction, cfg, calculation="transport"),
-                      "config.bias_voltage_v")
-        assert found and found[0].severity == "warn", (
-            "an advisory, not a refusal: a high-bias run is a legitimate "
-            "experiment whose RESULT must be read as a point on a nonlinear "
-            "I-V curve rather than a conductance")
-
-    def test_an_ordinary_bias_says_nothing(self, junction):
-        for v in (0.0, 0.2, 2.0):
-            cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1),
-                               bias_voltage_v=v)
-            assert not _find(validate(junction, cfg, calculation="transport"),
-                             "config.bias_voltage_v"), f"V={v}"
-
-
 class TestTheCellWrapsAlongTransport:
     """I12.
 

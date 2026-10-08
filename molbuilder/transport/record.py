@@ -109,11 +109,10 @@ def parse_avtrans(text: str) -> Tuple[List[float], List[float]]:
     The format (pinned live, 5.4.2): ``#`` comment lines, then two
     columns — E in eV, and the k-averaged T(E).
 
-    E is read as relative to E_F, tbtrans's OWN default behaviour as a live
-    file showed it -- the evidence bearing on `plan.md` § 5o's open
-    question, whether a ``%block TBT.Contour`` line's energies are absolute
-    or E_F-relative.  **Recorded as evidence, not settled:** the question is
-    closed by reading one real ``AVTRANS`` file beside its device ``.fdf``.
+    E is relative to E_F -- TBtrans's own convention for its contour and
+    its output (`engines/transport.md` § 2a.12: T(E) is measured relative
+    to the leads' E_F), which is what the record states as
+    ``energies_relative_to_ef``.
     """
     energies: List[float] = []
     trans: List[float] = []
@@ -397,18 +396,55 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         # name (`stages.STAGE_FACT`).  The transmission's answer is its
         # points; TBtrans converges nothing and reports no total energy.
         answers = STAGE_FACT.get(name, "scf")
+        # EVERY SWEPT RUNG'S POINTS, as the status door read them: the
+        # folder each ran in, what it started from and what it alone took
+        # (§ 2a.11, § 2a.12) -- the provenance chain's per-point lines, for
+        # a product rung (the transmission) as for the device.
+        if s.points:
+            fact["taken"] = [
+                {"bias_v": p.get("bias_v"),
+                 "attempt": (f"{s.dir}/{p['folder']}" if s.dir and p.get("folder")
+                             else None),
+                 "started_from": p.get("started_from"),
+                 "took": p.get("took") or []}
+                for p in s.points]
         if sweep_points(task, name) and answers != "product":
             # A SWEPT RUNG, POINT BY POINT -- the report's convergence card
             # follows the selected bias (`web/results.md` § 2.5); the rung's
             # own facts are its first point's.
             fact["by_point"] = _rung_points(base, task, name, token, answers,
                                             run=run)
+            # WHAT EACH POINT STARTED FROM AND TOOK -- the status door's own
+            # reading of the point's `.continued-from` and `.gathered-from`
+            # (`StageStatus.points`; § 2a.12: the provenance of a sweep's
+            # points), joined by the voltage; never a second reader here.
+            said = {float(p["bias_v"]): p for p in (s.points or ())
+                    if p.get("bias_v") is not None}
+            for p in fact["by_point"]:
+                sp = said.get(float(p["bias_v"]))
+                if sp is not None:
+                    p["started_from"] = sp.get("started_from")
+                    p["took"] = sp.get("took") or []
+            # THE RUN THE TRANSMISSION GATHERED answers for itself when it is
+            # not the stage's newest (§ 2a.12: the device facts beside T(E)
+            # are that run's): its points' states, and a detail naming both.
+            if run is not None and s.attempt and s.dir \
+                    and run != base / s.dir / s.attempt:
+                states = [p.get("state") for p in fact["by_point"]]
+                fact["state"] = ("finished" if states
+                                 and all(st == "finished" for st in states)
+                                 else next((st for st in states
+                                            if st != "finished"), "unknown"))
+                fact["detail"] = (f"the run the transmission gathered "
+                                  f"({fact['attempt']}); the stage's newest "
+                                  f"run is {s.dir}/{s.attempt}: {s.detail}")
             first = next((p for p in fact["by_point"]
                           if p.get("energy_ev") is not None), None)
             if first is not None:
                 fact.update({k: first[k] for k in first
                              if k not in ("bias_v", "attempt", "state",
-                                          "detail")})
+                                          "detail", "started_from", "took")})
+                fact["facts_at_v"] = first["bias_v"]
             out.append(fact)
             continue
         outs = (_outs_newest_first(run, token)
@@ -480,6 +516,15 @@ def _science(out: Path, answers: str) -> Dict:
                         **{k: last[k] for k in ("ef", "dq", "charges",
                                                 "energy", "vha_ev")
                            if k in last}}
+        # THE CONTOUR THE DENSITY WAS INTEGRATED ON (§ 2a.12: "the contour
+        # and pole count TranSIESTA used"), from the engine's own start-up
+        # echo (`siesta_reader` keeps it under `runtime_info.transiesta`):
+        # the equilibrium contour's pole count, and the non-equilibrium
+        # line's window and points when the run had a bias.
+        contour = _contour_facts((info.get("transiesta") or {})
+                                 .get("contours") or {})
+        if contour:
+            fact["negf"]["contour"] = contour
     if frames:
         fact["energy_ev"] = frames[-1].energy
         # THE RUN'S FERMI LEVEL, from the last SCF cycle of the last frame
@@ -493,6 +538,35 @@ def _science(out: Path, answers: str) -> Dict:
                 fact["fermi_ev"] = cyc["ef"]
                 break
     return fact
+
+
+def _contour_facts(contours: Dict) -> Dict:
+    """The contour TranSIESTA echoed, in the record's words: the pole count
+    of its equilibrium (continued-fraction) contour -- one number, every
+    chemical potential's segment states it -- and, under a bias, the
+    non-equilibrium line's window and points.  ``{}`` when the echo holds
+    neither."""
+    out: Dict = {}
+    poles = []
+    for segs in contours.values():
+        for seg in segs:
+            n = seg.get("Number of poles")
+            if n is not None:
+                try:
+                    poles.append(int(str(n).split()[0]))
+                except ValueError:
+                    pass
+            if "line contour points" in seg:
+                try:
+                    out["neq_line"] = {
+                        "emin_ev": float(str(seg.get("line contour E_min", "")).split()[0]),
+                        "emax_ev": float(str(seg.get("line contour E_max", "")).split()[0]),
+                        "points": int(str(seg["line contour points"]).split()[0])}
+                except (ValueError, IndexError):
+                    pass
+    if poles:
+        out["poles"] = poles[0]
+    return out
 
 
 def _rung_points(base: Path, task, name: str, token: str,
@@ -552,9 +626,20 @@ def _chain(base: Path, stages: List[Dict]) -> List[Dict]:
     (`runrecord.read_gathered_from`); a rung that gathered nothing is
     listed with ``[]``."""
     from ..runrecord import read_gathered_from
-    return [{"stage": st["stage"], "attempt": st["attempt"],
-             "gathered": read_gathered_from(base / st["attempt"])}
-            for st in stages if st.get("attempt")]
+    out = []
+    for st in stages:
+        if not st.get("attempt"):
+            continue
+        row = {"stage": st["stage"], "attempt": st["attempt"],
+               "gathered": read_gathered_from(base / st["attempt"])}
+        # A SWEPT RUN'S POINTS, each with what it started from and what it
+        # alone took (the status door's reading, carried by the rung's
+        # facts) -- a transmission point's device Hamiltonian, a device
+        # point's start (§ 2a.11, § 2a.12).
+        if st.get("taken"):
+            row["points"] = list(st["taken"])
+        out.append(row)
+    return out
 
 
 def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
@@ -857,15 +942,21 @@ def fermi_frames(stages: List[Dict]) -> Optional[Dict]:
     if leads:
         out["lead_ef_ev"] = leads
     vha = dev.get("vha_ev")
+    # WHICH POINT THESE DEVICE FIGURES ARE -- a swept rung's facts are its
+    # first point's (`_stage_facts`), and the sentence says so.
+    at_v = (by.get("device") or {}).get("facts_at_v")
+    where = f" at {at_v:g} V" if at_v is not None else ""
     note = ("Fermi levels are in each run's own frame: the seed's and the "
             "leads' in their periodic cells (cell-average potential zero); "
             "the device's after TranSIESTA fixes the Hartree potential on "
             "the boundary plane")
     if vha is not None:
         out["vha_ev"] = vha
+        if at_v is not None:
+            out["at_v"] = at_v
         out["device_ef_in_seed_frame_ev"] = dev["ef"] + vha
-        note += (f" (ts-Vha {vha:+.3f} eV) -- in the seed's frame it is "
-                 f"{dev['ef'] + vha:.3f} eV")
+        note += (f" (ts-Vha {vha:+.3f} eV{where}) -- in the seed's frame "
+                 f"it is {dev['ef'] + vha:.3f} eV")
         if seed_ef is not None:
             out["device_minus_seed_ev"] = dev["ef"] + vha - seed_ef
             note += (f", against the seed's {seed_ef:.3f} eV"
