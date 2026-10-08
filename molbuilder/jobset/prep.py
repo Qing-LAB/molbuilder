@@ -197,10 +197,16 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
             _jd = open_run(base, trial_work_dir(_jd, _sh, _names), plan)
         plan.folder(_jd)
         script_path = _jd / job.script
-        if not plan.is_file(script_path):
-            raise PrepError(
-                f"job {job.name!r}: script {job.script!r} not in "
-                f"{_jd} (render the inputs before prep).")
+        # A SWEPT RUNG'S DECKS ARE ITS POINTS' -- none at the stage level
+        # (`engines/transport.md` § 2a.11).
+        _decks = ([Path(p_) / job.script
+                   for p_ in (points or {}).get(job.name, ())]
+                  or [script_path])
+        for _deck in _decks:
+            if not plan.is_file(_deck):
+                raise PrepError(
+                    f"job {job.name!r}: script {job.script!r} not in "
+                    f"{_deck.parent} (render the inputs before prep).")
         def _wrap(script_path):
             # The ALLOCATION, whole (architecture.md § 3.1, rule A8): passed
             # as the object, no field of it can be dropped by a hand-copied
@@ -246,15 +252,14 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
                 plan=plan,
             )
         with _user_error_as_prep():
-            _wrap(script_path)
-            for _point in (points or {}).get(job.name, ()):
-                _wrap(Path(_point) / job.script)
+            for _deck in _decks:
+                _wrap(_deck)
         if log is not None:
             log.received(job.script, _flat_resources(job.resources)
                          + (f", env={env}" if env else ""))
             for _w in (_names.name(".run.sh"), _names.name(".sbatch")):
-                if plan.is_file(_jd / _w):
-                    log.produced(_w, f"{len(plan.read_text(_jd / _w).splitlines())}"
+                if plan.is_file(_decks[0].parent / _w):
+                    log.produced(_w, f"{len(plan.read_text(_decks[0].parent / _w).splitlines())}"
                                      f" lines")
                 elif _w.endswith(".sbatch"):
                     log.note(f"{_w}: not written "
@@ -640,7 +645,7 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
     the lead taken out of it (:func:`_transport_parts`).  **electronic
     state** -- decided once, on the junction, folded into every rung.
     **points** -- a scan's rung writes one deck per bias point, each in its
-    own folder (`transport.stages.rung_containers`).  Its data files come
+    own folder (`transport.stages.point_folders`).  Its data files come
     from the citation, and its job carries the rung's own restart files and,
     for the transmission, TBtrans's program.  The fifth, **gather** -- each
     rung's inputs from the runs upstream -- is decided with what every stage
@@ -666,9 +671,8 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
     composed = _composed_for_prep(base, task, plan)
     struct, configure, state = _transport_parts(task, stage, composed,
                                                 pset[0].render_config())
-    from ..transport.stages import rung_containers, warm_declaration
-    points = tuple((d, v) for d, v in rung_containers(base, task, stage)
-                   if v is not None)
+    from ..transport.stages import point_folders, warm_declaration
+    points = tuple(point_folders(base, task, stage))
     citation = task.slots["junction"]
 
     def provide_data(plan):
@@ -1090,12 +1094,11 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                                    + f", stage_token={token}"
                                    + (f", trial {element.label}"
                                       if element.is_trial else ""))
-            # EVERY DECK THIS ELEMENT WRITES: the one in its own folder, and
-            # one in each folder of the rung's points, each written at its
-            # point -- the element's own at the first (`Rung.points`).
+            # EVERY DECK THIS ELEMENT WRITES: its own folder's -- or, for a
+            # swept rung, one in each point's folder, written at its point
+            # and none at the stage level (`engines/transport.md` § 2a.11).
             spec = None
-            for _out, _volts in ([(_jdir, rung.points[0][1] if rung.points
-                                   else None)] + list(rung.points)):
+            for _out, _volts in (list(rung.points) or [(_jdir, None)]):
                 plan.folder(_out)
                 _at = rung.at_point(cfg, _volts)
                 with _user_error_as_prep():
@@ -1226,12 +1229,29 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # no attempt open (C5) because opening one is not its job.  A bench
     # point's deck is rendered straight into its attempt (`trial_work_dir`
     # above).
-    if kind == "ladder" and stage:
-        # ONE ATTEMPT LADDER PER POINT for a scan (`04_device/v0.2/run-<n>`,
-        # layout ruled 2026-08-29), because the transmission at v reads the
-        # device at v; the stage's own folder otherwise.
+    if kind == "ladder" and stage and _points:
+        # A SWEPT RUNG'S RUN (`engines/transport.md` § 2a.11): `run-<n>/`,
+        # a folder per voltage inside it holding copies of the point's
+        # prepared files; what the points take from upstream gathered into
+        # the run once -- the clean source -- and into each point.
+        from .materialize import open_sweep_run
+        sweep = open_sweep_run(js, base, stage, task, plan=plan,
+                               shape=resolved.shape)
+        for pdir, _v in sweep.points:
+            _move_progress_channel_into(pdir, plan)
+        by_volts = {v: inputs for v, inputs in (gather or ())}
+        _gather_into(base, sweep.dir,
+                     list(dict.fromkeys(fi for inputs in by_volts.values()
+                                        for fi in inputs
+                                        if all(fi in other for other
+                                               in by_volts.values()))),
+                     plan)
+        for pdir, v in sweep.points:
+            _gather_into(base, pdir, by_volts.get(v, []), plan)
+        if opened is not None:
+            opened.append(sweep)
+    elif kind == "ladder" and stage:
         reports = _open_attempts(js, base, stage,
-                                 containers=_points or (None,),
                                  continuation=continuation, plan=plan,
                                  shape=resolved.shape)
         if opened is not None:
@@ -1240,14 +1260,10 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             # THE FLAT LAYOUT keeps no attempt: the stage's own record of
             # what it continues from, beside its files (§ 1.6.3).
             _flat_continued_from(base, task, stage, continuation, plan)
-        # A TRANSPORT RUNG'S GATHER, into the attempt opened in each
-        # container -- one per bias point for a scan.
-        for container, _volts, inputs in (gather or ()):
-            att = next((Path(a.dir) for a in reports
-                        if Path(a.dir).parent.resolve()
-                        == Path(container).resolve()), None)
-            if att is not None:
-                _gather_into(base, att, inputs, plan)
+        # A TRANSPORT RUNG'S GATHER, into the run it opened.
+        for _volts, inputs in (gather or ()):
+            if reports:
+                _gather_into(base, Path(reports[0].dir), inputs, plan)
 
     # THE LOG, then THE PLAN'S ROW LAST -- the moment the stage is prepared
     # (`job-system.md` § 5.0, checkpoint 6): a prep that stops before this
@@ -1259,50 +1275,33 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     return dirs
 
 
-def _open_attempts(js: JobSet, base: Path, stage: str,
-                   containers: Sequence[Optional[Path]] = (None,), *,
+def _open_attempts(js: JobSet, base: Path, stage: str, *,
                    continuation, plan, shape) -> List:
-    """Open this rung's attempt(s) — **step 6, and both arms take it.**
+    """Open this stage's run -- **step 6** -- and return its
+    :class:`~molbuilder.jobset.materialize.Attempt` report in a list, or
+    ``[]`` when the shape keeps no run folders (flat: its container IS the
+    run, § 1.5a).  A swept rung's run is :func:`materialize.open_sweep_run`'s.
 
-    Returns the :class:`~molbuilder.jobset.materialize.Attempt` reports, in
-    ``containers`` order, or ``[]`` when the shape keeps no attempts.
-
-    ``containers`` is where each attempt ladder lives. The default — one
-    ``None`` — means the stage's own directory, which is every kind but a
-    transport bias scan; that scan keeps one ladder PER POINT
-    (``04_device/v0.2/run-<n>``; layout ruled 2026-08-29) because the
-    transmission at *v* reads the device at *v*, never another point's
-    converged state.  It is a LIST rather than a flag for that reason: the
-    number of ladders is data the caller already holds, not a shape this
-    function should re-derive.
-
-    Flat keeps no attempt directories at all (§ 1.5a): its container IS the
-    run, and ``prepare_attempt`` refuses it by name — so ``shape``, the
-    description's, is read here and the refusal never has to fire.
-
-    A stage is prepared once (`job-system.md` § 5.0), so this opens its
-    first attempt, ``run-0`` (``resolve_attempt``'s rule).  ``continuation`` -- REQUIRED, it
-    decides which run the attempt starts from and what it carries
+    A stage is prepared once (`job-system.md` § 5.0), so this opens its first
+    run, ``run-0`` (``resolve_attempt``'s rule).  ``continuation`` --
+    REQUIRED, it decides which run this one starts from and what it carries
     (`code-audit.md` D1); ``None`` starts it clean -- is prep's decision, so
-    the attempt is opened once, with its carry.
-    """
+    the run is opened once, with its carry."""
     from .materialize import prepare_attempt
 
     if shape is None or not shape.keeps_attempts_as_directories:
         return []
     took = continuation
-    reports = [prepare_attempt(js, base, stage, container=c,
-                               continue_from=(took.source if took is not None
-                                              else None),
-                               cold=took is None,
-                               named=not (took is not None and took.by_default),
-                               carry=(list(took.carries) if took is not None
-                                      and took.carries is not None else None),
-                               plan=plan, shape=shape)
-               for c in containers]
-    for rep in reports:
-        _move_progress_channel_into(rep.dir, plan)
-    return reports
+    rep = prepare_attempt(js, base, stage,
+                          continue_from=(took.source if took is not None
+                                         else None),
+                          cold=took is None,
+                          named=not (took is not None and took.by_default),
+                          carry=(list(took.carries) if took is not None
+                                 and took.carries is not None else None),
+                          plan=plan, shape=shape)
+    _move_progress_channel_into(rep.dir, plan)
+    return [rep]
 
 
 def _carrying(js: JobSet, base: Path, stage: str, continuation, shape):
@@ -1337,7 +1336,7 @@ def _what_this_prep_takes(stage: str, continuation, gather) -> List[str]:
     if continuation is not None:
         out.append(f"`{stage}` "
                    + continuation.line(copied=continuation.carries or ()))
-    for _container, volts, inputs in (gather or ()):
+    for volts, inputs in (gather or ()):
         if inputs:
             at = "" if volts is None else f" at {volts:g} V"
             out.append(f"`{stage}`{at} gathers "
@@ -1715,9 +1714,10 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
     taken from where lands in ``.gathered-from`` beside the copies, so a
     result can always say which electrode run fed it.
     """
-    from ..transport.stages import (rung_container, sweep_points,
+    from ..transport.stages import (points_in, products_of, sweep_points,
                                      stage_inputs)
-    from .continuation import usable
+    from ..task import bias_token
+    from .continuation import done, usable
 
     base = Path(base_dir)
     from ..identity import stage_key
@@ -1727,13 +1727,13 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
     gathered: List[tuple] = []
     composed = None              # the junction, read once, when first needed
     for upstream, filename in inputs:
-        token = stage_home(base, task, upstream).token
-        # A bias scan keeps a per-point rung's products PER POINT -- the
-        # transmission at v reads the device at v, never another point's
-        # converged state (engines/transport.md § 2a.11); a lead is every
-        # point's.  The one door says which folder (`rung_container`).
-        up_dir = rung_container(base, task, upstream, bias)
+        home = stage_home(base, task, upstream)
+        token, up_dir = home.token, home.dir
         current_deck = up_dir / _rf(task.label, ".fdf", token)
+        # A SWEPT UPSTREAM -- the device, for a swept transmission -- is ONE
+        # RUN taken whole: its newest run, every point done, the point at
+        # this voltage read (`engines/transport.md` § 2a.11).
+        up_points = sweep_points(task, upstream)
         # THE WAYS ON, by what the upstream rung's state says (§ 5.3: what
         # molbuilder prints, you can type): one not prepared is prepared and
         # launched; a prepared one is launched, or let finish, or -- to run
@@ -1762,18 +1762,41 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         # output saying the engine stopped -- or the refusal is worded by
         # its state, as a stage's own default is (`state_remedy`).
         newest = attempts[0] if attempts else None
-        c, st, _v, d = (read_run(base, task, upstream, newest, verdict=False)
-                        if newest is not None
-                        else (None, "pending", None, None))
-        if not usable(st):
-            why, first = state_remedy(
-                c, st, block(launch_lines("task", upstream, base=base)),
-                detail=d)
-            raise PrepError(
-                f"the {stage} stage consumes {filename} from {upstream}, "
-                f"whose newest run"
-                + (f", {newest.relative_to(base)}," if newest else "")
-                + f" {why}.  {first}{q2}")
+        if up_points and newest is not None:
+            from ..runrecord import launch_record
+            _names = RunNames.of(task.label, token, task.shape)
+            _launch = launch_record(newest, _names)
+            _prod = products_of(upstream, task.label)
+            not_done = [f"{v:g} V ({why})"
+                        for p_, v in points_in(newest, task, upstream)
+                        for ok, why in [done(p_, _names, launch=_launch,
+                                             products=_prod)]
+                        if not ok]
+            if not_done:
+                raise PrepError(
+                    f"the {stage} stage takes {upstream}'s newest run, "
+                    f"{newest.relative_to(base)}, whole -- and its points "
+                    f"{', '.join(not_done)} are not done.  Launch it again: "
+                    f"the next run takes the done points over and runs the "
+                    f"rest --\n"
+                    + block(launch_lines("task", upstream, base=base)) + q2)
+        else:
+            c, st, _v, d = (read_run(base, task, upstream, newest,
+                                     verdict=False)
+                            if newest is not None
+                            else (None, "pending", None, None))
+            if not usable(st):
+                why, first = state_remedy(
+                    c, st, block(launch_lines("task", upstream, base=base)),
+                    detail=d)
+                raise PrepError(
+                    f"the {stage} stage consumes {filename} from {upstream}, "
+                    f"whose newest run"
+                    + (f", {newest.relative_to(base)}," if newest else "")
+                    + f" {why}.  {first}{q2}")
+        # WHERE THE FILE IS: the run -- or, for a swept upstream, its point
+        # at this voltage.
+        where = newest / bias_token(bias) if up_points else newest
         # THE SAME CALCULATION, not the same bytes.  A deck that renders
         # through the framework carries a generated-at timestamp and the
         # generator's git sha, and neither says anything about what the
@@ -1787,28 +1810,25 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
             composed = _composed_junction(base, task)
         now = _rung_deck_now(base, task, upstream, composed,
                              template_text=template_text,
-                             # THE UPSTREAM'S OWN AXIS (`sweep_points`):
-                             # under the low-bias treatment the device
-                             # has none -- it ran at 0 V -- whatever point
-                             # the transmission is gathered at.
-                             volts=(bias if sweep_points(task, upstream)
-                                    else None))
-        ran = newest / current_deck.name
+                             # THE UPSTREAM'S OWN AXIS (`sweep_points`): a
+                             # rung that does not sweep ran once, at 0 V.
+                             volts=(bias if up_points else None))
+        ran = where / current_deck.name
         if not (ran.is_file()
                 and _sc.same_calculation(ran.read_text(), now)):
             raise PrepError(
-                f"{upstream}'s newest run, {newest.relative_to(base)}, did "
+                f"{upstream}'s newest run, {where.relative_to(base)}, did "
                 f"not run the deck {upstream} renders now -- its template, "
                 f"its junction or its run card changed since it ran, so its "
                 f"{filename} answers a different calculation.  To run it as "
                 f"it is described now, {redo}")
         # ...AND HOLDS THE FILE (`engines/transport.md` § 6.1).
-        if not (newest / filename).is_file():
+        if not (where / filename).is_file():
             raise PrepError(
-                f"{upstream}'s newest run, {newest.relative_to(base)}, did "
+                f"{upstream}'s newest run, {where.relative_to(base)}, did "
                 f"not write {filename}: it finished without producing what "
                 f"the {stage} stage consumes.  To run it again, {redo}")
-        gathered.append((str(newest.relative_to(base)), filename))
+        gathered.append((str(where.relative_to(base)), filename))
     return gathered
 
 
@@ -1867,31 +1887,26 @@ def _rung_deck_now(base, task, stage: str, composed, *, template_text,
 
 
 def gather_sources(base_dir, task, stage: str, *, template_text: str
-                   ) -> List[Tuple[Path, Optional[float], List[tuple]]]:
-    """What every attempt of this rung takes from the runs upstream --
-    ``[(container, volts, [(source attempt, filename), ...]), ...]``, one
-    entry per attempt container: the stage's own folder, or each point of a
-    bias scan, gathered against **its own** voltage (the transmission at *v*
-    reads the device at *v*, never another point's converged state).
-    ``volts`` is ``None`` for a rung with no bias axis, CARRIED rather than
-    parsed back out of a folder's name, which `bias_token` owns.
+                   ) -> List[Tuple[Optional[float], List[tuple]]]:
+    """What this rung takes from the runs upstream -- ``[(volts, [(source,
+    filename), ...]), ...]``: one entry, ``volts`` ``None``, for a rung that
+    does not sweep; one per voltage for a swept rung, each gathered against
+    **its own** voltage (the transmission at *v* reads the device's point at
+    *v*, never another's) (`engines/transport.md` § 2a.11).
 
     **Decided at prep's checkpoint 4a, with what every stage continues
-    from** (`job-system.md` § 5.0; the hand-over is one `Continuation`, and a
-    transport rung's is this, recorded as `.gathered-from`): refused before
-    anything is written when an upstream's newest run has not finished, or ran
-    another deck (:func:`transport_inputs`'s gates; strict composition,
-    ruling Q2).  The steps copy each entry into the attempt they open in its
-    container (:func:`_gather_into`).  `prep_calculation` asked directly renders the decks without
-    it: a deck is the reviewable artifact, whether or not the rungs before it
-    have run.
-    """
-    from ..transport.stages import rung_containers
+    from** (`job-system.md` § 5.0; recorded as `.gathered-from`): refused
+    before anything is written when an upstream is not done, or ran another
+    deck (:func:`transport_inputs`'s gates; strict composition, ruling Q2).
+    `prep_calculation` asked directly renders the decks without it: a deck
+    is the reviewable artifact, whether or not the rungs before it have
+    run."""
+    from ..transport.stages import sweep_points
     base = Path(base_dir)
-    return [(Path(container), volts,
-             transport_inputs(base, task, stage, bias=volts,
-                              template_text=template_text))
-            for container, volts in rung_containers(base, task, stage)]
+    return [(volts, transport_inputs(base, task, stage, bias=volts,
+                                     template_text=template_text))
+            for volts in (sweep_points(task, stage) or (None,))]
+
 
 def _merge_run_jobset(path: Path, new: JobSet,
                       ladder: Optional[frozenset] = None) -> JobSet:
@@ -2229,8 +2244,8 @@ class PrepAnswer:
     flat: bool = False
     #: The attempt opened or reused (`materialize.Attempt`).
     attempt: Optional[object] = None
-    #: A transport bias scan: ``(attempt, volts, [(source, file), ...])``
-    #: per point (`gather_sources`).
+    #: A swept rung's run: ``(point folder, volts, [(source, file), ...])``
+    #: per point (`gather_sources`, `engines/transport.md` § 2a.11).
     points: List[tuple] = dataclasses.field(default_factory=list)
     #: A transport rung's carry into its one attempt: ``(source, file)``.
     gathered: List[tuple] = dataclasses.field(default_factory=list)
@@ -2765,25 +2780,25 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             from ..template import KIND_ROLES
             out.linked = task.calculation in KIND_ROLES
             out.cold = bool(cold)
-            # WHAT EACH ATTEMPT GATHERED, as decided at 4a: the attempt
-            # opened in each container.
-            got = [(next((Path(at.dir) for at in opened
-                          if Path(at.dir).parent.resolve()
-                          == Path(c).resolve()), None), volts, inputs)
-                   for c, volts, inputs in (gather or ())]
-            from ..transport.stages import sweep_points
+            from .materialize import SweepRun
             if flat:
                 out.flat = True
                 run_dir, rep_stage = base, stage
-            elif is_transport and sweep_points(task, stage):
-                out.points = got
-                # EVERY POINT LAUNCHES THE ONE JOB, with one shape: the first
-                # point's attempt says what it is (A13).
-                run_dir, rep_stage = (got[0][0] if got else None), stage
+            elif opened and isinstance(opened[0], SweepRun):
+                # A SWEPT RUNG'S RUN: each point, with what it gathered, as
+                # decided at 4a (`engines/transport.md` § 2a.11).
+                sweep = opened[0]
+                by_volts = {v: inputs for v, inputs in (gather or ())}
+                out.points = [(pdir, v, by_volts.get(v, []))
+                              for pdir, v in sweep.points]
+                # EVERY POINT LAUNCHES THE ONE JOB, with one shape: the
+                # first point says what it is (A13).
+                run_dir = sweep.points[0][0] if sweep.points else None
+                rep_stage = stage
             else:
                 rep = opened[0]
                 out.attempt = rep
-                out.gathered = [pair for _a, _v, g in got for pair in g]
+                out.gathered = [pair for _v, g in (gather or ()) for pair in g]
                 run_dir, rep_stage = rep.dir, rep.stage
             # WHAT IT BUILDS ON, with the files that came across -- the
             # attempt's own list, which its line and the ledger's
@@ -2856,7 +2871,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # A TRANSPORT RUNG'S GATHER, as decided at 4a and copied: each file,
         # the run it came from, the point it was gathered at.
         took = [{"file": fn, "from": src, "volts": volts}
-                for _c, volts, inputs in (gather or ())
+                for volts, inputs in (gather or ())
                 for src, fn in inputs]
         if kind == "task":
             if continuation is not None:

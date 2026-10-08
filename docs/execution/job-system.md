@@ -1798,7 +1798,7 @@ run here until it had ended, left no line — W55 B5, D14.)*
 on a queue ([`generator.md`](?doc=execution/generator.md) § 4.3a), or its
 unlaunched trials run here — go as one submission walking them in order, through
 the benchmark's own script (`launch/<name>.run.sh`, written by
-`submit._bench_walk`): each trial `cd`ed into and its own run script run with its
+`submit._walk_script`): each trial `cd`ed into and its own run script run with its
 own counts, timed, under the per-trial bound when one is given
 (`--trial-timeout`, here as on a queue); a trial that fails leaves the rest to
 run, and the walk exits nonzero when any failed. Stopped by the person —

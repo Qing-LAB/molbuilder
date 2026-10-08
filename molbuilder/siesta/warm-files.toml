@@ -113,6 +113,14 @@ honoured_by   = "MD.UseSaveCG"
 
 # ---- transport: a different vocabulary, same format -----------------
 
+[transport]
+along = [".TSDE"]               # WHAT A SWEEP HANDS FROM POINT TO POINT: a
+                                # device point starts from the converged
+                                # density of the closest done point before
+                                # it -- the manual's "copy the TSDE from the
+                                # closest, previously, calculated bias"
+                                # (engines/transport.md 2a.11)
+
 [[transport.file]]
 suffix = ".TSHS"                # TranSIESTA Hamiltonian + overlap.
                                 # Inventory-only ON PURPOSE: it is a

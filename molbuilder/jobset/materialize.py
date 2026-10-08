@@ -588,11 +588,96 @@ def _stamp_containers(base: Path, dirs, plan) -> None:
         plan.text(*calcdirs.record(c, role=calcdirs.CONTAINER, root=base))
 
 
+def bring_files(jobset: JobSet, job, base, src_dir, run, names, plan
+                ) -> List[str]:
+    """Copy into ``run`` what it runs from -- the deck, its wrappers, the
+    shared package and the bundles that travel beside the deck -- from
+    ``src_dir`` (where prep rendered them: the stage's folder, or a swept
+    point's), else the calculation's root.  COPIED, never linked
+    (`project-layout.md` § 1.0: the run directory "holds everything"; a
+    synced-back bundle's links would dangle).  Returns what was brought.
+
+    ONE COPY STEP for every run folder: a stage's attempt
+    (:func:`prepare_attempt`) and a swept run's point
+    (:func:`open_sweep_run`)."""
+    base, src_dir, run = Path(base), Path(src_dir), Path(run)
+    brought: List[str] = []
+
+    def _bring(fname: str) -> None:
+        bn = os.path.basename(fname)
+        dst = run / bn
+        for src in (src_dir / bn, base / fname, base / bn):
+            if plan.is_file(src) and src.resolve() != dst.resolve():
+                # REFRESHED every time: a REUSED unlaunched run must see the
+                # prep's deck, not an earlier one's.
+                plan.copy(src, dst)
+                brought.append(bn)
+                return
+
+    for fname in [job.script] + list(jobset.shared):
+        _bring(fname)
+    # THE BUNDLES THAT TRAVEL BESIDE THE DECK -- the monitor's, the job's
+    # finish, a PySCF script's code -- from the one list the wrapper's
+    # writer reads too (`runwrap.bundles_for`): one file each, so none can
+    # be half-shipped.  And makov_payne_correction.py: the post-run script a
+    # CHARGED deck's own header instructs the user to run "after SIESTA
+    # finishes" -- HERE, beside the .out.
+    from ..runwrap import bundles_for
+    from ..runfiles import MAKOV_PAYNE_SCRIPT
+    for extra in (*(name for name, _build in bundles_for(job.script,
+                                                        job.finish)),
+                  MAKOV_PAYNE_SCRIPT):
+        _bring(extra)
+    for wrapper in (names.name(".run.sh"), names.name(".sbatch")):
+        _bring(wrapper)
+    return brought
+
+
+@dataclass(frozen=True)
+class SweepRun:
+    """A swept stage's run (`engines/transport.md` § 2a.11): its folder, its
+    points in bias order -- ``[(run-<n>/v<V>, V)]`` -- and whether it is a
+    fresh one (``False``: the unlaunched run prep opened, reused)."""
+    stage:  str
+    dir:    Path
+    points: List[Tuple[Path, float]]
+    fresh:  bool
+
+
+def open_sweep_run(jobset: JobSet, base_dir, stage_name: str, task, *,
+                   plan, shape=None, next_run: bool = False) -> SweepRun:
+    """Open a swept stage's run -- ``run-<n>/`` -- and in it each point's
+    folder, holding copies of that point's prepared files (its deck, run
+    script and the shared package; :func:`bring_files`).  The run is the
+    stage's newest when it has not been launched (prep's), else the next
+    (``next_run``: a launch again, `job-system.md` § 5.4, rule 3).  Each point
+    folder is a run folder (`open_run`); the run above them is their
+    container.  What the points take from upstream is the caller's
+    (`prep`'s gather), and what each starts from the walk's."""
+    from ..transport.stages import point_folders, points_in
+    base = Path(base_dir)
+    sh = shape if shape is not None else shape_of(jobset, base_dir)
+    job = next(j for j in jobset.jobs if j.name == stage_name)
+    stage_dir = base / job_dir_names(jobset, sh)[stage_name]
+    rn = run_names(jobset, job, sh)
+    if next_run:
+        ns = attempts_in(stage_dir)
+        run, fresh = attempt_dir(stage_dir, (ns[-1] + 1) if ns else
+                                 FIRST_ATTEMPT), True
+    else:
+        run, fresh = resolve_attempt(stage_dir, rn)
+    sources = dict((v, d) for d, v in point_folders(base, task, stage_name))
+    points = points_in(run, task, stage_name)
+    for pdir, v in points:
+        open_run(base, pdir, plan)
+        bring_files(jobset, job, base, sources[v], pdir, rn, plan)
+    return SweepRun(stage=stage_name, dir=run, points=points, fresh=fresh)
+
+
 def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                     continue_from: Optional[str] = None,
                     cold: bool = False,
                     carry: Optional[List[str]] = None,
-                    container: Optional[Path] = None,
                     named: bool = True, plan=None,
                     shape=None) -> "Attempt":
     """Set ONE stage up to run, and report what was done.
@@ -656,62 +741,20 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                            named=named, carry=carry, shape=sh)
         if continue_from and not cold else [])
 
-    # ``container`` overrides WHERE the run-<n> opens -- the transport
-    # composite's bias scan keeps one attempt ladder PER POINT
-    # (``04_device/v0.2/run-<n>``; engines/transport.md § 2a.11, layout
-    # ruled 2026-08-29), and the point's directory already holds its own
-    # deck + wrapper, so everything below reads it exactly like the
-    # stage's own directory.  Default: the job's own.
     from .planned import Plan
     own = plan is None
     plan = Plan() if own else plan
-    stage_dir = (Path(container) if container is not None
-                 else base / dir_of[stage_name])
+    stage_dir = base / dir_of[stage_name]
     plan.folder(stage_dir)
     rn = run_names(jobset, job, sh)
     attempt, is_new = resolve_attempt(stage_dir, rn)
     # THE ONE OPENER (`open_run`): the attempt and every container down to
-    # it -- a bias scan's `04_device/` above its `v0.2/` included -- each
-    # saying what it is, which is not recoverable later: a bench trial's
+    # it, each saying what it is, which is not recoverable later: a bench trial's
     # directory is structurally identical to a stage's own, and § 1.4 calls
     # one a run and the other a container.
     open_run(base, attempt, plan)
 
-    # Inputs: the deck, wrappers and shared package, COPIED in -- real
-    # files, per L2 (roadmap 7.10; `project-layout.md` § 1.0: the run
-    # directory "holds everything") -- copies, not links: a synced-back
-    # bundle's links would dangle on the other machine.  What prep renders
-    # is born in the stage directory; the calculation's shared files are at
-    # its root.
-    brought: List[str] = []
-
-    def _bring(fname: str) -> None:
-        bn = os.path.basename(fname)
-        dst = attempt / bn
-        for src in (stage_dir / bn, base / fname, base / bn):
-            if plan.is_file(src) and src.resolve() != dst.resolve():
-                # REFRESHED every time: a REUSED unlaunched attempt must
-                # see the prep's deck, not an earlier one's.
-                plan.copy(src, dst)
-                brought.append(bn)
-                return
-
-    for fname in [job.script] + list(jobset.shared):
-        _bring(fname)
-    # THE BUNDLES THAT TRAVEL BESIDE THE DECK -- the monitor's, the job's
-    # finish, a PySCF script's code -- from the one list the wrapper's
-    # writer reads too (`runwrap.bundles_for`): one file each, so none can
-    # be half-shipped.  And makov_payne_correction.py: the post-run script a
-    # CHARGED deck's own header instructs the user to run "after SIESTA
-    # finishes" -- HERE, beside the .out.
-    from ..runwrap import bundles_for
-    from ..runfiles import MAKOV_PAYNE_SCRIPT
-    for extra in (*(name for name, _build in bundles_for(job.script,
-                                                        job.finish)),
-                  MAKOV_PAYNE_SCRIPT):
-        _bring(extra)
-    for wrapper in (rn.name(".run.sh"), rn.name(".sbatch")):
-        _bring(wrapper)
+    brought = bring_files(jobset, job, base, stage_dir, attempt, rn, plan)
 
     # Re-preparing an attempt that was already carried into: UNDO the previous
     # carry first.  § 1.6 makes re-prep *"changing your mind about the setup"*,

@@ -83,7 +83,7 @@ def readiness(base, task, stage: str, *, template_text: Optional[str] = None,
         except PrepError as exc:
             return Readiness(stage, why=str(exc))
         return Readiness(stage, ready=True,
-                         takes=[f"{fn} <- {src}" for _c, _v, inputs in got
+                         takes=[f"{fn} <- {src}" for _v, inputs in got
                                 for src, fn in inputs])
     from .continuation import continuation_answer
     cont, refused = continuation_answer(base, task, stage,

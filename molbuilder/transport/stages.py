@@ -26,12 +26,11 @@ init``; it does not seal it (§ 2a.7).  The shared-contract invariant holds
 because ONE value shared by five rungs cannot disagree with itself.
 
 The launch half's facts also live here: the § 4.2 DAG
-(:func:`stage_inputs`, read by prep's gather), the continuation rows
-(:func:`warm_declaration` — the seed's ``.DM``, the device's
-``.TSDE``), and the bias scan's points (:func:`bias_points`; their folder
-names are the codec's one spelling, ``task.bias_token`` — plain v-dirs,
-ruled 2026-08-29).  The chain
-walker itself is planned by `jobset/submit._plan_chain`, the launch entry's.
+(:func:`stage_inputs`, read by prep's gather and the done-door), the
+continuation rows (:func:`warm_declaration` — the seed's ``.DM``, the
+device's ``.TSDE``), and the sweep's points (:func:`sweep_points`,
+:func:`point_folders`, :func:`points_in`; their folder names are the
+codec's one spelling, ``task.bias_token``).
 """
 from __future__ import annotations
 
@@ -132,35 +131,24 @@ def sweep_points(task, stage: str) -> Tuple[float, ...]:
     return bias_points(task) if stage in per_point_rungs() else ()
 
 
-def rung_containers(base, task, stage: str) -> List[Tuple[Path, Optional[float]]]:
-    """WHERE A RUNG'S ATTEMPTS ARE -- ``[(folder, volts)]``: one folder per
-    bias point for a rung a scan runs at each point (``<token>/v<V>``,
-    § 2a.11), the stage folder (``volts`` ``None``) otherwise.
-
-    The one door every reader of a rung's attempts asks (plan § 5w K10)."""
+def point_folders(base, task, stage: str) -> List[Tuple[Path, float]]:
+    """A swept rung's PREPARED points -- ``[(<stage>/v<V>, V)]``, each
+    folder holding that point's deck and run script, what every run of the
+    stage copies -- or ``[]`` for a rung that does not sweep
+    (`engines/transport.md` § 2a.11).  The voltages are :func:`sweep_points`'."""
     from ..jobset.materialize import stage_home
     from ..task import bias_token
-    # THE STAGE'S FOLDER, from the one door -- its number read off the disk
-    # (`execution/architecture.md` § 3.2; W38 F4).
     stage_dir = stage_home(base, task, stage).dir
-    points = sweep_points(task, stage)
-    if not points:
-        return [(stage_dir, None)]
-    return [(stage_dir / bias_token(v), float(v)) for v in points]
+    return [(stage_dir / bias_token(v), float(v))
+            for v in sweep_points(task, stage)]
 
 
-def rung_container(base, task, stage: str, volts: Optional[float]) -> Path:
-    """The folder holding ``stage``'s attempts at ``volts`` -- its point's
-    for a rung that runs once per point, the stage folder for one that does
-    not (a lead, read by every point alike).  A point the scan does not
-    hold is refused by name: a mismatch is a mistake, never a fallback."""
-    containers = rung_containers(base, task, stage)
-    for folder, v in containers:
-        if v is None or (volts is not None and v == float(volts)):
-            return folder
-    raise ValueError(
-        f"the {stage} stage has no folder at {volts!r} V: this scan runs it "
-        f"at {', '.join(f'{v:g} V' for _f, v in containers)}")
+def points_in(run, task, stage: str) -> List[Tuple[Path, float]]:
+    """A swept run's points -- ``[(run-<n>/v<V>, V)]`` -- or ``[]`` for a
+    run of a rung that does not sweep (`engines/transport.md` § 2a.11)."""
+    from ..task import bias_token
+    return [(Path(run) / bias_token(v), float(v))
+            for v in sweep_points(task, stage)]
 
 
 def stage_inputs(stage: str, task_label: str, *,
@@ -199,6 +187,20 @@ def stage_inputs(stage: str, task_label: str, *,
         # already carries the bias point's converged potential.
         return [("device", f"{task_label}.TS.HSX")] + elec
     return []
+
+
+def products_of(stage: str, task_label: str, *, with_seed: bool = True,
+                transmission_product: str = ".TBT.nc") -> List[str]:
+    """What a run of ``stage`` must hold to be DONE: every file a rung
+    downstream takes from it (:func:`stage_inputs`, the DAG, read the other
+    way) -- and for the transmission, which nothing downstream reads, its
+    own deliverable, the ``.TBT.nc`` (`engines/transport.md` § 2a.11)."""
+    if stage == "transmission":
+        return [f"{task_label}{transmission_product}"]
+    return sorted({fn for downstream in TRANSPORT_STAGES
+                   for up, fn in stage_inputs(downstream, task_label,
+                                              with_seed=with_seed)
+                   if up == stage})
 
 
 def warm_declaration(stage: str, task_label: str, base_dir=None):

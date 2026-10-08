@@ -199,14 +199,21 @@ def _outs_newest_first(where: Path, token: str) -> List[Path]:
     return run.outputs if run is not None else []
 
 
-def _point_dirs(base: Path, task) -> List[Tuple[float, Path]]:
-    """``(voltage, transmission point container)`` per § 4.2/4.3: the one
-    door's folders (`stages.rung_containers`), each with the bias it ran
-    at -- a single-bias calculation's one folder at its one point."""
-    from .stages import rung_containers
-    v0 = float(task.bias[0]) if getattr(task, "bias", ()) else 0.0
-    return [(v0 if v is None else v, d)
-            for d, v in rung_containers(base, task, "transmission")]
+def result_folders(base: Path, task, stage: str
+                   ) -> List[Tuple[float, Optional[Path], Optional[Path]]]:
+    """``(voltage, folder, run)`` of each result ``stage`` holds now: a swept
+    rung's latest run, a point folder per voltage; any other rung's latest
+    run, at 0 V -- ``folder`` ``None`` while no run is open
+    (`engines/transport.md` § 2a.11).  ``run`` is where the launch record
+    lies."""
+    from ..jobset.materialize import latest_attempt, stage_home
+    from .stages import points_in, sweep_points
+    run = latest_attempt(stage_home(base, task, stage).dir)
+    if sweep_points(task, stage):
+        if run is None:
+            return [(v, None, None) for v in sweep_points(task, stage)]
+        return [(v, p, run) for p, v in points_in(run, task, stage)]
+    return [(0.0, run, run)]
 
 
 def _stage_facts(base: Path, task, label: str) -> List[Dict]:
@@ -237,7 +244,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     from ..jobset.materialize import ladder_homes
     from ..jobset.model import FILENAME as JOBSET_FILENAME, JobSet
     from ..jobset.runstatus import jobset_status
-    from .stages import STAGE_FACT, TRANSPORT_STAGES, rung_containers
+    from .stages import STAGE_FACT, TRANSPORT_STAGES, sweep_points
 
     jpath = base / JOBSET_FILENAME
     status = jobset_status(JobSet.load(jpath) if jpath.is_file() else None,
@@ -260,16 +267,25 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         # name (`stages.STAGE_FACT`).  The transmission's answer is its
         # points; TBtrans converges nothing and reports no total energy.
         answers = STAGE_FACT.get(name, "scf")
+        if sweep_points(task, name) and answers != "product":
+            # A SWEPT RUNG, POINT BY POINT -- the report's convergence card
+            # follows the selected bias (`web/results.md` § 2.5); the rung's
+            # own facts are its first point's.
+            fact["by_point"] = _rung_points(base, task, name, token, answers)
+            first = next((p for p in fact["by_point"]
+                          if p.get("energy_ev") is not None), None)
+            if first is not None:
+                fact.update({k: first[k] for k in first
+                             if k not in ("bias_v", "attempt", "state",
+                                          "detail")})
+            out.append(fact)
+            continue
         outs = (_outs_newest_first(base / s.dir / s.attempt, token)
                 if answers != "product" and s.attempt and s.dir else [])
         if not outs:
             out.append(fact)
             continue
         fact.update(_science(outs[0], answers))
-        if len(rung_containers(base, task, name)) > 1:
-            # A SCAN'S RUNG, POINT BY POINT -- the report's convergence
-            # card follows the selected bias (`web/results.md` § 2.5).
-            fact["by_point"] = _rung_points(base, task, name, token, answers)
         out.append(fact)
     return out
 
@@ -328,28 +344,22 @@ def _rung_points(base: Path, task, name: str, token: str,
     """``[{bias_v, attempt, state, detail, ...science}]`` -- each bias
     point of a scan's rung, its state the run door's (`run_status`) and its
     own answer (:func:`_science`)."""
-    from ..jobset.materialize import latest_attempt, run_dir
     from ..parse.dirs import run_status
     from ..runfiles import RunNames
     from ..runrecord import LaunchRecordError, launch_record
-    from .stages import rung_containers
     names = RunNames.of(task.label, token, task.shape)
     out: List[Dict] = []
-    for d, v in rung_containers(base, task, name):
-        att = latest_attempt(d)
+    for v, where, run in result_folders(base, task, name):
         entry: Dict = {"bias_v": v}
-        if att is None:
-            # PREP OPENS EVERY POINT AT ONCE: one missing from a prepared
-            # rung is against the design, said as such.
+        if where is None or not where.is_dir():
             from ..jobset.runstatus import MISSING
             entry.update(state=MISSING[0], detail=MISSING[1])
             out.append(entry)
             continue
-        where = run_dir(d)
-        entry["attempt"] = str(att.relative_to(base))
+        entry["attempt"] = str(where.relative_to(base))
         try:
             st = run_status(where, names.stem,
-                            launch=launch_record(where, names))
+                            launch=launch_record(run, names))
             entry.update(state=st.state, detail=st.detail)
         except LaunchRecordError as exc:
             entry.update(state="unreadable", detail=str(exc))
@@ -403,7 +413,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     the refusal -- unless ``partial``: the Results tab's read, where a
     ladder in progress has a report (`engines/transport.md` § 2a.12).
     """
-    from ..jobset.materialize import latest_attempt, run_dir, stage_home
+    from ..jobset.materialize import stage_home
     from ..parse.dirs import run_status
     from ..runfiles import JUNCTION_FILE, RunNames
     from ..runrecord import LaunchRecordError, launch_record
@@ -424,19 +434,17 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     # point at once).
     rung = next(f for f in stages if f["stage"] == "transmission")
     opened = False                        # an attempt open: it is prepared
-    for v, container in _point_dirs(base, task):
-        att = latest_attempt(container)   # None is the ANSWER: prepared?
-        opened = opened or att is not None
-        if att is None:
+    for v, where, run in result_folders(base, task, "transmission"):
+        opened = opened or where is not None
+        if where is None:
             pending.append({"bias_v": v, "state": rung["state"],
                             "why": rung.get("detail") or ""})
             continue
-        where = run_dir(container)        # ...and this is where to look
-        rel = str(att.relative_to(base))
+        rel = str(where.relative_to(base))
         # THE POINT'S STATE, the run door's -- asked as every reader asks
-        # it, with its launch record; one that does not read is said.
+        # it, with its run's launch record; one that does not read is said.
         try:
-            launch = launch_record(where, names)
+            launch = launch_record(run, names)
         except LaunchRecordError as exc:
             failed.append({"bias_v": v, "attempt": rel,
                            "state": "unreadable", "why": str(exc)})
@@ -586,19 +594,18 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
     device run's ``.ORB_INDX`` at the same point -- the two runs share the
     composed junction's atom order.  :class:`RecordError` names what is
     missing."""
-    from ..jobset.materialize import run_dir
-    from .stages import rung_containers
     from .tbtnc import TbtError, selection_pdos as _pdos, tbt_file
     base = Path(base_dir)
 
     def _at(stage: str) -> Optional[Path]:
-        # A RUNG WITH NO BIAS AXIS has one folder, which serves every
-        # point -- a single-bias calculation's, and a low-bias device's
-        # (`stages.sweep_points`), as the gather reads it.
-        for d, v in rung_containers(base, task, stage):
-            if v is None or abs(v - float(bias_v)) < 1e-9:
-                return run_dir(d)
-        return None
+        # A RUNG THAT DOES NOT SWEEP has one result, at 0 V, which serves
+        # every voltage -- a single bias's, and the low-bias approximation's
+        # (`stages.sweep_points`).
+        found = result_folders(base, task, stage)
+        if len(found) == 1:
+            return found[0][1]
+        return next((w for v, w, _r in found
+                     if abs(v - float(bias_v)) < 1e-9), None)
 
     if not any(abs(float(v) - float(bias_v)) < 1e-9
                for v in (task.bias or (0.0,))):

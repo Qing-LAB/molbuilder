@@ -121,6 +121,37 @@ def usable(state: Optional[str]) -> bool:
     return state == "finished"
 
 
+def done(folder, names, *, launch=None, products=()) -> Tuple[bool, str]:
+    """THE DONE-DOOR (`engines/transport.md` § 2a.11): whether the run, or a
+    swept run's point, in ``folder`` is DONE -- ``(True, "done")`` -- or what
+    it is instead, in the run door's words.  Done is three facts, all read
+    from the folder's own files: it **finished** (the one status door,
+    :func:`usable`); its run **converged** where it has an SCF or a
+    relaxation (the same scan, `runstatus.converged_of`); and it **holds**
+    ``products`` -- what the rungs downstream take from it.  ``launch`` is
+    the launch record the folder's run was sent with (a point's is its
+    run's)."""
+    from ..parse.dirs import run_status
+    from .runstatus import converged_of
+    folder = Path(folder)
+    if not folder.is_dir():
+        return False, "not opened"
+    st = run_status(folder, names.stem, launch=launch)
+    if st.state in ("pending", "queued"):
+        # NOTHING RAN HERE YET: queued and pending are the RUN's state, said
+        # on its row; a point is done or not done.
+        return False, "not run"
+    if not usable(st.state):
+        return False, st.detail or st.state
+    verdict = converged_of(st)
+    if verdict is not None and verdict.endswith("NO"):
+        return False, f"finished, not converged ({verdict})"
+    missing = [f for f in products if not (folder / f).is_file()]
+    if missing:
+        return False, f"finished without {', '.join(missing)}"
+    return True, "done"
+
+
 def read_run(base: Path, task, stage: str, attempt: Path,
              *, verdict: bool = True
              ) -> Tuple[Optional[str], Optional[str], Optional[bool],

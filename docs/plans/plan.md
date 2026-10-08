@@ -93,7 +93,7 @@ re-ordered without saying who ruled it.
 | **Q10** | **W52's open**: (11) prep's transactional produce; (8) the conductor imported below the surfaces | open | taken into Q2d: (8) → unit 9 (B7), (11) → unit 10 (B1) |
 | **Q11** | **W53's parked**: the next-step lines offering `--mode submit` for a target with no queue; the named-queue check in two doors (`launch_refusal`, `place`); `gpu_partition` and `~/.config/molbuilder.backup/` decided 2026-10-02 (§ 0b, item 10) | open | W53's row |
 | **Q13** | **THE TASK — `prep task` / `launch task`, one protocol** *(user, 2026-10-07/08: "prep the whole task and ask the user which stage it intend to do"; "one unified framework and protocol and verb design and api ... systematic and holistic"; D1–D5 agreed 2026-10-08)* | **built 2026-10-08** — T1–T8 committed and two review rounds (code and docs, fresh agents) fixed (`214cc19d`, `91629b67`). **Left**: Task setup's Prep card seen in a real browser (the extension was down); `tests/test_task_setup_prep_e2e.py` drives the per-tab Prep buttons that are gone (e2e on the user's word); a group's header under a real scheduler (Sol); `prep_group` re-plans each member after the save (no refusal found reachable on the road). Contract written 2026-10-08 (`job-system.md` *The task*, § 5.0, § 5.3; `project-layout.md` § 1.6.6; `architecture.md` § 3.2); the review (three agents on conflicts, two on the doc sweep and the code inventory) found ~335 doc passages and ~30 code sites; its open points settled by the agreed rules: a kind with stage roles pre-selects its ready stages that build on nothing (transport's seed and leads); stages named together at prep OR launch go as one job when they pass the group checks (none builds on another, one allocation) -- no "never alone"; a stage not prepared reads `ready` / `waiting`; the ledger line `prepared`; `summarize task` takes no stage. **Milestones, each checked on the road:** T1 the low-bias gather fix and step 6's core (the treatment in `task.json`, the device without an axis); T2 the vocabulary -- kind `task`, `--stage`, `summarize task`, the `prepared` door, every printed command, the road and its rows; T3 the `ready` door (`continuation.ready`, the gather as an answer or a refusal, D5 newest-only); T4 the `prep task` entry -- the ladder offer, `ask.choose`, the no-terminal refusal, groups by pick, `prep_group` held to rule 3; T5 `launch task` -- the waiting units, the question, relaunch by name, the group checks at launch; T6 status -- ready / waiting rows, next lines, the wire form, the chips; T7 the web -- Task setup's one Prep with the ready stages, routes, handover text; T8 the doc sweep (~335 passages, the review's list); then the two review rounds |
-| **Q14** | **Transport, made whole** — the sweep as one run, the low-bias physics, composition, the record (§ 5x) *(user, 2026-10-08: "You need a clear picture, a contract, how transport is done ... see where it's missing and what is wrong")* | **approved 2026-10-08** — building, B0 first | § 5x |
+| **Q14** | **Transport, made whole** — the sweep as one run, the low-bias switch, composition, the record, then the milestone review of backend, CLI, UI, checkpoint, stage/run configs and CSS (§ 5x) *(user, 2026-10-08: "You need a clear picture, a contract, how transport is done ... see where it's missing and what is wrong"; "stop fucking hand bake these fucking things")* | **approved 2026-10-08** — B0–B1 committed; B2–B4 written, uncommitted, verified only on a hand-written junction (not evidence); the road junction being built on the page; B5–B9 open; the review (B8) waits for B2–B7 | § 5x |
 | **Q12** | **the rest of the work order below**: M2e–M2n, M3, M6 P5, M8, M10 | open | the table below — M2e, M2h, M2j and M2l's doors are the same code as Q2d's units 10–12 and are designed with them; M2m, M2n, M3, M6 P5, M8, M10 after |
 
 **Why transport comes before M11's remainder** *(2026-10-02)*: the user's word
@@ -4987,21 +4987,33 @@ transport since 2026-09-16).
 
 ---
 
-## 5x. Q14 — Transport, made whole *(sweep + validation 2026-10-08; v2, re-checked against the framework; awaiting the user's yes)*
+## 5x. Q14 — Transport, made whole *(approved 2026-10-08; consolidated 2026-10-08 after B0–B1 and the B2–B4 build — what is built, what is verified, what is open)*
 
 > *"You need a clear picture, a contract, how transport is done ... see where
 > it's missing and what is wrong"* · *"i don't need fucking overengineering ...
 > i want a final goal clearly defined, with details of each step, i want a
 > framework with data/config/template-driven, with unified api, well logical
-> layer"* (user, 2026-10-08)
+> layer"* · *"stop fucking hand bake these fucking things ... you build this
+> system and you hack it by yourself?"* (user, 2026-10-08)
+
+**State at a glance (2026-10-08).** B0 and B1 are committed. B2–B4 are
+**written and uncommitted** (12 files): the sweep's tree, the done-door, the
+gather, the one walker and the sweep's status row are in the code. They were
+seen to work once — on a junction a script of mine wrote, with pseudopotentials
+copied in by hand — which is **not evidence** (*Validate through the designed
+road*); their targeted tests are not yet judged. B5–B9 are not started. **The
+condition for the milestone review (B8) — the workflow, the backend and the CLI
+complete — is not met**: it is B2–B7.
 
 ### 5x.0 The final goal
 
-**A transport calculation runs end to end on molbuilder's own road** — `jobset
-init` → `prep task` → `launch task` → `status` → `summarize task` / the
-Results tab — for the three cases: **one bias**, a **low-bias** I–V, a
-**re-converged** I–V. Done when, on the carbon-chain junction (0 / 0.2 /
-0.4 V):
+**A transport calculation runs end to end on molbuilder's own road** — the
+junction built on the Molbuilder tab, relaxed through `jobset init` → `prep
+task` → `launch task`, cited on the Transport tab, then `prep` → `launch` →
+`status` → `summarize task` / the Results tab for every rung — for the three
+cases: **a single bias**, **`low_bias_approximation: true`** (one 0 V device and
+transmission, the I–V computed), **`low_bias_approximation: false`** (a sweep).
+Done when, on **the road junction** (below), at 0 / 0.2 / 0.4 V:
 
 1. every stage's state, and every bias point's **done / not done**, is read
    from its own files by one door, and `status` and the Results tab show the
@@ -5013,13 +5025,27 @@ Results tab — for the three cases: **one bias**, a **low-bias** I–V, a
 3. one I–V comes from **one device run**, and its record says truthfully how it
    was computed and from which runs each point started;
 4. the code that does this is **less** than today: one walker, one layout
-   door, one done-door — no second record, no per-point stage.
+   door per place, one done-door — no second record, no per-point stage;
+5. the milestone review (B8) — backend, CLI, UI, checkpoint, stage/run configs,
+   CSS — comes back clean twice.
+
+**The road junction** — the walk's subject, and the only evidence. Built on the
+Molbuilder tab: SMILES `SC#CS`, the two thiol H deleted, the S–S axis oriented
+on z, Au(100) 1×1 leads from the Slab tab on both sides, the leads labelled
+`L-electrode` / `R-electrode` and frozen, the rest `bridge`, saved to the
+project. Relaxed as an ordinary optimization calculation (`init --calculation
+optimization --psml-lib pseudopotential` → `prep` → `launch`), so its run
+folder holds the pseudopotentials. Cited on the Transport tab as
+`<calc>@<stage>/run-N`. Nothing of it written by a script, nothing copied in by
+hand; the run settings typed on Task setup or given as `prep --np / --cpus-per-
+task`. **Every `chain-*` calculation under `claude-transport-walk/` is retired
+as evidence** — its junction was written by `make_chain.py`.
 
 ### 5x.1 The whole picture — what is computed, in order
 
 | # | step | program | computes | hands on |
 |---|---|---|---|---|
-| 0 | relax the junction (an ordinary task) | SIESTA | the geometry; electrodes labelled, frozen | the cited `.XV` + `.fdf` |
+| 0 | relax the junction (an ordinary task) | SIESTA | the geometry; electrodes labelled, frozen | the cited run: `.XV` + `.fdf` + `pseudos/` |
 | — | first prep composes once | molbuilder | atoms sorted; each lead's bulk cell cut | the compose record |
 | 1 | **seed** | SIESTA periodic | ρ₀ | `.DM` |
 | 2–3 | **electrode_L/R** | SIESTA bulk | each lead's H, S | `.TSHS` |
@@ -5027,91 +5053,120 @@ Results tab — for the three cases: **one bias**, a **low-bias** I–V, a
 | 5 | **transmission** | TBtrans | T(E,V) | `.TBT.nc`, `.AVTRANS` |
 | — | record | molbuilder | T, G, the I–V, provenance | `<label>.transport.json` |
 
-Which rung runs at which voltages is the **treatment** (`task.json`):
+Which rung runs at which voltages is **the switch** (`task.json`
+`bias.low_bias_approximation`, § 2a.10; B1):
 
-| treatment | device | transmission | the I–V |
-|---|---|---|---|
-| one bias (0 V) | once | once | none — G = G₀·T(E_F) |
-| `low-bias` | once, 0 V | once, 0 V | **I(V) = (2e/h)∫T(E,0)[f(E−μ_L)−f(E−μ_R)]dE**, computed by the record for each listed V — the linear response the contract defines (§ 1.1) |
-| `re-converged` | at every V — a sweep | at every V — a sweep | each point's TBtrans current |
+| the description | device | transmission | the I–V | the record's word |
+|---|---|---|---|---|
+| one voltage (0 V) | once | once | none — G = G₀·T(E_F) | `single-bias` |
+| several, `low_bias_approximation: true` | once, 0 V | once, 0 V | **I(V) = (2e/h)∫T(E,0)[f(E−μ_L)−f(E−μ_R)]dE**, computed by the record for each listed V — linear response, said beside the curve | `low-bias-approximation` |
+| several, `low_bias_approximation: false` | at every V — a sweep | at every V — a sweep | each point's TBtrans current | `self-consistent` |
 
-So **only `re-converged` has a sweep**, and a sweep exists on exactly two
-rungs. Everything else is a single run — the case the framework already does.
+So **only the switch at `false` has a sweep**, and a sweep exists on exactly two
+rungs — the ones the bias item's catalogue row names (`stages`). Everything
+else is a single run — the case the framework already does.
 
-### 5x.2 What is wrong today, and why (validated; detail and evidence kept in the sweep's record below)
+### 5x.2 What was wrong on 2026-10-08, and why (validated; the evidence by id in § 5x.6, each closed by the step § 5x.6's map names)
 
-1. **A sweep is built as five little stages** — each point its own folder of
+1. **A sweep was built as five little stages** — each point its own folder of
    attempts, its own launch record, its own state. From that one wrong shape:
-   points read `queued` forever; launching again re-runs done points and
-   empties the I–V meanwhile; the walk's hand-over is recorded nowhere, so the
-   provenance is false; shared inputs are copied per point; the scan's stage
-   folder holds a deck nothing runs; the relaunch rule exists twice; `--cold`
-   on an unlaunched scan is dropped.
-2. **`low-bias` computes something else than it says**: TBtrans per voltage on
+   points read `queued` forever; launching again re-ran done points and
+   emptied the I–V meanwhile; the walk's hand-over was recorded nowhere, so the
+   provenance was false; no clean seed density survived a first launch; the
+   scan's stage folder held a deck nothing ran; the relaunch rule existed
+   twice; `--cold` on an unlaunched scan was dropped.
+2. **`low-bias` computed something else than it said**: TBtrans per voltage on
    the 0 V Hamiltonian with the leads shifted ±V/2 (`m_ts_electrode.F90:1461`)
    — neither linear response nor self-consistent, labelled "linear response".
 3. **The record reads TBtrans files with a second reader** (its own glob, beside
-   `parse/engines/tbtrans.py`): a spin-polarised point reads "failed".
+   `parse/engines/tbtrans.py`): a spin-polarised point reads "failed". *(still so)*
 4. **Three walk scripts** for one job: the benchmark's, the group's, the scan's.
 5. Smaller, each one place: the electrode swap writes the cited run's files
    (§ 4 says the calculation's own copy); a lead's file name from two sources
-   (`cfg.system_label` vs `task.label`); a failed or hand-run relaxation is
-   citable; the energy window is not checked against the bias; the treatment
-   label is not beside the I–V; the E_F reference is asserted, not checked;
-   the device facts shown can be from another run than the one the
-   transmission read; `status` never shows what a rung gathered.
-6. **The contract** defines "run" three ways and keeps the unbuilt sweep design
-   beside the built rule, unmarked.
+   (`cfg.system_label` vs `task.label`); a relaxation that ended with an error,
+   or a bare structure with no run, is citable — and a bare structure brings no
+   pseudopotentials, so the contract's own refusal ends in *"put the files in
+   `pseudos/` yourself"*, a hand step; the energy window is not checked against
+   the bias; the treatment label is not beside the I–V; the E_F reference is
+   asserted, not checked; the device facts shown can be from another run than
+   the one the transmission read; `status` never shows what a rung gathered.
+   *(all still so)*
+6. **The contract** defined "run" three ways and kept the unbuilt sweep design
+   beside the built rule, unmarked. *(§ 2a.10–2a.12 and rule 3 rewritten, B0;
+   the rest of the text is B9.)*
 
-### 5x.3 The design — layers, data, one API each
+### 5x.3 The design — layers, data, one API each *(as built; the names are the code's)*
 
 **Layer 1 — data (what decides, written once; no code branches on a name).**
 
 | data | holds | read by |
 |---|---|---|
-| `task.json` `bias` + `treatment` | the voltages and how they are computed | the axis door (L2) |
-| catalogue: the bias item's `stages` (`PER_POINT`) | which rungs a sweep runs per point — device, transmission | the axis door |
-| `transport.stages.stage_inputs` (the DAG) | what each rung consumes from which | the gather; **and** the done-door: a rung is done when it has produced what its consumers take |
-| `warm-files.toml` `[transport]` | what a device continues from (`.TSDE`, its own) — and the one new row: `along = [".TSDE"]`, what a sweep hands from point to point | the walker |
+| `task.json` `bias.voltages_v` + `bias.low_bias_approximation` | the voltages and whether each is converged | the axis door (L2) |
+| the catalogue: the bias item's `stages` (`template.PER_POINT`) | which rungs a sweep runs per point — device, transmission | `stages.per_point_rungs` |
+| `transport.stages.stage_inputs` (the DAG) | what each rung consumes from which | the gather; **and**, read the other way (`products_of`), the done-door: a rung is done when it holds what its consumers take |
+| `warm-files.toml` `[transport]` | what a device continues from (`.TSDE`, its own) — and the one new row, `along = [".TSDE"]`: what a sweep hands from point to point | the walker, the status |
 
 **Layer 2 — doors (each one fact, one function).**
 
-| door | answers | replaces |
+| door | answers | state |
 |---|---|---|
-| `stages.sweep_points(task, stage)` | the voltages this rung runs at: `()` unless `re-converged` and the rung is per point | `scan_points` + `bias_points` |
-| `materialize.run_dirs(base, task, stage)` | the rung's runs `run-N/`, and inside a sweep's run its point folders `run-N/v0.2/` | `rung_containers` / `rung_container` |
-| `parse.dirs.run_status` (exists) | how one run, or one point, ended — read from its own files | — |
-| `done(run_or_point)` (new, 10 lines, in `continuation`) | finished **and** converged **and** holds what the DAG says its consumers take | `usable` (extends it) |
-| `continuation.relaunch` (exists) | what a single run continues from | — (the scan's copy removed) |
+| `stages.bias_points(task)` | the description's list, `()` for one voltage | was there |
+| `stages.sweep_points(task, stage)` | the voltages this rung runs at **as a sweep**: `()` unless the switch is `false` and the rung is per point | B1 |
+| `paths.attempts_in(stage_dir)` | the rung's runs `run-N/` — every stage's, no transport copy | was there |
+| `stages.point_folders(base, task, stage)` | the prepared point decks, `<stage>/vX/` | B2 |
+| `stages.points_in(run, task, stage)` | a run's point folders, `run-N/vX/` | B2 |
+| `materialize.open_sweep_run(…) → SweepRun(stage, dir, points, fresh)` | opens a sweep's run: prep's first, launch's next (`next_run=True`) | B2 |
+| `record.result_folders(base, task, stage)` | `[(V, folder, run)]` the record reads — built on `points_in` | B2 |
+| `parse.dirs.run_status` | how one run, or one point, ended — from its own files | was there |
+| `continuation.done(folder, names, launch=, products=)` | `(True, "done")`, or why not in the run door's words: *not opened* · *not run* · the run's detail · *finished, not converged (SCF NO)* · *finished without <file>* | B3 |
+| `stages.products_of(stage, label)` | what a run of the rung must hold to be done: the DAG reversed; the transmission's `.TBT.nc`; plus the `along` file for a rung that hands forward | B3 |
+| `continuation.relaunch` | what a single run continues from — the scan's copy is gone | was there |
+
+*The contract § 2a.11 named a `materialize.run_dirs` that was never built; it
+names the doors above now (consolidation, 2026-10-08).* `rung_containers`,
+`rung_container`, `_point_dirs`, `_rung_homes`, `scan_points` are deleted.
 
 **Layer 3 — the verbs, unchanged in shape.**
 
-* **prep** opens the rung's run as it does today; for a sweep, `run-0/` with its
-  point folders and the shared inputs **once** in `run-0/` (the leads'
-  `.TSHS`, a clean copy of the seed's `.DM`), `.gathered-from` once.
-  Each point folder holds its own deck (its voltage) and run script.
-* **launch** plans **one walk** — the one walker (below) — over: a group's
-  members, a benchmark's trials, or a sweep's points. One launch record for
-  the job (the run's `run.json`), never one per point. **A sweep launched again
-  is rule 3 with no exception**: the next run `run-<n+1>/` is opened, as for
-  every stage; *warm*, each point **done** in the latest run is taken over —
-  its outputs copied into the new run's point folder, its `.continued-from`
-  naming the run it came from — and the walk runs only the points not done;
-  *cold*, nothing is taken and every point runs. Each point's start is decided
-  at plan time and written beside it (`.continued-from`): the 0 V point from
-  the run's clean seed `.DM`; a later point from the closest done point before
-  it, or the point before it in this walk. Launch shows all of it and asks
-  once (`job-system.md` § 6.0) — a warm relaunch with every point done runs
-  nothing, and the plan says so.
-* **status / the record** read the doors: a sweep's row = the run's state +
-  "k of n points done"; each point done / not done; what each started from.
-
-**The one walker** (`submit._walk_script`, replacing three): members in order;
-per member `cd` + its own `.run.sh`; two parameters, both from data —
-`on_failure` (`stop` for a device sweep — its later points start from it;
-`continue` for everything else) and `hand_forward` (the `along` row, copied from
-the previous member before each one; `[]` otherwise); an optional per-member
-bound (the benchmark's).
+* **prep** (`_plan_calculation` → `open_sweep_run`): a sweep's `run-0/` with
+  one point folder per voltage; the gathered inputs — the leads' `.TSHS`, the
+  seed's `.DM` — **into the run, kept clean there, and each point holding its
+  own copies** (`_gather_into` the run and each point); `.gathered-from` once,
+  the run's. The stage folder holds no deck: every deck is a point's
+  (`point_folders`). *The first design said "shared inputs once, read through
+  `../`"; dropped on the user's "no overengineering" — a run folder holds
+  everything its engine reads (`project-layout.md` § 1.0).*
+* **launch** (`_plan_sweep`): **one submission, one `run.json`** at the run.
+  The first launch walks prep's run, every point. **Launched again is rule 3
+  with no exception**: `open_sweep_run(next_run=True)` opens `run-<n+1>/`;
+  `_carry_sweep_gather` copies what the latest run gathered (never gathered
+  again); *warm*, each point **done** in the latest run is taken over — its
+  files copied into the new run's point folder, its `.continued-from` naming
+  the run it came from — and only the points not done are walked; *cold*,
+  every point is walked. **Warm with every point done is refused, naming the
+  `--cold` line** — no run is opened with nothing to run in it. Each walked
+  point's start is decided at plan time and written beside it
+  (`.continued-from`): the 0 V point from its own copy of the seed's `.DM`; a
+  later point from the point before it in bias order (taken over or just
+  walked), the files the `along` row names. Launch shows all of it and asks
+  once.
+* **the one walker** (`_walk_script(name, steps, *, where, log, bound_s=None,
+  stop_on_failure=False)`, replacing the benchmark's, the group's and the
+  scan's): steps are `(name, folder, run_sh, args, before)` — `before` the
+  `along` copies from the previous point, `[]` otherwise; `stop_on_failure`
+  when the rung hands forward (the device: its later points would start from
+  the failed one); the transmission walks on past a failed point. One request:
+  the sum of the walked points' walls (`group.envelope`).
+* **the transmission's prep** (`transport_inputs`): takes the device's
+  **newest** run, every point of it done, or is refused with the device's
+  launch-again line — the rule every hand-over follows (`job-system.md` § 5.4:
+  the newest run, which must have finished). No search backwards.
+* **status** (`_sweep_status`): a sweep's row = the run's state — *pending*
+  before launch; *queued* when nothing has run yet; *running* while a point
+  runs; *finished* when every point is done; else *failed*, naming the first
+  point not done and why — and "k of n points done"; each point `done / why /
+  started_from` (`StageStatus.points`).
+* **the record** reads `result_folders`: a sweep's points from its newest run.
 
 **Why this is the minimum.** No new verb, no new state word, no second record,
 **no new rule**: the run/stage contract (`job-system.md`, *What molbuilder does
@@ -5122,39 +5177,78 @@ outputs its wrapper already writes; the run is the unit with a launch record
 and a state. A sweep is the only new shape: the existing `run-N/` with point
 folders inside, and "continues from its own latest run" read at the point.
 
-### 5x.4 The build — step by step
+### 5x.4 The build — step by step, with its state
 
-| step | what exactly | files | done when |
-|---|---|---|---|
-| **B0** | **the contract** — *nothing in the run/stage contract changes; one sentence is added to rule 3: for a stage that sweeps, "continues from its own latest run" takes the points done there and runs the rest* — § 1.1 / § 2a.10 (the treatment table above; low-bias = record-computed linear response), § 2a.11 rewritten as this design (built rule only, the unbuilt one removed), § 2a.12 (what the record reads); "run" one meaning in `job-system.md` § Words, § 5.4 and `project-layout.md` § 1.5–1.6 (a run = one launch of a stage = `run-N/`; a sweep's run holds its points); the 18 contradictions resolved, stale passages removed | `transport.md`, `job-system.md`, `project-layout.md` | **you read it and say yes** |
-| B1 | data: the `along` row; `sweep_points` from the catalogue + treatment (low-bias → no axis on either rung) | `warm-files.toml`, `transport/stages.py` | `sweep_points` answers () / (0, 0.2, 0.4) for the three cases |
-| B2 | the layout door `run_dirs`, and prep opening a sweep's `run-0/<v>/` with shared inputs once; no deck in the stage folder; every reader of `rung_containers` moved to it, the old one deleted | `jobset/materialize.py`, `transport/stages.py`, `jobset/prep.py` (`gather_sources`, the render loop), every reader | prep on the chain (re-converged): the tree as designed |
-| B3 | the done-door, and the gather taking **one device run whole** (the newest whose points are all done) | `jobset/continuation.py`, `jobset/prep.py` (`transport_inputs`) | the transmission prep refused until the device run is done, then gathers from it |
-| B4 | the one walker; group, benchmark and sweep plans call it; the sweep walks points not done, one `run.json` for the job, each point's `.continued-from` at send; warm relaunch = next run taking the done points over; `--cold` → next run, all points; the scan's relaunch copy, `never_started` and the per-point launch records deleted | `jobset/submit.py` | launch on the chain; the device stopped at 0.2 V through the road (its `max_scf_iterations` set to 1 in Task setup — a description change, then a new calculation); launched again: only 0.2 and 0.4 run |
-| B5 | status: a sweep's row and `status <stage>` (points, done, started-from, the gather shown on every rung) | `jobset/runstatus.py` | `jobset status` on the chain |
-| B6 | the record: TBtrans read through `parse/engines/tbtrans.py` (the second reader deleted; spin channels); low-bias I(V) from T(E,0); device facts from the run the transmission gathered; E_F of device vs leads checked; the treatment label on the I–V | `transport/record.py`, `parse/engines/tbtrans.py`, `inspectors/transport.js` | `summarize` and the report on the chain, all three cases |
-| B7 | the small ones: the swap applied to the calculation's copy (slot `swap_electrodes`, § 4's design); the lead's file stem from `task.label` alone; a citation must be a molbuilder run that finished; the window gate (± V/2 + 5 kT) in the settings gate | `transport/compose.py`, `transiesta.py`, `web/blueprints/transport.py`, `validation/` | each through the road |
-| B8 | targeted tests through the road (case rows), the two review rounds | `tests/data/*.toml` | reviews clean |
+Every step: its targeted tests **judged** (gate 5 — a test a change breaks is
+judged for retirement, never repaired to pass) before its commit; its "done
+when" seen on **the road junction**, through the page and the printed verbs.
 
-Today's patches on the sweep (the never-started point, the summed scan wall)
-go in B4; no tombstones.
+| step | what exactly | files | done when | state |
+|---|---|---|---|---|
+| **B0** | **the contract** — § 2a.10 (the switch, the treatment table, low-bias = record-computed linear response), § 2a.11 rewritten as this design, § 1.1, § 2a.12; "run" one meaning in `job-system.md` *Words* and rule 3 read at the point; `project-layout.md` § 1.5–1.6 | `transport.md`, `job-system.md`, `project-layout.md` | read, and yes | **done**, d398ae86 — *it did not do the text sweep it claimed* (the "scan" passages, `_plan_chain` in § 3.5's table, "attempt" as the folder word): that is B9. Four sentences fixed 2026-10-08 to what the build settled: warm-all-done refused; the newest device run whole or refused; the doors' real names; each point its own copies |
+| B1 | the switch `low_bias_approximation` in `task.json` (required for more than one voltage, refused for one, never inferred); `jobset init --low-bias-approximation / --no-…`; the describe route and the tab's yes/no; `jobset migrate` from the old `treatment` word; `sweep_points`; the record's three words | `task.py`, `_cli.py`, `migrate.py`, `stages.py`, `record.py`, the tab | `sweep_points` answers `()` / `()` / `(0, 0.2, 0.4)` for the three cases | **done**, 7351a3ff |
+| B2 | the layout: `point_folders`, `points_in`, `open_sweep_run` / `SweepRun`, `result_folders`; every reader moved, the old doors deleted; prep opens `run-0/vX/` with the run's clean inputs and each point's own copies; no deck at the stage level; Task setup's count reads `attempts_in` | `transport/stages.py`, `jobset/materialize.py`, `jobset/prep.py`, `transport/record.py`, `jobset/runstatus.py`, `web/blueprints/build.py` | `prep task --stage device` on the road junction: the tree as § 2a.11 draws it | **written** — the tree seen on the hand-written chain only |
+| B3 | the done-door `done` + `products_of`; the transmission's prep takes the newest device run whole or is refused | `jobset/continuation.py`, `jobset/prep.py` (`transport_inputs`) | the transmission prep refused while a device point is not done, then gathers each point's `.TS.HSX` from it | **written**, not verified |
+| B4 | the one walker `_walk_script` for bench, group and sweep; `_plan_sweep` (one `run.json`, `.continued-from` at plan time, warm take-over, cold, warm-all-done refused); `_carry_sweep_gather`; the `along` row; `_plan_chain`, `_bench_walk`, `never_started`, `_a_scan`, the per-point launch records deleted | `jobset/submit.py`, `warmfiles.py`, `siesta/warm-files.toml` | (i) the device sweep walks 0 → 0.2 → 0.4, each from the previous point's `.TSDE`, said in the log and `status`; (ii) **the stop**: the device stopped at 0.2 V through the road — `max_scf_iterations` 1 on Task setup is a description change, so a new calculation — `status` says *1 of 3 points done; 0.2 V: …*, 0.4 V *not run*; launched again warm: takes 0 V over, runs 0.2 and 0.4; (iii) every point done + warm → refused with the `--cold` line; `--cold` → `run-1/`, all three | **written** — (i) seen on the hand-written chain only; (ii) and (iii) not run |
+| **B2–B4 gate** | the targeted tests judged: `tests/test_transport_prep.py`, `test_transport_task.py`, `test_transport_record.py`, `test_launch_protocol.py`, `test_launch_door.py`, `test_launch_values.py`, `test_launch_ask_mode.py`, `test_prep_protocol.py`, `test_prep_bench_fold.py` (the walker), `test_status_lists_the_ladder.py`, plus every test naming a moved name (grep `tests/` recursively for `_bench_walk`, `rung_container`, `_plan_chain`, `scan_points`, `never_started`); then **one commit** naming S1–S10 and P4 | `tests/` | the tests judged; the server restarted; the commit | **open — the next thing** |
+| **the road junction** | built on the Molbuilder tab in Chrome, relaxed through `init`/`prep`/`launch`, cited on the Transport tab (§ 5x.0) — the subject of every "done when" from here | `projects/claude-transport-walk/…` (a new calculation) | the relaxation finished; the transport described from its citation | **started** (the SMILES generated; the rest of the page steps open) |
+| B5 | `status <stage>`: the points (done / why / started from) and the gather shown on every rung (R5); the sweep row's converged column — `SCF yes` when every point is done, `SCF NO` when a point finished unconverged (today: empty unless all done) — settled at B5 | `jobset/runstatus.py`, `jobset/_cli.py` (status) | `jobset status` and `status device` on the road junction, after (i) and (ii) | not started |
+| B6 | the record and the Results tab: `tbtrans.transmission_files` (the channels) replaces `record.py`'s own glob (R1); the low-bias I(V) from T(E,0) (P1's record half); device facts from the run the transmission gathered (R4); E_F of device vs leads **checked** (R3); the treatment label beside the I–V (R2); R6's facts (the seed's E_F, the contour and poles, the window, points, TBT k-grid); the report composed on read and every run listed at the root, as § 2a.12 and `results.md` § 2.4 already say (R7); **R9 — the 3D viewer draws nothing in a real browser: its cause read before anything else on this tab** | `transport/record.py`, `parse/engines/tbtrans.py`, `inspectors/transport.js`, `results/viewer.js` | `summarize task` and the Results tab on the road junction, the three cases | not started |
+| B7 | the small ones, each through the road: the swap applied to the calculation's copy (C1, § 4); the lead's file stem from `task.label` alone (C2); **the citation is a finished molbuilder relaxation run, nothing else** (C4; decision 7) — § 3.1's two saved-structure rows go, the Transport tab's picker offers runs, `compose` refuses the rest naming the relaxation to run first; C3 falls with form B; the window gate ± V/2 + 5 kT in the settings gate (P2) | `transport/compose.py`, `transiesta.py`, `web/blueprints/transport.py`, the tab, `validation/` | each refusal and each pass seen through the road | not started |
+| **B8** | **the milestone review** *(user, 2026-10-08)* — two rounds, fresh agents, the full code TEXT, every finding verified, one revision each: **the backend** (`jobset/`: prep, launch, status, continuation, materialize, runstatus, ledger; `transport/`: stages, compose, record, deck); **the CLI** (`init` / `prep` / `launch` / `status` / `summarize` for transport, the printed lines); **the UI, fact-checked against the contracts** — the Transport tab (the citation, the bias list and its builder, the switch, the template: is every parameter in its logical place, named by the contract's word, with no second home), Task setup (the stages, `execution`, `allocation`, the Prep ladder), the Results tab (the ladder with its points, T(E) per channel, the I–V with its label, the viewer — R9); **the checkpoint** (`molbuilder checkpoint save / restore` against *How the checkpoint supports you* and rule 1: a state before every prep; rollback as the only redo); **the stage/run configs** (`task.json`'s stages and run cards — `restart`, `continue_retries`, threads, `time`; the catalogue's stage rows; what prep states or refuses); **the CSS** — tokens only, the shared components (`lib/state-chip`, `ts-planlist`, `tm-kinds`), `[hidden]` guards, no magic numbers, the global sheets' reach | all of the above | both rounds clean | not started — **its condition is B2–B7 done** |
+| B9 | the doc sweep: `transport.md`'s "scan" passages (the orientation at :40, § 2a.7's grouping row, § 2a.9's axis rule, § 2a.10's advice, § 3's example and table, § 5's bias rule, § 6a, § 8) → "sweep" and this design; § 2a.14's table, § 3.2, § 3.4, § 3.6a; "attempt" in `project-layout.md` § 1.5–1.6 — the folder's word is **run**, `attempt` stays the code's identifier, said once in *Words*; R8's two links; the 18 contradictions (T) re-read | `docs/` | a reader finds one rule per concept | not started |
 
-### 5x.5 Decisions — answered *(user, 2026-10-08: "go ahead. yes to all. low-bias should be low-bias-approximation, and when this is set to false, all bias will need a scf calculation")*
+**Parked, named** (not Q14's): **P3** — the device's equilibrium contour is the
+interim 10 eV pole energy, not a stated `contour.eq` with the spectrum gate;
+§ 6.1c says so itself (*"The 10 eV is interim — M3 P4's stated contour"*). It
+is M3 P4's, independent of the sweep.
+
+### 5x.5 Decisions
+
+*Answered (user, 2026-10-08: "go ahead. yes to all. low-bias should be
+low-bias-approximation, and when this is set to false, all bias will need a scf
+calculation"):*
 
 1. **The treatment is one explicit switch, `low_bias_approximation`** in
-   `task.json`'s bias block (required when the list holds more than one
-   voltage; never inferred). `true`: one device and one transmission, at 0 V;
-   the record computes I(V) = (2e/h)∫T(E,0)[f(E−μ_L)−f(E−μ_R)]dE for each
-   listed V. `false`: every voltage gets its own device SCF (a sweep) and its
-   own transmission. The words `low-bias` / `re-converged` go everywhere, no
-   alias (`jobset migrate` writes the switch for a description that states
-   the old word).
+   `task.json`'s bias block — required when the list holds more than one
+   voltage, refused for one, never inferred. `true`: one device and one
+   transmission, at 0 V; the record computes I(V) = (2e/h)∫T(E,0)[f(E−μ_L)−
+   f(E−μ_R)]dE for each listed V. `false`: every voltage gets its own device
+   SCF (a sweep) and its own transmission. The record's words: `single-bias`,
+   `low-bias-approximation`, `self-consistent` (B1). The old `bias.treatment`
+   word is migrated by `jobset migrate`, never read.
 2. **No skip.** A point is done or not done.
 3. **A point not done is redone from the same start as on the first walk.**
 4. **A swept stage launched again is rule 3**: warm takes the done points over
    and runs the rest; `--cold` runs every point.
 
-### 5x.6 The sweep's evidence — every confirmed finding, by id
+*Settled in the build (2026-10-08):*
+
+5. **A warm launch with every point done is refused**, naming the `--cold`
+   line — rule 2 keeps every run, so none is opened for nothing to run in.
+6. **A point folder holds its own copies of the run's inputs; the run keeps
+   them once, clean, as their source** (*"no overengineering"*): no `../`
+   reads, no `points.json`, no second record.
+7. **The junction citation is a finished molbuilder relaxation run** — C4's
+   rule, already in B7, drawn to its end: a bare saved structure brings no
+   pseudopotentials, so citing one ends in the contract's own *"put the files
+   in `pseudos/` yourself"* — a hand step on the road. § 3.1's two
+   saved-structure rows go; the Transport tab offers runs. *(Say so if you
+   want a saved structure to stay citable — then `init --psml-lib` must be
+   allowed for a citation that brings none.)*
+
+### 5x.6 The sweep's evidence — every confirmed finding, by id, and what closes it
+
+| closes | ids |
+|---|---|
+| B1 | P1 (the switch half) |
+| B2 | S4, S6 |
+| B4 | S1, S2, S3, S5, S7, S8, S9, S10, P4 (each point's `.continued-from` says what it started from; the run's `.gathered-from` is the run's) |
+| B5 | R5 |
+| B6 | P1 (the record half), R1, R2, R3, R4, R6, R7, R9 |
+| B7 | C1, C2, C3 (falls with form B), C4, P2 |
+| B9 | T, R8 |
+| parked | P3 (M3 P4) |
 
 Each build step's commit names the ids it closes.
 
@@ -5196,13 +5290,13 @@ S and go with it.
 | C1 | the electrode swap rewrites the **cited run's** files (and so every other calculation citing it); the contract says the swap is the calculation's own (`swap_electrodes: true`) | `compose.py:618-713`; `transport.md` § 4 |
 | C2 | the leads' `.TSHS` name comes from two sources: the device deck uses the template's `system_label`, the lead and the gather use `task.label` — equal on every road today, unchecked | `transiesta.py:509` vs `prep.py:1528`, `stages.py:186-202` |
 | C3 | a form-B junction (`.xyz` + sidecar) keeps the sidecar's z kind — a false "transport axis not periodic" deck warning | `compose.py:855-877` |
-| C4 | a relaxation with no molbuilder record, or one that ended with an error, composes into a junction | `compose.py:846-853`; `transport.md` § 3.1 |
+| C4 | a relaxation with no molbuilder record, or one that ended with an error, composes into a junction — and a bare structure brings no pseudopotentials (`prep._transport_provide_pseudos`: *"put the files in pseudos/ yourself"*) | `compose.py:846-853`; `transport.md` § 3.1 |
 
 **R — Results and pages.**
 
 | id | finding | evidence |
 |---|---|---|
-| R1 | the record reads TBtrans's files with its own glob — a **second reader** beside the family's (`parse/engines/tbtrans.py`) — and so a spin-polarised point (`<label>.TBT_UP.AVTRANS_*`) is reported **failed**; G is not (e²/h)(T↑+T↓) | `record.py:445`; `m_tbt_save.F90:2266-2270` |
+| R1 | the record reads TBtrans's files with its own glob — a **second reader** beside the family's (`parse/engines/tbtrans.py`, `transmission_files`, which already knows the channels) — and so a spin-polarised point (`<label>.TBT_UP.AVTRANS_*`) is reported **failed**; G is not (e²/h)(T↑+T↓) | `record.py:453`; `m_tbt_save.F90:2266-2270` |
 | R2 | the treatment label is in the T(E) tab only, not beside the I–V | `transport.js` `_fillIV` |
 | R3 | "energies relative to E_F" is a constant; the device's NEGF E_F is never compared with the leads' | `record.py:528` |
 | R4 | the device facts beside T(E) come from the device's newest attempt, not the run the transmission read | `record._stage_facts` |
@@ -5218,7 +5312,8 @@ S and go with it.
 ended* vs the 2026-10-05 sweep design *a done point is never run again*; per
 point vs one run for what the transmission takes; present-tense passages
 describing the unbuilt sweep; stale passages (§ 2a.14's table, § 3.2, § 3.4,
-§ 3.6a, § 6a, § 8).
+§ 3.6a, § 6a, § 8). *B0 resolved the first three in § 2a.10–2a.12, Words and
+rule 3; the passages are B9's.*
 
 ## 5v. Documents that lag the code — the document sweeps' input *(2026-09-29)*
 

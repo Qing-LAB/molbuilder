@@ -111,6 +111,10 @@ class StageStatus:
     #: does for you*, 4).  Beside the state, never folded into it: a run can
     #: finish and not converge (`parse.dirs.run_status`).
     converged: Optional[str] = None
+    #: A swept rung's points, in bias order -- ``{bias_v, folder, done, why,
+    #: started_from}`` each, read from the point's own files
+    #: (`continuation.done`; `engines/transport.md` § 2a.11) -- or ``[]``.
+    points: List[Dict[str, Any]] = field(default_factory=list)
     #: For one not prepared, the ready door's answer whole
     #: (`ready.readiness`): what its prep would take, one line each, or what
     #: it waits for -- the refusal prep would print, with its commands.
@@ -250,17 +254,69 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
     return (st.state, st.detail, converged_of(st))
 
 
-def _rung_homes(base: Path, task, job_name: str, d: Path) -> list:
-    """WHERE THIS JOB'S ATTEMPTS ARE -- ``[(folder, volts)]``.  For a stage of
-    the description, the one door's answer (`transport.stages.rung_containers`,
-    plan § 5w K10): a bias scan's point folders for a rung the scan runs at
-    each point, the stage folder otherwise.  For anything else -- a bench
-    trial, a job set no description stands beside -- the job's own
-    directory ``d``."""
-    if task is None or job_name not in {s.name for s in task.stages}:
-        return [(d, None)]
-    from ..transport.stages import rung_containers
-    return rung_containers(base, task, job_name)
+def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
+                  names, ref) -> Optional["StageStatus"]:
+    """A SWEPT RUNG's row (`engines/transport.md` § 2a.11): its latest run's
+    state -- ``pending`` before it is launched; while launched, ``running``
+    while a point runs, ``finished`` once every point is done, ``queued``
+    when nothing has run yet, else ``failed`` -- and its points, each done
+    or not done and what it started from.  ``None`` for a rung that does
+    not sweep."""
+    from ..transport.stages import points_in, products_of, sweep_points
+    from ..warmfiles import warm_list
+    from ..parse.dirs import run_status
+    from .continuation import done
+    if task is None or not sweep_points(task, job.name):
+        return None
+    run = latest_attempt(d)
+    if run is None:
+        state, detail = MISSING[0], MISSING[1]
+        return StageStatus(ref=ref, dir=d.name, state=state, detail=detail)
+    try:
+        launch = launch_record(run, names)
+    except LaunchRecordError as e:
+        return StageStatus(ref=ref, dir=d.name, state="unreadable",
+                           detail=str(e), attempt=run.name)
+    own = {w.name for w in job.warm}
+    hand = [f"{task.label}{suf}"
+            for suf in warm_list(jobset.engine, "transport", base).along
+            if f"{task.label}{suf}" in own]
+    products = products_of(job.name, task.label) + hand
+    pts, running = [], False
+    from ..runrecord import read_continued_from
+    for pdir, v in points_in(run, task, job.name):
+        ok, why = done(pdir, names, launch=launch, products=products)
+        if not ok and pdir.is_dir():
+            running = running or run_status(pdir, names.stem,
+                                             launch=launch).state == "running"
+        src = (read_continued_from(pdir, names, 0) if pdir.is_dir()
+               else None)
+        pts.append({"bias_v": v, "folder": f"{run.name}/{pdir.name}",
+                    "done": ok, "why": why, "started_from": src})
+    n_done = sum(p["done"] for p in pts)
+    summary = f"{n_done} of {len(pts)} points done"
+    if launch is None:
+        state, detail = "pending", "prepared, not launched"
+    elif running:
+        state, detail = "running", summary
+    elif n_done == len(pts):
+        state, detail = "finished", summary
+    elif all(p["why"] == "not run" for p in pts):
+        jid = launch.get("job_id")
+        state, detail = "queued", (f"queued as job {jid}" if jid
+                                   else "launched, nothing run yet")
+    else:
+        first = next(p for p in pts if not p["done"])
+        state = "failed"
+        detail = f"{summary}; {first['bias_v']:g} V: {first['why']}"
+    return StageStatus(
+        ref=ref, dir=d.name, state=state, detail=detail,
+        converged=("SCF yes" if n_done == len(pts) and hand else None),
+        attempt=run.name, attempts=attempts_in(d), launch=launch,
+        relaunch_continues=job.relaunch_continues,
+        group=(list(job.group) if job.group else None),
+        script=str(job.script), carries=[w.name for w in job.warm],
+        resources=resources_text(job.resources), points=pts)
 
 
 def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
@@ -273,39 +329,27 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
     # THE JOBSET'S: a trial is relabelled with its point.
     names = run_names(jobset, job, shape)
     basename = names.stem
-    read = []
-    for home, volts in _rung_homes(base, task, job.name, d):
-        # WHERE the run happened, asked of the layer that decides layout
-        # -- the latest attempt where there is one, the container for a
-        # flat run (project-layout.md § 1.5).
-        attempt = latest_attempt(home)  # None is the ANSWER: prepared?
-        observed = run_dir(home)        # ...and this is where to look
-        # THE LAUNCH RECORD lies in the folder the run happened in, named
-        # by the stage's names -- the one answer the writer reads too: the
-        # attempt's `run.json`, a trial's at its top, a flat stage's newest
-        # run's own in the folder every stage shares.  ONE THAT DOES NOT
-        # READ is said, never read as launched or not
-        # (`runrecord.launch_record`).
-        try:
-            launch = launch_record(observed, names)
-        except LaunchRecordError as e:
-            read.append((home, volts, attempt, observed, None, "unreadable",
-                         str(e), None))
-            continue
-        read.append((home, volts, attempt, observed, launch)
-                    + _stage_state(observed, launch, basename))
-    # A SCAN'S RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED, in the
-    # scan's order -- the order its chain walks -- and from its last once
-    # every point has: a rung with a point outstanding is the stage to
-    # resume from, and the row names the point (`web/results.md` § 2.4;
-    # `engines/transport.md` § 2a.12, *which of five runs is the one
-    # still outstanding*).  Any other rung has one folder, which speaks.
-    home, volts, attempt, observed, launch, state, detail, converged = next(
-        (r for r in read if r[5] != _DONE), read[-1])
+    swept = _sweep_status(base, jobset, job, task, d=d, names=names,
+                          ref=refs[job.name])
+    if swept is not None:
+        return swept
+    # WHERE the run happened, asked of the layer that decides layout -- the
+    # latest attempt where there is one, the container for a flat run
+    # (project-layout.md § 1.5).
+    home = d
+    attempt = latest_attempt(home)      # None is the ANSWER: prepared?
+    observed = run_dir(home)            # ...and this is where to look
+    # THE LAUNCH RECORD lies in the folder the run happened in, named by the
+    # stage's names -- the one answer the writer reads too: the attempt's
+    # `run.json`, a trial's at its top, a flat stage's newest run's own in
+    # the folder every stage shares.  ONE THAT DOES NOT READ is said, never
+    # read as launched or not (`runrecord.launch_record`).
+    try:
+        launch = launch_record(observed, names)
+        state, detail, converged = _stage_state(observed, launch, basename)
+    except LaunchRecordError as e:
+        launch, state, detail, converged = None, "unreadable", str(e), None
     where = attempt.name if attempt else None
-    if volts is not None:
-        detail = f"{volts:g} V: {detail}"
-        where = f"{home.name}/{where}" if where else None
     return StageStatus(
         ref=refs[job.name], dir=d.name, state=state, detail=detail,
         converged=converged, attempt=where,

@@ -77,6 +77,10 @@ class WarmFilesDoc:
     #: states nothing is absent here, and :func:`warm_list` answers with
     #: ``[base]``'s statement, else true.
     resumes: Tuple[Tuple[str, bool], ...] = ()
+    #: The second section-level fact: what a SWEEP hands from point to
+    #: point, by suffix -- each a row of the same section
+    #: (`engines/transport.md` § 2a.11).  ``()`` where a section states none.
+    along: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
 
     def section_names(self) -> List[str]:
         return [name for name, _ in self.sections if name != "base"]
@@ -129,6 +133,9 @@ class WarmList:
     #: Whether a re-run of this kind of run continues from what the last
     #: one left -- the section's statement, else ``[base]``'s, else true.
     resumes: bool
+    #: What a sweep of this kind hands from a done point to the next, by
+    #: suffix -- the section's ``along`` (`engines/transport.md` § 2a.11).
+    along: Tuple[str, ...] = ()
 
     @property
     def carry_rules(self) -> Tuple[WarmRule, ...]:
@@ -175,7 +182,8 @@ def warm_list(engine: str, kind: Optional[str] = None,
         resumes = stated.get(kind, stated.get("base", True))
     own = base is not None and Path(doc.path) == Path(base) / FILENAME
     return WarmList(engine=engine, kind=kind, path=doc.path, own=own,
-                    rules=rules, resumes=resumes)
+                    rules=rules, resumes=resumes,
+                    along=(dict(doc.along).get(kind, ()) if kind else ()))
 
 
 def _load(engine: str, base_dir=None) -> WarmFilesDoc:
@@ -211,12 +219,14 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
             f"{engine!r}'s package -- the two must agree.")
     sections: List[Tuple[str, Tuple[WarmRule, ...]]] = []
     resumes: List[Tuple[str, bool]] = []
+    along: List[Tuple[str, Tuple[str, ...]]] = []
     seen_suffixes: Dict[str, str] = {}
     for name, body in raw.items():
-        if not isinstance(body, dict) or set(body) - {"file", "resumes"}:
+        if (not isinstance(body, dict)
+                or set(body) - {"file", "resumes", "along"}):
             raise WarmFilesError(
                 f"{path}: section [{name}] must hold only [[{name}.file]] "
-                f"rows and the one section-level fact, `resumes` "
+                f"rows and the section-level facts, `resumes` and `along` "
                 f"(job-contracts.md 4.2a).")
         if "resumes" in body:
             if not isinstance(body["resumes"], bool):
@@ -236,10 +246,22 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
                     f"row.")
             seen_suffixes[rule.suffix] = name
             rows.append(rule)
+        if "along" in body:
+            said = body["along"]
+            own_rows = {r.suffix for r in rows}
+            if (not isinstance(said, list)
+                    or not all(isinstance(x, str) and x in own_rows
+                               for x in said)):
+                raise WarmFilesError(
+                    f"{path}: [{name}] along = {said!r} -- a list of this "
+                    f"section's own suffixes, what a sweep hands from point "
+                    f"to point (engines/transport.md 2a.11).")
+            along.append((name, tuple(said)))
         sections.append((name, tuple(rows)))
     if not any(name == "base" for name, _ in sections):
         raise WarmFilesError(
             f"{path}: no [base] section.  Every engine has one -- it may "
             f"be empty, but its absence reads as a truncated file.")
     return WarmFilesDoc(engine=engine, sections=tuple(sections),
-                        path=str(path), resumes=tuple(resumes))
+                        path=str(path), resumes=tuple(resumes),
+                        along=tuple(along))

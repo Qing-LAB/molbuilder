@@ -421,10 +421,10 @@ class _Member:
     #: The inputs a transport rung's kind gathered for that run, copied with
     #: their record (`.gathered-from`) -- never gathered again.
     gathered: List[str] = field(default_factory=list)
-    #: A bias point whose last run never started -- the walk stopped
-    #: before it -- opened fresh: it takes the point before it in the walk,
-    #: as on a first launch (:func:`_plan_chain`).
-    never_started: bool = False
+    #: A swept run's walk, said whole (:func:`_plan_sweep`): which points it
+    #: takes over from the latest run and which it runs, each from what
+    #: start -- or ``None`` for a member that is not a sweep.
+    walk: Optional[str] = None
     #: The calculation's folder, so what the plan says names it.
     base: Optional[Path] = None
 
@@ -454,7 +454,9 @@ class _Member:
         """The member as the plan holds it, in one line: where it runs, what
         it follows, how that run ended and what is copied from it."""
         line = f"{self.name}: runs in {_rel(self.run_dir, self.base)}"
-        if self.again:
+        if self.walk is not None:
+            line += "; " + self.walk
+        elif self.again:
             line += "; it " + self._takes(would=True)
         return line
 
@@ -468,10 +470,8 @@ class _Member:
         if self.cold:
             return (f"{start} cold -- from its deck alone, nothing taken "
                     f"from a run of its own{gathered}")
-        if self.never_started:
-            return (f"{start} fresh -- its last run never started (the walk "
-                    f"stopped before it), so it takes what the point before "
-                    f"it in the walk leaves{gathered}")
+        if self.walk is not None:
+            return self.walk
         return (f"{start} over -- nothing is handed on from a run of its "
                 f"own{gathered}")
 
@@ -1047,7 +1047,7 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
         plan = _plan_bench_here(jobset, base,
                                 trial_timeout_s=trial_timeout_s)
     else:
-        task = _a_scan(jobset, base, only) if only is not None else None
+        task = _a_sweep(jobset, base, only) if only is not None else None
         if task is not None and mode in ("submit", "ask") and not domain:
             why = _no_queue_named(
                 base, [j for j in jobset.jobs if j.name == only], mem=mem,
@@ -1055,7 +1055,7 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
                 gpu=False)
             if why:
                 raise SubmitError(why)
-        plan = (_plan_chain(jobset, base, task, mode=mode, stage=only,
+        plan = (_plan_sweep(jobset, base, task, mode=mode, stage=only,
                             domain=domain, mem=mem, time_s=time_s,
                             told=told, cold=cold)
                 if task is not None else
@@ -1067,10 +1067,10 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
     return plan
 
 
-def _a_scan(jobset: JobSet, base: Path, stage: str):
-    """The description, when ``stage`` is a transport rung a bias scan runs
-    once per point (`transport.stages.sweep_points`) -- launched as ONE job
-    walking the points -- else ``None``."""
+def _a_sweep(jobset: JobSet, base: Path, stage: str):
+    """The description, when ``stage`` is a swept transport rung
+    (`transport.stages.sweep_points`) -- launched as ONE job walking its
+    run's points -- else ``None``."""
     if jobset.kind != "ladder":
         return None
     from ..task import FILENAME, read_task
@@ -1592,44 +1592,47 @@ def submitted_cap_notes(plans) -> List[str]:
     return notes
 
 
-def _bench_walk(name: str, trials, *, where: str, log: str,
-                bound_s: Optional[int] = None) -> str:
-    """A BENCHMARK'S WALK -- the script that runs its trials one after
-    another in one submission: a resource shelf sent to a queue
-    (`generator.md` § 4.3a), or its unlaunched trials run here
-    (`job-system.md` § 6.0).  ``trials`` are ``(name, folder, run script,
-    its arguments)``, the folder from where the walk runs; ``bound_s`` the
-    per-trial bound, a trial past it killed and read incomplete.  A trial
-    that fails leaves the rest to run -- one bad point says nothing about
-    the next -- and the walk exits nonzero when any failed; stopped by the
-    person (Ctrl-C, a lost terminal, a cancel), it starts no further trial.
-    THE TWO-LAYER
-    MODEL HOLDS (`job-system.md` § 6): this file orders and bounds; each
-    trial's own ``.run.sh`` activates its environment and launches its
-    engine, exactly as when it runs alone.  The benchmark's own: a
-    transport bias scan's walk is transport's, and shares nothing with it
-    (user, 2026-10-05)."""
+def _walk_script(name: str, steps, *, where: str, log: str,
+                 bound_s: Optional[int] = None,
+                 stop_on_failure: bool = False) -> str:
+    """THE ONE WALK SCRIPT -- what runs several members one after another in
+    one submission: a benchmark's trials (a shelf sent to a queue, or its
+    unlaunched trials run here, `generator.md` § 4.3a), a group's stages
+    (`project-layout.md` § 1.6.6), a swept rung's points
+    (`engines/transport.md` § 2a.11).  ``steps`` are ``(name, folder, run
+    script, its arguments, before)``: the folder from where the walk runs,
+    and ``before`` the files copied into it just before it starts --
+    ``(source, folder)`` pairs, a sweep's start (its `along` row); ``()``
+    for every other walk.  ``bound_s`` is a per-member bound, a member past
+    it killed and read incomplete (a benchmark's).  A member that fails
+    leaves the rest to run, and the walk exits nonzero when any failed --
+    unless ``stop_on_failure`` (a device sweep: the points after a failed
+    one would start from it), when the walk stops there.  Stopped by the
+    person (Ctrl-C, a lost terminal, a cancel), it starts no further member.
+    THE TWO-LAYER MODEL HOLDS (`job-system.md` § 6): this file orders, copies
+    the starts and bounds; each member's own ``.run.sh`` activates its
+    environment and launches its engine, exactly as when it runs alone."""
     when = "$(date '+%Y-%m-%dT%H:%M:%S')"
     lines = [
         "#!/usr/bin/env bash",
         f"# {GroupNames(name).name('.run.sh')} -- {where}, in sequence",
-        "# (generator.md § 4.3a; job-system.md § 6.0).  Regenerated at each",
-        "# launch.  THE TWO-LAYER MODEL HOLDS (job-system.md § 6): this file",
-        "# is the launcher layer only -- ordering and bounds.  Env activation",
-        "# and the engine launch stay in each trial's own .run.sh, exactly as",
-        "# when a trial runs alone; nothing here re-implements module load /",
-        "# source activate.",
+        "# (job-system.md § 6.0).  Regenerated at each launch.  THE TWO-LAYER",
+        "# MODEL HOLDS (job-system.md § 6): this file is the launcher layer",
+        "# only -- ordering, starts and bounds.  Env activation and the",
+        "# engine launch stay in each member's own .run.sh, exactly as when",
+        "# it runs alone; nothing here re-implements module load / source",
+        "# activate.",
         "set -u",
         f'LOG="{log}"',
-        f'echo "[group] {when} start trials={len(trials)} per-trial-bound='
+        f'echo "[group] {when} start trials={len(steps)} per-trial-bound='
         f'{f"{bound_s}s" if bound_s else "none"} '
         'job=${SLURM_JOB_ID:-none} node=$(hostname) '
         'alloc_ntasks=${SLURM_NTASKS:-unset} '
         'alloc_cpus=${SLURM_CPUS_PER_TASK:-unset}" >> "$LOG"',
         "fails=0",
         # STOPPED BY THE PERSON -- Ctrl-C, a lost terminal, a scancel --
-        # the walk starts no further trial (bash runs this after the
-        # running trial returns; one under a per-trial bound ends at it).
+        # the walk starts no further member (bash runs this after the
+        # running member returns; one under a per-member bound ends at it).
         f'_walk_stopped() {{ echo "[group] {when} stopped -- no further '
         'trial" >> "$LOG"; exit 130; }',
         "trap _walk_stopped INT TERM HUP",
@@ -1652,12 +1655,27 @@ def _bench_walk(name: str, trials, *, where: str, log: str,
         "    _t1=$(date +%s)",
         f'    echo "[group] {when} <- ${{_name}} finished rc=${{_rc}} '
         'took=$(( _t1 - _t0 ))s" >> "$LOG"',
-        "    return 0    # one bad point says nothing about the next",
+        "    return ${_rc}",
         "}",
     ]
-    for trial, folder, run_sh, args in trials:
-        lines.append(f'run_trial "{trial}" "{folder}" "{run_sh}"'
-                     + (f" {args}" if args else ""))
+    import shlex as _shlex
+    for member, folder, run_sh, args, before in steps:
+        for src, dst in before:
+            # ITS START, copied just before it runs (`along`): from a point
+            # done before it, which may be one this very walk finished.
+            lines.append(f'cp -f {_shlex.quote(src)} {_shlex.quote(dst)}/ '
+                         f'&& echo "[group] {member}: starts from {src}" '
+                         f'>> "$LOG"')
+        call = (f'run_trial "{member}" "{folder}" "{run_sh}"'
+                + (f" {args}" if args else ""))
+        if stop_on_failure:
+            # THE POINTS AFTER IT WOULD START FROM IT: the walk stops.
+            call += (f' || {{ echo "[group] {when} stopped at {member} -- '
+                     'the members after it would start from it; done '
+                     'fails=${fails}" >> "$LOG"; exit 1; }')
+        else:
+            call += " || true"
+        lines.append(call)
     lines += [f'echo "[group] {when} done fails=${{fails}}" >> "$LOG"',
               "exit $(( fails > 0 ))", ""]
     return "\n".join(lines)
@@ -1722,13 +1740,14 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
 
 
 def _walk_of(members: List[_Member], container: Path) -> list:
-    """Each trial as a benchmark's walk runs it -- its name, the folder it
-    runs in from the walk's own (its attempt: `project-layout.md` § 1.5a),
-    its run script, and its own counts, the shield against an allocation's
-    SLURM_* variables.  One answer for the walk here and a queue's shelf."""
+    """Each member as the walk runs it -- its name, the folder it runs in
+    from the walk's own (its run: `project-layout.md` § 1.5a), its run
+    script, and its own counts, the shield against an allocation's SLURM_*
+    variables; no start to copy.  One answer for a benchmark's walk here,
+    a queue's shelf and a group."""
     return [(m.name, str(m.run_dir.relative_to(container)),
              m.names.name(".run.sh"),
-             " ".join(_run_sh_args(m.job.resources, m.run)))
+             " ".join(_run_sh_args(m.job.resources, m.run)), ())
             for m in members]
 
 
@@ -1763,7 +1782,7 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
     gn = GroupNames(name)
     log = f"{LAUNCH_DIR}/{gn.name('.log')}"
     open_container(base, container / LAUNCH_DIR, plan.writes)
-    plan.writes.text(container / LAUNCH_DIR / gn.name(".run.sh"), _bench_walk(
+    plan.writes.text(container / LAUNCH_DIR / gn.name(".run.sh"), _walk_script(
         name, _walk_of(pending, container),
         where="this benchmark's unlaunched trials, run here", log=log,
         bound_s=trial_timeout_s))
@@ -1820,7 +1839,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
     # gates asked it (:func:`_bench_trials`).  Each trial is handed its own
     # -np / -omp: the shield against the envelope's SLURM_* variables.
     gn = GroupNames(name)
-    script = _bench_walk(
+    script = _walk_script(
         name, _walk_of(pending, container),
         where="ONE allocation, this shelf's unlaunched trials",
         log=f"{LAUNCH_DIR}/{gn.name('.log')}", bound_s=trial_timeout_s)
@@ -1888,252 +1907,200 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
         refusal_hint=hint)
 
 
-def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
+def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                 told, domain: Optional[str] = None, mem: Optional[str] = None,
                 time_s: Optional[int] = None, cold: bool = False
                 ) -> LaunchPlan:
-    """ONE submission that walks a transport bias scan's points in
-    order (engines/transport.md § 2a.11; layout ruled 2026-08-29: plain
-    v-dirs, one attempt ladder per point).
+    """ONE submission walking a swept rung's run -- its points in bias order
+    (`engines/transport.md` § 2a.11).
 
-    The walker is the launcher layer only, exactly like the bench
-    group's sequencer: it ``cd``s into each point's prepared attempt and
-    runs the point's own ``.run.sh`` — env activation and the engine
-    launch stay where they always live.  What it adds is the WARM CHAIN:
-    before each point after the first that is opened fresh (a first launch,
-    or ``--cold``), what the previous point left that
-    a continuing device takes -- the device job's declaration, the NEGF
-    density ``.TSDE`` among it, from the one restart-list door -- is copied
-    forward, so ``V_{i+1}`` converges from ``V_i``'s state instead of from
-    scratch.  And unlike the bench
-    group it STOPS on a failed point: later points chain their density
-    from this one, so walking on would converge from a state the
-    failure poisoned — a benchmark's points are independent, a chain's
-    are not.
-
-    Every point's attempt must be OPEN (``prep task device`` opens them
-    all); a scan launched before is launched again as a stage is -- each
-    point's next attempt opened, warm from its own latest or ``cold``
-    (`job-system.md` § 5.4) -- and the deck/launch agreement gate guards
-    this door like every other.  ``run.json`` lands in every point's attempt
-    when the one job goes -- they are all launched by it.  The job's
-    request is the one every door sends (:func:`_sbatch_request`); ``ask``
-    asks the scheduler about it, over the first point's own header, since
-    the chain's is written only when it is sent.  The walker and its header
-    are planned here, and written by the send.
-    """
+    **The run is the member**: one launch record, written at ``run-<n>/``
+    by the one sender; each point is done or not done, read from its own
+    files (`continuation.done`).  Its first launch walks prep's run, every
+    point.  **Launched again** -- the run/stage contract's rule 3
+    (`job-system.md`, *What molbuilder does for you*) -- it opens the next
+    run (`materialize.open_sweep_run`), copies into it what the latest run
+    gathered (never gathered again), and, *warm*, takes over each point done
+    there (its files copied, its `.continued-from` naming the run it came
+    from) and walks the rest; ``cold``, it walks every point.  Each walked
+    point starts from the point before it in bias order -- the files the
+    calculation's `along` row names and the rung itself declares (a device's
+    `.TSDE`), copied just before it runs -- or, the first, from its own
+    gathered inputs.  A rung that hands nothing forward (the transmission)
+    walks on past a point that fails; one that does stops there.  The walk is
+    the one walk script (:func:`_walk_script`); the request is the sum of the
+    walked points' walls (`group.envelope`)."""
+    from ..runrecord import launch_record, next_run, write_continued_from
     from ..task import bias_token
-    from ..transport.stages import rung_containers, sweep_points
-    from ..runrecord import next_run
-    from .continuation import read_run
-    from .materialize import (latest_attempt, prepare_attempt, run_names,
-                              shape_of)
-
-    points = sweep_points(task, stage)
-    if len(points) < 2:
-        raise SubmitError("not a bias scan -- the plain launch owns "
-                          "a single-point device.")
-    # The device chain warm-hands its declaration and STOPS on failure
-    # (later points inherit the failed state); the transmission walk is
-    # the same one-submission sequence over INDEPENDENT points -- no
-    # hand-forward, and a bad point says nothing about the next, so the
-    # walk continues and the exit code reports any failure (P6).
-    warm = stage == "device"
+    from ..transport.stages import products_of
+    from ..warmfiles import warm_list
+    from .continuation import done
+    from .group import envelope as _walk_envelope
+    from .materialize import (latest_attempt, open_sweep_run, run_names,
+                              shape_of, stage_home)
     job = next((j for j in jobset.jobs if j.name == stage), None)
     if job is None:
         raise SubmitError(
             f"the {stage} stage is not in the plan -- run "
             f"`{_cmd('prep', *words_for('task', stage), base=base)}` first.")
-    # The stage's folder, from the one door (`materialize.stage_home`).
-    from .materialize import stage_home
-    home = stage_home(base, task, stage)
-    token, stage_dir = home.token, home.dir
-    launch_dir = stage_dir / LAUNCH_DIR
-
-    plan = LaunchPlan(base, mode, [])
-    # THE NAMES OF THE STAGE'S FILES, every point's -- each point's attempt
-    # its own folder, its run's number the one launch decides there.
-    names = run_names(jobset, job, shape_of(jobset, base))
-    run_name = names.name(".run.sh")
-    name = f"{names.stem}-chain"
-    gn = GroupNames(name)
     sh = shape_of(jobset, base)
-    members: List[_Member] = []
-    for vdir, v in rung_containers(base, task, stage):
-        att = latest_attempt(vdir)
-        if att is None:
-            raise SubmitError(
-                f"bias point {bias_token(v)}: no attempt is open under "
-                f"{token}/{bias_token(v)}/ -- the scan launches whole, so "
-                f"every point needs one, and a prepared stage is not prepared "
-                f"again: " + rollback("its prep", base=base))
+    names = run_names(jobset, job, sh)
+    stage_dir = stage_home(base, task, stage).dir
+    latest = latest_attempt(stage_dir)
+    if latest is None:
+        raise SubmitError(
+            f"{stage}: no run is open under {stage_dir.name}/, and a "
+            f"prepared stage is not prepared again: "
+            + rollback("its prep", base=base))
+    plan = LaunchPlan(base, mode, [])
+    prev = None
+    if not _launched(latest, names):
+        # PREP'S RUN, never launched: every point is walked.
+        _refuse_cold_first(job, cold, base)
+        run = latest
+        from ..transport.stages import points_in
+        points = points_in(run, task, stage)
+    else:
+        prev = latest
+        sweep = open_sweep_run(jobset, base, stage, task, plan=plan.writes,
+                               shape=sh, next_run=True)
+        run, points = sweep.dir, sweep.points
+        _carry_sweep_gather(prev, run, points, plan.writes, base)
+    # WHAT A POINT HANDS ON, by data: the calculation's `along` row, of the
+    # files this rung itself declares (the device's `.TSDE`; the
+    # transmission declares none).
+    own = {w.name for w in job.warm}
+    hand = [f"{task.label}{suf}"
+            for suf in warm_list(jobset.engine, "transport", base).along
+            if f"{task.label}{suf}" in own]
+    products = products_of(stage, task.label) + hand
+    taken, walked = [], []
+    prev_launch = launch_record(prev, names) if prev is not None else None
+    for pdir, v in points:
+        if prev is not None and not cold:
+            src = prev / pdir.name
+            ok, _why = done(src, names, launch=prev_launch, products=products)
+            if ok:
+                taken.append((pdir, v, src))
+                continue
+        walked.append((pdir, v))
+    if not walked:
+        raise SubmitError(
+            f"{stage}: every point of {prev.relative_to(base)} is done, so a "
+            f"warm launch has nothing to run -- to run them all again, "
+            f"launch it cold:\n"
+            + block(launch_lines("task", stage, base=base, flags=("--cold",))))
+    # THE POINTS TAKEN OVER: their files copied into the new run, each
+    # saying the run it came from.
+    for pdir, _v, src in taken:
+        for f in sorted(src.iterdir()):
+            if f.is_file():
+                plan.writes.copy(f, pdir / f.name)
+        write_continued_from(pdir, str(src.relative_to(base)), names=names,
+                             run=FIRST_ATTEMPT, plan=plan.writes)
+    # THE WALK: each point in bias order, its start the point before it.
+    by_v = [v for _p, v in points]
+    folder = {v: p_ for p_, v in points}
+    steps, said = [], []
+    for pdir, v in walked:
+        k = by_v.index(v)
+        before = ([(f"{run.name}/{folder[by_v[k - 1]].name}/{f}",
+                    f"{run.name}/{pdir.name}") for f in hand]
+                  if hand and k > 0 else [])
         try:
-            check_launch_matches_deck(att, job)
+            check_launch_matches_deck(stage_dir / pdir.name, job)
         except DeckLaunchMismatch as e:
             raise SubmitError(str(e)) from e
-        plan.reads += [_as_found(att / f, base)
-                       for f in (job.script, run_name)]
-        label = f"{stage}@{bias_token(v)}"
-        if not _launched(att, names):
-            members.append(_Member(job, vdir, att, True, att, names=names,
-                                   run=next_run(att, names), label=label,
-                                   base=base))
-            continue
-        # LAUNCHED BEFORE: the point's next attempt, warm from its own
-        # latest or cold, with the inputs its kind gathered for it.
-        cont = None
-        never_started = False
-        if not cold and job.relaunch_continues:
-            c, st, conv, _ = read_run(base, task, stage, att)
-            # A POINT THE WALK NEVER REACHED: launched with the one job, no
-            # output -- the run door's `queued`.  Nothing of its own to
-            # continue, so it opens fresh and takes the point before it.
-            never_started = st == "queued"
-            if not never_started:
-                cont = Continuation(stage=stage,
-                                    source=str(att.relative_to(base)),
-                                    by_default=True, concluded=c, state=st,
-                                    converged=conv, own=True)
-        try:
-            opened = prepare_attempt(
-                jobset, base, stage, container=vdir,
-                continue_from=cont.source if cont else None,
-                cold=cont is None, named=False, plan=plan.writes, shape=sh)
-        except ValueError as e:
-            raise SubmitError(
-                f"bias point {bias_token(v)}: launched again warm, it "
-                f"continues from {att.relative_to(base)} -- which is "
-                f"impossible here:\n  {e}\n  Launch it again cold "
-                f"instead:\n"
-                + block(launch_lines("task", stage, base=base,
-                                     flags=("--cold",)))
-                ) from e
-        members.append(_Member(
-            job, vdir, opened.dir, True, att, names=names,
-            run=next_run(opened.dir, names), label=label, base=base,
-            again=True, cold=cold, continuation=cont,
-            never_started=never_started,
-            carries=list(opened.copied),
-            gathered=_carry_the_gather(att, opened.dir, plan.writes,
-                                       base=base)))
-
-    # WHAT A POINT TAKES FROM THE ONE BEFORE IT is what a continuing device
-    # takes -- the device job's own declaration (`Job.warm`), which prep
-    # recorded from the one restart-list door (`warmfiles.warm_list`,
-    # `job-contracts.md` § 4.2a), the calculation's own list among it.
-    import shlex as _shlex
-    handed = " ".join(_shlex.quote(w.name) for w in (job.warm or ()))
-    lines = [
-        "#!/usr/bin/env bash",
-        f"# {gn.name('.run.sh')} -- the bias chain: this scan's points in",
-        "# sequence, each opened fresh warm-started from what the previous",
-        "# point left that a continuing device takes -- its declaration:",
-        f"#   {handed or '(nothing)'}",
-        "# (engines/transport.md § 2a.11).  Regenerated at each launch.",
-        "# STOPS on a failed point: later points chain their density",
-        "# from this one, so walking on would converge from a state the",
-        "# failure poisoned (a benchmark's points are independent; a",
-        "# chain's are not).",
-        "set -u",
-        f'LOG="{LAUNCH_DIR}/{gn.name(".log")}"',
-        f'echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
-        f'points={len(members)} job=${{SLURM_JOB_ID:-none}} '
-        'node=$(hostname)" >> "$LOG"',
-        "prev=''",
-        "fails=0",
-        "run_point() {",
-        '    _name="$1"; _dir="$2"; _take="$3"; shift 3',
-    ] + ([
-        # A POINT CONTINUING FROM ITS OWN RUN keeps its own state
-        # (`job-system.md` § 5.4, *A stage launched again*); one opened
-        # fresh -- a first launch, or --cold -- takes the point before.
-        '    if [ "$_take" = 0 ]; then',
-        '        echo "[chain] ${_name}: warm from its own latest run" >> "$LOG"',
-        '    elif [ -n "$prev" ]; then',
-        '        _took=""',
-        f'        for _f in {handed}; do',
-        '            if [ -f "$prev/$_f" ]; then',
-        '                cp "$prev/$_f" "$_dir/" && _took="$_took $_f"',
-        "            fi",
-        "        done",
-        '        if [ -n "$_took" ]; then',
-        '            echo "[chain] ${_name}: warm from $prev:$_took" >> "$LOG"',
-        "        else",
-        '            echo "[chain] ${_name}: nothing to take from $prev -- '
-        'converging from scratch" >> "$LOG"',
-        "        fi",
-        "    fi",
-    ] if warm and handed else []) + [
-        '    echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') -> '
-        '${_name} starts" >> "$LOG"',
-        '    ( cd "${_dir}" && bash "$@" ) >> "$LOG" 2>&1',
-        "    _rc=$?",
-        '    if [ "${_rc}" -ne 0 ]; then',
-    ] + ([
-        '        echo "[chain] ${_name} FAILED rc=${_rc} -- the chain '
-        'stops here; later points would inherit its state" >> "$LOG"',
-        '        exit "${_rc}"',
-    ] if warm else [
-        '        echo "[chain] ${_name} FAILED rc=${_rc} -- independent '
-        'points; the walk continues" >> "$LOG"',
-        "        fails=$((fails+1))",
-    ]) + [
-        "    fi",
-        '    echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') <- ${_name} '
-        'done" >> "$LOG"',
-        '    prev="${_dir}"',
-        "}",
-    ]
-    for m in members:
-        # THE SAME IDIOM THE BENCH SEQUENCER USES.
-        rel = m.run_dir.relative_to(stage_dir)
-        args = " ".join(_run_sh_args(job.resources, m.run))
-        take = 0 if m.continuation is not None else 1
-        lines.append(f'run_point "{m.label.split("@", 1)[1]}" "{rel}" '
-                     f'{take} "{run_name}" {args}')
-    lines += ['echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') done '
-              'fails=${fails}" >> "$LOG"',
-              'exit $(( fails > 0 ))', ""]
-
+        tries = next_run(pdir, names)
+        steps.append((f"{stage}@{bias_token(v)}",
+                      f"{run.name}/{pdir.name}", names.name(".run.sh"),
+                      " ".join(_run_sh_args(job.resources, tries)), before))
+        if before:
+            # ITS START, decided now and written beside it: the record says
+            # what each point started from (`engines/transport.md` § 2a.11).
+            write_continued_from(
+                pdir, str((run / folder[by_v[k - 1]].name).relative_to(base)),
+                names=names, run=tries, plan=plan.writes)
+        said.append(f"{v:g} V" + (f" (from {by_v[k - 1]:g} V's "
+                                  f"{', '.join(hand)})" if before else ""))
+        plan.reads += [_as_found(stage_dir / pdir.name / f, base)
+                       for f in (job.script, names.name(".run.sh"))]
+    walk = ((f"takes over {', '.join(f'{v:g} V' for _p, v, _s in taken)} "
+             f"done in {prev.name}; " if taken else "")
+            + f"runs {', '.join(said)}")
+    member = _Member(job, stage_dir, run, True, stage_dir / walked[0][0].name,
+                     names=names, run=FIRST_ATTEMPT, label=stage,
+                     base=base, again=prev is not None, cold=cold,
+                     walk=walk)
+    gn = GroupNames(f"{names.stem}-sweep")
+    launch_dir = stage_dir / LAUNCH_DIR
+    script = _walk_script(
+        gn.stem, steps, where=f"{stage}'s sweep, {run.name}",
+        log=f"{LAUNCH_DIR}/{gn.name('.log')}",
+        stop_on_failure=bool(hand))
     if mode != "ask":
         open_container(base, launch_dir, plan.writes)
-        plan.writes.text(launch_dir / gn.name(".run.sh"), "\n".join(lines))
+        plan.writes.text(launch_dir / gn.name(".run.sh"), script)
     if mode == "direct":
         plan.submissions.append(Submission(
-            name, ["bash", f"{LAUNCH_DIR}/{gn.name('.run.sh')}"], stage_dir, True, members,
-            rides="rides the chain"))
+            gn.stem, ["bash", f"{LAUNCH_DIR}/{gn.name('.run.sh')}"],
+            stage_dir, True, [member], rides="rides the sweep"))
         return plan
-
-    # ---- submit / ask: one scheduler job, the group pattern in miniature #
-    # ONE ALLOCATION WALKING EVERY POINT asks what a group asks
-    # (`group.envelope`, `project-layout.md` § 1.6.6): the points run one
-    # after another, so the wall is the sum of theirs -- one point's wall
-    # would end the job partway through the scan.
-    from .group import envelope as _walk_envelope
+    # ---- submit / ask: one scheduler job walking the points ------------ #
+    # ONE ALLOCATION WALKING THE POINTS asks what a group asks: the wall the
+    # sum of the walked points' (`group.envelope`, `project-layout.md`
+    # § 1.6.6).
     envelope, placement, cmd = _sbatch_request(
-        base, envelope=_walk_envelope([job] * len(members)), domain=domain,
-        mem=mem, time_s=time_s, label=name,
-        job_name=_scheduler_job_name(jobset, name),
+        base, envelope=_walk_envelope([job] * len(walked)), domain=domain,
+        mem=mem, time_s=time_s, label=gn.stem,
+        job_name=_scheduler_job_name(jobset, gn.stem),
         script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),
         one_process=one_process(jobset.engine))
     if mode == "submit":
         from ..runwrap import _render_sbatch_for
-        header = _render_sbatch_for(base / f"{name}.sh", names=gn,
-                                    project_dir=base,
-                                    resources=envelope,
+        header = _render_sbatch_for(base / f"{gn.stem}.sh", names=gn,
+                                    project_dir=base, resources=envelope,
                                     domain_pq=((placement.partition,
                                                 placement.qos)
                                                if placement else None))
         if header is None:
-            raise SubmitError(_no_sbatch(name, f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
-                                         base=base, told=told))
+            raise SubmitError(_no_sbatch(
+                gn.stem, f"{LAUNCH_DIR}/{gn.name('.sbatch')}", base=base,
+                told=told))
         plan.writes.text(launch_dir / gn.name(".sbatch"),
                          _into_launch(header, gn))
     plan.submissions.append(Submission(
-        name, cmd, stage_dir, False, members, placement=placement,
-        sent=envelope, rides="rides the chain", ask_in=members[0].read_from,
+        gn.stem, cmd, stage_dir, False, [member], placement=placement,
+        sent=envelope, rides="rides the sweep",
+        ask_in=stage_dir / walked[0][0].name,
         ask_script=names.name(".sbatch")))
     return plan
+
+
+def _carry_sweep_gather(prev_run: Path, run: Path, points, writes,
+                        base: Path) -> None:
+    """A swept run launched again takes what the latest run gathered -- never
+    gathered again (`job-system.md` § 5.4): the run's clean copies into the
+    new run and each point, and what a point alone took (a transmission
+    point's device Hamiltonian) from that point; each with its record
+    (`.gathered-from`)."""
+    from ..runrecord import read_gathered_from, write_gathered_from
+    shared = read_gathered_from(prev_run)
+    for g in shared:
+        writes.copy(prev_run / g["file"], run / g["file"])
+    if shared:
+        write_gathered_from(run, [(g["from"], g["file"]) for g in shared],
+                            plan=writes)
+    for pdir, _v in points:
+        mine = read_gathered_from(prev_run / pdir.name)
+        for g in mine:
+            from_run = any(x["file"] == g["file"] and x["from"] == g["from"]
+                           for x in shared)
+            writes.copy((prev_run if from_run else prev_run / pdir.name)
+                        / g["file"], pdir / g["file"])
+        if mine:
+            write_gathered_from(pdir, [(g["from"], g["file"]) for g in mine],
+                                plan=writes)
 
 
 def _placed_on(placement, sent=None) -> Optional[dict]:
@@ -2247,47 +2214,22 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
                        for f in (job.script, m.names.name(".run.sh"))]
         members.append(m)
 
-    lines = [
-        "#!/usr/bin/env bash",
-        f"# {gn.name('.run.sh')} -- a group's one job: "
-        + ", ".join(names) + ", in this order,",
-        "# each its own run in its own attempt (project-layout.md 1.6.6).",
-        "# Regenerated at each launch.  One that fails does not stop the",
-        "# others: none builds on another.",
-        "set -u",
-        f'LOG="{LAUNCH_DIR}/{gn.name(".log")}"',
-        f'echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
-        f'members={len(members)} job=${{SLURM_JOB_ID:-none}} '
-        'node=$(hostname)" >> "$LOG"',
-        "fails=0",
-        "run_member() {",
-        '    _name="$1"; _dir="$2"; shift 2',
-        '    echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') -> '
-        '${_name} starts" >> "$LOG"',
-        '    ( cd "${_dir}" && bash "$@" ) >> "$LOG" 2>&1',
-        "    _rc=$?",
-        '    if [ "${_rc}" -ne 0 ]; then',
-        '        echo "[group] ${_name} FAILED rc=${_rc} -- the others '
-        'build on nothing of it; the walk continues" >> "$LOG"',
-        "        fails=$((fails+1))",
-        "    else",
-        '        echo "[group] ${_name} done" >> "$LOG"',
-        "    fi",
-        "}",
-    ]
-    for m in members:
-        args = " ".join(_run_sh_args(m.job.resources, m.run,
-                                     cold=m.cold and not m.has_attempt))
-        lines.append(f'run_member "{m.name}" '
-                     f'"{m.run_dir.relative_to(base)}" '
-                     f'"{m.names.name(".run.sh")}" {args}')
-    lines += ['echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') done '
-              'fails=${fails}" >> "$LOG"',
-              'exit $(( fails > 0 ))', ""]
+    # THE ONE WALK SCRIPT: the members in order, each its own run in its own
+    # run folder; one that fails does not stop the others -- none builds on
+    # another.
+    script = _walk_script(
+        gn.stem,
+        [(m.name, str(m.run_dir.relative_to(base)),
+          m.names.name(".run.sh"),
+          " ".join(_run_sh_args(m.job.resources, m.run,
+                                cold=m.cold and not m.has_attempt)), ())
+         for m in members],
+        where="a group's one job: " + ", ".join(names),
+        log=f"{LAUNCH_DIR}/{gn.name('.log')}")
     launch_dir = base / LAUNCH_DIR
     if mode != "ask":
         open_container(base, launch_dir, plan.writes)
-        plan.writes.text(launch_dir / gn.name(".run.sh"), "\n".join(lines))
+        plan.writes.text(launch_dir / gn.name(".run.sh"), script)
     if mode == "direct":
         plan.submissions.append(Submission(
             gn.stem, ["bash", f"{LAUNCH_DIR}/{gn.name('.run.sh')}"], base,

@@ -1314,22 +1314,31 @@ voltages a rung runs at: `transport.stages.sweep_points(task, stage)`.
 
 ```
 04_device/
+├── v0/ v0.2/ v0.4/         each point's prepared deck and run script — what
+│                           every run of the stage copies, as a single stage's
+│                           folder holds its one deck
 └── run-0/                  one run: the whole sweep
-    ├── .gathered-from      what the run took from the rungs upstream, once:
-    ├── <label>_L-electrode.TSHS, <label>_R-electrode.TSHS
-    ├── <label>.DM          the seed's density, kept clean for every start from it
+    ├── .gathered-from      what the run took from the rungs upstream, once
+    ├── <label>_L-electrode.TSHS, <label>_R-electrode.TSHS, <label>.DM
+    │                       the gathered inputs, kept clean: every point's
+    │                       copy, and every start from the seed, comes from here
     ├── run.json            the run's one launch record
-    ├── v0/                 a point: its deck (its voltage), its run script,
-    │                       its outputs (.TS.HSX, .TSDE, the .out, its ending)
+    ├── v0/                 a point: its deck, its run script, its own copies
+    │                       of the inputs, its outputs (.TS.HSX, .TSDE, the
+    │                       .out, its ending)
     ├── v0.2/
     └── v0.4/
 05_transmission/
-└── run-0/                  one run: a point per voltage, its device point's
-    ├── .gathered-from      .TS.HSX copied into it at prep, the leads' .TSHS once
-    ├── v0/ v0.2/ v0.4/
+├── v0/ v0.2/ v0.4/         the prepared decks
+└── run-0/                  one run: the leads' .TSHS kept once; each point
+    ├── .gathered-from      holds its device point's .TS.HSX and its own copies
+    └── v0/ v0.2/ v0.4/
 ```
 
-The stage folder holds no deck of its own: every deck is a point's.
+A point folder holds everything its engine reads, as every run folder does
+(`project-layout.md` § 1.0) — its own copies of the run's inputs; the run keeps
+them once, clean, as their source. The stage folder holds no deck at the stage
+level: every deck is a point's.
 
 **A point is done or not done** — read from the point's own files by one door
 (`continuation.done`), never from a second record: **done** when its run
@@ -1359,13 +1368,16 @@ which did not.
 **done** there is taken over — its outputs copied into the new run's point
 folder, its `.continued-from` naming the run it came from — and the walk runs
 the points not done. **Cold** (`--cold`), nothing is taken over and every point
-runs. Launch shows which points it takes over and which it runs, and asks once;
-a warm launch with every point done runs none, and says so. Every run is kept,
-and an I–V is always one run whole.
+runs. Launch shows which points it takes over and which it runs, and asks once.
+A warm launch with every point done is **refused**, naming the `--cold` line —
+no run is opened with nothing to run in it. Every run is kept, and an I–V is
+always one run whole.
 
 **The transmission takes one device run whole**: its prep gathers each point's
-`.TS.HSX` from the newest device run whose points are all done — never 0 V
-from one run and 0.4 V from another.
+`.TS.HSX` from the device's **newest** run, every point of it done — the rule
+every hand-over follows (`job-system.md` § 5.4: the newest run, which must have
+finished) — or is refused, with the device's launch-again line; never 0 V from
+one run and 0.4 V from another.
 
 **What it costs to be wrong about a point.** A point that does not converge
 within its iteration limit does not converge on the next walk either: the same
@@ -1377,10 +1389,11 @@ you*).
 A **single-bias** calculation, and a **low-bias** one, have no `v*` level at
 all — the degenerate case of the axis rule, not a special case of the layout.
 
-**One door says where a rung's runs are** — `materialize.run_dirs(base, task,
-stage)`: the rung's `run-<n>/`, and inside a swept run its point folders. Every
-reader asks it: prep, the gather, the walk, `status`, Task setup's count, the
-record and the Results ladder. **A swept rung has one row in `status`**: the
+**One door for each place.** A rung's runs are `paths.attempts_in`'s, as every
+stage's; a swept run's point folders are `transport.stages.points_in(run, task,
+stage)`'s; the prepared point decks `transport.stages.point_folders(base, task,
+stage)`'s. Every reader asks them: prep, the gather, the walk, `status`, Task
+setup's count, the record and the Results ladder. **A swept rung has one row in `status`**: the
 run's state, and how many of its points are done (*3 of 5 points done*);
 `status <stage>` lists the points — done or not, and what each started from.
 
@@ -1426,9 +1439,9 @@ previous one, and comparing two settings was reading two directories.)*
 
 Before a stage runs, what it consumes is copied into its run's directory: the
 leads' Hamiltonians, the seed's density, the device's converged Hamiltonian —
-once, in the run's own folder; a sweep's points read the shared ones from there,
-and each transmission point holds its own device point's Hamiltonian (the bias
-sweep above). Three conditions gate every copy — the upstream stage must have
+into the run's own folder, kept clean there; each point of a sweep holds its own
+copies of them, and each transmission point its own device point's Hamiltonian
+(the bias sweep above). Three conditions gate every copy — the upstream stage must have
 been prepared, its **newest** attempt must have **finished** and run the deck this
 composition renders, and that attempt must actually hold the file — and each
 refusal names what to do first. A record of what was taken from where lands
@@ -1855,7 +1868,7 @@ molbuilder jobset summarize task        # -> <label>.transport.json + the I-V ta
 |---|---|---|
 | `jobset init --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
 | `jobset prep task [--stage <stage> ...]` | show the ladder, offer the ready stages (`jobset/ready.py`); compose (sort · gates · extract) on first contact, then render each picked rung's deck + gather its inputs; several picked are one group | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `_transport_rung_of` |
-| `jobset launch task [--stage <stage> ...]` | send what is prepared and not launched — a group as one job; a bias scan's device/transmission go as one walker job | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_chain` |
+| `jobset launch task [--stage <stage> ...]` | send what is prepared and not launched — a group as one job; a bias sweep's device or transmission goes as one job walking its points | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_sweep` |
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json`, print the I–V table | `transport/record.py` |
 | ~~`transport electrode`~~ · ~~`transport preflight`~~ | **DELETED 2026-09-17** with the `transport` verb group — the hand-assembly pair. A lead is derived from the citation at prep, and § 5's invariants are held by construction or by the validation pass |
 
@@ -3047,7 +3060,7 @@ flowchart LR
 ```
 
 > **A bias scan is one submission, and the two walks over its points fail
-> in opposite directions** (`jobset/submit.py::_plan_chain`; the walk of a
+> in opposite directions** (`jobset/submit.py::_plan_sweep`; the walk of a
 > sweep that is one run, § 2a.11).
 > Both are launcher layers — each `cd`s into the point's own folder and runs
 > that point's own `.run.sh`. What differs is whether the points
