@@ -141,7 +141,7 @@ class Resources:
     #: (``siesta`` for a ``.fdf``).  Also not a SLURM flag -- the same
     #: job-to-wrapper road as ``continue_retries``.  Set by the transport
     #: composite's transmission stage (``tbtrans`` post-processes the
-    #: device run, archive/2026-09-01-transport-design.md § 4.2): the deck cannot say it,
+    #: device run, `engines/transport.md` § 2a.11): the deck cannot say it,
     #: because the transmission deck IS the device deck -- the same text,
     #: read by a different program.
     program:          Optional[str] = None

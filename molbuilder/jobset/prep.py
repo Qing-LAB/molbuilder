@@ -1403,7 +1403,7 @@ def _move_progress_channel_into(attempt: Path, plan) -> None:
 def _transport_provide_pseudos(struct, cfg, base: Path,
                                citation: str, *, plan=None) -> None:
     """The pseudopotentials arrive FROM THE CITATION
-    (archive/2026-09-01-transport-design.md § 4.1: structure, pseudos and electronic
+    (engines/transport.md § 3.1: structure, pseudos and electronic
     template all come with the cited junction — one template governs).
 
     Idempotent, and the folder wins, exactly like the SIESTA arm: what
@@ -1442,7 +1442,7 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
                 f"{', '.join(f'{m}.psml' for m in missing)} and there is "
                 f"none in {base.name}/pseudos/ or in the cited "
                 f"directory ({citation}).  The pseudopotentials travel "
-                f"with the citation (archive/2026-09-01-transport-design.md 4.1) -- the "
+                f"with the citation (engines/transport.md § 3.1) -- the "
                 f"junction ran with them, so its calculation folder "
                 f"should hold them; prep the junction there, or put the "
                 f"files in {base.name}/pseudos/ yourself.")
@@ -1493,7 +1493,7 @@ def _resolve_transport(task, stage: str, allocation, *, template_text,
         raise PrepError(str(exc)) from exc
     # ONE ELEMENT.  A transport rung is a production run; its one axis is the
     # bias, and that is the device's own directory level rather than a sweep
-    # (`archive/2026-09-01-transport-design.md` § 4.3).  `resolve` still returns a list, because
+    # (engines/transport.md § 2a.11).  `resolve` still returns a list, because
     # the length is the whole of the difference between a run and a sweep and
     # no reader below floor 7 may branch on which.
     element = ps.elements[0]
@@ -1636,7 +1636,7 @@ def _composed_for_prep(base, task, plan):
                 f"citation {citation!r} cannot be resolved to compose "
                 f"afresh.  Prep once inside the tree that holds the "
                 f"cited junction -- the record then travels with the "
-                f"folder (archive/2026-09-01-transport-design.md 4.1).")
+                f"folder (engines/transport.md § 3.1).")
         # RENDER FROM THE RECORD, on this prep as on every later one.  The
         # fresh composition is the cited `.XV` at full float precision; the
         # record is the codec's text of it, and every later prep -- the
@@ -1730,7 +1730,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         token = stage_home(base, task, upstream).token
         # A bias scan keeps a per-point rung's products PER POINT -- the
         # transmission at v reads the device at v, never another point's
-        # converged state (archive/2026-09-01-transport-design.md 4.3); a lead is every
+        # converged state (engines/transport.md § 2a.11); a lead is every
         # point's.  The one door says which folder (`rung_container`).
         up_dir = rung_container(base, task, upstream, bias)
         current_deck = up_dir / _rf(task.label, ".fdf", token)

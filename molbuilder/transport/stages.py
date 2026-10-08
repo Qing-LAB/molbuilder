@@ -1,5 +1,5 @@
-"""The transport composite's five stages — `archive/2026-09-01-transport-design.md`
-§ 4.2, build step P4b.
+"""The transport composite's five stages — `engines/transport.md`
+§ 1 and § 2a.11.
 
 This module owns TWO facts and the renders that follow from them:
 

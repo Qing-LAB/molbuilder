@@ -1893,7 +1893,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                 time_s: Optional[int] = None, cold: bool = False
                 ) -> LaunchPlan:
     """ONE submission that walks a transport bias scan's points in
-    order (`archive/2026-09-01-transport-design.md` § 4.3; layout ruled 2026-08-29: plain
+    order (engines/transport.md § 2a.11; layout ruled 2026-08-29: plain
     v-dirs, one attempt ladder per point).
 
     The walker is the launcher layer only, exactly like the bench
@@ -2029,7 +2029,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         "# sequence, each opened fresh warm-started from what the previous",
         "# point left that a continuing device takes -- its declaration:",
         f"#   {handed or '(nothing)'}",
-        "# (archive/2026-09-01-transport-design.md 4.3).  Regenerated at each launch.",
+        "# (engines/transport.md § 2a.11).  Regenerated at each launch.",
         "# STOPS on a failed point: later points chain their density",
         "# from this one, so walking on would converge from a state the",
         "# failure poisoned (a benchmark's points are independent; a",
@@ -2105,8 +2105,13 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         return plan
 
     # ---- submit / ask: one scheduler job, the group pattern in miniature #
+    # ONE ALLOCATION WALKING EVERY POINT asks what a group asks
+    # (`group.envelope`, `project-layout.md` § 1.6.6): the points run one
+    # after another, so the wall is the sum of theirs -- one point's wall
+    # would end the job partway through the scan.
+    from .group import envelope as _walk_envelope
     envelope, placement, cmd = _sbatch_request(
-        base, envelope=job.resources, domain=domain,
+        base, envelope=_walk_envelope([job] * len(members)), domain=domain,
         mem=mem, time_s=time_s, label=name,
         job_name=_scheduler_job_name(jobset, name),
         script=f"{LAUNCH_DIR}/{gn.name('.sbatch')}", run_args=(),

@@ -1305,7 +1305,8 @@ and reused.
 **What runs today is not this yet.** Each bias point is a folder of its own
 attempts, `<NN>_<stage>/v<V>/run-<n>/` (`transport.stages.rung_containers`),
 all opened by the rung's prep. `launch task` sends one job that walks the
-points in the bias order (`submit._plan_chain`): the device's warm — each point
+points in the bias order (`submit._plan_chain`), asking the sum of the points'
+walls, as a group does (`project-layout.md` § 1.6.6): the device's warm — each point
 after the first, opened fresh, takes the restart files the point before it
 left (the device job's declaration, the `.TSDE` among it) — stopping at a
 point that fails; the transmission's independent, walking on and saying which

@@ -1,4 +1,4 @@
-"""The transport composite's RECORD — `archive/2026-09-01-transport-design.md` § 7,
+"""The transport composite's RECORD — `engines/transport.md` § 2a.12,
 build step P6.
 
 TBtrans's own outputs are the truth this module reads: the k-averaged
@@ -454,7 +454,14 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                                     f"transmission ({st.detail})")
                 failed.append(entry)
             continue
-        energies, trans = parse_avtrans(avtrans[0].read_text())
+        # A TRANSMISSION THAT DOES NOT READ is that point's failure, said in
+        # its words -- the other points still read.
+        try:
+            energies, trans = parse_avtrans(avtrans[0].read_text())
+        except (OSError, ValueError, RecordError) as exc:
+            failed.append({"bias_v": v, "attempt": rel, "state": "unreadable",
+                           "why": f"{avtrans[0].name}: {exc}"})
+            continue
         spin = deck_spin(where)
         # THE DOS, ITS PARTS AND THE EIGENCHANNELS, from the point's own
         # `.TBT.nc` (`tbtnc.point_dos`; `web/results.md` § 2.5).
@@ -606,8 +613,10 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
     orb = (dev / f"{task.label}.ORB_INDX") if dev is not None else None
     try:
         return _pdos(nc, orb, atoms, orbitals)
-    except TbtError as exc:
-        raise RecordError(str(exc)) from exc
+    except (TbtError, OSError, ValueError) as exc:
+        # A FILE THAT DOES NOT READ is a refusal in its words, as the record
+        # says every other one.
+        raise RecordError(f"{nc.name}: {exc}") from exc
 
 
 def write_record(base_dir, record: Dict) -> Path:

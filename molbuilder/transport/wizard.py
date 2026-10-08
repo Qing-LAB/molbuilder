@@ -319,7 +319,7 @@ def _refuse_unless_frozen_bulk(
         raise ValueError(
             f"{len(moved)} atom(s) in {label!r} MOVED during the cited "
             f"relaxation: {shown}{more}.  Frozen means unmoved "
-            f"(archive/2026-09-01-transport-design.md § 3, ruling Q3): the "
+            f"(engines/transport.md § 4): the "
             f"electrode blocks "
             f"are the seam the self-energies attach to.  Re-relax the "
             f"junction with the electrode atoms constrained, or fix the "

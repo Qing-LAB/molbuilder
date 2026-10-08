@@ -97,7 +97,7 @@ class TestCodec:
     def test_bias_must_start_from_equilibrium(self):
         with pytest.raises(ValueError) as e:
             _task(bias=(0.2, 0.4))
-        assert "0.0" in str(e.value) and "TSDE" in str(e.value)
+        assert "must start at 0.0" in str(e.value)
 
     def test_slots_and_bias_belong_to_transport_alone(self):
         from molbuilder.task import StructureRef

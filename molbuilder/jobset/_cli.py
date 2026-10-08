@@ -317,7 +317,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     """`init --calculation transport` -- floor 2 is task.json ALONE.
 
     The structure, the pseudos and the electronic template all arrive at
-    prep from the junction citation (archive/2026-09-01-transport-design.md 4.1, Q5:
+    prep from the junction citation (engines/transport.md § 3.1, Q5:
     one template governs everything, physically enforced by deriving) --
     so every option that would supply them here is refused naming that
     rule rather than silently ignored.
@@ -342,7 +342,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
         if given is not None and given != ():
             raise click.ClickException(
                 f"{flag} does not apply to a transport calculation -- "
-                f"{why} (archive/2026-09-01-transport-design.md 4.1).")
+                f"{why} (engines/transport.md § 3.1).")
     if engine != "siesta":
         raise click.ClickException(
             f"transport is SIESTA-first (TranSIESTA); engine {engine!r} "
@@ -358,7 +358,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                 f"--slot {entry!r}: spell it NAME=DIRECTORY, e.g. "
                 f"--slot junction=<project>/<topic>/<calc>/<stage>/run-N "
                 f"-- any directory whose files satisfy the citation "
-                f"condition (archive/2026-09-01-transport-design.md 4.1b).")
+                f"condition (engines/transport.md § 3.1).")
         slots[name_] = cite
     if set(slots) != {"junction"}:
         raise click.ClickException(
@@ -366,7 +366,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
             "-- the directory holding the relaxed junction it composes "
             "from: a finished relaxation's .fdf+.XV together, or a "
             "labeled .xyz+.molstruct.json pair "
-            "(archive/2026-09-01-transport-design.md 4.1b).")
+            "(engines/transport.md § 3.1).")
 
     # The cited directory goes through the SAME tree fence every
     # calculation path uses (2.5b) and is classified against the 4.1b
@@ -509,9 +509,9 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
 @click.option("--slot", "slots_opt", multiple=True, metavar="NAME=CITATION",
               help="a composite input (transport only): "
                    "--slot junction=<dir> (a directory whose files "
-                   "satisfy archive/2026-09-01-transport-design.md 4.1b).  The "
+                   "satisfy engines/transport.md § 3.1).  The "
                    "attempt is named explicitly, never picked "
-                   "(archive/2026-09-01-transport-design.md, ruling Q1).")
+                   "(engines/transport.md § 3.1).")
 @click.option("--bias", "bias_opt", default=None, metavar="V0,V1,...",
               help="transport only: the bias points in volts, starting at "
                    "0.0 (engines/transport.md 2a.10).  Several state their "
@@ -575,7 +575,7 @@ def init_cmd(structure, bundle: str, shape: str,
         raise click.ClickException(
             "--slot / --bias / --bias-treatment belong to --calculation "
             "transport alone "
-            "(archive/2026-09-01-transport-design.md 4.1).")
+            "(engines/transport.md § 3.1).")
     if structure is None:
         raise click.ClickException(
             "--structure is required -- it is what this calculation "
@@ -1466,8 +1466,8 @@ def summarize_cmd(kind: str, words, bundle: str,
             "stage.")
     stage, _trial, _ = _stage_words(kind, words, (), "summarize")
     if kind != "bench":
-        # THE TRANSPORT COMPOSITE'S DELIVERABLE (archive/2026-09-01-transport-design.md
-        # § 7 P6): `summarize task` on a transport calculation reads the
+        # THE TRANSPORT COMPOSITE'S DELIVERABLE (`engines/transport.md`
+        # § 2a.12): `summarize task` on a transport calculation reads the
         # transmission attempts back into <label>.transport.json and
         # prints the I-V table.  Asynchronous like the bench reader: a
         # point that has not run yet reads as pending, never a failure.

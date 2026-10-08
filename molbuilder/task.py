@@ -455,19 +455,19 @@ class Task:
                     "task: a transport calculation carries exactly one "
                     f"slot, 'junction' (got {sorted(self.slots) or 'none'})"
                     " -- the relaxed junction it composes from "
-                    "(archive/2026-09-01-transport-design.md 4.1)")
+                    "(engines/transport.md § 3.1)")
             if self.structure is not None:
                 raise ValueError(
                     "task: a transport calculation carries no 'structure' "
                     "block -- its structure IS the junction citation, "
-                    "copied in at prep (archive/2026-09-01-transport-design.md 4.1)")
+                    "copied in at prep (engines/transport.md § 3.1)")
             if self.shape != "hierarchical":
                 raise ValueError(
                     f"task: a transport calculation is hierarchical "
                     f"(got {self.shape!r}) -- its five stages exchange "
                     f"files through their own attempts, which the flat "
                     f"shape has no directories to hold "
-                    f"(archive/2026-09-01-transport-design.md 4.2)")
+                    f"(engines/transport.md § 2a.11)")
         else:
             if self.slots:
                 raise ValueError(
@@ -490,7 +490,7 @@ class Task:
                     f"directory citable is its FILES -- a finished "
                     f"relaxation's .fdf+.XV together, or a labeled "
                     f".xyz+.molstruct.json pair "
-                    f"(archive/2026-09-01-transport-design.md 4.1b)")
+                    f"(engines/transport.md § 3.1)")
         if self.bias:
             if any(not isinstance(v, (int, float)) or isinstance(v, bool)
                    for v in self.bias):
@@ -499,9 +499,10 @@ class Task:
             if float(self.bias[0]) != 0.0:
                 raise ValueError(
                     f"task: the bias list must start at 0.0 (got "
-                    f"{self.bias[0]!r}) -- each point warm-starts from the "
-                    "previous one's .TSDE, and the chain starts from "
-                    "equilibrium (archive/2026-09-01-transport-design.md 4.3)")
+                    f"{self.bias[0]!r}) -- a scan starts from equilibrium: "
+                    "low-bias converges its device there, and re-converged "
+                    "warm-starts each point from the one before "
+                    "(engines/transport.md § 2a.10, § 2a.11)")
             # TWO POINTS IN ONE FOLDER -- a repeated voltage, or two whose
             # folder names are one (`bias_token`: 0.1 and 0.1000001 are both
             # `v0.1/`) -- refused here, the one door every road reads a
@@ -624,7 +625,7 @@ class Task:
         § 3 rule 3 rules out, one layer up."""
         # transport: the coordinates ARE the cited attempt, so the
         # citation is the identity's second half (run-identity.md § 2's
-        # rule, extended by archive/2026-09-01-transport-design.md 4.1 -- an id that
+        # rule, extended by engines/transport.md § 3.1 -- an id that
         # named no input would collide across every junction).
         identity = (self.slots.get("junction", "")
                     if self.calculation == "transport"
@@ -758,7 +759,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         if "structure" in obj:
             _refuse("a transport calculation carries no 'structure' "
                     "block -- its structure IS the junction citation, "
-                    "copied in at prep (archive/2026-09-01-transport-design.md 4.1)",
+                    "copied in at prep (engines/transport.md § 3.1)",
                     where="structure")
         structure = None
     else:
