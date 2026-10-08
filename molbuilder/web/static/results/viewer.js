@@ -169,7 +169,7 @@
             + " rung" + (stages.length === 1 ? "" : "s")
             + (ladder.complete ? ", every rung finished"
                : (ladder.first_incomplete
-                  ? ", next to run: " + ladder.first_incomplete.replace("_", " ")
+                  ? ", next to run: " + ladder.first_incomplete
                   : ""));
         host.appendChild(title);
         const table = document.createElement("table");
@@ -184,7 +184,7 @@
                 return c;
             };
             tr.appendChild(td(String(s.seq != null ? s.seq : i + 1)));
-            tr.appendChild(td(String(s.name).replace("_", " ")));
+            tr.appendChild(td(String(s.name)));
             tr.appendChild(td(chip(s.state)));
             tr.appendChild(td(s.detail || ""));
             table.appendChild(tr);

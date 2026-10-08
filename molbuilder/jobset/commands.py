@@ -133,20 +133,25 @@ def launch_with(kind: str, *words, base, mode: str, typed=()) -> str:
 
 
 def launch_lines(kind: str, *words, base,
-                 target: Optional[str] = None) -> List[str]:
+                 target: Optional[str] = None, flags=()) -> List[str]:
     """The launch of ``words`` as a person types it: the bare line where the
     calculation is launched on this machine and this machine's config names
     a mode -- `launch` takes it -- else one line per mode the calculation's
     machine takes (:func:`takes_a_queue`), each a command (never
     ``--mode submit|direct``, which bash reads as a pipe).  A calculation
     set to another machine is launched there, whose config this one does
-    not read: its lines state their mode."""
+    not read: its lines state their mode.  ``flags`` are switches every
+    line carries (``--cold``)."""
     if configured_mode() and launches_here(base, target):
-        return [command("launch", *words_for(kind, *words), base=base)]
-    here = launch_with(kind, *words, base=base, mode="direct") + "   # here"
+        return [command("launch", *words_for(kind, *words), base=base,
+                        flags=flags)]
+    typed = [(f, True) for f in flags]
+    here = (launch_with(kind, *words, base=base, mode="direct", typed=typed)
+            + "   # here")
     if not takes_a_queue(base, target):
         return [here]
-    return [here, launch_with(kind, *words, base=base, mode="submit")
+    return [here, launch_with(kind, *words, base=base, mode="submit",
+                              typed=typed)
             + "   # to the queue"]
 
 

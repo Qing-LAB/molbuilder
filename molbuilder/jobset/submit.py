@@ -66,7 +66,8 @@ from .planned import Plan, found
 from ..paths import attempt_dir
 from ..runfiles import FIRST_ATTEMPT, LAUNCH_DIR, GroupNames, RunNames
 from .materialize import open_container
-from .commands import command as _cmd, rollback, words_for
+from .commands import (block, command as _cmd, launch_lines, rollback,
+                       words_for)
 
 
 class SubmitError(Exception):
@@ -612,6 +613,21 @@ def _launched(where, names: RunNames) -> bool:
         raise SubmitError(str(e)) from e
 
 
+def _refuse_cold_first(job, cold: bool, base: Path) -> None:
+    """``--cold`` on a run not launched yet: what it takes was decided at its
+    prep, so the flag would change nothing -- refused, never dropped,
+    naming the cold first run (`job-system.md` § 5.4)."""
+    if cold:
+        raise SubmitError(
+            f"{job.name}: --cold launches a stage again with nothing of its "
+            f"own, and its prepared run has not been launched -- what that "
+            f"run starts from was decided at its prep.  Launch it as "
+            f"prepared, or prepare it cold instead: "
+            + rollback("its prep", base=base) + "\n    then "
+            + _cmd("prep", *words_for("task", job.name), base=base,
+                   flags=("--cold",)))
+
+
 def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
                  writes: Plan, named: bool = False, cold: bool = False):
     """Where ``job`` runs and what it follows -- read, never written: a
@@ -700,6 +716,7 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
         # number (`project-layout.md` § 1.6.1).
         run = next_run(container, names)
         if not _launched(container, names):
+            _refuse_cold_first(job, cold, base)
             return _member(job, container, container, False, container,
                            run=run)
         # A FLAT STAGE LAUNCHED AGAIN runs where its files are: warm, from
@@ -714,6 +731,7 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
                        continuation=cont)
     last = attempt_dir(container, ns[-1])
     if not _launched(last, names):
+        _refuse_cold_first(job, cold, base)
         return _member(job, container, last, True, last,
                        run=next_run(last, names))
     cont = _relaunched(base, job, cold)
@@ -732,8 +750,9 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
         raise SubmitError(
             f"{job.name}: launched again warm, it continues from {source} "
             f"-- which is impossible here:\n  {e}\n  Launch it again cold "
-            f"instead:\n    "
-            + _cmd("launch", *words_for("task", job.name), base=base, flags=("--cold",))
+            f"instead:\n"
+            + block(launch_lines("task", job.name, base=base,
+                                 flags=("--cold",)))
             ) from e
     return _member(job, container, opened.dir, True, last,
                    run=next_run(opened.dir, names), again=True,
@@ -1970,8 +1989,9 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                 f"bias point {bias_token(v)}: launched again warm, it "
                 f"continues from {att.relative_to(base)} -- which is "
                 f"impossible here:\n  {e}\n  Launch it again cold "
-                f"instead:\n    "
-                + _cmd("launch", *words_for("task", stage), base=base, flags=("--cold",))
+                f"instead:\n"
+                + block(launch_lines("task", stage, base=base,
+                                     flags=("--cold",)))
                 ) from e
         members.append(_Member(
             job, vdir, opened.dir, True, att, names=names,

@@ -1530,7 +1530,7 @@ def summarize_cmd(kind: str, words, bundle: str,
         raise click.ClickException(
             "summarize summarizes results that exist: a BENCH sweep's "
             "measurements, a transport calculation's bias points (`summarize "
-            "run`, into <label>.transport.json), and a SIESTA vibration's "
+            "task`, into <label>.transport.json), and a SIESTA vibration's "
             "force-constant stages (`summarize task`, into "
             "<label>.fc-sweep.json).  A run's own outputs are the "
             "calculation's results -- `jobset status` and the Results tab "

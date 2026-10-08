@@ -405,7 +405,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     """
     from ..jobset.materialize import latest_attempt, run_dir, stage_home
     from ..parse.dirs import run_status
-    from ..runfiles import RunNames
+    from ..runfiles import JUNCTION_FILE, RunNames
     from ..runrecord import LaunchRecordError, launch_record
     from .compose import PROVENANCE_FILE
     from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
@@ -510,6 +510,11 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     prov_file = base / PROVENANCE_FILE
     if prov_file.is_file():
         provenance = json.loads(prov_file.read_text())
+    # THE DESCRIPTION'S, as stated (`task.bias_treatment`, TD7): a list of
+    # several voltages states `low-bias` or `re-converged`; one is a single
+    # bias.  Never inferred from how many points ran.
+    treatment = (task.bias_treatment if len(task.bias) > 1
+                 else "single-bias")
     record: Dict = {
         "schema": TRANSPORT_RESULT_SCHEMA,
         "label": task.label,
@@ -528,11 +533,13 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         # Recorded here, not decided in the browser: § 2a.12 requires the
         # treatment NAMED BESIDE THE CURVE and not in metadata, because "the
         # two kinds of I-V are different claims and look identical on a plot".
-        # THE DESCRIPTION'S, as stated (`task.bias_treatment`, TD7): a list
-        # of several voltages states `low-bias` or `re-converged`; one is a
-        # single bias.  Never inferred from how many points ran.
-        "treatment": (task.bias_treatment if len(task.bias) > 1
-                      else "single-bias"),
+        "treatment": treatment,
+        "treatment_note": TREATMENT_NOTE[treatment],
+        # THE TWO LEADS' FERMI LEVELS, compared here once.
+        "leads": leads_agreement(stages),
+        # THE COMPOSED JUNCTION the device was built from, by its catalogue
+        # name (`runfiles.JUNCTION_FILE`) -- what the report draws.
+        "junction_file": JUNCTION_FILE,
         "points": points_out,
         "iv": {
             "voltages_v": [p["bias_v"] for p in points_out],
@@ -577,12 +584,17 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
     base = Path(base_dir)
 
     def _at(stage: str) -> Optional[Path]:
-        v0 = float(task.bias[0]) if getattr(task, "bias", ()) else 0.0
+        # A RUNG WITH NO BIAS AXIS has one folder, which serves every
+        # point -- a single-bias calculation's, and a low-bias device's
+        # (`stages.scan_points`), as the gather reads it.
         for d, v in rung_containers(base, task, stage):
-            if abs((v0 if v is None else v) - float(bias_v)) < 1e-9:
+            if v is None or abs(v - float(bias_v)) < 1e-9:
                 return run_dir(d)
         return None
 
+    if not any(abs(float(v) - float(bias_v)) < 1e-9
+               for v in (task.bias or (0.0,))):
+        raise RecordError(f"no transmission point at {bias_v:g} V")
     where = _at("transmission")
     if where is None:
         raise RecordError(f"no transmission point at {bias_v:g} V")
@@ -603,6 +615,45 @@ def write_record(base_dir, record: Dict) -> Path:
     out = record_path(base_dir, record["label"])
     write_json(out, record)
     return out
+
+
+#: HOW FAR THE TWO LEADS' FERMI LEVELS MAY DIFFER, in eV, before the record
+#: says they disagree: both are bulk runs of the same lead, and T(E) is
+#: measured relative to E_F (`engines/transport.md` § 2a.12).
+LEAD_EF_TOLERANCE_EV = 0.05
+
+
+def leads_agreement(stages: List[Dict]) -> Optional[Dict]:
+    """``{fermi_ev: {lead: E_F}, differ_ev, agree, tolerance_ev}`` once both
+    leads have said their Fermi level, else ``None``."""
+    efs = {st["stage"]: st["fermi_ev"] for st in stages
+           if st.get("stage") in ("electrode_L", "electrode_R")
+           and st.get("fermi_ev") is not None}
+    if len(efs) != 2:
+        return None
+    differ = abs(efs["electrode_L"] - efs["electrode_R"])
+    return {"fermi_ev": efs, "differ_ev": differ,
+            "agree": differ <= LEAD_EF_TOLERANCE_EV,
+            "tolerance_ev": LEAD_EF_TOLERANCE_EV}
+
+
+#: WHAT EACH TREATMENT'S I-V IS ENTITLED TO BE CALLED, beside the curve
+#: (`engines/transport.md` § 2a.10, § 2a.12) -- the one wording, which the
+#: record carries and both the Results report and `summarize` print.
+TREATMENT_NOTE = {
+    "single-bias": ("One device SCF. An I-V derived from this curve is the "
+                    "LINEAR-RESPONSE approximation: integrating a zero-bias "
+                    "slice cannot reproduce a resonance entering the bias "
+                    "window, nor that resonance moving under the field."),
+    "low-bias": ("LOW-BIAS (linear-response) approximation: the device SCF "
+                 "converged once, at 0 V, and each point's current is "
+                 "TBtrans's integral over that point's bias window on the "
+                 "zero-bias Hamiltonian -- a resonance entering the window is "
+                 "not re-converged, nor moved by the field."),
+    "re-converged": ("The device SCF was re-converged at every voltage, so "
+                     "each slice is its own solution and the I-V carries no "
+                     "approximation beyond the method."),
+}
 
 
 def iv_table_text(record: Dict) -> str:
@@ -633,4 +684,5 @@ def iv_table_text(record: Dict) -> str:
                          f"{p['state']:>12}  ({p['why']})")
     for spin, means in sorted((record.get("current_means") or {}).items()):
         lines.append(f"  {spin}: {means}")
+    lines.append(f"  {record['treatment']}: {record['treatment_note']}")
     return "\n".join(lines)

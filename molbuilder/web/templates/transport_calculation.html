@@ -144,13 +144,13 @@
     <h2>4. The physics, rung by rung</h2>
     {#- THE BIAS LEADS, because it is the experiment and it GOVERNS the
         fields under it: at zero bias the whole non-equilibrium half of
-        the density contour is inert, and more than one value turns the
-        run into a chain of attempt ladders (`engines/transport.md`
-        3.4). -#}
+        the density contour is inert, and more than one value asks how
+        each is computed -- low-bias or re-converged (`engines/transport.md`
+        § 2a.10). -#}
     <div class="action-row" id="transport-bias-row">
       <label for="transport-bias"><strong>Bias list (V):</strong></label>
       <input class="transport-bias-list" id="transport-bias" type="text" value="0.0"
-             title="Comma-separated volts, 0.0 first — the chain starts from equilibrium.  More than one value is a scan." />
+             title="Comma-separated volts, 0.0 first — the scan starts from equilibrium.  More than one value is a scan." />
     </div>
     {#- THE START / STOP / STEP BUILDER fills the list, which stays
         editable; 0 V is always first (user, 2026-09-30: "as long as the
@@ -187,8 +187,11 @@
       decides whether the rest matters.</strong>  At <code>0.0</code> the
       junction is at equilibrium and every field marked
       <em>non-equilibrium</em> below does nothing.  Several values are a
-      <strong>scan</strong>: one run per voltage, launched as a single
-      chain job, each starting from the one before it.
+      <strong>scan</strong>, and how each point is computed is the choice
+      above: <em>low-bias</em> converges the device once, at 0 V, and
+      runs the transmission at every voltage; <em>re-converged</em> runs
+      the device at every voltage too, one job walking them, each starting
+      from the one before it.
     </p>
     <p class="hint">
       <strong>One tab per rung, in the order they run.</strong>  Pick a
@@ -255,18 +258,20 @@
     <details class="hint">
       <summary>What happens after this — the five stages, in order</summary>
       <ol>
-        <li><strong>Prepare and launch each stage</strong> from
-            <a href="/task-setup">Task setup</a> on that folder, or from
-            the CLI.  Each stage gathers what it needs from the stages
-            that finished before it, so the order is not optional:
-            <code>seed</code> → <code>electrode_L</code> →
-            <code>electrode_R</code> → <code>device</code> →
-            <code>transmission</code>.</li>
+        <li><strong>Prepare and launch the task</strong> from
+            <a href="/task-setup">Task setup</a> on that folder, or with
+            <code>jobset prep task</code> / <code>launch task</code>.  Each
+            prep offers the stages that are ready: first the
+            <code>seed</code> and both leads, as one job; then the
+            <code>device</code>, once they have finished; then the
+            <code>transmission</code>.  Each gathers what it needs from the
+            newest finished runs before it.</li>
         <li><strong>Why five and not one:</strong> tbtrans needs each
             lead's converged bulk Hamiltonian before it can build that
             lead's self-energy, and the device needs both.  A bias scan
-            is still one job — it walks the voltages, each warm-started
-            from the previous point's density.</li>
+            is one job per stage that runs at each voltage — it walks the
+            voltages; re-converged, each device point warm-started from
+            the previous point's density.</li>
         <li><strong>Read it back</strong> with <code>summarize task</code>,
             which writes <code>&lt;label&gt;.transport.json</code>:
             T(E) per bias, the conductance at E_F, and the I–V table

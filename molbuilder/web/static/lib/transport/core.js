@@ -30,9 +30,19 @@ const WORKSPACE_TAG = "transport";
     // WHAT EACH RUNG'S TAB HOLDS, per rung (`_saveRung`).
     var FORM_KEY   = "molbuilder.transport_held";
 
-    function _setStatus(msg) {
-        var el = document.getElementById("transport-status");
-        if (el) el.textContent = msg || "";
+    /* THE ONE STATUS WRITER (`lib/status.js`): its severities are the ones
+     * `page-shell.css` declares, so a failure reads as one on every tab. */
+    function _setStatus(msg, kind) {
+        root.molbuilder.status.set("transport-status", msg || "", kind || null);
+    }
+
+    /* A panel that could not be drawn says why, in its place -- a status
+     * line of its own, through the same writer. */
+    function _renderErrorParagraph(host, msg) {
+        while (host.firstChild) host.removeChild(host.firstChild);
+        var p = root.document.createElement("p");
+        host.appendChild(p);
+        root.molbuilder.status.set(p, msg, "error");
     }
 
     function _$(id) { return document.getElementById(id); }
@@ -146,16 +156,15 @@ const WORKSPACE_TAG = "transport";
                 var panels = [];
                 rungs.forEach(function (r) {
                     var pid = "transport-rung-panel-" + r.name;
-                    var word = r.name.replace("_", " ");
                     strip.appendChild(_el("button", {
                         type: "button", "class": "tab-btn", role: "tab",
                         "data-tab": r.name, "aria-controls": pid,
-                        "aria-selected": "false" }, r.index + " \u00b7 " + word));
+                        "aria-selected": "false" }, r.index + " \u00b7 " + r.name));
                     var host = _el("div", { "class": "param-grid" });
                     var panel = _el("div", { "class": "tab-panel", id: pid,
                                              role: "tabpanel", hidden: "" },
                         _el("p", { "class": "hint transport-rung-note" },
-                            _el("strong", null, r.index + ". " + word + " \u2014 "),
+                            _el("strong", null, r.index + ". " + r.name + " \u2014 "),
                             r.note),
                         host);
                     panels.push({ rung: r.name, panel: panel, host: host });
@@ -199,7 +208,12 @@ const WORKSPACE_TAG = "transport";
             });
     }
 
-    function _formKey(rung) { return rung ? FORM_KEY + ":" + rung : FORM_KEY; }
+    /* WHAT A RUNG'S TAB HOLDS BELONGS TO THE JUNCTION IT WAS TYPED FOR:
+     * keyed by the citation and the rung, so citing another junction --
+     * another calculation -- never sends the last one's values. */
+    function _formKey(rung) {
+        return FORM_KEY + ":" + (_junction || "") + ":" + (rung || "");
+    }
 
     function _restoreFormValues(container, schema, formSchema, rung) {
         var raw;
@@ -500,7 +514,7 @@ const WORKSPACE_TAG = "transport";
         function _failed(why) {
             btn.disabled = false;
             btn.textContent = SWAP_LABEL;
-            _setStatus(why);
+            _setStatus(why, "error");
         }
         root.fetch("/api/transport/swap_electrodes", {
             method: "POST",
@@ -540,7 +554,7 @@ const WORKSPACE_TAG = "transport";
             // that one.
             _offerFix(null);
             _setStatus((described && described.summary)
-                || "That directory is not citable.");
+                || "That directory is not citable.", "warn");
             return;
         }
         _junction = described.citation;
@@ -566,8 +580,7 @@ const WORKSPACE_TAG = "transport";
          * CONCLUDED / not / no-record; add the road note only when
          * prep would refuse today. */
         var late = (described.form === "relaxation"
-                    && described.concluded === false
-                    && /NOT CONCLUDED/.test(described.summary || ""))
+                    && described.concluded === false)
             ? "  You can describe now, but prep will refuse this "
               + "citation until the relaxation finishes."
             : "";
@@ -622,14 +635,14 @@ const WORKSPACE_TAG = "transport";
                 });
             }).catch(function (e) {
                 _setStatus("Picker failed: "
-                    + (e && e.message ? e.message : String(e)));
+                    + (e && e.message ? e.message : String(e)), "error");
             });
         });
     }
 
-    function _setSendStatus(msg) {
-        var el = _$("transport-send-status");
-        if (el) el.textContent = msg || "";
+    function _setSendStatus(msg, kind) {
+        root.molbuilder.status.set("transport-send-status", msg || "",
+                                   kind || null);
     }
 
     /* {rung: {item: value}} -- what each rung's tab HOLDS, its own bag
@@ -660,13 +673,13 @@ const WORKSPACE_TAG = "transport";
         btn.addEventListener("click", function () {
             var mb = root.molbuilder || {};
             if (!mb.taskHandover) {
-                _setSendStatus("lib/task-handover.js is not loaded.");
+                _setSendStatus("lib/task-handover.js is not loaded.", "error");
                 return;
             }
             var bias = _biasList();
             if (bias.some(isNaN)) {
                 _setSendStatus("Bias must be comma-separated volts, "
-                    + "e.g. 0.0,0.2");
+                    + "e.g. 0.0,0.2", "error");
                 return;
             }
             // THE TREATMENT, for several voltages -- the person's choice,
@@ -681,19 +694,13 @@ const WORKSPACE_TAG = "transport";
                 bags = _bagsByRung();
                 shared = _sharedValues();
             } catch (e) {
-                _setSendStatus(e && e.message ? e.message : String(e));
+                _setSendStatus(e && e.message ? e.message : String(e),
+                               "error");
                 return;
             }
             mb.taskHandover.send({
                 projects: mb.projects,
-                say: function (kind, msg) {
-                    // Severity reaches the eye: the shared setter
-                    // applies .status.error/.ok/.warn (page-shell).
-                    var st = root.molbuilder && root.molbuilder.status;
-                    if (st && typeof st.set === "function") {
-                        st.set("transport-send-status", msg, kind);
-                    } else { _setSendStatus(msg); }
-                },
+                say: function (kind, msg) { _setSendStatus(msg, kind); },
                 // THE DESCRIPTION CHECK'S FINDINGS, through the one
                 // renderer, in card 5's panel -- every send redraws it, so
                 // a clean one clears what the last one said.
@@ -836,7 +843,7 @@ const WORKSPACE_TAG = "transport";
             if (![a, b, d].every(isFinite) || d === 0
                 || (b - a) / d < 0) {
                 _setSendStatus("The builder needs a start, a stop and a "
-                    + "step that walks from one to the other.");
+                    + "step that walks from one to the other.", "error");
                 return;
             }
             var out = [0];
