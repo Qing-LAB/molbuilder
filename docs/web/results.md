@@ -460,9 +460,18 @@ file is.)*
 `/api/transport/pdos`, the one SCF plot (`lib/scfplot/scfplot.js`) with the
 trajectory viewer on it, the charts' theme (`lib/plot-theme.js`), the report
 (`lib/inspectors/transport.js`, a module, and its sheet), the ladder above the
-panel. **Not yet seen on a real calculation**: no transport run with a
-`.TBT.nc` is on this machine, so the DOS, PDOS and eigenchannel readers and the
-report's drawing are unchecked against one. The frame axis waits for step 11.
+panel. **Checked on a real calculation** *(2026-10-07)*: a 16-atom carbon
+chain (`projects/claude-transport-walk/transport/chain-t`, six frozen atoms per
+lead, SZ, 100 Ry) run through `init → prep → launch` for all five rungs at 0 and
+0.2 V, then `summarize run`: T(E_F) = 2.0, the cumulene's two π channels; the
+record's DOS, PDOS, both leads' bulk DOS, L's spectral DOS and four eigenchannels
+read from the real `.TBT.nc`; the device's NEGF E_F, dQ and charges; the
+selection PDOS by orbital type, p_x = p_y = half the bridge's DOS at E_F and p_z
+and s zero, as a chain along z gives; both routes and the root's answer through
+the app. **The PDOS by region** shows only the regions whose atoms are in
+TBtrans's device region — here the bridge; a lead's atoms are its electrode, not
+the device. **Not yet seen in a browser** — the report's drawing. The frame
+axis waits for step 11.
 
 **Two selections, each with one owner** — the spectra tab's pattern (one state
 owner, every view mirrors it through a cheap door; [`spectra.md`](?doc=web/spectra.md)

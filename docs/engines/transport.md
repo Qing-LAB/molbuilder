@@ -601,7 +601,8 @@ rung's `.gathered-from`; the DFT-NEGF caveat. The PDOS of any atoms, by orbital
 type, is asked of `/api/transport/pdos`. The Results tab composes the record on
 read (`/api/transport/record`); `summarize run` writes the same composition to
 the file. **Not yet**: the E_F reference checked rather than assumed (plan
-§ 5u.1 step 9), and the `.TBT.nc` reader checked against a real run's file.
+§ 5u.1 step 9). The `.TBT.nc` reader was checked on a real run's file — the
+carbon-chain walk, 2026-10-07 (`web/results.md` § 2.5).
 
 ---
 
