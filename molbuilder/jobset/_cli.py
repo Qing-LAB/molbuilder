@@ -364,8 +364,8 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
         raise click.ClickException(
             "a transport calculation takes exactly one slot, `junction` "
             "-- the directory holding the relaxed junction it composes "
-            "from: a finished relaxation's .fdf+.XV together, or a "
-            "labeled .xyz+.molstruct.json pair "
+            "from: a finished relaxation run of molbuilder's own, its "
+            ".fdf+.XV together with its run record "
             "(engines/transport.md § 3.1).")
 
     # The cited directory goes through the SAME tree fence every

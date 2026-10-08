@@ -146,23 +146,6 @@ def test_sidecars_in_finds_what_sidecar_path_for_composes(tmp_path):
     assert not is_sidecar(tmp_path / "relaxed.xyz")
 
 
-def test_the_citation_pair_uses_the_composer_not_a_suffix_slice(tmp_path):
-    """`classify_citation` pairs each `.xyz` through `sidecar_path_for`.
-
-    The composer strips the LAST suffix: a compound-suffixed structure and its
-    sidecar are recognised as a pair.
-    """
-    from molbuilder.sidecars.molstruct import sidecar_path_for
-    from molbuilder.transport.compose import classify_citation
-    xyz = tmp_path / "bridge.spectra.xyz"
-    xyz.write_text("1\n\nAu 0 0 0\n", encoding="utf-8")
-    sidecar_path_for(xyz).write_text("{}", encoding="utf-8")
-    cited = classify_citation(tmp_path)
-    assert cited.form == "structure"
-    assert cited.xyz.name == "bridge.spectra.xyz"
-    assert cited.sidecar.name == "bridge.spectra.molstruct.json"
-
-
 def test_a_directory_holding_only_a_deck_is_still_refused_by_name(tmp_path):
     """The § 4.1b message keeps naming what is missing.
 

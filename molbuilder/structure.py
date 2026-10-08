@@ -1796,15 +1796,10 @@ class Structure:
         dropping it looks like.  An edit is meant to OUTDATE the recorded
         contract, not erase it: `molview.md` § 8.4a splits
         ``structure_modified`` from ``labels_modified`` so a later reader
-        is told WHICH kind of edit happened, and
-        `transport.compose.recorded_contract_of` turns the first into
-        "the mesh cutoff and transverse k-mesh below were converged for a
-        cell that is no longer there".  Rebuilding without ``info``
-        deletes the thing that warning reads -- so the flag has nothing
-        to mark, the warning cannot fire, and a form-B citation quietly
-        inherits catalogue defaults instead of the relaxation's own
-        settings.  Voiding a calculation is a MARK on the record, and a
-        record that is gone cannot carry one.
+        is told WHICH kind of edit happened.  Rebuilding without ``info``
+        deletes the record the flag marks -- so the flag has nothing to
+        mark.  Voiding a calculation is a MARK on the record, and a record
+        that is gone cannot carry one.
         """
         return dict(
             cell        = (self.cell.copy() if self.cell is not None else None),

@@ -52,16 +52,16 @@
     </p>
     <p class="hint">
       A directory qualifies by its <strong>files</strong>, not its name
-      or location, in one of two shapes:
+      or location: it is a <strong>relaxation run of molbuilder's own
+      that finished</strong> — its one <code>.fdf</code> and one
+      <code>.XV</code>, launched through <em>jobset</em> so its run
+      record says how it ended, its region labels in the deck or the
+      <code>.molstruct.json</code> beside it.  Its deck answers the
+      basis, functional and mesh, and step 2 shows them as the run's,
+      yours to change.  A structure saved from the Molbuilder tab is not
+      a citation: relax it first (Structure optimization → Task setup),
+      then cite the run.
     </p>
-    <ul>
-      <li><code>.fdf</code> + <code>.XV</code> — a relaxation that
-          concluded.  Its deck answers the basis, functional and mesh,
-          and step 2 shows them as the run's, yours to change.</li>
-      <li><code>.xyz</code> + <code>.molstruct.json</code> — a
-          labelled structure.  A record saved with it answers the same
-          values; without one, step 2 asks for them.</li>
-    </ul>
     <p class="hint">
       Pick any directory: the line under the button names what it is,
       or what it is missing.  The viewer then shows the cited structure

@@ -104,10 +104,10 @@ _TOP_KEYS = ("schema", "engine", "shape", "run",
 _BIAS_KEYS = ("voltages_v", "low_bias_approximation")
 
 #: A slot citation names a DIRECTORY, explicitly, by its tree-relative
-#: path (transport-design.md 4.1 as amended 2026-08-29: what makes the
-#: directory citable is the 4.1b FILE condition -- a finished
-#: relaxation's .fdf+.XV, or a labeled .xyz+.molstruct.json pair --
-#: never its name or its position in molbuilder's own layout).  FORM
+#: path (`engines/transport.md` § 3.1: what makes the directory citable is
+#: its FILES -- a finished relaxation run of molbuilder's own, its
+#: .fdf+.XV together with its run record -- never its name or its position
+#: in molbuilder's own layout).  FORM
 #: only here: a relative path with no traversal; the tree fence and
 #: the file-condition check live where the filesystem is (`init`
 #: resolves, `prep` composes -- transport/compose.classify_citation).
@@ -495,8 +495,8 @@ class Task:
                     f"tree-relative path (no leading '/', no '..', no "
                     f"whitespace); got {cite!r}.  What makes the "
                     f"directory citable is its FILES -- a finished "
-                    f"relaxation's .fdf+.XV together, or a labeled "
-                    f".xyz+.molstruct.json pair "
+                    f"relaxation run of molbuilder's own, its .fdf+.XV "
+                    f"together with its run record "
                     f"(engines/transport.md § 3.1)")
         if self.bias:
             if any(not isinstance(v, (int, float)) or isinstance(v, bool)

@@ -114,8 +114,7 @@ def api_transport_describe_attempt() -> Any:
     from molbuilder.transport.compose import (ComposeError,
                                               classify_citation,
                                               compose_junction,
-                                              labeled_citation_structure,
-                                              recorded_contract_of)
+                                              labeled_citation_structure)
     from molbuilder.parse.fdf import parse_fdf_params
     from molbuilder.transport.sort import (ORDER_INVERTED,
                                            electrode_orientation)
@@ -139,93 +138,68 @@ def api_transport_describe_attempt() -> Any:
         return jsonify({"ok": True, "citation": None, "form": None,
                         "summary": str(exc)}), 200
 
-    if cited.form == "structure":
-        recorded = recorded_contract_of(cited)
-        if recorded is not None:
-            # 4.1b's third shade: the pair carries the finished run's
-            # own contract, so the lane is CITED, same as a deck.
-            contract = "cited"
-            status = ("labeled structure · contract RECORDED from the "
-                      f"{recorded.get('engine', '?')} deck "
-                      f"({recorded.get('source', '?')})")
-            # AND WHAT WAS EDITED SINCE.  Two flags, because they
-            # invalidate different things (`molview.md` § 8.4a): a geometry
-            # or cell op leaves the inherited mesh cutoff and k-mesh
-            # converged for a cell that is gone, while a label write leaves
-            # the settings standing and moves the electrode/device partition
-            # this calculation sorts on.  Said HERE because this line is what
-            # a person reads at the moment of choosing; `compose` warns again
-            # on the prep path, for a citation nobody picked in a browser.
-            edited = []
-            if recorded.get("structure_modified"):
-                edited.append("geometry/cell EDITED SINCE — the mesh cutoff "
-                              "and k-mesh below were converged for a cell "
-                              "that is no longer there")
-            if recorded.get("labels_modified"):
-                edited.append("labels EDITED SINCE — the settings stand, but "
-                              "check the electrode and device regions are "
-                              "still the partition that was relaxed")
-            if edited:
-                status += " · " + " · ".join(edited)
-        else:
-            contract = "open"
-            status = "labeled structure (taken as given)"
-        params_out = None
-        concluded = None
+    deck_text = cited.deck.read_text()
+    try:
+        p = parse_fdf_params(deck_text)
+    except UnknownUnit as exc:
+        # DESCRIBED, NOT REFUSED -- the same shape as the refusal
+        # above: this route answers with the junction it can see and
+        # appends what it could not read.  A deck stating a unit this
+        # build cannot convert is a card with one line missing, not a
+        # 500 on the tab.
+        return jsonify({"ok": True, "citation": citation,
+                        "form": "relaxation",
+                        "summary": f"the deck cannot be read: {exc}"}), 200
+    bits = []
+    if p.basis_size:
+        bits.append(str(p.basis_size))
+    if p.mesh_cutoff_ry:
+        bits.append(f"{p.mesh_cutoff_ry:g} Ry")
+    if p.xc:
+        bits.append(str(p.xc))
+    if p.kgrid:
+        bits.append("k " + "x".join(str(k) for k in p.kgrid)
+                    + (" shifted " + " ".join(
+                           f"{s:g}" for s in p.kgrid_displacement)
+                       if any(p.kgrid_displacement or ()) else ""))
+    if p.n_atoms:
+        bits.append(f"{p.n_atoms} atoms")
+    # HOW IT ENDED AND WHAT IT CONVERGED (`engines/transport.md` § 3.1):
+    # said where a person chooses, so a geometry that did not converge is
+    # cited knowingly -- its .XV is then the last geometry SIESTA wrote.
+    if cited.concluded is None:
+        state = ("NOT CONCLUDED -- still running, or force-stopped "
+                 "(the two look identical on disk)")
+    elif cited.exit_code != 0:
+        state = (f"ENDED WITH EXIT CODE {cited.exit_code} "
+                 f"({cited.concluded.strip()}) -- not citable until the "
+                 f"relaxation runs to its end")
     else:
-        deck_text = cited.deck.read_text()
-        try:
-            p = parse_fdf_params(deck_text)
-        except UnknownUnit as exc:
-            # DESCRIBED, NOT REFUSED -- the same shape as the refusal
-            # above: this route answers with the junction it can see and
-            # appends what it could not read.  A deck stating a unit this
-            # build cannot convert is a card with one line missing, not a
-            # 500 on the tab.
-            return jsonify({"ok": True, "citation": citation,
-                            "form": cited.form,
-                            "summary": f"the deck cannot be read: {exc}"}), 200
-        bits = []
-        if p.basis_size:
-            bits.append(str(p.basis_size))
-        if p.mesh_cutoff_ry:
-            bits.append(f"{p.mesh_cutoff_ry:g} Ry")
-        if p.xc:
-            bits.append(str(p.xc))
-        if p.kgrid:
-            bits.append("k " + "x".join(str(k) for k in p.kgrid)
-                        + (" shifted " + " ".join(
-                               f"{s:g}" for s in p.kgrid_displacement)
-                           if any(p.kgrid_displacement or ()) else ""))
-        if p.n_atoms:
-            bits.append(f"{p.n_atoms} atoms")
-        if cited.concluded is not None:
-            state = f"CONCLUDED ({cited.concluded.strip()})"
-        elif cited.has_record:
-            state = ("NOT CONCLUDED -- still running, or force-stopped "
-                     "(the two look identical on disk)")
-        else:
-            state = ("no run record -- the .XV is taken as the final "
-                     "geometry (convergence unverified)")
-        status = state + (" · " + " · ".join(bits) if bits else "")
-        params_out = {
-            "basis_size": p.basis_size,
-            "mesh_cutoff_ry": p.mesh_cutoff_ry,
-            "xc": p.xc,
-            "kgrid": list(p.kgrid) if p.kgrid else None,
-            "n_atoms": p.n_atoms,
-        }
-        contract = "cited"
-        concluded = bool(cited.concluded)
+        state = f"CONCLUDED ({cited.concluded.strip()})"
+        if cited.converged:
+            state += " · " + cited.converged
+            if cited.converged.endswith("NO"):
+                state += (" -- the .XV cited is the last geometry SIESTA "
+                          "wrote, not a converged minimum")
+    status = state + (" · " + " · ".join(bits) if bits else "")
+    params_out = {
+        "basis_size": p.basis_size,
+        "mesh_cutoff_ry": p.mesh_cutoff_ry,
+        "xc": p.xc,
+        "kgrid": list(p.kgrid) if p.kgrid else None,
+        "n_atoms": p.n_atoms,
+    }
+    contract = "cited"
+    concluded = bool(cited.concluded)
 
-    # TWO SEPARATE QUESTIONS, and the card needs both: *what is this
-    # junction* (always answerable from the citation's own files) and
-    # *can it be composed into a calculation* (a refusal, sometimes).
-    # Kept apart, so a reason a junction cannot be BUILT -- labels
-    # missing, an electrode that moved, a mid-run record, blocks that
-    # interleave -- does not blank the viewer: the refusal is read over
-    # the thing it is about.
-    #
+# TWO SEPARATE QUESTIONS, and the card needs both: *what is this
+# junction* (always answerable from the citation's own files) and
+# *can it be composed into a calculation* (a refusal, sometimes).
+# Kept apart, so a reason a junction cannot be BUILT -- labels
+# missing, an electrode that moved, a mid-run record, blocks that
+# interleave -- does not blank the viewer: the refusal is read over
+# the thing it is about.
+#
     # The composition answers both when it succeeds (`relaxed` IS the
     # labeled citation structure), so the happy path reads the .XV once
     # and only the refusal path pays for a second look.
@@ -276,7 +250,7 @@ def api_transport_describe_attempt() -> Any:
     return jsonify({
         "ok": True,
         "citation": citation,
-        "form": cited.form,
+        "form": "relaxation",
         "contract": contract,
         "concluded": concluded,
         "summary": status,

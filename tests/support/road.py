@@ -110,7 +110,10 @@ def describe_calculation(tmp_path, monkeypatch, *,
                   positions=np.array(s["positions"], dtype=float),
                   regions={k: list(v)
                            for k, v in s.get("regions", {}).items()},
-                  cell=np.diag([float(a) for a in s["cell"]]),
+                  # the box's three edges, or its three vectors whole
+                  cell=(np.asarray(s["cell"], dtype=float)
+                        if np.ndim(s["cell"]) == 2
+                        else np.diag([float(a) for a in s["cell"]])),
                   axis_kind=tuple(s.get("axis_kind", ["isolated"] * 3))),
         tree / STRUCTURE)
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))

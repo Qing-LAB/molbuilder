@@ -1267,15 +1267,14 @@ class TestTheFolderDoor:
             "the description is still there to read")
 
 
-def _labelled_au_lead_junction(root, n_layers):
-    """A form-B citable pair (§ 4.1b) whose leads are real fcc(111) Au.
-
-    The seam note needs a junction that actually has leads.
-    """
+def _labelled_au_lead_junction(tmp_path, monkeypatch, n_layers):
+    """A finished relaxation run, on the road, of a junction whose leads are
+    real fcc(111) Au -- the seam note needs a junction that actually has
+    leads (`engines/transport.md` § 3.1: a citation is a run of ours)."""
     import numpy as np
     from ase.build import fcc111
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
+    from conftest import write_machine_record
+    from support.road import describe_calculation, jobset
 
     slab = fcc111("Au", size=(1, 1, n_layers), a=4.158,
                   orthogonal=False, vacuum=0.0)
@@ -1285,29 +1284,37 @@ def _labelled_au_lead_junction(root, n_layers):
     right = lead.copy()
     right[:, 2] += span + 8.0
     bridge = np.array([[lead[0, 0], lead[0, 1], span + 4.0]])
-
     pos = np.vstack([lead, bridge, right])
     n = len(lead)
-    s = Structure(
-        elements=["Au"] * n + ["S"] + ["Au"] * n,
-        positions=pos,
-        regions={"L-electrode": list(range(n)),
-                 "bridge": [n],
-                 "R-electrode": list(range(n + 1, 2 * n + 1))})
-    s.frozen_atoms = list(range(n)) + list(range(n + 1, 2 * n + 1))
     cell = np.asarray(slab.get_cell(), dtype=float)
     cell[2] = [0.0, 0.0, pos[:, 2].max() + 10.0]
-    s.cell = cell
-
-    d = root / "seamjunction"
-    d.mkdir(parents=True, exist_ok=True)
-    StructureCodec().write(s, d / "junction.xyz")
-    return "seamjunction"
+    structure = {
+        "elements": ["Au"] * n + ["S"] + ["Au"] * n,
+        "positions": pos.tolist(),
+        "regions": {"L-electrode": list(range(n)),
+                    "bridge": [n],
+                    "R-electrode": list(range(n + 1, 2 * n + 1)),
+                    "frozen_atoms": list(range(n))
+                    + list(range(n + 1, 2 * n + 1))},
+        "cell": cell.tolist(),
+        "axis_kind": ["periodic", "periodic", "transport"],
+    }
+    write_machine_record()
+    bundle = describe_calculation(tmp_path, monkeypatch, name="SJ",
+                                  structure=structure, stage_strategy="")
+    monkeypatch.setenv("MB_STAND_IN_LEAVES_XV", "1")
+    for args in (("prep", "task", "--stage", "coarse", "--bundle",
+                  str(bundle), "--target", "this"),
+                 ("launch", "task", "--stage", "coarse", "--mode", "direct",
+                  "--yes", "--bundle", str(bundle))):
+        got = jobset(*args)
+        assert got.exit_code == 0, got.output
+    return "P/optimization/SJ/01_coarse/run-0"
 
 
 @pytest.mark.parametrize("n_layers,verdict", [(4, "ECLIPSED"), (6, "CONTINUES")])
 def test_the_leads_own_measurements_reach_the_card(
-        web_client, isolated_projects_root, n_layers, verdict):
+        web_client, tmp_path, monkeypatch, n_layers, verdict):
     """WIRED, NOT MERELY COMPUTED.
 
     `extract_electrode_model` measures the periodic seam and the
@@ -1318,11 +1325,11 @@ def test_the_leads_own_measurements_reach_the_card(
     drawn under -- so the 4-layer case comes back as a description, not
     a refusal.
     """
-    cite = _labelled_au_lead_junction(isolated_projects_root, n_layers)
+    cite = _labelled_au_lead_junction(tmp_path, monkeypatch, n_layers)
     r = web_client.get(f"/api/transport/describe_attempt?path={cite}")
     assert r.status_code == 200
     body = r.get_json()
-    assert body["form"] == "structure", body
+    assert body["form"] == "relaxation", body
     summary = body["summary"]
     assert verdict in summary, f"the seam verdict must reach the card: {summary}"
     # BOTH leads emit the same seam sentence, so without the prefix a

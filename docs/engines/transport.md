@@ -1924,21 +1924,21 @@ at `0.0` (the chain starts from equilibrium).  *(The old `transport bundle`
 three-run driver and its `run-transport.sh` were deleted 2026-08-29 —
 deriving and running the pieces is the composite's job.)*
 
-### 3.1 What you can cite, and what each one brings
+### 3.1 What you can cite, and what it brings
 
-*Rewritten 2026-09-23. This listed two cases called "form A" and "form B" —
-names that describe which files are in a folder and tell a reader nothing
-about what they get. There are **three**, and what separates them is one
-question: **does the thing you cite bring its settings with it?***
+*Rewritten 2026-10-08 (decision 7, plan § 5x.5). Until then this section listed
+three things a citation could be — a finished run, a saved structure that
+remembers its run, a saved structure — and the two structure rows went: a bare
+structure brings no pseudopotentials, so citing one ended in the contract's own
+"put the files in `pseudos/` yourself", a hand step on the road; and a
+relaxation SIESTA was handed by hand brings no record of how it ended.*
 
-A transport calculation starts by pointing at something you already have.
-Three things qualify:
+A transport calculation starts by pointing at **a relaxation run of
+molbuilder's own that has finished**, and nothing else:
 
 | what you point at | the folder holds | you get | the settings come from |
 |---|---|---|---|
-| **a finished run** | one `.fdf` and one `.XV` | geometry · labels · **settings** | the deck that actually ran |
-| **a saved structure that remembers its run** | one `.xyz` with its `.molstruct.json`, and that sidecar carries the settings of the run it came out of | geometry · labels · **settings** | the record written when you exported it |
-| **a saved structure** | one `.xyz` with its `.molstruct.json` | geometry · labels | nobody yet — **you choose them** |
+| **a finished relaxation run** — `<calc>/<NN>_<stage>/run-<n>` | its one `.fdf` and one `.XV`; its launch record and the wrapper's conclusion (`runrecord.ending`); its region labels in the deck's block or the `.molstruct.json` beside it; its pseudopotentials | geometry · labels · **settings** · how it ended and what it converged | the deck that actually ran |
 
 **Settings** here means what every stage of the calculation must agree on: the
 basis, the exchange–correlation functional and its authors, the mesh cutoff, the
@@ -1950,10 +1950,10 @@ leads and the device.
 > the spin was shared by every rung and *answered by nobody's run* (§ 3.8.6), so a
 > polarized relaxation was cited into a non-polarized transport calculation
 > without a word. The cited run's `spin_treatment` and `unpaired_electrons` are
-> now the defaults — read from its deck, in any word SIESTA accepts, or from its
-> record — a cited run carrying a net charge is refused by name (§ 2a.7), and a
-> spin left blank is decided ONCE, on the whole junction, and handed to every
-> rung, whose deck says where it came from
+> now the defaults — read from its deck, in any word SIESTA accepts — a cited
+> run carrying a net charge is refused by name (§ 2a.7), and a spin left blank
+> is decided ONCE, on the whole junction, and handed to every rung, whose deck
+> says where it came from
 > ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
 > § 2a, ES1, ES7). Reading a spin-polarized junction's transmission in both
 > TBtrans channels (§ 2a.4) is still open (plan § 5s, P5).
@@ -1969,56 +1969,43 @@ leads and the device.
 > into the template (it is left blank, and floats), and a stated count is
 > refused by name.
 
-**How the third one comes to remember.** You finish a relaxation, open it in
-the Results tab, and save the structure. The tab writes that run's own settings
-into the sidecar as it saves. Cite that pair later and the settings come back
-with it — which is the whole point of saving it rather than re-citing the run
-folder. A structure you built by hand has nothing to remember and is the third
-row.
+**The condition is the folder's files, and that it is a run of ours.** One
+`.fdf` and one `.XV` — two of either is refused by name, telling you what the
+folder holds. Launched by `jobset launch`, so its launch record and the
+wrapper's conclusion say how it ended (`runrecord.ending`,
+[`execution/architecture.md`](?doc=execution/architecture.md) § 3.2): a folder
+with the two files and no run of ours is refused, naming the road — relax the
+junction through `jobset init` → `prep task` → `launch task`, then cite that
+run. Its name and where it sits in the tree never matter.
 
-**A finished run wins.** When a folder satisfies more than one, the run is
-taken: the deck it ran is a stronger statement than a copy of it, and more
-information never loses to less.
+**What is said about how it ended.** The citation carries the run's conclusion
+line and what its output says it converged — *geometry yes* / *geometry NO*,
+the status verb's own reading (`jobset.runstatus.converged_of`) — into the
+provenance (`slot-provenance.json`: `evidence`, `relaxation`) and onto the
+Transport tab's meta line, so a geometry that did not converge is cited
+knowingly: the `.XV` handed over is then the last geometry SIESTA wrote, not a
+converged minimum.
 
-**Two of anything is refused.** A citation names a folder, so the folder must
-answer without a guess — two `.fdf`s, or two `.xyz`s, and it is refused by
-name, telling you what it holds and what the condition wants.
-
-**Where it sits and what it is called never matter.** The condition is what
-the folder HOLDS. There is no naming convention to obey and no directory
-layout to reproduce.
-
-> **The settings are DEFAULTED, never sealed** (§ 2a.7). Whichever of the
-> three you cite, the values land in this calculation's own template and you
-> may change any of them afterwards — a change applying to all five stages at
-> once, because there is one template. Relaxing with a cheap basis and then
-> transporting with an accurate one is ordinary practice and is what that
-> ruling exists for.
-
-**A cited relaxation is a run of ours.** It ended on its own when its
-wrapper's conclusion says so, with the exit code — the one door's rule
-(`runrecord.ending`, [`execution/architecture.md`](?doc=execution/architecture.md)
-§ 3.2). *(SIESTA's `0_NORMAL_EXIT` answered for a relaxation launched by hand
-until 2026-10-03 — "evidence is FILES, never a marker of ours" — input
-molbuilder does not take, user, 2026-10-03.)*
-
-**Classifying is not composing.** A relaxation still running has record files
-that do not conclude; classification RECORDS that, because describing a
+**Classifying is not composing.** A relaxation still running has a launch
+record and no conclusion; classification RECORDS that, because describing a
 transport calculation ahead of a finishing relax is legal. Composing from it
 refuses — you may plan against a run in flight, but you may not build a deck
-from a geometry that is still moving.
+from a geometry that is still moving. A run that ended with an error (exit code
+≠ 0) classifies too, said as such, and compose refuses it: its `.XV` is
+whatever the engine left when it failed.
 
-> **History, because the middle row was lost once.** It was ruled on
-> 2026-08-29 (`archive/2026-09-01-transport-design.md` § 4.1b, *"the condition
-> has three shades"*) and this section was written with two. When the
-> parameter path was rebuilt around the template on 2026-09-16, the code that
-> acted on the middle row had nothing in the live contract to preserve it
-> against, and was dropped — while every path that READS and DISPLAYS it
-> survived. The tab went on saying *"contract RECORDED"* about settings
-> nothing applied any more. Measured 2026-09-23: a pair recording 400 Ry, TZP
-> and a 4×4 mesh produced a template of 300 Ry, DZP and Γ-only. **The three
-> rows above are the contract; a reader who finds only two has found a
-> regression.**
+> **The settings are DEFAULTED, never sealed** (§ 2a.7). The cited run's values
+> land in this calculation's own template and you may change any of them
+> afterwards — a change applying to all five stages at once, because there is
+> one template. Relaxing with a cheap basis and then transporting with an
+> accurate one is ordinary practice and is what that ruling exists for.
+
+> **History.** The three-row table stood from 2026-09-23 (its middle row, a
+> saved structure "that remembers its run", had been lost once and restored —
+> `archive/2026-09-01-transport-design.md` § 4.1b). The two structure rows went
+> on 2026-10-08 with decision 7; the `info.calculation` block the Results tab
+> writes into a saved structure's sidecar, which that middle row read, has no
+> reader on this road since.
 
 ---
 
@@ -2528,27 +2515,22 @@ item 7's *"shown locked"*, § 8's *"sealed at both doors"*, and the whole of
 
 ---
 
-#### 3.8.1 Choosing — name which of the three, and what it brought
+#### 3.8.1 Choosing — name the run, and what it brought
 
-§ 3.1's three cases, in those words. Never "form A" / "form B", which name
-which files are in a folder and tell a reader nothing.
+§ 3.1's one case, in its words: a finished relaxation run of molbuilder's own.
+The meta line says how it ended and what it converged, then what its deck
+answered:
 
 ```
-finished run · settings from JunctionRelax.fdf
-saved structure · settings recorded from JunctionRelax.fdf when you exported it
-saved structure · no settings recorded — you choose them below
+CONCLUDED (rc=0 at …) · geometry yes · SZP · 150 Ry · GGA/PBE · k 1x1x1 · 52 atoms
+CONCLUDED (rc=0 at …) · geometry NO -- the .XV cited is the last geometry SIESTA wrote, not a converged minimum · …
+NOT CONCLUDED -- still running, or force-stopped (the two look identical on disk)
+ENDED WITH EXIT CODE 1 (…) -- not citable until the relaxation runs to its end
 ```
 
-Where a structure was edited after its settings were recorded, say what that
-invalidated: a geometry edit leaves the mesh cutoff and k-mesh converged for
-a cell that is gone; a label edit leaves the settings standing but moves the
-partition the sort reads.
-
-> **The line must not claim an inheritance that did not happen.** It said
-> *"contract RECORDED"* for a case whose values nothing applied (§ 3.1's
-> history note). A display of provenance is a claim about what will run.
-
----
+A folder that is not such a run — a saved structure, a relaxation SIESTA was
+handed by hand — answers the refusal instead, naming the whole condition and
+the road to a citable run (§ 3.1).
 
 #### 3.8.2 The surface is TWO surfaces, and that is the whole design
 

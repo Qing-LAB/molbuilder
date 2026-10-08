@@ -59,19 +59,6 @@ _FROM_DECK = {
     "unpaired_electrons":       "unpaired_electrons",
 }
 
-#: The same answers, arriving from a RECORD instead of a deck.  The record
-#: speaks the catalogue's names (`model/parse.md` § 5b), so each is taken as
-#: it stands -- the list is `parse/contract.py`'s, beside the writer, so the
-#: writer and this reader cannot drift.  The charge is read apart (a cited
-#: charge is refused, not defaulted); the k-grid goes through the same
-#: :func:`_apply_kgrid` as the deck's.
-from molbuilder.parse.contract import K_MESH_RECORD_KEYS
-from molbuilder.parse.contract import RECORDED_FIELDS
-from molbuilder.parse.contract import STATE_RECORD_KEYS
-
-_FROM_RECORD = tuple(k for k in RECORDED_FIELDS if k != "net_charge")
-
-
 def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
     """The cited run's k-point mesh, as the transport calculation takes it:
     the transverse pair and its offset carry over, and the transport axis is
@@ -114,12 +101,11 @@ def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
 
 @dataclass(frozen=True)
 class CitationAnswers:
-    """What the cited directory answers of the shared electronic description
-    (`engines/transport.md` § 3.1's three cases, § 3.8.1): ``values`` in
-    ``SiestaConfig``'s field names, ``source`` one of ``"deck"`` (a finished
-    run's own deck), ``"record"`` (a saved structure that remembers its
-    run) or ``"none"`` (a saved structure that answers nothing), and
-    ``source_name`` the file the answers were read from."""
+    """What the cited run answers of the shared electronic description
+    (`engines/transport.md` § 3.1, § 3.8.1): ``values`` in ``SiestaConfig``'s
+    field names, ``source`` ``"deck"`` (the run's own deck) or ``"none"`` (a
+    deck the unit door could not read), and ``source_name`` the file the
+    answers were read from."""
     values: Dict[str, Any]
     source: str
     source_name: str = ""
@@ -131,12 +117,9 @@ class CitationAnswers:
 
 def citation_answers(cite_dir) -> CitationAnswers:
     """Read the cited directory once (`engines/transport.md` § 3.8.0: at
-    `init`, into this calculation's own template).
-
-    * **a finished run** -- its deck answers the electronic description;
-    * **a saved structure that remembers its run** -- its sidecar carries
-      that run's own settings, recorded by the Results tab at export;
-    * **a saved structure** -- answers none of it.
+    `init`, into this calculation's own template): the cited run's deck
+    answers the electronic description (§ 3.1 -- a citation is a finished
+    relaxation run of molbuilder's own).
     """
     from .compose import classify_citation
     from ..parse.fdf import parse_fdf_params
@@ -154,27 +137,10 @@ def citation_answers(cite_dir) -> CitationAnswers:
             # refusal itself is prep's to raise, by name.
             p = None
     if p is None:
-        from .compose import recorded_contract_of
-        recorded = recorded_contract_of(cited)
-        block = dict((recorded or {}).get("contract") or {})
-        # A STRUCTURE EDITED SINCE its run is no longer the one the run's
-        # charge and spin were for -- an added or deleted atom changes the
-        # very count -- so, by the electronic state's own rule
-        # (`electronic_state._recorded`), they are not taken: the spin is
-        # worked out on the junction and the charge is not refused.  The
-        # other recorded settings are inherited and warned about
-        # (`compose._warn_recorded_modified`).
-        if (recorded or {}).get("structure_modified"):
-            for key in STATE_RECORD_KEYS:
-                block.pop(key, None)
-        for key in _FROM_RECORD:
-            v = block.get(key)
-            if v is not None:
-                kw[key] = v
-        _apply_kgrid(kw, *(block.get(k) for k in K_MESH_RECORD_KEYS))
-        source = "record" if recorded else "none"
-        source_name = str((recorded or {}).get("source") or "")
-        charge = int(block.get("net_charge") or 0)
+        # A deck the unit door refuses answers nothing here; the refusal
+        # itself is prep's to raise, by name.
+        source, source_name = "none", ""
+        charge = 0
     else:
         for src, dst in _FROM_DECK.items():
             v = getattr(p, src, None)
@@ -301,7 +267,7 @@ def transport_template_text(cite_dir, *, label: str, blank=(),
     # the panel holds as the citation answered it is the citation's: the
     # panel is drawn holding those answers and sends what it holds.  Every
     # other item is nobody's choice (`default`).
-    via = {"deck": "cited", "record": "record"}.get(cited.source)
+    via = {"deck": "cited"}.get(cited.source)
     sources = {k: via for k in cited.values if via and k not in blank}
     sources.update({k: "person" for k, v in mine.items()
                     if not (k in sources and cited.values[k] == v)})

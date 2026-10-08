@@ -182,9 +182,34 @@ _STUB_BODIES = {
         "        sleep 0.1\n"
         "    done\n"
         "fi\n"
+        # THE RESTART FILE CARRIES THE DECK'S GEOMETRY, as SIESTA's would at
+        # the end of a relaxation that moved nothing: the deck's lattice
+        # vectors and coordinates (molbuilder writes both in Å), the species'
+        # Z from its ChemicalSpeciesLabel block, in the `.XV` format
+        # (`parse/coords/siesta_xv.py`), so a run of ours on this road is a
+        # citable relaxation (`engines/transport.md` § 3.1).  A deck with no
+        # lattice leaves the empty file it always did.
         'if [ -n "${MB_STAND_IN_LEAVES_XV:-}" ] && [ -f "${1:-}" ]; then\n'
         "    _label=$(awk 'tolower($1)==\"systemlabel\"{print $2; exit}' \"$1\")\n"
-        '    [ -n "$_label" ] && : > "$_label.XV"\n'
+        '    [ -n "$_label" ] && python3 - "$1" "$_label" <<\'PY\'\n'
+        "import re, sys\n"
+        "deck, label = sys.argv[1], sys.argv[2]\n"
+        "text = open(deck, encoding='utf-8', errors='replace').read()\n"
+        "def block(name):\n"
+        "    m = re.search(r'%block\\s+' + name + r'\\s*\\n(.*?)%endblock', text, re.S | re.I)\n"
+        "    return [l.split() for l in m.group(1).splitlines() if l.strip() and not l.strip().startswith('#')] if m else []\n"
+        "species = {int(r[0]): int(r[1]) for r in block('ChemicalSpeciesLabel')}\n"
+        "cell = [[float(x) for x in r[:3]] for r in block('LatticeVectors')]\n"
+        "atoms = [(int(r[3]), [float(x) for x in r[:3]]) for r in block('AtomicCoordinatesAndAtomicSpecies')]\n"
+        "B = 1.0 / 0.529177210903   # molbuilder.constants.BOHR_ANGSTROM\n"
+        "with open(label + '.XV', 'w') as f:\n"
+        "    if len(cell) == 3 and atoms:\n"
+        "        for v in cell:\n"
+        "            f.write('  '.join(f'{x * B:.9f}' for x in v) + '  0.0 0.0 0.0\\n')\n"
+        "        f.write(f'{len(atoms)}\\n')\n"
+        "        for sp, p in atoms:\n"
+        "            f.write(f'{sp} {species[sp]} ' + ' '.join(f'{x * B:.9f}' for x in p) + ' 0.0 0.0 0.0\\n')\n"
+        "PY\n"
         "fi\n"
         'exit "${MB_STAND_IN_RC:-0}"\n'
     ),

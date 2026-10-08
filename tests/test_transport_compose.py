@@ -1,260 +1,155 @@
-"""Prep composes from the citation — `engines/transport.md` § 3.1 (what makes
-a directory citable) and § 1 (one citation, five derived stages).
+"""The transport citation, composed from a relaxation run of molbuilder's own
+(`engines/transport.md` § 3.1, decision 7): what qualifies, what is refused
+by name, and what this calculation's own copy carries.
 
-*(How it was designed: `archive/2026-09-01-transport-design.md`
-§ 4.1–4.2, `transport/compose.py`).
-
-(The prep arm itself — stage decks, wrappers, run dirs — is
-`test_transport_prep.py`'s subject.)
+Every cited run here is made on the road -- a labelled junction described
+with `jobset init`, prepared and launched, the suite's stand-in engine
+leaving the `.XV` SIESTA leaves -- so the folder holds what molbuilder
+writes and never a file laid by a test (`process/testing.md` § 6).  Until
+2026-10-08 these cases cited hand-written `.xyz + .molstruct.json` pairs,
+the citation form that went with decision 7.
 """
 from __future__ import annotations
 
 import numpy as np
-
 import pytest
 
-from molbuilder.transport.sort import (REGION_BRIDGE,
-                                         REGION_LEFT_ELECTRODE,
-                                         REGION_RIGHT_ELECTRODE)
-from molbuilder.structure import Structure
-from molbuilder.transport.compose import ComposeError, compose_junction
+from molbuilder.transport.compose import (ComposeError, classify_citation,
+                                          compose_junction)
+from molbuilder.transport.sort import (REGION_BRIDGE, REGION_LEFT_ELECTRODE,
+                                       REGION_RIGHT_ELECTRODE)
 
-# THE one Bohr->Angstrom value (`molbuilder/constants.py`).  A literal
-# here would be a second home: three of them had already drifted to
-# THREE different values by 2026-09-09 (0.5291772108, 0.529177249 --
-# CODATA 1986 -- and 0.529177).  Importing is not circular: every use
-# below WRITES a fixture in Bohr, and the assertion is on the Angstrom
-# value that comes back.
-from molbuilder.constants import BOHR_ANGSTROM as _BOHR_ANGSTROM
-_ANG_BOHR = 1.0 / _BOHR_ANGSTROM
-
-#: six 2.5 Å layers a side (12.5 Å span — over the wizard's 12 Å lead
-#: floor), the molecule between.
+#: Six 2.5 Å gold layers a side (12.5 Å span -- over the wizard's 12 Å lead
+#: floor), a four-atom bridge between, in a box whose c closes the leads'
+#: boundary to one layer spacing (§ 6.1c).
 _LAYERS_L = [0.0, 2.5, 5.0, 7.5, 10.0, 12.5]
 _BRIDGE = [("S", 15.0), ("C", 16.4), ("C", 17.8), ("S", 19.2)]
 _LAYERS_R = [22.0, 24.5, 27.0, 29.5, 32.0, 34.5]
 
 
-def _junction_struct(layers_l=_LAYERS_L, layers_r=_LAYERS_R):
+def _junction(*, frozen: bool = True) -> dict:
+    """The junction as `describe_calculation` takes it: the structure a
+    person built on the Molbuilder tab, its leads labelled and -- unless a
+    case says otherwise -- held still for the relaxation."""
     elements, zs, labels = [], [], []
-    for z in layers_l:
-        elements.append("Au"); zs.append(z)
-        labels.append(REGION_LEFT_ELECTRODE)
+    for z in _LAYERS_L:
+        elements.append("Au"); zs.append(z); labels.append(REGION_LEFT_ELECTRODE)
     for el, z in _BRIDGE:
         elements.append(el); zs.append(z); labels.append(REGION_BRIDGE)
-    for z in layers_r:
-        elements.append("Au"); zs.append(z)
-        labels.append(REGION_RIGHT_ELECTRODE)
-    positions = np.array([[1.0, 1.0, z] for z in zs])
+    for z in _LAYERS_R:
+        elements.append("Au"); zs.append(z); labels.append(REGION_RIGHT_ELECTRODE)
     regions: dict = {}
     for i, lab in enumerate(labels):
         regions.setdefault(lab, []).append(i)
-    frozen = [i for i, lab in enumerate(labels) if lab != REGION_BRIDGE]
-    return Structure(elements=elements, positions=positions,
-                     regions=regions, frozen_atoms=frozen,
-                     cell=np.diag([8.0, 8.0, 40.0]))
+    if frozen:
+        regions["frozen_atoms"] = [i for i, lab in enumerate(labels)
+                                   if lab != REGION_BRIDGE]
+    return {"elements": elements,
+            "positions": [[1.0, 1.0, z] for z in zs],
+            "regions": regions,
+            "cell": [8.0, 8.0, 37.0],
+            "axis_kind": ["periodic", "periodic", "transport"]}
 
 
-class TestFormB:
-    """4.1b form B: a labeled .xyz+.molstruct.json pair, anywhere."""
-
-    def _pair_dir(self, tmp_path):
-        from molbuilder.workingcopy_structure import StructureCodec
-        root = tmp_path / "projects"
-        d = root / "anything" / "at all"
-        d.mkdir(parents=True)
-        StructureCodec().write(_junction_struct(), d / "junction.xyz")
-        return root, "anything/at all"
-
-    def test_a_labeled_pair_composes_without_any_layout(self, tmp_path):
-        root, cite = self._pair_dir(tmp_path)
-        out = compose_junction(cite, tree_root=root)
-        assert out.form == "structure"
-        assert out.deck_text is None
-        assert out.provenance["evidence"] == "given"
-        assert len(out.electrode_left.elements) == 6
-
-
-    def test_the_refusal_names_the_atom_the_PERSON_can_find(self, tmp_path):
-        """`engine_atom_index`: the canonical atom identity is the index
-        in the SOURCE FILE's order, which is what the Modify tab shows and
-        what "go and freeze atom N" has to mean.  `categorical_sort` puts
-        the device in TranSIESTA's deck order first, so a refusal built
-        from the sorted device's own indices names an atom the person
-        cannot find.
-
-        THIS FIXTURE IS DELIBERATELY OUT OF ORDER -- the bridge is written
-        first -- because the ordinary one sorts to the identity, where a
-        missing translation and a correct one print the same number and
-        the test would prove nothing.
-        """
-        from molbuilder.workingcopy_structure import StructureCodec
-        from molbuilder.transport.sort import categorical_sort
-        root = tmp_path / "projects"
-        d = root / "shuffled"
-        d.mkdir(parents=True)
-
-        # bridge FIRST in the file, then the two leads
-        elements = [el for el, _z in _BRIDGE] + ["Au"] * 12
-        zs = ([z for _el, z in _BRIDGE] + list(_LAYERS_L) + list(_LAYERS_R))
-        regions = {REGION_BRIDGE: [0, 1, 2, 3],
-                   REGION_LEFT_ELECTRODE: list(range(4, 10)),
-                   REGION_RIGHT_ELECTRODE: list(range(10, 16))}
-        s2 = Structure(elements=elements,
-                       positions=np.array([[1.0, 1.0, z] for z in zs]),
-                       regions=regions,
-                       frozen_atoms=list(range(4, 16)),
-                       cell=np.diag([8.0, 8.0, 40.0]))
-        # atom 4 is the L-electrode's first, and the sort moves it to 0
-        s2.frozen_atoms = [i for i in s2.frozen_atoms if i != 4]
-        srt = categorical_sort(s2)
-        assert srt.sorted_to_original[0] == 4, (
-            "the fixture must actually permute or this proves nothing")
-
-        StructureCodec().write(s2, d / "junction.xyz")
-        with pytest.raises(ComposeError) as e:
-            compose_junction("shuffled", tree_root=root)
-        msg = str(e.value)
-        assert "1 atom(s)" in msg, (
-            f"exactly one lead atom was left unfrozen; naming more means "
-            f"the region or the frozen set was not remapped by the sort: "
-            f"{msg}")
-        assert "4 (Au)" in msg, (
-            f"the atom must be named by its identity in the person's own "
-            f"file (4), not by its place in the deck order (0): {msg}")
-
-    def test_a_pair_whose_leads_are_not_frozen_is_refused(self, tmp_path):
-        """Form B has no starting geometry, so the unmoved comparison
-        cannot run here -- which is exactly why the frozen DECLARATION is
-        asked separately, and of every route."""
-        from molbuilder.workingcopy_structure import StructureCodec
-        root = tmp_path / "projects"
-        d = root / "loose"
-        d.mkdir(parents=True)
-        s2 = _junction_struct()
-        s2.frozen_atoms = []
-        StructureCodec().write(s2, d / "junction.xyz")
-        with pytest.raises(ComposeError) as e:
-            compose_junction("loose", tree_root=root)
-        msg = str(e.value)
-        assert "NOT FROZEN" in msg, msg
-        assert "freeze them" in msg, f"and it must say what to do: {msg}"
-
-    def test_a_pair_with_frozen_leads_and_a_free_bridge_composes(self, tmp_path):
-        """The discriminating half: the gate asks about the LEADS, and a
-        correct junction has a free bridge."""
-        root, cite = self._pair_dir(tmp_path)
-        out = compose_junction(cite, tree_root=root)
-        free = set(range(len(out.sorted.structure.elements))) - set(
-            out.sorted.structure.frozen_atoms or ())
-        assert free, "the fixture must leave the bridge free or this proves nothing"
-
-    def test_a_pair_without_a_cell_is_refused(self, tmp_path):
-        from molbuilder.workingcopy_structure import StructureCodec
-        root = tmp_path / "projects"
-        d = root / "loose"
-        d.mkdir(parents=True)
-        s2 = _junction_struct()
-        s2.cell = None
-        StructureCodec().write(s2, d / "junction.xyz")
-        with pytest.raises(ComposeError) as e:
-            compose_junction("loose", tree_root=root)
-        assert "no cell" in str(e.value)
-
-    def test_a_bare_xyz_names_the_missing_sidecar(self, tmp_path):
-        root = tmp_path / "projects"
-        d = root / "loose"
-        d.mkdir(parents=True)
-        (d / "junction.xyz").write_text("1\n\nC 0 0 0\n")
-        with pytest.raises(ComposeError) as e:
-            compose_junction("loose", tree_root=root)
-        msg = str(e.value)
-        assert ".molstruct.json" in msg and ".fdf" in msg, (
-            "the refusal states the whole condition")
+def _relaxed_on_the_road(tmp_path, monkeypatch, *, frozen: bool = True):
+    """A finished relaxation run of the junction -- `jobset init`, `prep`,
+    `launch` on the stand-in engine -- and its citation: ``(tree root,
+    citation)``."""
+    from conftest import write_machine_record
+    from support.road import describe_calculation, jobset
+    write_machine_record()
+    bundle = describe_calculation(tmp_path, monkeypatch, name="J",
+                                  structure=_junction(frozen=frozen),
+                                  stage_strategy="")
+    got = jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
+                 "--target", "this")
+    assert got.exit_code == 0, got.output
+    monkeypatch.setenv("MB_STAND_IN_LEAVES_XV", "1")
+    got = jobset("launch", "task", "--stage", "coarse", "--mode", "direct",
+                 "--yes", "--bundle", bundle)
+    assert got.exit_code == 0, got.output
+    return tmp_path / "projects", "P/optimization/J/01_coarse/run-0"
 
 
-    def test_a_form_B_pair_with_a_flat_box_is_refused_by_name(self, tmp_path):
-        """A pair holding a bad box OPENS (`structure-periodicity.md` § 8.2,
-        "reading does not judge"), so the refusal lands at the CITATION door,
-        naming the cited pair, the way form A does — instead of surfacing
-        later as a complaint about a box, several steps from the file that
-        holds it.
-        """
-        import json as _json
-        from molbuilder.workingcopy_structure import StructureCodec
-        root = tmp_path / "projects"
-        d = root / "J"
-        d.mkdir(parents=True)
-        struct = _junction_struct()
-        StructureCodec().write(struct, d / "j.xyz")
-        side = _json.loads((d / "j.molstruct.json").read_text())
-        side["cell"] = [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 0.0]]   # flat
-        (d / "j.molstruct.json").write_text(_json.dumps(side))
-
-        # It still OPENS -- that is the § 8.2 half, and it must not regress.
-        assert StructureCodec().load(d / "j.xyz").cell is not None
-
-        with pytest.raises(ComposeError) as e:
-            compose_junction("J", tree_root=root)
-        assert "no volume" in str(e.value), str(e.value)
+def test_a_finished_relaxation_run_composes_and_says_how_it_ended(
+        tmp_path, monkeypatch):
+    """§ 3.1: the citation is a relaxation run of molbuilder's own that
+    finished -- its deck and `.XV`, its run record -- and the composed copy
+    carries how it ended and what it converged, so a geometry is cited
+    knowingly.  The stand-in moved nothing, so the frozen leads pass the
+    gate and the composed leads are the six-layer blocks."""
+    root, cite = _relaxed_on_the_road(tmp_path, monkeypatch)
+    cited = classify_citation(root / cite)
+    assert cited.concluded and cited.exit_code == 0
+    out = compose_junction(cite, tree_root=root)
+    assert out.deck_text and "AtomicCoordinatesAndAtomicSpecies" in out.deck_text
+    assert out.provenance["evidence"] == cited.concluded
+    assert out.provenance["relaxation"]["exit_code"] == 0
+    assert len(out.electrode_left.elements) == len(_LAYERS_L)
+    assert out.provenance["swap_electrodes"] is False
 
 
-class TestTheRecordedContract:
-    """`transport.md` § 3.1's form B: a pair that carries no recorded
-    contract seals nothing."""
-
-    def test_a_plain_pair_stays_open(self, tmp_path):
-        from molbuilder.workingcopy_structure import StructureCodec
-        root = tmp_path / "projects"
-        d = root / "plain"
-        d.mkdir(parents=True)
-        StructureCodec().write(_junction_struct(), d / "junction.xyz")
-        out = compose_junction("plain", tree_root=root)
-        assert "recorded_contract" not in out.provenance
-
+def test_a_saved_structure_is_not_a_citation_and_the_refusal_names_the_road(
+        tmp_path, monkeypatch):
+    """Decision 7: a structure saved from the Molbuilder tab -- an
+    `.xyz + .molstruct.json` pair -- is no citation: it brings no
+    pseudopotentials and no record of a run.  The refusal states the whole
+    condition and the road to a citable run."""
+    root, _cite = _relaxed_on_the_road(tmp_path, monkeypatch)
+    with pytest.raises(ComposeError) as e:
+        compose_junction("P/structure", tree_root=root)
+    msg = str(e.value)
+    assert "no .fdf and no .XV" in msg and "relaxation run of molbuilder's own" in msg
 
 
+def test_a_run_whose_leads_were_not_held_is_refused_by_name(
+        tmp_path, monkeypatch):
+    """§ 3's lead gate at compose: a lead must have come through the
+    relaxation as frozen bulk.  A junction relaxed with its leads free is
+    refused naming what to do, however its run ended."""
+    root, cite = _relaxed_on_the_road(tmp_path, monkeypatch, frozen=False)
+    with pytest.raises(ComposeError) as e:
+        compose_junction(cite, tree_root=root)
+    msg = str(e.value)
+    assert "NOT FROZEN" in msg and "freeze them" in msg, msg
 
-class TestTheRenameIsTheCalculationsOwn:
+
+def test_the_rename_is_the_calculations_own_copy_and_the_cited_run_is_untouched(
+        tmp_path, monkeypatch):
     """`transport.md` § 4 (user, 2026-10-04): the electrode rename is stated
     in the description (`swap_electrodes: true`) and applied to the
     calculation's own copy of the junction when it is composed; the cited
-    files are read, never written, and a record composed with the other
-    choice does not serve the description.
+    run's files are read, never written, and a record composed with the
+    other choice does not serve the description.
 
     Silent before this: the rename rewrote the label block inside the cited
     run's finished attempt, so every later citation of that run -- another
     calculation's included -- read the labels the other way round.
     """
+    from molbuilder.transport.compose import (load_compose_record,
+                                              write_compose_record)
+    root, cite = _relaxed_on_the_road(tmp_path, monkeypatch)
+    d = root / cite
+    before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
 
-    def test_the_copy_is_swapped_and_the_cited_files_are_untouched(self, tmp_path):
-        from molbuilder.transport.compose import (load_compose_record,
-                                                  write_compose_record)
-        from molbuilder.workingcopy_structure import StructureCodec
-        root = tmp_path / "projects"
-        d = root / "cited"
-        d.mkdir(parents=True)
-        StructureCodec().write(_junction_struct(), d / "junction.xyz")
-        before = {p.name: p.read_bytes() for p in d.iterdir()}
+    out = compose_junction(cite, tree_root=root, swap_electrodes=True)
+    regions = out.sorted.structure.regions
+    zs = np.asarray(out.sorted.structure.positions)[:, 2]
+    # The high-z block is now the LEFT electrode: traded names, nothing
+    # else -- no coordinate moved.
+    assert min(zs[regions[REGION_LEFT_ELECTRODE]]) > max(
+        zs[regions[REGION_RIGHT_ELECTRODE]])
+    assert out.provenance["swap_electrodes"] is True
+    assert {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()} == before, (
+        "the cited run's files were written")
 
-        out = compose_junction("cited", tree_root=root, swap_electrodes=True)
-        regions = out.sorted.structure.regions
-        zs = out.sorted.structure.positions[:, 2]
-        # The high-z block is now the LEFT electrode: traded names, nothing
-        # else -- no coordinate moved.
-        assert min(zs[regions[REGION_LEFT_ELECTRODE]]) > max(
-            zs[regions[REGION_RIGHT_ELECTRODE]])
-        assert out.provenance["swap_electrodes"] is True
-        assert {p.name: p.read_bytes() for p in d.iterdir()} == before, (
-            "the cited files were written")
-
-        # The record answers for the choice it was composed with.
-        rec = tmp_path / "calc"
-        rec.mkdir()
-        write_compose_record(rec, out)
-        why: list = []
-        assert load_compose_record(rec, citation="cited", tree_root=root,
-                                   why=why, swap_electrodes=False) is None
-        assert "swap_electrodes" in why[-1]
-        assert load_compose_record(rec, citation="cited", tree_root=root,
-                                   swap_electrodes=True) is not None
+    # The record answers for the choice it was composed with.
+    rec = tmp_path / "calc"
+    rec.mkdir()
+    write_compose_record(rec, out)
+    why: list = []
+    assert load_compose_record(rec, citation=cite, tree_root=root,
+                               why=why, swap_electrodes=False) is None
+    assert "swap_electrodes" in why[-1]
+    assert load_compose_record(rec, citation=cite, tree_root=root,
+                               swap_electrodes=True) is not None
