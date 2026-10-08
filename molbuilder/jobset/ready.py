@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -82,9 +82,7 @@ def readiness(base, task, stage: str, *, template_text: Optional[str] = None,
                                      template_text=template_text)
         except PrepError as exc:
             return Readiness(stage, why=str(exc))
-        return Readiness(stage, ready=True,
-                         takes=[f"{fn} <- {src}" for _v, inputs in got
-                                for src, fn in inputs])
+        return Readiness(stage, ready=True, takes=_takes_lines(got))
     from .continuation import continuation_answer
     cont, refused = continuation_answer(base, task, stage,
                                         from_attempt=from_attempt, cold=cold,
@@ -95,6 +93,28 @@ def readiness(base, task, stage: str, *, template_text: Optional[str] = None,
     return Readiness(stage, ready=True,
                      takes=([cont.line(would=True)] if cont is not None
                             else []))
+
+
+def _takes_lines(got) -> List[str]:
+    """What a transport rung's prep would gather, ONE line per file: the
+    run's inputs are taken once for every point (`engines/transport.md`
+    § 2a.11), so a file every point takes from the same run is said once; a
+    file each point takes from its own point of one run names that run and
+    the count."""
+    srcs: Dict[str, List[str]] = {}
+    for _v, inputs in got:
+        for src, fn in inputs:
+            if src not in srcs.setdefault(fn, []):
+                srcs[fn].append(src)
+    out = []
+    for fn, where in srcs.items():
+        if len(where) == 1:
+            out.append(f"{fn} <- {where[0]}")
+            continue
+        runs = {w.rsplit("/", 1)[0] for w in where}
+        out.append(f"{fn} <- {runs.pop()} ({len(where)} points)"
+                   if len(runs) == 1 else f"{fn} <- " + ", ".join(where))
+    return out
 
 
 def ladder(base, task, *, template_text: Optional[str] = None,

@@ -1395,7 +1395,11 @@ stage)`'s; the prepared point decks `transport.stages.point_folders(base, task,
 stage)`'s. Every reader asks them: prep, the gather, the walk, `status`, Task
 setup's count, the record and the Results ladder. **A swept rung has one row in `status`**: the
 run's state, and how many of its points are done (*3 of 5 points done*);
-`status <stage>` lists the points — done or not, and what each started from.
+`status <stage>` says what the run gathered and what it continued from, read
+at the point (*0 V, 0.2 V taken over from run-1; the rest walked*), then lists
+the points — done or not done and why, what each started from, and what each
+alone took (a transmission point's device point). Every transport rung's
+`status <stage>` shows its gather the same way.
 
 #### Later: the frame axis (§ 2a.9), and why sharing needs no explaining
 

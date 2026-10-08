@@ -115,6 +115,11 @@ class StageStatus:
     #: started_from}`` each, read from the point's own files
     #: (`continuation.done`; `engines/transport.md` § 2a.11) -- or ``[]``.
     points: List[Dict[str, Any]] = field(default_factory=list)
+    #: What the run GATHERED from the rungs upstream -- ``<file> <- <run>``
+    #: each, the run's own ``.gathered-from`` (`runrecord.read_gathered_from`;
+    #: `engines/transport.md` § 2a.11) -- or ``[]`` for a stage that gathers
+    #: nothing.  A sweep's point adds what it alone took in its own row.
+    gathered: List[str] = field(default_factory=list)
     #: For one not prepared, the ready door's answer whole
     #: (`ready.readiness`): what its prep would take, one line each, or what
     #: it waits for -- the refusal prep would print, with its commands.
@@ -283,7 +288,10 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
             if f"{task.label}{suf}" in own]
     products = products_of(job.name, task.label) + hand
     pts, running = [], False
-    from ..runrecord import read_continued_from
+    from ..runrecord import read_continued_from, read_gathered_from
+    # THE RUN'S GATHER, once; a point's own `.gathered-from` adds what it
+    # alone took (the transmission's device point).
+    gathered = _gathered_lines(run)
     for pdir, v in points_in(run, task, job.name):
         ok, why = done(pdir, names, launch=launch, products=products)
         if not ok and pdir.is_dir():
@@ -291,10 +299,19 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
                                              launch=launch).state == "running"
         src = (read_continued_from(pdir, names, 0) if pdir.is_dir()
                else None)
+        took = [g for g in _gathered_lines(pdir) if g not in gathered]
         pts.append({"bias_v": v, "folder": f"{run.name}/{pdir.name}",
-                    "done": ok, "why": why, "started_from": src})
+                    "done": ok, "why": why, "started_from": src,
+                    "took": took})
     n_done = sum(p["done"] for p in pts)
     summary = f"{n_done} of {len(pts)} points done"
+    # CONVERGED, in its own column (`job-system.md`, rule 4): every point
+    # done says yes for a rung with an SCF; a point that finished without
+    # converging says NO; otherwise nothing yet.
+    converged = ("SCF NO" if any(p["why"].startswith("finished, not converged")
+                                 for p in pts)
+                 else "SCF yes" if hand and pts and n_done == len(pts)
+                 else None)
     if launch is None:
         state, detail = "pending", "prepared, not launched"
     elif running:
@@ -311,12 +328,21 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
         detail = f"{summary}; {first['bias_v']:g} V: {first['why']}"
     return StageStatus(
         ref=ref, dir=d.name, state=state, detail=detail,
-        converged=("SCF yes" if n_done == len(pts) and hand else None),
+        converged=converged,
         attempt=run.name, attempts=attempts_in(d), launch=launch,
         relaunch_continues=job.relaunch_continues,
         group=(list(job.group) if job.group else None),
         script=str(job.script), carries=[w.name for w in job.warm],
-        resources=resources_text(job.resources), points=pts)
+        resources=resources_text(job.resources), points=pts,
+        gathered=gathered)
+
+
+def _gathered_lines(folder) -> List[str]:
+    """``<file> <- <run>`` for each entry of ``folder``'s ``.gathered-from``
+    (`runrecord.read_gathered_from`), in the order taken; ``[]`` when there
+    is none."""
+    from ..runrecord import read_gathered_from
+    return [f"{g['file']} <- {g['from']}" for g in read_gathered_from(folder)]
 
 
 def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
@@ -365,6 +391,8 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         script=str(job.script),
         carries=[w.name for w in job.warm],
         resources=resources_text(job.resources),
+        # WHAT THE RUN GATHERED (a transport rung), beside what it declares.
+        gathered=_gathered_lines(observed) if attempt is not None else [],
     )
 
 
@@ -530,6 +558,20 @@ def render_status(status: JobSetStatus) -> str:
     return "\n".join(lines)
 
 
+def _sweep_took_over(s: StageStatus) -> str:
+    """What a sweep's run continued from, read at the point: the points
+    taken over from an earlier run, named by that run; a run that took none
+    over walked every point (the first launch, or ``--cold``)."""
+    here = f"{s.dir}/{s.attempt}/"
+    taken = [(p["bias_v"], p["started_from"]) for p in s.points
+             if p.get("started_from") and not p["started_from"].startswith(here)]
+    if not taken:
+        return "nothing taken over -- every point walked"
+    runs = sorted({src.rsplit("/", 1)[0] for _v, src in taken})
+    return (", ".join(f"{v:g} V" for v, _s in taken) + " taken over from "
+            + ", ".join(runs) + "; the rest walked")
+
+
 def _sweep_next(status: JobSetStatus) -> str:
     """A benchmark's next step: its own verbs, for the stage it measures, on
     the calculation (`job-system.md` § 7) -- the trials launch together, the
@@ -619,6 +661,10 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
         ("declares", ", ".join(s.carries) or "-"),
         ("resources", s.resources or "-"),
     ]
+    if s.gathered:
+        # WHAT THE RUN TOOK from the rungs upstream -- its `.gathered-from`
+        # (`engines/transport.md` § 2a.11): the inputs it started from.
+        rows.append(("gathered", "; ".join(s.gathered)))
 
     tries = ", ".join(attempt_name(n) for n in s.attempts) or "-"
     rows.append(("attempt", f"{s.attempt or '-'}"
@@ -633,15 +679,30 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
         if cmd:
             rows.append(("command", " ".join(cmd)))
         # SAID EVERY TIME (checkpointing.md S3): the run it continued from,
-        # or null -- it started from the structure.
+        # or null -- it started from the structure, or from what it gathered.
+        # A sweep's run continues at the point (rule 3, `engines/transport.md`
+        # § 2a.11): the points taken over name the run they came from.
         src = s.launch.get("continued_from")
         rows.append(("continued from",
-                     src if src else "nothing -- it started from the structure"))
+                     src if src else _sweep_took_over(s) if s.points
+                     else "nothing -- it started from what it gathered"
+                     if s.gathered else
+                     "nothing -- it started from the structure"))
     else:
         rows.append(("launched", "no  (no launch record -- prepared, not started)"))
     rows.append(("converged", s.converged or "-"))
     rows.append(("warm files", ", ".join(s.warm_files) or "-"))
     rows.append(("detail", s.detail or "-"))
+    # A SWEEP'S POINTS, one row each (`engines/transport.md` § 2a.11): done
+    # or not done and why, what it started from, what it alone took.
+    for p in s.points:
+        rows.append((f"  {p['bias_v']:g} V",
+                     ("done" if p["done"] else f"not done -- {p['why']}")
+                     + (f"; from {p['started_from']}" if p.get("started_from")
+                        else "; from what it gathered"
+                        if p["why"] != "not opened" else "")
+                     + (f"; took {', '.join(p['took'])}" if p.get("took")
+                        else "")))
 
     # The pad comes off the longest label, never a literal.
     w = max(len(k) for k, _ in rows) + 2
