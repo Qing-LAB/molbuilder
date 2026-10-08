@@ -313,7 +313,7 @@ Three ways in, and they all end at the same files:
 |---|---|---|
 | working in a browser | the parameter tab, then the **Task setup** tab | the template, the description and the structure pair, in a folder you chose |
 | working at a terminal | `molbuilder jobset init` | the same files |
-| already have a folder | `molbuilder jobset prep run <stage>` | the runnable directory |
+| already have a folder | `molbuilder jobset prep task --stage <stage>` | the runnable directory |
 
 The browser never writes an engine input. It renders the *form* from the
 catalogue and asks the server to produce the files, because getting a format
@@ -458,7 +458,7 @@ files and edits none"* test exists to catch.
 `render_deck` runs it like any other; § 9's gates cover it), and transport
 migrated 2026-08-29 as the COMPOSITE: still a different KIND of job
 ([`execution/architecture.md § 0`](?doc=execution/architecture.md)) — one
-citation of a finished junction attempt, five derived stages — but prepped,
+citation of a finished junction attempt, five derived stages — but prepared,
 launched and summarized through the ordinary jobset verbs
 ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)).
 

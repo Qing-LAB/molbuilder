@@ -110,7 +110,7 @@ header, inside the domain.
   [`model/overview.md`](?doc=model/overview.md) § 2 and
   [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6) and must not collide
   across meanings — e.g. plain "bundle" is the JobSet framework's word for
-  the portable prepped directory, so the run→next-calculation handoff doc
+  the portable prepared directory, so the run→next-calculation handoff doc
   had to be named `handoff-bundle.md`, never "bundle" (the handoff itself
   retired 2026-08-29 — citations replaced it; the doc is archived and
   `execution/job-contracts.md` § 5 holds the closure). **Sub-documents share the master's filename as a prefix**, so

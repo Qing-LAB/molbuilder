@@ -630,7 +630,7 @@ closes that.
 A second generate targets **the directory it is pointed at** — since 2026-08-07
 that is the level-③ name the user typed, not a location the id derives (§ 3.0).
 
-**A prepped stage is not prepped again** *(user, 2026-10-02: "refuse it, redo
+**A prepared stage is not prepared again** *(user, 2026-10-02: "refuse it, redo
 via rollback")*. `prep` refuses a stage the calculation's plan already holds
 and names the way back: the state saved before that prep, restored with
 `molbuilder checkpoint restore`

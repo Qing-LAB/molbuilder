@@ -192,7 +192,7 @@ to lose your results."*
 | build it | `jobset prep bench <stage>` | ~~`bench generate` + `bench prep`~~ |
 | run it | `jobset launch bench <stage>` | ~~`bench siesta-gpu`~~ |
 | read it | `jobset summarize bench <stage>` | ~~`bench summarize`~~ |
-| use the answer | `jobset prep run <stage>` — the verdict is **offered** and waits | ~~`bench prep-run`~~ |
+| use the answer | `jobset prep task --stage <stage>` — the verdict is **offered** and waits | ~~`bench prep-run`~~ |
 
 **`molbuilder bench` is gone entirely** (2026-08-17, user: *all verbs unified
 under `jobset`*). Its last inhabitant was `probe-scheduler`, which reads

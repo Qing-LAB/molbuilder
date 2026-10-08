@@ -2787,7 +2787,7 @@ sequenceDiagram
     U->>B: describe the calculation
     B->>B: write the template + task.json + data files
     Note over B: names NO machine (G1)
-    U->>P: scp the folder, then `jobset prep run coarse`
+    U->>P: scp the folder, then `jobset prep task --stage coarse`
     P->>P: step 1 — resolve THIS machine
     P->>P: step 2 — template values ⊕ coarse's overrides
     P->>D: one config object
@@ -2807,7 +2807,7 @@ that one, and renders — [`stages.md`](?doc=engines/stages.md) § 4's
 `effective config = template ⊕ overrides`, seen on disk.
 
 **The item is not edited and the template is not rewritten.** A stage is a lens
-over the description, not a mutation of it, which is what lets a stage prepped
+over the description, not a mutation of it, which is what lets a stage prepared
 anew — from the state saved before its prep — get the same deck.
 
 > **This is also why D4 matters.** A stage overriding `relax_type` from `CG` to

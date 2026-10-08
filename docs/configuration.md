@@ -365,7 +365,7 @@ and frequent diagnosis. Two rules make it a readable one:
   prep names with `--target`, this machine's own), and then which file
   supplied each effective value. A prep builds it once, with the record it
   reads at its checkpoint 4 — whose queues it lists — and `STAGE-PLAN.md`,
-  the pipeline log, the ledger's *prepped* line and the answer both doors show
+  the pipeline log, the ledger's *prepared* line and the answer both doors show
   (a Task setup preview's too) all carry that one table
   *(each read the files again, at different moments, until 2026-10-05: at a
   first `prep --target sol` the plan named this machine's record, and never
@@ -996,7 +996,7 @@ is the clearest statement of the rule.)*
 **A target's queues are its record's and nothing else's** *(user,
 2026-10-02)*: probed on that machine, the record copied here. A queue list
 typed into this machine's preferences (`scheduler.routing`, refused since)
-described a machine its author was not on, and every job prepped for it
+described a machine its author was not on, and every job prepared for it
 trusted a menu nobody measured.
 
 **A probe never writes a preference.** `derive_scheduler_block` (replaced
@@ -1029,7 +1029,7 @@ the artifact that satisfies it.
 1. **the calculation** — `<calculation>/environment.json`, snapshotted by `prep`
    step 1 and, once written, never overwritten; it names the machine it was
    taken for (`machine`: that prep's `--target`, `this` for the machine it was
-   prepped on). A preview reads the record it would snapshot and writes
+   prepared on). A preview reads the record it would snapshot and writes
    nothing (`web/task-setup.md` § 11.1);
 2. **the machine** — written by `jobset probe`, shared by every calculation here.
 
@@ -1055,7 +1055,7 @@ carries: the same name passes, whatever has been re-probed since — the
 calculation reads its copy — and any other, `this` included, is refused.
 Naming a target is also **refused when it is not there**. Both refusals are
 one rule: a target the user typed is an instruction, and silently ignoring an
-instruction is worse than stopping. A typo'd `--target` on an already-prepped
+instruction is worse than stopping. A typo'd `--target` on an already-prepared
 folder used to prep happily against whatever was snapshotted, which is exactly
 the mistake the flag exists to catch.
 

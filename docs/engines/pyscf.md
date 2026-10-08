@@ -93,7 +93,7 @@ flowchart LR
   ```bash
   molbuilder jobset init --structure P/structure/water.xyz --bundle P/optimization/water \
       --engine pyscf --calculation optimization --shape flat
-  molbuilder jobset prep run coarse --bundle P/optimization/water --target this \
+  molbuilder jobset prep task --stage coarse --bundle P/optimization/water --target this \
       --cpus-per-task 4
   ```
 
@@ -218,7 +218,7 @@ from gpu4pyscf's own classes when `_USING_GPU` — one way per script.
 **The probe runs at script start, not at `prep`, and it has to.** You prep on a
 login node and run on a GPU node, so the device is not visible when the script
 is written. SIESTA's check *can* happen at `prep` because what it needs is an
-**environment**, which the prepping machine can see —
+**environment**, which the preparing machine can see —
 [`overview.md`](?doc=engines/overview.md) § 3a explains why that difference is
 forced rather than chosen.
 

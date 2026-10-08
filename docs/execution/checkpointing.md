@@ -683,7 +683,7 @@ words for how a deck is written, not properties of a snapshot.
 So the caller owns three things: **noticing** the moment, **saving** before it
 changes anything, and **saying so** — it knows what it is about to change, so
 the note names it, after the time the state was taken:
-`2026-10-03 14:05:12 · before prep run tight`. A state is then found by when
+`2026-10-03 14:05:12 · before prep task tight`. A state is then found by when
 and by what.
 
 **The moments are `prep` and Task setup's Save, because each is a change** —
@@ -711,7 +711,7 @@ could decline was a restore point you might not have.)*
 |---|---|
 | **Where it saves** | `prep`, at both its doors — the terminal and Task setup's Prep buttons — after its checks and before it writes; Task setup's Save, before it writes the description |
 | **Who decides** | the act that changes the folder: it always saves, and says so — the terminal prints the state and its note, the tab shows them |
-| **The note** | the time the state was taken, then what the act is about to change: `2026-10-03 14:05:12 · before prep run tight` |
+| **The note** | the time the state was taken, then what the act is about to change: `2026-10-03 14:05:12 · before prep task tight` |
 | **Nothing changed** | no new state: the one the folder stands at is named |
 | **The last stage** | nothing asks, because nothing follows. A surface showing a finished, unsaved run should say it is unsaved |
 

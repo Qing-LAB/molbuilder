@@ -30,7 +30,7 @@ described here, and is documented in `execution/job-system.md`.
 ```mermaid
 flowchart LR
     P["Prep<br/>(Task setup or the CLI, for its machine)<br/>.fdf or .py + wrapper, activation baked"]
-    C["Copy<br/>scp the calculation to that machine,<br/>when it was prepped elsewhere"]
+    C["Copy<br/>scp the calculation to that machine,<br/>when it was prepared elsewhere"]
     R["Launch<br/>(on that machine)<br/>bash .run.sh / sbatch .sbatch"]
     W["Watch<br/>the Results tab: viewer + Run panel<br/>or molbuilder watch"]
     P --> C --> R --> W
@@ -75,7 +75,7 @@ does not restate them; it explains how to *operate* them.
 The single most important property of a generated run is that the wrapper is
 **self-contained at runtime**: it reads no config, probes no toolchain, and has
 no fallback path. Everything site-specific is **baked in** when the wrapper is
-generated/prepped, so the compute node needs nothing but the files in the
+generated/prepared, so the compute node needs nothing but the files in the
 directory. This is what lets you `scp` a run dir to a cluster, or hand it to a
 collaborator, and have it run identically.
 
@@ -698,7 +698,7 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 
 | state | detail |
 |---|---|
-| `pending` | prepped, not launched (no run.json) |
+| `pending` | prepared, not launched (no run.json) |
 | `queued` | queued as job N · launched (direct), no output yet |
 | `running` | running · no result file yet · the engine's output ended; the job has not concluded · the engine ended; the job's finish is deriving the result |
 | `finished` | job_completed · concluded (rc=0 at …) |
@@ -712,9 +712,10 @@ marker; the monitor, which saw its PID go, writes its closing record first,
 and that record reads *failed — stopped before its end: no ending in its output
 and no exit recorded* here and in its own `finish`
 ([`run-reports.md`](?doc=execution/run-reports.md) § 2.4). A lost node takes
-the monitor with it, and the run reads `running`. `launch run` still asks the
-person before continuing a run with no marker
-([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.4).
+the monitor with it, and the run reads `running`. Launching it again is yours
+to decide: `launch task` does it as asked, warm or `--cold`, however the last
+run ended ([`job-system.md`](?doc=execution/job-system.md), *What molbuilder
+does for you*, 3).
 
 **Before the first output**, a direct launch reads `queued` (its `run.json` is
 written as the process starts). One killed before writing anything reads
@@ -727,7 +728,7 @@ reads `queued` the same way, from its own `<basename>-run<N>.run.json`.
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> pending: prepped
+    [*] --> pending: prepared
     pending --> queued: run.json written
     queued --> running: first output
     queued --> failed: nonzero marker or the monitor's closing record, no output
@@ -759,12 +760,12 @@ run goes:
 
 | it also holds | `state` — `detail` |
 |---|---|
-| nothing more | `pending` — prepped, not launched (no run.json) |
+| nothing more | `pending` — prepared, not launched (no run.json) |
 | `run.json`, `"job_id": "481923"` | `queued` — queued as job 481923 |
 | `bdt_01_coarse-run0.out`, no `>> End of run`, quiet for 40 minutes | `running` — running |
 | the `.out` ends `>> End of run`; `-run0.concluded` reads `rc=0 at …` | `finished` — job_completed |
 | the `.out` stopped on `SCF_NOT_CONV … (required)`; the warm retry's `-run1.out` is printing | `running` — `-run1.out` speaks: same stage, newer |
-| killed at walltime: no ending in the `.out`, no `.concluded` | `running` — the monitor's log says *failed*; `launch run` asks |
+| killed at walltime: no ending in the `.out`, no `.concluded` | `running` — the monitor's log says *failed*; launching it again, warm or `--cold`, is yours |
 | no `.out` (SIESTA died before its first line); `-run0.concluded` reads `rc=1 at …` | `failed` — concluded (rc=1 at …) before any output |
 
 #### Which engine ran — `engine_of`
@@ -793,7 +794,7 @@ first-hit list lets one stale `.run.sh` outrank two agreeing declarations.
 
 **The sniff is consulted only when nothing declared**, for a directory
 molbuilder did not write, and never overrules a declaration: files outlive the
-run that wrote them, so a stale `.fdf` beside a freshly re-prepped PySCF deck
+run that wrote them, so a stale `.fdf` beside a freshly re-prepared PySCF deck
 is litter, not a second opinion.
 
 
@@ -951,7 +952,7 @@ asks too *(ruled 2026-10-01)*: a launch flag may still change the queue, the
 wall or the memory after `prep`'s printout, so the line as sent is seen only
 here. A flag the launch would
 not read is refused by name — `--time`/`--mem`/`--domain` under
-`--mode direct`, a bench's flags on `launch run`.
+`--mode direct`, a bench's flags on `launch task`.
 
 > **`--mode ask` submits nothing and tells you when it would start.** It walks
 > the identical path `--mode submit` walks and inserts one flag,

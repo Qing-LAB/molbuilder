@@ -70,7 +70,7 @@ is theirs to make.
 > description of a mixture.
 >
 > **And this is a refusal only because nobody is looking.** Carrying a verdict
-> into `prep run` applies a number automatically. **Presenting two measurements
+> into `prep task` applies a number automatically. **Presenting two measurements
 > side by side is not the same act** — there the person is reading the table and
 > can weigh it, so the bench summary *states* the machines and never withholds
 > the comparison (`generator.md` § 4.4b). Same fact, two stances, and the

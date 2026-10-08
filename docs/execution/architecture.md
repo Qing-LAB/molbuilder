@@ -220,7 +220,7 @@ note records the deletion.)*
 | **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says | `identity` · `paths` · `ref` · `calcdirs` · `runfiles` · `runrecord` · `scheduler/` (the record, the probe, admission) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` | `resolve_stage_ref` · `stage_token` · `parse_token` · `Shape.named` · `Shape.stage_dir` · `Ref` · `run_id` · `machine_for` (the record read) · `require_activation` · `resolve_environment` (the probe's) · `admits` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers | know what a calculation is — a stage, a ladder, a plan |
 | **2** | **description** | what the person asked for — and the run a file belongs to, read with it | `task` · `template` · `jobset/migrate` · `runs` | `read_task` · `write_task` · `find_template` · `derive_run` · `varies_for` · `place_of` · `run_of` · `about` · `folder_answer` | `task.json` · the template | **name a machine** |
 | **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **each job's ask, and the text of every file** | `resolve` · `jobset/model` · `jobset/engines` · `jobset/placement` · `warmfiles` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `runwrap` · `jobset/plan` · `jobset/commands` | `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins ⊕ the rung's answers → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `engine_seam` · `placement` · `warm_list` · `gpu_request` · `spec_for` (each engine's) · `script_emit.render_deck` / `script_emit.prepare_deck` · `write_run_wrapper` · `render_sbatch` · `command` | `job-set.json` · the decks · `.run.sh` · `.sbatch` · `STAGE-PLAN.md` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
-| **4** | **layout** | where every file sits; which run feeds which | `jobset/materialize` · `jobset/continuation` | `stage_home` · `prepped` · `open_run` · `job_dir_names` · `attempts` · `latest_attempt` · `continuation` · `usable` | the folder tree; `run-<n>/` | know about a queue |
+| **4** | **layout** | where every file sits; which run feeds which | `jobset/materialize` · `jobset/continuation` | `stage_home` · `prepared_already` · `open_run` · `job_dir_names` · `attempts` · `latest_attempt` · `continuation` · `usable` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/submit` · `jobset/agreement` · `jobset/ask` | `launch_agreement` · `check_launch_matches_deck` · the one sender | `launch/` scripts — and through floor 1, `run.json` | decide physics |
 | **6** | **observe** | where has it got to | `jobset/runstatus` · `jobset/summarize` | `jobset_status` · `render_status` · `render_stage_status` · `summarize` | only `summarize`'s own records — `bench-result.json`, a transport calculation's I–V, a displacement sweep | write anything a run or a prep reads |
 | **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `web` | `molbuilder jobset {init,prep,launch,summarize,status,probe,machines,migrate}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s and `launch`'s, which their entries append (`launch`'s verb only the refusals it says before it calls its entry) | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
@@ -432,9 +432,9 @@ job by its count *or* by `use_gpu`; `run.json` read raw *or* through `persist`.
 | the fact | its door | floor | every reader asks it — among them |
 |---|---|---|---|
 | **a stage's number and folder** | `stage_home(base, task, stage)` — the number on disk for a stage that has a folder (its directory in the hierarchy, its deck's token in the flat shape); the next unused for one that has none ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) | 4 | prep, launch, status, `#N`, what a stage continues from, the transport record, the displacement sweep, a benchmark's folder, Task setup |
-| **prepared** | `prepared(base, task, kind, stage)` — the plan holds the stage's row, or its bench folder a sweep, matched by `identity.stage_key` *(called* prepped *until 2026-10-08)* | 4 | prep's gate, launch's gate, status, the plan's merge, Task setup's folder answer, its Save, its commands |
+| **prepared** | `prepared_already(base, task, kind, stage)` — the plan holds the stage's row, or its bench folder a sweep, matched by `identity.stage_key` *(called* prepped *until 2026-10-08)* | 4 | prep's gate, launch's gate, status, the plan's merge, Task setup's folder answer, its Save, its commands |
 | **ready** | `jobset.ready.readiness(base, task, stage)` → `Readiness`: prepared, or ready with what it would take (its `Continuation`'s line, or each file a transport rung gathers), or waiting with the refusal saying what for — the one door that decides what a stage takes (`continuation_answer`, `gather_sources`), asked of a stage not yet prepared ([`job-system.md`](?doc=execution/job-system.md), *The task*) | 4 | `prep task`'s offer and its check, status's table and next step, Task setup's Prep |
-| **launched** | `launch_record(run)` — the run's `run.json` (a flat stage's run's own `<stem>-run<N>.run.json`, the stage's newest run when no number is asked; one with no number, written before 2026-10-06, refused naming `jobset migrate`); one that does not read is an error naming the file, never *launched* or *not launched* | 1 | status, the Run panel, prep (an unlaunched attempt is reused), every launch gate, the transport citation |
+| **launched** | `launch_record(run)` — the run's `run.json` (a flat stage's run's own `<stem>-run<N>.run.json`, the stage's newest run when no number is asked; one with no number, written before 2026-10-06, refused naming `jobset migrate`); one that does not read is an error naming the file, never *launched* or *not launched* | 1 | status, the Run panel, every launch gate, the transport citation |
 | **how a run ended** | `ending(run)` — the run's own conclusion marker, which carries the exit code; nothing else answers — the engine's own end mark says the engine ended, not the job *(it answered for a run started by hand until 2026-10-03)* | 1 | status (its state is built on it), continuation, the frequency stage, the transport gather and citation, a re-launch's plan, the transport record, a benchmark's trials, the viewers through the server |
 | **a run to build on** | `usable(state)` — the one status door says it **finished**: it ended on its own with exit code 0 and nothing in its output says the engine stopped (`parse.dirs.run_status`, the door `status` asks; user, 2026-10-06); the default of every hand-over, while a run named with `--from` is taken as said and a structure can be stated relaxed ([`job-system.md`](?doc=execution/job-system.md) § 5.4) | 4 | every hand-over by default: a continuing stage, the frequency stage's geometry, a transport rung's inputs |
 | **what a run starts from** | `continuation(...)` → `Continuation`, the files it carries included | 4 | prep — checked, written and ledgered as one object — a re-launch, status, Task setup's *Continue from* |
@@ -528,7 +528,7 @@ before the launch is known.** The full dependency table, pair by pair, is
 You have looked at the coarse stage, you are happy with it, and you type:
 
 ```bash
-molbuilder jobset prep run tight --from 01_coarse/run-0
+molbuilder jobset prep task --stage tight --from 01_coarse/run-0
 ```
 
 Here is what happens, and **who decides each thing**:
@@ -793,7 +793,7 @@ scheduler"* means a prep that writes a `.sbatch` for it: `prep --no-sbatch`
 writes none, and then nothing is asked of a queue.
 
 **Two scheduler asks take a fifth rung, and only these two.** `allocation` is
-folded by the shared prep path, so `prep bench` and `prep run` read one `time`
+folded by the shared prep path, so `prep bench` and `prep task` read one `time`
 and one `domain` — and the two lanes want opposite things: a trial's steps are
 cut so it wants minutes, a run wants days. `execution` carries the run's own
 (`stages.md` § 6.8e). **`mem` does not join them**: a trial and a run compute
@@ -870,16 +870,16 @@ sequenceDiagram
     U->>B: describe the calculation
     B->>B: write task.json + the template + data files
     Note over B: names NO machine — this folder is portable
-    U->>P: scp to the cluster, then `jobset prep run coarse`
+    U->>P: scp to the cluster, then `jobset prep task --stage coarse`
     P->>P: the five steps → 01_coarse/run-0/
-    U->>S: `jobset launch run coarse --mode submit`
+    U->>S: `jobset launch task --stage coarse --mode submit`
     S-->>U: Submitted job 4021
     U->>O: `jobset status`
     O-->>U: coarse · finished · warm files: .XV .DM
     Note over U: YOU LOOK AT IT.<br/>Converged? Geometry sane?
-    U->>P: `jobset prep run tight --from 01_coarse/run-0`
+    U->>P: `jobset prep task --stage tight --from 01_coarse/run-0`
     P->>P: copies coarse's .XV/.DM into 02_tight/run-0/
-    U->>S: `jobset launch run tight --mode submit`
+    U->>S: `jobset launch task --stage tight --mode submit`
 ```
 
 **The pause before the last three steps is the design, not a gap in it.** It is
@@ -1006,7 +1006,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > command line prints it, the Task setup tab shows it, its preview the same
 > answer stopped before the save ([`job-system.md`](?doc=execution/job-system.md)
 > § 5.0, § 5.3). *(Its *already under way* question was retired on
-> 2026-10-02: a prepped stage is not prepped again.)* A surface that did part of the act itself is how the tab came to
+> 2026-10-02: a prepared stage is not prepared again.)* A surface that did part of the act itself is how the tab came to
 > skip four of them. **The assembly lives beside the conductor**, as its own
 > (`jobset/prep_inputs.py`, § 2.1's note): `prep_run_inputs` and
 > `bench_inputs` sat in `jobset/_cli.py` — floor 7 — until the same day, so
@@ -1258,7 +1258,7 @@ asked for no queue, wall or memory"*.)*
 
 **A workstation's record says `workstation`**, and no `.sbatch` is written —
 asking for one would be the nanny behaviour this project refuses. **A cluster's
-record lists its queues**, and a run prepped for it names one of them, with its
+record lists its queues**, and a run prepared for it names one of them, with its
 wall and memory, or prep refuses: a header without them is rejected by the
 scheduler rather than by molbuilder, so molbuilder refuses first, where the
 message is useful (§ 5.2).
@@ -1273,23 +1273,23 @@ side by side, with nothing edited between them.
 checkable against that:
 
 ```bash
-molbuilder jobset prep   run coarse --np 8 --cpus-per-task 1
+molbuilder jobset prep task --stage coarse --np 8 --cpus-per-task 1
 #   machine      8 cores · 1× RTX A4000 · no scheduler
 #   allocation   8 ranks
 #   01_coarse/bdt_au_01_coarse.fdf   rendered   BlockSize 32, Diag.Algorithm ScaLAPACK
 #                                    (500 orbitals / 8 ranks = 62 -> 32, the pow2 below it)
 #   01_coarse/run-0/                 ready      (nothing carried — cold start)
-molbuilder jobset launch run coarse --mode direct     # runs here; you wait
-molbuilder jobset status                              # look before deciding
-molbuilder jobset prep   run tight --from 01_coarse/run-0 --np 8 --cpus-per-task 1
-molbuilder jobset launch run tight  --mode direct
+molbuilder jobset launch task --stage coarse --mode direct  # runs here; you wait
+molbuilder jobset status                                   # look before deciding
+molbuilder jobset prep task --stage tight --from 01_coarse/run-0 --np 8 --cpus-per-task 1
+molbuilder jobset launch task --stage tight --mode direct
 ```
 
 **On the cluster**, after `scp -r bdt-relax/ cluster:~/`, where the cluster's own
 record is the probe's:
 
 ```bash
-molbuilder jobset prep   run coarse --np 16 --cpus-per-task 1 --gpus 1 \
+molbuilder jobset prep task --stage coarse --np 16 --cpus-per-task 1 --gpus 1 \
                                     --domain public --time 2-00:00:00 --mem 64G
 #   machine      64 cores · 4× A100 · slurm
 #   allocation   16 ranks · 1 GPU        <- what THIS run asks for, not what the node has
@@ -1297,11 +1297,11 @@ molbuilder jobset prep   run coarse --np 16 --cpus-per-task 1 --gpus 1 \
 #                                    (500 orbitals / 16 ranks = 31 -> 16)
 #   01_coarse/bdt_au_01_coarse.sbatch  written  -p public -q public -n 16 -c 1 --gres=gpu:1
 #   01_coarse/run-0/                 ready      (nothing carried — cold start)
-molbuilder jobset launch run coarse --mode submit     # Submitted job 4021
-molbuilder jobset status                              # look before deciding
-molbuilder jobset prep   run tight --from 01_coarse/run-0 --np 16 --cpus-per-task 1 --gpus 1 \
+molbuilder jobset launch task --stage coarse --mode submit  # Submitted job 4021
+molbuilder jobset status                                   # look before deciding
+molbuilder jobset prep task --stage tight --from 01_coarse/run-0 --np 16 --cpus-per-task 1 --gpus 1 \
                                     --domain public --time 2-00:00:00 --mem 64G
-molbuilder jobset launch run tight  --mode submit     # Submitted job 4022
+molbuilder jobset launch task --stage tight --mode submit   # Submitted job 4022
 ```
 
 *(Stated once instead: the same values in the description — the ranks, cores

@@ -16,7 +16,7 @@ needs before it can offer to prepare anything.
   on the TARGET            on YOUR machine                 on the TARGET
   ─────────────            ───────────────                 ─────────────
   jobset probe             (copy the record over)
-    --write --name sol  ─────────────────────────►  jobset prep run <stage>
+    --write --name sol  ─────────────────────────►  jobset prep task --stage <stage>
                                                       --target sol
                                                           │
                                                     rsync the bundle  ───►  ./…run.sh
@@ -84,7 +84,7 @@ silently-dropped record looks exactly like one that was never copied.
 **Then prepare, and send it:**
 
 ```
-molbuilder jobset prep run coarse --bundle Au-BDT-Au/optimization/Relax --target sol
+molbuilder jobset prep task --stage coarse --bundle Au-BDT-Au/optimization/Relax --target sol
 rsync -a Au-BDT-Au/optimization/Relax/ cluster:~/molbuilder/projects/Au-BDT-Au/optimization/Relax/
 ```
 
@@ -112,7 +112,7 @@ calculation → target → machine, first match wins.
 | the deck, the wrappers, `task.json`, the template | ✅ written by `prep` | that is the point |
 | the pseudopotentials | ✅ copied in at `prep` | the files are the same everywhere; the library path is not (`project-layout.md` § 2.6) |
 | the structure pair | ✅ copied in | same reason |
-| `environment.json` | ✅ snapshotted beside the bundle | so the target's capability is a fact of the calculation, not of whoever prepped it |
+| `environment.json` | ✅ snapshotted beside the bundle | so the target's capability is a fact of the calculation, not of whoever prepared it |
 | **`env_init` — the preamble and activation** | ✅ **on the target's own record**, since 2026-08-24 — copied there by the probe from that machine's `molbuilder.json` | how a shell enters an environment there is a fact about that machine (`configuration.md` § 5 M-1) — see § 3 |
 | the target's **env inventory** | ✅ same | whether `molbuilder-siesta-gpu` exists there is a fact; *which* env you want is a preference and stays in `molbuilder.json` |
 
@@ -172,12 +172,12 @@ caught at prep rather than at `conda activate` on a compute node.
 
 **A record can also be stale.** Nothing expires it: a cluster that changed
 its partitions, its node mix, or its installed environments since the probe
-will be prepped against the old answer. `environment.json` carries
+will be prepared against the old answer. `environment.json` carries
 `detected_at`, so the age is knowable; surfacing it is left to the surfaces
 rather than made a refusal, because a six-month-old record is often still
 exactly right. Re-probe when the machine changed. A calculation keeps the
-record it was first prepped with (`configuration.md` M-3), so one already
-prepped follows the new record only through a new prep, from the state saved
+record it was first prepared with (`configuration.md` M-3), so one already
+prepared follows the new record only through a new prep, from the state saved
 before its first (`molbuilder checkpoint restore`; `job-system.md` § 5.0).
 
 ---
@@ -229,7 +229,7 @@ and one of those I had first written up as broken.
 **Why refusing beats defaulting.** The cost is asymmetric. Being asked
 which machine costs one flag. Being given the wrong one costs a queue wait,
 an allocation, and a set of numbers that look plausible — the failure mode
-`--target` was introduced for in the first place, after a benchmark prepped
+`--target` was introduced for in the first place, after a benchmark prepared
 on a workstation was measured against the desk.
 
 **One record and no `--target` still proceeds silently.** There is no

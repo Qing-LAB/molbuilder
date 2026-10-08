@@ -209,7 +209,7 @@ conductor:
 | **5 · directory** | the plan's new row merged; `STAGE-PLAN.md`; the attempt to open and what it receives — the `Continuation`'s files | transport — **gather**: each rung's inputs, from the runs upstream it builds on |
 | ***the writing*** | every file of the plan written, the attempt opened, `job-set.json` last | — |
 
-**Transport is not a second conductor.** Its five rungs are prepped by these
+**Transport is not a second conductor.** Its five rungs are prepared by these
 steps, with its four optional ones; until 2026-10-05 it had its own arm, a copy
 of the steps' opening and closing that had drifted from them — no progress
 seed, no once-per-line filter, no provenance in its log, its job built by hand.
@@ -839,7 +839,7 @@ its render tests rather than by the framework walk.*
 
 **Both crossed over, and the old shape is gone.** A vibrational spectrum
 became the `vibration` calculation KIND at the spectra migration's P0–P3
-(2026-08-21) — described, prepped and run like any stage, with
+(2026-08-21) — described, prepared and run like any stage, with
 `spectra/engine_base.py` and its `render_script(struct, cfg) -> str` generator
 deleted. **Transport followed on 2026-09-17**: `transport/engine_base.py` (the
 `Protocol` registry), `transiesta.render_script` (the generator that returned

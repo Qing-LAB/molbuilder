@@ -185,8 +185,8 @@ modes near zero. [`science/normal-modes.md`](?doc=science/normal-modes.md)
 flowchart LR
   M["Molbuilder tab<br/>build the structure,<br/>hold atoms in the viewer,<br/>Save to project (the pair)"] --> S["Spectrum tab<br/>load the structure, pick the engine on the strip<br/>(a periodic structure defaults to SIESTA),<br/>set parameters (the catalogue's form per engine),<br/>read the live checks"]
   S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, the kind's ladder;<br/>Save writes task.json;<br/>the stage's tab prints the commands<br/>(--target when the CLI would refuse to guess)"]
-  T -->|"prep run freq"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA: &lt;label&gt;_01_freq.fdf (from a sorted copy)"]
-  P -->|"launch run freq"| R["the run — the job writes the result itself<br/>PySCF: the script writes it<br/>SIESTA: the force-constant run leaves &lt;label&gt;.FC,<br/>then the finish (mb_vibration.pyz) derives the modes"]
+  T -->|"prep task --stage freq"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA: &lt;label&gt;_01_freq.fdf (from a sorted copy)"]
+  P -->|"launch task --stage freq"| R["the run — the job writes the result itself<br/>PySCF: the script writes it<br/>SIESTA: the force-constant run leaves &lt;label&gt;.FC,<br/>then the finish (mb_vibration.pyz) derives the modes"]
   R --> A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 6"]
   A --> V["Results tab<br/>chart · modes table · animation ·<br/>electronic structure · thermochemistry"]
 ```
@@ -196,8 +196,8 @@ The CLI walks the same road without the browser:
 ```bash
 molbuilder jobset init --structure P/structure/x.xyz --bundle P/frequency/F \
     --engine pyscf|siesta --calculation vibration --name X --shape hierarchical
-molbuilder jobset prep run freq --bundle P/frequency/F --target this
-molbuilder jobset launch run freq --bundle P/frequency/F --mode direct --yes
+molbuilder jobset prep task --stage freq --bundle P/frequency/F --target this
+molbuilder jobset launch task --stage freq --bundle P/frequency/F --mode direct --yes
 ```
 
 The launch ends with `<label>.spectra.json` in the attempt on both engines
@@ -1171,8 +1171,8 @@ vibration:
 | the flat layout | nothing (`--from` and `--cold` name attempts, which flat keeps none of) | `relax`'s latest run in the folder, which must have finished | nothing copied: they lie in the folder | the run's `<basename>-run<N>.continued-from` |
 | a benchmark of the stage | — | `relax`'s newest attempt, as a run's default — every trial's deck at that geometry (§ 5.8) | none: a trial measures from its deck | the ledger's `continues`, and both doors say which run |
 
-A displacement sweep's stages each take the same rows; a stage prepped is not
-prepped again ([`job-system.md`](?doc=execution/job-system.md) § 5.0), so the
+A displacement sweep's stages each take the same rows; a stage prepared is not
+prepared again ([`job-system.md`](?doc=execution/job-system.md) § 5.0), so the
 `relax` run a stage was measured at is the one its record names.
 
 **The relaxed geometry leaves the input's relaxation record behind.** The
@@ -1377,11 +1377,12 @@ attempt reads failed. Fix the cause — most often the job env, which needs
 numpy and ASE. The finish can be run by hand in the failed attempt, with the
 job's env active — `python mb_vibration.pyz <deck> <output>` — which writes
 the spectrum in seconds; the attempt still reads failed, because its launch
-did. To run the force constants again, go back to the state saved before
-the stage's prep and prep it anew — a force-constant stage is not launched
-again, its rerun restarting at `FC.First`
-([`job-system.md`](?doc=execution/job-system.md) § 5.4; "launch the stage
-again" stood here until 2026-10-06). An attempt prepared before 2026-09-28 carries neither the bundle nor
+did. To run the force constants again, launch the stage again: a
+force-constant stage takes nothing from a run of its own, so it runs again
+from its deck alone, from `FC.First`
+([`job-system.md`](?doc=execution/job-system.md) § 5.4, *A stage launched
+again*); to change it first, go back to the state saved before its prep and
+prep it anew. An attempt prepared before 2026-09-28 carries neither the bundle nor
 the deck's `vibration` block: prepare the stage anew from the state saved
 before its preparation ([`execution/job-system.md`](?doc=execution/job-system.md)
 § 5.0), and launch it. **A benchmark
@@ -1470,8 +1471,8 @@ convention the PySCF deck's own check uses (§ 4.3). Above it the block carries 
 the one remedy for how the geometry was reached — **one text,
 `vibrational_analysis.nonstationary_remedy`, which `prep` (§ 5.8) and the
 PySCF deck (§ 4.3) write too**, each leading with the step that can always
-be taken first — if this stage is prepped, go back to the state saved before
-its prep (a prepped stage is not prepped again,
+be taken first — if this stage is prepared, go back to the state saved before
+its prep (a prepared stage is not prepared again,
 [`job-system.md`](?doc=execution/job-system.md) § 5.0): when the ladder's stage
 relaxed it (the block's `relaxation_stage`), launch that stage again — it
 continues from its newest attempt — and prep this one once it has concluded;
@@ -1579,8 +1580,8 @@ moot once the `relax` stage has run — and the stage is told that stage's
 outcome instead (§ 5.2a): its largest remaining force on the moved atoms
 against this calculation's tolerance, as information when within it and as a
 **warning** when above it, naming the one remedy (`vibrational_analysis.nonstationary_remedy`, the same text the finish writes, § 5.5) — in the order it can be done: if
-this stage is prepped, go back to the state saved before its prep (a prepped
-stage is not prepped again, [`job-system.md`](?doc=execution/job-system.md)
+this stage is prepared, go back to the state saved before its prep (a prepared
+stage is not prepared again, [`job-system.md`](?doc=execution/job-system.md)
 § 5.0; a preview's has not been), launch the `relax` stage again — it
 continues from its newest attempt, at the geometry it stopped at — and prep
 this stage once it has concluded; and a
@@ -1611,7 +1612,7 @@ stage renders is asked of one rule, `pyscf/stages.vibration_render_kind` —
 never of the name `freq` *(until 2026-09-28 only a stage named `freq` took
 the relaxed geometry, so a second force-constant stage measured the
 unrelaxed input; plan W41)*. Each takes the relax stage's **newest** attempt
-when it is prepped, so a relaxation re-run between two force-constant stages
+when it is prepared, so a relaxation re-run between two force-constant stages
 puts them at different geometries — which the summary refuses, below. Each stage's job writes its own result in its own attempt
 (§ 5.5) — its `<label>.FC`, its output, its `<label>.spectra.json` — the raw
 data at that displacement, never merged or moved. **The hierarchical layout
@@ -1620,7 +1621,7 @@ only**: in the flat one every stage writes the same `<label>.FC` and
 — before any sort, permutation
 record or deck is written, rather than let it overwrite the first's result.
 
-**The summary: `jobset summarize run`** — `summarize` summarizes results that
+**The summary: `jobset summarize task`** — `summarize` summarizes results that
 exist (§ 5.5). On a SIESTA vibration with two or more force-constant stages it
 reads each stage's newest attempt through the layout's doors, and each
 spectrum through the one typed reader. It writes
@@ -1631,7 +1632,7 @@ calculation root (the `fc-sweep` presenter), which draws every key below. A
 stage without a result says why in the words `run_status` gives its attempt
 (`execution/running-a-job.md` § 4.2): not launched, queued or running is
 **pending**, never a failure; a run that failed, one that finished without
-its spectrum (an attempt prepped before its job finished itself), or a
+its spectrum (an attempt prepared before its job finished itself), or a
 spectrum the reader refuses is **failed**, with the reason. A PySCF vibration
 is refused by name — its second derivatives are analytic, so there is no
 displacement to sweep.
@@ -1645,7 +1646,7 @@ root; it adds only what the comparison derives:
 | `stages[]` | per stage: its name; the paths of its attempt, its spectrum and its `.FC`; what it varies (its own overrides of the template); the displacement SIESTA used (`fc_displacement_ang`, from the stage's spectrum, which read it from the `.FC` header) and the atoms it nudged; its asymmetry diagnostic; its stationarity verdict with the largest free-atom force and the criterion; its mode and removed-motion counts; SIESTA's version | read from the stage's spectrum |
 | `modes[]` | per mode of the reference stage (the first with a result): its frequency at every stage, the matched mode's index there, the shapes' overlap, the change from the reference, the spread across stages, and a flag when a tolerance was given | modes matched **by shape**: the overlap of the mass-weighted eigenvectors over the free atoms, assigned one-to-one so the total overlap is largest (`scipy.optimize.linear_sum_assignment`) — ranks swap between displacements when two modes are near-degenerate, and matching by rank would compare different motions |
 | `force_constants[]` | per stage against the reference: the largest change of any force constant over the block both nudged, in eV/Å², and that change relative to the largest constant | `H(δ)` from each stage's raw `.FC`, through the one reader (`parse/engines/siesta_fc.py`) |
-| `tolerance_cm1` | the threshold a person gave (`summarize run --tolerance-cm1 X`), or `null` | a mode is flagged when its spread exceeds it; without one nothing is flagged — the numbers are stated and the judgement is the person's |
+| `tolerance_cm1` | the threshold a person gave (`summarize task --tolerance-cm1 X`), or `null` | a mode is flagged when its spread exceeds it; without one nothing is flagged — the numbers are stated and the judgement is the person's |
 | `pending[]` | stages whose result is still to come: the stage, its attempt, its state (`ready` / `waiting` before its prep, the ready door's; `pending`, `queued`, `running`) and the detail of the door that answered | |
 | `failed[]` | stages whose run ended without a readable result: the stage, its attempt, its state (`failed`, `finished` without the spectrum, `unreadable`) and why | |
 
@@ -1796,7 +1797,7 @@ keyword — `%block ProjectedDensityOfStates`, `PDOS.kgrid.MonkhorstPack`,
 is written (I21).
 
 **⑤ The response across the frames — `summarize`** (§ 5.9's pattern).
-`jobset summarize run` on an `electronic` or a `transport` calculation whose
+`jobset summarize task` on an `electronic` or a `transport` calculation whose
 structure is a frame set writes `<label>.mode-response.json` at the calculation
 root — a summary of results that exist, each frame's file named by its path and
 none copied (I25's rule). It reads each frame's `Q` and weight from the frame
@@ -2079,7 +2080,7 @@ SIESTA from the label (§ 5.4), and the permutation record by its one constant,
 | file | where | holds | written by |
 |---|---|---|---|
 | `<label>.spectra.json` | each force-constant attempt (SIESTA's `freq` stages); the attempt on PySCF | **the result**: every mode's frequency and both eigenvector forms, the strengths the engine computes (`null` where not computed), the removed motions, the thermochemistry, the stationarity verdict, the steps of every finite difference (§ 6.2–6.4); read it as § 6.8 says | the run itself (§ 5.5) |
-| `<label>.fc-sweep.json` | the calculation root | a SIESTA displacement sweep's comparison: each stage and what it varied (with units), every mode's frequency per stage matched by shape, how far the force constants moved, the paths of every stage's own files, and the stages without a result with their state (§ 5.9) | `jobset summarize run` |
+| `<label>.fc-sweep.json` | the calculation root | a SIESTA displacement sweep's comparison: each stage and what it varied (with units), every mode's frequency per stage matched by shape, how far the force constants moved, the paths of every stage's own files, and the stages without a result with their state (§ 5.9) | `jobset summarize task` |
 | `<label>.FC` · `<label>.FCC` | each SIESTA force-constant attempt | **the raw force constants**: one header (atoms, the displacement in Å), then one row of three numbers in eV/Å² per displaced atom, direction, side and atom (§ 5.4); `.FCC` the same with the held atoms' rows zeroed | SIESTA |
 | `<label>_<stage>-run<N>.out` | each attempt | the engine's own account — every displacement's SCF and forces; FC step 0 is the reference geometry and its forces (§ 5.5) | SIESTA's stdout |
 | `<label>_<stage>-run<N>.pyscf.log` · `<label>_<stage>.log` · `<label>_<stage>_geom.log` | the PySCF attempt — in the flat shape the last two carry the run's number too, `<label>_<stage>-run<N>.log` (`engines/pyscf.md` § 2) | the engine's own account; PySCF's own log; geomeTRIC's optimizer log | PySCF |
@@ -2164,12 +2165,12 @@ flowchart TB
     CAT["catalogue narrowed to (engine, vibration)<br/>→ the form · → &lt;label&gt;.template.toml"]
     TJ["task.json: calculation vibration,<br/>engine, the ladder (freq; relax + freq)"]
   end
-  subgraph prep["prep run freq"]
+  subgraph prep["prep task --stage freq"]
     G["validate(struct, cfg, calculation)<br/>PySCF checks #124; SIESTA checks #124; refuse"]
     SORT["SIESTA: sort a copy held-first,<br/>write atom-permutation.json"]
     D["spec_for(…, calculation='vibration') → prepare_deck<br/>PySCF: the script · SIESTA: the .fdf"]
   end
-  subgraph run["launch run freq"]
+  subgraph run["launch task --stage freq"]
     PY["PySCF script: relax → SCF → Hessian(free) →<br/>modes → strengths → thermo → ES → .spectra.json"]
     SI["SIESTA: SCF + 6·n_free displaced SCFs → .FC"]
   end
@@ -2191,7 +2192,7 @@ flowchart TB
 | `POST /api/task-setup/save` · `/prep` | write `task.json`; run `prep` for one stage on a named machine |
 | `POST /api/spectra/load` | parse an existing `.spectra.json` into display data; typed errors |
 | `molbuilder jobset init / prep / launch` | the same road from a terminal (§ 2.1); the launch ends with the result |
-| `molbuilder jobset summarize run [--tolerance-cm1 X]` | a SIESTA displacement sweep's comparison, `<label>.fc-sweep.json` (§ 5.9) |
+| `molbuilder jobset summarize task [--tolerance-cm1 X]` | a SIESTA displacement sweep's comparison, `<label>.fc-sweep.json` (§ 5.9) |
 
 ---
 
@@ -2264,7 +2265,7 @@ mode matching across runs (V1.24).
 | `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_relax_run_e2e.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the record table of § 2.2 on a relaxation run on the road (a matching record's info line, a looser record's warning, another geometry, another level of theory or engine, the unticked offer to skip, no record accepted with a hint), and the `freq` stage building on it; the modes in the input order, the held atom last in the input; the whole SIESTA road through jobset in both states of the box, the launch alone leaving the spectrum (red with the wrapper's finish removed) — unticked, `relax` then `freq` on the experimental bond, `freq` refused before `relax` has concluded and written at the relaxed geometry afterwards, the relaxed bond's frequency and the reference forces within the template's own tolerance; ticked, `freq` alone on the relaxed fixture, after the contradiction (unticked, no `relax` stage) is refused; the displacement sweep — every force-constant stage at the relaxed bond, a stage still to come pending in its attempt's words, the record naming each stage's files and copying none, and the sweep refused after a relaxation re-run between the stages; a flat calculation refusing a second force-constant stage, a disabled one included; the finish run where molbuilder is not -- every launch above, by the job's own python |
 | `tests/test_siesta_vibration_results_e2e.py` | the SIESTA road on H₂ and then the Results tab, read against `web/spectra.md`: the mode positions under their heading — one line of one height, no curve, no height numbers — with no width or floor control and the sentence saying why, no infrared, Raman or orbital column and the summary saying *not computed on this route*, no Raman or probe dot, the electronic-structure tab naming the planned projected density of states, the thermochemistry labelled vibrational-only with no pressure and its bars summing to `F_vib` — every hiding read from the computed style (red against the width control shown whatever the strengths, the `.phase[hidden]` guard removed, the notice's route branch removed, the RRHO labels forced) |
 | `tests/test_engine_offset_reaches_every_deck.py` | a force-constant stage written at the `relax` stage's geometry, unmoved (§ 5.2a); the input's relaxation record left behind while its calculation record still sets the electronic state (V1.35); what the stage is told about the relaxation its ladder ran — within tolerance, above it with the continue-and-launch remedy, a held set changed between the stages — on the run's deck and on a bench trial's (V1.36) |
-| `tests/test_vibration_e2e.py` · `tests/test_displacement_sweep.py` | matching by shape on free water made on the road (atoms of unequal mass): a rank swap found, a mixed pair's overlap the mass-weighted cosine; a PySCF vibration refused by `summarize run` on the road |
+| `tests/test_vibration_e2e.py` · `tests/test_displacement_sweep.py` | matching by shape on free water made on the road (atoms of unequal mass): a rank swap found, a mixed pair's overlap the mass-weighted cosine; a PySCF vibration refused by `summarize task` on the road |
 | `tests/test_vibration_render_gate.py` | the deck runs the science gate; an unknown engine class is refused |
 | `tests/test_vibration_form_honesty.py` | every offered parameter changes the deck |
 | `tests/spectra/test_types.py` · `test_parsers_json.py` · `test_atom_index_contract.py` | the artifact's gates and round trip; the free-atom invariant |
@@ -2338,7 +2339,7 @@ nothing is in that state as of 2026-09-28.
 | one stationarity rule for both routes: the largest absolute force component over the free atoms against the template's own force tolerance, a plain warning above it, on PySCF and SIESTA alike | **built 2026-09-24** — V1.30, by the ruling of § 2.2 | § 2.2, § 4.3, § 5.5 |
 | the structure carries its relaxation record — `info.relaxation` (engine, the run's tolerance, the largest remaining force, the held set, the geometry's fingerprint) beside `info.calculation` (the level of theory) — recorded by the Results tab's structure inspector from the run directory, read by both kinds' gates on the box's card: absent and ticked accepted with a hint, present checked against this calculation's tolerance, level and held set | **built 2026-09-24** — V1.28 | § 2.2; `model/parse.md` § 5b.1 |
 | ~~the PySCF deck's own `_optimized.xyz` pair records `info.relaxation`~~ | **closed 2026-09-29** by the one-source rule (V1.31): the record is the one reader's (`parse.contract.relaxation_of`, over the run's own output), which the Results tab's export writes; a copy computed in the deck would be a second writer of it | § 2.2 |
-| a δ-convergence report: two stages at δ and δ/2 and a printed comparison of `ω_ν` and `e_ν` | **built 2026-09-28** — V1.23: `summarize run` writes `<label>.fc-sweep.json` (modes matched by shape, the force constants compared from the raw `.FC`), the Results tab presents it, and every force-constant stage measures at the relaxed geometry | § 5.9 |
+| a δ-convergence report: two stages at δ and δ/2 and a printed comparison of `ω_ν` and `e_ν` | **built 2026-09-28** — V1.23: `summarize task` writes `<label>.fc-sweep.json` (modes matched by shape, the force constants compared from the raw `.FC`), the Results tab presents it, and every force-constant stage measures at the relaxed geometry | § 5.9 |
 | mode matching across runs by eigenvector overlap in the shared free subspace (Models A/B/C; PySCF against SIESTA) | **owed, needs a design** — V1.24 | `science/normal-modes.md` § 4b.6 F |
 | mode-displaced structure pairs on SIESTA at the zero-point and thermal amplitudes; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | **not built, needs a decision** — V1.25, V1.26 | § 5.6 |
 | the PySCF probe: five points, the coupling per zero-point amplitude `g_ν`, a molecule-projected window for a cluster | **owed, needs a decision** — V1.27 | § 4.8 |

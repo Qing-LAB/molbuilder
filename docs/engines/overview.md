@@ -230,7 +230,7 @@ is decided by where the capability lives rather than by preference.
 | the item | `use_gpu` — **one merged item since 2026-08-23**, `kind="deck"`; it was `enable_gpu` here | `use_gpu` |
 | what the flag turns on | `Diag.ELPA.GPU .true.` in the deck, and only with an ELPA solver — GPU + ScaLAPACK is refused by the **emitter** | the script's SCF object moved onto the device after it is fully assembled (`runtime_info.to_gpu`, imported from `mb_pyscf.pyz`); a vibration script builds its SCF objects from gpu4pyscf's classes instead |
 | **where the capability lives** | in the **environment** — only `molbuilder-siesta-gpu`'s ELPA has the GPU codepath | in the **device**, plus `gpu4pyscf` + `cupy` |
-| **when it is checked** | **at `prep`** — an env is a fact the prepping machine can see | **at run start** — you prep on a login node and run on a GPU node, so the device is not visible until the job is on it |
+| **when it is checked** | **at `prep`** — an env is a fact the preparing machine can see | **at run start** — you prep on a login node and run on a GPU node, so the device is not visible until the job is on it |
 | **what happens if it is missing** | **the wrapper refuses to generate** — `WrapperError`, naming the env and how to install it | **the script exits** — `SystemExit` with the reason and the two ways out |
 
 **Neither engine can check at the other's moment**, which is why this is not an
@@ -304,7 +304,7 @@ two halves were symmetric and has not been since 2026-08-07.
   and this contract defer to.
 - **Neither engine's ladder carries a non-convergence policy**, and running out
   of steps means the same thing in both: the rung stops, and you decide. The
-  next stage exists only because you looked at the result and prepped it — the
+  next stage exists only because you looked at the result and prepared it — the
   same judgement the policy tried to encode, made where the evidence is.
   **`on_nonconvergence` survives as a PySCF field with a narrower meaning** —
   what THIS rung does when geomeTRIC reports its criteria unmet at the step

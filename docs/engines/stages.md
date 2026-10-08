@@ -579,7 +579,7 @@ written twice: every tab already has a schema, so every tab gets this.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen**; **compared case-insensitively everywhere** (two names differing only in case are ONE name, refused as a duplicate) | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a flat stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains. Case folds because the name keys **filenames**, and the filesystems these run on include case-insensitive ones (macOS, some network mounts) — `Tight.fdf` and `tight.fdf` are one file there, so `Tight` and `tight` must be one stage everywhere (D6, 2026-08-12: the constructor compared exact strings while both parsers folded case; all three doors agree now). **One key, `identity.stage_key`**, compares a name the description holds with one from outside it — the duplicate check, the verbs' resolver (`launch run TIGHT` is `tight`) and the role rule (a SIESTA vibration's `Relax` is its relaxation); until K12 the last two compared exact strings (plan § 5w K12, the M11 review's SS-C15). A verb resolves once, at its entry, and works with the description's own spelling after that |
+| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen**; **compared case-insensitively everywhere** (two names differing only in case are ONE name, refused as a duplicate) | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a flat stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains. Case folds because the name keys **filenames**, and the filesystems these run on include case-insensitive ones (macOS, some network mounts) — `Tight.fdf` and `tight.fdf` are one file there, so `Tight` and `tight` must be one stage everywhere (D6, 2026-08-12: the constructor compared exact strings while both parsers folded case; all three doors agree now). **One key, `identity.stage_key`**, compares a name the description holds with one from outside it — the duplicate check, the verbs' resolver (`launch task --stage TIGHT` is `tight`) and the role rule (a SIESTA vibration's `Relax` is its relaxation); until K12 the last two compared exact strings (plan § 5w K12, the M11 review's SS-C15). A verb resolves once, at its entry, and works with the description's own spelling after that |
 | `overrides` | map | schema field name → that stage's value |
 | `execution` | map | *(added 2026-09-02)* what THIS rung runs at, when it differs from the calculation's own answer — one value per parameter, laid over the top-level block field by field (§ 6.8d). Absent means *"runs at what the calculation says"* |
 
@@ -1155,13 +1155,15 @@ real state — several stages differing in nothing but their name.
 
 Removing the last stage is refused.
 
-**Every verb that acts on a stage is given the stage's name — including when
-there is only one.** `prep run coarse`, not `prep run`; `prep bench coarse`,
-not `prep bench`; `--from 01_coarse/run-0`, not `--from run-0`. A bare verb
-lists the ladder and stops, on one rung exactly as on three. Guessing the lone
-stage would be a rule that holds only at length one and silently stops holding
-when a second stage is added — the implicit kind this section exists to
-delete. The cost is one word typed; what it buys is that the command a user
+**A stage is named or picked, never guessed — including when there is only
+one.** `prep task --stage coarse` names it; a bare `prep task` shows the ladder
+and asks which ready stage(s), the offer pre-selected, on one rung exactly as on
+three — and with nobody to ask it is refused, naming the line that picks them
+([`job-system.md`](?doc=execution/job-system.md), *The task*). `prep bench
+coarse`, not `prep bench`; `--from 01_coarse/run-0`, not `--from run-0`.
+Taking the lone stage without asking would be a rule that holds only at length
+one and silently stops holding when a second stage is added — the implicit kind
+this section exists to delete. The cost is one answer, or one `--stage`; what it buys is that the command a user
 learns on their first calculation is the command that still works on their
 tenth.
 
@@ -1501,7 +1503,7 @@ to.
 both.** *(User, 2026-09-02, choosing this over a split `allocation`:
 "explicit, right next to prep run so easy to see and confirm.")*
 
-`allocation` is folded by the shared prep path, so `prep bench` and `prep run`
+`allocation` is folded by the shared prep path, so `prep bench` and `prep task`
 read the same `time` and the same `domain`. That is one number for two jobs
 with opposite needs:
 
@@ -1973,7 +1975,7 @@ it writes is decided first, with nothing written, and written only when all of
 them succeeded ([`execution/job-system.md`](?doc=execution/job-system.md) § 5.0,
 rule 3). On a refusal nothing is written, and the message names the stage that
 stopped it; a write that fails part way — a full disk — leaves the stage not
-prepped, and the folder's state saved before the prep is the way back.
+prepared, and the folder's state saved before the prep is the way back.
 *(Until 2026-10-05 prep wrote as it went and put three files back when it
 refused, leaving the decks, wrappers and data files behind.)*
 
@@ -2086,7 +2088,7 @@ it belongs.
 
 | | What it is now |
 |---|---|
-| **the note** | written by the act that saves — the time the state was taken, then what was about to change it, `2026-10-03 14:05:12 · before prep run tight` (`checkpointing.md` § 9); yours, and required, when you save by hand (L3) |
+| **the note** | written by the act that saves — the time the state was taken, then what was about to change it, `2026-10-03 14:05:12 · before prep task tight` (`checkpointing.md` § 9); yours, and required, when you save by hand (L3) |
 | **the calculation's name** | carried in the state's own `Calculation:` trailer, so a folder opened a year later still says which calculation its history is |
 | **a tag** | *yours*, and only yours. Nothing tags on your behalf |
 

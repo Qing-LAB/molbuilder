@@ -187,7 +187,7 @@ and memory too (`--domain`, `--time`, `--mem`):
 ```bash
 molbuilder jobset init --structure P/structure/hemeC.xyz --bundle P/optimization/hemeC \
     --engine siesta --calculation optimization --shape flat --psml-lib pseudopotential
-molbuilder jobset prep run coarse --bundle P/optimization/hemeC --target this \
+molbuilder jobset prep task --stage coarse --bundle P/optimization/hemeC --target this \
     --np 4 --cpus-per-task 1
 ```
 
@@ -756,7 +756,7 @@ right threshold for the running stage, and `# frozen_atoms: <i> ...`, the atoms
 the run holds (`model/parse.md` § 5.3).
 
 A verbose "Run with" header names the managed way first — `molbuilder jobset
-launch run <stage>`, or the wrapper beside the deck by hand — and then the plain
+launch task --stage <stage>`, or the wrapper beside the deck by hand — and then the plain
 `mpirun -np N siesta < <deck>.fdf > <deck>.out`, whose names come from
 `runfiles` like every name a deck prints. The Results tab opens the run's own
 `.out` before the seeded `.molwatch.log`

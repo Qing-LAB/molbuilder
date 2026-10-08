@@ -55,13 +55,13 @@ projects/BDT-Au/optimization/au111-series/bdt_au/
     Au.psml  S.psml  …           the data files
 ```
 
-Then, on the machine that will run it (or with this tab's Prep buttons, for
-a machine chosen in § 6):
+Then, on the machine that will run it (or with this tab's Prep, for a machine
+chosen in § 6):
 
 ```bash
-molbuilder jobset prep run coarse      # resolves this machine, renders the
+molbuilder jobset prep task --stage coarse      # resolves this machine, renders the
                                        # deck and wrapper, builds the attempt
-molbuilder jobset launch run coarse
+molbuilder jobset launch task --stage coarse
 ```
 
 **There is no "run all stages" button, and that is deliberate.** A stage is a
@@ -199,7 +199,7 @@ make ([`stages.md § 6.7`](?doc=engines/stages.md),
 
 **It is fixed once the calculation has produced.** Before the first produce it is
 free to change; after, it would orphan every deck, output and warm file. So once
-a stage is prepped — as a run or as a benchmark; a prep that was refused counts
+a stage is prepared — as a run or as a benchmark; a prep that was refused counts
 for none — Save refuses another shape, naming the way back: the state saved
 before the first prep, restored ([`execution/job-system.md`](?doc=execution/job-system.md)
 § 5.0).
@@ -766,7 +766,7 @@ sequenceDiagram
     You->>Prep: Preview
     Prep->>Disk: the one prep entry, stopped before the save
     Prep-->>You: the plan: what the SAVED file would launch (A13), what it builds on
-    You->>Prep: Prep run here (enabled only by Preview), naming that plan
+    You->>Prep: Prep (enabled only by Preview), naming that plan
     Prep->>Disk: the one prep entry (job-system.md § 5.3)
     alt what prep would write now differs from the preview
       Prep-->>You: refused: preview again (nothing written)
@@ -868,7 +868,7 @@ Every one of these can silently destroy a value if its rule is not stated.
 | **add a parameter column** | adds it to `varies` | **seeds every stage with the template's current value**, so adding a column changes nothing on screen. It is a statement about *structure*, never about values |
 | **remove a column** | drops it from `varies` | the stages disagree and one value must survive: **the last stage wins**, because that is the production stage and the value a single run would use. The page says which value it kept, and says it *before* the click |
 | **add a stage** | appends a row | **copies the previous stage's overrides.** A refinement starts from what came before; a stage that inherits nothing is a different calculation, not a next step |
-| **remove a stage** | drops a row | **refused when it is the last one** — a job has at least one stage (§ 5). **A stage that left files** — prepped, as a run or a benchmark — is removed by the Save that writes the description: its files stay untouched and its number stays taken ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) *(W38 F5)* |
+| **remove a stage** | drops a row | **refused when it is the last one** — a job has at least one stage (§ 5). **A stage that left files** — prepared, as a run or a benchmark — is removed by the Save that writes the description: its files stay untouched and its number stays taken ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) *(W38 F5)* |
 | **reorder** | moves a stage | the files are written in order and `restart` reads that order, so this is a real edit, not a display preference |
 | **edit a cell** | sets one stage's value | nothing else moves |
 | **apply a stage preset** | fills a row from a tier | a preset knows several fields. If some are not columns yet it **adds them first** — a preset that half-applied would be worse than one that refused. **And it is offered only where it CAN apply**: the menu holds a tier only when every field it carries may be a column of this folder's kind (`/api/task-setup/presets?calculation=`, the columns route's own membership rule), so an optimization's rows and a vibration ladder's rows carry `coarse / medium / tight` and a transport ladder's rows carry no menu at all — its rungs own none of those fields ([`engines/transport.md § 2a.7`](?doc=engines/transport.md): a rung carries its role's profile). *Until 2026-09-24 every transport rung offered the relaxation tiers (plan W31).* **And a preset fills only what the row's rung reads**: on a vibration ladder the `freq` row takes none of the relaxation tier's values, which the `relax` row alone reads (plan § 5w K4). |
@@ -1017,7 +1017,7 @@ that resolves to nothing is silent by design.
   `task.json` or the template, so the written description still names no
   machine. See [`preparing-for-another-machine.md
   § 5`](?doc=execution/preparing-for-another-machine.md).)*
-  **Once a stage is prepped, the calculation is set to that machine**, and
+  **Once a stage is prepared, the calculation is set to that machine**, and
   that does not change ([`configuration.md`](?doc=configuration.md) M-3): the
   folder's answer names it (`set_to`), and the card shows it chosen, offers
   no other and says why — the way to another machine is the state saved
@@ -1171,13 +1171,13 @@ is the record that won, [`configuration.md`](?doc=configuration.md) § 2.2) —
 or the refusal prep would give, in its words, with what it had found (below),
 and Prep is not offered. Nothing is saved, written or
 recorded. A new Preview retires the last one's answer, and Prep with it until
-it answers. A stage already prepped says so before any click — the folder's
-answer carries the prep entry's own sentence, the way back in it — and neither
-button is enabled. Preview and Prep each hold the page's fence while they run
+it answers. A stage already prepared says so before any click: the task's Prep
+lists it as prepared, with no box to tick, and a benchmark's tab carries the
+prep entry's own sentence, the way back in it, with neither button enabled. Preview and Prep each hold the page's fence while they run
 (§ 7a): a Save, a stage tab or another folder cannot be taken under them. A
-calculation already set to its machine is prepped with no machine named — its
+calculation already set to its machine is prepared with no machine named — its
 own copy of the record answers, as the terminal's prep with no `--target`.
-**Prep run here** / **Prep bench here** reach the same entry
+The task's **Prep** and **Prep bench here** reach the same entry
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3) **naming the preview's
 plan**: when the plan it makes now differs — the folder, the machine's record or
 a library file it takes, or molbuilder itself, changed between — it is refused,
@@ -1195,7 +1195,7 @@ from the same answer:
   its note, led by the time it was taken. Unsaved edits are not in the
   `task.json` prep reads, so the tab refuses a Preview or a Prep while the
   editor holds them — "Save first" (§ 7a). A stage
-  already prepped is refused instead, naming the way back
+  already prepared is refused instead, naming the way back
   ([`job-system.md`](?doc=execution/job-system.md) § 5.0);
 * **the folders written**, **what each deck's checks said**, and **the
   attempt** — opened, what was brought in, what it starts from (the

@@ -560,7 +560,7 @@ flowchart TD
     GPU --> TRIALS
     TRIALS --> SHELF["submit: trials with the SAME resource ask<br/>share one scheduler job sized to fit them<br/>exactly — independent jobs, biggest first,<br/>CPU jobs hold no GPU"]
     SHELF --> SUMM["summarize — run it any time:<br/>finished trials ranked, unfinished named,<br/>winner's ranks/cores/devices/values<br/>→ PRINTED for you to READ"]
-    SUMM --> RUN["prep run + submit run:<br/>the file fills in whatever your flags<br/>don't state; at launch the wrapper uses<br/>the devices actually granted"]
+    SUMM --> RUN["prep task + launch task:<br/>the file fills in whatever your flags<br/>don't state; at launch the wrapper uses<br/>the devices actually granted"]
 ```
 
 **How many ranks should share one GPU — what the sources say.** ELPA's
@@ -924,8 +924,8 @@ person looks at it, and the next rung is prepared from the run they name.**
 ```mermaid
 flowchart LR
     S1["stage 1 · loose"] --> L1{{"you look at it"}}
-    L1 -->|"prep run … --from &lt;attempt&gt;<br/>copies the geometry + density"| S2["stage 2 · publishable"]
-    S2 --> L2{{"you look at it"}} -->|"prep run …"| S3["stage 3 · tight (off)"]
+    L1 -->|"prep task … --from &lt;attempt&gt;<br/>copies the geometry + density"| S2["stage 2 · publishable"]
+    S2 --> L2{{"you look at it"}} -->|"prep task …"| S3["stage 3 · tight (off)"]
 ```
 
 What each engine copies at that boundary is its own vocabulary and the only thing

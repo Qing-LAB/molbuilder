@@ -308,7 +308,7 @@ flowchart TD
     RX["junction relaxation<br/>(ordinary task; labeled + frozen electrodes)"]
     RX -->|"--slot junction=&lt;calc&gt;@&lt;stage&gt;/run-N"| CT["the transport calculation<br/>seed · electrode_L · electrode_R · device · transmission"]
     CT -->|"prep + launch, stage by stage"| RUN["seed .DM → electrode .TSHS →<br/>NEGF device (bias chain) → tbtrans"]
-    RUN -->|"summarize run"| RES["&lt;label&gt;.transport.json:<br/>T(E) per bias · G(E_F) · I(V)"]
+    RUN -->|"summarize task"| RES["&lt;label&gt;.transport.json:<br/>T(E) per bias · G(E_F) · I(V)"]
 ```
 
 **The consistency contract is the whole game**, and the derivation is what
@@ -576,9 +576,9 @@ The transmission run takes one device run whole — the newest whose points are
 all done or skipped — with a point for each; a skipped device point is a
 skipped transmission point, and a gap in the I–V (§ 2a.11).
 
-#### The record — what is read back *(`summarize run`; § 2a.12)*
+#### The record — what is read back *(`summarize task`; § 2a.12)*
 
-`summarize run` composes `<label>.transport.json` from the rungs' records: T(E,
+`summarize task` composes `<label>.transport.json` from the rungs' records: T(E,
 V) per point and spin channel; T(E_F) and the conductance, the E_F reference
 checked; the I–V, its treatment named and its current the junction's total; the
 DOS and eigenchannels TBtrans was asked for; and the provenance — which
@@ -599,7 +599,7 @@ eigenchannels; the points without a transmission as `pending` or `failed` in
 their run's words; the treatment; the provenance slot and the chain — each
 rung's `.gathered-from`; the DFT-NEGF caveat. The PDOS of any atoms, by orbital
 type, is asked of `/api/transport/pdos`. The Results tab composes the record on
-read (`/api/transport/record`); `summarize run` writes the same composition to
+read (`/api/transport/record`); `summarize task` writes the same composition to
 the file. **Not yet**: the E_F reference checked rather than assumed (plan
 § 5u.1 step 9). The `.TBT.nc` reader was checked on a real run's file — the
 carbon-chain walk, 2026-10-07 (`web/results.md` § 2.5).
@@ -874,7 +874,7 @@ built with the bias sweep, on transport's own walk (§ 2a.11).*
 | **The T(E) window belongs to the transmission** | Exposed and tunable **there only**. Consequence: the device deck has no reason to carry the `TBT.*` settings at all, so the two decks legitimately differ and each carries what its own binary reads. What keeps them consistent was never byte-identity; it is the shared Class A values |
 | **Class C ships per-stage defaults** | Each stage carries an opinionated profile rather than inheriting one shared set: a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike, and the electrode's dense transport-axis k is a default, not something a person should have to discover |
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
-| **Default grouping** | The preparatory block — seed and both leads — as one submission, grouped **at prep** by naming them (`jobset prep run seed electrode_L electrode_R`, then `jobset launch run seed electrode_L electrode_R`; [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6); then the device; then the transmission, each scan one job walking its points. Fusing device and transmission is available as an opt-in |
+| **Default grouping** | The preparatory block — seed and both leads — as one submission: `jobset prep task` offers the three pre-selected, since none builds on another, and they are prepared as one group (`--stage seed --stage electrode_L --stage electrode_R` without a terminal); `jobset launch task` sends it as one job ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6; [`execution/job-system.md`](?doc=execution/job-system.md), *The task*). Then the device; then the transmission, each scan one job walking its points. The device and the transmission never share a job: the transmission builds on the device, which you look at first |
 | **A frame group runs at one bias** | § 2a.9 |
 | **The bias treatment is an exposed choice** | Single-bias or finite-bias, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
 | **Automatic resubmission is deferred, and load-bearing on nothing** | The stages, their decks, the parameter map and the directory structure are identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing here waits on it. When built, the monitor is its home — it already watches a run to its end. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
@@ -1294,7 +1294,7 @@ over an axis simply has no level for it, and what a sweep's points share sits
 in the run above them, so the tree itself shows which results are computed once
 and reused.
 
-#### The bias axis — a sweep is one run *(user, 2026-10-05; built with the transport work, plan Q5–Q7)*
+#### The bias axis — a sweep is one run *(user, 2026-10-05; designed, not built — plan Q5–Q7)*
 
 > *"all the bias points are supposedly one single run. it's just different
 > parameters in one sweep"* · *"this is a sweep. so continue means continue
@@ -1302,6 +1302,17 @@ and reused.
 > iteration/SCF is finished and result confirmed then the parent dir update the
 > record atomically"* · *"user can always restart with cold, that will increase
 > run-N, and all points redone"* (user, 2026-10-05)
+
+**What runs today is not this yet.** Each bias point is a folder of its own
+attempts, `<NN>_<stage>/v<V>/run-<n>/` (`transport.stages.rung_containers`),
+all opened by the rung's prep. `launch task` sends one job that walks the
+points in the bias order (`submit._plan_chain`): the device's warm — each point
+after the first takes the `.TSDE` the point before it left — stopping at a
+point that fails; the transmission's independent, walking on and saying which
+failed. Launched again, every point opens its next attempt, warm from its own
+latest or `--cold`. There is no `points.json`, no `--skip` / `--unskip`, and the
+points' shared inputs are not held once in a run. Under `low-bias` the device
+has no bias axis (§ 2a.10). The design below is what this becomes.
 
 A rung the description sweeps over the bias — the device and the transmission —
 is **one run** of that rung, its bias points inside it:
@@ -1359,8 +1370,8 @@ is **one run** of that rung, its bias points inside it:
 - **A transmission run takes one device run whole** — the newest whose points
   are all done or skipped — and keeps the leads' Hamiltonians once and, in each
   of its points, a copy of its own device point's, copied at prep, so no run
-  reads another run's folder. It is prepped only once such a device run exists:
-  a rung is prepped once, so a transmission prepped while device points were
+  reads another run's folder. It is prepared only once such a device run exists:
+  a rung is prepared once, so a transmission prepared while device points were
   missing could never get them; and one I–V is one device run, never 0 V from
   one run and 0.4 V from another (after a `--cold`, say). With a single bias it
   is the one device point.
@@ -1397,7 +1408,7 @@ is **one run** of that rung, its bias points inside it:
   restart clears the mixer's history), often not, and what reliably helps is a
   changed setting — the mixing, a smaller bias step — which is a change of
   description (below), or skipping the point.
-- **A point can be skipped** *(user, 2026-10-05)*: `launch run device --skip
+- **A point can be skipped** *(user, 2026-10-05)*: `launch task --stage device --skip
   v0.6` marks the point skipped in the run's record, by its folder name —
   nothing renumbered or moved, the folder keeping what its tries left — and
   walks on; `--unskip v0.6` takes the mark off, and the point is walked again,
@@ -1418,7 +1429,7 @@ is **one run** of that rung, its bias points inside it:
   resonance entering the bias window (§ 2a.10) — the next may too.
 - **`launch --cold`** is the person's choice to start over: it opens
   `run-<N+1>` and redoes every point, the skipped ones included, from the
-  inputs the stage was prepped with — copied from the run before, never
+  inputs the stage was prepared with — copied from the run before, never
   gathered again.
 - **A run the description no longer describes is not continued**: when the
   sweep's points or a setting differ from the run's, launch refuses it, and the
@@ -1928,30 +1939,33 @@ molbuilder jobset init --calculation transport --shape hierarchical \
     --slot junction=BDT-Au/optimization/JunctionRelax/01_coarse/run-2 \
     --bias 0.0,0.2
 
-# 2. prep + launch the ladder, stage by stage (each prep gathers what
-#    the stage consumes from the concluded stages before it)
-molbuilder jobset prep run seed        && molbuilder jobset launch run seed --mode submit
-molbuilder jobset prep run electrode_L && molbuilder jobset launch run electrode_L --mode submit
-#    ... electrode_R, then device (a bias scan launches as ONE chain
-#    job walking the points), then transmission
+# 2. prep + launch the task: each prep shows the ladder and offers the
+#    stages that are ready -- first the seed and both leads, as one job;
+#    then the device, once they have finished; then the transmission.
+#    Each prep gathers what its stage consumes from the newest finished
+#    runs before it.
+molbuilder jobset prep task   --bundle BDT-Au/transport/BDTTrans
+molbuilder jobset launch task --bundle BDT-Au/transport/BDTTrans --mode submit
+#    ... and again for the device (a bias scan launches as ONE chain job
+#    walking the points), and again for the transmission
 
 # 3. read the deliverable back
-molbuilder jobset summarize run        # -> <label>.transport.json + the I-V table
+molbuilder jobset summarize task        # -> <label>.transport.json + the I-V table
 ```
 
 | Command | Does | Code |
 |---|---|---|
 | `jobset init --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
-| `jobset prep run <stage>` | compose (sort · gates · extract) on first contact, then render THIS rung's deck + gather its inputs | `jobset/prep.py::prep_calculation`, the rung `_transport_rung_of` |
-| `jobset launch run <stage>` | the ordinary launch; a bias scan's device/transmission go as one walker job | `jobset/submit.py::_plan_chain` |
-| `jobset summarize run` | parse TBtrans output → `<label>.transport.json`, print the I–V table | `transport/record.py` |
+| `jobset prep task [--stage <stage> ...]` | show the ladder, offer the ready stages (`jobset/ready.py`); compose (sort · gates · extract) on first contact, then render each picked rung's deck + gather its inputs; several picked are one group | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `_transport_rung_of` |
+| `jobset launch task [--stage <stage> ...]` | send what is prepared and not launched — a group as one job; a bias scan's device/transmission go as one walker job | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_chain` |
+| `jobset summarize task` | parse TBtrans output → `<label>.transport.json`, print the I–V table | `transport/record.py` |
 | ~~`transport electrode`~~ · ~~`transport preflight`~~ | **DELETED 2026-09-17** with the `transport` verb group — the hand-assembly pair. A lead is derived from the citation at prep, and § 5's invariants are held by construction or by the validation pass |
 
 **Gotchas:** the citation names a DIRECTORY explicitly (§ 3.1 below) —
-nothing is ever picked for you; a citation re-pointed after a rung is prepped
+nothing is ever picked for you; a citation re-pointed after a rung is prepared
 is refused at the next rung's gather, which cannot read the junction its
 record was composed from — the way on is the state saved before the first
-rung's prep, which composes it anew (a prepped rung is not prepped again,
+rung's prep, which composes it anew (a prepared rung is not prepared again,
 [`job-system.md`](?doc=execution/job-system.md) § 5.0); `--bias` must start
 at `0.0` (the chain starts from equilibrium).  *(The old `transport bundle`
 three-run driver and its `run-transport.sh` were deleted 2026-08-29 —
@@ -2080,7 +2094,7 @@ Four rules, and each one costs something measurable:
 |---|---|---|
 | **floor 3 renders the text of every file**, from a `ParameterSet`, through `spec_for` → `DeckSpec` → `prepare_deck` | `transport/transiesta.py::render_script` concatenates literal f-strings. It is not floor 3's file, takes no `ParameterSet`, and never reaches `prepare_deck` | the keyword set was **fixed in code**: the seed deck `prep` rendered carried **13 keywords and 4 blocks** against a template offering **45 deck-reaching items**. ✅ **CLOSED 2026-09-16 — all five rungs render through `spec_for` → `DeckSpec` → `prepare_deck`** (§ 2a.14). The seed deck is 488 lines, a lead 419, the device 584, each with a validation report and the engine's check gate |
 | **floor 2 holds what the person asked for** | transport had no template, so the parameters were *defined* in `TransportConfig` — which is no floor at all | 32 parameters of surface, none of them the ~40 a SIESTA run needs. `MaxSCFIterations` and `DM.Tolerance` cannot reach ANY transport deck: not from the citation, not from a form, not from `task.json`. ✅ **CLOSED** — transport has a template since TR1 (2026-09-16, § 3.6 item 5), and `TransportConfig` retired 2026-10-02 |
-| **`prep` is the conductor, not a floor: it may call, but it may never decide** | `_prep_transport` is a second conductor that decides — it composes, gates, extracts and renders | no `resolve`, so no `ParameterSet` and no provenance; `--pipeline-log` is a documented no-op; no validation report; no read-back check. ✅ **CLOSED** — a rung resolves through `resolve` since 2026-09-16 (§ 3.6 item 4), the pipeline log prints every step (§ 3.6a), each deck has its validation report and check gate (the first row); and `_prep_transport` is gone since 2026-10-05: a transport rung is prepped by prep's one table of steps |
+| **`prep` is the conductor, not a floor: it may call, but it may never decide** | `_prep_transport` is a second conductor that decides — it composes, gates, extracts and renders | no `resolve`, so no `ParameterSet` and no provenance; `--pipeline-log` is a documented no-op; no validation report; no read-back check. ✅ **CLOSED** — a rung resolves through `resolve` since 2026-09-16 (§ 3.6 item 4), the pipeline log prints every step (§ 3.6a), each deck has its validation report and check gate (the first row); and `_prep_transport` is gone since 2026-10-05: a transport rung is prepared by prep's one table of steps |
 | **floor 2 must never name a machine** | `max_memory_mb` and `num_threads` are `TransportConfig` fields | two controls that reach the deck only as comment lines. ✅ **CLOSED 2026-10-02** — both went with the class (§ 3.6 item 12) |
 
 #### Why it is this way, from the history rather than from a rationale
@@ -2303,7 +2317,7 @@ marked **[new]**.
   template_with_values(...)          → <label>.template.toml        floor 2
         │                              task.json beside it (slots, bias, stages)
         ▼
-  jobset prep run <stage>            on the machine that will run it
+  jobset prep task --stage <stage>   on the machine that will run it
         │
         ├─ compose_junction(...)     THE ONE NEW INPUT MODEL: copy the citation,
         │                            sort, gate, derive both electrode cells
@@ -2320,7 +2334,7 @@ marked **[new]**.
                 validate → render → write → READ BACK AND CHECK
                 → the deck, its .validation.txt, the USER-CUSTOM zone
 
-  jobset launch run <stage>          Resources.program = tbtrans on stage 5
+  jobset launch task --stage <stage> Resources.program = tbtrans on stage 5
 ```
 
 The only genuinely transport-specific code in that chain is the **input model** —
@@ -2486,7 +2500,7 @@ fixed.**
 | | |
 |---|---|
 | the `atom-metadata` fence was emitted **twice** | The framework emits it into the record; lifting `_render_seed`'s own call reproduced it in the body, and the reader stops at the first END marker — so the poorer copy won and the framework's was dead text. Two on-disk sources of truth for the region partition. No engine module calls that emitter; transport's must not either |
-| the DAG gate compared **bytes**, and a framework-rendered deck carries a timestamp | `transport_inputs` only carries a concluded rung's output forward if that rung ran *the deck this composition renders*, and it compared full text. Once the seed gained a record section, re-prepping a concluded seed — or merely committing between two preps, which moves the generator sha — made the device's gather refuse with *"the junction citation or its contract changed"*. False, and it pointed the reader at the science. `script_emit.same_calculation` now masks exactly `generated-at`, `generator-version` and `created_at` and keeps every other byte, the region partition included |
+| the DAG gate compared **bytes**, and a framework-rendered deck carries a timestamp | `transport_inputs` only carries a concluded rung's output forward if that rung ran *the deck this composition renders*, and it compared full text. Once the seed gained a record section, re-preparing a concluded seed — or merely committing between two preps, which moves the generator sha — made the device's gather refuse with *"the junction citation or its contract changed"*. False, and it pointed the reader at the science. `script_emit.same_calculation` now masks exactly `generated-at`, `generator-version` and `created_at` and keeps every other byte, the region partition included |
 
 **What it did NOT do, stated so nobody reads more into it.**
 
@@ -3107,7 +3121,7 @@ be.
 | Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry` and `emit_electrode_declarations` as its emission library (`_emit_basis_and_xc` was deleted 2026-09-18; `_emit_transiesta_block` became `emit_electrode_declarations` on 2026-09-29, its values moving to the catalogue) |
 | Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c) and the pole energy's 20-pole floor (§ 6.1c). § 5 names which holder holds which; the k-point sampling (I7–I9) is the mesh's, [`siesta.md`](?doc=engines/siesta.md) § 6.1 |
 | k-point mesh | `kmesh.py` | every rung's sampling — the shared transverse pair, the open axis's one point, a lead's `electrode_kz`, the transmission's `tbt_k_grid`, the offset on every rung — decided once and read by the writer, the settings gate and the record ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
-| Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize run`); a point whose transmission has not run reads as **pending**, never as a failure |
+| Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize task`); a point whose transmission has not run reads as **pending**, never as a failure |
 
 **Retired 2026-09-17, and not replaced** — the June 2026 hand-assembly era
 (§ 6a): `transport/engine_base.py` (a `Protocol` registry), `transport/results.py`
@@ -3131,7 +3145,7 @@ flowchart LR
     EL -->|"<label>_L.TSHS · <label>_R.TSHS"| DEVICE
     DEVICE -->|".TSDE: a converged point starts the next"| DEVICE
     DEVICE -->|"<label>.TS.HSX (5.x; the 4.x device .TSHS retired)"| TBT["05_transmission<br/>(tbtrans; the deck says<br/>TBT.HS <label>.TS.HSX)"]
-    TBT --> RESULT["<label>.transport.json<br/>(summarize run; T(E) per bias, G(E_F), I-V)"]
+    TBT --> RESULT["<label>.transport.json<br/>(summarize task; T(E) per bias, G(E_F), I-V)"]
 ```
 
 > **A bias scan is one submission, and the two walks over its points fail
@@ -3150,7 +3164,7 @@ flowchart LR
 >   walk **continues**, and the exit code reports any failure.
 >
 > The rule follows the data, not the verb.
-> Reading is asynchronous either way: `summarize run` is a READER, so a
+> Reading is asynchronous either way: `summarize task` is a READER, so a
 > point whose transmission has not run yet reads as **pending**, never as
 > a failure of the set (`transport/record.py`).
 
@@ -3158,7 +3172,7 @@ flowchart LR
 SCFs on cells DERIVED from the junction's labeled blocks.  The device H
 lands in `<label>.TS.HSX` — SIESTA 5.x; tbtrans must be told with an
 explicit `TBT.HS` line, measured live 2026-08-29 — while the electrode runs
-still write `.TSHS` via `TS.HS.Save`.  `summarize run` writes the record —
+still write `.TSHS` via `TS.HS.Save`.  `summarize task` writes the record —
 § 8.)
 
 ---
@@ -3293,7 +3307,7 @@ flowchart TB
     S2 ==>|"&lt;stem_L&gt;.TSHS"| S5
     S3 ==>|"&lt;stem_R&gt;.TSHS"| S5
     S4 ==>|"&lt;label&gt;.TS.HSX"| S5
-    S5 --> REC["&lt;label&gt;.transport.json<br/><i>summarize run</i>"]
+    S5 --> REC["&lt;label&gt;.transport.json<br/><i>summarize task</i>"]
 ```
 
 **The bold arrows are the integration, and they are not free.**  Each one is
@@ -3769,7 +3783,7 @@ sideways.
 | regions, annotations, `info`, identity | hops 2→6 | `replace()` names the per-atom fields and carries everything else, so the label store, the recorded contract and the identity columns all survive the sort |
 | regions, annotations, `info`, identity | **hop 7 — NOT carried** | `as_structure()` states elements, positions, title, cell and `axis_kind`, and nothing else. A lead therefore renders with no region partition (correct — it has no partition to state), and also with no recorded contract and no identity columns |
 | `axis_kind` | **z stated at hop 2; x and y as the relaxation recorded them** *(since M5 step 2)* | along z it is a fact of *being a transport calculation*: I8 settles it, z is open. Across z it is the person's declaration, and the relaxation's deck recorded it — its ENGINE-OFFSET block carries the structure's kinds (since 2026-09-25): a slab junction is periodic across, a wire or chain junction isolated (§ 6.1c). A deck from before that record states none, and its junction is read periodic across, as every junction was until 2026-09-29. The `.XV` and the metadata block carry no kinds; SIESTA has no such concept |
-| `engine_offset` | **stated `0` at hop 2, when the cited deck carries its `engine-offset` record** | the `.XV` is SIESTA's own frame, the cell at the origin, so the junction states an offset of 0 with its coordinates (`structure-periodicity.md` § 6.0) on either label lane. A deck with no record was prepped before the rule and left its atoms flush against a face, so its junction states none and the rule centres it (plan § 5q D7). An authoring sidecar's offset belonged to *different* coordinates and is never carried |
+| `engine_offset` | **stated `0` at hop 2, when the cited deck carries its `engine-offset` record** | the `.XV` is SIESTA's own frame, the cell at the origin, so the junction states an offset of 0 with its coordinates (`structure-periodicity.md` § 6.0) on either label lane. A deck with no record was prepared before the rule and left its atoms flush against a face, so its junction states none and the rule centres it (plan § 5q D7). An authoring sidecar's offset belonged to *different* coordinates and is never carried |
 
 #### Where the box and the atoms come from
 
@@ -3938,7 +3952,7 @@ single-point, or a relaxation if those layers are not frozen.
 > The composite closed it the way the analysis here always said it
 > should be closed: **not by adding edges to `JobSet`** (it still has
 > none), but by giving the multi-component kind its own representation.
-> The five stages are ordinary rungs — each prepped, launched and
+> The five stages are ordinary rungs — each prepared, launched and
 > concluded through the same verbs and wrappers as everything else; the
 > electrode `.TSHS` and seed `.DM` hand-offs are prep's GATHER (three
 > refusals per input); and the one genuinely sequenced thing — a bias
@@ -3947,7 +3961,7 @@ single-point, or a relaxation if those layers are not frozen.
 > scheduling judgement between results a person should read.
 >
 - **Shipped:** the transport COMPOSITE (`--calculation transport`: citation →
-  sort → gates → five derived stages → bias chain → `summarize run` →
+  sort → gates → five derived stages → bias chain → `summarize task` →
   `<label>.transport.json`) and the region-label-driven derivation.  The
   finite-bias scan ships with it (the `.TSDE`-chained walker).
   *(This bullet also listed "the electrode wizard" and "the

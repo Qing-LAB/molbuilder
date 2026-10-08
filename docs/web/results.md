@@ -42,8 +42,8 @@ flowchart LR
 | **one run** — an attempt directory, or one rung's files in a flat calculation | the run's result: its product if it made one (a spectrum, an optimized structure), else the engine's output (`-runN.out`, `-runN.pyscf.log`), else its progress log (§ 2.3) | the viewer for that file — trajectory (steps, energy, forces, SCF, how the run ended), spectra or structure | `/api/watch/*` parses the one file through the registry ([`trajectory.md`](?doc=web/trajectory.md)); `/api/spectra/*`; the structure's file door |
 | **a calculation root** | a result file at the root if it holds one, **beside** the **ladder** — each rung's state and **every run of the calculation**, any of which is opened here when picked (§ 2.4) | the ladder card, and the picked run's presenter | `/api/results/dir` → `ladder` (`jobset/runstatus.py`) |
 | **a benchmark** | its `job-set.json` (`kind: sweep` — a ladder's `job-set.json` is not openable) | the bench summary: its trials compared ([`bench-summary.md`](?doc=web/bench-summary.md)) | `/api/bench/summary` (`jobset/summarize.py`) |
-| **a transport calculation** | its `<label>.transport.json` | the transport report: each rung's state (the ladder's own answer, its chip and detail), the I–V table, each point pending or failed in its run's words, and what is not drawn | `/api/transport/record` — composed on read from the rungs as they are now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), never the copy `summarize run` wrote |
-| **a SIESTA vibration with a displacement sweep** | its `<label>.fc-sweep.json`, once `summarize run` has written it | the sweep: each force-constant stage and what it varied, each mode's frequency per stage, the force-constant changes, the paths of each stage's own files ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) | the record file itself |
+| **a transport calculation** | its `<label>.transport.json` | the transport report: each rung's state (the ladder's own answer, its chip and detail), the I–V table, each point pending or failed in its run's words, and what is not drawn | `/api/transport/record` — composed on read from the rungs as they are now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), never the copy `summarize task` wrote |
+| **a SIESTA vibration with a displacement sweep** | its `<label>.fc-sweep.json`, once `summarize task` has written it | the sweep: each force-constant stage and what it varied, each mode's frequency per stage, the force-constant changes, the paths of each stage's own files ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) | the record file itself |
 | **a folder not marked as part of a calculation** | whatever result it holds, read alone | as above | as above |
 
 **A single run and a higher-level report are different by nature.** A run is
@@ -82,7 +82,7 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 ### 0.4 Designed, not built yet
 
 - **A transport calculation's report** (§ 2.5) is built and not yet seen on a
-  real calculation; the root offers it only once `summarize run` has written
+  real calculation; the root offers it only once `summarize task` has written
   the record file; the frame axis waits for plan § 5u.1 step 11.
 
 - **`status`**, on the same answer — how the run is doing — is served and not
@@ -400,7 +400,7 @@ state, detail, dir, attempt, …}], offer}` —
 CLI's `status` verb reads — consumed, never copied: every stage of the
 description, the ones not prepared yet among them, `ready` or `waiting`
 ([`execution/job-system.md`](?doc=execution/job-system.md) § 5.3), before
-anything is prepped too — and `null` for anything else (a rung's directory). A **flat** calculation
+anything is prepared too — and `null` for anything else (a rung's directory). A **flat** calculation
 root is itself the run: it answers a state and a record like any run directory
 (§ 3a), and no ladder. A bias scan's rung reads from its first point not
 finished, and its detail names the point
@@ -446,14 +446,13 @@ status read only each stage's newest attempt.)*
 
 **What it is.** A transport calculation's root shows one report of the whole
 calculation, **below the ladder card** (§ 2.4 — with the ladder, never instead
-of it) — whether or not `summarize run` has written `<label>.transport.json`:
+of it) — whether or not `summarize task` has written `<label>.transport.json`:
 the report is the root's product, composed on read
 (`/api/transport/record`, [`engines/transport.md`](?doc=engines/transport.md)
 § 2a.12), so a ladder in progress has one and a rung that ran since is shown as
-it is now. *(Today the route answers only once the file exists, so the report
-mounts only after a first `summarize run`: the route takes the calculation's
-folder, and the root's picker does not yet offer the report where no record
-file is.)*
+it is now. *(Built: the route reads the calculation's folder. Not yet built: the root
+opens the report through its record file, `<label>.transport.json`, so it shows
+only after a first `summarize task`.)*
 
 **Where it stands** *(2026-10-07)*: built — the record's fields
 (`transport/record.py`, `transport/tbtnc.py`), `/api/transport/record` and
@@ -463,7 +462,7 @@ trajectory viewer on it, the charts' theme (`lib/plot-theme.js`), the report
 panel. **Checked on a real calculation** *(2026-10-07)*: a 16-atom carbon
 chain (`projects/claude-transport-walk/transport/chain-t`, six frozen atoms per
 lead, SZ, 100 Ry) run through `init → prep → launch` for all five rungs at 0 and
-0.2 V, then `summarize run`: T(E_F) = 2.0, the cumulene's two π channels; the
+0.2 V, then `summarize task`: T(E_F) = 2.0, the cumulene's two π channels; the
 record's DOS, PDOS, both leads' bulk DOS, L's spectral DOS and four eigenchannels
 read from the real `.TBT.nc`; the device's NEGF E_F, dQ and charges; the
 selection PDOS by orbital type, p_x = p_y = half the bridge's DOS at E_F and p_z

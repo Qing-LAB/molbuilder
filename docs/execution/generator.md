@@ -368,7 +368,7 @@ because both halves are real and they are different acts:
 | **what to measure** | `task.json`'s `bench` — *"try 4, 8, 16 ranks"* | **declared**, floor 2, portable |
 | **what the trials run with** | a `bench` entry with **one** point — *"use_gpu: [true]"* | **declared**, and applied at prep as a **pin** over the template for the bench's trials *(user rule, 2026-08-20)* — and only for them since 2026-09-30: what the RUN uses is `execution`, its own block (below) |
 | **what those points mean on this machine** | `prep bench <stage>` | **resolved**, floor 3, on the target |
-| **what was fastest** | `<stage>/bench/bench-result.json` | **measured**, and offered back to that stage's next `prep run` |
+| **what was fastest** | `<stage>/bench/bench-result.json` | **measured**, and offered back to that stage's next `prep task` |
 
 > **Precedence when several sources name one knob** — the full ladder is
 > [`architecture.md § 5.2`](?doc=execution/architecture.md), and for a run's

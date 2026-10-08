@@ -2438,7 +2438,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     from ..task import FILENAME as TASK_FILENAME, read_task
     from ..template import find_template
     from ..validation.task import preflight
-    from .ledger import prepared as ledger_prepped
+    from .ledger import prepared as ledger_prepared
     from .ledger import record as ledger
     from .prep_inputs import bench_inputs, bench_refusal, prep_run_inputs
     base = Path(base).resolve()
@@ -2452,7 +2452,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # THE PREP IS RECORDED WHEN IT HAS FINISHED -- written, the last
         # line of its record (`job-system.md` § 5.0, checkpoint 7) -- with
         # which config files answered, as the prep read them.
-        answer.provenance = ledger_prepped(base, kind=kind, stage=stage,
+        answer.provenance = ledger_prepared(base, kind=kind, stage=stage,
                                            dirs=answer.dirs,
                                            provenance=provenance)
         return answer

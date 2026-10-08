@@ -217,7 +217,7 @@ Send to Task setup            writes the portable folder
 shape · stages · bench        the Task-setup tab; saving writes task.json
 prep bench <stage>            on the target; renders trials
 launch bench <stage>          one grouped job; summarize writes the verdict
-prep run · launch run         the production stage, verdict applied
+prep task · launch task       the production stage, verdict applied
 the Results tab               watch it run; read what it made
 ```
 
