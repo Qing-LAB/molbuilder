@@ -741,13 +741,13 @@ are exactly two.**
 | a new… | exists because | so it holds |
 |---|---|---|
 | **stage directory** — `02_tight/` | **the science changed** — a threshold, a tolerance, a method | its own rendered deck and wrapper |
-| **run directory** — `run-1/` | **you continued** the previous run | only what that invocation produced |
+| **run directory** — `run-1/` | **you launched the stage again** — warm, continuing the previous run, or `--cold`, from nothing | only what that invocation produced |
 
 **That is the whole rule, and it is deliberately the whole rule.** The contract
 stays small; the **directory structure** carries the flexibility. You can read a
 folder and know what happened without opening a file: a new stage name means
-somebody changed the science, a new `run-` number means somebody decided to keep
-going.
+somebody changed the science, a new `run-` number means somebody launched the
+same deck again — its `continued_from` says from what, or that it started cold.
 
 **Every attempt of a stage runs the same deck.** A different deck means different
 science, and different science is a stage. That is why § 1.5's table copies the
@@ -778,13 +778,13 @@ place it.
 `02_tight/run-0`; within a stage it lands in `01_coarse/run-1`. Same decision,
 same `continued_from` record, different depth.
 
-> **A redo from scratch is not a run.** Running a stage again from nothing —
-> after a crash that left nothing worth keeping — is the state saved before
-> its prep, restored, and a prep anew; continuation is the one reason a
-> `run-x` exists (user, 2026-10-05: a failed execution is recovered from the
-> checkpoint, never patched in place). *(Until then this section kept a cold
-> `run-x`, `continued_from` empty, which no verb has made since a prepared
-> stage stopped being prepared again, 2026-10-02.)*
+> **Starting over is a run too** *(user, 2026-10-07: "the user can restart a
+> run cold and the run keeps its increasing index and i don't see a
+> problem")*: `launch task --stage <stage> --cold` opens the next `run-x` with
+> nothing carried in, `continued_from` empty, and the runs before it stay as
+> they were. To change the deck first, restore the state saved before its prep
+> and prepare it anew ([`job-system.md`](?doc=execution/job-system.md), *What
+> molbuilder does for you*).
 
 > ✅ **The one violation is gone (2026-08-10).** `runwrap.py`'s `attempt_dirs`
 > prologue created and arranged an attempt in shell — scanning for run
@@ -1666,7 +1666,7 @@ most from what people expect.
 
 **A stage does not "connect" to the one before it. It is handed a file.** By
 default `prep` hands it the newest attempt of the stage before it, which must
-have concluded; `--from` names another run, and `--cold` none — which run, and
+have finished; `--from` names another run, and `--cold` none — which run, and
 when `prep` refuses, is [`job-system.md`](?doc=execution/job-system.md) § 5.4's.
 That is a ladder of independent stages; a linked stage — a vibration's `freq`,
 transport's device and transmission — has its input fixed by the calculation,

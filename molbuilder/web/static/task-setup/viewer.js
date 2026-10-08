@@ -2099,7 +2099,12 @@ function taskPrepCard(task) {
         return wrap;
     }
     const rows = lad.stages || [];
-    const ready = rows.filter((r) => r.state === "ready").map((r) => r.stage);
+    /* PICKABLE: a ready stage -- and a waiting one whose tab names the run
+     * it continues from, or a cold start, which prep takes as said
+     * (`job-system.md` § 5.4: both doors offer the same choice). */
+    const pickable = (r) => r.state === "ready"
+        || (r.state === "waiting" && !!_fs.continueChoice[r.stage]);
+    const ready = rows.filter(pickable).map((r) => r.stage);
     if (_fs.prepPick === null) _fs.prepPick = (lad.offer || []).slice();
     _fs.prepPick = _fs.prepPick.filter((st) => ready.indexOf(st) !== -1);
     wrap.appendChild(el("p", { class: "hint" },
@@ -2111,7 +2116,7 @@ function taskPrepCard(task) {
         const box = el("input", { type: "checkbox",
                                   "aria-label": "prepare " + r.stage });
         box.checked = _fs.prepPick.indexOf(r.stage) !== -1;
-        box.disabled = r.state !== "ready";
+        box.disabled = !pickable(r);
         box.addEventListener("change", () => {
             const at = _fs.prepPick.indexOf(r.stage);
             if (box.checked && at === -1) _fs.prepPick.push(r.stage);

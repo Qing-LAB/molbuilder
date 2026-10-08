@@ -70,7 +70,7 @@ one does not state.
 | **calculation** | one folder, described once by `task.json` and its template |
 | **task** | the calculation, as the verbs name it: `jobset prep task`, `launch task`, `summarize task` |
 | **stage** | one step of the calculation's ladder — `coarse`, `relax`, `device` — named in the description, prepared once, when you pick it (*The task*, below) |
-| **group** | stages prepared together that share one job — none building on another (`project-layout.md` § 1.6.6) |
+| **group** | stages that share one job — prepared together, or named together at launch — none building on another, walked in the ladder's order (`project-layout.md` § 1.6.6) |
 | **run** | one launch of a stage (`jobset launch task`). Every launch is a new run, numbered on from the last: on the hierarchical layout its own folder, `01_coarse/run-0`, `run-1`, …; on the flat layout its own numbered files in the calculation's folder, `H2_01_coarse-run0.out`, `-run1.out`, … |
 | **warm / cold** | what a run starts from. **Warm**: the restart files (density, geometry, optimiser history — the restart-file list, [`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a) a run left. **Cold**: none of them — the engine starts from the deck alone |
 | **saved state** | a checkpoint of the whole calculation folder ([`checkpointing.md`](?doc=execution/checkpointing.md)): an id, a note, the time. `molbuilder checkpoint save / list / restore / tag` |
@@ -103,8 +103,8 @@ jobset prep bench <stage> · launch bench <stage> · summarize bench <stage>
 | **described** | a stage of `task.json` | the description |
 | **ready** | not prepared, and what it builds on is there: the one door that decides what a stage takes (its continuation, or a transport rung's gather, § 5.4) answers without refusing — the stage before it, `relax`, or the rungs upstream have a newest run that finished; a stage that builds on nothing (the first, one set `restart: clean`, a transport ladder's seed and leads) is ready at once | computed each time, never stored |
 | **waiting** | not prepared and not ready — the door's refusal says for what (`device waits for electrode_R, which is running`) | the same door |
-| **prepared** | its deck, run script and header rendered **from the description as it stood when you prepared it**, its attempt opened with what it carries, recorded in `job-set.json` | the prepared door (until 2026-10-08 called *prepped*) |
-| **launched**, then **ended** | as every run: queued, running, finished, failed, stopped | the run doors |
+| **prepared** | its deck, run script and header rendered **from the description as it stood when you prepared it**, its attempt opened with what it carries, recorded in `job-set.json` — `status` reads it `pending` until it is launched | the prepared door (until 2026-10-08 called *prepped*) |
+| **launched**, then **ended** | as every run: queued, running, finished, failed — a run stopped before its end (killed, out of time, out of memory) reads failed, the stop in its detail | the run doors |
 
 **`prep task`**, in order — one entry, which the terminal and Task setup's Prep
 both call (§ 5.3, *One prep, two doors*):
@@ -129,7 +129,7 @@ both call (§ 5.3, *One prep, two doors*):
    none, for a single picked stage), its decks planned and checked — **then the
    folder is saved once, and every picked stage is written**: its deck rendered
    now, its attempt opened with what it carries, its row in `job-set.json`; a
-   group's one header beside them.
+   group's one header in the calculation's `launch/` folder.
 5. **A prepared stage is not prepared again.** Its deck is what its runs run
    with, so every run's record stays true. To change it — a setting, its
    resources, the run it builds on — restore the state saved before its prep
@@ -145,7 +145,9 @@ both call (§ 5.3, *One prep, two doors*):
 * **When nothing new is prepared, it offers the stages launched before**, to
   launch one again: warm by default, or `--cold` (*What molbuilder does for
   you*, 3). `--stage NAME` names it. A group's member is launched again alone
-  if you name it alone — a group only ever shared one queue wait (D4).
+  if you name it alone — a group only ever shared one queue wait (D4) — and
+  stages named together with `--stage` go as one group, held to the same two
+  checks as at prep.
 
 **What a stage takes, by default, is one rule for every kind** (D5): the
 **newest** run of what it builds on, which **must have finished** — an older one
@@ -354,7 +356,7 @@ which copies coarse's relaxed coordinates in — and submit that. You check
 >
 > What a stage continues from is a **real file, copied in at `prep`** — by
 > default from the newest attempt of the stage before it, which must have
-> concluded, or from a run **you name** (§ 5.4). By then it has finished and
+> finished, or from a run **you name** (§ 5.4). By then it has finished and
 > you have read it, so there is nothing to resolve later and nothing pointing
 > at a file that does not exist.
 > That is a ladder of **independent** stages; in a **linked** one — a
@@ -663,15 +665,16 @@ Every job's folder holds **real copies** of its inputs, never links.
 **Nothing in `02_tight/` exists until you ask for it.** `prep task --stage <stage>`
 lays out that stage's folder, its wrappers and its `run-<n>` attempt, and copies
 in what it continues from — by default the newest run of the stage before it,
-which must have concluded, or the run `--from` names (§ 5.4). So tight's
+which must have finished, or the run `--from` names (§ 5.4). So tight's
 `run-0/` appears in a ladder's tree
 ([`project-layout.md § 1.1`](?doc=execution/project-layout.md)) only **after**
 you have run coarse, looked at it, and set tight up.
 
 > **A SWEEP's tree differs in two ways**: its folders are named by their
 > **settings** rather than by a position (its points have no order, so no
-> ordinal), and a point's attempt is a measurement, made once — measuring it
-> again opens the next `run-<n>`, the measured one untouched
+> ordinal), and a point's attempt is a measurement, made once — a trial is
+> launched once; measuring it again is the state saved before the
+> benchmark's prep, restored, and a prep anew
 > ([`project-layout.md § 1.5`](?doc=execution/project-layout.md)). Nothing is
 > copied between points.
 >
@@ -694,7 +697,7 @@ you have run coarse, looked at it, and set tight up.
 folder is its own. **No job's directory reaches into another's.**
 
 What a stage continues from is copied by `prep task --stage tight` — by default out of
-the newest attempt of the stage before it, which must have concluded and which
+the newest attempt of the stage before it, which must have finished and which
 you have already looked at, or out of the one `--from` names (§ 5.4):
 
 ```mermaid
@@ -1004,7 +1007,7 @@ A calculation is described **once**, and prep only ever reads that description.
 | | ***the save*** | | |
 | 5 | **the save** ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9) | the folder's state is saved, always, once the whole plan stands: a new state when anything changed since the one it stands at — its first when it has none — its note led by the time it was taken (`2026-10-03 14:05:12 · before prep task tight`); nothing new when nothing changed, and the state it stands at is named. Both doors say which | refused when the state cannot be saved: that state is the one a redo restores |
 | | ***the writing — nothing is decided*** | | |
-| 6 | **the plan written** | every file of the plan; the attempt opened ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2) with what step 4a decided copied in, never linked; at the calculation's first prep, its copy of the machine's record, naming the machine; the pipeline log; `job-set.json` last — the moment the stage is prepared; a group's one header beside its stages. A later attempt is `launch`'s: launching the stage again opens the next, continuing from its own latest run | — nothing here refuses. An error writing (a full disk) leaves the stage not prepared, and the state saved at 5 is the way back |
+| 6 | **the plan written** | every file of the plan; the attempt opened ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2) with what step 4a decided copied in, never linked; at the calculation's first prep, its copy of the machine's record, naming the machine; the pipeline log; `job-set.json` last — the moment the stage is prepared; a group's one header in the calculation's `launch/` folder. A later attempt is `launch`'s: launching the stage again opens the next, continuing from its own latest run | — nothing here refuses. An error writing (a full disk) leaves the stage not prepared, and the state saved at 5 is the way back |
 | 7 | **the record** | the ledger, after the save — so the state saved holds no line of this prep: the preflight's notes, the save, what the stage continues from (a benchmark of a force-constant stage: the relax run its trials are written at) or a transport rung gathered, the deck's agreement with its launch, *prepared* with which config files answered (as read at 4) | — |
 
 **What you get back** is the whole of what was found and decided — the table in
@@ -1303,8 +1306,8 @@ meaning.
 >   so the sweep measures **contention rather than scaling** — and reports a
 >   number that looks fine.
 >
-> So `--mode submit` hands the scheduler few, deliberate jobs — for a RUN,
-> one stage per invocation, refusing more by name; for a BENCH, one grouped
+> So `--mode submit` hands the scheduler few, deliberate jobs — for a TASK,
+> one job per invocation (a stage, or a group of stages); for a BENCH, one grouped
 > job per resource shelf (`generator.md § 4.3a`) — never a queue flood. **`--mode direct` is untouched**: it
 > runs each job here, in order, waiting for each, which is not submission at
 > all. The rule lives in the launch entry (`submit.plan_launch`), not in the
@@ -1321,7 +1324,7 @@ meaning.
 
 **2. What a stage continues from is the stage before it, or what you say.**
 By default `prep` takes the newest attempt of the stage before it, which must
-have concluded (§ 5.4); `--from 01_coarse/run-0` names another attempt whose
+have finished (§ 5.4); `--from 01_coarse/run-0` names another attempt whose
 results this run starts from. Those files are **copied** into the new attempt,
 not linked — the engine writes to those very filenames, and writing through a
 link would destroy the result you started from. `--cold` means *start clean*,
@@ -1411,7 +1414,7 @@ route — is this, for the whole verb.
 | `attempt` | the attempt it opened, what it brought in, what it copied and from where (`--from`, `--cold`) |
 | `continuation` | which run the stage continues from — by default or named — what it was (its conclusion, state and convergence) and the line both doors print (§ 5.4); a benchmark of a force-constant stage, the relax run its trials are written at |
 | `points` | a transport bias scan's attempts instead — one per point, each with what it gathered |
-| `gathered` | a transport rung's inputs, copied into its one attempt from the concluded upstream attempts ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
+| `gathered` | a transport rung's inputs, copied into its one attempt from the newest finished upstream attempts ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
 | `placement` | a stage prepared for a queue: the queue it was admitted on and where each value came from, as its job records it (§ 6.0), and the line both doors print |
 | `resources` · `deck` · `agreement` | what the stage will launch with, its deck, and whether that deck agrees (`launch` refuses a deck rendered for another width); no agreement when the deck makes no claim |
 | `pipeline_log` | the step-by-step record of the plan and the writing — always written, whichever door called ([`script-preparation.md`](?doc=execution/script-preparation.md) § 4.5) |
@@ -1703,7 +1706,7 @@ it continues from by what every file of that run carries — `H2_01_coarse-run0`
 refuses it — before anything is written
 ([`web/task-setup.md`](?doc=web/task-setup.md) § 11). **In the `flat` layout** every stage shares one folder, so the
 files the stage before it left are where this one reads them and nothing is
-copied — the same rule holds all the same: its latest run must have concluded,
+copied — the same rule holds all the same: its latest run must have finished,
 and `prep` says which run that was, by the name every file of it carries
 (`coarse's latest run, H2_01_coarse-run1, whose files lie in this folder`) —
 the name its `.continued-from` records. There is no attempt there for `--from` to
@@ -1722,7 +1725,7 @@ sequenceDiagram
     S-->>U: Submitted job 4021
     Note over U: coarse runs. YOU LOOK AT IT.<br/>Did it converge? Is the geometry sane?
     U->>M: jobset prep task --stage tight
-    Note over M: takes coarse's newest attempt, concluded,<br/>and copies its .XV / .DM into 02_tight/run-0
+    Note over M: takes coarse's newest attempt, finished,<br/>and copies its .XV / .DM into 02_tight/run-0
     U->>M: jobset launch task --stage tight --mode submit
     M->>S: sbatch … 02_tight
     S-->>U: Submitted job 4022

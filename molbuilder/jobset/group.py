@@ -6,7 +6,7 @@ two leads -- wait in the queue once instead of once each.  You group them at
 prep, by naming them; each is prepared as it would be alone and keeps its own
 attempt, deck, run script and records; the group is written on each
 member's job (`Job.group`) with one header for the group's job, and launch
-sends that job, walking the members in the order named.
+sends that job, walking the members in the ladder's order.
 
 This module answers the group's three questions, each in one place:
 

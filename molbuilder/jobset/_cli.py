@@ -454,12 +454,12 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                "and every stage follows, because there is one of it.  The "
                "structure and pseudopotentials still arrive at prep from "
                "the citation.  On the machine that will run it:")
-    # THE FIRST COMMAND A PERSON COPIES, as `init` prints it for every other
-    # calculation.
+    # THE FIRST COMMAND A PERSON COPIES: the stages `prep task` offers
+    # pre-selected (D2) -- the seed and both leads, one job.
     from .commands import command, words_for
-    from .materialize import described_refs
-    click.echo("  " + command("prep", *words_for("task", described_refs(dest, task)[0].name),
-                              base=dest))
+    from .ready import ladder, preselected
+    click.echo("  " + command("prep", *words_for(
+        "task", *preselected(dest, task, ladder(dest, task))), base=dest))
 
 
 @jobset_group.command("init",
@@ -1019,9 +1019,9 @@ def _resolve_stage(js, stage, verb: str, *, base):
     if js.kind == "ladder":
         raise click.ClickException(
             # WHAT YOU CAN TYPE, never the token (`job-system.md` § 5.3).
-            f"this is a ladder, so `{verb} run` acts on ONE stage -- or on "
-            f"stages named together as a group (project-layout.md "
-            f"§ 1.6.6); "
+            f"this is a ladder, so `{verb} task` acts on the stage named "
+            f"with --stage -- or on several named together, one job "
+            f"(project-layout.md § 1.6.6); "
             + name_a_stage(verb, "task", ordered, base=base) + "\n"
             "Stages do not chain, and there is no flag that makes them: a "
             "run that continues on its own can spend a week refining a "
@@ -1043,7 +1043,7 @@ def _resolve_stage(js, stage, verb: str, *, base):
               help="the attempt this run continues from, by its folder -- "
                    "e.g. '01_coarse/run-0'.  Its warm files are COPIED in.  "
                    "Without it, a continuing stage takes the newest attempt "
-                   "of the stage before it, which must have concluded "
+                   "of the stage before it, which must have finished "
                    "(job-system.md 5.4).  The flat layout and a bias scan "
                    "have no single attempt to name.")
 @click.option("--cold", is_flag=True,
@@ -1102,9 +1102,9 @@ def prep_cmd(kind: str, words, stages, bundle: str, from_attempt,
     a plain yes** -- it is the only place the chosen geometry and the rendered
     deck appear together.
 
-    A STAGE is required on a ladder — bare ``prep task`` is refused before
-    anything is read of the machine or written, offering the stages by name
-    and the command for the first (`engines/stages.md` § 6.5).
+    Bare ``prep task`` shows the ladder and asks which ready stage(s), the
+    offer pre-selected; ``--stage`` answers without a terminal
+    (`job-system.md`, *The task*).
     """
     # THE ONE ENTRY (`job-system.md` § 5.3, plan W38 F7): the Task setup
     # tab's Prep buttons call it too.  This verb collects what the person
@@ -1203,6 +1203,12 @@ def _launch_unit(base, js) -> list:
         offered = [[n] for n in again]
         question = "which to launch again?"
     picked = choose(text, offered[0] if units else [], question=question)
+    if picked.asked and picked.picks:
+        # THE QUESTION AND ITS ANSWER, written down as prep's are
+        # (`job-system.md`, *What molbuilder does for you*, 5).
+        from .ledger import record
+        record(base, "launch", "question", about=question,
+               offered=[", ".join(u) for u in offered], answer=picked.words)
     if not picked.asked or not picked.picks:
         raise click.ClickException(
             text + "\nname which with --stage (repeated, several as one "
@@ -1240,15 +1246,23 @@ def _ask_which_stages(base, named) -> list:
         click.echo(text)
         return list(named)
     pre = preselected(base, task, answers)
+    ready = [a.stage for a in answers if a.ready]
+
+    def _refuse(why: str) -> click.ClickException:
+        # EVERY REFUSAL IS WRITTEN DOWN (`job-system.md` § 5.0, rule 3).
+        record(base, "prep", "refused", kind="task", stage=None, reason=why)
+        return click.ClickException(why)
+
     if not pre:
-        raise click.ClickException(
+        raise _refuse(
             text + "\nno stage is ready to prepare -- each one above is "
             "prepared, or waits for what it says.")
     picked = choose(text, pre, question="which stage(s) to prepare?")
     if not picked.asked:
-        raise click.ClickException(
+        raise _refuse(
             "nobody to ask which stage(s) to prepare (not a terminal) -- "
-            "name them with --stage:\n"
+            "the ready ones: " + ", ".join(ready) + ".  Name them with "
+            "--stage, several as one job -- the ones offered first:\n"
             + block(lines("prep", "task", *pre, base=base)))
     record(base, "prep", "question", about="which stage(s) to prepare",
            offered=[a.stage for a in answers if a.ready],

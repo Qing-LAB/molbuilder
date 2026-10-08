@@ -1879,7 +1879,7 @@ def gather_sources(base_dir, task, stage: str, *, template_text: str
     **Decided at prep's checkpoint 4a, with what every stage continues
     from** (`job-system.md` § 5.0; the hand-over is one `Continuation`, and a
     transport rung's is this, recorded as `.gathered-from`): refused before
-    anything is written when an upstream run has not concluded, or ran
+    anything is written when an upstream's newest run has not finished, or ran
     another deck (:func:`transport_inputs`'s gates; strict composition,
     ruling Q2).  The steps copy each entry into the attempt they open in its
     container (:func:`_gather_into`).  `prep_calculation` asked directly renders the decks without
@@ -2544,7 +2544,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             takes = [r for r in described_refs(base, task)
                      if not prepared_already(base, task, kind, r.name)]
             raise PrepError(
-                (f"`prep {kind}` acts on ONE stage" + (
+                (f"`prep {kind}` names the stage it prepares" + (
                     " -- --from / --cold describe its attempt" if
                     (from_attempt or cold) else "") + "; ")
                 + (name_a_stage("prep", kind, takes, base=base) if takes
@@ -2919,8 +2919,9 @@ def prep_task(base, kind: str, stages: Sequence[str], *,
             why = ("--from / --cold describe one stage's attempt; a group's "
                    "stages each start as the description says "
                    "(project-layout.md § 1.6.6).  Prep that stage apart.")
-            ledger(Path(base).resolve(), "prep", "refused", kind=kind,
-                   stage=stages, reason=why)
+            if not preview:
+                ledger(Path(base).resolve(), "prep", "refused", kind=kind,
+                       stage=stages, reason=why)
             raise PrepError(why)
         return prep_group(base, kind, stages, target=target,
                           allocation=allocation, env=env,
@@ -2968,8 +2969,11 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
     base = Path(base).resolve()
 
     def _refuse(why: str) -> PrepError:
-        ledger(base, "prep", "refused", kind=kind, stage=list(stages),
-               reason=why)
+        # A REFUSAL IS WRITTEN DOWN; a preview records nothing
+        # (`job-system.md` § 5.0, rule 3 and *a preview*).
+        if not preview:
+            ledger(base, "prep", "refused", kind=kind, stage=list(stages),
+                   reason=why)
         return PrepError(why)
 
     if kind != "task":
@@ -2981,10 +2985,14 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
     try:
         task = read_task(base / TASK_FILENAME)
         refs = [StageRef(h.seq, h.name) for h in ladder_homes(base, task)]
-        names = [resolve_stage_ref(refs, st).name for st in stages]
+        named = {resolve_stage_ref(refs, st).name for st in stages}
     except ValueError as exc:
         raise _refuse(str(exc)) from None
-    if len(set(names)) != len(names):
+    # THE LADDER'S ORDER, whatever order they were named in -- the order the
+    # group's job walks them and its files are named in, as launch does
+    # (`submit._plan_group`).
+    names = [r.name for r in refs if r.name in named]
+    if len(names) != len(stages):
         raise _refuse(f"a stage is named twice: {', '.join(stages)}.")
     tpl = find_template(base, task.label)
     template_text = tpl.read_text(encoding="utf-8") if tpl else None
@@ -2993,10 +3001,16 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
         raise _refuse(why)
     # 2 · EVERY MEMBER, PLANNED -- through the one entry, nothing written --
     #     and the one allocation they share.
-    previews = [prep_stage(base, kind, st, target=target,
-                           allocation=allocation, env=env,
-                           emit_sbatch=emit_sbatch, preview=True)
-                for st in names]
+    #     A MEMBER'S REFUSAL is the group's, written down as every refusal
+    #     is -- its findings with it.
+    try:
+        previews = [prep_stage(base, kind, st, target=target,
+                               allocation=allocation, env=env,
+                               emit_sbatch=emit_sbatch, preview=True)
+                    for st in names]
+    except PrepError as exc:
+        _refuse(str(exc))
+        raise
     try:
         shared = envelope([a.job for a in previews])
     except GroupError as exc:

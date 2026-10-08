@@ -98,8 +98,9 @@ class StageStatus:
     #: asks too, so the status says what launching it again will do
     #: (`job-system.md` § 5.4, *A stage launched again*).
     relaunch_continues: bool = True
-    #: The group it was prepared in, its members in order -- launched with
-    #: them, never alone (`project-layout.md` § 1.6.6) -- or ``None``.
+    #: The group it was prepared in, its members in the ladder's order --
+    #: one job when launched together (`project-layout.md` § 1.6.6) -- or
+    #: ``None``.
     group: Optional[List[str]] = None
     #: Whether anything has prepared it -- a description's stage before its
     #: first prep is listed all the same (`job-system.md` § 5.3).
@@ -486,9 +487,11 @@ def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
     -- each a command that works.  molbuilder does NOT auto-resume; the
     person decides (`engines/stages.md`)."""
     state = s.state if s is not None else "stopped"
-    # A GROUP'S MEMBER is launched with its group (`project-layout.md`
-    # § 1.6.6): the line names every member.
-    words = (s.group if s is not None and s.group else [name])
+    # A GROUP PREPARED AND NOT LAUNCHED goes as its one job: the line names
+    # every member.  Launched again, a member goes alone (D4) -- the others
+    # may have finished.
+    words = (s.group if s is not None and s.group and state == "pending"
+             else [name])
     if state == "pending":
         return (f"First incomplete stage: {name}, prepared and not "
                 f"launched:\n" + block(launch_lines("task", *words, base=base)))

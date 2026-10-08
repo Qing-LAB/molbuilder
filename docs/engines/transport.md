@@ -525,10 +525,10 @@ density of the closest bias before it — the manual's advice: *"copy the TSDE
 from the closest, previously, calculated bias for restart and much faster
 convergence"*. Small steps keep each start close to its answer and, on a
 junction with more than one self-consistent solution, keep the sweep on the
-one continuous with equilibrium. A point is done when its cycle converged; one
-not done continues from its own last density; a done point is never run
-again; a point that will not converge can be skipped (`launch --skip`), and
-`launch --cold` starts the sweep over.
+one continuous with equilibrium. Launched again, the scan opens every point's
+next attempt, each warm from its own last density, or all cold with `launch
+--cold`. *(Designed, not built — § 2a.11: a converged point never run again,
+and `launch --skip` for a point that will not converge.)*
 
 #### Step 5 — the transmission and the current *(TBtrans; § 0.3, § 2a.10, § 2a.12, § 6.1b)*
 
@@ -561,7 +561,7 @@ is the **conductance**:
 G = G₀ · T(E_F),     G₀ = 2e²/h ≈ 77.5 µS          per channel when polarized: (e²/h)·(T↑ + T↓)
 ```
 
-**The two treatments** (§ 2a.10). With a **single bias**, the device runs once,
+**The two treatments** (§ 2a.10). Under **`low-bias`** the device runs once,
 at 0 V, and an I–V from it is the **linear-response** approximation — the
 zero-bias transmission held fixed as the window opens:
 
@@ -570,11 +570,10 @@ I(V) ≈ (2e/h) ∫ T(E, 0) [ f(E − μ_L) − f(E − μ_R) ] dE
 ```
 
 sound while eV/2 is small against the distance from E_F to the nearest
-resonance. With **finite bias**, every point has its own T(E, V) and each I(V)
-is integrated over its own window, with no approximation beyond the method.
-The transmission run takes one device run whole — the newest whose points are
-all done or skipped — with a point for each; a skipped device point is a
-skipped transmission point, and a gap in the I–V (§ 2a.11).
+resonance. Under **`re-converged`**, every point has its own T(E, V) and each
+I(V) is integrated over its own window, with no approximation beyond the
+method. Each transmission point gathers the device's newest finished run at its
+own voltage (`re-converged`) or the one at 0 V (`low-bias`).
 
 #### The record — what is read back *(`summarize task`; § 2a.12)*
 
@@ -865,8 +864,8 @@ relaxation DEFAULTS rather than seals) is built and is what
 `citation_defaults.py` does; the T(E) window, the two lead stages and the
 bias treatment are built; **Class C's per-stage defaults are NOT** — § 3.6a
 measures every rung taking `SiestaConfig()`'s own values, and § 2a.14's
-"what did NOT land" does not list it.  Nor is the default grouping: it is
-built with the bias sweep, on transport's own walk (§ 2a.11).*
+"what did NOT land" does not list it.  The default grouping is built (the
+row below).*
 
 | | |
 |---|---|
@@ -876,7 +875,7 @@ built with the bias sweep, on transport's own walk (§ 2a.11).*
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
 | **Default grouping** | The preparatory block — seed and both leads — as one submission: `jobset prep task` offers the three pre-selected, since none builds on another, and they are prepared as one group (`--stage seed --stage electrode_L --stage electrode_R` without a terminal); `jobset launch task` sends it as one job ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6; [`execution/job-system.md`](?doc=execution/job-system.md), *The task*). Then the device; then the transmission, each scan one job walking its points. The device and the transmission never share a job: the transmission builds on the device, which you look at first |
 | **A frame group runs at one bias** | § 2a.9 |
-| **The bias treatment is an exposed choice** | Single-bias or finite-bias, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
+| **The bias treatment is an exposed choice** | `low-bias` or `re-converged`, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
 | **Automatic resubmission is deferred, and load-bearing on nothing** | The stages, their decks, the parameter map and the directory structure are identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing here waits on it. When built, the monitor is its home — it already watches a run to its end. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
 | **Net charge and gating are deferred** | Not designed now. In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is separate work. How a gate is applied in SIESTA 5.x — a charge-distribution block, a scripted hook, or neither — **has not been verified against the manual** and should be before anything depends on it |
 
@@ -1173,8 +1172,8 @@ here is how many slices you pay for.
 
 | | what runs | what you get |
 |---|---|---|
-| **Single bias** (V = 0) | the device SCF converges **once** | **T(E)** — one slice, a full energy curve. An I–V *can* be derived from it by integrating against the leads' Fermi functions; that is the **linear-response approximation** |
-| **Finite bias** | the device SCF is **re-converged at every voltage** | **T(E, V)** — one slice per point. The I–V follows from integrating each slice over its own window, with no approximation beyond the method itself |
+| **`low-bias`** (one device SCF, at 0 V) | the device SCF converges **once** | **T(E)** — one slice, a full energy curve. An I–V *can* be derived from it by integrating against the leads' Fermi functions; that is the **linear-response approximation** |
+| **`re-converged`** | the device SCF is **re-converged at every voltage** | **T(E, V)** — one slice per point. The I–V follows from integrating each slice over its own window, with no approximation beyond the method itself |
 
 The mechanism is the same in both cases; the difference is how many device SCFs
 are paid for, and therefore **what the result is entitled to be called**.
@@ -1258,7 +1257,7 @@ migrate` writes that.
 
 | parameter | class | decided at | binds | tier |
 |---|---|---|---|---|
-| **bias treatment** (single / finite) | shape | calculation | the device's axis, and what the result may be called | 3 |
+| **bias treatment** (`low-bias` / `re-converged`) | shape | calculation | the device's axis, and what the result may be called | 3 |
 | **the bias point(s)** | D | the description's list | the device and the transmission — each point's pair is written at that point, and each transmission point reads *its own* point's converged Hamiltonian, never another's | 3 |
 
 The treatment is not really a third mechanism: **single bias is the degenerate
@@ -1443,9 +1442,6 @@ is **one run** of that rung, its bias points inside it:
   attempt: transport rungs leave
   [`execution/job-system.md`](?doc=execution/job-system.md) § 5.4's *A stage
   launched again*, which opens one (§ 2a.15).
-- **The ladder's default grouping** (§ 2a.7: the seed and both leads as one
-  submission; then the device; then the transmission) is built on transport's
-  own walk, with this.
 - **Transport's walk shares nothing with a benchmark's** *(user, 2026-10-05:
   "bias scan is its own mechanism — this is parameter sweep, not some …
   computation resource experiment")*. What the device walk hands from a
@@ -1532,7 +1528,7 @@ Before a stage runs, what it consumes is copied into its run's directory: the
 leads' Hamiltonians, the seed's density, the device's converged Hamiltonian —
 once, in the run's own folder, for a sweep's points to read from there (the
 bias axis above). Three conditions gate every copy — the upstream stage must have
-been prepared, must hold a **concluded** attempt that ran the deck this
+been prepared, its **newest** attempt must have **finished** and run the deck this
 composition renders, and that attempt must actually hold the file — and each
 refusal names what to do first. A record of what was taken from where lands
 beside the copies, so a transmission can always say which lead runs and which
@@ -1937,7 +1933,7 @@ The road is the composite, through the ordinary `jobset` verbs:
 molbuilder jobset init --calculation transport --shape hierarchical \
     --bundle BDT-Au/transport/BDTTrans \
     --slot junction=BDT-Au/optimization/JunctionRelax/01_coarse/run-2 \
-    --bias 0.0,0.2
+    --bias 0.0,0.2 --bias-treatment re-converged
 
 # 2. prep + launch the task: each prep shows the ladder and offers the
 #    stages that are ready -- first the seed and both leads, as one job;
@@ -3271,7 +3267,7 @@ Two things are easy to get wrong and both are visible here:
   > two runs from drifting apart about what the junction IS was never
   > byte-identity; it is the **shared Class A values** (§ 2a.3).
 * **Nothing is "integrated" at the end.**  Integration happens *between*
-  stages, as files, at prep time — `prep` copies a concluded upstream
+  stages, as files, at prep time — `prep` copies a finished upstream
   stage's output into the next stage's run directory before that stage
   ever runs.  There is no post-processing step that merges five results;
   the merge is that stage N+1's SCF starts from stage N's matrices.
@@ -3319,13 +3315,13 @@ from ([`job-system.md`](?doc=execution/job-system.md) § 5.0), in
 
 | gate | what it refuses |
 |---|---|
-| the upstream stage is PREPPED | citing a stage that was never set up |
-| it holds a CONCLUDED attempt **whose deck matches the deck that rung renders NOW** — from the current template, junction and run card, byte for byte but for its stamps — when and by which build it was written (`same_calculation`); never the stage folder's last render, which a change since leaves as it was (plan § 5w K11); for a transmission over a bias sweep, one device run complete — every point done or skipped (§ 2a.11) | integrating a result produced by a *different* deck — the silent-wrong-answer case. A mismatch is a mistake, refused by name |
+| the upstream stage is prepared | citing a stage that was never set up |
+| its **newest** attempt FINISHED, **and its deck matches the deck that rung renders NOW** — from the current template, junction and run card, byte for byte but for its stamps — when and by which build it was written (`same_calculation`); never the stage folder's last render, which a change since leaves as it was (plan § 5w K11); for a transmission point, the device's run at that point (`re-converged`) or its one 0 V run (`low-bias`, § 2a.10) | integrating a result produced by a *different* deck — the silent-wrong-answer case. A mismatch is a mistake, refused by name |
 | that attempt actually holds the named file | a run that concluded without writing what it promised |
 
-The newest attempt that passes all three wins — over a sweep, the newest
-complete device run, taken whole — and the copy records its
-provenance in `.gathered-from`.  The byte-for-byte deck gate is the load-bearing
+The newest attempt is the one asked: one that fails a gate is refused by
+name, never passed over for an older one (`job-system.md`, *The task*, D5) —
+and the copy records its provenance in `.gathered-from`.  The byte-for-byte deck gate is the load-bearing
 one: it is what makes "the device's H and the electrodes' H were built on the
 same basis, XC, mesh and electronic temperature" a *checked* fact rather than a
 hope (§ 5).

@@ -765,7 +765,7 @@ run goes:
 | `bdt_01_coarse-run0.out`, no `>> End of run`, quiet for 40 minutes | `running` — running |
 | the `.out` ends `>> End of run`; `-run0.concluded` reads `rc=0 at …` | `finished` — job_completed |
 | the `.out` stopped on `SCF_NOT_CONV … (required)`; the warm retry's `-run1.out` is printing | `running` — `-run1.out` speaks: same stage, newer |
-| killed at walltime: no ending in the `.out`, no `.concluded` | `running` — the monitor's log says *failed*; launching it again, warm or `--cold`, is yours |
+| killed at walltime: no ending in the `.out`, no `.concluded` | `failed` — stopped before its end: no ending in its output and no exit recorded (the monitor's closing record); launching it again, warm or `--cold`, is yours |
 | no `.out` (SIESTA died before its first line); `-run0.concluded` reads `rc=1 at …` | `failed` — concluded (rc=1 at …) before any output |
 
 #### Which engine ran — `engine_of`

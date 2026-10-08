@@ -1047,7 +1047,10 @@ task` offers pre-selected (D2: a transport ladder's seed and both leads) ticked
 when the folder opens; under them the command for the pick
 (`prep task --stage … --stage …`) and the Preview / Prep pair that does what it
 does. Several ticked are one group, one job (`project-layout.md` § 1.6.6); a
-stage ticked alone takes the Continue-from choice its tab shows. After a Prep
+stage ticked alone takes the Continue-from choice its tab shows — and a stage
+waiting for its default becomes one to tick once its tab names a run to
+continue from, or `--cold`, which prep takes as said, as at the terminal
+(`--from`). After a Prep
 the folder is read again, and the boxes start again from the new offer.
 
 **One tab per stage.** Inside a tab, everything else you do with that rung:
@@ -1202,7 +1205,7 @@ from the same answer:
   run it continues from, a cold start you asked for, what a transport rung
   gathered, or nothing from another run), what was copied from which
   attempt — or, on a transport bias scan, one attempt per point;
-* **what a transport rung gathered** from the concluded rungs upstream;
+* **what a transport rung gathered** from the newest finished runs upstream;
 * **the resources** the stage will launch with, and **whether the deck
   agrees**: a deck rendered for another width is said here, before `launch`
   refuses it — and redone by going back to the state saved before this prep.

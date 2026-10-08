@@ -64,7 +64,8 @@ def readiness(base, task, stage: str, *, template_text: Optional[str] = None,
     said, so it makes a stage ready that waits for its default.
     ``verdict=False`` leaves a relaxation's convergence unread -- for
     `status`, read far more often than prep."""
-    from .prep import PrepError, gather_sources, prepared_already
+    from .prep import (PrepError, _user_error_as_prep, gather_sources,
+                       prepared_already)
     base = Path(base)
     if prepared_already(base, task, "task", stage):
         return Readiness(stage, prepared=True)
@@ -74,8 +75,10 @@ def readiness(base, task, stage: str, *, template_text: Optional[str] = None,
         template_text = tpl.read_text(encoding="utf-8") if tpl else None
     if getattr(task, "calculation", None) == "transport":
         try:
-            got = gather_sources(base, task, stage,
-                                 template_text=template_text)
+            # THE REFUSALS PREP SAYS, translated as prep translates them.
+            with _user_error_as_prep():
+                got = gather_sources(base, task, stage,
+                                     template_text=template_text)
         except PrepError as exc:
             return Readiness(stage, why=str(exc))
         return Readiness(stage, ready=True,
