@@ -5137,12 +5137,70 @@ go in B4; no tombstones.
 4. **A sweep whose points are all done, launched again**: nothing to run —
    said, with the `--cold` line.
 
-### 5x.6 The sweep's evidence (kept for the build)
+### 5x.6 The sweep's evidence — every confirmed finding, by id
 
-The four reviewers' and three validators' findings, by id, are in this
-session's record: structural S1–S10, physics P1–P4, composition C1–C4, results
-R1–R8, contract T (18 contradictions). Each step above names the ids it closes
-in its commit message.
+Each build step's commit names the ids it closes.
+
+**S — Structural: the bias sweep is not one run** (the root of most defects).
+The contract designs a swept rung as ONE run holding its points and one record
+(`transport.md` § 2a.11, *designed, not built*). The code instead makes every
+point a stage of its own — `04_device/v0.2/run-N/`, its own launch record, its
+own state, its own attempts. Confirmed consequences:
+
+| id | what happens on a real run | evidence |
+|---|---|---|
+| S1 | a point the walk never reached, and every point of a job cancelled while pending, reads `queued as job N` forever — "queued" is the job's word, given to a point | `submit._go` writes every point's `run.json` at send; `parse/dirs/job.py:408` |
+| S2 | launched again, **every** point is re-run, the converged ones too — and until they are, the report's I–V empties (each point's newest attempt is empty) | `submit._plan_chain` 1962–2018; `record.py:428` |
+| S3 | the walk's hand-over between points is recorded nowhere: `status` says a point "started from the structure"; `.gathered-from` says `<label>.DM <- 01_seed` though the walk replaced it (and v0's own run rewrote it — `save_density_matrix.F90:138`) | `submit.py:2054`, `runstatus.py:591-595`, `materialize.py:753` |
+| S4 | the shared inputs (seed `.DM`, both `.TSHS`) are copied into every point; no clean seed density survives a first launch, so `--cold` is not really cold | `prep.gather_sources` per point |
+| S5 | the transmission gathers each point's newest device attempt separately — one I–V is one device run today only because every point advances together; skipping done points (S2's fix) would break it | `prep.transport_inputs` per point (validator: refuted today, real once S2 is fixed) |
+| S6 | the scan's stage folder holds a deck, run script and header at the first point that nothing runs | `prep.py:1095-1098` |
+| S7 | the launch-again rule for a point is a second copy of `continuation.relaunch` | `submit._plan_chain` 1986–1997 |
+| S8 | `--cold` on a scan not yet launched is dropped silently | `_plan_chain` 1977–1981 |
+| S9 | a group naming a scan rung is refused with a rollback that does not help | `_plan_group` → `_plan_member` |
+| S10 | the walk records no stop: nothing says which points it never reached | the chain log only |
+
+Today's patches on these (the "never-started" point, 2026-10-08) are symptoms of
+S and go with it.
+
+**P — Physics.**
+
+| id | finding | evidence |
+|---|---|---|
+| P1 | **`low-bias` is not linear response.** Each transmission point runs tbtrans on the 0 V device H with `TS.Voltage V`; tbtrans shifts each lead's self-energy by its chemical potential (±V/2) and leaves the device H at 0 V. The I(V) recorded is neither ∫T(E,0)[f_L−f_R] (the contract's definition, § 1.1) nor a self-consistent one, and the record labels it "linear response" | `m_ts_electrode.F90:1461-1462`, `m_tbt_hs.F90:109-112, 287-298`; `record.py` `TREATMENT_NOTE` |
+| P2 | the transmission energy window (±2 eV default) is never checked against the bias window (±V/2 + a few kT): above ~3.5 V the current is silently cut | catalogue rows; nothing in `validation/` |
+| P3 | the equilibrium contour is the interim 10 eV pole energy, not the stated `contour.eq` with a spectrum gate the contract describes | `transiesta.py:579-585`; `transport.md:1661` vs `:3613` |
+| P4 | device points at V≠0 gather the seed `.DM`, which TranSIESTA never reads there (it needs a `.TSDE`) — recorded as an input it is not | `stages.stage_inputs`; `m_new_dm.F90:487-494` |
+
+**C — Composition.**
+
+| id | finding | evidence |
+|---|---|---|
+| C1 | the electrode swap rewrites the **cited run's** files (and so every other calculation citing it); the contract says the swap is the calculation's own (`swap_electrodes: true`) | `compose.py:618-713`; `transport.md` § 4 |
+| C2 | the leads' `.TSHS` name comes from two sources: the device deck uses the template's `system_label`, the lead and the gather use `task.label` — equal on every road today, unchecked | `transiesta.py:509` vs `prep.py:1528`, `stages.py:186-202` |
+| C3 | a form-B junction (`.xyz` + sidecar) keeps the sidecar's z kind — a false "transport axis not periodic" deck warning | `compose.py:855-877` |
+| C4 | a relaxation with no molbuilder record, or one that ended with an error, composes into a junction | `compose.py:846-853`; `transport.md` § 3.1 |
+
+**R — Results and pages.**
+
+| id | finding | evidence |
+|---|---|---|
+| R1 | the record reads TBtrans's files with its own glob — a **second reader** beside the family's (`parse/engines/tbtrans.py`) — and so a spin-polarised point (`<label>.TBT_UP.AVTRANS_*`) is reported **failed**; G is not (e²/h)(T↑+T↓) | `record.py:445`; `m_tbt_save.F90:2266-2270` |
+| R2 | the treatment label is in the T(E) tab only, not beside the I–V | `transport.js` `_fillIV` |
+| R3 | "energies relative to E_F" is a constant; the device's NEGF E_F is never compared with the leads' | `record.py:528` |
+| R4 | the device facts beside T(E) come from the device's newest attempt, not the run the transmission read | `record._stage_facts` |
+| R5 | `status` never shows what a transport rung gathered (every rung "started from the structure") | `runstatus.py:591-595` |
+| R6 | the record lacks: the seed's E_F; the contour and pole count (already parsed); the window, points and TBT k-grid | `record._science` |
+| R7 | no report until a first `summarize task`; every run of the calculation not listed at the root (both doc'd as built) | `transport.js:688-691`; `results.md` § 2.4 |
+| R8 | two wrong section links on the transport tab | `transport_calculation.html:210, 240` |
+
+**T — Contract text** (sweep A): 18 internal contradictions, the main ones —
+"run" defined three ways (`job-system.md:74`, `project-layout.md:818`,
+`transport.md:1284`); the 2026-10-07 rule *any stage launched again however it
+ended* vs the 2026-10-05 sweep design *a done point is never run again*; per
+point vs one run for what the transmission takes; present-tense passages
+describing the unbuilt sweep; stale passages (§ 2a.14's table, § 3.2, § 3.4,
+§ 3.6a, § 6a, § 8).
 
 ## 5v. Documents that lag the code — the document sweeps' input *(2026-09-29)*
 
