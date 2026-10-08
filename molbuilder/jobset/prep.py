@@ -2853,6 +2853,11 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
 
         # 7 · THE RECORD: what it continues from, the deck's agreement with
         #     its launch, *prepared* -- the answer both doors show.
+        # A TRANSPORT RUNG'S GATHER, as decided at 4a and copied: each file,
+        # the run it came from, the point it was gathered at.
+        took = [{"file": fn, "from": src, "volts": volts}
+                for _c, volts, inputs in (gather or ())
+                for src, fn in inputs]
         if kind == "task":
             if continuation is not None:
                 # THE DECISION, LOGGED (`job-system.md` § 5.4): which run,
@@ -2861,11 +2866,12 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                        **continuation.ledger_facts(),
                        copied=list(out.attempt.copied)
                        if out.attempt is not None else [])
-            elif gather is None:
+            elif not took:
                 # FROM THE STRUCTURE, said every time (`ledger.py`'s
                 # promise: `continues` or `starts-cold`) -- with `--cold`,
-                # or as its description has it: the first stage, or one
-                # set `restart: clean`.  A transport rung's inputs are its `gathers`.
+                # or as its description has it: the first stage, one set
+                # `restart: clean`, a transport ladder's seed and leads.  A
+                # rung that gathered inputs says so as `gathers`.
                 ledger(base, "prep", "starts-cold", stage=stage,
                        asked=bool(cold))
         elif continuation is not None:
@@ -2874,11 +2880,6 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             ledger(base, "prep", "continues", stage=stage,
                    **continuation.ledger_facts(), copied=[])
         if kind == "task":
-            # A TRANSPORT RUNG'S GATHER, as decided at 4a and copied: each
-            # file, the run it came from, the point it was gathered at.
-            took = [{"file": fn, "from": src, "volts": volts}
-                    for _c, volts, inputs in (gather or ())
-                    for src, fn in inputs]
             if took:
                 ledger(base, "prep", "gathers", stage=stage, inputs=took)
             if out.agreement is not None:
