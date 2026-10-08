@@ -182,6 +182,7 @@ Which solver produces the density matrix each SCF step.
 
   diagon      standard diagonalisation, O(N^3) -- the default, and right for almost everything this project runs
   OMM         order-N; worth it only for systems beyond ~500 atoms
+              (spin-polarized only with the spin held: restricted, or unrestricted with a stated count)
   transiesta  non-equilibrium transport; requires the TranSIESTA build
 """
 

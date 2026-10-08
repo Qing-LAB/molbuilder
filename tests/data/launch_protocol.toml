@@ -43,6 +43,17 @@ launch_sends = true
 launch_refused = "--time: what a scheduler is asked for"
 after_launch = { ledger_holds = ["refused"] }
 
+# A ladder's launch acts on ONE stage: none named is refused, offering the
+# stages by name -- stages do not chain (`project-layout.md` § 1.6,
+# `job-system.md` § 5.3).
+[[case]]
+name = "a launch that names no stage is refused, offering the stages by name"
+launch = []
+launch_stage = ""
+launch_mode = "direct"
+launch_sends = true
+launch_refused = ["acts on ONE stage", "Stages do not chain"]
+
 [[case]]
 name = "a refused dry run writes nothing"
 launch = ["--time", "1h"]

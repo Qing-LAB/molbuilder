@@ -246,7 +246,8 @@ def check_electronic_state(struct: Structure, cfg, *,
       `offered` -- a floating moment on PySCF, unrestricted on a PySCF
       vibration, non-collinear on transport), unpaired electrons beside
       restricted, a fixed count where SIESTA cannot hold one (non-collinear,
-      spin-orbit, unrestricted on transport);
+      spin-orbit, unrestricted on transport), and SIESTA's OMM solver with
+      a spin it cannot hold (:func:`_omm_spin`);
     * **ES3 -- parity**, for a finite system and a pinned count: an error
       where the engine refuses it or a fixed count contradicts it, a warning
       where SIESTA runs a restricted radical half-filled;
@@ -281,8 +282,35 @@ def check_electronic_state(struct: Structure, cfg, *,
     # calculation, whose charge is 0 by rule and refused when stated (ES7):
     # advice to state one there would be advice this family refuses.
     return (out + _spin_findings(struct, st, engine, calculation)
+            + _omm_spin(cfg, st, engine)
             + (_check_peptide_protonation(struct, st.net_charge)
                if calculation != "transport" else []))
+
+
+def _omm_spin(cfg, st, engine: str) -> List[Issue]:
+    """SIESTA's OMM solver runs a spin-polarized density only with the spin
+    held: SIESTA 5.4.2 stops a polarized OMM run with no ``Spin.Fix`` at
+    startup (`Src/m_dminim.F90`: *"OMM for spin unpolarized calculations
+    only supports fixed spin!"*).  So OMM takes restricted, or unrestricted
+    with a stated count -- refused here, before the run, never at the
+    engine's start."""
+    from ..electronic_state import FREE
+    if (engine != "siesta"
+            or str(getattr(cfg, "solution_method", "") or "") != "OMM"
+            or st.spin_treatment.value == "restricted"
+            or (st.spin_treatment.value == "unrestricted"
+                and st.pinned is not None)):
+        return []
+    held = ("a floating moment" if st.unpaired_electrons.value == FREE
+            else f"spin_treatment = {st.spin_treatment.value}")
+    return [Issue(
+        "error",
+        f"solution_method = OMM with {held} ({st.spin_treatment.said}): "
+        f"SIESTA's OMM runs a spin-polarized density only with the spin "
+        f"held, and stops at startup otherwise (Src/m_dminim.F90).  State "
+        f"unpaired_electrons with spin_treatment = unrestricted, state "
+        f"restricted, or use solution_method = diagon.",
+        "config.solution_method")]
 
 
 def _transport_charge(cfg) -> List[Issue]:

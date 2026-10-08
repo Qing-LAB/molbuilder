@@ -11,7 +11,6 @@ import pytest
 from molbuilder.jobset.model import Job, JobSet, Resources
 from molbuilder.paths import trial_name
 from molbuilder.jobset.plan import render_plan
-from molbuilder.jobset.submit import SubmitError, plan_launch
 
 
 @pytest.fixture(autouse=True)
@@ -631,27 +630,6 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
         f"{name} differs between a workstation and a cluster -- the inner "
         "wrapper is supposed to be the same file, so a laptop run is a "
         "rehearsal of the cluster run")
-
-
-def test_the_library_itself_refuses_a_whole_ladder(tmp_path):
-    """U5: the no-chain rule lives at the SEAM, not only in the CLI's
-    stage resolution -- a library caller handing the launch entry a
-    two-stage ladder with no `only` is refused in EVERY mode, because
-    direct-running stages in order would be local chaining
-    (project-layout.md § 1.6).  API-LEVEL because the road cannot reach it:
-    `launch run` always names one stage."""
-    import pytest as _pytest
-    from molbuilder.jobset.model import Job, JobSet, Resources
-    js = JobSet(name="JOB", engine="siesta", kind="ladder",
-                jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
-                          resources=Resources()),
-                      Job(name="tight", script="JOB_02_tight.fdf",
-                          resources=Resources())])
-    for mode in ("direct", "submit"):
-        with _pytest.raises(SubmitError, match="ONE stage at a time"):
-            plan_launch(js, tmp_path, mode=mode,
-                        told=dict(kind="run", stage=None, trial=None,
-                                  mode=mode, flags=[]))
 
 
 def test_resources_fields_equal_the_contracts_list_exactly():

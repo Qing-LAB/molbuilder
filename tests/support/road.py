@@ -289,7 +289,8 @@ def calls_made(calls: Path):
 # the flags typed (launch
 # with `--mode submit`, unless `launch_mode` names another -- "" for none, so
 # the config's `launch.mode` decides; of the stage `launch_stage` names,
-# `coarse` unless it names another); `machine` -- "this" (this machine IS
+# `coarse` unless it names another -- "" for none, the stage left out);
+# `machine` -- "this" (this machine IS
 # the target, its record
 # listing `queues`), "named" (this machine is a workstation; the target is a
 # record named `sol` listing `queues`), "workstation" (no queues at all) or
@@ -989,7 +990,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     if "launch" in case:
         mode = case.get("launch_mode", "submit")
         was = _all_written(bundle)
-        r = jobset("launch", kind, case.get("launch_stage", "coarse"),
+        stage_typed = case.get("launch_stage", "coarse")
+        r = jobset("launch", kind, *((stage_typed,) if stage_typed else ()),
                    "--bundle", bundle, *(("--mode", mode) if mode else ()),
                    *(() if case.get("launch_sends") else ("--dry-run",)),
                    "--yes", *case["launch"])

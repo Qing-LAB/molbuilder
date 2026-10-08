@@ -500,7 +500,11 @@ count nobody stated floats, and a stated one is refused by name — one rule,
 `electronic_state.count_must_float`. PySCF pins N↑ and N↓ from `mol.spin`
 (`pyscf/scf/uhf.py`, `get_occ`), so a PySCF calculation refuses `free` by
 name; UKS at `unpaired_electrons = 0` is a *constrained* singlet, not a free
-moment.
+moment. SIESTA's `OMM` solver floats nothing: it runs a polarized density only
+with `Spin.Fix` (`m_dminim.F90`, *"OMM for spin unpolarized calculations only
+supports fixed spin!"*), so `solution_method = OMM` takes `restricted`, or
+`unrestricted` with a stated count, and anything else is refused before the run
+(`validation.chemistry._omm_spin`).
 
 **ES7 · The state travels with the run it starts from.** A structure exported
 from a finished run carries that run's record, and a blank item takes the

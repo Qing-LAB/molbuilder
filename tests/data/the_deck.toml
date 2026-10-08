@@ -96,6 +96,18 @@ stage = "medium"
 prep = ["--cold"]
 deck = ["\nSystemLabel H2\n"]
 
+# SIESTA's OMM runs a polarized density only with the spin held
+# (`science/chemistry-correctness.md` ES6, `m_dminim.F90`).
+[[case]]
+name = "OMM with a floating moment is refused before the run"
+template = { solution_method = "OMM", spin_treatment = "unrestricted", unpaired_electrons = "free" }
+refused = "solution_method = OMM with a floating moment"
+
+[[case]]
+name = "...and OMM with the count held is written"
+template = { solution_method = "OMM", spin_treatment = "unrestricted", unpaired_electrons = 2 }
+deck = ["\nSolutionMethod OMM\n", "\nSpin.Fix .true.\n"]
+
 # ===================================================================== #
 #  PySCF                                                                 #
 # ===================================================================== #
