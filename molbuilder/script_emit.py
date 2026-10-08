@@ -475,7 +475,7 @@ def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
     # 10) -- and never -0.0.  A re-prep that reloads the composed junction
     # moves the tenth digit (2.849999999902925 then 2.8499999999983694,
     # measured 2026-09-25), and full precision made the gate's "same
-    # calculation" refuse a re-prepped seed whose coordinates were identical.
+    # calculation" refuse a re-prepared seed whose coordinates were identical.
     def _num(v):
         return round(float(v), 8) + 0.0
     payload: Dict[str, Any] = {

@@ -92,7 +92,7 @@ def live_siesta(tree: Path, tmp_path_factory):
 def h2_relaxed_for_vibration(tree: Path) -> Path:
     """`jobset init --calculation vibration` on an H2 in a 10 Å box,
     isolated, its first atom held (the kind's own ladder, `relax` then
-    `freq`), and its `relax` stage prepped and launched here -- one rank, one
+    `freq`), and its `relax` stage prepared and launched here -- one rank, one
     thread: the bundle.  Called inside :func:`live_siesta`."""
     import json
 
@@ -119,9 +119,9 @@ def h2_relaxed_for_vibration(tree: Path) -> Path:
     task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
                          "omp_threads": 1}
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    r = jobset("prep", "run", "relax", "--bundle", bundle, "--target", "this")
+    r = jobset("prep", "task", "--stage", "relax", "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
-    r = jobset("launch", "run", "relax", "--bundle", bundle,
+    r = jobset("launch", "task", "--stage", "relax", "--bundle", bundle,
                "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
     out = bundle / "01_relax" / "run-0" / "H2_01_relax-run0.out"

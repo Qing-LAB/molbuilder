@@ -10,7 +10,7 @@ is its relaxation); ``docs/plans/plan.md`` § 5w K12.
 
 PREVENTS, each read in the code before 2026-10-01 (the M11 review):
 
-* every staged deck's header printing ``jobset launch run 02_freq``, which
+* every staged deck's header printing ``jobset launch task --stage 02_freq``, which
   `launch` refused -- the token is a legal name of another stage (SS-C11);
 * a name typed in another case refused, and a SIESTA vibration's relax row
   renamed ``Relax`` rendered as a force-constant run while its ``freq`` was
@@ -92,21 +92,21 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
     from molbuilder.jobset.ledger import LEDGER_FILE
     bundle = _described(tmp_path, monkeypatch, engine, calculation)
     stage = json.loads((bundle / "task.json").read_text())["stages"][0]["name"]
-    r = _jobset("prep", "run", stage, "--bundle", bundle, "--target", "this")
+    r = _jobset("prep", "task", "--stage", stage, "--bundle", bundle, "--target", "this")
     assert r.exit_code == 0, r.output
     token = next(p.name for p in bundle.iterdir()
                  if p.is_dir() and p.name.endswith(f"_{stage}"))
     deck = next(p for p in (bundle / token).iterdir()
                 if p.suffix in (".fdf", ".py"))
-    typed = re.search(r"jobset launch run (\S+)", deck.read_text()).group(1)
+    typed = re.search(r"jobset launch task --stage (\S+)", deck.read_text()).group(1)
     for spelling in (typed, typed.upper(), f"#{int(token.split('_')[0])}"):
-        r = _jobset("launch", "run", spelling, "--bundle", bundle,
+        r = _jobset("launch", "task", "--stage", spelling, "--bundle", bundle,
                     "--mode", "direct", "--dry-run")
         assert r.exit_code == 0, (spelling, r.output)
         assert re.search(rf"WOULD run\s+{stage}\s+bash H2_{token}\.run\.sh",
                          r.output), (spelling, r.output)
     ledger = bundle / LEDGER_FILE
-    r = _jobset("launch", "run", typed.upper(), "--bundle", bundle,
+    r = _jobset("launch", "task", "--stage", typed.upper(), "--bundle", bundle,
                 "--mode", "submit")
     assert r.exit_code != 0 and "no scheduler header" in r.output, r.output
     last = json.loads(ledger.read_text().splitlines()[-1])
@@ -134,7 +134,7 @@ def test_a_relax_stage_renamed_in_another_case_is_still_the_relaxation(
         json={"dest": str(bundle), "text": json.dumps(task)})
     assert r.status_code == 200, r.get_json()
 
-    r = _jobset("prep", "run", "Relax", "--bundle", bundle,
+    r = _jobset("prep", "task", "--stage", "Relax", "--bundle", bundle,
                 "--target", "this")
     assert r.exit_code == 0, r.output
     deck = (bundle / "01_Relax" / "H2_01_Relax.fdf").read_text()
@@ -143,7 +143,7 @@ def test_a_relax_stage_renamed_in_another_case_is_still_the_relaxation(
         "the relaxation rung rendered the force-constant deck: "
         + (run_type.group(0) if run_type else "no MD.TypeOfRun"))
 
-    r = _jobset("prep", "run", "freq", "--bundle", bundle,
+    r = _jobset("prep", "task", "--stage", "freq", "--bundle", bundle,
                 "--target", "this")
     assert r.exit_code != 0, r.output
     assert "`freq` builds on the newest attempt of `Relax`" in r.output, \

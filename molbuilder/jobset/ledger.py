@@ -16,7 +16,7 @@ ledger only records.  A verb with one door appends at that surface; a verb
 whose doors share ONE ENTRY appends in the entry, once, whichever door
 called — `prep`'s, `jobset/prep.prep_stage` (`job-system.md` § 5.3), writes
 its lines (`preflight-report`, `saved`, `continues` or `starts-cold`,
-`gathers`, `launch-agreement`, `prepped`, and `refused`), after its save,
+`gathers`, `launch-agreement`, `prepared`, and `refused`), after its save,
 for the command line and the Task setup tab alike.  `launch`'s, likewise
 (`jobset/submit.py`: `plan_launch`, `ask_launch`, `send_launch`), writes
 its refusals, the question it put and its answer (`question`, a *no* too),
@@ -24,7 +24,7 @@ what it asked a scheduler (`asked`) and each submission as it goes
 (`launched`, a run here when it starts); its verb, the refusals it says
 before it calls the entry.  A dry run writes nothing.
 What a line consists of, where more than one caller records the same
-decision, lives here as a named function (:func:`prepped`), so the recipe
+decision, lives here as a named function (:func:`prepared`), so the recipe
 is never something each caller has to remember.  Per-job launch provenance already
 has a home
 (``run.json``, `job-contracts.md` § 6.1) and is not duplicated here; the
@@ -66,7 +66,7 @@ def record(base, verb: str, decision: str, **facts) -> None:
         pass                              # the logbook must never break a run
 
 
-def prepped(base, *, kind: str, stage, dirs, provenance):
+def prepared(base, *, kind: str, stage, dirs, provenance):
     """Record one ``prep`` — and RETURN the provenance it recorded.
 
     **What a prep line consists of lives here, not in each caller.**  The
@@ -76,7 +76,7 @@ def prepped(base, *, kind: str, stage, dirs, provenance):
     hand-builds the line is free to spell it differently, or to omit it
     altogether — and then the Task Setup bundle card's promise that
     ``jobset-decisions.log`` holds *"every decision prep made, one line
-    each"* is false for whoever prepped through that surface: they open the
+    each"* is false for whoever prepared through that surface: they open the
     card, read the promise, and find no file.
 
     So the recipe has one home and the entry has one call.
@@ -89,7 +89,7 @@ def prepped(base, *, kind: str, stage, dirs, provenance):
     and displayed from the answer.
     """
     base = Path(base)
-    record(base, "prep", "prepped", kind=kind, stage=stage,
+    record(base, "prep", "prepared", kind=kind, stage=stage,
            job_dirs=sorted(rel_to(base, d) for d in dirs),
            provenance=provenance)
     return provenance

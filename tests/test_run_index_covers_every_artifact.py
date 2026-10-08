@@ -57,7 +57,7 @@ _CONDA = "#!/bin/bash\nexit 0\n"
 
 def _a_prepared_calculation(tmp_path: Path, monkeypatch,
                             engine: str = _ENGINE) -> Path:
-    """A real flat calculation, described by `jobset init` and prepped by
+    """A real flat calculation, described by `jobset init` and prepared by
     `jobset prep` -- the road a person takes.
 
     Returns the folder its stage runs in -- deck, wrapper and the shipped
@@ -65,7 +65,7 @@ def _a_prepared_calculation(tmp_path: Path, monkeypatch,
     """
     from support.road import describe_calculation, jobset
     bundle = describe_calculation(tmp_path, monkeypatch, shape="flat")
-    r = jobset("prep", "run", "coarse", "--bundle", bundle,
+    r = jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output
     stage = bundle

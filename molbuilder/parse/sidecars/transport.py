@@ -53,7 +53,7 @@ class TransportRecordFileParser(FileParser):
     name   = "transport-json"
     label  = "molbuilder .transport.json record"
     hint   = ("a transport ladder's summarised result -- "
-              "<label>.transport.json, written by `jobset summarize run`")
+              "<label>.transport.json, written by `jobset summarize task`")
     output = SidecarResult
 
     @classmethod

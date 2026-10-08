@@ -7,7 +7,7 @@ from __future__ import annotations
 
 
 def test_a_pyscf_vibration_has_no_displacement_to_sweep(tmp_path, monkeypatch):
-    """`jobset init` a PySCF vibration, then `summarize run`: refused by
+    """`jobset init` a PySCF vibration, then `summarize task`: refused by
     name, before anything is read -- its second derivatives are analytic,
     so no stage takes a finite difference whose step could be swept
     (`engines/vibration.md` § 5.9).  Nothing runs, so no engine is needed."""
@@ -27,7 +27,7 @@ def test_a_pyscf_vibration_has_no_displacement_to_sweep(tmp_path, monkeypatch):
         "P/frequency/V", "--engine", "pyscf", "--shape", "hierarchical",
         "--calculation", "vibration", "--name", "W"])
     assert r.exit_code == 0, r.output
-    r = run.invoke(jobset_group, ["summarize", "run", "--bundle",
+    r = run.invoke(jobset_group, ["summarize", "task", "--bundle",
                                   str(tree / "P" / "frequency" / "V")])
     assert r.exit_code != 0 and "analytic" in r.output, r.output
     assert not list((tree / "P" / "frequency" / "V").glob("*.fc-sweep.json"))

@@ -235,7 +235,7 @@ def command_stage(token: str) -> str:
 
     Never the token: ``02_freq`` is itself a legal stage name, of another
     stage (plan § 5w K12).  Never ``#N``: an unquoted ``#`` begins a
-    comment in bash, so a pasted ``launch run #2`` names no stage."""
+    comment in bash, so a pasted ``launch task --stage #2`` names no stage."""
     m = re.fullmatch(r"\d{2,}_([A-Za-z0-9_]+)", str(token))
     if m is None:
         raise ValueError(f"not a stage token: {token!r}")
@@ -258,7 +258,7 @@ def launch_as_typed(stage: str, trial: Optional[str] = None) -> str:
     direct|submit``, which bash reads as a pipe.  ``stage`` is the stage's NAME -- never its token, a
     legal name of another stage (`job-system.md` § 5.3)."""
     return ("molbuilder jobset launch "
-            + (f"bench {stage} {trial}" if trial else f"run {stage}"))
+            + (f"bench {stage} {trial}" if trial else f"task --stage {stage}"))
 
 
 def checkpoint_as_typed(folder=None) -> Tuple[str, str]:

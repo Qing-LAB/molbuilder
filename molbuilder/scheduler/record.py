@@ -318,7 +318,7 @@ class Environment:
     #: guessed writer.
     tool:      Optional[str] = "jobset-probe@1"
     #: THE MACHINE A CALCULATION IS SET TO -- the ``--target`` of its first
-    #: prep, ``this`` for the machine it was prepped on -- written by that
+    #: prep, ``this`` for the machine it was prepared on -- written by that
     #: prep into the calculation's copy and nowhere else; a probe's record
     #: names none (``None``).  A later prep's ``--target`` is checked against
     #: it (`configuration.md` M-3; user, 2026-10-02: *"when a machine is set
@@ -795,7 +795,7 @@ def calculation_machine(bundle_dir) -> Optional[str]:
     """The machine a calculation is set to -- the name its copy of its
     machine's record carries (`configuration.md` M-3: set at its first prep,
     and it does not change), :data:`LOCAL_TARGET` for the machine it was
-    prepped on -- or ``None`` before its first prep, or for a copy that does
+    prepared on -- or ``None`` before its first prep, or for a copy that does
     not read or names none.  The one reader
     of that name: Task setup's folder answer, the launch lines molbuilder
     prints and a re-probe's remedy ask it."""
@@ -1036,7 +1036,7 @@ def write_environment(env: "Environment", path) -> Path:
 
 class UnknownTarget(Exception):
     """``--target NAME`` cannot be honoured — unknown, or contradicted by the
-    record this calculation was already prepped against."""
+    record this calculation was already prepared against."""
 
     def __init__(self, name: str, known):
         self.name, self.known = name, sorted(known)
@@ -1052,7 +1052,7 @@ class UnknownTarget(Exception):
         Absent, unreadable, not JSON, wrong schema -- `read_environment`
         answers all of them with ``None`` so a caller has one thing to
         check.  For a NAMED target that single answer must not mean "try
-        the next scope": the user named this machine, so silently prepping
+        the next scope": the user named this machine, so silently preparing
         for a different one is the mistake the flag exists to catch.
         """
         exc = cls.__new__(cls)
@@ -1117,8 +1117,8 @@ class AmbiguousTarget(Exception):
     The cost is asymmetric, which is the whole argument: being asked costs
     one flag; being given the wrong machine costs a queue wait, an
     allocation, and a set of numbers that look plausible.  That is the
-    failure ``--target`` was introduced for -- a benchmark prepped for a
-    cluster, silently measured against the workstation it was prepped on.
+    failure ``--target`` was introduced for -- a benchmark prepared for a
+    cluster, silently measured against the workstation it was prepared on.
 
     Raised only when the question is real: no record beside the calculation
     yet (a snapshot IS the answer already taken), no ``--target``, and more
@@ -1217,7 +1217,7 @@ def record_and_renewal(bundle_dir=None, target: Optional[str] = None
                 f"re-probe it -- {probe} -- then go back to the state saved "
                 f"before its first prep ({checkpoint_words(bundle_dir)}) "
                 f"and prep anew: a calculation is set to "
-                f"the record it was first prepped with (configuration.md "
+                f"the record it was first prepared with (configuration.md "
                 f"M-3)")
     return ("this machine's" if target in (None, LOCAL_TARGET)
             else f"{target}'s",
@@ -1247,7 +1247,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     running on know about itself, full stop."*  R9's second check
     (`jobset/submit.py::_reject_if_this_machine_says_no`) wants exactly that:
     a re-admission against THIS machine's own probe, independent of and in
-    addition to whichever machine the calculation is prepped for.  The C1
+    addition to whichever machine the calculation is prepared for.  The C1
     question and this one only LOOK alike because both start from "no target
     was named"; C1 protects the case where that silence would make a wrong
     machine's numbers travel into a wrapper.  Here there is no wrapper, no
@@ -1289,8 +1289,8 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     #
     # Validated here rather than inside the loop because the loop may never
     # REACH the target scope: `record_scopes` puts the calculation's snapshot
-    # first, and an already-prepped bundle returns there.  A check placed in
-    # the loop would fire for a fresh bundle and stay silent for a prepped
+    # first, and an already-prepared bundle returns there.  A check placed in
+    # the loop would fire for a fresh bundle and stay silent for a prepared
     # one -- the same flag, two behaviours.
     _want = read_environment(_named[target]) if _by_name else None
     if _by_name and _want is None:

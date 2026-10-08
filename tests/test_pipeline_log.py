@@ -78,13 +78,13 @@ def _calculation(tmp_path, engine: str, shape: str, name: str = "BDT"):
 
 
 def _prep(dest, stage, **ask):
-    """`prep run <stage>`, through the one entry -- what the command line
+    """`prep task <stage>`, through the one entry -- what the command line
     and the Task setup tab call -- the launch shape stated as its flags:
     SIESTA's ranks and cores per rank, PySCF's threads (it runs one
     process).  ``ask`` adds to them."""
     from molbuilder.task import read_task
     siesta = read_task(dest / "task.json").engine == "siesta"
-    return prep_stage(dest, "run", stage, allocation=Resources(
+    return prep_stage(dest, "task", stage, allocation=Resources(
         **({"mpi_np": 8} if siesta else {}), cpus_per_task=1, **ask))
 
 
@@ -263,7 +263,7 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     of a TRIAL, so it is reached through a benchmark prep.
 
     API-level: the hook is swapped in-process, and the prep goes through
-    the one entry `jobset prep run` calls; the CLI adds nothing between them
+    the one entry `jobset prep task` calls; the CLI adds nothing between them
     for an exception that is not a refusal.
 
     MUTATION THIS MUST FAIL AGAINST: any one hook called bare, outside its

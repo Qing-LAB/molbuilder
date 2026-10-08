@@ -265,14 +265,14 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
         # the decks' own wording): this remedy is written into a result and
         # read wherever it was copied, so it names no folder, and says what
         # the mode means rather than leaving a line `launch` refuses (W52).
-        # IN THE ORDER IT CAN BE DONE: a prepped stage is not prepped again
+        # IN THE ORDER IT CAN BE DONE: a prepared stage is not prepared again
         # -- a redo is the state saved before its prep, restored
         # (`job-system.md` § 5.0) -- and restoring it after `relax`'s new
         # attempt would take that attempt away, so the restore comes first.
         # The words are `identity`'s, imported the module's two ways: this
         # runs beside the job too, in the finish's `_stationarity`.
         s = str(relaxation_stage)
-        return (f"If this stage is prepped, first go back to the state saved "
+        return (f"If this stage is prepared, first go back to the state saved "
                 f"before its prep{_RESTORE}; launch the `{s}` stage again "
                 f"from the calculation's folder -- `{launch_as_typed(s)}` "
                 f"{LAUNCH_MODE_NOTE} -- it continues from its newest "
@@ -282,14 +282,14 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
              "this one (Task setup, or task.json)"
              if str(engine).lower() == "siesta" else
              "untick `already_relaxed` so the calculation relaxes first")
-    return (f"Relax first -- if this stage is prepped, first go back to the "
+    return (f"Relax first -- if this stage is prepared, first go back to the "
             f"state saved before its prep{_RESTORE}; then {first}, or relax "
             f"elsewhere at this level of theory and hand the result over -- "
             f"or keep this run knowing that.")
 
 
 #: How the state saved before a prep is restored -- the words both remedies
-#: say, a text read later naming no folder.  A prepped stage is not prepped
+#: say, a text read later naming no folder.  A prepared stage is not prepared
 #: again (`job-system.md` § 5.0), and a preview of one has not been: so the
 #: restore is said conditionally.
 _RESTORE = f" ({checkpoint_words()})"

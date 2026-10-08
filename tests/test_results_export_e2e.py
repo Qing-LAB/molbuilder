@@ -11,7 +11,7 @@ its deck recorded -- and the STRUCTURE preview, which opens an engine's own
 geometry file (SIESTA's ``<label>.xyz``, written with no sidecar) through the
 codec.  One case per route.
 
-The runs are made on the road -- ``jobset init`` -> ``prep run`` -> ``launch
+The runs are made on the road -- ``jobset init`` -> ``prep task`` -> ``launch
 run --mode direct`` -- and saved as a person saves them
 (`support/results_export.py`).  Each saved pair is read back through the
 codec every load goes through and compared with the engine's own statement of
@@ -68,14 +68,14 @@ def _described(tree, name, engine, shape):
 
 
 def _ran(bundle, run_dir, *prep_args):
-    """``prep run`` then ``launch run --mode direct``, and the run FINISHED --
+    """``prep task`` then ``launch task --mode direct``, and the run FINISHED --
     asked of the run's own door, because a direct launch whose job failed
     still exits 0 (plan W40)."""
     from molbuilder.parse.dirs import run_status
-    r = _jobset("prep", "run", "coarse", "--bundle", bundle,
+    r = _jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
                 "--target", "this", *prep_args)
     assert r.exit_code == 0, r.output
-    r = _jobset("launch", "run", "coarse", "--bundle", bundle,
+    r = _jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                 "--mode", "direct", "--yes")
     st = run_status(run_dir, "H2_01_coarse")    # the run's stem
     assert st.state == "finished", (st.state, st.detail, r.output[-2000:])

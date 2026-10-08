@@ -157,7 +157,7 @@ def test_a_periodic_vibration_preps_as_a_cluster_and_says_so(tmp_path,
     task = json.loads((bundle / "task.json").read_text())
     task["execution"] = {"threads": 1}
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    r = run.invoke(jobset_group, ["prep", "run", "freq", "--bundle",
+    r = run.invoke(jobset_group, ["prep", "task", "--stage", "freq", "--bundle",
                                   str(bundle)])
     assert r.exit_code == 0, r.output
     assert f"[{WHERE}]" in r.output, r.output

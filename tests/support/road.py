@@ -309,7 +309,7 @@ def calls_made(calls: Path):
 # `env_init` -- unless `machine_config` gives the file;
 # `saved_first` -- the folder's state saved before anything else, as a person
 # saves it (`molbuilder checkpoint init`); `before` -- the verbs a person typed
-# first, each a list of words (`["prep", "run", "coarse"]`), the calculation
+# first, each a list of words (`["prep", "task", "--stage", "coarse"]`), the calculation
 # and the target named as the row's own prep names them; `removed` / `added` -- the
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
 # absent), through the same Save; `stand_in` -- what the suite's stand-in
@@ -320,7 +320,7 @@ def calls_made(calls: Path):
 # list, the engine's
 # copied beside `task.json` with `withhold` / `add` / `resumes`
 # (`_road_own_warm_files`),
-# before anything is prepped; `stage` -- the
+# before anything is prepared; `stage` -- the
 # stage the
 # row's prep names, `coarse` unless given; `answers` -- what
 # the person types at the row's prep's question ("" is EOF, no terminal);
@@ -867,6 +867,17 @@ def _one_line(text) -> str:
     return " ⏎ ".join(ln.strip() for ln in text.splitlines() if ln.strip())
 
 
+def _named(kind: str, stage) -> tuple:
+    """How a row's stage is typed: a task's by ``--stage`` (a list, several),
+    a benchmark's by position (`job-system.md` § 5.3)."""
+    if stage is None:
+        return ()
+    stages = stage if isinstance(stage, list) else [stage]
+    if kind == "bench":
+        return tuple(stages)
+    return tuple(x for s in stages for x in ("--stage", s))
+
+
 def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     """ONE ROW of a contract's case table, down the road, every layer it
     names checked."""
@@ -897,10 +908,11 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         _road_touched(case["touched"], bundle)
     if "removed" in case or "added" in case:
         _road_ladder_edited(case, bundle)
-    kind = "bench" if "bench" in case else "run"
+    kind = "bench" if "bench" in case else "task"
     kept = {where: _as_written(bundle / where)
             for where in case.get("kept", [])}
-    r = jobset("prep", kind, case.get("stage", "coarse"), "--bundle", bundle,
+    named = _named(kind, case.get("stage", "coarse"))
+    r = jobset("prep", kind, *named, "--bundle", bundle,
                "--target", target, *case.get("prep", []),
                input=case.get("answers"))
     for where, was in kept.items():
@@ -921,7 +933,7 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
             # WHAT THE REFUSAL SAYS TO DO, DONE -- the machine probed again,
             # holding what it lacked -- and the same prep is taken.
             _reprobed(case["reprobed"])
-            r = jobset("prep", kind, case.get("stage", "coarse"),
+            r = jobset("prep", kind, *named,
                        "--bundle", bundle,
                        "--target", target, *case.get("prep", []))
             assert r.exit_code == 0, _one_line(r)
@@ -973,7 +985,7 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         mode = case.get("launch_mode", "submit")
         was = _all_written(bundle)
         stage_typed = case.get("launch_stage", "coarse")
-        r = jobset("launch", kind, *((stage_typed,) if stage_typed else ()),
+        r = jobset("launch", kind, *_named(kind, stage_typed or None),
                    "--bundle", bundle, *(("--mode", mode) if mode else ()),
                    *(() if case.get("launch_sends") else ("--dry-run",)),
                    "--yes", *case["launch"])
@@ -1019,7 +1031,7 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
                             "SLURM_NTASKS", "SLURM_JOB_ID", "PBS_NP",
                             "MOLBUILDER_USE_MPS")}
         env.update(MB_LAUNCHED_BY="manual")
-        # ITS RUN'S NUMBER, as launch gives a prepped stage's first run
+        # ITS RUN'S NUMBER, as launch gives a prepared stage's first run
         # (`project-layout.md` § 1.6.1): the script refuses to start
         # without one.
         done = subprocess.run(["bash", str(script), "--run", "0",

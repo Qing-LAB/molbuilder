@@ -369,16 +369,16 @@ class Job:
     #: (`running-a-job.md` § 3.5).  False for a SIESTA force-constant rung
     #: and a PySCF vibration.
     resumes:    bool            = True
-    #: WHERE IT WAS ADMITTED: a run prepped for a queue -- the queue its
+    #: WHERE IT WAS ADMITTED: a run prepared for a queue -- the queue its
     #: request was admitted on at prep (``domain``, ``partition``, ``qos``,
     #: bound on the target's record) and where each value came from
     #: (``from``: ``flag``, ``run card`` or ``description``, per field;
     #: `job-system.md` § 6.0) -- what its header renders and launch sends to.
     #: ``None`` with no queue: a trial, a machine with no scheduler.
     placement:  Optional[Dict[str, Any]] = None
-    #: THE GROUP IT WAS PREPPED IN: the stages that share one job, named
+    #: THE GROUP IT WAS PREPARED IN: the stages that share one job, named
     #: together at prep, in that order -- this one among them
-    #: (`project-layout.md` § 1.6.6); ``None`` for a stage prepped alone.
+    #: (`project-layout.md` § 1.6.6); ``None`` for a stage prepared alone.
     group:      Optional[List[str]] = None
 
     @property

@@ -187,7 +187,7 @@ def api_results_dir():
     # § 5c.3 c-d): N rungs, each a run directory below it -- `jobset_status`'s
     # answer, the one the CLI's `status` verb prints, CONSUMED here, never
     # copied.  Its rows are the description's stages (`job-system.md` § 5.3),
-    # the ones not prepped yet among them: a transport ladder is prepped rung
+    # the ones not prepared yet among them: a transport ladder is prepared rung
     # by rung, so the job-set grows while the description already names all
     # five.  `null` for a container that is not the root.
     root = place["calculation"]

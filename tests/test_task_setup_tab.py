@@ -263,7 +263,7 @@ def test_one_point_is_the_trials_value_and_several_a_measurement():
     """A one-point non-machine row is what EVERY TRIAL runs with -- never the
     run's value, which is its run card's (`stages.md` § 6.8, § 6.8d; user,
     2026-09-30: *"trials only"*).  The card called it "chosen", which told a
-    person their run was decided by a row `prep run` no longer reads.
+    person their run was decided by a row `prep task` no longer reads.
     Several points are a measurement."""
     one = _row_badge("diag_algorithm", ["ELPA-1STAGE"], False)
     assert one["verdict"] == "every trial \u00b7 1 point"
@@ -273,7 +273,7 @@ def test_one_point_is_the_trials_value_and_several_a_measurement():
 
 
 def test_a_ONE_POINT_MACHINE_row_is_a_trial_not_a_decision():
-    """`mpi_np: [8]` is *measure eight*, one trial, and `prep run` never
+    """`mpi_np: [8]` is *measure eight*, one trial, and `prep task` never
     reads it (`stages.md` § 6.8).  What the run uses is `execution`, asked
     in the rung's own tab.
 
@@ -569,8 +569,8 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
 
         # …and now the part no shape-check reaches: RENDER IT.
         p = subprocess.run(
-            [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "run",
-             "coarse", "--bundle", str(d)],
+            [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "task",
+             "--stage", "coarse", "--bundle", str(d)],
             capture_output=True, text=True, cwd=str(ROOT), timeout=300,
             env=_child_env_with_a_config(tmp_path))
         assert p.returncode == 0, p.stdout + p.stderr
@@ -665,8 +665,8 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
     assert s.status_code == 200, s.get_json()
 
     p = subprocess.run(
-        [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "run",
-         "coarse", "--bundle", str(d)],
+        [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "task",
+         "--stage", "coarse", "--bundle", str(d)],
         capture_output=True, text=True, cwd=str(ROOT), timeout=300,
         env=_child_env_with_a_config(tmp_path))
     assert p.returncode == 0, p.stdout + p.stderr

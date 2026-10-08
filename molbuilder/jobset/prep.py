@@ -138,7 +138,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
 
     ``render`` names the jobs whose run scripts this prep writes -- the
     stage it preps.  The plan it is handed is the calculation's, merged
-    (`_merge_run_jobset`), and every other stage in it was prepped already:
+    (`_merge_run_jobset`), and every other stage in it was prepared already:
     its run script and monitor stay as that stage's own prep wrote them,
     the copy its attempt ran with (`project-layout.md` § 1.6.2, § 2.6).  ``None``
     renders every job: a benchmark's plan is its own, every trial this
@@ -263,7 +263,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
 
     # ---- 2. the shared package, copied --------------------------------- #
     # ONLY THE JOBS THIS PREP RENDERS: every other stage in the merged plan
-    # was prepped already, and its folder is its own prep's.
+    # was prepared already, and its folder is its own prep's.
     dirs = materialize(jobset, base, plan, shape=_sh, only=render)
     if log is not None:
         log.phase("STEP 5 · RUN DIRECTORY — where each job will be launched")
@@ -393,14 +393,14 @@ def _vibration_stage_geometry(base, task, pset, struct, *, builds_on=None,
         if refused:
             raise PrepError(refused)
     token = stage_home(base, task, relax).token
-    # THE WAYS ON, from the one composer, for a `relax` that is prepped and
+    # THE WAYS ON, from the one composer, for a `relax` that is prepared and
     # has run (§ 5.3: what molbuilder prints, you can type): launched again
     # it continues from its newest attempt; redone, its prep is restored
-    # first -- a prepped stage is not prepped again (§ 5.0).
+    # first -- a prepared stage is not prepared again (§ 5.0).
     from .commands import block, launch_lines, rollback
     again = (f"Launch `{relax}` again -- it continues from its newest "
              "attempt --\n"
-             + block(launch_lines("run", relax, base=base))
+             + block(launch_lines("task", relax, base=base))
              + "\n  or, to redo it, "
              + rollback(f"`{relax}`'s prep", base=base))
     # THE RUN IT BUILDS ON -- its attempt, or on the flat layout the folder
@@ -653,7 +653,7 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
         raise PrepError(
             "a transport prep names its rung: the composite's stages render "
             "separately, in dependency order (engines/transport.md); "
-            + name_a_stage("prep", "run", described_refs(base, task),
+            + name_a_stage("prep", "task", described_refs(base, task),
                            base=base))
     if sweep is not None:
         raise PrepError(
@@ -726,7 +726,7 @@ class Resolved:
     sweep: object = None
     #: which config files answered, and what each supplied -- built once,
     #: from the record read (`runtime_config.config_provenance`): what
-    #: `STAGE-PLAN.md`, the pipeline log and the ledger's *prepped* line say
+    #: `STAGE-PLAN.md`, the pipeline log and the ledger's *prepared* line say
     provenance: Optional[dict] = None
     #: where each value of ``allocation`` came from -- ``flag``, ``run
     #: card`` or ``description`` (:func:`_fold_allocation`)
@@ -783,7 +783,7 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
             f"and `prep` rebuilds the config from the template.")
     # THE DESCRIPTION'S OWN ALLOCATION, under the caller's (2026-08-24).
     # `task.json` carries the queue, the wall and the memory a person chose
-    # for this calculation (`task.Allocation`), so a prepped bundle needs
+    # for this calculation (`task.Allocation`), so a prepared bundle needs
     # no flag to know them -- and an explicit flag still WINS, because a
     # person typing `--mem` now is answering about now.  Field by field,
     # not object by object: `--np 8` alone must not erase the file's
@@ -798,7 +798,7 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
                                            chosen)
     # AND THE DESCRIPTION'S REPORTING POLICY, at the same seam and for the
     # same reason: the file says when this calculation should speak up, so a
-    # prepped bundle needs no flag to know it.  A separate line rather than a
+    # prepared bundle needs no flag to know it.  A separate line rather than a
     # third field on the helper above -- that one is about the ALLOCATION's
     # precedence against a CLI flag, and notify has no flag to lose to.
     allocation = _with_notify(allocation, task.notify)
@@ -936,7 +936,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # publishes only the sections marked provenance-safe
     # (`configuration.md` § 4), so nothing else may be printed here.
     # Read once, with the record (`Resolved.provenance`): STAGE-PLAN.md and
-    # the ledger's *prepped* line say the same.
+    # the ledger's *prepared* line say the same.
     from ..runtime_config import format_provenance
     log.produced("config", "which file supplied each setting")
     log.text(format_provenance(resolved.provenance))
@@ -1163,7 +1163,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # later its verdict — lives in the stage's ``bench/`` container
     # (job-contracts.md § 6.3's Directories row, the cross-layer authority),
     # so two stages' benchmarks can never collide.  The ROOT job-set.json
-    # is the RUN's plan and MERGES per stage, so prepping `tight` keeps
+    # is the RUN's plan and MERGES per stage, so preparing `tight` keeps
     # `coarse` — status, and the cross-stage ``--from`` carry whose
     # pair rule needs the source job on file, read the whole ladder.
     kind = "sweep" if sweep is not None else "ladder"
@@ -1249,9 +1249,9 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             if att is not None:
                 _gather_into(base, att, inputs, plan)
 
-    # THE LOG, then THE PLAN'S ROW LAST -- the moment the stage is prepped
+    # THE LOG, then THE PLAN'S ROW LAST -- the moment the stage is prepared
     # (`job-system.md` § 5.0, checkpoint 6): a prep that stops before this
-    # line has not prepped the stage.
+    # line has not prepared the stage.
     log.close()
     plan.text(log.path, (plan.read_text(log.path) if plan.is_file(log.path)
                          else "") + log.held_text())
@@ -1280,7 +1280,7 @@ def _open_attempts(js: JobSet, base: Path, stage: str,
     run, and ``prepare_attempt`` refuses it by name — so ``shape``, the
     description's, is read here and the refusal never has to fire.
 
-    A stage is prepped once (`job-system.md` § 5.0), so this opens its
+    A stage is prepared once (`job-system.md` § 5.0), so this opens its
     first attempt, ``run-0`` (``resolve_attempt``'s rule).  ``continuation`` -- REQUIRED, it
     decides which run the attempt starts from and what it carries
     (`code-audit.md` D1); ``None`` starts it clean -- is prep's decision, so
@@ -1702,7 +1702,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
     input, each a refusal naming what to do first (strict composition,
     ruling Q2 — transport never runs its pieces for you):
 
-    * the upstream stage must have been PREPPED (its deck rendered);
+    * the upstream stage must have been PREPARED (its deck rendered);
     * it must hold a CONCLUDED attempt **whose deck matches the deck that
       rung renders NOW** -- from the current template, junction and run
       card, through the rung's own door (`_transport_rung`), never the
@@ -1735,8 +1735,8 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         up_dir = rung_container(base, task, upstream, bias)
         current_deck = up_dir / _rf(task.label, ".fdf", token)
         # THE WAYS ON, by what the upstream rung's state says (§ 5.3: what
-        # molbuilder prints, you can type): one not prepped is prepped and
-        # launched; a prepped one is launched, or let finish, or -- to run
+        # molbuilder prints, you can type): one not prepared is prepared and
+        # launched; a prepared one is launched, or let finish, or -- to run
         # it as it is described now -- redone from the state saved before
         # its prep (§ 5.0).
         from .commands import (block, launch_lines, rollback,
@@ -1745,11 +1745,11 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         q2 = ("\n  (strict composition, ruling Q2: transport never runs its "
               "pieces for you.)")
         redo = rollback(f"`{upstream}`'s prep", base=base)
-        # PREPPED, by the one door (`prepped_already`).
-        if not prepped_already(base, task, "run", upstream):
+        # PREPARED, by the one door (`prepared_already`).
+        if not prepared_already(base, task, "task", upstream):
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
-                f"and {upstream} has not been prepped -- run it first --\n"
+                f"and {upstream} has not been prepared -- run it first --\n"
                 + block(_run_first(upstream, base=base)) + q2)
         # Newest first, and NUMERICALLY -- `run-10` is ten, not a tenth
         # (§ 4.3: the index is not padded); `paths` owns both halves of the
@@ -1772,7 +1772,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
                            if newest is not None
                            else (None, "pending", None, None))
             why, first = state_remedy(
-                c, s, block(launch_lines("run", upstream, base=base)),
+                c, s, block(launch_lines("task", upstream, base=base)),
                 detail=d)
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
@@ -1844,8 +1844,8 @@ def _composed_junction(base, task):
                                    tree_root=find_projects_root(base),
                                    why=why)
     if composed is None:
-        # THE RECORD IS THE FIRST RUNG'S PREP'S TO WRITE, and a prepped rung
-        # is not prepped again (`job-system.md` § 5.0): the way on is the
+        # THE RECORD IS THE FIRST RUNG'S PREP'S TO WRITE, and a prepared rung
+        # is not prepared again (`job-system.md` § 5.0): the way on is the
         # state saved before that prep.
         from .commands import rollback
         raise PrepError(
@@ -1858,14 +1858,14 @@ def _composed_junction(base, task):
 
 def _rung_deck_now(base, task, stage: str, composed, *, template_text,
                    volts=None) -> str:
-    """The deck ``stage`` renders NOW -- its text exactly as `prep run`
+    """The deck ``stage`` renders NOW -- its text exactly as `prep task`
     writes it, from the current template, junction and the rung's run card
     (`_transport_rung`, `_transport_spec`, `script_emit.render_deck`).
     A transport deck records no machine sizing, so no allocation is
     needed to render it."""
     from .model import Resources
     from .prep_inputs import run_inputs
-    # THE RUNG'S PINS, as `prep run` takes them from its card (`run_inputs`).
+    # THE RUNG'S PINS, as `prep task` takes them from its card (`run_inputs`).
     _shape, pins = run_inputs(base, task, stage)
     struct, config, state, _element = _transport_rung(
         task, stage, composed, Resources(), template_text=template_text,
@@ -1919,7 +1919,7 @@ def _merge_run_jobset(path: Path, new: JobSet,
     if not path.is_file():
         return new
     old = JobSet.load(path)
-    # A STAGE IS PREPPED ONCE (`job-system.md` § 5.0), so its row is new;
+    # A STAGE IS PREPARED ONCE (`job-system.md` § 5.0), so its row is new;
     # one already here is replaced rather than doubled, should two preps of
     # one stage ever race past the entry's gate together.
     # ONE KEY for a stage's name, as every reader of the plan matches it
@@ -1933,8 +1933,8 @@ def _merge_run_jobset(path: Path, new: JobSet,
     merged = dataclasses.replace(
         new, jobs=kept + list(new.jobs),
         shared=sorted(set(old.shared) | set(new.shared)))
-    # The plan's order is the LADDER's, not the order stages were prepped
-    # in: `medium` prepped before `coarse` (`--cold`) is still listed after
+    # The plan's order is the LADDER's, not the order stages were prepared
+    # in: `medium` prepared before `coarse` (`--cold`) is still listed after
     # it.  The seq token is zero-padded (§ 6.3) so it sorts as it reads.
     from .materialize import stage_refs
     refs = stage_refs(merged)
@@ -2232,7 +2232,7 @@ class PrepAnswer:
     #: Which config files answered, as the prep read them at its checkpoint
     #: 4 (`runtime_config.config_provenance`) -- on a preview too.
     provenance: Optional[dict] = None
-    #: The machine it is prepped for, by name: the one named at its first
+    #: The machine it is prepared for, by name: the one named at its first
     #: prep, or the one its copy of the record names (`configuration.md`
     #: M-3).
     machine: Optional[str] = None
@@ -2345,16 +2345,16 @@ class PrepAnswer:
         }
 
 
-def prepped_already(base, task, kind: str, stage: str) -> Optional[str]:
-    """Why ``stage`` is not prepped -- it already is -- or ``None``
+def prepared_already(base, task, kind: str, stage: str) -> Optional[str]:
+    """Why ``stage`` is not prepared -- it already is -- or ``None``
     (`job-system.md` § 5.0, checkpoint 2a; user, 2026-10-02: *"refuse it,
     redo via rollback"*).
 
-    PREPPED IS WHAT `status` READS: the stage's job in the calculation's
+    PREPARED IS WHAT `status` READS: the stage's job in the calculation's
     plan, ``job-set.json``, matched as `status` matches it
     (`identity.stage_key`) -- for a bench, the sweep its bench folder holds.
     A refused prep writes nothing but its ledger line (:func:`prep_stage`),
-    so a stage is counted prepped only by a prep that
+    so a stage is counted prepared only by a prep that
     finished."""
     from ..identity import stage_key
     from ..paths import Shape
@@ -2382,20 +2382,20 @@ def prepped_already(base, task, kind: str, stage: str) -> Optional[str]:
         what = f"stage {stage!r}"
         where = (f"{home}/" if home not in ("", ".")
                  else "in this calculation's folder")
-    return (f"{what} is already prepped ({where}) -- a prepped stage is not "
-            f"prepped again (job-system.md § 5.0).  To redo it, "
+    return (f"{what} is already prepared ({where}) -- a prepared stage is not "
+            f"prepared again (job-system.md § 5.0).  To redo it, "
             + rollback("its prep", base=base))
 
 
-def prepped_stages(base, task) -> List[str]:
-    """The stages of ``task`` prepped in ``base`` -- as a run or as a
+def prepared_stages(base, task) -> List[str]:
+    """The stages of ``task`` prepared in ``base`` -- as a run or as a
     benchmark -- in the description's order: whether the calculation has
     PRODUCED, which fixes its shape (`web/task-setup.md` § 4).  Each is
-    :func:`prepped_already`'s answer, so a refused prep -- which writes
+    :func:`prepared_already`'s answer, so a refused prep -- which writes
     nothing -- counts for none."""
     return [st.name for st in task.stages
-            if any(prepped_already(base, task, kind, st.name)
-                   for kind in ("run", "bench"))]
+            if any(prepared_already(base, task, kind, st.name)
+                   for kind in ("task", "bench"))]
 
 
 def prep_stage(base, kind: str, stage: Optional[str] = None, *,
@@ -2410,7 +2410,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     In order -- `job-system.md` § 5.0's checkpoints: the description is
     refused unless it is one (a ``task.json`` and its template, for every
     kind); the stage is resolved through the one grammar
-    (a name, or ``#N``), and refused when it is already prepped -- a redo is
+    (a name, or ``#N``), and refused when it is already prepared -- a redo is
     a rollback; the description's preflight runs -- an error refuses, the
     notes come back as ``findings``; the inputs are assembled (`prep_inputs`,
     A12).  Then the steps are PLANNED -- every deck, wrapper and data file,
@@ -2419,7 +2419,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     :class:`~molbuilder.jobset.planned.Plan`); then the folder's state is
     saved, always, asking nothing (`checkpoint.save_before`); then the plan
     is written, deciding nothing; then the record -- what it continues
-    from, the deck's agreement with the launch it will get, *prepped*.  A
+    from, the deck's agreement with the launch it will get, *prepared*.  A
     refusal can only come before the save, and writes nothing but its line
     in ``jobset-decisions.log`` (`job-system.md` § 5.0, rule 3).  Every
     decision lands there, whichever door called.
@@ -2449,7 +2449,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     from ..task import FILENAME as TASK_FILENAME, read_task
     from ..template import find_template
     from ..validation.task import preflight
-    from .ledger import prepped as ledger_prepped
+    from .ledger import prepared as ledger_prepped
     from .ledger import record as ledger
     from .prep_inputs import bench_inputs, bench_refusal, prep_run_inputs
     base = Path(base).resolve()
@@ -2549,23 +2549,23 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         if stage is None:
             # ONE STAGE, named -- before anything is read of the machine or
             # written (W52).  THE STAGES THE VERB
-            # TAKES are offered: a prepped one is not (2a).
+            # TAKES are offered: a prepared one is not (2a).
             from .commands import name_a_stage
             from .materialize import described_refs
             takes = [r for r in described_refs(base, task)
-                     if not prepped_already(base, task, kind, r.name)]
+                     if not prepared_already(base, task, kind, r.name)]
             raise PrepError(
                 (f"`prep {kind}` acts on ONE stage" + (
                     " -- --from / --cold describe its attempt" if
                     (from_attempt or cold) else "") + "; ")
                 + (name_a_stage("prep", kind, takes, base=base) if takes
-                   else "every stage is prepped already, and a prepped stage "
-                        "is not prepped again (job-system.md § 5.0)."))
+                   else "every stage is prepared already, and a prepared stage "
+                        "is not prepared again (job-system.md § 5.0)."))
 
         # 2 · THE STAGE GRAMMAR (user-settled 2026-08-21): a ladder stage is
         #     named by its NAME, or by `#N` -- the NN of its directory --
         #     through the ONE resolver, with refs built from the full ladder,
-        #     so `prep run #2` and `status #2` cannot disagree about which
+        #     so `prep task --stage '#2'` and `status #2` cannot disagree about which
         #     stage that is.
         if stage is not None and getattr(task, "stages", None):
             from ..identity import StageRef, resolve_stage_ref
@@ -2573,11 +2573,11 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                     for h in ladder_homes(base, task)]
             stage = resolve_stage_ref(refs, stage).name
 
-        # 2a · NOT PREPPED BEFORE (user, 2026-10-02: "refuse it, redo via
+        # 2a · NOT PREPARED BEFORE (user, 2026-10-02: "refuse it, redo via
         #      rollback").  Asked before anything is read of the machine or
         #      written; the refusal names the way back.
         if stage is not None:
-            why = prepped_already(base, task, kind, stage)
+            why = prepared_already(base, task, kind, stage)
             if why:
                 raise PrepError(why)
 
@@ -2605,7 +2605,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         environment = machine_record(base, target)
         require_activation(target, environment, base=base)
         #     ...AND WHICH FILES ANSWERED, as they were read -- what
-        #     STAGE-PLAN.md, the pipeline log and the ledger's *prepped* line
+        #     STAGE-PLAN.md, the pipeline log and the ledger's *prepared* line
         #     each say (`configuration.md` § 2.2): built once, here, from the
         #     record in hand and the scopes it was looked for in.
         from ..runtime_config import config_provenance
@@ -2636,7 +2636,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             sweep=sweep, pins=pins, translation=translation,
             token=stage_home(base, task, stage).token, target=target,
             provenance=provenance)
-        if kind == "run":
+        if kind == "task":
             #  ...AND ITS GPU REQUEST AGREES WITH ITSELF (`execution/gpu.md`
             #  G5): a run on the GPU states how many, a run on the CPU none
             #  -- asked of the job this prep will write, before anything is.
@@ -2658,7 +2658,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         header = bool(emit_sbatch and environment.scheduler == "slurm")
         why = launch_refusal(
             resolved.allocation,
-            engine=task.engine, shape=(kind == "run"), stage=stage,
+            engine=task.engine, shape=(kind == "task"), stage=stage,
             header=header,
             queues=[d.name for d in (environment.domains or ())],
             base=base, target=target)
@@ -2670,7 +2670,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #      checkpoint 4; § 6.0).  A benchmark's cells are admitted where
         #      its grid is enumerated, and its queue is named when it is
         #      launched (`generator.md` § 4.3a).
-        if kind == "run" and header:
+        if kind == "task" and header:
             placed, why = admitted(
                 resolved.pset.elements[0].resources, environment,
                 one_process=one_process(task.engine), stage=stage,
@@ -2691,7 +2691,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #      taken as said.
         from .continuation import continuation_answer, force_constant_stage
         continuation = gather = None
-        if stage is not None and (kind == "run"
+        if stage is not None and (kind == "task"
                                   or force_constant_stage(task, stage)):
             # A BENCHMARK of a force-constant stage writes every trial at
             # the geometry `relax` reached, as its run is (§ 5.2a's table):
@@ -2702,7 +2702,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 template_text=template_text, bench=(kind == "bench"))
             if refused:
                 raise PrepError(refused)
-        if kind == "run" and is_transport:
+        if kind == "task" and is_transport:
             gather = gather_sources(base, task, stage,
                                     template_text=template_text)
         if on_found is not None:
@@ -2767,7 +2767,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             # (`engines/vibration.md` § 5.2a's table); its trials copy
             # nothing.
             out.continuation = dataclasses.replace(continuation, carries=())
-        if kind == "run":
+        if kind == "task":
             js = JobSet.from_dict(json.loads(plan.read_text(
                 base / JOBSET_FILENAME)))
             # THE ATTEMPT -- opened once, with what it continues from
@@ -2845,7 +2845,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                     base, f"prep {kind} {stage}", engine=str(task.engine))
         except CheckpointError as exc:
             raise PrepError(f"the folder's state could not be saved, so "
-                            f"nothing was prepped: {exc}")
+                            f"nothing was prepared: {exc}")
         # 7 · THE RECORD BEGINS with the preflight's notes -- after the save,
         #     so the state saved holds no line of this prep.  A refusal writes them with its own line.
         _record_preflight()
@@ -2854,14 +2854,14 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                note=kept.state.note, new=kept.new)
 
         # 6 · THE PLAN, WRITTEN -- deciding nothing and refusing nothing.  A
-        #     write that fails (a full disk) leaves the stage not prepped --
+        #     write that fails (a full disk) leaves the stage not prepared --
         #     its row in `job-set.json` is the last thing written -- and the
         #     state just saved is the way back.
         plan.carry_out()
 
         # 7 · THE RECORD: what it continues from, the deck's agreement with
-        #     its launch, *prepped* -- the answer both doors show.
-        if kind == "run":
+        #     its launch, *prepared* -- the answer both doors show.
+        if kind == "task":
             if continuation is not None:
                 # THE DECISION, LOGGED (`job-system.md` § 5.4): which run,
                 # by default or named, what it was, and what came across.
@@ -2881,7 +2881,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             # its trials are written at, recorded as a run's is.
             ledger(base, "prep", "continues", stage=stage,
                    **continuation.ledger_facts(), copied=[])
-        if kind == "run":
+        if kind == "task":
             # A TRANSPORT RUNG'S GATHER, as decided at 4a and copied: each
             # file, the run it came from, the point it was gathered at.
             took = [{"file": fn, "from": src, "volts": volts}
@@ -2922,7 +2922,7 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
     each through the one entry, before anything is written -- then the
     group's own checks: no member builds on another (`group.refuse_feeding`)
     and the members share one allocation (`group.envelope`).  Then the
-    folder is saved ONCE, each member is prepped through the one entry with
+    folder is saved ONCE, each member is prepared through the one entry with
     that state, and the group is written on each member's job, with the
     group's one header where the machine has a scheduler.  A refusal is the
     entry's, or the group's, in the ledger like every other."""
@@ -2938,7 +2938,7 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
                reason=why)
         return PrepError(why)
 
-    if kind != "run":
+    if kind != "task":
         raise _refuse("a group is of a calculation's stages -- a benchmark "
                       "measures one stage (project-layout.md § 1.6.6).")
     # 1 · THE MEMBERS, by the one grammar -- and none builds on another,
@@ -2974,7 +2974,7 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
                                engine=str(task.engine))
     except CheckpointError as exc:
         raise _refuse(f"the folder's state could not be saved, so nothing "
-                      f"was prepped: {exc}") from None
+                      f"was prepared: {exc}") from None
     # 4 · EACH MEMBER, written through the one entry with that state.
     answers = [prep_stage(base, kind, st, target=target,
                           allocation=allocation, env=env,
@@ -3016,5 +3016,5 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
     return answers
 
 
-__all__ = ["prep_stage", "prep_group", "PrepAnswer", "prepped_already",
-           "prepped_stages"]
+__all__ = ["prep_stage", "prep_group", "PrepAnswer", "prepared_already",
+           "prepared_stages"]

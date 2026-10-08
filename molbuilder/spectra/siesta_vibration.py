@@ -27,7 +27,7 @@ EVERY INPUT IS A RECORD THE ATTEMPT HOLDS, and each is read by its owner:
     ``engine-offset`` (the axis kinds, R3) and ``vibration`` (the
     stationarity criterion, the thermochemistry's temperature, the person's
     statement, the ladder's relaxation record, the stage, the molbuilder
-    that prepped it);
+    that prepared it);
   * ``<label>.FC`` -- `parse.engines.siesta_fc`;
   * the run's output (FC step 0's geometry and forces, SIESTA's version) --
     SIESTA's one reading pass, `siesta_reader`;

@@ -273,9 +273,9 @@
         if (showFindings) showFindings(beside(notices));
         // THE ROAD FROM A DESCRIBED TRANSPORT CALCULATION, said whether or
         // not something came back: a notice is read, not a stop.
-        const transportNext = "Next: prep run seed "
+        const transportNext = "Next: prep task seed "
             + "(the CLI, or Task setup's prep buttons on this "
-            + "folder), then launch stage by stage; summarize run "
+            + "folder), then launch stage by stage; summarize task "
             + "writes the I–V record.";
         const described = "Described — wrote " + written.join(" and ")
             + " into " + (rel || "the selected folder") + ".";

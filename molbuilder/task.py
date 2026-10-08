@@ -366,7 +366,7 @@ class Task:
     #:
     #: `prep` reads it as the BASE allocation and an explicit flag still
     #: wins, so the file answers once what the CLI would otherwise have to
-    #: be told every time -- which is what makes a prepped bundle carry
+    #: be told every time -- which is what makes a prepared bundle carry
     #: everything its launch needs.
     allocation: "Allocation" = field(default_factory=lambda: Allocation())
 

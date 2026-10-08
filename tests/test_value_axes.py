@@ -2,7 +2,7 @@
 
 The acceptance case is the USER's live matrix (their
 ``projects/Au-BDT-Au/optimization/Relax/task.json``, declared 2026-08-21):
-``mpi_np × use_gpu × diag_algorithm × block_size``, prepped from a
+``mpi_np × use_gpu × diag_algorithm × block_size``, prepared from a
 Sol-shaped record — a login node with NO local GPU, a menu whose
 gpu-capable row carries the sinfo inventory and the probed 48-core cap
 (the GPU node group's own core count; hand-editable).
@@ -205,7 +205,7 @@ def _small_matrix():
 
 def _prep(calc):
     """`prep bench coarse`, through the one entry -- what the command line
-    and the Task setup tab call; the folders it prepped."""
+    and the Task setup tab call; the folders it prepared."""
     from molbuilder.jobset.model import Resources
     return prep_stage(calc, "bench", "coarse", allocation=Resources(),
                       emit_sbatch=False).dirs

@@ -323,7 +323,7 @@ def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])
     r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "run", "a", "--bundle", str(dest),
+    res = r.invoke(jobset_group, ["prep", "task", "--stage", "a", "--bundle", str(dest),
                                   "--no-sbatch"])
     assert res.exit_code == 0, res.output
     assert "recomputes" in res.output, res.output

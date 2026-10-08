@@ -1,5 +1,5 @@
 """The prep protocol (`docs/execution/job-system.md` § 5.0), case by case: a
-prepped stage is not prepped again -- a redo is a rollback; before it writes,
+prepared stage is not prepared again -- a redo is a rollback; before it writes,
 prep saves the folder's state; a prep refused after it began
 writing puts the plan back.
 
@@ -7,9 +7,9 @@ THE CASES ARE DATA -- ``tests/data/prep_protocol.toml`` -- and each runs down
 the road a person runs, through the one runner every contract table shares
 (`support.road.run_road_case`).
 
-PREVENTS: a prepped stage re-rendered under a run, a prep that writes before the person
+PREVENTS: a prepared stage re-rendered under a run, a prep that writes before the person
 could save what was there, and a refused prep leaving its stage counted
-prepped -- which, with re-preps refused, would lock the stage.
+prepared -- which, with re-preps refused, would lock the stage.
 """
 from __future__ import annotations
 

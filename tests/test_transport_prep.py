@@ -189,7 +189,7 @@ class TestFormBContract:
         tmpl.write_text(_emit(
             [dataclasses.replace(i, value="TZP") if i.name == "basis_size"
              else i for i in parsed.items], engines=("siesta",)))
-        r = jobset("prep", "run", "seed", "--bundle", dest)
+        r = jobset("prep", "task", "--stage", "seed", "--bundle", dest)
         assert r.exit_code == 0, r.output
         deck = (dest / "01_seed" / "T_01_seed.fdf").read_text()
         assert _says(deck, "PAO.BasisSize", "TZP"), (

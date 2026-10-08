@@ -87,24 +87,24 @@ def _prep(bundle: str, *extra):
     d["execution"] = {"threads": 1}
     d["allocation"] = {"domain": "q", "time": "01:00:00", "mem": "1G"}
     # THE NEXT STAGE STARTS CLEAN, so a test can prep it without a run of
-    # `coarse` to continue from -- a prepped stage is not prepped again
+    # `coarse` to continue from -- a prepared stage is not prepared again
     # (`job-system.md` § 5.0), so what these tests ask of a calculation that
-    # is already prepped, they ask of its next stage (`_prep_next`).
+    # is already prepared, they ask of its next stage (`_prep_next`).
     for st in d["stages"]:
         if st["name"] == "medium":
             st["execution"] = {"restart": "clean"}
     tj.write_text(json.dumps(d, indent=2))
     return r.invoke(jobset_group,
-                    ["prep", "run", "coarse", "--bundle", bundle, *extra])
+                    ["prep", "task", "--stage", "coarse", "--bundle", bundle, *extra])
 
 
 def _prep_next(bundle: str, *extra):
-    """The calculation's NEXT stage, `medium`, prepped after `coarse` was --
+    """The calculation's NEXT stage, `medium`, prepared after `coarse` was --
     starting clean (`_prep` set its run card)."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     return CliRunner().invoke(jobset_group, [
-        "prep", "run", "medium", "--bundle", bundle, *extra])
+        "prep", "task", "--stage", "medium", "--bundle", bundle, *extra])
 
 
 class TestTheUserChoosesTheMachine:
@@ -210,7 +210,7 @@ class TestTheUserChoosesTheMachine:
         machines.write("sol", scheduler="slurm")
         machines.write("agave", scheduler="workstation")
         machines.this_machine()
-        # Prepped for one machine -- named, because two exist (C1).
+        # Prepared for one machine -- named, because two exist (C1).
         first = _prep("P/optimization/z", "--target", "agave")
         assert first.exit_code == 0, first.output
         res = _prep_next("P/optimization/z", "--target", "sol")
@@ -256,14 +256,14 @@ class TestTheCasesReadingFoundThatPokingDidNot:
     def test_c3_fires_even_when_the_bundle_is_already_prepped(self, machines):
         """`record_scopes` puts the calculation's snapshot FIRST, so a check
         living inside the resolution loop never reaches the target scope on
-        an already-prepped bundle -- the same flag would refuse for a fresh
-        folder and stay silent for a prepped one.  The named target is
+        an already-prepared bundle -- the same flag would refuse for a fresh
+        folder and stay silent for a prepared one.  The named target is
         therefore validated whole, before any scope is walked."""
         machines.write("sol")
         machines.this_machine()
         first = _prep("P/optimization/w", "--target", "sol")
         assert first.exit_code == 0, first.output
-        # sol's record goes bad AFTER the bundle was prepped
+        # sol's record goes bad AFTER the bundle was prepared
         machines.write("sol", '{"schema": "molbuilder/environment@99"}')
         res = _prep_next("P/optimization/w", "--target", "sol")
         assert res.exit_code != 0, res.output
@@ -297,8 +297,8 @@ class TestTheCasesReadingFoundThatPokingDidNot:
         so every local prep from the browser took that road; and `--target
         this` is what C1's own refusal above tells people to type.
 
-        **The scenario is a bundle that has been carried.**  It was prepped
-        where a machine record existed, and it is prepped again somewhere
+        **The scenario is a bundle that has been carried.**  It was prepared
+        where a machine record existed, and it is prepared again somewhere
         that has none of its own -- which is the case the snapshot exists
         for (`running-a-job.md` § 3.1: read from a record, and the local box
         is no exception).  Before the fix this refused in REMOTE words --
@@ -358,7 +358,7 @@ class TestTheCasesReadingFoundThatPokingDidNot:
 
     def test_no_machine_record_at_all_is_a_REFUSAL_naming_the_probe(
             self, machines):
-        """**A machine that has not been probed cannot be prepped for**
+        """**A machine that has not been probed cannot be prepared for**
         *(user, 2026-09-02: "all environments have to be explicitly probed
         and stored. no environment json, error")*.
 
@@ -380,7 +380,7 @@ class TestTheCasesReadingFoundThatPokingDidNot:
 
         res = _prep("P/optimization/w")
         assert res.exit_code != 0, (
-            "a bundle with no machine record anywhere was prepped anyway -- "
+            "a bundle with no machine record anywhere was prepared anyway -- "
             "against what, then?\n" + res.output)
         assert "no machine record" in res.output, res.output
         assert "jobset probe --write" in res.output, (

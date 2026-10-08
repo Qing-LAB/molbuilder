@@ -3,7 +3,7 @@
 #
 # A deck is written one way, by `jobset prep` -- the engine describes it, the
 # framework renders, writes and checks it (`script-preparation.md` § 4.3) --
-# so every row here is prepped on the road: `jobset init` of a held H2, or of
+# so every row here is prepared on the road: `jobset init` of a held H2, or of
 # the structure the row gives, then `prep`, and the deck read where prep
 # wrote it (`process/testing.md` § 3a).  `tests/test_the_deck.py` runs every
 # case through the one runner every contract table shares
@@ -91,7 +91,7 @@ run_sh = ["\n# engine siesta\n"]
 # run-identity.md § 2, § 3.2: the label is the SystemLabel literal, unsuffixed on every rung.
 [[case]]
 name = "a later rung's deck carries the calculation's label, unsuffixed"
-before = [["prep", "run", "coarse"]]
+before = [["prep", "task", "--stage", "coarse"]]
 stage = "medium"
 prep = ["--cold"]
 deck = ["\nSystemLabel H2\n"]
@@ -288,7 +288,7 @@ run_sh = ["\n# engine pyscf\n"]
 name = "...and a later PySCF rung's deck carries the label unsuffixed"
 engine = "pyscf"
 stage_strategy = "publishable"
-before = [["prep", "run", "coarse"]]
+before = [["prep", "task", "--stage", "coarse"]]
 stage = "medium"
 prep = ["--cold"]
 deck = ["\nJOB = \"H2\""]

@@ -2095,7 +2095,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 badgeDet.textContent = (run && run.detail) || "";
                 badgeDet.removeAttribute("title");
             } else if (kind === "queued" || kind === "pending") {
-                // Launched and silent, or prepped and never launched: the
+                // Launched and silent, or prepared and never launched: the
                 // run's own words beneath -- "queued as job 481923".
                 badge.classList.add("run-state-ongoing");
                 badgeLab.textContent = kind === "queued" ? "Queued"

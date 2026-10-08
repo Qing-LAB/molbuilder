@@ -20,7 +20,7 @@ def test_one_deck_reader_and_it_takes_the_first_match(tmp_path):
     FIRST value.  There were two readers here -- this one and
     `_winner_mechanism`'s loop, which kept the LAST -- so a duplicated
     keyword made the verdict name an algorithm SIESTA never used, and
-    that verdict is what `prep run` offers to apply to production."""
+    that verdict is what `prep task` offers to apply to production."""
     from molbuilder.jobset.summarize import deck_value
     deck = tmp_path / "job.fdf"
     deck.write_text("Diag.Algorithm ELPA-1STAGE\n"

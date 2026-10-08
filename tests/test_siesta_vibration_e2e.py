@@ -1,7 +1,7 @@
 """The vibration kind on SIESTA, through the whole described road.
 
-``jobset init --engine siesta --calculation vibration`` → ``prep run`` →
-``launch run --mode direct`` on this workstation, and nothing after it: a
+``jobset init --engine siesta --calculation vibration`` → ``prep task`` →
+``launch task --mode direct`` on this workstation, and nothing after it: a
 two-atom molecule with one atom held, the force-constant run nudging the
 free atom only, and the modes derived BY THE JOB -- its finish,
 ``mb_vibration.pyz``, run by the wrapper after SIESTA with the job's own
@@ -226,11 +226,11 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     # THE JOB SET'S OWN ORDER: freq before relax has run is refused by the
     # one hand-over door, naming the stage to run first and how
     # (`continuation`, vibration.md § 5.2a's table).
-    r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
+    r = _jobset("prep", "task", "--stage", "freq", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code != 0 and "`freq` builds on `relax`" in r.output \
         and "Run it first" in r.output, r.output
 
-    r = _jobset("prep", "run", "relax", "--bundle", str(bundle), "--target", "this")
+    r = _jobset("prep", "task", "--stage", "relax", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
     relax_deck = next((bundle / "01_relax").glob("*.fdf")).read_text()
     # the ordinary relaxation deck, from the same sorted copy: Broyden to
@@ -239,20 +239,20 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     assert _kw(relax_deck, "MD.TypeOfRun") == ["Broyden"], relax_deck
     assert _kw(relax_deck, "MD.MaxForceTol")[:1] == ["0.01"], relax_deck
     assert "position 1" in relax_deck
-    r = _jobset("launch", "run", "relax", "--bundle", str(bundle),
+    r = _jobset("launch", "task", "--stage", "relax", "--bundle", str(bundle),
                 "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
     _the_monitor_closed(bundle / "01_relax" / "run-0", "01_relax",
                         "Broyden opt. move")
 
-    r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
+    r = _jobset("prep", "task", "--stage", "freq", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
     perm = read_permutation(bundle)
     assert perm.key == "held-first" and perm.sorted_to_original == (1, 0)
     fc_deck = next((bundle / "02_freq").glob("*.fdf")).read_text()
     assert "MD.TypeOfRun      FC" in fc_deck and "FC.First          2" in fc_deck \
         and "FC.Last           2" in fc_deck and "position 1" in fc_deck
-    r = _jobset("launch", "run", "freq", "--bundle", str(bundle),
+    r = _jobset("launch", "task", "--stage", "freq", "--bundle", str(bundle),
                 "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
     attempt = bundle / "02_freq" / "run-0"
@@ -262,7 +262,7 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     d = _the_result(attempt, "02_freq")
     # ...and summarize derives nothing: with one force-constant stage there
     # is no sweep to summarize (§ 5.9, I22).
-    r = _jobset("summarize", "run", "--bundle", str(bundle))
+    r = _jobset("summarize", "task", "--bundle", str(bundle))
     assert r.exit_code != 0 and "a sweep compares two or more" in r.output, \
         r.output
     _common_assertions(d)
@@ -304,14 +304,14 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     task["stages"] = [s for s in task["stages"] if s["name"] == "freq"]
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
 
-    r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
+    r = _jobset("prep", "task", "--stage", "freq", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code != 0 and "already_relaxed = true" in r.output \
         and "`relax` stage" in r.output, r.output
     _tick_already_relaxed(bundle)
     _set_template_value(bundle, "temperature_K", "298.15", "350.0")
-    r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
+    r = _jobset("prep", "task", "--stage", "freq", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
-    r = _jobset("launch", "run", "freq", "--bundle", str(bundle),
+    r = _jobset("launch", "task", "--stage", "freq", "--bundle", str(bundle),
                 "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
     attempt = bundle / "01_freq" / "run-0"
@@ -343,7 +343,7 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     two force-constant stages -- `freq` at the template's 0.04 Bohr and
     `freq_half` at 0.02 -- BOTH measure at the relaxed geometry, whatever
     their names (I24); each stage's job writes its own spectrum; and
-    `summarize run` compares them into `<label>.fc-sweep.json` at the root,
+    `summarize task` compares them into `<label>.fc-sweep.json` at the root,
     naming each stage's files rather than copying them (I25).  Before
     `freq_half` is launched the record lists it as pending, in its attempt's
     own words.
@@ -361,21 +361,21 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
 
     def _prep_and_launch(stage):
-        r = _jobset("prep", "run", stage, "--bundle", str(bundle),
+        r = _jobset("prep", "task", "--stage", stage, "--bundle", str(bundle),
                     "--target", "this")
         assert r.exit_code == 0, r.output
-        r = _jobset("launch", "run", stage, "--bundle", str(bundle),
+        r = _jobset("launch", "task", "--stage", stage, "--bundle", str(bundle),
                     "--mode", "direct", "--yes")
         assert r.exit_code == 0, r.output
 
     _prep_and_launch("relax")
     _prep_and_launch("freq")
-    r = _jobset("prep", "run", "freq_half", "--bundle", str(bundle),
+    r = _jobset("prep", "task", "--stage", "freq_half", "--bundle", str(bundle),
                 "--target", "this")
     assert r.exit_code == 0, r.output
     # A STAGE STILL TO COME is pending, never a failure, in the words its
-    # attempt's `run_status` gives (prepped, not launched).
-    r = _jobset("summarize", "run", "--bundle", str(bundle))
+    # attempt's `run_status` gives (prepared, not launched).
+    r = _jobset("summarize", "task", "--bundle", str(bundle))
     assert r.exit_code == 0, r.output
     early = json.loads((bundle / "H2.fc-sweep.json").read_text())
     assert [s["name"] for s in early["stages"]] == ["freq"], early["stages"]
@@ -383,7 +383,7 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     assert (waiting["stage"], waiting["state"]) == ("freq_half", "pending"), \
         waiting
     assert early["failed"] == []
-    r = _jobset("launch", "run", "freq_half", "--bundle", str(bundle),
+    r = _jobset("launch", "task", "--stage", "freq_half", "--bundle", str(bundle),
                 "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
 
@@ -400,7 +400,7 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
         assert d["phase_relaxation"] == "complete" and \
             d["relaxation"]["converged"] is True
 
-    r = _jobset("summarize", "run", "--bundle", str(bundle))
+    r = _jobset("summarize", "task", "--bundle", str(bundle))
     assert r.exit_code == 0, r.output
     rec = json.loads((bundle / "H2.fc-sweep.json").read_text())
     assert rec["schema"] == "molbuilder/fc-displacement-sweep@1"
@@ -437,7 +437,7 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     assert fc["against"] == "freq" and fc["max_abs_change_ev_ang2"] > 0.0
 
     # a tolerance the person gives flags; the numbers are unchanged
-    r = _jobset("summarize", "run", "--bundle", str(bundle),
+    r = _jobset("summarize", "task", "--bundle", str(bundle),
                 "--tolerance-cm1", "1e-6")
     assert r.exit_code == 0, r.output
     rec2 = json.loads((bundle / "H2.fc-sweep.json").read_text())
@@ -449,9 +449,9 @@ def test_a_flat_calculation_refuses_a_second_force_constant_stage(
     """In the flat layout every stage writes the same `<label>.FC` and
     `<label>.spectra.json`, so two force-constant stages would overwrite each
     other's result: `prep` refuses the description before any sort,
-    permutation record or deck is written, at whichever stage is prepped
+    permutation record or deck is written, at whichever stage is prepared
     first (`engines/vibration.md` § 5.9) -- counting the stages the
-    description runs: a disabled one is never prepped (`engines/stages.md`
+    description runs: a disabled one is never prepared (`engines/stages.md`
     § 6.2).
 
     MUTATION THIS MUST FAIL AGAINST: the check not made.
@@ -465,7 +465,7 @@ def test_a_flat_calculation_refuses_a_second_force_constant_stage(
     task["stages"].append({"name": "freq_half", "enabled": True,
                            "overrides": {"fc_displacement": 0.02}})
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    r = _jobset("prep", "run", "relax", "--bundle", str(bundle),
+    r = _jobset("prep", "task", "--stage", "relax", "--bundle", str(bundle),
                 "--target", "this")
     assert r.exit_code != 0 and "hierarchical layout" in r.output, r.output
     for written in ("*.fdf", "atom-permutation.json", "job-set.json"):

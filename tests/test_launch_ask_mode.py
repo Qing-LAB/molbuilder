@@ -115,11 +115,11 @@ def _jobset(*args):
 
 
 def _a_prepped_stage(tree, monkeypatch, *stated):
-    """One stage, described and prepped the way a person does it:
-    `jobset init` on a structure in the projects tree, then `prep run
+    """One stage, described and prepared the way a person does it:
+    `jobset init` on a structure in the projects tree, then `prep task
     --target this`, stating its launch values as flags (``stated``) -- a
     run states them or is refused (`architecture.md` § 5.2).  NO engine
-    runs -- asking needs a prepped attempt and nothing more."""
+    runs -- asking needs a prepared attempt and nothing more."""
     from molbuilder.projects import PROJECTS_ROOT_ENV
     (tree / "P" / "structure").mkdir(parents=True)
     (tree / "P" / "structure" / "h2.xyz").write_text(
@@ -132,7 +132,7 @@ def _a_prepped_stage(tree, monkeypatch, *stated):
                 "--shape", "hierarchical", "--name", "H2")
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "optimization" / "H2"
-    r = _jobset("prep", "run", "coarse", "--bundle", bundle,
+    r = _jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
                 "--target", "this", *stated)
     assert r.exit_code == 0, r.output
     attempt = bundle / "01_coarse" / "run-0"
@@ -152,7 +152,7 @@ def _no_scheduler_on_path(monkeypatch):
 
 def test_ask_on_a_machine_with_no_scheduler_launches_nothing(tmp_path,
                                                             monkeypatch):
-    """**What `launch run --mode ask` says where there is no scheduler, and
+    """**What `launch task --mode ask` says where there is no scheduler, and
     that it leaves no launch.**
 
     The failures, each a contradiction a person acted on or could have:
@@ -180,7 +180,7 @@ def test_ask_on_a_machine_with_no_scheduler_launches_nothing(tmp_path,
     bundle, attempt = _a_prepped_stage(
         tmp_path / "projects", monkeypatch, "--cpus-per-task", "1")
     _no_scheduler_on_path(monkeypatch)
-    r = _jobset("launch", "run", "coarse", "--bundle", bundle,
+    r = _jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                 "--mode", "ask")
     assert r.exit_code == 0, r.output
     out = r.output

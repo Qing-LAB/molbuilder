@@ -1,6 +1,6 @@
 """The k-point mesh -- every rung's sampling decided in one place -- through
 the road: `jobset init` (and the Transport tab's describe door) -> `jobset
-prep run` -> each rung's deck and its validation report, or the refusal.
+prep task` -> each rung's deck and its validation report, or the refusal.
 
 PINS: ``docs/engines/siesta.md`` § 6.1 (the mesh: each axis's role, the one
 writer, what a kind fixes, the checks and their severities);
@@ -37,8 +37,8 @@ from test_transport_prep import _isolated, _junction_struct  # noqa: F401
 
 
 def _prep(dest, rung, *, refused=False):
-    """`jobset prep run <rung>`; what it said when ``refused``."""
-    r = CliRunner().invoke(jobset_group, ["prep", "run", rung, "--bundle",
+    """`jobset prep task <rung>`; what it said when ``refused``."""
+    r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", rung, "--bundle",
                                           str(dest), "--no-sbatch"])
     if refused:
         assert r.exit_code != 0, r.output

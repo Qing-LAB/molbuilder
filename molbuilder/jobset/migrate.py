@@ -16,7 +16,7 @@ and a notify block its four values, and every job in a `job-set.json` its
 this command (plan W57, decision 7).  Each key an older file left out is
 written with the meaning its absence had -- `optimization`, every channel and
 every field (`["*"]`), off, an empty point, no finish, resumes, no placement,
-prepped alone -- and each is printed; the old file
+prepared alone -- and each is printed; the old file
 is kept beside the new as ``<name>.pre-w57``.
 
 **The template**, as follows.
@@ -252,9 +252,9 @@ def _migrate_run_numbers(base: Path, task) -> Tuple[List[str],
     keeps every byte, so nothing is kept beside it.  Decided, never done
     here: returns what it says (a line each) and the moves.
 
-    **What it cannot fix is said too**: such a stage was prepped before
+    **What it cannot fix is said too**: such a stage was prepared before
     launch gave each run its number, so its run script takes no ``--run`` --
-    to launch it again, it is prepped anew, from the state saved before its
+    to launch it again, it is prepared anew, from the state saved before its
     prep (`project-layout.md` § 1.6.1)."""
     if task.shape != "flat":
         return [], []

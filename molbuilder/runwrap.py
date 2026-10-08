@@ -2051,7 +2051,7 @@ def render_run_wrapper(script_path: Path, *,
             + ("on the machine this bundle is being prepared FOR (read "
                "from its probed record.  If you installed the env since, "
                "re-probe that machine and prep again -- a calculation is "
-               "set to the record of its first prep, so one prepped "
+               "set to the record of its first prep, so one prepared "
                "before goes back to the state saved before that prep "
                "first: " + checkpoint_words(project_dir) + ").  "
                if _rec_envs else "on this machine.  ")
@@ -3000,7 +3000,7 @@ def render_run_wrapper(script_path: Path, *,
         # A bundle travels -- that is the whole point of it naming no
         # machine -- so an absolute path that exists on the workstation
         # need not exist on the cluster, and nothing at prep time can know
-        # that: on the prepping machine the file is right there.  The only
+        # that: on the preparing machine the file is right there.  The only
         # code that runs on the TARGET is this script, so the check has to
         # be here.
         #
@@ -3024,7 +3024,7 @@ def render_run_wrapper(script_path: Path, *,
                     f"preamble of the record prep read, and this machine "
                     f"is not the one that record describes.'",
                     f"    _log ERROR 'Fix: environment.json beside task.json, "
-                    f"the record this calculation was prepped with, carries "
+                    f"the record this calculation was prepared with, carries "
                     f"this preamble -- edit its env_init.preamble (for "
                     f"example: module load mamba), or correct the record of "
                     f"that machine and prep the calculation anew, from the "
@@ -3312,7 +3312,7 @@ def render_run_wrapper(script_path: Path, *,
             f"   saved before its prep, then prep it with that count --\n"
             f"     molbuilder checkpoint list\n"
             f"     molbuilder checkpoint restore <that state>\n"
-            f"     molbuilder jobset prep run <stage> --np 8\n"
+            f"     molbuilder jobset prep task --stage <stage> --np 8\n"
             f"   The same clean .fdf can fail at one -np and pass at another.\n"
             f"\n"
             f"HINT\n"

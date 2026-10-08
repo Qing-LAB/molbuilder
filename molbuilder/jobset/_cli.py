@@ -44,7 +44,7 @@ def _load(bundle: str) -> tuple:
     same absence means three different things and only one of them is
     "nothing has happened here": a sweep keeps its set in the bench
     container rather than the root, a described calculation is simply not
-    prepped yet, and a bare directory has not been described at all.  Shared
+    prepared yet, and a bare directory has not been described at all.  Shared
     by the verbs that read a job set -- `launch`, a hand-built sweep's bench
     verbs, `status` where no description stands -- so what it says is about
     the STATE it found and not about the verb that arrived.
@@ -70,13 +70,13 @@ def _load(bundle: str) -> tuple:
                     sweeps.append(str(_p.parent.relative_to(base)))
             except Exception:          # unreadable: not evidence of anything
                 pass
-        from .commands import bundle_flag, command
+        from .commands import bundle_flag, command, words_for
         if described:
             # THE EXACT COMMAND, not a placeholder (user, 2026-08-20: a
             # detected problem carries the invocation that repairs it).  The
             # rung is in hand -- the description is right there -- so naming
             # `<stage>` would be this refusal declining to read a file it has
-            # already found.  A benchmark prepped here is named beside it --
+            # already found.  A benchmark prepared here is named beside it --
             # it is not the run.  A description
             # that does not read leaves the stage out: `prep` then says what
             # is wrong with it, and never a `<stage>` nobody can type.
@@ -87,20 +87,20 @@ def _load(bundle: str) -> tuple:
                 _rung = next((st.name for st in (_t.stages or ())), None)
             except Exception:      # a description mid-edit is its own error
                 pass
-            bench = (f"\nA benchmark is prepped in "
+            bench = (f"\nA benchmark is prepared in "
                      f"{', '.join(sweeps[:3])}{'...' if len(sweeps) > 3 else ''}"
                      f" -- its own verbs are `launch bench` and `summarize "
                      f"bench`." if sweeps else "")
             raise click.ClickException(
                 f"no {_JOBSET_FILE} in {base}: this calculation is described "
-                f"but no run is prepped yet.  `prep` derives the set from "
+                f"but no run is prepared yet.  `prep` derives the set from "
                 f"the description (job-system.md § 4):\n"
-                f"    {command('prep', 'run', _rung, base=base)}" + bench)
+                f"    {command('prep', *words_for('task', _rung), base=base)}" + bench)
         if sweeps:
             where = ", ".join(sweeps[:3]) + ("..." if len(sweeps) > 3 else "")
             raise click.ClickException(
                 f"no {_JOBSET_FILE} at the root of {base}, and no "
-                f"{_TASK_FILE}: a hand-built sweep is prepped in {where}, "
+                f"{_TASK_FILE}: a hand-built sweep is prepared in {where}, "
                 f"and its verbs are `launch bench` and `summarize bench` -- "
                 f"which read a sweep through its description, so a "
                 f"description-less one is launched and read by hand.")
@@ -456,9 +456,9 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                "the citation.  On the machine that will run it:")
     # THE FIRST COMMAND A PERSON COPIES, as `init` prints it for every other
     # calculation.
-    from .commands import command
+    from .commands import command, words_for
     from .materialize import described_refs
-    click.echo("  " + command("prep", "run", described_refs(dest, task)[0].name,
+    click.echo("  " + command("prep", *words_for("task", described_refs(dest, task)[0].name),
                               base=dest))
 
 
@@ -686,12 +686,12 @@ def init_cmd(structure, bundle: str, shape: str,
                f"shape {shape}.", err=True)
     click.echo("  " + "\n  ".join(p.name for p in written), err=True)
     # THE FIRST COMMAND A PERSON COPIES, real.
-    from .commands import command
+    from .commands import command, words_for
     from .materialize import described_refs
     first = described_refs(out_dir, desc.task)[0].name
     click.echo(
         "\nIt names no machine. On the machine that will run it:\n  "
-        + command("prep", "run", first, base=out_dir), err=True)
+        + command("prep", *words_for("task", first), base=out_dir), err=True)
 
 
 @jobset_group.command("status", short_help="show per-stage status + resume point")
@@ -702,7 +702,7 @@ def status_cmd(stage, bundle: str) -> None:
     running / failed / queued / pending / not-started), which warm-restart
     files are present -- and the FIRST incomplete stage (the one to resume
     from).  The stages are listed from the moment `init` writes them, the
-    ones not prepped yet among them (job-system.md § 5.3).  Read-only --
+    ones not prepared yet among them (job-system.md § 5.3).  Read-only --
     molbuilder informs; you decide whether to continue or switch.  Reuses
     the same directory decoder as the Results tab.
 
@@ -755,19 +755,44 @@ def status_cmd(stage, bundle: str) -> None:
     click.echo(render_stage_status(
         status, name,
         stage_continuation(base, task, name)
-        if task is not None and not row.prepped else None))
+        if task is not None and not row.prepared else None))
 
 
 # --------------------------------------------------------------------- #
 #  prep / launch -- the execution loop (job-system.md § 5.3)             #
 #                                                                       #
-#  One grammar: ``jobset <verb> <kind> [<stage>]``.  The KIND is a       #
-#  positional and not a ``--bench`` flag because ``prep bench`` and      #
-#  ``prep run`` are peers -- measuring and running are the same act over #
-#  different parameters (project-layout.md § 2.3.1a).                    #
+#  One grammar: ``jobset <verb> task [--stage NAME ...]`` and            #
+#  ``jobset <verb> bench <stage> [<trial>]`` (job-system.md § 5.3).  The  #
+#  KIND is a positional: the task -- the calculation, its stages named    #
+#  with --stage, the answer to the question its verbs ask -- or a         #
+#  benchmark of one stage (project-layout.md § 2.3.1a).                  #
 # --------------------------------------------------------------------- #
 
-_KINDS = ("run", "bench")
+_KINDS = ("task", "bench")
+
+
+def _stage_words(kind: str, words, stages, verb: str):
+    """``(stage, trial, stages)`` from what a verb was given: a benchmark's
+    stage and trial by position; a task's stages by ``--stage`` (repeated
+    for several) and no positional -- each refused by name where it does
+    not belong (`job-system.md` § 5.3)."""
+    if kind == "bench":
+        if stages:
+            raise click.ClickException(
+                f"--stage names a task's stages; `{verb} bench` takes its "
+                f"stage by position: `{verb} bench <stage>`.")
+        if len(words) > (2 if verb == "launch" else 1):
+            raise click.ClickException(
+                f"`{verb} bench` takes a stage"
+                + (" and, optionally, one trial." if verb == "launch"
+                   else "."))
+        return (words[0] if words else None,
+                words[1] if len(words) > 1 else None, [])
+    if words:
+        raise click.ClickException(
+            f"`{verb} task` names its stages with --stage: `{verb} task "
+            f"--stage {words[0]}` (job-system.md § 5.3).")
+    return (None, None, list(stages))
 
 
 def _check_kind(kind: str, js=None) -> None:
@@ -780,7 +805,7 @@ def _check_kind(kind: str, js=None) -> None:
     """
     if js is None:
         return
-    actual = "bench" if js.kind == "sweep" else "run"
+    actual = "bench" if js.kind == "sweep" else "task"
     if kind != actual:
         raise click.ClickException(
             f"this bundle's job set is a {js.kind}, which the grammar calls "
@@ -795,7 +820,7 @@ def _described_stage(base, stage):
     (`identity.resolve_stage_ref`, `job-system.md` § 5.3) -- and what the
     verb then finds, records and PRINTS (a pasted ``#2`` would be a comment
     in bash).  Asked by the verbs that name a stage the description holds
-    whether or not it is prepped: the bench verbs and `status`.  ``None`` stays ``None``, and a folder with no description has
+    whether or not it is prepared: the bench verbs and `status`.  ``None`` stays ``None``, and a folder with no description has
     no ladder to resolve against: its name stands."""
     from ..identity import StageRef, resolve_stage_ref
     from ..task import FILENAME, read_task
@@ -811,20 +836,20 @@ def _described_stage(base, stage):
         raise click.ClickException(str(e))
 
 
-def _refuse_unprepped(base, stage) -> None:
+def _refuse_unprepared(base, stage) -> None:
     """A stage the description holds and no prep has prepared is refused by
     NAME, with its prep and its launch -- what `status` says of it.  The
-    job-set holds the prepped stages, and the description all of them.  Prepped is the prep
-    entry's own answer (`prep.prepped_already`)."""
+    job-set holds the prepared stages, and the description all of them.  Prepared is the prep
+    entry's own answer (`prep.prepared_already`)."""
     from ..task import FILENAME, read_task
     from .commands import block, run_first
-    from .prep import prepped_already
+    from .prep import prepared_already
     desc = Path(base) / FILENAME
     if stage is None or not desc.is_file():
         return
-    if prepped_already(base, read_task(desc), "run", stage) is None:
+    if prepared_already(base, read_task(desc), "task", stage) is None:
         raise click.ClickException(
-            f"stage {stage!r} is not prepped yet -- prep it, then launch "
+            f"stage {stage!r} is not prepared yet -- prep it, then launch "
             f"it:\n" + block(run_first(stage, base=base)))
 
 
@@ -859,7 +884,7 @@ def _stage_bench_dir(base, stage, verb: str = "launch"):
     if why:
         raise click.ClickException(why)
     if stage is None:
-        # THE STAGES WITH A BENCHMARK TO ACT ON -- a prepped one -- or, with
+        # THE STAGES WITH A BENCHMARK TO ACT ON -- a prepared one -- or, with
         # none, the prep that makes one.
         from .commands import command, name_a_stage
         from .materialize import described_refs
@@ -868,7 +893,7 @@ def _stage_bench_dir(base, stage, verb: str = "launch"):
             sh, stage_home(base, task, r.name).token) / _JOBSET_FILE).is_file()]
         if not benched:
             raise click.ClickException(
-                "no stage has a prepped benchmark yet -- prep one first:\n"
+                "no stage has a prepared benchmark yet -- prep one first:\n"
                 "    " + command("prep", "bench", refs[0].name, base=base))
         raise click.ClickException(
             "which stage's benchmark? "
@@ -899,7 +924,7 @@ def _load_bench_set(base, stage, verb: str = "launch"):
         from .commands import command
         raise click.ClickException(
             f"no {jpath.relative_to(Path(base))} -- this stage has no "
-            f"prepped benchmark.  Prep it first:\n    "
+            f"prepared benchmark.  Prep it first:\n    "
             + command("prep", "bench", stage, base=base))
     try:
         return JobSet.load(jpath), Path(base)
@@ -1002,7 +1027,7 @@ def _resolve_stage(js, stage, verb: str, *, base):
             f"this is a ladder, so `{verb} run` acts on ONE stage -- or on "
             f"stages named together as a group (project-layout.md "
             f"§ 1.6.6); "
-            + name_a_stage(verb, "run", ordered, base=base) + "\n"
+            + name_a_stage(verb, "task", ordered, base=base) + "\n"
             "Stages do not chain, and there is no flag that makes them: a "
             "run that continues on its own can spend a week refining a "
             "geometry you would have rejected in a minute "
@@ -1010,9 +1035,13 @@ def _resolve_stage(js, stage, verb: str, *, base):
     return None
 
 
-@jobset_group.command("prep", short_help="set a stage up to run")
+@jobset_group.command("prep", short_help="prepare the task's next stage(s), "
+                                          "or a benchmark")
 @click.argument("kind", type=click.Choice(_KINDS))
-@click.argument("stages", nargs=-1)
+@click.argument("words", nargs=-1)
+@click.option("--stage", "stages", multiple=True, metavar="NAME",
+              help="task: the stage to prepare, by name or '#N' -- repeated, "
+                   "several sharing one job (project-layout.md 1.6.6).")
 @_bundle_option()
 @click.option("--from", "from_attempt", default=None,
               metavar="NN_STAGE/run-N",
@@ -1058,14 +1087,15 @@ def _resolve_stage(js, stage, verb: str, *, base):
               help="which MACHINE this is for -- a record written by "
                    "`jobset probe --write --name NAME`, or `this` for this "
                    "machine's own.  Omit when there is one; naming it is how "
-                   "a bench prepped on a workstation measures the cluster "
+                   "a bench prepared on a workstation measures the cluster "
                    "instead of the desk.")
 @click.option("--sbatch/--no-sbatch", "emit_sbatch", default=True,
               help="emit .sbatch wrappers (default on; withheld where the "
                    "target's record says `workstation` -- job-system.md "
                    "§ 6).  --no-sbatch writes none, and then no queue, wall "
                    "or memory is asked for.")
-def prep_cmd(kind: str, stages, bundle: str, from_attempt, cold: bool, env,
+def prep_cmd(kind: str, words, stages, bundle: str, from_attempt,
+             cold: bool, env,
              mpi_np, cpus_per_task, gres, time_, mem, max_memory_mb,
              domain, target, emit_sbatch: bool) -> None:
     """Set a stage up to run, and report what was done -- or SEVERAL, named
@@ -1077,7 +1107,7 @@ def prep_cmd(kind: str, stages, bundle: str, from_attempt, cold: bool, env,
     a plain yes** -- it is the only place the chosen geometry and the rendered
     deck appear together.
 
-    A STAGE is required on a ladder — bare ``prep run`` is refused before
+    A STAGE is required on a ladder — bare ``prep task`` is refused before
     anything is read of the machine or written, offering the stages by name
     and the command for the first (`engines/stages.md` § 6.5).
     """
@@ -1090,6 +1120,9 @@ def prep_cmd(kind: str, stages, bundle: str, from_attempt, cold: bool, env,
     from .model import Resources as _Alloc
     from .prep import prep_group, prep_stage
     base = Path(bundle).resolve()
+    bench_stage, _trial, stages = _stage_words(kind, words, stages, "prep")
+    if kind == "bench":
+        stages = [bench_stage] if bench_stage else []
     stage = stages[0] if len(stages) == 1 else None
     if len(stages) > 1 and (from_attempt or cold):
         raise click.ClickException(
@@ -1174,7 +1207,7 @@ def _echo_prep_answer(ans, base, *, group=None, last: bool = True) -> None:
     from .commands import block, command, launch_lines
     if ans.kind == "bench":
         where = f" for stage {stage!r}" if stage else ""
-        click.echo(f"prepped {len(ans.dirs)} trial dir(s){where} under "
+        click.echo(f"prepared {len(ans.dirs)} trial dir(s){where} under "
                    f"{base}:")
         for d in ans.dirs:
             # the path from the bundle, not the bare attempt name -- with the
@@ -1197,12 +1230,12 @@ def _echo_prep_answer(ans, base, *, group=None, last: bool = True) -> None:
                  + block([command("summarize", "bench", stage,
                                   base=base)]))
         return
-    next_line = "next:\n" + block(launch_lines("run", stage, base=base))
+    next_line = "next:\n" + block(launch_lines("task", stage, base=base))
     # THE LAYOUT'S OWN LINES first -- the folder, the attempt or the points
     # -- then what every layout says alike: the resources, whether the deck
     # agrees with its launch, the pipeline log, what to do next.
     if ans.flat:
-        click.echo(f"prepped {len(ans.dirs)} job dir(s) under {base}  "
+        click.echo(f"prepared {len(ans.dirs)} job dir(s) under {base}  "
                    "(flat: no attempt to open; each run carries the "
                    "number launch gives it)")
         if ans.continuation is not None:
@@ -1215,7 +1248,7 @@ def _echo_prep_answer(ans, base, *, group=None, last: bool = True) -> None:
             for src, fn in got:
                 click.echo(f"  gathered: {fn} <- {src}")
         next_line = ("next -- one job walks the points in order:\n"
-                     + block(launch_lines("run", stage, base=base)))
+                     + block(launch_lines("task", stage, base=base)))
     else:
         rep = ans.attempt
         click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
@@ -1274,7 +1307,7 @@ def _echo_prep_answer(ans, base, *, group=None, last: bool = True) -> None:
             return
         next_line = ("next -- the group's one job, walking "
                      + ", ".join(group) + " in order:\n"
-                     + block(launch_lines("run", *group, base=base)))
+                     + block(launch_lines("task", *group, base=base)))
     say_next(next_line)
 
 
@@ -1293,7 +1326,7 @@ def _echo_pipeline_log(ans, base) -> None:
                                  "trials, a transport's bias points, a "
                                  "vibration's displacement sweep")
 @click.argument("kind", type=click.Choice(_KINDS))
-@click.argument("stage", required=False, default=None)
+@click.argument("words", nargs=-1)
 @_bundle_option()
 @click.option("--tolerance-cm1", "tolerance_cm1", type=float, default=None,
               help="a SIESTA vibration's displacement sweep: flag every mode "
@@ -1301,7 +1334,7 @@ def _echo_pipeline_log(ans, base) -> None:
                    "force-constant stages (cm^-1).  Without it nothing is "
                    "flagged -- the numbers are stated and the judgement is "
                    "yours (engines/vibration.md 5.9).")
-def summarize_cmd(kind: str, stage, bundle: str,
+def summarize_cmd(kind: str, words, bundle: str,
                   tolerance_cm1: Optional[float]) -> None:
     """Summarize results that exist -- never derive a run's own
     (`job-system.md` § 5, the verb table).  Three summaries, by what was
@@ -1311,10 +1344,10 @@ def summarize_cmd(kind: str, stage, bundle: str,
     * ``summarize bench`` reads a benchmark's trials and writes
       ``bench-result.json`` -- a recommendation, not a decision
       (`project-layout.md` § 2.3.2): you read it, you decide;
-    * ``summarize run`` on a transport calculation reads its transmission
+    * ``summarize task`` on a transport calculation reads its transmission
       points into ``<label>.transport.json`` (`engines/transport.md`
       § 2a.12);
-    * ``summarize run`` on a SIESTA vibration with two or more
+    * ``summarize task`` on a SIESTA vibration with two or more
       force-constant stages compares them into ``<label>.fc-sweep.json``
       (`engines/vibration.md` § 5.9), ``--tolerance-cm1`` flagging a mode
       whose spread exceeds it.
@@ -1327,9 +1360,16 @@ def summarize_cmd(kind: str, stage, bundle: str,
     by the description and ``job-set.json``'s own data, never by parsing
     directory names back (`job-contracts.md` § 6.3).
     """
+    # A TASK'S SUMMARY reads the whole calculation, and names no stage
+    # (`job-system.md` § 5.3); a benchmark's, its stage.
+    if kind == "task" and words:
+        raise click.ClickException(
+            "`summarize task` reads the whole calculation -- it names no "
+            "stage.")
+    stage, _trial, _ = _stage_words(kind, words, (), "summarize")
     if kind != "bench":
         # THE TRANSPORT COMPOSITE'S DELIVERABLE (archive/2026-09-01-transport-design.md
-        # § 7 P6): `summarize run` on a transport calculation reads the
+        # § 7 P6): `summarize task` on a transport calculation reads the
         # transmission attempts back into <label>.transport.json and
         # prints the I-V table.  Asynchronous like the bench reader: a
         # point that has not run yet reads as pending, never a failure.
@@ -1393,7 +1433,7 @@ def summarize_cmd(kind: str, stage, bundle: str,
             "summarize summarizes results that exist: a BENCH sweep's "
             "measurements, a transport calculation's bias points (`summarize "
             "run`, into <label>.transport.json), and a SIESTA vibration's "
-            "force-constant stages (`summarize run`, into "
+            "force-constant stages (`summarize task`, into "
             "<label>.fc-sweep.json).  A run's own outputs are the "
             "calculation's results -- `jobset status` and the Results tab "
             "are their readers (job-system.md § 5.3) -- and a vibration's "
@@ -1457,7 +1497,7 @@ def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
         got = said("--gpu-domain", "--trial-timeout", "--only")
         if got:
             raise click.ClickException(
-                f"{', '.join(got)}: a benchmark's -- `launch run` sends one "
+                f"{', '.join(got)}: a benchmark's -- `launch task` sends one "
                 f"stage, to the queue --domain names.")
     elif trial is not None:
         got = said("--trial-timeout", "--only")
@@ -1522,9 +1562,12 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    question="run this here?" if here else "submit this?")
 
 
-@jobset_group.command("launch", short_help="launch a prepped stage")
+@jobset_group.command("launch", short_help="launch what is prepared")
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("words", nargs=-1)
+@click.option("--stage", "stages", multiple=True, metavar="NAME",
+              help="task: the stage to launch, by name or '#N' -- repeated, "
+                   "several as one job (project-layout.md 1.6.6).")
 @_bundle_option()
 @click.option("--mode", type=click.Choice(["submit", "direct", "ask"]),
               default=None,
@@ -1583,10 +1626,10 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "spans CPU and GPU trials (generator.md § 4.3a).  The "
                    "other side stays pending; a later `launch bench` "
                    "collects it -- here or on the cluster that reaches it.")
-def submit_cmd(kind: str, words, bundle: str, mode: str, domain,
+def submit_cmd(kind: str, words, stages, bundle: str, mode: str, domain,
                dry_run: bool, time_text, mem_text, gpu_domain,
                auto_yes, cold, trial_timeout_min, only_side) -> None:
-    """Launch a prepped stage: run it here (direct), hand it to the machine's
+    """Launch a prepared stage: run it here (direct), hand it to the machine's
     scheduler (submit), or ask the scheduler when it would start (ask).
     Run ``prep`` first.  Before anything is sent the exact ``sbatch`` line is
     shown and you are asked; ``--dry-run`` shows it and sends nothing.
@@ -1597,15 +1640,13 @@ def submit_cmd(kind: str, words, bundle: str, mode: str, domain,
     # entry writes its own, and the verb the ones it says before it calls
     # the entry -- in a described calculation only, a folder that is not one
     # getting no ledger of ours; a dry run writes nothing.
-    # WHAT WAS NAMED: a benchmark's stage and, optionally, one trial; a
-    # run's stage -- or a group's stages, as its prep named them
-    # (`project-layout.md` § 1.6.6).
-    if kind == "bench" and len(words) > 2:
-        raise click.ClickException(
-            "`launch bench` takes a stage and, optionally, one trial.")
-    stage = words[0] if words and (kind == "bench" or len(words) == 1) else None
-    trial = words[1] if kind == "bench" and len(words) > 1 else None
-    group = list(words) if kind == "run" and len(words) > 1 else None
+    # WHAT WAS NAMED: a benchmark's stage and, optionally, one trial by
+    # position; a task's stage -- or several, as one job -- by --stage
+    # (`job-system.md` § 5.3; `project-layout.md` § 1.6.6).
+    stage, trial, stages = _stage_words(kind, words, stages, "launch")
+    if kind == "task" and len(stages) == 1:
+        stage = stages[0]
+    group = list(stages) if kind == "task" and len(stages) > 1 else None
     said = {"kind": kind, "stage": group or stage, "trial": trial,
             "mode": mode}
     try:
@@ -1662,20 +1703,20 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     else:
         # The description's spelling from here on -- what the ledger
         # records and every line prints (plan § 5w K12) -- and a stage it
-        # holds that is not prepped, said so (W55 D4).
+        # holds that is not prepared, said so (W55 D4).
         if group:
             # A GROUP, by the names its prep was told -- each a described,
-            # prepped stage (`project-layout.md` § 1.6.6).
+            # prepared stage (`project-layout.md` § 1.6.6).
             group = [_described_stage(bundle, s) for s in group]
             for s in group:
-                _refuse_unprepped(base, s)
+                _refuse_unprepared(base, s)
             group = said["stage"] = [_resolve_stage(js, s, "launch",
                                                     base=base)
                                      for s in group]
             only = None
         else:
             stage = said["stage"] = _described_stage(bundle, stage)
-            _refuse_unprepped(base, stage)
+            _refuse_unprepared(base, stage)
             only = stage = said["stage"] = _resolve_stage(js, stage,
                                                           "launch", base=base)
     # THE WORDS EVERY PRINTED LAUNCH REPEATS: the stage and its trial, or
@@ -2096,7 +2137,7 @@ def cmd_machines() -> None:
         click.echo("More than one machine could be meant, so a calculation's "
                    "first `prep` asks which, with `--target` (being asked "
                    "costs one flag; being given the wrong one costs a queue "
-                   "wait); once prepped, it keeps the record it took.")
+                   "wait); once prepared, it keeps the record it took.")
         click.echo(f"    --target {LOCAL_TARGET}   # this machine")
 
 
@@ -2142,7 +2183,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
     The named form answers *"I describe calculations on my laptop and run them
     on Sol"*.  Run it ON Sol's login node, copy the file it writes to the
     directory `jobset machines` prints, and `prep --target sol` sizes for Sol
-    from anywhere.  **Without it, a bench prepped on a laptop is measured
+    from anywhere.  **Without it, a bench prepared on a laptop is measured
     against the laptop's cores and queues, silently** -- which is the whole
     reason named records exist.
 
@@ -2199,7 +2240,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
         raise click.ClickException(
             f"{LOCAL_TARGET!r} is reserved: `--target {LOCAL_TARGET}` "
             f"already means this machine, so a record called that could "
-            f"never be prepped for.  Give it the machine's own name (`--name "
+            f"never be prepared for.  Give it the machine's own name (`--name "
             f"sol`); this machine's own record needs no --name at all.")
 
     # HOW A SHELL ENTERS AN ENVIRONMENT HERE IS REQUIRED, stated in this

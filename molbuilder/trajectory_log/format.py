@@ -39,7 +39,7 @@ def write_initial_preview(
     """Write a ``<path>.molwatch.log`` holding its header and exactly one
     block: step 0, the structure's coordinates, no energy, no forces, no SCF
     history -- so the Results tab has a molecule to show the moment the run
-    is prepped, before the engine has written anything of its own.
+    is prepared, before the engine has written anything of its own.
 
     The text is :func:`~molbuilder.trajectory_log.emitter.header_and_preview`'s,
     the one writer of a log's start.  ``engine`` and ``generator`` fill the

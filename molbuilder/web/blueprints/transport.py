@@ -288,7 +288,7 @@ def api_transport_record() -> Any:
     ladder nothing has summarized yet has its report -- composed from its
     rungs as they are now
     (`transport.record.collect_record`, ``partial``: a ladder in progress
-    has a report), never the copy `summarize run` wrote, which stays the
+    has a report), never the copy `summarize task` wrote, which stays the
     command line's deliverable.  The bench summary's door, for a transport
     calculation (`/api/bench/summary`).
 

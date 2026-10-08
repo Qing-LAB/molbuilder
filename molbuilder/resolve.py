@@ -637,7 +637,7 @@ def resolve(template_text: str, task, config_cls, *,
 def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any]]:
     """``[(stage name, resolved config)]`` for every ENABLED stage, in
     ladder order — the sequence checks' input (`engines/stages.md` § 6.4 /
-    § 6.6a), resolved by the SAME primitives as `prep run` step 2 (template
+    § 6.6a), resolved by the SAME primitives as `prep task` step 2 (template
     ⊕ stage overrides ⊕ the rung's run card), so what the checks compare is
     what the decks would say -- a rung's ``restart`` included, which § 6.6a
     reads and which lives on the run card alone (§ 6.8d).  No machine fact
@@ -656,7 +656,7 @@ def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any
     out: List[Tuple[str, Any]] = []
     for s in (task.stages or ()):
         values = effective_config(base, s.overrides) if s.overrides else base
-        # The rung's run card, as `prep run` pins it: its template items --
+        # The rung's run card, as `prep task` pins it: its template items --
         # the machine's answers are the launch, never a value of the deck.
         card = {k: v for k, v in task.run_condition(s.name).items()
                 if k in known}

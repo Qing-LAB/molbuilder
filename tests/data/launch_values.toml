@@ -97,7 +97,7 @@ prep = ["--no-sbatch"]
 allocation_unset = ["domain", "time", "mem"]
 header_absent = true
 
-# A run prepped with no header is not sent to a queue at all -- its launch is
+# A run prepared with no header is not sent to a queue at all -- its launch is
 # refused for the header it lacks, a dry run too (`job-system.md` § 6.0: the
 # plan shown is the plan sent).  The header a benchmark's shelf is sent with
 # is written at its launch, and states only what was stated.
@@ -128,14 +128,14 @@ run_sh_lacks = ["miniconda3"]
 [[case]]
 name = "a calculation set to a machine takes --target naming it again"
 machine = "named"
-before = [["prep", "run", "coarse"]]
+before = [["prep", "task", "--stage", "coarse"]]
 stage = "medium"
 prep = ["--cold"]
 
 [[case]]
 name = "...and is refused any other, this machine too -- naming the one it is set to, and a new prep from a saved state"
 machine = "named"
-before = [["prep", "run", "coarse"]]
+before = [["prep", "task", "--stage", "coarse"]]
 stage = "medium"
 prep = ["--cold", "--target", "this"]
 refused = ["this calculation is set to 'sol'", "To go on with it: --target sol", "and prep again with --target this"]
@@ -148,7 +148,7 @@ probe = [["--scheduler", "workstation"]]
 run_sh = ["module load mamba/latest", "source activate"]
 
 [[case]]
-name = "...into a named record too, carried to wherever it is prepped for"
+name = "...into a named record too, carried to wherever it is prepared for"
 machine = "workstation"
 machine_config = { env_init = { activation = "source activate", preamble = "module load mamba/latest" } }
 probe = [["--scheduler", "workstation", "--name", "sol"]]
@@ -280,8 +280,8 @@ launch = ["--domain", "long"]
 line = ["-p long", "-q public"]
 
 # A queue named nowhere reaches launch only for a benchmark, whose shelves'
-# queue is named when they are sent: a run prepped for a queue has its
-# queue recorded, and one prepped with --no-sbatch is refused for its
+# queue is named when they are sent: a run prepared for a queue has its
+# queue recorded, and one prepared with --no-sbatch is refused for its
 # header first.
 [[case]]
 name = "the queues launch lists ask what its door admits -- the wall and memory prep baked, when launch states none"

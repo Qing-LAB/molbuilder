@@ -24,6 +24,23 @@ from typing import List, Optional
 #: The program as a person types it.
 PROG = "molbuilder jobset"
 
+#: THE KINDS a verb acts on (`job-system.md` § 5.3): the calculation as a
+#: TASK, its stages named with ``--stage``; a BENCHMARK of one stage, named
+#: by position.
+TASK, BENCH = "task", "bench"
+
+
+def words_for(kind: str, *stages) -> tuple:
+    """A verb's words for ``kind`` and the ``stages`` it names -- the ONE
+    spelling every printed line takes: ``task --stage a --stage b`` (a
+    task's stages, the answer to the question its verbs ask), ``bench a
+    [trial]`` (a benchmark's stage and trial by position).  A stage that is
+    ``None`` is left out."""
+    named = [s for s in stages if s is not None]
+    if kind == TASK:
+        return (TASK, *(x for s in named for x in ("--stage", s)))
+    return (kind, *named)
+
 
 def bundle_flag(base) -> str:
     """`` --bundle <address from the projects root>`` -- every time.  A line
@@ -111,7 +128,7 @@ def launch_with(kind: str, *words, base, mode: str, typed=()) -> str:
             if not (mode == "direct" and flag in QUEUE_FLAGS)
             for x in ((flag,) if value is True
                       else (flag, shlex.quote(str(value))))]
-    return command("launch", kind, *words, base=base,
+    return command("launch", *words_for(kind, *words), base=base,
                    flags=(*kept, "--mode", mode))
 
 
@@ -125,7 +142,7 @@ def launch_lines(kind: str, *words, base,
     set to another machine is launched there, whose config this one does
     not read: its lines state their mode."""
     if configured_mode() and launches_here(base, target):
-        return [command("launch", kind, *words, base=base)]
+        return [command("launch", *words_for(kind, *words), base=base)]
     here = launch_with(kind, *words, base=base, mode="direct") + "   # here"
     if not takes_a_queue(base, target):
         return [here]
@@ -139,14 +156,14 @@ def lines(verb: str, kind: str, *words, base) -> List[str]:
     that names a verb it was handed cannot print a launch with no mode."""
     if verb == "launch":
         return launch_lines(kind, *words, base=base)
-    return [command(verb, kind, *words, base=base)]
+    return [command(verb, *words_for(kind, *words), base=base)]
 
 
 def run_first(stage: str, *, base) -> List[str]:
     """Run ``stage`` first -- its prep, then its launch: the remedy every
     refusal that waits on another stage gives."""
-    return [command("prep", "run", stage, base=base)] + launch_lines(
-        "run", stage, base=base)
+    return lines("prep", TASK, stage, base=base) + launch_lines(
+        TASK, stage, base=base)
 
 
 def name_a_stage(verb: str, kind: str, refs, *, base) -> str:
@@ -168,7 +185,7 @@ def block(text_lines, pad: str = "    ") -> str:
 
 def rollback(what: str, *, base) -> str:
     """How ``what`` is redone: the state saved before it, restored, and a
-    prep anew -- a prepped stage is not prepped again (user, 2026-10-02:
+    prep anew -- a prepared stage is not prepared again (user, 2026-10-02:
     *"refuse it, redo via rollback"*; `job-system.md` § 5.0).
 
     WHICH STATE is the person's to pick, so it is asked for in words, never
@@ -201,26 +218,28 @@ def target_flags(base, target: Optional[str]) -> tuple:
 
 def stage_lines(kind: str, stage: str, *, base, from_attempt=None,
                 cold: bool = False, target: Optional[str] = None,
-                prepped: bool = False) -> List[str]:
+                prepared: bool = False) -> List[str]:
     """What a person types next for ``stage``: its prep -- what it continues
-    from and the machine, as chosen -- unless it is ``prepped`` already,
+    from and the machine, as chosen -- unless it is ``prepared`` already,
     which prep would refuse (`job-system.md` § 5.0); then its launch, and for
     a benchmark the verdict's read.  The lines Task setup shows beside each
     stage, composed here as the terminal composes its own (`task-setup.md`
     § 11; W55 B4: the page composes none)."""
     out = []
-    if not prepped:
+    if not prepared:
         flags = ((("--from", from_attempt) if from_attempt else ())
                  + (("--cold",) if cold else ())
                  + target_flags(base, target))
-        out.append(command("prep", kind, stage, base=base, flags=flags))
+        out.append(command("prep", *words_for(kind, stage), base=base,
+                           flags=flags))
     out += launch_lines(kind, stage, base=base, target=target)
-    if kind == "bench":
-        out.append(command("summarize", "bench", stage, base=base))
+    if kind == BENCH:
+        out.append(command("summarize", BENCH, stage, base=base))
     return out
 
 
-__all__ = ["PROG", "bundle_flag", "command", "configured_mode",
+__all__ = ["PROG", "TASK", "BENCH", "words_for", "bundle_flag", "command",
+           "configured_mode",
            "launch_lines", "lines", "run_first", "name_a_stage",
            "block", "rollback", "stage_lines", "takes_a_queue",
            "target_flags"]

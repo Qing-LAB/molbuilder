@@ -2,8 +2,8 @@
 says about it (`process/testing.md` § 6: a test about what a run ended as,
 produced or shows makes that run with the engine, through the road).
 
-``jobset init`` (flat, the shipped `publishable` ladder) -> ``prep run
-coarse`` -> ``launch run coarse --mode direct`` -> ``prep run medium``, on an
+``jobset init`` (flat, the shipped `publishable` ladder) -> ``prep task
+coarse`` -> ``launch task --stage coarse --mode direct`` -> ``prep task --stage medium``, on an
 H2 in a 10 Å box, isolated on every axis, its first atom held: the coarse
 stage's run beside the medium stage's deck in one folder, SIESTA's own files
 -- named by ``SystemLabel`` -- among ours.  And a second calculation whose
@@ -74,15 +74,15 @@ def road(isolated_projects_root_module, tmp_path_factory):
                    "--stage-strategy", "publishable")
         assert r.exit_code == 0, r.output
         _one_rank(flat)
-        r = jobset("prep", "run", "coarse", "--bundle", flat,
+        r = jobset("prep", "task", "--stage", "coarse", "--bundle", flat,
                    "--target", "this")
         assert r.exit_code == 0, r.output
-        r = jobset("launch", "run", "coarse", "--bundle", flat,
+        r = jobset("launch", "task", "--stage", "coarse", "--bundle", flat,
                    "--mode", "direct", "--yes")
         assert r.exit_code == 0, r.output
         assert ">> End of run" in (flat / "H2_01_coarse-run0.out").read_text(
             errors="replace"), "the coarse run did not reach its end"
-        r = jobset("prep", "run", "medium", "--bundle", flat,
+        r = jobset("prep", "task", "--stage", "medium", "--bundle", flat,
                    "--target", "this")
         assert r.exit_code == 0, r.output
 
@@ -98,10 +98,10 @@ def road(isolated_projects_root_module, tmp_path_factory):
         set_template_value(capped / "H2.template.toml", "relax_steps", "1")
         set_template_value(capped / "H2.template.toml", "continue_retries",
                            "0")
-        r = jobset("prep", "run", "coarse", "--bundle", capped,
+        r = jobset("prep", "task", "--stage", "coarse", "--bundle", capped,
                    "--target", "this")
         assert r.exit_code == 0, r.output
-        jobset("launch", "run", "coarse", "--bundle", capped,
+        jobset("launch", "task", "--stage", "coarse", "--bundle", capped,
                "--mode", "direct", "--yes")
         assert (capped / "H2_01_coarse-run0.out").is_file(), \
             sorted(p.name for p in capped.iterdir())

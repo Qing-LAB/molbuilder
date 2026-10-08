@@ -207,7 +207,7 @@ class TestPickingThisMachineIsAnAnswer:
     carries.  Forcing this door to `LOCAL_TARGET` on 2026-09-02 threw that
     away and a GPU grid stopped resolving.  But `machine_for` raises
     `AmbiguousTarget` for `None` when named records exist and the folder has
-    no snapshot -- so on a not-yet-prepped calculation the card showed an
+    no snapshot -- so on a not-yet-prepared calculation the card showed an
     ambiguity refusal naming a `--target` flag nobody can type in a browser,
     beside a Prep button that worked, because prep had been told the answer
     and this door had discarded it.
@@ -238,7 +238,7 @@ class TestPickingThisMachineIsAnAnswer:
 
     @staticmethod
     def _unprepped(bundle):
-        """A described calculation that has not been prepped: no snapshot."""
+        """A described calculation that has not been prepared: no snapshot."""
         (bundle / "environment.json").unlink()
         return bundle
 
@@ -345,7 +345,7 @@ def test_the_prep_door_reads_the_FILE_and_not_a_posted_document(client, bundle):
     (bundle / "task.json").write_text(json.dumps(d, indent=2))
 
     r = client.post("/api/task-setup/prep", json={
-        "dest": str(bundle), "kind": "run", "stage": "coarse", "plan": True,
+        "dest": str(bundle), "kind": "task", "stage": "coarse", "plan": True,
         # a document saying something ELSE -- it must be ignored
         "task": {"stages": [{"name": "coarse", "execution": {"mpi_np": 999}}]},
     })
@@ -383,7 +383,7 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
         Prep of that plan writes, and no other."""
         _runnable(bundle)
         r = client.post("/api/task-setup/prep", json={
-            "dest": str(bundle), "kind": "run", "stage": "coarse",
+            "dest": str(bundle), "kind": "task", "stage": "coarse",
             "plan": True})
         assert r.status_code == 200, r.get_data(as_text=True)
         pv = r.get_json()
@@ -391,7 +391,7 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
         assert "#SBATCH -n 4" in header and "#SBATCH -p short" in header, (
             "the run lost its A13 block: " + repr(header))
         r = client.post("/api/task-setup/prep", json={
-            "dest": str(bundle), "kind": "run", "stage": "coarse",
+            "dest": str(bundle), "kind": "task", "stage": "coarse",
             "plan_id": pv["plan_id"]})
         assert r.status_code == 200, r.get_data(as_text=True)
         written = [ln.strip() for sb in bundle.rglob("01_coarse/*.sbatch")
@@ -402,9 +402,9 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
         # card from the folder (`job-system.md` § 6.0).
         placed = client.get("/api/task-setup/folder",
                             query_string={"dir": str(bundle)}).get_json()
-        line = ((placed.get("prepped") or {}).get("placed") or {}).get(
+        line = ((placed.get("prepared") or {}).get("placed") or {}).get(
             "coarse") or ""
-        assert line.startswith("placed on short ("), placed.get("prepped")
+        assert line.startswith("placed on short ("), placed.get("prepared")
 
 
 class TestThePlanComesFromTheProducer:
@@ -428,7 +428,7 @@ class TestThePlanComesFromTheProducer:
 
     def test_every_stage_shows_the_ONE_allocation(self, client):
         """§ 6.8a: the calculation asks the scheduler for one queue, one
-        wall, one memory.  `prep run <stage>` is already per stage, so a
+        wall, one memory.  `prep task <stage>` is already per stage, so a
         rung that wants a different wall says so on its own command."""
         d = _plan(client, _PLAN_TASK)
         for row in d["stages"]:
@@ -507,7 +507,7 @@ def test_the_attempts_door_answers_from_the_DECLARED_shape(client, bundle):
     row = body["stages"][first]
     assert row["token"] == "01_" + first
     assert row["dir"] == "01_" + first
-    assert row["attempts"] == 0, "nothing is prepped in this fixture"
+    assert row["attempts"] == 0, "nothing is prepared in this fixture"
 
 
 def test_a_cell_this_box_cannot_hold_says_why_on_a_machine_with_no_queues():

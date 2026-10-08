@@ -1,7 +1,7 @@
 """The vibration calculation's E2E — the spectra-migration plan's P1 bar.
 
 Water, on this workstation, through the WHOLE framework loop:
-``init --calculation vibration`` → ``prep run freq`` →
+``init --calculation vibration`` → ``prep task --stage freq`` →
 ``launch --mode direct`` → a schema-5 ``.spectra.json`` in the attempt
 directory, every phase complete, loadable through the Results door.  Two
 runs: the default (Raman) and the DECOUPLED IR-only run the 2026-08-20
@@ -93,10 +93,10 @@ def _prep_and_run(bundle):
 
     from molbuilder.jobset._cli import jobset_group
     r = CliRunner().invoke(jobset_group,
-                           ["prep", "run", "freq", "--bundle", str(bundle)])
+                           ["prep", "task", "--stage", "freq", "--bundle", str(bundle)])
     assert r.exit_code == 0, r.output
     r = CliRunner().invoke(jobset_group,
-                           ["launch", "run", "freq", "--bundle", str(bundle),
+                           ["launch", "task", "--stage", "freq", "--bundle", str(bundle),
                             "--mode", "direct", "--yes"])
     assert r.exit_code == 0, r.output
     art = bundle / "01_freq" / "run-0" / "W.spectra.json"
@@ -635,7 +635,7 @@ def test_a_setting_that_enters_nothing_is_said_to_at_prep(tmp_path,
                                     '\ntype = "float"\nvalue = 500.0\n', 1)
              + t[j:])
         tpl.write_text(t)
-        r = CliRunner().invoke(jobset_group, ["prep", "run", "freq",
+        r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", "freq",
                                               "--bundle", str(bundle)])
         assert r.exit_code == 0, r.output
         said[bool(held)] = (
@@ -647,7 +647,7 @@ def test_a_setting_that_enters_nothing_is_said_to_at_prep(tmp_path,
 def test_a_hartree_fock_deck_names_no_functional(tmp_path, monkeypatch):
     """`engines/vibration.md` § 4.10 (V1.8): the level of theory is one
     answer, `is_dft`.  Described as Hartree-Fock with the functional changed
-    to the hybrid PBE0 and the grid to 3, the prepped deck's header and
+    to the hybrid PBE0 and the grid to 3, the prepared deck's header and
     Methods paragraph name Hartree-Fock and no functional, its constants
     carry no functional and no grid, prep says the changed functional enters
     nothing, and the grid advisory -- which a hybrid DFT run at level 3
@@ -682,7 +682,7 @@ def test_a_hartree_fock_deck_names_no_functional(tmp_path, monkeypatch):
             t = (t[:i] + t[i:j].replace(f"value = {old}", f"value = {new}", 1)
                  + t[j:])
         tpl.write_text(t)
-        r = CliRunner().invoke(jobset_group, ["prep", "run", "freq",
+        r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", "freq",
                                               "--bundle", str(bundle)])
         assert r.exit_code == 0, r.output
         assert "functional = 'PBE0' has no effect here" in r.output, r.output
@@ -743,7 +743,7 @@ def test_the_listed_modes_get_the_probe_and_no_other(tmp_path, monkeypatch):
 
     _answer("0, 2")
     r = CliRunner().invoke(jobset_group,
-                           ["prep", "run", "freq", "--bundle", str(bundle)])
+                           ["prep", "task", "--stage", "freq", "--bundle", str(bundle)])
     assert r.exit_code != 0, r.output
     assert "can't be read: 0 is below 1" in r.output, r.output
     assert not list((bundle / "01_freq").glob("*.py")), "a deck was written"

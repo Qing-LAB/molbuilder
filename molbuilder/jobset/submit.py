@@ -66,12 +66,12 @@ from .planned import Plan, found
 from ..paths import attempt_dir
 from ..runfiles import FIRST_ATTEMPT, LAUNCH_DIR, GroupNames, RunNames
 from .materialize import open_container
-from .commands import command as _cmd, rollback
+from .commands import command as _cmd, rollback, words_for
 
 
 class SubmitError(Exception):
     """A JobSet could not be submitted (bad mode, unknown domain, missing
-    prepped wrapper, or sbatch failure)."""
+    prepared wrapper, or sbatch failure)."""
 
 
 @dataclass
@@ -192,7 +192,7 @@ ASK_MAX_QUERIES = 24
 def _no_sbatch(what: str, name: str, *, base, told) -> str:
     """The one answer to *there is no scheduler header*, whichever door
     finds it missing (`job-system.md` § 6.1): prep withholds the
-    ``.sbatch`` where the machine it prepped for names no queue, or where
+    ``.sbatch`` where the machine it prepared for names no queue, or where
     it was told to (``prep --no-sbatch``) -- each said with its own way
     back.  A machine with a queue is another machine, and a
     calculation is set to the machine of its first prep (`configuration.md`
@@ -208,12 +208,12 @@ def _no_sbatch(what: str, name: str, *, base, told) -> str:
         # THE MACHINE NAMES A QUEUE, so prep was told to write no header
         # (`prep --no-sbatch`, `job-system.md` § 6.1's second answer).
         return (f"{what}: there is no scheduler header ({name}) -- it was "
-                f"prepped with --no-sbatch.  To run it here:\n{here}\n"
+                f"prepared with --no-sbatch.  To run it here:\n{here}\n"
                 f"  To send it to a queue, prep it again without "
-                f"--no-sbatch -- a prepped stage is not prepped again: "
+                f"--no-sbatch -- a prepared stage is not prepared again: "
                 + rollback("its prep", base=base))
     return (f"{what}: there is no scheduler header ({name}) -- the "
-            f"machine it was prepped for names no queue (its record "
+            f"machine it was prepared for names no queue (its record "
             f"says `workstation`, job-system.md § 6.1).  To run it here:\n"
             f"{here}\n  For a machine with a queue, prep it for that "
             f"machine (--target, its record's name) -- a calculation is "
@@ -672,14 +672,14 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
                 f"trial {job.name!r}: already launched -- {said} records "
                 f"it.  A trial measures its point ONCE (project-layout.md "
                 f"§ 1.5: immutable once it has run); read the sweep back "
-                f"with {read_back}.  To measure it again -- a prepped "
-                f"benchmark is not prepped again (job-system.md § 5.0): "
+                f"with {read_back}.  To measure it again -- a prepared "
+                f"benchmark is not prepared again (job-system.md § 5.0): "
                 + rollback("the benchmark's prep", base=base))
         raise SubmitError(
             f"trial {job.name!r}: {where.name} has already been launched "
             f"({said}).  A measurement is immutable once it has run.\n"
             f"  read what it measured:\n    {read_back}\n"
-            f"  measure it again -- a prepped benchmark is not prepped again "
+            f"  measure it again -- a prepared benchmark is not prepared again "
             f"(job-system.md § 5.0): "
             + rollback("the benchmark's prep", base=base))
     if not ns:
@@ -691,7 +691,7 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
                 f"job {job.name!r}: no attempt is open under "
                 f"{container.name}/ -- a hierarchical stage runs in run-<n>, "
                 f"never in its own container (project-layout.md § 1.5, "
-                f"1.6), and a prepped stage is not prepped again: "
+                f"1.6), and a prepared stage is not prepared again: "
                 + rollback("its prep", base=base))
         # A FLAT STAGE: its runs share the calculation's folder, each its
         # number (`project-layout.md` § 1.6.1).
@@ -730,7 +730,7 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
             f"{job.name}: launched again warm, it continues from {source} "
             f"-- which is impossible here:\n  {e}\n  Launch it again cold "
             f"instead:\n    "
-            + _cmd("launch", "run", job.name, base=base, flags=("--cold",))
+            + _cmd("launch", *words_for("task", job.name), base=base, flags=("--cold",))
             ) from e
     return _member(job, container, opened.dir, True, last,
                    run=next_run(opened.dir, names), again=True,
@@ -774,7 +774,7 @@ def _carry_the_gather(source: Path, attempt: Path, writes: Plan, *,
                 f"{_rel(source, base)}: {g['file']}, gathered for it from "
                 f"{g['from']}, is not there -- launched again, the stage "
                 f"takes the inputs gathered for its run, and they are gone.  "
-                f"A prepped stage is not prepped again: "
+                f"A prepared stage is not prepared again: "
                 + rollback("its prep", base=base))
         writes.copy(f, attempt / g["file"])
     if took:
@@ -906,7 +906,7 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
                 record: bool = True,
                 cold: bool = False,
                 group: Optional[Sequence[str]] = None) -> LaunchPlan:
-    """STEP 1 of `job-system.md` § 6.0 -- the whole launch of a prepped
+    """STEP 1 of `job-system.md` § 6.0 -- the whole launch of a prepared
     ``jobset`` rooted at ``base_dir``, planned with nothing written: the
     work, its submissions and their members, the gates, the queue, the exact
     lines and every script the send will write.  A refusal can only come
@@ -1401,7 +1401,7 @@ def _place(base: Path, want, *, gpu_side: bool, named=None,
         placed = place(_rc.get_routing(project_dir=base), want,
                        prefer_gpu=gpu_side, named=named)
         # R9's SECOND record.  Routing reads the calculation scope first, so
-        # a prepped bundle routes against the snapshot beside it -- which is
+        # a prepared bundle routes against the snapshot beside it -- which is
         # right for reproducibility and useless as a re-check, because it is
         # the same record the request was built against.  What will actually
         # enforce the limits is THIS machine's own record, so the re-admission
@@ -1419,8 +1419,8 @@ def _place(base: Path, want, *, gpu_side: bool, named=None,
             + "\n  Nothing was submitted -- the scheduler would refuse it.  "
               "Change the wall or the memory with --time / --mem, or name "
               "another of the record's queues with --domain.  The ranks "
-              "and cores are its prep's, and a prepped stage is not "
-              "prepped again: " + rollback("its prep", base=base)) from None
+              "and cores are its prep's, and a prepared stage is not "
+              "prepared again: " + rollback("its prep", base=base)) from None
 
 
 def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
@@ -1437,7 +1437,7 @@ def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
     evidence is not evidence of a smaller limit (R3).
 
     ``local_only=True`` -- this asks what the box RUNNING THIS PROCESS knows,
-    never what the calculation is prepped for.
+    never what the calculation is prepared for.
     """
     from .. import runtime_config as _rc
     from ..scheduler import admits
@@ -1462,7 +1462,7 @@ def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
               f"and its limits are the ones enforced here.  Change the wall "
               f"or the memory with --time / --mem, or name another of the "
               f"record's queues with --domain (the ranks and cores are its "
-              f"prep's, and a prepped stage is not prepped again) -- or, to "
+              f"prep's, and a prepared stage is not prepared again) -- or, to "
               f"prepare against this machine's record (configuration.md "
               f"M-3), " + rollback("the calculation's first prep", base=base))
 
@@ -1666,7 +1666,7 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
             raise SubmitError(
                 f"trial {job.name!r} states no rank or core count -- a "
                 f"benchmark's walk hands each trial its own (-np/-omp), "
-                f"and a prepped benchmark is not prepped again: "
+                f"and a prepared benchmark is not prepared again: "
                 + rollback("the benchmark's prep", base=base))
         # THE GATES GUARD EVERY DOOR (review 2026-08-21): a trial refused
         # when sent by name must not go silently by riding a walk.  And the
@@ -1683,7 +1683,7 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
         if not (m.read_from / run_name).exists():
             raise SubmitError(
                 f"trial {job.name!r}: {run_name} is not in {m.read_from}, "
-                f"and a prepped benchmark is not prepped again: "
+                f"and a prepared benchmark is not prepared again: "
                 + rollback("the benchmark's prep", base=base))
         plan.reads += [_as_found(m.read_from / f, base)
                        for f in (job.script, run_name)]
@@ -1831,7 +1831,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
                          _into_launch(header, gn))
     elif plan.mode == "ask":
         # ASKED WITH THE FIRST TRIAL'S HEADER, the shelf's being written
-        # only when it is sent: a benchmark prepped with --no-sbatch has
+        # only when it is sent: a benchmark prepared with --no-sbatch has
         # none, and a question about a file that does not exist answers
         # nothing -- refused, saying why.
         first = pending[0]
@@ -1839,7 +1839,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
                 / first.names.name(".sbatch")).exists():
             raise SubmitError(
                 f"{name}: there is no header to ask the scheduler about -- "
-                f"the benchmark was prepped with --no-sbatch, and a "
+                f"the benchmark was prepared with --no-sbatch, and a "
                 f"shelf's own header is written when it is sent.  Send "
                 f"it with --mode submit.")
 
@@ -1880,7 +1880,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     failure poisoned — a benchmark's points are independent, a chain's
     are not.
 
-    Every point's attempt must be OPEN (``prep run device`` opens them
+    Every point's attempt must be OPEN (``prep task device`` opens them
     all); a scan launched before is launched again as a stage is -- each
     point's next attempt opened, warm from its own latest or ``cold``
     (`job-system.md` § 5.4) -- and the deck/launch agreement gate guards
@@ -1912,7 +1912,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     if job is None:
         raise SubmitError(
             f"the {stage} stage is not in the plan -- run "
-            f"`{_cmd('prep', 'run', stage, base=base)}` first.")
+            f"`{_cmd('prep', *words_for('task', stage), base=base)}` first.")
     # The stage's folder, from the one door (`materialize.stage_home`).
     from .materialize import stage_home
     home = stage_home(base, task, stage)
@@ -1934,7 +1934,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
             raise SubmitError(
                 f"bias point {bias_token(v)}: no attempt is open under "
                 f"{token}/{bias_token(v)}/ -- the scan launches whole, so "
-                f"every point needs one, and a prepped stage is not prepped "
+                f"every point needs one, and a prepared stage is not prepared "
                 f"again: " + rollback("its prep", base=base))
         try:
             check_launch_matches_deck(att, job)
@@ -1967,7 +1967,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                 f"continues from {att.relative_to(base)} -- which is "
                 f"impossible here:\n  {e}\n  Launch it again cold "
                 f"instead:\n    "
-                + _cmd("launch", "run", stage, base=base, flags=("--cold",))
+                + _cmd("launch", *words_for("task", stage), base=base, flags=("--cold",))
                 ) from e
         members.append(_Member(
             job, vdir, opened.dir, True, att, names=names,
@@ -2164,11 +2164,11 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
     if not recorded or set(recorded) != set(names) or any(
             j is None or j.group != recorded for j in jobs):
         raise SubmitError(
-            f"{', '.join(names)} were not prepped as one group -- a group "
+            f"{', '.join(names)} were not prepared as one group -- a group "
             f"is named at prep, and launched by the names its prep was told "
             f"(project-layout.md § 1.6.6)."
             + (f"  {names[0]}'s group:\n"
-               + block(launch_lines("run", *recorded, base=base))
+               + block(launch_lines("task", *recorded, base=base))
                if recorded else ""))
     names = list(recorded)
     jobs = [next(j for j in jobset.jobs if j.name == n) for n in names]
@@ -2294,10 +2294,10 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
             # (`project-layout.md` § 1.6.6).
             from .commands import block, launch_lines
             raise SubmitError(
-                f"`{job.name}` was prepped in a group with "
+                f"`{job.name}` was prepared in a group with "
                 f"{', '.join(n for n in job.group if n != job.name)} -- "
                 f"they share one job, launched together:\n"
-                + block(launch_lines("run", *job.group, base=base))
+                + block(launch_lines("task", *job.group, base=base))
                 + "\n  To launch it alone, prep it alone: "
                 + rollback("the group's prep", base=base))
         m = _plan_member(jobset, base, job, mode=mode, writes=plan.writes,
@@ -2329,7 +2329,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                         else "its prep")
                 raise SubmitError(
                     f"job {job.name!r}: {run_name} is not in "
-                    f"{m.read_from}, and a prepped stage is not prepped "
+                    f"{m.read_from}, and a prepared stage is not prepared "
                     f"again: " + rollback(what, base=base))
             plan.submissions.append(Submission(
                 m.name, ["bash", run_name] + _run_sh_args(

@@ -316,7 +316,7 @@ def engine_of(directory) -> str:
     nothing declared**, for a directory molbuilder did not write.  It
     never contradicts a declaration, because it is evidence of a
     different kind: files outlive the run that wrote them, so a stale
-    ``.fdf`` beside a freshly re-prepped PySCF deck is not a second
+    ``.fdf`` beside a freshly re-prepared PySCF deck is not a second
     opinion, it is litter.
     """
     directory = Path(directory)

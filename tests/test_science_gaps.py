@@ -110,7 +110,7 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
 
     def prep(answers=None):
-        r = run.invoke(jobset_group, ["prep", "run", "freq", "--bundle",
+        r = run.invoke(jobset_group, ["prep", "task", "--stage", "freq", "--bundle",
                                       str(bundle)], input=answers)
         assert r.exit_code == 0, r.output
         return r.output, next(bundle.rglob("A*.py")).read_text()
@@ -118,7 +118,7 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
     out, deck = prep("y\n\n")
     assert "[config.ecp]" in out and "ecp = 'def2-SVP'" in out, out
     assert "ecp        =" not in deck
-    # DECLARED AS IT SAYS, and prepped anew by going back (`job-system.md`
+    # DECLARED AS IT SAYS, and prepared anew by going back (`job-system.md`
     # § 5.0): the state saved before the prep, restored, then the template.
     from molbuilder.checkpoint import Repo
     from molbuilder.cli import cli

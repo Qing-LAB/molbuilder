@@ -390,7 +390,7 @@ def test_init_refuses_a_folder_that_already_holds_a_calculation(
     description stays as it was.  Through the verb (`support.road`).
 
     PREVENTS (the W52 review, P1a-12): `init` re-describing a calculation
-    silently, under whatever had been prepped from it.
+    silently, under whatever had been prepared from it.
 
     MUTATION THIS MUST FAIL AGAINST: the refusal removed (the second `init`
     rewrites task.json)."""

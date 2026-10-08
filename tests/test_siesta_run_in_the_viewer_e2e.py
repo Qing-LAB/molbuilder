@@ -4,7 +4,7 @@ from its one source (`model/parse.md` § 2a P-T2 and P-T4, `web/results.md`
 by the reader the run record reads them by; the badge's "ended" time is the
 output's own ``>> End of run``.
 
-``jobset init`` -> ``prep run coarse`` -> ``launch run --mode direct`` on an
+``jobset init`` -> ``prep task --stage coarse`` -> ``launch task --mode direct`` on an
 H2 relaxation, then opened in the Results tab as a person opens it, in its
 folder.
 """
@@ -84,10 +84,10 @@ def finished(isolated_projects_root_module, tmp_path_factory):
         task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
                              "omp_threads": 1}
         (bundle / "task.json").write_text(json.dumps(task, indent=2))
-        r = _jobset("prep", "run", "coarse", "--bundle", str(bundle),
+        r = _jobset("prep", "task", "--stage", "coarse", "--bundle", str(bundle),
                     "--target", "this")
         assert r.exit_code == 0, r.output
-        r = _jobset("launch", "run", "coarse", "--bundle", str(bundle),
+        r = _jobset("launch", "task", "--stage", "coarse", "--bundle", str(bundle),
                     "--mode", "direct", "--yes")
         assert r.exit_code == 0, r.output
         attempt = bundle / "01_coarse" / "run-0"

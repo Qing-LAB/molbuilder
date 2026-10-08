@@ -1,6 +1,6 @@
 /* fc-sweep.js — a SIESTA vibration's displacement sweep, summarized.
  *
- * `jobset summarize run` on a vibration with two or more force-constant stages
+ * `jobset summarize task` on a vibration with two or more force-constant stages
  * writes `<label>.fc-sweep.json` at the calculation root
  * (`spectra/displacement_sweep.py`, `engines/vibration.md` § 5.9): each
  * stage and what it varied, each mode's frequency at every stage (matched by

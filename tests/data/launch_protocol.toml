@@ -26,8 +26,8 @@ omp_threads = 1
 [[case]]
 name = "a dry run of a launch again writes nothing: no attempt opened, no record, no line"
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 launch = []
 launch_mode = "direct"

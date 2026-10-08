@@ -1,7 +1,7 @@
 """``GET /api/bench/summary`` — the sweep, composed for the Results tab.
 
 Contract: ``docs/web/bench-summary.md``.  The composition itself is
-``summarize.sweep_view`` and is tested against a real prepped sweep in
+``summarize.sweep_view`` and is tested against a real prepared sweep in
 ``tests/test_prep_bench_fold.py``; what is tested HERE is what the route
 owns and the verb does not:
 

@@ -757,7 +757,7 @@ class TestTheContractEndpoint:
           a container is not a run, and inventing one is what made a
           `pseudos/` folder report *running* (6ddc551a) -- and its ladder;
         * a PREPPED stage's attempt is a run before it has written a byte:
-          ``pending``, prepped and never launched, as its missing launch
+          ``pending``, prepared and never launched, as its missing launch
           record says (§ 1.6) -- not *not mine*, which would make every
           consumer asking about a rung before it runs raise;
         * each file says what it is: the attempt's deck is the catalogue's,
@@ -773,7 +773,7 @@ class TestTheContractEndpoint:
         root, client = isolated
         write_machine_record()
         bundle = describe_calculation(tmp_path, monkeypatch)
-        got = jobset("prep", "run", "coarse", "--bundle", bundle,
+        got = jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
                      "--target", "this")
         assert got.exit_code == 0, got.output
 
@@ -788,7 +788,7 @@ class TestTheContractEndpoint:
         body = client.get("/api/results/dir?path=" + str(attempt)).get_json()
         assert body["place"]["role"] == "run"
         assert (body["status"]["state"], body["status"]["detail"]) == (
-            "pending", "prepped, not launched (no launch record)"), body["status"]
+            "pending", "prepared, not launched (no launch record)"), body["status"]
         about = {f["name"]: f["about"] for f in body["files"]}
         assert about["H2_01_coarse.fdf"]["ours"] is True, about
         assert about["calcdir.json"]["ours"] is True, about

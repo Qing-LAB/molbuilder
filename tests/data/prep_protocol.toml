@@ -1,14 +1,14 @@
 # THE PREP PROTOCOL -- `docs/execution/job-system.md` § 5.0.
 #
-# A prepped stage is not prepped again: a redo is a rollback -- the state
+# A prepared stage is not prepared again: a redo is a rollback -- the state
 # saved before its prep, restored -- and a prep anew (user, 2026-10-02:
 # "refuse it, redo via rollback").  Before prep writes, it saves the folder's
 # state -- always, the note led by the time it was taken -- and says so
 # (`checkpointing.md` § 9; user, 2026-10-03).  Every check and every decision
 # is made before anything is written, so a refused prep writes nothing but its
 # line in the ledger and there is nothing to put back: the stage is not
-# counted prepped, the calculation is not set to the machine, the prep is not
-# recorded as prepped (rule 3).
+# counted prepared, the calculation is not set to the machine, the prep is not
+# recorded as prepared (rule 3).
 #
 # `tests/test_prep_protocol.py` runs every case down the road a person runs,
 # through the one runner every contract table shares (`tests/support/road.py`,
@@ -47,13 +47,13 @@ node_types = [{ cores = 48, nodes = 5, gpu = { a100 = 4 } }]
 # ===================================================================== #
 
 [[case]]
-name = "a prepped stage is not prepped again -- the refusal names the way back, a rollback"
-before = [["prep", "run", "coarse"]]
-refused = ["stage 'coarse' is already prepped", "a prepped stage is not prepped again", "molbuilder checkpoint list"]
+name = "a prepared stage is not prepared again -- the refusal names the way back, a rollback"
+before = [["prep", "task", "--stage", "coarse"]]
+refused = ["stage 'coarse' is already prepared", "a prepared stage is not prepared again", "molbuilder checkpoint list"]
 
 [[case]]
 name = "a later prep leaves an earlier stage's files as that stage's own prep wrote them -- its deck, its run script, its monitor"
-before = [["prep", "run", "coarse"]]
+before = [["prep", "task", "--stage", "coarse"]]
 stage = "medium"
 prep = ["--cold"]
 kept = ["01_coarse/H2_01_coarse.fdf", "01_coarse/H2_01_coarse.run.sh", "01_coarse/mb_monitor.pyz"]
@@ -63,19 +63,19 @@ name = "...in the flat shape too, where the earlier stage's run script is the ru
 shape = "flat"
 machine = "workstation"
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 kept = ["H2_01_coarse.fdf", "H2_01_coarse.run.sh"]
 
 [[case]]
-name = "...a prepped benchmark too"
+name = "...a prepared benchmark too"
 bench = { mpi_np = [2], omp_threads = [1] }
 before = [["prep", "bench", "coarse"]]
-refused = ["the benchmark of stage 'coarse' is already prepped", "molbuilder checkpoint list"]
+refused = ["the benchmark of stage 'coarse' is already prepared", "molbuilder checkpoint list"]
 
 [[case]]
-name = "a first prep refused at its last step writes nothing -- no stage folder, no data files, no copy of the machine's record, no plan, no log; not counted prepped, not recorded as prepped, its shape still free: the build installed and the machine re-probed, as the refusal says, the prep is taken"
+name = "a first prep refused at its last step writes nothing -- no stage folder, no data files, no copy of the machine's record, no plan, no log; not counted prepared, not recorded as prepared, its shape still free: the build installed and the machine re-probed, as the refusal says, the prep is taken"
 template = { diag_algorithm = "ELPA-1STAGE" }
 run = { use_gpu = true, gpu_count = 1 }
 allocation = { domain = "gpu" }
@@ -83,8 +83,8 @@ record = { conda_envs = ["molbuilder-siesta"] }
 refused = ["env is not installed", "re-probe that machine"]
 made_lacks = ["01_coarse", "pseudos", "environment.json", "job-set.json",
               "STAGE-PLAN.md", "H2_01_coarse.siesta.hierarchical.pipeline.log"]
-status_says = ["First incomplete stage: coarse, not prepped yet"]
-ledger_lacks = ["prepped"]
+status_says = ["First incomplete stage: coarse, not prepared yet"]
+ledger_lacks = ["prepared"]
 saved = { shape = "flat" }
 reprobed = { conda_envs = ["molbuilder-siesta", "molbuilder-siesta-gpu"] }
 
@@ -93,10 +93,10 @@ reprobed = { conda_envs = ["molbuilder-siesta", "molbuilder-siesta-gpu"] }
 # ===================================================================== #
 
 [[case]]
-name = "a stage described and not prepped is refused at launch by name, with its prep and its launch -- as status says"
+name = "a stage described and not prepared is refused at launch by name, with its prep and its launch -- as status says"
 launch = []
 launch_stage = "medium"
-launch_refused = ["stage 'medium' is not prepped yet", "molbuilder jobset prep run medium"]
+launch_refused = ["stage 'medium' is not prepared yet", "molbuilder jobset prep task --stage medium"]
 
 # ===================================================================== #
 #  A CALCULATION THAT HAS PRODUCED KEEPS ITS SHAPE                      #
@@ -104,15 +104,15 @@ launch_refused = ["stage 'medium' is not prepped yet", "molbuilder jobset prep r
 # ===================================================================== #
 
 [[case]]
-name = "a calculation with a prepped stage keeps its shape -- Task setup's Save refuses another, naming the way back"
+name = "a calculation with a prepared stage keeps its shape -- Task setup's Save refuses another, naming the way back"
 saved = { shape = "flat" }
-save_refused = ["shape is fixed once it has produced", "coarse is prepped", "molbuilder checkpoint list"]
+save_refused = ["shape is fixed once it has produced", "coarse is prepared", "molbuilder checkpoint list"]
 
 [[case]]
-name = "...a prepped benchmark is a prep too"
+name = "...a prepared benchmark is a prep too"
 bench = { mpi_np = [2], omp_threads = [1] }
 saved = { shape = "flat" }
-save_refused = ["shape is fixed once it has produced", "coarse is prepped"]
+save_refused = ["shape is fixed once it has produced", "coarse is prepared"]
 
 # ===================================================================== #
 #  THE SAVE, BEFORE PREP WRITES -- ALWAYS, AND SAID                     #
@@ -123,14 +123,14 @@ save_refused = ["shape is fixed once it has produced", "coarse is prepped"]
 
 [[case]]
 name = "before it writes, prep saves the folder's state -- its first, when it has none -- the note led by the time it was taken, and says so"
-said = ["the folder's state was saved first:", "before prep run coarse"]
-saved_states = ["{stamp} · before prep run coarse"]
+said = ["the folder's state was saved first:", "before prep task coarse"]
+saved_states = ["{stamp} · before prep task coarse"]
 
 [[case]]
 name = "...a new state when the folder changed since the one it stands at"
-before = [["prep", "run", "medium", "--cold"]]
+before = [["prep", "task", "--stage", "medium", "--cold"]]
 said = ["the folder's state was saved first:"]
-saved_states = ["{stamp} · before prep run coarse", "{stamp} · before prep run medium"]
+saved_states = ["{stamp} · before prep task coarse", "{stamp} · before prep task medium"]
 
 [[case]]
 name = "...and none when nothing changed: the state it stands at is named"
@@ -149,14 +149,14 @@ saved_states = ["set up"]
 
 [[case]]
 name = "a stage removed after its prep leaves every later number as it was -- #2 is still the folder 02_medium"
-before = [["prep", "run", "coarse", "--cold"], ["prep", "run", "medium", "--cold"]]
+before = [["prep", "task", "--stage", "coarse", "--cold"], ["prep", "task", "--stage", "medium", "--cold"]]
 removed = ["coarse"]
 stage = "#2"
-refused = ["stage 'medium' is already prepped (02_medium/)"]
+refused = ["stage 'medium' is already prepared (02_medium/)"]
 
 [[case]]
 name = "a stage added after production takes the next number -- the stage with files keeps its own"
-before = [["prep", "run", "coarse", "--cold"]]
+before = [["prep", "task", "--stage", "coarse", "--cold"]]
 added = [{ name = "extra", at = 0 }]
 stage = "extra"
 prep = ["--cold"]
@@ -245,6 +245,6 @@ refused = ["declares mpi_np and not omp_threads", "Declare omp_threads's points 
 [[case]]
 name = "stages named together where one builds on another are refused, by name, before anything is written"
 stage = "coarse"
-prep = ["medium"]
+prep = ["--stage", "medium"]
 refused = ["`medium` builds on `coarse`, so they cannot share one job", "Prep them apart"]
 made_lacks = ["job-set.json", "01_coarse"]

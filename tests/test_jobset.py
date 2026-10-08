@@ -249,7 +249,7 @@ def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
         isolated_projects_root):
     """The report tells a new attempt from one an earlier prep left behind.
 
-    GOAL: every `prep run` of the 2026-09-25 transport ladder said "(reused --
+    GOAL: every `prep task` of the 2026-09-25 transport ladder said "(reused --
     not launched yet)" of a directory it had just made -- `prep_calculation`
     opens the attempt, and the CLI opened it again for its report and found it
     unlaunched.  CONTRACT: `Attempt.fresh` (`jobset/materialize.py`) is False
@@ -266,7 +266,7 @@ def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
                                "--shape", "hierarchical", "--engine", "pyscf",
                                "--calculation", "optimization"])
     assert init.exit_code == 0, init.output
-    prep = ["prep", "run", "coarse", "--bundle", "P/optimization/h",
+    prep = ["prep", "task", "--stage", "coarse", "--bundle", "P/optimization/h",
             "--no-sbatch", "--cpus-per-task", "1"]
     first = runner.invoke(grp, prep)
     assert first.exit_code == 0, first.output
@@ -542,8 +542,8 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
     true, the laptop stops being a rehearsal and this test is how you find out.
 
     ON THE ROAD, two calculations -- so a function, not a row, which is one:
-    one description by `jobset init`, copied before anything was prepped, and
-    each prepped by `jobset prep` -- for this machine, a workstation, and for
+    one description by `jobset init`, copied before anything was prepared, and
+    each prepared by `jobset prep` -- for this machine, a workstation, and for
     `sol`, a cluster whose record names a queue, with the same way into an
     environment.
     """
@@ -576,7 +576,7 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
     task["allocation"] = {"domain": "cpu", "time": "04:00:00", "mem": "8G"}
     (hpc / "task.json").write_text(json.dumps(task, indent=2))
     for bundle, target in ((ws, "this"), (hpc, "sol")):
-        r = jobset("prep", "run", "coarse", "--bundle", bundle,
+        r = jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
                    "--target", target)
         assert r.exit_code == 0, r.output
     assert (hpc / "H2_01_coarse.sbatch").is_file(), "the cluster has no header"
@@ -642,14 +642,14 @@ def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(
     going, so the stage directory reported a FINISHED calculation as
     *Running*, permanently, and offered the stub to open.
 
-    Driven through `jobset init` -> `prep run` (`support.road`).
+    Driven through `jobset init` -> `prep task` (`support.road`).
 
     MUTATION THIS MUST FAIL AGAINST: copy instead of move, or leave the seed
     where it was rendered.
     """
     from support.road import describe_calculation, jobset
     bundle = describe_calculation(tmp_path, monkeypatch)
-    r = jobset("prep", "run", "coarse", "--bundle", bundle,
+    r = jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
                "--target", "this", "--np", "2", "--cpus-per-task", "1")
     assert r.exit_code == 0, r.output
     log = "H2_01_coarse.molwatch.log"

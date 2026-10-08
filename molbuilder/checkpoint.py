@@ -388,7 +388,7 @@ def _scan_subtree(path: Path) -> Tuple[List[str], List[str]]:
 
     * ``working_dirs`` -- subdirectories holding a working-dir marker
       (``.fdf`` / ``.py`` / ``.run.sh``).  Symlinked decks count, because a
-      prepped job directory links its deck in rather than copying it.
+      prepared job directory links its deck in rather than copying it.
     * ``git_repos`` -- subdirectories that are themselves repositories.  The
       walk does **not** descend into one: what is inside another repository is
       that repository's business.
@@ -1884,7 +1884,7 @@ def save_before(path, what: str, *, engine: Optional[str] = None,
     `prep`, at both its doors, once its checks have passed; Task setup's
     Save, before it writes the description.  The note is the time the state
     was taken, then what the act is about to change
-    (``2026-10-03 14:05:12 · before prep run tight``), so a state is found by
+    (``2026-10-03 14:05:12 · before prep task tight``), so a state is found by
     when and by what.  A folder with no history gets its first state; one
     whose state is saved and unchanged keeps standing where it stands, and
     that state is returned.  Raises :class:`CheckpointError` when the state

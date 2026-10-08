@@ -8,7 +8,7 @@ that ships embedded in the emitted script and beside the result:
   * the one renderer, composed before the run, emits the configured
     method/basis/dispersion text + the structure-conditional phrasings
     ("5 fixed Au atoms"); the level of theory under Hartree-Fock is
-    asserted on a prepped deck (`test_vibration_e2e.py`);
+    asserted on a prepared deck (`test_vibration_e2e.py`);
   * the engine fragment, handed over as text, is composed in.
 
 No PySCF / SCF anywhere -- prose composition only.

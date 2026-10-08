@@ -52,9 +52,9 @@ def _isolated(monkeypatch, tmp_path_factory):
 
 
 def _prep(calc, stage="coarse"):
-    """`prep run <stage>`, through the one entry, the launch shape stated
+    """`prep task <stage>`, through the one entry, the launch shape stated
     on the command line."""
-    return prep_stage(calc, "run", stage,
+    return prep_stage(calc, "task", stage,
                       allocation=Resources(mpi_np=8, cpus_per_task=1))
 
 

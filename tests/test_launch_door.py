@@ -69,7 +69,7 @@ def cluster(tmp_path, monkeypatch):
 
 
 def _prep(bundle, stage="coarse", *more):
-    r = jobset("prep", "run", stage, "--bundle", bundle, "--target", "this",
+    r = jobset("prep", "task", "--stage", stage, "--bundle", bundle, "--target", "this",
                *more)
     assert r.exit_code == 0, r.output
     return r
@@ -89,8 +89,8 @@ def _ledger(bundle):
 
 
 def test_the_queue_prep_baked_belongs_to_its_own_stage(cluster):
-    """`prep run coarse --domain debug` names coarse's queue -- not medium's.
-    Launched, coarse goes to `debug`; medium, prepped naming none, is
+    """`prep task --stage coarse --domain debug` names coarse's queue -- not medium's.
+    Launched, coarse goes to `debug`; medium, prepared naming none, is
     refused at its prep with the record's queues listed (a run on a
     scheduler names its queue, `architecture.md` § 5.2); named, it goes to
     its own.
@@ -99,16 +99,16 @@ def test_the_queue_prep_baked_belongs_to_its_own_stage(cluster):
     stage's row (medium sent to coarse's `debug`)."""
     bundle, calls = cluster
     _prep(bundle, "coarse", "--domain", "debug", "--time", "10m")
-    r = jobset("prep", "run", "medium", "--bundle", bundle,
+    r = jobset("prep", "task", "--stage", "medium", "--bundle", bundle,
                "--target", "this", "--cold")
     assert r.exit_code != 0, r.output
     assert "(the target's record lists: debug, htc)" in r.output, r.output
     _prep(bundle, "medium", "--cold", "--domain", "htc")
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
+    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                "--mode", "submit", "--dry-run")
     assert r.exit_code == 0, r.output
     assert _flag(_line(r.output), "-q") == "debug", r.output
-    r = jobset("launch", "run", "medium", "--bundle", bundle,
+    r = jobset("launch", "task", "--stage", "medium", "--bundle", bundle,
                "--mode", "submit", "--dry-run")
     assert r.exit_code == 0, r.output
     assert _flag(_line(r.output), "-q") == "public", r.output
@@ -124,12 +124,12 @@ def test_memory_is_sent_as_said_and_zero_is_the_whole_node(cluster):
     bundle, _calls = cluster
     _prep(bundle, "coarse", "--domain", "htc")
     for said, sent in (("64G", "--mem=64G"), ("0", "--mem=0")):
-        r = jobset("launch", "run", "coarse", "--bundle", bundle,
+        r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                    "--mode", "submit", "--domain", "htc", "--dry-run",
                    "--mem", said)
         assert r.exit_code == 0, (said, r.output)
         assert sent in _line(r.output), (said, r.output)
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
+    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc", "--dry-run",
                "--mem", "12Q")
     assert r.exit_code != 0 and "--mem:" in r.output, r.output
@@ -148,7 +148,7 @@ def test_direct_runs_what_was_typed_and_refuses_what_it_would_not_read(
     bundle, _calls = cluster
     _prep(bundle, "coarse", "--np", "4", "--cpus-per-task", "2",
           "--domain", "htc")
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
+    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                "--mode", "direct", "--dry-run")
     assert r.exit_code == 0, r.output
     run = next(ln.split() for ln in r.output.splitlines()
@@ -157,16 +157,16 @@ def test_direct_runs_what_was_typed_and_refuses_what_it_would_not_read(
     assert (_flag(run, "-np"), _flag(run, "-omp")) == ("4", "2"), run
     for flag, value in (("--domain", "htc"), ("--mem", "8G"),
                         ("--time", "1h")):
-        r = jobset("launch", "run", "coarse", "--bundle", bundle,
+        r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                    "--mode", "direct", flag, value)
         assert r.exit_code != 0 and flag in r.output, (flag, r.output)
 
     from molbuilder.runtime_config import write_config_scope
     write_config_scope({"launch": {"mode": "submit"}})
-    r = jobset("launch", "run", "coarse", "--bundle", bundle, "--dry-run")
+    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle, "--dry-run")
     assert r.exit_code == 0, r.output
     assert _flag(_line(r.output), "-q") == "public", r.output
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
+    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                "--mode", "direct", "--dry-run")
     assert r.exit_code == 0, r.output
 
@@ -196,7 +196,7 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
 
     def plan():                  # the queue its prep admitted: `debug`
         return plan_launch(js, bundle, mode="submit", only="coarse",
-                           told=dict(kind="run", stage="coarse", trial=None,
+                           told=dict(kind="task", stage="coarse", trial=None,
                                      mode="submit", flags=[]))
 
     shown = plan()

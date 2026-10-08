@@ -1,13 +1,13 @@
 """A SIESTA vibration's displacement sweep, summarized: how converged its force constants are.
 
 MODULE  spectra.displacement_sweep (L2; on the host, molbuilder installed)
-ROLE    `jobset summarize run` on a vibration calculation with two or more
+ROLE    `jobset summarize task` on a vibration calculation with two or more
         force-constant stages (`engines/vibration.md` § 5.9): read each stage's
         result where its run wrote it -- its spectrum and its raw force
         constants -- compare them as a function of what the stages varied
         (the displacement, the mesh), and write ``<label>.fc-sweep.json`` at the
         calculation root with the table printed
-USED-BY jobset/_cli.py (``summarize run``); the Results tab's sweep presenter
+USED-BY jobset/_cli.py (``summarize task``); the Results tab's sweep presenter
         reads the record (`lib/inspectors/fc-sweep.js`)
 
 WHY (`science/normal-modes.md` § 4b.6 C).  A force constant is a finite
@@ -200,7 +200,7 @@ def collect_sweep(base_dir, task, *,
                 if st.state == "finished":
                     entry["detail"] = (
                         f"the run finished without writing {spectrum_name} "
-                        f"({st.detail}) -- an attempt prepped before its job "
+                        f"({st.detail}) -- an attempt prepared before its job "
                         f"finished itself, which engines/vibration.md 5.5 "
                         f"finishes by hand")
                 failed.append(entry)
@@ -260,7 +260,7 @@ def collect_sweep(base_dir, task, *,
         # ONE GEOMETRY, or the comparison is not a displacement's: each
         # result's structure hash pins the geometry its force constants were
         # taken at (`engines/vibration.md` § 6.2), and each stage took the
-        # relax stage's NEWEST attempt when it was prepped (§ 5.2a) -- so a
+        # relax stage's NEWEST attempt when it was prepared (§ 5.2a) -- so a
         # relaxation re-run between two stages would be reported as the
         # displacement's effect.
         if res.structure_hash != ref.structure_hash:
@@ -278,9 +278,9 @@ def collect_sweep(base_dir, task, *,
                 f"a displacement sweep compares one geometry's force "
                 f"constants, and this would report the geometry's change as "
                 f"the displacement's.  Each force-constant stage takes the "
-                f"relax stage's newest attempt when it is prepped "
-                f"(engines/vibration.md 5.2a), and a prepped stage is not "
-                f"prepped again (job-system.md 5.0): to measure them at the "
+                f"relax stage's newest attempt when it is prepared "
+                f"(engines/vibration.md 5.2a), and a prepared stage is not "
+                f"prepared again (job-system.md 5.0): to measure them at the "
                 f"relaxation they should share, "
                 + rollback("their prep", base=base))
 

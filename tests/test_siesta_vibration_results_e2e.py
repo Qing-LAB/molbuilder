@@ -84,10 +84,10 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
     task["stages"] = [s for s in task["stages"] if s["name"] == "freq"]
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
     _tick_already_relaxed(bundle)
-    r = _jobset("prep", "run", "freq", "--bundle", str(bundle),
+    r = _jobset("prep", "task", "--stage", "freq", "--bundle", str(bundle),
                 "--target", "this")
     assert r.exit_code == 0, r.output
-    r = _jobset("launch", "run", "freq", "--bundle", str(bundle),
+    r = _jobset("launch", "task", "--stage", "freq", "--bundle", str(bundle),
                 "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
     attempt = bundle / "01_freq" / "run-0"

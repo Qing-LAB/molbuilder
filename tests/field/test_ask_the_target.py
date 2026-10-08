@@ -1,7 +1,7 @@
 """FIELD TEST -- molbuilder asks the target's own scheduler about a line, and
 reads its answer (`docs/process/testing.md` § 0, tier 2).
 
-Goal: `jobset launch run --mode ask` on the machine a probed record describes:
+Goal: `jobset launch task --mode ask` on the machine a probed record describes:
 the line asked about is the one `submit` would send, the real scheduler is
 asked once with `--test-only`, its answer reads as a start time, and nothing is
 submitted or recorded.  Contract: `execution/running-a-job.md` § 5.5 (*"no job
@@ -82,11 +82,11 @@ def test_ask_reads_the_targets_answer_and_submits_nothing(tmp_path,
     task = json.loads((bundle / "task.json").read_text())
     task["allocation"] = {"domain": queue, "time": "0-00:05:00", "mem": "1G"}
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    r = jobset("prep", "run", "coarse", "--bundle", bundle,
+    r = jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output
 
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
+    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
                "--mode", "ask", "--domain", queue)
     assert r.exit_code == 0, r.output
     out = r.output

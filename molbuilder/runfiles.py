@@ -749,7 +749,7 @@ class Artifact:
     engine: Optional[str] = None
     #: WHEN it appears -- "setup" (the description hand-over), "prep" (the
     #: deck and its wrapper), "run" (everything the launch produces) or
-    #: "summarize" (what `jobset summarize run` writes from results that
+    #: "summarize" (what `jobset summarize task` writes from results that
     #: exist, never the launch).  A card that lists a run's files has to say
     #: which of them exist yet, and the alternative was for the page to
     #: subtract one list from another.
@@ -1044,30 +1044,30 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="molbuilder's parser, reading the trajectory log "
                     "(`parse._log.ParseLogger`)",
              only="`MOLBUILDER_PARSE_LOG` set"),
-    # The summary `jobset summarize run` writes.  It is the deliverable of the ladder
+    # The summary `jobset summarize task` writes.  It is the deliverable of the ladder
     # (`engines/transport.md` § 2a.12: "the transmission stage's output ...
     # everything else in the tree exists to make it trustworthy"), written
     # once at the calculation root -- which is what `staged=False` says.
     Artifact(".transport.json", "the transport results, summarised by "
-                                "`summarize run` from the transmission "
+                                "`summarize task` from the transmission "
                                 "points that ran",
              staged=False, calculation="transport", when="summarize",
              level="calculation", kind="result",
-             writer="`jobset summarize run` (`transport.record.write_record`)",
+             writer="`jobset summarize task` (`transport.record.write_record`)",
              door="parse.sidecars.transport.TransportRecordFileParser"),
     # A SIESTA VIBRATION'S DISPLACEMENT SWEEP, summarised (`engines/
-    # vibration.md` § 5.9): written at the calculation root by `summarize run`
+    # vibration.md` § 5.9): written at the calculation root by `summarize task`
     # when the ladder holds two or more force-constant stages -- a record of
     # results that exist, each stage's own files staying in its attempt.
     Artifact(".fc-sweep.json", "the force-constant stages compared, when "
                                "the ladder has two or more (a displacement "
-                               "sweep), by `summarize run`: each stage and "
+                               "sweep), by `summarize task`: each stage and "
                                "what it varied, every mode's frequency per "
                                "stage, the force-constant changes, and "
                                "where each stage's files are",
              staged=False, engine="siesta", calculation="vibration",
              when="summarize", level="calculation", kind="result",
-             writer="`jobset summarize run` "
+             writer="`jobset summarize task` "
                     "(`spectra.displacement_sweep.write_sweep`)",
              door="parse.sidecars.fc_sweep.FcSweepRecordFileParser",
              only="two or more force-constant stages"),
@@ -1147,7 +1147,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="the first prep (`jobset.machine.set_machine`)",
              door="scheduler.record.machine_for"),
     Artifact(name=JOBSET_FILE,
-             what="the plan: one job per prepped stage, merged per stage — "
+             what="the plan: one job per prepared stage, merged per stage — "
                   "and a benchmark's own, in its container",
              when="prep", level="calculation", kind="derived",
              writer="prep (`jobset.model.JobSet.write`)",

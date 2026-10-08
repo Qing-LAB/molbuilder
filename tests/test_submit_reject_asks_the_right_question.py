@@ -4,7 +4,7 @@ question by accident.
 
 **The crash, verbatim from a user's own terminal.**  A workstation with a
 named target on file (``environments/sol.json``, probed on Sol and copied
-back) but no probe of its own, running an already-prepped bundle:
+back) but no probe of its own, running an already-prepared bundle:
 
     python -m molbuilder jobset launch bench coarse --bundle ... --domain htc
 

@@ -57,8 +57,8 @@ run_sh_lacks = ['_mode="CLEAN (']
 name = "...a stage that continues answers .true. -- and a Broyden stage writes no CG key"
 template = { restart = "continue" }
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 deck = ["DM.UseSaveDM .true.", "MD.UseSaveXV .true."]
 deck_lacks = ["MD.UseSaveCG"]
@@ -70,10 +70,10 @@ deck_lacks = ["MD.UseSaveCG"]
 name = "...a continuing stage that relaxes nothing still reads the geometry it continues from"
 template = { relax_type = "none", restart = "continue" }
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"],
-          ["prep", "run", "medium"],
-          ["launch", "run", "medium", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"],
+          ["prep", "task", "--stage", "medium"],
+          ["launch", "task", "--stage", "medium", "--mode", "direct", "--yes"]]
 added = [{ name = "finish" }]
 stage = "finish"
 deck = ["DM.UseSaveDM .true.", "MD.UseSaveXV .true."]

@@ -42,7 +42,7 @@ from ..atom_permutation import PERMUTATION_FILE
 #: transmission is ``pending`` or ``failed`` by its run's state.
 #: ``current_a`` is the junction's TOTAL current -- both spin channels --
 #: with TBtrans's printed figure beside it (``current_a_printed``).  An
-#: older record is refused by its version, and `summarize run` writes it
+#: older record is refused by its version, and `summarize task` writes it
 #: again.
 TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@3"
 
@@ -339,7 +339,7 @@ def _rung_points(base: Path, task, name: str, token: str,
         att = latest_attempt(d)
         entry: Dict = {"bias_v": v}
         if att is None:
-            entry.update(state="not-started", detail="not prepped")
+            entry.update(state="not-started", detail="not prepared")
             out.append(entry)
             continue
         where = run_dir(d)
@@ -415,7 +415,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     token = stage_home(base, task, "transmission").token
     names = RunNames.of(task.label, token, task.shape)
     regions = device_regions(base)
-    opened = False                        # an attempt open: it is prepped
+    opened = False                        # an attempt open: it is prepared
     for v, container in _point_dirs(base, task):
         att = latest_attempt(container)   # None is the ANSWER: prepared?
         opened = opened or att is not None
@@ -481,14 +481,14 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             **({"dos": dos} if dos is not None else {"dos_why": dos_why}),
         })
     if not points_out and not partial:
-        # THE WAY ON, by what the stage's state says: prepped (an attempt is
-        # open), it is launched or let finish -- a prepped stage refuses a
-        # second prep (`job-system.md` § 5.0); else prepped, then launched.
+        # THE WAY ON, by what the stage's state says: prepared (an attempt is
+        # open), it is launched or let finish -- a prepared stage refuses a
+        # second prep (`job-system.md` § 5.0); else prepared, then launched.
         from ..jobset.commands import block, launch_lines, run_first
         raise RecordError(
             "no transmission point has its transmission yet -- "
             + ("launch the transmission stage, or let it finish:\n"
-               + block(launch_lines("run", "transmission", base=base_dir))
+               + block(launch_lines("task", "transmission", base=base_dir))
                if opened else
                "run the transmission stage first:\n"
                + block(run_first("transmission", base=base_dir)))

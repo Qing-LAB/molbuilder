@@ -3,7 +3,7 @@
  * COMPOSED ON READ (`engines/transport.md` § 2a.12): the record arrives from
  * `/api/transport/record`, which composes it from the rungs as they are now
  * -- every rung's state the one status door's, every point's its run's --
- * never the copy `summarize run` wrote.  It decides nothing about the
+ * never the copy `summarize task` wrote.  It decides nothing about the
  * physics: every number drawn is one the record carries.
  *
  * TWO SELECTIONS, ONE OWNER EACH (the spectra tab's pattern):

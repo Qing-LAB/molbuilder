@@ -4,7 +4,7 @@
 The resume contract is: **the modeling software resumes; molbuilder informs
 and the user decides** (never auto-recovers — redoing a long run unknowingly
 is a heavy penalty).  This module is the *inform* half: for a calculation --
-its description's every stage, prepped or not -- it answers, per stage, *did
+its description's every stage, prepared or not -- it answers, per stage, *did
 it finish? is it running? did it fail? are the warm-restart files there?* and
 *which is the first incomplete stage* (the one to resume from), with the
 command each state calls for -- so the manual continue is a one-glance
@@ -30,7 +30,8 @@ from ..identity import StageRef
 from ..paths import attempts_in
 from .materialize import (job_dir_names, latest_attempt, run_dir, run_names, shape_of, stage_refs)
 from ..runrecord import LaunchRecordError, launch_record
-from .commands import block, command, launch_lines, rollback
+from .commands import (block, command, launch_lines, rollback,
+                       words_for)
 from .model import JobSet
 from .plan import resources_text
 
@@ -69,7 +70,7 @@ class StageStatus:
     place one is ever made.
     """
     ref:        StageRef
-    #: The stage's directory, or ``None`` before anything prepped it.
+    #: The stage's directory, or ``None`` before anything prepared it.
     dir:        Optional[str]
     #: not-started/pending/queued/running/failed/finished/unknown.  ``queued`` is
     #: the contract's own word (project-layout.md § 1.6, *"queued as job
@@ -96,12 +97,12 @@ class StageStatus:
     #: asks too, so the status says what launching it again will do
     #: (`job-system.md` § 5.4, *A stage launched again*).
     relaunch_continues: bool = True
-    #: The group it was prepped in, its members in order -- launched with
+    #: The group it was prepared in, its members in order -- launched with
     #: them, never alone (`project-layout.md` § 1.6.6) -- or ``None``.
     group: Optional[List[str]] = None
-    #: Whether anything has prepped it -- a description's stage before its
+    #: Whether anything has prepared it -- a description's stage before its
     #: first prep is listed all the same (`job-system.md` § 5.3).
-    prepped: bool = True
+    prepared: bool = True
     #: What the stage IS, the plan's columns: its deck, the restart files it declares
     #: -- what it would take from a run it continues from -- and the
     #: resources it asks for.
@@ -144,7 +145,7 @@ class JobSetStatus:
     first_incomplete: Optional[str]   # name of the first non-finished stage (resume here)
     complete:        bool             # every described stage finished
     #: The run the first incomplete stage's prep will continue from, when
-    #: nothing has prepped it -- `continuation.continuation_answer`'s, the answer
+    #: nothing has prepared it -- `continuation.continuation_answer`'s, the answer
     #: prep itself asks (`job-system.md` § 5.4) -- or ``None``: a linked
     #: stage, the first, one that starts clean.
     resume_from: Optional[str] = None
@@ -189,8 +190,8 @@ def _warm_present(stage_dir: Path, label: str, engine: str,
 #: The state a stage has before `prep` has made it a directory -- the ONE
 #: spelling, read by `_stage_state` for a planned stage whose directory is
 #: missing and by :func:`jobset_status` for a described stage nothing has
-#: prepped yet (`job-system.md` § 5.3, `web/results.md` § 2.4).
-NOT_PREPPED = ("not-started", "no directory yet (not prepped)")
+#: prepared yet (`job-system.md` § 5.3, `web/results.md` § 2.4).
+NOT_PREPARED = ("not-started", "no directory yet (not prepared)")
 
 
 def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
@@ -212,7 +213,7 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
     directory door answers both from it (`parse.dirs.job.run_status`).
     """
     if not observed.is_dir():
-        return NOT_PREPPED
+        return NOT_PREPARED
     try:
         # THROUGH THE PACKAGE THAT OWNS THE QUESTION, never the module
         # inside it (`model/parse.md` § 5.5, R-RO2: one import surface per
@@ -244,7 +245,7 @@ def _rung_homes(base: Path, task, job_name: str, d: Path) -> list:
 
 def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
                 refs, shape) -> StageStatus:
-    """One prepped job's status, read from where its attempts are."""
+    """One prepared job's status, read from where its attempts are."""
     d = base / dirs[job.name]
     # WHICH FILES are this stage's: its stage's names (`materialize.
     # run_names`) -- in either shape a flat folder holds every stage, an
@@ -303,12 +304,12 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
     )
 
 
-def _not_prepped(ref: StageRef, stage) -> StageStatus:
-    """A stage the description names and nothing has prepped -- `NOT_PREPPED`
+def _not_prepared(ref: StageRef, stage) -> StageStatus:
+    """A stage the description names and nothing has prepared -- `NOT_PREPARED`
     in the reader's own words (`job-system.md` § 5.3)."""
     return StageStatus(
-        ref=ref, dir=None, state=NOT_PREPPED[0], detail=NOT_PREPPED[1],
-        prepped=False)
+        ref=ref, dir=None, state=NOT_PREPARED[0], detail=NOT_PREPARED[1],
+        prepared=False)
 
 
 def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
@@ -317,9 +318,9 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
     **The rows are the description's ladder** when a description stands
     beside the set (`job-system.md` § 5.3, 2026-10-01): every stage
     ``task.json`` names, in its order and with its number, the ones nothing
-    has prepped yet as :data:`NOT_PREPPED` -- so a calculation lists its
+    has prepared yet as :data:`NOT_PREPARED` -- so a calculation lists its
     stages before its first prep (``jobset`` is then ``None``), and a ladder
-    prepped one stage at a time lists them all.  The Results tab's ladder is
+    prepared one stage at a time lists them all.  The Results tab's ladder is
     this answer (`web/results.md` § 2.4).  A benchmark's sweep, with no
     description beside it, lists its own jobs.
 
@@ -342,7 +343,7 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
     stages: List[StageStatus] = []
     if task is not None:
         # ONE KEY for a stage's name, in any case (`identity.stage_key`):
-        # a stage renamed in case only keeps its prepped job.
+        # a stage renamed in case only keeps its prepared job.
         from ..identity import stage_key
         held = {stage_key(j.name): j for j in (jobset.jobs if jobset is not None
                                                else ())}
@@ -354,7 +355,7 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
                             for h in ladder_homes(base, task)]):
             job = held.get(stage_key(st.name))
             if job is None:
-                stages.append(_not_prepped(ref, st))
+                stages.append(_not_prepared(ref, st))
                 continue
             # THE DESCRIPTION'S NAME AND NUMBER on its row: the ladder is the
             # description's, and `status <stage>` finds the row by it.
@@ -387,8 +388,8 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
 def _next_continuation(base: Path, task, first: Optional[StageStatus]) -> dict:
     """What the next prep of the first incomplete stage will continue from,
     or why it would refuse (:func:`stage_continuation`) -- ``{}`` once it
-    is prepped."""
-    if task is None or first is None or first.prepped:
+    is prepared."""
+    if task is None or first is None or first.prepared:
         return {}
     return stage_continuation(base, task, first.name)
 
@@ -401,7 +402,7 @@ def stage_continuation(base: Path, task, name: str) -> dict:
     names as much as for the first incomplete one."""
     from .continuation import continuation_answer
     # NO VERDICT: status names the run, not its relaxation -- and the table
-    # (the Results tab's ladder too) is read far more often than prepped.
+    # (the Results tab's ladder too) is read far more often than prepared.
     got, refused = continuation_answer(base, task, name, verdict=False)
     if got is not None:
         return {"resume_from": got.where()}
@@ -444,19 +445,19 @@ def render_status(status: JobSetStatus) -> str:
     else:
         first = next((s for s in status.stages
                       if s.name == status.first_incomplete), None)
-        if first is not None and not first.prepped:
+        if first is not None and not first.prepared:
             # NOTHING TO RE-SUBMIT: the stage has no folder yet, so the next
             # step is to prepare it -- and an independent stage's prep takes
             # the run before it, which the line names (§ 5.4).
             if status.resume_refused:
                 lines.append(
-                    f"First incomplete stage: {first.name}, not prepped yet "
+                    f"First incomplete stage: {first.name}, not prepared yet "
                     f"-- and its prep refuses for now:\n"
                     + textwrap.indent(status.resume_refused, "    "))
                 return "\n".join(lines)
             lines.append(
-                f"First incomplete stage: {first.name}, not prepped yet:\n    "
-                + command("prep", "run", first.name, base=status.base)
+                f"First incomplete stage: {first.name}, not prepared yet:\n    "
+                + command("prep", *words_for("task", first.name), base=status.base)
                 + (f"   # continues from {status.resume_from}"
                    if status.resume_from else ""))
             return "\n".join(lines)
@@ -486,7 +487,7 @@ def _sweep_next(status: JobSetStatus) -> str:
 
 
 def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
-    """What to do about a PREPPED stage that has not finished, by its state
+    """What to do about a PREPARED stage that has not finished, by its state
     -- each a command that works.  molbuilder does NOT auto-resume; the
     person decides (`engines/stages.md`)."""
     state = s.state if s is not None else "stopped"
@@ -494,20 +495,20 @@ def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
     # § 1.6.6): the line names every member.
     words = (s.group if s is not None and s.group else [name])
     if state == "pending":
-        return (f"First incomplete stage: {name}, prepped and not "
-                f"launched:\n" + block(launch_lines("run", *words, base=base)))
+        return (f"First incomplete stage: {name}, prepared and not "
+                f"launched:\n" + block(launch_lines("task", *words, base=base)))
     if state in ("queued", "running"):
         return (f"First incomplete stage: {name}, {state} -- let it "
                 f"finish; `{command('status', name, base=base)}` shows its "
                 f"run.")
-    # A PREPPED STAGE IS NOT PREPPED AGAIN (user, 2026-10-02); it is
+    # A PREPARED STAGE IS NOT PREPARED AGAIN (user, 2026-10-02); it is
     # launched again, however it ended, warm or cold -- the person's choice
     # (`job-system.md` § 5.4, *A stage launched again*).
     warm = ("it continues from its own latest run"
             if s is None or s.relaunch_continues
             else "it starts over, nothing handed on from a run of its own")
     how = (f"launch it again -- {warm}:\n"
-           + block(launch_lines("run", *words, base=base))
+           + block(launch_lines("task", *words, base=base))
            + "\n  or start it over with `--cold`; or, to change it first, "
            + rollback("its prep", base=base))
     return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
@@ -528,13 +529,13 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
 
     Everything printed comes off the :class:`StageStatus` the reader already
     built and ``continuation`` -- :func:`stage_continuation`'s answer for a
-    stage nothing has prepped, which the caller asks; without it, the
+    stage nothing has prepared, which the caller asks; without it, the
     table's own answer for the first incomplete stage. Nothing here opens a
     file — a second reader of the launch record would be a second answer to
     *was this launched?*
     """
     s = next(x for x in status.stages if x.name == stage_name)
-    if not s.prepped:
+    if not s.prepared:
         # WHAT YOU CAN TYPE (`job-system.md` § 5.3): one whose prep would
         # refuse is told why, with the commands.
         cont = (continuation if continuation is not None else
@@ -545,7 +546,7 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
                + textwrap.indent(cont["resume_refused"], "    ")
                if cont.get("resume_refused") else
                "Prep it:\n    "
-               + command("prep", "run", s.name, base=status.base)
+               + command("prep", *words_for("task", s.name), base=status.base)
                + (f"   # continues from {cont['resume_from']}"
                   if cont.get("resume_from") else ""))
         return "\n".join([f"STAGE {s.ref.label} -- {s.state}", "",

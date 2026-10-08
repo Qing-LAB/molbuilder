@@ -478,7 +478,7 @@ def prediction_table(preds: Sequence[Prediction]) -> str:
     lines.append("  a time is an ESTIMATE from the queue as it is right now; "
                  "it moves.")
     # FLAGS THAT EXIST: `launch` takes --domain, --time and --mem; the
-    # ranks and cores are prep's, and a prepped stage is not prepped
+    # ranks and cores are prep's, and a prepared stage is not prepared
     # again.
     lines.append("  change --domain, --time or --mem and ask again, or launch "
                  "when you are happy (the ranks and cores are fixed at "

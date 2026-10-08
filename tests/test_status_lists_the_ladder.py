@@ -3,7 +3,7 @@
 
 PINS: ``docs/execution/job-system.md`` § 5.3 (the table is the description's
 ladder: every stage with its number from the moment `init` writes it, the ones
-not prepped yet as not-started, a disabled one never the stage to resume from;
+not prepared yet as not-started, a disabled one never the stage to resume from;
 `status <stage>` is a stage in full -- its deck, what it declares, its
 resources) and ``docs/web/results.md`` § 2.4
 (the Results tab's ladder is `jobset_status`'s answer).
@@ -11,7 +11,7 @@ resources) and ``docs/web/results.md`` § 2.4
 PREVENTS, each read in the code before 2026-10-01:
 
 * `status` refusing a described calculation until its first prep, and listing
-  only the stages prepped so far -- while the Results tab listed all of them,
+  only the stages prepared so far -- while the Results tab listed all of them,
   having composed the ladder itself;
 * a stage disabled in the description named as the stage to resume from;
 * the deck, carry set and resources behind a second verb, `plan`, that
@@ -42,7 +42,7 @@ def _row(output, name):
 def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
         tmp_path, monkeypatch):
     """A template prep would refuse is said in the table's last line, never
-    a traceback; a stage renamed in case only keeps its prepped job; asked
+    a traceback; a stage renamed in case only keeps its prepared job; asked
     from inside one of its stage folders, `status` names the calculation it
     belongs to.
 
@@ -62,7 +62,7 @@ def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
     assert "continues from cannot be read" in r.output, r.output
     template.write_text(kept)
 
-    assert jobset("prep", "run", "coarse", "--bundle", bundle,
+    assert jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
                   "--target", "this").exit_code == 0
 
     task = json.loads((bundle / "task.json").read_text())

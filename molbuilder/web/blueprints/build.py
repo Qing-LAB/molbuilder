@@ -1159,8 +1159,8 @@ def api_task_setup_prep():
     needs three inputs: two portable (the template, the description) and
     one the target machine's (`molbuilder.json`).  A named target's record
     supplies the machine half -- that is what `environments/<name>.json`
-    IS -- so prepping FOR Sol FROM here is the case
-    `preparing-for-another-machine.md` exists for, and prepping for THIS
+    IS -- so preparing FOR Sol FROM here is the case
+    `preparing-for-another-machine.md` exists for, and preparing for THIS
     machine is the ordinary one.
 
     What this door does NOT do is submit.  `prep` writes files into the
@@ -1173,7 +1173,7 @@ def api_task_setup_prep():
     stopped before the save -- what it would write, the launch the header
     and the run script would carry, what the stage builds on -- or the
     refusal prep would give, with nothing saved, written or recorded.
-    Nothing is prepped unseen -- the rule the launch door keeps
+    Nothing is prepared unseen -- the rule the launch door keeps
     (`submission.md` S4) -- and a Prep names the preview's plan
     (``plan_id``) and is refused when the plan it makes now differs.
 
@@ -1204,10 +1204,10 @@ def api_task_setup_prep():
     preview = bool(body.get("plan"))
     plan_id = (str(body.get("plan_id") or "").strip() or None)
 
-    if kind not in ("run", "bench"):
+    if kind not in ("task", "bench"):
         return jsonify({"ok": False,
                         "error": "kind must be 'run' or 'bench'"}), 400
-    # NOTHING IS PREPPED UNSEEN (`job-system.md` § 5.0): a Prep names the
+    # NOTHING IS PREPARED UNSEEN (`job-system.md` § 5.0): a Prep names the
     # plan its preview showed, and the entry refuses one that differs.
     if not preview and not plan_id:
         return jsonify({"ok": False,
@@ -1379,21 +1379,21 @@ def api_task_setup_save():
                          f"pick or make another.",
             }), 409
         # THE SHAPE IS FIXED ONCE THE CALCULATION HAS PRODUCED
-        # (`web/task-setup.md` § 4): a prepped stage -- a run or a benchmark,
-        # the prep entry's own answer (`prep.prepped_stages`) -- lies where
+        # (`web/task-setup.md` § 4): a prepared stage -- a run or a benchmark,
+        # the prep entry's own answer (`prep.prepared_stages`) -- lies where
         # the shape put it, and another shape would orphan every deck, output
         # and warm file there.  A redo is a rollback (`job-system.md` § 5.0).
         if prior is not None and prior.shape and task.shape != prior.shape:
             from molbuilder.jobset.commands import rollback
-            from molbuilder.jobset.prep import prepped_stages
-            done = prepped_stages(dest, prior)
+            from molbuilder.jobset.prep import prepared_stages
+            done = prepared_stages(dest, prior)
             if done:
                 return jsonify({
                     "ok": False,
                     "error": f"this calculation is {prior.shape}, and its "
                              f"shape is fixed once it has produced "
                              f"(task-setup.md § 4): {', '.join(done)} "
-                             f"{'is' if len(done) == 1 else 'are'} prepped, "
+                             f"{'is' if len(done) == 1 else 'are'} prepared, "
                              f"laid out {prior.shape}, and a {task.shape} "
                              f"calculation would orphan every deck, output "
                              f"and warm file there.  To make it "
@@ -1863,7 +1863,7 @@ def api_task_setup_prep_plan():
     # (`.template.toml` and the source pair) are asked for by moment rather
     # than subtracted here -- the card above already lists them, with the one
     # thing this cannot say: whether they are there yet.
-    # And what `summarize run` writes there from results that exist -- the
+    # And what `summarize task` writes there from results that exist -- the
     # transport record, a sweep's comparison -- whose own line says so.
     once = manifest(task.label, None, shape=shape.name, engine=task.engine,
                     when=("prep", "run", "summarize"),
@@ -2067,11 +2067,11 @@ def api_task_setup_folder():
         # page shows it fixed rather than offering a choice that can only be
         # refused (W55 B4, D12).
         "set_to": _folder_set_to(folder),
-        # WHICH STAGES ARE PREPPED, as a run and as a benchmark -- each with
-        # the prep entry's own sentence (`prep.prepped_already`), which the
+        # WHICH STAGES ARE PREPARED, as a run and as a benchmark -- each with
+        # the prep entry's own sentence (`prep.prepared_already`), which the
         # page shows in place of a Prep it would refuse.
-        "prepped": (_folder_prepped(folder) if described is not None
-                    else {"run": {}, "bench": {}, "placed": {}}),
+        "prepared": (_folder_prepared(folder) if described is not None
+                    else {"task": {}, "bench": {}, "placed": {}}),
     })
 
 
@@ -2084,23 +2084,23 @@ def _folder_set_to(folder):
     return "(this machine)" if name == LOCAL_TARGET else name
 
 
-def _folder_prepped(folder) -> dict:
-    """``{"run": {stage: why}, "bench": {stage: why}}``: the stages prepped
+def _folder_prepared(folder) -> dict:
+    """``{"task": {stage: why}, "bench": {stage: why}}``: the stages prepared
     as each, and the prep entry's own sentence for each -- what a prep of it
     would answer, the way back in it (`job-system.md` § 5.0).  Fail-soft,
     like the folder's other parts."""
-    from molbuilder.jobset.prep import prepped_already
+    from molbuilder.jobset.prep import prepared_already
     from molbuilder.task import FILENAME as TASK_FILENAME
     from molbuilder.task import read_task
     try:
         task = read_task(folder / TASK_FILENAME)
-        out = {"run": {}, "bench": {}}
+        out = {"task": {}, "bench": {}}
         for kind, said in out.items():
             for st in task.stages:
-                why = prepped_already(folder, task, kind, st.name)
+                why = prepared_already(folder, task, kind, st.name)
                 if why:
                     said[st.name] = why
-        # WHERE EACH PREPPED RUN WAS ADMITTED, as its job records it -- the
+        # WHERE EACH PREPARED RUN WAS ADMITTED, as its job records it -- the
         # line both prep doors print (`job-system.md` § 6.0).
         from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME
         from molbuilder.jobset.model import JobSet
@@ -2108,13 +2108,13 @@ def _folder_prepped(folder) -> dict:
         out["placed"] = {}
         if (folder / JOBSET_FILENAME).is_file():
             for job in JobSet.load(folder / JOBSET_FILENAME).jobs:
-                if job.placement and job.name in out["run"]:
+                if job.placement and job.name in out["task"]:
                     out["placed"][job.name] = placement_line(job.placement)
         return out
     except Exception as exc:                      # noqa: BLE001
         # THE SAME SHAPE, AND THE ERROR IN IT (`web-api.md`: one part
         # failing carries its own `error`).
-        return {"error": str(exc), "run": {}, "bench": {}, "placed": {}}
+        return {"error": str(exc), "task": {}, "bench": {}, "placed": {}}
 
 
 @bp.route("/api/task-setup/commands", methods=["POST"])
@@ -2127,16 +2127,16 @@ def api_task_setup_commands():
     *what molbuilder prints, you can type*; W55 B4).
 
     POST ``{dest, kind, stage, from?, cold?, target?}`` -> ``{ok, lines}``.
-    A stage prepped already has no prep line -- prep would refuse it -- as
+    A stage prepared already has no prep line -- prep would refuse it -- as
     `jobset status` prints it.  Writes nothing.
     """
     from molbuilder.jobset.commands import stage_lines
     from molbuilder.scheduler.record import LOCAL_TARGET
     body = request.get_json(silent=True) or {}
     dest_raw = str(body.get("dest") or "")
-    kind = str(body.get("kind") or "run")
+    kind = str(body.get("kind") or "task")
     stage = str(body.get("stage") or "")
-    if not dest_raw or not stage or kind not in ("run", "bench"):
+    if not dest_raw or not stage or kind not in ("task", "bench"):
         return jsonify({"ok": False,
                         "error": "dest, kind (run|bench) and stage are "
                                  "required"}), 400
@@ -2147,10 +2147,10 @@ def api_task_setup_commands():
     target = body.get("target") or None
     if target == "(this machine)":
         target = LOCAL_TARGET
-    prepped = stage in _folder_prepped(dest).get(kind, {})
+    prepared = stage in _folder_prepared(dest).get(kind, {})
     return jsonify({"ok": True, "lines": stage_lines(
         kind, stage, base=dest, from_attempt=(body.get("from") or None),
-        cold=bool(body.get("cold")), target=target, prepped=prepped)})
+        cold=bool(body.get("cold")), target=target, prepared=prepared)})
 
 
 def _folder_bench_refusal(folder, described):

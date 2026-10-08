@@ -133,7 +133,7 @@ def _auto_block_size(n_atoms: int,
     """
     if mpi_np is None:
         # NO RANK COUNT, NO WINDOW: the window is derived from the deck's
-        # ranks, and every prepped deck states them (`architecture.md`
+        # ranks, and every prepared deck states them (`architecture.md`
         # § 5.2).
         raise ValueError(
             "BlockSize's window is derived from the deck's rank count "
@@ -569,7 +569,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     (``G1K4C6``), or ``None`` for the run -- a render argument from `prep`,
     which alone knows, so the header names the command that launches THIS
     deck: a trial's is ``launch bench <stage> <trial>``, and the run's
-    ``launch run <stage>`` would launch a different job (plan § 5w K12).
+    ``launch task <stage>`` would launch a different job (plan § 5w K12).
 
     ``vibration`` is a force-constant deck's `vibration` block, built by
     `prep` (`spectra.siesta_vibration.vibration_record`): placed in the
@@ -991,7 +991,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             # The stage by its NAME, through `command_stage`: the token
             # (`02_freq`) is a legal name of another stage (`job-system.md`
             # § 5.3).  A trial's deck names its own
-            # launch -- `launch run` would launch the stage's run.
+            # launch -- `launch task` would launch the stage's run.
             from ..identity import LAUNCH_MODE_NOTE, deck_launch
             _launch = deck_launch(stage_token, trial)
             if _launch and trial:

@@ -403,7 +403,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     **Nothing applies it.**  It is what the sweep found, said in
     sentences, for a person to read and act on -- and the action is writing
     an ``execution`` block in ``task.json``, which is the only thing
-    ``prep run`` consults (`architecture.md` § 5.2).  *(User ruling:
+    ``prep task`` consults (`architecture.md` § 5.2).  *(User ruling:
     "the run parameter needs to be explicitly decided/written … benchmark
     recommendation should be named such that it is understood not as a user
     input but for result presentation.")*
@@ -474,7 +474,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
         out += ['    "execution": ' + body[0]]
         out += ["    " + ln for ln in body[1:]]
         out += [""]
-    out += ["Until you do, `prep run` launches at what task.json states, and",
+    out += ["Until you do, `prep task` launches at what task.json states, and",
             "refuses a launch value it states nowhere (architecture.md 5.2) --",
             "a benchmark does not steer a run.",
             ""]
@@ -600,12 +600,12 @@ def summary_text(res: BenchResult, out_path: Path, *,
     else:
         lines.append(f"  no winner: {res.choice['none']}.")
     # The coverage clause (honesty on a partial sweep): a verdict drawn
-    # from three of eleven prepped points says so on its face.
+    # from three of eleven prepared points says so on its face.
     if res.choice.get("label"):
         timed = sum(1 for p_ in res.points
                     if p_.state == "completed" and p_.s_per_iter() is not None)
         if timed < len(res.points):
-            lines.append(f"  coverage: {timed} of {len(res.points)} prepped "
+            lines.append(f"  coverage: {timed} of {len(res.points)} prepared "
                          f"points measured -- the verdict ranks what ran.")
     lines.append(f"  wrote: {out_path}  (the record)")
     # THE CONNECTION SURFACE (roadmap § 0.1 B5): the summary ends with what
@@ -626,17 +626,17 @@ def summary_text(res: BenchResult, out_path: Path, *,
             # ONE COMMAND A LINE, the step's sentence above it (`commands`):
             # the calculation named when it is known, the mode stated where
             # its config sets none.
-            from .commands import command, launch_lines
+            from .commands import command, launch_lines, words_for
             lines.append("    2. prep the stage's run -- it uses what you "
                          "wrote, and nothing else:")
-            lines.append("         " + command("prep", "run", stage,
+            lines.append("         " + command("prep", *words_for("task", stage),
                                                 base=base))
             lines.append("    3. then launch it:")
             lines += ["         " + ln
-                      for ln in launch_lines("run", stage, base=base)]
+                      for ln in launch_lines("task", stage, base=base)]
         else:
             lines.append("    2. prep the stage's run, then launch it -- "
-                         "`prep run` reads what you wrote, and nothing else")
+                         "`prep task` reads what you wrote, and nothing else")
     return "\n".join(lines)
 
 

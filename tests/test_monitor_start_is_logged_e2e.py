@@ -12,8 +12,8 @@ bundle ONCE whether it loads, so a bundle that cannot load prints its error
 once and the wrapper says the ending cannot be read (`job-contracts.md`
 § 2.6).
 
-Driven through ``jobset init`` -> ``prep run`` -> ``launch run --mode
-direct``: an H2 PySCF run once as prepped and once with one of the bundle's
+Driven through ``jobset init`` -> ``prep task`` -> ``launch task --mode
+direct``: an H2 PySCF run once as prepared and once with one of the bundle's
 own member files replaced after prep by one that fails at import, as a file
 the job's python cannot load does; and an H2 SIESTA relaxation broken the same
 way, because only the SIESTA wrapper asks how its run ended.
@@ -91,7 +91,7 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
     from conftest import write_machine_record
     write_machine_record(env_init={
         "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-    r = _jobset("prep", "run", "coarse", "--bundle", bundle,
+    r = _jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
                 "--target", "this", *(("--np", 1) if siesta else ()),
                 "--cpus-per-task", 1)
     assert r.exit_code == 0, r.output
@@ -108,7 +108,7 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
             for name, text in members.items():
                 z.writestr(name, text)
 
-    _jobset("launch", "run", "coarse", "--bundle", bundle,
+    _jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
             "--mode", "direct", "--yes")
     logs = sorted(ran_in.glob("*.runwrap-*.log"))
     assert logs, sorted(p.name for p in ran_in.iterdir())

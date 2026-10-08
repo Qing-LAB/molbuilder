@@ -394,7 +394,7 @@ def run_inputs(base, task, stage=None):
 
 
 def prep_run_inputs(base, task, stage, allocation=None):
-    """Everything ``prep run`` needs, assembled ONCE -- ``(allocation, pins,
+    """Everything ``prep task`` needs, assembled ONCE -- ``(allocation, pins,
     chosen)``.
 
     **`architecture.md` A12**, and the contract stated there: the ask handed
@@ -408,7 +408,7 @@ def prep_run_inputs(base, task, stage, allocation=None):
     of the logic.  The UI is not a different thing.  It goes through the same
     framework.  It just helps the user to visualize and to decide.")*
 
-    So the browser's prep button and ``molbuilder jobset prep run`` call
+    So the browser's prep button and ``molbuilder jobset prep task`` call
     THIS, and neither assembles anything of its own.  ONE source states the
     run (`stages.md` § 6.8d, plan § 5w K5): ``execution``, the calculation's
     block with the rung's over it -- what the person ASKED for.  Its machine
@@ -563,7 +563,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
         environment = machine_record(base, target)
     # THE TARGET'S MENU, from the record in hand -- its probed queues -- for
     # every check below (`runtime_config.routing_of`): a calculation not
-    # yet prepped cannot name the folder's menu when several machines are on
+    # yet prepared cannot name the folder's menu when several machines are on
     # file.
     from ..runtime_config import routing_of
     menu = routing_of(environment)

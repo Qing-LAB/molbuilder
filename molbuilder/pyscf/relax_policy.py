@@ -107,8 +107,8 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
               f"{steps} steps; on_nonconvergence = proceed keeps the "
               f"geometry it reached")
         return mol, False
-    # THE WAY ON, as `status` and `launch` say it: a prepped stage is not
-    # prepped again, so a setting changes from the state saved before its
+    # THE WAY ON, as `status` and `launch` say it: a prepared stage is not
+    # prepared again, so a setting changes from the state saved before its
     # prep (`job-system.md` § 5.0).
     change = ("geom_max_steps or geom_continue_retries" if policy == "continue"
               else "geom_max_steps, or on_nonconvergence = continue")

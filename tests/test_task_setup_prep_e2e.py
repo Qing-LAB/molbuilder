@@ -50,7 +50,7 @@ def calc_dir(isolated_projects_root_module):
     """A described calculation, with a probed machine record beside it.
 
     The record is not scenery: a rank count is read from one and nowhere
-    else, so a folder without it cannot be prepped at all
+    else, so a folder without it cannot be prepared at all
     (`running-a-job.md` § 3.1)."""
     yield _a_described_probe(isolated_projects_root_module / "prep_e2e")
 
@@ -58,8 +58,8 @@ def calc_dir(isolated_projects_root_module):
 @pytest.fixture
 def unprepped_dir(isolated_projects_root_module):
     """`calc_dir`'s calculation, a fresh one for a test that preps it from
-    the start: the module's own is prepped by the first test, and a prepped
-    stage is not prepped again (`job-system.md` § 5.0).  Its rank count is
+    the start: the module's own is prepared by the first test, and a prepared
+    stage is not prepared again (`job-system.md` § 5.0).  Its rank count is
     stated -- the first test types `calc_dir`'s into the card."""
     yield _a_described_probe(isolated_projects_root_module / "prep_e2e_saved",
                              execution={"omp_threads": 1, "mpi_np": 2})
@@ -106,7 +106,7 @@ def _a_described_probe(root, execution=None):
 
         # The probe's answer, pre-seeded: a rank count is read from a machine
         # record and nowhere else, so a folder without one
-        # cannot be prepped at all (`running-a-job.md` § 3.1).
+        # cannot be prepared at all (`running-a-job.md` § 3.1).
         # `env_init` rides ON THE RECORD -- the probe's copy of it:
         # a wrapper generated here would otherwise carry THIS machine's way
         # into its environment -- a path that need not exist on the target
@@ -286,7 +286,7 @@ def test_the_tab_saves_the_folder_first_and_says_so(
     the folder's state before it writes -- always, the note led by the time
     it was taken -- and the answer says so.  An unsaved edit is not in the
     task.json prep reads, so Prep refuses it first (§ 7a).  The stage,
-    prepped, is not prepped again (`job-system.md` § 5.0): opened again, it
+    prepared, is not prepared again (`job-system.md` § 5.0): opened again, it
     shows the prep entry's own sentence, offers neither button, and its
     lines are its launch (W55 B4)."""
     import re
@@ -327,7 +327,7 @@ def test_the_tab_saves_the_folder_first_and_says_so(
         "(v) => document.querySelector('.CodeMirror').CodeMirror.setValue(v)",
         original)
 
-    # PREP: the folder saved first, then prepped -- and said
+    # PREP: the folder saved first, then prepared -- and said
     ready()
     page.locator(prep_sel).first.click()
     page.wait_for_function(
@@ -339,7 +339,7 @@ def test_the_tab_saves_the_folder_first_and_says_so(
                for t in said), said
     notes = [x.note for x in Repo(str(calc)).states()]
     assert re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} · before "
-                    r"prep run coarse$", notes[0]), notes
+                    r"prep task --stage coarse$", notes[0]), notes
     assert (calc / "01_coarse" / "run-0").is_dir()
 
     # PREPPED, AND NOT PREPPED AGAIN: the folder opened again says so in
@@ -347,14 +347,14 @@ def test_the_tab_saves_the_folder_first_and_says_so(
     _open(page, flask_server, calc)
     page.wait_for_function(
         "(sel) => Array.from(document.querySelectorAll(sel)).some("
-        "n => /already prepped/.test(n.textContent))",
+        "n => /already prepared/.test(n.textContent))",
         arg=f"{panel} .ts-prep-say", timeout=30000)
     assert page.locator(preview).first.is_disabled(), (
-        "a prepped stage was offered a Preview of a prep the entry refuses")
+        "a prepared stage was offered a Preview of a prep the entry refuses")
     assert page.locator(prep_sel).first.is_disabled()
     lines = [ln for b in _commands_shown(page) for ln in b.splitlines()]
-    assert not [ln for ln in lines if " prep run coarse" in ln], lines
-    assert [ln for ln in lines if " launch run coarse" in ln], lines
+    assert not [ln for ln in lines if " prep task --stage coarse" in ln], lines
+    assert [ln for ln in lines if " launch task --stage coarse" in ln], lines
 
 
 def test_a_stage_with_no_axes_offers_the_machines_proposal(
@@ -1010,7 +1010,7 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
             f"the card offers no bench command for {stage!r} -- the axes are "
             "declared once for the calculation, so every enabled stage can "
             "be measured")
-        assert f"prep run {stage}" in joined, (
+        assert f"prep task {stage}" in joined, (
             f"the card offers no run command for {stage!r}")
 
     # ── the order is load-bearing, and is shown ────────────────────────
@@ -1032,7 +1032,7 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
     # A person who filled the card and then wants something else for ONE prep
     # needs to know a flag wins -- otherwise the only visible path is editing
     # `task.json` again.
-    # The flags named are `jobset prep run`'s own (`--omp` is not one).
+    # The flags named are `jobset prep task`'s own (`--omp` is not one).
     assert "--np / --cpus-per-task / --time" in hints, (
         "a person who filled the card is not told a flag still overrides it")
 
@@ -1108,7 +1108,7 @@ def test_a_calculation_set_to_its_machine_is_shown_so(
         page, flask_server, two_stage_dir, a_named_machine):
     """W55 D12, the page's half: a calculation is set to the machine of its
     first prep, which does not change (`configuration.md` M-3), so once a
-    stage is prepped the card shows that machine chosen, offers no other,
+    stage is prepared the card shows that machine chosen, offers no other,
     and says why -- the folder's own answer, `set_to`.  The answer's half
     is `test_printed_commands_run.py`'s."""
     _open(page, flask_server, two_stage_dir)

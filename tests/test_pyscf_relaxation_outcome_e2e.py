@@ -8,7 +8,7 @@ called ``optimize``, which drops it, and wired the policy to
 steps was recorded converged and handed on under every policy (the M11
 review).  Both now relax through the one spliced ``relax_policy.relax``.
 
-Driven through ``jobset init`` -> ``prep run`` -> ``launch run --mode
+Driven through ``jobset init`` -> ``prep task`` -> ``launch task --mode
 direct`` on H2 started at 0.95 Å, far from its minimum, with the rung's own
 values in ``task.json``'s stage overrides, as the Task setup table saves them:
 one or two geometry steps cannot relax it.
@@ -49,7 +49,7 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     ``execution`` (`stages.md` § 6.8d: a run setting lives there alone) and
     its template ``template``'s values -- written by the hand-over's own writer
     (`template_with_values`), since the electronic state binds every rung
-    and is the template's -- prepped and launched directly: the bundle, the
+    and is the template's -- prepared and launched directly: the bundle, the
     stage's state as the ladder reads it, and what the run itself printed."""
     from conftest import write_machine_record
     from molbuilder.jobset.model import FILENAME, JobSet
@@ -94,10 +94,10 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     from conftest import write_machine_record
     write_machine_record(env_init={
         "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-    r = _jobset("prep", "run", stage.name, "--bundle", bundle,
+    r = _jobset("prep", "task", "--stage", stage.name, "--bundle", bundle,
                 "--target", "this")
     assert r.exit_code == 0, r.output
-    _jobset("launch", "run", stage.name, "--bundle", bundle,
+    _jobset("launch", "task", "--stage", stage.name, "--bundle", bundle,
             "--mode", "direct", "--yes")
     row = next(iter(jobset_status(JobSet.load(bundle / FILENAME),
                                   bundle).stages))

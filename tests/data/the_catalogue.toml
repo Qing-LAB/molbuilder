@@ -6,7 +6,7 @@
 # reading: *"a card cannot show a spelling the writers do not use"* (§ 2.2a).
 # So every name the card gives a stage -- in the calculation's own shape,
 # unless the row says it is written only sometimes -- is on disk once the
-# stage has been prepped, and launched where the row says so.
+# stage has been prepared, and launched where the row says so.
 #
 # Every run here is made on the road: `jobset prep` and `jobset launch`, our
 # wrapper running the suite's stand-in engine (`process/testing.md` § 6).
@@ -22,10 +22,10 @@ mpi_np = 1
 omp_threads = 1
 
 [[case]]
-name = "every file the card names for a stage is there as it names it -- a launched stage and the stage prepped after it, the hierarchy"
+name = "every file the card names for a stage is there as it names it -- a launched stage and the stage prepared after it, the hierarchy"
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 card_written = [{ stage = "coarse", moments = ["prep", "launch", "run"] },
                 { stage = "medium", moments = ["prep"] }]
@@ -34,8 +34,8 @@ card_written = [{ stage = "coarse", moments = ["prep", "launch", "run"] },
 name = "...and the flat shape"
 shape = "flat"
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 card_written = [{ stage = "coarse", moments = ["prep", "launch", "run"] },
                 { stage = "medium", moments = ["prep"] }]

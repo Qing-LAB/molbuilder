@@ -13,7 +13,7 @@ here:
     saying which of the four deck shapes each rung gets.
   * :mod:`.citation_defaults` — what the cited run contributes to the
     template, once, at ``jobset init``.
-  * :mod:`.record`    — ``summarize run``'s ``<label>.transport.json``
+  * :mod:`.record`    — ``summarize task``'s ``<label>.transport.json``
     (``molbuilder/transport-result@2``).
   * :mod:`.transiesta` — the TranSIESTA **emission library**: the
     geometry table every rung writes and the electrode and reservoir

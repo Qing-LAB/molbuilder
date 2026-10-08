@@ -353,7 +353,7 @@ function freshFolderState() {
         continueChoice: {},       // stage -> the person's choice: "", a run, "--cold"
         answers:      {},         // "<kind>:<stage>" -> the last prep answer shown
         setTo:        null,       // the machine its first prep set, or null (M-3)
-        prepped:      { run: {}, bench: {}, placed: {} },  // kind -> stage -> prep's own sentence
+        prepared:      { run: {}, bench: {}, placed: {} },  // kind -> stage -> prep's own sentence
     };
 }
 
@@ -583,7 +583,7 @@ function dropRunRow(name, stage) {
     });
 }
 
-/** THE RUN CARD, built per rung and placed beside that rung's `prep run`
+/** THE RUN CARD, built per rung and placed beside that rung's `prep task`
  *  button (user, 2026-09-02: "that selection panel card should be next to
  *  the prep for run button such that it's obvious that this is designed for
  *  the run.  This is not mixed up with the existing functional bench
@@ -721,7 +721,7 @@ function renderMachine(task) {
                                           : (chosen ? "chosen" : "measured");
         // A ONE-POINT ROW IS THE TRIALS' VALUE, NEVER THE RUN'S.  `mpi_np:
         // [8]` is *measure eight*; `use_gpu: [true]` is what every trial
-        // runs with (`stages.md` § 6.8) -- neither is read by `prep run`:
+        // runs with (`stages.md` § 6.8) -- neither is read by `prep task`:
         // what the run uses is the card in the rung's own tab (§ 6.8d).
         const verdict = chosen
             ? "every trial · 1 point"
@@ -1137,11 +1137,11 @@ async function loadFolder(projects, dir, opts) {
                 : (cf.runs || []).some((r) => r.source === chose)));
         if (!offered) delete _fs.continueChoice[name];
     }
-    /* THE MACHINE IT IS SET TO, and the stages prepped -- the folder's own
+    /* THE MACHINE IT IS SET TO, and the stages prepared -- the folder's own
      * answer (W55 B4): a calculation's machine is its first prep's and does
      * not change (`configuration.md` M-3), so the card shows it fixed. */
     _fs.setTo = said.set_to || null;
-    _fs.prepped = said.prepped;
+    _fs.prepared = said.prepared;
     applySetMachine();
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
@@ -2063,10 +2063,10 @@ function renderNext(task) {
         // (`jobset/commands.stage_lines`, W55 B4): the calculation named
         // from the projects root, what it continues from and the machine as
         // chosen, and a launch line per mode where the config sets none.
-        block.appendChild(commandsFor("run", name));
+        block.appendChild(commandsFor("task", name));
         /* THE BUTTON WRITES WHAT THE COMMAND DOES: the same prep, with the
          * same choice. */
-        block.appendChild(prepButton("run", name));
+        block.appendChild(prepButton("task", name));
         panels.appendChild(block);
     });
 
@@ -2134,7 +2134,7 @@ function commandsFor(kind, stage) {
     const pre = el("pre", { class: "ts-cmd", "data-state": "loading" }, "…");
     const body = Object.assign({ dest: _dir, kind, stage,
                                  target: _machine || null },
-                               kind === "run" ? continueBody(stage) : {});
+                               kind === "task" ? continueBody(stage) : {});
     fetch("/api/task-setup/commands", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2166,7 +2166,7 @@ const _PREP_WIDGETS = [];
  * refuses batch submission by design.  The two differ in what they cost to
  * get wrong, so only the cheap one gets a button.
  *
- * **Nothing is prepped unseen.**  The first click asks the server what it
+ * **Nothing is prepared unseen.**  The first click asks the server what it
  * WOULD do -- which stage, which machine, what the description asks the
  * scheduler for -- and shows it; the second click runs it.  The same rule
  * the launch door keeps (`submission.md` S4), for the same reason.
@@ -2361,30 +2361,30 @@ function prepButton(kind, stage) {
      * it, or another folder is opened (`_resetPerFolderState`). */
     const kept = _fs.answers[kind + ":" + stage];
     if (kept) _showPrepAnswer(wrap, say, kept);
-    /* PREPPED ALREADY (W55 B4): the prep entry's own sentence, from the
+    /* PREPARED ALREADY (W55 B4): the prep entry's own sentence, from the
      * folder's answer, the way back in it -- and neither button, since a
-     * prepped stage is not prepped again (`job-system.md` § 5.0).  Its lines
+     * prepared stage is not prepared again (`job-system.md` § 5.0).  Its lines
      * above are its launch.  It is said over a kept answer, whose lines stay
      * below it. */
-    /* WHICH STAGES ARE PREPPED could not be read -- the folder answer's
+    /* WHICH STAGES ARE PREPARED could not be read -- the folder answer's
      * own `error` -- so nothing is offered as if none were: a Prep would
-     * meet a stage already prepped, or a folder that does not read. */
-    const unread = _fs.prepped.error;
+     * meet a stage already prepared, or a folder that does not read. */
+    const unread = _fs.prepared.error;
     if (unread) {
         btnPreview.disabled = true;
-        say.textContent = "Which stages are prepped cannot be read: "
+        say.textContent = "Which stages are prepared cannot be read: "
             + String(unread);
         say.setAttribute("data-state", "bad");
     }
-    const prepped = !unread && (_fs.prepped[kind] || {})[stage];
-    if (prepped) {
+    const prepared = !unread && (_fs.prepared[kind] || {})[stage];
+    if (prepared) {
         btnPreview.disabled = true;
-        say.textContent = String(prepped);
+        say.textContent = String(prepared);
         say.setAttribute("data-state", "warn");
         /* ...AND WHERE IT WAS ADMITTED, as its job records it -- the line
          * both prep doors print (`job-system.md` § 6.0). */
-        const placed = (_fs.prepped.placed || {})[stage];
-        if (kind === "run" && placed) {
+        const placed = (_fs.prepared.placed || {})[stage];
+        if (kind === "task" && placed) {
             wrap.appendChild(el("div", { class: "hint" }, String(placed)));
         }
     }
@@ -2393,7 +2393,7 @@ function prepButton(kind, stage) {
      * write button would hand its enabled-ness a SECOND owner, and picking a
      * machine would enable a write nobody had previewed.  The machine gate
      * still applies to it, through `blocked()`, which both buttons ask. */
-    if (!prepped && !unread) _PREP_WIDGETS.push({ btn: btnPreview, say, kind });
+    if (!prepared && !unread) _PREP_WIDGETS.push({ btn: btnPreview, say, kind });
     _syncPrepButtons();
     return wrap;
 }
@@ -2433,7 +2433,7 @@ async function _prepCall(kind, stage, plan, planId) {
     // one previewed -- the folder changed between (`job-system.md` § 5.0).
     if (planId) body.plan_id = planId;
     // WHAT IT CONTINUES FROM, as chosen (plan W37) -- a run's only.
-    if (kind === "run") Object.assign(body, continueBody(stage));
+    if (kind === "task") Object.assign(body, continueBody(stage));
     // The local machine has a NAME, not just a label: the server maps
     // `(this machine)` to it, so sending the label is enough and the two
     // surfaces keep one vocabulary.  A FOLDER SET TO ITS MACHINE names none:
@@ -3298,7 +3298,7 @@ function paintNotifyNote() {
 /** Which file supplied each setting — rendered from the folder's answer.
  *
  * A PURE RENDER.  This machine's `molbuilder.json` is the same whatever the
- * folder is prepped for, so it comes with the rest of the folder's answer;
+ * folder is prepared for, so it comes with the rest of the folder's answer;
  * which machine RECORD answers is the prep answer's (`_showPrepAnswer`),
  * since it turns on the machine a prep names.
  */

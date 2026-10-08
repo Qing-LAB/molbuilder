@@ -161,7 +161,7 @@ def trial_work_dir(container, shape, names: "RunNames") -> Path:
 
     `resolve_attempt` is the rule, not restated: reuse the last attempt
     until it has been launched, then open the next -- a benchmark's sweep is
-    prepped once (`job-system.md` § 5.0), so its prep finds ``run-0``.
+    prepared once (`job-system.md` § 5.0), so its prep finds ``run-0``.
 
     **The read-side twin is :func:`run_dir`** — *where does this trial
     actually run*, which needs no shape because by then the directory is

@@ -24,9 +24,9 @@ omp_threads = 1
 name = "the newest run index speaks, though an earlier run's output is the newer file"
 shape = "flat"
 stand_in = { rc = 1 }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 touched = ["H2_01_coarse-run0.out"]
 stage = "medium"
 refused = ["which failed -- ", "rc=1"]

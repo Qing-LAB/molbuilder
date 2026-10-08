@@ -50,7 +50,7 @@ def _sandbox(tmp_path, tmp_path_factory, monkeypatch):
 
 @pytest.fixture
 def sweep(tmp_path, monkeypatch):
-    """A prepped GPU sweep, nothing run — returns
+    """A prepared GPU sweep, nothing run — returns
     ``(job_set_path, first_trial_label, n_trials)``."""
     struct = Structure(elements=["H", "H"],
                        positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),

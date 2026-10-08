@@ -1,7 +1,7 @@
 """A SIESTA run that SIESTA stops, made on the road, and what each reader says
 about it.
 
-``jobset init`` -> ``prep run coarse`` -> ``launch run --mode direct`` on an
+``jobset init`` -> ``prep task --stage coarse`` -> ``launch task --mode direct`` on an
 H2 relaxation whose SCF cannot converge within its cap: ten cycles of plain
 linear mixing at weight 0.001 against a DM tolerance of 1e-8, set in the
 calculation's template, with ``SCF.MustConverge`` left at SIESTA's default --
@@ -119,7 +119,7 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
         for name, value in _CANNOT_CONVERGE.items():
             _set_item(bundle / "H2.template.toml", name, value)
 
-        r = _jobset("prep", "run", "coarse", "--bundle", str(bundle),
+        r = _jobset("prep", "task", "--stage", "coarse", "--bundle", str(bundle),
                     "--target", "this")
         assert r.exit_code == 0, r.output
         attempt = bundle / "01_coarse" / "run-0"
@@ -128,7 +128,7 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
                    for ln in deck.splitlines()), deck[-2000:]
         # The run fails -- that is its point -- so the verb's exit is not
         # asserted; what it left is.
-        _jobset("launch", "run", "coarse", "--bundle", str(bundle),
+        _jobset("launch", "task", "--stage", "coarse", "--bundle", str(bundle),
                 "--mode", "direct", "--yes")
         assert (attempt / "H2_01_coarse-run0.out").is_file(), \
             sorted(p.name for p in attempt.iterdir())

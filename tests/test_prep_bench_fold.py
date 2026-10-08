@@ -59,7 +59,7 @@ def _one_stage():
     """The ordinary starting ladder: ONE stage (`engines/stages.md` § 6.5).
 
     A single stage is still a stage, so it is named, tokened
-    (``01_coarse``) and prepped exactly like a rung of a three-stage ladder.
+    (``01_coarse``) and prepared exactly like a rung of a three-stage ladder.
     """
     return (Stage(name="coarse", overrides={}),)
 
@@ -246,7 +246,7 @@ def test_cli_prep_bench_requires_a_stage(calc):
 
 
 def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
-    """The whole verb through the CLI: trials prepped and listed, and NO
+    """The whole verb through the CLI: trials prepared and listed, and NO
     attempt machinery -- a sweep's jobs are named by coordinate, so the
     run-kind's stage/attempt tail must not run."""
     from click.testing import CliRunner
@@ -281,7 +281,7 @@ def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
             break
         listed.append(l.strip())
     assert len(listed) == 5, (
-        "five trials were prepped, so five are listed; got: " + repr(listed))
+        "five trials were prepared, so five are listed; got: " + repr(listed))
     assert all("/" in l for l in listed), (
         "each trial must be named by its path from the bundle, not the bare "
         "attempt name; got: " + repr(listed))
@@ -298,7 +298,7 @@ def test_a_trials_deck_prints_the_launch_of_that_trial(calc):
     plans exactly this trial.
 
     MUTATION THIS MUST FAIL AGAINST: prep not telling the deck it is a trial
-    (the header prints `launch run coarse`)."""
+    (the header prints `launch task --stage coarse`)."""
     import re
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
@@ -482,7 +482,7 @@ def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
     # `medium` before `coarse` has run: it starts from the structure, said
     # out loud (`job-system.md` § 5.4) -- what this is about is the plan
     for stage, more in (("coarse", ()), ("medium", ("--cold",))):
-        res = r.invoke(jobset_group, ["prep", "run", stage,
+        res = r.invoke(jobset_group, ["prep", "task", "--stage", stage,
                                       "--bundle", str(calc), "--no-sbatch",
                                       *more])
         assert res.exit_code == 0, res.output
@@ -494,12 +494,12 @@ def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
 def test_a_sweeps_record_never_touches_the_root_plan(calc):
     """Per-kind persistence (§ 6.1): `prep bench` writes the sweep's OWN
     ``job-set.json`` into the stage's container and leaves the root plan
-    alone -- a run prepped afterwards is a ladder, not a sweep."""
+    alone -- a run prepared afterwards is a ladder, not a sweep."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     _prep_bench(calc)
     assert not (calc / "job-set.json").exists()
-    r = CliRunner().invoke(jobset_group, ["prep", "run", "coarse",
+    r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", "coarse",
                                           "--bundle", str(calc),
                                           "--no-sbatch"])
     assert r.exit_code == 0, r.output
@@ -546,7 +546,7 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     # step 3).  The state prep saved first comes first
     # (`checkpointing.md` § 9).
     assert got == [("prep", "saved"),
-                   ("prep", "prepped"),
+                   ("prep", "prepared"),
                    ("launch", "refused"),
                    ("summarize", "verdict-written")]
     assert lines[0]["new"] is True and " · before prep bench coarse" in \
@@ -619,14 +619,14 @@ class TestTheRunsOwnCondition:
         """Prep one stage's run and return THAT stage's job.
 
         The root plan MERGES across stages (`test_prep_run_of_a_second_stage_
-        merges_the_root_plan`), so `jobs[0]` is whichever stage was prepped
+        merges_the_root_plan`), so `jobs[0]` is whichever stage was prepared
         first -- which is how a per-stage assertion silently reads the
         previous rung's numbers."""
         from click.testing import CliRunner
 
         from molbuilder.jobset._cli import jobset_group
         r = CliRunner().invoke(jobset_group,
-                               ["prep", "run", stage, "--bundle", str(calc),
+                               ["prep", "task", "--stage", stage, "--bundle", str(calc),
                                 "--no-sbatch", *extra])
         assert r.exit_code == 0, r.output
         jobs = json.loads((calc / "job-set.json").read_text())["jobs"]
@@ -670,7 +670,7 @@ class TestTheRunsOwnCondition:
             # The GPU count on the prep: this calculation runs on a GPU, and
             # a GPU run states how many (`gpu.md` G5) -- a count, not a shape.
             r = CliRunner().invoke(jobset_group,
-                                   ["prep", "run", "coarse", "--bundle",
+                                   ["prep", "task", "--stage", "coarse", "--bundle",
                                     str(calc), "--no-sbatch", "--gpus", "1"])
             assert r.exit_code != 0 and "ranks (mpi_np)" in r.output, (
                 bench, r.output)
@@ -732,7 +732,7 @@ class TestTheRunsOwnCondition:
         """`stages.md` § 6.8e -- the one rung `time` and `domain` gained.
 
         `allocation` is folded by the shared prep path, so `prep bench` and
-        `prep run` read the SAME wall.  One number cannot serve both: four
+        `prep task` read the SAME wall.  One number cannot serve both: four
         hours kills a two-day run, and two days makes every ten-minute trial
         queue behind everything -- so a benchmark, the thing you run to save
         time, waits a day to start.
@@ -869,7 +869,7 @@ def test_a_fine_tuned_vocabulary_copy_wins_and_is_named(calc):
     r = CliRunner()
     # `medium` with nothing run before it: from the structure, said out loud
     # (`job-system.md` § 5.4) -- the declaration is what this is about
-    res = r.invoke(jobset_group, ["prep", "run", "medium",
+    res = r.invoke(jobset_group, ["prep", "task", "--stage", "medium",
                                   "--bundle", str(calc), "--no-sbatch",
                                   "--cold"])
     assert res.exit_code == 0, res.output
@@ -916,21 +916,21 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
     # § 6.5: the bare verb does NOT guess the lone stage.  A rule that held
     # only at length one would stop holding the moment a second stage was
     # added -- so one rung refuses exactly as three do, listing the ladder.
-    res = r.invoke(jobset_group, ["prep", "run", "--bundle", str(dest),
+    res = r.invoke(jobset_group, ["prep", "task", "--bundle", str(dest),
                                   "--no-sbatch"])
     assert res.exit_code != 0, res.output
     assert "coarse" in res.output, res.output
     assert not (dest / "01_coarse").exists(), \
-        "the bare verb guessed the lone stage and prepped it"
+        "the bare verb guessed the lone stage and prepared it"
 
-    res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
+    res = r.invoke(jobset_group, ["prep", "task", "--stage", "coarse", "--bundle",
                                   str(dest), "--no-sbatch"])
     assert res.exit_code == 0, res.output
     rung = dest / "01_coarse"                 # the one rung, tokened
     assert (rung / "run-0").is_dir()          # its attempt
     assert not (dest / "run-0").exists()      # never at the root
     assert not (dest / "bench-JOB").exists()  # nor named for a benchmark
-    assert "launch run coarse --mode" in res.output
+    assert "launch task --stage coarse --mode" in res.output
     # Every link in the attempt RESOLVES: existence of a symlink proves
     # nothing -- resolve it.
     links = [p for p in (rung / "run-0").iterdir()]
@@ -942,7 +942,7 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
             f"{link.name} -> {os.readlink(link)} dangles"
     js = json.loads((dest / "job-set.json").read_text())
     assert js["kind"] == "ladder" and len(js["jobs"]) == 1
-    res = r.invoke(jobset_group, ["launch", "run", "coarse", "--bundle",
+    res = r.invoke(jobset_group, ["launch", "task", "--stage", "coarse", "--bundle",
                                   str(dest), "--mode", "direct", "--dry-run", "--yes"])
     assert res.exit_code == 0, res.output
     assert res.output.count("WOULD run") == 1
@@ -951,7 +951,7 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
     # "run prep_jobset first" refusal), and run.json is written at start,
     # so the record proves the launch began no matter how the engine's
     # process exits in this environment.
-    res = r.invoke(jobset_group, ["launch", "run", "coarse", "--bundle",
+    res = r.invoke(jobset_group, ["launch", "task", "--stage", "coarse", "--bundle",
                                   str(dest), "--mode", "direct", "--yes"])
     assert "run prep_jobset first" not in res.output
     assert (rung / "run-0" / "run.json").is_file(), res.output
@@ -982,7 +982,7 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
     write_pseudos(dest, sorted(set(struct.elements)))
     _state_the_run(dest)
     res = CliRunner().invoke(jobset_group,
-                             ["prep", "run", "coarse", "--bundle", str(dest),
+                             ["prep", "task", "--stage", "coarse", "--bundle", str(dest),
                               "--no-sbatch"])
     assert res.exit_code == 0, res.output
     _deck_path = next(dest.glob("01_coarse/*.fdf"))     # L1: in the stage dir
@@ -1074,12 +1074,12 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     res = r.invoke(jobset_group, ["summarize", "bench", "not-a-stage",
                                   "--bundle", str(dest)])
     assert res.exit_code != 0 and "not-a-stage" in res.output
-    # ...and with its one stage's bench prepped, there is none to offer
-    # (a prepped stage is not prepped again, `job-system.md` § 5.0)
+    # ...and with its one stage's bench prepared, there is none to offer
+    # (a prepared stage is not prepared again, `job-system.md` § 5.0)
     res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(dest),
                                   "--no-sbatch"])
     assert res.exit_code != 0, res.output
-    assert "every stage is prepped already" in res.output, res.output
+    assert "every stage is prepared already" in res.output, res.output
     # the same on a longer ladder -- one rule, not a per-length one
     ladder = tmp_path / "laddered"
     D.write_description(
@@ -1174,14 +1174,14 @@ def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
     write_pseudos(dest, sorted(set(struct.elements)))
     _state_the_run(dest)
     r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
+    res = r.invoke(jobset_group, ["prep", "task", "--stage", "coarse", "--bundle",
                                   str(dest), "--no-sbatch"])
     assert res.exit_code == 0, res.output
     assert "no attempt to open" in res.output
-    assert "launch run" in res.output
+    assert "launch task" in res.output
     assert not (dest / "run-0").exists()
     # an attempt ASK on flat is still the one refusal, with its story
-    res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
+    res = r.invoke(jobset_group, ["prep", "task", "--stage", "coarse", "--bundle",
                                   str(dest), "--no-sbatch", "--cold"])
     assert res.exit_code != 0
     assert "flat" in res.output
@@ -1371,7 +1371,7 @@ def test_a_bench_row_never_reaches_the_run_deck(calc):
     """A one-point NON-machine `bench` declaration is what the TRIALS run
     with, and only them (user, 2026-09-30, narrowing the 2026-08-20 rule;
     `generator.md` § 4.3a, `stages.md` § 6.8d): the run's values are its own
-    run card's.  Until 2026-09-30 `prep run` rendered the row into the run's
+    run card's.  Until 2026-09-30 `prep task` rendered the row into the run's
     deck -- a second home for a value the card states.
     """
     import re as _re
@@ -1381,7 +1381,7 @@ def test_a_bench_row_never_reaches_the_run_deck(calc):
 
     _describe_cpu(calc)
     _declare_bench(calc, {"diag_algorithm": ["ELPA-2STAGE"]})
-    r = CliRunner().invoke(jobset_group, ["prep", "run", "coarse",
+    r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", "coarse",
                                           "--bundle", str(calc)])
     assert r.exit_code == 0, r.output
     deck = next((calc / "01_coarse").glob("run-*/JOB*.fdf"))
@@ -1463,7 +1463,7 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tmp_path):
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4),
                     env_init=_ENTERS).to_json() + "\n")
-    r = CliRunner().invoke(jobset_group, ["prep", "run", "only", "--bundle",
+    r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", "only", "--bundle",
                                           str(dest), "--no-sbatch"])
     assert r.exit_code == 0, r.output
     job = json.loads((dest / "job-set.json").read_text())["jobs"][0]

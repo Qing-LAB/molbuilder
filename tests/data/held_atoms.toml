@@ -7,7 +7,7 @@
 # looked for beside an output (user, 2026-10-04: "there is no reason why
 # siesta can manage to store the information while pyscf fails to do that").
 #
-# Every row is prepped on the road -- `jobset init`, `prep` -- so each file
+# Every row is prepared on the road -- `jobset init`, `prep` -- so each file
 # is the one our code writes (`process/testing.md` § 6).
 # `tests/test_held_atoms.py` runs every case through the one runner every
 # contract table shares (`tests/support/road.py`, `run_road_case`, whose

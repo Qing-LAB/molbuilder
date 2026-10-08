@@ -72,7 +72,7 @@ CONFIG_FILENAME = "molbuilder.json"
 #: target machine's .json environment manifest"; 2026-10-02: "explicit job
 #: config is the only way allowed").
 #:
-#: ``scheduler`` put THIS machine's choices into every job it prepped, for any
+#: ``scheduler`` put THIS machine's choices into every job it prepared, for any
 #: target: a queue nobody named for that job, `-c`/`-t`/`--mem` defaults, a
 #: queue menu typed by hand, an order to pick queues by.
 _SCHEDULER_RETIRED = (

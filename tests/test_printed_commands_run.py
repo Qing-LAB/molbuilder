@@ -51,8 +51,8 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
     (`/api/task-setup/commands`, `jobset/commands.stage_lines`) -- the
     calculation named, a launch line per mode where this machine's config
     sets none -- and each, typed back from outside the calculation, is
-    taken.  Prepped, the folder answer names the machine the calculation is
-    set to and the stage prepped, in the prep entry's own sentence; the
+    taken.  Prepared, the folder answer names the machine the calculation is
+    set to and the stage prepared, in the prep entry's own sentence; the
     stage's lines are its launch alone -- a prep of it is refused -- and the
     next stage's line needs no `--target`: the calculation's copy answers.
 
@@ -61,14 +61,14 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
 
     MUTATIONS THIS MUST FAIL AGAINST: a launch line with no mode; a folder
     answer without the set machine; a
-    prepped stage still offered its prep."""
+    prepared stage still offered its prep."""
     from molbuilder.web.app import create_app
     bundle = _described(tmp_path, monkeypatch)
     client = create_app(config={}).test_client()
 
     def lines(stage, **choice):
         r = client.post("/api/task-setup/commands", json=dict(
-            dest=str(bundle), kind="run", stage=stage, target="this",
+            dest=str(bundle), kind="task", stage=stage, target="this",
             **choice))
         assert r.status_code == 200, r.get_json()
         return r.get_json()["lines"]
@@ -79,14 +79,14 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
     assert each_is_taken("\n".join(coarse)) == len(coarse), coarse
 
     folder = client.get("/api/task-setup/folder?dir=" + str(bundle)).get_json()
-    assert (folder["set_to"], list(folder["prepped"]["run"])) == (
+    assert (folder["set_to"], list(folder["prepared"]["task"])) == (
         "(this machine)", ["coarse"]), folder
-    assert "already prepped" in folder["prepped"]["run"]["coarse"], folder
+    assert "already prepared" in folder["prepared"]["task"]["coarse"], folder
     again = lines("coarse")
     assert again and all(" launch " in l for l in again), again
     medium = lines("medium", cold=True)
     assert medium[0].split(" --bundle ")[0] == \
-        "molbuilder jobset prep run medium --cold", medium
+        "molbuilder jobset prep task --stage medium --cold", medium
 
 
 @pytest.mark.parametrize("shape, container", [
@@ -95,9 +95,9 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
 ])
 def test_every_command_a_benchmark_prints_is_taken(tmp_path, monkeypatch,
                                                    shape, container):
-    """Medium's benchmark prepped, nothing else: its next steps; `launch
+    """Medium's benchmark prepared, nothing else: its next steps; `launch
     bench` naming no stage, which offers medium -- the stage with a
-    benchmark -- and its launch with the mode; `launch run medium`, refused
+    benchmark -- and its launch with the mode; `launch task --stage medium`, refused
     with the prep of the first stage and the benchmark's note apart from
     it; `status` in the bench folder, which reads its trials where they are
     and names the sweep's own verbs for the calculation.  On both layouts.
@@ -115,7 +115,7 @@ def test_every_command_a_benchmark_prints_is_taken(tmp_path, monkeypatch,
     assert each_is_taken(r.output), r.output
 
     for verb in (("launch", "bench", "--mode", "direct"),
-                 ("launch", "run", "medium", "--mode", "direct")):
+                 ("launch", "task", "--stage", "medium", "--mode", "direct")):
         r = jobset(*verb, "--bundle", bundle)
         assert r.exit_code != 0, (verb, r.output)
         assert each_is_taken(r.output), r.output
@@ -123,7 +123,7 @@ def test_every_command_a_benchmark_prints_is_taken(tmp_path, monkeypatch,
     r = jobset("status", "--bundle", bundle / container)
     assert r.exit_code == 0, r.output
     printed = list(printed_commands(r.output))
-    # its trials read where they are -- prepped, not launched -- so its
+    # its trials read where they are -- prepared, not launched -- so its
     # launch comes first, then the read-back
     assert printed and printed[0][:3] == ["launch", "bench", "medium"], (
         r.output)

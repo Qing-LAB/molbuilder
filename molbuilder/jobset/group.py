@@ -1,9 +1,9 @@
-"""A GROUP: stages prepped together to share one job (`project-layout.md`
+"""A GROUP: stages prepared together to share one job (`project-layout.md`
 § 1.6.6; plan § 5u.1 step 5, TD2).
 
 Stages that do not build on one another -- a transport ladder's seed and its
 two leads -- wait in the queue once instead of once each.  You group them at
-prep, by naming them; each is prepped as it would be alone and keeps its own
+prep, by naming them; each is prepared as it would be alone and keeps its own
 attempt, deck, run script and records; the group is written on each
 member's job (`Job.group`) with one header for the group's job, and launch
 sends that job, walking the members in the order named.
@@ -110,7 +110,7 @@ def names_of(label: str, tokens: Sequence[str]) -> GroupNames:
 
 
 def group_of(jobset, stage: str) -> Optional[List[str]]:
-    """The group ``stage`` was prepped in, or ``None``."""
+    """The group ``stage`` was prepared in, or ``None``."""
     job = next((j for j in jobset.jobs if j.name == stage), None)
     return list(job.group) if job is not None and job.group else None
 

@@ -2,7 +2,7 @@
 every deck says so -- `model/structure-periodicity.md` § 6.0.
 
 Through the road: a description (the door `jobset init` and the hand-over use),
-then `jobset prep run`, then the deck on disk.  Per engine:
+then `jobset prep task`, then the deck on disk.  Per engine:
 
 * the invariant is coordinates + offset: the deck writes the design
   coordinates plus ``cell.engine_offset`` of the design structure -- one rigid
@@ -61,7 +61,7 @@ def _water():
 def _prep(root, struct, cfg, stages, engine, *, stage=None,
           calculation="optimization", name="JOB", before_prep=None,
           refused=False):
-    """Describe, then `jobset prep run` one rung (the first unless ``stage``
+    """Describe, then `jobset prep task` one rung (the first unless ``stage``
     names another); the deck's text.  ``root`` is the per-test projects tree
     (`isolated_projects_root`): `prep` reads a calculation only from inside
     the tree.  ``before_prep(dest)`` puts on disk what an earlier rung left --
@@ -73,7 +73,7 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     from molbuilder.workingcopy_structure import StructureCodec
     StructureCodec().write(struct, root / "in.xyz")
     # ONE CALCULATION PER FOLDER: each call describes a new one, so each has
-    # a folder of its own -- a prepped stage is not prepped again
+    # a folder of its own -- a prepared stage is not prepared again
     # (`job-system.md` § 5.0).
     dest, n = root / "t" / "calc", 1
     while dest.exists():
@@ -95,7 +95,7 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     task["execution"] = ({"mpi_np": 4, "omp_threads": 1}
                          if engine == "siesta" else {"threads": 1})
     (dest / "task.json").write_text(json.dumps(task, indent=2))
-    # The machine the calculation is prepped for, with how a shell enters an
+    # The machine the calculation is prepared for, with how a shell enters an
     # environment there -- the record carries it for the generator
     # (`configuration.md` § 4).
     (dest / "environment.json").write_text(
@@ -107,7 +107,7 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     if before_prep is not None:
         before_prep(dest)
     stage = stage or stages[0].name
-    r = CliRunner().invoke(jobset_group, ["prep", "run", stage, "--bundle",
+    r = CliRunner().invoke(jobset_group, ["prep", "task", "--stage", stage, "--bundle",
                                           str(dest), "--no-sbatch"])
     if refused:
         assert r.exit_code != 0, r.output

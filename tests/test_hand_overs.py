@@ -34,7 +34,7 @@ def test_what_a_stage_builds_on(case, tmp_path, monkeypatch):
 
 def test_a_transport_rung_takes_no_from_or_cold(tmp_path):
     """A transport rung's inputs are its kind's -- gathered from the rungs
-    upstream -- and a rung prepped is not prepped again, so ``--from`` and
+    upstream -- and a rung prepared is not prepared again, so ``--from`` and
     ``--cold`` name nothing it can take: refused before anything is written
     (`job-system.md` § 5.4).  ``--from`` naming another rung's run was taken
     until 2026-10-05, and its carry and the gather wrote into one attempt.

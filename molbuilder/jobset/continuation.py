@@ -86,7 +86,7 @@ class Continuation:
 
     def ledger_facts(self) -> dict:
         """The decision-ledger line's facts -- the run's stage as
-        ``from_stage``, beside the stage being prepped.  What came across is
+        ``from_stage``, beside the stage being prepared.  What came across is
         the line's ``copied``, read off the attempt opened."""
         d = self.as_dict()
         d["from_stage"] = d.pop("stage")
@@ -319,7 +319,7 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
         return ("--from / --cold name what a stage continues from; a "
                 "transport rung takes its inputs from the rungs upstream, "
                 "gathered by its kind (engines/transport.md § 6.1), and is "
-                "not prepped again once prepped (job-system.md § 5.0).")
+                "not prepared again once prepared (job-system.md § 5.0).")
     if (from_attempt and not _independent(task)
             and not force_constant_stage(task, stage)):
         # A LINKED KIND'S FIRST RUNG -- a vibration's `relax`, PySCF's one
@@ -398,9 +398,10 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
 
     # THE COMMANDS, from the one composer (`commands`): each names the
     # calculation and states the mode where its config sets none.
-    from .commands import block, command, launch_lines, run_first
+    from .commands import (block, command, launch_lines, run_first,
+                           words_for)
     run_prev = block(run_first(prev, base=base))
-    launch_prev = block(launch_lines("run", prev, base=base))
+    launch_prev = block(launch_lines("task", prev, base=base))
     # THE WAY OUT THAT WORKS HERE (the W37 review's first finding): `--cold`
     # names an attempt-less start, which the flat layout -- one folder, no
     # attempts -- refuses; there a stage starts clean by its run card.
@@ -408,7 +409,7 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
              f"or start `{stage}` clean: set its run card's `restart` to "
              f"`clean` (Task setup, or task.json)\n" if flat else
              f"or start `{stage}` from the calculation's structure --\n"
-             + block([command("prep", "run", stage, base=base,
+             + block([command("prep", *words_for("task", stage), base=base,
                               flags=("--cold",))]) + "\n")
     rule = ("(engines/vibration.md § 5.2a)" if linked
             else "(job-system.md § 5.4)")
@@ -459,7 +460,7 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
                 other = str(a.relative_to(base))
                 break
     alt = (f"or continue from an earlier run of `{prev}` that finished --\n"
-           + block([command("prep", "run", stage, base=base,
+           + block([command("prep", *words_for("task", stage), base=base,
                             flags=("--from", other))]) + "\n"
            if other else "")
     return None, (f"`{stage}` {'builds on' if linked else 'continues from'} "
@@ -511,7 +512,7 @@ def state_remedy(concluded: Optional[str], state: Optional[str],
     not: worded by what the run's state says, the way on a command you can
     type (`job-system.md` § 5.3) -- the hand-over's default and a transport
     rung's gather say it alike.  A run that ended with an error, or stopped,
-    is LAUNCHED again, never prepped again (`job-system.md` § 5.0, § 5.4)."""
+    is LAUNCHED again, never prepared again (`job-system.md` § 5.0, § 5.4)."""
     again = f"Launch it again --\n{launch_block}"
     # A RECORD THAT DOES NOT READ is said as its reader says it -- which
     # names the way out (`jobset migrate`) -- never read as an ending.

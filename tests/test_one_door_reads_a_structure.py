@@ -103,7 +103,7 @@ def test_what_the_author_set_on_the_structure_reaches_the_deck(tmp_path,
     bundle = tree / "P" / "optimization" / "H4"
     # THE LAUNCH SHAPE STATED on the prep (`architecture.md` § 5.2); how a
     # shell enters an environment is the machine record's.
-    r = _jobset("prep", "run", "coarse", "--bundle", bundle,
+    r = _jobset("prep", "task", "--stage", "coarse", "--bundle", bundle,
                 "--target", "this", "--np", "2", "--cpus-per-task", "1")
     assert r.exit_code == 0, r.output
 

@@ -23,25 +23,25 @@ omp_threads = 1
 [[case]]
 name = "a stage continues from the newest run of the stage before it"
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 said = ["continues from 01_coarse/run-1"]
 
 [[case]]
 name = "a run that ended with an error is never built on: the stage after it is refused, saying so"
 stand_in = { rc = 1, leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 refused = ["which failed -- ", "rc=1"]
 
 [[case]]
 name = "a run that ended on its own is built on, and no viewer follows it"
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 said = ["continues from 01_coarse/run-0"]
 run_answer = { stage = "coarse", state = "finished", live = false }
@@ -49,8 +49,8 @@ run_answer = { stage = "coarse", state = "finished", live = false }
 [[case]]
 name = "what the hand-over carried is said under STAGE-PLAN.md's table, whose column is each stage's declaration"
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 plan = ["restart files it declares",
         "This prep: `medium` continues from 01_coarse/run-0 (the stage before it; concluded rc=0",
@@ -60,7 +60,7 @@ made = ["02_medium/run-0/H2.XV", "02_medium/run-0/.continued-from"]
 [[case]]
 name = "a vibration's force-constant stage builds on its relax: refused while relax's newest run has not been launched, naming the command"
 calculation = "vibration"
-before = [["prep", "run", "relax"]]
+before = [["prep", "task", "--stage", "relax"]]
 stage = "freq"
 refused = ["`freq` builds on the newest attempt of `relax`, 01_relax/run-0, which has not been launched", "Launch it"]
 
@@ -68,8 +68,8 @@ refused = ["`freq` builds on the newest attempt of `relax`, 01_relax/run-0, whic
 name = "...and while it failed -- a relaxation that ended with an error is never measured at"
 calculation = "vibration"
 stand_in = { rc = 1, leaves_restart = true }
-before = [["prep", "run", "relax"],
-          ["launch", "run", "relax", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "relax"],
+          ["launch", "task", "--stage", "relax", "--mode", "direct", "--yes"]]
 stage = "freq"
 refused = ["`freq` builds on the newest attempt of `relax`, 01_relax/run-0, which failed -- ", "rc=1"]
 
@@ -95,8 +95,8 @@ status_says = ["its prep refuses for now", "is not stated to be relaxed"]
 [[case]]
 name = "a stage launched again continues from its own latest run, recorded as prep's hand-over is"
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 launch = []
 launch_stage = "coarse"
@@ -109,8 +109,8 @@ after_launch = { made = ["01_coarse/run-1/H2.XV", "01_coarse/run-1/.continued-fr
 [[case]]
 name = "...launched again --cold, its next attempt takes nothing from a run of its own"
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 launch = ["--cold"]
 launch_stage = "coarse"
@@ -123,8 +123,8 @@ after_launch = { made = ["01_coarse/run-1"], made_lacks = ["01_coarse/run-1/.con
 name = "a stage whose kind's rerun starts over, launched again, starts over"
 own_warm_files = { resumes = false }
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 launch = []
 launch_stage = "coarse"
@@ -137,9 +137,9 @@ after_launch = { made = ["01_coarse/run-1"], made_lacks = ["01_coarse/run-1/.con
 name = "...and status says what launching it again does, however it ended"
 own_warm_files = { resumes = false }
 stand_in = { rc = 1 }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
-refused = "not prepped again"
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
+refused = "not prepared again"
 status_says = ["coarse, failed",
                "launch it again -- it starts over, nothing handed on from a run of its own"]
 
@@ -148,8 +148,8 @@ name = "a flat stage set restart: clean, launched again, runs again in its folde
 shape = "flat"
 run = { restart = "clean" }
 stand_in = { leaves_restart = true }
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+before = [["prep", "task", "--stage", "coarse"],
+          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
 launch = []
 launch_stage = "coarse"

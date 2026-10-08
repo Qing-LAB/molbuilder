@@ -56,7 +56,7 @@ class FcSweepRecordFileParser(FileParser):
     name   = "fc-sweep-json"
     label  = "molbuilder .fc-sweep.json record"
     hint   = ("a SIESTA vibration's displacement sweep -- <label>.fc-sweep.json, "
-              "written by `jobset summarize run`")
+              "written by `jobset summarize task`")
     output = SidecarResult
 
     @classmethod
