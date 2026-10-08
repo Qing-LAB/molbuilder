@@ -95,6 +95,12 @@ def test_transport_has_its_own_vocabulary_and_no_optimizer_history():
         "it into the present-but-not-honoured check and refuse a "
         "legitimate continuation")
     assert rows[".TSHS"].carry is None
+    # AND THE ENGINE'S SCRATCH (`engines/transport.md` § 2a.11, 2026-10-08):
+    # the leads' surface Green's functions a device point writes and re-reads
+    # within one run -- never carried, never taken over into a new run; not
+    # restart rows, a section-level fact.
+    assert W.warm_list("siesta", "transport").scratch == (".TSGFL", ".TSGFR")
+    assert W.warm_list("siesta", "optimization").scratch == ()
 
 
 # --------------------------------------------------------------------- #

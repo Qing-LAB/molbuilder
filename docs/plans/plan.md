@@ -1467,9 +1467,16 @@ calculation"):*
    rule, already in B7, drawn to its end: a bare saved structure brings no
    pseudopotentials, so citing one ends in the contract's own *"put the files
    in `pseudos/` yourself"* — a hand step on the road. § 3.1's two
-   saved-structure rows go; the Transport tab offers runs. *(Say so if you
-   want a saved structure to stay citable — then `init --psml-lib` must be
-   allowed for a citation that brings none.)*
+   saved-structure rows go; the Transport tab offers runs. **Built 2026-10-08**
+   (user: "continue with B7"): `classify_citation` refuses a folder with no
+   run of ours naming the road, compose refuses a run in flight or one that
+   ended with an error, the citation carries the run's conclusion and
+   convergence; the recorded-contract lane and the pair form are gone; the
+   suite's stand-in engine leaves a `.XV` with the deck's geometry so a
+   road-made run is citable in tests. **F28**: the `info.calculation` block
+   the Results tab's save writes into a saved structure's sidecar (with its
+   edited-since flags, `molview.md` § 8.4a) has no reader on this road now —
+   a writer with no reader; B8 says whether it goes.
 8. **A transport calculation's root opens its report through its description,
    `task.json`** (R7, 2026-10-08; **approved**, user 2026-10-08: "yes to
    both") — the report is composed on read, so it is

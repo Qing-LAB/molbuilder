@@ -1978,9 +1978,12 @@ def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     # files this rung itself declares (the device's `.TSDE`; the
     # transmission declares none).
     own = {w.name for w in job.warm}
-    hand = [f"{task.label}{suf}"
-            for suf in warm_list(jobset.engine, "transport", base).along
+    vocabulary = warm_list(jobset.engine, "transport", base)
+    hand = [f"{task.label}{suf}" for suf in vocabulary.along
             if f"{task.label}{suf}" in own]
+    # THE ENGINE'S SCRATCH AT A POINT (`warm-files.toml` [transport]
+    # scratch): recomputed by every run, so never taken over.
+    scratch = {f"{task.label}{suf}" for suf in vocabulary.scratch}
     products = products_of(stage, task.label) + hand
     taken, walked = [], []
     prev_launch = launch_record(prev, names) if prev is not None else None
@@ -1998,13 +2001,19 @@ def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
             f"warm launch has nothing to run -- to run them all again, "
             f"launch it cold:\n"
             + block(launch_lines("task", stage, base=base, flags=("--cold",))))
-    # THE POINTS TAKEN OVER: their files copied into the new run, each
-    # saying the run it came from.
+    # THE POINTS TAKEN OVER: the done point's folder whole -- its inputs,
+    # the engine's results the readers and the next rungs use, the run's
+    # own account -- but not the engine's scratch; each saying the run that
+    # COMPUTED it, one hop (`engines/transport.md` § 2a.11): a point taken
+    # over from a point itself taken over names the run that ran it.
+    from ..runrecord import read_continued_from
     for pdir, _v, src in taken:
         for f in sorted(src.iterdir()):
-            if f.is_file():
+            if f.is_file() and f.name not in scratch:
                 plan.writes.copy(f, pdir / f.name)
-        write_continued_from(pdir, str(src.relative_to(base)), names=names,
+        origin = (read_continued_from(src, names, FIRST_ATTEMPT)
+                  or str(src.relative_to(base)))
+        write_continued_from(pdir, origin, names=names,
                              run=FIRST_ATTEMPT, plan=plan.writes)
     # THE WALK: each point in bias order, its start the point before it.
     by_v = [v for _p, v in points]

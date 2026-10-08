@@ -25,8 +25,11 @@
 #                 e.g. "optimizer": a CG history is never handed to Broyden
 #   honoured_by   the deck keyword that reads the file, which the deck must
 #                 write whenever the file carries
-# and one fact per section, `resumes`: whether a re-run of that kind of run
-# continues from what the last one left (true unless stated).
+# and the facts a section states of its kind: `resumes`, whether a re-run of
+# that kind of run continues from what the last one left (true unless
+# stated); for a sweep, `along`, what a done point hands the next, and
+# `scratch`, the engine's scratch at a point -- never carried, never taken
+# over into a new run (engines/transport.md 2a.11).
 #
 # What an edit does: drop a row's `carry` to stop a file carrying (withhold
 # .DM for one debugging ladder); add a row for a file a new engine build
@@ -119,6 +122,13 @@ along = [".TSDE"]               # WHAT A SWEEP HANDS FROM POINT TO POINT: a
                                 # density of the closest done point before
                                 # it -- the manual's "copy the TSDE from the
                                 # closest, previously, calculated bias"
+                                # (engines/transport.md 2a.11)
+scratch = [".TSGFL", ".TSGFR"]  # THE ENGINE'S SCRATCH AT A POINT: the leads'
+                                # surface Green's functions, written and
+                                # re-read within one run and recomputed by
+                                # the next (hundreds of MB each) -- never
+                                # carried, never taken over into a new run,
+                                # always large to the checkpoint
                                 # (engines/transport.md 2a.11)
 
 [[transport.file]]

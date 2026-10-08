@@ -81,6 +81,11 @@ class WarmFilesDoc:
     #: point, by suffix -- each a row of the same section
     #: (`engines/transport.md` § 2a.11).  ``()`` where a section states none.
     along: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
+    #: The third: the ENGINE'S SCRATCH at a run of that kind, by suffix --
+    #: written and re-read within one run, recomputed by the next: never
+    #: carried, never taken over into a new run (`engines/transport.md`
+    #: § 2a.11).  Not rows: a scratch file is no restart file.
+    scratch: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
 
     def section_names(self) -> List[str]:
         return [name for name, _ in self.sections if name != "base"]
@@ -136,6 +141,9 @@ class WarmList:
     #: What a sweep of this kind hands from a done point to the next, by
     #: suffix -- the section's ``along`` (`engines/transport.md` § 2a.11).
     along: Tuple[str, ...] = ()
+    #: The engine's scratch at a run of this kind, by suffix -- the
+    #: section's ``scratch``: never carried, never taken over.
+    scratch: Tuple[str, ...] = ()
 
     @property
     def carry_rules(self) -> Tuple[WarmRule, ...]:
@@ -183,7 +191,8 @@ def warm_list(engine: str, kind: Optional[str] = None,
     own = base is not None and Path(doc.path) == Path(base) / FILENAME
     return WarmList(engine=engine, kind=kind, path=doc.path, own=own,
                     rules=rules, resumes=resumes,
-                    along=(dict(doc.along).get(kind, ()) if kind else ()))
+                    along=(dict(doc.along).get(kind, ()) if kind else ()),
+                    scratch=(dict(doc.scratch).get(kind, ()) if kind else ()))
 
 
 def _load(engine: str, base_dir=None) -> WarmFilesDoc:
@@ -220,14 +229,26 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
     sections: List[Tuple[str, Tuple[WarmRule, ...]]] = []
     resumes: List[Tuple[str, bool]] = []
     along: List[Tuple[str, Tuple[str, ...]]] = []
+    scratch: List[Tuple[str, Tuple[str, ...]]] = []
     seen_suffixes: Dict[str, str] = {}
     for name, body in raw.items():
         if (not isinstance(body, dict)
-                or set(body) - {"file", "resumes", "along"}):
+                or set(body) - {"file", "resumes", "along", "scratch"}):
             raise WarmFilesError(
                 f"{path}: section [{name}] must hold only [[{name}.file]] "
-                f"rows and the section-level facts, `resumes` and `along` "
-                f"(job-contracts.md 4.2a).")
+                f"rows and the section-level facts, `resumes`, `along` and "
+                f"`scratch` (job-contracts.md 4.2a).")
+        if "scratch" in body:
+            said = body["scratch"]
+            if (not isinstance(said, list)
+                    or not all(isinstance(x, str) and x.startswith(".")
+                               for x in said)):
+                raise WarmFilesError(
+                    f"{path}: [{name}] scratch = {said!r} -- a list of "
+                    f"suffixes, the engine's scratch at a run of this kind: "
+                    f"never carried, never taken over "
+                    f"(engines/transport.md 2a.11).")
+            scratch.append((name, tuple(said)))
         if "resumes" in body:
             if not isinstance(body["resumes"], bool):
                 raise WarmFilesError(
@@ -264,4 +285,4 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
             f"be empty, but its absence reads as a truncated file.")
     return WarmFilesDoc(engine=engine, sections=tuple(sections),
                         path=str(path), resumes=tuple(resumes),
-                        along=tuple(along))
+                        along=tuple(along), scratch=tuple(scratch))

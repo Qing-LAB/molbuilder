@@ -1381,9 +1381,14 @@ which did not.
 **Launched again — the run/stage contract's rule 3, read at the point**
 (`job-system.md`, *What molbuilder does for you*, 3): every launch is a new run,
 `run-<n+1>/`. **Warm**, it continues from the stage's own latest run: each point
-**done** there is taken over — its outputs copied into the new run's point
-folder, its `.continued-from` naming the run it came from — and the walk runs
-the points not done. **Cold** (`--cold`), nothing is taken over and every point
+**done** there is taken over — the done point's folder whole (its inputs, the
+engine's results the readers and the next rungs use, the run's own account:
+output, conclusion, logs) copied into the new run's point folder, **but not
+the engine's scratch** (`warm-files.toml` `[transport] scratch`: TranSIESTA's
+`.TSGFL` / `.TSGFR`, the leads' surface Green's functions, hundreds of MB and
+recomputed by every run), its `.continued-from` naming the run that
+**computed** it (one hop: a point taken over from a point itself taken over
+names the run that ran it) — and the walk runs the points not done. **Cold** (`--cold`), nothing is taken over and every point
 runs. Launch shows which points it takes over and which it runs, and asks once.
 A warm launch with every point done is **refused**, naming the `--cold` line —
 no run is opened with nothing to run in it. Every run is kept, and an I–V is

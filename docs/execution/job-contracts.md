@@ -1828,7 +1828,12 @@ writes the checkpoint a PySCF optimization reads but reads none back
 (`resumes = false`) while another PySCF calculation may write different
 result files entirely.  So the file holds a
 `[base]` section — what every calculation of this engine shares — plus one
-section per calculation type, extending it:
+section per calculation type, extending it. Beside its rows a section states
+the facts of its kind: `resumes` (whether a re-run continues from what the
+last one left), and for a swept kind `along` (what a done point hands the
+next) and `scratch` (the engine's scratch at a point — never carried, never
+taken over into a new run; [`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.11):
 
 ```toml
 schema = "molbuilder/warm-files@1"
