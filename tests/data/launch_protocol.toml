@@ -79,7 +79,9 @@ launch = []
 launch_mode = "direct"
 launch_sends = true
 listing = ["bench-group", "[ran]", "rides the group"]
-after_launch = { made = ["01_coarse/bench/launch/bench-group.run.sh", "01_coarse/bench/launch/bench-group.log"], ledger_holds = ["launch launched"] }
+# `launch/` is made a container by the send that writes it (`project-layout.md`
+# § 1.6.2, invariant 6b).
+after_launch = { made = ["01_coarse/bench/launch/bench-group.run.sh", "01_coarse/bench/launch/bench-group.log", "01_coarse/bench/launch/calcdir.json"], ledger_holds = ["launch launched"] }
 
 [[case]]
 name = "...and its per-trial bound is the walk's, here as on a queue"

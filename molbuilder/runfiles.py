@@ -1218,9 +1218,11 @@ WRITTEN: "tuple[Artifact, ...]" = (
              what="what this folder is in its calculation — a container or "
                   "a run — and where the calculation is",
              when="prep", level="stage", kind="record",
-             writer="prep, in every folder it makes "
-                    "(`materialize.mark_run` -- a stage's attempt and a "
-                    "benchmark trial's -- and `jobset.engines._pseudo_dir`)",
+             writer="the code that makes the folder: prep and launch "
+                    "(`materialize.open_run` -- a stage's attempt, a bias "
+                    "point's, a benchmark trial's, and the containers above "
+                    "each -- and `materialize.open_container`, a "
+                    "submission's `launch/` and `pseudos/`)",
              door="calcdirs.read"),
     Artifact(name=MONITOR_BUNDLE,
              what="the monitor, and the readers it runs on — one file",

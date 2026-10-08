@@ -133,16 +133,14 @@ def _pseudo_dir(base: Path, plan=None) -> Path:
     from .planned import Plan
     own = plan is None
     plan = Plan() if own else plan
-    pdir = base / PSEUDO_DIRNAME
-    plan.folder(pdir)
     # A container, and it says so (`project-layout.md` § 1.4a): the shared
     # package holds files, never a run.  Unstamped, it would report a
     # calculation *running* because it has no result file in it -- the
     # answer § 1.4a exists to stop.  It reads back
     # as *support* rather than a stage, because the naming authority maps no
     # job to it; that is derived, not stored.
-    from .. import calcdirs
-    plan.text(*calcdirs.record(pdir, role=calcdirs.CONTAINER, root=base))
+    from .materialize import open_container
+    pdir = open_container(base, base / PSEUDO_DIRNAME, plan)
     for stray in plan.glob(base, "*.psml"):
         target = pdir / stray.name
         if not plan.is_file(target):

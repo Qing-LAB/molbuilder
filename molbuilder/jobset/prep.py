@@ -192,15 +192,10 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
         # run script names every file of its runs by.
         _names = run_names(jobset, job, _sh)
         if jobset.kind == "sweep":
-            from .materialize import trial_work_dir
-            _jd = trial_work_dir(_jd, _sh, _names)
+            # A TRIAL'S FOLDER, opened by the one opener (`open_run`).
+            from .materialize import open_run, trial_work_dir
+            _jd = open_run(base, trial_work_dir(_jd, _sh, _names), plan)
         plan.folder(_jd)
-        if jobset.kind == "sweep":
-            # A TRIAL'S FOLDERS SAY WHAT THEY ARE, as a stage's attempt
-            # does (`project-layout.md` § 1.4a) -- marked here, once, for
-            # every sweep.
-            from .materialize import mark_run
-            mark_run(base, _jd, plan)
         script_path = _jd / job.script
         if not plan.is_file(script_path):
             raise PrepError(

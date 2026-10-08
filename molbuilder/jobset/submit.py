@@ -66,6 +66,7 @@ from .continuation import Continuation
 from .planned import Plan, found
 from ..paths import attempt_dir
 from ..runfiles import FIRST_ATTEMPT, LAUNCH_DIR, GroupNames, RunNames
+from .materialize import open_container
 from .commands import command as _cmd, rollback
 
 
@@ -1727,6 +1728,7 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
     name = "bench-group"
     gn = GroupNames(name)
     log = f"{LAUNCH_DIR}/{gn.name('.log')}"
+    open_container(base, container / LAUNCH_DIR, plan.writes)
     plan.writes.text(container / LAUNCH_DIR / gn.name(".run.sh"), _bench_walk(
         name, _walk_of(pending, container),
         where="this benchmark's unlaunched trials, run here", log=log,
@@ -1819,6 +1821,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
         if header is None:
             raise SubmitError(_no_sbatch(name, f"{LAUNCH_DIR}/{gn.name('.sbatch')}",
                                          base=base, told=told))
+        open_container(base, launch_dir, plan.writes)
         plan.writes.text(launch_dir / gn.name(".run.sh"), script)
         plan.writes.text(launch_dir / gn.name(".sbatch"),
                          _into_launch(header, gn))
@@ -2016,6 +2019,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                        label=f"{stage}@{bias_token(v)}", base=base)
                for v, vdir, att in attempts]
     if mode != "ask":
+        open_container(base, launch_dir, plan.writes)
         plan.writes.text(launch_dir / gn.name(".run.sh"), "\n".join(lines))
     if mode == "direct":
         plan.submissions.append(Submission(

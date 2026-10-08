@@ -855,15 +855,19 @@ can read it before committing a week of cluster time. That last one is why this
 belongs to prepare rather than submit: preparing is still design, and the split
 gives you somewhere to look; submitting is then a plain "yes, that one".
 
-**One opener makes every stage's run folder** *(W55 B6, 2026-10-03)* —
-`jobset/materialize.py::prepare_attempt`: a stage's attempt at prep and at a
-re-launch, a bias point's; a benchmark trial's folder is resolved at prep by
-`trial_work_dir`, and both are stamped by the one `mark_run`. It creates the folder and every container
-above it that does not exist yet — the stage, a benchmark's `bench/`, a bias
-point's `v<V>/`, a submission's `launch/` — stamping each (§ 1.4a; invariant
-6b), seeds the run's progress channel, copies in what it runs from and what its
-`Continuation` carries, writes `.continued-from`, and gives the run script the
-run's own label — a trial's is the trial's.
+**One opener makes every run folder** *(W55 B6, 2026-10-03)* —
+`jobset/materialize.py::open_run`: a stage's attempt (prep's `run-0`, and the
+next one a launch opens), a bias point's attempt, and a benchmark trial's
+folder in either shape. It creates the folder and every container above it
+that does not exist yet — the stage, a benchmark's `bench/`, a bias point's
+`v<V>/` — stamping each (§ 1.4a; invariant 6b); a submission's `launch/` is
+made and stamped a container by the send that writes it
+(`materialize.open_container`). What goes in follows: `prepare_attempt` copies
+in what a stage's attempt runs from and what its `Continuation` carries and
+writes `.continued-from`; a trial's deck is rendered into its folder. The run
+script is told the run's own label — a trial's is the trial's. `prep` seeds a
+stage's first run's progress channel, the preview a viewer finds before the
+run starts; a later run's progress is its engine's own.
 
 **A stage is prepared once** *(user, 2026-10-02: "refuse it, redo via
 rollback")*. `prep` opens its attempt; a stage the calculation's plan already
@@ -2627,7 +2631,7 @@ root, told apart by `<base>`.
 | `<base>.validation.txt` | what the generator checked before it wrote the deck | prep (`script_emit.write_validation_report`), beside the deck | none | record |
 | `<base>.run.sh` | the wrapper — activates the environment, tees the output, catches a kill | prep (`runwrap.write_run_wrapper`), beside its deck; a copy in each attempt | none | derived |
 | `<base>.sbatch` — only: a machine with a queue | the queue header — `sbatch` reads it | prep (`runwrap.write_run_wrapper`), beside the run script; a copy in each attempt | none | derived |
-| `calcdir.json` | what this folder is in its calculation — a container or a run — and where the calculation is | prep, in every folder it makes (`materialize.mark_run` -- a stage's attempt and a benchmark trial's -- and `jobset.engines._pseudo_dir`) | `calcdirs.read` | record |
+| `calcdir.json` | what this folder is in its calculation — a container or a run — and where the calculation is | the code that makes the folder: `materialize.open_run` (a stage's attempt, a bias point's, a benchmark trial's, and the containers above each), `materialize.open_container` (a submission's `launch/`), and `jobset.engines._pseudo_dir` | `calcdirs.read` | record |
 | `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
 | `mb_vibration.pyz` *(SIESTA, vibration)* — only: a force-constant stage | a force-constant job's finish: the modes, from `.FC` | prep, beside the run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
 | `mb_pyscf.pyz` *(PySCF)* | molbuilder's own code the PySCF script runs, which it imports from here -- the core count, the progress-log writer, the structure codec, the relaxation, a vibration's rules | prep, beside the PySCF script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |

@@ -397,8 +397,12 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
         # the same one.
         d = base / dirs[job.name]
         if jobset.kind == "sweep":
-            d = trial_work_dir(d, sh, run_names(jobset, job, sh))
-        plan.folder(d)
+            # A TRIAL'S FOLDER IS A RUN's, opened by the one opener.
+            d = open_run(base, trial_work_dir(d, sh,
+                                              run_names(jobset, job, sh)),
+                         plan)
+        else:
+            plan.folder(d)
         created.append(d)
         if d.resolve() == base.resolve():
             # FLAT: depth 1 (`project-layout.md` § 1) -- the job runs in the
@@ -546,23 +550,43 @@ FLAT_HAS_NO_ATTEMPTS = (
     "there is no run to name with --from, and none to skip with --cold.")
 
 
-def mark_run(base, run_dir, plan) -> None:
-    """SAY WHAT EACH DIRECTORY DOWN TO A RUN IS (`project-layout.md` § 1.4a,
-    invariant 6b): every directory between the calculation root and the run
-    a container, the run itself a run -- written by the code that makes
-    them, the moment it does: a stage's attempt (:func:`prepare_attempt`,
-    a bias point's included) and a benchmark trial's folder (`prep`).  The
-    root says itself, through its description, and gets no record.
+def open_run(base, run_dir, plan) -> Path:
+    """THE ONE OPENER OF A RUN FOLDER (`project-layout.md` § 1.6.2): a
+    stage's attempt (:func:`prepare_attempt`, a bias point's included) and a
+    benchmark trial's folder, in either shape.  It makes the folder and every
+    directory above it down from the calculation root, and says what each is
+    (§ 1.4a, invariant 6b): each above a container, the run a run.  The root
+    says itself, through its description, and gets no record.
 
-    ``plan`` receives the stamps, as :func:`materialize`'s copies."""
+    ``plan`` receives the folders and the stamps, as :func:`materialize`'s
+    copies.  Returns ``run_dir``."""
     base, run_dir = Path(base), Path(run_dir)
+    plan.folder(run_dir)
     if run_dir.resolve() == base.resolve():
-        return
-    for c in reversed(run_dir.parents):
+        return run_dir
+    _stamp_containers(base, run_dir.parents, plan)
+    plan.text(*calcdirs.record(run_dir, role=calcdirs.RUN, root=base))
+    return run_dir
+
+
+def open_container(base, folder, plan) -> Path:
+    """Make ``folder`` -- one that holds files and never a run: a
+    submission's ``launch/``, the calculation's ``pseudos/`` -- and say it
+    is a container, with every directory above it (§ 1.4a).  Returns
+    ``folder``."""
+    base, folder = Path(base), Path(folder)
+    plan.folder(folder)
+    _stamp_containers(base, [folder, *folder.parents], plan)
+    return folder
+
+
+def _stamp_containers(base: Path, dirs, plan) -> None:
+    """Each of ``dirs`` below the calculation root, stamped a container --
+    outermost first."""
+    for c in reversed(list(dirs)):
         if c == base or base not in c.parents:
             continue
         plan.text(*calcdirs.record(c, role=calcdirs.CONTAINER, root=base))
-    plan.text(*calcdirs.record(run_dir, role=calcdirs.RUN, root=base))
 
 
 def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
@@ -647,20 +671,12 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     plan.folder(stage_dir)
     rn = run_names(jobset, job, sh)
     attempt, is_new = resolve_attempt(stage_dir, rn)
-    plan.folder(attempt)
-
-    # WHAT EACH OF THESE DIRECTORIES IS, said by the code that just made them
-    # (`project-layout.md` § 1.4a, invariant 6b), through the one marker
-    # (`mark_run`) prep also calls where it makes a trial's folder -- and
-    # knowing is not recoverable later: a bench trial's directory is
-    # structurally identical to a stage's own, and § 1.4 calls one a run and
-    # the other a container.
-    #
-    # EVERY container down the chain, not just the leaf: a bias scan passes
-    # `container=<...>/v0.2`, whose parent `04_device/` is then created by
-    # `parents=True` and would be the one directory in the tree that never
-    # answered.
-    mark_run(base, attempt, plan)
+    # THE ONE OPENER (`open_run`): the attempt and every container down to
+    # it -- a bias scan's `04_device/` above its `v0.2/` included -- each
+    # saying what it is, which is not recoverable later: a bench trial's
+    # directory is structurally identical to a stage's own, and § 1.4 calls
+    # one a run and the other a container.
+    open_run(base, attempt, plan)
 
     # Inputs: the deck, wrappers and shared package, COPIED in -- real
     # files, per L2 (roadmap 7.10; `project-layout.md` § 1.0: the run
@@ -830,5 +846,5 @@ __all__ = [
            "materialize", "job_dir_names", "stage_refs",
            "latest_attempt", "run_dir",
            "resolve_attempt",
-           "prepare_attempt",
+           "prepare_attempt", "open_run", "open_container",
            ]
