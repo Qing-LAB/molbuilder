@@ -66,6 +66,20 @@ CURRENT_MEANS = {
         "TBtrans printed first."),
 }
 
+#: THE CAVEAT that goes with any DFT-NEGF conductance (`engines/transport.md`
+#: § 1 and § 2a.12), carried on the result so every reader says it.
+CAVEAT = (
+    "A DFT-NEGF conductance with a plain GGA functional places the "
+    "molecule's levels too close to the Fermi level, and so overestimates a "
+    "molecular junction's conductance, often by one to two orders of "
+    "magnitude.  Read T(E) for where the levels are and how they couple, "
+    "not for an absolute conductance.")
+
+#: The SCF row fields the report draws (`web/results.md` § 2.5) -- the
+#: SIESTA reader's own names; a NEGF row carries its charge too.
+_SCF_FIELDS = ("cycle", "energy", "delta_E", "dDmax", "dHmax", "ef",
+               "phase", "dq", "vha_ev", "charges")
+
 #: TBtrans prints the Landauer current as its own integral -- one line
 #: per electrode pair.  Matched loosely on the unit scaffold so custom
 #: electrode names still parse; the numbers are Fortran-shaped
@@ -263,6 +277,27 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             continue
         fact["scf_converged"] = res.scf_converged
         frames = res.frames or []
+        info = res.runtime_info or {}
+        # THE RUN'S SCF, AS IT RAN (`web/results.md` § 2.5): every row of the
+        # last step, phase-tagged -- a device's periodic start and its NEGF
+        # loop apart -- with what each phase had to reach and how it ended.
+        hist = (frames[-1].scf_history or []) if frames else []
+        fact["scf"] = [{k: c[k] for k in _SCF_FIELDS if k in c}
+                       for c in hist]
+        if info.get("scf_criteria"):
+            fact["scf_criteria"] = info["scf_criteria"]
+        if info.get("scf_phases"):
+            fact["scf_phases"] = info["scf_phases"]
+        # THE NEGF PHASE'S OWN FIGURES -- never the periodic start's
+        # (`engines/transport.md` § 2a.12): its last row's E_F and charge,
+        # and how many cycles it ran.
+        negf = [c for c in hist if c.get("phase") == "negf"]
+        if negf:
+            last = negf[-1]
+            fact["negf"] = {"cycles": len(negf),
+                            **{k: last[k] for k in ("ef", "dq", "charges",
+                                                    "energy")
+                               if k in last}}
         if frames:
             fact["energy_ev"] = frames[-1].energy
             # THE LEAD'S FERMI LEVEL, from the last SCF cycle of the last
@@ -276,6 +311,36 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
                         break
         out.append(fact)
     return out
+
+
+def device_regions(base: Path) -> Dict[str, List[int]]:
+    """The device's regions molbuilder owns -- L-electrode, bridge,
+    R-electrode -- as atom indices (0-based, the composed junction's order,
+    which is every rung's deck's), read from the calculation's composed
+    junction (`compose`'s copy and its sidecar).  ``{}`` before it is
+    composed."""
+    from ..runfiles import JUNCTION_FILE
+    from ..workingcopy_structure import StructureCodec
+    from .sort import ELECTRODE_LABELS, REGION_BRIDGE
+    path = Path(base) / JUNCTION_FILE
+    if not path.is_file():
+        return {}
+    regions = StructureCodec().load(path).regions or {}
+    return {label: [int(i) for i in regions.get(label, ())]
+            for label in (ELECTRODE_LABELS[0], REGION_BRIDGE,
+                          ELECTRODE_LABELS[1])
+            if regions.get(label)}
+
+
+def _chain(base: Path, stages: List[Dict]) -> List[Dict]:
+    """``[{stage, attempt, gathered: [{file, from}]}]`` -- what each rung's
+    attempt was gathered from, read from its `.gathered-from`
+    (`runrecord.read_gathered_from`); a rung that gathered nothing is
+    listed with ``[]``."""
+    from ..runrecord import read_gathered_from
+    return [{"stage": st["stage"], "attempt": st["attempt"],
+             "gathered": read_gathered_from(base / st["attempt"])}
+            for st in stages if st.get("attempt")]
 
 
 def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
@@ -296,6 +361,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from ..runfiles import RunNames
     from ..runrecord import LaunchRecordError, launch_record
     from .compose import PROVENANCE_FILE
+    from .tbtnc import TbtError, point_dos, tbt_file
 
     base = Path(base_dir)
     points_out: List[Dict] = []
@@ -303,6 +369,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     failed: List[Dict] = []
     token = stage_home(base, task, "transmission").token
     names = RunNames.of(task.label, token, task.shape)
+    regions = device_regions(base)
     opened = False                        # an attempt open: it is prepped
     for v, container in _point_dirs(base, task):
         att = latest_attempt(container)   # None is the ANSWER: prepared?
@@ -337,6 +404,18 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             continue
         energies, trans = parse_avtrans(avtrans[0].read_text())
         spin = deck_spin(where)
+        # THE DOS, ITS PARTS AND THE EIGENCHANNELS, from the point's own
+        # `.TBT.nc` (`tbtnc.point_dos`; `web/results.md` § 2.5).
+        nc = tbt_file(where, task.label)
+        dos = None
+        dos_why = None
+        if nc is None:
+            dos_why = f"{task.label}.TBT.nc is not in {rel}"
+        else:
+            try:
+                dos = point_dos(nc, regions)
+            except TbtError as exc:
+                dos_why = str(exc)
         current = None
         # THE NEWEST RUN'S, by its number (`_outs_newest_first`).
         for out in _outs_newest_first(where, token):
@@ -354,6 +433,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
             "current_a": total_current(current, spin),
             "current_a_printed": current,
             "spin": spin,
+            **({"dos": dos} if dos is not None else {"dos_why": dos_why}),
         })
     if not points_out and not partial:
         # THE WAY ON, by what the stage's state says: prepped (an attempt is
@@ -374,6 +454,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                       for what, got in (("pending", pending),
                                         ("failed", failed)) if got))
 
+    stages = _stage_facts(base, task, task.label)
     provenance = None
     prov_file = base / PROVENANCE_FILE
     if prov_file.is_file():
@@ -383,7 +464,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         "label": task.label,
         "energies_relative_to_ef": True,
         # THE LADDER IS THE RESULT'S STRUCTURE, so the record carries it.
-        "stages": _stage_facts(base, task, task.label),
+        "stages": stages,
         # WHAT THE RESULT IS ENTITLED TO BE CALLED (§ 2a.10, ruled
         # 2026-09-16).  The mechanism is identical either way; what differs is
         # how many device SCFs were paid for, and therefore what may be
@@ -412,12 +493,52 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         "provenance": {
             "slot": provenance,
             "atom_permutation": PERMUTATION_FILE,
+            # WHAT EACH RUNG WAS GATHERED FROM -- its attempt's
+            # `.gathered-from`, never the newest attempt by file time
+            # (`engines/transport.md` § 2a.12).
+            "chain": _chain(base, stages),
         },
+        "caveat": CAVEAT,
     }
     # EVERY KEY, EVERY RECORD: an empty list where there is none.
     record["pending"] = pending
     record["failed"] = failed
     return record
+
+
+def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
+                   ) -> Dict:
+    """The PDOS of ``atoms`` at the bias point ``bias_v``, narrowed to one
+    orbital type (`tbtnc.selection_pdos`; `web/results.md` § 2.5): read from
+    that point's transmission run's ``.TBT.nc``, each orbital's type from the
+    device run's ``.ORB_INDX`` at the same point -- the two runs share the
+    composed junction's atom order.  :class:`RecordError` names what is
+    missing."""
+    from ..jobset.materialize import run_dir
+    from .stages import rung_containers
+    from .tbtnc import TbtError, selection_pdos as _pdos, tbt_file
+    base = Path(base_dir)
+
+    def _at(stage: str) -> Optional[Path]:
+        v0 = float(task.bias[0]) if getattr(task, "bias", ()) else 0.0
+        for d, v in rung_containers(base, task, stage):
+            if abs((v0 if v is None else v) - float(bias_v)) < 1e-9:
+                return run_dir(d)
+        return None
+
+    where = _at("transmission")
+    if where is None:
+        raise RecordError(f"no transmission point at {bias_v:g} V")
+    nc = tbt_file(where, task.label)
+    if nc is None:
+        raise RecordError(f"the transmission at {bias_v:g} V has written "
+                          f"no {task.label}.TBT.nc")
+    dev = _at("device")
+    orb = (dev / f"{task.label}.ORB_INDX") if dev is not None else None
+    try:
+        return _pdos(nc, orb, atoms, orbitals)
+    except TbtError as exc:
+        raise RecordError(str(exc)) from exc
 
 
 def write_record(base_dir, record: Dict) -> Path:

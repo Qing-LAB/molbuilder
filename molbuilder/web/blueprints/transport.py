@@ -22,6 +22,8 @@ hand-over — nothing is awaiting, so the tab selects and decides):
                                           § 2a.12): every rung's state
                                           and every point's, as they are
                                           now
+    GET  /api/transport/pdos              the PDOS of selected atoms at
+                                          one bias point, by orbital type
     POST /api/transport/describe          the FINISHED task.json text —
                                           the web spelling of `jobset
                                           init --calculation transport`;
@@ -282,14 +284,16 @@ def api_transport_describe_attempt() -> Any:
 @bp.route("/api/transport/record", methods=["GET"])
 def api_transport_record() -> Any:
     """The transport record of the calculation ``?path=`` names -- its
-    ``<label>.transport.json`` -- composed from its rungs as they are now
+    ``<label>.transport.json``, or the calculation's folder itself, so a
+    ladder nothing has summarized yet has its report -- composed from its
+    rungs as they are now
     (`transport.record.collect_record`, ``partial``: a ladder in progress
     has a report), never the copy `summarize run` wrote, which stays the
     command line's deliverable.  The bench summary's door, for a transport
     calculation (`/api/bench/summary`).
 
     Errors: 400 for a path outside the projects tree, or one that is not a
-    transport calculation's record; 404 for no such file.
+    transport calculation's; 404 for nothing there.
     """
     from pathlib import Path
     from molbuilder.task import FILENAME, read_task
@@ -301,9 +305,9 @@ def api_transport_record() -> Any:
         path = _resolve_within_roots(raw)
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
-    if not path.is_file():
-        return jsonify({"ok": False, "error": f"no such file: {raw}"}), 404
-    base = Path(path).parent
+    if not path.exists():
+        return jsonify({"ok": False, "error": f"nothing at {raw}"}), 404
+    base = Path(path) if path.is_dir() else Path(path).parent
     try:
         task = read_task(base / FILENAME)
     except Exception as exc:                                  # noqa: BLE001
@@ -320,6 +324,42 @@ def api_transport_record() -> Any:
         return jsonify({"ok": False, "error": (
             f"the record could not be composed: {exc}")}), 400
     return jsonify({"ok": True, "record": record})
+
+
+@bp.route("/api/transport/pdos", methods=["GET"])
+def api_transport_pdos() -> Any:
+    """The PDOS of the atoms a person selected, at one bias point
+    (`web/results.md` § 2.5): ``?path=`` the calculation's
+    ``<label>.transport.json``, ``point=`` the bias in volts, ``atoms=``
+    0-based indices, comma-separated, ``orbitals=`` ``all`` (default) or
+    one of `tbtnc.ORBITAL_TYPES`.  Computed on request
+    (`transport.record.selection_pdos`) -> ``{ok, energy_ev, pdos, atoms,
+    outside_device, orbitals}``.  400 names what is missing."""
+    from pathlib import Path
+    from molbuilder.task import FILENAME, read_task
+    from molbuilder.transport.record import RecordError, selection_pdos
+    from .files import _PickerError, _resolve_within_roots
+
+    raw = str(request.args.get("path") or "")
+    try:
+        path = _resolve_within_roots(raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    base = Path(path).parent if Path(path).is_file() else Path(path)
+    try:
+        task = read_task(base / FILENAME)
+        point = float(request.args.get("point", ""))
+        atoms = [int(a) for a in
+                 str(request.args.get("atoms") or "").split(",") if a]
+    except Exception as exc:                                  # noqa: BLE001
+        return jsonify({"ok": False, "error": (
+            f"the request does not read: {exc}")}), 400
+    try:
+        got = selection_pdos(base, task, point, atoms,
+                             str(request.args.get("orbitals") or "all"))
+    except RecordError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, **got})
 
 
 @bp.route("/api/transport/swap_electrodes", methods=["POST"])

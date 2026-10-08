@@ -223,6 +223,10 @@
 {#- The one element builder the record viewers below share (bench-summary,
     transport, fc-sweep); before them, since they are deferred. -#}
 <script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
+<!-- The charts' colours from the tokens, and the one SCF plot -- the
+     trajectory viewer's and the transport report's (web/results.md 2.5). -->
+<script src="{{ url_for('static', filename='lib/plot-theme.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/scfplot/scfplot.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
 {# An ES module: it exports `render`/`clear` for the modules that import
    it (lib/molview) and still publishes `molbuilder.validationFindings` for the

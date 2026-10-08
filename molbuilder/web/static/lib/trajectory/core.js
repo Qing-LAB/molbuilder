@@ -944,8 +944,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // track lib/tokens.css.  Falls back to literal hex if the token
     // isn't defined (e.g. a partial CSS load), so the plot never
     // ends up colourless.  The non-themable plot-only colours
-    // (the red "all atoms" force trace, the orange SCF-gnorm trace)
-    // stay literal because they encode scientific-plot conventions
+    // (the red "all atoms" force trace) stay literal because they encode scientific-plot conventions
     // that should be stable across themes — see _trajectory_inspector
     // documentation in docs/web/results.md.
     function _themeColors() {
@@ -961,10 +960,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // Non-themable plot conventions
             forceAllAtoms: "#d62728",   // red — "all atoms" informational trace
             energy:        "#1f77b4",   // blue — single-trace
-            scfEnergy:     "#1f77b4",   // blue — single-trace
-            scfGnorm:      "#fb923c",   // orange — moved off green to keep
-                                        //          the threshold-line green
-                                        //          unambiguous
         };
     }
 
@@ -1521,9 +1516,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const scfEnergyEl = $("scf-energy-plot");
         const scfGnormEl  = $("scf-gnorm-plot");
         const history = state.data && state.data.scf_history;
-        // Local theme lookup so this can be reasoned about in isolation
-        // (one getComputedStyle); the criteria are read where the line is.
-        const theme = _themeColors();
         const hideScf = () => {
             section.hidden = true;
             scfEnergyEl.hidden = true;
@@ -1561,15 +1553,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
         scfGnormEl.hidden  = false;
 
         const cycles   = current.map(c => c.cycle);
-        const energies = current.map(c => c.energy);
 
-        // Pick the residual: prefer PySCF's |g|, fall back to
-        // SIESTA's dHmax.  Both decrease toward 0 during convergence
-        // and look natural on a log y-axis.  Both use the orange
-        // ``theme.scfGnorm`` so the green threshold line stays the
-        // only green element on the plot.
+        // The residual the status line quotes: PySCF's |g|, else SIESTA's
+        // dHmax -- what the SCF plot draws (`scfPlot.residualOf`).
         let residual, residualName, residualUnit;
-        const residualColor = theme.scfGnorm;
         if (current[0].gnorm !== undefined) {
             residual      = current.map(c => c.gnorm);
             residualName  = "|g|";
@@ -1643,84 +1630,13 @@ import { molviewFiles } from "../projects/molview-doors.js";
         }
         $("scf-status").textContent = statusText;
 
-        // SCF energy convergence within the current step.
-        Plotly.react("scf-energy-plot", [{
-            x: cycles,
-            y: energies,
-            mode: "lines+markers",
-            line: { color: theme.scfEnergy, width: 1.5 },
-            marker: { size: 5 },
-            name: "E",
-        }], {
-            title: { text: "SCF energy (current step)", font: { size: 12 } },
-            margin: { l: 8, r: 12, t: 28, b: 30 },
-            xaxis: { title: { text: "SCF cycle", standoff: 4 },
-                     zeroline: false, automargin: true,
-                     nticks: 6 },
-            yaxis: { title: { text: "E (eV)", standoff: 4 },
-                     tickformat: ".6~r", zeroline: false,
-                     automargin: true, nticks: 5 },
-            font: { family: "system-ui, sans-serif", size: 10 },
-        }, { displayModeBar: false, responsive: true });
-
-        // Residual on log y-axis -- spans many decades during SCF.
-        const resPlotEl = $("scf-gnorm-plot");
-        if (residual !== null) {
-            resPlotEl.hidden = false;
-            // THE PLOTTED RESIDUAL'S OWN CRITERION, in its phase
-            // (web/trajectory.md § 3): SIESTA's rows state their phase
-            // (`periodic`, `negf`); rows that state none are the run's one
-            // phase.  A line only where the run requires the criterion.
-            const scfShapes = [];
-            const scfAnnotations = [];
-            const crit = _scfCriteria();
-            const critPhases = Object.keys(crit);
-            const rowPhase = current[current.length - 1].phase
-                || (critPhases.length === 1 ? critPhases[0] : null);
-            const c = rowPhase && crit[rowPhase]
-                ? crit[rowPhase][residualName] : null;
-            const scfTol = (c && typeof c.tolerance === "number"
-                            && c.required !== false) ? c.tolerance : null;
-            if (scfTol != null) {
-                scfShapes.push({
-                    type: "line", xref: "paper",
-                    x0: 0, x1: 1,
-                    yref: "y", y0: scfTol, y1: scfTol,
-                    line: { color: theme.success, width: 1.5, dash: "dash" },
-                });
-                scfAnnotations.push({
-                    xref: "paper", x: 1, xanchor: "right",
-                    yref: "y", y: scfTol, yanchor: "bottom",
-                    text: "tol " + scfTol.toExponential(1),
-                    font: { size: 9, color: theme.success },
-                    showarrow: false,
-                });
-            }
-            Plotly.react("scf-gnorm-plot", [{
-                x: cycles,
-                y: residual,
-                mode: "lines+markers",
-                line: { color: residualColor, width: 1.5 },
-                marker: { size: 5 },
-                name: residualName,
-            }], {
-                title: { text: "SCF residual " + residualName,
-                         font: { size: 12 } },
-                margin: { l: 8, r: 12, t: 28, b: 30 },
-                xaxis: { title: { text: "SCF cycle", standoff: 4 },
-                         zeroline: false, automargin: true,
-                         nticks: 6 },
-                yaxis: { title: { text: residualName + " (" + residualUnit + ")",
-                                  standoff: 4 },
-                         type: "log", zeroline: false, tickformat: ".0e",
-                         automargin: true, nticks: 5 },
-                font: { family: "system-ui, sans-serif", size: 10 },
-                shapes:      scfShapes,
-                annotations: scfAnnotations,
-            }, { displayModeBar: false, responsive: true });
-        } else {
-            resPlotEl.hidden = true;
-        }
+        // THE ONE SCF PLOT (`lib/scfplot/scfplot.js`): each phase a trace
+        // on its own iteration axis, the last shown, each phase's own
+        // criterion where the run requires it (web/trajectory.md § 2-3).
+        window.molbuilder.scfPlot.draw(scfEnergyEl, scfGnormEl, current, {
+            criteria: _scfCriteria(),
+            energyTitle: "SCF energy (current step)",
+        });
     }
 
     /* ------------------------------------------------------------------ */

@@ -588,15 +588,20 @@ molecule's levels too close to E_F and overestimates a molecular junction's
 conductance, often by one to two orders of magnitude (§ 2).
 
 **What it holds today** *(2026-10-07)*: each rung's state and detail — the one
-status door's, as `jobset status` and the ladder say it — with a seed's and a
-device's energy and SCF convergence and each lead's E_F; per bias point T(E),
-T(E_F), the conductance and the current (total and as printed), and the points
-without a transmission as `pending` or `failed` in their run's words; the
-treatment; the citation's provenance slot. The Results tab composes it on read
-(`/api/transport/record`); `summarize run` writes the same composition to the
-file. **Not yet** — plan § 5u.1 step 9: the DOS and eigenchannels, the
-provenance from each rung's `.gathered-from`, the device's NEGF-phase figures,
-the E_F reference checked, and the DFT-NEGF caveat.
+status door's, as `jobset status` and the ladder say it — with a rung's SCF as
+it ran (every row of its last step, phase-tagged, the criteria each phase had to
+reach), a seed's and a device's energy and SCF convergence, the device's NEGF
+phase's own E_F, charge and cycles, and each lead's E_F; per bias point T(E),
+T(E_F), the conductance and the current (total and as printed), and from the
+point's `.TBT.nc` (read with sisl, `transport/tbtnc.py`) the device DOS, its
+PDOS by region, the leads' spectral and bulk DOS and the transmission
+eigenchannels; the points without a transmission as `pending` or `failed` in
+their run's words; the treatment; the provenance slot and the chain — each
+rung's `.gathered-from`; the DFT-NEGF caveat. The PDOS of any atoms, by orbital
+type, is asked of `/api/transport/pdos`. The Results tab composes the record on
+read (`/api/transport/record`); `summarize run` writes the same composition to
+the file. **Not yet**: the E_F reference checked rather than assumed (plan
+§ 5u.1 step 9), and the `.TBT.nc` reader checked against a real run's file.
 
 ---
 
