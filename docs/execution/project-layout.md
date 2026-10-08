@@ -813,11 +813,17 @@ can spend a week computing from a geometry you would have rejected in a minute.
 > **The decision to continue is the user's, made after looking. molbuilder's job
 > is to make continuing correct once that decision is taken.**
 
-#### 1.6.1 Attempt and run — two counters
+#### 1.6.1 A run and its tries — two counters
 
-| | an attempt | a run |
+*One vocabulary with `job-system.md` § Words: a **run** is one launch — the
+`run-<n>/` folder (the code's name for it is `attempt`: `latest_attempt`,
+`attempt_dir`); a **try** is one start of the wrapper inside it, which every
+file of it carries as `-run<N>`. A bias sweep's run holds a folder per point,
+and each point folder holds that point's tries (`transport.md` § 2a.11).*
+
+| | a run (`attempt` in the code) | a try |
 |---|---|---|
-| is | one launch of a stage or a trial | one start of the wrapper inside the attempt |
+| is | one launch of a stage or a trial | one start of the wrapper inside the run |
 | named | `run-<n>/` in the hierarchy; in the flat shape, the `-run<N>` index | `-run<N>`, in every file of the run |
 | numbered by | the next unused `n` (§ 4.3): `prep` opens the first, `launch` each next (§ 1.6.2) | `launch`, which hands it to the run script as `--run N` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.5): an attempt's run is 0; a flat stage's next is one past its newest launch record, else 0 (`runrecord.next_run`); a warm retry's is the next, which the run script hands itself (§ 3.5 there) |
 | a new one when | you prep and launch again (§ 1.5) | `launch` sends it, or the run script warm-retries in place |

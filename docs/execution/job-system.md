@@ -71,7 +71,7 @@ one does not state.
 | **task** | the calculation, as the verbs name it: `jobset prep task`, `launch task`, `summarize task` |
 | **stage** | one step of the calculation's ladder — `coarse`, `relax`, `device` — named in the description, prepared once, when you pick it (*The task*, below) |
 | **group** | stages that share one job — prepared together, or named together at launch — none building on another, walked in the ladder's order (`project-layout.md` § 1.6.6) |
-| **run** | one launch of a stage (`jobset launch task`). Every launch is a new run, numbered on from the last: on the hierarchical layout its own folder, `01_coarse/run-0`, `run-1`, …; on the flat layout its own numbered files in the calculation's folder, `H2_01_coarse-run0.out`, `-run1.out`, … |
+| **run** | one launch of a stage (`jobset launch task`). Every launch is a new run, numbered on from the last: on the hierarchical layout its own folder, `01_coarse/run-0`, `run-1`, …; on the flat layout its own numbered files in the calculation's folder, `H2_01_coarse-run0.out`, `-run1.out`, … A stage that sweeps the bias (transport, `low_bias_approximation: false`) holds a folder per voltage inside its run (`transport.md` § 2a.11). Inside a run, each start of its wrapper is a **try**, its files carrying `-run<N>` (`project-layout.md` § 1.6.1) |
 | **warm / cold** | what a run starts from. **Warm**: the restart files (density, geometry, optimiser history — the restart-file list, [`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a) a run left. **Cold**: none of them — the engine starts from the deck alone |
 | **saved state** | a checkpoint of the whole calculation folder ([`checkpointing.md`](?doc=execution/checkpointing.md)): an id, a note, the time. `molbuilder checkpoint save / list / restore / tag` |
 
@@ -190,7 +190,11 @@ by listing stages at prep.)*
      before the engine starts (a deck that reads them would otherwise read
      them);
    * either way a transport rung keeps the inputs its prep gathered (the
-     leads' Hamiltonians, the seed's density), copied with their record.
+     leads' Hamiltonians, the seed's density), copied with their record;
+   * **a stage that sweeps the bias** reads "its own latest run" at the point:
+     warm, each point **done** in the latest run is taken over into the new
+     run and only the points not done are run; cold, every point is run
+     ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11).
 
    Before anything is sent, `launch` shows you the exact line, which run it
    follows, **how that run ended**, and what is copied — and asks once
@@ -1664,10 +1668,9 @@ hand-over is one `Continuation`, as prep's is — the run, what it was, what it
 carried — written as `.continued-from`, copied into `run.json`, recorded in the
 ledger (`continues`). To change what a stage starts from, or anything else
 about it, restore the state saved before its prep and prep it anew (§ 5.0).
-**A transport rung's own rule** — a sweep continued in place, a point skipped
-— is designed ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11)
-and built with the transport work; until then this paragraph's rule reaches
-transport rungs too, a bias scan's points each opening their next attempt.
+**A stage that sweeps the bias** follows this rule at the point: warm, the next
+run takes over the points done in the latest one and runs the rest; cold, it
+runs every point ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11).
 
 **What an independent stage continues from** *(W37, agreed 2026-09-27; built
 2026-10-01)*. **By default** a continuing stage — `restart` is `continue`
@@ -1803,13 +1806,16 @@ Ctrl-C, a lost terminal, a cancel — it starts no further trial (one under a
 per-trial bound ends at it); what it did not reach is measured again from the
 state saved before the benchmark's prep. *(Built 2026-10-05, unit 11d:
 the trials run here went as one process after another from Python until then.)*
-**A transport bias scan is not a benchmark** *(user, 2026-10-05: "bias scan is
+**A transport bias sweep is not a benchmark** *(user, 2026-10-05: "bias scan is
 its own mechanism — this is parameter sweep, not some … computation resource
-experiment")*: it is one calculation swept over a parameter, with its own walk
-and its own record of which points are done
-([`engines/transport.md`](?doc=engines/transport.md)), and shares nothing with
-this. *(This paragraph made the two one script, "one sequencer", from
-2026-10-03; the bias scan's walk was never moved onto it.)*
+experiment")*: it is one calculation swept over a parameter — one run, its
+points done or not done, read from each point's own files
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.11). What it shares
+with a benchmark's walk and a group's is the **walk script** alone — one
+generator for every job that runs several members in order — each with its
+own settings: a device sweep stops at a point that does not finish and hands
+each point the one before's `.TSDE`; a benchmark, a group and a transmission
+sweep walk on.
 
 **The placement is decided once, at prep, and recorded** *(W38 F1/F6, restated
 2026-10-03 against [`architecture.md`](?doc=execution/architecture.md) § 5.2)*.

@@ -525,10 +525,9 @@ density of the closest bias before it — the manual's advice: *"copy the TSDE
 from the closest, previously, calculated bias for restart and much faster
 convergence"*. Small steps keep each start close to its answer and, on a
 junction with more than one self-consistent solution, keep the sweep on the
-one continuous with equilibrium. Launched again, the scan opens every point's
-next attempt, each warm from its own last density, or all cold with `launch
---cold`. *(Designed, not built — § 2a.11: a converged point never run again,
-and `launch --skip` for a point that will not converge.)*
+one continuous with equilibrium. A point is done or not done; launched again,
+the sweep's next run takes the done points over and runs the rest, or with
+`--cold` runs every point (§ 2a.11).
 
 #### Step 5 — the transmission and the current *(TBtrans; § 0.3, § 2a.10, § 2a.12, § 6.1b)*
 
@@ -561,19 +560,20 @@ is the **conductance**:
 G = G₀ · T(E_F),     G₀ = 2e²/h ≈ 77.5 µS          per channel when polarized: (e²/h)·(T↑ + T↓)
 ```
 
-**The two treatments** (§ 2a.10). Under **`low-bias`** the device runs once,
-at 0 V, and an I–V from it is the **linear-response** approximation — the
-zero-bias transmission held fixed as the window opens:
+**The two treatments** (§ 2a.10). With **`low_bias_approximation: true`** the
+device and the transmission run once, at 0 V, and the record computes the I–V
+from that one slice — the **linear-response** approximation, the zero-bias
+transmission held fixed as the window opens:
 
 ```
 I(V) ≈ (2e/h) ∫ T(E, 0) [ f(E − μ_L) − f(E − μ_R) ] dE
 ```
 
 sound while eV/2 is small against the distance from E_F to the nearest
-resonance. Under **`re-converged`**, every point has its own T(E, V) and each
-I(V) is integrated over its own window, with no approximation beyond the
-method. Each transmission point gathers the device's newest finished run at its
-own voltage (`re-converged`) or the one at 0 V (`low-bias`).
+resonance. With **`low_bias_approximation: false`**, every voltage gets its own
+device SCF and its own T(E, V), and each I(V) is TBtrans's integral over its own
+window, with no approximation beyond the method; the transmission takes the
+device's sweep run whole, each point its own point's H (§ 2a.11).
 
 #### The record — what is read back *(`summarize task`; § 2a.12)*
 
@@ -875,7 +875,7 @@ row below).*
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
 | **Default grouping** | The preparatory block — seed and both leads — as one submission: `jobset prep task` offers the three pre-selected, since none builds on another, and they are prepared as one group (`--stage seed --stage electrode_L --stage electrode_R` without a terminal); `jobset launch task` sends it as one job ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6; [`execution/job-system.md`](?doc=execution/job-system.md), *The task*). Then the device; then the transmission, each scan one job walking its points. The device and the transmission never share a job: the transmission builds on the device, which you look at first |
 | **A frame group runs at one bias** | § 2a.9 |
-| **The bias treatment is an exposed choice** | `low-bias` or `re-converged`, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
+| **The bias treatment is an exposed choice** | `low_bias_approximation`, true or false, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
 | **Automatic resubmission is deferred, and load-bearing on nothing** | The stages, their decks, the parameter map and the directory structure are identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing here waits on it. When built, the monitor is its home — it already watches a run to its end. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
 | **Net charge and gating are deferred** | Not designed now. In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is separate work. How a gate is applied in SIESTA 5.x — a charge-distribution block, a scripted hook, or neither — **has not been verified against the manual** and should be before anything depends on it |
 
@@ -1168,12 +1168,12 @@ In general it is **T(E, V)**: an electron's transmission probability at energy
 whole surface — it computes a **slice at one V**, and the choice being exposed
 here is how many slices you pay for.
 
-#### The two treatments
+#### The two treatments — one switch, `low_bias_approximation`
 
 | | what runs | what you get |
 |---|---|---|
-| **`low-bias`** (one device SCF, at 0 V) | the device SCF converges **once** | **T(E)** — one slice, a full energy curve. An I–V *can* be derived from it by integrating against the leads' Fermi functions; that is the **linear-response approximation** |
-| **`re-converged`** | the device SCF is **re-converged at every voltage** | **T(E, V)** — one slice per point. The I–V follows from integrating each slice over its own window, with no approximation beyond the method itself |
+| **`low_bias_approximation: true`** | the device SCF converges **once, at 0 V**, and the transmission runs **once**, on it | **T(E, 0)** — one slice, a full energy curve; the I–V computed from it by the record for every listed voltage, **I(V) = (2e/h)∫T(E,0)[f(E−μ_L)−f(E−μ_R)]dE**, μ_L,R = E_F ± eV/2 — the **linear-response approximation** |
+| **`low_bias_approximation: false`** | **every voltage gets its own device SCF** and its own transmission — a sweep (§ 2a.11) | **T(E, V)** — one slice per point; each point's current TBtrans's own integral over its window, with no approximation beyond the method itself |
 
 The mechanism is the same in both cases; the difference is how many device SCFs
 are paid for, and therefore **what the result is entitled to be called**.
@@ -1230,35 +1230,36 @@ So: the record names the treatment, the bias point or points, and — where the
 I–V was obtained by integrating a single slice — that it is linear response.
 The Results surface shows that label beside the curve, not buried in metadata.
 
-#### The choice, as stated and as run *(plan § 5u.1 step 6, TD7; built 2026-10-08)*
+#### The choice, as stated and as run *(user, 2026-10-08: "low-bias should be low-bias-approximation, and when this is set to false, all bias will need a scf calculation")*
 
-**A list of several voltages states its treatment** in `task.json` —
-`"bias": {"voltages_v": [0.0, 0.2, 0.4], "treatment": "low-bias" |
-"re-converged"}` (`jobset init --bias … --bias-treatment …`; the transport tab
-asks which, with nothing chosen, once its list holds a second voltage) — and is
-refused without one: never inferred from the count. A list of one voltage is
-the single bias, and states none. The tab's list is typed, or filled by its
-**start / stop / step** builder — 0 V first, then the walk — and stays editable;
-one list for both treatments.
+**A list of several voltages states the switch** in `task.json` —
+`"bias": {"voltages_v": [0.0, 0.2, 0.4], "low_bias_approximation": true |
+false}` (`jobset init --bias … --low-bias-approximation / --no-low-bias-approximation`;
+the transport tab asks, with nothing chosen, once its list holds a second
+voltage) — and is refused without it: never inferred from the count. A list of
+one voltage is the single bias, and states none. The tab's list is typed, or
+filled by its **start / stop / step** builder — 0 V first, then the walk — and
+stays editable; one list either way.
 
-| treatment | the device | the transmission | what the record calls it |
-|---|---|---|---|
-| **`low-bias`** | **once, at 0 V** — no bias axis, `04_device/run-0` | at every voltage, each point gathering that one zero-bias Hamiltonian (`.TS.HSX`); TBtrans takes the point's bias from its deck (`TBT.Voltage`, defaulting to `TS.Voltage`, `m_tbt_hs.F90`) with chemical potentials ±V/2 and integrates its own current over that window | `low-bias` — the linear-response approximation, said beside the curve |
-| **`re-converged`** | at every voltage, `04_device/v<V>/run-0`, each warm from the point before | at every voltage, each reading **its own** point's Hamiltonian | `re-converged` |
+| `low_bias_approximation` | the device | the transmission | the I–V | what the record calls it |
+|---|---|---|---|---|
+| **`true`** | one run, at 0 V — `04_device/run-0/` | one run, at 0 V — `05_transmission/run-0/` | computed by the record from T(E, 0) for each listed voltage (above) | the linear-response approximation, said beside the curve |
+| **`false`** | a sweep: one run, a point per voltage — `04_device/run-0/v0.2/` (§ 2a.11) | a sweep: a point per voltage, each reading its own device point's H | each point's TBtrans current | self-consistent at every voltage |
 
-Both currents are TBtrans's own integral, never recomputed (§ 2a.12). Measured
-on the 16-atom carbon chain (SZ, 100 Ry), I(0.2 V) = 3.0980e-05 A under
-`low-bias` against 3.0987e-05 A `re-converged` — a metallic chain, where the
-two agree, as § *The advice* expects. A description written before the
-treatment was stated, with several voltages, ran re-converged; `jobset
-migrate` writes that.
+The record names the switch and computes the low-bias I–V itself: a sum over
+the transmission TBtrans wrote, with the leads' Fermi functions — no TBtrans
+run at a voltage the device did not converge at. *(The 2026-10-08 build ran
+TBtrans at each voltage on the 0 V Hamiltonian with the leads shifted ±V/2 —
+`m_ts_electrode.F90:1461` — neither linear response nor self-consistent; the
+switch replaces it.)* `jobset migrate` writes the switch for a description that
+states the older `bias.treatment` word.
 
 #### Where bias sits in the map
 
 | parameter | class | decided at | binds | tier |
 |---|---|---|---|---|
-| **bias treatment** (`low-bias` / `re-converged`) | shape | calculation | the device's axis, and what the result may be called | 3 |
-| **the bias point(s)** | D | the description's list | the device and the transmission — each point's pair is written at that point, and each transmission point reads *its own* point's converged Hamiltonian, never another's | 3 |
+| **`low_bias_approximation`** | shape | calculation | whether the device and the transmission sweep the bias, and what the result may be called | 3 |
+| **the bias point(s)** | D | the description's list | without the approximation, the device and the transmission — each point's pair is written at that point, and each transmission point reads *its own* point's converged Hamiltonian, never another's; with it, the voltages the record's I–V is computed at | 3 |
 
 The treatment is not really a third mechanism: **single bias is the degenerate
 case of the bias axis — one point, at zero, where every list starts.** It earns a
@@ -1293,198 +1294,95 @@ over an axis simply has no level for it, and what a sweep's points share sits
 in the run above them, so the tree itself shows which results are computed once
 and reused.
 
-#### The bias axis — a sweep is one run *(user, 2026-10-05; designed, not built — plan Q5–Q7)*
+#### The bias sweep — one run, its points inside *(user, 2026-10-05 and 2026-10-08; plan § 5x, Q14)*
 
 > *"all the bias points are supposedly one single run. it's just different
-> parameters in one sweep"* · *"this is a sweep. so continue means continue
-> sweeping"* · *"the point/bias subdir is considered as 'done' only after all
-> iteration/SCF is finished and result confirmed then the parent dir update the
-> record atomically"* · *"user can always restart with cold, that will increase
-> run-N, and all points redone"* (user, 2026-10-05)
+> parameters in one sweep"* (user, 2026-10-05) · *"every point, if it is not
+> finished, it has to be redone using the same condition as every other point.
+> So it's either done or not done. That's it"* (user, 2026-10-08)
 
-**What runs today is not this yet.** Each bias point is a folder of its own
-attempts, `<NN>_<stage>/v<V>/run-<n>/` (`transport.stages.rung_containers`),
-all opened by the rung's prep. `launch task` sends one job that walks the
-points in the bias order (`submit._plan_chain`), asking the sum of the points'
-walls, as a group does (`project-layout.md` § 1.6.6): the device's warm — each point
-after the first, opened fresh, takes the restart files the point before it
-left (the device job's declaration, the `.TSDE` among it) — stopping at a
-point that fails; the transmission's independent, walking on and saying which
-failed. Launched again, every point opens its next attempt, warm from its own
-latest — the walk hands nothing forward into it — or, `--cold`, fresh, the
-walk handing each the point before's. There is no `points.json`, no `--skip` / `--unskip`, and the
-points' shared inputs are not held once in a run. Under `low-bias` the device
-has no bias axis (§ 2a.10). The design below is what this becomes.
+**When there is a sweep.** Only with `low_bias_approximation: false` and more
+than one voltage (§ 2a.10): then the **device** and the **transmission** each
+run at every voltage — the rungs the bias item's catalogue row names
+(`stages`). Every other rung, and every rung of a single-bias or low-bias
+calculation, is a single run with no bias level. One door answers which
+voltages a rung runs at: `transport.stages.sweep_points(task, stage)`.
 
-A rung the description sweeps over the bias — the device and the transmission —
-is **one run** of that rung, its bias points inside it:
+**A swept rung's run holds its points.** The run is the stage's ordinary
+`run-<n>/` — one launch of the stage, as every run (`job-system.md` § *Words*)
+— and inside it one folder per voltage:
 
 ```
-<project>/<topic>/<calculation>/
-├── task.json                    the description — every parameter, every stage
-├── junction.xyz                 the composed structure, + its sidecars
-├── junction.cited.fdf           the deck of the relaxation this started from
-├── pseudos/                     one copy, shared by every stage
-├── job-set.json                 the plan
-│
-├── 01_seed/
-│   └── run-0/                   the run: deck, wrapper, outputs, .DM
-├── 02_electrode_L/
-│   └── run-0/                   ... .TSHS
-├── 03_electrode_R/
-│   └── run-0/                   ... .TSHS
-├── 04_device/                   ← sweeps the bias
-│   ├── run-0/                   one run: the whole sweep
-│   │   ├── <shared inputs>      once: both leads' .TSHS, a clean copy of the
-│   │   │                        seed's .DM, the pseudopotentials; .gathered-from
-│   │   ├── points.json          the record: each point done, skipped or
-│   │   │                        neither; what it started from; how it ended
-│   │   ├── v0/                  a point: its deck (its bias), its outputs —
-│   │   │                        .TS.HSX, .TSDE
-│   │   └── v0.2/
-│   └── run-1/                   only by `launch --cold`: the sweep again
-└── 05_transmission/             ← sweeps the bias
-    └── run-0/                   one run: a point per device point, its H
-        │                        copied in at prep
-        ├── points.json
-        ├── v0/                  ... .TBT.nc
-        └── v0.2/
+04_device/
+└── run-0/                  one run: the whole sweep
+    ├── .gathered-from      what the run took from the rungs upstream, once:
+    ├── <label>_L-electrode.TSHS, <label>_R-electrode.TSHS
+    ├── <label>.DM          the seed's density, kept clean for every start from it
+    ├── run.json            the run's one launch record
+    ├── v0/                 a point: its deck (its voltage), its run script,
+    │                       its outputs (.TS.HSX, .TSDE, the .out, its ending)
+    ├── v0.2/
+    └── v0.4/
+05_transmission/
+└── run-0/                  one run: a point per voltage, its device point's
+    ├── .gathered-from      .TS.HSX copied into it at prep, the leads' .TSHS once
+    ├── v0/ v0.2/ v0.4/
 ```
 
-- **The run holds what its points share, once.** Every input the points have
-  in common is copied into the run's folder at prep, with its record
-  (`.gathered-from`), and each point's deck names it there, by the paths the
-  SIESTA 5.4.2 manual documents: the electrodes' `.TSHS` by the `TS.Elec.<>`
-  block's `HS` entry, a file path that *"need not be in the same directory,
-  i.e. the path can be relative"*; the
-  pseudopotentials by each species' *ps-file-spec*, a path taken from the
-  working directory (the manual's *Pseudopotentials*). **The starting density is
-  the point's own**: SIESTA reads it only as the label's `.DM` or `.TSDE` in its
-  working directory (`DM.UseSaveDM`; TranSIESTA takes the `.TSDE` *"if the code
-  finds a TSDE file in the directory"*), so it is copied into the point's folder
-  — the 0 V point a copy of the seed's `.DM`, which the run keeps clean beside
-  its other shared inputs (a point's run writes its own; `--cold` starts from
-  the clean one), the one point that starts from the periodic solution; each
-  later point the `.TSDE` of the closest bias converged before it, as the
-  manual's own advice reads: *"copy the TSDE from the closest, previously,
-  calculated bias for restart and much faster convergence"* (TranSIESTA,
-  *Convergence*).
-- **A transmission run takes one device run whole** — the newest whose points
-  are all done or skipped — and keeps the leads' Hamiltonians once and, in each
-  of its points, a copy of its own device point's, copied at prep, so no run
-  reads another run's folder. It is prepared only once such a device run exists:
-  a rung is prepared once, so a transmission prepared while device points were
-  missing could never get them; and one I–V is one device run, never 0 V from
-  one run and 0.4 V from another (after a `--cold`, say). With a single bias it
-  is the one device point.
-- **A point is done** only when its result is confirmed — the device's: its
-  self-consistent cycle converged, as the engine's own output says (an exit
-  code 0 alone is not enough: with `scf_must_converge` set false, SIESTA ends
-  normally at its iteration limit — § 2a.13), and its `.TSDE` and `.TS.HSX` are
-  there; the transmission's: TBtrans ended with exit code 0 and wrote its
-  `.TBT.nc`. Only then does the run's record (`points.json`) say so, written
-  whole and renamed into place, so a reader never sees half a record. **The
-  record is the sweep's state and its provenance**: each point by its folder
-  name — done, skipped, or neither — what the walk started it from (the seed's
-  density, a named point's `.TSDE`, or its own last density), and how each of
-  its tries ended (§ 2a.12 reads it).
-- **Launch walks the points neither done nor skipped, in the sweep's order, in
-  the latest run.** A point the walk has not begun starts from the density of
-  the closest converged point before it — the first from the seed's; a point it
-  began and did not finish continues from its own last density (below); a
-  transmission point reads its own device point's Hamiltonian, copied into its
-  folder at prep. A done point is never run again: at a fixed geometry and bias
-  the converged cycle is a fixed point, and running it again only repeats it.
-  The device walk stops at a point that does not converge — the points after it
-  would start from it; the transmission walk goes on — its points are
-  independent — and says which failed.
-- **A point not done continues from its own last density** *(user,
-  2026-10-05)* — by the wrapper's warm retry within one launch
-  (`continue_retries`, § 2a.13), by launching again after it: the same run, in
-  place. Until its cycle converges the density is still moving toward the
-  self-consistent one, as atoms do in an optimization, so continuing from where
-  it stopped is what finishes a cycle that ran out of iterations; redoing it
-  from the start it was given, with the same deck and the same iteration cap,
-  would retrace about the same iterations and stop at the same cap. A cycle
-  that oscillates or stalls is another failure: a retry sometimes moves it (a
-  restart clears the mixer's history), often not, and what reliably helps is a
-  changed setting — the mixing, a smaller bias step — which is a change of
-  description (below), or skipping the point.
-- **A point can be skipped** *(user, 2026-10-05)*: `launch task --stage device --skip
-  v0.6` marks the point skipped in the run's record, by its folder name —
-  nothing renumbered or moved, the folder keeping what its tries left — and
-  walks on; `--unskip v0.6` takes the mark off, and the point is walked again,
-  from its own last density. The description is untouched — its bias list
-  still names 0.6 V — so the run is the same run, continued; deleting the
-  voltage from the list instead is a change of description. The next point
-  starts from the closest converged point before it (0.4 V's), and the record
-  says so. Only a point not done is skipped, and never the 0 V point: it is
-  where the sweep leaves equilibrium, the one point started from the periodic
-  solution (the manual: *"the 0 V calculation should be the only calculation
-  where you start from SIESTA"*). The mark is written when the launch is sent
-  and recorded in the ledger, as launch's other decisions are; a dry run writes
-  nothing ([`execution/job-system.md`](?doc=execution/job-system.md) § 6.0). A
-  skipped device point has no Hamiltonian for the transmission to read, so the
-  transmission carries it as skipped, and the I–V shows the gap, labelled,
-  never filled in. Skipping lengthens the next point's step: it may need more
-  iterations, and if the skipped point failed for a physical reason — a
-  resonance entering the bias window (§ 2a.10) — the next may too.
-- **`launch --cold`** is the person's choice to start over: it opens
-  `run-<N+1>` and redoes every point, the skipped ones included, from the
-  inputs the stage was prepared with — copied from the run before, never
-  gathered again.
-- **A run the description no longer describes is not continued**: when the
-  sweep's points or a setting differ from the run's, launch refuses it, and the
-  way on is the existing one — restore the state saved before the rung's prep,
-  and prep it anew ([`execution/job-system.md`](?doc=execution/job-system.md)
-  § 5.0).
-- **The rungs that run once** — the seed, the leads, a single-bias device, a
-  single transmission — follow the same rule: converged, done; otherwise
-  launching again continues it in its run, from its own last density; `--cold`
-  opens the next run. So a transport rung launched again never opens a next
-  attempt: transport rungs leave
-  [`execution/job-system.md`](?doc=execution/job-system.md) § 5.4's *A stage
-  launched again*, which opens one (§ 2a.15).
-- **Transport's walk shares nothing with a benchmark's** *(user, 2026-10-05:
-  "bias scan is its own mechanism — this is parameter sweep, not some …
-  computation resource experiment")*. What the device walk hands from a
-  converged point to the next is its NEGF density, `.TSDE` — stated by the
-  restart-file list ([`execution/job-contracts.md`](?doc=execution/job-contracts.md)
-  § 4.2a), never typed in code; how the list states it is settled with the
-  build (proposed: a second section-level fact beside `resumes`,
-  `[transport] along = [".TSDE"]`).
+The stage folder holds no deck of its own: every deck is a point's.
 
-*(Until it is built, the layout is the 2026-08-29 one, which treated a bias
-scan as "a sweep — the fifth axis, again", the benchmark's shape: each point is
-its own folder with its own attempt ladder — `04_device/v0/run-0/`,
-`04_device/v0.2/run-0/` — holding its own copy of every input; one job walks
-the points, handing on the device's whole restart-file declaration — its
-density, geometry and history files with `.TSDE` — over the seed's density each
-point gathered (plan C8); and a transport rung launched again continues from
-its own run's files, `job-system.md` § 5.4's rule.)*
+**A point is done or not done** — read from the point's own files by one door
+(`continuation.done`), never from a second record: **done** when its run
+finished, its SCF converged by the engine's own output (the device's), and it
+holds what the rungs downstream take from it (the DAG, `stage_inputs`: the
+device's `.TS.HSX` and `.TSDE`; the transmission's `.TBT.nc`). Its record is
+what its wrapper already writes as it ends — the conclusion marker and the
+outputs. A point has no state of its own beyond that: *queued*, *running*,
+*finished* and *failed* are the **run's**, read from the run's launch record
+and the walk's log.
 
-A **single-bias** calculation (§ 2a.10) has no `v*` level at all — the degenerate
-case of the axis rule, not a special case of the layout.
+**The walk.** `launch task` sends one job walking the run's points not done, in
+bias order. Each point starts as it would on the first walk — **every point not
+done is redone from the same start**: the 0 V point from the seed's density
+(the run's clean copy); a later point from the converged density (`.TSDE`) of
+the closest done point before it, or of the point before it in this walk — the
+manual's *"copy the TSDE from the closest, previously, calculated bias"*. The
+start of every point is decided when the launch is planned and written beside it
+(`.continued-from`), so the record says what each point started from. The device
+walk stops at a point that does not finish — the points after it would start
+from it; the transmission walk goes on — its points are independent — and says
+which did not.
 
-**One door says where a rung's attempts are** *(plan § 5w K10, 2026-10-01)*:
-`transport.stages.rung_containers(base, task, stage)` — one folder per bias
-point for a rung a scan runs at each point, the stage folder otherwise — and
-which rungs those are is the bias item's own `stages` (the device and the
-transmission; `scan_points`), never a list of names. Every reader of a rung's
-attempts asks it: prep's decks, wrappers and attempts, the gather (a
-transmission point reads its own point's device), the chain launch, prep's
-*already under way*, Task setup's count, the calculation's record, and
-`jobset status` with the Results tab's ladder (`web/results.md` § 2.4). **A
-scan's rung has one row there, and it speaks from the first point not
-finished**, in the scan's order — the order the chain walks — or from the last
-once every point has; its detail names the point (*0.2 V: queued …*) and its
-attempt is the point's (`v0.2/run-0`). A rung with a point outstanding is the
-rung to resume from (§ 2a.12). *(Built, the door answers a swept rung's runs
-and, in each, its points; the row speaks from the latest run's record.)* The
-record looked in the point folders for the transmission alone, so a finished
-device scan read *not run*; Task setup's count, prep's question and the status
-looked in the stage folder alone (the M11 review's T-F27, T-F13; the K10
-review).
+**Launched again — the run/stage contract's rule 3, read at the point**
+(`job-system.md`, *What molbuilder does for you*, 3): every launch is a new run,
+`run-<n+1>/`. **Warm**, it continues from the stage's own latest run: each point
+**done** there is taken over — its outputs copied into the new run's point
+folder, its `.continued-from` naming the run it came from — and the walk runs
+the points not done. **Cold** (`--cold`), nothing is taken over and every point
+runs. Launch shows which points it takes over and which it runs, and asks once;
+a warm launch with every point done runs none, and says so. Every run is kept,
+and an I–V is always one run whole.
+
+**The transmission takes one device run whole**: its prep gathers each point's
+`.TS.HSX` from the newest device run whose points are all done — never 0 V
+from one run and 0.4 V from another.
+
+**What it costs to be wrong about a point.** A point that does not converge
+within its iteration limit does not converge on the next walk either: the same
+start, the same deck. To change it — the mixing, the iteration limit, a smaller
+bias step — change the description: go back to the state saved before the
+rung's prep and prepare it anew (`job-system.md`, *How the checkpoint supports
+you*).
+
+A **single-bias** calculation, and a **low-bias** one, have no `v*` level at
+all — the degenerate case of the axis rule, not a special case of the layout.
+
+**One door says where a rung's runs are** — `materialize.run_dirs(base, task,
+stage)`: the rung's `run-<n>/`, and inside a swept run its point folders. Every
+reader asks it: prep, the gather, the walk, `status`, Task setup's count, the
+record and the Results ladder. **A swept rung has one row in `status`**: the
+run's state, and how many of its points are done (*3 of 5 points done*);
+`status <stage>` lists the points — done or not, and what each started from.
 
 #### Later: the frame axis (§ 2a.9), and why sharing needs no explaining
 
@@ -1507,12 +1405,11 @@ multi-frame pair (§ 2a.9).
 
 #### Attempts, and what is never overwritten
 
-A **done point is never rewritten**, and **a prepared rung is not prepared
-again** *(user, 2026-10-02)*: launching a rung again continues its run in place
-— the points not done, in their folders, the done ones untouched — and
-`launch --cold` opens its next `run-<n>` *(the bias axis above; until built,
-launching a rung whose attempt has run opens its next `run-<n>`)*; a redo of
-its preparation goes back to the state saved before it and prepares it anew
+**A run is never rewritten**, and **a prepared rung is not prepared again**
+*(user, 2026-10-02)*: launching a rung again opens its next `run-<n>` — warm
+from its own latest run (a sweep: its done points taken over), or `--cold` —
+and every run before it stays as it was; a redo of its preparation goes back to
+the state saved before it and prepares it anew
 ([`execution/job-system.md`](?doc=execution/job-system.md) § 5.0).
 
 The consequence for the workflow: **change a parameter by going back** — save
@@ -1529,8 +1426,9 @@ previous one, and comparing two settings was reading two directories.)*
 
 Before a stage runs, what it consumes is copied into its run's directory: the
 leads' Hamiltonians, the seed's density, the device's converged Hamiltonian —
-once, in the run's own folder, for a sweep's points to read from there (the
-bias axis above). Three conditions gate every copy — the upstream stage must have
+once, in the run's own folder; a sweep's points read the shared ones from there,
+and each transmission point holds its own device point's Hamiltonian (the bias
+sweep above). Three conditions gate every copy — the upstream stage must have
 been prepared, its **newest** attempt must have **finished** and run the deck this
 composition renders, and that attempt must actually hold the file — and each
 refusal names what to do first. A record of what was taken from where lands
@@ -1548,11 +1446,11 @@ output. Everything else in the tree exists to make it trustworthy, and the
 surface should present both.
 
 **The curve, and what it is.** T(E) for a single-bias calculation, or the family
-T(E, V) for a bias scan — shown **with its treatment named** (§ 2a.10). An I–V
-obtained by integrating a single zero-bias slice is labelled *linear response*,
+T(E, V) for a sweep — shown **with its treatment named** (§ 2a.10). An I–V
+obtained by integrating the single zero-bias slice is labelled *linear response*,
 beside the curve and not in metadata: the two kinds of I–V are different claims
-and look identical on a plot. A point the person skipped is a gap in the family
-and in the I–V, labelled skipped — never filled in (§ 2a.11).
+and look identical on a plot. A sweep's point not done is a gap in the family
+and in the I–V, said as not done — never filled in (§ 2a.11).
 
 **The provenance chain.** Which device run, which lead runs, which relaxation
 the junction came from. A transmission curve without its chain cannot be
@@ -1562,7 +1460,7 @@ interpreted, reproduced, or compared with another.
 — because a transmission that has not run yet is *pending*, never a failure of
 the calculation, and a reader needs to see which of five rungs is the one still
 outstanding — and, on a rung that sweeps the bias, which of its points are
-done: its run's record says (§ 2a.11).
+done, read from each point's own files (§ 2a.11).
 
 **Later, the frame dimension.** A frame group's deliverable is a **family** of
 curves plus whatever is derived across it — an average, a spread, a set of
@@ -1603,8 +1501,9 @@ plots — the transmission deck asks TBtrans for all of them.
 **Composed on read, so a ladder in progress has a report**: the transport
 record is composed from whichever rungs' records exist, each time it is read.
 **The provenance is what was gathered**, read from each rung's `.gathered-from`
-— never the newest attempt by file time — and, for a sweep's points, what each
-started from, read from its run's record (§ 2a.11).
+— never the newest run by file time — and, for a sweep's points, what each
+started from, read from each point's `.continued-from` (§ 2a.11). The device
+facts shown beside a transmission are the device run the transmission gathered.
 
 ### 2a.13 The full map
 
@@ -1936,7 +1835,7 @@ The road is the composite, through the ordinary `jobset` verbs:
 molbuilder jobset init --calculation transport --shape hierarchical \
     --bundle BDT-Au/transport/BDTTrans \
     --slot junction=BDT-Au/optimization/JunctionRelax/01_coarse/run-2 \
-    --bias 0.0,0.2 --bias-treatment re-converged
+    --bias 0.0,0.2 --no-low-bias-approximation
 
 # 2. prep + launch the task: each prep shows the ladder and offers the
 #    stages that are ready -- first the seed and both leads, as one job;
@@ -3319,7 +3218,7 @@ from ([`job-system.md`](?doc=execution/job-system.md) § 5.0), in
 | gate | what it refuses |
 |---|---|
 | the upstream stage is prepared | citing a stage that was never set up |
-| its **newest** attempt FINISHED, **and its deck matches the deck that rung renders NOW** — from the current template, junction and run card, byte for byte but for its stamps — when and by which build it was written (`same_calculation`); never the stage folder's last render, which a change since leaves as it was (plan § 5w K11); for a transmission point, the device's run at that point (`re-converged`) or its one 0 V run (`low-bias`, § 2a.10) | integrating a result produced by a *different* deck — the silent-wrong-answer case. A mismatch is a mistake, refused by name |
+| its **newest** attempt FINISHED, **and its deck matches the deck that rung renders NOW** — from the current template, junction and run card, byte for byte but for its stamps — when and by which build it was written (`same_calculation`); never the stage folder's last render, which a change since leaves as it was (plan § 5w K11); for a swept transmission, the device's sweep run whose points are all done, each point its own (§ 2a.11) | integrating a result produced by a *different* deck — the silent-wrong-answer case. A mismatch is a mistake, refused by name |
 | that attempt actually holds the named file | a run that concluded without writing what it promised |
 
 The newest attempt is the one asked: one that fails a gate is refused by
