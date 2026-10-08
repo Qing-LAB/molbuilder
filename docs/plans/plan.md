@@ -5006,8 +5006,10 @@ Results tab — for the three cases: **one bias**, a **low-bias** I–V, a
 1. every stage's state, and every bias point's **done / not done**, is read
    from its own files by one door, and `status` and the Results tab show the
    same thing;
-2. `launch task` again runs **only what is not done**; `--cold` redoes the
-   stage as a new run;
+2. `launch task` again follows the run/stage contract's rule 3 exactly
+   (`job-system.md`, *What molbuilder does for you*): a new run, warm or
+   `--cold` — and for a sweep, warm means its **done points are taken over
+   from the latest run and only the points not done are run**;
 3. one I–V comes from **one device run**, and its record says truthfully how it
    was computed and from which runs each point started;
 4. the code that does this is **less** than today: one walker, one layout
@@ -5089,11 +5091,18 @@ rungs. Everything else is a single run — the case the framework already does.
   `.TSHS`, a clean copy of the seed's `.DM`), `.gathered-from` once.
   Each point folder holds its own deck (its voltage) and run script.
 * **launch** plans **one walk** — the one walker (below) — over: a group's
-  members, a benchmark's trials, or a sweep's points **not done**. One launch
-  record for the job (the run's `run.json`), never one per point. Each point's
-  start is decided at plan time and written beside it (`.continued-from`): the
-  0 V point from the seed's `.DM`; a later point from the closest **done** point
-  before it, or the point before it in this walk. `--cold` opens `run-1`.
+  members, a benchmark's trials, or a sweep's points. One launch record for
+  the job (the run's `run.json`), never one per point. **A sweep launched again
+  is rule 3 with no exception**: the next run `run-<n+1>/` is opened, as for
+  every stage; *warm*, each point **done** in the latest run is taken over —
+  its outputs copied into the new run's point folder, its `.continued-from`
+  naming the run it came from — and the walk runs only the points not done;
+  *cold*, nothing is taken and every point runs. Each point's start is decided
+  at plan time and written beside it (`.continued-from`): the 0 V point from
+  the run's clean seed `.DM`; a later point from the closest done point before
+  it, or the point before it in this walk. Launch shows all of it and asks
+  once (`job-system.md` § 6.0) — a warm relaunch with every point done runs
+  nothing, and the plan says so.
 * **status / the record** read the doors: a sweep's row = the run's state +
   "k of n points done"; each point done / not done; what each started from.
 
@@ -5104,20 +5113,24 @@ per member `cd` + its own `.run.sh`; two parameters, both from data —
 the previous member before each one; `[]` otherwise); an optional per-member
 bound (the benchmark's).
 
-**Why this is the minimum.** No new verb, no new state word, no second record:
-a point's record is the conclusion and outputs its wrapper already writes; the
-run is the unit with a launch record and a state, as every other run. A sweep
-is the only new shape, and it is the existing `run-N/` with folders inside.
+**Why this is the minimum.** No new verb, no new state word, no second record,
+**no new rule**: the run/stage contract (`job-system.md`, *What molbuilder does
+for you* 1–6, *What stays yours*, *How the checkpoint supports you*) applies to
+a sweep unchanged — prepared once; every launch a new run; warm or cold; every
+run kept; rollback is the checkpoint. A point's record is the conclusion and
+outputs its wrapper already writes; the run is the unit with a launch record
+and a state. A sweep is the only new shape: the existing `run-N/` with point
+folders inside, and "continues from its own latest run" read at the point.
 
 ### 5x.4 The build — step by step
 
 | step | what exactly | files | done when |
 |---|---|---|---|
-| **B0** | **the contract**: § 1.1 / § 2a.10 (the treatment table above; low-bias = record-computed linear response), § 2a.11 rewritten as this design (built rule only, the unbuilt one removed), § 2a.12 (what the record reads); "run" one meaning in `job-system.md` § Words, § 5.4 and `project-layout.md` § 1.5–1.6 (a run = one launch of a stage = `run-N/`; a sweep's run holds its points); the 18 contradictions resolved, stale passages removed | `transport.md`, `job-system.md`, `project-layout.md` | **you read it and say yes** |
+| **B0** | **the contract** — *nothing in the run/stage contract changes; one sentence is added to rule 3: for a stage that sweeps, "continues from its own latest run" takes the points done there and runs the rest* — § 1.1 / § 2a.10 (the treatment table above; low-bias = record-computed linear response), § 2a.11 rewritten as this design (built rule only, the unbuilt one removed), § 2a.12 (what the record reads); "run" one meaning in `job-system.md` § Words, § 5.4 and `project-layout.md` § 1.5–1.6 (a run = one launch of a stage = `run-N/`; a sweep's run holds its points); the 18 contradictions resolved, stale passages removed | `transport.md`, `job-system.md`, `project-layout.md` | **you read it and say yes** |
 | B1 | data: the `along` row; `sweep_points` from the catalogue + treatment (low-bias → no axis on either rung) | `warm-files.toml`, `transport/stages.py` | `sweep_points` answers () / (0, 0.2, 0.4) for the three cases |
 | B2 | the layout door `run_dirs`, and prep opening a sweep's `run-0/<v>/` with shared inputs once; no deck in the stage folder; every reader of `rung_containers` moved to it, the old one deleted | `jobset/materialize.py`, `transport/stages.py`, `jobset/prep.py` (`gather_sources`, the render loop), every reader | prep on the chain (re-converged): the tree as designed |
 | B3 | the done-door, and the gather taking **one device run whole** (the newest whose points are all done) | `jobset/continuation.py`, `jobset/prep.py` (`transport_inputs`) | the transmission prep refused until the device run is done, then gathers from it |
-| B4 | the one walker; group, benchmark and sweep plans call it; the sweep walks points not done, one `run.json` for the job, each point's `.continued-from` at send; `--cold` → next run; the scan's relaunch copy, `never_started` and the per-point launch records deleted | `jobset/submit.py` | launch on the chain; the device stopped at 0.2 V through the road (its `max_scf_iterations` set to 1 in Task setup — a description change, then a new calculation); launched again: only 0.2 and 0.4 run |
+| B4 | the one walker; group, benchmark and sweep plans call it; the sweep walks points not done, one `run.json` for the job, each point's `.continued-from` at send; warm relaunch = next run taking the done points over; `--cold` → next run, all points; the scan's relaunch copy, `never_started` and the per-point launch records deleted | `jobset/submit.py` | launch on the chain; the device stopped at 0.2 V through the road (its `max_scf_iterations` set to 1 in Task setup — a description change, then a new calculation); launched again: only 0.2 and 0.4 run |
 | B5 | status: a sweep's row and `status <stage>` (points, done, started-from, the gather shown on every rung) | `jobset/runstatus.py` | `jobset status` on the chain |
 | B6 | the record: TBtrans read through `parse/engines/tbtrans.py` (the second reader deleted; spin channels); low-bias I(V) from T(E,0); device facts from the run the transmission gathered; E_F of device vs leads checked; the treatment label on the I–V | `transport/record.py`, `parse/engines/tbtrans.py`, `inspectors/transport.js` | `summarize` and the report on the chain, all three cases |
 | B7 | the small ones: the swap applied to the calculation's copy (slot `swap_electrodes`, § 4's design); the lead's file stem from `task.label` alone; a citation must be a molbuilder run that finished; the window gate (± V/2 + 5 kT) in the settings gate | `transport/compose.py`, `transiesta.py`, `web/blueprints/transport.py`, `validation/` | each through the road |
@@ -5134,8 +5147,9 @@ go in B4; no tombstones.
 2. **No skip.** A point is done or not done.
 3. **A point not done is redone from the same start as on the first walk**
    (your words today), not from its own last density.
-4. **A sweep whose points are all done, launched again**: nothing to run —
-   said, with the `--cold` line.
+4. ~~A sweep whose points are all done, launched again~~ — settled by rule 3:
+   the plan shows a run that takes every point over and runs none, and asks;
+   the person decides (`--cold` to redo).
 
 ### 5x.6 The sweep's evidence — every confirmed finding, by id
 
