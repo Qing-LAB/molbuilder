@@ -79,7 +79,7 @@ def test_a_relaxation_samples_every_axis_by_its_kind(isolated_projects_root):
                                                          "isolated")),
         SiestaConfig(system_label="JOB", kgrid=(2, 3, 1),
                      kgrid_displacement=(0.0, 0.0, 1.0)),
-        (Stage(name="relax", enabled=True, overrides={}),), "siesta")
+        (Stage(name="relax", overrides={}),), "siesta")
     assert _mesh(deck) == ((2, 3, 1), (0.0, 0.0, 1.0))
     report = next(dest.rglob("*.validation.txt")).read_text()
     assert "kgrid[1] = 3 on an isolated axis" in report, report

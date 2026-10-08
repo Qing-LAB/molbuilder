@@ -95,20 +95,17 @@ def match_modes(reference, other, masses_amu) -> "tuple[list, list]":
     return index, overlap
 
 
-def stages_share_a_directory(task, *, include_disabled: bool = False
-                             ) -> bool:
+def stages_share_a_directory(task) -> bool:
     """Whether two force-constant stages of ``task`` would run in one
     directory -- the flat layout, where every stage writes the same
     ``<label>.FC`` and ``<label>.spectra.json`` and the second overwrites the
     first's result.  Asked of the layout (`paths.Shape.stage_dir`), the rule
-    `prep` refuses a sweep by (over every described stage,
-    ``include_disabled``, since it preps any stage named) and `summarize`
-    reads it by."""
+    `prep` refuses a sweep by and `summarize` reads it by."""
     from ..jobset.materialize import stage_home
     from ..paths import Shape
     from ..pyscf.stages import force_constant_stages
     shape = Shape.named(task.shape)
-    names = force_constant_stages(task, include_disabled=include_disabled)
+    names = force_constant_stages(task)
     dirs = {shape.stage_dir(stage_home(None, task, n).token) for n in names}
     return len(dirs) < len(names)
 

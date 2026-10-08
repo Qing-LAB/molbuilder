@@ -459,11 +459,9 @@ def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
         structure=StructureRef(source="projects/x/structure/h2.xyz",
                                formula="H2", atoms=2),
         varies=("mesh_cutoff",),
-        stages=(Stage(name="coarse", enabled=True,
-                      overrides={"mesh_cutoff": 150},
+        stages=(Stage(name="coarse", overrides={"mesh_cutoff": 150},
                       execution={"restart": "clean"}),
-                Stage(name="tight", enabled=True,
-                      overrides={"mesh_cutoff": 300},
+                Stage(name="tight", overrides={"mesh_cutoff": 300},
                       execution={"restart": "continue"})),
     )
     p = write_task(tmp_path / FILENAME, task)
@@ -552,13 +550,17 @@ def test_duplicate_stage_names_are_refused_by_the_codec():
         _ladder_task((Stage("a"), Stage("a")))
 
 
-def test_an_all_disabled_ladder_is_refused_by_the_codec():
-    """An all-disabled ladder is an empty one spelled longer, and § 6.5
-    already rules the empty spelling out."""
+def test_a_description_written_before_reads_its_enabled_by_the_rule(example):
+    """`engines/stages.md` § 2: a description an older molbuilder wrote
+    carries `"enabled": true` on every stage -- read and ignored -- and
+    `"enabled": false` is refused, saying to remove the stage instead.
+    API-level: molbuilder no longer writes the key, so the road cannot
+    produce such a file."""
     import pytest
-    from molbuilder.task import Stage
-    with pytest.raises(ValueError, match="every stage is disabled"):
-        _ladder_task((Stage("a", enabled=False), Stage("b", enabled=False)))
-    # one enabled stage among disabled ones is an ordinary ladder
-    t = _ladder_task((Stage("a", enabled=False), Stage("b")))
-    assert [s.name for s in t.stages] == ["a", "b"]
+    from molbuilder.task import Task
+    for st in example["stages"]:
+        st["enabled"] = True
+    assert "enabled" not in Task.from_dict(example).to_dict()["stages"][0]
+    example["stages"][0]["enabled"] = False
+    with pytest.raises(ValueError, match="Remove the stage instead"):
+        Task.from_dict(example)

@@ -4,9 +4,9 @@
 This module owns TWO facts and the renders that follow from them:
 
 * **The ladder** (:data:`TRANSPORT_STAGES`): the five stages in
-  dependency order.  Fixed by design, not configurable — skipping is
-  the per-stage ``enabled`` flag in ``task.json`` (the seed's Q4 skip),
-  never a different ladder.
+  dependency order.  Fixed by design, not configurable -- the seed is
+  skipped by removing it from the description (its Q4 skip), never by a
+  different ladder.
 * **The per-rung bags, as stages** (:func:`stages_for_transport`).  Which
   rung READS an override is the catalogue's ``stages`` declaration, asked
   through the one door every kind's description check and ``resolve`` ask
@@ -158,7 +158,7 @@ def rung_container(base, task, stage: str, volts: Optional[float]) -> Path:
 
 
 def stage_inputs(stage: str, task_label: str, *,
-                 seed_enabled: bool = True):
+                 with_seed: bool = True):
     """The § 4.2 DAG, as data: ``[(upstream stage, filename)]`` this
     stage CONSUMES from the concluded attempts of the stages before it.
 
@@ -167,8 +167,9 @@ def stage_inputs(stage: str, task_label: str, *,
     electrode's label IS its ``.TSHS`` stem (`electrode_hs_stem`, one
     spelling) — so producer and consumer cannot disagree about a name.
 
-    A disabled seed (ruling Q4: skippable scaffolding) simply drops its
-    row: the device SCF then starts from atomic densities.  The
+    A ladder without its seed (ruling Q4: skippable scaffolding, removed
+    from the description) drops its row: the device SCF then starts from
+    atomic densities.  The
     electrode and device rows are never optional — they are the physics
     (the self-energies, and the converged H the transmission reads).
     """
@@ -181,7 +182,7 @@ def stage_inputs(stage: str, task_label: str, *,
          f"{electrode_hs_stem(task_label, REGION_RIGHT_ELECTRODE)}.TSHS"),
     ]
     if stage == "device":
-        seed = [("seed", f"{task_label}.DM")] if seed_enabled else []
+        seed = [("seed", f"{task_label}.DM")] if with_seed else []
         return seed + elec
     if stage == "transmission":
         # TBtrans reads the device's converged H -- which SIESTA 5.x
@@ -263,7 +264,7 @@ def stages_for_transport(bags=None):
         raise ValueError(
             f"no such rung {', '.join(map(repr, unknown))} -- a transport "
             f"ladder's rungs are {', '.join(TRANSPORT_STAGES)}.")
-    return [Stage(name=n, enabled=True, overrides=dict(bags.get(n) or {}))
+    return [Stage(name=n, overrides=dict(bags.get(n) or {}))
             for n in TRANSPORT_STAGES]
 
 

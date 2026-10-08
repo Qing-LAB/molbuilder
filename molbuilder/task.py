@@ -290,10 +290,11 @@ class StructureRef:
 
 @dataclass(frozen=True)
 class Stage:
-    """§ 2 — a name, an enabled flag, the cells that differ, and what this
-    rung RUNS at when it differs from the calculation's own answer."""
+    """§ 2 — a name, the cells that differ, and what this rung RUNS at when
+    it differs from the calculation's own answer.  A stage is in the
+    description or it is not: there is no on/off (`engines/stages.md`
+    § 2)."""
     name: str
-    enabled: bool = True
     overrides: Mapping[str, Any] = field(default_factory=dict)
     #: § 6.8d, per stage: one value per parameter, laid over the top-level
     #: block FIELD BY FIELD.  A rung naming only `mpi_np` keeps the
@@ -532,12 +533,6 @@ class Task:
                     f"directory, its deck and its status row -- two stages "
                     f"sharing one silently hand one the other's files "
                     f"(engines/stages.md 6.6)")
-            if not any(s.enabled for s in self.stages):
-                raise ValueError(
-                    "task: every stage is disabled -- an all-disabled ladder "
-                    "is an empty one spelled longer, and 6.5 already rules "
-                    "the empty spelling out. Enable a stage, or omit "
-                    "'stages' for a single parameter set")
         self._check_id()
 
     # ----- the run card (stages.md 6.8d) ------------------------------- #
@@ -789,8 +784,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         _refuse("no 'stages'. A job has at least one stage -- one is the "
                 "ordinary case, not a special shape (engines/stages.md 6.5). "
                 "Give it a single entry: "
-                '"stages": [{"name": "coarse", "enabled": true, '
-                '"overrides": {}}]')
+                '"stages": [{"name": "coarse", "overrides": {}}]')
 
     bench = _bench_from_obj(obj)
     execution = _execution_from_obj(obj)
@@ -800,8 +794,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         _refuse("'stages' is present but empty. A job has at least one stage "
                 "(engines/stages.md 6.5) -- give it a single entry rather "
                 "than removing the key, which is refused the same way: "
-                '"stages": [{"name": "coarse", "enabled": true, '
-                '"overrides": {}}]')
+                '"stages": [{"name": "coarse", "overrides": {}}]')
 
     varies = tuple(str(v) for v in obj.get("varies", ()))
     stages = tuple(_stage_from_obj(s, varies, i)
@@ -1047,6 +1040,17 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
 
     name = str(obj.get("name", ""))
     where = f"stage {name!r}" if name else where
+    # NO ON/OFF (`engines/stages.md` § 2): a description written before
+    # carries `"enabled": true` on every stage -- read and ignored -- and
+    # `"enabled": false` is refused, saying to remove the stage instead.
+    if "enabled" in obj:
+        if obj["enabled"] is not True:
+            _refuse("\"enabled\": false -- a stage has no on/off switch: it "
+                    "is in the description or it is not.  Remove the stage "
+                    "instead (Task setup's stage table), and its folder is "
+                    "kept, marked .disabled (engines/stages.md 2)",
+                    where=where)
+        obj = {k: v for k, v in obj.items() if k != "enabled"}
     _check_keys(obj, STAGE_FIELDS, where=where)
     if "name" not in obj:
         _refuse("missing required key 'name'", where=where)
@@ -1078,8 +1082,7 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
                 "promoted, or a demoted parameter leaves a value hiding "
                 "(engines/stages.md 6.2)", where=where)
 
-    return Stage(name=name, enabled=bool(obj.get("enabled", True)),
-                 overrides=overrides, execution=execution)
+    return Stage(name=name, overrides=overrides, execution=execution)
 
 
 def varies_for(overrides_seq) -> Tuple[str, ...]:
@@ -1233,7 +1236,7 @@ def _task_to_dict(task: Task) -> dict:
         out["stages"] = [
             # `execution` omitted when empty, like every other block here:
             # a rung that runs at the calculation's own answer says nothing.
-            {"name": s.name, "enabled": s.enabled,
+            {"name": s.name,
              "overrides": dict(s.overrides),
              **({"execution": dict(s.execution)} if s.execution else {})}
             for s in task.stages]
@@ -1245,28 +1248,10 @@ def write_task(path, task: Task):
     return write_json(path, task.to_dict())
 
 
-def stage_disabled(task: Task, stage: str) -> Optional[str]:
-    """Why ``stage`` is not used -- the description turns it off -- or
-    ``None``.  THE ONE ANSWER every verb asks before it acts on a stage
-    (`engines/stages.md` § 6.2; user, 2026-10-03: "mark the dir as disabled
-    and never allow use"): prep, launch, and a run named to continue from.
-    A folder the stage left from before it was disabled is kept as it is,
-    and `status` shows it disabled."""
-    for st in task.stages or ():
-        if st.name == stage and st.enabled is False:
-            return (f"stage {stage!r} is disabled in this description "
-                    f"(\"enabled\": false in task.json) -- a disabled stage "
-                    f"is never prepped, launched or continued from, and a "
-                    f"folder it left is kept as it is.  To use it, enable it "
-                    f"-- Task setup's stage table, or \"enabled\": true in "
-                    f"task.json -- and save.")
-    return None
-
-
 __all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
            "Allocation",
            "Run", "StructureRef", "Stage", "Task",
-           "derive_run", "read_task", "stage_disabled", "varies_for",
+           "derive_run", "read_task", "varies_for",
            "write_task"]
 
 

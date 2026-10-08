@@ -63,7 +63,7 @@ def test_the_siesta_form_schema_emits_no_stage_table():
 # --------------------------------------------------------------------- #
 
 def test_default_ladder_is_three_named_stages():
-    stages = default_siesta_stages()
+    stages = default_siesta_stages("vib-quality")
     # The tiers' NAMES, from SIESTA_STAGE_NAMES: decision 27 puts the ordinal
     # in the artifact token (``01_coarse``), so a name that is itself a
     # position would say the number twice and the science none.
@@ -71,10 +71,10 @@ def test_default_ladder_is_three_named_stages():
     assert all(isinstance(s, Stage) for s in stages)
 
 
-def test_default_ladder_enabled_pattern_matches_pyscf():
-    """publishable = coarse + medium; tight is opt-in.  Same
-    shape as PySCF's default so the two engines read alike."""
-    assert [s.enabled for s in default_siesta_stages()] == [True, True, False]
+def test_default_ladder_is_coarse_and_medium():
+    """publishable = coarse + medium; tight is added when wanted -- a
+    strategy writes the stages it runs (`engines/stages.md` § 2)."""
+    assert [s.name for s in default_siesta_stages()] == ["coarse", "medium"]
 
 
 @pytest.mark.parametrize("tier", sorted(SIESTA_STAGE_PRESETS))
@@ -88,22 +88,22 @@ def test_each_stages_overrides_are_exactly_that_tiers_preset(tier):
     assert stage.overrides == SIESTA_STAGE_PRESETS[tier]
 
 
-def test_a_stage_has_exactly_the_four_fields_of_section_2():
+def test_a_stage_has_exactly_the_three_fields_of_section_2():
     """§ 2.  Anything else a stage seemed to need turned out to belong to
     the shared schema or to a producer's input (§ 3).
 
-    `execution` is the fourth (§ 6.8d): WHAT THIS RUNG RUNS AT, where
+    `execution` is the third (§ 6.8d): WHAT THIS RUNG RUNS AT, where
     `overrides` is what it *is*.  Two maps and not one
     because different things read them -- `overrides` reaches the deck
     through `varies`, `execution` reaches the launch through the grid
     enumerator -- and a field that changes the answer is refused from
     `execution` by name."""
     # This is a TRIPWIRE ON A DECISION, not a shape check: `task.STAGE_FIELDS`
-    # is derived from these fields, so the two cannot drift, but "four and
-    # no others" is a design ruling and no type says it.  A fifth field should
-    # cost a conversation.
+    # is derived from these fields, so the two cannot drift, but "three and
+    # no others" is a design ruling and no type says it -- there is no
+    # on/off.  A fourth field should cost a conversation.
     assert [f.name for f in dataclasses.fields(Stage)] == [
-        "name", "enabled", "overrides", "execution"]
+        "name", "overrides", "execution"]
 
 
 def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():
@@ -128,21 +128,21 @@ def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():
 
 
 @pytest.mark.parametrize("strategy,expected", [
-    ("publishable", [True, True, False]),
-    ("loose-only",  [True, False, False]),
-    ("vib-quality", [True, True, True]),
+    ("publishable", ["coarse", "medium"]),
+    ("loose-only",  ["coarse"]),
+    ("vib-quality", ["coarse", "medium", "tight"]),
 ])
-def test_strategy_preset_enabled_masks(strategy, expected):
-    assert [s.enabled for s in default_siesta_stages(strategy)] == expected
+def test_strategy_preset_writes_the_stages_it_runs(strategy, expected):
+    assert [s.name for s in default_siesta_stages(strategy)] == expected
 
 
-def test_strategy_preset_changes_only_the_enable_flags():
+def test_strategy_preset_changes_only_which_tiers_run():
     """A preset says which tiers run; it never retunes one.  If it did,
     picking 'loose-only' would silently change what stage1 computes."""
     a = default_siesta_stages("loose-only")
     b = default_siesta_stages("vib-quality")
-    assert [s.overrides for s in a] == [s.overrides for s in b]
-    assert [s.name for s in a] == [s.name for s in b]
+    assert [s.overrides for s in a] == [s.overrides for s in b][:len(a)]
+    assert [s.name for s in a] == [s.name for s in b][:len(a)]
 
 
 def test_strategy_preset_rejects_unknown_name():
@@ -151,7 +151,7 @@ def test_strategy_preset_rejects_unknown_name():
 
 
 def test_each_call_returns_independent_stages():
-    """A caller that disables a stage must not disturb the next caller's
+    """A caller that edits a stage must not disturb the next caller's
     ladder -- the mutable-default bug, asserted rather than assumed."""
     a, b = default_siesta_stages(), default_siesta_stages()
     assert a is not b

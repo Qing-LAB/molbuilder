@@ -42,7 +42,7 @@ def cfg() -> SiestaConfig:
 #: § 6.5 (2026-08-16): a job always has at least one stage, so the helper's
 #: default is ONE stage carrying no overrides -- the calculation that is just
 #: the template.
-_ONE_STAGE = (Stage(name="coarse", enabled=True, overrides={}),)
+_ONE_STAGE = (Stage(name="coarse", overrides={}),)
 
 
 def _describe(struct, cfg, stages=_ONE_STAGE, *, shape="hierarchical",
@@ -199,7 +199,7 @@ def test_a_ladder_becomes_stages_and_varies(struct, cfg, tmp_path):
                                   default_siesta_stages("publishable")),
                         tmp_path / "calc")
     task = read_task(tmp_path / "calc" / "task.json")
-    assert [s.name for s in task.stages] == ["coarse", "medium", "tight"]
+    assert [s.name for s in task.stages] == ["coarse", "medium"]
     assert "relax_type" in task.varies
 
 

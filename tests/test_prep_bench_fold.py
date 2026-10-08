@@ -61,7 +61,7 @@ def _one_stage():
     A single stage is still a stage, so it is named, tokened
     (``01_coarse``) and prepped exactly like a rung of a three-stage ladder.
     """
-    return (Stage(name="coarse", enabled=True, overrides={}),)
+    return (Stage(name="coarse", overrides={}),)
 
 
 #: How a shell enters an environment on the machines these tests prep for --
@@ -1412,7 +1412,7 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
     dest = tmp_path / "pycalc"
     D.write_description(
         D.build_description(struct, PySCFConfig(job_name="JOB"),
-                            [Stage(name="only", enabled=True, overrides={})],
+                            [Stage(name="only", overrides={})],
                             engine="pyscf",
                             calculation="optimization",
                             shape="hierarchical", name="JOB",
@@ -1456,7 +1456,7 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tmp_path):
     dest = tmp_path / "pycalc"
     D.write_description(
         D.build_description(struct, PySCFConfig(job_name="JOB"),
-                            [Stage(name="only", enabled=True, overrides={},
+                            [Stage(name="only", overrides={},
                                    execution={"threads": 3})],
                             engine="pyscf",
                             calculation="optimization",

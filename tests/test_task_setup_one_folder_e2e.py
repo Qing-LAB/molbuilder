@@ -53,7 +53,7 @@ def _describe(root, name, label, stage):
     dest = root / "optimization" / name
     D.write_description(D.build_description(
         struct, PySCFConfig(job_name=label),
-        [Stage(name=stage, enabled=True, overrides={})],
+        [Stage(name=stage, overrides={})],
         engine="pyscf",
         calculation="optimization", shape="hierarchical", name=label,
         source=str(src)), dest)

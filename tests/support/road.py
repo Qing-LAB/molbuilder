@@ -15,7 +15,7 @@ from the road it imitates.  The steps live here once.
   printed (`job-system.md` § 5.3: what molbuilder prints, you can type);
 * :func:`describe_calculation` -- `jobset init` of a held H2 in a box, or
   the structure a row gives, SIESTA, the shipped `publishable` ladder
-  (coarse, medium; tight disabled);
+  (coarse, medium);
 * :func:`a_machine_with_queues` -- a machine record naming queues, and an
   `sbatch` on PATH that writes down every call -- where it was made and
   what it said -- and refuses it: the basic tests send nothing to a
@@ -310,8 +310,7 @@ def calls_made(calls: Path):
 # `saved_first` -- the folder's state saved before anything else, as a person
 # saves it (`molbuilder checkpoint init`); `before` -- the verbs a person typed
 # first, each a list of words (`["prep", "run", "coarse"]`), the calculation
-# and the target named as the row's own prep names them; `disabled` -- the
-# stages then disabled through Task setup's Save; `removed` / `added` -- the
+# and the target named as the row's own prep names them; `removed` / `added` -- the
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
 # absent), through the same Save; `stand_in` -- what the suite's stand-in
 # engine does on the row's launches (`_road_stand_in`: `rc`,
@@ -457,21 +456,6 @@ def _road_probe_layer(case, said, target, began) -> None:
         stamp = record["detected_at"]
         assert stamp and datetime.fromisoformat(stamp) >= began, \
             f"record.detected_at is {stamp!r}, older than its probe ({began})"
-
-
-def _road_disabled(names, bundle) -> None:
-    """These stages disabled, as a person disables one -- the stage table's
-    switch, written through Task setup's Save."""
-    import json
-    from molbuilder.web.app import create_app
-    task = json.loads((bundle / "task.json").read_text())
-    for st in task["stages"]:
-        if st["name"] in names:
-            st["enabled"] = False
-    r = create_app(config={}).test_client().post(
-        "/api/task-setup/save",
-        json={"dest": str(bundle), "text": json.dumps(task)})
-    assert r.status_code == 200, (r.get_json() or {}).get("error")
 
 
 def _road_ladder_edited(case, bundle) -> None:
@@ -911,8 +895,6 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
     if "touched" in case:
         _road_touched(case["touched"], bundle)
-    if "disabled" in case:
-        _road_disabled(case["disabled"], bundle)
     if "removed" in case or "added" in case:
         _road_ladder_edited(case, bundle)
     kind = "bench" if "bench" in case else "run"

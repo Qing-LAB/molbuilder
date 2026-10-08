@@ -76,19 +76,19 @@ def test_default_ladder_is_three_named_stages():
     """The names are the SHARED vocabulary, not PySCF's own.  A rung is a
     rung in both engines, so ``coarse`` means the same thing in a PySCF
     description and a SIESTA one (`tuning.md` § 4)."""
-    stages = default_pyscf_stages()
+    stages = default_pyscf_stages("vib-quality")
     assert [s.name for s in stages] == [SIESTA_STAGE_NAMES[i]
                                         for i in (1, 2, 3)]
     assert all(isinstance(s, Stage) for s in stages)
 
 
-def test_default_ladder_enabled_pattern_matches_siesta():
-    """publishable = coarse + medium; tight is opt-in.  The same shape as
-    SIESTA's default, so the two engines read alike."""
+def test_default_ladder_matches_siesta():
+    """publishable = coarse + medium; tight is added when wanted.  The same
+    shape as SIESTA's default, so the two engines read alike."""
     from molbuilder.siesta.stages import default_siesta_stages
-    assert ([s.enabled for s in default_pyscf_stages()]
-            == [s.enabled for s in default_siesta_stages()]
-            == [True, True, False])
+    assert ([s.name for s in default_pyscf_stages()]
+            == [s.name for s in default_siesta_stages()]
+            == ["coarse", "medium"])
 
 
 @pytest.mark.parametrize("tier", sorted(PYSCF_STAGE_PRESETS))
@@ -170,22 +170,22 @@ def test_every_shipped_tier_value_is_inside_its_items_bound(tier):
 
 
 @pytest.mark.parametrize("strategy,expected", [
-    ("publishable", [True, True, False]),
-    ("loose-only",  [True, False, False]),
-    ("vib-quality", [True, True, True]),
+    ("publishable", ["coarse", "medium"]),
+    ("loose-only",  ["coarse"]),
+    ("vib-quality", ["coarse", "medium", "tight"]),
 ])
-def test_strategy_preset_enabled_masks(strategy, expected):
-    assert [s.enabled for s in default_pyscf_stages(strategy)] == expected
+def test_strategy_preset_writes_the_stages_it_runs(strategy, expected):
+    assert [s.name for s in default_pyscf_stages(strategy)] == expected
 
 
-def test_strategy_preset_changes_only_the_enable_flags():
+def test_strategy_preset_changes_only_which_tiers_run():
     """A preset says which tiers run; it never retunes one.  If it did,
     picking 'loose-only' would silently change what the coarse rung
     computes."""
     a = default_pyscf_stages("loose-only")
     b = default_pyscf_stages("vib-quality")
-    assert [s.overrides for s in a] == [s.overrides for s in b]
-    assert [s.name for s in a] == [s.name for s in b]
+    assert [s.overrides for s in a] == [s.overrides for s in b][:len(a)]
+    assert [s.name for s in a] == [s.name for s in b][:len(a)]
 
 
 def test_strategy_preset_rejects_unknown_name():
@@ -224,7 +224,6 @@ def test_both_engines_build_a_ladder_through_the_same_shape():
         p = default_pyscf_stages(strategy)
         s = default_siesta_stages(strategy)
         assert [x.name for x in p] == [x.name for x in s]
-        assert [x.enabled for x in p] == [x.enabled for x in s]
         # And neither says anything about restarting: that is the folder's
         # answer at run time, not the ladder's (`run-identity.md` § 4 rule 3).
         assert not any("restart" in x.overrides for x in p + s)

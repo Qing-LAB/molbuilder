@@ -352,9 +352,8 @@ class StageRef:
 
         Decision 28's first arm, made callable: *"before a produce it comes
         from the ladder's full list"*. The ordinal is the stage's place in
-        that list counted from 1, disabled rungs included, so disabling one
-        leaves a gap rather than renumbering what follows (`materialize.stage_home`'s
-        rule, stated once). The after-produce arm — reading ``seq`` back off
+        that list counted from 1 (a stage removed after its prep keeps its
+        number on disk: `materialize.stage_home`'s rule, stated once). The after-produce arm — reading ``seq`` back off
         the decks — is `jobset/materialize.py::stage_refs`, and A4 allows
         exactly those two: the owner and the class's own method.
         """
@@ -401,7 +400,8 @@ def resolve_stage_ref(refs: Sequence["StageRef"], text: str) -> "StageRef":
 
     ``#N`` is matched against ``seq`` and **never** against a position in
     the list. That distinction is the one `engines/stages.md` R5 exists to
-    protect: with stage 2 disabled the ladder is ``01`` and ``03``, so
+    protect: with stage 2 removed after its prep the ladder is ``01`` and
+    ``03``, so
     ``#3`` must mean *tight* and can never mean *"the third row"* — the
     same number the directory (``03_tight``) shows.
 

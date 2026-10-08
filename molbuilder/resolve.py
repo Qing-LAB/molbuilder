@@ -655,8 +655,6 @@ def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any
     known = template_fields(config_cls)
     out: List[Tuple[str, Any]] = []
     for s in (task.stages or ()):
-        if not getattr(s, "enabled", True):
-            continue
         values = effective_config(base, s.overrides) if s.overrides else base
         # The rung's run card, as `prep run` pins it: its template items --
         # the machine's answers are the launch, never a value of the deck.

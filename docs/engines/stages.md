@@ -1266,7 +1266,7 @@ allowing it costs a calculation nobody knows is missing.
 *Decided 2026-08-07 (user). This used to be an open question pointing at the
 plan; it is now a rule, and it is not the blanket warning the question expected.*
 
-**Two enabled stages may resolve to identical settings, and that is allowed.**
+**Two stages may resolve to identical settings, and that is allowed.**
 Refusing would break a workflow people actually want: `tight` followed by
 `tight` where the second **continues** is simply *more steps at these settings* —
 the honest way to say *keep going* after a stage ran out of its step budget.
@@ -1957,7 +1957,7 @@ the attempt you named (`job-system.md § 4.1`).
 **And `restart` gets sharper.** In one directory, *continue* could only mean
 "whatever ran here last" — order-of-execution dependent, and wrong if you re-ran
 an earlier stage. With a subdirectory each, **`continue` means: carry from the
-previous enabled stage**, which is a fact about the description rather than about
+previous stage**, which is a fact about the description rather than about
 what happened to run. `clean` carries nothing.
 
 ### 7.2 The folder appears whole, or not at all
@@ -2183,7 +2183,7 @@ were written for a flat directory and would silently have lost data in a tree.
   [`engines/tuning.md`](?doc=engines/tuning.md).
 - **`Job.warm`, `Job.traits`, `Job.resources`, and every scheduler concern** —
   [`execution/job-system.md`](?doc=execution/job-system.md). A producer reads
-  this file and turns each enabled stage into a `Job`; **it asks for nothing this
+  this file and turns each stage into a `Job`; **it asks for nothing this
   file does not carry**, because there are no edges left to thread. *(That bullet
   read "the dependency chain, `Job.carry` … and asks for `on_nonconvergence`"
   until 2026-08-11; all three were deleted on 2026-08-10 — § 3.)*

@@ -280,7 +280,6 @@
     --ts-pick-max:      22rem;   /* an add-a-parameter picker */
     --ts-tick-w:        1em;     /* the chosen-shape tick's gutter */
     --ts-label-track:   0.07em;  /* uppercase label tracking */
-    --ts-off-opacity:   0.55;    /* a disabled stage: faded, not hidden */
 
     /* The destination path + folder-state rows. */
     --ts-here-bg:       var(--accent-bg);

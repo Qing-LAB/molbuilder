@@ -183,7 +183,7 @@ def test_a_triples_range_is_warned_at_prep_too(isolated_projects_root):
     from test_engine_offset_reaches_every_deck import _prep
     ladder = default_siesta_stages("publishable")
     first = ladder[0]
-    ladder = (Stage(name=first.name, enabled=first.enabled,
+    ladder = (Stage(name=first.name,
                     overrides={**dict(first.overrides or {}),
                                "kgrid": (100, 1, 1)}),) + tuple(ladder[1:])
     dest, stage, _deck = _prep(isolated_projects_root, WATER(),

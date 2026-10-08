@@ -84,8 +84,7 @@ def _load(bundle: str) -> tuple:
             try:
                 from ..task import read_task as _read_task
                 _t = _read_task(base / _TASK_FILE)
-                _rung = next((st.name for st in (_t.stages or ())
-                              if st.enabled is not False), None)
+                _rung = next((st.name for st in (_t.stages or ())), None)
             except Exception:      # a description mid-edit is its own error
                 pass
             bench = (f"\nA benchmark is prepped in "
@@ -327,7 +326,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     from ..task import Stage, Task, derive_run, write_task
     from ..task import FILENAME as TASK_FILENAME
     # The ladder is the transport module's fact (one door): five stages
-    # in dependency order, per-stage `enabled` for the seed's Q4 skip.
+    # in dependency order; the seed is skipped by removing it (Q4).
     from ..transport.stages import TRANSPORT_STAGES
 
     for given, flag, why in (
@@ -392,7 +391,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                 f"--bias {bias_opt!r}: a comma-separated list of volts, "
                 f"e.g. --bias 0.0,0.2,0.4.")
 
-    stages = tuple(Stage(name=n, enabled=True, overrides={})
+    stages = tuple(Stage(name=n, overrides={})
                    for n in TRANSPORT_STAGES)
     try:
         task = Task(
@@ -626,7 +625,7 @@ def init_cmd(structure, bundle: str, shape: str,
         else:
             stages = (tuple(_ladder(stage_strategy))
                       if stage_strategy
-                      else (Stage(name=_one, enabled=True, overrides={}),))
+                      else (Stage(name=_one, overrides={}),))
         # The label goes through the SAME normaliser Task.label uses, so the
         # template's SystemLabel and the description's id cannot disagree
         # about what this calculation is called.
@@ -798,19 +797,6 @@ def _described_stage(base, stage):
              for h in ladder_homes(base, read_task(desc))], stage).name
     except ValueError as e:
         raise click.ClickException(str(e))
-
-
-def _refuse_disabled(base, stage) -> None:
-    """A stage the description disables is never launched -- a folder it
-    left from before is kept as it is (`task.stage_disabled`; user,
-    2026-10-03, Q1: "never allow use")."""
-    from ..task import FILENAME, read_task, stage_disabled
-    desc = Path(base) / FILENAME
-    if stage is None or not desc.is_file():
-        return
-    why = stage_disabled(read_task(desc), stage)
-    if why:
-        raise click.ClickException(why)
 
 
 def _refuse_unprepped(base, stage) -> None:
@@ -1611,7 +1597,6 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     if kind == "bench":
         # the stage's own sweep record, from its bench container (§ 6.3)
         stage = said["stage"] = _described_stage(bundle, stage)
-        _refuse_disabled(bundle, stage)
         js, base = _load_bench_set(bundle, stage, "launch")
     else:
         if trial is not None:
@@ -1627,7 +1612,6 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         # records and every line prints (plan § 5w K12) -- and a stage it
         # holds that is not prepped, said so (W55 D4).
         stage = said["stage"] = _described_stage(bundle, stage)
-        _refuse_disabled(base, stage)
         _refuse_unprepped(base, stage)
         only = stage = said["stage"] = _resolve_stage(js, stage, "launch",
                                                       base=base)

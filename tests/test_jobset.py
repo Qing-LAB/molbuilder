@@ -318,7 +318,7 @@ def _shipped_ladder(coarse_restart=None):
     question rather than a hypothetical one.
     """
     # Built the way the LIVE path builds it (`prep._job_for`, u5): each
-    # enabled stage resolved through the one seam, warm + traits from the
+    # stage resolved through the one seam, warm + traits from the
     # engine's own declarations.
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.identity import stage_token
@@ -328,8 +328,6 @@ def _shipped_ladder(coarse_restart=None):
     label = "bdt"
     jobs = []
     for i, st in enumerate(default_siesta_stages("vib-quality"), start=1):
-        if not st.enabled:
-            continue
         overrides = dict(getattr(st, "overrides", None) or {})
         if coarse_restart is not None and i == 1:
             overrides["restart"] = coarse_restart

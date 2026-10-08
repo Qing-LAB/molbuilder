@@ -129,7 +129,7 @@ def _describe_transport(root, *, cite, bias=(0.0, 0.2)):
         structure=None, calculation="transport",
         slots={"junction": cite}, bias=bias, varies=(),
         execution=dict(_RUN_CARD),
-        stages=tuple(Stage(name=n, enabled=True, overrides={})
+        stages=tuple(Stage(name=n, overrides={})
                      for n in _STAGES)))
     # THE TEMPLATE, through the product's own doors -- `jobset init` writes
     # one for a transport description, and a fixture that skipped it would

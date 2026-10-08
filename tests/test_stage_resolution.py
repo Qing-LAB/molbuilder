@@ -166,8 +166,8 @@ def test_a_stage_field_name_in_overrides_is_refused():
     """§ 2: an override may not redefine a stage field.  It would also not
     be a schema field, so the message must still be the useful one."""
     with pytest.raises(ValueError) as e:
-        effective_config(_template(), {"enabled": False})
-    assert "enabled" in str(e.value)
+        effective_config(_template(), {"overrides": {}})
+    assert "overrides" in str(e.value)
 
 
 def test_an_OPTIONAL_float_is_widened_like_any_other():

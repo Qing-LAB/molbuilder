@@ -576,12 +576,11 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
     # A DISPLACEMENT SWEEP NEEDS A DIRECTORY PER STAGE (§ 5.9): SIESTA names
     # its force constants and the finish its spectrum by the label alone, so
     # two force-constant stages sharing the flat layout's one directory
-    # would overwrite the first one's result -- counted over the stages the
-    # description runs: a disabled one is never prepped (plan W38 F5).
+    # would overwrite the first one's result.
     from ..spectra.displacement_sweep import stages_share_a_directory
-    if stages_share_a_directory(task, include_disabled=False):
+    if stages_share_a_directory(task):
         from ..pyscf.stages import force_constant_stages
-        _fc = force_constant_stages(task, include_disabled=False)
+        _fc = force_constant_stages(task)
         raise PrepError(
             f"this flat calculation describes "
             f"{len(_fc)} force-constant stages "
@@ -1721,9 +1720,10 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
     from .continuation import usable
 
     base = Path(base_dir)
-    enabled = {s.name for s in task.stages if s.enabled}
+    from ..identity import stage_key
     inputs = stage_inputs(stage, task.label,
-                          seed_enabled=("seed" in enabled))
+                          with_seed=any(stage_key(s.name) == "seed"
+                                        for s in task.stages))
     gathered: List[tuple] = []
     composed = None              # the junction, read once, when first needed
     for upstream, filename in inputs:
@@ -2563,14 +2563,6 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             refs = [StageRef(h.seq, h.name)
                     for h in ladder_homes(base, task)]
             stage = resolve_stage_ref(refs, stage).name
-
-        #    ...AND ENABLED: a stage the description disables is never prepped
-        #    (user, 2026-10-03, Q1: "never allow use").
-        if stage is not None:
-            from ..task import stage_disabled
-            why = stage_disabled(task, stage)
-            if why:
-                raise PrepError(why)
 
         # 2a · NOT PREPPED BEFORE (user, 2026-10-02: "refuse it, redo via
         #      rollback").  Asked before anything is read of the machine or

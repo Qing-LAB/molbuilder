@@ -88,12 +88,10 @@ def ladder_homes(base, task) -> Tuple[StageHome, ...]:
 
 
 def described_refs(base, task) -> List[StageRef]:
-    """The description's stages that run, as refs (`identity.StageRef`)
-    numbered by the one door (:func:`ladder_homes`), so ``#N`` names the
-    folder ``NN_…`` everywhere -- the stages a verb that takes one offers."""
-    return [StageRef(h.seq, h.name)
-            for h, s in zip(ladder_homes(base, task), task.stages)
-            if getattr(s, "enabled", True) is not False]
+    """The description's stages, as refs (`identity.StageRef`) numbered by
+    the one door (:func:`ladder_homes`), so ``#N`` names the folder
+    ``NN_…`` everywhere -- the stages a verb that takes one offers."""
+    return [StageRef(h.seq, h.name) for h in ladder_homes(base, task)]
 
 
 def stage_home(base, task, stage: Optional[str]) -> StageHome:
@@ -333,7 +331,8 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
     the two kinds are told apart**. ``seq`` is recovered from each deck's own
     token, which is where `project-layout.md` § 4.1 says it lives: *"read off
     the directory name and stored nowhere else"*. Nothing here counts
-    positions, so a disabled stage leaves a gap rather than renumbering.
+    positions, so a stage removed after its prep leaves a gap rather than
+    renumbering.
 
     **Total on purpose.** Every job gets a ref; one with no assigned ordinal
     gets ``seq=None`` rather than being left out of the mapping, so each

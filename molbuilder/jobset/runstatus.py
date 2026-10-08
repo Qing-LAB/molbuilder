@@ -99,9 +99,6 @@ class StageStatus:
     #: Whether anything has prepped it -- a description's stage before its
     #: first prep is listed all the same (`job-system.md` § 5.3).
     prepped: bool = True
-    #: Whether the description runs it -- a disabled stage is listed, and is
-    #: never the stage to resume from (§ 5.3).
-    enabled: bool = True
     #: What the stage IS, the plan's columns: its deck, the restart files it declares
     #: -- what it would take from a run it continues from -- and the
     #: resources it asks for.
@@ -304,14 +301,10 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
 
 def _not_prepped(ref: StageRef, stage) -> StageStatus:
     """A stage the description names and nothing has prepped -- `NOT_PREPPED`
-    in the reader's own words; a disabled one says so (`job-system.md`
-    § 5.3)."""
-    on = getattr(stage, "enabled", True) is not False
+    in the reader's own words (`job-system.md` § 5.3)."""
     return StageStatus(
-        ref=ref, dir=None, state=NOT_PREPPED[0],
-        detail=(NOT_PREPPED[1] if on else
-                "disabled in the description (enabled: false); not prepped"),
-        prepped=False, enabled=on)
+        ref=ref, dir=None, state=NOT_PREPPED[0], detail=NOT_PREPPED[1],
+        prepped=False)
 
 
 def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
@@ -327,8 +320,8 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
     description beside it, lists its own jobs.
 
     ``first_incomplete`` is the first stage that is not ``finished`` -- the
-    stage to resume from, never a disabled one; ``None`` (and
-    ``complete=True``) when every enabled stage finished."""
+    stage to resume from; ``None`` (and ``complete=True``) when every stage
+    finished."""
     from ..task import FILENAME as TASK_FILENAME, read_task
     base = Path(base_dir)
     sweep = jobset is not None and jobset.kind == "sweep"
@@ -361,21 +354,12 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
                 continue
             # THE DESCRIPTION'S NAME AND NUMBER on its row: the ladder is the
             # description's, and `status <stage>` finds the row by it.
-            row = dataclasses.replace(
-                _job_status(base, jobset, job, task, **kw), ref=ref)
-            if getattr(st, "enabled", True) is False:
-                # PREPPED, THEN TURNED OFF: its folder is read as ever, and
-                # the row says it is never used (`task.stage_disabled`).
-                row = dataclasses.replace(
-                    row, enabled=False,
-                    detail=f"disabled in the description -- its folder is "
-                           f"kept as it is and never used; {row.detail}")
-            stages.append(row)
+            stages.append(dataclasses.replace(
+                _job_status(base, jobset, job, task, **kw), ref=ref))
     else:
         stages = [_job_status(base, jobset, job, None, **kw)
                   for job in jobset.jobs]
-    first = next((s for s in stages if s.state != _DONE and s.enabled),
-                 None)
+    first = next((s for s in stages if s.state != _DONE), None)
     # A BENCHMARK'S SWEEP is read against the calculation it measures, as
     # its job-set names its trials (`materialize.bench_owner` re-bases a
     # reader standing in the container); its stage is read off where its
@@ -452,9 +436,7 @@ def render_status(status: JobSetStatus) -> str:
         lines.append(_sweep_next(status))
         return "\n".join(lines)
     if status.complete:
-        lines.append("All stages finished. Nothing to resume."
-                     if all(s.enabled for s in status.stages) else
-                     "Every enabled stage finished. Nothing to resume.")
+        lines.append("All stages finished. Nothing to resume.")
     else:
         first = next((s for s in status.stages
                       if s.name == status.first_incomplete), None)
@@ -548,16 +530,13 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
     """
     s = next(x for x in status.stages if x.name == stage_name)
     if not s.prepped:
-        # WHAT YOU CAN TYPE (`job-system.md` § 5.3): a disabled stage's prep
-        # is refused, so it is told how to enable it; one whose prep would
+        # WHAT YOU CAN TYPE (`job-system.md` § 5.3): one whose prep would
         # refuse is told why, with the commands.
         cont = (continuation if continuation is not None else
                 {"resume_from": status.resume_from,
                  "resume_refused": status.resume_refused}
                 if s.name == status.first_incomplete else {})
-        how = ("Enable it in Task setup (or task.json) to run it."
-               if not s.enabled else
-               "Its prep refuses for now:\n"
+        how = ("Its prep refuses for now:\n"
                + textwrap.indent(cont["resume_refused"], "    ")
                if cont.get("resume_refused") else
                "Prep it:\n    "

@@ -280,8 +280,8 @@ def _validate_pyscf(struct: Structure, cfg,
     # NO LADDER CHECK HERE, and that is not a gap.  A ladder is declared in
     # task.json for both engines (`stages.md` § 1.1a), so its structural
     # invariants are the DESCRIPTION's and are checked where descriptions are:
-    # ``task.Task.validate`` refuses an empty stage list, duplicate names and
-    # an all-disabled ladder, and ``validation/task.py`` checks every
+    # ``task.Task.validate`` refuses an empty stage list and duplicate names,
+    # and ``validation/task.py`` checks every
     # override against the ``range`` / ``choices`` the schema declares.  This
     # validator sees ONE
     # rung's resolved config and cannot see the ladder at all.

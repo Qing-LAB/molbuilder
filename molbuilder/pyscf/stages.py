@@ -93,9 +93,11 @@ def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:
         # NO ``restart`` HERE -- SIESTA's twin says why, and it is the same
         # reason: a rung's POSITION does not answer *is there anything to
         # continue from*.  The folder answers that, at run time.
-        out.append(Stage(name=SIESTA_STAGE_NAMES[tier],
-                         enabled=bool(enables[i]) if i < len(enables) else False,
-                         overrides=overrides))
+        # THE STAGES IT RUNS, and only those (`engines/stages.md` § 2): a
+        # tier the strategy leaves out is not in the ladder.
+        if i < len(enables) and enables[i]:
+            out.append(Stage(name=SIESTA_STAGE_NAMES[tier],
+                             overrides=overrides))
     return out
 
 
@@ -130,8 +132,8 @@ def vibration_stages(engine: str, *, already_relaxed: bool) -> List["Stage"]:
     from ..task import Stage
     out: List[Stage] = []
     if str(engine) == "siesta" and not already_relaxed:
-        out.append(Stage(name=VIBRATION_RELAX_STAGE, enabled=True, overrides={}))
-    out.append(Stage(name=VIBRATION_FREQ_STAGE, enabled=True, overrides={}))
+        out.append(Stage(name=VIBRATION_RELAX_STAGE, overrides={}))
+    out.append(Stage(name=VIBRATION_FREQ_STAGE, overrides={}))
     return out
 
 
@@ -147,18 +149,12 @@ def vibration_render_kind(stage_name: str) -> str:
             else "vibration")
 
 
-def force_constant_stages(task, *, include_disabled: bool = False
-                          ) -> List[str]:
+def force_constant_stages(task) -> List[str]:
     """The stages of a vibration description that render the kind's own
     deck, in ladder order -- every stage but ``relax``
-    (:func:`vibration_render_kind`), WHATEVER ITS NAME; the enabled ones
-    unless ``include_disabled``.  On SIESTA each is a force-constant run,
-    and two or more are a displacement sweep (`engines/vibration.md` § 5.9);
-    each measures at the relax stage's geometry (§ 5.2a).
-
-    ``include_disabled`` says whether a stage the description disables is
-    counted: one is never prepped (`prep` refuses it at its checkpoint 2),
-    so the layout's question asks of the enabled ones."""
+    (:func:`vibration_render_kind`), WHATEVER ITS NAME.  On SIESTA each is a
+    force-constant run, and two or more are a displacement sweep
+    (`engines/vibration.md` § 5.9); each measures at the relax stage's
+    geometry (§ 5.2a)."""
     return [s.name for s in task.stages
-            if (include_disabled or getattr(s, "enabled", True))
-            and vibration_render_kind(s.name) == "vibration"]
+            if vibration_render_kind(s.name) == "vibration"]

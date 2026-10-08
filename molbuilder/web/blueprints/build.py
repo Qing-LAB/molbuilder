@@ -1800,8 +1800,6 @@ def api_task_setup_prep_plan():
 
     rows = []
     for st in task.stages:
-        if st.enabled is False:
-            continue
         token = stage_home(folder, task, st.name).token
         rows.append({"stage": st.name, "token": token,
                      "dir": shape.stage_dir(token),
@@ -1841,9 +1839,7 @@ def api_task_setup_prep_plan():
         # four values must not move the two columns a reader scans down").
         #
         # `rows` cannot be empty here: `stages.md` § 6.5 refuses a
-        # calculation with no stages and `Task.from_dict` refuses one with
-        # every stage disabled -- *"an all-disabled ladder is an empty one
-        # spelled longer"* -- so there is no empty case to invent a
+        # calculation with no stages, so there is no empty case to invent a
         # location for.
         from molbuilder.paths import bench_container
         bench = {"axes": {k: list(v) for k, v in task.bench.items()},

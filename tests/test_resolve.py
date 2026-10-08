@@ -36,7 +36,7 @@ STAGE = "coarse"
 
 def _task(stages=None):
     ladder = (tuple(stages) if stages is not None
-              else (Stage(name=STAGE, enabled=True, overrides={}),))
+              else (Stage(name=STAGE, overrides={}),))
     return Task(
         engine="siesta", shape="hierarchical", calculation="optimization",
         run=derive_run("relax", "C3H2S",

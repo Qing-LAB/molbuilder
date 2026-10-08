@@ -168,7 +168,6 @@ function renderStages(task) {
 
     stages.forEach((st, i) => {
         const name = (st && st.name) || "(unnamed)";
-        const on   = st && st.enabled !== false;
 
         const nameInput = el("input", {
             class: "ts-cell ts-cell-name", value: name,
@@ -189,13 +188,6 @@ function renderStages(task) {
             _task.stages[i].name = v;
             syncFromModel();
         });
-
-        const toggle = el("button", {
-            type: "button", class: "ts-rowbtn",
-            "aria-pressed": on ? "true" : "false",
-            title: on ? "Disable this stage" : "Enable this stage",
-        }, on ? "on" : "off");
-        toggle.addEventListener("click", () => toggleStage(i));
 
         const drop = el("button", {
             type: "button", class: "ts-rowbtn ts-rowbtn-drop",
@@ -230,8 +222,8 @@ function renderStages(task) {
                                       : "nothing has run for this stage yet" },
                  ran ? ran + "\u00d7" : "\u2014");
 
-        const tr = el("tr", { "data-off": on ? null : "yes" },
-            el("td", null, nameInput, toggle, drop, preset, ranEl));
+        const tr = el("tr", null,
+            el("td", null, nameInput, drop, preset, ranEl));
 
         const ov = (st && st.overrides) || {};
         for (const col of varies) {
@@ -1221,17 +1213,8 @@ function addStage() {
     while (taken.has(name.toLowerCase())) { n += 1; name = "stage" + n; }
     stages.push({
         name,
-        enabled: true,
         overrides: Object.assign({}, (prev && prev.overrides) || {}),
     });
-    syncFromModel();
-}
-
-function toggleStage(i) {
-    if (!_task || !_task.stages || !_task.stages[i]) return;
-    // Disabling changes what `prep` builds; it does NOT delete the row's
-    // values (`task-setup.md` § 9).
-    _task.stages[i].enabled = _task.stages[i].enabled === false;
     syncFromModel();
 }
 
@@ -1734,21 +1717,20 @@ function addColumn(name) {
 function removeColumn(name) {
     const v = variesOf(); if (!v) return;
     const stages = (_task && _task.stages) || [];
-    const enabled = stages.filter((st) => st && st.enabled !== false);
-    const last = enabled.length ? enabled[enabled.length - 1] : stages[stages.length - 1];
+    const last = stages[stages.length - 1];
     const survivor = last && last.overrides
         ? last.overrides[name] : undefined;
 
     if (_fs.pendingDrop !== name) {
         _fs.pendingDrop = name;
-        // The value the LAST ENABLED stage carries is the one § 9 keeps —
+        // The value the LAST stage carries is the one § 9 keeps —
         // it is the production stage, and the value a single run would use.
         // This page cannot write it into the template, so it says so rather
         // than implying the value survives somewhere.
         setState("refuse", "Remove the column " + name + "?",
                  (survivor === undefined
                     ? "No stage overrides it, so nothing is lost. "
-                    : "The last enabled stage (" + ((last && last.name) || "?")
+                    : "The last stage (" + ((last && last.name) || "?")
                       + ") has " + JSON.stringify(survivor) + ", and every "
                       + "stage's value for it is dropped — this page edits "
                       + "task.json, not the template, so set it there if you "
@@ -1970,18 +1952,18 @@ function renderNext(task) {
     // see.  Owned here because this is the one place they are created.
     _PREP_WIDGETS.length = 0;
     const ladder = (task && task.stages) || [];
-    const enabled = [];
+    const rungs = [];
     ladder.forEach((st, full) => {
-        if (st && st.enabled !== false) enabled.push({ st: st, full: full });
+        if (st) rungs.push({ st: st, full: full });
     });
-    if (!enabled.length) { card.hidden = true; return; }
+    if (!rungs.length) { card.hidden = true; return; }
 
-    /* ONE BLOCK PER ENABLED STAGE, and both things you can do with it
+    /* ONE BLOCK PER STAGE, and both things you can do with it
      * (`task-setup.md` § 11).  A stage is either something to MEASURE or
      * something to RUN, and which one is a decision only the user has.
      *
-     * The bench axes are declared once for the calculation, so ANY enabled
-     * stage can be measured; which is worth measuring is a judgement, and
+     * The bench axes are declared once for the calculation, so ANY stage can
+     * be measured; which is worth measuring is a judgement, and
      * the page hints rather than choosing. */
     const benchKeys = Object.keys((task && task.bench) || {});
     // VARYING AND DECLARED ARE DIFFERENT THINGS: a one-point axis fixes
@@ -1999,13 +1981,13 @@ function renderNext(task) {
     const panels = el("div", { class: "ts-steppanels" });
     host.appendChild(nav);
     host.appendChild(panels);
-    const names = enabled.map((e) => e.st.name || "");
+    const names = rungs.map((e) => e.st.name || "");
     // THE CHOICE SURVIVES A REPAINT.  Every edit re-renders this card, and
     // snapping back to the first rung would lose the tab a person was
     // reading each time they typed.
     if (names.indexOf(_fs.stepTab) === -1) _fs.stepTab = names[0] || "";
 
-    enabled.forEach((e, i) => {
+    rungs.forEach((e, i) => {
         const name = e.st.name || "";
         const runs = _fs.runs[name];
         const active = name === _fs.stepTab;
@@ -2665,11 +2647,11 @@ function proposedFromHandover(over, shape, varies, bench) {
     if (kind === "vibration") {
         stages = [];
         if (engineName === "siesta" && !relaxed) {
-            stages.push({ name: "relax", enabled: true, overrides: {} });
+            stages.push({ name: "relax", overrides: {} });
         }
-        stages.push({ name: "freq", enabled: true, overrides: {} });
+        stages.push({ name: "freq", overrides: {} });
     } else {
-        stages = [{ name: "coarse", enabled: true, overrides: {} }];
+        stages = [{ name: "coarse", overrides: {} }];
     }
     const out = {
         schema:    "molbuilder/task@1",

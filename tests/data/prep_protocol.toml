@@ -89,36 +89,6 @@ saved = { shape = "flat" }
 reprobed = { conda_envs = ["molbuilder-siesta", "molbuilder-siesta-gpu"] }
 
 # ===================================================================== #
-#  A DISABLED STAGE IS NEVER USED                                       #
-#  (`engines/stages.md` § 6.2; user, 2026-10-03, Q1: "mark the dir as   #
-#  disabled and never allow use")                                       #
-# ===================================================================== #
-
-[[case]]
-name = "a stage the description disables is refused at prep, saying how to enable it"
-stage = "tight"
-refused = ["stage 'tight' is disabled in this description", "\"enabled\": true"]
-
-[[case]]
-name = "...one disabled after its prep is never continued from -- and status shows its folder disabled"
-before = [["prep", "run", "coarse"]]
-disabled = ["coarse"]
-stage = "medium"
-prep = ["--from", "01_coarse/run-0"]
-refused = ["--from '01_coarse/run-0': stage 'coarse' is disabled"]
-status_says = ["disabled in the description -- its folder is kept as it is and never used"]
-
-[[case]]
-name = "...nor launched"
-before = [["prep", "run", "coarse"]]
-disabled = ["coarse"]
-stage = "medium"
-prep = ["--cold"]
-launch = []
-launch_stage = "coarse"
-launch_refused = ["stage 'coarse' is disabled in this description"]
-
-# ===================================================================== #
 #  LAUNCH ACTS ON A PREPPED STAGE                                       #
 # ===================================================================== #
 

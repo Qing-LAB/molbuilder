@@ -473,19 +473,6 @@ class TestThePlanComesFromTheProducer:
         assert [r["dir"] for r in _plan(client, t)["bench"]["rungs"]] == [
             "bench_01_coarse", "bench_02_tight"]
 
-    def test_a_disabled_rung_takes_its_container_with_it(self, client):
-        t = dict(_PLAN_TASK,
-                 stages=[dict(_PLAN_TASK["stages"][0], enabled=False),
-                         _PLAN_TASK["stages"][1]])
-        assert _plan(client, t)["bench"]["rungs"] == [
-            {"stage": "tight", "dir": "02_tight/bench"}]
-
-    def test_a_disabled_rung_is_not_listed(self, client):
-        t = dict(_PLAN_TASK,
-                 stages=[dict(_PLAN_TASK["stages"][0], enabled=False),
-                         _PLAN_TASK["stages"][1]])
-        assert [r["stage"] for r in _plan(client, t)["stages"]] == ["tight"]
-
     def test_a_description_mid_edit_is_refused_in_its_own_words(self, client):
         """Unreadable is ordinary while someone types, and the card hides the
         list rather than showing a plan for a document that no longer says

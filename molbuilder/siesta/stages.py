@@ -59,9 +59,11 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
         # The tier's NAME, from the one table: Decision 27 puts the ordinal in
         # the artifact token, so a name that is itself a position says the number
         # twice (``<label>_01_stage1.fdf``) and the science none.
-        out.append(Stage(name=SIESTA_STAGE_NAMES[tier],
-                         enabled=bool(enables[i]) if i < len(enables) else False,
-                         overrides=overrides))
+        # THE STAGES IT RUNS, and only those (`engines/stages.md` § 2): a
+        # tier the strategy leaves out is not in the ladder.
+        if i < len(enables) and enables[i]:
+            out.append(Stage(name=SIESTA_STAGE_NAMES[tier],
+                             overrides=overrides))
     return out
 
 

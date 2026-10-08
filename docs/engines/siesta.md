@@ -638,7 +638,7 @@ verb names its stage, on a one-rung ladder exactly as on three
 
 - **Data model.** A stage is `molbuilder/task.py::Stage`: **`name`** (→ the
   `<label>_<NN>_<name>.fdf` stem, ordinal and name together —
-  `identity.stage_token`), **`enabled`**, and **`overrides`** — a map
+  `identity.stage_token`), **`overrides`** — a map
   naming *any* field of `SiestaConfig` and the value this stage uses for it.
   There is no privileged set: `mesh_cutoff`, `basis_size` and `kgrid` are as
   varyable as the four relaxation knobs, which is what
@@ -656,7 +656,7 @@ verb names its stage, on a one-rung ladder exactly as on three
   landed.)*
 - **The shipped ladder.** `siesta/stages.py::default_siesta_stages(strategy)`
   builds it: one stage per tier of `SIESTA_STAGE_PRESETS`, that tier's four
-  values as its `overrides`, enabled per `STAGE_STRATEGY_PRESETS` —
+  values as its `overrides`, the tiers `STAGE_STRATEGY_PRESETS` runs —
   `publishable` (1+2), `loose-only` (1), `vib-quality` (1+2+3). CG warm-up
   0.05 → Broyden publishable 0.04 → Broyden crystal-tight 0.01 eV/Å; the
   authoritative per-tier value table is [`tuning.md`](?doc=engines/tuning.md)

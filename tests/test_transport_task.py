@@ -33,7 +33,7 @@ _STAGES = ("seed", "electrode_L", "electrode_R", "device", "transmission")
 
 
 def _stages():
-    return tuple(Stage(name=n, enabled=True, overrides={}) for n in _STAGES)
+    return tuple(Stage(name=n, overrides={}) for n in _STAGES)
 
 
 def _task(**over):

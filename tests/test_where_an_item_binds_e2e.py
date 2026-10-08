@@ -44,7 +44,7 @@ def _described(engine, stages, calculation="optimization"):
                    "created": "2026-09-30T00:00:00-07:00"},
            "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
            "varies": sorted({k for s in stages for k in s["overrides"]}),
-           "stages": [dict(s, enabled=True) for s in stages]}
+           "stages": [dict(s) for s in stages]}
     if calculation != "optimization":
         out["calculation"] = calculation
     return out
@@ -168,10 +168,8 @@ def test_the_stage_table_offers_each_rung_what_it_reads(
     calc = root / "vibration" / "h2-vib"
     D.write_description(D.build_description(
         struct, SiestaConfig(system_label="h2"),
-        (Stage(name="relax", enabled=True,
-               overrides={"relax_force_tol": 0.05}),
-         Stage(name="freq", enabled=True,
-               overrides={"fc_displacement": 0.02})),
+        (Stage(name="relax", overrides={"relax_force_tol": 0.05}),
+         Stage(name="freq", overrides={"fc_displacement": 0.02})),
         engine="siesta", shape="hierarchical", name="h2",
         calculation="vibration", source=str(root / "structure" / "h2.xyz")),
         calc, struct=struct)

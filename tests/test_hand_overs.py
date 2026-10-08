@@ -51,7 +51,7 @@ def test_a_transport_rung_takes_no_from_or_cold(tmp_path):
                 structure=None, calculation="transport",
                 slots={"junction": "J/x"}, bias=(0.0,), varies=(),
                 execution={}, stages=tuple(
-                    Stage(name=n, enabled=True, overrides={}) for n in rungs))
+                    Stage(name=n, overrides={}) for n in rungs))
     for asked in ({"from_attempt": "01_seed/run-0"}, {"cold": True}):
         got, refused = continuation_answer(tmp_path, task, "device", **asked)
         assert got is None and refused and (

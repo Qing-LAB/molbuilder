@@ -279,8 +279,8 @@ two halves were symmetric and has not been since 2026-08-07.
 > **The two halves separated on 2026-08-07, on purpose.** A stage is not a
 > property of a calculation, so an engine config carries no stage list:
 > `SiestaStageSpec` and `SiestaConfig.stages` were **deleted**, and the SIESTA
-> ladder lives in `task.json` as `task.py::Stage` — `name`, `enabled`, and
-> `overrides`, which may name **any** field of the shared schema
+> ladder lives in `task.json` as `task.py::Stage` — `name`, `overrides` and
+> `execution`; `overrides` may name **any** field of the shared schema
 > ([`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2). **PySCF kept a
 > stage list of its own** while the SIESTA path was being built: its ladder ran
 > inside one process, so there the list was also engine behaviour. The parity

@@ -203,8 +203,7 @@ def test_a_description_refuses_what_its_kind_does_not_offer():
     from molbuilder.task import Stage
     ladder = vibration_stages("siesta", already_relaxed=False)
     relax = ladder[0]
-    ladder = (Stage(name=relax.name, enabled=relax.enabled,
-                    overrides={**dict(relax.overrides or {}),
+    ladder = (Stage(name=relax.name, overrides={**dict(relax.overrides or {}),
                                "relax_type": "Verlet"}),) + tuple(ladder[1:])
     with pytest.raises(D.DescribeError) as refused:
         D.build_description(WATER(), SiestaConfig(system_label="JOB"), ladder,

@@ -1165,9 +1165,9 @@ vibration:
 | | `--from` a run of another stage | refused: the stage builds on `relax` | — | — |
 | | `--cold` | refused: the stage measures at the geometry `relax` reached; to measure the structure as given, disable `relax` and state the structure relaxed | — | — |
 | | `--from` naming a run, at `relax` itself | refused: `relax` is the kind's first rung and builds on the structure — a run of another stage (a `freq` run's displaced `.XV`) is not its input | — | — |
-| no enabled `relax`, the structure stated relaxed (`already_relaxed`) | nothing, or `--cold` | the structure as given; its relaxation record is shown and checked against this calculation (§ 2.2) | none | none |
+| no `relax`, the structure stated relaxed (`already_relaxed`) | nothing, or `--cold` | the structure as given; its relaxation record is shown and checked against this calculation (§ 2.2) | none | none |
 | | `--from` | refused: nothing in this ladder relaxes — the stage measures the structure as given | — | — |
-| no enabled `relax`, the structure not stated relaxed | anything | refused where every hand-over is decided (`continuation.continuation_answer`, so `status` says it before the prep), naming the two ways out — add `relax` before the stage and run it first, or state the structure relaxed: the box says *relax first* and the ladder holds nothing that would, so the description contradicts itself, and it is refused rather than measured at a geometry nobody chose | — | — |
+| no `relax`, the structure not stated relaxed | anything | refused where every hand-over is decided (`continuation.continuation_answer`, so `status` says it before the prep), naming the two ways out — add `relax` before the stage and run it first, or state the structure relaxed: the box says *relax first* and the ladder holds nothing that would, so the description contradicts itself, and it is refused rather than measured at a geometry nobody chose | — | — |
 | the flat layout | nothing (`--from` and `--cold` name attempts, which flat keeps none of) | `relax`'s latest run in the folder, which must have finished | nothing copied: they lie in the folder | the run's `<basename>-run<N>.continued-from` |
 | a benchmark of the stage | — | `relax`'s newest attempt, as a run's default — every trial's deck at that geometry (§ 5.8) | none: a trial measures from its deck | the ledger's `continues`, and both doors say which run |
 
@@ -1196,9 +1196,9 @@ was the final frame of its own relaxation.)*
 
 **The ladder is the order; the box decides what is proposed and what is
 recorded.** `init` and the hand-over read the box to propose the ladder
-(§ 2.2). Once described, a ladder that holds an enabled `relax` stage runs
+(§ 2.2). Once described, a ladder that holds a `relax` stage runs
 it whatever the box says, and `freq` takes its geometry — a person who ticks
-the box after describing removes or disables the stage, and the Task setup
+the box after describing removes the stage, and the Task setup
 tab is where that is done. The box's other job is the record: the artifact
 carries `already_relaxed` as stated, and the finish's verdict is what
 answers it.
@@ -1617,8 +1617,7 @@ puts them at different geometries — which the summary refuses, below. Each sta
 data at that displacement, never merged or moved. **The hierarchical layout
 only**: in the flat one every stage writes the same `<label>.FC` and
 `<label>.spectra.json`, so `prep` refuses a second force-constant stage there
-— counting the enabled ones, since a disabled stage is never prepped
-([`stages.md`](?doc=engines/stages.md) § 6.2) — before any sort, permutation
+— before any sort, permutation
 record or deck is written, rather than let it overwrite the first's result.
 
 **The summary: `jobset summarize run`** — `summarize` summarizes results that

@@ -1281,9 +1281,9 @@ molbuilder jobset status '#3'                # the same stage, by its number
 `task.json` names, in its order and with its number, from the moment `init`
 writes it — so it lists the stages before anything is prepped, and a ladder
 prepped one stage at a time (transport) shows every stage, the ones not prepped
-yet as `not-started — no directory yet (not prepped)`. A stage the description
-disables (`enabled: false`) is listed as disabled — whether or not it was
-prepped — and is never the stage to resume from; enable it to run it. The table
+yet as `not-started — no directory yet (not prepped)`. A stage removed from the
+description after its prep is listed as removed, its folder kept
+([`project-layout.md`](?doc=execution/project-layout.md) § 4.2). The table
 ends with the stage to resume from, and one nothing has prepped yet is named
 with the command that prepares it — for an independent stage, beside the run
 that command will continue from, or with why its prep would refuse, whole, its

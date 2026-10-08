@@ -348,12 +348,6 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
             return (f"--from {from_attempt!r}: {head!r} is not a stage "
                     f"folder of this calculation -- name a run as "
                     f"<NN>_<stage>/run-<n>.")
-        # A RUN OF A STAGE TURNED OFF is never continued from (user,
-        # 2026-10-03, Q1: "never allow use").
-        from ..task import stage_disabled
-        why = stage_disabled(task, named)
-        if why:
-            return f"--from {from_attempt!r}: {why}"
     # A FORCE-CONSTANT STAGE BUILDS ON ITS LADDER'S `relax`, or on nothing
     # (`engines/vibration.md` § 5.2a's table): a run of `relax` may be
     # named; no other run, and no start from the structure while there is a
@@ -591,14 +585,13 @@ def force_constant_stage(task, stage: str) -> bool:
 
 
 def relax_stage_of(task) -> Optional[str]:
-    """The ladder's enabled relaxation rung, which every force-constant stage
+    """The ladder's relaxation rung, which every force-constant stage
     builds on, or ``None`` -- the structure is then measured as given, and
     must be stated relaxed (`engines/vibration.md` § 5.2a).  By the one role
     rule, the name in any case (plan § 5w K12)."""
     from ..pyscf.stages import vibration_render_kind
     return next((s.name for s in task.stages
-                 if getattr(s, "enabled", True)
-                 and vibration_render_kind(s.name) != "vibration"), None)
+                 if vibration_render_kind(s.name) != "vibration"), None)
 
 
 def _source_stage(base, task, stage: str, template_text: Optional[str] = None

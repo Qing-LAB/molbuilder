@@ -664,7 +664,7 @@ its point count:
 *(user, 2026-09-01: "we should have an explicit list of the run tasks for each
 stage in that tab so that this information is confirmed and clear".)*
 
-Beside the four files above, this card lists — **one line per enabled stage** —
+Beside the four files above, this card lists — **one line per stage** —
 what `prep` will produce for it: the directory, and the allocation that
 directory's wrapper will carry.
 
@@ -1035,7 +1035,7 @@ be prepared, prepare it for the chosen machine, and hand you the exact command
 — and it does that **in a tab strip keyed by stage**, because the alternative grows the page by one block per
 rung and a five-rung ladder becomes a page nobody scrolls to the bottom of.
 
-**One tab per enabled stage.** Inside a tab, everything you do with that rung:
+**One tab per stage.** Inside a tab, everything you do with that rung:
 
 | | |
 |---|---|
@@ -1096,7 +1096,7 @@ a decision only you can make** — unchanged from the card this replaces:
 | **prepare the run** | `prep run` → `launch run` | you know what it wants — from a benchmark you read, from § 6.2b's card, or from flags |
 
 **Any stage may be benchmarked, not only the first.** The bench axes are
-declared once for the calculation (§ 6.3), so every enabled stage can be
+declared once for the calculation (§ 6.3), so every stage can be
 measured. Which one is worth measuring is a judgement — usually the cheapest
 rung that still has the expensive stage's shape — and the page states that as
 a hint rather than choosing.

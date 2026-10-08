@@ -82,9 +82,8 @@ def _staged(xyz, tmp_path, strategy):
     from conftest import write_pseudos
     write_pseudos(tmp_path, sorted(set(struct.elements)))
     for s in stages:
-        if s.enabled:
-            prep_stage(tmp_path, "run", s.name, cold=True,
-                       allocation=Resources(mpi_np=4, cpus_per_task=1))
+        prep_stage(tmp_path, "run", s.name, cold=True,
+                   allocation=Resources(mpi_np=4, cpus_per_task=1))
     return tmp_path
 
 
