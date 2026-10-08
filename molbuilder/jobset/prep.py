@@ -2839,8 +2839,11 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #     so the state saved holds no line of this prep.  A refusal writes them with its own line.
         _record_preflight()
         out.saved = kept.said()
-        ledger(base, "prep", "saved", stage=stage, state=kept.state.short,
-               note=kept.state.note, new=kept.new)
+        # A GROUP'S SAVE is its own, written down once by the group
+        # (:func:`prep_group`).
+        if saved is None:
+            ledger(base, "prep", "saved", stage=stage, state=kept.state.short,
+                   note=kept.state.note, new=kept.new)
 
         # 6 · THE PLAN, WRITTEN -- deciding nothing and refusing nothing.  A
         #     write that fails (a full disk) leaves the stage not prepared --
@@ -3015,10 +3018,43 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
         shared = envelope([a.job for a in previews])
     except GroupError as exc:
         raise _refuse(str(exc)) from None
-    identity = group_plan_id(previews)
+    # 2b · THE GROUP'S OWN FILE, PLANNED with its members -- the one header,
+    #      where the machine has a scheduler -- so the preview shows it and
+    #      nothing after the save decides (`job-system.md` § 5.0, rule 3).
+    from .planned import Plan
+    gn = names_of(task.label, [stage_home(base, task, n).token
+                               for n in names])
+    header_plan = Plan()
+    header = None
+    try:
+        with _user_error_as_prep():
+            environment = machine_record(base, target)
+            placement = next((a.placement for a in previews if a.placement),
+                             None)
+            if emit_sbatch and environment.scheduler == "slurm":
+                from ..runwrap import _render_sbatch_for
+                from .materialize import open_container
+                from .submit import _into_launch
+                from ..runfiles import LAUNCH_DIR
+                text = _render_sbatch_for(
+                    base / f"{gn.stem}.sh", names=gn, project_dir=base,
+                    resources=shared, machine_record=environment,
+                    domain_pq=((placement["partition"], placement["qos"])
+                               if placement else None))
+                if text is not None:
+                    launch_dir = open_container(base, base / LAUNCH_DIR,
+                                                header_plan)
+                    header = launch_dir / gn.name(".sbatch")
+                    header_plan.text(header, _into_launch(text, gn))
+    except PrepError as exc:
+        raise _refuse(str(exc)) from None
+    identity = group_plan_id(previews) + "+" + header_plan.identity()
     if preview:
         for a in previews:
             a.plan_id = identity
+        # THE HEADER IS AMONG WHAT IT WOULD WRITE, said with the last member.
+        previews[-1].writes = list(previews[-1].writes) + [
+            str(Path(w).relative_to(base)) for w in header_plan.writes()]
         return previews
     if plan_id is not None and plan_id != identity:
         raise _refuse("what prep would write now differs from the plan you "
@@ -3032,6 +3068,8 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
     except CheckpointError as exc:
         raise _refuse(f"the folder's state could not be saved, so nothing "
                       f"was prepared: {exc}") from None
+    ledger(base, "prep", "saved", stage=list(names), state=kept.state.short,
+           note=kept.state.note, new=kept.new)
     # 4 · EACH MEMBER, written through the one entry with that state.
     answers = [prep_stage(base, kind, st, target=target,
                           allocation=allocation, env=env,
@@ -3045,29 +3083,8 @@ def prep_group(base, kind: str, stages: Sequence[str], *,
         if j.name in names:
             j.group = list(names)
     js.write(js_path)
-    # ...and the group's one header, where the machine has a scheduler.
-    from .materialize import open_container
-    from ..runfiles import LAUNCH_DIR
-    gn = names_of(task.label, [stage_home(base, task, n).token
-                               for n in names])
-    header = None
-    environment = machine_record(base, target)
-    placement = next((a.placement for a in answers if a.placement), None)
-    if emit_sbatch and environment.scheduler == "slurm":
-        from ..runwrap import _render_sbatch_for
-        from .planned import Plan
-        from .submit import _into_launch
-        text = _render_sbatch_for(
-            base / f"{gn.stem}.sh", names=gn, project_dir=base,
-            resources=shared, machine_record=environment,
-            domain_pq=((placement["partition"], placement["qos"])
-                       if placement else None))
-        if text is not None:
-            plan = Plan()
-            launch_dir = open_container(base, base / LAUNCH_DIR, plan)
-            header = launch_dir / gn.name(".sbatch")
-            plan.text(header, _into_launch(text, gn))
-            plan.carry_out()
+    # ...and the group's one header, as planned before the save.
+    header_plan.carry_out()
     ledger(base, "prep", "grouped", stages=names, job=gn.stem,
            header=(str(header.relative_to(base)) if header else None))
     return answers
