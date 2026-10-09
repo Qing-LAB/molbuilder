@@ -184,32 +184,23 @@ def test_the_toolchain_shim_step_actually_creates_the_links(tmp_path):
     assert re.search(r"created 0 bare-name", cp2.stderr), cp2.stderr
 
 
-def test_the_verify_step_runs_and_only_warns_about_a_foreign_gcc(tmp_path):
+def test_the_verify_step_only_warns_about_a_foreign_gcc():
     """The toolchain check must NOT fail an env that merely predates the
-    shims -- it warns and names the remedy.  Executed with a stub
-    ``siesta`` so the real binary is not needed."""
-    prefix = tmp_path / "env"
-    binp = prefix / "bin"
-    binp.mkdir(parents=True)
-    stub = binp / "siesta"
-    stub.write_text("#!/bin/sh\necho 'siesta 5.4.2'\n")
-    stub.chmod(0o755)
-
+    shims -- it warns and names the remedy.  Asked of the generated verify
+    command itself: running it runs the env's SIESTA, and no engine runs in
+    a basic test (plan § 5y); the env's own install runs it whole."""
     recipe = R.recipe_by_name("molbuilder-siesta-gpu")
-    argv = ("/usr/bin/conda", "run", "-n", "x", "--no-capture-output",
-            *recipe.verify_argv)
-    new_argv = _B.activation_wrapper(argv, str(prefix))
-    cp = subprocess.run(list(new_argv), capture_output=True, text=True,
-                        timeout=120)
-    assert cp.returncode == 0, (
-        f"verify must not fail an env without shims:\n{cp.stderr}")
-    assert recipe.verify_expect_contains in cp.stdout
-    assert "WARNING: bare gcc resolves to" in cp.stderr
-    # ...and the remedy is printed, not executed, and NAMES A REGISTERED
-    # RECIPE: `recipe_by_name` takes canonical names only, so a remedy naming
-    # `siesta-gpu` hands you "unknown recipe 'siesta-gpu'", exit 2.  This
-    # pins the two things that make a remedy usable.
-    assert f"install {recipe.name}" in cp.stderr, cp.stderr
-    assert "`" not in cp.stderr, (
+    script = recipe.verify_argv[-1]
+    warning = next(arm for arm in script.split(";;")
+                   if "WARNING: bare gcc resolves to" in arm)
+    # A WARNING, NOT A GATE: the arm echoes to stderr and stops nothing.
+    assert warning.rstrip().endswith(">&2"), warning
+    assert "exit" not in warning and "false" not in warning, warning
+    # ...and the remedy NAMES A REGISTERED RECIPE: `recipe_by_name` takes
+    # canonical names only, so a remedy naming `siesta-gpu` hands you
+    # "unknown recipe 'siesta-gpu'", exit 2.
+    assert f"install {recipe.name}" in warning, warning
+    assert R.recipe_by_name(recipe.name) is recipe
+    assert "`" not in warning, (
         "a backtick in the warning would be command substitution inside the "
-        f"double-quoted echo -- the remedy would EXECUTE:\n{cp.stderr}")
+        f"double-quoted echo -- the remedy would EXECUTE:\n{warning}")

@@ -300,18 +300,3 @@ listing = ["but debug allows 00:15:00", "but debug allows 4"]
 #  3 · WHAT THE RUN SCRIPT DOES HERE                                    #
 # ===================================================================== #
 
-[[case]]
-name = "the run script runs the stated ranks and threads"
-machine = "workstation"
-run = { mpi_np = 3, omp_threads = 2 }
-given_gpus = ""
-runs = ["MPI ranks    : 3   (source: stated at prep)",
-        "OMP threads  : 2   (source: stated at prep)"]
-
-[[case]]
-name = "a flag on the run script still overrides, and says so"
-machine = "workstation"
-run = { mpi_np = 3, omp_threads = 2 }
-given_gpus = ""
-run_args = ["-np", "5"]
-runs = ["MPI ranks    : 5   (source: -np flag)"]

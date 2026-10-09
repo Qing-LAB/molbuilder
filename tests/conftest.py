@@ -148,7 +148,7 @@ def isolated_projects_root(tmp_path, monkeypatch):
 #: from whatever the developer's box happens to have on PATH.  A wrapper
 #: activates its conda env and then looks up ``siesta`` there -- its own
 #: failure text says so: *"not on PATH after activating '<env>'"*.
-_PRODUCT_TOOLCHAIN = ("siesta", "conda", "mamba", "mpirun")
+_PRODUCT_TOOLCHAIN = ("siesta", "tbtrans", "mpirun", "conda", "mamba")
 
 #: `conda activate` / `mamba activate` succeed silently -- that is all a
 #: wrapper running in a bare shell needs them to do, and it is the call
@@ -158,75 +158,24 @@ _PRODUCT_TOOLCHAIN = ("siesta", "conda", "mamba", "mpirun")
 #: and turn real tests into quiet skips.
 _DELEGATING = ("conda", "mamba")
 
-_STUB_BODIES = {
-    # Answers the build probe the way the parser downstream expects.  NOT
-    # delegated: reaching the host's engine is the hole this closes, and a
-    # suite that wants a real SIESTA addresses the env's binary by absolute
-    # path (`test_siesta_keyword_smoke.py` does, and says so).
-    "siesta": (
-        'if [ "${1:-}" = "--version" ]; then exit 0; fi\n'
-        'echo "stub siesta: $*"\n'
-        # WHAT A ROAD ROW ASKS OF THE ENGINE (`support.road`, the row's
-        # `stand_in`), and nothing else: leave the restart file SIESTA leaves,
-        # `<SystemLabel>.XV` (below), and end with the exit code the row
-        # gives.  Our wrapper, running this, writes the run's records itself;
-        # a test never lays them.
-        # ...and, with `waits_for`, run only once the calculation's ledger
-        # holds the decision the row names: what a launch has written down
-        # while its run runs (`job-system.md` § 6.0, step 5).
-        'if [ -n "${MB_STAND_IN_WAITS_FOR:-}" ]; then\n'
-        '    _f="${MB_STAND_IN_WAITS_FOR%%|*}"; _w="${MB_STAND_IN_WAITS_FOR#*|}"\n'
-        "    _n=0\n"
-        '    until grep -qF "$_w" "$_f" 2>/dev/null; do\n'
-        '        _n=$((_n + 1)); [ "$_n" -ge 100 ] && exit 124\n'
-        "        sleep 0.1\n"
-        "    done\n"
-        "fi\n"
-        # THE RESTART FILE CARRIES THE DECK'S GEOMETRY, as SIESTA's would at
-        # the end of a relaxation that moved nothing: the deck's lattice
-        # vectors and coordinates (molbuilder writes both in Å), the species'
-        # Z from its ChemicalSpeciesLabel block, in the `.XV` format
-        # (`parse/coords/siesta_xv.py`), so a run of ours on this road is a
-        # citable relaxation (`engines/transport.md` § 3.1).  A deck with no
-        # lattice leaves the empty file it always did.
-        'if [ -n "${MB_STAND_IN_LEAVES_XV:-}" ] && [ -f "${1:-}" ]; then\n'
-        "    _label=$(awk 'tolower($1)==\"systemlabel\"{print $2; exit}' \"$1\")\n"
-        '    [ -n "$_label" ] && python3 - "$1" "$_label" <<\'PY\'\n'
-        "import re, sys\n"
-        "deck, label = sys.argv[1], sys.argv[2]\n"
-        "text = open(deck, encoding='utf-8', errors='replace').read()\n"
-        "def block(name):\n"
-        "    m = re.search(r'%block\\s+' + name + r'\\s*\\n(.*?)%endblock', text, re.S | re.I)\n"
-        "    return [l.split() for l in m.group(1).splitlines() if l.strip() and not l.strip().startswith('#')] if m else []\n"
-        "species = {int(r[0]): int(r[1]) for r in block('ChemicalSpeciesLabel')}\n"
-        "cell = [[float(x) for x in r[:3]] for r in block('LatticeVectors')]\n"
-        "atoms = [(int(r[3]), [float(x) for x in r[:3]]) for r in block('AtomicCoordinatesAndAtomicSpecies')]\n"
-        "B = 1.0 / 0.529177210903   # molbuilder.constants.BOHR_ANGSTROM\n"
-        "with open(label + '.XV', 'w') as f:\n"
-        "    if len(cell) == 3 and atoms:\n"
-        "        for v in cell:\n"
-        "            f.write('  '.join(f'{x * B:.9f}' for x in v) + '  0.0 0.0 0.0\\n')\n"
-        "        f.write(f'{len(atoms)}\\n')\n"
-        "        for sp, p in atoms:\n"
-        "            f.write(f'{sp} {species[sp]} ' + ' '.join(f'{x * B:.9f}' for x in p) + ' 0.0 0.0 0.0\\n')\n"
-        "PY\n"
-        "fi\n"
-        'exit "${MB_STAND_IN_RC:-0}"\n'
-    ),
-    # Drops its own flags and runs what it was asked to launch, so a
-    # `mpirun -np 4 siesta ...` still reaches the siesta stub above.
-    "mpirun": (
-        "while [ $# -gt 0 ]; do\n"
-        '    case "$1" in\n'
-        "        -np|-n|--np|--n) shift 2 ;;\n"
-        "        -*) shift ;;\n"
-        "        *) break ;;\n"
-        "    esac\n"
-        "done\n"
-        'if [ $# -gt 0 ]; then exec "$@"; fi\n'
-        "exit 0\n"
-    ),
-}
+#: THE ENGINES ARE A TRIPWIRE (`process/testing.md` § 0, tier 1; plan § 5y).
+#: A basic test checks what molbuilder PREPARES -- init, prep, a dry-run
+#: launch, the one function that writes or reads the script folder -- and
+#: no engine runs in it, fake or real: a test that reads what an engine
+#: wrote is an end-to-end test, made with the real engine (user,
+#: 2026-10-08: "when something reads the output of \"siesta\" output that's
+#: an end to end by definition").  So a basic test that reaches one of these
+#: -- a run script it executed, a launch it sent, a version it asked -- is
+#: failed by `the_engines_are_a_tripwire`, naming the call; the real SIESTA
+#: and TBtrans installed on this machine are never reached.  An end-to-end
+#: test puts its engine env's own `bin` ahead of these (`_road.live_siesta`).
+_TRIPWIRE = (
+    'echo "tripwire: a basic test reached the engine: $(basename "$0") $*" >&2\n'
+    'if [ -n "${MB_TRIPWIRE_LOG:-}" ]; then\n'
+    '    printf \'%s %s\\n\' "$(basename "$0")" "$*" >> "$MB_TRIPWIRE_LOG"\n'
+    'fi\n'
+    'exit 97\n'
+)
 
 
 def _delegating_body(real: str) -> str:
@@ -243,8 +192,15 @@ def _delegating_body(real: str) -> str:
 
 @pytest.fixture(scope="session")
 def _product_toolchain_stubs(tmp_path_factory) -> Path:
-    """Built once per session; the PATH entry is per-test (below)."""
+    """Built once per session, in two folders: ``engines/``, the tripwires,
+    on PATH for the whole session (`_the_engines_answer_nowhere`); and
+    ``managers/``, conda and mamba swallowing `activate`, on PATH per test
+    (`product_toolchain_is_the_suites_own`) -- an end-to-end run made in a
+    module's or the session's setup finds the real conda, whose hook its
+    run script sources."""
     d = tmp_path_factory.mktemp("product-toolchain")
+    (d / "engines").mkdir()
+    (d / "managers").mkdir()
     # Resolved BEFORE the stub dir is on PATH, so a delegating stub cannot
     # find itself.
     real = {n: (shutil.which(n) or "") for n in _DELEGATING}
@@ -255,10 +211,9 @@ def _product_toolchain_stubs(tmp_path_factory) -> Path:
             # Absent stays absent: there is no host binary to reach.
             if not real[name]:
                 continue
-            body = _delegating_body(real[name])
+            f, body = d / "managers" / name, _delegating_body(real[name])
         else:
-            body = _STUB_BODIES[name]
-        f = d / name
+            f, body = d / "engines" / name, _TRIPWIRE
         f.write_text("#!/usr/bin/env bash\n" + body, encoding="utf-8")
         f.chmod(0o755)
     return d
@@ -569,36 +524,64 @@ def config_root_is_never_the_developers(tmp_path_factory, monkeypatch):
                        str(tmp_path_factory.mktemp("xdg-runtime")))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _the_engines_answer_nowhere(_product_toolchain_stubs, tmp_path_factory):
+    """The guard, from the session's first moment: the engines' tripwires on
+    PATH and the tripwire's log, in the process environment -- so a module's
+    shared setup, built before any test's own fixtures, is guarded too."""
+    log = tmp_path_factory.mktemp("tripwire") / "calls"
+    saved = {k: os.environ.get(k) for k in ("PATH", "MB_TRIPWIRE_LOG")}
+    os.environ["PATH"] = (f"{_product_toolchain_stubs / 'engines'}"
+                          f"{os.pathsep}{os.environ['PATH']}")
+    os.environ["MB_TRIPWIRE_LOG"] = str(log)
+    yield log
+    for k, v in saved.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+
+
+#: How much of the tripwire's log the tests before this one were charged.
+_TRIPWIRE_READ = [0]
+
+
 @pytest.fixture(autouse=True)
-def product_toolchain_is_the_suites_own(_product_toolchain_stubs, monkeypatch):
-    """**No test may reach the host's engine or conda.**
+def product_toolchain_is_the_suites_own(_product_toolchain_stubs,
+                                        _the_engines_answer_nowhere,
+                                        monkeypatch):
+    """**No test reaches an engine -- the host's or a stand-in.**
 
-    Several suites render a run wrapper and EXECUTE it -- which is the right
-    thing to test, because that bash is the artifact the cluster runs.  To
-    run it in a bare shell they strip the bootstrap out of it, and that is
-    where the hole was: with no activation, every lookup inside the wrapper
-    (``command -v siesta``, ``conda activate``, ``mpirun``) fell through to
-    the SYSTEM path.  The suite's result then depended on what the developer
-    happened to have installed, which is the opposite of a test.
+    The suite's `siesta`, `tbtrans` and `mpirun` are a tripwire
+    (`_TRIPWIRE`): a test that reaches one -- by a run script it executed, a
+    launch it sent, a version it asked, here or in a module's shared setup
+    -- fails, naming the call.  Whatever reached the tripwire since the
+    test before this one ended is this test's: a module's shared setup is
+    built during its first test's setup.
 
-    Found live on the dev workstation 2026-08-25.  A root-owned 2023
-    ``/usr/local/bin/siesta`` was on PATH; it does not know ``--version``,
-    and SIESTA reads its deck from stdin, so it did not fail -- it waited
-    for a deck.  Eight tests in ``test_runwrap_cold_restart.py`` failed as
-    20-second timeouts, each leaving a blocked process behind (28 had
-    accumulated).
+    Why the host must never answer, found live on the dev workstation
+    2026-08-25: a root-owned 2023 ``/usr/local/bin/siesta`` was on PATH; it
+    does not know ``--version``, and SIESTA reads its deck from stdin, so it
+    did not fail -- it waited for a deck.  Eight tests in
+    ``test_runwrap_cold_restart.py`` failed as 20-second timeouts, each
+    leaving a blocked process behind (28 had accumulated).
 
-    So the suite brings its own, and they behave.  **A test that needs a
-    HOSTILE binary builds its own stub and prepends it** -- it lands ahead of
-    this one and wins.  What no test gets is the host's.
-
-    This does NOT stub the test harness's own tools -- ``bash``, ``node``,
-    ``git``, ``timeout``.  Those are how the tests RUN; the product does not
-    resolve them from an env it activates, and a suite that shadowed them
-    would be unable to execute at all.
+    This does NOT stand in for the test harness's own tools -- ``bash``,
+    ``node``, ``git``, ``timeout``.  Those are how the tests RUN; the product
+    does not resolve them from an env it activates.
     """
+    stubs = _product_toolchain_stubs
     monkeypatch.setenv(
-        "PATH", f"{_product_toolchain_stubs}{os.pathsep}{os.environ['PATH']}")
+        "PATH", f"{stubs / 'engines'}{os.pathsep}{stubs / 'managers'}"
+                f"{os.pathsep}{os.environ['PATH']}")
+    yield
+    log = _the_engines_answer_nowhere
+    calls = log.read_text() if log.is_file() else ""
+    new, _TRIPWIRE_READ[0] = calls[_TRIPWIRE_READ[0]:], len(calls)
+    if new.strip():
+        pytest.fail("a basic test reached the engine (plan § 5y: what reads "
+                    "an engine's output is an end-to-end test, made with the "
+                    "real engine):\n" + new, pytrace=False)
 
 
 @pytest.fixture(autouse=True)
@@ -1014,3 +997,12 @@ def _isolated_workspace_store(tmp_path, monkeypatch):
     monkeypatch.setattr(_ws, "projects_root",
                         lambda: tmp_path / "_workspace_store_root")
     yield
+
+
+# --------------------------------------------------------------------- #
+#  The real runs an end-to-end pass makes, each once (plan § 5y)         #
+# --------------------------------------------------------------------- #
+# Session fixtures, so every module that reads a run asks for the one made
+# (`support/real_runs.py`).
+from support.real_runs import (real_h2_bench, real_h2_layered,  # noqa: E402,F401
+                               real_h2_relaxed_for_vibration)

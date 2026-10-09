@@ -161,12 +161,6 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
          "SIESTA's own restart file -- the geometry it saves and reloads.  "
          "The survey's hand-written vocabulary claimed this one as ours until "
          "2026-09-08, which is why the table is derived from `WRITTEN` now"),
-    ("molbuilder/transport/compose.py", "classify_citation", "*.xyz"):
-        ("foreign - not a name we compose",
-         "A PERSON'S STRUCTURE FILE.  `WRITTEN` declares `.source.xyz` and "
-         "`_initial.xyz`; a bare `.xyz` in a cited directory is whatever the "
-         "user put there.  Its SIDECAR is ours, and the line below pairs each "
-         "hit through `sidecars.molstruct.sidecar_path_for`"),
     ("molbuilder/builders/backends/_threedna.py", "_copy_standard_bases",
      "Atomic[._]?.pdb"):
         ("foreign - not a name we compose",

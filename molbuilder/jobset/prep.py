@@ -132,7 +132,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
     checkpoint 4 (`prep_stage`); ``machine_record`` is that record.
 
     ``points`` names, per job, the folders that hold a copy of its deck
-    written at another point -- a scan's (`Rung.points`) -- each of which
+    written at another point -- a sweep's (`Rung.points`) -- each of which
     gets the job's wrapper beside it, rendered by the one call the job's own
     folder gets.
 
@@ -539,7 +539,7 @@ class Rung:
     #: junction's electronic state.
     spec_extra: Callable = lambda element, cfg: {}
     #: ``((folder, volts), ...)``: the folders each holding a deck written at
-    #: that point -- a scan's (`engines/transport.md` § 2a.10-11) -- each
+    #: that point -- a sweep's (`engines/transport.md` § 2a.10-11) -- each
     #: with its own wrapper and attempt ladder; the element's own deck is
     #: written at the first.  Empty: one deck, in the element's folder.
     points: tuple = ()
@@ -644,7 +644,7 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
     (:func:`_composed_for_prep`); the rung's structure is the junction or
     the lead taken out of it (:func:`_transport_parts`).  **electronic
     state** -- decided once, on the junction, folded into every rung.
-    **points** -- a scan's rung writes one deck per bias point, each in its
+    **points** -- a sweep's rung writes one deck per bias point, each in its
     own folder (`transport.stages.point_folders`).  Its data files come
     from the citation, and its job carries the rung's own restart files and,
     for the transmission, TBtrans's program.  The fifth, **gather** -- each
@@ -1122,7 +1122,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                                            kind=rung.render_kind, plan=plan)
             # THE PROGRESS LOG IS SEEDED WHERE ITS RUN WILL WRITE IT: beside
             # each deck an attempt ladder runs -- the element's own, or for
-            # a scan each point's, never the stage folder above them, where
+            # a sweep each point's, never the stage folder above them, where
             # nothing would ever write to it again.  AND NAMED FOR ITS DECK
             # (`job-contracts.md` § 6.3: the trajectory log takes the deck's
             # basename): the element's label, the deck's own.

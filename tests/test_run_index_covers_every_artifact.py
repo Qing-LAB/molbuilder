@@ -21,17 +21,10 @@ The run index is a property of *a directory that already holds attempts* —
 the wrapper scans for `-runN` and advances past the highest — so a
 hand-assembled directory would prove the wrapper indexes files in a layout
 nobody ever creates. Prep is what makes one, and prep is what ships the real
-`mb_monitor.pyz` into it, so the monitor here is the
-real one writing real samples to the flags the real wrapper passed it.
-
-**Only two things are stubbed, and neither is under test.** `siesta`, because
-the run index has nothing to do with what the engine computes: its whole
-meaning lives in the run script's shell control flow. And
-`conda`, because the record's activation is a CLOSED set (anything but
-`conda activate` / `source activate` is refused), so the rendered
-script always shells out to it and a bare `bash` has no `conda init` behind
-it — stubbing it keeps the test dependent on itself rather than on whether
-the developer's shell happens to be initialised.
+`mb_monitor.pyz` into it.  What a run writes when it is launched twice --
+each run's own `-run<N>` files, none appended to or truncated -- is read off
+the flat calculation of the end-to-end pass, launched twice with the real
+engine (`tests/test_the_road_on_real_runs_e2e.py`, plan § 5y).
 
 What each replacement must fail against is recorded on the test.
 """
@@ -47,16 +40,7 @@ from molbuilder.identity import is_ours
 #: are told apart by the index in their names (`project-layout.md` § 1.5a).
 LABEL = "H2_01_coarse"
 
-#: Long enough for the monitor -- started with a 1 s interval below -- to take
-#: at least one sample before the wrapper's cleanup stops it.  A run that ends
-#: instantly is not the case this file is about: the artifacts only collide
-#: when a run lasts long enough to be measured.
-_ENGINE = '#!/bin/bash\nsleep 2\necho "stand-in engine"\n'
-_CONDA = "#!/bin/bash\nexit 0\n"
-
-
-def _a_prepared_calculation(tmp_path: Path, monkeypatch,
-                            engine: str = _ENGINE) -> Path:
+def _a_prepared_calculation(tmp_path: Path, monkeypatch) -> Path:
     """A real flat calculation, described by `jobset init` and prepared by
     `jobset prep` -- the road a person takes.
 
@@ -72,12 +56,6 @@ def _a_prepared_calculation(tmp_path: Path, monkeypatch,
     assert (stage / "mb_monitor.pyz").exists(), (
         "prep did not ship mb_monitor.pyz -- this test would then be "
         "measuring nothing, so it is a precondition rather than an assertion")
-    binned = stage / "bin"
-    binned.mkdir()
-    for name, body in (("siesta", engine), ("conda", _CONDA)):
-        stub = binned / name
-        stub.write_text(body)
-        stub.chmod(0o755)
     return stage
 
 

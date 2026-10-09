@@ -20,11 +20,7 @@ from the road it imitates.  The steps live here once.
   `sbatch` on PATH that writes down every call -- where it was made and
   what it said -- and refuses it: the basic tests send nothing to a
   scheduler and assume nothing of its answers (user, 2026-10-06);
-* :func:`sbatch_line` -- the `sbatch` line a launch showed, as its words;
-* :func:`gpus_given` -- the GPUs a machine hands a job, with an
-  `nvidia-smi` that knows them;
-* :func:`strip_preamble_activation` -- a generated run script, runnable in
-  a bare shell: its preamble and environment activation cut out.
+* :func:`sbatch_line` -- the `sbatch` line a launch showed, as its words.
 """
 from __future__ import annotations
 
@@ -169,63 +165,6 @@ def a_machine_with_queues(tmp_path, monkeypatch, domains,
     return calls
 
 
-def gpus_given(tmp_path, monkeypatch, visible: str) -> None:
-    """The GPUs a machine hands a job: ``CUDA_VISIBLE_DEVICES`` as a
-    scheduler sets it, and an `nvidia-smi` first on PATH that knows each of
-    them -- listed by ``-L``, and a PCI address for ``--id`` that no real
-    device has, so the NUMA lookup reads *unknown* on any box.  The run
-    script then asks about its GPUs as it would on the node, wherever the
-    test runs."""
-    n = len([g for g in visible.split(",") if g])
-    bin_dir = tmp_path / "gpu-bin"
-    bin_dir.mkdir(exist_ok=True)
-    f = bin_dir / "nvidia-smi"
-    listing = "".join(f"GPU {i}: Stand-in GPU (UUID: GPU-stand-in-{i})\\n"
-                      for i in range(n))
-    f.write_text(
-        "#!/bin/sh\n"
-        'case " $* " in\n'
-        f'  *" -L "*) printf "{listing}" ;;\n'
-        '  *) echo "00000000:FE:1F.7" ;;\n'
-        "esac\n")
-    f.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
-    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
-
-
-def strip_preamble_activation(text: str) -> str:
-    """Remove the baked preamble + conda-activation block (script-
-    execution blocks 3-4) from a rendered wrapper so the behaviour
-    tests can EXECUTE it in a bare CI shell.  ``module load mamba`` /
-    ``source activate`` exit 127 without an HPC module system or conda;
-    under ``set -e`` that aborts the wrapper before the cold block ever
-    runs.  ``_log`` is defined earlier (block 2) so the cold block's
-    logging survives the strip -- the wrapper is RUN, here, as the
-    person's machine would run it, short of entering an environment."""
-    pre = text.find("# --- Baked preamble")
-    assert pre >= 0, "baked-preamble marker not found in wrapper"
-    # The bootstrap AND the post-activation state dump each sit
-    # inside a help guard (if [ "$_mb_help" = "0" ]); the cut must span
-    # from the FIRST guard's opener through the SECOND guard's close, or
-    # the truncated wrapper keeps an unopened fi.
-    start = text.rfind('if [ "$_mb_help" = "0" ]; then', 0, pre)
-    assert start >= 0, "help-guard opener not found before the preamble"
-    em = text.find("which python:", pre)
-    assert em >= 0, "activation conda-dump end marker not found"
-    close = text.find("\nfi\n", em)
-    assert close >= 0, "post-activation guard close not found"
-    # ``set -u`` is restored explicitly: the real wrapper disables
-    # nounset around the activation (NVCC_PREPEND_FLAGS) and re-enables
-    # it INSIDE the region cut here, so without this line the stripped
-    # harness runs everything after the preamble with nounset off.
-    return (
-        text[:start]
-        + "# preamble + activation stripped for CI (no conda here).\n"
-        + "set -u\n"
-        + text[close + 4:]
-    )
-
-
 def sbatch_line(output: str):
     """The `sbatch` line a launch showed -- in its question, or as a dry
     run's ``WOULD run`` -- as its arguments."""
@@ -255,30 +194,26 @@ def calls_made(calls: Path):
 # A contract's cases are rows of a TOML table (`tests/data/<contract>.toml`),
 # and every row runs down the road a person runs -- `jobset init`, the
 # description and the target's record written as the row says, `prep`,
-# `launch --dry-run`, and on a machine with no queue the run script's own
-# dry run -- checking the layers it names (`docs/process/testing.md` § 6):
+# `launch --dry-run` -- checking the layers it names (`docs/process/testing.md`
+# § 6):
 #
 #   1. ALLOWED OR REFUSED, in its words -- at prep (`refused`, a sentence or a
 #      list of them; `said`) or at
 #      launch (`launch_refused`, the same; `listing`) -- a dry run, unless
-#      `launch_sends` sends it (answered `--yes`) -- a run HERE: the basic
-#      tests send nothing to a scheduler, whose `sbatch` refuses (W57 T1) --
-#      after `before_launch`, the
-#      verbs typed between the row's prep and its launch; what the launch left
+#      `launch_sends` sends it (answered `--yes`), which a row does only to
+#      be refused: a launch that runs starts an engine, and a test that
+#      reads what an engine wrote is an end-to-end test (plan § 5y); the
+#      basic tests send nothing to a scheduler either, whose `sbatch`
+#      refuses (W57 T1) -- and what the launch left
 #      (`launch_writes_nothing`: every file under the calculation as it was;
-#      `walk`, `walk_lacks`: the walk it wrote, `launch/<name>.run.sh`;
-#      `walk_log`: what that walk wrote as it went, `launch/<name>.log`;
 #      `after_launch`: the after-prep checks below, asked again);
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
-#      `header_absent`), the deck (`deck`), the run script (`run_sh`), the
-#      plan the prep wrote, `STAGE-PLAN.md` (`plan`), each
+#      `header_absent`), the deck (`deck`), the run script (`run_sh`), each
 #      with a `_lacks` twin -- and the first three with an `_order` twin
 #      (lines standing in that order) and a `_once` twin (lines standing
 #      once each); the `sbatch` line launch shows (`line`,
 #      `line_lacks`); a benchmark's trials (`bench_gres`,
-#      `bench_header_lacks`);
-#   3. WHAT THE RUN SCRIPT DOES HERE -- its dry run, given the GPUs the
-#      machine hands it (`given_gpus`, `run_args`, `runs`).
+#      `bench_header_lacks`).
 #
 # INPUTS: `engine` (siesta | pyscf); `run` -- the run card, task.json
 # `execution`, over the table's `run_base` for the engine (a row with
@@ -315,11 +250,7 @@ def calls_made(calls: Path):
 # first, each a list of words (`["prep", "task", "--stage", "coarse"]`), the calculation
 # and the target named as the row's own prep names them; `removed` / `added` -- the
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
-# absent), through the same Save; `stand_in` -- what the suite's stand-in
-# engine does on the row's launches (`_road_stand_in`: `rc`,
-# `leaves_restart`, `waits_for`); `touched` -- files then made the newest in their
-# folder, paths under the calculation, as a copy or a restore leaves a
-# folder's times; `own_warm_files` -- the calculation's own restart-file
+# absent), through the same Save; `own_warm_files` -- the calculation's own restart-file
 # list, the engine's
 # copied beside `task.json` with `withhold` / `add` / `resumes`
 # (`_road_own_warm_files`),
@@ -340,11 +271,8 @@ def calls_made(calls: Path):
 # files it left as they were (`kept`: paths under the calculation whose
 # bytes and write time are the same before and after the row's prep), every
 # file the Task setup card names for a stage on disk as it names it
-# (`card_written`: `{stage, moments}` each -- `_road_card_written`), how the
-# server answers a viewer about a stage's newest run (`run_answer`: `stage`,
-# `state`, `live` -- `_road_run_answer`), which file speaks for a stage's
-# run in the folder it ran in (`speaks`: `stage`, `file` -- `_road_speaks`),
-# the atoms each of its progress logs states the run holds, read back by
+# (`card_written`: `{stage, moments}` each -- `_road_card_written`), the
+# atoms each of its progress logs states the run holds, read back by
 # the log's own reader (`progress_log_holds` -- `_road_progress_log_holds`),
 # the
 # folder's saved states, newest first
@@ -539,66 +467,6 @@ def _road_own_warm_files(case, bundle) -> None:
     (bundle / FILENAME).write_text(text)
 
 
-def _road_stand_in(asked, monkeypatch, bundle) -> None:
-    """What the suite's stand-in engine does on this row's launches
-    (`conftest._STUB_BODIES`): end with exit code ``rc``, and -- with
-    ``leaves_restart`` -- leave the restart file SIESTA leaves, carrying the
-    deck's geometry (`conftest`), so a run can be continued or cited; with
-    ``waits_for``, run only once the
-    calculation's ledger holds that decision, ending with exit code 124
-    when it does not within ten seconds -- what a launch has written down
-    while its run runs.  The run's records are our wrapper's, written as it
-    concludes; nothing is laid by hand."""
-    if "rc" in asked:
-        monkeypatch.setenv("MB_STAND_IN_RC", str(asked["rc"]))
-    if asked.get("leaves_restart"):
-        monkeypatch.setenv("MB_STAND_IN_LEAVES_XV", "1")
-    if "waits_for" in asked:
-        from molbuilder.jobset.ledger import LEDGER_FILE
-        monkeypatch.setenv(
-            "MB_STAND_IN_WAITS_FOR",
-            f'{bundle / LEDGER_FILE}|"decision": "{asked["waits_for"]}"')
-
-
-def _road_run_answer(want, bundle) -> None:
-    """How the server answers a viewer about a stage's newest run
-    (`runs.run_answer`, the one door the watch and spectra loads
-    ask): ``want`` holds the stage and the ``state`` and ``live`` expected,
-    asked about the run's own deck where its prep put it."""
-    from molbuilder.jobset.materialize import run_dir, stage_home
-    from molbuilder.runs import run_answer
-    from molbuilder.runfiles import stem
-    from molbuilder.task import read_task
-    task = read_task(bundle / "task.json")
-    home = stage_home(bundle, task, want["stage"])
-    deck = run_dir(home.dir) / (stem(task.label, home.token) + ".fdf")
-    got = run_answer(str(deck))
-    for key in ("state", "live"):
-        if key in want:
-            assert got.get(key) == want[key], f"{key}: {got}"
-
-
-def _road_touched(names, bundle) -> None:
-    """Files made the newest in their folder, as a copy or a restore leaves
-    a folder's times -- which reorder files, never runs."""
-    import time
-    later = time.time() + 120
-    for where in names:
-        os.utime(bundle / where, (later, later))
-
-
-def _road_speaks(want, bundle) -> None:
-    """Which file speaks for a stage's run -- the run door's answer for the
-    folder it ran in (`runs.folder_answer`, `model/parse.md` § 5.1)."""
-    from molbuilder.jobset.materialize import run_dir, stage_home
-    from molbuilder.runs import folder_answer
-    from molbuilder.task import read_task
-    task = read_task(bundle / "task.json")
-    home = stage_home(bundle, task, want["stage"])
-    got = folder_answer(run_dir(home.dir))["status"]
-    assert got and got["active_source"] == want["file"], got
-
-
 def _road_progress_log_holds(want, bundle) -> None:
     """The atoms each progress log the prep wrote states the run holds,
     as its own reader reads them (`model/parse.md` § 5.3)."""
@@ -634,10 +502,6 @@ def _road_after_prep(case, bundle) -> None:
         assert not (bundle / where).exists(), f"{where} was made"
     if "card_written" in case:
         _road_card_written(case["card_written"], bundle)
-    if "run_answer" in case:
-        _road_run_answer(case["run_answer"], bundle)
-    if "speaks" in case:
-        _road_speaks(case["speaks"], bundle)
     if "progress_log_holds" in case:
         _road_progress_log_holds(case["progress_log_holds"], bundle)
     if "status_says" in case or "status_lacks" in case:
@@ -886,12 +750,9 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     """ONE ROW of a contract's case table, down the road, every layer it
     names checked."""
     import json
-    import subprocess
     target = _road_target(table, case, tmp_path, monkeypatch)
     if case.get("ends_at") == "probe":
         return
-    if "given_gpus" in case:
-        gpus_given(tmp_path, monkeypatch, case["given_gpus"])
     bundle = _road_describe(table, case, tmp_path, monkeypatch)
     if "own_warm_files" in case:
         _road_own_warm_files(case, bundle)
@@ -901,15 +762,11 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         got = CliRunner().invoke(cli, ["checkpoint", "init", "-p",
                                        str(bundle), "-m", "set up"])
         assert got.exit_code == 0, _one_line(got)
-    if "stand_in" in case:
-        _road_stand_in(case["stand_in"], monkeypatch, bundle)
     for words in case.get("before", []):
         # A machine is named at prep; the other verbs read the one prep set.
         got = jobset(*words, "--bundle", bundle,
                      *(("--target", target) if words[0] == "prep" else ()))
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
-    if "touched" in case:
-        _road_touched(case["touched"], bundle)
     if "removed" in case or "added" in case:
         _road_ladder_edited(case, bundle)
     kind = "bench" if "bench" in case else "task"
@@ -962,11 +819,6 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
             names = _stage_names(bundle, case.get("stage", "coarse"))
             _road_lines(case, key,
                         _the_runs(bundle, names.name(role)).read_text())
-    # ...and the plan the prep wrote, `STAGE-PLAN.md`, which says under its
-    # table what this prep's hand-over took (`job-system.md` § 5.4)
-    if "plan" in case or "plan_lacks" in case:
-        from molbuilder.jobset.plan import FILENAME as PLAN_FILE
-        _road_lines(case, "plan", (bundle / PLAN_FILE).read_text())
     # ...a benchmark's trials, when the row names them
     if kind == "bench" and ("bench_gres" in case
                             or "bench_header_lacks" in case):
@@ -981,10 +833,7 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
             _road_lines({"h_lacks": case.get("bench_header_lacks", [])}, "h",
                         header.read_text())
     # ...and the `sbatch` line(s) launch shows -- one per shelf of a
-    # benchmark -- or its refusal, after the verbs typed between
-    for words in case.get("before_launch", []):
-        got = jobset(*words, "--bundle", bundle)
-        assert got.exit_code == 0, f"{words}: {_one_line(got)}"
+    # benchmark -- or its refusal
     if "launch" in case:
         mode = case.get("launch_mode", "submit")
         was = _all_written(bundle)
@@ -1009,40 +858,5 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         if case.get("launch_writes_nothing"):
             now = _all_written(bundle)
             assert now == was, sorted(set(now.items()) ^ set(was.items()))
-        if "walk" in case or "walk_lacks" in case:
-            # THE WALK the launch wrote -- one submission's sequencer,
-            # `launch/<name>.run.sh` (`job-system.md` § 6.0)
-            walks = sorted(bundle.rglob("launch/*.run.sh"))
-            assert len(walks) == 1, walks
-            _road_lines(case, "walk", walks[0].read_text())
-        if "walk_log" in case:
-            # ...and what it wrote as it walked, `launch/<name>.log`
-            logs = sorted(bundle.rglob("launch/*.log"))
-            assert len(logs) == 1, logs
-            _road_lines(case, "walk_log", logs[0].read_text())
         if "after_launch" in case:
             _road_after_prep(case["after_launch"], bundle)
-
-    # 3 · WHAT THE RUN SCRIPT DOES HERE -- its dry run, given the case's GPUs
-    if "given_gpus" in case:
-        script = _the_runs(bundle, _stage_names(
-            bundle, case.get("stage", "coarse")).name(".run.sh"))
-        script.write_text(strip_preamble_activation(script.read_text()))
-        # The rank and thread counts this shell may carry are scrubbed, so
-        # what resolves is the script's own chain.
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK", "MB_NP",
-                            "SLURM_NTASKS", "SLURM_JOB_ID", "PBS_NP",
-                            "MOLBUILDER_USE_MPS")}
-        env.update(MB_LAUNCHED_BY="manual")
-        # ITS RUN'S NUMBER, as launch gives a prepared stage's first run
-        # (`project-layout.md` § 1.6.1): the script refuses to start
-        # without one.
-        done = subprocess.run(["bash", str(script), "--run", "0",
-                               "--dry-run", *case.get("run_args", [])],
-                              cwd=script.parent, capture_output=True,
-                              text=True, timeout=60, env=env)
-        said = done.stdout + done.stderr
-        assert done.returncode == 0, _one_line(said[-3000:])
-        for words in case["runs"]:
-            assert words in said, _one_line(said[-3000:])

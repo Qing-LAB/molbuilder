@@ -15,7 +15,9 @@ the folder is ``failed``, its detail quoting the line that stopped it -- the
 SCF's, not the cascade's; the viewer's stop reason is that cause in the
 table's words; and the run's session log is found as the run's.  The Results
 tab's Run panel (`web/results.md` § 3a) says the same, from the run's record,
-in a browser.
+in a browser.  And what molbuilder does with a run that failed
+(`job-system.md` § 5.4): the stage after it is refused, saying so, and
+`status` says what launching it again does.
 """
 from __future__ import annotations
 
@@ -108,13 +110,14 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
         r = _jobset("init", "--structure", "P/structure/h2.xyz",
                     "--bundle", "P/opt/R", "--engine", "siesta",
                     "--shape", "hierarchical", "--calculation", "optimization",
-                    "--name", "H2", "--psml-lib", "pseudopotential")
+                    "--name", "H2", "--psml-lib", "pseudopotential",
+                    "--stage-strategy", "publishable")
         assert r.exit_code == 0, r.output
         bundle = tree / "P" / "opt" / "R"
         task = json.loads((bundle / "task.json").read_text())
         task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
                              "omp_threads": 1}
-        assert [s["name"] for s in task["stages"]] == ["coarse"], task
+        assert [s["name"] for s in task["stages"]] == ["coarse", "medium"], task
         (bundle / "task.json").write_text(json.dumps(task, indent=2))
         for name, value in _CANNOT_CONVERGE.items():
             _set_item(bundle / "H2.template.toml", name, value)
@@ -153,6 +156,34 @@ def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
         end = st.endings[name]
         assert (end.run_state, end.cause) == ("stopped",
                                               SCF_NOT_CONV_MARKER), end
+
+
+@pytest.fixture(scope="module")
+def after_the_stop(stopped):
+    """What molbuilder answers about the stopped calculation: the next
+    stage's prep, and `status`."""
+    bundle = str(stopped.parent.parent)
+    return {"prep medium": _jobset("prep", "task", "--stage", "medium",
+                                   "--bundle", bundle, "--target", "this"),
+            "status": _jobset("status", "--bundle", bundle)}
+
+
+def test_a_run_that_failed_is_never_built_on(after_the_stop):
+    """The stage after it is refused, naming the run and how it ended
+    (`job-system.md` § 5.4: the newest run, which must have finished)."""
+    r = after_the_stop["prep medium"]
+    assert r.exit_code != 0, r.output
+    assert "01_coarse/run-0, which failed -- " in r.output, r.output
+
+
+def test_status_says_what_launching_it_again_does(after_the_stop):
+    """However it ended, a prepared stage is launched again -- warm, from
+    its own latest run, for a relaxation -- and `status` says so."""
+    r = after_the_stop["status"]
+    assert r.exit_code == 0, r.output
+    for words in ("coarse, failed",
+                  "launch it again -- it continues from its own latest run"):
+        assert words in r.output, (words, r.output)
 
 
 def test_the_retry_hears_an_scf_stop_and_no_capped_relaxation(stopped):

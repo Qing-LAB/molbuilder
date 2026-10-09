@@ -6629,3 +6629,9 @@ workstation half was step 4 (done); the Sol half after it · S13 (the
 convergence sweep) → after step 4, unscheduled · X3 (the Cell page's seam
 verdict) → unscheduled · E14 (two uncited references) → the document sweep
 (§ 5x B9). *(The pointers to steps 1–4 and 6 are in the archive.)*
+
+## S-T2 — the stand-in engine's rung products (archived 2026-10-08)
+
+*Verdict: rejected by the user the day it was proposed. It would have made the suite's fake engine leave empty `.DM`, `.TSHS`, `.TS.HSX`, `.TSDE` and `.TBT.nc` files so the transport road ran without an engine — a test reading what an engine wrote with no engine, which is a fake end-to-end test (plan § 5y). The transport road is tested on a real run instead.*
+
+The row as it stood: **The transport road is unreachable on the suite's stand-in engine**: `support.road` always passes `--structure`/`--psml-lib`, a device prep gathers products the stand-in never writes, and `tests/data/*.toml` holds no transport row. **Proposal (the suite reviewer's, 2026-10-08):** the stand-in leaves EMPTY the rung products a row names, by the licence `testing.md` § 6 gives the `.XV`, plus a per-point exit code and a road arm that relaxes the labelled junction then `jobset init --calculation transport`; rule 3 at the point then becomes a case table.

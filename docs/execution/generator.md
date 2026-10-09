@@ -968,7 +968,7 @@ that an absent `engines` key means every engine.)*
 
 | | SIESTA | PySCF |
 |---|---|---|
-| catalogue rows | 60 items | **47 items** | *(each engine's EXCLUSIVE rows; `net_charge`, `use_gpu`, `already_relaxed`, `temperature_K`, `spin_treatment`, `unpaired_electrons` and `gpu_count` (PySCF's since 2026-10-01, `execution/gpu.md` § 1.1) name both and so count in neither — merged 2026-08-19, 2026-08-23, 2026-09-24 and 2026-09-28 (the last three that day; the electronic state's two, M6, replacing SIESTA's `spin_total` and PySCF's `spin`), `template.md` § 6.3; PySCF's `es_top_n` and `es_threshold` removed 2026-09-28; SIESTA's `tbt_verbosity` added 2026-09-29; PySCF's one-choice `optimizer` retired with `berny` the same day)*
+| catalogue rows | 61 items | **47 items** | *(each engine's EXCLUSIVE rows; `net_charge`, `use_gpu`, `already_relaxed`, `temperature_K`, `spin_treatment`, `unpaired_electrons` and `gpu_count` (PySCF's since 2026-10-01, `execution/gpu.md` § 1.1) name both and so count in neither — merged 2026-08-19, 2026-08-23, 2026-09-24 and 2026-09-28 (the last three that day; the electronic state's two, M6, replacing SIESTA's `spin_total` and PySCF's `spin`), `template.md` § 6.3; PySCF's `es_top_n` and `es_threshold` removed 2026-09-28; SIESTA's `tbt_verbosity` added 2026-09-29; PySCF's one-choice `optimizer` retired with `berny` the same day; SIESTA's `ts_elecs_eta_ev` added 2026-10-08)*
 | every row maps to a config field | yes | **yes** |
 | `warm-files.toml` in its package | yes | **yes** — `base` · `optimization` · `vibration` |
 | identity literal declared | `SystemLabel` | **`JOB`** (`config/pyscf.py`) |

@@ -59,16 +59,6 @@ prep = ["--cold"]
 kept = ["01_coarse/H2_01_coarse.fdf", "01_coarse/H2_01_coarse.run.sh", "01_coarse/mb_monitor.pyz"]
 
 [[case]]
-name = "...in the flat shape too, where the earlier stage's run script is the run folder's own, which ran"
-shape = "flat"
-machine = "workstation"
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-kept = ["H2_01_coarse.fdf", "H2_01_coarse.run.sh"]
-
-[[case]]
 name = "...a prepared benchmark too"
 bench = { mpi_np = [2], omp_threads = [1] }
 before = [["prep", "bench", "coarse"]]

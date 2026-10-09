@@ -212,7 +212,10 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     then `freq`; `freq` is refused before `relax` has concluded; after it,
     `freq` is written at the relaxed geometry and the modes come out at
     the relaxed bond's frequency with the reference forces within the
-    template's own tolerance (vibration.md § 2.2, § 5.2a, § 5.5)."""
+    template's own tolerance (vibration.md § 2.2, § 5.2a, § 5.5).  And a
+    force-constant stage launched again starts over: its kind's rerun
+    carries nothing of its own (`warm-files.toml` [vibration] `resumes`,
+    `job-system.md` § 5.4, *A stage launched again*)."""
     from molbuilder.atom_permutation import read_permutation
 
     tree = tmp_path / "projects"
@@ -280,6 +283,15 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     pos = np.asarray(d["equilibrium"]["positions_ang"])
     bond = abs(pos[0, 2] - pos[1, 2])
     assert 0.76 < bond < 0.79, bond
+
+    # LAUNCHED AGAIN, the force constants start over -- nothing handed on.
+    r = _jobset("launch", "task", "--stage", "freq", "--bundle", str(bundle),
+                "--mode", "direct", "--yes")
+    assert r.exit_code == 0, r.output
+    assert ("launched again into run-1: it starts over -- nothing is handed "
+            "on from a run of its own") in r.output, r.output
+    again = bundle / "02_freq" / "run-1"
+    assert again.is_dir() and not (again / ".continued-from").exists()
 
 
 def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,

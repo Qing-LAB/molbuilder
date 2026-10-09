@@ -20,7 +20,7 @@ order § 6.0 states:
    * **a benchmark's walk** -- ONE job per resource shelf of a sweep sent
      to a queue, or its unlaunched trials run here, the trials in sequence
      (`generator.md` § 4.3a, `_bench_walk`);
-   * **a bias chain** -- one job walking a transport scan's points;
+   * **a bias chain** -- one job walking a transport sweep's points;
 
 2. **shown** (:meth:`LaunchPlan.shown`) and 3. **asked**, by the verb --
    ``ask`` mode asks the scheduler about each submission instead
@@ -250,7 +250,7 @@ def _sbatch_request(base: Path, *, envelope: Resources,
     N``, ``-np``, ``-omp``), set after the ``.sbatch`` name, which forwards them
     (``bash <base>.run.sh "$@"``): every launch hands every run its own
     counts (`job-system.md` § 6.1).  A submission whose script walks several
-    members -- a benchmark's shelf, a bias scan -- hands each member its own
+    members -- a benchmark's shelf, a bias sweep -- hands each member its own
     inside that script, and passes none here.
     """
     from ..scheduler.quantities import parse_walltime
@@ -381,7 +381,7 @@ def _as_found(path, base) -> str:
 class _Member:
     """One prepared attempt a submission runs, decided BEFORE anything is
     written (`job-system.md` § 6.0, step 1) -- a run is one member, a
-    benchmark's shelf its pending trials, a bias scan its points: where it
+    benchmark's shelf its pending trials, a bias sweep its points: where it
     runs, where its deck and wrappers are read from now, and what it
     follows."""
     job: Job
@@ -976,7 +976,7 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     the scheduler a sweep at once: *"SLURM should never submit jobs in
     parallel.  Submission is manual and one by one"* (user, 2026-08-10); a
     sweep run here walks its unlaunched trials in one submission, as a
-    shelf does on a queue; a transport scan's per-point rung goes as one
+    shelf does on a queue; a transport sweep's per-point rung goes as one
     job walking its points; a stage and a named trial, one submission each.
     """
     base = Path(base_dir).resolve()

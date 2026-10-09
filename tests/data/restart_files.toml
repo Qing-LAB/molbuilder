@@ -39,6 +39,21 @@ name = "a stage set restart: clean answers .false. to every restart key its run 
 template = { restart = "clean" }
 deck = ["DM.UseSaveDM .false.", "MD.UseSaveXV .false.", "MD.UseSaveCG .false."]
 
+[[case]]
+name = "...a stage that continues answers .true. -- and a Broyden stage writes no CG key"
+stage_strategy = ""
+template = { restart = "continue", relax_type = "Broyden" }
+deck = ["DM.UseSaveDM .true.", "MD.UseSaveXV .true."]
+deck_lacks = ["MD.UseSaveCG"]
+
+[[case]]
+name = "...a continuing stage that relaxes nothing still reads the geometry it continues from"
+stage_strategy = ""
+template = { restart = "continue", relax_type = "none" }
+deck = ["DM.UseSaveDM .true.", "MD.UseSaveXV .true."]
+deck_lacks = ["MD.UseSaveCG"]
+
+
 # The run script's Mode line says what the deck does with prior state
 # (`running-a-job.md` § 3.5): a clean deck reads none of what lies on disk.
 [[case]]
@@ -53,28 +68,3 @@ template = { restart = "continue" }
 run_sh = ['_mode="WARM-RESTART (silent; engine will load']
 run_sh_lacks = ['_mode="CLEAN (']
 
-[[case]]
-name = "...a stage that continues answers .true. -- and a Broyden stage writes no CG key"
-template = { restart = "continue" }
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-deck = ["DM.UseSaveDM .true.", "MD.UseSaveXV .true."]
-deck_lacks = ["MD.UseSaveCG"]
-
-# A stage that relaxes nothing -- an SCF at the geometry the ladder reached --
-# continues from that geometry: `MD.UseSaveXV` is read at initialisation in
-# every run mode.
-[[case]]
-name = "...a continuing stage that relaxes nothing still reads the geometry it continues from"
-template = { relax_type = "none", restart = "continue" }
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"],
-          ["prep", "task", "--stage", "medium"],
-          ["launch", "task", "--stage", "medium", "--mode", "direct", "--yes"]]
-added = [{ name = "finish" }]
-stage = "finish"
-deck = ["DM.UseSaveDM .true.", "MD.UseSaveXV .true."]
-deck_lacks = ["MD.UseSaveCG"]

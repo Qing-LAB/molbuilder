@@ -254,7 +254,7 @@ every field of the two engine classes has its help in the catalogue, and
 `help_for` is the only reader.
 
 **The rest of that duplication is the debt, and it is measured rather than
-guarded.** **491 facts live in two places** (measured 2026-08-20 at 307, 618
+guarded.** **496 facts live in two places** (measured 2026-08-20 at 307, 618
 on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item, 486 once the one-choice `engine` item retired, and 489 with `already_relaxed` on SIESTA, all 2026-09-24, and 486 once
 `wrap_into_cell` retired on 2026-09-25, 482 on 2026-09-28 once PySCF's
 `es_top_n` and `es_threshold` were removed and `temperature_K` joined SIESTA,
@@ -263,11 +263,14 @@ and 487 the same day when the electronic state's `spin_treatment` and
 2026-09-29 with `tbt_verbosity` -- `TBT.Verbosity`, which both NEGF decks
 wrote from outside the catalogue until then (`transport.md` § 6.1b) — 487
 the same day once PySCF's one-choice `optimizer` retired with `berny`, and
-491 on 2026-10-01 when `gpu_count` gained PySCF (`execution/gpu.md` § 1.1) —
+491 on 2026-10-01 when `gpu_count` gained PySCF (`execution/gpu.md` § 1.1),
+and 496 on 2026-10-08 with `ts_elecs_eta_ev` -- `TS.Elecs.Eta`, the device's
+self-energy broadening, which the device deck left to TranSIESTA's own
+default until then (`transport.md` § 6.1b) —
 every fall in the series came from deleting a home rather than from adding a
 check, and the rises are items gaining a home: two merged items gaining a
-second engine, whose declarations `config/state.py` writes once, and one
-keyword the catalogue had not declared).
+second engine, whose declarations `config/state.py` writes once, and two
+keywords the catalogue had not declared).
 **The six mirrored facts are compared on every run** — `MIRRORED` plus
 `workflow_group`, by `test_every_mirrored_fact_agrees`, which goes red naming
 the item and the key and printing both values. What it does **not** do is

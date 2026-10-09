@@ -93,9 +93,9 @@ def resolvable_override_names() -> frozenset:
 
 
 def bias_points(task) -> Tuple[float, ...]:
-    """The scan's points, in the order the description states them —
+    """The sweep's points, in the order the description states them —
     the codec already enforced that the list starts at 0.0 (the chain
-    starts from equilibrium).  ``()`` and a single entry mean NO scan:
+    starts from equilibrium).  ``()`` and a single entry mean NO sweep:
     the stage keeps its plain single-deck layout, because the v-dir
     layer exists for the axis, not for every calculation
     (architecture § 0: a list with more than one element)."""
@@ -109,7 +109,7 @@ def bias_points(task) -> Tuple[float, ...]:
 # --------------------------------------------------------------------- #
 
 def per_point_rungs() -> frozenset:
-    """The rungs a bias scan runs once per point: the bias item's own
+    """The rungs a bias sweep runs once per point: the bias item's own
     `stages` (`template.PER_POINT`, the role item no rung answers with one
     value) -- the device and the transmission, declared once, in the
     catalogue."""

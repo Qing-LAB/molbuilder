@@ -80,7 +80,7 @@ class StageStatus:
     state:      str
     detail:     str
     warm_files: List[str] = field(default_factory=list)  # restart files present
-    #: Which attempt this status was read from (``run-0``; a bias scan's
+    #: Which attempt this status was read from (``run-0``; a bias sweep's
     #: point's, ``v0.2/run-0``), or ``None`` for a flat run, which happens in
     #: the container itself (§ 1.5).
     attempt: Optional[str] = None

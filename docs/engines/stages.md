@@ -256,7 +256,7 @@ have undone that.
 § 1.3's mechanism — *the default selection is a group each engine declares* — is
 already live in the catalogue and already per-engine. Before this landed SIESTA
 declared 11 items in `group = "stage"` and PySCF declared 3, so PySCF's group
-described about a third of its own ladder. **It is 23 and 12 now** (the
+described about a third of its own ladder. **It is 24 and 12 now** (the
 vibration kind's six electronic-structure-probe selectors left the group on
 2026-09-24 — nothing steps them per stage; [`engines/vibration.md`](?doc=engines/vibration.md)
 § 3.1), and the same UI, the same `varies` machinery and the same resolver

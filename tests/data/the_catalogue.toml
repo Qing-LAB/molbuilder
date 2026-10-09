@@ -8,8 +8,8 @@
 # unless the row says it is written only sometimes -- is on disk once the
 # stage has been prepared, and launched where the row says so.
 #
-# Every run here is made on the road: `jobset prep` and `jobset launch`, our
-# wrapper running the suite's stand-in engine (`process/testing.md` § 6).
+# Every row here prepares; the names a launch and its run write are checked on
+# real runs (`tests/test_the_road_on_real_runs_e2e.py`, plan § 5y).
 # `tests/test_the_catalogue.py` runs every case through the one runner every
 # contract table shares (`tests/support/road.py`, `run_road_case`).
 #
@@ -22,24 +22,14 @@ mpi_np = 1
 omp_threads = 1
 
 [[case]]
-name = "every file the card names for a stage is there as it names it -- a launched stage and the stage prepared after it, the hierarchy"
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-card_written = [{ stage = "coarse", moments = ["prep", "launch", "run"] },
-                { stage = "medium", moments = ["prep"] }]
+name = "a SIESTA calculation's pseudopotentials are where its run opens them: its one copy in pseudos/, and a real copy beside the deck in the stage's run folder -- SIESTA opens only its working directory"
+made = ["pseudos/H.psml", "01_coarse/run-0/H.psml"]
+
+[[case]]
+name = "every file the card names for a prepared stage is there as it names it -- the hierarchy"
+card_written = [{ stage = "coarse", moments = ["prep"] }]
 
 [[case]]
 name = "...and the flat shape"
 shape = "flat"
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-card_written = [{ stage = "coarse", moments = ["prep", "launch", "run"] },
-                { stage = "medium", moments = ["prep"] }]
-
-[[case]]
-name = "a SIESTA calculation's pseudopotentials are where its run opens them: its one copy in pseudos/, and a real copy beside the deck in the stage's run folder -- SIESTA opens only its working directory"
-made = ["pseudos/H.psml", "01_coarse/run-0/H.psml"]
+card_written = [{ stage = "coarse", moments = ["prep"] }]

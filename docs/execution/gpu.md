@@ -364,11 +364,12 @@ a third state.
 **§ 1's cases are one table, run down the road** *(2026-10-01)*:
 `tests/data/gpu_contract.toml`, each row what a person or a probe writes and
 what molbuilder must answer, and `tests/test_gpu_contract.py` driving every
-row through `init → prep → launch --dry-run` — and, on a machine with no
-queue, the run script's own dry run, given the GPUs a stand-in `nvidia-smi`
-reports. Three layers: allowed or refused, with the words; what is produced
-(the header, the `sbatch` line, the deck, the run script, a benchmark's
-trials); what the run script does with the GPUs it is given. A rule here
+row through `init → prep → launch --dry-run`. Two layers: allowed or
+refused, with the words; what is produced (the header, the `sbatch` line,
+the deck, the run script, a benchmark's trials). What the run script does
+with the GPUs it is given is read where the GPUs are: its own dry run asks
+the engine for its build, so it is no basic test
+([`testing.md`](?doc=process/testing.md) § 0). A rule here
 changes; its rows change. It replaced 54 hand-written tests in 13 files,
 most of them checks of an internal step a row now reaches through the road
 ([`testing.md`](?doc=process/testing.md) § 6). The page's half — that the

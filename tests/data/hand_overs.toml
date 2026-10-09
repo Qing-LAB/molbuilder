@@ -2,11 +2,11 @@
 # `docs/execution/job-system.md` § 5.4, `docs/execution/architecture.md`
 # § 3.2 (`ending`, `usable`, `continuation`), `docs/web/results.md` § 4.1.
 #
-# Every run here is made on the road: `jobset prep` and `jobset launch`, our
-# wrapper running the suite's stand-in engine, which ends as a row says
-# (`stand_in`) -- so each run's records are the ones our code writes as it
-# concludes, never laid by a test (`process/testing.md` § 6: a run is made
-# on the road, or not at all).
+# Every row here prepares and launches nothing: what prep decides from the
+# folder as it stands.  What a stage builds on from a run that finished,
+# failed or was launched again is read off real runs (`tests/test_the_road_on_real_runs_e2e.py`,
+# plan § 5y): a test that reads what an engine wrote is an end-to-end test,
+# made with the engine (`process/testing.md` § 0).
 #
 # `tests/test_hand_overs.py` runs every case through the one runner every
 # contract table shares (`tests/support/road.py`, `run_road_case`, whose
@@ -21,57 +21,11 @@ mpi_np = 1
 omp_threads = 1
 
 [[case]]
-name = "a stage continues from the newest run of the stage before it"
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-said = ["continues from 01_coarse/run-1"]
-
-[[case]]
-name = "a run that ended with an error is never built on: the stage after it is refused, saying so"
-stand_in = { rc = 1, leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-refused = ["which failed -- ", "rc=1"]
-
-[[case]]
-name = "a run that ended on its own is built on, and no viewer follows it"
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-said = ["continues from 01_coarse/run-0"]
-run_answer = { stage = "coarse", state = "finished", live = false }
-
-[[case]]
-name = "what the hand-over carried is said under STAGE-PLAN.md's table, whose column is each stage's declaration"
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-plan = ["restart files it declares",
-        "This prep: `medium` continues from 01_coarse/run-0 (the stage before it; concluded rc=0",
-        ": copied H2.XV"]
-made = ["02_medium/run-0/H2.XV", "02_medium/run-0/.continued-from"]
-
-[[case]]
 name = "a vibration's force-constant stage builds on its relax: refused while relax's newest run has not been launched, naming the command"
 calculation = "vibration"
 before = [["prep", "task", "--stage", "relax"]]
 stage = "freq"
 refused = ["`freq` builds on the newest attempt of `relax`, 01_relax/run-0, which has not been launched", "Launch it"]
-
-[[case]]
-name = "...and while it failed -- a relaxation that ended with an error is never measured at"
-calculation = "vibration"
-stand_in = { rc = 1, leaves_restart = true }
-before = [["prep", "task", "--stage", "relax"],
-          ["launch", "task", "--stage", "relax", "--mode", "direct", "--yes"]]
-stage = "freq"
-refused = ["`freq` builds on the newest attempt of `relax`, 01_relax/run-0, which failed -- ", "rc=1"]
 
 [[case]]
 name = "...and it never starts from the structure while the ladder holds a relax: --cold refused, saying how to measure the structure as given"
@@ -87,76 +41,6 @@ removed = ["relax"]
 stage = "freq"
 refused = ["is not stated to be relaxed", "Either add the `relax` stage before `freq`"]
 status_says = ["First incomplete stage: freq, waiting", "is not stated to be relaxed"]
-
-# ---- A STAGE LAUNCHED AGAIN (job-system.md § 5.4, *A stage launched again*):
-#      however it ended, warm -- its own latest run, one hand-over as prep's --
-#      or cold, nothing from a run of its own (user, 2026-10-07).
-
-[[case]]
-name = "a stage launched again continues from its own latest run, recorded as prep's hand-over is"
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-launch = []
-launch_stage = "coarse"
-launch_mode = "direct"
-launch_sends = true
-listing = ["launched again into run-1: it continues from 01_coarse/run-0 (its own latest run; concluded rc=0",
-           "copied H2.XV"]
-after_launch = { made = ["01_coarse/run-1/H2.XV", "01_coarse/run-1/.continued-from"], ledger_holds = ["launch continues"] }
-
-[[case]]
-name = "...launched again --cold, its next attempt takes nothing from a run of its own"
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-launch = ["--cold"]
-launch_stage = "coarse"
-launch_mode = "direct"
-launch_sends = true
-listing = ["launched again into run-1: it starts cold -- from its deck alone"]
-after_launch = { made = ["01_coarse/run-1"], made_lacks = ["01_coarse/run-1/.continued-from"] }
-
-[[case]]
-name = "a stage whose kind's rerun starts over, launched again, starts over"
-own_warm_files = { resumes = false }
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-launch = []
-launch_stage = "coarse"
-launch_mode = "direct"
-launch_sends = true
-listing = ["launched again into run-1: it starts over -- nothing is handed on from a run of its own"]
-after_launch = { made = ["01_coarse/run-1"], made_lacks = ["01_coarse/run-1/.continued-from"] }
-
-[[case]]
-name = "...and status says what launching it again does, however it ended"
-own_warm_files = { resumes = false }
-stand_in = { rc = 1 }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-refused = "not prepared again"
-status_says = ["coarse, failed",
-               "launch it again -- it starts over, nothing handed on from a run of its own"]
-
-[[case]]
-name = "a flat stage set restart: clean, launched again, runs again in its folder taking nothing"
-shape = "flat"
-run = { restart = "clean" }
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-launch = []
-launch_stage = "coarse"
-launch_mode = "direct"
-launch_sends = true
-listing = ["launched again in the same folder, as its run 1, where its files are: it starts over"]
-after_launch = { made_lacks = ["H2_01_coarse-run1.continued-from"] }
 
 [[case]]
 name = "a first stage starts from the structure: its prep records it in the ledger, unasked"

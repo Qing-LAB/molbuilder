@@ -231,7 +231,7 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
     First, what cannot be taken at all is refused, before prep writes
     anything (:func:`_cannot_be_named`): a run that is not one of this
     calculation's, ``--from`` with ``--cold``, either on the flat layout or
-    a bias scan.  **Named** (``--from``): taken as said, for any kind -- what
+    a bias sweep.  **Named** (``--from``): taken as said, for any kind -- what
     the run was is read and reported; `prepare_attempt` refuses only what
     cannot be done (no restart files in it).  **By default**, for a
     continuing stage of an independent ladder (`_stage_before`): the NEWEST

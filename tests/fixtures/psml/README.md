@@ -2,7 +2,7 @@
 
 `H.psml` is a standard ONCVPSP-3.3.0 scalar-relativistic hydrogen
 pseudopotential (generated 2017-10-31, PSML 1.1). It is here because
-`tests/test_siesta_keyword_smoke.py` starts a real SIESTA, and SIESTA refuses
+`tests/test_siesta_keyword_smoke_e2e.py` starts a real SIESTA, and SIESTA refuses
 to start without a per-species pseudopotential it accepts.
 
 **Why not `conftest.write_pseudos`.** That helper writes real, parseable PSML

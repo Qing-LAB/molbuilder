@@ -884,11 +884,12 @@ def test_a_fine_tuned_vocabulary_copy_wins_and_is_named(calc):
     assert f"warm-files: {calc / 'warm-files.toml'}" in plan
 
 
-def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
+def test_a_one_stage_calculation_is_one_named_stage(tmp_path):
     """R1 (review-4 keystone): the single-parameter-set calculation is a
-    FIRST-CLASS run, one NAMED, tokened stage (§ 6.5): prep, submit and
-    status all reach it, one rung deep, with no dangling link anywhere in
-    the attempt."""
+    FIRST-CLASS run, one NAMED, tokened stage (§ 6.5): prep, launch's plan
+    and status all reach it, one rung deep, with no dangling link anywhere
+    in the attempt.  What a launch writes as its run starts -- its launch
+    record -- is read off a real run (plan § 5y)."""
     from click.testing import CliRunner
     from molbuilder import describe as D
     from molbuilder.config.siesta import SiestaConfig
@@ -946,15 +947,6 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
                                   str(dest), "--mode", "direct", "--dry-run", "--yes"])
     assert res.exit_code == 0, res.output
     assert res.output.count("WOULD run") == 1
-    # A REAL direct launch, not --dry-run: the launcher stats the wrapper
-    # THROUGH the link (a dangling one reads as absent and earns the
-    # "run prep_jobset first" refusal), and run.json is written at start,
-    # so the record proves the launch began no matter how the engine's
-    # process exits in this environment.
-    res = r.invoke(jobset_group, ["launch", "task", "--stage", "coarse", "--bundle",
-                                  str(dest), "--mode", "direct", "--yes"])
-    assert "run prep_jobset first" not in res.output
-    assert (rung / "run-0" / "run.json").is_file(), res.output
     res = r.invoke(jobset_group, ["status", "--bundle", str(dest)])
     assert res.exit_code == 0, res.output
 

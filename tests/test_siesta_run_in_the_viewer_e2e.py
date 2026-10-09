@@ -4,99 +4,36 @@ from its one source (`model/parse.md` § 2a P-T2 and P-T4, `web/results.md`
 by the reader the run record reads them by; the badge's "ended" time is the
 output's own ``>> End of run``.
 
-``jobset init`` -> ``prep task --stage coarse`` -> ``launch task --mode direct`` on an
-H2 relaxation, then opened in the Results tab as a person opens it, in its
-folder.
+The run is the layered H2 relaxation's first `coarse` run, made once in this
+pass on the road (`support/real_runs.py`, run A of plan § 5y), opened in the
+Results tab as a person opens it, in its folder.
 """
 from __future__ import annotations
 
 import json
-import os
 import re
-import shutil
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
 import pytest
 
-from _road import conda_hook, env_available, env_bin
-
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
-CONDA_SH = conda_hook()
+from _road import conda_hook, env_available
 
 pytestmark = [
     pytest.mark.engine,
     pytest.mark.skipif(
-        not (CONDA_SH.is_file() and env_available("molbuilder-siesta")),
+        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
 
 
-def _jobset(*args):
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, list(args))
-
-
 @pytest.fixture(scope="module")
-def finished(isolated_projects_root_module, tmp_path_factory):
+def finished(real_h2_layered):
     """The attempt directory of a finished H2 relaxation, made on the road."""
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-
-    tree = isolated_projects_root_module
-    (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "pseudopotential").mkdir()
-    shutil.copy(FIXTURES / "psml" / "H.psml",
-                tree / "pseudopotential" / "H.psml")
-    StructureCodec().write(
-        Structure(elements=["H", "H"],
-                  positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]]),
-                  cell=np.diag([10.0, 10.0, 10.0]),
-                  axis_kind=("isolated",) * 3),
-        tree / "P" / "structure" / "h2.xyz")
-
-    mp = pytest.MonkeyPatch()
-    try:
-        # The suite's config rule, which its autouse fixture applies per test
-        # and so not to a module's fixture (`conftest`).
-        mp.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
-        mp.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
-        # ...the box probed, its record saying how a shell enters conda here
-        # -- the activation the generator reads (`configuration.md` § 4).
-        from conftest import write_machine_record
-        write_machine_record(env_init={
-            "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
-        mp.chdir(tree.parent)
-        bin_ = env_bin("molbuilder-siesta")
-        assert (bin_ / "siesta").is_file(), bin_
-        mp.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
-
-        r = _jobset("init", "--structure", "P/structure/h2.xyz",
-                    "--bundle", "P/opt/R", "--engine", "siesta",
-                    "--shape", "hierarchical", "--calculation", "optimization",
-                    "--name", "H2", "--psml-lib", "pseudopotential")
-        assert r.exit_code == 0, r.output
-        bundle = tree / "P" / "opt" / "R"
-        task = json.loads((bundle / "task.json").read_text())
-        task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
-                             "omp_threads": 1}
-        (bundle / "task.json").write_text(json.dumps(task, indent=2))
-        r = _jobset("prep", "task", "--stage", "coarse", "--bundle", str(bundle),
-                    "--target", "this")
-        assert r.exit_code == 0, r.output
-        r = _jobset("launch", "task", "--stage", "coarse", "--bundle", str(bundle),
-                    "--mode", "direct", "--yes")
-        assert r.exit_code == 0, r.output
-        attempt = bundle / "01_coarse" / "run-0"
-        out = attempt / "H2_01_coarse-run0.out"
-        assert ">> End of run" in out.read_text(errors="replace"), (
-            "the run did not reach its end")
-        yield attempt
-    finally:
-        mp.undo()
+    attempt = real_h2_layered.bundle / "01_coarse" / "run-0"
+    assert ">> End of run" in (attempt / "H2_01_coarse-run0.out").read_text(
+        errors="replace"), "the run did not reach its end"
+    return attempt
 
 
 @pytest.fixture(scope="module")

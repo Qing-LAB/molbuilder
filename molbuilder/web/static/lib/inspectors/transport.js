@@ -320,7 +320,7 @@ const WORKSPACE_TAG = "results:transport";
     }
 
     /* EVERY RUNG'S SCF, one tab each, through the one SCF plot: a device's
-     * periodic start and its NEGF loop are separate traces.  A scan's
+     * periodic start and its NEGF loop are separate traces.  A sweep's
      * rung shows the selected bias point's run. */
     function _convergence(stages, state) {
         const card = _card("Convergence", "transport-conv-card");

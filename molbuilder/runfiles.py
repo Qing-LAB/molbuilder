@@ -144,7 +144,7 @@ FIELDS: "dict[str, Field]" = {
         example="48213"),
     "group": Field(
         what="a launch group's name: a benchmark's side and shelf, or a "
-             "bias scan's chain",
+             "bias sweep's chain",
         shape=r"[A-Za-z0-9_.-]+",
         example="bench-group-gpu"),
     "random": Field(
@@ -1281,7 +1281,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="`jobset summarize` (`run_summarize_jobset`)"),
     Artifact(name="{group}.run.sh",
              what="a launch group's sequencer: a benchmark's trials, a "
-                  "bias scan's points, or a task's stages sharing one job, "
+                  "bias sweep's points, or a task's stages sharing one job, "
                   "in order",
              when="launch", level="launch", kind="derived",
              writer="launch (`jobset/submit.py`), written again at each "
@@ -1470,7 +1470,7 @@ class RunNames:
 
 @dataclass(frozen=True)
 class GroupNames:
-    """A LAUNCH GROUP'S FILES -- a benchmark's walk or a bias scan's chain:
+    """A LAUNCH GROUP'S FILES -- a benchmark's walk or a bias sweep's chain:
     the catalogue's launch-level rows ``{group}.run.sh``, ``{group}.sbatch``
     and ``{group}.log``, filled with the group's name (`project-layout.md`
     § 5).  The same two questions :class:`RunNames` answers -- :attr:`stem`

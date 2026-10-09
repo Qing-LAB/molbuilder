@@ -12,8 +12,9 @@ own tight tolerance.
 Every expectation is what the run was given -- the structure written here,
 the deck prep wrote -- or the rule of the record applied to the run's own
 output; never a number a reader printed.  The relaxation is made with the
-engine here (user, 2026-10-06:
-"when a test need siesta's output why is it not part of a e2e test?").
+engine in this pass, once for every module that reads it
+(`support/real_runs.py`; user, 2026-10-06: "when a test need siesta's
+output why is it not part of a e2e test?").
 """
 from __future__ import annotations
 
@@ -23,8 +24,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from _road import (conda_hook, env_available,
-                   h2_relaxed_for_vibration, live_siesta)
+from _road import conda_hook, env_available
 
 pytestmark = [
     pytest.mark.engine,
@@ -37,11 +37,9 @@ _BOX = 10.0
 
 
 @pytest.fixture(scope="module")
-def relaxed(isolated_projects_root_module, tmp_path_factory):
+def relaxed(real_h2_relaxed_for_vibration):
     """The calculation, its `relax` stage run: the bundle."""
-    tree = isolated_projects_root_module
-    with live_siesta(tree, tmp_path_factory):
-        yield h2_relaxed_for_vibration(tree)
+    return real_h2_relaxed_for_vibration
 
 
 def _run(bundle: Path) -> Path:

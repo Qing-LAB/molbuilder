@@ -1,8 +1,9 @@
 """The monitor watching a real run (`execution/run-reports.md` § 2), and the
 files it ships with reading one with molbuilder absent.
 
-The run is made here, on the road: a vibration's `relax` stage, an H2 with
-one atom held, run with the real SIESTA (`_road.h2_relaxed_for_vibration`).
+The run is made in this pass, on the road, once for every module that reads
+it: a vibration's `relax` stage, an H2 with one atom held, run with the real
+SIESTA (`support/real_runs.py`).
 The monitor is then shown that run as it grew -- a copy of the run's own
 folder, its output written up to a line and grown on, under its own names
 (`process/testing.md` § 6) -- with the clock and the wakes the test's own, so
@@ -26,8 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from _road import (conda_hook, env_available, h2_relaxed_for_vibration,
-                   live_siesta)
+from _road import conda_hook, env_available
 from molbuilder import monitor
 from molbuilder.monitor import NotifyPolicy
 from molbuilder.runfiles import RunNames
@@ -44,11 +44,9 @@ _OUT = f"{_STEM}-run0.out"
 
 
 @pytest.fixture(scope="module")
-def run(isolated_projects_root_module, tmp_path_factory):
+def run(real_h2_relaxed_for_vibration):
     """The relaxation's run folder, made on the road."""
-    tree = isolated_projects_root_module
-    with live_siesta(tree, tmp_path_factory):
-        yield h2_relaxed_for_vibration(tree) / "01_relax" / "run-0"
+    return real_h2_relaxed_for_vibration / "01_relax" / "run-0"
 
 
 @pytest.fixture(autouse=True)

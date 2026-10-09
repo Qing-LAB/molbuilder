@@ -7,7 +7,15 @@ coarse`` -> ``launch task --stage coarse --mode direct`` -> ``prep task --stage 
 H2 in a 10 Å box, isolated on every axis, its first atom held: the coarse
 stage's run beside the medium stage's deck in one folder, SIESTA's own files
 -- named by ``SystemLabel`` -- among ours.  And a second calculation whose
-relaxation is allowed one move, so it ends out of moves.
+relaxation is allowed one move, so it ends out of moves -- its run card set
+to start over when launched again, and launched again.
+
+What molbuilder does with a flat folder's runs is read here too (plan
+§ 5y): the next stage's prep leaves the run folder's own files as they
+were, and every name the Task setup card gives a stage is a file there;
+launched again, a stage runs again in its folder as its run 1, taking
+nothing and overwriting nothing of run 0's, and the folder speaks for its
+newest run index though an older run's output is the newer file.
 
 Every expectation is what the run was given -- the structure written here,
 the deck prep wrote, the template, the env's pinned build -- or a rule of the
@@ -18,6 +26,8 @@ The readers are tested on this run, made with the engine (user, 2026-10-06:
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -49,18 +59,25 @@ def _write_h2(tree: Path, name: str) -> None:
         tree / "P" / "structure" / name)
 
 
-def _one_rank(bundle: Path) -> None:
-    """The run card: one rank, one thread -- an H2 needs no more."""
+def _one_rank(bundle: Path, **card) -> None:
+    """The run card: one rank, one thread -- an H2 needs no more -- and
+    what else ``card`` states."""
     task = json.loads((bundle / "task.json").read_text())
     task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
-                         "omp_threads": 1}
+                         "omp_threads": 1, **card}
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
+
+
+def _as_written(path: Path):
+    """A file's bytes and its write time to the nanosecond."""
+    return path.read_bytes(), path.stat().st_mtime_ns
 
 
 @pytest.fixture(scope="module")
 def road(isolated_projects_root_module, tmp_path_factory):
     """The projects tree, with the flat calculation run and the capped one
-    run beside it: ``{"flat": <folder>, "capped": <folder>}``."""
+    run beside it, and what their later steps answered and left:
+    ``{"flat": <folder>, "capped": <folder>, ...}``."""
     from support.road import jobset
     tree = isolated_projects_root_module
     with live_siesta(tree, tmp_path_factory):
@@ -82,9 +99,12 @@ def road(isolated_projects_root_module, tmp_path_factory):
         assert r.exit_code == 0, r.output
         assert ">> End of run" in (flat / "H2_01_coarse-run0.out").read_text(
             errors="replace"), "the coarse run did not reach its end"
+        kept = ("H2_01_coarse.fdf", "H2_01_coarse.run.sh")
+        kept_before = {n: _as_written(flat / n) for n in kept}
         r = jobset("prep", "task", "--stage", "medium", "--bundle", flat,
                    "--target", "this")
         assert r.exit_code == 0, r.output
+        kept_after = {n: _as_written(flat / n) for n in kept}
 
         # ONE MOVE ALLOWED, AND NO RETRY: the relaxation ends out of moves
         # (`running-a-job.md` § 3.5), and that run is the one asked about.
@@ -94,7 +114,7 @@ def road(isolated_projects_root_module, tmp_path_factory):
                    "--calculation", "optimization", "--shape", "flat",
                    "--name", "H2", "--psml-lib", "pseudopotential")
         assert r.exit_code == 0, r.output
-        _one_rank(capped)
+        _one_rank(capped, restart="clean")
         set_template_value(capped / "H2.template.toml", "relax_steps", "1")
         set_template_value(capped / "H2.template.toml", "continue_retries",
                            "0")
@@ -105,7 +125,22 @@ def road(isolated_projects_root_module, tmp_path_factory):
                "--mode", "direct", "--yes")
         assert (capped / "H2_01_coarse-run0.out").is_file(), \
             sorted(p.name for p in capped.iterdir())
-        yield {"flat": flat, "capped": capped}
+        # LAUNCHED AGAIN, as its run 1 -- and run 0's own files as they were
+        # (`project-layout.md` § 1.5a: re-running never overwrites).
+        run0 = {p.name: p.read_bytes()
+                for p in capped.glob("H2_01_coarse-run0*") if p.is_file()}
+        again = jobset("launch", "task", "--stage", "coarse", "--bundle",
+                       capped, "--mode", "direct", "--yes")
+        assert (capped / "H2_01_coarse-run1.out").is_file(), again.output
+        run0_after = {n: (capped / n).read_bytes()
+                      if (capped / n).is_file() else None for n in run0}
+        # AN EARLIER RUN'S OUTPUT THE NEWER FILE, as a copy or a restore
+        # leaves a folder's times -- which reorder files, never runs.
+        later = time.time() + 120
+        os.utime(capped / "H2_01_coarse-run0.out", (later, later))
+        yield {"flat": flat, "capped": capped, "again": again.output,
+               "run0": run0, "run0_after": run0_after,
+               "kept_before": kept_before, "kept_after": kept_after}
 
 
 @pytest.fixture(scope="module")
@@ -208,6 +243,57 @@ def test_each_run_reads_its_own_deck_and_nothing_else(flat, monkeypatch):
     np.testing.assert_allclose(np.asarray(own.cell), np.eye(3) * _BOX,
                                atol=1e-4)
     np.testing.assert_allclose(own.engine_offset, np.zeros(3))
+
+
+# --------------------------------------------------------------------- #
+#  The next stage, and a flat stage launched again (job-system.md § 5.4)  #
+# --------------------------------------------------------------------- #
+
+def test_the_next_stages_prep_keeps_the_run_folders_own_files(road):
+    """The earlier stage's deck and run script are the run folder's own,
+    which ran: `medium`'s prep writes neither again."""
+    assert road["kept_after"] == road["kept_before"]
+
+
+def test_every_name_the_card_gives_a_stage_is_on_disk(road):
+    """A launched stage's names for its prep, its launch and its run, and
+    the stage prepared after it -- in the flat folder (`job-contracts.md`
+    § 2.2; the layered one: `test_the_road_on_real_runs_e2e.py`)."""
+    from support.road import _road_card_written
+    _road_card_written([{"stage": "coarse", "moments": ["prep", "launch", "run"]},
+                        {"stage": "medium", "moments": ["prep"]}],
+                       road["flat"])
+
+
+def test_launched_again_with_restart_clean_it_runs_again_taking_nothing(road):
+    """The run card says start over: launched again, the stage runs in its
+    folder as its run 1, carrying nothing from run 0."""
+    assert ("launched again in the same folder, as its run 1, where its "
+            "files are: it starts over") in road["again"], road["again"]
+    assert not (road["capped"] / "H2_01_coarse-run1.continued-from").exists()
+
+
+def test_a_run_launched_again_overwrites_nothing_of_the_run_before(road):
+    """Every file run 0 wrote under its index is as it was after run 1, and
+    run 1 wrote its own (`project-layout.md` § 1.5a)."""
+    capped = road["capped"]
+    assert road["run0_after"] == road["run0"], sorted(
+        n for n in road["run0"] if road["run0_after"][n] != road["run0"][n])
+    for suffix in (".out", ".monitor.log"):
+        assert (capped / f"H2_01_coarse-run0{suffix}").is_file(), suffix
+        assert (capped / f"H2_01_coarse-run1{suffix}").is_file(), suffix
+
+
+def test_the_folder_speaks_for_its_newest_run_index(road):
+    """Run 0's output is the newer file -- as a copy or a restore leaves a
+    folder's times -- and the folder still speaks for run 1 (`model/parse.md`
+    § 5.1: a file's time decides nothing)."""
+    from molbuilder.runs import folder_answer
+    got = folder_answer(road["capped"])
+    assert got["status"]["active_source"] == "H2_01_coarse-run1.out", (
+        got["status"])
+    assert Path(got["openable"]).name == "H2_01_coarse-run1.out", (
+        got["attempts"])
 
 
 # --------------------------------------------------------------------- #
@@ -566,6 +652,6 @@ def test_a_relaxation_out_of_moves_is_capped_and_no_scf_stop(road):
     path -- and not an SCF stop (`running-a-job.md` § 3.5)."""
     from molbuilder.parse.engines._run_ending import QUESTIONS, ending_of
     from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
-    end = ending_of(_out(road["capped"]))
+    end = ending_of(road["capped"] / "H2_01_coarse-run0.out")
     assert QUESTIONS["relaxation-capped"](end), end
     assert not QUESTIONS["stopped-by"](end, SCF_NOT_CONV_MARKER), end

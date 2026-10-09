@@ -2630,7 +2630,7 @@ In the flat shape the root is also the run folder, so the files of § 5.2 and
 | `environment.json` | the machine record this calculation is set to — its first prep's | the first prep (`jobset.machine.set_machine`) | `scheduler.record.machine_for` | record |
 | `job-set.json` | the plan: one job per prepared stage, merged per stage — and a benchmark's own, in its container | prep (`jobset.model.JobSet.write`) | `jobset.model.JobSet.load` | derived |
 | `STAGE-PLAN.md` | the plan in reading order | prep (`jobset.prep.prep_jobset`), whole at each prep | none | derived |
-| `jobset-decisions.log` | one line per decision of every verb — part of a checkpoint state, so a restore brings the target's back and writes none of its own ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7) | every verb (`jobset.ledger.record`) | none | record |
+| `jobset-decisions.log` | one line per decision of every verb | every verb (`jobset.ledger.record`) | none | record |
 | `atom-permutation.json` — only: a SIESTA vibration, or a transport calculation | the atom order the decks were written in | prep (`transport.sort.write_permutation`) | `atom_permutation.read_permutation` | derived |
 | `<element>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines._pseudo_dir`, `materialize`); `jobset init --psml-lib` | `pseudos.psml_sources` | input |
 | `junction.xyz` *(transport)* | the composed junction | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
@@ -2689,7 +2689,7 @@ every stage's files side by side, told apart by `<base>` and `-run<N>`.
 | `<base>.molwatch.parse.log` *(hierarchical)* · `<base>-run<N>.molwatch.parse.log` *(flat)* — only: `MOLBUILDER_PARSE_LOG` set | the same, for the trajectory log | molbuilder's parser, reading the trajectory log (`parse._log.ParseLogger`) | none | record |
 | `<base>-run<N>.concluded` | the marker the wrapper writes when the job ends | the run script, its last act | `runrecord.ending` | record |
 | `run.json` *(hierarchical)* · `<base>-run<N>.run.json` *(flat)* | the launch record: how, where and when the run was sent, what it continued from, and the run a warm retry retries | launch (`runrecord.write_launch`); a flat run's warm retry, the run script through the monitor's bundle (`runrecord.record_retry`) | `runrecord.launch_record` | record |
-| `.continued-from` *(hierarchical)* · `<base>-run<N>.continued-from` *(flat)* — only: it continues from an earlier run | the run whose restart files were carried in, for launch's record | prep, and launch when it runs a stage again, through `runrecord.write_continued_from` | `runrecord.read_continued_from` | record |
+| `.continued-from` *(hierarchical)* · `<base>-run<N>.continued-from` *(flat)* — only: it continues from an earlier run | the run this one continues from -- a walked point's or a stage's start, a taken-over point's computing run (one hop) -- for launch's record | prep, and launch when it runs a stage again, through `runrecord.write_continued_from` | `runrecord.read_continued_from` | record |
 | `<base>-run<N>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it | `molbuilder runtime-info`, beside the file it reads | none | record |
 | `.gathered-from` *(transport)* | what a rung took, from which upstream run | prep (`jobset.prep.transport_inputs`, through `runrecord.write_gathered_from`) | `runrecord.read_gathered_from` | record |
 | `slurm.<jobid>.out` — only: launched to a queue | SLURM's own stdout for the job | SLURM, as the run's header asks (`-o`) | none | record |
@@ -2731,13 +2731,16 @@ named on a trial's own label, `<label>-<point>`. What is theirs alone:
 | `bench-result.json` | every trial's timing and the winner — the benchmark's archival trace | `jobset summarize` (`run_summarize_jobset`) | none | record |
 <!-- /manifest -->
 
-A grouped launch — a benchmark's trials, or a bias sweep's points in order —
-keeps its machinery in a `launch/` folder beside them:
+A grouped launch — a benchmark's trials, a bias sweep's points, or a task's
+stages sharing one job, in order — keeps its machinery in a `launch/` folder:
+`<stage>/launch/` for a sweep (its walk beside its `.log`), the container's
+`launch/` for a group of stages, and the benchmark's container for its trials;
+`run.json`'s command names the walk relative to that folder:
 
 <!-- manifest:launch -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a bias sweep's points, or a task's stages sharing one job, in order — in `<stage>/launch/` (a sweep's, beside its `.log`), the container's `launch/` for a group of stages, and the benchmark's container for its trials; `run.json`'s command names it relative to that folder | launch (`jobset/submit.py`), written again at each launch | none | derived |
+| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a bias sweep's points, or a task's stages sharing one job, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
 | `<group>.sbatch` — only: launched to a queue | its queue header | launch (`jobset/submit.py`), written again at each launch -- a task's group's by its prep (`prep.prep_group`), and by launch only for stages first named together there | none | derived |
 | `<group>.log` | every member's output, in order | the group's sequencer, as it runs | none | record |
 <!-- /manifest -->

@@ -27,7 +27,7 @@ tbtrans contour block is written in eV.  Each reader states its own rule and
 decides whether an unknown word is a refusal — but no reader keeps its own
 word list, because that is where a word goes missing.
 
-A default here is never a judgement call.  `tests/test_siesta_keyword_smoke.py`
+A default here is never a judgement call.  `tests/test_siesta_keyword_smoke_e2e.py`
 asks the shipped binary what the engine does and asserts this side follows.
 
 **Refusing beats assuming.**  A wrong factor is invisible in the result and

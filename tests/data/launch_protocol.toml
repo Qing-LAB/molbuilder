@@ -6,9 +6,10 @@
 # submission as it goes (a run here when it starts).  A dry run stops at the
 # question and writes nothing, the ledger included.
 #
-# Every run here is made on the road: `jobset prep` and `jobset launch`, our
-# wrapper running the suite's stand-in engine, which ends as a row says
-# (`stand_in`).  `tests/test_launch_protocol.py` runs every case through the
+# Every row here stops before an engine would run -- a refusal, or a dry run.
+# What a launch writes as its run starts -- its launch record, its ledger
+# line, a benchmark's walk -- is read off real runs (`tests/test_the_road_on_real_runs_e2e.py`,
+# plan § 5y).  `tests/test_launch_protocol.py` runs every case through the
 # one runner every contract table shares (`tests/support/road.py`,
 # `run_road_case`, whose header names each key).  What no row can reach --
 # the folder changing between a launch's plan and its send, inside one
@@ -24,25 +25,12 @@ mpi_np = 1
 omp_threads = 1
 
 [[case]]
-name = "a dry run of a launch again writes nothing: no attempt opened, no record, no line"
-stand_in = { leaves_restart = true }
-before = [["prep", "task", "--stage", "coarse"],
-          ["launch", "task", "--stage", "coarse", "--mode", "direct", "--yes"]]
-stage = "medium"
-launch = []
-launch_mode = "direct"
-listing = ["WOULD launch it again into run-1: it continues from 01_coarse/run-0 (its own latest run; concluded rc=0",
-           "would copy H2.XV"]
-launch_writes_nothing = true
-
-[[case]]
 name = "a refusal is written down -- one the verb says before anything is planned too"
 launch = ["--time", "1h"]
 launch_mode = "direct"
 launch_sends = true
 launch_refused = "--time: what a scheduler is asked for"
 after_launch = { ledger_holds = ["refused"] }
-
 
 [[case]]
 name = "a refused dry run writes nothing"
@@ -51,61 +39,22 @@ launch_mode = "direct"
 launch_refused = "--time: what a scheduler is asked for"
 launch_writes_nothing = true
 
-[[case]]
-name = "a run here is shown and asked as a submission is, and written down as it starts"
-stand_in = { waits_for = "launched" }
-launch = []
-launch_mode = "direct"
-launch_sends = true
-listing = ["about to run here:", "bash H2_01_coarse.run.sh", "(--yes)", "[ran]"]
-after_launch = { ledger_holds = ["launched"] }
-
 # ---- A BENCHMARK'S WALK (job-system.md § 6.0, *A benchmark's walk*)
 
+# THE DRY RUN SHOWS THE PLAN THE LAUNCH WOULD SEND (`job-system.md` § 6.0):
+# what a launch writes as its run starts is read off real runs (plan § 5y).
 [[case]]
-name = "a benchmark run here walks its unlaunched trials in one walk, as a shelf does on a queue"
-bench = { mpi_np = [1, 2], omp_threads = [1] }
-launch = []
-launch_mode = "direct"
-launch_sends = true
-listing = ["bench-group", "[ran]", "rides the group"]
-# `launch/` is made a container by the send that writes it (`project-layout.md`
-# § 1.6.2, invariant 6b).
-after_launch = { made = ["01_coarse/bench/launch/bench-group.run.sh", "01_coarse/bench/launch/bench-group.log", "01_coarse/bench/launch/calcdir.json"], ledger_holds = ["launch launched"] }
-
-[[case]]
-name = "...and its per-trial bound is the walk's, here as on a queue"
-bench = { mpi_np = [1, 2], omp_threads = [1] }
-launch = ["--trial-timeout", "5"]
-launch_mode = "direct"
-launch_sends = true
-listing = ["[ran]"]
-walk = ["per-trial-bound=300s", "timeout -k 30 300 bash"]
-
-[[case]]
-name = "...a trial that fails leaves the rest to run, and the walk says how many failed"
-bench = { mpi_np = [1, 2], omp_threads = [1] }
-stand_in = { rc = 1 }
-launch = []
-launch_mode = "direct"
-launch_sends = true
-walk_log = ["G0K1C1 finished rc=1", "G0K2C1 finished rc=1", "done fails=2"]
-
-[[case]]
-name = "...and launched again, it passes the trials launched before over by name, and runs the rest"
-bench = { mpi_np = [1, 2], omp_threads = [1] }
-before_launch = [["launch", "bench", "coarse", "G0K1C1", "--mode", "direct", "--yes"]]
-launch = []
-launch_mode = "direct"
-launch_sends = true
-listing = ["G0K1C1", "skipped -- already launched", "[ran]"]
-
-# A LAUNCH NAMING NO STAGE sends what is prepared and not launched -- the
-# one unit (`job-system.md`, *The task*, D3).
-[[case]]
-name = "a launch naming no stage sends the one stage prepared and not launched"
+name = "a launch naming no stage plans the one stage prepared and not launched -- a dry run, which writes nothing"
 launch = []
 launch_stage = ""
 launch_mode = "direct"
-launch_sends = true
-after_launch = { made = ["01_coarse/run-0/run.json"] }
+listing = ["WOULD run", "bash H2_01_coarse.run.sh"]
+launch_writes_nothing = true
+
+[[case]]
+name = "a benchmark run here is planned as one walk of its unlaunched trials, as a shelf is on a queue"
+bench = { mpi_np = [1, 2], omp_threads = [1] }
+launch = []
+launch_mode = "direct"
+listing = ["bench-group", "rides the group"]
+launch_writes_nothing = true

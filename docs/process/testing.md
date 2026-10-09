@@ -26,14 +26,21 @@ touched (§ 6.1), and a tier whole only when the change reaches that far.
 
 ### Tier 1 — the basic suite: installation and correctness
 
-**What it holds**: molbuilder's own behaviour, driven the way a person drives it —
-the road (`jobset init → prep → launch`; the case tables, § 6), the suite's
-stand-in engine for a run's process, and machine records written in molbuilder's
-own format to describe a machine — its cores, its queues and their limits — to
-the logic that reads them.  **No engine output, saved or typed**: a test that
-needs what an engine writes — a `.out`, an `.MD.nc`, a `.FC`, a
-spectrum a run derived — is a tier-3 test that makes the run *(user, 2026-10-06:
-"when a test need siesta's output why is it not part of a e2e test?")*.
+**What it holds**: what molbuilder PREPARES, driven the way a person drives it
+— the road up to the run (`jobset init → prep → launch --dry-run`; the case
+tables, § 6) and the one function that writes or reads the script folder: the
+deck, the run script, the walk, the plan — and machine records written in
+molbuilder's own format to describe a machine — its cores, its queues and their
+limits — to the logic that reads them *(user, 2026-10-08: "our api is not siesta
+engine. it's prep script for engines including siesta")*.  **No engine runs in
+it, fake or real**: the suite's `siesta`, `tbtrans` and `mpirun` are a tripwire
+that fails a basic test reaching one — a run script it executed, a launch it
+sent, a version it asked (`conftest._TRIPWIRE`).  **No engine output, saved or
+typed**: a test that needs what an engine writes — a `.out`, an `.MD.nc`, a
+`.FC`, a spectrum a run derived, what a stage builds on from a run — is a
+tier-3 test that makes the run *(user, 2026-10-06: "when a test need siesta's
+output why is it not part of a e2e test?"; 2026-10-08: "when something reads
+the output of \"siesta\" output that's an end to end by definition")*.
 `tests/fixtures/` holds an engine's INPUTS only — the H pseudopotential a live
 run needs (`tests/fixtures/psml/README.md`).
 
@@ -97,11 +104,17 @@ steps:
 
 ### Tier 3 — e2e: the science and the workflow
 
-The `*_e2e.py` batch: real engines — SIESTA, PySCF — on small systems (H2, H2O, a
-minimal junction), their results checked against measured or published values
-(§ 3b, *the one exception: scientific validation*), and the browser walks through
-the pages (Playwright, § 5). It is slow and spends the machine's cores: run it on
-the person's word, after tiers 1 and 2 pass.
+The `*_e2e.py` batch: real engines — SIESTA, TranSIESTA, TBtrans, PySCF — on
+small systems (H2, H2O, a hydrogen-chain junction), their results checked
+against measured or published values (§ 3b, *the one exception: scientific
+validation*) or the contract's rules, and the browser walks through the pages
+(Playwright, § 5). **One pass makes each run once** *(user, 2026-10-08: "it
+should be integrated/merged with existing e2e tests so one run of e2e would
+produce all information")*: a run several modules read is a session fixture
+(`tests/support/real_runs.py`), a run one module reads is that module's, and
+every check is an assertion on a run the pass already makes. It is slow and
+spends the machine's cores: run it on the person's word, after tiers 1 and 2
+pass.
 
 ## 1. The pyramid — pick the lowest layer that covers the contract
 
@@ -695,15 +708,15 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   correctly execute locally if that's the target")*. Where a contract is a
   set of cases — what a person or a probe writes, and what molbuilder must
   answer — the cases are rows of one data file, and ONE runner drives each
-  down the road a person runs (`init → prep → launch --dry-run`; on a
-  machine with no queue, the run script's own dry run), checking three
-  layers: **allowed or refused**, with the words; **what is produced** — the
-  header, the `sbatch` line, the deck, the run script; **what the run script
-  does here** — and, before them, **what the probe records** when a row runs
-  the probe itself: what it said and what the record holds
-  (`tests/data/machine_record.toml`, whose rows end there). A stand-in plays
-  what the box cannot be (`sbatch` that queues nothing, `nvidia-smi` that
-  reports the GPUs a row gives), from `tests/support/road.py`. A rule changes; its rows change — never a function
+  down the road a person runs (`init → prep → launch --dry-run`), checking
+  two layers: **allowed or refused**, with the words; **what is produced** —
+  the header, the `sbatch` line, the deck, the run script — and, before
+  them, **what the probe records** when a row runs the probe itself: what it
+  said and what the record holds (`tests/data/machine_record.toml`, whose
+  rows end there). What a run does once launched is not a row's: it runs an
+  engine (the next two patterns). An `sbatch` that refuses, writing down
+  every call, stands where a scheduler would (`tests/support/road.py`): the
+  basic tests send nothing to one. A rule changes; its rows change — never a function
   per case, and never a test of an internal step a row already reaches. The
   first is the GPU contract's (`tests/data/gpu_contract.toml`,
   `tests/test_gpu_contract.py`; `execution/gpu.md` § 7).
@@ -724,7 +737,7 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   had met 54 changes to the run script and 13 to the description by
   2026-10-06), and its engine output belongs to the engine's version. A
   run's files may be replayed — the monitor shown the run's own output as it
-  grew, under its own names — when the run was made by the same test module
+  grew, under its own names — when the run was made in the same pass
   *(the measured fixtures and the frozen outputs of older runs left the suite
   2026-10-06: user, "when a test need siesta's output why is it not part of
   a e2e test? ... what's different about the one that remains")*. *(282 tests and 10 case-table rows were retired for it that
@@ -739,31 +752,30 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   — and none is kept: the synthetic runtime-header lines, the parser's own
   output saved as its expectation, an output cut to its first steps and the
   templates edited back into an older shape went 2026-10-06.
-- **Framework and API tests; end-to-end only when the user asks** *(user,
-  2026-10-04: "you have to rely on more api and framework test rather than
-  fucking e2e test. e2e test is only necessary when i say so")*. A run a
-  framework test needs is made on the road with the suite's **stand-in
-  engine** (`conftest._STUB_BODIES`), which plays the engine's part and no
-  other: a road row says how it ends (`stand_in`: the exit code, whether it
-  leaves the restart file SIESTA leaves — the `.XV`, carrying the deck's
-  lattice and coordinates in SIESTA's own format, as a relaxation that moved
-  nothing would leave it, so a run of ours on this road is a citable
-  relaxation (`engines/transport.md` § 3.1, 2026-10-08) — and whether it
-  waits until the calculation's ledger holds a decision — what a launch has
-  written down while its run runs), and our wrapper, running
-  it, writes the run's records as it concludes — so what a stage builds on,
-  what it continues from and whether a viewer follows a run are tested
-  through our own code with no engine (`tests/data/hand_overs.toml`). What
-  depends on the ENGINE's own files — the `.MD.nc`, an `.XV` as SIESTA writes
-  it, how a run
-  ended, what the monitor makes of its output — is a tier-3 test that makes
-  the run on the road with the engine: the smallest that shows the mechanism
-  (H2; H2O at most — user, 2026-10-04: *"run are supposed to verify
-  mechanism ... a Au-BDT-Au is too much"*), one module-scoped run serving the
-  module's tests (`tests/test_siesta_flat_run_e2e.py`,
-  `tests/test_siesta_relax_run_e2e.py`,
-  `tests/test_monitor_watches_a_live_run_e2e.py`). A browser or a real
-  engine in a test is for when the user asks for one.
+- **API tests check what molbuilder prepares; end-to-end tests make the run**
+  *(user, 2026-10-04: "you have to rely on more api and framework test rather
+  than fucking e2e test. e2e test is only necessary when i say so";
+  2026-10-08: "our api is not siesta engine. it's prep script for engines
+  including siesta", "when something reads the output of \"siesta\" output
+  that's an end to end by definition", and on a test that needs a run:
+  "either disassembled into api tests of individual parser/action functions
+  that works on the script dir, or merged into real e2e functions")*. An API
+  test drives `init → prep → launch --dry-run`, or calls the one function
+  that writes or reads the script folder, and no engine runs in it (tier 1's
+  tripwire). A test that reads what an engine wrote — what a stage builds on,
+  what a launch continues from, how a run ended, what a citation composes,
+  what the monitor or a viewer makes of a run — is an end-to-end test: the
+  real engine, on the smallest system that shows the mechanism (H2; H2O at
+  most; a hydrogen-chain junction for transport — user, 2026-10-04: *"run
+  are supposed to verify mechanism ... a Au-BDT-Au is too much"*), each run
+  made once a pass (tier 3: `tests/support/real_runs.py`,
+  `tests/test_the_road_on_real_runs_e2e.py`,
+  `tests/test_transport_on_a_real_junction_e2e.py`).  *(From 2026-10-04 to
+  2026-10-08 the hand-overs and a launch's records were tested on a fake
+  `siesta` that ended as a row said and left a restart file — a design
+  written here under the user's quote above, though the user never asked
+  for a fake engine; plan § 5y.)* A browser or a real engine in a test is
+  for when the user asks for one.
 - **State-composition tests** — the molview class of bug: a value is correct in
   isolation but wrong once composed with a sibling piece of state. These get an
   explicit test that exercises the *combination*, not each part alone.

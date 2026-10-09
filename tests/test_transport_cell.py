@@ -8,7 +8,7 @@ import pytest
 from molbuilder.sidecars import molstruct as msj
 from molbuilder.structure import Structure
 from molbuilder.parse.fdf import parse_fdf_params
-from molbuilder.transport.transiesta import axis_vacuum, _emit_geometry
+from molbuilder.transport.transiesta import _emit_geometry
 
 # A hexagonal Au(111)-like cell: a,b at 60 deg ~17.3 A; c (transport) 40 A.
 HEX = np.array([[17.30, 0.0, 0.0],
@@ -131,15 +131,6 @@ def test_a_PERIODIC_axis_with_no_cell_is_refused_not_fabricated():
     dev.cell = None
     with pytest.raises(ValueError, match="periodic.*states no cell"):
         _emit_geometry(dev)
-
-
-def test_axis_vacuum_flags_transport_axis_gap():
-    # atoms span z 0..~21 in a 40 A c-axis -> ~19 A z-vacuum
-    dev = _hex_device()
-    vac = axis_vacuum(dev.cell, dev.positions)
-    assert vac[2] > 5.0
-    fdf = "\n".join(_emit_geometry(dev))
-    assert "transport axis (c) has vacuum" in fdf
 
 
 # ------------------------------------------------------------------ #

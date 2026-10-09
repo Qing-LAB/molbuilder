@@ -345,7 +345,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     **WHERE EACH RUNG STANDS is the one status door's answer**
     (`runstatus.jobset_status` -- what `jobset status` prints and the
     Results tab's ladder draws): its ``state`` and ``detail`` in that
-    door's words, a bias scan's rung speaking from its first point not
+    door's words, a bias sweep's rung speaking from its first point not
     finished.  Nothing here reads a run's state a second way.
 
     **Each rung's own key fact, which is not the same fact**, read from the
@@ -590,7 +590,7 @@ def _contour_facts(contours: Dict) -> Dict:
 def _rung_points(base: Path, task, name: str, token: str,
                  answers: str, run: Optional[Path] = None) -> List[Dict]:
     """``[{bias_v, attempt, state, detail, ...science}]`` -- each bias
-    point of a scan's rung, its state the run door's (`run_status`) and its
+    point of a sweep's rung, its state the run door's (`run_status`) and its
     own answer (:func:`_science`); ``run`` names the run to read instead
     of the latest."""
     from ..parse.dirs import run_status

@@ -3,11 +3,14 @@ slot, one explicitly named directory, nothing picked for you -- asked where a
 person meets it, `jobset init`.
 
 * `init --calculation transport` refuses: no junction slot or a second one, a
-  citation that is not tree-relative, a bias list that does not start at
-  0.0, a flat shape, and every option whose answer arrives via the citation
-  (--structure / --psml-lib / --vacuum / --stage-strategy); and `--slot` on
-  any other kind.  Each refusal is the door's own -- the codec's where the
-  codec owns the rule (`task.py`), surfaced by name.
+  citation that is not tree-relative, and every option whose answer arrives
+  via the citation (--structure / --psml-lib / --vacuum / --stage-strategy);
+  and `--slot` on any other kind.  Each refusal is the door's own -- the
+  codec's where the codec owns the rule (`task.py`), surfaced by name.  The
+  refusals that come after a citation is read -- a bias list that does not
+  start at 0.0, a flat shape -- need a finished relaxation to cite, so they
+  are asked on the junction the end-to-end pass relaxes
+  (`tests/test_transport_on_a_real_junction_e2e.py`, plan § 5y).
 * the codec round-trips slots + bias and carries NO structure block for the
   kind (its structure IS the citation): API-level, since the file is the one
   door every road reads a description through (`template.md` § 5.3) and the
@@ -127,31 +130,3 @@ class TestInitCLI:
             "--slot", f"junction={_CITE}"])
         assert r.exit_code != 0
         assert "transport" in r.output
-
-
-class TestInitOnACitableRun:
-    """The refusals that come AFTER the citation is read -- the codec's bias
-    and shape rules -- asked at `init` on a relaxation made on the road with
-    the stand-in engine (`test_transport_compose._relaxed_on_the_road`)."""
-
-    def test_bias_must_start_from_equilibrium(self, tmp_path, monkeypatch):
-        """A list starts from equilibrium (§ 2a.10, § 2a.11)."""
-        from test_transport_compose import _relaxed_on_the_road
-        _root, cite = _relaxed_on_the_road(tmp_path, monkeypatch)
-        r = _init(["--calculation", "transport", "--shape", "hierarchical",
-                   "--bundle", "J/transport/T", "--slot", f"junction={cite}",
-                   "--bias", "0.2,0.4"])
-        assert r.exit_code != 0
-        assert "must start at 0.0" in r.output, r.output
-
-    def test_a_flat_transport_description_is_refused(self, tmp_path,
-                                                      monkeypatch):
-        """The five stages exchange files through their own attempts, which
-        flat has no directories to hold (§ 2a.11): the pairing is the
-        codec's, and `init` surfaces it by name."""
-        from test_transport_compose import _relaxed_on_the_road
-        _root, cite = _relaxed_on_the_road(tmp_path, monkeypatch)
-        r = _init(["--calculation", "transport", "--shape", "flat",
-                   "--bundle", "J/transport/T", "--slot", f"junction={cite}"])
-        assert r.exit_code != 0
-        assert "hierarchical" in r.output, r.output

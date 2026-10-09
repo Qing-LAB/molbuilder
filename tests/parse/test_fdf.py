@@ -145,13 +145,13 @@ class TestTheUnitPolicyIsThisFormatS:
     """`molbuilder.units` owns the WORDS; the ENGINE owns the default.
 
     libfdf refuses a physical value with no unit. The rule comes
-    from the binary, in `tests/test_siesta_keyword_smoke.py`, which
+    from the binary, in `tests/test_siesta_keyword_smoke_e2e.py`, which
     measures SIESTA's answer AND asserts this reader follows it. What
     stays here is the behaviour given a unit that IS stated.
     """
 
     def test_a_bare_energy_is_REFUSED_because_SIESTA_refuses_it(self):
-        """No default to honour -- see `test_siesta_keyword_smoke.py`."""
+        """No default to honour -- see `test_siesta_keyword_smoke_e2e.py`."""
         from molbuilder.units import UnknownUnit
         with pytest.raises(UnknownUnit, match="states no unit"):
             parse_fdf_params("MeshCutoff 250\n")
@@ -200,7 +200,7 @@ class TestTheUnitPolicyIsThisFormatS:
         this reader scales by 1 Ang, so the vectors are read as written.
 
         THAT NUMBER IS PINNED TO THE ENGINE, not to this file:
-        `test_siesta_keyword_smoke.py` builds a deck with no
+        `test_siesta_keyword_smoke_e2e.py` builds a deck with no
         `LatticeConstant` and checks the cell SIESTA actually reports.
         This test is the reader's half of that pair and proves nothing
         about SIESTA on its own."""
