@@ -218,6 +218,8 @@
                     if (aborted) return;
                     try {
                         elRender.innerHTML = _renderToHTML(cm.getValue());
+                        window.molbuilder.markdownRender.renderMathIn(elRender)
+                            .catch(() => {});
                     } catch (e) {
                         elRender.textContent = "Render error: " +
                             (e && e.message || e);

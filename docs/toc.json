@@ -82,6 +82,9 @@
         },
         {
           "path": "science/junction-cell.md"
+        },
+        {
+          "path": "science/vibrational-averaging.md"
         }
       ]
     },
@@ -613,6 +616,11 @@
           "path": "archive/2026-09-29-m11-static-review.md",
           "label": "The M11 static review — five tracks, 2026-09-29",
           "subtitle": "The M11 static review — five tracks, 2026-09-29"
+        },
+        {
+          "path": "archive/2026-10-08-plan-consolidation.md",
+          "label": "Plan consolidation — 2026-10-08",
+          "subtitle": "Plan consolidation — 2026-10-08"
         },
         {
           "path": "archive/MIGRATION.md",

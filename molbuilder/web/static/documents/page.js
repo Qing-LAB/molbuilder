@@ -159,6 +159,8 @@
                 img.setAttribute("src", "/api/docs/img/" + s);
             }
         });
+        try { await window.molbuilder.markdownRender.renderMathIn(renderEl); }
+        catch (_) {}
         try { await window.molbuilder.markdownRender.renderMermaidIn(renderEl); }
         catch (_) {}
         renderEl.scrollTop = 0;

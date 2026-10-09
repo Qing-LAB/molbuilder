@@ -4,9 +4,11 @@
 # from a CRLF-normalised checkout.
 * text=auto eol=lf
 
-# Vendored minified JS: keep out of normal diff output (giant
-# single-line files; treat as binary for diff/merge purposes).
-molbuilder/web/static/vendor/*.js -diff -merge linguist-vendored
+# Vendored minified JS and CSS: keep out of normal diff output (giant
+# single-line files; treat as binary for diff/merge purposes).  `**/` takes
+# in each component's own folder (codemirror/, katex/, ...).
+molbuilder/web/static/vendor/**/*.js  -diff -merge linguist-vendored
+molbuilder/web/static/vendor/**/*.css -diff -merge linguist-vendored
 
 # Always-binary patterns -- never get the LF treatment.
 *.png  binary
@@ -19,3 +21,4 @@ molbuilder/web/static/vendor/*.js -diff -merge linguist-vendored
 *.gz   binary
 *.tar  binary
 *.psml binary
+*.woff2 binary

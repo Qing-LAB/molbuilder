@@ -7,7 +7,10 @@
  *
  * Surface (on window.molbuilder.markdownRender):
  *   loadRenderLibs() -> Promise   lazy-load marked + DOMPurify once (cached).
- *   render(text) -> string        marked.parse + DOMPurify.sanitize -> safe HTML.
+ *   render(text) -> string        marked.parse + DOMPurify.sanitize -> safe HTML,
+ *                                 its LaTeX set aside as placeholders.
+ *   renderMathIn(el) -> Promise   draw those placeholders with KaTeX.
+ *   renderMermaidIn(el) -> Promise  draw ```mermaid blocks.
  *
  * Renderers that ALSO need the CodeMirror editor (the inspector) load that
  * separately; this module owns only the render path (marked + DOMPurify).
@@ -51,13 +54,109 @@
      *  beyond the default allow-list.  ```mermaid fences survive as
      *  ``<pre><code class="language-mermaid">`` for :func:`renderMermaidIn`. */
     function render(text) {
-        const raw = root.marked.parse(text || "", {
+        const raw = root.marked.parse(_setMathAside(text || ""), {
             breaks: false,
             gfm:    true,
         });
         return root.DOMPurify.sanitize(raw, {
             ADD_ATTR: ["target"],
         });
+    }
+
+    // ---- math (KaTeX; lazy, loaded only when a doc has a formula) ---- //
+
+    /* MATH IS SET ASIDE BEFORE THE MARKDOWN PASS.  marked reads the `_` and
+     * `*` of a formula as emphasis, so each formula is cut out first -- never
+     * inside code, where a `$` stays literal -- and left as an empty
+     * placeholder holding its TeX in an attribute, which marked and DOMPurify
+     * pass through untouched; `renderMathIn` draws each with KaTeX.
+     *
+     * `$$...$$` is display math.  `$...$` is inline math when the opening
+     * `$` touches its formula and the closing one is not followed by a
+     * digit -- so a shell prompt (`$ ls`) and a price (`$5`) stay text, the
+     * same rule GitHub and pandoc read. */
+    const _DISPLAY = /\$\$([\s\S]+?)\$\$/g;
+    const _INLINE = /(^|[^\\$])\$(?=\S)((?:\\\$|[^$\n])+?)(?<=\S)\$(?!\d)/g;
+    const _FENCE = /^\s*(```|~~~)/;
+    const _CODE_SPAN = /(`+)([\s\S]*?[^`])\1(?!`)/g;
+
+    function _attr(tex) {
+        return tex.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+                  .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+    function _placeholder(tex, display) {
+        return '<span class="mb-math" data-display="' + (display ? "1" : "0")
+            + '" data-tex="' + _attr(tex.trim()) + '"></span>';
+    }
+    function _mathInProse(text) {
+        const spans = [];
+        const held = text.replace(_CODE_SPAN, (m) => {
+            spans.push(m);
+            return "" + (spans.length - 1) + "";
+        });
+        return held
+            .replace(_DISPLAY, (_m, tex) => _placeholder(tex, true))
+            .replace(_INLINE, (_m, before, tex) => before + _placeholder(tex, false))
+            .replace(/(\d+)/g, (_m, i) => spans[Number(i)]);
+    }
+    function _setMathAside(text) {
+        if (text.indexOf("$") < 0) return text;
+        const out = [];
+        let prose = [];
+        let fence = null;
+        for (const line of text.split("\n")) {
+            const f = _FENCE.exec(line);
+            if (fence) {
+                out.push(line);
+                if (f && f[1] === fence) fence = null;
+            } else if (f) {
+                if (prose.length) { out.push(_mathInProse(prose.join("\n"))); prose = []; }
+                out.push(line);
+                fence = f[1];
+            } else {
+                prose.push(line);
+            }
+        }
+        if (prose.length) out.push(_mathInProse(prose.join("\n")));
+        return out.join("\n");
+    }
+
+    let _katexPromise = null;
+
+    function _loadKatex() {
+        if (_katexPromise) return _katexPromise;
+        _katexPromise = (async () => {
+            if (!document.querySelector('link[data-vendor="katex"]')) {
+                const css = document.createElement("link");
+                css.rel = "stylesheet";
+                css.href = "/static/vendor/katex/katex.min.css";
+                css.setAttribute("data-vendor", "katex");
+                document.head.appendChild(css);
+            }
+            if (!root.katex) {
+                await _loadScript("/static/vendor/katex/katex.min.js");
+            }
+        })();
+        return _katexPromise;
+    }
+
+    /** Draw every formula `render` set aside inside ``rootEl``.  No-op (and no
+     *  KaTeX load) when there is none.  A formula KaTeX cannot read is drawn
+     *  as its source in the error colour, so one bad formula does not blank
+     *  the doc. */
+    async function renderMathIn(rootEl) {
+        if (!rootEl) return;
+        const spans = rootEl.querySelectorAll("span.mb-math[data-tex]");
+        if (!spans.length) return;
+        await _loadKatex();
+        for (const el of spans) {
+            root.katex.render(el.getAttribute("data-tex"), el, {
+                displayMode: el.getAttribute("data-display") === "1",
+                throwOnError: false,
+                output: "htmlAndMathml",
+                trust: false,
+            });
+        }
     }
 
     // ---- mermaid (lazy; ~3 MB, loaded only when a doc has a diagram) ---- //
@@ -122,6 +221,7 @@
     root.molbuilder.markdownRender = {
         loadRenderLibs: loadRenderLibs,
         render: render,
+        renderMathIn: renderMathIn,
         renderMermaidIn: renderMermaidIn,
     };
 })(window);

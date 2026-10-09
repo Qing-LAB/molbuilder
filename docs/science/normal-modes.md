@@ -1375,6 +1375,10 @@ larger than `T₀` whatever the sign of the stretch.
 
 ### 4c.5 Three frames give the curvature and the average at once — the Gauss–Hermite nodes
 
+*The derivation in full — the thermal distribution, why a lopsided response is
+what moves the average, the rule's error and its check, many modes in one set —
+is [`vibrational-averaging.md`](?doc=science/vibrational-averaging.md).*
+
 The frames along a mode belong where they answer § 4c.4's question. For a
 Gaussian distribution the `n`-point **Gauss–Hermite** rule places the frames at
 `Q_j = √2 σ x_j`, with weights `w_j`, and averages exactly any `T(Q)` that is a

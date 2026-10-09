@@ -401,7 +401,10 @@ The security policy (owned by the server — see
   Documents tab (`documents/page.js`), both through `lib/markdown-render.js`'s
   DOMPurify; mermaid's SVG (`lib/markdown-render.js`); and the server's
   `/partials/*` inspectors (`lib/inspectors/_partial_inspector_factory.js`). A
-  fifth is a design decision, not a line in that table. The CSP stops an
+  fifth is a design decision, not a line in that table. A formula is none of
+  them: `renderMathIn` hands KaTeX the TeX a document holds in its
+  placeholder's attribute, and KaTeX builds the elements itself, `trust: false`
+  so no command reaches a URL or raw HTML. The CSP stops an
   injected script from running; this rule stops the injection — three sites
   broke it until 2026-09-25, each passing a runtime message into `innerHTML`.
 
