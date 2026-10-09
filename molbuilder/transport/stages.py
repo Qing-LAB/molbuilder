@@ -260,8 +260,12 @@ RUNG_NOTES = {
                "leads, at the bias.  It writes the converged Hamiltonian "
                "the transmission reads -- one per bias point."),
     "transmission": ("T(E) over the energy window, from that Hamiltonian.  "
-                     "Nothing consumes its output, so tuning the window "
-                     "re-runs seconds, never an NEGF cycle."),
+                     "tbtrans runs no SCF, so this tab has no SCF settings: "
+                     "the ones behind this T(E) are the device's and the "
+                     "two leads', on their tabs, and T(E) is only as "
+                     "converged as those runs.  Nothing consumes its "
+                     "output, so tuning the window re-runs seconds, never "
+                     "an NEGF cycle."),
 }
 
 
