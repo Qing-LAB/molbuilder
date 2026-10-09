@@ -79,15 +79,15 @@ re-ordered without saying who ruled it.
 | **Q2f** | **Absolute imports, package-wide** *(user, 2026-10-03: "i agree with a, but like a focused session for that with agents and reviews. let's finish this main goal of transport and framework related tasks")* — every `from ..x import y` inside `molbuilder/` becomes `from molbuilder.x import y`, and the rule is written into the conventions: a relative import changes meaning when its module moves, and one inside a function fails only when called (W55 9a: 290 test failures from one moved module). Until then a NEW module is written absolute; an edited one keeps its file's style | the user's word — its own session; **and the shipped files' imports in the same session** *(ruled 2026-10-06, W57 decision 1: "B, with Q2f as one session")*: a file that runs beside a job imports ONE way -- each zip (`mb_monitor.pyz`, `mb_vibration.pyz`, `mb_pyscf.pyz`) keeps molbuilder's own folder layout (`molbuilder/identity.py`, `molbuilder/spectra/...`, an empty package marker), so the package's ABSOLUTE import -- Q2f's form, `from molbuilder.identity import launch_as_typed` (user, 2026-10-06: "for the first form of import why can't we use absolute path?") -- resolves inside the zip as in the package; the try/except ImportError pairs leave the 22 shipped files; the three builders, their start lines and the PySCF scripts' import lines follow | **after the transport and framework goal** (Q2d's units 9b–12, then Q4–Q7) — a script with an agent review, then the full batch |
 | **Q2g** | **The file manifest** *(user, 2026-10-04: "make a manifest of all the output file and files your code generates in the hierarchical and flat directory ... integrated in a clear section in contract so that you ... stop keep re-inventing new ways to ... interpret the ... data"; "use another agent after this report is genrated, to review and validate, and also check overlap/redundancy/duplicated components")* | **the manifest written 2026-10-04** -- `project-layout.md` § 5: every file of both shapes with its writer and its one door, built by three agents from the code and two real H₂ calculations, checked by a fourth, every finding re-read in the code; the documents' other file lists point to it (D29). Found: D20–D29, B11–B14, Q6 (§ 0c); D19 rides with B12 | **ruled 2026-10-04** -- B11–B14 approved, Q6 (a), D19 with B12; **W56 units 1, 2, 3a, 3b and 4 done 2026-10-04/05** (§ 0c), D30 the same day. **Open**: D29's document list (§ 0c's row); Q6's open half (§ 5x C1) |
 | **Q4** | **TD9 — M5 step 5 against M2** | **decided 2026-10-02** *(user: "#9 ok")*: M2f, M2g, M2i, M2k, then step 5 — **done**: M2f → 9b (parts 2a–2d), M2g → 9b part 3, M2i → 9b part 1 + 12b-1, M2k → 11a (its claim / match half: M2k's row), step 5 → built `0e11a018` | — |
-| **Q5** | **M5 steps 6, 7 and 10, and K21** — the transport work that does not wait on TD9 | **steps 5 and 6 built** (5: `0e11a018`; 6: Q14 B1 `7351a3ff`); **the sweep as one run built `ddf12a43`** (Q14 B2–B4) with `launch --cold` (`_cli.py:1708`); `--skip` / `--unskip` not built (0 hits in the code); **open: steps 7 and 10, K21** | steps 7 and 10 — § 5u.1; K21 — § 5w; the sweep's rest — § 5x B5–B9 |
-| **Q6** | **M5 step 8** (one panel per engine, after step 3), **step 9** (after M2j and M2l), **step 11** (after steps 4 and 5) | **step 9 building** (`results.md` § 2.5 ① ② built, ③ waits on step 11; the rest § 5x B6); **steps 8 and 11 open** | § 5u.1 |
+| **Q5** | **M5 steps 6, 7 and 10, and K21** — the transport work that does not wait on TD9 | **steps 5 and 6 built** (5: `0e11a018`; 6: Q14 B1 `7351a3ff`); **the sweep as one run built `ddf12a43`** (Q14 B2–B4) with `launch --cold` (`_cli.py:1708`); `--skip` / `--unskip` not built (0 hits in the code); **open: steps 7 and 10**; K21 built in § 5x B6 (the record reads both channels, G = (e²/h)(T↑ + T↓)), its road test waits on the stand-in (S-T2) | steps 7 and 10 — § 5u.1 |
+| **Q6** | **M5 step 8** (one panel per engine, after step 3), **step 9** (after M2j and M2l), **step 11** (after steps 4 and 5) | **step 9 done** (§ 5x B6; ③ waits on step 11); **steps 8 and 11 open** | § 5u.1 |
 | **Q7** | **M4 — the engine offset finished; the fake-junction ladder resumes at rung 4** | after Q5 | § 5q.6 |
 | **Q8** | **Ruled 2026-10-02, not built**: one `proxy.trust` setting replacing `auth.trust_proxy` and `rate_limit.trust_proxy` (`configuration.md` § 8); a benchmark's grid stated by the description, refused when it is not — no grid the machine proposes | ruled | after Q2's fixes, as one config milestone |
 | **Q9** | **M11's remainder** — K13–K16, K18, K17, K22, K9, then W50 step 3 | open | § 5w.4 |
 | **Q10** | **W52's open**: (11) prep's transactional produce; (8) the conductor imported below the surfaces | **done** — (8) unit 9a (`jobset/__init__.py` re-exports nothing); (11) unit 10b (`planned.py:102`, `Plan`) | — |
 | **Q11** | **W53's parked**: the next-step lines offering `--mode submit` for a target with no queue; the named-queue check in two doors (`launch_refusal`, `place`); `gpu_partition` and `~/.config/molbuilder.backup/` decided 2026-10-02 (§ 0b, item 10) | the `--mode submit` lines fixed with unit 11b (`commands.takes_a_queue`); `gpu_partition` and the backup done (`31ca9957`, § 0b item 10); **open**: the named-queue check in two doors (`placement.py:28` `launch_refusal`, `scheduler/place.py`) | W53's row |
 | **Q13** | **THE TASK — `prep task` / `launch task`, one protocol** *(user, 2026-10-07/08: "prep the whole task and ask the user which stage it intend to do"; "one unified framework and protocol and verb design and api ... systematic and holistic"; D1–D5 agreed 2026-10-08)* | **built 2026-10-08** — T1–T8 committed and two review rounds (code and docs, fresh agents) fixed (`214cc19d`, `91629b67`). **Left**: Task setup's Prep card seen in a real browser (the extension was down); `tests/test_task_setup_prep_e2e.py` drives the per-tab Prep buttons that are gone (e2e on the user's word); a group's header under a real scheduler (Sol); `prep_group` re-plans each member after the save (no refusal found reachable on the road). Contract written 2026-10-08 (`job-system.md` *The task*, § 5.0, § 5.3; `project-layout.md` § 1.6.6; `architecture.md` § 3.2); the review (three agents on conflicts, two on the doc sweep and the code inventory) found ~335 doc passages and ~30 code sites; its open points settled by the agreed rules: a kind with stage roles pre-selects its ready stages that build on nothing (transport's seed and leads); stages named together at prep OR launch go as one job when they pass the group checks (none builds on another, one allocation) -- no "never alone"; a stage not prepared reads `ready` / `waiting`; the ledger line `prepared`; `summarize task` takes no stage. **Milestones, each checked on the road:** T1 the low-bias gather fix and step 6's core (the treatment in `task.json`, the device without an axis); T2 the vocabulary -- kind `task`, `--stage`, `summarize task`, the `prepared` door, every printed command, the road and its rows; T3 the `ready` door (`ready.readiness` (`ready.py:60`), the gather as an answer or a refusal, D5 newest-only); T4 the `prep task` entry -- the ladder offer, `ask.choose`, the no-terminal refusal, groups by pick, `prep_group` held to rule 3; T5 `launch task` -- the waiting units, the question, relaunch by name, the group checks at launch; T6 status -- ready / waiting rows, next lines, the wire form, the chips; T7 the web -- Task setup's one Prep with the ready stages, routes, handover text; T8 the doc sweep (~335 passages, the review's list); then the two review rounds |
-| **Q14** | **Transport, made whole** — the sweep as one run, the low-bias switch, composition, the record, then the milestone review of backend, CLI, UI, checkpoint, stage/run configs and CSS (§ 5x) *(user, 2026-10-08: "You need a clear picture, a contract, how transport is done ... see where it's missing and what is wrong"; "stop fucking hand bake these fucking things")* | **B0–B4 committed** `d398ae86` / `7351a3ff` / `ddf12a43`; **B5–B9 open**; the road walk done 2026-10-08 (§ 5x.7); the review (B8) waits for B5–B7 | § 5x |
+| **Q14** | **Transport, made whole** — the sweep as one run, the low-bias switch, composition, the record, then the milestone review of backend, CLI, UI, checkpoint, stage/run configs and CSS (§ 5x) *(user, 2026-10-08: "You need a clear picture, a contract, how transport is done ... see where it's missing and what is wrong"; "stop fucking hand bake these fucking things")* | **done 2026-10-08** — B0–B9 (§ 5x.4's commits); the review's two rounds clean after one revision each; the three cases on the road junction; what it left open is in § 2 | § 5x |
 | **Q12** | **the rest of the work order below**: M2j, M2k, M2m, M2n, M3, M6 P5, M8, M10 | open | the table below — M2j with unit 12 (12c, 12d); M2k's claim / match half; M2m, M2n, M3, M6 P5, M8, M10 after |
 
 Done rows, archived (`archive/2026-10-08-plan-consolidation.md`):
@@ -135,7 +135,7 @@ each programme after it, with nothing changing under it.
 | **M2n** | the text, then the batch | W36 ⑪ and the document sweeps left (§ 5v is their input) | the full batch green; then the Sol memory measurement and the sweep for tests that read text | | open |
 | **M3** | the run record, the rest | W35: P2's remainder, P3–P6 | W35's own done-conditions | | open |
 | **M4** | the engine offset, finished | W33 P4, P5 | § 5q.6; the fake-junction ladder resumes at rung 4 | | open |
-| **M5** | transport | **W43 — § 5u, the one list** *(consolidated 2026-09-29: W27 floor 3 · W30 · W25 · W24 · W10 · W32 ②–⑤ · § 5c.3 · § 5o · § 5p)* | § 5u.1's eleven steps, each closed as a milestone |  | **see § 5u.1** — each step's state is there (2026-10-08: steps 1–4 done, 5 and 9 partly, 6 → § 5x B1, 7, 8, 10 and 11 open); the sweep and the rest of the transport work are Q14's (§ 5x) |
+| **M5** | transport | **W43 — § 5u, the one list** *(consolidated 2026-09-29: W27 floor 3 · W30 · W25 · W24 · W10 · W32 ②–⑤ · § 5c.3 · § 5o · § 5p)* | § 5u.1's eleven steps, each closed as a milestone |  | **see § 5u.1** — 2026-10-08: steps 1–6 and 9 done (§ 5x B0–B9), step 5's frame walk waits on 11; 7, 8, 10 and 11 open |
 | **M6** | charge and spin | W34, P1 on, as amended on 2026-09-28 (§ 5s.2, decisions 8–9) | § 5s | | **P1–P4 built 2026-09-28/29, then reviewed by four agents (backend, browser, tests, documents) and every verified finding fixed or named in § 5s.4 (c71ba618); P5 (the read-back) open** — taken ahead of M2's remainder at the user's word (*"go ahead with the contract, add free, make sure api and users are unified"*) |
 | **M8** | MolView sealing, the CSS | W15; W1–W6, W13 | each row's own | | open |
 | **M10** | from a mode to the current | W42 (it folds V1.24–V1.27 in, M9's two among them) | V1.26's decision; then W42's order P1–P6 | | **decided 2026-09-28** (W42: D1–D5, D7, D8; D6 as recommended) — V1.26's decision still owed; after the current work order |
@@ -339,7 +339,7 @@ run in M2's full batch (M2n), and nothing else runs them first.
 | **E10** | engine / science | **obsolete 2026-10-08, archived** — `scan_ending` is gone; `parse/engines/_run_ending.py` dispatches by role and `monitor.py:170-211` reports converged per phase (W35 decision 10) | roadmap § 4 | archived |
 | **T1** | engine / science | **A LIVE POLL THAT MUST REBUILD DOES NOT UPDATE THE MOVIE — found 2026-09-07.** The append path is fine; the full-rebuild path is not. Reproduced: move the frame at `oldLen - 1` (the one `_frameEqualAt` reads) and grow the feed 4 → 6, so `canAppend` (`trajectory/core.js:2159`) refuses and `applyNewData` (`trajectory/core.js:2136`) takes the `else` branch. The status line then says *"Loaded 6 … frames"* and the frame bar still holds **4** — the feed's count and the movie's disagreeing, which `core.js` itself names as bug **#35**. The trigger is ordinary: a frame that was still being written when the last poll caught it, and has since settled. It blocks the last three source pins in `test_structure_info_bridge.py`, which is how it surfaced | found 2026-09-07 | open *(citations refreshed 2026-10-08)* |
 | **E13** | engine / science | **The first real junction walk — BDT–Au on Sol. DROPPED BY THE CONSOLIDATION.** Named in the roadmap and again in `transport-design` § 7's *"order of proof"* as the run that follows P6. plan.md has the machine-blocked infrastructure (E5 — archived 2026-09-10 — and E7) and the browser and deck walks (W12 — archived 2026-09-10 — and E11) but no row for the transport composite's first real science run | roadmap · `transport-design` § 7 | **the Sol half only** — after § 5u step 4; the workstation half ran 2026-09-29 (the Au–BDT–Au ladder to T(E) on `claude-au-bdt-au`, TD8's acceptance ladder) and is archived *(2026-10-08)* |
-| **E14** | engine / science | **Two bibliography keys — Reed 2006 and Stokbro 2003 — are cited nowhere in `docs/science/references.bib`.** Verified absent 2026-09-07. Mechanical, small, and dropped by the consolidation | roadmap § 4 | → **§ 5u's document sweep** *(2026-09-29)* |
+| **E14** | engine / science | **obsolete 2026-10-08, archived** — no live document cites Reed 2006 or Stokbro 2003 (`grep` over `docs/science`, 2026-10-08); an entry is added when a passage cites it | roadmap § 4 | archived |
 | **V1** | engine / science / web | **The vibration calculation — one path on two engines.** The contract is [`engines/vibration.md`](?doc=engines/vibration.md) (§ 10 says what stands); the science is [`science/normal-modes.md`](?doc=science/normal-modes.md); the design and the first audit are archived (`archive/2026-09-24-*`). Built 2026-09-21 → 24: one harmonic path with the rank rule and its gate against PySCF, one mass convention, stationarity on the free atoms, the runs write the pair, the Hessian over the free atoms with the two measured corrections, the SIESTA arm (deck on a sorted copy, `atom-permutation.json` with its key, the `.FC` reader, `summarize run`, the warm-file section, the kind's start state), the equilibrium block optional, the wrapper's banner. **Open, the sub-rows:** | `engines/vibration.md` § 10 | open |
 | ↳ | **V1.9** | **The structure identity rule** (settled in discussion 2026-09-22, written into no contract yet — this row is its full statement until it has one): **two hashes, one home** — a *geometry hash* over the atom lines as **verbatim text** (the numbers are already text, so there is no float question) plus the lattice and the per-axis periodicity from the sidecar, with `none` as a real hashed value when there is no lattice; and a *broad hash* over labels, regions and identity columns, for provenance. **Never the comment line** (a human title from one writer and a derived `Lattice=` from another; adopting it would promote a derived value into a stored one). **Out:** the cell origin (a gauge choice — shifting it moves no periodic image), labels, timestamps, the job name. **Joins check the geometry hash only**; a broad-hash difference is reported, never blocking. **Minted at three gates** — Modify → Save to project, Results → export, the CLI on request — then **carried and never recomputed**; **checked at three points** — prep, results load, joining two runs. **Derived structures** (a reordered copy) mint their own identity and record the parent's plus the permutation. **A run's output is a record, not a gate** — it becomes an input only by passing through one (ruled 2026-09-22). Today: `spectra.json`'s `structure_hash` has the job name as line 2 (the atom count is line 1) and never matches the codec's pair hash, which is over the document's bytes — a different scheme; and `workingcopy_structure.py:278`'s `keep_sidecar = (not _metadata_is_default(meta))` writes no companion for all-default metadata, so *Save to project* can still emit a bare `.xyz` at the very gate meant to guarantee the pair (both measured saves got one only because they carried labels) | `vibration.md` § 4.3 | open |
 | ↳ | **V1.10** | **The pair writer renders both halves** (ruled 2026-09-23, the unification audit § 1.1a): `pair()` returns text, so a sidecar that cannot be written (a NaN in `info`) stops the write before the `.xyz` is on disk. **The deck's half is done (2026-10-05):** the PySCF deck writes its pairs with the codec itself, imported from `mb_pyscf.pyz`, and its own serialiser — the third — is deleted | unification audit § 1.1a | open (the codec's half) |
@@ -437,6 +437,15 @@ run in M2's full batch (M2n), and nothing else runs them first.
 | **TR7–TR8** | front end / transport | **The tab reads the catalogue, and an override reaches the rung that owns it.** T7: the bespoke dataclass form is deleted for the kind-aware catalogue route plus the existing **stage table** — rows are stages, columns are `varies`, an empty cell inherits the template. T8 fixes the **live defect**: every override currently lands on the `device` bag, so a parameter the transmission owns never reaches the transmission deck. **T8 needs the `stages = [...]` declaration** (§ 5p.3), not yet approved | § 5p · § 2a.7 | **TR8 done 2026-09-16** (§ 5p.3k) — the live defect is closed. **TR7 half done** (§ 5p.3l): the seal's reason is corrected and the form-B hole closed; the interface half — § 2a.6's Panel 0 — awaits a ruling on where Class A is edited |
 | **TR9–TR10** | execution / front end | **Grouping and the deliverable.** T9: the preparatory block (seed + both leads) as one submission — ⚠️ **must first reconcile with `task-setup.md` § 1's "no run-all-stages button"**; § 5p.5 has the argument, and if it does not hold T9 is withdrawn rather than the rule bent. T10: Results reads the transmission with its **treatment label** and provenance chain, so a linear-response I–V is never mistaken for a finite-bias one | § 5p · § 2a.12 | **TR9 done 2026-10-07** (§ 5u step 5, `group.py` — the grouped launch); **TR10 → § 5x B6** *(state refreshed 2026-10-08)* |
 
+| **F9** | execution | **A group prep prints its pseudopotential copy lines and the `geometry.h_ratio` warning once per rung** (three times each) — found on the road walk 2026-10-08, not reached by B8 | § 5x.7 F9 | open |
+| **F11** | execution | **The wrapper's kill line is unseen on a killed point**, and two more mechanisms have not been seen on the road: a **cold sweep** (`launch task --stage device --cold` on a finished sweep) and the **take-over hop** (a point taken over from a run that took it over). One walk closes all three — ~45 minutes of this machine (a device point ≈ 15 min), launched through Task setup and left to run; **waits for the user's go** | § 5x.7 | open — the user's |
+| **F14** | parse | **The unconstrained max force and a periodic slab's pressure are never shown** (the monitor and wrapper print the constrained max); TranSIESTA's *FORCES WRONG* is not captured | § 5x.7 F14 | open |
+| **F19b** | execution | **A retry's `exec` inherits the first try's tee**, so run0's session log holds run1's session too; the tbtrans wrapper says *Retry policy: up to 1 retry on non-convergence* for a program that converges nothing | § 5x.7 F19 | open |
+| **R2-15** | results | **After a run is picked off the ladder the file card's announcement names two folders** (`dir: rootDir` beside the run folder's `files`), so a sidebar click inside the run's folder is ignored and a click in the root is looked up among the run's files — until the next announcement | B8 round 2 | open |
+| **S-T2** | tests | **The transport road is unreachable on the suite's stand-in engine**: `support.road` always passes `--structure`/`--psml-lib`, a device prep gathers products the stand-in never writes, and `tests/data/*.toml` holds no transport row. **Proposal (the suite reviewer's, 2026-10-08):** the stand-in leaves EMPTY the rung products a row names (`stand_in.leaves = [".DM"]` / `[".TSHS"]` / `[".TS.HSX", ".TSDE", …]` / `[".TBT.nc"]`, by the licence `testing.md` § 6 gives the `.XV` — every door on this road copies or existence-checks them), plus a per-point exit code and a road arm that relaxes the labelled junction then `jobset init --calculation transport`; rule 3 at the point then becomes a case table. **One sentence in `testing.md` § 6 is the rule change; the user's word first** | B8 round 2 (S T2) | proposed |
+| **TD10 text** | engines / docs | **The frame axis's contract text is owed** (ruled 2026-09-29): `engines/transport.md` § 2a.9 — the frame sub-level's folder name, the take-over rule written for frames (today inferred from the bias rule), and `customized` as where a frame's displacement lives; `model/structure-molstruct.md` § 6.1, `engines/vibration.md` § 5.6 / § 5.10 ③, `science/normal-modes.md` § 4b.6 G. **Written before any frame is built** (W32, step 11) | § 5u.1, TD10 | open |
+| **L1** | code hygiene | **Three names pyflakes calls undefined**: `template.py:1005` `Sequence`, `scheduler/probe.py:338` `Domain`, `jobset/group.py:67` `Resources` (annotations under `from __future__ import annotations`?) — read each; import or drop | B8 round 2, pyflakes over the package | open |
+| **L2** | tests | **`tests/field/test_ask_the_target.py` fails instead of skipping when invoked outside its batch** (`. does not read as a machine record`: the record path is unset) — a field test gates itself on its backend (`testing.md` § 3) | B8 round 2 | open |
 ---
 
 ### 2a. From the env-config hand-over — archived 2026-10-08
@@ -1100,27 +1109,9 @@ done and archived (`4c612262`, `b63f219d`, `325cb1d4`; step 4's ladder
 acceptance now); step 6 is superseded by § 5x B1. The rows this section
 absorbed point here (§ 5u.5).
 
-### 5u.0 What is true today — measured
+### 5u.0 What is true today — ARCHIVED 2026-10-08
 
-* **The road is the ordinary one.** Five rungs (seed, electrode_L, electrode_R,
-  device, transmission), each prepped by `molbuilder jobset prep task --stage
-  <stage>` (or the Task setup tab — one entry, `prep_stage`) and launched by
-  `molbuilder jobset launch task --stage <stage>` (`_KINDS = ("task", "bench")`,
-  `jobset/_cli.py:768`); every rung renders through `spec_for` → `prepare_deck`
-  with its `.validation.txt`; `summarize task` writes `<label>.transport.json`.
-  A swept rung is one run holding its points (§ 5x.1, § 5x.3).
-* *No ladder on this machine has concluded a device rung* — **superseded
-  2026-10-08**: the road junction `claude-transport-walk/transport/au-dta-t`
-  ran every rung to its record, the device as a three-point sweep (§ 5x.7).
-* *The Results surface … not drawn: an I–V curve, DOS, eigenchannels, the chain*
-  — **superseded**: `web/results.md` § 2.5 (:440-463) built 2026-10-07 (step 9
-  ①②); what is left to draw is § 5x B6.
-* **What each program reads is settled in the engine's source** (SIESTA 5.4.2
-  and its `libfdf`): `siesta` reads no `TBT.*`; `tbtrans` reads the `TS.*`
-  junction description and takes several `TS.*` values as its defaults; a
-  `TBT.k` line is read only as a bracketed list or a block — the deck's bare
-  triple is skipped (`engines/transport.md` § 6.1b, :3383-3390). Step 7 is
-  checked against this source the same way.
+*Superseded by § 5x: the road is the ordinary one and the three cases ran on the road junction (§ 5x.7's record, archived).*
 
 ### 5u.1 The order — each step closes as a milestone does (§ 0a)
 
@@ -1133,7 +1124,7 @@ absorbed point here (§ 5u.5).
 | **10** | **Every value says where it came from** — TD5's ruling, framework-wide. **Open 2026-10-08**: `transport.md:2685-2686` — the read-only echo with its source, the unchosen value marked — both ❌ | W30 ③'s remainder; `engines/template.md` § 6.6 obligations 2–4; the read-only echo of shared values | a template item carries `source` (`cited` · `record` · `person` · `default`), written at `init` and by the describe door, read by every surface; each deck's provenance block carries the per-parameter table; an `optional` item left unset writes a line naming the engine default that applies |
 | **11** | **The frame axis** — on step 5's group (its *Left*). **Open 2026-10-08**: a calculation has one frame (`lib/inspectors/transport.js:12-13`) | W32 ②, ③, ⑤ (④ left transport by TD10's ruling: transport is handed a multi-frame structure and reads each frame's details from its `customized` section; the generator is V1.25's own procedure) | as W32 states them, the frame walk on step 5's groups; step 9 ③ with it |
 
-**Owed by TD12's ruling** *(2026-09-29; open 2026-10-08)*: `engines/transport.md` § 6.1b's *"none is removed until that audit says it may be"* becomes *nothing is removed; the header says who reads what and `tbtrans`'s fdf log is the record*, and `transport/deck.py`'s transmission header (:255-270) says it — both being read by the M11 review, so written after it. Step 7's header item is this.
+**Owed by TD12's ruling** — **done 2026-10-08** (B8 U1 / R2-3): `engines/transport.md` § 6.1b states what tbtrans reads, the deck's header says so, and nothing it does not read is written.
 
 **Owed by TD10's ruling** *(2026-09-29; open 2026-10-08 — `transport.md` names no `customized`)*: the contract text — `engines/transport.md` § 2a.9 (the frame axis: handed a multi-frame structure, each frame's details in `customized`), `model/structure-molstruct.md` § 6.1, `engines/vibration.md` § 5.6 and § 5.10 ③, `science/normal-modes.md` § 4b.6 G (the generator a separate procedure; its record in `customized`, not `info`) — written once the M11 reviews, which are reading those documents, report.
 
@@ -1161,60 +1152,9 @@ questions as put, and the user's words, are in the archive.)*
 * **TD13** — correcting a junction's transverse kinds without a new relaxation *(user: "TD13 a")*: **a transport-side declaration of the transverse kinds**, one shared item defaulting to what the relaxation's deck recorded — the person's word stated where the calculation is described, the record staying what the relaxation ran. Step 7.
 * **TD14** — whether the transverse check should also catch a cell that does not tile *(user: "TD14 a")*: **the transverse check measures within each atomic layer of the lead** — does each layer tile, not does the stack bond — so a cell one column too long is caught on a thick lead too. Step 7.
 
-### 5u.3 What the documents say that the code contradicts — the residue, § 5x B9's input
+### 5u.3 / 5u.4 / 5u.5 — ARCHIVED 2026-10-08 (B9 done)
 
-Re-read 2026-10-08. `engines/transport.md`: § 8 :3898 (*"one panel per
-ENGINE since 2026-09-15"* — not built; step 8) and :3901 (*"the tab's live
-routes are four"* — six: `web/blueprints/transport.py:92,284,329,365,413,616`);
-§ 6 :3043 (`parse_fdf_params` in `transport/preflight.py` — the module is gone;
-the reader is `parse/fdf.py:196`); § 2a.13 :1635 and `science/overview.md:212`
-(the kind gate refuses a net charge — the family is `check_electronic_state`,
-`validation/chemistry.py:234`); § 0.5 (the user's `AuBDTAu-CT` holds a deck
-each and its `.validation.txt` — it holds no template; on disk the folders are
-`AuBDTAu` and `Au-BDT-Au.old`, not re-read). Routed elsewhere, not B9's:
-§ 2a.12's report *"composed on read"* from `.gathered-from` → § 5x B6 (R7);
-§ 2a.13's stated equilibrium contour and its gate → § 5x's parked P3 (M3 P4).
-
-### 5u.4 The stale citations — § 5x B9's input
-
-**~22 citations of `transport-design.md` remain in live files** (2026-10-08;
-54 on 2026-09-29) — a document that exists only as
-`archive/2026-09-01-transport-design.md`: `task.py` ×6, `transport/compose.py`
-×3, `transport/sort.py` ×2, `transport/wizard.py:72`,
-`siesta/warm-files.toml:139`, `lib/transport/core.js` ×2,
-`lib/task-handover.js` ×3, `execution/job-contracts.md:2132,2135,2322`,
-`execution/architecture.md:105`, `web/tabs.md:223` — and the citation dialog's
-refusal shows one on the page (§ 5x.7 F4, *`transport-design.md 4.1b`*). Where
-each cited section lives now: § 4.1 → `engines/transport.md` §§ 1, 3, 3.1;
-§ 4.3 → § 2a.10, § 2a.11; § 4.1b → § 3.1; § 4.1a → § 4 and `model/overview.md`
-§ 2.2; § 4.2 → §§ 1, 6.1, 2a.11, 2a.15; § 3 → § 5 (I10, I11), § 7.1; § 7 → § 8,
-§ 2a.12. Also stale: `transport.md` section numbers written into decks
-(*"4.2"*, *"3.3"* as the parameter inventory); the missing walkthrough
-`execution/walkthrough-2026-09-15-junction.md`, cited at `transport.md:2808`
-and by `junction-cell.md`; the five other missing documents named 2026-09-29
-(`structure-info-plan.md`, `protocols/runtime-registry.md`,
-`spectra-migration-plan.md`, `cell-plan.md`, and the bare
-`staged-runs-implementation-plan.md` in `generator.md`, linked to the archive
-2026-09-29) — not re-checked 2026-10-08.
-
-### 5u.5 What this absorbs — read here, not acted on separately
-
-W30 → ③'s remainder is step 10, ④ is step 9 (§ 5x B6), ⑤ is step 8 (①, ②
-built) · W25 → step 7 (its headline, the four dead scalars, done 2026-09-15) ·
-W24 → step 8 · W10 → step 9 (§ 5x B6) · W32 → step 11 · § 5c.3 → (b)–(d)
-built, (e)(f) step 9 (§ 5x B6), (a) superseded by `runs.folder_answer`'s
-`place` · § 5o.6 → step 7 · § 5p.4 → TR9 step 5 (built 2026-10-07; its *Left*),
-TR10 step 9 (§ 5x B6) · § 5p.3p → its step 10a stays with the route-catalogue
-sweep (§ 0a's *Unscheduled*) · X4 ⑤ (`structure_hash`) → with V1.9 before
-M2m · § 5q.3's transport citation viewer → § 5q.6 P4 · X4 ② (whether a lead
-keeps `info`, annotations and identity) — the user's, not yet asked · X4 ④
-(every transport deck told its labels are *not consumed*) → step 7 · § 5o.6's
-open rows → step 7 · A1.12 → step 7 · § 5s.4's unpersisted shared panel → step
-8 · N10's two predicates for a calculation root → M3 P2 (§ 5t.5 ②) · E13 → the
-workstation half was step 4 (done); the Sol half after it · S13 (the
-convergence sweep) → after step 4, unscheduled · X3 (the Cell page's seam
-verdict) → unscheduled · E14 (two uncited references) → the document sweep
-(§ 5x B9). *(The pointers to steps 1–4 and 6 are in the archive.)*
+*The residue list, the stale citations and the absorption map are in the archive; B9 swept them (the commit after `93977f5d`). What B9 did not reach is a § 2 row.*
 
 ---
 
@@ -1227,19 +1167,7 @@ verdict) → unscheduled · E14 (two uncited references) → the document sweep
 > layer"* · *"stop fucking hand bake these fucking things ... you build this
 > system and you hack it by yourself?"* (user, 2026-10-08)
 
-**State at a glance (2026-10-08).** B0 and B1 are committed. B2–B4 are
-**committed** (`ddf12a43`) and verified on the road junction (§ 5x.7); B5
-(`50631c8a`), B6's record half (`cf26ac24`) and B6's Results half
-(`6d4ea7c4`) are committed. **The road junction was rebuilt with its cell
-closed** (`au-dta-junction`, c = 32.249 Å) and walked to its record and its
-Results tab — all three cases (§ 5x.7, *The closed-cell walk*, *The low-bias
-case*, *The single-bias case*); **B6 is complete** (`ac2d5741`,
-`fc413816`); **B7 is complete** (`16409a44` gates, `548b4c74` decks and the
-rename, `77c74450` decision 7, F15 the take-over). Open: B8 (its condition,
-B2–B7 complete, is now met), B9; the wrapper's kill line
-(F11) is written but not yet seen on a killed point. **The condition for the
-milestone review (B8) — the workflow, the backend and the CLI complete — is
-not met**: it is B2–B7.
+**State at a glance (2026-10-08, end of day).** **B0–B9 are done** (§ 5x.4) and the milestone review came back clean after one revision in each of its two rounds (B8). The three cases of § 5x.0 ran on the road junction to their records and their Results tab. **Open, each a § 2 row:** the mechanisms not yet seen on the road (a cold sweep, the kill line F11, the take-over hop), F9, F14, F19's second half, the file card after a picked run (R2-15), the stand-in engine's rung products (the transport road's testability, S-T2), and § 5u.1's steps 7, 8, 10, 11 with the two owed contract texts.
 
 ### 5x.0 The final goal
 
@@ -1302,34 +1230,9 @@ So **only the switch at `false` has a sweep**, and a sweep exists on exactly two
 rungs — the ones the bias item's catalogue row names (`stages`). Everything
 else is a single run — the case the framework already does.
 
-### 5x.2 What was wrong on 2026-10-08, and why (validated; the evidence by id in § 5x.6, each closed by the step § 5x.6's map names)
+### 5x.2 What was wrong on 2026-10-08 — ARCHIVED 2026-10-08 (closed by B0–B9)
 
-1. **A sweep was built as five little stages** — each point its own folder of
-   attempts, its own launch record, its own state. From that one wrong shape:
-   points read `queued` forever; launching again re-ran done points and
-   emptied the I–V meanwhile; the walk's hand-over was recorded nowhere, so the
-   provenance was false; no clean seed density survived a first launch; the
-   scan's stage folder held a deck nothing ran; the relaunch rule existed
-   twice; `--cold` on an unlaunched scan was dropped.
-2. **`low-bias` computed something else than it said**: TBtrans per voltage on
-   the 0 V Hamiltonian with the leads shifted ±V/2 (`m_ts_electrode.F90:1461`)
-   — neither linear response nor self-consistent, labelled "linear response".
-3. **The record reads TBtrans files with a second reader** (its own glob, beside
-   `parse/engines/tbtrans.py`): a spin-polarised point reads "failed". *(still so)*
-4. **Three walk scripts** for one job: the benchmark's, the group's, the scan's.
-5. Smaller, each one place: the electrode swap writes the cited run's files
-   (§ 4 says the calculation's own copy); a lead's file name from two sources
-   (`cfg.system_label` vs `task.label`); a relaxation that ended with an error,
-   or a bare structure with no run, is citable — and a bare structure brings no
-   pseudopotentials, so the contract's own refusal ends in *"put the files in
-   `pseudos/` yourself"*, a hand step; the energy window is not checked against
-   the bias; the treatment label is not beside the I–V; the E_F reference is
-   asserted, not checked; the device facts shown can be from another run than
-   the one the transmission read; `status` never shows what a rung gathered.
-   *(all still so)*
-6. **The contract** defined "run" three ways and kept the unbuilt sweep design
-   beside the built rule, unmarked. *(§ 2a.10–2a.12 and rule 3 rewritten, B0;
-   the rest of the text is B9.)*
+*The six findings and their causes, each closed by the step § 5x.6's map named, are in [`archive/2026-10-08-plan-consolidation.md`](?doc=archive/2026-10-08-plan-consolidation.md).*
 
 ### 5x.3 The design — layers, data, one API each *(as built; the names are the code's)*
 
@@ -1413,31 +1316,9 @@ outputs its wrapper already writes; the run is the unit with a launch record
 and a state. A sweep is the only new shape: the existing `run-N/` with point
 folders inside, and "continues from its own latest run" read at the point.
 
-### 5x.4 The build — step by step, with its state
+### 5x.4 The build — DONE 2026-10-08
 
-Every step: its targeted tests **judged** (gate 5 — a test a change breaks is
-judged for retirement, never repaired to pass) before its commit; its "done
-when" seen on **the road junction**, through the page and the printed verbs.
-
-| step | what exactly | files | done when | state |
-|---|---|---|---|---|
-| **B0** | **the contract** — § 2a.10 (the switch, the treatment table, low-bias = record-computed linear response), § 2a.11 rewritten as this design, § 1.1, § 2a.12; "run" one meaning in `job-system.md` *Words* and rule 3 read at the point; `project-layout.md` § 1.5–1.6 | `transport.md`, `job-system.md`, `project-layout.md` | read, and yes | **done**, d398ae86 — *it did not do the text sweep it claimed* (the "scan" passages, `_plan_chain` in § 3.5's table, "attempt" as the folder word): that is B9. Four sentences fixed 2026-10-08 to what the build settled: warm-all-done refused; the newest device run whole or refused; the doors' real names; each point its own copies |
-| B1 | the switch `low_bias_approximation` in `task.json` (required for more than one voltage, refused for one, never inferred); `jobset init --low-bias-approximation / --no-…`; the describe route and the tab's yes/no; `jobset migrate` from the old `treatment` word; `sweep_points`; the record's three words | `task.py`, `_cli.py`, `migrate.py`, `stages.py`, `record.py`, the tab | `sweep_points` answers `()` / `()` / `(0, 0.2, 0.4)` for the three cases | **done**, 7351a3ff |
-| B2 | the layout: `point_folders`, `points_in`, `open_sweep_run` / `SweepRun`, `result_folders`; every reader moved, the old doors deleted; prep opens `run-0/vX/` with the run's clean inputs and each point's own copies; no deck at the stage level; Task setup's count reads `attempts_in` | `transport/stages.py`, `jobset/materialize.py`, `jobset/prep.py`, `transport/record.py`, `jobset/runstatus.py`, `web/blueprints/build.py` | `prep task --stage device` on the road junction: the tree as § 2a.11 draws it | **verified on the road junction 2026-10-08** (`au-dta-t`): `04_device/run-0/{v0,v0.2,v0.4}`, the run's clean `.DM` + two `.TSHS`, `.gathered-from` once |
-| B3 | the done-door `done` + `products_of`; the transmission's prep takes the newest device run whole or is refused | `jobset/continuation.py`, `jobset/prep.py` (`transport_inputs`) | the transmission prep refused while a device point is not done, then gathers each point's `.TS.HSX` from it | **verified on the road** — the transmission prep took `04_device/run-2` whole, each point's `.TS.HSX`; while run-0/run-1 had a point not done the transmission's row said so and why |
-| B4 | the one walker `_walk_script` for bench, group and sweep; `_plan_sweep` (one `run.json`, `.continued-from` at plan time, warm take-over, cold, warm-all-done refused); `_carry_sweep_gather`; the `along` row; `_plan_chain`, `_bench_walk`, `never_started`, `_a_scan`, the per-point launch records deleted | `jobset/submit.py`, `warmfiles.py`, `siesta/warm-files.toml` | (i) the device sweep walks 0 → 0.2 → 0.4, each from the previous point's `.TSDE`, said in the log and `status`; (ii) **the stop**: the device stopped at 0.2 V through the road — `max_scf_iterations` 1 on Task setup is a description change, so a new calculation — `status` says *1 of 3 points done; 0.2 V: …*, 0.4 V *not run*; launched again warm: takes 0 V over, runs 0.2 and 0.4; (iii) every point done + warm → refused with the `--cold` line; `--cold` → `run-1/`, all three | **(i), (ii), (iii)-refusal verified on the road 2026-10-08** (§ 5x.7): three launches — run-0 did 0 V, stopped at 0.2 V; run-1 took 0 V over, did 0.2 V, stopped at 0.4 V; run-2 took 0 V and 0.2 V over, did 0.4 V; every `.continued-from` right; `status` *1 of 3 points done; 0.2 V: stopped before its end* → *3 of 3 points done*; a fourth warm launch refused with the `--cold` line. **Not run: `--cold`** |
-| **B2–B4 gate** | the targeted tests judged: `test_transport_task.py`, `test_transport_record.py`, `test_launch_protocol.py`, `test_launch_door.py`, `test_launch_values.py`, `test_launch_ask_mode.py`, `test_prep_protocol.py`, `test_prep_bench_fold.py` (the walker), `test_status_lists_the_ladder.py`, plus every test naming a moved name (grep `tests/` recursively for `_bench_walk`, `rung_container`, `_plan_chain`, `scan_points`, `never_started`); then **one commit** naming S1–S10 and P4 | `tests/` | the tests judged; the server restarted; the commit | **done**: 206 tests passed, nothing to judge; commit `ddf12a43`; the record `NameError` the walk found fixed in `8dc08851` |
-| **the road junction** | built on the Molbuilder tab in Chrome, relaxed through `init`/`prep`/`launch`, cited on the Transport tab (§ 5x.0) — the subject of every "done when" from here | `projects/claude-transport-walk/…` (a new calculation) | the relaxation finished; the transport described from its citation | **done 2026-10-08** (§ 5x.7): `structure/au-dithioacetylene` built and labelled on the page; `optimization/au-dta-relax` relaxed (finished, geometry NO); cited; `transport/au-dta-t` run to its record |
-| B5 | `status <stage>`: the points (done / why / started from) and the gather shown on every rung (R5); the sweep row's converged column — `SCF yes` when every point is done, `SCF NO` when a point finished unconverged (today: empty unless all done) — settled at B5 | `jobset/runstatus.py`, `jobset/_cli.py` (status) | `jobset status` and `status device` on the road junction, after (i) and (ii) | **done 2026-10-08** (`status device`: the gather, *0 V, 0.2 V taken over from run-1; the rest walked*, each point's start; a transmission point's *took*; the ready line's gather once; `SCF NO` when a point finished unconverged) |
-| B6 | the record and the Results tab: `tbtrans.transmission_files` (the channels) replaces `record.py`'s own glob (R1); the low-bias I(V) from T(E,0) (P1's record half); device facts from the run the transmission gathered (R4); E_F of device vs leads **checked** (R3); the treatment label beside the I–V (R2); R6's facts (the seed's E_F, the contour and poles, the window, points, TBT k-grid); the report composed on read and every run listed at the root, as § 2a.12 and `results.md` § 2.4 already say (R7); **R9 — the 3D viewer draws nothing in a real browser: its cause read before anything else on this tab** | `transport/record.py`, `parse/engines/tbtrans.py`, `inspectors/transport.js`, `results/viewer.js` | `summarize task` and the Results tab on the road junction, the three cases | record half committed (`cf26ac24`); Results half committed (`6d4ea7c4`): R2, R3 (the E_F frames), R9 (side-on), P1's table; R7 (decision 8: the root opens its report through `task.json`; every run listed and picked in place, `ac2d5741`); the low-bias (`au-dta-lb`) and single-bias (`au-dta-sb`) cases walked on the road junction (§ 5x.7, `fc413816`) — **done** |
-| B7 | the small ones, each through the road: the swap applied to the calculation's copy (C1, § 4); the lead's file stem from `task.label` alone (C2); **the citation is a finished molbuilder relaxation run, nothing else** (C4; decision 7) — § 3.1's two saved-structure rows go, the Transport tab's picker offers runs, `compose` refuses the rest naming the relaxation to run first; C3 falls with form B; the window gate ± V/2 + 5 kT in the settings gate (P2) | `transport/compose.py`, `transiesta.py`, `web/blueprints/transport.py`, the tab, `validation/` | each refusal and each pass seen through the road | **done** (2026-10-08): F25 + P2 (`16409a44`), F16 + C2 + C1 (`548b4c74`), decision 7 (C4, C3, F4's rule; the citation's convergence carried, F14's B7 part) — the saved-structure forms, the recorded-contract lane and the cited-file rewriter are gone; compose tests cite a run made on the road (the stand-in leaves a `.XV` with the deck's geometry) |
-| **B8** | **the milestone review** *(user, 2026-10-08)* — two rounds, fresh agents, the full code TEXT, every finding verified, one revision each: **the backend** (`jobset/`: prep, launch, status, continuation, materialize, runstatus, ledger; `transport/`: stages, compose, record, deck); **the CLI** (`init` / `prep` / `launch` / `status` / `summarize` for transport, the printed lines); **the UI, fact-checked against the contracts** — the Transport tab (the citation, the bias list and its builder, the switch, the template: is every parameter in its logical place, named by the contract's word, with no second home), Task setup (the stages, `execution`, `allocation`, the Prep ladder), the Results tab (the ladder with its points, T(E) per channel, the I–V with its label, the viewer — R9); **the checkpoint** (`molbuilder checkpoint save / restore` against *How the checkpoint supports you* and rule 1: a state before every prep; rollback as the only redo); **the stage/run configs** (`task.json`'s stages and run cards — `restart`, `continue_retries`, threads, `time`; the catalogue's stage rows; what prep states or refuses); **the CSS** — tokens only, the shared components (`lib/state-chip`, `ts-planlist`, `tm-kinds`), `[hidden]` guards, no magic numbers, the global sheets' reach | all of the above | both rounds clean | **round 1 under way** (condition met 2026-10-08): five read-only agents reported (backend, CLI + checkpoint, the Transport tab, the Results tab, the suite), every finding verified at its lines; batch 1 `8fab088a` (the take-over's origin, the status row at the point, the record's provenance and contour, the picked run); batch 2 (2026-10-08): U1 the eight SCF items declare the SCF rungs (`stages`), the transmission deck writes `ElectronicTemperature` alone; U4 `describe_attempt` answers `findings` (info / warn / error) under a one-line summary, rendered by the one renderer; U5 a refusal lands beside its control — rung ids carry the rung (`t-<rung>-…`), `fieldIds` keyed by stage, the codec's bias refusals name `where` (`task.DescriptionError`), the rung's tab is selected and the fold opened; U7 Task setup echoes the junction, the bias list and the treatment (`Task.treatment`, the folder answer's word); U8 the Measure card carries `bench_refusal`; U9 `BENCH_START` gone; U15 one shape (`form` / `contract` keys dropped); U16 wording, `.disabled-tip`; R1-10 `is-pick`; batch 3 (2026-10-08, the CSS and the keyboard): U10 one `.choice-list` / `.choice-row` in form-components.css (This machine's kinds, the bias treatment); U11 form-schema.css scoped to `.schema-section`; U12 `--tr-*` tokens; U13 the shared sheets' spacing on the grid; R1-05 the Selection panel's height is its content's with the extent as its minimum, the fill region a zero-basis flex item with a floor (`--molviewer-size-fill-rows`), the dead 340px cap gone; R1-07 the Results sheet's fallbacks dropped, weights and sizes from tokens; R1-08 one type family in MolView; U14 / R1-12 ui-contract.md § 4.1 (named, reachable without a mouse): triple cells named, the picker's rows focusable treeitems with the arrows and Enter, Task setup's `×` buttons named, the report's tabs the ARIA pattern with arrow keys, the PDOS controls named, the I–V pick a button with `aria-pressed`, the ladder's open buttons named per rung with `aria-pressed`; batch 4 (2026-10-08): C2 a `checkpoint restore` appends its own ledger line after the rollback (checkpointing.md § 7); C3 a directory the restore emptied is removed; F27 the deck's unit word is the catalogue's `unit` (`siesta/layout.unit_word`, fdf's `Ang` for Å, the bias's `eV` the one exception; the window block reads it too); R1-02 / F23 a transmission run's result is the report at its point — `every_run` answers `opens: task.json` with the point, the row's *open* re-announces the root with that bias selected (`selectBias`), `opens` root-relative; R1-09 the chart's height is the sheet's (`--tr-plot-h`, `--tr-plot-half-h`; no `height` in a layout); T4 the three headers say what their files hold; T5 the hand-built record tests retired; T6 the G0·V test says why it is API-level; T9 one water (`tests/validation/conftest.py` gone); **round 1 complete** (`23721631`); **round 2 complete 2026-10-08** — five fresh read-only agents verified round 1's fixes and read the scopes again; their findings verified at the lines and revised in one commit: the restore's ledger line reverted (A5: the ledger is part of the state), the record's per-point provenance from the gathered run, the gather carried from the run its record names, one product list for `done`, the transmission deck without the MPI lines, the rename echoed on Task setup, the held citation kept on a non-citable pick, the bias list's client refusals beside it, tabs.md § 4 rewritten, the picker's rows as treeitems, `record` out of the source vocabulary, no re-mount on a ladder open at a point, the device row naming its point, one sizing rule for MolView's three pages and its contract corrected, the report's handle in every contract, five engine-less road tests renamed out of `_e2e`, the codec's refusals driven through `jobset init`, the source-text pins retired, A5's test seeing directories; **open from round 2** (not fixed, recorded for B9 / the next unit): R2-15 the file card after a picked run (two folders announced), the stand-in engine leaving empty rung products so the transport road becomes testable (S T2, a proposal to the user), the walk-script member word on the group and bench callers' log lines (done), `test_results_file_picker_js` hand-typed dir rows (judged: pure-function inputs, kept); then B9 |
-| B9 | the doc sweep: `transport.md`'s "scan" passages (the orientation at :40, § 2a.7's grouping row, § 2a.9's axis rule, § 2a.10's advice, § 3's example and table, § 5's bias rule, § 6a, § 8) → "sweep" and this design; § 2a.14's table, § 3.2, § 3.4, § 3.6a; "attempt" in `project-layout.md` § 1.5–1.6 — the folder's word is **run**, `attempt` stays the code's identifier, said once in *Words*; R8's two links; the 18 contradictions (T) re-read | `docs/` | a reader finds one rule per concept | not started |
-
-**Parked, named** (not Q14's): **P3** — the device's equilibrium contour is the
-interim 10 eV pole energy, not a stated `contour.eq` with the spectrum gate;
-§ 6.1c says so itself (*"The 10 eV is interim — M3 P4's stated contour"*). It
-is M3 P4's, independent of the sweep.
+B0 `d398ae86` (the contract) · B1 `7351a3ff` (the switch) · B2–B4 `ddf12a43` (the layout, the done-door, the one walker) · B5 `50631c8a` (`status` at the point) · B6 `cf26ac24`, `6d4ea7c4`, `ac2d5741`, `fc413816` (the record and the Results tab) · B7 `16409a44`, `548b4c74`, `77c74450`, `270e235e` (the gates, the decks, decision 7, the take-over) · B8 `8fab088a`, `61169260`, `093536b5`, `23721631` (round 1 in four batches), `93977f5d` (round 2's revision) · B9 (the document sweep, the commit after `93977f5d`). *The table with each step's files, done-whens and gate rows, and the parked P3 (M3 P4's contour), is in the archive; what the build left open is in § 2.*
 
 ### 5x.5 Decisions
 
@@ -1497,234 +1378,15 @@ calculation"):*
    picked in place with the ladder kept; *back to the calculation*
    re-announces the root (`results.md` § 2.4).
 
-### 5x.6 The sweep's evidence — every confirmed finding, by id, and what closes it
+### 5x.6 The sweep's evidence — ARCHIVED 2026-10-08
 
-| closes | ids |
-|---|---|
-| B1 | P1 (the switch half) |
-| B2 | S4, S6 |
-| B4 | S1, S2, S3, S5, S7, S8, S9, S10, P4 (each point's `.continued-from` says what it started from; the run's `.gathered-from` is the run's) |
-| B5 | R5 |
-| B6 | P1 (the record half), R1, R2, R3, R4, R6, R7, R9 (re-scoped 2026-10-08: the viewer draws, end-on down z — show the junction side-on) |
-| B7 | C1, C2, C3 (falls with form B), C4, P2 |
-| B9 | T, R8 |
-| parked | P3 (M3 P4) |
+*Every confirmed finding (S1–S10, P1–P4, C1–C4, R1–R9, T) with the step that closed it is in the archive; P3 is parked under M3 P4.*
 
-Each build step's commit names the ids it closes.
+### 5x.7 The road walk — ARCHIVED 2026-10-08
 
-**S — Structural: the bias sweep is not one run** (the root of most defects).
-The contract designs a swept rung as ONE run holding its points and one record
-(`transport.md` § 2a.11, *designed, not built*). The code instead makes every
-point a stage of its own — `04_device/v0.2/run-N/`, its own launch record, its
-own state, its own attempts. Confirmed consequences:
+*The three walks (the fused-cell sweep, the closed-cell sweep `au-dta-t2`, the low-bias `au-dta-lb` and single-bias `au-dta-sb` cases) and their findings F1–F28 are in the archive. Fixed by B6–B9: F1–F8, F10, F12, F13, F15–F18, F21, F23–F27; kept: F28. Still open, as § 2 rows: F9, F11 (the kill line, unseen), F14, F19's second half, and the mechanisms not yet seen on the road (a cold sweep, the take-over hop).*
 
-| id | what happens on a real run | evidence |
-|---|---|---|
-| S1 | a point the walk never reached, and every point of a job cancelled while pending, reads `queued as job N` forever — "queued" is the job's word, given to a point | `submit._go` writes every point's `run.json` at send; `parse/dirs/job.py:408` |
-| S2 | launched again, **every** point is re-run, the converged ones too — and until they are, the report's I–V empties (each point's newest attempt is empty) | `submit._plan_chain` 1962–2018; `record.py:428` |
-| S3 | the walk's hand-over between points is recorded nowhere: `status` says a point "started from the structure"; `.gathered-from` says `<label>.DM <- 01_seed` though the walk replaced it (and v0's own run rewrote it — `save_density_matrix.F90:138`) | `submit.py:2054`, `runstatus.py:591-595`, `materialize.py:753` |
-| S4 | the shared inputs (seed `.DM`, both `.TSHS`) are copied into every point; no clean seed density survives a first launch, so `--cold` is not really cold | `prep.gather_sources` per point |
-| S5 | the transmission gathers each point's newest device attempt separately — one I–V is one device run today only because every point advances together; skipping done points (S2's fix) would break it | `prep.transport_inputs` per point (validator: refuted today, real once S2 is fixed) |
-| S6 | the scan's stage folder holds a deck, run script and header at the first point that nothing runs | `prep.py:1095-1098` |
-| S7 | the launch-again rule for a point is a second copy of `continuation.relaunch` | `submit._plan_chain` 1986–1997 |
-| S8 | `--cold` on a scan not yet launched is dropped silently | `_plan_chain` 1977–1981 |
-| S9 | a group naming a scan rung is refused with a rollback that does not help | `_plan_group` → `_plan_member` |
-| S10 | the walk records no stop: nothing says which points it never reached | the chain log only |
-
-Today's patches on these (the "never-started" point, 2026-10-08) are symptoms of
-S and go with it.
-
-**P — Physics.**
-
-| id | finding | evidence |
-|---|---|---|
-| P1 | **`low-bias` is not linear response.** Each transmission point runs tbtrans on the 0 V device H with `TS.Voltage V`; tbtrans shifts each lead's self-energy by its chemical potential (±V/2) and leaves the device H at 0 V. The I(V) recorded is neither ∫T(E,0)[f_L−f_R] (the contract's definition, § 1.1) nor a self-consistent one, and the record labels it "linear response" | `m_ts_electrode.F90:1461-1462`, `m_tbt_hs.F90:109-112, 287-298`; `record.py` `TREATMENT_NOTE` |
-| P2 | the transmission energy window (±2 eV default) is never checked against the bias window (±V/2 + a few kT): above ~3.5 V the current is silently cut | catalogue rows; nothing in `validation/` |
-| P3 | the equilibrium contour is the interim 10 eV pole energy, not the stated `contour.eq` with a spectrum gate the contract describes | `transiesta.py:579-585`; `transport.md:1661` vs `:3613` |
-| P4 | device points at V≠0 gather the seed `.DM`, which TranSIESTA never reads there (it needs a `.TSDE`) — recorded as an input it is not | `stages.stage_inputs`; `m_new_dm.F90:487-494` |
-
-**C — Composition.**
-
-| id | finding | evidence |
-|---|---|---|
-| C1 | the electrode swap rewrites the **cited run's** files (and so every other calculation citing it); the contract says the swap is the calculation's own (`swap_electrodes: true`) | `compose.py:618-713`; `transport.md` § 4 |
-| C2 | the leads' `.TSHS` name comes from two sources: the device deck uses the template's `system_label`, the lead and the gather use `task.label` — equal on every road today, unchecked | `transiesta.py:509` vs `prep.py:1528`, `stages.py:186-202` |
-| C3 | a form-B junction (`.xyz` + sidecar) keeps the sidecar's z kind — a false "transport axis not periodic" deck warning | `compose.py:855-877` |
-| C4 | a relaxation with no molbuilder record, or one that ended with an error, composes into a junction — and a bare structure brings no pseudopotentials (`prep._transport_provide_pseudos`: *"put the files in pseudos/ yourself"*) | `compose.py:846-853`; `transport.md` § 3.1 |
-
-**R — Results and pages.**
-
-| id | finding | evidence |
-|---|---|---|
-| R1 | the record reads TBtrans's files with its own glob — a **second reader** beside the family's (`parse/engines/tbtrans.py`, `transmission_files`, which already knows the channels) — and so a spin-polarised point (`<label>.TBT_UP.AVTRANS_*`) is reported **failed**; G is not (e²/h)(T↑+T↓) | `record.py:453`; `m_tbt_save.F90:2266-2270` |
-| R2 | the treatment label is in the T(E) tab only, not beside the I–V | `transport.js` `_fillIV` |
-| R3 | "energies relative to E_F" is a constant; the device's NEGF E_F is never compared with the leads' | `record.py:528` |
-| R4 | the device facts beside T(E) come from the device's newest attempt, not the run the transmission read | `record._stage_facts` |
-| R5 | `status` never shows what a transport rung gathered (every rung "started from the structure") | `runstatus.py:591-595` |
-| R6 | the record lacks: the seed's E_F; the contour and pole count (already parsed); the window, points and TBT k-grid | `record._science` |
-| R7 | no report until a first `summarize task`; every run of the calculation not listed at the root (both doc'd as built) | `transport.js:688-691`; `results.md` § 2.4 |
-| R9 | **the 3D viewer draws nothing on the Results tab in a real browser** (2026-10-08, the user's Chrome, AMD GPU, WebGL context alive, no console error): the transport report's Device view and the plain structure viewer both show an empty scene with "16 atoms" loaded and a full-size canvas; Reset view changes nothing | seen in the browser; cause not yet read |
-| R8 | two wrong section links on the transport tab | `transport_calculation.html:210, 240` |
-
-**T — Contract text** (sweep A): 18 internal contradictions, the main ones —
-"run" defined three ways (`job-system.md:74`, `project-layout.md:818`,
-`transport.md:1284`); the 2026-10-07 rule *any stage launched again however it
-ended* vs the 2026-10-05 sweep design *a done point is never run again*; per
-point vs one run for what the transmission takes; present-tense passages
-describing the unbuilt sweep; stale passages (§ 2a.14's table, § 3.2, § 3.4,
-§ 3.6a, § 6a, § 8). *B0 resolved the first three in § 2a.10–2a.12, Words and
-rule 3; the passages are B9's.*
-
-### 5x.7 The road walk — 2026-10-08, the junction built on the page, run to its record
-
-*(user: "stop fucking hand bake these fucking things"; "this is a good chance to test the continue/re-run mechanism"; "review the log output and the script generated to detect any potential error/issues that are not picked up by the code/parser")*
-
-**What ran, every step through the page or a printed verb** — the evidence
-§ 5x.0 asks for:
-
-| step | door | what happened |
-|---|---|---|
-| the junction | Molbuilder tab in Chrome | SMILES `SC#CS` → the two H deleted → S–S oriented on z (the ruler picks the anchors) → Slab tab: Au(100), PBE `a`, 2×2×6, registry B above (+z, surface 4.69 Å) / A below → 52 atoms; labels by the Selection filter (`37-52` L-electrode + frozen, `13-28` R-electrode + frozen, the rest bridge); saved as `claude-transport-walk/structure/au-dithioacetylene` (cell 5.88 × 5.88 × 30.17 Å, 2.079 Å across the boundary = the lead's own spacing) |
-| the relaxation | Structure optimization tab → Send to Task setup → Task setup (Hierarchical, one stage `coarse` with overrides SZP / k 1,1,1 / 3 steps / 150 SCF) → the printed verbs | `prep task --stage coarse --target this --np 4 --cpus-per-task 1`; `launch task` (direct, foreground): 245 s, 97 SCF rows over two tries (the retry warm), **finished, geometry NO**; the pseudopotentials came from `projects/pseudopotential` |
-| the citation | Transport tab → *Choose junction directory* → `…/au-dta-relax/01_coarse/run-0` | the dialog's own verdict: *CONCLUDED (rc=0) · SZP · 150 Ry · GGA/PBE · k 1x1x1 · 52 atoms*; both leads: z-period derived 8.316 Å from 4 layers, the seam CONTINUES the crystal, the principal-layer condition met (orbital reach 6.49 Å < 10.39 Å); the shared panel filled from the cited `.fdf`; charge 0 by rule; 3836 electrons |
-| the description | the bias builder 0 / 0.4 / 0.2 → *0.0, 0.2, 0.4*; the switch **no** (self-consistent); *Describe* | `transport/au-dta-t/task.json` + template; `slots.junction` = the run; `bias.low_bias_approximation: false` |
-| seed + leads | `prep task --stage seed --stage electrode_L --stage electrode_R --target this --np 4 --cpus-per-task 1` → `launch task …` (one group job) | the three `.psml` **from the cited run folder**; seed 152 s / 68 SCF, each lead 23 s / 14 SCF; `status`: all three *finished, SCF yes* |
-| the device sweep | `prep task --stage device` → `04_device/run-0/{v0,v0.2,v0.4}`, the run's clean `.DM` and `.TSHS`, `.gathered-from` once | **launch 1** (run-0): 0 V done (29 NEGF iterations, ~4 s each), killed during 0.2 V at the launching process's 10-min bound — `status`: *failed — 1 of 3 points done; 0.2 V: stopped before its end: no ending in its output and no exit recorded*; the transmission *waiting*, saying which point. **launch 2** (run-1): *takes over 0 V done in run-0; runs 0.2 V (from 0 V's .TSDE), 0.4 V* — 0.2 V done, killed during 0.4 V. **launch 3** (run-2): *takes over 0 V, 0.2 V done in run-1; runs 0.4 V (from 0.2 V's .TSDE)* — finished: *3 of 3 points done, SCF yes*. **launch 4, warm**: refused — *every point of 04_device/run-2 is done … launch it cold*. Every point's `.continued-from` names the run/point it came from (run-1/v0 ← run-0/v0; run-2/v0.2 ← run-1/v0.2; run-2/v0.4 ← run-2/v0.2); the ledger holds each launch's question and decision |
-| the transmission | `prep task --stage transmission` → `05_transmission/run-0/{v0,v0.2,v0.4}`, each point's `.TS.HSX` **from `04_device/run-2`**, the leads' `.TSHS` from run-0 | `launch task` (one walk): *3 of 3 points done* |
-| the record | `summarize task` | **crashed** — `record.py:494 NameError: att` (B2's `result_folders` rewrite left the old loop name); fixed `8dc08851`; then: G(E_F) 0.0698 / 0.0513 / 0.0457 G₀, I 0 / 1.78e−6 / 2.61e−6 A (total, both channels), `self-consistent`, the provenance (citation, hashes, the chain with device at run-2) |
-| the Results tab | the sidebar on `au-dta-t`, *Reload from current project dir* | the ladder *5 rungs, every rung finished* with *3 of 3 points done* on both swept rungs; the report: *self-consistent · 3 points · energies relative to E_F*; T(E) for the three voltages and four eigenchannels; per-rung SCF plots with the tolerance line; *Rungs and provenance* (E_F, E, SCF, attempt); *What each rung took*; the citation with its hashes; the GGA caveat |
-
-**Not run:** `launch --cold` on the finished sweep (the same walker with nothing
-taken over); the low-bias and single-bias cases on this junction (B6's
-"three cases").
-
-**Found on the road** (each goes to the step that owns it; none is fixed by
-a patch here):
-
-| id | where | what | owner |
-|---|---|---|---|
-| F1 | `jobset status` | the ready device row's *takes …* detail is printed once per point — three times the same three files; `status device` on a sweep says *continued from nothing — it started from the structure*, lists no points and *warm files -* | B5 |
-| F2 | the Results report | *Rungs and provenance* shows the device E_F **5.169 eV** beside the leads' **−1.920 eV** with no word — R3's check, unbuilt; *What each rung took* omits the transmission's per-point `.TS.HSX` (it lists the run's `.gathered-from` only) | B6 |
-| F3 | the Results report | the Device view draws the junction **end-on, down z** (a 2×2 column reads as a cube, the molecule hidden); R9 re-scoped: not blank — the default must be side-on, the leads told apart | B6 |
-| F4 | Transport tab | the § 1 text still offers *`.xyz + .molstruct.json` — a labelled structure* as citable (decision 7 removes it); the § 4 paragraph still says *low-bias … re-converged* instead of the switch's words; the citation dialog's refusal cites **`transport-design.md 4.1b`** (an archived document) | B7 (the rule), B9 (the words) |
-| F5 | Molbuilder tab, Selection panel | with two cell notices shown, `.molviewer-filter-rows` (`molview.css:492`: `flex: 1 1 auto; min-height: 0`) collapses to **0 px** — the filter row cannot be seen or typed into; the *Match all* select overlaps the Clear/Invert/All row. A layout-system fix (the panel's height from its content; tokens), never a pinned height (user, 2026-10-08) | B8 (CSS) |
-| F6 | Task setup | a new description arrives with a **benchmark grid already filled** (`mpi_np` 4/8/16, `omp_threads` 1/2, *measured · 3 points*) that nobody asked for, and the run card then says *measuring: 4, 8, 16* instead of taking a value; the launch values had to be stated on the command line | B8 (UI fact-check) |
-| F7 | Task setup, Structure optimization | the accessibility tree exposes almost none of the page's controls (the add-column/add-setting selects and buttons are unnamed), so a screen reader — or a browser driver — cannot name them; the Structure optimization tab restored a stale 312-atom session on load | B8 (UI) |
-| F8 | Transport tab console | `[transport] session restore failed Error: … is not a directory` thrown at `core.js:393` for a stale session — a restore that cannot find its folder should say so on the page, not throw | B8 |
-| F9 | `prep` output | a group prep prints the pseudopotential copy lines and the `geometry.h_ratio` warning once **per rung** (three times each) | B8 |
-| F10 | the citation dialog | every confirmation (*z-period DERIVED*, *seam CONTINUES*, *principal-layer condition MEASURED*) is prefixed ⚠ — the mark of a warning on a fact that is good news | B8 (UI) |
-| F11 | `launch` in direct mode | the verb blocks until the walk ends (Popen + wait in the verb's own process group, which is what lets a bound on the verb reach the walk — C4, 2026-10-08); killed at a bound it leaves no orphan processes, the monitor's closing record says *stopped before its end*, and the next warm launch takes the done points over — the road handled it. **The wrapper's own kill line never reached its session log** (it went through the tee the kill took): **fixed** — the handler appends it directly | done |
-| F12 | the junction's cell (**the reviews' blocker**, 2026-10-08) | `c` = 30.17 Å = the atoms' span, so the two leads' end layers meet through the periodic image (0 room; 8 Au per 2×2 cell in one plane, 2.079 Å apart): 19–23 eV/Å on every frozen atom and 587 kbar in the relaxation and the seed (vs −55 kbar in the lead's own cell), the Hartree reference plane on the fused layer — **no gate said a word** (the kind gate refused only room above 1.5 spacings; the Cell page's *collision* notice was on the page and ignored). **Fixed**: `sidecar.check_junction_boundary` — one rule both ways, a refusal on every transport rung, a warning at a labelled junction's relaxation, naming *set c to 32.249 Å*; § 6.1c's row says both; the case is in the kind gate's table. **The walk's junction is rebuilt with its cell closed** (the Cell page), relaxed and run again — its numbers above are not a result | done (gate); the redo next |
-| F13 | the record / Results | the device E_F (**5.169 eV**) beside the leads' (**−1.920 eV**) is a reference convention, not a mismatch: TranSIESTA zeroes the Hartree potential on the boundary plane (`ts-Vha −7.241 eV` shifts the seed's −2.072 to +5.169) and fixes E_F, letting the charge float; the leads report in their own cells' frame; the lead Hamiltonians are aligned to μ = E_F ± V/2 inside. The report must **say the frames** (the row's `vha_ev` is stored) — nothing printed tests the physical alignment (device electrode-region potential vs bulk) | B6 (R3) |
-| F14 | the parsers | the unconstrained max force and the pressure of a periodic slab are never shown (the monitor and wrapper print the constrained max — the 23 eV/Å on the frozen atoms stayed invisible); *ALL FORCES AFTER TRANSIESTA ARE WRONG* is not captured while `MESSAGES` carries only the harmless Γ-point note (TranSIESTA's *Removed N elements which connect electrodes across the device region* is **not** a defect to capture: the source's comment is "remove all electrode to other side connections ... that cross the boundary" — the leads' coupling through the periodic image, present in every closed cell: 10 880 in the closed walk, 12 068 in the fused one); the SCF table's `**********` overflow row passes silently; the hand-over geometry is `.XV` = `STRUCT_NEXT_ITER`, a CG interpolation never evaluated, and nothing says so; the monitor's final status offers `max_force` for a device run | B6 (the device's forces, the E_F frames); M3 (the slab's forces and pressure, the engine warnings, the overflow row); B7 (the citation says whether its geometry was evaluated) |
-| F15 | the take-over copy (`_plan_sweep`) | a point taken over carries **every** file of the done point: the old run's session, monitor and util logs, `calcdir.json`, `.gathered-from` (old mtimes), the fdf log — and the scratch `.TSGFL`/`.TSGFR` (86–217 MB each; run-0 590 MB → run-2 1017 MB); the checkpoint before the transmission prep stored 2.7 GB, 2.6 GB of it TSGF; `.gitignore`'s binary classes name `*.DM *.HSX *.TBT.AVTRANS_* *.TBT.CC *.TBT.DOS *.TSHS` only, so 95 `.TSDE`/`.TBT.nc`/`.ion*` files went into git. **Decision owed**: what a taken-over point carries — its inputs, the engine results readers and rungs use, and the run's own account (`.out`, `.concluded`, `0_NORMAL_EXIT`, fdf log, timing); not the scratch self-energies; its `.continued-from` naming the folder that computed it (one hop); and the checkpoint's binary classes completed from the run-file catalogue | B7 (one rule: the catalogue says which files a point's result is; the copy and the checkpoint read it) |
-| F16 | the decks | `SaveHS` (`write_hs`, a plain output preference with no `role`) is what writes the device's `.TS.HSX` the transmission reads — the lead's deck note says the opposite; `TBT.Elecs.Eta 0.001 eV` is written on the transmission while the device relies on the TranSIESTA default `TS.Elecs.Eta` (one value, two sources); the contour note describes circle + poles while the run uses the continued fraction (10 eV = 123 poles) — P3; the transmission deck's SIESTA keywords tbtrans never queries (the § 6.1b audit: it read `SystemLabel`, `SystemName`, `ElectronicTemperature`, `Spin`, `TBT.*`, `TS.Elec*`, `TS.ChemPot*`, `TS.Voltage`, `TS.Elecs.Bulk`) | B7 (`write_hs` a role item on the device; `TS.Elecs.Eta` with § 5u step 7); B9 (the notes; § 6.1b's list) |
-| F17 | the ledger, `run.json` | a sweep's run-1/run-2 recorded `continued_from: null`; the three device launches were three identical *question* + *launched* pairs with no word of the run opened, the points taken over or walked — **fixed**: the run's `.continued-from` names the run it took points from; the `launched` entry carries each member's run and its walk | done |
-| F18 | the docs | `project-layout.md` § 1.5 (*continues from its own last density*, `launch --skip`, *a point recorded done is never rewritten*) and `transport.md` :1628, :1763 (*continuing the point's own cycle*) restate the rule § 2a.11 settled the other way (*every point not done is redone from the same start*) | B9 |
-| F19 | the walk log, the wrapper logs | the sweep's log uses the benchmark's words (*start trials=3*, *run_trial*); a retry's `exec` inherits the first try's tee so run0's session log holds run1's session too; the effective-parameters banner shows catalogue defaults (`bias_voltage_v 0.0` in the 0.2 V point's log); the tbtrans wrapper says *Retry policy: up to 1 retry on non-convergence* | B8 |
-| F20 | this junction's physics (not code) | the relaxation's 2×3 CG moves were two line searches with a 0.05 Å cap (C≡C 1.20 → 1.37 → 1.31 Å, the S slid, the energy rose); the second SCF iteration after every move overflows (`dHmax **********`) and recovers in ~10 iterations; Γ-only sampling puts a folded lead band edge within ~10–30 meV of E_F (bulk T(E_F) 4.83 drifting over 20 meV); 150 Ry is low for semicore Au. A real calculation needs the closed cell, a converged relaxation on an evaluated geometry, transverse k (≥ 6×6, electrode ≥ device), ≥ 300 Ry | the walk's redo keeps the cheap settings (a mechanism test); the rest is the user's physics |
-
-**Judged on the road, and by the three read-only reviews of its decks, logs
-and wrappers (2026-10-08):** rule 3 at the point (§ 2a.11) holds in the code as
-written — take-over, the same start for a point not done, the refusal; every
-stage prepped, launched and gathered the right files; the kills were
-detected and the endings unified; the currents parsed with the spin factor.
-As a junction result it is **not trustworthy** (F12): the cell was fused. The
-test subject is the mechanism, not the physics (SZP, Γ, a 3-step
-relaxation): the numbers are not a result.
-
-**The closed-cell walk (2026-10-08, `au-dta-junction` → `au-dta-relax2` →
-`au-dta-t2`; the sweep case).** The junction rebuilt on the Cell page (*Span +
-gap*, c = 32.249 Å); the new gate seen both ways on the road — the fused cell
-refused on the transport rungs and warned at the relaxation, naming the c to
-set. The relaxation (run-0 killed, run-1 finished, geometry **NO** at 1.878
-eV/Å — loose on purpose), the citation, seed + leads, then the device sweep in
-**three bounded launches**: run-0 and run-1 killed at 0.4 V (a point not done
-restarts from the same start, by design — this one alone needs ~9 min, ~10 s a
-NEGF step), run-2 *takes over 0 V, 0.2 V done in run-1; runs 0.4 V (from
-0.2 V's .TSDE)* and finished, **3 of 3 points, SCF yes**; the transmission
-run-0 at its three points (~2.5 min each, 4 ranks); `summarize task`; the
-Results tab. The record: G(E_F) 0.083 / 0.024 / 0.021 G0, I 0 / 8.64e-7 /
-1.22e-6 A (both channels, the printed one doubled); ts-Vha +0.257 eV at 0 V,
-the device's −2.803 eV is −2.547 eV in the seed's frame against the seed's
-−2.542 eV — one sentence under the rungs, printed by `summarize`. The Results
-tab: *5 rungs, every rung finished*, the Device **side-on**, the I–V tab with
-its treatment beside the table. **Read in the logs and decks** (the user's
-ask): the tbtrans deck's window −2 … 2 eV, 401 points, `TBT.Elecs.Eta` 0.001
-eV, `TS.Voltage` and the chemical potentials per point, the Γ `TBT.k`; the
-*ensure entire Fermi function window* line is met at 0.4 V (±0.2 eV + 5 kT ≪
-2 eV); the device logs carry no *FORCES WRONG*; the *Removed N elements* line
-is the leads' coupling through the image, in every closed cell (F12, F14).
-
-**Found on this walk:** **F21** the Results report's camera — the view
-context put back the **end-on** pose this card had persisted before the
-side-on view existed (its restore lands after the report's camera action; a
-switch flip or the post-restore write persists whatever pose is current);
-**fixed** as the viewer's home view (`lookAlong` — the load's fit and Reset
-look along it; a camera action during a rebuild is held, `molview.md` § 10.9),
-so Reset gives the side-on and the lane records it · **F22** a sweep's walk
-script lives in `<stage>/launch/` and `run.json`'s command is relative to the
-stage folder, while `status` prints *Directory: <stage>/run-0* — no document
-says where the walk script is (B9) · **F23** a transmission point's folder
-opens nothing — no parser claims TBtrans's output, so a point picked off the
-root's ladder has no *open* (its result is the root's T(E) and I–V): either a
-reader claims the file or `results.md` § 0.1 says a transmission point is read
-at the root (B9) · **F24** the Transport tab's step 4 copy still says *several
-values are a **scan** … low-bias converges the device once … **re-converged**
-runs the device at every voltage* — the record's words are
-*low-bias-approximation* / *self-consistent* and the design's word is *sweep*
-(B9's sweep of "scan" reaches the tab's copy; B8's fact-check) · **F25** the
-group launch prints *warn [structure.regions]: this structure carries region
-label(s) ['SC#CS#'], which the transport ladder does NOT consume* — the
-molecule's own label from the Molbuilder tab; molbuilder reads only the labels
-it owns and never warns about another (user, 2026-10-02) — the warning
-(`sidecar.check_unconsumed_region_labels`) and the two sentences that order it
-(`validation.md` § 5 pattern B; `transport.md` § 4 *"a label this engine does
-not consume is WARNED about"*) go (B7, B9; **approved**, user 2026-10-08) ·
-**F26** the suite's runner: `tests/validation/test_siesta.py` run in one
-batch with `tests/test_transport_sort.py` and `tests/test_vibration_render_gate.py`
-under 8 workers loses every fixture of `tests/validation/conftest.py`
-(*fixture 'water_struct' not found*, 11 errors; the same at `924d68c7`
-with nothing changed; the pair `test_pyscf.py + test_siesta.py` passes) —
-**diagnosed and fixed** (B8 round 1, `8fab088a`): pytest binds a
-subdirectory's conftest to the first collector of that directory and a later
-bare file argument from the parent re-collects it; the runner hands a targeted
-set to pytest ordered by directory (`testing.md` § 6.1a rule 3) · **F27** — **fixed** (B8 batch 4: `siesta/layout.unit_word`, one source, the catalogue's `unit`) — the deck's unit words were a hand table beside
-the catalogue's own `unit` (`siesta/layout.py` `_UNIT`, with its widths and
-formats): an item added with `unit = "eV"` rendered `TS.Elecs.Eta 0.001`
-bare, which TranSIESTA reads in rydberg — 13.6× — and nothing said so until
-the deck was read (2026-10-08); one source (the catalogue's `unit`, the
-bias's V→eV spelling the one declared exception) — B8 · a single
-click on a record in the
-sidebar does **not** switch the report — `results.md` § 3b's rule (a click is a
-preview; the panel's dropdown chooses), not a defect.
-
-**The low-bias case (`au-dta-lb`, 2026-10-08).** Described on the Transport
-tab (the same citation; the builder 0 → 0.4 step 0.2 → *0.0, 0.2, 0.4*; the
-switch **yes**; a new folder from the sidebar; *Describe*), then the printed
-verbs: seed + leads as one job, the device once at 0 V (one run, no point
-folders), the transmission, `summarize task`. **Found and fixed on the road
-(`fc413816`)**: the record's integral called `np.trapz`, gone from this
-numpy, so the first `summarize` crashed and the Results route answered an
-HTML fault the inspector reported as a JSON syntax error; the I–V tab drew
-only the measured 0 V point. The record: G(E_F) 0.083 G0 (the sweep's 0 V,
-the same device run and numbers), I(V) computed from T(E, 0): 2.34 µA at
-0.2 V and 5.01 µA at 0.4 V against the self-consistent sweep's 0.86 µA and
-1.22 µA — the approximation's overestimate, with T(E_F) falling to 0.024 G0
-under 0.2 V of bias; the Results tab opened the report through the
-description before any summarize (R7 on a fresh calculation), the I–V tab
-names the treatment and plots the computed curve dashed.
-
-**The single-bias case (`au-dta-sb`, 2026-10-08).** The bias list *0.2* alone
-is refused at *Describe* — *the bias list must start at 0.0 … a scan starts
-from equilibrium* — so a single bias is the one equilibrium slice, *0.0*;
-described, walked through the same verbs (device once at 0 V, the
-transmission), summarized: the record says *single-bias*, G(E_F) 0.083 G0,
-no I–V beyond the one point. The three cases of § 5x.0 have now run on the
-road junction.
-
-**Not run on this walk:** `launch --cold`; no point was killed, so F11's kill
-line (`6d4ea7c4`) is still unseen.
+---
 
 ## 5v. Documents that lag the code — the document sweeps' input *(2026-09-29)*
 
@@ -1735,20 +1397,15 @@ work from this list; an entry leaves it when its document is corrected.
 Re-read against the code 2026-10-08: the corrected entries are in the
 archive.*
 
-**Transport** (§ 5u's sweep; `transport.md`'s own passages are § 5x B9):
-`engines/transport.md` § 2a.13's *what this map says is missing* still lists
-`TS.HS.Save` and the bias point, both closed by TR2 (§ 5x B9) · § 3.8.0's
-*"not yet true of the code"* (built 2026-09-24; `transport.md:2484`) · I14's
-kind-gate row (`transport.md:2976`; its premise is doubtful —
-`validation/__init__.py:372-420`, `transport/compose.py:83,858,909`
-`_unusable_cell`) · the invariant table's missing holder for `species_order`
-(`transport.md:2961-2976`) · `execution/job-contracts.md`'s TranSIESTA rows:
-two fixed (*"TRANSPORT DOES NOT"*, the bare `write_text`); the *"one writer
-and one reader"* sentence of the permutation stands (`:2135`) · `web/tabs.md`'s
-*"no presenter matches it"* (`tabs.md:269-274` against `presenters.md:46`) ·
-`engines/template.md`'s three mechanism choices *open* (ruled TD5;
-`template.md:2014-2022`, partly annotated) · `chemistry-correctness.md`'s two
-channels, in the present tense (`:715-717` → § 5x B6, R1).
+**Transport** (re-read 2026-10-08 after B9): what stands — the invariant
+table's missing holder for `species_order` (`transport.md` § 5, the row with
+`—`); I14's kind-gate row, whose premise is doubtful
+(`validation/__init__.py`, `transport/compose.py` `_unusable_cell`);
+`engines/template.md` § 6.6's three mechanism choices marked *open* though
+TD5 ruled them (partly annotated). Closed by B6–B9: § 2a.13's *what this map
+says is missing*, § 3.8.0's *not yet true*, `web/tabs.md`'s *no presenter*,
+`chemistry-correctness.md`'s two channels (B6 reads both), the TranSIESTA
+rows of `job-contracts.md`.
 
 **Elsewhere** (M2n's sweeps): `junction-cell.md` against X3 (`:9,21,279`) ·
 `normal-modes.md`'s *"no comparison tool"* (`:788-789` against `:1026`,
