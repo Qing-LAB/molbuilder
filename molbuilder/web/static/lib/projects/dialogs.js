@@ -228,6 +228,85 @@ export function chooseName(opts) {
   return p;
 }
 
+// ─── chooseFrame ─────────────────────────────────────────────────── //
+
+/**
+ * Which frame of a file holding several (`web/tabs.md` § 2): a tab that holds
+ * one frame asks before it loads one.  Counted from 1, as the frame bar counts
+ * (`model/structure.md` § 2.2e).
+ *
+ * Resolves to the frame NUMBER (1 … count) on Load, or null on cancel / ESC.
+ *
+ * @param {object} opts
+ * @param {string} opts.title   — modal heading (the file's name)
+ * @param {number} opts.count   — how many frames the file holds
+ * @param {number} [opts.initial] — the number offered (default 1)
+ */
+export function chooseFrame(opts) {
+  opts = opts || {};
+  const count = Number(opts.count) || 0;
+  const dialog = _mkDialog("molbuilder-projects-frame-dialog");
+  dialog.appendChild(_mkHeader(opts.title || "Which frame?"));
+  dialog.appendChild(_mkParagraph(
+    "This file holds " + count + " frames -- which one do you want to load?",
+    "molbuilder-projects-dialog-hint"));
+  const { wrap, input } = _mkLabeledInput("Frame (1 … " + count + ")", {
+    type:     "number",
+    value:    String(opts.initial || 1),
+    dataRole: "frame",
+  });
+  input.min = "1";
+  input.max = String(count);
+  input.step = "1";
+  dialog.appendChild(wrap);
+
+  const err = _mkErrorSlot();
+  dialog.appendChild(err);
+
+  let confirmBtn;
+  function _validate() {
+    const n = Number(String(input.value).trim());
+    const ok = Number.isInteger(n) && n >= 1 && n <= count;
+    err.textContent = ok ? "" : "A frame is a whole number from 1 to "
+      + count + ".";
+    err.hidden = ok;
+    if (confirmBtn) confirmBtn.disabled = !ok;
+    return ok ? n : null;
+  }
+
+  const actions = _mkActions([
+    { label: "Cancel", action: "cancel", onClick: () => _settle(null) },
+    {
+      label:   "Load",
+      action:  "confirm",
+      cls:     "is-primary",
+      onClick: () => {
+        const n = _validate();
+        if (n != null) _settle(n);
+      },
+    },
+  ]);
+  confirmBtn = actions.querySelector('[data-action="confirm"]');
+  dialog.appendChild(actions);
+
+  input.addEventListener("input", _validate);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const n = _validate();
+      if (n != null) _settle(n);
+    }
+  });
+
+  const p = _open(dialog);
+  try {
+    input.focus();
+    if (typeof input.select === "function") input.select();
+  } catch (_) {}
+  _validate();
+  return p;
+}
+
 // ─── Upload dialog ───────────────────────────────────────────────── //
 
 /**

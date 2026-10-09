@@ -47,31 +47,20 @@ def _blocks(text: str):
 # --------------------------------------------------------------------- #
 
 def test_one_frame_writes_one_block_and_many_write_one_each_in_order():
-    """§ 11.3: a range writes "every frame as one extended-XYZ document"."""
+    """§ 11.3: a range writes "every frame as one extended-XYZ document" --
+    one block per frame the structure holds (`model/structure.md` § 2.3)."""
     s = _periodic()
     shifted = [s.positions + np.array([d, 0.0, 0.0]) for d in (0.0, 0.1, 0.2)]
 
-    assert len(_blocks(s.to_extxyz())) == 1, "no frames given -> this structure"
+    assert len(_blocks(s.to_extxyz())) == 1, "one frame -> one block"
 
-    blocks = _blocks(s.to_extxyz(frames=shifted))
+    blocks = _blocks(s.with_frames(shifted).to_extxyz())
     assert len(blocks) == 3, f"one block per frame: {len(blocks)}"
     # IN ORDER, and each carrying its own coordinates -- a trajectory whose
     # frames arrive shuffled is a different trajectory.
     first_x = [float(b[2][0].split()[1]) for b in blocks]
     assert first_x == pytest.approx([0.0, 0.1, 0.2]), (
         f"the frames are not in the order they were given: {first_x}")
-
-
-def test_every_frame_carries_the_same_atoms_or_nothing_is_written():
-    """The same-atoms rule: the elements and the cell are written from the
-    structure and shared by every block, which is what makes this ONE trajectory
-    rather than a pile of structures. A frame that does not fit is refused
-    rather than padded, truncated or guessed into fitting."""
-    s = _periodic()
-    with pytest.raises(ValueError, match="frame 1 has 1 atoms"):
-        s.to_extxyz(frames=[s.positions, [[0, 0, 0]]])
-    with pytest.raises(ValueError, match="at least one frame"):
-        s.to_extxyz(frames=[])
 
 
 # --------------------------------------------------------------------- #

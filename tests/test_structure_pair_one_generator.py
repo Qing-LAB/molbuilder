@@ -171,29 +171,12 @@ def test_a_range_and_a_single_frame_are_both_named_xyz():
     frames = [struct.positions, struct.positions + 0.1]
 
     one = [p.name for p, _ in StructureCodec().files(struct, "wire")]
-    many = [p.name for p, _ in StructureCodec().files(struct, "wire",
-                                                      frames=frames)]
+    many = [p.name for p, _ in StructureCodec().files(
+        struct.with_frames(frames), "wire")]
 
     assert one == ["wire.xyz", "wire.molstruct.json"], one
     assert many == ["wire.xyz", "wire.molstruct.json"], (
         f"a range must be named under the extension that reads it back: {many}")
-
-
-def test_a_saved_range_can_be_opened_again(tmp_path):
-    """A project save is the scientific record (molview.md § 11.3). A record that
-    cannot be reopened is not one.
-    """
-    struct = _with_metadata()
-    frames = [struct.positions, struct.positions + 0.1, struct.positions + 0.2]
-    target = tmp_path / "run.xyz"
-    written = StructureCodec().write(struct, target, frames=frames)
-
-    got = []
-    back = StructureCodec().read(written, frames_out=got)
-    assert len(got) == 3, f"the frames did not survive the round trip: {len(got)}"
-    assert back.regions == struct.regions, "the labels did not come back"
-    assert back.cell is not None, "the cell did not come back"
-    assert got[2] == pytest.approx(frames[2])
 
 
 def test_a_stem_that_already_carries_a_suffix_is_corrected_not_appended_to():
@@ -203,16 +186,16 @@ def test_a_stem_that_already_carries_a_suffix_is_corrected_not_appended_to():
     is a name, not a mistake, and `with_suffix` would eat the `.v2`.
     """
     struct = _with_metadata()
-    frames = [struct.positions, struct.positions + 0.1]
-    name = lambda target, **kw: StructureCodec().files(  # noqa: E731
-        struct, target, **kw)[0][0].name
+    frame_set = struct.with_frames([struct.positions, struct.positions + 0.1])
+    name = lambda target, s=struct: StructureCodec().files(  # noqa: E731
+        s, target)[0][0].name
 
     assert name("wire.xyz") == "wire.xyz"
-    assert name("wire.xyz", frames=frames) == "wire.xyz"
+    assert name("wire.xyz", frame_set) == "wire.xyz"
     assert name("wire.extxyz") == "wire.xyz", (
         "a non-standard extension is corrected to the one load() accepts")
     assert name("run.v2") == "run.v2.xyz", "the .v2 was eaten"
-    assert name("run.v2", frames=frames) == "run.v2.xyz"
+    assert name("run.v2", frame_set) == "run.v2.xyz"
 
 
 def test_the_suffix_travels_with_the_pair_rather_than_being_re_derived():
@@ -220,8 +203,8 @@ def test_the_suffix_travels_with_the_pair_rather_than_being_re_derived():
     what stops anything downstream deciding it a second time and disagreeing."""
     struct = _with_metadata()
     assert StructureCodec().pair(struct).suffix == ".xyz"
-    assert StructureCodec().pair(
-        struct, frames=[struct.positions, struct.positions]).suffix == ".xyz", (
+    assert StructureCodec().pair(struct.with_frames(
+        [struct.positions, struct.positions])).suffix == ".xyz", (
         "extended XYZ is a superset of plain XYZ and shares its extension")
 
 
@@ -297,7 +280,7 @@ def test_channels_survive_the_pipeline_through_the_real_translators(
         "const adopted = m.structureFromServer("
         + json.dumps(wire) + ");\n"
         "console.log(JSON.stringify(m.structureForServer("
-        "adopted.structure, adopted.coordinates.frames[0])));\n"
+        "adopted.structure, adopted.coordinates)));\n"
     ))
 
     out = client.post("/api/structure/export",

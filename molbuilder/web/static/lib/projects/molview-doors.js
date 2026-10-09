@@ -61,9 +61,10 @@ function _askProjectPath(stem, what) {
 export const molviewFiles = {
     /**
      * The TRUTH leaving the viewer (§ 11.3's Data): `payload` is
-     * `model.exportFile(range)`'s answer — `{structure, frames?}` — and the
-     * server's one generator turns it into the `.xyz` + `.molstruct.json`
-     * pair, so a project save and a download cannot produce different bytes.
+     * `model.exportFile(range)`'s answer — `{structure}`, one envelope, a
+     * range's frames inside it — and the server's one generator turns it
+     * into the `.xyz` + `.molstruct.json` pair, so a project save and a
+     * download cannot produce different bytes.
      *
      * @returns {ok, cancelled?, error?, files?|path?}
      */
@@ -75,7 +76,6 @@ export const molviewFiles = {
             if (destination === "download") {
                 const res = await _postJSON("/api/structure/export", {
                     structure: payload.structure,
-                    frames: payload.frames || undefined,
                     name: stem,
                 });
                 if (!res.body || !res.body.ok || !Array.isArray(res.body.files)) {
@@ -116,7 +116,6 @@ export const molviewFiles = {
                 const body = {
                     path: path + ".xyz",
                     structure: payload.structure,
-                    frames: payload.frames || undefined,
                 };
                 let res = await _postJSON("/api/structure/save", body);
                 if (res.body && res.body.needsOverwrite) {

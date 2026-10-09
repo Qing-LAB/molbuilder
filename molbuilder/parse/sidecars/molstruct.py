@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json as _json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
@@ -38,14 +38,10 @@ from ._helpers import build_sidecar_result
 def _normalised_dict(
     *,
     n_atoms_total: int,
+    n_frames_total: Optional[int],
     structure_hash: str,
-    regions: Optional[Dict[str, List[int]]] = None,
+    fields: Dict[str, Any],
     selection_rules: Optional[Dict[str, Any]] = None,
-    cell: Optional[Any] = None,
-    engine_offset: Optional[Any] = None,
-    axis_kind: Optional[Any] = None,
-    vacuum: Optional[Any] = None,
-    annotations: Optional[Dict[str, Any]] = None,
     identity: Optional[Dict[str, Any]] = None,
     info: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
@@ -72,19 +68,21 @@ def _normalised_dict(
             f"{structure_hash!r})"
         )
 
+    if n_frames_total is not None and (
+            isinstance(n_frames_total, bool)
+            or not isinstance(n_frames_total, int) or n_frames_total < 1):
+        raise MolstructJsonError(
+            f"n_frames_total must be a positive int; got {n_frames_total!r}")
+
     # The Structure FIELDS -> validated + canonicalised through the ONE dataclass
     # authority, SHARED byte-for-byte with the write validator (to_dict).  This
     # is what closes the read/write drift: a field cannot exist on one side and
-    # not the other, because there is only one side.  ``selection_rules`` (a sidecar-only pass-through) shares its one
-    # validator too.
-    fields = structure_fields_via_dataclass(n_atoms_total, {
-        "regions":      regions,
-        "cell":         cell,
-        "engine_offset": engine_offset,
-        "axis_kind":    axis_kind,
-        "vacuum":       vacuum,
-        "annotations":  annotations,
-    })
+    # not the other, because there is only one side.  ``selection_rules`` (a
+    # sidecar-only pass-through) shares its one validator too.  A file that
+    # states no frame count (v7-v10) holds nothing indexed by frame, so its
+    # fields are checked against one frame.
+    fields = structure_fields_via_dataclass(n_atoms_total, fields,
+                                            n_frames_total or 1)
     normed_rules = normalise_selection_rules(
         selection_rules, set(fields["regions"]))
 
@@ -111,6 +109,8 @@ def _normalised_dict(
     return {
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
+        **({"n_frames_total": n_frames_total}
+           if n_frames_total is not None else {}),
         "structure_hash":  structure_hash,
         # SPREAD, not re-listed -- the same rule the write side follows, and for
         # the same reason: a field added to (or removed from) the dataclass must
@@ -177,7 +177,10 @@ def load_text(text: str, *, source: str = "<sidecar>",
             f"anything the old format kept elsewhere has to be applied again."
         )
 
-    for key in ("n_atoms_total", "structure_hash"):
+    # `n_frames_total` is v11's: every v11 writer states it (§ 1).
+    required = ("n_atoms_total", "structure_hash") + (
+        ("n_frames_total",) if sv >= 11 else ())
+    for key in required:
         if key not in data:
             raise MolstructJsonError(
                 f"sidecar {source} missing required field {key!r}"
@@ -233,14 +236,12 @@ def load_text(text: str, *, source: str = "<sidecar>",
     try:
         return _normalised_dict(
             n_atoms_total   = n,
+            n_frames_total  = data.get("n_frames_total"),
             structure_hash  = sh,
-            regions         = data.get("regions"),
+            # SPREAD, never listed: every field the Structure names, read by
+            # the same tuple the writer spreads (`model/structure.md` § 2.2).
+            fields          = {k: data.get(k) for k in METADATA_FIELDS},
             selection_rules = data.get("selection_rules"),
-            cell            = data.get("cell"),
-            engine_offset   = data.get("engine_offset"),
-            axis_kind       = data.get("axis_kind"),
-            vacuum          = data.get("vacuum"),
-            annotations     = data.get("annotations"),
             identity        = {k: data[k] for k in IDENTITY_FIELDS
                                if k in data},
             info            = data.get("info"),

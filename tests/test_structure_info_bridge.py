@@ -155,8 +155,8 @@ class TestTheBrowserSide:
         const without  = { elements: ["O"], annotations: [{labels: []}],
                            periodicity: null, info: {} };
         console.log(JSON.stringify({
-            carried: JOBS.structureForServer(withInfo, [[0,0,0]]).info,
-            emptyIsAbsent: "info" in JOBS.structureForServer(without, [[0,0,0]]),
+            carried: JOBS.structureForServer(withInfo, { frames: [[[0,0,0]]] }).info,
+            emptyIsAbsent: "info" in JOBS.structureForServer(without, { frames: [[[0,0,0]]] }),
         }));""")
         assert out["carried"] == {"calculation": "relax"}, (
             "an exported pair would lose what the Metadata pane shows")

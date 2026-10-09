@@ -18,7 +18,7 @@
 
 import {
     createLoad, createWriteOut, createEdits, createCellEdit, FROZEN_LABEL,
-    structureForServer, groupByLabel, effectiveCell,
+    structureForServer, groupByLabel, effectiveCell, customizedRow,
     resolveFilter as askServerToFilter,
 } from "./model-jobs.js";
 import { createSelectionStore, createMeasurementStore, createViewStore }
@@ -69,6 +69,42 @@ export function createModel(opts) {
     let structure = null;             // {elements, annotations, cell} or null
     let frames = null;                // Vec3[][]
     let forcesPerFrame = null;
+    let rowsPerFrame = null;          // Row[][] -- one set per frame, or null
+
+    /* ── THE ALIGNER (§ 6.1, § 9.3): the one place frames arrive ───────────
+     *
+     * A frame carries its coordinates, its forces and its rows, and every one
+     * of those lists has one entry per frame (`model/structure.md` § 2.2e).
+     * So whatever brings frames -- a load, a run's frames, an append, a
+     * restore -- moves the three together HERE, in the same step, and no list
+     * is ever a frame longer than another. */
+    function holdCoordinates(next) {
+        frames = (next && Array.isArray(next.frames)) ? next.frames : null;
+        forcesPerFrame = (next && next.forcesPerFrame) || null;
+        const rows = next && next.rowsPerFrame;
+        rowsPerFrame = (frames && Array.isArray(rows)
+                        && rows.some((r) => r && r.length))
+            ? frames.map((_, k) => (rows[k] || []).map((r) => Object.assign({}, r)))
+            : null;
+    }
+
+    function appendCoordinates(more, forcesFor) {
+        if (!frames) frames = [];
+        more.forEach((f, k) => {
+            frames.push(f.map((p) => [p[0], p[1], p[2]]));
+            const forces = forcesFor(k);
+            if (forces || forcesPerFrame) {
+                // Back-fill so the forces of frame f stay at index f: a run
+                // caught at its first geometry carries no forces, and pushing
+                // the first ones that arrive onto an empty list would attach
+                // them to frame 0 for ever after.
+                if (!forcesPerFrame) forcesPerFrame = frames.map(() => null);
+                forcesPerFrame[frames.length - 1] = forces || null;
+            }
+            // A run's frame carries no rows; the set's index stays aligned.
+            if (rowsPerFrame) rowsPerFrame.push([]);
+        });
+    }
 
     /* ── WHAT THIS VIEWER IS, in one place (§ 5.2) ─────────────────────────
      *
@@ -174,15 +210,14 @@ export function createModel(opts) {
     const history = createHistory({
         recordState: () => ({
             structure:   copy(structure),
-            coordinates: copy({ frames, forcesPerFrame }),
+            coordinates: copy({ frames, forcesPerFrame, rowsPerFrame }),
             selection:   selection.get(),
         }),
         restoreState: (state) => {
             if (!state) return;
             settle(() => {
                 structure = state.structure;
-                frames = state.coordinates ? state.coordinates.frames : null;
-                forcesPerFrame = state.coordinates ? state.coordinates.forcesPerFrame : null;
+                holdCoordinates(state.coordinates);
             }, { resetFrame: true });
             // A restored structure IS a held structure: adoption re-enters
             // HOLDING exactly as an install does (§ 11.2a's state machine).
@@ -498,6 +533,22 @@ export function createModel(opts) {
         requireCount(coords, atomCount(), label);
     }
 
+    /* AN EDITABLE VIEWER IS NEVER HANDED A FRAME SET (§ 9.4; user,
+     * 2026-10-09: "When we deal with multi-frame files, we refuse edits ...
+     * the edit or modify tab would only load a single frame").  A frame set
+     * -- a file's frames, arriving in the envelope with their rows -- is a
+     * data set made by scripts and never edited (`model/structure.md`
+     * § 2.2e), so ONE RULE at the one entrance refuses it and no editing door
+     * ever meets one.  A read-only viewer takes it whole.  A run's own frames
+     * are not a frame set (§ 11.7): they arrive through the frame doors, the
+     * same in both modes. */
+    function noFrameSetWhereEdited(count) {
+        if (!readOnly && count > 1) {
+            throw new Error("installMolecule: a frame set is not edited -- "
+                            + "pick a frame (molview.md § 9.4)");
+        }
+    }
+
     // The same rule across a frame SET: every frame carries the same atoms.
     // Checked before any of them lands, so a bad frame halfway through a batch
     // does not leave the first half applied.
@@ -518,8 +569,7 @@ export function createModel(opts) {
 
     function put(nextStructure, nextCoordinates, name) {
         structure = nextStructure;
-        frames = nextCoordinates.frames;
-        forcesPerFrame = nextCoordinates.forcesPerFrame || null;
+        holdCoordinates(nextCoordinates);
         // Only a LOAD names a structure. An edit replaces the atoms of the one
         // already open, so it keeps the name it came in under.
         if (name !== undefined) sourceName = name;
@@ -579,17 +629,26 @@ export function createModel(opts) {
             requireSameAtoms(list, "installMolecule");
             requireCount(list[0], n, "installMolecule");
         },
+        checkFrameSet: noFrameSetWhereEdited,
     });
 
     /* THE STRUCTURE AS DATA — ONE producer, read in one place and handed to
      * everything that sends or writes it (§ 9.3: "the facts that leave together
      * were read together"). The coordinates come from the DISPLAYED frame —
-     * § 5.1's promise at the point it matters — and the metadata from the same
-     * read, so the two can never be one edit apart.
+     * § 5.1's promise at the point it matters — or from a range of frames, each
+     * with its rows, and the metadata from the same read, so the two can never
+     * be one edit apart.  `structureForServer` copies everything it is handed,
+     * so the master copy's own arrays never leave.
      *
      * The SAME producer an edit uses. */
-    const readData = (at) => structureForServer(
-        structure, frames ? frames[at != null ? at : frameIndex] : null);
+    const readData = (from, to) => {
+        const lo = from != null ? from : frameIndex;
+        const hi = to != null ? to : lo;
+        return structureForServer(structure, frames ? {
+            frames:       frames.slice(lo, hi + 1),
+            rowsPerFrame: rowsPerFrame ? rowsPerFrame.slice(lo, hi + 1) : null,
+        } : null);
+    };
 
     const exportFile = createWriteOut({
         readData:     readData,
@@ -598,17 +657,11 @@ export function createModel(opts) {
         // (§ 6.4) rather than passed around.
         frameCount:   () => (Array.isArray(frames) ? frames.length : 0),
         currentFrame: () => frameIndex,
-        // COPIED, like every read (§ 9.3): these are handed to a caller, and a
-        // payload holding the master copy's own arrays is a write disguised as
-        // a read.
-        readFrames:   (from, to) => frames.slice(from, to + 1)
-            .map((f) => f.map((p) => [p[0], p[1], p[2]])),
     });
 
     const applyOp = createEdits({
         readStructure: () => structure,
-        readFrame:     (i) => (frames ? frames[i] : null),
-        currentFrame:  () => frameIndex,
+        readData:      () => readData(),
         readSelection: () => selection.get(),
         /* The ordered track, for the rows that declare `ordered` (§ 11.6).
          * Handed the same way the selection is, so the table stays the only
@@ -717,8 +770,10 @@ export function createModel(opts) {
                 title:          structure.title,
                 channelDefs:    structure.channelDefs,
                 info:           structure.info,
+                customized:     structure.customized || [],
                 frames:         frames,
                 forcesPerFrame: forcesPerFrame,
+                rowsPerFrame:   rowsPerFrame,
             });
         },
 
@@ -842,6 +897,88 @@ export function createModel(opts) {
                 return true;
             }, false),
         },
+        /* The `customized` doors (§ 8.4a, § 9.3; `model/structure.md`
+         * § 2.2d): the structure's named values and its frame's.  `frame`
+         * omitted means the structure's own rows; an index, that frame's.
+         *
+         * A ROW IS THE STRUCTURE -- it says what the structure is for a
+         * task -- so the writers are GATED like every edit (a read-only
+         * viewer answers `false`) and RECORDED on the history, and they are
+         * the model's only writers of either list.  A row that does not fit
+         * is refused with its reason (a thrown Error), which the Metadata
+         * page says. */
+        customized: (function () {
+            function frameAt(frame) {
+                if (frame == null) return null;
+                const count = Array.isArray(frames) ? frames.length : 0;
+                if (!Number.isInteger(frame) || frame < 0 || frame >= count) {
+                    throw new Error("frame " + frame + " is outside this "
+                                    + "structure's " + count + " frame(s)");
+                }
+                return frame;
+            }
+            const namesOf = (rows) => new Set((rows || []).map((r) => r.name));
+            return {
+                list(frame) {
+                    if (!structure) return [];
+                    const f = frameAt(frame);
+                    return copy(f == null ? (structure.customized || [])
+                                          : ((rowsPerFrame && rowsPerFrame[f]) || []));
+                },
+                set: gated(function (name, value, opts) {
+                    if (!structure) return false;
+                    const o = opts || {};
+                    const f = frameAt(o.frame);
+                    const row = customizedRow(name, value, o.unit, o.note);
+                    // A name is the structure's or the frames', never both.
+                    const elsewhere = f == null
+                        ? (rowsPerFrame || []).some((rows) => namesOf(rows).has(name))
+                        : namesOf(structure.customized).has(name);
+                    if (elsewhere) {
+                        throw new Error("“" + name + "” is already a row of "
+                            + (f == null ? "a frame" : "the structure")
+                            + "; a name is one or the other.");
+                    }
+                    let rows;
+                    if (f == null) {
+                        structure.customized = structure.customized || [];
+                        rows = structure.customized;
+                    } else {
+                        if (!rowsPerFrame) rowsPerFrame = frames.map(() => []);
+                        rows = rowsPerFrame[f];
+                    }
+                    const at = rows.findIndex((r) => r.name === name);
+                    if (at >= 0) {
+                        if (JSON.stringify(rows[at]) === JSON.stringify(row)) {
+                            return true;          // nothing changed, nothing recorded
+                        }
+                        rows[at] = row;
+                    } else {
+                        rows.push(row);
+                    }
+                    announceStructure();
+                    recordEdit();
+                    return true;
+                }, false),
+                remove: gated(function (name, opts) {
+                    if (!structure) return false;
+                    const f = frameAt((opts || {}).frame);
+                    const rows = f == null ? (structure.customized || [])
+                                           : ((rowsPerFrame && rowsPerFrame[f]) || []);
+                    const at = rows.findIndex((r) => r.name === name);
+                    if (at < 0) return false;
+                    rows.splice(at, 1);
+                    // No frame left with a row: the per-frame list says none.
+                    if (rowsPerFrame && !rowsPerFrame.some((r) => r.length)) {
+                        rowsPerFrame = null;
+                    }
+                    announceStructure();
+                    recordEdit();
+                    return true;
+                }, false),
+            };
+        }()),
+
         // The atoms carrying the reserved frozen label. A cut of the same one
         // mechanism (§ 6.6), not a field of its own.
         getFrozen() {
@@ -996,8 +1133,7 @@ export function createModel(opts) {
         clear: gated(function () {
             settle(() => {
                 structure = null;
-                frames = null;
-                forcesPerFrame = null;
+                holdCoordinates(null);
                 sourceName = null;
                 unit = EMPTY;
             }, { resetFrame: true });
@@ -1068,10 +1204,12 @@ export function createModel(opts) {
             // same atoms, and those atoms are the loaded structure's.
             requireSameAtoms(nextFrames, "reloadFrames");
             requireMatch(nextFrames[0], "reloadFrames");
-            settle(() => {
-                frames = nextFrames.map((f) => f.map((p) => [p[0], p[1], p[2]]));
-                forcesPerFrame = nextForces || null;
-            }, { resetFrame: true, keepsAtoms: true });
+            settle(() => holdCoordinates({
+                frames: nextFrames.map((f) => f.map((p) => [p[0], p[1], p[2]])),
+                forcesPerFrame: nextForces,
+                // A run's frames carry no rows (§ 11.7).
+                rowsPerFrame: null,
+            }), { resetFrame: true, keepsAtoms: true });
         }),
 
         // `{forces}` — an OPTIONS object, which is the shape § 12.2's worked
@@ -1083,18 +1221,8 @@ export function createModel(opts) {
             // the engine needs to extend the movie instead of reloading it, and
             // after the write it would be indistinguishable from the end.
             const from = Array.isArray(frames) ? frames.length : 0;
-            settle(() => {
-                if (!frames) frames = [];
-                frames.push(frame.map((p) => [p[0], p[1], p[2]]));
-                if (forces || forcesPerFrame) {
-                    // Back-fill so the forces of frame f stay at index f: a run
-                    // caught at its first geometry carries no forces, and
-                    // pushing the first ones that arrive onto an empty list
-                    // would attach them to frame 0 for ever after.
-                    if (!forcesPerFrame) forcesPerFrame = frames.map(() => null);
-                    forcesPerFrame[frames.length - 1] = forces || null;
-                }
-            }, { redraw: "append", from: from, keepsAtoms: true });
+            settle(() => appendCoordinates([frame], () => forces),
+                   { redraw: "append", from: from, keepsAtoms: true });
         }),
 
         addFrames: (function (moreFrames, options) {
@@ -1105,17 +1233,9 @@ export function createModel(opts) {
             requireSameAtoms(moreFrames, "addFrames");
             moreFrames.forEach((f) => requireMatch(f, "addFrames"));
             const from = Array.isArray(frames) ? frames.length : 0;
-            settle(() => {
-                if (!frames) frames = [];
-                moreFrames.forEach((f, k) => {
-                    frames.push(f.map((p) => [p[0], p[1], p[2]]));
-                    if (moreForces || forcesPerFrame) {
-                        if (!forcesPerFrame) forcesPerFrame = frames.map(() => null);
-                        forcesPerFrame[frames.length - 1] =
-                            (moreForces && moreForces[k]) || null;
-                    }
-                });
-            }, { redraw: "append", from: from, keepsAtoms: true });
+            settle(() => appendCoordinates(
+                       moreFrames, (k) => (moreForces && moreForces[k]) || null),
+                   { redraw: "append", from: from, keepsAtoms: true });
         }),
 
         setForces: (function (perFrame) {

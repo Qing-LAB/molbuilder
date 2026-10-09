@@ -118,22 +118,6 @@ def test_a_single_file_downloads_bare():
     )
 
 
-def test_a_range_export_sends_its_frames():
-    out = _run(
-        """
-        globalThis.__replies = [{ match: "/api/structure/export", body: {
-            ok: true, files: [{ name: "w_frame1-2.xyz", text: "..." },
-                              { name: "w.molstruct.json", text: "{}" }],
-        }}];
-        await molviewFiles.save("download", "w_frame1-2",
-            { structure: { elements: ["C"] },
-              frames: [[[0,0,0]], [[0,0,1]]] });
-        console.log(JSON.stringify({ sent: __calls[0].body }));
-        """
-    )
-    assert len(out["sent"]["frames"]) == 2
-
-
 def test_failures_and_nonsense_come_back_as_envelopes_never_throws():
     out = _run(
         """

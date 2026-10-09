@@ -812,7 +812,7 @@ function buildExportMenu(doc, card, model, handle, files) {
         const out = await files.save(
             destination,
             exportStem(model, file.name, range),
-            { structure: file.structure, frames: file.frames });
+            { structure: file.structure });
         report(out, destination === "project" ? "saved" : "downloaded");
     }
 
@@ -2139,13 +2139,16 @@ function mountPanel(doc, card, model) {
         const store = (model.info && typeof model.info.get === "function")
             ? model.info.get() : {};
         const keys = Object.keys(store).sort();
+        drawCustomized();
         /* The presence dot, the Cell tab's own idiom (data-has-content
-         * shares the notice dot's drawing): something IS recorded here,
-         * visible from whichever page you are on. */
+         * shares the notice dot's drawing): something IS recorded here --
+         * an `info` entry or a named value -- visible from whichever page
+         * you are on. */
         const tab = tabInputs.info && tabInputs.info.parentNode;
         if (tab) {
-            if (keys.length) tab.setAttribute("data-has-content", "1");
-            else tab.removeAttribute("data-has-content");
+            if (keys.length || custHasRows()) {
+                tab.setAttribute("data-has-content", "1");
+            } else tab.removeAttribute("data-has-content");
         }
         const editable = infoEditable();
         // An edit in progress belongs to an editable viewer -- and to an
@@ -2158,7 +2161,7 @@ function mountPanel(doc, card, model) {
         infoButtons.expand.hidden = infoButtons.collapse.hidden = infoRawShown;
         infoFilter.hidden = infoRawShown;
         infoButtons.raw.setAttribute("aria-pressed", infoRawShown ? "true" : "false");
-        infoEmpty.hidden = keys.length > 0 || !!infoEdit;
+        infoEmpty.hidden = keys.length > 0 || !!infoEdit || custHasRows();
         infoTree.textContent = "";
 
         if (infoEdit && infoEdit.kind === "add") {
@@ -2290,6 +2293,162 @@ function mountPanel(doc, card, model) {
         infoSay("");
         drawInfo();
     });
+
+    /* ── The Customized section (§ 8.4a; `model/structure.md` § 2.2d) ─────
+     *
+     * The structure's named values, and -- on a structure of several frames
+     * -- the DISPLAYED frame's, following the frame bar: a frame change
+     * redraws this section alone (§ 6.4).  A row IS the structure, so it is
+     * written through the person's doors, `customized.set` / `remove`, gated
+     * and recorded (model.js), on a viewer that saves its structure; every
+     * other viewer reads only.  A frame set's rows are written by what made
+     * the set, never here. */
+    const custBox = el("div", "molviewer-info-custom");
+    pages.info.appendChild(custBox);
+    let custAdding = null;      // {name, value, unit, note, frame} or null
+
+    const custHasRows = () => {
+        const at = model.currentFrame();
+        return model.customized.list().length > 0
+            || (model.frameCount() > 0 && model.customized.list(at).length > 0);
+    };
+
+    /** What the person typed, as the value it means: true / false, a
+     *  number, or the text itself. */
+    function custValue(text) {
+        const s = String(text).trim();
+        if (s === "true" || s === "false") return s === "true";
+        if (s !== "" && Number.isFinite(Number(s))) return Number(s);
+        return s;
+    }
+
+    function custRows(rows, frame, editable) {
+        const list = el("div", "molviewer-info-fields");
+        for (const row of rows) {
+            const line = el("div", "molviewer-info-row");
+            line.setAttribute("data-row", row.name);
+            const label = el("span", "molviewer-info-field");
+            label.textContent = row.name;
+            line.appendChild(label);
+            const value = el("span", "molviewer-info-value");
+            value.textContent = String(row.value) + (row.unit ? " " + row.unit : "");
+            if (row.note) value.title = row.note;
+            line.appendChild(value);
+            if (editable) {
+                line.appendChild(infoButton("Remove", () => {
+                    model.customized.remove(row.name, { frame: frame });
+                    infoSay("");
+                }));
+            }
+            list.appendChild(line);
+        }
+        return list;
+    }
+
+    function custAddForm(count) {
+        const box = el("div", "molviewer-info-editor");
+        const field = (key, label) => {
+            const input = el("input", "molviewer-filter-text");
+            input.placeholder = label;
+            input.setAttribute("aria-label", "The named value's " + label);
+            input.value = custAdding[key] || "";
+            input.addEventListener("input", () => { custAdding[key] = input.value; });
+            box.appendChild(input);
+            return input;
+        };
+        const first = field("name", "name");
+        field("value", "value");
+        field("unit", "unit (optional)");
+        field("note", "note (optional)");
+        if (count > 0) {
+            const which = el("select", "molviewer-filter-text");
+            which.setAttribute("aria-label", "Whose value it is");
+            for (const [v, text] of [["", "the structure's"],
+                                     ["frame", "this frame's"]]) {
+                const o = doc.createElement("option");
+                o.value = v;
+                o.textContent = text;
+                which.appendChild(o);
+            }
+            which.value = custAdding.frame ? "frame" : "";
+            which.addEventListener("change", () => {
+                custAdding.frame = which.value === "frame";
+            });
+            box.appendChild(which);
+        }
+        const row = el("div", "molviewer-selection-actions-row");
+        row.appendChild(infoButton("Apply", () => {
+            try {
+                model.customized.set(String(custAdding.name || "").trim(),
+                                     custValue(custAdding.value || ""),
+                                     { unit: custAdding.unit || null,
+                                       note: custAdding.note || null,
+                                       frame: custAdding.frame
+                                           ? model.currentFrame() : undefined });
+            } catch (e) {
+                infoSay("Not applied -- " + ((e && e.message) || e));
+                return;
+            }
+            custAdding = null;
+            infoSay("");
+            drawCustomized();
+        }));
+        row.appendChild(infoButton("Cancel", () => {
+            custAdding = null;
+            infoSay("");
+            drawCustomized();
+        }));
+        box.appendChild(row);
+        Promise.resolve().then(() => first.focus());
+        return box;
+    }
+
+    function drawCustomized() {
+        custBox.textContent = "";
+        const count = model.frameCount();
+        const at = model.currentFrame();
+        const own = model.customized.list();
+        const mine = count ? model.customized.list(at) : [];
+        const editable = infoEditable();
+        if (!editable) custAdding = null;
+        if (!own.length && !mine.length && !editable) return;
+
+        const block = el("div", "molviewer-info-entry");
+        const head = el("div", "molviewer-info-head");
+        const key = el("span", "molviewer-info-key");
+        key.textContent = "Customized";
+        const sum = el("span", "molviewer-info-sum");
+        sum.textContent = "named values this structure carries";
+        head.appendChild(key);
+        head.appendChild(sum);
+        block.appendChild(head);
+        if (own.length) block.appendChild(custRows(own, undefined, editable));
+        if (mine.length || count > 1) {
+            const sub = el("div", "molviewer-info-head");
+            const t = el("span", "molviewer-info-key");
+            // Counted from 1, as the frame bar counts.
+            t.textContent = count > 1 ? "Frame " + (at + 1) + " of " + count
+                                      : "This frame";
+            sub.appendChild(t);
+            block.appendChild(sub);
+            if (mine.length) block.appendChild(custRows(mine, at, editable));
+        }
+        if (editable) {
+            if (custAdding) block.appendChild(custAddForm(count));
+            else {
+                const row = el("div", "molviewer-selection-actions-row");
+                row.appendChild(infoButton("Add a named value", () => {
+                    custAdding = { name: "", value: "", unit: "", note: "",
+                                   frame: false };
+                    infoSay("");
+                    drawCustomized();
+                }));
+                block.appendChild(row);
+            }
+        }
+        custBox.appendChild(block);
+    }
+    const offCustFrame = model.onFrameChange(() => drawCustomized());
 
     function atomCount() {
         const atoms = model.getAtoms();
@@ -2804,7 +2963,7 @@ function mountPanel(doc, card, model) {
 
     return {
         dispose() {
-            offSelection(); offData();
+            offSelection(); offData(); offCustFrame();
             try { root.remove(); } catch (_) {}
         },
     };

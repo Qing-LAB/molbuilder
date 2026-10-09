@@ -86,7 +86,12 @@ except ImportError:                  # pragma: no cover - Windows branch
 #:
 #: A version gate that admits a version the code cannot honour is worse than
 #: no gate: it turns a loud failure into a quiet one.
-SCHEMA_VERSION = 10  # 10: `cell_origin` RETIRED -- read and
+SCHEMA_VERSION = 11  # 11: + the OPTIONAL `customized` block (the
+#                      structure's named values, one row set per frame;
+#                      model/structure.md § 2.2d) and the envelope's
+#                      `n_frames_total` -- additive: a 7-10 file holds
+#                      nothing indexed by frame.
+#                   10: `cell_origin` RETIRED -- read and
 #                      ignored, never written again (structure.
 #                      RETIRED_METADATA_KEYS; the user's decision, plan § 5q
 #                      D2) -- and the OPTIONAL stated `engine_offset` added
@@ -125,14 +130,19 @@ SCHEMA_VERSION = 10  # 10: `cell_origin` RETIRED -- read and
 #: `cell_origin` is retired -- read and ignored, by decision (D2) -- and a
 #: missing `engine_offset` means the rule, which is what those files meant for
 #: every structure whose corner nobody typed.
-READABLE_VERSIONS = frozenset({7, 8, 9, 10})
+#:
+#: v11 added two: `customized`, absent meaning no row, and `n_frames_total`,
+#: which a 7-10 file does not state and needs no more than it needs rows --
+#: nothing in it is indexed by frame.
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11})
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a
 #: Structure metadata field.  Named so :func:`apply_to_structure` can hand the
 #: gate exactly the fields it owns and REFUSE anything that is neither, instead
 #: of passing the whole payload and letting unknown keys fall on the floor.
-ENVELOPE_KEYS = ("schema_version", "n_atoms_total", "structure_hash",
-                 "selection_rules", "created_by", "created_at")
+ENVELOPE_KEYS = ("schema_version", "n_atoms_total", "n_frames_total",
+                 "structure_hash", "selection_rules", "created_by",
+                 "created_at")
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
 #: PUBLIC: a suffix with a composer (:func:`sidecar_path_for`) has a public
@@ -248,20 +258,26 @@ def _now_iso_z() -> str:
 
 
 def structure_fields_via_dataclass(
-    n_atoms_total: int, raw: Dict[str, Any]) -> Dict[str, Any]:
+    n_atoms_total: int, raw: Dict[str, Any],
+    n_frames_total: int) -> Dict[str, Any]:
     """Validate + canonicalise the Structure metadata fields through the ONE
     dataclass authority (`model/structure.md` § 2.2): apply ``raw`` to a scratch
-    N-atom :class:`~molbuilder.structure.Structure` -- which validates every
-    field exactly as a live structure does -- then read it back normalised via
-    ``metadata_to_dict``.  Shared by the write validator (:func:`to_dict`) and
-    the read validator (``parse/sidecars/molstruct._normalised_dict``) so the
-    two can never enumerate a different field set.
+    :class:`~molbuilder.structure.Structure` of ``n_atoms_total`` atoms and
+    ``n_frames_total`` frames -- which validates every field exactly as a live
+    structure does, the frame rows against the frames -- then read it back
+    normalised via ``metadata_to_dict``.  Shared by the write validator
+    (:func:`to_dict`) and the read validator
+    (``parse/sidecars/molstruct._normalised_dict``) so the two can never
+    enumerate a different field set.
     Raises :class:`MolstructJsonError` on any invalid field.
     """
     from molbuilder.structure import Structure
     import numpy as _np
     n = int(n_atoms_total)
-    scratch = Structure(elements=["C"] * n, positions=_np.zeros((n, 3)))
+    frames = int(n_frames_total)
+    scratch = Structure(elements=["C"] * n, positions=_np.zeros((n, 3)),
+                        frames=(_np.zeros((frames, n, 3)) if frames > 1
+                                else None))
     try:
         scratch.apply_metadata_dict(raw)
     except (ValueError, TypeError) as exc:
@@ -327,6 +343,7 @@ def to_dict(
     *,
     identity: Optional[Dict[str, Any]] = None,
     n_atoms_total: int,
+    n_frames_total: int = 1,
     structure_hash: str,
     selection_rules: Optional[Dict[str, Any]] = None,
     info: Optional[Dict[str, Any]] = None,
@@ -336,8 +353,7 @@ def to_dict(
     """Build the canonical sidecar dict from the metadata FIELDS dict + envelope.
 
     ``fields`` is the metadata field dict -- the SAME shape
-    :meth:`Structure.metadata_to_dict` produces (``regions`` / ``cell`` /
-    ``engine_offset`` / ``axis_kind`` / ``vacuum`` / ``annotations``).
+    :meth:`Structure.metadata_to_dict` produces (``METADATA_FIELDS``).
     STRICT type: ``annotations`` are JSON channel dicts, NOT
     ``AtomChannel`` objects -- serialise a live map with
     :func:`molbuilder.structure.annotations_to_json` first.  A subset is fine
@@ -345,8 +361,8 @@ def to_dict(
     matches ``apply_metadata_dict`` / ``apply_to_structure`` -- the whole
     metadata API set speaks the same format.
 
-    The envelope (``schema_version`` / ``n_atoms_total`` / ``structure_hash`` /
-    ``created_*``) and the sidecar-only ``selection_rules`` (keyed by region
+    The envelope (``schema_version`` / ``n_atoms_total`` / ``n_frames_total``
+    / ``structure_hash`` / ``created_*``) and the sidecar-only ``selection_rules`` (keyed by region
     label or the literal ``"frozen_atoms"``, each a JSON rule tree validated by
     re-parsing through :func:`molbuilder.selection.from_json`) are layered on.
     Doesn't write anywhere; use :func:`save` for that.
@@ -361,11 +377,16 @@ def to_dict(
             f"structure_hash must be a hex string (got "
             f"{structure_hash!r})"
         )
+    if isinstance(n_frames_total, bool) or not isinstance(n_frames_total, int) \
+            or n_frames_total < 1:
+        raise MolstructJsonError(
+            f"n_frames_total must be a positive int; got {n_frames_total!r}")
 
     # The Structure FIELDS -> validated + canonicalised through the ONE dataclass
     # authority (a scratch N-atom Structure IS the schema).  Shared verbatim with
     # the read side + apply_to_structure, so no field can drift between them.
-    fields = structure_fields_via_dataclass(n_atoms_total, fields or {})
+    fields = structure_fields_via_dataclass(n_atoms_total, fields or {},
+                                            n_frames_total)
     # The OPTIONAL identity columns (schema 8): validated the same way --
     # through the ONE dataclass authority.  A scratch Structure carrying them
     # re-runs __post_init__'s own length/type checks, and what comes back is
@@ -414,11 +435,11 @@ def to_dict(
         # Envelope -- the sidecar LAYER's own keys (not Structure fields).
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
+        "n_frames_total":  n_frames_total,
         "structure_hash":  structure_hash,
         # The Structure metadata block, VERBATIM from the ONE codec
-        # (metadata_to_dict, via structure_fields_via_dataclass): regions /
-        # cell / engine_offset / axis_kind / vacuum / annotations -- and never
-        # a retired key.  Spread -- NOT re-listed -- so a field added to the
+        # (metadata_to_dict, via structure_fields_via_dataclass): every field
+        # of METADATA_FIELDS -- and never a retired key.  Spread -- NOT re-listed -- so a field added to the
         # dataclass rides onto the sidecar automatically and this layer can no
         # longer drop or drift one (`model/structure.md` § 2.2: the ONE
         # serialization authority; add a key there and nowhere else).
@@ -575,8 +596,7 @@ def save(
 def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     """Apply a loaded sidecar payload's metadata onto ``struct`` IN PLACE.
 
-    Delegates the whole field set (regions / cell / engine_offset /
-    axis_kind / vacuum / annotations) to
+    Delegates the whole field set (``METADATA_FIELDS``) to
     :meth:`molbuilder.structure.Structure.apply_metadata_dict` -- the SINGLE
     dict->struct authority (`model/structure.md` § 2.2).  Because the writer
     (``Structure.metadata_to_dict``) and this reader share that one method, they
@@ -603,6 +623,16 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"indices no longer point at the right atoms; re-export "
             f"the sidecar from /modify after structural edits."
         )
+    # THE FRAME COUNT, beside the atom count and for the same reason: each
+    # frame's `customized` rows are indexed by frame (`structure-molstruct.md`
+    # § 3).  A v7-v10 payload states none and holds nothing indexed by frame.
+    sidecar_f = sidecar_data.get("n_frames_total")
+    if sidecar_f is not None and sidecar_f != struct.n_frames:
+        raise MolstructPairingError(
+            f"sidecar n_frames_total={sidecar_f} but the structure holds "
+            f"{struct.n_frames} frame(s).  The sidecar's frame rows no longer "
+            f"belong to these frames; write the pair again from the frame set "
+            f"it describes.")
     from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
                                       RETIRED_IDENTITY_KEYS,
                                       RETIRED_METADATA_KEYS)

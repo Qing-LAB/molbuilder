@@ -1441,9 +1441,9 @@ def test_one_read_of_the_structure_holds_everything_a_request_needs():
     # EXACT rather than a superset, deliberately: a field silently DROPPED is
     # what this catches, and a superset check cannot see one go.  A field
     # legitimately added updates this line, on purpose.
-    assert out["keys"] == ["annotations", "channelDefs", "elements",
-                           "forcesPerFrame", "frames", "info", "periodicity",
-                           "title"], (
+    assert out["keys"] == ["annotations", "channelDefs", "customized",
+                           "elements", "forcesPerFrame", "frames", "info",
+                           "periodicity", "rowsPerFrame", "title"], (
         f"the one read does not carry § 6.2's fields: {out['keys']}"
     )
     # The four facts § 9.3 names, each read off that single answer.
@@ -1932,7 +1932,7 @@ def test_identity_columns_and_channels_ride_the_two_doors_whole():
         "const adopted = m.structureFromServer("
         + json.dumps(payload) + ");\n"
         "const s = adopted.structure;\n"
-        "const env = m.structureForServer(s, adopted.coordinates.frames[0]);\n"
+        "const env = m.structureForServer(s, adopted.coordinates);\n"
         "console.log(JSON.stringify({ facts1: s.annotations[1],"
         " title: s.title, defs: s.channelDefs, env: env }));\n"
     )

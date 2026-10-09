@@ -70,15 +70,15 @@ def test_the_one_producer_refuses_a_structure_that_disagrees_with_itself():
                       periodicity: null };
         console.log(JSON.stringify({
             // Geometry shorter than the elements.
-            shortGeometry: JOBS.structureForServer(two, [[0,0,0]]),
+            shortGeometry: JOBS.structureForServer(two, { frames: [[[0,0,0]]] }),
             // Geometry longer.
-            longGeometry:  JOBS.structureForServer(two, [[0,0,0],[1,0,0],[2,0,0]]),
+            longGeometry:  JOBS.structureForServer(two, { frames: [[[0,0,0],[1,0,0],[2,0,0]]] }),
             // Per-atom facts disagreeing with both.
             shortFacts:    JOBS.structureForServer(
                 { elements: ["C","O"], annotations: [{ labels: [] }],
-                  periodicity: null }, [[0,0,0],[1,0,0]]),
+                  periodicity: null }, { frames: [[[0,0,0],[1,0,0]]] }),
             // The agreeing case still produces.
-            agreeing: JOBS.structureForServer(two, [[0,0,0],[1,0,0]]) !== null,
+            agreeing: JOBS.structureForServer(two, { frames: [[[0,0,0],[1,0,0]]] }) !== null,
         }));
         """
     )

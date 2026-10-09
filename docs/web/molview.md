@@ -2307,19 +2307,19 @@ alter the atom count, the elements, the labels or the cell, only add positions
 for atoms whose identity was fixed at load. There is nothing there for the gate
 to protect.
 
-**An editable viewer holds one frame** *(user, 2026-10-09: "When we deal with
-multi-frame files, we refuse edits … the edit or modify tab would only load a
-single frame. If it's pointed to a multi-frame, it will warn you or ask you,
-which frame do you want to load?")*. A frame set is a data set made by scripts
-and never edited (`model/structure.md` § 2.2e). So one rule stands at the one
-place frames arrive in the model: **in an editable viewer, a second frame is
-refused** — an install of a file or envelope holding several, an `addFrame` /
-`addFrames`, a `reloadFrames` of several — with *"a frame set is not edited —
-pick a frame"*, and nothing is installed. No editing door ever meets a frame
-set, so none of them needs a rule of its own. A read-only viewer takes a frame
-set whole, as it takes a running job's frames. The tab that wants one frame of
-a file asks the person which (the Molbuilder tab's Load, `tabs.md` § 2) and
-installs that one with `frame`.
+**An editable viewer is never handed a frame set** *(user, 2026-10-09: "When
+we deal with multi-frame files, we refuse edits … the edit or modify tab would
+only load a single frame. If it's pointed to a multi-frame, it will warn you or
+ask you, which frame do you want to load?")*. A frame set — a file's frames,
+arriving in the envelope each with its rows — is a data set made by scripts and
+never edited (`model/structure.md` § 2.2e). So one rule stands at the one
+entrance: **an editable viewer's `installMolecule` refuses a frame set** with
+*"a frame set is not edited — pick a frame"*, and nothing is installed. No
+editing door ever meets one, so none of them needs a rule of its own. A
+read-only viewer takes a frame set whole. A run's own frames are not a frame set
+(§ 11.7): they are delivered through the frame doors, the same in both modes, as
+above. The tab that wants one frame of a file asks the person which (the
+Molbuilder tab's Load, `tabs.md` § 2) and installs that one with `frame`.
 
 > Asking instead "does this touch the master copy?" reads the same table and
 > gives the wrong answer, because appending a frame literally does. Gated on that

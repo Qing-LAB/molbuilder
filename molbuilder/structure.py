@@ -120,7 +120,129 @@ FROZEN_LABEL = "frozen_atoms"
 #: it stored, and silently dropping it is how a structure reaches a calculation
 #: missing labels nobody noticed were gone.
 METADATA_FIELDS = ("regions", "cell", "engine_offset", "axis_kind",
-                   "vacuum", "annotations")
+                   "vacuum", "annotations", "customized")
+
+#: What every door that would edit a frame set answers (``model/structure.md``
+#: § 2.2e).  A frame set is a data set made by scripts through the frame doors
+#: -- ``with_frames``, ``take``, ``set_customized`` -- and never edited: moving
+#: atoms in it, adding or removing them, would make its frames disagree.  One
+#: sentence, so every door says the same thing.
+FRAME_SET_NOT_EDITED = (
+    "a frame set is not edited -- take one frame with frame_at(i), or build "
+    "the set again with with_frames (model/structure.md § 2.2e)")
+
+#: The keys of one ``customized`` row (``model/structure.md`` § 2.2d).
+_ROW_KEYS = ("name", "value", "unit", "note")
+
+
+def _customized_row(raw: Any, where: str) -> Dict[str, Any]:
+    """One row, validated and in its one form: ``name`` a non-empty string,
+    ``value`` a number, text or true/false, ``unit`` and ``note`` text and
+    present only when they say something."""
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"{where}: a row is an object {{name, value, unit?, note?}}; got "
+            f"{type(raw).__name__}")
+    stray = sorted(k for k in raw if k not in _ROW_KEYS)
+    if stray:
+        raise ValueError(
+            f"{where}: a row carries {stray!r}; its keys are "
+            f"{list(_ROW_KEYS)!r}")
+    name = raw.get("name")
+    if not isinstance(name, str) or not name:
+        raise ValueError(f"{where}: a row's name is a non-empty string; got "
+                         f"{name!r}")
+    value = raw.get("value")
+    if isinstance(value, (bool, np.bool_)):
+        value = bool(value)
+    elif isinstance(value, (int, np.integer)):
+        value = int(value)
+    elif isinstance(value, (float, np.floating)):
+        value = float(value)
+        if not np.isfinite(value):
+            raise ValueError(f"{where} ({name!r}): a value must be finite; "
+                             f"got {value!r}")
+    elif not isinstance(value, str):
+        raise ValueError(
+            f"{where} ({name!r}): a value is a number, text or true/false; "
+            f"got {type(value).__name__}")
+    out: Dict[str, Any] = {"name": name, "value": value}
+    for key in ("unit", "note"):
+        said = raw.get(key)
+        if said is None:
+            continue
+        if not isinstance(said, str):
+            raise ValueError(f"{where} ({name!r}): {key} is text; got "
+                             f"{type(said).__name__}")
+        if said:
+            out[key] = said
+    return out
+
+
+def _unique_names(rows: List[Dict[str, Any]], where: str) -> None:
+    seen: set = set()
+    for row in rows:
+        if row["name"] in seen:
+            raise ValueError(f"{where}: {row['name']!r} names two rows; a name "
+                             f"is unique within one set")
+        seen.add(row["name"])
+
+
+def normalise_customized(raw: Any, n_frames: int,
+                         where: str = "Structure.customized"
+                         ) -> Optional[Dict[str, Any]]:
+    """The ``customized`` section in its one form (``model/structure.md``
+    § 2.2d): ``None`` when it holds no row at all, otherwise ``{"rows": [...],
+    "frames": [...]}`` with EXACTLY ``n_frames`` frame row sets -- every
+    per-frame list of a structure has one entry per frame.
+
+    ``frames`` may be left out of ``raw`` (no frame has a row); given, it
+    must have one entry per frame.  Names are unique within a set, and a name
+    the structure's rows hold may not also be a frame's."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(f"{where} is an object {{rows, frames}}; got "
+                         f"{type(raw).__name__}")
+    stray = sorted(k for k in raw if k not in ("rows", "frames"))
+    if stray:
+        raise ValueError(f"{where} carries {stray!r}; its keys are "
+                         f"['rows', 'frames']")
+    rows_raw = raw.get("rows")
+    rows_raw = [] if rows_raw is None else rows_raw
+    if not isinstance(rows_raw, list):
+        raise ValueError(f"{where}.rows is a list of rows; got "
+                         f"{type(rows_raw).__name__}")
+    frames_raw = raw.get("frames")
+    if frames_raw is None:
+        frames_raw = [[] for _ in range(n_frames)]
+    if not isinstance(frames_raw, list) or len(frames_raw) != n_frames:
+        got = (len(frames_raw) if isinstance(frames_raw, list)
+               else type(frames_raw).__name__)
+        raise ValueError(
+            f"{where}.frames holds {got} frame row set(s); this structure has "
+            f"{n_frames} frame(s), and there is one set per frame")
+    rows = [_customized_row(r, f"{where}.rows[{k}]")
+            for k, r in enumerate(rows_raw)]
+    _unique_names(rows, f"{where}.rows")
+    frames: List[List[Dict[str, Any]]] = []
+    for f, frame_raw in enumerate(frames_raw):
+        if not isinstance(frame_raw, list):
+            raise ValueError(f"{where}.frames[{f}] is a list of rows; got "
+                             f"{type(frame_raw).__name__}")
+        frame_rows = [_customized_row(r, f"{where}.frames[{f}][{k}]")
+                      for k, r in enumerate(frame_raw)]
+        _unique_names(frame_rows, f"{where}.frames[{f}]")
+        frames.append(frame_rows)
+    both = sorted({r["name"] for frame_rows in frames for r in frame_rows}
+                  & {r["name"] for r in rows})
+    if both:
+        raise ValueError(
+            f"{where}: {both!r} is both a row of the structure and a row of a "
+            f"frame; a name is the structure's or the frames', never both")
+    if not rows and not any(frames):
+        return None
+    return {"rows": rows, "frames": frames}
 
 #: Keys a sidecar ON DISK may carry that this build no longer stores.
 #: ACCEPTED AND IGNORED wherever a stored payload is read -- never refused.
@@ -456,6 +578,16 @@ class Structure:
     # ``get_channel()`` / ``atom_annotations()``, which present the labels
     # and these together.
     annotations:   Dict[str, AtomChannel] = field(default_factory=dict)
+    #: Named values the structure carries (``model/structure.md`` § 2.2d):
+    #: the structure's rows, and one row set per frame -- what a frame IS
+    #: (a displacement's mode, its weight in an average).  STRUCTURAL, in
+    #: METADATA_FIELDS: the sidecar carries it and an edit of it is an edit.
+    #: ``None`` when it holds no row, else ``{"rows": [...], "frames":
+    #: [...]}`` with one set per frame (:func:`normalise_customized`).
+    #: Written through :meth:`set_customized` / :meth:`remove_customized`
+    #: and read through :meth:`customized_value` / :meth:`customized_rows`;
+    #: nothing else names a key of it.
+    customized:    Optional[Dict[str, Any]] = None
     #: METADATA (model/structure.md § 2.2a) -- what the MolView Metadata
     #: pane shows -- that is NOT part of the structure: no emitter reads
     #: it, it never enters `structure_hash`, and the read-only gate does
@@ -482,6 +614,12 @@ class Structure:
     #: `set(key, value)` / `remove(key)`; :meth:`set_info`,
     #: :meth:`drop_info` and :meth:`apply_info_dict` are the Python half.
     info:          Dict[str, Any] = field(default_factory=dict)
+    #: THE FRAMES of a frame set (``model/structure.md`` § 2.2e): shape
+    #: ``(F, N, 3)`` when ``F > 1``, and ``positions`` IS ``frames[0]`` -- one
+    #: coordinate store, never two copies.  ``None`` for one frame.  Read-only:
+    #: a frame set is a data set and is never edited in place; the frame
+    #: doors (:meth:`with_frames`, :meth:`take`) make a new one.
+    frames:        Optional[np.ndarray] = None
 
     def __post_init__(self) -> None:
         self.positions = np.asarray(self.positions, dtype=float).reshape(-1, 3)
@@ -490,6 +628,25 @@ class Structure:
             raise ValueError(
                 f"elements ({len(self.elements)}) does not match positions ({n})"
             )
+        if self.frames is not None:
+            frames = np.asarray(self.frames, dtype=float)
+            if frames.ndim != 3 or len(frames) == 0 \
+                    or frames.shape[1:] != (n, 3):
+                raise ValueError(
+                    f"Structure.frames is (F, {n}, 3) -- every frame carries "
+                    f"the structure's {n} atoms; got shape {frames.shape}")
+            if not np.array_equal(frames[0], self.positions):
+                raise ValueError(
+                    "Structure.positions is frame 0 of Structure.frames -- "
+                    "one coordinate store (model/structure.md § 2.2e)")
+            if len(frames) == 1:
+                self.frames = None
+            else:
+                if frames.flags.writeable:
+                    frames = frames.copy()
+                    frames.flags.writeable = False
+                self.frames = frames
+                self.positions = frames[0]
         # Default-fill optional metadata so PDB writer never has to special-case
         if self.atom_names    is None: self.atom_names    = list(self.elements)
         if self.residue_ids   is None: self.residue_ids   = [1] * n
@@ -576,6 +733,8 @@ class Structure:
         # Validate the labels and the extra channels.
         self._validate_regions(n)
         self._validate_annotations(n)
+        # The named values, one row set per frame.
+        self.customized = normalise_customized(self.customized, self.n_frames)
 
     def pbc(self) -> Tuple[bool, bool, bool]:
         """Per-axis periodicity as BOOLEANS — an interop accessor, not state.
@@ -744,6 +903,8 @@ class Structure:
             "vacuum":       ([float(x) for x in self.vacuum]
                              if self.vacuum is not None else None),
             "annotations":  annotations_to_json(self.annotations),
+            # None when no row, else every row and one set per frame (§ 2.2d).
+            "customized":   _copy.deepcopy(self.customized),
         }
 
     def identity_to_dict(self) -> dict:
@@ -827,10 +988,12 @@ class Structure:
                              if data.get("axis_kind") is not None else None)
         self.vacuum       = _vacuum_from_stored(data.get("vacuum"))
         self.annotations  = annotations_from_json(data.get("annotations"))
+        self.customized   = data.get("customized")
         # Re-run the dataclass invariants ONCE: cell 3x3 of finite floats, the
         # ``axis_kind`` default and value check (nothing to reconcile: there
         # is one periodicity field), a stated offset of three finite
-        # floats, and region/frozen/annotation indices in range.
+        # floats, region/frozen/annotation indices in range, and one
+        # ``customized`` row set per frame this structure holds.
         self.__post_init__()
 
     # ------------------------------------------------------------------ #
@@ -850,11 +1013,17 @@ class Structure:
         metadata field set (nested under ``metadata`` via
         :meth:`metadata_to_dict`).  Loss-free + filesystem-free; the round-trip
         unit the persistence + sidecar + CLI layers store.  Inverse:
-        :meth:`from_dict`."""
+        :meth:`from_dict`.
+
+        A frame set carries ``frames`` IN PLACE OF ``positions`` -- one key or
+        the other, never both, because ``positions`` is frame 0
+        (``model/structure.md`` § 2.1, § 2.2e)."""
+        coordinates = ({"frames": self.frames.tolist()} if self.n_frames > 1
+                       else {"positions": self.positions.tolist()})
         return {
             "title":         self.title or "",
             "elements":      list(self.elements),
-            "positions":     self.positions.tolist(),
+            **coordinates,
             "atom_names":    list(self.atom_names)    if self.atom_names    else [],
             "residue_ids":   list(self.residue_ids)   if self.residue_ids   else [],
             "residue_names": list(self.residue_names) if self.residue_names else [],
@@ -873,9 +1042,23 @@ class Structure:
         keys out of a structure dict."""
         if data is None:
             raise ValueError("Structure.from_dict: data is None")
+        has_frames = data.get("frames") is not None
+        if has_frames and data.get("positions") is not None:
+            raise ValueError(
+                "Structure.from_dict: the dict carries both 'positions' and "
+                "'frames'; a frame set states 'frames' alone, its frame 0 "
+                "being the positions (model/structure.md § 2.1)")
+        frames = (np.asarray(data["frames"], dtype=float) if has_frames
+                  else None)
+        if frames is not None and (frames.ndim != 3 or len(frames) == 0):
+            raise ValueError(
+                f"Structure.from_dict: 'frames' is a list of frames, each a "
+                f"list of [x, y, z]; got shape {frames.shape}")
         s = cls(
             elements=list(data["elements"]),
-            positions=np.asarray(data["positions"], dtype=float),
+            positions=(frames[0] if frames is not None
+                       else np.asarray(data["positions"], dtype=float)),
+            frames=frames,
             atom_names=list(data.get("atom_names")    or []) or None,
             residue_ids=list(data.get("residue_ids")   or []) or None,
             residue_names=list(data.get("residue_names") or []) or None,
@@ -1130,7 +1313,16 @@ class Structure:
         ``frozen_atoms`` is never re-passed at all: a copied ``regions`` is the
         whole label store and already carries the reserved label, so the trap
         above is gone by construction rather than by a special case.
+
+        ON A FRAME SET the coordinates and the atoms change only together with
+        the frames (``model/structure.md`` § 2.2e): ``positions`` or
+        ``elements`` without ``frames`` is refused, :data:`FRAME_SET_NOT_EDITED`.
+        The frame doors -- :meth:`frame_at`, :meth:`with_frames`, :meth:`take`
+        -- pass ``frames``, and ``positions`` follows them as their frame 0.
         """
+        if self.n_frames > 1 and "frames" not in changes \
+                and ("positions" in changes or "elements" in changes):
+            raise ValueError(FRAME_SET_NOT_EDITED)
         kw = {
             "elements":      list(self.elements),
             "positions":     self.positions.copy(),
@@ -1141,8 +1333,12 @@ class Structure:
             "title":         self.title,
             "regions":       {k: list(v) for k, v in self.regions.items()},
             "annotations":   copy_annotations(self.annotations),
-            **self._carry_nonatom(),
+            # Read-only, so shared rather than copied: nothing writes into it.
+            "frames":        self.frames,
+            **self._nonatom(),
         }
+        if changes.get("frames") is not None and "positions" not in changes:
+            kw["positions"] = np.asarray(changes["frames"], dtype=float)[0]
         kw.update(changes)
         return type(self)(**kw)
 
@@ -1201,6 +1397,180 @@ class Structure:
     @property
     def n_residues(self) -> int:
         return len(set(self.residue_ids)) if self.residue_ids else 0
+
+    # ------------------------------------------------------------------ #
+    #  Frames (model/structure.md § 2.2e) -- a frame set is a data set    #
+    # ------------------------------------------------------------------ #
+
+    @property
+    def n_frames(self) -> int:
+        """How many frames this structure holds -- 1 unless it is a set."""
+        return 1 if self.frames is None else len(self.frames)
+
+    def _frame_index(self, frame: Any) -> Optional[int]:
+        """``None`` (the structure's own rows) or a frame index in range,
+        refused naming how many frames there are."""
+        if frame is None:
+            return None
+        if isinstance(frame, (bool, np.bool_)) \
+                or not isinstance(frame, (int, np.integer)):
+            raise TypeError(f"a frame is an index, 0-based; got "
+                            f"{type(frame).__name__}")
+        f = int(frame)
+        if not 0 <= f < self.n_frames:
+            raise ValueError(
+                f"frame {f} is outside this structure's {self.n_frames} "
+                f"frame(s): 0 … {self.n_frames - 1}")
+        return f
+
+    def frame_at(self, i: int) -> "Structure":
+        """Frame ``i`` as a one-frame structure: the shared facts, ``info``,
+        the structure's ``customized`` rows, and frame ``i``'s rows as its own
+        frame 0 (``model/structure.md`` § 2.2e).
+
+        ONE ORIGIN FOR THE SET (``structure-periodicity.md`` § 6.0, *A frame
+        set gets one offset*): frame 0 is as it is, and a later frame states
+        frame 0's offset -- the stated one, or the rule's computed on frame 0
+        -- so every frame reaches the engine through ``cell.to_engine`` with
+        the same one and no electrode atom moves between frames.  Where the
+        rule cannot place frame 0 -- no cell to place it in -- there is no
+        offset to state, and the door that acts refuses the cell itself."""
+        f = self._frame_index(i)
+        if self.n_frames == 1:
+            return self.copy()
+        customized = None
+        if self.customized is not None:
+            customized = {"rows": _copy.deepcopy(self.customized["rows"]),
+                          "frames": [_copy.deepcopy(
+                              self.customized["frames"][f])]}
+        offset = (None if self.engine_offset is None
+                  else np.asarray(self.engine_offset, dtype=float).copy())
+        if f > 0 and offset is None:
+            from .cell import engine_offset as _engine_offset
+            try:
+                # `positions` IS frame 0, so the rule placing this structure
+                # places frame 0.
+                offset = _engine_offset(self)
+            except ValueError:
+                offset = None
+        return self.replace(frames=None, positions=self.frames[f].copy(),
+                            customized=customized, engine_offset=offset)
+
+    def with_frames(self, coordinates: Any,
+                    frame_rows: Optional[Sequence[Sequence[dict]]] = None
+                    ) -> "Structure":
+        """A frame set of this structure's atoms at ``coordinates`` -- shape
+        ``(F, N, 3)``, frame 0 the new ``positions`` -- carrying every shared
+        fact, ``info`` and the structure's ``customized`` rows; each frame's
+        rows are ``frame_rows[f]``, none when it is left out.  THE door a
+        frame set is built through (``model/structure.md`` § 2.2e); one frame
+        makes a one-frame structure."""
+        frames = np.asarray(coordinates, dtype=float)
+        if frames.ndim != 3 or len(frames) == 0 \
+                or frames.shape[1:] != (self.n_atoms, 3):
+            raise ValueError(
+                f"with_frames: the frames are (F, {self.n_atoms}, 3) -- every "
+                f"frame this structure's {self.n_atoms} atoms in its order; "
+                f"got shape {frames.shape}")
+        F = len(frames)
+        sets = ([[] for _ in range(F)] if frame_rows is None
+                else [list(rows) for rows in frame_rows])
+        if len(sets) != F:
+            raise ValueError(
+                f"with_frames: {len(sets)} frame row set(s) for {F} frame(s); "
+                f"there is one set per frame")
+        customized = {"rows": self.customized_rows(), "frames": sets}
+        return self.replace(frames=(frames if F > 1 else None),
+                            positions=frames[0].copy(),
+                            customized=customized)
+
+    def take(self, order: Sequence[int]) -> "Structure":
+        """The atoms reordered: ``order[j]`` is the index of the atom that
+        sits at ``j``.  Every per-atom field moves with its atom -- the
+        identity columns, the labels, the channels -- and so does every
+        frame's coordinates (``model/structure.md`` § 2.2e).  A reorder is
+        not an edit; the transport sort goes through here."""
+        n = self.n_atoms
+        idx = [int(i) for i in order]
+        if sorted(idx) != list(range(n)):
+            raise ValueError(
+                f"take: the order names each of the {n} atoms once; got "
+                f"{len(idx)} indices")
+        old_to_new = {old: new for new, old in enumerate(idx)}
+        changes: Dict[str, Any] = dict(
+            elements=[self.elements[i] for i in idx],
+            atom_names=[self.atom_names[i] for i in idx],
+            residue_ids=[self.residue_ids[i] for i in idx],
+            residue_names=[self.residue_names[i] for i in idx],
+            chain_ids=[self.chain_ids[i] for i in idx],
+            regions={label: sorted(old_to_new[i] for i in members)
+                     for label, members in self.regions.items()},
+            annotations=remap_annotations(self.annotations, old_to_new),
+        )
+        if self.n_frames > 1:
+            changes["frames"] = self.frames[:, idx, :]
+        else:
+            changes["positions"] = self.positions[idx].copy()
+        return self.replace(**changes)
+
+    # ------------------------------------------------------------------ #
+    #  The `customized` section (model/structure.md § 2.2d)              #
+    # ------------------------------------------------------------------ #
+
+    def customized_rows(self, frame: Optional[int] = None
+                        ) -> List[Dict[str, Any]]:
+        """A copy of the structure's rows (``frame`` omitted) or of frame
+        ``frame``'s -- ``[]`` when it has none."""
+        f = self._frame_index(frame)
+        if self.customized is None:
+            return []
+        rows = (self.customized["rows"] if f is None
+                else self.customized["frames"][f])
+        return _copy.deepcopy(rows)
+
+    def customized_value(self, name: str, frame: Optional[int] = None) -> Any:
+        """The value of row ``name`` in that one set -- the structure's, or
+        frame ``frame``'s -- or ``None`` when the set has no such row.  Never
+        a fall-back from one set to the other."""
+        for row in self.customized_rows(frame):
+            if row["name"] == name:
+                return row["value"]
+        return None
+
+    def set_customized(self, name: str, value: Any, unit: Optional[str] = None,
+                       note: Optional[str] = None,
+                       frame: Optional[int] = None) -> None:
+        """Write one row, in place: of the structure (``frame`` omitted) or of
+        frame ``frame``.  A row of that name in that set is replaced where it
+        stands; otherwise the row is added at the end."""
+        f = self._frame_index(frame)
+        row = _customized_row({"name": name, "value": value, "unit": unit,
+                               "note": note}, "Structure.set_customized")
+        section = (_copy.deepcopy(self.customized)
+                   or {"rows": [], "frames": [[] for _ in range(self.n_frames)]})
+        rows = section["rows"] if f is None else section["frames"][f]
+        for k, old in enumerate(rows):
+            if old["name"] == name:
+                rows[k] = row
+                break
+        else:
+            rows.append(row)
+        self.customized = normalise_customized(section, self.n_frames)
+
+    def remove_customized(self, name: str,
+                          frame: Optional[int] = None) -> bool:
+        """Remove one row, in place.  ``True`` if it was there."""
+        f = self._frame_index(frame)
+        if self.customized is None:
+            return False
+        section = _copy.deepcopy(self.customized)
+        rows = section["rows"] if f is None else section["frames"][f]
+        kept = [row for row in rows if row["name"] != name]
+        if len(kept) == len(rows):
+            return False
+        rows[:] = kept
+        self.customized = normalise_customized(section, self.n_frames)
+        return True
 
     def geometry_lines(self) -> List[str]:
         """One canonical line per atom, in THIS structure's order: the
@@ -1276,8 +1646,7 @@ class Structure:
 
     @classmethod
     def from_xyz(cls, text: str, *,
-                 title: Optional[str] = None,
-                 frames_out: Optional[List] = None) -> "Structure":
+                 title: Optional[str] = None) -> "Structure":
         """Parse a Structure from XYZ TEXT.  Not a path -- see
         :func:`_require_text`; ``StructureCodec().load(path)`` reads files.
 
@@ -1293,12 +1662,14 @@ class Structure:
         residue 1 ("MOL", chain "A") and atom names default to the element
         symbol.
 
+        EVERY FRAME, AS ONE FRAME SET (``model/structure.md`` § 2.2e, § 2.3):
+        a document of several frames is one structure holding them, and its
+        frames must BE one -- a frame whose atom count, species, atom order,
+        ``Lattice=`` or ``pbc=`` differs from frame 0's is refused, naming it.
+        Which frame a caller gets is the codec's choice (``load``), never the
+        reader's.
+
         :param title: overrides the comment line.
-        :param frames_out: when given, EVERY frame's positions are appended to
-            it, in file order -- the read-side inverse of ``to_extxyz(frames=)``.
-            The Structure itself holds one geometry (frames live with the caller
-            that needs them), so a multi-frame file is otherwise read as its
-            first frame and this is how the rest is recovered.
         """
         text = _require_text(text, "xyz")
         # THE TITLE IS OURS, and it is the one thing read here rather than
@@ -1337,10 +1708,28 @@ class Structure:
         if not images:
             raise ValueError("XYZ holds no frames")
         first = images[0]
-
-        if frames_out is not None:
-            frames_out.extend(np.asarray(im.get_positions(), dtype=float)
-                              for im in images)
+        symbols = list(first.get_chemical_symbols())
+        first_cell = np.asarray(first.cell, dtype=float)
+        first_pbc = tuple(bool(b) for b in first.pbc)
+        # ONE FRAME SET: the frames share everything but their coordinates.
+        # Counted from 1 here, because a person reads it.
+        for k, im in enumerate(images[1:], start=1):
+            differs = (
+                "atom count" if len(im) != len(first) else
+                "species or atom order" if list(im.get_chemical_symbols())
+                != symbols else
+                "Lattice=" if not np.array_equal(
+                    np.asarray(im.cell, dtype=float), first_cell) else
+                "pbc=" if tuple(bool(b) for b in im.pbc) != first_pbc else
+                None)
+            if differs:
+                raise ValueError(
+                    f"frame {k + 1} of {len(images)} differs from frame 1 in "
+                    f"its {differs}; the frames of one document are one frame "
+                    f"set -- the same atoms in the same order, in the same "
+                    f"cell (model/structure.md § 2.3)")
+        coordinates = np.asarray([im.get_positions() for im in images],
+                                 dtype=float)
 
         # THE CELL, ONLY WHERE IT MEANS ONE.  A `Lattice=` is adopted as this
         # structure's explicit cell only when some axis is actually periodic.
@@ -1351,13 +1740,14 @@ class Structure:
         # (structure-periodicity.md's raw-vs-resolved line).  A `.xyz` that
         # travels with its `.molstruct.json` gets the real cell from the
         # sidecar anyway, applied after this parse.
-        cell = np.asarray(first.cell, dtype=float)
-        periodic = tuple(bool(b) for b in first.pbc)
+        cell = first_cell
+        periodic = first_pbc
         carries_cell = bool(cell.any()) and any(periodic)
 
         return cls(
-            elements=list(first.get_chemical_symbols()),
-            positions=np.asarray(first.get_positions(), dtype=float),
+            elements=symbols,
+            positions=coordinates[0],
+            frames=(coordinates if len(coordinates) > 1 else None),
             title=(title if title is not None else comment),
             cell=(cell.tolist() if carries_cell else None),
             # THE BOOLEANS BECOME KINDS AT THE DOOR.  extxyz carries only
@@ -1600,16 +1990,11 @@ class Structure:
     #  Output: extended XYZ (one frame, or a whole trajectory)            #
     # ------------------------------------------------------------------ #
 
-    def to_extxyz(
-        self,
-        *,
-        frames: Optional[Sequence[Any]] = None,
-        comment: str = "",
-    ) -> str:
-        """Return extended-XYZ TEXT for this structure, or for *frames* of it.
-        Not a file: ``StructureCodec().write(struct, path, frames=...)``
-        writes one, and :meth:`to_xyz` records why there is no ``path``
-        argument.
+    def to_extxyz(self, *, comment: str = "") -> str:
+        """Return extended-XYZ TEXT for this structure -- one block per frame
+        it holds (``model/structure.md`` § 2.2e).  Not a file:
+        ``StructureCodec().write(struct, path)`` writes one, and
+        :meth:`to_xyz` records why there is no ``path`` argument.
 
         Extended XYZ is plain XYZ with the per-frame comment line carrying
         key=value metadata -- the convention ASE reads and writes, and what
@@ -1633,29 +2018,13 @@ class Structure:
         every frame.  ``to_xyz`` stays for the single-frame, cell-less case that
         every code reads; this is for the cases it cannot carry.
 
-        Parameters
-        ----------
-        frames
-            Optional sequence of coordinate arrays, each shaped like
-            :attr:`positions` -- one block is written per frame, **in order**.
-            Every frame must carry this structure's atom count: the elements and
-            the cell are written from ``self`` and are the same for all of them,
-            which is what makes it one trajectory rather than a pile of
-            structures (the same-atoms rule the frame model rests on).  Omitted,
-            one block is written from :attr:`positions`.
+        The elements and the cell are written from ``self`` and are the same
+        for every block, which is what makes the document one frame set rather
+        than a pile of structures -- and what ``from_xyz`` checks on the way
+        back in.
         """
-        blocks = [self.positions] if frames is None else list(frames)
-        if not blocks:
-            raise ValueError("to_extxyz: needs at least one frame")
-
+        blocks = list(self.frames) if self.n_frames > 1 else [self.positions]
         n = self.n_atoms
-        for i, frame in enumerate(blocks):
-            got = len(frame)
-            if got != n:
-                raise ValueError(
-                    f"to_extxyz: frame {i} has {got} atoms, but the structure "
-                    f"has {n}; every frame of a trajectory carries the same "
-                    f"atoms")
 
         # The box every frame shares.  ``resolve_cell`` can refuse on a
         # structure whose state is contradictory -- the same degradation
@@ -1799,8 +2168,21 @@ class Structure:
         is told WHICH kind of edit happened.  Rebuilding without ``info``
         deletes the record the flag marks -- so the flag has nothing to
         mark.  Voiding a calculation is a MARK on the record, and a record
-        that is gone cannot carry one.
+        that is gone cannot carry one.  ``customized`` rides for the same
+        reason (``model/structure.md`` § 2.2d).
+
+        A FRAME SET IS REFUSED HERE (:data:`FRAME_SET_NOT_EDITED`): every
+        atom edit that rebuilds a Structure takes its non-atom facts from
+        this door, so this is where an edit of a frame set is stopped -- one
+        place, before a rebuild could keep frame 0 and drop the rest.
         """
+        if self.n_frames > 1:
+            raise ValueError(FRAME_SET_NOT_EDITED)
+        return self._nonatom()
+
+    def _nonatom(self) -> dict:
+        """The non-per-atom facts, copied -- what :meth:`replace` derives with
+        and :meth:`_carry_nonatom` hands an atom edit."""
         return dict(
             cell        = (self.cell.copy() if self.cell is not None else None),
             engine_offset = (self.engine_offset.copy()
@@ -1808,6 +2190,7 @@ class Structure:
             axis_kind   = self.axis_kind,
             vacuum      = self.vacuum,
             info        = _copy.deepcopy(self.info) if self.info else {},
+            customized  = _copy.deepcopy(self.customized),
         )
 
     # ------------------------------------------------------------------ #
@@ -1993,6 +2376,10 @@ class Structure:
         """
         if not structures:
             return cls(elements=[], positions=np.zeros((0, 3)))
+        # A MERGE JOINS ONE-FRAME STRUCTURES (`model/structure.md` § 2.2b):
+        # the frames of a set have no counterpart in the other input.
+        if any(s.n_frames > 1 for s in structures):
+            raise ValueError(FRAME_SET_NOT_EDITED)
         elements: List[str] = []
         atom_names: List[str] = []
         residue_ids: List[int] = []

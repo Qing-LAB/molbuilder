@@ -348,6 +348,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   color: var(--ps-fg-muted, #999999);
 }
 .molbuilder-projects-dialog-field input[type="text"],
+.molbuilder-projects-dialog-field input[type="number"],
 .molbuilder-projects-dialog-field input[type="file"] {
   font: inherit;
   padding: var(--space-xs) var(--space-sm);
@@ -356,7 +357,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: var(--radius-sm);
 }
-.molbuilder-projects-dialog-field input[type="text"]:focus {
+.molbuilder-projects-dialog-field input[type="text"]:focus,
+.molbuilder-projects-dialog-field input[type="number"]:focus {
   outline: 1px solid var(--accent, #6ba6ff);
   outline-offset: -1px;
 }

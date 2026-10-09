@@ -291,9 +291,14 @@ def test_export_names_the_files_so_no_caller_has_to(client):
                       json=dict(_envelope(), name="wire")).get_json()
     assert [f["name"] for f in one["files"]] == ["wire.xyz"]
 
+    # A frame set's frames ride INSIDE the envelope, in place of `positions`
+    # (`model/structure.md` § 2.1).
+    env = _envelope()
+    env["structure"] = {k: v for k, v in env["structure"].items()
+                        if k != "positions"}
+    env["structure"]["frames"] = frames
     many = client.post("/api/structure/export",
-                       json=dict(_envelope(), name="wire",
-                                 frames=frames)).get_json()
+                       json=dict(env, name="wire")).get_json()
     assert [f["name"] for f in many["files"]] == ["wire.xyz"], (
         "a range must be named under the extension that reads it back -- "
         "extended XYZ is a superset of plain XYZ and shares its extension")

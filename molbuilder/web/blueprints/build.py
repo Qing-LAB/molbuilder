@@ -506,13 +506,9 @@ def api_structure_save():
     if resolved.exists() and not overwrite:
         return jsonify({"ok": False, "needsOverwrite": True,
                         "error": f"file already exists: {path}"}), 409
-    frames = body.get("frames")
-    if frames is not None and not isinstance(frames, list):
-        return jsonify({"ok": False,
-                        "error": "'frames' must be a list of coordinate lists"}), 400
     try:
-        StructureCodec().write(struct, resolved, frames=frames)
-    except ValueError as exc:          # a frame that does not carry these atoms
+        StructureCodec().write(struct, resolved)
+    except ValueError as exc:          # a frame set to a .pdb
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 -- disk / permission -> 500
         return jsonify({"ok": False, "error": f"could not save {path}: {exc}"}), 500
@@ -533,8 +529,9 @@ def api_structure_export():
     sidecar's envelope -- ``schema_version``, and the ``structure_hash`` pinning
     it to its geometry -- is the codec's.
 
-    Body: the ENVELOPE (web-api.md § 1) plus two optional keys --
-    ``{"structure": {...}, "name": "<stem>", "frames": [...]}``.
+    Body: the ENVELOPE (web-api.md § 1) plus an optional stem --
+    ``{"structure": {...}, "name": "<stem>"}``; a frame set's frames ride
+    inside the envelope (``model/structure.md`` § 2.2e).
 
     WHO NAMES WHAT.  ``name`` is a STEM and nothing else (``wire_frame40-120``,
     no extension), because only the caller knows what an export IS: which
@@ -545,7 +542,8 @@ def api_structure_export():
     ``structure``; only the last path component is ever used, and nothing here
     touches the filesystem.
 
-    Returns ``{ok, files: [{name, text}], frames, notices}`` -- each entry is a
+    Returns ``{ok, files: [{name, text}], frames, notices}`` -- ``frames`` the
+    count the files hold -- each entry is a
     file as it would exist on disk, under the name it would exist as.  One entry
     means the structure carries no metadata worth keeping, which is exactly when
     a save writes no ``.json`` either (``no .json == empty metadata``)."""
@@ -564,15 +562,6 @@ def api_structure_export():
     # leaves as a 400 carrying the gate's sentence, not as a 500.
     from ._shared import checked_periodicity
     struct, notices = checked_periodicity(struct)
-    # THE FRAMES, when a range was asked for (molview.md § 11.3).  They ride
-    # BESIDE the envelope rather than inside it -- the same shape
-    # ``/api/build/load`` takes on the way in: one structure carrying the
-    # identity and the metadata, plus the coordinates of the frames wanted.
-    # Absent, this is the single-frame export.
-    frames = body.get("frames")
-    if frames is not None and not isinstance(frames, list):
-        return jsonify({"ok": False,
-                        "error": "'frames' must be a list of coordinate lists"}), 400
     # THE STEM, reduced to its last component.  This never reaches the
     # filesystem -- ``files()`` builds names in memory -- but it does reach the
     # browser as a download name, so a path-shaped one is flattened rather than
@@ -581,16 +570,27 @@ def api_structure_export():
     stem = raw_name.rsplit("/", 1)[-1].strip()
     if not stem or stem in (".", ".."):
         stem = "structure"
-    try:
-        made = StructureCodec().files(struct, stem, frames=frames)
-    except ValueError as exc:          # a frame that does not carry these atoms
-        return jsonify({"ok": False, "error": str(exc)}), 400
+    made = StructureCodec().files(struct, stem)
     return jsonify({"ok": True,
                     "files": [{"name": path.name,
                                "text": blob.decode("utf-8")}
                               for path, blob in made],
-                    "frames": len(frames) if frames else 1,
+                    "frames": struct.n_frames,
                     "notices": notices})
+
+
+def _chosen_frame(whole: Structure, body: Dict[str, Any]) -> Structure:
+    """The frame a load answers with -- ``StructureCodec.frame_choice``, the
+    one rule (``model/structure.md`` § 2.3): frame 0 unless the body names
+    ``frame`` (0-based), or the whole set with ``frames: true``.  Every
+    answer also says how many frames the file holds (``n_frames``), so a tab
+    can ask which (``tabs.md`` § 2)."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    frame = body.get("frame")
+    frames = body.get("frames", False)
+    if not isinstance(frames, bool):
+        raise ValueError("'frames' is true for the whole set, or absent")
+    return StructureCodec.frame_choice(whole, frame=frame, frames=frames)
 
 
 @bp.route("/api/build/load", methods=["POST"])
@@ -628,10 +628,15 @@ def api_build_load():
             return jsonify({"ok": False, "error": f"no such file: {_path}"}), 404
         retired: Dict[str, Any] = {}
         try:
-            struct = StructureCodec().read(_resolved, retired_out=retired)
+            whole = StructureCodec().read(_resolved, frames=True,
+                                          retired_out=retired)
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
             return jsonify(
                 {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
+        try:
+            struct = _chosen_frame(whole, _pbody)
+        except (TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
         # The conditions for THIS structure are produced on the way out by
         # `ok_structure_response`, which validates every structure it sends.
         # What only the read knows is a retired corner it did not apply: said
@@ -653,6 +658,7 @@ def api_build_load():
             "source_format": ("pdb" if str(_resolved).lower().endswith(".pdb")
                               else "xyz"),
             "title": struct.title or _resolved.name,
+            "n_frames": whole.n_frames,
             **({"notices": said} if said else {}),
         })
 
@@ -664,8 +670,10 @@ def api_build_load():
     # and refuses a malformed envelope rather than half-building a structure.
     if isinstance(_pbody.get("structure"), dict):
         from ._shared import struct_from_body
+        # `exportFile`'s EXACT INVERSE: the envelope comes back whole -- a
+        # frame set with every frame -- and asks for no frame.
         try:
-            struct = struct_from_body(_pbody)
+            whole = struct = struct_from_body(_pbody)
         except (ValueError, TypeError) as exc:
             return jsonify({"ok": False,
                             "error": f"could not restore structure: {exc}"}), 400
@@ -678,6 +686,7 @@ def api_build_load():
         return ok_structure_response(struct, extra={
             "source_format": "xyz",
             "title": struct.title or "restored structure",
+            "n_frames": whole.n_frames,
         })
 
     text: str = ""
@@ -704,9 +713,9 @@ def api_build_load():
 
     try:
         if fmt == "xyz":
-            struct = Structure.from_xyz(text, title=filename or None)
+            whole = Structure.from_xyz(text, title=filename or None)
         elif fmt == "pdb":
-            struct = Structure.from_pdb(text, title=filename or None)
+            whole = Structure.from_pdb(text, title=filename or None)
         else:
             return jsonify({"ok": False,
                             "error": f"unknown format {fmt!r}; "
@@ -714,6 +723,10 @@ def api_build_load():
     except Exception as exc:
         return jsonify({"ok": False,
                         "error": f"could not parse {fmt}: {exc}"}), 400
+    try:
+        struct = _chosen_frame(whole, body)
+    except (TypeError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     # Route through the canonical ``ok_structure_response`` helper.
     # Per-atom payload, legacy aliases, validate-pass issues, and the
@@ -733,6 +746,7 @@ def api_build_load():
         # parsed format; the helper threads this through to both
         # the top level and the ``extra`` sub-dict.
         "source_format": fmt,
+        "n_frames":      whole.n_frames,
     })
 
 

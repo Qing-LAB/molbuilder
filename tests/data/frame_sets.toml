@@ -1,0 +1,150 @@
+# A FRAME SET -- `docs/model/structure.md` § 2.2d (`customized`) and § 2.2e
+# (frames), `structure-molstruct.md` § 6.1, `web/web-api.md` (the load route).
+#
+# A frame set is a data set made by scripts through the structure's own doors
+# (user, 2026-10-09: "the way we create them is a set of script that
+# understand this. That's the contract."), so the road a frame set travels is
+# that API: every row builds the one set below the way a script does --
+# `with_frames(frames, frame_rows)`, then `set_customized` for the structure's
+# rows -- and asks one door of it.  `tests/test_frame_sets.py` is the runner;
+# its header names each key.
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+# The set: H2, atom 0 held, three frames -- frame 0 the base, frames 1 and 2
+# one mode's two displacements of atom 1, each frame's rows saying so.  The
+# cell is stated; the rule centres frame 0's span along z, 3.00 … 3.74, by
+# 4 - 3.37 = 0.63 Å, where frame 2's own span would be moved 0.66 Å -- so a
+# frame placed at its own origin is told apart from one placed at the set's.
+[set]
+elements = ["H", "H"]
+frames = [[[4.0, 4.0, 3.00], [4.0, 4.0, 3.74]],
+          [[4.0, 4.0, 3.00], [4.0, 4.0, 3.80]],
+          [[4.0, 4.0, 3.00], [4.0, 4.0, 3.68]]]
+cell = [[8.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 8.0]]
+regions = { frozen_atoms = [0] }
+rows = [{ name = "temperature", value = 300, unit = "K" }]
+frame_rows = [[],
+              [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }],
+              [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }]]
+
+# ---- WRITTEN AND READ BACK (`structure.md` § 2.3-2.4, § 5) ---------------- #
+# The silent failure each row guards: a frame, or a frame's rows, dropped on
+# the way to disk and back -- the reader named six fields by keyword until
+# 2026-10-09, so a seventh would have vanished on every load.
+
+[[case]]
+name = "saved and read whole, the set comes back: every frame, every frame's rows at its index, the labels and the cell"
+door = "save_load"
+load = { frames = true }
+expect = { same_set = true, sidecar = { n_frames_total = 3 } }
+
+[[case]]
+name = "read with no option, frame 0 -- as every caller always had it -- with frame 0's rows as its own"
+door = "save_load"
+load = {}
+expect = { n_frames = 1, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.74]], rows = [{ name = "temperature", value = 300, unit = "K" }], frame_rows = [], engine_offset = "none" }
+
+[[case]]
+name = "read at one frame, that frame and its rows, placed at frame 0's origin (periodicity § 6.0: one offset for the set)"
+door = "save_load"
+load = { frame = 2 }
+expect = { n_frames = 1, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.68]], frame_rows = [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }], engine_offset = [0.0, 0.0, 0.63] }
+
+[[case]]
+name = "a frame outside the set is refused, naming how many there are"
+door = "save_load"
+load = { frame = 3 }
+refused = "outside this structure's 3 frame"
+
+# ---- THE ROUTE ANSWERS AS THE CODEC DOES (`web-api.md`, /api/build/load) -- #
+
+[[case]]
+name = "the load route answers frame 0 and says how many frames the file holds"
+door = "route_load"
+body = {}
+expect = { n_frames_held = 3, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.74]] }
+
+[[case]]
+name = "...the whole set, inside the envelope, when asked"
+door = "route_load"
+body = { frames = true }
+expect = { n_frames_held = 3, envelope_frames = 3 }
+
+# ---- THE VIEWER (`web/molview.md` § 9.4, § 11.7) ------------------------- #
+# The load route's real answer installed in a MolView model under node, then
+# the viewer's export of every frame posted to the export route and read back.
+# The silent failure: frames or their rows dropped between the envelope and
+# the model, or an editable viewer holding a set whose edits keep frame 0.
+
+[[case]]
+name = "a read-only viewer takes the set whole, and its export of every frame is the same set"
+door = "viewer"
+mode = "readonly"
+expect = { same_set = true }
+
+[[case]]
+name = "an editable viewer refuses a frame set -- it holds one frame, and its tab asks which"
+door = "viewer"
+mode = "editable"
+refused = "a frame set is not edited -- pick a frame"
+
+# ---- A REORDER IS NOT AN EDIT (`structure.md` § 2.2e, `take`) ------------- #
+# The silent failure: the transport sort rebuilt the atoms field by field and
+# kept frame 0's coordinates only.
+
+[[case]]
+name = "take moves every frame's coordinates with its atom, the labels with them, and every row stays"
+door = "take"
+order = [1, 0]
+expect = { atom_z_per_frame = [[3.74, 3.80, 3.68], [3.00, 3.00, 3.00]], regions = { frozen_atoms = [1] }, rows_unchanged = true }
+
+# ---- A FRAME SET IS NEVER EDITED (`structure.md` § 2.2e) ------------------ #
+# The silent failure: an edit rebuilt from frame 0 and the other frames were
+# gone, or moved atoms in frame 0 alone.
+
+[[case]]
+name = "moving every atom is refused"
+door = "edit"
+edit = "translated"
+refused = "a frame set is not edited"
+
+[[case]]
+name = "moving some atoms is refused"
+door = "edit"
+edit = "translate_some"
+refused = "a frame set is not edited"
+
+[[case]]
+name = "deleting an atom is refused"
+door = "edit"
+edit = "delete_atoms"
+refused = "a frame set is not edited"
+
+[[case]]
+name = "adding an atom is refused"
+door = "edit"
+edit = "add_atom"
+refused = "a frame set is not edited"
+
+[[case]]
+name = "merging a frame set into a structure is refused"
+door = "edit"
+edit = "append_structure"
+refused = "a frame set is not edited"
+
+[[case]]
+name = "new coordinates without new frames are refused"
+door = "edit"
+edit = "replace_positions"
+refused = "a frame set is not edited"
+
+# ---- A DOCUMENT OF SEVERAL FRAMES IS ONE SET (`structure.md` § 2.3) ------- #
+# The silent failure: the reader took species and cell from frame 0 and
+# positions from every frame, so a frame of other atoms loaded as frame 0's.
+
+[[case]]
+name = "a document whose second frame holds other atoms is refused, naming the frame"
+door = "read_document"
+document = "2\nfirst\nH 0 0 0\nH 0 0 0.74\n2\nsecond\nH 0 0 0\nLi 0 0 0.74\n"
+refused = "frame 2 of 2 differs from frame 1 in its species or atom order"

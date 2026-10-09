@@ -117,8 +117,7 @@ is `structure.md § 2.2`.
 
 ## 2. Schema versioning — a readable SET, strict about shape
 
-**Current schema: v11 (being built — plan § 5z.8 F; the code writes v10 until
-it lands). The reader accepts {7, 8, 9, 10, 11} and nothing else.**
+**Current schema: v11. The reader accepts {7, 8, 9, 10, 11} and nothing else.**
 
 ```python
 SCHEMA_VERSION    = 11                 # sidecars/molstruct.py

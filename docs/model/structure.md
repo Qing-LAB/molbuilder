@@ -511,7 +511,7 @@ a frame set; the browser views one and the Molbuilder tab loads one frame of it
 
 | | the door |
 |---|---|
-| how many; one of them | `n_frames`; `frame_at(i)` → a one-frame Structure at frame `i`, its rows that frame's (as its own frame 0), its origin the set's (below) |
+| how many; one of them | `n_frames`; `frame_at(i)` → a one-frame Structure at frame `i`, its rows that frame's (as its own frame 0), its origin the set's (below); an index outside `0 … F−1` refused naming `F` |
 | build a set | `with_frames(coordinates, frame_rows=None)` — every frame `N` atoms of the same species in the same order; frame 0 becomes `positions` |
 | reorder the atoms | `take(order)` — the order applied to every per-atom field and every frame; the transport sort's one reorder (`transport/sort.py`), which is not an edit |
 | the shared facts | labels, cell, `info`, the structure's rows change for every frame at once — they are shared |
@@ -522,9 +522,12 @@ changes their number — the geometry ops (`modify.py`), `affine` / `translated`
 not edited — take one frame with `frame_at(i)`"*.
 
 **One origin for the set.** The offset an engine gets is the set's —
-`structure-periodicity.md` § 6.0, *A frame set gets one offset*: the stated one,
-or the rule's computed on frame 0 — and `frame_at(i)` states it, so every frame
-is handed to the engine through `cell.to_engine` with that offset.
+`structure-periodicity.md` § 6.0, *A frame set gets one offset*: "frames 1…N
+state frame 0's offset". So `frame_at(0)` is frame 0 as it is, and `frame_at(i)`
+for `i ≥ 1` states frame 0's offset — the stated one, or the rule's computed on
+frame 0 — and every frame reaches the engine through `cell.to_engine` with the
+same one. Where the rule cannot place frame 0 (no cell to place it in) there is
+no offset to state, and the door that acts refuses the cell itself.
 
 **Reading a file** (§ 2.3, § 2.4): frame 0 by default — exactly as before — or
 one frame (`frame=i`) or the whole set (`frames=True`), and a door that prints
@@ -1068,6 +1071,7 @@ the web save does — `modify` since 2026-09-07, `xv2xyz` with this change. And
 the door that made the violation reachable is shut rather than merely unused:
 the writers no longer accept a path at all (§ 2.3). Every surface obeys § 2.4.
 
-**Being built (plan § 5z.8 F, settled 2026-10-09):** `customized` (§ 2.2d),
-frames inside the structure (§ 2.2e) and the frame options of `load` (§ 2.3,
-§ 2.4). This text leads the code until the plan's row closes.
+**Built 2026-10-09 (plan § 5z.8 F, steps 1–3):** `customized` (§ 2.2d), frames
+inside the structure (§ 2.2e), the frame options of `load` (§ 2.3, § 2.4),
+sidecar schema 11, and MolView's half (`web/molview.md` § 6.1–6.2, § 8.4a,
+§ 9.3–9.4, § 11.7). Pinned by `tests/data/frame_sets.toml`.

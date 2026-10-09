@@ -586,8 +586,13 @@ def init_cmd(structure, bundle: str, shape: str,
 
     try:
         # THE PAIR, through the one door: the geometry with its regions,
-        # frozen atoms and cell.
-        struct = StructureCodec().load(structure)
+        # frozen atoms and cell -- frame 0 of a frame set, and said
+        # (`model/structure.md` § 2.3, *Which frame*).
+        whole = StructureCodec().load(structure, frames=True)
+        if whole.n_frames > 1:
+            click.echo(f"{Path(structure).name} holds {whole.n_frames} "
+                       f"frames; frame 1 of {whole.n_frames} was taken")
+        struct = StructureCodec.frame_choice(whole)
         if vacuum is not None:
             # The same channel the Modify -> Cell tab uses: the vacuum lives on
             # the STRUCTURE, not on the engine config, so every surface that

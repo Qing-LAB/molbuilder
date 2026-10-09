@@ -21,6 +21,7 @@ import { init as startOpControls } from "./viewer.js";
 import { init as startCellPanel }  from "./periodicity.js";
 import { init as startSlabPanel }  from "./slab-panel.js";
 import { molviewFiles } from "/static/lib/projects/molview-doors.js";
+import { chooseFrame } from "/static/lib/projects/dialogs.js";
 
 /* THIS FILE IS THE MOLBUILDER TAB'S OWNER. It mounts the one viewer this page
  * has and hands it to everything else on the page.
@@ -317,22 +318,43 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                 s.textContent = text;
                 s.className = "status " + cls;
             };
-            let body;
-            try {
-                const r = await fetch("/api/build/load", {
-                    method:  "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body:    JSON.stringify({ path: path }),
-                });
-                body = await r.json();
-                if (!r.ok || !body || body.ok !== true) {
-                    say((body && body.error) || `Could not load ${path}`,
+            const load = async (which) => {
+                try {
+                    const r = await fetch("/api/build/load", {
+                        method:  "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body:    JSON.stringify(Object.assign({ path: path },
+                                                              which)),
+                    });
+                    const answer = await r.json();
+                    if (!r.ok || !answer || answer.ok !== true) {
+                        say((answer && answer.error)
+                            || `Could not load ${path}`, "error");
+                        return null;
+                    }
+                    return answer;
+                } catch (e) {
+                    say(`Could not load ${path}: ${(e && e.message) || e}`,
                         "error");
-                    return;
+                    return null;
                 }
-            } catch (e) {
-                say(`Could not load ${path}: ${(e && e.message) || e}`, "error");
-                return;
+            };
+            let body = await load({});
+            if (!body) return;
+            let chosen = 1;
+            /* THIS TAB HOLDS ONE FRAME (molview.md § 9.4; tabs.md § 2): a file
+             * of several asks which one -- counted from 1, as the frame bar
+             * counts -- and that one is loaded; Cancel loads nothing. */
+            if (body.n_frames > 1) {
+                const n = await chooseFrame({ title: "Load " + _basename(path),
+                                              count: body.n_frames,
+                                              initial: 1 });
+                if (n == null) return;
+                chosen = n;
+                if (n !== 1) {
+                    body = await load({ frame: n - 1 });
+                    if (!body) return;
+                }
             }
             const page = window.molbuilder.structurePage;
             const open = page.getCanvasSnapshot();
@@ -357,9 +379,11 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
              * count comes from the viewer, which is the thing that holds it. */
             const n = (_mounted.data.getElements() || []).length;
             const added = body.n_atoms;
+            const which = body.n_frames > 1
+                ? ` (frame ${chosen} of ${body.n_frames})` : "";
             say(n > added
-                ? `Added ${_basename(path)} — ${added} atoms, ${n} in total.`
-                : `Loaded ${_basename(path)} — ${n} atoms.`, "ok");
+                ? `Added ${_basename(path)}${which} — ${added} atoms, ${n} in total.`
+                : `Loaded ${_basename(path)}${which} — ${n} atoms.`, "ok");
         }
         if (_loadBtn) {
             _loadBtn.addEventListener("click", () => _commitFile(_candidate));

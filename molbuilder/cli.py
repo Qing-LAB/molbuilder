@@ -409,13 +409,22 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
 
 
 def _struct_for_validate(path):
-    """Read either XYZ or PDB; return (Structure, optional cell array).
+    """Read either XYZ or PDB through the codec; return (Structure, optional
+    cell array).
 
-    A small wrapper around the SIESTA-side _struct_from_file, which reads
-    extended XYZ and PDB.
+    FRAME 0 OF A FRAME SET, SAID (``model/structure.md`` § 2.3, *Which
+    frame*): the CLI's commands work on one structure, and a door that prints
+    says when it took one frame of several -- a line, never a refusal.
     """
-    from .siesta.input import _struct_from_file
-    return _struct_from_file(path)
+    import numpy as np
+    from .workingcopy_structure import StructureCodec
+    whole = StructureCodec().load(path, frames=True)
+    if whole.n_frames > 1:
+        click.echo(f"{Path(path).name} holds {whole.n_frames} frames; frame 1 "
+                   f"of {whole.n_frames} was taken", err=True)
+    struct = StructureCodec.frame_choice(whole)
+    return struct, (np.asarray(struct.cell, dtype=float)
+                    if struct.cell is not None else None)
 
 
 # --------------------------------------------------------------------- #

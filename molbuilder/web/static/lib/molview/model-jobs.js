@@ -179,6 +179,19 @@ export function structureFromServer(payload) {
         }
     }
 
+    /* THE STRUCTURE'S OWN DICT -- the canonical envelope the server sends
+     * beside the flat keys (`model/structure.md` § 2.1).  A frame set's
+     * frames ride in it, `frames` in place of `positions`, and the named
+     * values in its `metadata.customized` (§ 2.2d-2.2e); both are read from
+     * here and nowhere else. */
+    const env = (payload.structure && typeof payload.structure === "object")
+        ? payload.structure : null;
+    const custom = (env && env.metadata && env.metadata.customized
+                    && typeof env.metadata.customized === "object")
+        ? env.metadata.customized : null;
+    const rowsCopy = (rows) => (Array.isArray(rows)
+        ? rows.map((r) => Object.assign({}, r)) : []);
+
     const elements = atoms.map((a) => a.element);
     const annotations = atoms.map((a, i) => {
         /* THE LABELS AN ATOM CARRIES ARE A SET (§ 6.2). Carrying the same name
@@ -251,12 +264,23 @@ export function structureFromServer(payload) {
                     && payload.structure.info
                     && typeof payload.structure.info === "object")
                 ? payload.structure.info : {},
+            /* The structure's named values (§ 2.2d) -- part of the
+             * structure, written only through `data.customized`. */
+            customized: rowsCopy(custom && custom.rows),
         },
+        /* THE FRAMES, each with its coordinates and its rows (§ 6.1): one
+         * entry per frame in every list.  One frame is the atoms' own
+         * coordinates; a frame set's are the envelope's `frames`. */
         coordinates: {
-            frames: [atoms.map((a) => [Number(a.x) || 0,
-                                       Number(a.y) || 0,
-                                       Number(a.z) || 0])],
+            frames: (env && Array.isArray(env.frames) && env.frames.length)
+                ? env.frames.map((f) => f.map((p) => [p[0], p[1], p[2]]))
+                : [atoms.map((a) => [Number(a.x) || 0,
+                                     Number(a.y) || 0,
+                                     Number(a.z) || 0])],
             forcesPerFrame: null,
+            rowsPerFrame: (custom && Array.isArray(custom.frames)
+                           && custom.frames.some((r) => r && r.length))
+                ? custom.frames.map(rowsCopy) : null,
         },
         /* THE VERDICT TRAVELS WITH THE DATA. Every structure-returning route
          * leaves through the server's one exit, which validates what it is
@@ -314,28 +338,35 @@ export function groupByLabel(annotations) {
 }
 
 /**
- * The same facts, shaped for the wire — the outbound half.
+ * The same facts, shaped for the wire — the outbound half, and the exact
+ * inverse of `structureFromServer`: handed a structure and `coordinates` in the
+ * shape that one returns — `{frames, rowsPerFrame}`, the frames that leave and
+ * each one's rows — it writes ONE envelope: `positions` for one frame, `frames`
+ * for several, every row in `metadata.customized` (`model/structure.md`
+ * § 2.1, § 2.2d).  Which frames leave is the caller's slice.
  *
- * Takes ONE read of the structure and one frame of coordinates, so "the facts
- * that leave together were read together" (§ 9.3). That property is not
- * something a special door provides; it is what one read returning the whole
- * structure means. It matters because a request carrying current labels with
- * stale positions has the server judge a structure that is not the one on
- * screen.
+ * Takes ONE read of the structure and its coordinates, so "the facts that
+ * leave together were read together" (§ 9.3). That property is not something
+ * a special door provides; it is what one read returning the whole structure
+ * means. It matters because a request carrying current labels with stale
+ * positions has the server judge a structure that is not the one on screen.
  */
-export function structureForServer(structure, positions) {
+export function structureForServer(structure, coordinates) {
     if (!structure) return null;
+    const given = (coordinates && Array.isArray(coordinates.frames)
+                   && coordinates.frames.length) ? coordinates.frames : null;
     // No frames yet is the empty canvas, not a mismatch: an empty structure
     // has no coordinates to disagree with.
-    if (!positions) positions = structure.elements.length ? null : [];
-    if (!positions) return null;
+    const frameList = given || (structure.elements.length ? null : [[]]);
+    if (!frameList) return null;
 
     /* THE COUNT INVARIANT, checked before anything leaves. The coordinates and
-     * the per-atom facts are two lists that must index the same atoms; if they
-     * disagree this REFUSES rather than sending a structure whose labels point
-     * at atoms that are not there (§ 9.3). */
+     * the per-atom facts are lists that must index the same atoms; if any
+     * frame disagrees this REFUSES rather than sending a structure whose
+     * labels point at atoms that are not there (§ 9.3). */
     const count = structure.elements.length;
-    if (positions.length !== count || structure.annotations.length !== count) {
+    if (structure.annotations.length !== count
+            || frameList.some((f) => !Array.isArray(f) || f.length !== count)) {
         return null;
     }
 
@@ -400,9 +431,12 @@ export function structureForServer(structure, positions) {
         }
     }
 
+    const xyz = (f) => f.map((p) => [p[0], p[1], p[2]]);
     const out = {
         elements:  structure.elements.slice(),
-        positions: positions.map((p) => [p[0], p[1], p[2]]),
+        // ONE KEY OR THE OTHER, as `Structure.to_dict` writes it (§ 2.1).
+        ...(frameList.length > 1 ? { frames: frameList.map(xyz) }
+                                 : { positions: xyz(frameList[0]) }),
         /* METADATA IS NESTED, because that is where the envelope keeps it
          * (web-api.md § 1 — the envelope IS the structure's canonical dict, and
          * `Structure.from_dict` reads the block from here). The receiver
@@ -421,6 +455,19 @@ export function structureForServer(structure, positions) {
     if (residueNames) out.residue_names = residueNames;
     if (chainIds)     out.chain_ids     = chainIds;
     if (channelsOut)  out.metadata.annotations = channelsOut;
+    /* THE NAMED VALUES (§ 2.2d): the structure's rows and one set per frame
+     * that leaves -- written whole, or not at all when there is no row. */
+    const rowsList = (coordinates && Array.isArray(coordinates.rowsPerFrame))
+        ? coordinates.rowsPerFrame : null;
+    const ownRows = Array.isArray(structure.customized)
+        ? structure.customized : [];
+    if (ownRows.length || (rowsList && rowsList.some((r) => r && r.length))) {
+        out.metadata.customized = {
+            rows:   clone(ownRows),
+            frames: frameList.map((_, k) =>
+                clone((rowsList && rowsList[k]) || [])),
+        };
+    }
     /* The `info` store (structure-info-plan.md): TOP-level, beside
      * `metadata`, exactly where Structure.from_dict reads it -- what
      * the Metadata pane shows is what the pair will carry.
@@ -432,6 +479,33 @@ export function structureForServer(structure, positions) {
         out.info = clone(structure.info);
     }
     return out;
+}
+
+
+/* ONE ROW of the structure's named values (`model/structure.md` § 2.2d), in
+ * its one form -- the same rule `Structure`'s `_customized_row` applies on the
+ * server: a non-empty name; a value that is a number, text or true/false; a
+ * unit and a note that are text, kept only when they say something.  THROWS
+ * with the reason, which the Metadata page says (§ 8.4a). */
+export function customizedRow(name, value, unit, note) {
+    if (typeof name !== "string" || !name) {
+        throw new Error("A named value needs a name.");
+    }
+    const fits = typeof value === "string" || typeof value === "boolean"
+        || (typeof value === "number" && Number.isFinite(value));
+    if (!fits) {
+        throw new Error("“" + name + "”: a value is a number, text or "
+                        + "true/false.");
+    }
+    const row = { name: name, value: value };
+    for (const [key, said] of [["unit", unit], ["note", note]]) {
+        if (said == null || said === "") continue;
+        if (typeof said !== "string") {
+            throw new Error("“" + name + "”: the " + key + " is text.");
+        }
+        row[key] = said;
+    }
+    return row;
 }
 
 
@@ -461,21 +535,33 @@ export function createLoad(handed) {
 
         /* A TRAJECTORY ARRIVES WITH THE LOAD, not after it.
          *
-         * The server answers with ONE geometry — it parses a file, and a file
-         * has one. The frames of a run come from somewhere else: the tab's own
-         * parsed run file (§ 6.3). So a caller opening a trajectory hands them
-         * over HERE, and the whole structure — every frame — lands in one go:
-         * § 9.3 says this is "the only way a structure gets in", § 6.4 says
-         * the master copy is updated "first, and COMPLETELY", and § 11.2's
-         * point 0 is anchored on the whole trajectory.
+         * A frame set the server opens arrives INSIDE the envelope, each
+         * frame with its rows, and `structureFromServer` folded it in.  The
+         * one exception is a run's own trajectory (§ 11.7): its frames come
+         * from the tab's own parsed run file (§ 6.3), handed over HERE by the
+         * caller, carrying forces and no rows, and they replace any frame
+         * axis the envelope had.  Either way the whole structure — every
+         * frame — lands in one go: § 9.3 says this is "the only way a
+         * structure gets in", § 6.4 says the master copy is updated "first,
+         * and COMPLETELY", and § 11.2's point 0 is anchored on the whole
+         * trajectory.
          */
+        if (!(Array.isArray(input.frames) && input.frames.length)
+                && handed.checkFrameSet) {
+            // A FILE'S FRAME SET, in the envelope: refused where it would be
+            // edited (§ 9.4), before anything is installed.
+            handed.checkFrameSet(loaded.coordinates.frames.length);
+        }
         if (Array.isArray(input.frames) && input.frames.length) {
             if (handed.checkFrames) {
-                handed.checkFrames(input.frames, loaded.structure.elements.length);
+                handed.checkFrames(input.frames,
+                                   loaded.structure.elements.length);
             }
             loaded.coordinates = {
-                frames: input.frames.map((f) => f.map((p) => [p[0], p[1], p[2]])),
+                frames: input.frames.map(
+                    (f) => f.map((p) => [p[0], p[1], p[2]])),
                 forcesPerFrame: Array.isArray(input.forces) ? input.forces : null,
+                rowsPerFrame: null,
             };
         }
 
@@ -514,9 +600,16 @@ function stemOf(input) {
 
 function requestBodyFor(input) {
     if (!input || typeof input !== "object") return null;
+    /* WHICH FRAME (`model/structure.md` § 2.3): one the caller names, or the
+     * whole file -- which a read-only viewer takes and an editable one
+     * refuses when it holds several (§ 9.4). */
+    const which = (input.frame != null) ? { frame: input.frame }
+                                        : { frames: true };
     // A project file is read BY THE SERVER, which owns file access and the
     // pairing with the sidecar — the browser sends a path and no text.
-    if (typeof input.path === "string" && input.path) return { path: input.path };
+    if (typeof input.path === "string" && input.path) {
+        return Object.assign({ path: input.path }, which);
+    }
 
     /* A STRUCTURE PUT BACK — `exportFile`'s exact inverse, which is what that
      * pair has always claimed to be.
@@ -530,11 +623,13 @@ function requestBodyFor(input) {
      * the same checks run and the sequence is anchored the same way. The server
      * rebuilds it through the one deserialiser rather than parsing anything. */
     if (input.structure && typeof input.structure === "object") {
+        // exportFile's EXACT inverse: what was put out comes back whole, so
+        // the envelope travels alone and asks for no frame.
         return { structure: input.structure };
     }
     if (typeof input.text !== "string") return null;
-    const body = { text: input.text, filename: input.filename };
-    return body;
+    return Object.assign({ text: input.text, filename: input.filename },
+                         which);
 }
 
 
@@ -567,10 +662,8 @@ export function createWriteOut(handed) {
      *   to both ends of a range), and a reversed range is read the way it was
      *   plainly meant rather than refused.
      *
-     * @returns {object|null} `{name, structure}` for one frame; `{name,
-     *   structure, frames}` when the range covers more. `frames` is ADDITIVE —
-     *   a one-frame export is byte-for-byte the request it always was, and a
-     *   consumer that does not know about ranges keeps working.
+     * @returns {object|null} `{name, structure}` — ONE envelope, the range's
+     *   frames and their rows inside it (`model/structure.md` § 2.2e).
      */
     return function exportFile(range) {
         const count = handed.frameCount();
@@ -583,18 +676,15 @@ export function createWriteOut(handed) {
         const lo = Math.min(first, last);
         const hi = Math.max(first, last);
 
-        /* THE STRUCTURE IS THE RANGE'S FIRST FRAME, always. So the envelope is
-         * the same shape at every door whatever the range, and the extra frames
-         * ride BESIDE it — the same shape `installMolecule` takes on the way in
-         * (§ 9.3), which is what makes one door serve both directions. */
-        const structure = handed.readData(lo);
+        /* THE RANGE IS INSIDE THE ENVELOPE: its frames, each with its rows,
+         * the same shape a frame set arrives in (§ 11.7) -- so one translator
+         * serves both directions. */
+        const structure = handed.readData(lo, hi);
         if (!structure) return null;
-        const out = {
+        return {
             name:      handed.readSource ? handed.readSource() : null,
             structure: structure,
         };
-        if (hi > lo) out.frames = handed.readFrames(lo, hi);
-        return out;
     };
 }
 
@@ -747,7 +837,6 @@ export function createEdits(handed) {
         }
         if (!selection.length && spec.emptySelection === "refuse") return null;
 
-        const positions = handed.readFrame(handed.currentFrame());
         /* THE BODY IS FLAT. The route reads its own arguments off the body root
          * -- `dx`, `indices`, `anchors`, `element` -- so nesting them under
          * `params` sends them where nothing looks.
@@ -757,7 +846,9 @@ export function createEdits(handed) {
          * when the selection is empty, so the server applies its own centring
          * rather than being handed an empty list. */
         const body = Object.assign({}, params || {}, {
-            structure: structureForServer(structure, positions),
+            // The frame on screen, with its rows -- the model's one read.
+            structure: handed.readStructure() ? handed.readData()
+                : structureForServer(structure, null),
         });
         if (spec.group && selection.length) {
             body[spec.group] = spec.scalar ? selection[0] : selection.slice();

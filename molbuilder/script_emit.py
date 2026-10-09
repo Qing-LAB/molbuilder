@@ -389,7 +389,8 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
                        created_by: str = "molbuilder",
                        created_at: Optional[str] = None,
                        selection_rules: Optional[Dict[str, Any]] = None,
-                       annotations: Optional[Dict[str, Any]] = None
+                       annotations: Optional[Dict[str, Any]] = None,
+                       customized: Optional[Dict[str, Any]] = None
                        ) -> Optional[str]:
     """Emit the ATOM-METADATA block, or return ``None`` when there is
     nothing to emit.
@@ -400,8 +401,13 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
     (frozen -> Geometry.Constraints etc. is a separate translation, § 4).
 
     Per the contract's emission rule, the block is emitted ONLY when at least
-    one of ``regions`` / ``annotations`` is non-empty.  Absence is the honest
-    signal that this generation had no labels.
+    one of ``regions`` / ``annotations`` / ``customized`` is non-empty.
+    Absence is the honest signal that this generation had no labels.
+
+    ``customized`` is the structure's named values in the sidecar's shape
+    (``model/structure.md`` § 2.2d) -- a deck is one frame, so its own and
+    its frame's rows -- carried so a structure rebuilt from the deck says
+    what its frame is.
 
     ``regions`` is the whole label store, so a reserved label -- ``frozen_atoms``
     -- is IN it rather than beside it.  The block is the sidecar's shape and
@@ -423,7 +429,7 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
                 normed_annotations[name] = ch.to_json()
             elif isinstance(ch, dict) and "kind" in ch:
                 normed_annotations[name] = _AtomChannel.from_json(ch).to_json()
-    if not regions and not normed_annotations:
+    if not regions and not normed_annotations and not customized:
         return None
     # THE VERSION THE SIDECAR STAMPS, from the one constant -- never a literal.
     #
@@ -448,6 +454,8 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
         payload["selection_rules"] = selection_rules
     if normed_annotations:
         payload["annotations"] = normed_annotations
+    if customized:
+        payload["customized"] = customized
     payload["created_by"] = created_by
     if created_at:
         payload["created_at"] = created_at
@@ -1341,6 +1349,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     atoms = emit_atom_metadata(
         regions=dict(getattr(struct, "regions", {}) or {}),
         annotations=dict(getattr(struct, "annotations", {}) or {}),
+        customized=struct.metadata_to_dict()["customized"],
         n_atoms_total=int(getattr(struct, "n_atoms", 0)),
         created_by=spec.created_by,
         created_at=generated_at_now())
@@ -1975,7 +1984,8 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
 
     regions = payload.get("regions") or {}
     annotations = payload.get("annotations") or {}
-    if not regions and not annotations:
+    customized = payload.get("customized")
+    if not regions and not annotations and not customized:
         return False
     # THROUGH THE DOOR, AND THE BLOCK IS COMPLETED FIRST: assigning the two
     # fields straight onto the structure would skip `_validate_regions` /
@@ -2003,6 +2013,10 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
         # Extensible channels, same round-trip as the sidecar (§ 3) -- the
         # block carries the JSON shape the door reads.
         block["annotations"] = annotations
+    if customized:
+        # The deck's named values (`model/structure.md` § 2.2d), in the
+        # sidecar's shape; a deck is one frame, and so is what it rebuilds.
+        block["customized"] = customized
     struct.apply_metadata_dict(block)
     return True
 

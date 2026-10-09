@@ -118,6 +118,10 @@ _ENV = {
 _FRAMES = [[[0, 0, 0], [2, 2, 0]],
            [[1, 0, 0], [3, 2, 0]],
            [[2, 0, 0], [4, 2, 0]]]
+# A frame set's envelope: `frames` in place of `positions` (`model/structure.md`
+# § 2.1).
+_SET = {**{k: v for k, v in _ENV.items() if k != "positions"},
+        "frames": _FRAMES}
 
 
 def test_saving_a_range_and_downloading_it_produce_identical_bytes(web):
@@ -134,11 +138,9 @@ def test_saving_a_range_and_downloading_it_produce_identical_bytes(web):
     """
     path = str(web._root / "run.xyz")
     downloaded = web.post("/api/structure/export",
-                          json={"structure": _ENV, "frames": _FRAMES,
-                                "name": "run"}).get_json()
+                          json={"structure": _SET, "name": "run"}).get_json()
     saved = web.post("/api/structure/save",
-                     json={"structure": _ENV, "frames": _FRAMES,
-                           "path": path}).get_json()
+                     json={"structure": _SET, "path": path}).get_json()
     assert saved["ok"] is True, saved
 
     on_disk = (web._root / "run.xyz").read_text(encoding="utf-8")
@@ -168,22 +170,9 @@ def test_saving_a_range_and_downloading_it_produce_identical_bytes(web):
                       )["regions"] == {"bridge": [0]}
 
 
-def test_a_frame_that_does_not_carry_these_atoms_is_refused_at_both_doors(web):
-    """The same-atoms rule reaches the wire: a frame of the wrong length is a
-    400 at each door rather than a half-written file or a torn document."""
-    for route, extra in (("/api/structure/export", {}),
-                         ("/api/structure/save",
-                          {"path": str(web._root / "x.xyz")})):
-        r = web.post(route, json={"structure": _ENV,
-                                  "frames": [[[0, 0, 0]]], **extra})
-        assert r.status_code == 400, (route, r.get_json())
-        assert "atoms" in r.get_json()["error"]
-    assert not list(web._root.iterdir()), "a refused save left a file behind"
-
-
 def test_one_frame_is_the_request_it_always_was(web):
-    """`frames` is ADDITIVE. Omitted, the door writes the plain `.xyz` it always
-    wrote -- so a caller that knows nothing about ranges keeps working."""
+    """One frame writes the plain `.xyz` every code reads; the format follows
+    the frames the structure holds (`model/structure.md` § 2.4)."""
     path = str(web._root / "one.xyz")
     assert web.post("/api/structure/save",
                     json={"structure": _ENV, "path": path}).get_json()["ok"]

@@ -851,7 +851,7 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
 
     **`None` HAS THREE CAUSES AND THEY ARE NOT THE SAME NEWS.**  Pass a
     list as *why* and the reason is appended to it, in words for a person.
-    The `frames_out` pattern (`workingcopy_structure.StructureCodec.load`):
+    The `retired_out` pattern (`workingcopy_structure.StructureCodec.load`):
     the happy path is unchanged and the caller that needs more asks for it.
 
     Without it, all three read as *"there is no record"* -- while the

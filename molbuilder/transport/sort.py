@@ -38,7 +38,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 from ..atom_permutation import PERMUTATION_FILE, PERMUTATION_SCHEMA
-from ..structure import Structure, remap_annotations
+from ..structure import Structure
 
 # --------------------------------------------------------------------- #
 #  The region-label vocabulary -- `model/structure-annotations.md` § 5   #
@@ -390,29 +390,10 @@ def apply_order(struct: Structure, order: List[int],
             f"atoms -- nothing was written.")
 
     old_to_new = {old: new for new, old in enumerate(order)}
-    pos = np.asarray(struct.positions, dtype=float)
-
-    def _take(seq):
-        return None if seq is None else [seq[i] for i in order]
-
-    # A REORDER STATES THE PER-ATOM FIELDS AND NOTHING ELSE: every other field
-    # rides `replace` whole (`model/structure.md` § 2.2a -- a strip is
-    # explicit, never a field a rebuild forgot).
-    #
-    # `frozen_atoms` is not passed: `regions` is the whole label store and
-    # the `regions` remap below already carries the reserved label, which is the trap
-    # `replace` documents.
-    sorted_struct = struct.replace(
-        elements=[struct.elements[i] for i in order],
-        positions=pos[order].copy(),
-        atom_names=_take(struct.atom_names),
-        residue_ids=_take(struct.residue_ids),
-        residue_names=_take(struct.residue_names),
-        chain_ids=_take(struct.chain_ids),
-        regions={label: sorted(old_to_new[i] for i in idx)
-                 for label, idx in struct.regions.items()},
-        annotations=remap_annotations(struct.annotations, old_to_new),
-    )
+    # THE STRUCTURE'S OWN REORDER (`model/structure.md` § 2.2e): every
+    # per-atom field moves with its atom, and so does every frame of a frame
+    # set; every other field rides whole.
+    sorted_struct = struct.take(order)
     return SortResult(
         structure=sorted_struct,
         original_to_sorted=tuple(old_to_new[i] for i in range(n)),

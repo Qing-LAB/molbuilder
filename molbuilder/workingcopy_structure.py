@@ -121,20 +121,20 @@ class StructureCodec:
 
     # ---- load durable -> working Structure --------------------------- #
     def load(self, source_path, *,
-             frames_out: "list | None" = None,
+             frame: "int | None" = None,
+             frames: bool = False,
              retired_out: "dict | None" = None) -> Structure:
         """Read the pair back into a Structure.
 
-        ``frames_out`` closes the round trip this codec can now write: a range
-        goes out as one extended-XYZ document (:meth:`pair`), and a caller that
-        passes a list here gets EVERY frame of it back, in file order.  Without
-        it a trajectory reopens as its first frame -- which is the right default
-        for a Structure (one geometry) and the wrong answer for whoever wrote
-        the range.
+        WHICH FRAME (``model/structure.md`` § 2.3, *Which frame*): the pair is
+        read whole and its sidecar applied to the whole set, then the answer is
+        frame 0 -- what every caller has always had -- or frame ``frame``, or,
+        with ``frames=True``, the whole set (:meth:`frame_choice`).  A
+        one-frame file answers the same for all three.
 
-        ``retired_out``, the same way: a caller that passes a dict gets each
-        retired key the sidecar carried with a value -- read and ignored, and
-        the load door says so (plan § 5q D14).
+        ``retired_out``: a caller that passes a dict gets each retired key the
+        sidecar carried with a value -- read and ignored, and the load door
+        says so (plan § 5q D14).
         """
         src = Path(source_path)
         # Parse the SOURCE in ITS OWN format (dispatch on the extension) -- the
@@ -160,7 +160,7 @@ class StructureCodec:
         if suffix == ".pdb":
             struct = Structure.from_pdb(text)
         else:
-            struct = Structure.from_xyz(text, frames_out=frames_out)
+            struct = Structure.from_xyz(text)
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
             molstruct.apply_to_structure(
@@ -179,12 +179,12 @@ class StructureCodec:
             from .runs import about, declared, run_of
             run = run_of(src)
             if run is not None and not about(src)["ours"]:
-                frame = declared(run).frame()
-                if frame and frame.get("cell") is not None:
-                    changes = {"cell": frame["cell"],
-                               "engine_offset": frame["engine_offset"]}
-                    if frame.get("axis_kind"):
-                        changes["axis_kind"] = tuple(frame["axis_kind"])
+                run_frame = declared(run).frame()
+                if run_frame and run_frame.get("cell") is not None:
+                    changes = {"cell": run_frame["cell"],
+                               "engine_offset": run_frame["engine_offset"]}
+                    if run_frame.get("axis_kind"):
+                        changes["axis_kind"] = tuple(run_frame["axis_kind"])
                     struct = struct.replace(**changes)
         # READING DOES NOT JUDGE (structure-periodicity.md § 8.2, decided
         # 2026-08-03).  A file whose sidecar holds an unusable box -- a
@@ -201,11 +201,26 @@ class StructureCodec:
         # every deck runs `report(validate(...))` before writing anything
         # (`script_emit.render_deck`).  So the box is stopped at
         # every door that would ACT on it, and at none that would merely show it.
-        return struct
+        return self.frame_choice(struct, frame=frame, frames=frames)
+
+    @staticmethod
+    def frame_choice(struct: Structure, *, frame: "int | None" = None,
+                     frames: bool = False) -> Structure:
+        """THE rule for which frame a read answers with, for every door
+        that reads a structure -- this codec's :meth:`load` and
+        ``/api/build/load``: frame 0 unless asked (*"keep the default
+        reading, just take frame zero"*, user 2026-10-09), frame ``frame`` --
+        0-based, refused outside the set naming its count -- or with
+        ``frames`` the whole set."""
+        if frames and frame is not None:
+            raise ValueError("ask for one frame or for the whole set, not "
+                             "both")
+        if frames:
+            return struct
+        return struct.frame_at(0 if frame is None else frame)
 
     # ---- THE ONE GENERATOR: a Structure -> the pair --------------------- #
     def pair(self, struct: Structure, *,
-             frames: "Sequence | None" = None,
              fmt: str = "xyz") -> "StructurePair":
         """A Structure as the two things that represent it: the coordinate
         document, and the sidecar payload beside it.
@@ -220,12 +235,12 @@ class StructureCodec:
         pair is the document alone and a stale sidecar beside it is removed, so
         "no .json" always means "no metadata" (:meth:`load` reads it that way).
         """
-        # ONE FRAME OR MANY, decided by what was handed over and by nothing
-        # else.  A trajectory needs extended XYZ, because a plain .xyz has
-        # nowhere to put a cell and would lose the box on every frame; a single
-        # structure keeps the plain .xyz every code reads.  The caller says
-        # WHICH frames (molview.md § 11.3's range); the format follows from how
-        # many there are, and is never a second question.
+        # ONE FRAME OR MANY, decided by the frames the structure holds and by
+        # nothing else (`model/structure.md` § 2.2e).  A frame set needs
+        # extended XYZ, because a plain .xyz has nowhere to put a cell and would
+        # lose the box on every frame; a single structure keeps the plain .xyz
+        # every code reads.  The format follows from how many there are, and is
+        # never a second question.
         #
         # THE SUFFIX IS DECIDED HERE, WITH THE FORMAT, and travels with the
         # pair.  Deriving it anywhere else is deriving it a second time, and a
@@ -251,13 +266,13 @@ class StructureCodec:
                 f"StructureCodec.pair: unsupported format {fmt!r}; "
                 f"expected 'xyz' or 'pdb'")
         if fmt == "pdb":
-            if frames:
+            if struct.n_frames > 1:
                 raise ValueError(
-                    "StructureCodec.pair: a frame range needs extended XYZ; "
-                    "PDB holds one geometry. Write the range to a .xyz.")
+                    "StructureCodec.pair: a frame set needs extended XYZ; "
+                    "PDB holds one geometry. Write the set to a .xyz.")
             document = struct.to_pdb()
         else:
-            document = (struct.to_extxyz(frames=frames) if frames
+            document = (struct.to_extxyz() if struct.n_frames > 1
                         else struct.to_xyz())
         meta = struct.metadata_to_dict()
         # The REAL identity columns ride the sidecar (schema 8, 2026-08-20):
@@ -271,6 +286,7 @@ class StructureCodec:
             meta,
             identity       = identity,
             n_atoms_total  = struct.n_atoms,
+            n_frames_total = struct.n_frames,
             structure_hash = _sha256_bytes(document.encode("utf-8")),
             info           = dict(struct.info) if struct.info else None,
         )
@@ -282,14 +298,13 @@ class StructureCodec:
                                      else self.GEOMETRY_SUFFIX))
 
     # ---- the pair as NAMED bytes: <stem>.xyz + <stem>.molstruct.json -- #
-    def files(self, struct: Structure, target, *,
-              frames: "Sequence | None" = None) -> List[Tuple[Path, bytes]]:
+    def files(self, struct: Structure, target) -> List[Tuple[Path, bytes]]:
         """The pair as bytes, WITH THE NAMES THEY BELONG UNDER -- what
         :meth:`write` writes, without writing it, and what the export door
         answers with.
 
         THE SUFFIX IS THE ONE :meth:`pair` CHOSE, not the one the caller
-        guessed.  A range produces extended XYZ, so a caller appending ``.xyz``
+        guessed.  A frame set produces extended XYZ, so a caller appending ``.xyz``
         names a file after a format it does not contain -- at the extension
         every trajectory reader dispatches on.  Hand this a bare stem and it
         comes back named correctly; hand it a full ``<stem>.xyz`` and the suffix
@@ -302,7 +317,7 @@ class StructureCodec:
         else.  Different questions (model/structure.md § 2.4).
         """
         target = Path(target)
-        made = self.pair(struct, frames=frames)
+        made = self.pair(struct)
         if target.suffix.lower() in self._REPLACEABLE_SUFFIXES:
             target = target.with_suffix(made.suffix)
         else:
@@ -325,7 +340,6 @@ class StructureCodec:
 
     # ---- write the pair to disk, atomically -------------------------- #
     def write(self, struct: Structure, target, *, atomic: bool = True,
-              frames: "Sequence | None" = None,
               fmt: "str | None" = None) -> Path:
         """Write ``struct`` to the ``<stem>.xyz`` + ``<stem>.molstruct.json``
         pair on disk and return the geometry path.  THE paired-file door
@@ -336,10 +350,7 @@ class StructureCodec:
         The target is written VERBATIM -- unlike :meth:`files`, this does not
         correct the suffix, because the caller did not guess it: a save names an
         exact path, chosen through a picker and cleared by an overwrite gate,
-        and silently writing somewhere else would make that gate a lie.  (Known
-        consequence: saving a frame RANGE to a ``.xyz`` path puts extended-XYZ
-        bytes under an ``.xyz`` name.  Naming that file is the caller's job and
-        the export door is where the codec does it.)
+        and silently writing somewhere else would make that gate a lie.
 
         Atomicity: each half is staged to a temp sibling and ``os.replace``-d
         (per-file atomic).  The geometry is swapped first, then the sidecar, so
@@ -353,7 +364,7 @@ class StructureCodec:
         # makes write->read a round trip rather than a coincidence.  A caller
         # with its own answer (the CLI's `--output-format`, which may name a
         # format the extension does not) passes it and is obeyed.
-        made = self.pair(struct, frames=frames,
+        made = self.pair(struct,
                          fmt=(fmt or ("pdb" if target.suffix.lower() == ".pdb"
                                       else "xyz")))   # the ONE generator
         return self._write_pair(target, made.document,
@@ -428,12 +439,14 @@ class StructureCodec:
 
     # ---- read the pair from disk (alias of load, symmetric name) ----- #
     def read(self, source_path, *,
-             frames_out: "list | None" = None,
+             frame: "int | None" = None,
+             frames: bool = False,
              retired_out: "dict | None" = None) -> Structure:
         """Symmetric read-side name for :meth:`load` -- parse the geometry +
         apply its paired sidecar into a Structure (missing sidecar => empty
         metadata, not an error -- except an engine's own file where its
-        run is recorded, which reads with that run's frame; see `load`).  ``frames_out`` collects every frame of a
-        multi-frame document; ``retired_out`` the retired keys it carried."""
-        return self.load(source_path, frames_out=frames_out,
+        run is recorded, which reads with that run's frame; see `load`).
+        ``frame`` / ``frames`` choose which frame (:meth:`frame_choice`);
+        ``retired_out`` collects the retired keys it carried."""
+        return self.load(source_path, frame=frame, frames=frames,
                          retired_out=retired_out)

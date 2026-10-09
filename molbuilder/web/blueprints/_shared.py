@@ -138,6 +138,8 @@ def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
     # fact the sender believes it transmitted -- refused rather than dropped.
     known = {"title", "elements", "positions", "atom_names", "residue_ids",
              "residue_names", "chain_ids", "metadata",
+             "frames",            # a frame set's coordinates, IN PLACE OF
+                                  # `positions` (model/structure.md § 2.1)
              "info",              # the free-form NON-structural store
                                   # (from_dict reads it)
              "source_index",      # the CALLER's map back onto a larger structure
@@ -157,7 +159,13 @@ def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
         raise ValueError("structure.elements is required (may be an empty list)")
     if not isinstance(env["elements"], list):
         raise ValueError("structure.elements must be a list")
-    if not isinstance(env.get("positions"), list):
+    # THE COORDINATES: `positions`, or for a frame set `frames` -- one or the
+    # other, as `to_dict` writes them (`Structure.from_dict` refuses both).
+    if env.get("frames") is not None:
+        if not isinstance(env["frames"], list):
+            raise ValueError("structure.frames must be a list of frames, each "
+                             "a list of [x, y, z]")
+    elif not isinstance(env.get("positions"), list):
         raise ValueError("structure.positions must be a list of [x, y, z]")
 
     return Structure.from_dict(env)

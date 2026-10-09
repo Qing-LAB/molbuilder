@@ -117,7 +117,7 @@ def test_it_writes_utf8_regardless_of_the_platform_locale(tmp_path):
     s = Structure.from_xyz("3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
     s.title = "wasser — Ångström"
     path = tmp_path / "t.xyz"
-    StructureCodec().write(s, path, frames=[s.positions, s.positions])
+    StructureCodec().write(s.with_frames([s.positions, s.positions]), path)
 
     assert "Ångström" in path.read_text(encoding="utf-8")
     assert StructureCodec().load(path).title == "wasser — Ångström"

@@ -1155,8 +1155,8 @@ def test_a_picture_is_the_view_and_leaves_through_saveBinary():
 def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
     """§ 11.3: the dialog opens ON THE DISPLAYED FRAME (accepting it unchanged
     is the common case), widening it is what the dialog is for, and the range
-    reaches `exportFile` — frames ride the payload, and the stem names both
-    ends (§ 11.4's `_frameA-B`).
+    reaches `exportFile` — the frames ride inside the envelope (§ 11.7), and
+    the stem names both ends (§ 11.4's `_frameA-B`).
     """
     out = _run(
         """
@@ -1202,8 +1202,8 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
         console.log(JSON.stringify({
             opened,
             stem: saved[0] && saved[0].stem,
-            frameCount: saved[0] && saved[0].payload.frames
-                ? saved[0].payload.frames.length : null,
+            frameCount: saved[0] && saved[0].payload.structure.frames
+                ? saved[0].payload.structure.frames.length : null,
             dialogGone: !card.querySelector(".molviewer-export-dialog"),
         }));
         """

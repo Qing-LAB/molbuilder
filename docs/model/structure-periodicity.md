@@ -594,8 +594,8 @@ that block's.
    origin to be 0,0,0 and all atoms are within cell boundary after that
    correction/check")*.
 
-**A frame set gets one offset** *(the contract W32's frame sets are built to;
-not yet built)*. The frames of a multi-frame pair share one cell
+**A frame set gets one offset** *(built 2026-10-09: `Structure.frame_at`,
+`model/structure.md` § 2.2e)*. The frames of a multi-frame pair share one cell
 and identical electrode atoms (`engines/transport.md` § 2a.9). The offset is
 computed from frame 0 and applied to every frame — frames 1…N state frame 0's
 offset — so no electrode atom moves between frames in the engine's coordinates

@@ -2158,6 +2158,11 @@
 .molviewer-info-tree {
     padding: 0 var(--molviewer-space-sm) var(--molviewer-space-sm);
 }
+/* The Customized section (§ 8.4a): the store's named values, below its tree,
+ * on the tree's own gutter. */
+.molviewer-info-custom {
+    padding: 0 var(--molviewer-space-sm) var(--molviewer-space-sm);
+}
 .molviewer-info-entry {
     border-bottom: 1px solid var(--molviewer-color-edge-soft);
     padding: var(--molviewer-space-xs) 0;

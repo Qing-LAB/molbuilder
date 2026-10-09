@@ -1651,7 +1651,7 @@ V1.25 writes the frame rows through `set_customized(…, frame=i)` (its
 generator, its own module — *"we do not worry about that at this point"*).
 § 5u.1 step 11 → Q17.
 
-**State.** D1–D5 settled 2026-10-09. Q16 done the same day (the Load question `a19ddfcc`; the record's receipt, the file card and the Metadata hint after it); the averaging science written (`7a282246`). Next: Q17-a, the contract text.
+**State.** D1–D5 settled 2026-10-09. Q16 done the same day (the Load question `a19ddfcc`; the record's receipt, the file card and the Metadata hint after it); the averaging science written (`7a282246`). § 5z.8 settled and its steps 1–3 built the same day (frames and `customized` in the structure, both sides). Next: Q17-c, the frame-set citation, then prep/launch at the point (frame, voltage).
 
 ### 5z.8 For review, 2026-10-09 — both axes built in, and a frame's details in `customized`
 
@@ -1920,6 +1920,23 @@ a key of `customized` or pairs frames with a structure.**
    Customized section; the Molbuilder tab's Load asking which frame; tests of
    the same alignment and refusals in the browser model.
 4. Then Q17: transport reads the frame set through these doors.
+
+**Steps 1–3 built 2026-10-09** (the contract `36a485e6`; the code with it): one
+case table, `tests/data/frame_sets.toml` (save/load at every option, the load
+route, `take`, every edit refused, a document whose frames differ refused, a
+read-only viewer's round trip, an editable viewer's refusal), each mechanism
+mutation-checked; on the page, the Molbuilder tab's Load asks which frame and
+the Results tab shows a frame set with its Customized section following the
+frame bar. **Four calls made while building, for the user's eye:** (a) an
+empty `customized` is written `null`, as every metadata field states its unset
+value, rather than left out (F.7 row 10 said *omitted*); (b) an extended-XYZ
+comment line's other `key=value` pairs are *not read*, as today, rather than
+refused — refusing would newly refuse every ASE-written file with an
+`energy=` (F.7 row 1 said *refused*); (c) `frame_at(0)` is frame 0 as it is,
+and only frames 1…N state frame 0's offset — periodicity § 6.0's own words, and
+it keeps a frame-0 load exactly as before; (d) a put-back envelope
+(`/api/build/load` `{structure}`) is answered whole, as `exportFile`'s exact
+inverse, with no frame choice.
 
 ##### F.7 What the independent review changed *(2026-10-09, a fresh reviewer, its findings checked against the code)*
 

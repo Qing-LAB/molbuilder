@@ -305,10 +305,12 @@ def _moved_subset(struct: Structure, R, t, indices: Sequence[int]) -> Structure:
         if not 0 <= i < n:
             raise ValueError(
                 f"atom index {i} out of range [0, {n}) for a {n}-atom structure")
-    out = struct.copy()
+    pos = struct.positions.copy()
     if keep:
-        pos = out.positions
         pos[keep] = pos[keep] @ np.asarray(R, dtype=float).T + np.asarray(t, dtype=float)
+    # THROUGH `replace`, which refuses a frame set: moving atoms in one would
+    # make its frames disagree (`model/structure.md` § 2.2e).
+    out = struct.replace(positions=pos)
     # AN EDIT OUTDATES THE RECORD, it does not erase it
     # (`model/structure.md` § 2.2a; the same mark
     # `molview/model.js` sets on every `applyOp`).
@@ -1122,7 +1124,7 @@ def append_structure(
     dropped, and that is said rather than passed over, because a dropped
     lattice is otherwise invisible -- and so is the addition's record: each
     entry of its `info` (a saved pair's calculation, its relaxation) is named
-    as not carried.
+    as not carried, and each of its `customized` rows.
     """
     notes: List[str] = []
     if addition.n_atoms == 0:
@@ -1174,6 +1176,15 @@ def append_structure(
             + ", ".join(sorted(addition.info))
             + ") -- this structure's own is kept; to open the file with its "
             "record, load it and answer Clear")
+    # ITS NAMED VALUES, the same way (§ 2.2b's `customized` row): a row about
+    # one structure is not true of the merge, so the canvas's are kept.
+    dropped_rows = sorted({row["name"] for row in addition.customized_rows()}
+                          | {row["name"] for row in
+                             addition.customized_rows(frame=0)})
+    if dropped_rows:
+        notes.append(
+            "the added structure's named values were not carried ("
+            + ", ".join(dropped_rows) + ") -- this structure's own are kept")
 
     out = Structure.concat([struct, incoming], title=struct.title or "")
     # AN EDIT OUTDATES THE RECORD, it does not erase it
