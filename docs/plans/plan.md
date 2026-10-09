@@ -25,6 +25,60 @@ are folded into § 2, so R3's one table is one table again.
 
 ---
 
+## ▶ HANDOVER — where we are, and where to start *(2026-10-09, end of session)*
+
+*(user, 2026-10-09: "consolidate the plan and make sure we have all the
+discussions persistent and ready so that when i come back here we can
+continue without losing any context/details")* Read this first; each line
+points at the row or section that holds the detail.
+
+**Settled and built today, after the consolidation (`1423ad51`), in order:**
+
+| commit | what | the user's word | where it lives |
+|---|---|---|---|
+| `5b25fb0e` | **One vibration mode per frame set**; the mode on the structure's `customized` rows, each frame's node and **weight stated, frame 0 included** (⅔, ⅙, ⅙), the sum checked to be 1; each mode its own transport task; no sum across modes — weighing modes is the person's post-processing | "i would rather let one multi-frame focus on one mode ... it is baseless to discuss how different normal mode would mix"; "all weights should add up to 1 that's an explicit rule within error tolerance" | § 5z.1; `transport.md` § 2a.9, § 2a.12; `vibration.md` § 5.10 ③ (D6 reversed); `science/vibrational-averaging.md` § 6, § 8 |
+| `429a678e` | **TD12 settled**: the four SCF stages (seed, both leads, device) carry their own SCF settings; the transmission none, and its tab says why and where they live | "each stage would actually carry their own SCF setup ... one of them would carry no SCF with clarification" | § 2 TD12; `transport/stages.py` `RUNG_NOTES` |
+| `cd0deeef` | **The cards' words have one home** (`template.GROUP_WORDS`, served with every schema as `group_words`); a rung's tab names the rung on every card (*seed · Convergence targets*) and says once whose its values are (`stage_words`) | "make sure the title and text in each panel ... so the user is not confused by the repetition"; "unified api is always required. do not reinvent wheels" | `form-schema.md` § 1.3; `transport.md` § 3.8.2a |
+| `48a67f1e` | **The Transport tab's side panel** — the shared two-column page and rail (`form-components.css` `.page-cols` / `.page-aside`, Task setup's): the five stages in order, k-points, SCF settings, after you describe | "a side panel in the transport tab (just like the one in the task setup tab)"; "simple language (no jargon) ... with examples" | `transport.md` § 3.8.10; `tabs.md` § 4; `ui-contract.md` § 1 |
+| `bf9e2846` | **TD6, option C built as way 1**: the cited run's SCF mixer and criteria start every SCF stage, the device included, marked *from the run you cited*, each stage free to change its own; the fdf reader reads them; the road runner gained `deck_reads` (a deck read through the one fdf reader, never by its lines) | "TD6 C option is fine"; "go with way 1" | § 2 TD6; `transport.md` § 3.1, § 2a.13; `template.md` § 6.4 |
+| `54fd6e8a` | **Words for the k-point directions**: *in the electrode plane (x, y)* and *(z)*, never *across* (which reads as from one lead to the other) | "What do you mean cross? Is it the Z direction ... or the XY direction" | the three items' labels and help; the rail |
+| `c5ef9f73` | **The k-point choices, with the literature**: a lead's points along z default to **100**; the transmission's in-plane mesh starts at **3×** the shared mesh's count (4×4 → 12×12); **one point along a repeating x or y is warned** — at prep and when the Transport tab describes, beside the control; six references checked against Crossref into `references.bib` | "I agree with your choice of these parameters" | `transport.md` § 0.3b (the consolidated section, with its references); `kmesh.transmission_start`, `kmesh.check`, `transport/deck.ladder_mesh_findings` |
+
+**Next, in order** (the queue below, Q17):
+1. **Q17-c** — the citation of a frame-set pair and the description (§ 5z.4), with
+   **W56-2** (a cited run read through the run door) and the **SCF-RUNG** road
+   test (§ 2): different SCF values on the seed, a lead and the device, prep,
+   each deck read through `parse.fdf.parse_fdf_params` via the road runner's
+   `deck_reads` key — never a text search. A cited pair's `info.calculation`
+   must carry the five SCF settings too (TD6).
+2. **Q17-d** prep/launch/status at the point (frame, voltage) → **Q17-e** the
+   record's average → **Q17-f** Results, the Transport tab, Task setup.
+3. **The AuBDTAu workflow end to end** — the user's request (§ 5z.6 step 5);
+   e2e on the user's word.
+4. The milestone review, two rounds.
+
+**Waiting on the user** (none blocks Q17-c):
+- **The frame generator's amplitude** (V1.25; § 5z.4's generator row): proposed
+  — the spread from the mode's state, `σ² = (ħ/2ω)(2n+1)`, the experiment's
+  temperature by default, a stated effective occupation for a pumped (SERS)
+  mode, max displacement then an output; a coherent drive the one case where
+  max displacement is the input (Gauss–Chebyshev frames). Decided when the
+  generator is designed.
+- § 2's *the user's word* rows: E7, EL-W, PL-R's first question, K22's design,
+  V1.26 (M10).
+
+**Owed by the next e2e pass** (M2n; on the user's word): the real-junction
+e2e's new assertion — the relaxation's mixer arrives *from the run you cited*
+on both roads (`bf9e2846`); and § 2's DOC-TOC (a docs-tab test writes into the
+checkout) — retire.
+
+**Noted for the user:** the walk's AuBDTAu relaxation
+(`claude-transport-walk/optimization/au-dta-relax2/01_coarse/run-1`) ran with
+one k-point (1 × 1 × 1) on a slab periodic in x and y — exactly the case the
+new warning names; check the user's own relaxation's mesh before citing it.
+
+---
+
 ## 0. Rule R3, restated
 
 `docs/README.md` used to say **R3: `roadmap.md` is THE one plan.** That is now
@@ -234,7 +288,7 @@ Done milestones, archived: M1, M2a, M2b–M2b⁵, M2c, M2d, M2e, **M2f** (9b, 20
 | **EL-W** | transport / labels | **An electrode label that is not frozen is a warning** (`validation/sidecar.py:107`); making it an error is one word (§ 5p.3g, parked 2026-09-17) | `engines/transport.md` § 4 | the user's word |
 | **R11** | execution / tests | **Launch's test-only renderer fallback.** Three test files call the wrapper renderer; two rely on its fallback, and both hand-write `environment.json` — a hand-built record `testing.md:54-55` retires: `tests/test_launch_door_gate.py:37-46`, `tests/test_warm_file_inventory.py:30-55`. Then `machine_record` becomes required in `render_run_wrapper` and the fallback goes (`runwrap.py:2944-2945`, `:2968-2970`); launch's own (`_render_sbatch_for`, `runwrap.py:4224-4228`) stays | § 0b (W54) | open — judge the two tests first |
 | **W57-G** | execution / tests | **Rules no test holds since the W57 retirements**: a killed run leaves no conclusion marker (an engine-tier kill); a stage's `overrides` (no road key for it); the PySCF effective-parameters fence (an engine-tier assertion on the H₂ log); `set -e` across the preamble; a warm retry's own launch record (`retry_of`, 0 test hits); MPS and ranks-per-GPU (only the `run_sh_lacks` side, `gpu_contract.toml:188`) | W57 (2026-10-07) | open — each an assertion on a real run of M2n's batch, never a fake |
-| **SCF-RUNG** | tests / transport | **A rung's own SCF values reach its deck alone — the road test** *(user, 2026-10-09: "ok for the missing test. but make sure it is not a text grep text but rather proper validation/parser to check input and output")*: describe a transport calculation with different SCF values on the seed, a lead and the device and none on the other lead; `prep` with no engine; read the input back through the description's reader (`task.read_task`) and each rung's deck through the one fdf reader, `parse.fdf.parse_fdf_params`, taught the SCF settings (mixing weight, history, the two tolerances, the iteration cap, must-converge — the reader TD6's option C would use); each rung's deck carries its own value, a blank rung the template's, the transmission's none. One case-table row. The mechanism once sent the T(E) window to the device's deck | `engines/transport.md` § 3.8.2a; `web/form-schema.md` § 1.3 | agreed 2026-10-09 — built with Q17-c, which opens the same doors |
+| **SCF-RUNG** | tests / transport | **A rung's own SCF values reach its deck alone — the road test** *(user, 2026-10-09: "ok for the missing test. but make sure it is not a text grep text but rather proper validation/parser to check input and output")*: describe a transport calculation with different SCF values on the seed, a lead and the device and none on the other lead; `prep` with no engine; read the input back through the description's reader (`task.read_task`) and each rung's deck through the one fdf reader, `parse.fdf.parse_fdf_params`, taught the SCF settings (mixing weight, history, the two tolerances, the iteration cap, must-converge — the reader TD6's option C would use); each rung's deck carries its own value, a blank rung the template's, the transmission's none. One case-table row. The mechanism once sent the T(E) window to the device's deck | `engines/transport.md` § 3.8.2a; `web/form-schema.md` § 1.3 | agreed 2026-10-09 — built with Q17-c, which opens the same doors; the road runner's `deck_reads` key (`bf9e2846`) reads a deck through the one fdf reader, field by field |
 | **W57-M** | execution / PySCF | **A stated PySCF memory cap reaching `max_memory`** — only the unset rows exist (`launch_values.toml:206-216`); none for a stated cap reaching `max_memory = N` (`pyscf/input.py:494`) | W57 | open |
 | **W57-T** | tests | **Tests built on hand-made inputs, for retirement**: `tests/parse/test_tbtrans_out.py` writes empty files named by TBtrans's rule (`:13-22`); `tests/test_jobset.py` builds job sets by hand (`:56-59`, `:107-115`) — `testing.md:50-55` retires both, never sweeps them; and the ten test files that render through `spec_for` + `render_deck` directly, swept to prep's road | W57 | open |
 | **W57-O** | execution / records | **Old-data tolerances**, each an explicit error under *build molbuilder, don't clean up handcrafted input*: `record.py:1323-1324` skips the conflict check when a copy names no machine; `script_generation` refused by name in three doors (`runtime_config.py:705-715,958`; `jobset/machine.py:137`; `envs/initconfig.py:253-259`) — one door; `Environment.from_dict` drops unknown keys (`record.py:363-398`) | W57 | open |
@@ -1015,7 +1069,7 @@ lives in a contract, what is built, and the order of what is left. § 5z.8 A–E
 
 ### 5z.6 The order of work
 
-1. **Q17-c** — the citation of a pair and the description (with W56-2).
+1. **Q17-c** — the citation of a pair and the description (with W56-2, and the SCF-RUNG road test of § 2); a cited pair's `info.calculation` carries the five SCF settings TD6's citation reads (`parse.contract.contract_of`).
 2. **Q17-d** — prep, launch and status at the point (frame, voltage).
 3. **Q17-e** — the record's average.
 4. **Q17-f** — Results, the Transport tab, Task setup — each checked on the page.
