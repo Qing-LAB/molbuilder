@@ -56,10 +56,19 @@ class TestTransportSchemaEndpoint:
         assert "dm_tolerance" not in tr_names and "electrode_kz" not in tr_names
         # ONE ID PER CONTROL ON THE PAGE (`transport.md` § 3.8.2a): the five
         # tabs' copies of one item never share an id.
+        # EACH RUNG'S TAB SAYS WHOSE ITS VALUES ARE (`form-schema.md` § 1.3,
+        # `transport.md` § 3.8.2a; user, 2026-10-09: "so the user is not
+        # confused by the repetition"): the schema names the rung, which the
+        # renderer puts on every card, and one sentence says the values are
+        # the rung's own; the cards' words are the one vocabulary's.
+        from molbuilder.template import GROUPS
         ids = {}
         for rung in TRANSPORT_STAGES:
             got = web.get(f"/api/transport/schema?surface=rung&rung={rung}").get_json()
             ids[rung] = {f["id"] for s in got["schema"]["sections"] for f in s["fields"]}
+            assert got["schema"]["stage"] == rung
+            assert got["schema"]["stage_words"].startswith(rung + "'s own values")
+            assert tuple(w["group"] for w in got["schema"]["group_words"]) == GROUPS
         for a in TRANSPORT_STAGES:
             for b in TRANSPORT_STAGES:
                 if a < b:

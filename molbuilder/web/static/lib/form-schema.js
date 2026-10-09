@@ -533,66 +533,14 @@
 
     /* ---------- public API ---------- */
 
-    // Workflow-group metadata.  Each .workflow-group--<role>
-    // card gets a label + a subtitle explaining "what changes when".
-    // The roles come from each item's catalogue ``group``, emitted as
-    // ``workflow_group`` by ``_shared.catalogue_to_form_schema``.  UNTAGGED
-    // fields render bare in their own section (no workflow-group wrapper).
-    const WORKFLOW_GROUP_META = {
-        // These two are what a calculation cannot be built without -- it
-        // needs a name for its output files and a directory to find
-        // pseudopotentials in (user, 2026-08-15).
-        "setup": {
-            title:    "Setup",
-            subtitle: "Start here.  What this run is CALLED, and where its "
-                    + "pseudopotentials come from.  Nothing can be built "
-                    + "until both are answered, and every output file is "
-                    + "named after the first.",
-        },
-        "profile": {
-            title:    "Run profile",
-            subtitle: "WHAT you're computing \u2014 the physical character of "
-                    + "the system: charge, spin, metallic vs organic, "
-                    + "smearing, and the functional.  Set once per run; "
-                    + "doesn't change between stages.",
-        },
-        "stage": {
-            title:    "Convergence targets",
-            subtitle: "What counts as converged \u2014 the knobs a staged "
-                    + "sequence TIGHTENS as it goes.  This is the set the "
-                    + "staging surface steps; nothing on this page steps it.",
-        },
-        "budget": {
-            title:    "Compute & budget",
-            subtitle: "How much compute am I willing to spend?  "
-                    + "Iteration caps + parallel layout (MPI ranks, "
-                    + "OMP threads, memory).  Scales with system size; "
-                    + "does NOT change what counts as converged.",
-        },
-        // The three cards above answer *what am I computing*, *how tight*,
-        // and *how much compute*; this one answers *what do I get back*.
-        "output": {
-            title:    "Output files",
-            subtitle: "What the run WRITES — trajectories, logs, geometry "
-                    + "snapshots, and which files are staged beside the "
-                    + "input.  Changes what you get back, never the answer.",
-        },
-    };
-
-    // Render-order of the workflow-group cards:
-    //   0. Setup       — "what is it called, and where are the pseudos?"
-    //                    First because nothing downstream can be answered
-    //                    without it.
-    //   1. Run profile — "what is this run?" identity + character; the
-    //                    foundation the next two iterate against
-    //   2. Stage       — "what am I converging to right now?"
-    //   3. Budget      — "how much patience?"
-    //   4. Output      — "what do I get back?"  Last because it is the
-    //                    only one you can decide after the physics.
-    // Untagged sections render in their original schema order AFTER the
-    // cards.
-    const WORKFLOW_GROUP_ORDER = ["setup", "profile", "stage", "budget",
-                                  "output"];
+    // THE CARDS AND THEIR WORDS ARE THE SCHEMA'S (form-schema.md § 1.3):
+    // each field's catalogue ``group`` arrives as ``workflow_group``, and
+    // ``schema.group_words`` -- from ``template.GROUP_WORDS``, the one home
+    // -- names the cards, in the vocabulary's order, with the title and the
+    // line each card says.  A form of one stage's own values names the stage
+    // (``schema.stage``) on every card and says once whose its values are
+    // (``schema.stage_words``).  UNTAGGED fields render bare in their own
+    // section (no workflow-group wrapper).
 
     function renderForm(container, schema, opts) {
         if (!container || !schema || !Array.isArray(schema.sections)) {
@@ -630,10 +578,16 @@
         //     - untagged fields → original section, rendered bare
         //       AFTER the workflow-group cards.
         //
-        //   PASS 2: render the cards in WORKFLOW_GROUP_ORDER, then the
+        //   PASS 2: render the cards in the schema's group order, then the
         //     untagged sections.
+        const words = {};
+        const cardOrder = [];
+        (schema.group_words || []).forEach(function (w) {
+            words[w.group] = w;
+            cardOrder.push(w.group);
+        });
         const tagged = {};
-        for (const role of WORKFLOW_GROUP_ORDER) {
+        for (const role of cardOrder) {
             tagged[role] = new Map();
         }
         const untagged = [];
@@ -642,7 +596,7 @@
             const remainingFields = [];
             for (const f of sect.fields) {
                 const role = f.workflow_group;
-                if (role && WORKFLOW_GROUP_META[role]) {
+                if (role && tagged[role]) {
                     if (!tagged[role].has(sect.name)) {
                         tagged[role].set(sect.name, []);
                     }
@@ -661,11 +615,17 @@
             }
         }
 
-        // PASS 2 — Render workflow-group cards in fixed order.
-        for (const role of WORKFLOW_GROUP_ORDER) {
+        // A FORM OF ONE STAGE'S OWN VALUES says whose they are, once,
+        // above its cards.
+        if (schema.stage_words) {
+            container.appendChild(el("p", { class: "hint schema-stage-words" },
+                                     schema.stage_words));
+        }
+        // PASS 2 — Render workflow-group cards in the schema's order.
+        for (const role of cardOrder) {
             const sectMap = tagged[role];
             if (sectMap.size === 0) continue;
-            const meta = WORKFLOW_GROUP_META[role];
+            const meta = words[role];
             const fieldsInCard = [];
             for (const fs_ of sectMap.values()) fieldsInCard.push(...fs_);
             const folded = foldable && typeof opts.folded === "function"
@@ -676,7 +636,9 @@
             const header = el(foldable ? "summary" : "header",
                               { class: "workflow-group-header" });
             header.appendChild(el("h3",
-                { class: "workflow-group-title" }, meta.title));
+                { class: "workflow-group-title" },
+                schema.stage ? schema.stage + " \u00b7 " + meta.title
+                             : meta.title));
             if (foldable) {
                 // A folded card still says how much it holds.
                 header.appendChild(el("span",

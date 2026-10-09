@@ -125,6 +125,54 @@ TYPES = ("int", "float", "str", "bool", "enum", "pow2",
 #: would break the shared legend order that every other card depends on.
 GROUPS = ("setup", "profile", "stage", "budget", "output", "staging")
 
+#: ...and what each card SAYS -- its title and the one line under it, the one
+#: home of those words, served with every form schema as ``group_words`` (as
+#: :data:`SOURCE_WORDS` is) so no surface keeps a copy (`form-schema.md`
+#: § 1.3).  True on every form: a stage may override any setting that is not
+#: shared, so no card says its settings are set once for every stage.
+#: ``staging`` has no card on a parameter form -- its members are each
+#: stage's run card -- and its words say so.
+GROUP_WORDS = {
+    "setup": ("Setup",
+              "Start here.  What this run is CALLED, and where its "
+              "pseudopotentials come from.  Nothing can be built until both "
+              "are answered, and every output file is named after the "
+              "first."),
+    "profile": ("Run profile",
+                "WHAT you're computing -- the method and the physical "
+                "character of the system: functional, basis, charge and "
+                "spin, smearing, solvent -- and the SCF solver and mixer "
+                "that suit it."),
+    "stage": ("Convergence targets",
+              "How fine and how converged: the basis and grids, the "
+              "tolerances, the k-points and the windows -- what a staged "
+              "sequence tightens as it goes."),
+    "budget": ("Compute & budget",
+               "How much compute: the iteration caps, and how the "
+               "diagonaliser is spread across ranks.  Scales with system "
+               "size; does NOT change what counts as converged."),
+    "output": ("Output files",
+               "What the run WRITES -- trajectories, logs, geometry "
+               "snapshots, and which files are staged beside the input.  "
+               "Changes what you get back, never the answer."),
+    "staging": ("Run card",
+                "How each stage runs -- ranks, threads, memory, GPU, "
+                "retries, restart -- answered on that stage's run card on "
+                "Task setup, never on a parameter form."),
+}
+if tuple(GROUP_WORDS) != GROUPS:      # one vocabulary, in one order
+    raise RuntimeError("template.GROUP_WORDS must name every group of "
+                       "template.GROUPS, in its order")
+
+
+def stage_words(stage: str) -> str:
+    """What a form of ONE stage's own values says above its cards -- the
+    transport tab's rung tabs (`engines/transport.md` § 3.8.2a): the same
+    settings appear on every stage's form, so each says whose they are."""
+    return (f"{stage}'s own values, over the template's: a value set here "
+            f"reaches {stage}'s deck alone, and a blank field runs the "
+            f"template's value, shown as its hint.")
+
 
 def _refuse(msg: str, *, where: str = "") -> NoReturn:
     raise ValueError(f"template{': ' + where if where else ''}: {msg}")

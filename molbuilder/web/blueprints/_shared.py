@@ -679,8 +679,19 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     # design conversation (user, 2026-08-14).
     # The words a field's source is said in -- one vocabulary, the
     # template's (`template.SOURCE_WORDS`), so no surface coins its own.
-    return {"config": engine, "id_prefix": id_prefix, "sections": sections,
-            "source_words": dict(_T.SOURCE_WORDS)}
+    # AND THE WORDS ITS CARDS SAY, from their one home (`template.GROUP_WORDS`,
+    # form-schema.md § 1.3); a form of one rung's own values names the rung
+    # and says once whose its values are (`template.stage_words`).
+    out = {"config": engine, "id_prefix": id_prefix, "sections": sections,
+           "source_words": dict(_T.SOURCE_WORDS),
+           # A LIST, in the vocabulary's order: the order IS the cards'
+           # order, and a JSON object's keys are sorted on the wire.
+           "group_words": [{"group": g, "title": t, "subtitle": sub}
+                           for g, (t, sub) in _T.GROUP_WORDS.items()]}
+    if rung is not None:
+        out["stage"] = rung
+        out["stage_words"] = _T.stage_words(rung)
+    return out
 
 
 def _jsonable(v: Any) -> Any:

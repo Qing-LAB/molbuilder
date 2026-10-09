@@ -184,6 +184,13 @@
     grid-column: 1 / -1;
 }
 
+/* A form of one stage's own values says whose they are once, above its
+ * cards (`schema.stage_words`, form-schema.md § 1.3): a full row, as a
+ * card is. */
+.param-grid > .schema-stage-words {
+    grid-column: 1 / -1;
+}
+
 /* ---- A FOLDABLE card (renderForm's `foldable` option) ----------------
  *
  * A <details> whose header is the <summary>: the same grid, the same

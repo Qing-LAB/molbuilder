@@ -156,6 +156,22 @@ folds per rung — a card holding none of the rung's own items starts closed
 passes nothing and keeps its open cards. The sheet owns the two states and
 decides nothing about which cards fold.
 
+**What a card says is the schema's** *(2026-10-09)*. The cards, their order,
+their titles and the line under each come with the schema as `group_words` —
+a list in the vocabulary's order, which is the cards' order — from their one
+home, `template.GROUP_WORDS` — served as `source_words` is, so
+the renderer keeps no copy. The words are true on every form: a stage may
+override any setting that is not shared, so no card says its settings are set
+once for every stage. **A form of one stage's own values** — the transport
+tab's rung tabs ([`engines/transport.md`](?doc=engines/transport.md) § 3.8.2a)
+— carries `stage` and `stage_words` (`template.stage_words`): every card title
+is prefixed with the stage (*seed · Convergence targets*), and one sentence
+above the cards says whose the values are, so the same settings on several
+stages' forms are never read as one thing repeated *(user, 2026-10-09: "make
+sure the title and text in each panel for these stages are clear what these
+parameters are about so the user is not confused by the repetition"; "the UI
+design can use prefix to group different stage parameters")*.
+
 This said *"and are not touched"* until 2026-08-15, by which point three had
 been added: `output`, `staging` and `setup`. The sentence meant *the mechanism
 is not changed*, and that is still true — cards are still chosen by `group`,
