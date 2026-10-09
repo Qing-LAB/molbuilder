@@ -293,30 +293,32 @@
 
   <section class="card" id="transport-kpoints-card">
     <h2>k-points: three grids, one picture</h2>
-    <p class="hint">A junction repeats sideways (x and y) and runs from one
-      lead to the other along z.  Each run samples a few points of how the
+    <p class="hint">The electrodes are infinite surfaces in the x–y plane,
+      so the junction's cell repeats sideways, one molecule in each copy;
+      along z it runs from one lead to the other and does not repeat.  Each run samples a few points of how the
       electrons' waves repeat, and averages them: more points, more
       accurate, slower.  A transport calculation uses three such grids, each
       set in one place:</p>
     <ol class="hint">
-      <li><strong>Across the junction</strong> &mdash; <em>k-point
-        mesh</em>, step 2.  One grid for the seed, both leads and the
+      <li><strong>In the electrode plane (x, y)</strong> &mdash;
+        <em>k-point mesh</em>, step 2.  One grid for the seed, both leads and the
         device: each lead is attached to the device point by point, so all
         four must use the same points.  Its z count is always 1 here.</li>
-      <li><strong>Along the leads</strong> &mdash; <em>Lead k-points along
-        the transport direction</em>, each lead's tab.  A lead is bulk metal
+      <li><strong>Along the leads (z)</strong> &mdash; <em>Lead k-points
+        along the transport direction (z)</em>, each lead's tab.  A lead is bulk metal
         that goes on for ever along z, so it needs many points there for its
         Fermi level to come out right.  The device does not repeat along z
         and uses 1.</li>
-      <li><strong>Across, for T(E)</strong> &mdash; <em>Transmission
-        k-points across the junction</em>, the transmission's tab.  T(E)
-        changes faster across the junction than the electron density does,
+      <li><strong>In the electrode plane, for T(E)</strong> &mdash;
+        <em>Transmission k-points in the electrode plane (x, y)</em>, the
+        transmission's tab.  T(E) changes faster from point to point in
+        that plane than the electron density does,
         so it usually needs a finer grid.  Raising it re-runs only the
         transmission.</li>
     </ol>
     <p class="hint"><strong>Example</strong> &mdash; a gold junction three
-      gold atoms wide (about 8.7&nbsp;&Aring; across): 4&nbsp;&times;&nbsp;4&nbsp;&times;&nbsp;1
-      across, 40 along the leads, 12&nbsp;&times;&nbsp;12&nbsp;&times;&nbsp;1 for
+      gold atoms wide (about 8.7&nbsp;&Aring; side to side): 4&nbsp;&times;&nbsp;4&nbsp;&times;&nbsp;1
+      in the electrode plane, 40 along the leads, 12&nbsp;&times;&nbsp;12&nbsp;&times;&nbsp;1 for
       T(E).  Settle them in that order: the shared grid first, then the
       leads' count, then the transmission's grid, raising it until T(E) at
       the Fermi level moves by less than about 1&nbsp;%.  A finer grid for

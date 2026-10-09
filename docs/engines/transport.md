@@ -3011,12 +3011,12 @@ and names where the other two are:
 
 | where you set it | the item | what it samples | why it is set there |
 |---|---|---|---|
-| step 2, the shared panel | **k-point mesh** (`kgrid`) | across the junction (x, y), for the seed, both leads and the device; z is 1 | each lead is attached to the device point by point, so all four use the same points (§ 0.3: Σ(k⊥) pairs with H(k⊥)) — one value, never a rung's |
-| each lead's tab | **Lead k-points along the transport direction** (`electrode_kz`) | along z, for the leads alone | a lead is bulk metal, endless along z; its Fermi level and the self-energy built from it need many points there (40 by default; 1 is refused) — the device, seed and transmission are open along z and use 1 |
-| the transmission's tab | **Transmission k-points across the junction** (`tbt_k_grid`) | across the junction, for T(E) alone | T(E) changes faster across the junction than the density, so it usually needs more points than the SCF; it starts at the shared grid's and costs a transmission re-run only |
+| step 2, the shared panel | **k-point mesh** (`kgrid`) | in the plane of the electrodes (x, y) — they are infinite surfaces, so the cell repeats sideways — for the seed, both leads and the device; z is 1 | each lead is attached to the device point by point, so all four use the same points (§ 0.3: Σ(k⊥) pairs with H(k⊥)) — one value, never a rung's |
+| each lead's tab | **Lead k-points along the transport direction (z)** (`electrode_kz`) | along z, for the leads alone | a lead is bulk metal, endless along z; its Fermi level and the self-energy built from it need many points there (40 by default; 1 is refused) — the device, seed and transmission are open along z and use 1 |
+| the transmission's tab | **Transmission k-points in the electrode plane (x, y)** (`tbt_k_grid`) | in the plane of the electrodes, for T(E) alone; z is 1 | T(E) changes faster from point to point in that plane than the density does, so it usually needs more points than the SCF; it starts at the shared grid's and costs a transmission re-run only |
 
 **The example on the page:** a gold junction three gold atoms wide (about
-8.7 Å across) — 4 × 4 × 1 across, 40 along the leads, 12 × 12 × 1 for T(E).
+8.7 Å side to side) — 4 × 4 × 1 in the electrode plane, 40 along the leads, 12 × 12 × 1 for T(E).
 **The order to settle them:** the shared grid first (the total energy stops
 moving), then the leads' count (the lead's Fermi level and T(E_F) stop
 moving), then the transmission's grid (T(E_F) moves by less than about 1 %).

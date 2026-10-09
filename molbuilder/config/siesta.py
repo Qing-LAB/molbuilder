@@ -939,7 +939,7 @@ class SiestaConfig:
         "category": ("accuracy", ),
         "item_kind":  "engine",
         "workflow_group": "stage",
-        "label":       "Transmission k-points across the junction",
+        "label":       "Transmission k-points in the electrode plane (x, y)",
         "engine_key":  "TBT.k",
         "range":       (1, 64),
         "tier":        "basic",
@@ -1108,7 +1108,7 @@ class SiestaConfig:
         "category": ("accuracy", ),
         "item_kind":  "engine",
         "workflow_group": "stage",
-        "label":       "Lead k-points along the transport direction",
+        "label":       "Lead k-points along the transport direction (z)",
         "engine_key":  "%block kgrid_Monkhorst_Pack",
         # A RECOMMENDATION from 20 (warned below); 1 and under is the item's
         # hard limit, refused on every door (`above`, engines/siesta.md 6.1).

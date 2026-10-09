@@ -401,8 +401,8 @@ A crystal or a slab repeats, and its electrons' waves repeat with it, shifted a 
   4 4 1      a slab or a surface -- sampled across it, 1 along the vacuum
   6 6 6      a 3D crystal
 A small cell needs more points than a big one: a cell twice as wide needs about half the count along that axis.  To check it, raise the counts about 1.5x per axis; when the total energy moves by less than 1 meV per atom, the grid is fine enough.
-IN A TRANSPORT CALCULATION (the shared panel): this is the grid ACROSS the junction (x and y) for the seed, both leads and the device -- one grid for all four, because each lead is attached to the device point by point and both must be sampled at the same points.  Its third count, along the transport direction (z), is always 1 there: that direction is open, not repeated.  Two more grids sit on the rungs' tabs: each lead's own count along the transport direction ("Lead k-points along the transport direction"), and the transmission's grid across the junction ("Transmission k-points across the junction"), which may be finer than this one.
-  Example, a gold junction three gold atoms wide (about 8.7 A across): 4 4 1 here, 40 on each lead's tab, 12 12 1 on the transmission's tab.
+IN A TRANSPORT CALCULATION (the shared panel): this is the grid IN THE PLANE OF THE ELECTRODES (x and y), perpendicular to the transport direction, for the seed, both leads and the device -- the electrodes are infinite surfaces, so the cell repeats sideways, one molecule in each copy; one grid for all four, one grid for all four, because each lead is attached to the device point by point and both must be sampled at the same points.  Its third count, along the transport direction (z), is always 1 there: that direction is open, not repeated.  Two more grids sit on the rungs' tabs: each lead's own count along the transport direction ("Lead k-points along the transport direction (z)"), and the transmission's grid in the electrode plane ("Transmission k-points in the electrode plane (x, y)"), which may be finer than this one.
+  Example, a gold junction three gold atoms wide (about 8.7 A side to side): 4 4 1 here, 40 on each lead's tab, 12 12 1 on the transmission's tab.
 """
 
 [item.kgrid_displacement]
@@ -2238,11 +2238,11 @@ default = [1, 1, 1]
 range = [1, 64]
 above = { value = 0, why = "each is a k-point count along its axis, and 0 samples nothing" }
 group = "stage"
-label = "Transmission k-points across the junction"
+label = "Transmission k-points in the electrode plane (x, y)"
 tier = "basic"
 help = """
-How many sample points the transmission takes across the junction (x and y) when it computes T(E), the chance that an electron of energy E crosses.  The third count, along the transport direction, is always 1.
-The seed, the leads and the device use the shared grid on the shared panel ("k-point mesh"); that grid only has to be fine enough for the electron density, which is smooth.  The transmission is not smooth -- it can change quickly from one point to the next across the junction -- so it usually needs a finer grid.  It can have one: the transmission rebuilds the device and the leads at whatever points you ask for, without running any of them again.  And it is cheap: raising it re-runs the transmission alone.
+How many sample points the transmission takes in the plane of the electrodes (x and y) -- the directions perpendicular to the current -- when it computes T(E), the chance that an electron of energy E crosses.  The electrodes are infinite surfaces, so the cell repeats sideways and these points sample the metal surface's bands.  The third count, along the transport direction (z), is always 1: nothing repeats along z.
+The seed, the leads and the device use the shared grid on the shared panel ("k-point mesh"); that grid only has to be fine enough for the electron density, which is smooth.  The transmission is not smooth -- it can change quickly from one point to the next in that plane -- so it usually needs a finer grid.  It can have one: the transmission rebuilds the device and the leads at whatever points you ask for, without running any of them again.  And it is cheap: raising it re-runs the transmission alone.
 It starts at the shared grid's counts.  Raise both counts together until T(E) at the Fermi level stops changing.
   Example: shared grid 4 4 1 -- try 8 8 1, then 12 12 1, then 16 16 1, and keep the grid after which T(E) at the Fermi level moves by less than about 1 %.
 A finer grid here cannot rescue a shared grid that was too coarse: the device itself would then be wrong.  Settle the shared grid first, then this one.
@@ -2612,12 +2612,12 @@ default = 40
 range = [20, 200]
 above = { value = 1, why = "a lead is periodic bulk along transport: one k-point there gives a wrong lead Hamiltonian, and the device attaches the self-energy built from it -- a wrong transmission with no runtime error (engines/siesta.md 6.1)" }
 group = "stage"
-label = "Lead k-points along the transport direction"
+label = "Lead k-points along the transport direction (z)"
 tier = "basic"
 help = """
 How many sample points each LEAD's calculation takes along the transport direction (z) -- the direction the current flows.
 A lead is bulk metal that goes on for ever along z, so along z it is a crystal and needs many points for its electrons, and its Fermi level, to come out right.  The device does not repeat along z -- it is the one piece between the two leads -- so the device, the seed and the transmission use 1 there.  This is the one direction where the leads and the device deliberately differ.  SIESTA's own default is 1 point, which a lead cannot use.
 What it feeds: the device attaches each lead as an endless crystal built from this run.  Too few points here and every transmission is built on a wrong lead -- with no error message.
-Across the junction (x and y) the leads use the shared grid on the shared panel ("k-point mesh"), the same as the device, and they must.
+In the plane of the electrodes (x and y) the leads use the shared grid on the shared panel ("k-point mesh"), the same as the device, and they must.
   Example: 40, the default, for gold leads a few atomic layers thick.  To check it, raise it to 60 or 80 and see that the lead's Fermi level (in its run's report) and the transmission at the Fermi level do not move.
 """
