@@ -126,7 +126,8 @@
         }
         // THE MODEL SERIALISES ITSELF (`tabs.md` § 6 step 2): what is saved is
         // what is on screen, and this file scans nothing.  `exportFile()`
-        // yields {name, structure, frames?} -- the door reads the last two.
+        // yields {name, structure} -- one envelope, its frames inside it --
+        // and the door reads the structure.
         var payload = _model.exportFile();
         if (!payload) {
             return Promise.resolve(

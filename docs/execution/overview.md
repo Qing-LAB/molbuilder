@@ -45,7 +45,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | What a whole project directory looks like — the **two shapes** (flat and hierarchical), what `prep` does, and why the browser cannot finish a deck | **[`project-layout.md`](?doc=execution/project-layout.md)** |
 | Why a calculation's files all share one name, and what actually makes a run *continue* from an earlier one | **[`run-identity.md`](?doc=execution/run-identity.md)** |
 | What a saved history must always guarantee — the 31 rules behind `molbuilder checkpoint` | **[`checkpointing.md`](?doc=execution/checkpointing.md)** |
-| How a **finished run** becomes the starting point of the next calculation | **cite it** — the transport composite names the attempt and prep composes ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1; the old handoff bundle retired 2026-08-29) |
+| How a **finished run** becomes the starting point of the next calculation | **cite it** — the transport composite names the attempt and prep composes ([`engines/transport.md`](?doc=engines/transport.md) § 3.1; the old handoff bundle retired 2026-08-29) |
 | What a **stage** is (it is molbuilder's idea, not the engine's) and the file that describes one | **[`engines/stages.md`](?doc=engines/stages.md)** — in `engines/`, because a stage is about parameters |
 | What a **template** is — the file that carries every parameter with its value, and which layer owns each one | **[`engines/template.md`](?doc=engines/template.md)** — in `engines/`, by the same rule: a template is nothing but parameters |
 
@@ -192,7 +192,7 @@ flowchart TB
 | Parameter / resource sweep | ✅ | — | `job-system.md § 4.2` |
 | Benchmark → recommended resources | ✅ | — | `job-system.md § 7` |
 | SLURM deployment (routing domains; **one job per submission**) | ✅ | — *(launching stays on the terminal; the web plan view, W14, was dropped 2026-09-10)* | `job-system.md § 6` |
-| Fork a what-if tail (save from a restored state — there is no `branch` verb) | ✅ | ⏳ | `checkpointing.md § 7.1` |
+| Fork a what-if tail (save from a restored state — there is no `branch` verb) | ✅ | ✅ *(Restore, then Save state — `lib/projects/checkpoint.js` over `/api/checkpoint/restore` and `/api/checkpoint/save`; the new state's parent is the restored one)* | `checkpointing.md § 7.1` |
 
 `✅` shipped · `⏳` planned (see [`plans/plan.md`](?doc=plans/plan.md)) ·
 `—` not applicable / not planned for that surface.
@@ -323,7 +323,7 @@ When two docs need the same fact, it lives once, in `job-contracts.md`:
   `job-contracts.md § 3`.
 - **Warm / cold restart semantics** — `job-contracts.md § 4`.
 - **The handoff bundle** (a finished run → the next calculation) —
-  the citation model (`archive/2026-09-01-transport-design.md` § 4.1) — the old
+  the citation model ([`engines/transport.md`](?doc=engines/transport.md) § 3.1) — the old
   handoff-bundle contract retired 2026-08-29.
 - **The persisted-artifact registry, the `@major` schema rule, and the
   config ↔ scheduler parameter vocabulary** — `job-contracts.md § 6`.

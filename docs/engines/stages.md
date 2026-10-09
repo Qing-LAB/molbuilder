@@ -13,7 +13,8 @@ whether a stage continues; [`execution/job-contracts.md`](?doc=execution/job-con
 [`engines/template.md`](?doc=engines/template.md) — the file the effective config
 is resolved *from*, and the format every engine's parameters share;
 [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
-— the plan that motivates this contract and schedules the work.
+— the plan this contract was built from, kept as a record; the open work is in
+the one plan, [`plans/plan.md`](?doc=plans/plan.md).
 
 **Status: landed.** This document was written first and the code built to it,
 the way `web/spectrumchart.md` and `web/vibrationview.md` were: `task.json`
@@ -1357,8 +1358,10 @@ and removes the one place a layout question had an engine's name in it.
 **It is fixed once the calculation has produced.** The shape decides where every
 deck, output and warm file lives, so changing it after a stage has run orphans
 all of them. Before the first produce it is free to change; after, it is a
-different calculation. Whether an existing folder can be *converted* is a
-separate question and still open (`project-layout.md § 8`).
+different calculation. An existing folder is never *converted* from one shape
+to the other — answered 2026-08-07 (`project-layout.md § 8`, item 6): the flat
+shape is a small local run, the hierarchy a staged mission, and you choose one
+when you describe the calculation.
 
 ### 6.8a `allocation` — what this calculation asks the scheduler for
 

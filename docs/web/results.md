@@ -83,7 +83,9 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 - **A transport calculation's report** (§ 2.5) is built and seen on the
   walks (2026-10-08); the root opens it through its `task.json` from `init`
-  on (§ 0.1); the frame axis waits for plan § 5u.1 step 11.
+  on (§ 0.1); its frame family — the curves per frame, the frame bar every
+  chart follows, the average beside them — is designed and not built (plan
+  § 5z, Q17-f; § 2.5).
 
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
@@ -483,7 +485,7 @@ the app. **The PDOS by region** shows only the regions whose atoms are in
 TBtrans's device region — here the bridge; a lead's atoms are its electrode, not
 the device. **Seen in a browser** *(2026-10-08, B8)*: the report drawn on the
 three walks, its tabs, the I–V picks and the ladder's rows opening it at a
-point. The frame axis waits for step 11.
+point. The frame family is designed, not built (plan § 5z, Q17-f; below).
 
 **Two selections, each with one owner** — the spectra tab's pattern (one state
 owner, every view mirrors it through a cheap door; [`spectra.md`](?doc=web/spectra.md)
@@ -491,7 +493,7 @@ owner, every view mirrors it through a cheap door; [`spectra.md`](?doc=web/spect
 
 | selection | its one owner | what follows it |
 |---|---|---|
-| **the frame** — which structure of the calculation's frame set (W32; one frame today, so the bar is hidden as MolView hides it for one frame) | MolView's model: `data.setCurrentFrame(i)` / `data.onFrameChange(fn)` ([`molview.md`](?doc=web/molview.md) § 6.4) — nothing keeps its own copy | the structure, T(E), DOS, I–V and the device's convergence, each redrawn for that frame |
+| **the frame** — which structure of the calculation's frame set (*designed, not built — plan § 5z, Q17-f*; one frame today, so the bar is hidden as MolView hides it for one frame) | MolView's model: `data.setCurrentFrame(i)` / `data.onFrameChange(fn)` ([`molview.md`](?doc=web/molview.md) § 6.4) — nothing keeps its own copy | the structure, T(E), DOS, I–V and the device's convergence, each redrawn for that frame |
 | **the bias point** — one of the sweep's voltages (one for a single-bias calculation) | the report: one `selectedBias`, set by clicking a T(E) curve, an I–V point or a row of the points table | the highlighted curve in T(E) and DOS, the marked I–V point, the points table's row, and the device convergence tab, which shows that point's device run |
 
 **The layout** — the page's cards (`.card`, `.card-row`; [`ui-contract.md`](?doc=web/ui-contract.md)
@@ -536,7 +538,7 @@ exists or is named here; nothing worked out in the browser:
 |---|---|---|
 | ladder, rung states | `stages[]` — the status door's state and detail | `/api/transport/record` (built) |
 | device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) |
-| T(E) | per point and spin channel, from `.TBT.AVTRANS_<L>-<R>` (and `TBT_UP` / `TBT_DN`, plan K21) | `points[].transmission` in the record (built for non-polarized) |
+| T(E) | per point and spin channel, from `.TBT.AVTRANS_<L>-<R>` (and `TBT_UP` / `TBT_DN`) | `points[].transmission` in the record, each channel kept in `channels` (`record.point_transmission`, built); no spin-polarized run has been read through it yet (plan § 5w, K21) |
 | DOS and PDOS | from the transmission run's `<label>.TBT.nc` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12): **DOS** — the device's total density of states, its Green-function DOS (`TBT.DOS.Gf`, written per device orbital, energy and k); **PDOS** — the same DOS split by region, summing each label's orbitals (L-electrode, bridge, R-electrode — the labels molbuilder owns, [`molview.md`](?doc=web/molview.md) § 6.6), so the bridge's PDOS shows where the molecule's levels sit against E_F; the **left** lead's spectral DOS (`TBT.DOS.A` — TBtrans writes it for the first electrode only unless `TBT.DOS.A.All`, which the catalogue does not carry yet, plan § 5u.1 step 7); both leads' bulk DOS (`TBT.DOS.Elecs`) | **new**: read on the server with sisl's TBtrans reader (sisl 0.16 and netCDF4 are in the `molbuilder` env), k-averaged, added per point to the record as `dos: {total, by_label: {label: [...]}, lead_spectral: {L: [...]}, lead_bulk: {L: [...], R: [...]}}` on T(E)'s energy grid, E − E_F |
 | PDOS of a selection | the same per-orbital DOS, summed over **the atoms you choose**, optionally only their orbitals of one type — below | **new**: `GET /api/transport/pdos?path=&point=&atoms=&orbitals=` — stateless, read from that point's `.TBT.nc` and the device run's `.ORB_INDX` on request, on T(E)'s grid |
 | eigenchannels | `TBT.T.Eig` (4 by default): the transmission of each channel at each energy — eigenvalues only; TBtrans writes no channel wavefunctions with this deck | **new**, from the same `.TBT.nc`: per point `eigenchannels: [[...], ...]`, drawn under T(E) on the same axis |
@@ -604,9 +606,19 @@ point not run, an output not written — is said in its card.
 **Built in this order**, each a milestone with its review: ① the record's new
 fields (DOS, eigenchannels, NEGF figures, the chain) and the SCF-plot module with
 the phase split, the trajectory viewer moved onto it; ② the report's cards and
-tabs, the two selections; ③ the frame axis when W32 lands (plan § 5u.1 step 11) —
-the bar and the per-frame record. Checked on the dev server against a real
-transport calculation, through the road.
+tabs, the two selections; ③ the frame family (plan § 5z, Q17-f — designed, not
+built). Checked on the dev server against a real transport calculation, through
+the road.
+
+**The frame family** *(designed 2026-10-09, not built — plan § 5z, Q17-f; the
+record's half is [`engines/transport.md`](?doc=engines/transport.md) § 2a.12,
+Q17-e)*. A frame set's report draws the family of curves — T(E), the DOS and
+the I–V per frame — and the frame bar picks a frame, every chart following it
+as the I–V pick follows a bias point (the one owner is MolView's
+`data.setCurrentFrame`, the table above); beside the family, at each voltage,
+each mode's averaged curve and the set's second-order sum, labelled as such;
+and the selected frame's `customized` rows in its card, read through the
+structure's own doors.
 
 ## 3. Showing the file
 

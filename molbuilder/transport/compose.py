@@ -322,7 +322,8 @@ def classify_citation(cite_dir: Path) -> CitedDir:
 def resolve_citation(citation: str, tree_root: Path
                      ) -> Tuple[Path, CitedDir]:
     """The citation's directory, fenced to the tree and classified
-    against the § 4.1b file condition.  Public: the web
+    against the run's file condition (`engines/transport.md` § 3.1).
+    Public: the web
     hand-over validates a citation through the SAME door prep composes
     through."""
     from ..projects import OutsideRoot, contain
@@ -382,11 +383,11 @@ def labeled_citation_structure(cited: CitedDir):
     live -- ``(structure, source)`` with *source* the deck (in-body
     block) or the ``.molstruct.json`` that carries them.
 
-    ONE door, because three callers must agree about which labels are
-    real: the composition itself, the orientation question the tab
-    asks before composing, and the swap that rewrites them.  A second
-    reading with its own precedence is how a tab offers to fix a file
-    that is not the one being read.
+    ONE door, because its callers must agree about which labels are
+    real: the composition itself (and the swap it applies to its own
+    copy) and the orientation question the tab asks before composing.
+    A second reading with its own precedence is how a tab offers to
+    swap the labels of a file that is not the one being read.
 
     The precedence is the deck's own block FIRST, then exactly one sidecar
     beside it (§ 3.1).
@@ -690,17 +691,18 @@ def compose_junction(citation: str, *, tree_root,
         # a fixed ratio.  The reader's own sentence names the field.
         raise ComposeError(f"the cited deck cannot be read: {exc}")
 
-    # The labeled source structure, from THIS directory (4.1b) --
-    # through the one door the swap and the tab's orientation
-    # question also read, so all three agree on which labels are
-    # real and where they live.  It is also the ONLY reader of the
+    # The labeled source structure, from THIS directory (§ 3.1) --
+    # through the one door the tab's orientation question also
+    # reads, so both agree on which labels are real and where they
+    # live.  It is also the ONLY reader of the
     # .XV on this path: a second parse here would be a second
     # answer to "what does this relaxation say", free to drift.
     #
     # KEEP THE SOURCE.  Form A's labels may come from the deck's own
     # block or from a .molstruct.json beside it, and which one it
     # was belongs in the provenance: it is a file this junction was
-    # composed from, and the one the rename endpoint rewrites.
+    # composed from.  A swap renames the labels on this calculation's
+    # copy (`_with_swapped_leads`) and never writes that file.
     struct, label_source = labeled_citation_structure(cited)
     if swap_electrodes:
         struct = _with_swapped_leads(struct, Path(label_source).name)
@@ -727,7 +729,7 @@ def compose_junction(citation: str, *, tree_root,
             f"but {xv_path.name} carries {len(xv_elements)} -- the "
             f"two files do not describe the same relaxation.")
 
-    # THE GEOMETRY THE RELAXATION STARTED FROM (4.1b), read here
+    # THE GEOMETRY THE RELAXATION STARTED FROM (§ 3.1), read here
     # because only form A has one: the deck's own coordinate block.
     # The extraction compares it against the .XV to decide "frozen
     # means unmoved" (§ 3, ruling Q3); without it that question has

@@ -277,7 +277,8 @@ to ask for anything else; `sequence="ACB"` is the alternative, and it is what
 > slabs and has no spec field for; giving the two sides different registries
 > (`+z = 1`, `−z = 0`) continues the crystal on both surfaces, with the
 > across-seam distance at the bulk `a/√2`. The web slab card exposes both
-> controls and returns the seam verdict at build time; the CLI does neither.
+> controls and returns the seam verdict at build time; the CLI took the
+> registry control on 2026-09-21 (below).
 > **This paragraph asserting the CLI was already correct is why the defect went
 > unnoticed** — fix the sentence and the CLI together.
 >
@@ -290,10 +291,10 @@ to ask for anything else; `sequence="ACB"` is the alternative, and it is what
 > about the walk and was never what continues the crystal, and the old name
 > was exactly the claim this note measures false.
 >
-> Still open: the CLI returns **no seam verdict**. `_seam_notices` has one
-> caller, the web slab route, so a command-line build says nothing about what
-> its boundary came out as. Nothing is enforced either way — the verdict is a
-> report, and the box is the author's to set.
+> **The CLI returns no seam verdict, by decision** *(user, 2026-09-22: "people
+> working with CLI would know what they're doing… leave that out")*:
+> `_seam_notices` has one caller, the web slab route. Nothing is enforced
+> either way — the verdict is a report, and the box is the author's to set.
 
 **`sequence` is read along the growth direction**, so "the crystal carries on"
 is the *forward* walk growing `+z` and the *backward* walk growing `−z` — which
@@ -591,7 +592,9 @@ nothing should: a slab calculation wants vacuum there, and only you know which
 you are running. What the program owes you is a verdict on what you set, and
 `classify_seam` gives one on every build — `collision` if `c` is too small,
 `vacuum` if it is much larger than a layer, `continues` if the crystal joins
-(§ 3). That closes the loop without anyone guessing.
+(§ 3). That closes the loop without anyone guessing. *(Not built for the Cell
+page — plan § 2, X3: committing `c` there, `POST /api/structure/periodicity`,
+answers no seam verdict; only the slab build does.)*
 
 ### 6.2 Why the switch went
 

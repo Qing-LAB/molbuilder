@@ -160,9 +160,11 @@ spin contract (§ 5), the lattice and k-grid (§ 6), and the eigensolver rules
 (§ 7). Those are about turning a config into text, and that job is unchanged —
 which is exactly why the config object is the right seam to keep.
 
-The work item is
+The work was
 [`staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
-P12 unit 6b (R3 — the contract holds the rule, the plan holds the order).
+P12 unit 6b, an archived record; anything still open on this seam is in the one
+plan, [`plans/plan.md`](?doc=plans/plan.md) (R3 — the contract holds the rule,
+the plan holds the order).
 
 ---
 

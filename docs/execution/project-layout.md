@@ -179,7 +179,7 @@ directory there is one set of warm files, so the geometry is simply *the latest*
 > directory owns its subdirectories (`checkpointing.md` **L1**).
 >
 > **And *bundle* was already overloaded twice over**: a **handoff bundle** is one
-> finished run carried forward (by CITATION since 2026-08-29 — `archive/2026-09-01-transport-design.md` § 4.1),
+> finished run carried forward (by CITATION since 2026-08-29 — [`engines/transport.md`](?doc=engines/transport.md) § 3.1),
 > a **benchmark bundle** is a self-contained measurement (§ 2.6). A third sense
 > for *the calculation folder itself* is the one that had to go — `README.md` R5
 > forbids exactly this collision. What keeps the name legitimately is the
@@ -820,14 +820,16 @@ can spend a week computing from a geometry you would have rejected in a minute.
 `run-<n>/` folder (the code's name for it is `attempt`: `latest_attempt`,
 `attempt_dir`); a **try** is one start of the wrapper inside it, which every
 file of it carries as `-run<N>`. A bias sweep's run holds a folder per point,
-and each point folder holds that point's tries (`transport.md` § 2a.11).*
+and each point folder holds that point's tries (`transport.md` § 2a.11). A
+frame set's frames are a level above the voltages — `run-<n>/f000/v0.2/` —
+designed, not built (plan § 5z, Q17-d).*
 
 | | a run (`attempt` in the code) | a try |
 |---|---|---|
 | is | one launch of a stage or a trial | one start of the wrapper inside the run |
 | named | `run-<n>/` in the hierarchy; in the flat shape, the `-run<N>` index | `-run<N>`, in every file of the run |
 | numbered by | the next unused `n` (§ 4.3): `prep` opens the first, `launch` each next (§ 1.6.2) | `launch`, which hands it to the run script as `--run N` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.5): a run's run is 0; a flat stage's next is one past its newest launch record, else 0 (`runrecord.next_run`); a warm retry's is the next, which the run script hands itself (§ 3.5 there) |
-| a new one when | you prep and launch again (§ 1.5) | `launch` sends it, or the run script warm-retries in place |
+| a new one when | `launch` sends a stage whose newest run was launched (§ 1.6.2) | `launch` sends it, or the run script warm-retries in place |
 
 In the flat shape a launch is told apart by its index alone, and a warm retry
 is a run of its own, with its own launch record naming the run it retries
@@ -852,9 +854,10 @@ says so of each stage of a flat calculation it numbers (§ 1.6.3).
 
 #### 1.6.2 Who makes the run directory
 
-**Python, when you prepare the stage** — step 4 of § 2.5, not when you submit and
-not by the wrapper. By the time anything is launched the directory already exists
-and already holds its inputs; the wrapper activates the environment and runs the
+**Python, when you prepare the stage** — step 4 of § 2.5 — **and when you launch
+a launched stage again**, the send opening the next run before it starts it;
+never the wrapper. By the time anything runs the directory already exists and
+already holds its inputs; the wrapper activates the environment and runs the
 engine as its child (`running-a-job.md § 2.2a`).
 
 Preparing does five things: **resolve** the next `run-<n>` (highest plus one, or
@@ -867,10 +870,11 @@ gives you somewhere to look; submitting is then a plain "yes, that one".
 
 **One opener makes every run folder** *(W55 B6, 2026-10-03)* —
 `jobset/materialize.py::open_run`: a stage's run (prep's `run-0`, and the
-next one a launch opens), a bias point's run, and a benchmark trial's
-folder in either shape. It creates the folder and every container above it
-that does not exist yet — the stage, a benchmark's `bench/`, a bias point's
-`v<V>/` — stamping each (§ 1.4a; invariant 6b); a submission's `launch/` is
+next one a launch opens), a bias point's folder inside a swept rung's run
+(`run-<n>/v<V>/`, `open_sweep_run`), and a benchmark trial's folder in either
+shape. It creates the folder and every container above it that does not exist
+yet — the stage, a benchmark's `bench/`, a swept rung's `run-<n>/` — stamping
+each (§ 1.4a; invariant 6b); a submission's `launch/` is
 made and stamped a container by the send that writes it
 (`materialize.open_container`). What goes in follows: `prepare_attempt` copies
 in what a stage's run runs from and what its `Continuation` carries and
@@ -2325,8 +2329,10 @@ seeing:
   shipped `-run0` / `-run1` output naming (`job-contracts.md § 2.6`) so the
   connection between a directory and the outputs inside it stays visible.
 
-Attempts are assigned **when a stage is prepared, in Python** (§ 1.6): the next
-unused number, never reused. There is no `--force` to reset them (§ 1.5).
+Attempts are assigned **in Python, by the one opener** (§ 1.6.2): `prep`
+opens a stage's first, and `launch` the next each time a launched stage is sent
+again (`submit.py` → `materialize.prepare_attempt`) — the next unused number,
+never reused. There is no `--force` to reset them (§ 1.5).
 
 **`run-` is a reserved prefix and its members are numbers, full stop.** A
 `run-latest` pointer was considered and dropped: with each stage set up
@@ -2721,9 +2727,12 @@ does not name (§ 5.3).
 A stage's benchmark is a container — `<NN>_<stage>/bench/` in the hierarchy,
 `bench_<NN>_<stage>/` at the flat root — holding the sweep's own `job-set.json`
 and `STAGE-PLAN.md` (§ 5.1's rows) and a folder per trial, `bench-<point>/`,
-whose attempts are kept as a stage's (§ 1.5a); a bias sweep keeps a folder per
-point, `<NN>_<rung>/v<V>/`, the same way. Their files are § 5.2's and § 5.3's,
-named on a trial's own label, `<label>-<point>`. What is theirs alone:
+whose attempts are kept as a stage's (§ 1.5a). A swept transport rung is the
+other way round: its points are folders inside each run,
+`<NN>_<rung>/run-<n>/v<V>/`, prep's decks at `<NN>_<rung>/v<V>/` copied into
+every run (`engines/transport.md` § 2a.11). Their files are § 5.2's and
+§ 5.3's — a trial's named on its own label, `<label>-<point>`. What is the
+benchmark's alone:
 
 <!-- manifest:bench -->
 | file | what it is for | written by | the door | kind |

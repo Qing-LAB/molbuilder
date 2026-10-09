@@ -346,10 +346,10 @@ the hand-off gate with its containment (`cell.py`), every emitter (SIESTA, the
 five transport rungs, PySCF, the molwatch preview), each deck's record, the
 stated offset (`Structure.engine_offset`, sidecar v10), the retirement of
 `cell_origin`, the readers of engine output, the wire and MolView, and the Cell
-page's origin (plan § 5q.6, P1–P3). Not yet built: the transport face-gap
-warning (check 2), one offset for a frame set (below, with W32's frame sets),
-the design-frame exports plan § 5q.5 still marks open, and the transport
-citation viewer (§ 5q.3). The scope and the order of work are
+page's origin (plan § 5q.6, P1–P3); one offset for a frame set followed on
+2026-10-09 (`Structure.frame_at`, below). Not yet built: the design-frame
+exports plan § 5q.5 still marks open, and the transport deck viewer (plan § 2,
+W30 ④). The scope and the order of work are
 [`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33). The clauses this section
 supersedes say so at their own site; they no longer describe the running code,
 and the phase-4 doc sweep deletes them.*
@@ -424,7 +424,7 @@ recipe gives (`AtomicCoordinatesOrigin 0 0 1.1773`: half its 2.3545 Å
 | **engine coordinates** | design + `engine_offset`, the cell at `(0,0,0)` — what SIESTA, TranSIESTA and PySCF are all handed |
 | **where a viewer draws the box** | at `−engine_offset` **of the coordinates on screen**: for design coordinates, the structure's offset negated — the computed one, or the origin the person assigned; for engine coordinates, `(0,0,0)`. The viewer draws the coordinates it is given and moves no atom *(user, 2026-09-25: "the 3d viewer should just follow what coordinate is in the structure, and draw the cell box with the offset in mind (start from -offset). i don't believe the 3d viewer should do the job of translation")* |
 | **coordinates that came from an engine** | `engine_offset = 0`, **stated, not recomputed**: they are the engine's own frame, drawn verbatim (§ 6.1 clause 5) and handed to the next engine unchanged. Recomputing would redraw an older flush run centred, which is the misleading picture itself — and would move a relaxed geometry against SIESTA's real-space mesh, where it is no longer stationary (`engines/vibration.md` § 5.2a) |
-| **a structure saved from an engine's output** | carries the engine's coordinates **with the engine's origin**, `(0,0,0)` — the two set together, as a stated offset of `0` — so its next treatment applies nothing and the box stays where the engine had it. One saved from a run made before this rule carries that run's frame, flush corner included; check 3 refuses an atom it leaves outside, a gap under `d/2` will be warned (check 2, not yet built), and *Automatic* on the Cell page re-centres it |
+| **a structure saved from an engine's output** | carries the engine's coordinates **with the engine's origin**, `(0,0,0)` — the two set together, as a stated offset of `0` — so its next treatment applies nothing and the box stays where the engine had it. One saved from a run made before this rule carries that run's frame, flush corner included; check 3 refuses an atom it leaves outside, and *Automatic* on the Cell page re-centres it |
 
 **Why fractional, and why never re-wrapped** — both measured on the junction
 that surfaced this, `projects/claude-vib-ui/structure/au333x6_bdt`:
@@ -527,7 +527,7 @@ it is judged"*, and the one place atoms are placed: every emitter takes
 
 | operation | answers | its only callers |
 |---|---|---|
-| `engine_offset(struct)` | the rule: the offset the structure states when it states one, else the centring | `to_engine`, `resolve`, `Structure.to_wire` |
+| `engine_offset(struct)` | the rule: the offset the structure states when it states one, else the centring | `to_engine`, `resolve`, `Structure.to_wire`, `Structure.frame_at` (a later frame of a set states frame 0's, below) |
 | `to_engine(struct) → EngineFrame` | the cell, the engine coordinates, the offset, and whether it was stated | every emitter — the SIESTA deck, the TranSIESTA rungs, the PySCF script, the molwatch log's step 0, the validators' subject |
 | every door that builds a structure from an engine's output | states `engine_offset = 0` on it, set together with the coordinates — one keyword, no API of its own (plan § 5q D10) | the `.XV` reader, the transport citation (with a record, D7), the vibration `freq` stage, the Results door, `xv2xyz`, the SIESTA validators' subject |
 | `Structure.to_wire` | `box_corner = −engine_offset`, the one place a viewer's corner is worked out | every payload that tells a viewer where to draw |
@@ -572,16 +572,20 @@ that block's.
    not their span: an atom outside the box along a non-periodic lattice
    vector is named on the Cell page, and the edit stands (*A stated
    offset*); check 3 refuses the deck.
-2. **A transport rung's gaps along its transport axis** — an atom OUTSIDE the
+2. **A transport rung's room along its transport axis** — an atom OUTSIDE the
    cell is refused (check 3): that is TranSIESTA's requirement, above, and the
    refusal that should have come from molbuilder before the 2026-09-25 device
-   deck reached TranSIESTA. A gap at a face below the lead's `d/2` — half the
-   electrode's interlayer spacing — is WARNED, not refused: it is legal, the
-   placement TranSIESTA's recipe recommends is `d/2`, and a smaller margin is
-   the fragile state that failed. The leads TranSIESTA had just run sat flush in
-   their own cells, so a different rigid shift between lead and device is not
-   what it checks. The spacing is the electrode model's, known where the rung is
-   composed.
+   deck reached TranSIESTA. The room the cell leaves at the transport boundary
+   is one layer spacing `d` of the lead — the leads continue through that
+   boundary into the periodic image — so, centred, each face holds `d/2`, the
+   placement TranSIESTA's recipe gives. A room above `1.5 d` is vacuum (the lead
+   is a surface) and one below `d / 1.5` a collision (the two leads' end layers
+   meet through the image); both are **refused** at every transport rung, and
+   the collision is **warned** at a labelled junction's relaxation — I12,
+   [`engines/transport.md`](?doc=engines/transport.md) § 6.1c
+   (`validation/sidecar.py` `check_junction_boundary`; the factor is
+   `cell.SEAM_VACUUM_FACTOR`). The spacing is the lead's own, measured from the
+   lead's atoms (TD3).
 
 3. **Placed at the hand-off** — the deck renderer (`script_emit.render_deck`)
    runs `cell.require_placed` on the frame every spec carries, and a spec that
@@ -598,11 +602,13 @@ that block's.
    correction/check")*.
 
 **A frame set gets one offset** *(built 2026-10-09: `Structure.frame_at`,
-`model/structure.md` § 2.2e)*. The frames of a multi-frame pair share one cell
-and identical electrode atoms (`engines/transport.md` § 2a.9). The offset is
-computed from frame 0 and applied to every frame — frames 1…N state frame 0's
-offset — so no electrode atom moves between frames in the engine's coordinates
-either.
+`model/structure.md` § 2.2e)*. The cell is a fact the frames share, and a
+transport frame set promises identical electrode atoms besides
+(`engines/transport.md` § 2a.9). The offset is computed from frame 0 and
+applied to every frame — frames 1…N state frame 0's offset — so no electrode
+atom moves between frames in the engine's coordinates either. A set that states
+no cell shares no box: each frame's is derived from its own atoms (§ 4), while
+it still takes frame 0's offset.
 
 ---
 

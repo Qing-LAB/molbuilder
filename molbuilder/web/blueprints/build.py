@@ -536,8 +536,8 @@ def api_structure_export():
     WHO NAMES WHAT.  ``name`` is a STEM and nothing else (``wire_frame40-120``,
     no extension), because only the caller knows what an export IS: which
     structure, which frames, chosen at which moment.  The SUFFIX is the server's,
-    because it follows from the format and the format follows from the frame
-    count, which ``pair()`` already decided -- a caller that appends its own is
+    because it follows from the format, which ``pair()`` already decided --
+    plain XYZ, a block per frame -- and a caller that appends its own is
     answering a question that has an answer.  A missing / empty / path-shaped ``name`` falls back to
     ``structure``; only the last path component is ever used, and nothing here
     touches the filesystem.
@@ -595,18 +595,23 @@ def _chosen_frame(whole: Structure, body: Dict[str, Any]) -> Structure:
 
 @bp.route("/api/build/load", methods=["POST"])
 def api_build_load():
-    """Accept either:
-      * multipart/form-data with a single file field "file", or
-      * JSON {"path": "<project-relative structure file>"} -- the
-        FILE-ONLY load: the SERVER reads the .xyz(/.pdb) + its paired
+    """Accept one of three JSON bodies:
+      * {"path": "<project-relative structure file>"} -- the FILE-ONLY
+        load: the SERVER reads the .xyz(/.pdb) + its paired
         .molstruct.json through StructureCodec.read (the ONE authority
         owns the file access AND the pairing).  This is how a project
-        file is opened -- no raw text, no browser-side sidecar path.
-      * JSON {"text": "...", "format": "xyz"|"pdb"|"auto",
-              "filename": "<optional>"} -- raw-geometry IMPORT (a paste /
-        upload with no persisted file yet); metadata-less.
-    Returns the same JSON shape as /api/build/molecule so the front
-    end can treat the result identically.
+        file is opened -- no raw text, no browser-side sidecar path.  A
+        lone file is atoms and coordinates, said in a
+        ``structure.lone_file`` notice quoting its comment line.
+      * {"structure": <envelope>} -- a tab PUTTING BACK the structure it
+        was showing; answered whole, no frame chosen.
+      * {"text": "...", "filename": "<optional>"} -- raw-geometry IMPORT
+        (a paste / upload with no persisted file yet); atoms only, the
+        format read off the filename's suffix or sniffed.
+    A path or a text load answers frame 0, or ``frame`` (0-based), or the
+    whole set with ``frames: true``; every answer says ``n_frames``, the
+    count the file holds.  Returns the same JSON shape as
+    /api/build/molecule so the front end can treat the result identically.
     """
     # FILE-ONLY load through the ONE authority (``model/structure.md`` § 2.4): a project
     # ``path`` means the SERVER reads the .xyz + paired .molstruct.json via

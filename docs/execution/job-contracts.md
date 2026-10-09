@@ -69,7 +69,7 @@ warm-file vocabulary (what carries a run into the next) is § 4.
 | The `project / topic / structure` folder tree and its fixed topic names | **§ 2.5** |
 | The comment blocks molbuilder reserves inside a `.fdf` / `.py` / `.run.sh` | **§ 3 — The generated-script contract** |
 | What "warm restart", `--continue`, and `--cold` actually do | **§ 4 — Warm & cold restart** |
-| How a finished run flows into the next calculation | **it is CITED** (`archive/2026-09-01-transport-design.md` § 4.1) — the handoff-bundle contract retired 2026-08-29 |
+| How a finished run flows into the next calculation | **it is CITED** ([`engines/transport.md`](?doc=engines/transport.md) § 3.1) — the handoff-bundle contract retired 2026-08-29 |
 | What a persisted file is called system-wide, and how a config value becomes a SLURM flag | **§ 6 — The shared data vocabulary** |
 
 Two conventions bind everything below and are stated once here:
@@ -134,9 +134,9 @@ something else: a TranSIESTA scattering calculation cannot start without the
 `.TSHS` an electrode run produced, and nothing about `restart: continue` says so.
 
 **`required` is to be an ordinary config field**, so a stage sets it through
-`overrides` like `mesh_cutoff`, and `stages.md § 2`'s *"a stage is a name, an
-enabled flag, and the cells that differ — and no others"* stays exactly as it
-was. No new stage mechanism, no fourth key in the description.
+`overrides` like `mesh_cutoff`, and `stages.md § 2`'s stage — `name`,
+`overrides`, `execution`: *"Three fields, and no others"* — stays exactly as it
+is. No new stage mechanism, no fourth key in the description.
 
 > ⚠ **Neither half of this is built, and the design is stated here in full so
 > the two halves land together** *(recorded 2026-08-16)*. § 4.4 has said since
@@ -693,25 +693,22 @@ projects/
                               project-layout.md § 1 — flat or hierarchical
 ```
 
-> **`projects/` lives INSIDE the checkout, and that is load-bearing.**
-> `.gitignore` carries `projects/*`, so the tree is a git-ignored directory
-> *of the repository*, not an arbitrary location a user picks. Two
-> consequences follow, and the second is why this is stated here rather than
-> left as folklore:
+> **`projects/` lives INSIDE the checkout by default.** `.gitignore` carries
+> `projects/*`, so the default tree is a git-ignored directory *of the
+> repository* — `repo_root()/projects`, the last step of `projects_root`'s
+> order, after `$MOLBUILDER_PROJECTS` and `molbuilder.json`'s
+> `paths.projects` (`projects.py:140-147`), which move it for a machine whose
+> checkout is not writable. Wherever it is, **walking up from any calculation
+> to the directory named `projects` finds the tree** — `find_projects_root`
+> and the anchor rule in § 2.5a.
 >
-> * walking up from any calculation to the directory named `projects` finds
->   the tree — this is `find_projects_root` and the anchor rule in § 2.5a;
-> * **its parent is the molbuilder checkout.** So the same single walk that
->   locates the tree also locates the package, which means a calculation can
->   work out where molbuilder is *without being told* — no install into the
->   environment, no baked path, no `$MOLBUILDER_ROOT`.
->
-> That second point is what makes a bundle portable to a machine where you
-> may not be permitted to install anything, which is the normal condition on
-> a cluster (user, 2026-08-22). A deployment that puts `projects/` somewhere
-> else keeps the first consequence and loses the second; the launcher
-> therefore still accepts `$MOLBUILDER_ROOT` as an override, and that is the
-> only thing that override is for.
+> A launched job needs nothing from the checkout: the wrapper, the decks and
+> the code a run reads itself through travel inside the calculation
+> (`mb_monitor.pyz`, and `mb_pyscf.pyz` beside a PySCF script —
+> [`running-a-job.md`](?doc=execution/running-a-job.md) § 2.0a). That is what
+> makes a bundle portable to a machine where you may not be permitted to
+> install anything, which is the normal condition on a cluster (user,
+> 2026-08-22).
 
 **The three levels above are organisational only.** What is *inside* the
 innermost one is not this section's to say: it is
@@ -1471,7 +1468,10 @@ rules below, and `structure-molstruct.md` § 2, which owns the schema.)*
 
 **The one zone in a generated deck that is yours.** molbuilder writes every
 other block and will overwrite it on the next generation. This one it reads
-only to find where it is, then copies **byte-for-byte** into the new output.
+only to find where it is, then copies **line for line, unchanged**, into the
+new output — the lines strictly between the outermost `BEGIN` and the last
+`END`, read as UTF-8 text and joined with the new deck's own line endings
+(`script_emit.merge_user_custom`, `_user_custom_span`).
 
 ```
 # === molbuilder user-custom BEGIN ===
@@ -1487,7 +1487,7 @@ There is deliberately almost none, and that is the contract:
 | rule | why |
 |---|---|
 | **Anything between the markers is yours.** Comments, engine keywords, a `%block`, a path to a Lua script — molbuilder does not read it. | The engine judges it, not molbuilder. Engine-invalid text is rejected at run time with the engine's own message, which is more useful than one molbuilder could invent. |
-| **Do not write the marker lines yourself**, and do not nest a second pair. | They are how the zone is found. `MARKER_RE` matches `# === molbuilder <block> BEGIN/END ===`; a stray copy makes the boundary ambiguous and the merge refuses rather than guessing. |
+| **Do not write the marker lines yourself**, and do not nest a second pair. | They are how the zone is found. `MARKER_RE` matches `# === molbuilder <block> BEGIN/END ===`; a stray copy makes the boundary ambiguous: the merge carries the outermost pair's span forward without guessing, and `check_deck` refuses the written deck, its marker count not one (`script_emit.py:1522-1543`). |
 | **Comment syntax is the host file's**, not molbuilder's — `#` in a `.fdf` and in a `.py` alike, because both use `#`. | The zone is plain text in a file the engine parses. |
 | **The zone may be absent.** A deck written before it existed, or hand-edited to remove it, is still valid; a regeneration emits an empty one. | Absence is ordinary (§ 2.2's rule). |
 | **It is not versioned.** Every other structured block carries a version (§ 3.6); this one cannot, because its content is not molbuilder's to version. | A version tag on free text would be a promise nobody can keep. |
@@ -2097,7 +2097,7 @@ for the next tab to load.  That whole model retired with the user's ruling:
 builds on a finished result CITES it — the transport composite names its
 junction attempt explicitly and prep does the fuse, richer than the bundle
 ever was and inside the job system
-([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1).
+([`engines/transport.md`](?doc=engines/transport.md) § 3.1).
 Structure → execution hand-overs (builder/modify → parameter tab → Task
 setup) are a different thing and remain.  History:
 `docs/archive/2026-08-29-handoff-bundle.md` (it had moved out of this
@@ -2134,10 +2134,10 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Run launch record | `<attempt>/run.json` — a trial keeps attempts as a stage does (`project-layout.md` § 1.5a), so a launched trial's attempt carries one too; a flat stage's run's own `<basename>-run<N>.run.json` beside its deck, one per run number, a warm retry's included (`project-layout.md` § 1.6.3; one `<basename>.run.json` per stage until 2026-10-06, refused since, naming `molbuilder jobset migrate --bundle <calc>`); written at process **start** (a running job must read as launched) | `molbuilder/run-launch@1` | `runrecord.py` (`write_launch`, through `persist`, a retry's by `record_retry` beside the job; read by `launch_record` — one that does not read is an error naming the file) | every key, every time, its null an answer: `mode`, `command`, `job_id` (null for a run here), `launched_at`, `continued_from` (null: it started from the structure), `placed_on` (the queue — domain, partition, qos — and the wall and memory it was sent with; null for a run here, which no queue placed), `retry_of` (null for a launch; for a warm retry, the number of the run it retries — its other keys are that run's launch's, the same job, but its own start and `continued_from`, the run it retries) *(`continued_from` and `placed_on` were left out in those cases until 2026-10-06; `retry_of` is written since then, and a record without it was written by a launch)* |
 | Decision ledger | `jobset-decisions.log` — append-only JSONL at the bundle root; every verb records each decision it makes (config provenance, the mode and its source, the queue and its source, each question and its answer, each refusal, what a stage continues from), so a machine's behaviour is explained by reading the file, hours later, without the terminal | *(one JSON object per line, `at`/`verb`/`decision` + facts)* | `jobset/ledger.py` | `at`, `verb`, `decision` |
 | Pipeline log | `<label>_<token>.<engine>.<flat\|hierarchical>.pipeline.log` — beside this prep's `STAGE-PLAN.md` (bundle root for a run, the stage's `bench/` container for a sweep). **Written by every prep, from either door**; it observes the steps and no generated artifact depends on it. What each step RECEIVED, DECIDED and PRODUCED, so *where did this value come from* is answered by reading one file rather than re-running ([`script-preparation.md`](?doc=execution/script-preparation.md) § 4.5) | *(text; `in` / `⊕` / `out` in the first column, banner per step — W14)* | `pipeline_log.py` | `⊕ <name> <value> <- <source>` is the row that carries it |
-| Slot provenance | `slot-provenance.json` at the transport calculation's root — which attempt the composed junction came from, with content hashes; part of the § 4.1 travelling copy (`transport-design.md`). `files` names **every** file the junction was composed from, the one carrying its electrode labels included — on a form-A citation those may live in a `.molstruct.json` beside the deck, which is in none of the other slots and is the file the label rename rewrites | `molbuilder/slot-provenance@1` | `transport/compose.py` | `slot`, `citation`, `form`, `files` (name → sha256), `evidence` |
+| Slot provenance | `slot-provenance.json` at the transport calculation's root — which finished relaxation run the composed junction came from, with content hashes ([`engines/transport.md`](?doc=engines/transport.md) § 3.1). `files` names **every** file the junction was composed from, the one carrying its electrode labels included — those may live in a `.molstruct.json` beside the cited deck, which is in none of the other slots. `swap_electrodes` records the calculation's own choice of which lead is which, applied to its own copy of the junction; the cited run's files are read, never written (`engines/transport.md` § 4) | `molbuilder/slot-provenance@1` | `transport/compose.py` | `swap_electrodes`, `slot`, `citation`, `files` (name → sha256), `evidence`, `relaxation` |
 | Vibration result | `<label>.spectra.json` in the attempt that computed it — frequencies, both eigenvector forms, the removed motions, the strengths the engine computes, thermochemistry, the stationarity verdict; written by the run itself on both engines (`engines/vibration.md` § 5.5, § 6, where § 6.8 says how to read it) | `schema_version` 6 | `spectra/results.py` (`SpectraResults`), `sidecars/spectra.py` (`dump_spectra_json`, `parse_spectra_json`) | § 6.2 of `engines/vibration.md` |
 | Displacement sweep | `<label>.fc-sweep.json` at the calculation root — a SIESTA vibration's force-constant stages compared; each stage's own files stay in its attempt and are named by path (`engines/vibration.md` § 5.9) | `molbuilder/fc-displacement-sweep@1` | `spectra/displacement_sweep.py` (`collect_sweep`, `write_sweep`) | `label`, `reference_stage`, `tolerance_cm1`, `stages[]`, `modes[]`, `force_constants[]`, `pending[]`, `failed[]` |
-| Atom permutation | `atom-permutation.json` beside it — the sort the deck was rendered from, recorded, so every downstream index (forces, Mulliken, a mode's rows, the 1-based numbers in the files) maps back to the input's identities (`model/overview.md` § 2.2). Two kinds write it: a transport composite (the categorical order, `transport-design.md` § 4.1a) and a SIESTA vibration (the `held-first` order, so the free atoms are one FC range); `key` names which. One writer and one reader — `write_permutation` / `read_permutation` — and a SIESTA vibration job's finish is the first reader that inverts it, from the copy every attempt of the calculation holds (the shared package) | `molbuilder/atom-permutation@1` | `transport/sort.py` (`SortResult.sidecar`, `write_permutation`); `atom_permutation.py` (`Permutation`, `read_permutation`) | `original_to_sorted`, `sorted_to_original`, `key` |
+| Atom permutation | `atom-permutation.json` beside it — the sort the deck was rendered from, recorded, so every downstream index (forces, Mulliken, a mode's rows, the 1-based numbers in the files) maps back to the input's identities (`model/overview.md` § 2.2). Two kinds write it: a transport composite (the categorical order, `sort.categorical_sort`, `engines/transport.md` § 4) and a SIESTA vibration (the `held-first` order, so the free atoms are one FC range); `key` names which. One writer and one reader — `write_permutation` / `read_permutation` — and a SIESTA vibration job's finish is the first reader that inverts it, from the copy every attempt of the calculation holds (the shared package) | `molbuilder/atom-permutation@1` | `transport/sort.py` (`SortResult.sidecar`, `write_permutation`); `atom_permutation.py` (`Permutation`, `read_permutation`) | `original_to_sorted`, `sorted_to_original`, `key` |
 | Transport result | `<label>.transport.json` at the calculation root — T(E) per bias point, the I–V table (the CURRENT is the junction's total, both spin channels, beside TBtrans's own printed integral — parsed, never recomputed — and the factor between them in words, [`engines/transport.md`](?doc=engines/transport.md) § 2a.12), and the provenance naming the citation + the permutation record; `summarize task` writes it, and the Results tab composes the same record on read (`/api/transport/record`). A point without its transmission is `pending` (not launched, queued, running) or `failed` (ended without it), in its run's words. `@3` since 2026-10-07: every rung's state is the status door's, and the points split into `pending` and `failed` | `molbuilder/transport-result@3` | `transport/record.py` | `label`, `stages[]` (each rung's `state`, `detail`, its own answer), `treatment` (`low-bias` / `re-converged`, or `single-bias`) and `treatment_note` (what its I–V may be called, the words the report and `summarize` both print), `leads` (the two leads' Fermi levels, compared once: `differ_ev`, `agree`, `tolerance_ev`), `junction_file`, `points[]` (`bias_v`, `energy_ev`, `transmission`, `conductance_g0`, `current_a`, `current_a_printed`, `spin`, `attempt`, the DOS), `iv`, `current_means`, `provenance`, `caveat`, `pdos_orbitals`, `pending`, `failed` |
 | Run status | *(served, not written to disk)* | **none — the answer carries no version** | `parse/dirs/job.py` | `state`, `detail`, `last_change_at`, `active_source`. *Listed as “Decoded run” with a bare-int `schema_version` until 2026-09-05: `run_status` returns four keys and none of them is a version, so a consumer writing a version check against this row finds nothing to check* |
 
@@ -2324,7 +2324,7 @@ wrapper, and a copied argument list has lost fields on that road before.
 | field | read by | what it carries |
 |---|---|---|
 | `domain` · `time` · `exclusive` · `mem` · `gres` · `gpu_binding` · `mpi_np` · `cpus_per_task` | the submit engine | the ask the scheduler reads (the table above); `gpu_binding` is the calculation's switch for the binding a GPU ask carries (`execution/gpu.md` G9) |
-| `program` | the wrapper | WHICH binary it launches; unset is the engine's own. The transmission stage runs tbtrans over the device stage's deck text, so the deck cannot carry it (transport-design.md § 4.2) |
+| `program` | the wrapper | WHICH binary it launches; unset is the engine's own. The transmission stage's is `tbtrans` (`engines/transport.md` § 6.1b) |
 | `continue_retries` | the wrapper | the warm-retry budget — the table's last row above; running-a-job.md § 3.5 |
 | `max_memory_mb` | the wrapper | its `ulimit -v` cap — a runtime guard against a runaway allocation, distinct from `mem`, which asks the scheduler |
 | `use_gpu` | the wrapper | *does this run use a GPU* — carried, so a PySCF GPU run routes too; a SIESTA deck's own GPU keywords answer only where nothing is carried — a wrapper for a deck someone points at, which has no allocation (`execution/gpu.md` G7) |
@@ -2487,6 +2487,8 @@ for not clobbering a previous output, not a name for a stage.
 | **attempt** *(hierarchical)* | `run-<n>` — **not** padded | a counter of invocations that happened, not a designed sequence; `run-` is reserved and its members are numbers, full stop |
 | **benchmark** | `bench/` inside the stage it measures; **flat**, where no stage directory exists, `bench_<seq>_<stage>/` at the root | a benchmark nests in what it measures (`project-layout.md § 3`) — and in flat the token qualifies the container's own name, or two stages' benchmarks would share one directory and overwrite each other (2026-08-12 plan A5).  Underscore-joined, so it cannot be read as a trial's dash-joined `bench-<point>` |
 | **trial** | `bench-G<gpus>K<ranks-per-gpu>C<cores>` | a sweep has no order, so the name carries **what was tried** — which is what lets `summarize` map a directory back to its point |
+| **bias point** *(a swept transport rung)* | `v<V>` — the voltage as `%g`: `v0`, `v0.2`, `v-0.5`; inside the run, `<NN>_<rung>/run-<n>/v<V>/`, and prep's decks at `<NN>_<rung>/v<V>/`, which every run copies | a point is a level inside ONE run, never a run of its own ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11); one spelling, `task.bias_token` — the decks, the gather, the walk and the codec's refusal of two points sharing a folder all read it |
+| **launch group** | `launch/` — in the folder its members share: the calculation's root for stages sent as one job, the stage's folder for a bias sweep's walk, the benchmark container for its trials | the submission's own machinery — `<group>.run.sh`, `<group>.sbatch`, `<group>.log`, SLURM's `slurm.%j.out` / `.err` — kept apart from every run it starts (`runfiles.LAUNCH_DIR`; the files: [`project-layout.md`](?doc=execution/project-layout.md) § 5) |
 | ~~**warm state moved aside**~~ | ~~`<label>-restart-aside-<UTC>/`~~ | **RETIRED 2026-08-18 (user).** `--cold` moved prior state here rather than overwriting it; keeping a state is `molbuilder checkpoint save` and it is never automatic, so a second preservation mechanism with its own name was one too many. `--cold` names what it would remove and refuses; `--force` removes it. *(The name stayed reserved, the sweep skipping it, until 2026-10-04 -- for folders written before the change: old runs are not a design input, user 2026-10-03; plan D27.)* |
 
 #### History

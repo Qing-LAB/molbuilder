@@ -18,7 +18,7 @@ start there for the whole execution domain);
 An **engine** turns a validated [`Structure`](?doc=model/structure.md) plus a user
 config into something a quantum-chemistry code will run: a SIESTA `.fdf`, a PySCF
 `.py`, or the transport composite's five derived decks
-(`archive/2026-09-01-transport-design.md` § 4.2). The **builders** sit just upstream —
+([`engines/transport.md`](?doc=engines/transport.md) § 1, § 6.1). The **builders** sit just upstream —
 they *produce* the `Structure` from a sequence / SMILES / name. This doc is the
 **map** of that layer and the **contracts every engine shares**, so the peer docs
 can each stay focused on their own emitter.
@@ -264,7 +264,7 @@ a GPU is present. G-5 governs *availability*, not *coverage*.
 | | |
 |---|---|
 | **one name** | ~~two spellings~~ **merged 2026-08-23.** `use_gpu` is one item, `kind="deck"`, `expands` naming both reaches — ruled 2026-08-13, landed when the catalogue merge and the rename went together (they could not be split: TOML cannot hold the key twice). A caller asking *"does this run want a GPU?"* now asks once |
-| **`read_by`** | `use_gpu` declares `read_by = ["wrapper"]`; `use_gpu` does not, though both decide which environment the job needs. PySCF has no env routing in `runwrap` at all |
+| **`read_by`** | `use_gpu` is one item and declares `read_by = ["wrapper"]` — SIESTA's half, because a GPU deck needs the source-built env and a GPU runtime the wrapper asks for; PySCF's half has no env routing in `runwrap` and checks the device at run start (the catalogue's `[item.use_gpu]`). Nothing consumes the declaration yet: no caller asks `select(read_by=…)` ([`template.md`](?doc=engines/template.md) § 12.1, row 4) |
 | **`gpu_used` read-back** | G-5a is a rule with no reader yet: nothing compares a PySCF trial's asked GPU against `_RUNTIME_INFO['gpu_used']` |
 
 ---

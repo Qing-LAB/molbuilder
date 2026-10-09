@@ -19,7 +19,7 @@ order § 6.0 states:
      is user's decision, and error or not, that's user's responsibility");
    * **a benchmark's walk** -- ONE job per resource shelf of a sweep sent
      to a queue, or its unlaunched trials run here, the trials in sequence
-     (`generator.md` § 4.3a, `_bench_walk`);
+     (`generator.md` § 4.3a, `_walk_script`);
    * **a bias chain** -- one job walking a transport sweep's points;
 
 2. **shown** (:meth:`LaunchPlan.shown`) and 3. **asked**, by the verb --
@@ -525,7 +525,7 @@ class Submission:
     #: What a refusal by the scheduler adds to the scheduler's own words.
     refusal_hint: str = ""
     #: Where a walk's trials write their output -- the one path its script
-    #: writes and the plan shows (:func:`_bench_walk`).
+    #: writes and the plan shows (:func:`_walk_script`).
     log: Optional[Path] = None
 
     @property
@@ -1787,7 +1787,7 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
                      trial_timeout_s: Optional[int]) -> LaunchPlan:
     """A benchmark's trials run HERE (``--mode direct``, no trial named):
     one submission walking every trial not yet launched, in the sweep's
-    order, through the benchmark's walk (:func:`_bench_walk`) -- as a shelf
+    order, through the one walk script (:func:`_walk_script`) -- as a shelf
     walks its trials on a queue -- each under the per-trial bound when one
     is given; a trial launched before is passed over by name
     (:func:`_bench_trials`)."""

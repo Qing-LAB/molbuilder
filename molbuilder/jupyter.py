@@ -215,7 +215,7 @@ def shepherd_argv(serve_port: int, *, host: str,
     return argv
 
 
-# WHERE THE FILES ARE: `config_dir`, asked directly (`plan.md` § 5n, J17).
+# WHERE THE FILES ARE: `config_dir`, asked directly.
 
 
 # --------------------------------------------------------------------- #
@@ -228,7 +228,7 @@ def read_pid(serve_port: int) -> Optional[int]:
     **`serve_daemon`'s reader, at this module's address** -- the same
     delegation `pid_state` below already makes, and for the same reason: two
     copies of "what does this pidfile say" is how one of them comes to
-    treat a corrupt file differently from the other (J16).
+    treat a corrupt file differently from the other.
     """
     from .config_dir import jupyter_pidfile
     from .serve_daemon import read_pidfile

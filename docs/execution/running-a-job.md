@@ -89,12 +89,22 @@ collaborator, and have it run identically.
 ### 2.0a Where it runs, and what that decides
 
 Every rule in this section follows from one fact: **`<label>.run.sh` runs
-unattended, in a shell that inherits nothing.** Under a scheduler it is
-started by `sbatch` on a **compute node** — a different machine from the one
-you submitted from, in a **non-interactive** shell that reads no rc files, so
-no module is loaded and no environment is active. Under `--mode direct` it is
-started by `bash` locally, with the same emptiness. Nobody is watching either
-way.
+unattended, in a non-interactive shell that reads no rc files** — so nothing
+loads a module or activates an environment for it; it activates its own.
+Under a scheduler it is started by `sbatch` on a **compute node** — a different
+machine from the one you submitted from. Under `--mode direct` it is started
+by `bash` locally. Nobody is watching either way.
+
+Both starts pass the launching shell's variables on — the whole environment
+direct, `--export ALL` under Slurm (`jobset/submit.py`). The rule agreed for
+them *(W36 ⑦, 2026-09-27)*: keep inheriting, guarded — a job's size comes from
+what prep wrote and `launch`'s flags, molbuilder's own override name (`MB_NP`)
+still works and the wrapper log names it when used, and a bare
+`OMP_NUM_THREADS` no longer sets it. A run `jobset launch` starts already takes
+its size from the `-np` / `-omp` it is handed, which win (§ 3.2); the rest is
+*not built — plan § 2, W36 ⑦*: the run script still honours `MB_NP` and
+`OMP_NUM_THREADS` ahead of the reservation when it is run by hand (§ 3.2, § 3.3's
+precedence), and its log names none of them.
 
 What follows, and is checked in the rendered script:
 
@@ -481,7 +491,9 @@ ending` over the output and SIESTA's stderr (`run-reports.md` § 2.3). **Never
 retried**, because running again cannot fix it: a crash — `propor`'s
 `IMAX = 0` (§ 3.1a), any abort, or a tolerated non-convergence followed by
 one; a **diverged** SCF, whose retry resumes from the diverged density and is
-the same run again — the monitor warns instead (`model/parse.md` § 5d.6); and
+the same run again — the monitor warns instead (`model/parse.md` § 5d.6)
+*(not built — plan § 5t, P4: no divergence verdict or symptom is read yet, so a
+diverged SCF that SIESTA stopped reads as the first row's and is retried)*; and
 anything, when no python is beside the job (the log says so).
 
 **A run that cannot resume is retried as the budget says, and said to
@@ -1167,10 +1179,12 @@ decision either way, so they went on reading as *coming*. They are not:
 **Still open, and deliberately so:**
 
 - **`checkpoint verify`** — the archive check exists and is reachable only by
-  attempting a restore, which is the worst moment to learn an archive is gone.
-- **A save offered at `prep`** — the moment a folder is about to be overwritten
-  is where a save should be offered, and nothing offers it yet. Until it does,
-  saving before a rerun is yours to remember.
+  attempting a restore, which is the worst moment to learn an archive is gone
+  (plan § 2, W45).
+
+`prep` saves the folder's state before it writes, always
+(`checkpoint.save_before`; [`job-system.md`](?doc=execution/job-system.md)
+§ 5.0), so a rerun is never yours to remember to save before.
 
 ## 7. A note on the design that superseded the cookbook
 

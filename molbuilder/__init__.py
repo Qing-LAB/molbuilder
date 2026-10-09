@@ -59,10 +59,10 @@ def repo_root() -> Path:
     **Architecture rule A11: one home per root.**  The alternative is each
     caller climbing its own parent chain to this same place --
     ``references.py`` for ``docs/science/references.bib``,
-    ``web/blueprints/docs.py`` for ``docs/``, ``runwrap.py`` and
-    ``script_emit.py`` for the checkout a generated script must activate
-    against, ``builders/backends/_threedna.py`` for the ``x3dna*/`` unpack
-    directory (`ops/installation.md` § "Option A").  Every spelling of that
+    ``web/blueprints/docs.py`` for ``docs/``, ``script_emit.py`` for the
+    checkout whose git revision a generated deck records, ``projects.py``
+    for the default projects root, ``builders/backends/_threedna.py`` for
+    the ``x3dna*/`` unpack directory (`ops/installation.md` § "Option A").  Every spelling of that
     climb carries a level count, and the count differs by where the file sits:
     ``_threedna`` is four levels down where the others are two.  A count is a
     fact about a file's depth in the tree, and it is wrong the moment the file

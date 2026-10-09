@@ -971,8 +971,8 @@ class Artifact:
     output: Optional[str] = None
 ```
 
-Three rows carry it: `.out` (`stdout`, and it gains the `engine="siesta"` it
-lacks), `.pyscf.log` (`stdout`), `.molwatch.log` (`progress`). Derived views
+Three rows carry it: `.out` (`stdout`, `engine="siesta"`), `.pyscf.log`
+(`stdout`, `engine="pyscf"`), `.molwatch.log` (`progress`). Derived views
 beside the catalogue's other views: `run_output_roles()`, `stdout_roles(engine=None)`,
 `engines()`.
 
@@ -1080,8 +1080,10 @@ touched for *how the run ended*; the engine's parser and its reading pass are
 
 #### Enforcement
 
-`set(READERS) == set(runfiles.run_output_roles())` — one test, and it is what
-keeps "two edits" true across the layer split. The rest of R-RO1 is a review
+`set(READERS) == set(runfiles.run_output_roles())`, checked when the module
+loads (`_run_ending._one_reader_per_role`): a role left unread, or a reader for
+a file the catalogue does not call run output, stops the first import with
+both named — and that is what keeps "two edits" true across the layer split. The rest of R-RO1 is a review
 obligation, not a lint: a source grep that hunts hand-written call sites is
 disqualified by `process/` convention, and the scope is `molbuilder/**.py`
 only — a fixture must be allowed to spell a real filename.
@@ -1594,7 +1596,9 @@ never picks one.
 The `effective-parameters` block is `script_emit`'s (§ 1a): one format,
 written through one emitter and read by one reader (`script_emit.parameter_row`
 / `read_parameters_fence`). A row per catalogue item for the engine,
-calculation and stage — `[item, default, asked, used]` — each one JSON array
+calculation and stage *(not built — plan § 5w, K16: SIESTA's wrapper writes
+every SIESTA item, `runwrap.py:1746`; PySCF's narrows by calculation alone,
+`pyscf/layout.py:313-314`)* — `[item, default, asked, used]` — each one JSON array
 after `#   `, so a blank value or one with spaces cannot shift a column; `null`
 is *this writer cannot know*. **PySCF's deck** prints it after setup with all
 three columns, `used` read off the live objects; the vibration deck prints it
@@ -1609,8 +1613,8 @@ Its name and sha256 · `current`, whether it is still the stage's deck
 (`script_emit.same_calculation` against the deck in the stage container above
 the attempt, where the run door places it — `runs.Run.stage_deck`; a flat
 run's deck IS its stage's, one file, so a flat record states none) · for a gathered rung, what was taken from which attempt, read
-from `.gathered-from` (`jobset/materialize.read_gathered_from`, beside its
-writer) — the provenance a transport record cites, never a newest-file guess.
+from `.gathered-from` (`runrecord.read_gathered_from`, beside its writer
+`write_gathered_from`) — the provenance a transport record cites, never a newest-file guess.
 
 ### 5d.5 The grammar — the SIESTA family's output lines
 

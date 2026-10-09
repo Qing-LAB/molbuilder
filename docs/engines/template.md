@@ -2014,17 +2014,16 @@ Five obligations, each naming the reader it binds.
   (`plan.md` W20)~~ — **closed 2026-10-05** (M2e): every prep writes the
   pipeline log, from either door, so obligation 5 holds on both roads.
 
-**Three mechanism choices are open and are the user's**, each with the
-proposal the 2026-09-22 structure-API audit made:
+**Three mechanism choices, each with the proposal the 2026-09-22
+structure-API audit made — all three ruled as proposed on 2026-09-29**
+([`plans/plan.md`](?doc=plans/plan.md) § 5u.2, TD5); the first is built, the
+other two are not (plan § 5u.1, step 10):
 
 | the choice | proposed |
 |---|---|
-| the source key on a template item, and its vocabulary | `source`, one of `cited` · `person` · `default` — **ruled 2026-09-29, built (K7); `record` retired with decision 7, 2026-10-08**. The one writer (`template_with_values`) writes it from what its caller knows: a cited run's answers are `cited`, the structure's saved record's `record`, what the person's form sent `person`, and everything else `default` — *not chosen* (its value is what the writer wrote before: the documented default, or none for transport's unanswered `citation` rows, § 3.8.3). The one reader (`read_template`) reads it, and every form field carries it (`form-schema.md` § 1.1). A template written before has no `source`: it reads as *not recorded*, said so and never guessed, until the next describe writes one |
-| where a deck carries its per-parameter table | the PROVENANCE reserved block grows it — the deck is what is opened months later, `.validation.txt` is never read back, and G4's text comparison already tolerates that block's rendering moment — rather than a file beside the deck |
-| the deck's *not set* line for an `optional` item at `None` | a comment naming the engine default that applies |
-
-The browser road's missing pipeline log (`plan.md` W20) is obligation 5's and
-needs plumbing, not a decision.
+| the source key on a template item, and its vocabulary | `source`, one of `cited` · `person` · `default` — **ruled 2026-09-29, built (K7); `record` retired with decision 7, 2026-10-08**. The one writer (`template_with_values`) writes it from what its caller knows: a cited run's answers are `cited`, what the person's form sent `person`, and everything else `default` — *not chosen* (its value is what the writer wrote before: the documented default, or none for transport's unanswered `citation` rows, § 3.8.3). The one reader (`read_template`) reads it, and every form field carries it (`form-schema.md` § 1.1). A template written before has no `source`: it reads as *not recorded*, said so and never guessed, until the next describe writes one |
+| where a deck carries its per-parameter table | *(ruled, not built: `script_emit.emit_provenance` writes no per-parameter table)* the PROVENANCE reserved block grows it — the deck is what is opened months later, `.validation.txt` is never read back, and G4's text comparison already tolerates that block's rendering moment — rather than a file beside the deck |
+| the deck's *not set* line for an `optional` item at `None` | *(ruled, not built)* a comment naming the engine default that applies |
 
 ---
 
@@ -2933,7 +2932,7 @@ closing one is a visible act. Measured 2026-08-17.
 | **3** | **`kind` steers no reader**; `select` is never called with it | § 6, § 8, § 1.1a | G3 is declared and checked, not dispatched on |
 | **4** | **`read_by` is declared and unconsumed**; the wrapper still greps the deck | § 6.1, § 11.3 | a new engine cannot yet be served by declaring a wrapper dependency |
 | **5** | **`kind = "monitor"` has no items** | § 6 | either an item earns it or the member is retired; a vocabulary member nothing uses is the family § 10 retired `fingerprint` from |
-| **6** | **PySCF's `threads` is not flagged `allocation`** | § 6.4 | nothing sizes a PySCF job from what the machine granted |
+| ~~**6**~~ | ~~PySCF's `threads` is not flagged `allocation`~~ — **closed**: the PySCF `threads` item carries `allocation = true` (`data/catalogue.template.toml`, `[item.threads]`) | § 6.4 | — |
 | **7** | **BENCH-MARKS is SIESTA-only** | § 9 | a PySCF deck declares no override surface, so a sweep has nothing to read from it |
 | **8** | **`required` is not an item** | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1 | a stage cannot declare the warm files it needs, because a description names fields and never defines them |
 | ~~**9**~~ | ~~**`enable_gpu` → `use_gpu` is ruled and un-renamed**~~ **CLOSED 2026-08-23** | § 6.3 | two names answer one question, so any caller asking *"does this want a GPU?"* must name an engine's spelling. `jobset/_cli.py::_bench_inputs` does — for the template read AND for 2β's declared grid-family axis (`generator.md` § 4.3a), so the un-landed rename now has two spellings to collect there — and is correct only while the BENCH LANE refuses non-SIESTA descriptions by name (`jobset/_cli.py::_bench_inputs` — the engine seam itself serves PySCF since 2026-08-18) |

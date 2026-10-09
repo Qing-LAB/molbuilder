@@ -32,7 +32,7 @@ flowchart LR
     R["relaxed junction<br/>(a finished relaxation)"] --> V["vibration run<br/>modes ω_ν, eigenvectors L_ν"]
     V --> G["frame generator<br/>(its own module)"]
     R --> G
-    G --> F["one multi-frame pair<br/>frame 0 = relaxed<br/>frames 1…2N = ±displaced<br/>customized rows per frame"]
+    G --> F["one multi-frame pair<br/>frame 0 = relaxed<br/>frames 1…2N = ±displaced<br/>customized rows per frame,<br/>every weight stated"]
     F --> T["transport, per frame<br/>T_j(E): device + transmission"]
     T --> A["the average<br/>⟨T(E)⟩ = Σ_j W_j T_j(E)"]
     A --> C["⟨G⟩ = G₀ ⟨T(E_F)⟩<br/>per mode and in total"]
@@ -395,10 +395,24 @@ flowchart LR
     M2 --> S
 ```
 
-Frame 0's weight belongs to each mode separately ($\tfrac23$ in every mode's
-three-point average, $1 - \sum_j W_j$ over that mode's other frames —
-`vibration.md` § 5.10 ③): it is stated once, in the frame that carries no
-mode.
+**Every frame states its weight, and the weights sum to 1** — the set's
+average written as one sum, $\langle T\rangle = \sum_f W_f\,T_f$. A displaced
+frame's $W_f$ is its node's weight ($\tfrac16$ for $\pm\sqrt3\,\sigma$); frame
+0, shared by every mode, states
+
+$$
+W_0 = 1 - \sum_{f\ \mathrm{displaced}} W_f ,
+$$
+
+because the second-order sum above subtracts $T_0$ once per mode: with
+$N$ three-point modes, $W_0 = 1 - N/3$, and from four modes on it is negative
+($-\tfrac13$ for four) — correct, and stated like every other weight. Inside
+one mode's own average frame 0 enters at its rule's central weight ($\tfrac23$
+for three points, $\tfrac{8}{15}$ for five, § 4), so each mode's displaced
+weights and that central weight sum to 1 as well. A mode run at both orders
+enters the set's sum at its five-point frames; its three-point frames are the
+check of § 5.3. *(Whether one set may hold several modes — and so frame 0's weight across them and a sum over modes — waits on the user's word, asked 2026-10-09: plan § 5z.1.)* The record checks both sums
+(`vibration.md` § 5.10 ③, `transport.md` § 2a.12).
 
 ### 6.2 Where adding stops being right
 
@@ -451,7 +465,9 @@ From the frames and their `customized` rows
 ([`model/structure.md`](?doc=model/structure.md) § 2.2d:
 `mode`, `node_sigma`, `weight`, `order`, and shown beside them
 `frequency_cm1`, `sigma_amu12_ang`, `q_amu12_ang`, `max_displacement_ang`,
-`temperature_k`), per mode $\nu$ — the record is `transport.md` § 2a.12's:
+`temperature_k`; frame 0 states its `weight` and, shared by every mode, no
+`mode` or `order`; every weight stated, their sum checked to be 1), per
+mode $\nu$ — the record is `transport.md` § 2a.12's:
 
 - each frame's $T_j(E)$ and current — the family of curves;
 - $\langle T(E)\rangle_\nu$, the mode's average, and $\Delta T_\nu(E)$;

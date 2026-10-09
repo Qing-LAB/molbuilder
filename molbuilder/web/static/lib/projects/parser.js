@@ -5,7 +5,7 @@
  * FILE-ONLY (model/structure.md § 2.4): it goes through the SERVER, so
  * Python owns the file access, the pairing, AND the sidecar schema:
  *
- *   * openMolecule(path) -> model.installMolecule({path}) -> POST /api/build/load
+ *   * openMolecule(viewer, path) -> viewer.data.installMolecule({path}) -> POST /api/build/load
  *     (the server reads the .xyz + paired .molstruct.json via StructureCodec.read).
  *
  * Saving a structure is `projects.molviewFiles.save("project", ...)`, which asks
@@ -39,7 +39,8 @@ function _modelOf(viewer) {
  * where the SERVER reads the `.xyz` AND its paired `.molstruct.json` via
  * `StructureCodec.read` and installs the whole model in ONE write.  The browser reads no
  * bytes and derives no sidecar path -- Python owns the file access + the pairing.  A
- * missing sidecar is NOT an error (a plain geometry loads label-less); format (.xyz vs
+ * missing sidecar is NOT an error (a lone file loads as atoms and coordinates, and
+ * the answer says so -- model/structure.md § 2.3); format (.xyz vs
  * .pdb) is dispatched server-side from the extension.  `confirmDiscard` is the injected
  * dirty-canvas gate (UI policy; this layer stays DOM-free).  Returns `{ok:true, payload}`
  * | `{ok:false, cancelled|error}`.
@@ -63,8 +64,9 @@ export async function openMolecule(viewer, path, opts) {
   // FILE-ONLY load (model/structure.md § 2.4): hand the PATH to the model; the SERVER
   // reads the .xyz + paired .molstruct.json through StructureCodec.read -- Python owns
   // the file access AND the .xyz<->.molstruct pairing.  The browser does not read the
-  // bytes or derive the sidecar path.  The cell is DEDUCED from the file data (the .xyz's
-  // own lattice + the sidecar) and is never overridden at load time.
+  // bytes or derive the sidecar path.  The cell is the sidecar's -- the .xyz's comment
+  // line is never metadata (model/structure.md § 2.3) -- and is never overridden at
+  // load time.
   // Contract (§2): openMolecule NEVER throws -- it returns {ok:false, error} on any
   // failure, like its guard cases above.  The file-only load surfaces a missing/
   // unreadable file OR a parse/sidecar error as a rejected installMolecule (the

@@ -1437,12 +1437,12 @@ conclude there is nothing to do.
 | **I4** | *retired 2026-10-04* — its premise, a compute node without git, is false: every env ships git | — |
 | **A1** | build, verify, publish — create if absent, never overwrite | ✅ |
 | **A2** | verify before mutating, in order | ✅ |
-| **A3** | the save precedes the change | needs the prep prompt |
+| **A3** | the save precedes the change | ✅ `prep` and Task setup's Save call `checkpoint.save_before` once every check has passed and before anything is written — prep's plan is written after it (`Plan.carry_out`), its ledger line too (§ 9) |
 | **A4** | a restore is whole or does not happen | ✅ on every surface — the HTTP route refuses `include_binaries` rather than ignoring it |
 | **A5** | make the folder equal the target; warn about what is lost, then obey | ✅ names the three shapes; at a terminal you are **asked** and `--force` answers for a script; removes what the target lacks; the warning is answered by content while the display is not (§ 7.2) |
 | **A6** | every saved state stays listed and restorable | ✅ one ref per state, so nothing depends on where HEAD points |
 | **S2** | a stage writes only inside itself | needs the layout |
-| **S3** | a run records what it started from | needs the layout |
+| **S3** | a run records what it started from | recorded (`run.json`'s `continued_from`, the run's `.continued-from`); unasserted — § 13.4's waiting table |
 | **S4** | the description is never modified | needs the description |
 | **S5** | nothing about a run changes the id | ✅ **the half this owns** — attempts come and go and every state still names one calculation; the run-layer half is in § 13.4's waiting table |
 | **S6** | a restored folder explains itself | needs the description |
@@ -1610,7 +1610,7 @@ nobody is maintaining against this document, which is how the two drift.
 | S9 | `test_checkpoint_states.py` — four threads publish one archive at once; **and two concurrent `save`s of one folder**, which is the rule's own wording: losing a race for git's index is a refusal and is allowed, corruption is not |
 | the five refusals | `test_checkpoint_states.py` — `GitNotInstalledError` is raised where git is absent and says how to fix it, which is what makes it worth separating from the faults (§ 15) |
 | volume | `test_checkpoint_states.py` — 500 large files in one folder: all archived, none in git's object database, and the save does not fail for the length of its own `git add` |
-| A3, S2, S3, S4, S6, L8, S5's run-layer half | **not yet written** — each waits on a surface that does not exist; the table below says which |
+| A3, S2, S3, S4, S6, L8, S5's run-layer half | **not yet written** — the table below says what each waits on: A3's and S3's surfaces exist and their tests are owed; the rest wait on a surface that does not |
 | the MANIFEST format | `test_checkpoint_manifest.py` — one content has exactly one MANIFEST; every deviation a lenient reader could "understand" is refused and names the archive; no key can steer a restore out of the folder or into a store |
 | the verbs as a printed surface | `test_checkpoint_cli.py` — what each verb prints and what it exits with, retired verbs gone, the question asked at a terminal, and **that a remedy a refusal names actually works**: the whole round trip, refusal → repair → save, exit codes included, since 2 is *your input* and 1 is *the machine* |
 | the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` — **including which bucket each refusal lands in**: a name the user can repair and a folder of independent calculations are advisories the panel can act on, an unknown state and a bad `limit` are the caller's mistake, and everything else is a fault |
@@ -1634,12 +1634,12 @@ lands.
 
 | Rule | Waits on |
 |---|---|
-| **A3** the save precedes the change | the `prep` prompt (§ 9) — nothing offers a save before a produce yet |
-| **S2** a stage writes only inside its own directory | a real staged folder to run a stage in |
-| **S3** a run records what it started from | `run.json`'s `continued_from` |
-| **S4** the description is never modified | `task.json` reaching a produced folder |
-| **S6** a restored folder explains itself | the same, plus a `dry_run` produce to compare against |
-| **L8** a saved attempt never differs afterwards | the hierarchical layout — and it must be marked *hierarchical only*, or it fails a flat folder that is working correctly |
+| **A3** the save precedes the change | nothing: `prep` and Task setup's Save call `checkpoint.save_before` before they write (§ 9) — the test is owed (plan § 2, W45) |
+| **S2** a stage writes only inside its own directory | a real staged folder to run a stage in (plan § 2, W45) |
+| **S3** a run records what it started from | nothing: `run.json`'s `continued_from` and the run's `.continued-from` (`runrecord.write_launch`, `write_continued_from`) — the test is owed (plan § 2, W45) |
+| **S4** the description is never modified | `task.json` reaching a produced folder (plan § 2, W45) |
+| **S6** a restored folder explains itself | the same, plus a `dry_run` produce to compare against (plan § 2, W45) |
+| **L8** a saved attempt never differs afterwards | the hierarchical layout — and it must be marked *hierarchical only*, or it fails a flat folder that is working correctly (plan § 2, W45) |
 | **S5**, its second half — the *run layer* never rewrites the id | a produce and a run. The half checkpointing owns is asserted today (§ 13.4); this is the one that needs something to run |
 
 *This table lists only rules that are **waiting**. It used to carry a copy of

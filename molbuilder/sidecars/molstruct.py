@@ -445,8 +445,7 @@ def to_dict(
         # serialization authority; add a key there and nowhere else).
         **fields,
         # The identity columns (schema 8) -- absent entirely when nothing is
-        # real, so an xyz-born sidecar is byte-identical to a schema-7 one
-        # apart from the version stamp.
+        # real, so an xyz-born sidecar carries none.
         **identity,
         # selection_rules -- a sidecar-only pass-through (not a Structure field).
         "selection_rules": normed_rules,
@@ -454,8 +453,8 @@ def to_dict(
         "created_at":      created_at or _now_iso_z(),
     }
     # The `info` block (schema 9): the free-form NON-structural store,
-    # written only when something is recorded -- an empty store leaves
-    # the file byte-identical to a schema-8 one apart from the stamp.
+    # written only when something is recorded -- an empty store writes
+    # no `info` key.
     # JSON-checked here so an unserialisable value fails at WRITE time
     # with a clear owner, never at a later save of unrelated work.
     if info:

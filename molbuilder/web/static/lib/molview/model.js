@@ -1075,10 +1075,11 @@ export function createModel(opts) {
             };
         },
 
-        /* ══ Get the structure out as text ═══════════════════════════════
+        /* ══ Get the structure out as data ═══════════════════════════════
          *
-         * Export is a READ (§ 9.4): getting bytes out of a viewer you cannot
-         * edit is the point of a read-only viewer, so this is not gated.
+         * Export is a READ (§ 9.4): getting a structure out of a viewer you
+         * cannot edit is the point of a read-only viewer, so this is not
+         * gated.  The bytes are the server's (§ 11.7).
          */
         exportFile: exportFile,
 

@@ -225,9 +225,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // directory -- today the contract its deck records, as
             // `info.calculation`.  THE TAB PROVIDES IT (user, 2026-08-30):
             // MolView has no idea what describes a run.  HELD here, beside
-            // its two neighbours, because this viewer is REBUILT on every
-            // poll -- the store is re-supplied to each installMolecule or
-            // it lasts one tick.  null = the run said nothing.
+            // its two neighbours, because a poll that cannot append
+            // REBUILDS this viewer -- the store is re-supplied to each
+            // installMolecule or it is lost with the rebuild.  null = the
+            // run said nothing.
             info: null,
             // HOW THE RUN THIS FILE BELONGS TO IS DOING -- `{state, detail,
             // live}`, the one door's answer, which the server sends with the

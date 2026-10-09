@@ -301,38 +301,39 @@ whose readers strip a prefix rather than splitting on the character.
 ## 6. Frontend surface (JS) — the channel model + always-on filter
 
 The JS mirrors § 2: everything filterable is a **channel**. A pure
-channel-model layer sits below the store, panel, and viewer-adapter.
+channel-model layer sits below the store and the panel, all three inside
+MolView (`web/molview.md` § 9.5).
 
 | Layer | Module | Owns |
 |---|---|---|
-| **L1** low-level presentation API | `lib/molview/_atom-channels.js` + `_atom-index.js` | `atomChannels`/`channelKinds` (channel taxonomy + order) and `toDisplay`/`fromDisplay`/`shiftExpression` (index base) — pure, no DOM/store/HTTP |
-| **L2** store | `_selection-store-impl.js` | atoms + filter drafts; `knownChannels()` (via L1); `_filterToRule` (draft → server rule) |
-| **L3** UI | `selection/panel.js` (+ viewer-adapter) | renders the filter over `knownChannels()`; overlays colour by channel |
-| server | `/api/selection/*` | supplies per-atom channels + evaluates rules |
+| **L1** low-level presentation API | `lib/molview/_atom.js` | `toDisplay` / `fromDisplay` / `shiftExpression` / `expressionToCode` (the index base), and `KIND` / `atomChannels` / `channelKinds` (the channel taxonomy and its order: element, residue, then the labels by name) — pure, no DOM/store/HTTP |
+| **L2** store | `lib/molview/stores.js` | the selection's filter rows; `buildRule` / `rowToRule` (row → server rule) |
+| **L3** UI | `lib/molview/ui.js` (the Selection page's filter rows) | renders a row per filter — a kind menu and its value |
+| server | `/api/selection/eval` | evaluates a rule over the atoms the viewer sends |
 
-> L1 moved from `lib/workspace/` to `lib/molview/` with the data-model
-> relocation. It returns **values/model**, never finished presentation (no
-> `"#5"` string, no widget); L2/L3 compose its primitives and must not
-> re-derive them (no rogue `atom.index + 1`, no re-implementing a
-> label walk). Conformance is bound by tests, not trust — including
-> the standalone embed (`mol-viewer-embed.js`), whose inline `+1` is pinned to
-> L1's `toDisplay` by `test_atom_index_js`.
+L1 returns **values/model**, never finished presentation (no `"#5"` string,
+no widget); L2/L3 compose its primitives and must not re-derive them — every
+atom number on screen goes through `toDisplay` (`ui.js`, `render-engine.js`),
+and no caller writes the `+1` itself.
 
 ```js
-atomChannels(atom) -> { element:{kind:"category",value:"C"},
-                        residue:{kind:"category",value:"ALA"},
-                        "L-electrode":{kind:"tag"}, frozen_atoms:{kind:"tag"},
-                        charge:{kind:"value",value:-1.0}, ... }
-channelKinds(atoms) -> [{name,kind}]   // every filterable channel present
+atomChannels(element, facts) -> { element:{kind:"category",value:"C"},
+                                  residue:{kind:"category",value:"ALA"},
+                                  "L-electrode":{kind:"tag"},
+                                  frozen_atoms:{kind:"tag"} }
+channelKinds(elements, annotations) -> [{name,kind}]   // every filterable channel present
 ```
 
-**Filter contract:** filter drafts are a uniform channel filter — `tag`/`flag` →
-membership, `category` → equals, `value` → a range predicate. `knownChannels()`
-enumerates every filterable channel, and a reserved label is an ordinary one, so
-the UI special-cases nothing. Translation to server rules stays in `_filterToRule`
-(`_selection-store-impl.js`): `by_element` → `by_element`, `by_index` →
-`by_index_range` (with the 1-based→0-based shift), `by_residue` →
-`by_residue_name`, and `by_label` → `by_region`.
+**Filter contract:** a filter row is a kind and a value — `by_element` and
+`by_residue` match on equality, `by_label` on membership, `by_index` on an
+index range — and a reserved label is an ordinary one, so the UI special-cases
+nothing. Translation to server rules is `rowToRule` (`stores.js`):
+`by_element` → `by_element`, `by_index` → `by_index_range` (with the
+1-based→0-based shift), `by_residue` → `by_residue_name`, and `by_label` →
+`by_region`. *(Not built in the browser: a `value` channel (`charge`, …) and
+its range predicate — `KIND` holds `category` and `tag` — and the kind menu
+read from `channelKinds` instead of a literal list in `ui.js`; plan § 8,
+rows 11 and 14.)*
 
 ---
 
@@ -341,7 +342,7 @@ the UI special-cases nothing. Translation to server rules stays in `_filterToRul
 **Shipped:** the channel model (`AtomChannel`, `channels()`, extensible
 `annotations`) + the index-remap; ONE label store with the reserved `frozen_atoms`
 label in it and `Structure.frozen_atoms` as its designated read (2026-07-31);
-sidecar persistence (annotations since v4, current v7) + the ATOM-METADATA block
+sidecar persistence (annotations since v4, current v11) + the ATOM-METADATA block
 emit/apply + the Results recovery bridge;
 the two built-in engine translations (`frozen_atoms` → `Geometry.Constraints`, region
 tags → transport blocks); the region-label vocabulary + `ELECTRODE_LABELS`

@@ -4,9 +4,9 @@
 **Domain:** model
 **Sub-document of:** [`structure.md`](?doc=model/structure.md) (its master). **Companions:**
 `structure-annotations.md` + `structure-periodicity.md` (the metadata this file
-carries), `engines/` (the **boundary-condition contract** — how the `frozen`/
-`regions` this file stores are delivered to an engine's input script, migrating
-from `sidecar-contract.md`; see § 7).
+carries), [`engines/overview.md`](?doc=engines/overview.md) § 3 (the
+**boundary-condition contract** — how the `frozen_atoms` / `regions` this file
+stores are delivered to an engine's input script; see § 7).
 
 When a structure is saved, its geometry goes in the `.xyz` and everything the
 `.xyz` has no room for — region labels, frozen atoms, the cell, per-atom
@@ -62,7 +62,8 @@ resids ≠ 1 — `Structure.identity_to_dict` owns that judgment, beside the
 synthesis it mirrors). `title` is not among them: it is the geometry file's
 own comment line, and the sidecar does not carry it (`model/structure.md`
 § 2.2c).  An xyz-born pair carries none
-of them and its sidecar is a v7 sidecar plus a version stamp.
+of them: its sidecar holds the envelope, the metadata fields and
+`selection_rules`, and no identity column.
 
 | Envelope key | Meaning |
 |---|---|
@@ -265,8 +266,9 @@ decision the reader enforces:
 > (below), every frame of it.  *(This said "geometry + the structural
 > metadata" until 2026-10-09; `StructureCodec.pair` has always hashed the
 > document only.)*  An identity over the geometry AND the structural
-> metadata is W39's identity hash, which waits on M2m's ruling (plan § 5z.8
-> F.7 row 8).
+> metadata is W39's identity hash, which is not defined and waits on M2m's
+> ruling (plan § 2, V1.9 / M2m); until then a frame-set citation is pinned by
+> the two files' sha256, as a cited run's files are (plan § 5z, Q17-c).
 
 
 `structure_hash` is the sha256 of the paired geometry file's bytes
@@ -284,7 +286,9 @@ Two independent guards, deliberately kept separate:
   is **not** verified here.
 - **The caller** compares `structure_hash` against the geometry it loaded, to
   detect a sidecar paired with a *changed* structure — a stricter check the
-  file-access layer owns.
+  file-access layer owns. *(Not built — plan § 2, V1.9 / M2m: no reader
+  compares it today; the reader checks only that it is a hex string of at
+  least 16 characters, `parse/sidecars/molstruct.py:196-200`.)*
 
 ---
 
@@ -341,7 +345,7 @@ carry the other, or the labels are orphaned (renaming `water.xyz` →
 losing the user's labels).
 
 `POST /api/files/{rename,move,copy}` (`web/blueprints/files.py`, via
-`_paired_sidecar_path` `:209` / `_existing_paired_sidecar` `:220`) move or copy
+`_paired_sidecar_path` `:246` / `_existing_paired_sidecar` `:258`) move or copy
 both files in lockstep:
 
 | Concern | Behaviour |
@@ -377,7 +381,7 @@ This is what makes a multi-frame pair a legal input everywhere a structure is
 one, and a **frame set** where a door is frame-aware:
 [`engines/transport.md`](?doc=engines/transport.md) § 2a.9 defines the
 transport frame group as exactly this pair — frame 0 the base, frames 1…N the
-displacements. The cell and the axis kinds are the sidecar's alone — the
+displacements *(its citation is designed, not built — plan § 5z, Q17-c)*. The cell and the axis kinds are the sidecar's alone — the
 document's comment line is never metadata (`structure.md` § 2.3) — which is
 one more reason the frames do not travel without it.
 
@@ -386,24 +390,26 @@ along, its weight in an average — is the structure's `customized` section, one
 set of rows a frame (`model/structure.md` § 2.2d; plan W39, ruled
 2026-09-27/30, and § 5z.8 F), never `info`. The rows are written by what makes
 the frame set — the frame generator, a person's script, through
-`Structure.set_customized(…, frame=i)` — never typed into the browser, which
-shows them read-only at the displayed frame.
+`Structure.set_customized(…, frame=i)` — and never in the browser, which
+shows a frame set's rows read-only at the displayed frame. On the Molbuilder
+tab, which holds one frame, a person may add, change or remove a row of the
+structure or of that frame, saved with the pair (`web/molview.md` § 8.4a).
 
 ---
 
 ## 7. What this file's metadata drives (pointer)
 
 Storing the labels is one thing; *delivering* them correctly to
-an engine's input script — the **three-stage boundary-condition contract**
-(the setup form pre-fills from the sidecar, the config is authoritative at
-Generate, the script emits the user's set verbatim, and preflight **warns**
-rather than silently absorbing a divergence or an unrecognized label) — is a
-separate contract. It spans the setup form, the config, and each engine's
-emitter + preflight, so it lives with the engines: **`engines/`** (migrating
-from `sidecar-contract.md`; preserved in the kept source until the engines
-wave). The per-engine table of *which* labels each engine consumes (SIESTA
-`frozen_atoms`→`Geometry.Constraints`; TranSIESTA `regions`→electrode blocks; spectra
-warns on both) is part of that contract.
+an engine's input script is the **boundary-condition contract**, which lives
+with the engines: [`engines/overview.md`](?doc=engines/overview.md) § 3. Its
+three stages: the labels are set where the structure is (the viewer writes
+them into this file's one `regions` store); every deck delivers the held set
+verbatim (SIESTA `frozen_atoms`→`Geometry.Constraints`, PySCF's geomeTRIC
+`$freeze`, TranSIESTA's electrode labels→its electrode blocks); and **labels
+are the user's** — molbuilder reads the labels it owns (the frozen label, a
+transport calculation's partition) and no other, which ride along untouched
+and are named by no preflight
+([`science/validation.md`](?doc=science/validation.md) § 5).
 
 **Sidecar consumers** (which code reads a `.molstruct.json`): the SIESTA and
 PySCF/spectra and TranSIESTA generators (at emit), the selection endpoints

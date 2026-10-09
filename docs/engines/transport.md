@@ -876,7 +876,7 @@ row below).*
 | **Class C ships per-stage defaults** | Each stage carries an opinionated profile rather than inheriting one shared set: a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike, and the electrode's dense transport-axis k is a default, not something a person should have to discover |
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
 | **Default grouping** | The preparatory block — seed and both leads — as one submission: `jobset prep task` offers the three pre-selected, since none builds on another, and they are prepared as one group (`--stage seed --stage electrode_L --stage electrode_R` without a terminal); `jobset launch task` sends it as one job ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6; [`execution/job-system.md`](?doc=execution/job-system.md), *The task*). Then the device; then the transmission, each scan one job walking its points. The device and the transmission never share a job: the transmission builds on the device, which you look at first |
-| **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16) |
+| **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). The voltage axis is built (§ 2a.11); the frame axis is designed, not built (plan § 5z, Q17-c … Q17-f) |
 | **The bias treatment is an exposed choice** | `low_bias_approximation`, true or false, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
 | **Automatic resubmission is deferred, and load-bearing on nothing** | The stages, their decks, the parameter map and the directory structure are identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing here waits on it. When built, the monitor is its home — it already watches a run to its end. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
 | **Net charge and gating are deferred** | Not designed now. In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is separate work. How a gate is applied in SIESTA 5.x — a charge-distribution block, a scripted hook, or neither — **has not been verified against the manual** and should be before anything depends on it |
@@ -948,10 +948,14 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 
 ### 2a.9 The structure input, and the frame axis — making room, not building
 
-*Added 2026-09-16 at the user's direction. The frame axis is **not yet**
-built; what is settled here is what today's contract must say so that adding it
-later needs no rework — and, since 2026-09-24, **what a frame set IS**: one
-multi-frame structure pair (below).*
+*Added 2026-09-16 at the user's direction. The frame axis is designed and
+**not built** — the citation of a frame set, the frame inside a run, the
+record's average and the Results family are plan § 5z, Q17-c … Q17-f; the
+structure side is built (a `Structure` holds its frames and each frame's
+`customized` rows, `model/structure.md` § 2.2d–2.2e). What is settled here is
+what the contract must say so that adding the axis needs no rework — and,
+since 2026-09-24, **what a frame set IS**: one multi-frame structure pair
+(below).*
 
 **Transport's input is a structure, and the contract should say so plainly.**
 Today that structure is a relaxed junction. In future it will also be a **group
@@ -990,8 +994,7 @@ process cannot use one: the lead's transverse vectors must tile the device's
 atom extents (§ 7), and the leads must continue into their periodic image
 (I12). So a transport calculation **derives no cell** — not a bounding box, not
 a padded one, not a lateral pair from the atoms — and a structure that states
-none is refused at the citation door (§ 6.2 hop 3) and by the kind gate
-(§ 5), as an `error` that names what is missing and where to commit it (the
+none is refused at the citation door (§ 6.2 hop 3; I14, § 5), as an `error` that names what is missing and where to commit it (the
 Cell page). The 15 Å of transverse vacuum that an earlier reading fabricated
 around an isolated lead survives only as advice: on a committed cell, the
 gate may say the transverse gap looks like an isolated lead rather than a
@@ -1058,7 +1061,8 @@ window and sweeping **bias** are different calculations, and the contract should
 refuse to let them be reported as the same thing:
 
 - **Energy sweep** — one converged device, tbtrans evaluates T(E) across the
-  window. Cheap, and it is what a frame group gives you.
+  window. Cheap, and it is what each frame gives under the low-bias
+  approximation.
 - **Bias sweep** — the device NEGF SCF is **run at each voltage**, each point starting from the converged point before it (§ 2a.10, § 2a.11),
   because the potential drop reshapes the molecular levels. T is then a function
   of both, T(E, V).
@@ -1083,28 +1087,40 @@ Nothing new is invented for it. A `Structure` holds its frames
 `StructureCodec.load(path, frames=True)` gives the set, `load(path)` its frame
 0, `frame_at(i)` one frame with the set's one origin; a frame set is made
 through the structure's own doors, by the frame generator or a person's
-script. So a multi-frame pair is a legal citation for every door that exists —
-it is the base — and a frame-aware door sees the set. That is what makes the
-axis addable without rework.
+script. So every door that reads one structure reads a multi-frame pair as its
+base, and a frame-aware door sees the set. That is what makes the axis
+addable without rework. Citing a pair is § 3.1's second citation kind
+*(designed 2026-10-09, not built — plan § 5z, Q17-c: today
+`compose.classify_citation` accepts only a finished relaxation run)*.
 
 | the condition, per frame, naming the frame | why | where it is checked |
 |---|---|---|
 | the same atom count, in the input order, as frame 0 | the sidecar's per-atom facts are indices | the structure's reader (`model/structure.md` § 2.3) — a document breaking it is no frame set |
 | the same species, in the same order | the seed's density and the leads' Hamiltonians are indexed by orbital | the same |
 | **the same cell as frame 0** | the leads must tile one cell for every frame (I6, § 2a.9 above) | the same — the cell is shared, a frame cannot state another |
-| **no electrode atom moved**, to the coordinate tolerance the sort uses | the exact-sharing gate: the lead Hamiltonian is truth | the citation door, frame by frame |
+| **no electrode atom moved**, within the tolerance the citation door's frozen-atom check uses (`wizard.FROZEN_TOL_ANG`, 10⁻³ Å) | the exact-sharing gate: the lead Hamiltonian is truth | the citation door, frame by frame *(not built — Q17-c)* |
 
 **The frame token is the file position**: `f000` is the base and runs too —
 the undisplaced reference every displaced curve is compared against — and
 `f001`… follow in file order, so a curve can always say which frame it is.
 
 **Each frame's details are its `customized` rows** *(user, 2026-10-08/09;
-plan § 5z D3, § 5z.8 F)*: one row set per frame, file order, frame 0 included
-([`model/structure.md`](?doc=model/structure.md) § 2.2d) — the mode, the node,
-the weight, the rule's order, and what is shown beside them. Transport reads
-them as `structure.customized_value("weight", frame=i)`, by names it owns as
+plan § 5z D3, § 5z.8 F)*: one row set per frame, file order
+([`model/structure.md`](?doc=model/structure.md) § 2.2d) — on each displaced
+frame the mode, the node, the weight, the rule's order, and what is shown
+beside them. **Every frame states its `weight`, frame 0 included** *(user,
+2026-10-09: "all weights should add up to 1 that's an explicit rule within
+error tolerance")*: `W_f` is frame `f`'s weight in the set's average, the
+weights sum to 1 (a mode run at both orders: its lower order's frames are the
+check beside the sum, § 2a.12), and frame 0 — the equilibrium, shared by every mode, so it
+has no `mode` and no `order` — states `W₀ = 1 − Σ W_f` over the displaced
+frames in the sum, which falls below
+zero once the displaced weights pass 1 (§ 2a.12). For one mode at three points
+the weights are `⅔, ⅙, ⅙`. *(Whether one set may hold several modes — and so frame 0's weight across them and a sum over modes — waits on the user's word, asked 2026-10-09: plan § 5z.1.)* Transport reads the rows as
+`structure.customized_value("weight", frame=i)`, by names it owns as
 constants — `mode`, `node_sigma`, `weight`, `order` — computes with those alone
-(§ 2a.12's average) and shows the rest; it never asks what made the frames. A
+(§ 2a.12's average) and shows the rest; it never asks what made the frames
+*(not built — Q17-e: the constants and the read)*. A
 set whose frames state no weights is a family of frames with no average — each
 frame's curve, and the record saying *no frame weights stated*; nothing is
 refused for that, since what the displacement means is the person's.
@@ -1140,7 +1156,7 @@ it is checkable.** Every frame the rule produces, whoever wrote it:
 | the same atom count, in the **input order** — the script never sees the sorted copy; the sort runs per frame at prep, under one permutation for the whole group (`model/overview.md` § 2.2) | the sidecar's labels are indices; the seed's density and the leads' Hamiltonians are indexed the same way | count and index, per frame, against the base |
 | the same species, in the same species order | the orbital set is what makes the seed's density usable as a start (§ 2a.9's approximate gate) | species table per frame against the base |
 | the same labels — regions, frozen set, identity columns | the partition is what the whole ladder is built on (§ 4); a frame is the base with atoms moved, never relabelled | the frame carries no labels of its own: it inherits the base's, which makes the promise structural rather than checked |
-| **no electrode atom moves** | the exact-sharing gate above: the lead Hamiltonian is truth | electrode positions per frame against the base, to the coordinate tolerance the sort uses |
+| **no electrode atom moves** | the exact-sharing gate above: the lead Hamiltonian is truth | electrode positions per frame against the base, within `wizard.FROZEN_TOL_ANG` (10⁻³ Å) *(not built — Q17-c)* |
 | one base structure, an optimised junction | a group is a *displacement of* something, and the result has to say of what | the pair is the group's citation, its `info.calculation` the optimisation frame 0 came from (§ 3.1) |
 
 What is trusted rather than checked is only what cannot be: that the
@@ -1168,15 +1184,15 @@ varies — `f000/`, `v0.2/`, or `f000/v0.2/` (§ 2a.11).
 
 The result of a frame group is not one transmission curve but a **family** of
 them, plus whatever is derived across the family (an average, a variance, a set
-of couplings). § 2a.12's statement of what the Results surface reads will have to
-grow a frame dimension — which is another reason to fix the axis rule now.
+of couplings). § 2a.12 states that frame dimension of what the Results surface
+reads *(not built — Q17-e, Q17-f)*.
 
-*(Proposed 2026-09-28, [`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.10: the built-in mode rule records each frame's normal coordinate and
-its weight in the thermal average — as that frame's `customized` rows — so
-what is derived across the family — each mode's slope, curvature and averaged
-conductance — is computed from the pair's own rows, and transport still knows
-nothing about modes.)*
+*([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10 ③, decided
+2026-09-28: the built-in mode rule records each displaced frame's normal
+coordinate and its weight in the thermal average — as that frame's
+`customized` rows — so what is derived across the family — each mode's slope,
+curvature and averaged conductance — is computed from the pair's own rows, and
+transport still knows nothing about modes.)*
 
 
 ### 2a.10 The bias treatment — an explicit choice, and what the result may be called
@@ -1234,9 +1250,9 @@ decide whether a whole ladder is necessary is a good trade, and it is what the
 interface should recommend rather than quoting a threshold as though it were
 settled.
 
-*This is also why the frame-group restriction (§ 2a.9) costs nothing for the
-physics it serves: molecular vibrations are ~10–400 meV, so IETS lives below
-~0.4 V — inside the regime where one slice is a sound elastic baseline.*
+*This is also why the low-bias approximation is the cheap choice for a frame
+set (§ 2a.9, Both axes): molecular vibrations are ~10–400 meV, so IETS lives
+below ~0.4 V — inside the regime where one slice is a sound elastic baseline.*
 
 #### The labelling rule
 
@@ -1450,6 +1466,10 @@ alone took (a transmission point's device point). Every transport rung's
 
 #### The frame axis (§ 2a.9) — a level for each axis that varies *(user, 2026-10-09, D4: "yes"; plan § 5z.8 D)*
 
+*Designed, not built — plan § 5z, Q17-d. Built today: the voltage level
+(`run-0/` or `run-0/v<V>/`), its doors answering voltages
+(`transport.stages.sweep_points`, `point_folders`, `points_in`).*
+
 A device point is a frame and a voltage (§ 2a.9, *Both axes*), so a swept
 rung's run carries a level for each axis that varies and none for one that
 does not:
@@ -1576,7 +1596,8 @@ the calculation, and a reader needs to see which of five rungs is the one still
 outstanding — and, on a rung that sweeps the bias, which of its points are
 done, read from each point's own files (§ 2a.11).
 
-**The frame dimension** *(Q17, plan § 5z; the physics is
+**The frame dimension** *(designed, not built — plan § 5z, Q17-e and Q17-f;
+the physics is
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md))*.
 A frame group's deliverable is a **family** of curves and what is derived
 across it. The record's points are (frame, voltage) pairs (§ 2a.9, *Both
@@ -1585,10 +1606,12 @@ a bias point carries — T(E), the conductance, the current, the DOS — and the
 I–V is per frame. At each voltage, from the frames' `mode`, `node_sigma`,
 `weight` and `order`, per mode ν and per rule order it was run at:
 
-- the mode's average `⟨T(E)⟩_ν = W₀ T₀(E) + Σ_j W_j T_j(E)` over its frames,
-  frame 0 shared, `W₀ = 1 − Σ_j W_j` (`vibration.md` § 5.10 ③), and its
-  change `ΔT_ν(E) = ⟨T(E)⟩_ν − T₀(E)`; at E_F the averaged conductance
-  `⟨G⟩_ν`, `⟨ΔG⟩_ν / G₀` in per cent of the undisplaced frame's, and the
+- the mode's average `⟨T(E)⟩_ν = c T₀(E) + Σ_{j∈ν} W_j T_j(E)` over its
+  frames, frame 0 shared at `c`, the central weight of the rule its `order`
+  names — `⅔` for 3, `8/15` for 5 (`vibrational-averaging.md` § 4) — and its
+  change `ΔT_ν(E) = ⟨T(E)⟩_ν − T₀(E)`;
+  at E_F the averaged conductance `⟨G⟩_ν`, `⟨ΔG⟩_ν / G` in per cent of the
+  undisplaced frame's conductance, and the
   curvature `T″_ν = (T₊ + T₋ − 2T₀)/h²` from the mode's pair of frames
   nearest equilibrium, `h` their `Q`;
 - a mode run at both orders: both averages, and whether they agree — their
@@ -1598,14 +1621,21 @@ I–V is per frame. At each voltage, from the frames' `mode`, `node_sigma`,
   is not smooth over the thermal range and the curvature is not one
   (`vibrational-averaging.md` § 5.3);
 
-and for the set, `T₀(E) + Σ_ν ΔT_ν(E)` from each mode's highest order —
-**labelled second-order**, each mode's own change shown beside it, and § 7 of
+and for the set, `⟨T(E)⟩ = Σ_f W_f T_f(E)` over frame 0 and each mode's
+frames at its highest order, with every frame's stated weight — the same sum as `T₀(E) + Σ_ν ΔT_ν(E)` from each mode's highest order, since
+frame 0's `W₀ = 1 − Σ W_f` over those displaced frames subtracts `T₀` once per mode (four
+three-point modes: `W₀ = −⅓`, correct, never refused) —
+**labelled second-order** *(Whether one set may hold several modes — and so frame 0's weight across them and a sum over modes — waits on the user's word, asked 2026-10-09: plan § 5z.1.)*, each mode's own change shown beside it, and § 7 of
 the science document's assumptions beside the numbers (harmonic independent
 modes, static frames, the DFT alignment, and the voltage each average is
-taken at). The record refuses to average what it cannot: a weight outside
-`[0, 1]`, a mode whose weights leave frame 0 a negative share, frame 0's stated
-weight against a mode's `1 − Σ`, each by name; a set whose frames state no
-weights is a family with no average, said so. A point not done is a gap in the
+taken at). **The weights are checked, never assumed**: the weights of the frames
+in the set's sum add to 1, and at each order a mode was run its displaced
+weights and that rule's central weight add to 1, both within `1e-6`, the tolerance written in the record (the frame generator
+writes every weight at full precision); the record refuses, each by name and
+with the sum it found, a set or a mode that does not, a displaced frame's
+weight outside `(0, 1]`, and a set where some frames state a weight and others
+do not. A set whose frames state no weights is a family with no average, said
+so. A point not done is a gap in the
 family and the average at that voltage waits for it — never computed from the
 frames that happen to be there.
 
@@ -1670,7 +1700,7 @@ Edited in one panel. Changing any of these rebuilds all five stages.
 | `electronic_temperature` | `ElectronicTemperature` | Fermi broadening — sets the leads' distribution functions; affects metallic SCF convergence and T(E) near E_F | 3 |
 | `spin_treatment` · `unpaired_electrons` | `Spin` | Whether the physics is spin-resolved at all — restricted or unrestricted, TranSIESTA's two; the count floats, since TranSIESTA holds no fixed total spin (`Spin.Fix` is never written here, § 3.1's spin note) | 3 |
 | *the pseudopotentials* | — | Must be the same set everywhere, and must match the functional: SIESTA runs the deck's functional and only prints an `xc_check` WARNING when the pseudo was generated with another | 2 |
-| `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly | 2 |
+| `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly. Held by one rule, `chemistry.species_order` (I15, § 5) | 2 |
 | `kgrid` *(transverse part)* | `%block kgrid_Monkhorst_Pack` | The transverse Brillouin-zone sampling. Leads and device share one transverse cell, and the self-energy is folded in per transverse k-point, so two grids cannot be combined. *(Advisory as to whether the density suffices; checkable that they agree)* | 2 + 3 |
 | `kgrid_displacement` | same block | The grid's offset — same argument. An offset that differs is a different sampling, and TranSIESTA itself refuses a lead whose offset differs from the device's. Acts across the transport axis only; Γ-centred on a hexagonal cell. **Cited and written on every rung since 2026-09-30** (§ 0.3a; [`siesta.md`](?doc=engines/siesta.md) § 6.1) | 2 |
 | `electrodes_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device takes the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert. **Shared since 2026-09-29, and the device's alone before** (`elecs_bulk`, `stages = ["device"]`): TranSIESTA reads it for the device and `tbtrans` takes it as the default of its own setting, so the transmission must read the same value (§ 6.1b) | 3 |
@@ -1765,7 +1795,7 @@ nearly free — so these *should* differ across stages.
 | `mpi_np` · `omp_threads` · `max_memory_mb` · `gpu_count` | the allocation |
 | `block_size` · `parallel_over_k` · `diag_algorithm` · `use_gpu` | how the diagonaliser is decomposed across ranks |
 | `continue_retries` | how many times the wrapper retries — on a transport point, continuing the point's own cycle from its own last density (§ 2a.11) |
-| ~~`psml_lib`~~ | *(Class A since the catalogue marked it `shared`: one set of pseudopotentials per calculation, every rung built on it — for transport the set travels with the citation, `template.md` § 5)* |
+| ~~`psml_lib`~~ | *(Class A since the catalogue marked it `shared`: one set of pseudopotentials per calculation, every rung built on it — for transport the set travels with a cited run, and comes from the person's directory for a cited pair, § 3.1 (not built, Q17-c), `template.md` § 5)* |
 
 #### Deferred
 
@@ -1781,7 +1811,7 @@ failure it exists to prevent:
 
 | needed | why |
 |---|---|
-| **`TS.HS.Save`** | Class D for the leads — their essential output, and the one the device actually reads |
+| **`TS.HS.Save`** | Class D for the leads — their essential output, and the one the device actually reads. **Built**: `ts_hs_save`, a `role` item on the two electrode rungs and the device, `value = true`, nobody offered a switch (`catalogue.template.toml`; I13, § 5) |
 | ~~**the equilibrium pole COUNT**~~ | ~~`TS.Contours.Eq.Pole` gives the pole *energy*; the *number* of poles is a separate keyword~~ — **withdrawn**: on our deck shape TranSIESTA derives the count from the energy and overwrites the count keyword (§ 6.1c, `plan.md` § 5p.3o); the deck states the count beside the energy since M5 step 2 |
 | **the bias point** | `TS.Voltage` — Class D at the device and the transmission since 2026-09-29: the point of the description's list each rung runs (§ 2a.10) |
 | **`TBT.Verbosity`** | *(added 2026-09-23; its row lands with M5 step 1, § 6.1b.)* Class C at the transmission, an output preference like `write_coor_xmol`. **Closed 2026-09-29** — the row `tbt_verbosity` (the transmission's table above). Until then both NEGF decks wrote it from `TransportConfig.log_level`, which no catalogue row declared and no description could set: not a wrong answer, since the value, 5, IS tbtrans's own default, but a keyword entering a deck from outside the catalogue — the last of them, of the 19 fields the lifted NEGF block read |
@@ -2038,12 +2068,33 @@ structure brings no pseudopotentials, so citing one ended in the contract's own
 "put the files in `pseudos/` yourself", a hand step on the road; and a
 relaxation SIESTA was handed by hand brings no record of how it ended.*
 
-A transport calculation starts by pointing at **a relaxation run of
-molbuilder's own that has finished**, and nothing else:
+A transport calculation starts by pointing at one of two things: **a
+relaxation run of molbuilder's own that has finished**, or **a structure pair
+that records the optimization its geometry came from** — one frame, or a frame
+set (§ 2a.9). The second is designed (2026-10-09) and **not built** — plan
+§ 5z, Q17-c; today the citation door accepts the first alone
+(`compose.classify_citation`, its `CITATION_CONDITION`), and `jobset init`
+refuses `--psml-lib` for every transport calculation.
 
-| what you point at | the folder holds | you get | the settings come from |
+| what you point at | it holds | you get | the settings come from |
 |---|---|---|---|
 | **a finished relaxation run** — `<calc>/<NN>_<stage>/run-<n>` | its one `.fdf` and one `.XV`; its launch record and the wrapper's conclusion (`runrecord.ending`); its region labels in the deck's block or the `.molstruct.json` beside it; its pseudopotentials | geometry · labels · **settings** · how it ended and what it converged | the deck that actually ran |
+| **a structure pair** — `<name>.xyz` and its `<name>.molstruct.json` *(not built — Q17-c)* | the frames; the labels; `info.calculation`, the record of the optimization frame 0 came from — its engine, its deck and the deck's `contract` (basis, functional, mesh, k-grid, temperature, spin, charge) | geometry (every frame) · labels · **settings** | the pair's `info.calculation.contract`; the pseudopotentials from the directory you give that holds them all |
+
+**The pair's condition** *(user, 2026-10-09, D2: "D2 should use the same
+convention as in structure optimization: the user should provide the directory
+that holds all pseudopotentials"; "the record of transport shows where the
+files are copied from")*. The pair carries `info.calculation`; a pair with none
+is refused by name, because a bare structure brings nothing to default the
+settings from. The pseudopotentials come from the directory the person gives —
+the template's `psml_lib`, `jobset init --psml-lib DIR` or the form's
+pseudopotential directory — required as it is for a structure optimization,
+copied into the calculation, and the transport record says where they were
+copied from; `--psml-lib` is refused only for a cited run, whose
+pseudopotentials come with it. The pair's two files are pinned by their sha256
+in `slot-provenance.json`, as a cited run's files are, so a pair edited since
+is refused by name. A frame set's per-frame promises (§ 2a.9) are checked at
+this door, frame by frame.
 
 **Settings** here means what every stage of the calculation must agree on: the
 basis, the exchange–correlation functional and its authors, the mesh cutoff, the
@@ -2074,7 +2125,7 @@ leads and the device.
 > into the template (it is left blank, and floats), and a stated count is
 > refused by name.
 
-**The condition is the folder's files, and that it is a run of ours.** One
+**A run's condition is the folder's files, and that it is a run of ours.** One
 `.fdf` and one `.XV` — two of either is refused by name, telling you what the
 folder holds. Launched by `jobset launch`, so its launch record and the
 wrapper's conclusion say how it ended (`runrecord.ending`,
@@ -2110,7 +2161,9 @@ whatever the engine left when it failed.
 > `archive/2026-09-01-transport-design.md` § 4.1b). The two structure rows went
 > on 2026-10-08 with decision 7; the `info.calculation` block the Results tab
 > writes into a saved structure's sidecar, which that middle row read, has no
-> reader on this road since.
+> reader on this road today. The pair row above (designed 2026-10-09, Q17-c)
+> is its reader: a pair that records its optimization brings the settings to
+> default from, and the person's pseudopotential directory brings the rest.
 
 ---
 
@@ -2813,7 +2866,7 @@ six scattered versions could not do.
 | the per-rung form is generated from the catalogue | ✅ **done 2026-09-24** — `?surface=rung`, the `shared`, `allocation` and staging items kept off it by their markers, and the `role` items never a control (echoed read-only since K7) |
 | the shared panel exists | ✅ **done 2026-09-24** — card 2 of the tab, `?surface=shared`, its values the citation's answers, its source named; the describe door lays the panel's values over the citation's into the template and refuses a per-rung override of any shared item, as `prep` does |
 | a value nobody chose is shown as not chosen | ✅ **done** — the panel shows an unanswered `citation` row blank, and `jobset init` and the describe door both write it VALUELESS into the template through one door, `citation_defaults.transport_template_text` (2026-09-24); **the file records each value's source** and both surfaces draw it (K7, 2026-09-30). `prep` fills a valueless row with the documented default, which is what `template.md` § 6.6 obligation 4 asks — but the deck does not yet MARK it (the row below) |
-| the deck viewer | ❌ not built |
+| the deck viewer | ❌ not built — plan § 2, W30 ④ |
 | `role` items never a control on any form | ✅ **done** 2026-09-23, in `catalogue_to_form_schema`, per kind — and shown read-only at the rung's answer since K7 (`locked`, `form-schema.md` § 1.1) |
 | the Task setup stage table offers no shared value as a column | ✅ **done 2026-09-24** — `/api/task-setup/columns` reads `shared` per kind (measured that morning: thirteen offered, `mesh_cutoff` and `basis_size` among them) |
 | an override on a rung the `stages` marker excludes is refused at `prep` | ✅ **done 2026-09-24** — beside the shared refusal in `_resolve_transport`; the describe door routed by the declaration since TR8, the other roads reached `resolve`, which knows no ownership |
@@ -3112,7 +3165,8 @@ run.
 | I12 | no vacuum where the crystal continues — the room at the transport boundary is one layer spacing of the lead; a transverse axis declared periodic is reached across by the lead | every rung | a gap along transport = a severed lead, not a junction; vacuum on a periodic axis contradicts the declaration | **`cell.transport_vacuum`**, **`cell.transverse_vacuum`** — `_validate_transport_kind`, **error**, measured from the lead (§ 6.1c; re-homed 2026-09-17, measured from the lead since M5 step 2) |
 | P2 | the transmission window reaches the bias window — `transmission_emin_ev … emax_ev` covers ±(\|V\|/2 + 5 kT), both leads' Fermi tails at μ = ±V/2 | the transmission; the description | TBtrans integrates the current over its window and says nothing when the window cuts it short | **`config.transmission_emax_ev`** — one rule, `record.window_short_of`: the transmission deck's gate (**error**, its own V), the description's preflight (**error**, the largest listed V, the resolved transmission rung's window and temperature), the record (a voltage it does not integrate is blank with the reach named) (§ 2a.10; 2026-10-08) |
 | I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | **construction** — `TS.HS.Save` is a `role` item on the electrode rung |
-| I14 | The structure states its cell | citation | transport derives no box — the lateral pair is I6's, the period is the bulk repeat (§ 7), and a box from atom extents is neither (§ 2a.9) | `compose.py::_unusable_cell` — **refuses** at the citation door; `_validate_transport_kind`, **error** on every prep *(ruled 2026-09-23; the kind-gate row is owed in code)* |
+| I14 | The structure states its cell | citation | transport derives no box — the lateral pair is I6's, the period is the bulk repeat (§ 7), and a box from atom extents is neither (§ 2a.9) | `compose.py::_unusable_cell` — **refuses** at the citation door, which every rung's junction is composed through (ruled 2026-09-23) |
+| I15 | One species order | every rung | the order fixes each species' index in `ChemicalSpeciesLabel`, and that index the orbital ordering inside `.DM` and `.TSHS` (§ 2a.13) | **one rule** — `chemistry.species_order`, which every emitter asks; `species_order` is a `shared` item (`catalogue.template.toml`, `shared = ["optimization", "vibration", "transport"]`), so one value binds every rung; an override that omits a species the structure holds is refused (`transiesta._emit_geometry`). One rule, not one index: a lead ({Au}) and the device ({C, H, S, Au}) number their species differently, each by the same rule |
 
 **ELEVEN OF THE FIRST THIRTEEN NEED NO GATE UNDER THE COMPOSITE** *(measured
 2026-09-17, `plan.md` § 5p.3p.7)*. Seven hold by construction — every rung
@@ -4052,10 +4106,9 @@ single-point, or a relaxation if those layers are not frozen.
   2026-09-17.  That route is deleted: no browser had called it since
   2026-08-29, and the "engine" whose validation surface it was is not a
   registry — see the next bullet.)*
-- **Follow-up** (`plans/plan.md` § 5f, **S13**): a **convergence sweep** mode (auto-vary
+- **Follow-up** (`plans/plan.md` § 2, **S13**): a **convergence sweep** mode (auto-vary
   transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops
-  moving); the **Results-tab transmission inspector** (T(E) + I–V charts read
-  from the shipped `<label>.transport.json`); and a **PySCF-NEGF** backend —
+  moving); and a **PySCF-NEGF** backend —
   which arrives as **a `spec_for` arm and a set of catalogue rows**, its OWN
   config dataclass and the panel that renders it (§ 3.8.8), all in one commit.
   Until then its sub-tab is drawn and disabled, and no config carries its

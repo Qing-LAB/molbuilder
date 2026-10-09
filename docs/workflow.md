@@ -448,7 +448,7 @@ reader can check, not an arm nobody thought about.
 back out of a deck, how the launch line is formed. Those facts belong beside
 the engine's other seam answers, and moving them is the recorded seam item
 **W1** ([`backend-architecture.md § 5`](?doc=backend-architecture.md),
-scheduled in [`plans/plan.md`](?doc=plans/plan.md) § 5f, **S1**). Until then, adding an
+scheduled in [`plans/plan.md`](?doc=plans/plan.md) § 2, **S1**). Until then, adding an
 engine edits `runwrap.py` — which is exactly what
 [`generator.md § 7`](?doc=execution/generator.md)'s *"adding an engine adds
 files and edits none"* test exists to catch.
@@ -460,9 +460,9 @@ migrated 2026-08-29 as the COMPOSITE: still a different KIND of job
 ([`execution/architecture.md § 0`](?doc=execution/architecture.md)) — one
 citation of a finished junction attempt, five derived stages — but prepared,
 launched and summarized through the ordinary jobset verbs
-([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)).
+([`engines/transport.md`](?doc=engines/transport.md) § 1, § 3.1).
 
-**Where this is tracked:** [`plans/plan.md`](?doc=plans/plan.md) § 5f.
+**Where this is tracked:** [`plans/plan.md`](?doc=plans/plan.md) § 2, S1.
 
 ---
 

@@ -778,14 +778,14 @@ the one that survives — § 4c.4, proposed 2026-09-28.)*
 The two engines serve different links, and the discussion's division of
 labour is reproduced here with a third column — what this tool does today.
 
-| question | PySCF | SIESTA / TranSIESTA | in this tool, 2026-09-24 |
+| question | PySCF | SIESTA / TranSIESTA | in this tool, 2026-10-09 |
 |---|---|---|---|
 | the natural model | a molecule, or a finite metal–molecule cluster | a periodic surface or junction | the Spectrum tab sends an isolated structure to PySCF and one that repeats along an axis to SIESTA (`vibration.md` § 2.1) |
 | fixed atoms | selected nuclear coordinates left out of the active set | frozen substrate layers | one fact, `frozen_atoms` on the structure, read by both engines (§ 4b.4) |
 | fixed atoms electronically present | yes | yes | yes on both: every atom is in `gto.M` and in the SIESTA cell |
 | the Hessian | analytic, for supported methods | finite displacement of the forces | `hess_elec` + `hess_nuc` over the free atoms plus the dispersion block; `MD.TypeOfRun FC` over the free range |
 | the partial Hessian | the `atmlst` framework | displace the active atoms only | both built (`vibration.md` § 4.4, § 5.3) |
-| δ convergence | none for the Hessian | required | `fc_displacement` is a stage item, so a ladder of δ runs is describable; no comparison tool (§ 4b.9). PySCF's strengths and its probe are finite differences with steps of their own (§ 4b.5) |
+| δ convergence | none for the Hessian | required | `fc_displacement` is a stage item, so a ladder of δ runs is describable, and `jobset summarize task` compares the stages into `<label>.fc-sweep.json` (§ 4b.6 C; `spectra/displacement_sweep.py`). PySCF's strengths and its probe are finite differences with steps of their own (§ 4b.5) |
 | active-region convergence | useful | strongly recommended | two structures, two runs; the artifact records the free set; no matching tool (§ 4b.9) |
 | normal modes | yes | yes | one function for both, with the rank rule in front of the eigenproblem (§ 4b.1) |
 | infrared and Raman | molecular response calculations | hard at a metal surface | PySCF: built (§ 4a); SIESTA: absent, never zero (§ 4a.6, § 4b.7) |
@@ -1080,12 +1080,18 @@ a metal-connected molecule has no clean HOMO and LUMO, the projected density
 of states `PDOS(E, Q)`, the molecular resonance energies `ε_r(Q)` and widths
 `Γ(Q)`, the charge redistribution `Δρ(r, Q)`, and with TranSIESTA the
 transmission `T(E, Q)`; then `∂ε_r/∂Q` and `∂T(E)/∂Q`, which is the detector
-question directly. *Tool:* not built. The displacement arithmetic exists
-twice (the PySCF probe, the animation), the pair writer exists, and the
-amplitude has one right answer rather than being a knob — the zero-point and
-thermal amplitudes of `web/spectra.md` § 4.1, paired with the canonical
-eigenvector (`vibration.md` § 5.6, "level one"). Each of PDOS, Δρ and T(E, Q)
-is a run of its own kind on the displaced pair.
+question directly. *Tool:* not built. The displaced frames are written by
+the frame-set generator (V1.25, a module of its own), as one multi-frame pair:
+frame 0 the relaxed structure, the displaced frames through the structure's
+own doors — `with_frames` for the coordinates, `set_customized(…, frame=i)`
+for each frame's rows — a displaced frame's mode, node, weight and order,
+frame 0's weight, every weight stated and the set's summing to 1
+(`vibration.md` § 5.10 ③; `model/structure.md` § 2.2d–2.2e). The
+displacement arithmetic exists twice (the PySCF probe, the animation), and
+the amplitude has one right answer rather than being a knob — the nodes of the
+thermal distribution, paired with the canonical eigenvector (`vibration.md`
+§ 5.6, "level one"; § 4c.5). Each of PDOS, Δρ and T(E, Q) is a run of its own
+kind on the frame set.
 
 **H — spectroscopy on this route.** § 4b.7.
 

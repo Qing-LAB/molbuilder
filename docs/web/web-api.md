@@ -55,8 +55,10 @@ built by `workspace_payload()` (the single serializer):
 `notices` and `issues` are different channels and do not overlap. An **issue**
 is a validation finding about a calculation you are about to run — it is what
 the Generate panel lists, and it carries a `where` naming the field to fix. A
-**notice** is what the periodicity gate says about the box on the structure in
-this answer; it is absent when there is nothing to say.
+**notice** is what the server says about the structure in this answer — the
+periodicity gate on its box, a merge on what it did not carry, a load on how it
+read the file (`structure.lone_file`, `cell.origin_retired`); it is absent when
+there is nothing to say.
 
 **A notice says what it is ABOUT**, and that is what decides where it is shown:
 `about: "cell"` puts it beside the cell rows, on the page whose controls can
@@ -94,7 +96,7 @@ caller holds.
 | `/api/structure/export` | `{structure: <envelope>, name?}` — the same |
 | ~~`/api/build/fdf`~~ · ~~`/api/build/pyscf`~~ · `/api/build/preflight` | `{structure: <envelope>, params, structure_path?}` — the **emit** doors. `structure_path` is provenance and a dest-dir anchor, never a source of geometry or labels |
 | ~~`/api/transport/render`~~ | **DELETED 2026-09-17.** It rendered a device deck and handed the text back; no browser had called it since 2026-08-29, and a browser renders no deck (`tabs.md`) — the same ruling that retired `/api/build/fdf` and `/api/build/pyscf` on 2026-08-17. It was the last door to take a file PATH as its geometry, which is the migration described in § 2's envelope rule below |
-| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename}`. **Not the envelope** — nothing is being sent back, something is being *parsed*, and the text carries atoms only: no labels, no cell, no `info` rides beside it, because nothing sends them (plan § 5q D15). A `path` load reads all three off disk, and says when the pair carried a retired `cell_origin` it did not apply (`cell.origin_retired`, `info`, naming the corner; D14). **Which frame** (`model/structure.md` § 2.3): `frame: i` answers that frame alone; `frames: true` the whole set, inside the envelope (`frames` in place of `positions`, each frame's rows in `metadata.customized.frames`); neither, frame 0 — as `StructureCodec.load`. Every answer carries `n_frames`, the count the file holds, so a tab can ask which frame (`tabs.md` § 2) and a viewer can ask for the set (`molview.md` § 9.4). It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run, and answered whole (a frame set with every frame; no frame is chosen) |
+| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename}`. **Not the envelope** — nothing is being sent back, something is being *parsed*, and the text carries atoms only: no labels, no cell, no `info` rides beside it, because nothing sends them (plan § 5q D15). A `path` load reads all three off disk, and says when the pair carried a retired `cell_origin` it did not apply (`cell.origin_retired`, `info`, naming the corner; D14); a lone file — no `.molstruct.json` beside it — is atoms and coordinates, and the answer says so (`structure.lone_file`, `info`, about `structure`, quoting the comment line it did not read as metadata; `model/structure.md` § 2.3). **Which frame** (`model/structure.md` § 2.3): `frame: i` answers that frame alone; `frames: true` the whole set, inside the envelope (`frames` in place of `positions`, each frame's rows in `metadata.customized.frames`); neither, frame 0 — as `StructureCodec.load`. Every answer carries `n_frames`, the count the file holds, so a tab can ask which frame (`tabs.md` § 2) and a viewer can ask for the set (`molview.md` § 9.4). It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run, and answered whole (a frame set with every frame; no frame is chosen) |
 | `/api/selection/eval` | `{atoms: [{element, labels, residueName, atomName, chainId}], rule}`. **Not the envelope:** no rule matches on position (`molview.md` § 9.5), so no coordinates are sent — the cut-down list is the whole of what a filter needs. `atomName` / `chainId` joined it 2026-09-07: they are what `by_atom_name` and `by_chain_id` match on, and without them the server rebuilt the structure with `Structure`'s defaults — atom name = element symbol, chain = `"A"` — so both rules answered **200 with a wrong answer** rather than refusing (`by_atom_name "CA"` never matched an alpha carbon; `by_chain_id "B"` never matched anything). Both keys are optional and fall back to those same defaults, so an older caller is unaffected |
 
 > **The text branch of `/api/build/load` is down to callers that should not be
@@ -206,21 +208,21 @@ which is a bug this project has already shipped once.
 
 | door | request | response |
 |---|---|---|
-| `load` | `{path}` **or** `{document, filename, format}` for a paste — the only place raw text is legitimate, because a user supplied it | the envelope |
+| `load` | `{path}` **or** `{text, filename}` for a paste — the only place raw text is legitimate, because a user supplied it — **or** `{structure}`, a structure put back; `frame` / `frames` say which frame a path or a text answers with (§ 1's `/api/build/load` row) | the envelope, `n_frames`, and `notices` (a lone file's `structure.lone_file`, a retired corner's `cell.origin_retired`) |
 | `modify/<op>` | the envelope + the op's arguments | the envelope |
 | `periodicity/<op>` | the envelope + `op`, `payload` | the envelope |
-| `save` | the envelope + `path`, `overwrite`, `frames?` | `{ok, path}` |
-| `export` | the envelope + `name?` (the stem), `frames?` | `{ok, files: [{name, text}], frames, notices}` — the same generator the save uses, **named** |
+| `save` | the envelope + `path`, `overwrite` — a frame set's frames and rows inside the envelope | `{ok, path, notices}` |
+| `export` | the envelope + `name?` (the stem) — the range's frames and rows inside the envelope | `{ok, files: [{name, text}], frames, notices}` — `frames` the count the files hold; the same generator the save uses, **named** |
 | `selection/eval` | the envelope + `rule` | `{selected_indices}` |
 
 **The export door answers with named files, and that is not cosmetic.** Each
 entry is `{name, text}` — the file as it would exist on disk, under the name it
 would exist as. The caller supplies `name` as a **stem** (`wire_frame40-120`,
 no extension) because only the caller knows what the export *is*; the server
-completes it, because the extension follows from the format and the format
-follows from the frame count, which `StructureCodec.pair` already decided.
+completes it, because the extension follows from the format, which
+`StructureCodec.pair` already decided.
 
-Both files come back under `.xyz` — plain XYZ, a block per frame, so the same
+The geometry comes back under `.xyz` — plain XYZ, a block per frame, so the same
 extension covers one frame or four hundred, which is the ordinary convention
 and what our own load door accepts. A caller that builds the
 names itself is keeping a second copy of the pairing rule; the one that did also
@@ -262,7 +264,7 @@ cases the current designs need, and the answer for each is part of the contract:
 |---|---|
 | **a new kind of per-atom fact** | added to the **structure**, in the one place its codec lives (`to_dict` + the two metadata methods) — and it is then on the wire, in the sidecar and through every edit, with no door touched. What the envelope does *not* do is carry a field the structure does not model: `apply_metadata_dict` checks against `METADATA_FIELDS` and **REFUSES** an unrecognised key, naming it. *(This said "dropped" until 2026-08-04, and the code said refuse — changed for #41, where a key that was dropped rather than refused is how frozen atoms vanished from a real run. A fact worth surviving a round trip is a fact worth the structure knowing about; a fact the structure does not know about is worth saying so about, not swallowing.)* |
 | **part of a structure** — a partial translate or rotate, where the edit routes act on the whole structure they are given | an envelope may describe a **subset**, with `source_index` giving each atom's number in the structure it came from. The receiver answers about the subset; the caller maps the coordinates back. Without this the caller sends a bare document and re-checks element-by-element that nothing was reordered, which is what the previous implementation had to do |
-| **one frame, or many** | `positions` is **one frame** — the one the user is looking at (§ 6). A trajectory is not a wire concern: its frames come from a run file the tab owns, and what leaves a viewer is the frame that was chosen. A door that ever needs many is a new door, not a wider envelope |
+| **one frame, or many** | ONE KEY OR THE OTHER, as `Structure.to_dict` writes it (`model/structure.md` § 2.1, § 2.2e): `positions` for one frame, `frames` for a frame set — every frame inside the envelope, each frame's rows in `metadata.customized.frames`, never a `frames` list beside it. `/api/build/load` answers frame 0 unless asked, one frame with `frame`, the whole set with `frames: true`, and always the file's `n_frames`; a structure put back (`{structure}`) is answered whole. An export carries the range the viewer asked for (`molview.md` § 11.7). A run's own trajectory is the one thing that arrives outside the envelope: its frames are parsed from a run file the tab owns (`/api/watch/*`) and handed to the viewer by that tab |
 | **where a structure lives** | **not in the envelope.** A path is an argument to the call — `save` takes one, `load` takes one — because the envelope describes a *structure*, never a location. A structure that carries its own path is one that can be saved to the wrong place by being copied |
 | **what the server wants to say** | `notices` beside `ok` — `{severity, message, where, about}` rows (`where` is the stable finding id; `about` is the subject that decides where it is shown) the door produces about the structure it is answering with: a box that no longer contains its atoms, a vacuum a typed cell has made inert (the full set is `model/structure-periodicity.md` § 6.1a, table B). Nothing is corrected, so a notice never reports a repair. They belong to the *call*, not to the structure, so they never ride inside it |
 
@@ -549,7 +551,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 
 | Method · Path | Purpose |
 |---|---|
-| POST `/api/build/load` | Load a structure (path / upload / raw text) |
+| POST `/api/build/load` | Load a structure — a project path, a pasted or uploaded text, or a structure put back; frame 0 unless `frame` or `frames` says otherwise, `n_frames` in every answer (§ 1) |
 | POST `/api/build/molecule` | Build a molecule from a backend. A tool this install lacks — a builder backend, or the hydrogen engines — is **advice, not a fault**: `200` with `{ok: false, reason: "backend_unavailable", backend, error}`, `backend` naming what is missing (`threedna`, `amber`, `rdkit`, `hydrogens`), else the backend asked for (`chemistry.BackendUnavailable.missing`) |
 | GET `/api/modify/meta` | Element/tool metadata for the Modify UI |
 | POST `/api/modify/{delete,add_atom,orient,rotate,translate,slab}` | The six structure edits |

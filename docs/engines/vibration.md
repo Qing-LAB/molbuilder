@@ -23,7 +23,8 @@ catalogue is narrowed to a kind);
 [`model/overview.md`](?doc=model/overview.md) § 2.2 (what a reorder may do);
 [`science/validation.md`](?doc=science/validation.md) (the gate the kind's
 checks run in). **Open items:** row **V1** of
-[`plans/plan.md`](?doc=plans/plan.md), and nowhere else.
+[`plans/plan.md`](?doc=plans/plan.md), the one list; § 10 says what stands
+and points there.
 
 > **Consolidated 2026-09-24** from the design of 2026-09-21, the follow-up
 > audit of 2026-09-22, the UI walk of 2026-09-23 and the implementation
@@ -1160,7 +1161,7 @@ vibration:
 
 | the ladder | asked | the geometry | the files | recorded |
 |---|---|---|---|---|
-| an enabled `relax` — whatever the box says (§ 2.2) | nothing: the default | `relax`'s newest attempt, which must have finished — refused while it has not (not launched, queued, running, stopped without its marker, failed), naming the command, and the newest earlier run of `relax` that did when there is one | that run's, by the hand-over's rule | `.continued-from`, the ledger's `continues`, `run.json` at launch |
+| a `relax` in the ladder — whatever the box says (§ 2.2) | nothing: the default | `relax`'s newest attempt, which must have finished — refused while it has not (not launched, queued, running, stopped without its marker, failed), naming the command, and the newest earlier run of `relax` that did when there is one | that run's, by the hand-over's rule | `.continued-from`, the ledger's `continues`, `run.json` at launch |
 | | `--from <a run of relax>` | that run, taken as said — prep states what it is (failed, not concluded, not converged: *expect imaginary frequencies*), and refuses only what cannot be done: a run holding none of the files the hand-over carries, an output that holds no geometry, or one whose atoms are not this calculation's in this order | that run's | the same |
 | | `--from` a run of another stage | refused: the stage builds on `relax` | — | — |
 | | `--cold` | refused: the stage measures at the geometry `relax` reached; to measure the structure as given, remove `relax` and state the structure relaxed | — | — |
@@ -1687,8 +1688,8 @@ that exists:
 | exists | reused for |
 |---|---|
 | both eigenvector forms and the zero-point amplitude of every mode (§ 6.3) | the frames and the modes' character |
-| the frame set — one multi-frame pair, its rule in the sidecar's `info` (`engines/transport.md` § 2a.9, V1.25) | the one interface between a vibration and every run along its modes |
-| the axis rule — a stage carries a sub-level for each axis it varies over (`engines/transport.md` § 2a.11, W32) | one run per frame, the shared runs once |
+| the frame set — one multi-frame pair, each displaced frame's rule in its `customized` rows (③; `engines/transport.md` § 2a.9, V1.25) | the one interface between a vibration and every run along its modes |
+| the axis rule — a stage carries a sub-level for each axis it varies over (`engines/transport.md` § 2a.11) | a level per frame inside one run, the shared runs once |
 | the job's own finish, a bundle that travels (§ 5.5, I22, I23) | each frame's electronic result, written by its own job |
 | `summarize` over results that exist — nothing lost, nothing copied, matching by shape (§ 5.9, I25) | the response of each mode across its frames |
 | the PySCF probe (§ 4.8) | the free molecule's answer (V1.27) |
@@ -1754,14 +1755,24 @@ the stated temperature (three by default, five on request, science § 4c.5):
 `Q_zp` and `L_canonical` are read from the result (§ 6.3) — the canonical form
 only, by § 6.3's pairing rule. The generator builds the set through the
 structure's own doors ([`model/structure.md`](?doc=model/structure.md) § 2.2d–
-2.2e): `with_frames` for the coordinates, and for every frame, frame 0
-included, `set_customized(…, frame=i)` for its rows — `mode`, `node_sigma`,
-`weight`, `order`, `frequency_cm1`, `sigma_amu12_ang`, `q_amu12_ang`,
-`max_displacement_ang`, `temperature_k` (frame 0, the equilibrium, has no
-`mode`); user, 2026-10-09: *"one list, having the same number of elements as
-the frames"*. The vibration run it read (its path and structure hash) is
-recorded as an `info` entry of its own; the base's weight in each mode's
-average is `1 − Σ_j w_j`. Each frame also states its largest atomic displacement against
+2.2e): `with_frames` for the coordinates, and for every frame
+`set_customized(…, frame=i)` for its rows — on a displaced frame `mode`,
+`node_sigma`, `weight`, `order`, `frequency_cm1`, `sigma_amu12_ang`,
+`q_amu12_ang`, `max_displacement_ang`, `temperature_k` — one row set per frame,
+as many as the frames (user, 2026-10-09: *"one list, having the same number of
+elements as the frames"*). **Every frame states its `weight`, frame 0
+included** (user, 2026-10-09: *"all weights should add up to 1 that's an
+explicit rule within error tolerance"*): a displaced frame's is its node's
+Gauss–Hermite weight; frame 0, the equilibrium, shared by every mode and so
+with no `mode` or `order`, states `1 − Σ w_f` over the displaced frames in the
+set's sum, below zero once the
+displaced weights pass 1 (`engines/transport.md` § 2a.12). The generator
+writes every weight at full precision, and the weights of frame 0 and each
+mode's frames at its highest order sum to 1 (a mode given both orders keeps its
+lower order's frames as the check, `engines/transport.md` § 2a.12). For one
+mode at three points: `⅔, ⅙, ⅙`. *(Whether one set may hold several modes — and so frame 0's weight across them and a sum over modes — waits on the user's word, asked 2026-10-09: plan § 5z.1.)* The vibration run it read (its path
+and structure hash) is recorded as an `info` entry of its own. Each displaced
+frame also states its largest atomic displacement against
 that atom's nearest-neighbour distance (science § 4c.5, soft modes) — a warning
 above a stated fraction, never a refusal. The pair keeps the transport frame
 set's promises by construction — count, order, species and labels unchanged,
@@ -1778,7 +1789,8 @@ calculation kind `electronic` on SIESTA — one SCF per frame, in the cell and a
 the settings of the vibration the frames came from, so the modes and the screen
 share one model (taken the way transport takes its shared values from the
 relaxation it cites, `engines/transport.md` § 2a.7), the frames on the axis
-rule's sub-level (`01_scf/f000/run-0`, `f001/…`). Each frame's job writes its
+rule's sub-level inside one run (`01_scf/run-0/f000/`, `f001/…`, as transport's
+frames sit, `engines/transport.md` § 2a.11). Each frame writes its
 own result through a finish — § 5.5's pattern, its bundle under I23 — as
 `<label>.electronic.json`:
 
@@ -1789,7 +1801,7 @@ own result through a finish — § 5.5's pattern, its bundle under I23 — as
 | `pdos` | the DOS projected on the free atoms, and per element, on its energy grid relative to `E_F`, per spin — the raw curves — with the broadening they were computed at |
 | `resonances` | the peaks of `pdos` in a window around `E_F`: position − `E_F`, width, weight, and each element's share of the peak; the nearest below and above `E_F` named |
 | `levels` | the free atoms' own states (the extended molecule's MPSH, science § 4c.2) in a window around `E_F`: energy − `E_F`, each state's weight per element, and its coefficient vector, so a level can be followed across frames — *only with sisl in the job env, D5* |
-| `frame` | the frame's token and its row of the frame rule (③), copied from the pair's `info`, so the file says where it stands |
+| `frame` | the frame's token and its `customized` rows (③), copied from the pair, so the file says where it stands |
 
 Optionally the density grid for `Δρ_ν(r)` (V1.26), which then rides on the same
 frames. The Fermi level and the charges are text in the output, read by the
@@ -2246,8 +2258,9 @@ flowchart TB
   the real-space grid (0.09 Å spacing against 0.01–0.04 Å nudges) is the usual
   suspect, not isolated here. So the plateau `ω(δ) ≈ ω(δ/2)` of
   [`science/normal-modes.md`](?doc=science/normal-modes.md) § 4b.6 C is not
-  reached at the default, and a δ-only ladder cannot say why; V1.23 pairs a
-  mesh rung with the δ rung. The block's asymmetry is 10⁻¹² eV/Å² throughout:
+  reached at the default, and a δ-only ladder cannot say why; the sweep takes
+  a mesh rung beside the δ rung (V1.23, § 5.9), and the measured δ+mesh
+  comparison on H₂ is V1.38, not yet run. The block's asymmetry is 10⁻¹² eV/Å² throughout:
   on this axial block the off-diagonals vanish by symmetry, so it shows nothing
   here.
 
@@ -2260,8 +2273,8 @@ through the whole road — acetylene with both carbons held (the collinear
 trap), NH₃ with its three hydrogens held (nothing removed), an empty held
 list reproducing the free path *exactly*, and the water dimer with one
 molecule held (the over-removal guard) — which exist today as rank rows
-only (V1.17); a δ-convergence comparison that also varies the mesh (V1.23);
-mode matching across runs (V1.24).
+only (V1.17); the δ-convergence comparison run with a mesh rung beside it
+(V1.38 — the sweep takes one, § 5.9); mode matching across runs (V1.24).
 
 **The tests**, by what each proves:
 
@@ -2330,7 +2343,7 @@ nothing is in that state as of 2026-09-28.
 | the pair writer renders both halves before it writes either (`pair()` returns text) | **owed** — ruled 2026-09-23; **the deck's half built 2026-10-05**: the deck writes its pairs with the codec itself, imported from `mb_pyscf.pyz` (`engines/pyscf.md` § 3), so its own serialiser — the third — is gone | `plans/plan.md` V1.10; what remains is the half-written pair: a NaN in `info` raises at the sidecar write after the `.xyz` is on disk |
 | the reduced Hessian with a GPU mean field | **untested** | § 4.4 |
 | a composed permutation for a structure sorted for two reasons | **owed** — no caller yet | § 5.2 |
-| `transport/compose.py` writes and reads its record through the one pair and stamps its key | **owed** | § 5.2, I7 |
+| `transport/compose.py` writes and reads its record through the one pair and stamps its key | **built** — `sort_by(relaxed, "transport")`, `write_permutation`, `read_permutation` (`compose.py:757`, `:831`, `:911`); the key stamped by `SortResult.to_dict` (`sort.py:168-169`) | § 5.2, I7 |
 | the transport connection's level two (the coupling from `FC.Save.dHS`); Born-charge infrared on SIESTA | **not in scope** — recorded so the design does not foreclose them; level one is V1.25 below | § 5.6 |
 | an external mode-by-mode intensity cross-check | **not done** | § 9 |
 | four held systems through the whole road (acetylene, NH₃, the empty held list, the water dimer) | **owed** — V1.17 | § 9 |
@@ -2348,8 +2361,8 @@ nothing is in that state as of 2026-09-28.
 | ~~the PySCF deck's own `_optimized.xyz` pair records `info.relaxation`~~ | **closed 2026-09-29** by the one-source rule (V1.31): the record is the one reader's (`parse.contract.relaxation_of`, over the run's own output), which the Results tab's export writes; a copy computed in the deck would be a second writer of it | § 2.2 |
 | a δ-convergence report: two stages at δ and δ/2 and a printed comparison of `ω_ν` and `e_ν` | **built 2026-09-28** — V1.23: `summarize task` writes `<label>.fc-sweep.json` (modes matched by shape, the force constants compared from the raw `.FC`), the Results tab presents it, and every force-constant stage measures at the relaxed geometry | § 5.9 |
 | mode matching across runs by eigenvector overlap in the shared free subspace (Models A/B/C; PySCF against SIESTA) | **owed, needs a design** — V1.24 | `science/normal-modes.md` § 4b.6 F |
-| mode-displaced structure pairs on SIESTA at the zero-point and thermal amplitudes; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | **not built, needs a decision** — V1.25, V1.26 | § 5.6 |
-| the PySCF probe: five points, the coupling per zero-point amplitude `g_ν`, a molecule-projected window for a cluster | **owed, needs a decision** — V1.27 | § 4.8 |
+| mode-displaced structure pairs on SIESTA at the zero-point and thermal amplitudes; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | V1.25 **decided, not built** (D6, D7; the frame set of § 5.10 ③, written through `with_frames` and each displaced frame's `set_customized(…, frame=i)` — the structure's doors exist since `c93da223`); V1.26 **needs a decision** (M10) | § 5.6, § 5.10 |
+| the PySCF probe: five points, the coupling per zero-point amplitude `g_ν`, a molecule-projected window for a cluster | **decided, not built** — V1.27 (D8: the same nodes as the frame set) | § 4.8, § 5.10 |
 | the force-constant stage leaves the input's relaxation record behind; its calculation record stays | **built 2026-09-29** — V1.35 | § 5.2a |
 | what a force-constant stage says about its geometry after the ladder's relax: the relax stage's outcome and its remedy, not the describe-time box and record advice | **built 2026-09-29** — V1.36, the user's word the same day | § 5.2a, § 5.8 |
 | the response screen — which mode to take to transport: each mode's character, the charge it moves, the frame set at thermal nodes, an `electronic` kind, the per-mode response record and its ranking table | **decided 2026-09-28, not built** (D1–D5, D7, D8; D6 as recommended; E3 owed) — V1.34, W42 | § 5.10; `science/normal-modes.md` § 4c |

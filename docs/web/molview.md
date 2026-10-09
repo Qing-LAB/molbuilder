@@ -1039,7 +1039,10 @@ map that put an error in the tone of a remark.
 > for this panel's density and owns nothing about the severity.
 
 Every one of them is worded by the server — the conditions by `cell.check`, the
-receipts by `periodicity_gate` — MolView writes none and
+receipts by `periodicity_gate`, and what a read says about the file by the load
+door: a lone `.xyz` read as atoms and coordinates, its comment line quoted
+(`structure.lone_file`, `model/structure.md` § 2.3), and a retired corner it did
+not apply (`cell.origin_retired`), both receipts of the read — MolView writes none and
 rewords none, because the numbers in them (determinants, per-axis clearances)
 were computed there and a second author would be writing a sentence only one of
 them can. They reach it through three doors:
@@ -1692,8 +1695,15 @@ recorded, not warned.
 the structure — so a load with no `info` in it does not merge, it
 empties.  A host that loads ONCE may attach the store afterwards
 through `data.info.set`; a host that REBUILDS — the Results trajectory
-rebuilds on every poll and every filter change — hands the store to
-every `installMolecule` call, or it lasts until the next tick.  The
+rebuilds on its first load and on a poll that is not a provable
+continuation of the frames it holds (the atom count or the cell changed,
+the frames shrank, the last frame it holds rewritten, an append that did
+not land), never on a poll that only appends frames or brings nothing
+new — hands the store to every `installMolecule` call (it rides the
+server's frame-0 envelope), or it lasts until the next rebuild.
+*(Defect — plan § 2, T1: the trajectory's rebuild calls `installMolecule`
+without `enforce` in its read-only viewer, so § 9.4's gate refuses every
+rebuild after the first, silently.)*  The
 load parameter is also the only way the store is on the atoms *before*
 anything can read them (§ 6.4) and the only way the history anchor is
 recorded WITH it (§ 11.2) — the same argument the frames won on.
@@ -2249,9 +2259,8 @@ because a coordinate document is a format the server owns).
   the name it came in under — and stops there (§ 11.7). The range defaults to **the frame currently displayed** (§ 6.4),
   which is what makes § 5.1 true at the point a user acts; asking for more is how
   a trajectory leaves. It writes no text and assembles no sidecar, because a
-  coordinate document is a format the server owns, and **which** document — one
-  frame's plain `.xyz` or a range's extended one — is decided by the count, downstream
-  (§ 11.3). It **refuses** to produce anything when the geometry and the per-atom
+  coordinate document is a format the server owns — a plain `.xyz`, a block per
+  frame in the range (§ 11.3). It **refuses** to produce anything when the geometry and the per-atom
   labels disagree about how many atoms there are, returning nothing rather than
   handing on a corrupt structure. It is not a disk write and not the session
   save.
@@ -2319,7 +2328,10 @@ editing door ever meets one, so none of them needs a rule of its own. A
 read-only viewer takes a frame set whole. A run's own frames are not a frame set
 (§ 11.7): they are delivered through the frame doors, the same in both modes, as
 above. The tab that wants one frame of a file asks the person which (the
-Molbuilder tab's Load, `tabs.md` § 2) and installs that one with `frame`.
+Molbuilder tab's Load, `tabs.md` § 2): it reads the file through
+`/api/build/load`, which says how many frames it holds, asks for the chosen
+one with `frame`, and installs the one-frame envelope that answered, put back
+(`{structure}`, § 11.7).
 
 > Asking instead "does this touch the master copy?" reads the same table and
 > gives the wrong answer, because appending a frame literally does. Gated on that
@@ -3733,7 +3745,9 @@ and 4 is a view of it, which is the line § 11.2 draws.
 structure says — elements, the frame range's coordinates, labels (as
 `regions`), the identity columns (atom names, residue ids/names, chains —
 the title is the geometry file's own comment line, `model/structure.md`
-§ 2.2c), the per-atom channels, and the periodicity block. There is no
+§ 2.2c), the per-atom channels, the periodicity block, the `customized` rows —
+the structure's and each exported frame's (`model/structure.md` § 2.2d) — and
+the `info` records (§ 8.4a). There is no
 narrower "export subset": the envelope is built by the ONE outbound read
 (§ 9.3's `structureForServer`), whose fields mirror the ONE adoption
 (§ 11.1), so a pair that enters the viewer leaves with all of it — edits
@@ -3785,7 +3799,7 @@ workspace's own error channel, and the notification bar shows it.
 
 | | the displayed frame | every frame |
 |---|---|---|
-| **the truth** | plain `.xyz` + `.json` | extended `.xyz` + `.json` |
+| **the truth** | plain `.xyz` + `.json` | plain `.xyz`, a block per frame, + `.json` |
 | **a view of it** | `.png` | `.webm` / `.gif` |
 
 Drawing it is what shows the gap: this section listed three exports for a long
@@ -3807,7 +3821,7 @@ So the menu offers **two** things, and each asks **which frames** as a range:
 
 | The menu item | Reads from | Asks | Produces |
 |---|---|---|---|
-| **Data** | the master copy | a frame range | one frame → a plain `.xyz` + `.json`; more → an extended `.xyz` + `.json` |
+| **Data** | the master copy | a frame range | a plain `.xyz` + `.json` — a block per frame, as many as the range |
 | **Image** | the drawing | a frame range, a **resolution** (1×/2×/4× of the window), and — for a range — **webm or gif** | one frame → `.png`; more → the chosen `.webm` / `.gif` |
 
 *(The resolution and the movie-format choice are the user's additions,
@@ -3822,7 +3836,7 @@ and throwing most away. The grid's four cells are the two corners of this range
 at each menu item; they are what the range *degenerates to*, not what it can do.
 
 **The format follows from the count, and is not a third question.** One frame is
-a plain `.xyz` or a `.png`; more than one is an extended `.xyz` or a movie. Nobody is asked,
+an `.xyz` of one block or a `.png`; more than one is an `.xyz` of as many blocks or a movie. Nobody is asked,
 because there is nothing to decide: the count already determined it.
 
 **The range defaults to the displayed frame**, which is what keeps § 5.1 true at
@@ -4412,19 +4426,13 @@ relative to the atoms that stayed.
 > section named its own release condition — *"if the doors ever accept `elements`
 > + `positions`, both exceptions disappear with them"* — and the envelope met it.
 
-**One exception is left, and it is the only one.** The rule says the server writes
-every file; there is one case where it cannot, and it is named so that a second is
-never added quietly:
-
-| Exception | Why the server cannot answer | What the viewer does |
-|---|---|---|
-| **a frame the server has never seen** — a trajectory scrubbed away from the loaded geometry | those coordinates came from the tab's own run file; there is no server-written document for them | writes the coordinate document for that frame, **in the server's format** — same decimals, title kept — so it differs from a server-written one in nothing but provenance |
-
-It is not a licence: a viewer that writes a coordinate document in any *other*
-circumstance has broken the rule, and nothing in the module does — the writer is
-gone (2026-07-31), not merely constrained. `exportFile(range)` returns the structure
-as data and stops; the bytes come from the server's one generator, which is why
-a project save and a download cannot differ.
+**There is no exception, not even for a frame the server has never seen.** A
+run's trajectory scrubbed away from the loaded geometry holds coordinates that
+came from the tab's own run file, and it still leaves as an envelope:
+`exportFile(range)` returns the structure as data and stops, and the bytes come
+from the server's one generator, which is why a project save and a download
+cannot differ. A viewer that writes a coordinate document has broken the rule,
+and nothing in the module does.
 
 **Every door takes the atoms as numbers, so the rule holds by construction.** A
 viewer that holds coordinates as numbers hands them over as numbers: load, the
@@ -4438,17 +4446,22 @@ the cell answered 400 to every request ever made of it, silently, for as long as
 it existed. A door whose shape only one side can speak is a door that is shut.
 
 **A frame set crosses inside the envelope, both ways** *(plan § 5z.8 F)*. In:
-a load that names no `frame` answers the whole file — the envelope with
-`frames` in place of `positions` and each frame's rows in
-`metadata.customized.frames` (`model/structure.md` § 2.1, § 2.2d) — and a load
-that names one answers that frame alone. Out: `exportFile(range)` hands over
-one envelope, the range's frames and their rows inside it. There is no `frames`
+`installMolecule` handed a path or a text and no `frame` asks the server for
+the whole file (`frames`) — the envelope with `frames` in place of `positions`
+and each frame's rows in `metadata.customized.frames` (`model/structure.md`
+§ 2.1, § 2.2d), which a read-only viewer takes and an editable one refuses
+when it holds several (§ 9.4) — and one that names a `frame` asks for that
+frame alone. (The route itself, asked neither, answers frame 0 —
+[`web-api.md`](?doc=web/web-api.md); the viewer always asks one or the other.)
+A structure put back (`{structure}`) is answered whole, as `exportFile`'s
+inverse, with no frame choice. Out: `exportFile(range)` hands over one
+envelope, the range's frames and their rows inside it. There is no `frames`
 list beside an envelope in either direction, because a list beside it is a
-second carrier the translators would have to pair by hand. **The one
-exception** is a run's own trajectory: its frames are parsed by the tab from
-the run's file (§ 6.3), carry forces and no rows, are handed to
-`installMolecule` / `reloadFrames` / `addFrames` by that tab, and replace any
-frame axis the envelope had.
+second carrier the translators would have to pair by hand. **One thing
+arrives outside the envelope**: a run's own trajectory — its frames are parsed
+by the tab from the run's file (§ 6.3), carry forces and no rows, are handed
+to `installMolecule` / `reloadFrames` / `addFrames` by that tab, and replace
+any frame axis the envelope had.
 
 > The envelope's field-level JSON lives with the other wire shapes in
 > [`web-api.md`](?doc=web/web-api.md) § 1, not here. This document says *that* a
@@ -4621,9 +4634,9 @@ project** — with isolate switched on, because they had been looking at one reg
    numbering, whatever isolate is doing to the picture (§ 6.3).
 3. One frame, so the pair is an `.xyz` and its `.json` — the sidecar carrying the
    labels, the cell and the residues (§ 11.3). Had they widened the range to
-   40–120 instead, the same act would have produced an extended `.xyz` and **the same
-   one** `.json`: the format follows the count, and nothing else about the export
-   changes.
+   40–120 instead, the same act would have produced an `.xyz` holding a block per
+   frame and **one** `.json`: the file holds as many frames as the range, and
+   nothing else about the export changes.
 4. It hands both to the projects module. MolView writes no file itself (§ 2).
 
 Later, an input script is generated from that pair, and the atoms tagged
@@ -4778,7 +4791,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — Save state drops what was above it | after retracting past two points and saving, stepping forward is no longer possible — the abandoned points are gone |
 | § 11.2 — `load(0)` puts back the point you are on | it restores the current point rather than the anchor, and does not move the position. Coming back to a sequence in a viewer that did not write it has no path yet — § 11.2a |
 | § 11.3 — only the data export is the truth, at the frames the user chose | exporting data yields **the asked-for range's** coordinates and its metadata, from the master copy — scrub to frame 40, accept the default range, and frame 40 is what the file holds, whatever isolate is doing; an image is a render and carries whatever the view was set to |
-| § 11.3 — the range decides the format, and nobody is asked twice | one frame of Data is a plain `.xyz` and a range is an extended one under the same extension; one frame of Image is a `.png` and a range is a movie — the file has exactly as many frames as the range, and the format is never a separate question |
+| § 11.3 — the range decides the format, and nobody is asked twice | one frame of Data is a plain `.xyz` and a range is the same plain format with a block per frame; one frame of Image is a `.png` and a range is a movie — the file has exactly as many frames as the range, and the format is never a separate question |
 | § 11.3 — the range opens on the displayed frame | accepting the dialog unchanged exports what is on screen (§ 5.1), and a one-frame structure is never asked at all |
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so every label — `frozen_atoms` among them — survives into whatever is generated from it |
 | § 11.7 — one blob, one read | an export and a cell edit send the same pair, assembled in one place; a request built after an edit carries that edit in every part of what it sends |

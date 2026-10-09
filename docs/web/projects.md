@@ -35,7 +35,7 @@ Behind that one door are ten small files, each with one concern:
 | `state.js` | remembers your pick + the file operations; the part tabs subscribe to |
 | `api.js` | the thin wrappers around the `/api/files/*` and `/api/projects/*` server calls |
 | `list.js` | the tree on screen — breadcrumb, the rows, the `⋯` menu |
-| `dialogs.js` | the pop-up dialogs (name a file, pick a folder, confirm a delete) |
+| `dialogs.js` | the pop-up dialogs (name a file, pick a folder, confirm a delete, pick a frame of a file holding several) |
 | `mutation-bar.js` | the header buttons — New project, New folder, Upload |
 | `preview.js` | the file preview/edit pop-up (any file, view or edit) |
 | `checkpoint.js` | the run-history panel (git snapshots of a run folder) |
@@ -123,25 +123,37 @@ Deleting a project or a topic folder needs a type-the-name confirmation.
 
 ## 3. Opening and saving a molecule — the one door
 
-Loading a structure into the viewer and saving one back are the job of the
-**`projects.parser`** door. It works in terms of file *paths* and never throws —
-it always returns `{ ok, … }`. Opening hands the server only a **path** (the
-server reads the bytes); saving hands over the serialized structure, but the
-**server** writes the `.xyz` + `.molstruct.json` pair — the browser never
-authors the sidecar itself.
+Loading a structure into a viewer and saving one back both go through the
+server. Opening hands it only a **path** (the server reads the bytes); saving
+hands over the structure as data, and the **server** writes the `.xyz` +
+`.molstruct.json` pair — the browser never authors the sidecar itself. The
+doors here work in terms of file *paths* and never throw — they always return
+`{ ok, … }`.
 
-**Opening — `projects.parser.openMolecule(path)`:**
+**Opening — two callers, one route.** Both post to **`/api/build/load`**, where
+the **server** reads the `.xyz` *and* its paired `.molstruct.json` and answers
+with the whole enriched molecule — atoms, cell, the region/frozen labels, the
+`customized` rows and the `info` records — in one go:
 
-1. It hands the path to `molview.data.installMolecule({ path })`.
-2. That posts the path to **`/api/build/load`**; the **server** reads the `.xyz`
-   *and* its paired `.molstruct.json` and returns the whole enriched molecule —
-   atoms, cell, and the region/frozen labels — in one go.
-3. MolView installs it, and the 3D viewer paints it with its labels and cell.
+- **`projects.parser.openMolecule(viewer, path, { confirmDiscard? })`** — for a
+  viewer that shows a file whole (the Spectrum tab's Inspect-structure card,
+  read-only). It hands the path to `viewer.data.installMolecule({ path,
+  enforce: true })`, which asks for the whole file — a frame set with every
+  frame (`molview.md` § 9.4) — and MolView installs it, the 3D viewer painting
+  it with its labels and cell. If the model already has unsaved edits it can
+  pause and ask first (pass a `confirmDiscard` function) and returns `{
+  ok:false, cancelled:true }` if you decline.
+- **The Molbuilder tab's Load** — its button, or a double-click in the tree
+  (`tabs.md` § 2). That tab holds one frame: the route answers frame 0 and says
+  how many frames the file holds; a file of several asks **which frame**
+  (`dialogs.chooseFrame`, counted from 1; Cancel loads nothing) and reads that
+  one with `frame`. Then, when a structure is open, it asks whether to **add**
+  the file to it or **clear** the view (Add focused), and installs what the
+  route answered.
 
-If the `.molstruct.json` is missing, the geometry still loads (just without
-labels). If the model already has unsaved edits, `openMolecule` can pause and
-ask first (pass a `confirmDiscard` function) and returns `{ ok:false,
-cancelled:true }` if you decline.
+If the `.molstruct.json` is missing, the file is read as atoms and coordinates
+— no cell, no labels — and the answer says so, quoting the comment line it did
+not read as metadata (`structure.lone_file`, `model/structure.md` § 2.3).
 
 **Saving — `projects.molviewFiles.save("project", stem, payload)`** *(it was
 `parser.saveMolecule(path)` until 2026-09-02; that door took a path it was
@@ -150,10 +162,11 @@ went with it — § 5):*
 
 0. It asks **where**: a folder, then a name (`chooseSavePath`). Cancel either
    and nothing is written.
-1. The caller has already asked MolView for the file bytes
-   (`molview.data.exportFile()` → the `.xyz` plus its sidecar).
-2. It posts them to **`/api/structure/save`**; the **server** reconstructs the
-   structure and writes the `.xyz` + `.molstruct.json` pair — the server owns
+1. The caller has already asked MolView for the structure
+   (`molview.data.exportFile()` → `{name, structure}`: one envelope, the
+   range's frames and their rows inside it — data, not bytes).
+2. It posts the envelope to **`/api/structure/save`**; the **server** rebuilds
+   the structure and writes the `.xyz` + `.molstruct.json` pair — the server owns
    the pairing *and* the sidecar's format (it stamps the schema version and a
    real content hash).
 3. On success the sidebar refreshes, the gate's `notices` ride the result, and
@@ -171,7 +184,7 @@ flowchart TB
     U["you click a file in the tree"] --> SB["projects sidebar:<br/>lists the tree, remembers your pick"]
     SB -->|"reads the folder — GET /api/files/list"| DISK["server: projects/ on disk"]
     SB -->|"publishes your pick"| TAB["a tab that subscribed"]
-    TAB -->|"on double-click: open it"| DOOR["projects.parser.openMolecule(path)"]
+    TAB -->|"on double-click: open it"| DOOR["the tab's load door<br/>(openMolecule, or the Molbuilder tab's Load)"]
     DOOR -->|"POST /api/build/load with the path"| SRV["server reads the .xyz plus its .molstruct.json"]
     SRV --> MV["molview.data — holds the molecule"]
     MV --> VIEW["the 3D viewer shows it, labels and cell included"]
@@ -183,14 +196,16 @@ flowchart TB
    selection and fires `onChange`; the row highlights and the tab's Load button
    lights up.
 2. You **double-click** `water.xyz`. The sidebar fires `onCommit`.
-3. The tab's commit handler calls
-   `projects.parser.openMolecule("/…/water.xyz")`.
-4. The door hands the path to MolView, which posts it to `/api/build/load`; the
-   server reads `water.xyz` + `water.molstruct.json` and returns the enriched
-   molecule.
+3. The Molbuilder tab's commit handler — the same one its Load button calls —
+   posts the path to `/api/build/load`; the server reads `water.xyz` +
+   `water.molstruct.json` and answers with the enriched molecule and its frame
+   count (one).
+4. A structure is already open, so the tab asks whether to add `water.xyz` to
+   it or clear the view; you take Add.
 5. MolView installs it and the 3D viewer shows the molecule with its labels and
-   cell. (Had the `.molstruct.json` been absent, the geometry would still show,
-   label-less.)
+   cell. (Had the `.molstruct.json` been absent, the atoms would still show —
+   no cell, no labels — and the status line would say so, quoting the file's
+   comment line.)
 
 ### The tab-author pattern, in code
 
@@ -204,7 +219,7 @@ projects.onChange((sel) => {
 
 // act on the double-click:
 projects.onCommit(async (sel) => {
-  const r = await projects.parser.openMolecule(sel.file, { confirmDiscard: askDiscard });
+  const r = await projects.parser.openMolecule(viewer, sel.file, { confirmDiscard: askDiscard });
   if (!r.ok && !r.cancelled) showError(r.error);
 });
 ```
@@ -377,7 +392,7 @@ does not decide for the user.
 `getLockReason()` / `cancelLockedOperation()`: one operation at a time, with a
 Cancel hook.
 
-**The molecule door** — `projects.parser.openMolecule(path, {confirmDiscard})`
+**The molecule door** — `projects.parser.openMolecule(viewer, path, {confirmDiscard})`
 (§ 3). **There is no `parser.saveMolecule`** — saving is the files door below.
 
 **The MolView files door** — `projects.molviewFiles` *(2026-08-19)*: the one

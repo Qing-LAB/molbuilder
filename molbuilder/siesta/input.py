@@ -1693,11 +1693,12 @@ def _emit_dispersion_template(xc_authors: str, v: bool) -> List[str]:
 def _struct_from_file(path: str) -> Tuple[Structure, Optional[np.ndarray]]:
     """Read an XYZ or PDB and return ``(Structure, cell_or_None)``.
 
-    Format is detected from the file extension.  XYZ files may carry
-    a periodic cell in the comment line (ASE's extended XYZ format);
-    if present, it is returned alongside the structure so the caller
-    can preserve it in the FDF.  PDB has no native cell concept here,
-    so the cell is always ``None``.
+    Format is detected from the file extension.  An XYZ is read through
+    the codec with the sidecar beside it, which is where a cell comes
+    from -- the comment line is never metadata (`model/structure.md`
+    § 2.3) -- and the cell is returned alongside the structure so the
+    caller can preserve it in the FDF.  PDB has no native cell concept
+    here, so the cell is always ``None``.
     """
     p = Path(path)
     ext = p.suffix.lower()

@@ -697,7 +697,9 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   nothing needs painting; **python** where calling the function is cheaper than
   reading its source. Corrections made by READING a site live in the tool's own
   `_OVERRIDES`, with the reason — *"the regex said so"* is the reasoning it
-  exists to replace. The standing backlog it measures is `plans/plan.md` § 5h.
+  exists to replace. The backlog it measured is archived
+  ([`archive/2026-10-08-plan-consolidation.md`](?doc=archive/2026-10-08-plan-consolidation.md)
+  § 5h); what is still open from it is a row of `plans/plan.md` § 2.
 
   *(This paragraph carried "1,147 of the 1,255" until 2026-09-07, three
   sentences after telling you not to quote a number from a document. Both

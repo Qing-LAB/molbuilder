@@ -220,7 +220,7 @@ note records the deletion.)*
 | **1** | **names & plain facts** | what a thing is called; what this machine is; what a file — or a run's own records — says | `identity` · `paths` · `ref` · `calcdirs` · `runfiles` · `runrecord` · `scheduler/` (the record, the probe, admission) · `persist` · `parse` · `jobset/ledger` · `jobset/errors` · `jobset/machine` | `resolve_stage_ref` · `stage_token` · `parse_token` · `Shape.named` · `Shape.stage_dir` · `Ref` · `run_id` · `machine_for` (the record read) · `require_activation` · `resolve_environment` (the probe's) · `admits` · `read_json` / `write_json` · `launch_record` / `write_launch` · `ending` · `run_status` · `machine_record` / `set_machine` · `ledger.record` (a verb's decisions, one append each) · `PrepError` | `environment.json` · `jobset-decisions.log` · `run.json` and a run's markers | know what a calculation is — a stage, a ladder, a plan |
 | **2** | **description** | what the person asked for — and the run a file belongs to, read with it | `task` · `template` · `jobset/migrate` · `runs` | `read_task` · `write_task` · `find_template` · `derive_run` · `varies_for` · `place_of` · `run_of` · `about` · `folder_answer` | `task.json` · the template | **name a machine** |
 | **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **each job's ask, and the text of every file** | `resolve` · `jobset/model` · `jobset/engines` · `jobset/placement` · `warmfiles` · `siesta/stages` · `pyscf/stages` · `bench/grid` · `siesta/input` · `pyscf/input` · `runwrap` · `jobset/plan` · `jobset/commands` | `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins ⊕ the rung's answers → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `engine_seam` · `placement` · `warm_list` · `gpu_request` · `spec_for` (each engine's) · `script_emit.render_deck` / `script_emit.prepare_deck` · `write_run_wrapper` · `render_sbatch` · `command` | `job-set.json` · the decks · `.run.sh` · `.sbatch` · `STAGE-PLAN.md` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
-| **4** | **layout** | where every file sits; which run feeds which | `jobset/materialize` · `jobset/continuation` | `stage_home` · `prepared_already` · `open_run` · `job_dir_names` · `attempts` · `latest_attempt` · `continuation` · `usable` | the folder tree; `run-<n>/` | know about a queue |
+| **4** | **layout** | where every file sits; which run feeds which | `jobset/materialize` · `jobset/continuation` | `stage_home` · `prepared_already` · `open_run` · `job_dir_names` · `paths.attempts_in` · `latest_attempt` · `continuation_answer` · `usable` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/submit` · `jobset/agreement` · `jobset/ask` | `launch_agreement` · `check_launch_matches_deck` · the one sender | `launch/` scripts — and through floor 1, `run.json` | decide physics |
 | **6** | **observe** | where has it got to | `jobset/runstatus` · `jobset/summarize` | `jobset_status` · `render_status` · `render_stage_status` · `summarize` | only `summarize`'s own records — `bench-result.json`, a transport calculation's I–V, a displacement sweep | write anything a run or a prep reads |
 | **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `web` | `molbuilder jobset {init,prep,launch,summarize,status,probe,machines,migrate}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s and `launch`'s, which their entries append (`launch`'s verb only the refusals it says before it calls its entry) | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
@@ -360,10 +360,10 @@ classDiagram
 | **`StageHome`** | 4 | *where does this stage live, and what is its number?* — read off the disk: a stage with a folder keeps its number, one without takes the next unused ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) | `stage_home` |
 | **`RunLaunch`** | 1 | *was this run launched — how, where, from what?* — its `run.json`, read through `persist`, its schema checked | `launch_record` |
 | **`Ending`** | 1 | *did this run end on its own, and how?* — molbuilder's marker for that run (it carries the exit code); a run our wrapper did not run is not a run of ours | `ending` |
-| **`Continuation`** | 4 | *what does this run start from?* — the run it continues from (by default or named) or none (cold, linked), what that run was, **and the files it carries** | `continuation` |
+| **`Continuation`** | 4 | *what does this run start from?* — the run it continues from (by default or named) or none (cold, linked), what that run was, **and the files it carries** | `continuation_answer` |
 | **`Placement`** | 3 | *where does this job go, and what does it ask?* — queue, wall, memory, ranks, cores, GPUs, each with its source, admitted against the target's record | `placement` |
 | **`Attempt`** | 4 | *which try is this, and what was put in it?* | `open_run` — the one opener of a run folder (a stage's attempt, a trial's, a bias point's) |
-| **`PrepPlan`** | the prep entry's | *what will this prep write?* — every file's text and every folder, decided with nothing written | `plan_prep` |
+| **`Plan`** | the prep entry's | *what will this prep write?* — every file's text and every folder, decided with nothing written, then written in order by `Plan.carry_out` after the save | `jobset/planned.py` — made by `prep_stage`, filled by `prep_calculation` |
 | **`LaunchPlan`** | the launch entry's | *what will this launch send?* — every submission, its members, their attempts and the exact lines | `plan_launch` |
 | **`LaunchAgreement`** | 5 | *does this deck match the launch it is about to get?* | `launch_agreement` (`jobset/agreement.py` — its own floor-5 module since 2026-08-12, so `prep` and `submit` both import it downward and neither imports the other) |
 | **`StageStatus` / `JobSetStatus`** | 6 | *where has this got to?* | `jobset_status` |
@@ -437,7 +437,7 @@ job by its count *or* by `use_gpu`; `run.json` read raw *or* through `persist`.
 | **launched** | `launch_record(run)` — the run's `run.json` (a flat stage's run's own `<stem>-run<N>.run.json`, the stage's newest run when no number is asked; one with no number, written before 2026-10-06, refused naming `jobset migrate`); one that does not read is an error naming the file, never *launched* or *not launched* | 1 | status, the Run panel, every launch gate, the transport citation |
 | **how a run ended** | `ending(run)` — the run's own conclusion marker, which carries the exit code; nothing else answers — the engine's own end mark says the engine ended, not the job *(it answered for a run started by hand until 2026-10-03)* | 1 | status (its state is built on it), continuation, the frequency stage, the transport gather and citation, a re-launch's plan, the transport record, a benchmark's trials, the viewers through the server |
 | **a run to build on** | `usable(state)` — the one status door says it **finished**: it ended on its own with exit code 0 and nothing in its output says the engine stopped (`parse.dirs.run_status`, the door `status` asks; user, 2026-10-06); the default of every hand-over, while a run named with `--from` is taken as said and a structure can be stated relaxed ([`job-system.md`](?doc=execution/job-system.md) § 5.4) | 4 | every hand-over by default: a continuing stage, the frequency stage's geometry, a transport rung's inputs |
-| **what a run starts from** | `continuation(...)` → `Continuation`, the files it carries included | 4 | prep — checked, written and ledgered as one object — a re-launch, status, Task setup's *Continue from* |
+| **what a run starts from** | `continuation_answer(...)` → `(Continuation, refusal)`, the files it carries included | 4 | prep — checked, written and ledgered as one object — a re-launch, status, Task setup's *Continue from* |
 | **a stage launched again** | `relaunch(..., cold=)` → `Continuation` or `None` — warm, its own latest run, however it ended, when it continues from a run of its own (`Job.relaunch_continues`: its kind resumes and it takes something from a run); cold, or a stage that takes nothing, `None` | 4 | launch — opened, written and ledgered as prep's hand-over is — and status, which words what launching again will do from the same fact ([`job-system.md`](?doc=execution/job-system.md) § 5.4) |
 | **the restart files** | `warm_list(engine, kind, base)` — the calculation's own `warm-files.toml` first, else the shipped one ([`job-contracts.md`](?doc=execution/job-contracts.md)) | 3 | a job's declaration, status's column, the run script's detection and a bias scan's hand-forward — both written at prep from it |
 | **the GPU request** | `gpu_request(resources)` → `GpuRequest(uses, count)` — a job's `use_gpu` as `resolve` carries it from the job's own values, and its count; a GPU run with no count, or a count for a run that does not use the GPU, is refused — at prep before anything is written, of the job the stage resolves to (`prep._resolve_stage`; the Task setup card shows the entry's preview of it), by the run card or `--gpus`, either engine ([`gpu.md`](?doc=execution/gpu.md) G5) | 3 | the header, the run script, launch and its queue table, a benchmark's trials and their report, the Task setup card |
@@ -960,16 +960,17 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > emitter's right (§ 2.2a of `job-contracts.md` has the measurement). A14 gives
 > the filename the owner A1 was mistakenly credited with.
 >
-> **A14's check is the generator, not the call sites, and that is a real gap.**
+> **A14's check is the generator; the call sites are review's.**
 > `test_runfile_names` proves the API is total and reversible over its whole
 > parameter space, which is what makes a name trustworthy without looking at
-> it. What nothing yet forbids is a *new* call site building a name by hand
-> beside it. Measured 2026-09-07 by scanning for an interpolation followed by a
-> declared role: **44 such sites in 14 modules**, of which most are genuine
-> hand-builds, a few are molbuilder's own tooling logs (not run files at all),
-> and the rest are names emitted *into* a generated script, where the label is a
-> runtime variable and `runfiles.tail` is the door. A source fence of A1's shape
-> would close it; it is not written, and A14 should not be read as if it were.
+> it. A *new* call site building a name by hand beside it is caught by review,
+> never by a source fence — a scan of the package's own `.py` is not a test
+> (`process/testing.md` § 3b). Measured 2026-09-07 by scanning for an
+> interpolation followed by a declared role: **44 such sites in 14 modules**,
+> of which most were genuine hand-builds, a few molbuilder's own tooling logs
+> (not run files at all), and the rest names emitted *into* a generated script,
+> where the label is a runtime variable and `runfiles.tail` is the door — the
+> review's input, to re-measure since `runfiles.RunNames` (plan § 2, A14).
 
 > **A10 is the rule the 2026-08-21 Sol failure was missing.** `prep bench`
 > refused over pseudopotentials naming
