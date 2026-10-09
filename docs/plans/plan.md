@@ -79,7 +79,7 @@ re-ordered without saying who ruled it.
 | **Q2f** | **Absolute imports, package-wide** *(user, 2026-10-03: "i agree with a, but like a focused session for that with agents and reviews. let's finish this main goal of transport and framework related tasks")* — every `from ..x import y` inside `molbuilder/` becomes `from molbuilder.x import y`, and the rule is written into the conventions: a relative import changes meaning when its module moves, and one inside a function fails only when called (W55 9a: 290 test failures from one moved module). Until then a NEW module is written absolute; an edited one keeps its file's style | the user's word — its own session; **and the shipped files' imports in the same session** *(ruled 2026-10-06, W57 decision 1: "B, with Q2f as one session")*: a file that runs beside a job imports ONE way -- each zip (`mb_monitor.pyz`, `mb_vibration.pyz`, `mb_pyscf.pyz`) keeps molbuilder's own folder layout (`molbuilder/identity.py`, `molbuilder/spectra/...`, an empty package marker), so the package's ABSOLUTE import -- Q2f's form, `from molbuilder.identity import launch_as_typed` (user, 2026-10-06: "for the first form of import why can't we use absolute path?") -- resolves inside the zip as in the package; the try/except ImportError pairs leave the 22 shipped files; the three builders, their start lines and the PySCF scripts' import lines follow | **after the transport and framework goal** (Q2d's units 9b–12, then Q4–Q7) — a script with an agent review, then the full batch |
 | **Q2g** | **The file manifest** *(user, 2026-10-04: "make a manifest of all the output file and files your code generates in the hierarchical and flat directory ... integrated in a clear section in contract so that you ... stop keep re-inventing new ways to ... interpret the ... data"; "use another agent after this report is genrated, to review and validate, and also check overlap/redundancy/duplicated components")* | **the manifest written 2026-10-04** -- `project-layout.md` § 5: every file of both shapes with its writer and its one door, built by three agents from the code and two real H₂ calculations, checked by a fourth, every finding re-read in the code; the documents' other file lists point to it (D29). Found: D20–D29, B11–B14, Q6 (§ 0c); D19 rides with B12 | **ruled 2026-10-04** -- B11–B14 approved, Q6 (a), D19 with B12; **W56 units 1, 2, 3a, 3b and 4 done 2026-10-04/05** (§ 0c), D30 the same day. **Open**: D29's document list (§ 0c's row); Q6's open half (§ 5x C1) |
 | **Q4** | **TD9 — M5 step 5 against M2** | **decided 2026-10-02** *(user: "#9 ok")*: M2f, M2g, M2i, M2k, then step 5 — **done**: M2f → 9b (parts 2a–2d), M2g → 9b part 3, M2i → 9b part 1 + 12b-1, M2k → 11a (its claim / match half: M2k's row), step 5 → built `0e11a018` | — |
-| **Q5** | **M5 steps 6, 7 and 10, and K21** — the transport work that does not wait on TD9 | **steps 5 and 6 built** (5: `0e11a018`; 6: Q14 B1 `7351a3ff`); **the sweep as one run built `ddf12a43`** (Q14 B2–B4) with `launch --cold` (`_cli.py:1708`); `--skip` / `--unskip` not built (0 hits in the code); **open: steps 7 and 10**; K21 built in § 5x B6 (the record reads both channels, G = (e²/h)(T↑ + T↓)), its road test waits on the stand-in (S-T2) | steps 7 and 10 — § 5u.1 |
+| **Q5** | **M5 steps 6, 7 and 10, and K21** — the transport work that does not wait on TD9 | **steps 5 and 6 built** (5: `0e11a018`; 6: Q14 B1 `7351a3ff`); **the sweep as one run built `ddf12a43`** (Q14 B2–B4) with `launch --cold` (`_cli.py:1708`); `--skip` / `--unskip` not built (0 hits in the code); **open: steps 7 and 10**; K21 built in § 5x B6 (the record reads both channels, G = (e²/h)(T↑ + T↓)); its test reads real TBtrans output, so it is an assertion on § 5y's real transport run (E) | steps 7 and 10 — § 5u.1 |
 | **Q6** | **M5 step 8** (one panel per engine, after step 3), **step 9** (after M2j and M2l), **step 11** (after steps 4 and 5) | **step 9 done** (§ 5x B6; ③ waits on step 11); **steps 8 and 11 open** | § 5u.1 |
 | **Q7** | **M4 — the engine offset finished; the fake-junction ladder resumes at rung 4** | after Q5 | § 5q.6 |
 | **Q8** | **Ruled 2026-10-02, not built**: one `proxy.trust` setting replacing `auth.trust_proxy` and `rate_limit.trust_proxy` (`configuration.md` § 8); a benchmark's grid stated by the description, refused when it is not — no grid the machine proposes | ruled | after Q2's fixes, as one config milestone |
@@ -88,6 +88,9 @@ re-ordered without saying who ruled it.
 | **Q11** | **W53's parked**: the next-step lines offering `--mode submit` for a target with no queue; the named-queue check in two doors (`launch_refusal`, `place`); `gpu_partition` and `~/.config/molbuilder.backup/` decided 2026-10-02 (§ 0b, item 10) | the `--mode submit` lines fixed with unit 11b (`commands.takes_a_queue`); `gpu_partition` and the backup done (`31ca9957`, § 0b item 10); **open**: the named-queue check in two doors (`placement.py:28` `launch_refusal`, `scheduler/place.py`) | W53's row |
 | **Q13** | **THE TASK — `prep task` / `launch task`, one protocol** *(user, 2026-10-07/08: "prep the whole task and ask the user which stage it intend to do"; "one unified framework and protocol and verb design and api ... systematic and holistic"; D1–D5 agreed 2026-10-08)* | **built 2026-10-08** — T1–T8 committed and two review rounds (code and docs, fresh agents) fixed (`214cc19d`, `91629b67`). **Left**: Task setup's Prep card seen in a real browser (the extension was down); `tests/test_task_setup_prep_e2e.py` drives the per-tab Prep buttons that are gone (e2e on the user's word); a group's header under a real scheduler (Sol); `prep_group` re-plans each member after the save (no refusal found reachable on the road). Contract written 2026-10-08 (`job-system.md` *The task*, § 5.0, § 5.3; `project-layout.md` § 1.6.6; `architecture.md` § 3.2); the review (three agents on conflicts, two on the doc sweep and the code inventory) found ~335 doc passages and ~30 code sites; its open points settled by the agreed rules: a kind with stage roles pre-selects its ready stages that build on nothing (transport's seed and leads); stages named together at prep OR launch go as one job when they pass the group checks (none builds on another, one allocation) -- no "never alone"; a stage not prepared reads `ready` / `waiting`; the ledger line `prepared`; `summarize task` takes no stage. **Milestones, each checked on the road:** T1 the low-bias gather fix and step 6's core (the treatment in `task.json`, the device without an axis); T2 the vocabulary -- kind `task`, `--stage`, `summarize task`, the `prepared` door, every printed command, the road and its rows; T3 the `ready` door (`ready.readiness` (`ready.py:60`), the gather as an answer or a refusal, D5 newest-only); T4 the `prep task` entry -- the ladder offer, `ask.choose`, the no-terminal refusal, groups by pick, `prep_group` held to rule 3; T5 `launch task` -- the waiting units, the question, relaunch by name, the group checks at launch; T6 status -- ready / waiting rows, next lines, the wire form, the chips; T7 the web -- Task setup's one Prep with the ready stages, routes, handover text; T8 the doc sweep (~335 passages, the review's list); then the two review rounds |
 | **Q14** | **Transport, made whole** — the sweep as one run, the low-bias switch, composition, the record, then the milestone review of backend, CLI, UI, checkpoint, stage/run configs and CSS (§ 5x) *(user, 2026-10-08: "You need a clear picture, a contract, how transport is done ... see where it's missing and what is wrong"; "stop fucking hand bake these fucking things")* | **done 2026-10-08** — B0–B9 (§ 5x.4's commits); the review's two rounds clean after one revision each; the three cases on the road junction; what it left open is in § 2 | § 5x |
+| **Q15** | **No fake engine: an API test checks what prep writes, a test that reads an engine's output runs the real one, once per pass** *(user, 2026-10-08: "our api is not siesta engine. it's prep script for engines including siesta"; "when something reads the output of \"siesta\" output that's an end to end by definition"; "it should be integrated/merged with existing e2e tests so one run of e2e would produce all information"; on the split: "either disassembled into api tests of individual parser/action functions that works on the script dir, or merged into real e2e functions"; "consolidate the plan, execute")* | **in hand 2026-10-08** | § 5y |
+| **Q16** | **A structure loaded whole** *(user, 2026-10-08: "when i load AuBDTAu_fine_optimized.xyz/.json pair ... the meta data gives a lot of wired warnings and showed no meta data at all ... this bug/issue needs to be addressed before the work")* -- the Molbuilder tab's Load adds the pair to the open structure, whose record wins and whose labels rename the pair's; the dropped record goes unsaid; two sentences on the Results tab are a run's, not a saved pair's | **found 2026-10-08** (§ 5z.1); D1 settled and the Load question built 2026-10-09; the dropped-record receipt and the Results sentences open | § 5z.6 step 2 |
+| **Q17** | **Transport over a set of frames** *(user, 2026-10-08: "what the transport receive is a multiframe .xyz/.json combination" with `info.calculation`, the labels, and `info.parameter` per frame for the average)* -- TD10's text, the citation of a frame set, the frame inside a run, the record's average, the family in Results | **planned 2026-10-08** (§ 5z); D1-D5 settled by the user 2026-10-09 | § 5z.6 steps 3-5, after Q15 and Q16 |
 | **Q12** | **the rest of the work order below**: M2j, M2k, M2m, M2n, M3, M6 P5, M8, M10 | open | the table below — M2j with unit 12 (12c, 12d); M2k's claim / match half; M2m, M2n, M3, M6 P5, M8, M10 after |
 
 Done rows, archived (`archive/2026-10-08-plan-consolidation.md`):
@@ -442,8 +445,11 @@ run in M2's full batch (M2n), and nothing else runs them first.
 | **F14** | parse | **The unconstrained max force and a periodic slab's pressure are never shown** (the monitor and wrapper print the constrained max); TranSIESTA's *FORCES WRONG* is not captured | § 5x.7 F14 | open |
 | **F19b** | execution | **A retry's `exec` inherits the first try's tee**, so run0's session log holds run1's session too; the tbtrans wrapper says *Retry policy: up to 1 retry on non-convergence* for a program that converges nothing | § 5x.7 F19 | open |
 | **R2-15** | results | **After a run is picked off the ladder the file card's announcement names two folders** (`dir: rootDir` beside the run folder's `files`), so a sidebar click inside the run's folder is ignored and a click in the root is looked up among the run's files — until the next announcement | B8 round 2 | open |
-| **S-T2** | tests | **The transport road is unreachable on the suite's stand-in engine**: `support.road` always passes `--structure`/`--psml-lib`, a device prep gathers products the stand-in never writes, and `tests/data/*.toml` holds no transport row. **Proposal (the suite reviewer's, 2026-10-08):** the stand-in leaves EMPTY the rung products a row names (`stand_in.leaves = [".DM"]` / `[".TSHS"]` / `[".TS.HSX", ".TSDE", …]` / `[".TBT.nc"]`, by the licence `testing.md` § 6 gives the `.XV` — every door on this road copies or existence-checks them), plus a per-point exit code and a road arm that relaxes the labelled junction then `jobset init --calculation transport`; rule 3 at the point then becomes a case table. **One sentence in `testing.md` § 6 is the rule change; the user's word first** | B8 round 2 (S T2) | proposed |
-| **TD10 text** | engines / docs | **The frame axis's contract text is owed** (ruled 2026-09-29): `engines/transport.md` § 2a.9 — the frame sub-level's folder name, the take-over rule written for frames (today inferred from the bias rule), and `customized` as where a frame's displacement lives; `model/structure-molstruct.md` § 6.1, `engines/vibration.md` § 5.6 / § 5.10 ③, `science/normal-modes.md` § 4b.6 G. **Written before any frame is built** (W32, step 11) | § 5u.1, TD10 | open |
+| **S-T2** | tests | **rejected 2026-10-08, archived** — the stand-in engine leaving empty rung products was a fake end-to-end test; the transport road is tested on a real run (§ 5y, run E) | B8 round 2 | archived |
+| **F-MDNC** | parse | **A flat stage launched again shares SIESTA's history file with the run before it**: after a second run in a flat folder `<label>.MD.nc` holds more rows than that run wrote (12 rows, where each run's output has 8 frames; measured on the end-to-end flat calculation 2026-10-08), and pairing the second run's output with it (`siesta_mdnc.align_to_reference`) matched rows 0–5 and then row 11 -- the earlier run's rows first. Whether the reader takes the newest run's rows, or a run that starts over sets the old history aside, is a design question | § 5y, the flat module's second launch | open |
+| **T-ENV** | tests | **Installer tests answer the environment manager in-process**: `tests/test_envs_one_answer_about_an_env.py` (H6, `dispatch_into_env` replaced to return a typed PySCF verify answer) and the stubs `tests/test_envs_install.py` writes -- a command's answer swapped in-process, which tier 1 forbids (`testing.md` § 0); judged under § 5y's rule in their own pass | § 5y | open |
+| **DOC-TEX** | web / docs | **done 2026-10-09** -- KaTeX 0.16.22 vendored (`static/vendor/katex/`, its row, license and citation in `static/vendor/README.md`, the npm tarball checked against the registry's hash); `lib/markdown-render.js` sets math aside before the markdown pass and `renderMathIn` draws it, on the Documents tab and the Results markdown viewer. The vendor inventory gained an upstream column, GitGraph's release (1.4.0, matched by SHA-256), a citation per component, and its notice check (`tests/test_vendor_notices.py`). KaTeX is source tree, not installation: no recipe, no `host-env.txt` line, no config key (`ops/installation.md` § 3 now says which browser library comes from where -- Plotly.js alone from the host env). `.gitattributes` keeps every vendored `.js`/`.css` out of diffs, component folders included, and names `.woff2` binary; `ops/deployment.md` § 4 lists `font-src 'self'`; a wheel built from the tree carries all 55 vendored files | 2026-10-09 | done |
+| **TD10 text** | engines / docs | **→ § 5z (Q17), 2026-10-08: a frame's details in `info.parameter`, per the user's comments of that day.** **The frame axis's contract text is owed** (ruled 2026-09-29): `engines/transport.md` § 2a.9 — the frame sub-level's folder name, the take-over rule written for frames (today inferred from the bias rule), and `customized` as where a frame's displacement lives; `model/structure-molstruct.md` § 6.1, `engines/vibration.md` § 5.6 / § 5.10 ③, `science/normal-modes.md` § 4b.6 G. **Written before any frame is built** (W32, step 11) | § 5u.1, TD10 | open |
 | **L1** | code hygiene | **Three names pyflakes calls undefined**: `template.py:1005` `Sequence`, `scheduler/probe.py:338` `Domain`, `jobset/group.py:67` `Resources` (annotations under `from __future__ import annotations`?) — read each; import or drop | B8 round 2, pyflakes over the package | open |
 | **L2** | tests | **`tests/field/test_ask_the_target.py` fails instead of skipping when invoked outside its batch** (`. does not read as a machine record`: the record path is unset) — a field test gates itself on its backend (`testing.md` § 3) | B8 round 2 | open |
 ---
@@ -1167,7 +1173,7 @@ questions as put, and the user's words, are in the archive.)*
 > layer"* · *"stop fucking hand bake these fucking things ... you build this
 > system and you hack it by yourself?"* (user, 2026-10-08)
 
-**State at a glance (2026-10-08, end of day).** **B0–B9 are done** (§ 5x.4) and the milestone review came back clean after one revision in each of its two rounds (B8). The three cases of § 5x.0 ran on the road junction to their records and their Results tab. **Open, each a § 2 row:** the mechanisms not yet seen on the road (a cold sweep, the kill line F11, the take-over hop), F9, F14, F19's second half, the file card after a picked run (R2-15), the stand-in engine's rung products (the transport road's testability, S-T2), and § 5u.1's steps 7, 8, 10, 11 with the two owed contract texts.
+**State at a glance (2026-10-08, end of day).** **B0–B9 are done** (§ 5x.4) and the milestone review came back clean after one revision in each of its two rounds (B8). The three cases of § 5x.0 ran on the road junction to their records and their Results tab. **Open:** the transport road's tests on a real run (§ 5y, run E); and, each a § 2 row, the mechanisms not yet seen on the road (a cold sweep, the kill line F11, the take-over hop), F9, F14, F19's second half, the file card after a picked run (R2-15), and § 5u.1's steps 7, 8, 10, 11 with the two owed contract texts.
 
 ### 5x.0 The final goal
 
@@ -1387,6 +1393,255 @@ calculation"):*
 *The three walks (the fused-cell sweep, the closed-cell sweep `au-dta-t2`, the low-bias `au-dta-lb` and single-bias `au-dta-sb` cases) and their findings F1–F28 are in the archive. Fixed by B6–B9: F1–F8, F10, F12, F13, F15–F18, F21, F23–F27; kept: F28. Still open, as § 2 rows: F9, F11 (the kill line, unseen), F14, F19's second half, and the mechanisms not yet seen on the road (a cold sweep, the take-over hop).*
 
 ---
+
+## 5y. Q15 — No fake engine: what prep writes, and what a real run makes *(ruled 2026-10-08)*
+
+**The rule** *(user, 2026-10-08)*: *"our api is not siesta engine. it's prep
+script for engines including siesta"*; *"when something reads the output of
+\"siesta\" output that's an end to end by definition"*; *"it should be
+integrated/merged with existing e2e tests so one run of e2e would produce all
+information"*.
+
+- **An API test checks what molbuilder prepares** — `init`, `prep`, `launch
+  --dry-run`, and the one function that writes or reads the script folder
+  (the deck, the run script, the walk, the plan) — and no engine runs.
+- **A test that reads what an engine wrote is end-to-end**: the real engine,
+  through molbuilder's own reader for each fact (the run-status door, the
+  run door, the citation door), never a search of the output's text.
+- **One end-to-end pass makes each run once**, and every such check is an
+  assertion on a run that pass already makes — never a run of its own.
+
+**Why it was not so.** On 2026-10-04 (`1390b3a7`) the hand-over checks were
+rebuilt on a *stand-in engine*: the suite's fake `siesta`, which ended as a
+row said and left the restart file. That design was Claude's, written into
+`testing.md` § 6 under the user's quote of that day (*"rely on more api and
+framework test rather than e2e"*), so it read as the user's ruling; the user
+never asked for a fake engine. On 2026-10-08 (`77c74450`, B7) the fake was
+made to write a SIESTA-format `.XV` built from the deck, so a transport
+citation could be tested on it — fabricated engine output, read as a
+relaxation — and S-T2 proposed to extend it to every rung of the ladder.
+
+**The order of work.**
+
+1. **The tripwire.** The suite's `siesta`, `mpirun` and `tbtrans` stop
+   playing an engine: one reached by a basic test fails that test, naming
+   it. The real engines installed on this machine stay unreachable. One run
+   of the basic batch measures every test that reaches an engine — they reach
+   it through executed run scripts, which no reading bounds.
+2. **Each test that tripped is judged**: the part reading what prep wrote
+   becomes an API test of that one function; the part reading what the engine
+   wrote becomes an assertion on a shared real run; a duplicate is retired.
+   The `stand_in` vocabulary leaves `tests/support/road.py` and the tables.
+3. **The shared real runs**, made once per end-to-end pass in the engine
+   worker, each covering the flat and the layered folder where the fact
+   differs: **A** H2 optimisation, layered — the first stage launched,
+   launched again warm and cold, the next stage built on it, a two-trial
+   benchmark; **B** the same, flat; **C** an H2 run whose SCF is capped, so
+   it fails; **D** the H2 vibration, relax then frequencies (five modules
+   each made their own); **E** the minimal junction relaxed, then the
+   transport ladder — the citation, the sweep's warm and cold rules at the
+   point, the record (K21), the Results report. Today's end-to-end modules
+   move onto them.
+4. **The documents**: `testing.md` § 0 (tier 1) and § 6 state the rule,
+   without the passage that put the stand-in under the user's quote.
+
+**State.** Steps 1, 2 and 4 done, and run A, the benchmark, B, C and D of step 3, committed 2026-10-09 (`22ac10d9`). Open: run E -- the transport module on the hydrogen-chain junction, its device point stalled on 2026-10-08 -- then the basic batch once.
+
+## 5z. Q16 – Q17 — A structure loaded whole, then transport over a set of frames *(planned 2026-10-08)*
+
+### 5z.0 The goal, in the user's words
+
+> *(user, 2026-10-08)* "how the multiframe of the structure is constructed is a
+> different module/api design and we do not worry about that at this point.
+> what the transport receive is a multiframe .xyz/.json combination, which
+> contains the following: (1) info.calculation stating where the optimization
+> of structure comes from and what parameters are used, just like what we
+> currently see from the structure, (2) correctly labeled frozen atoms,
+> L-/R-electrodes, and bridge, and possibly other labels, (3) when more than one
+> frame is present, each frame should (including the first one) have a meta data
+> in info.parameter that has vibration related information, such as mode
+> number, mode frequency, displacement max, and displacement for this frame
+> (normal mode), and the probability/coefficient factor if we need to average
+> this for a total calculation ... essentially the parameter meta data for each
+> frame give information for later transport calculation when we need to
+> summarize/average them correctly to get the net outcome."
+>
+> "more importantly ... when i load AuBDTAu_fine_optimized.xyz/.json pair
+> under AuBDTAu project/structure, the meta data gives a lot of wired warnings
+> and showed no meta data at all ... this bug/issue needs to be addressed before
+> the work."
+
+### 5z.1 Q16 — what the load did, read from the server's log and the code
+
+**Measured 2026-10-08** (the dev server's request log, 23:23 and 23:24; the code
+read whole, `modify.append_structure`, `/api/modify/append`,
+`molview/model-jobs.js` `createLoad`, `molview/ui.js` § 8.4a's page): each Load
+of the pair on the Molbuilder tab was `POST /api/build/load` and then
+`POST /api/modify/append` — **the load added the pair to the structure already
+on the canvas** (one built from the SMILES `SC#CS`), as every load and
+generate has done since 2026-09-07 *(user then: "they add to what is open
+rather than replacing it")*. Two loads, two additions: the canvas now holds 676
+atoms under the SMILES title. The merge decides, by `model/structure.md`
+§ 2.2b:
+
+- **`info` comes from the canvas**, so the pair's `calculation` and
+  `relaxation` records were dropped — **and no receipt says so** (the merge
+  says it for a renamed label, a dropped origin and a dropped cell, never for
+  the record). This is the "no meta data at all".
+- a label the canvas already has arrives **renamed** (`L-electrode2`, ...;
+  after one addition, every label the pair carries), the pair's **cell is
+  dropped** when the canvas has one (after one addition, it does), its stated
+  **origin dropped** — each a receipt — beside the merged structure's own
+  conditions (for the pair: atoms past a periodic face, the H/heavy ratio).
+  These are the "weird warnings".
+
+The path's code is unchanged since 2026-10-03 (the edits since are
+comment-only, `164ecbfe`, `79c43fc5`); the server answers the pair whole — `/api/build/load`
+alone returns both records and the labels — and the Results tab, which opens
+the pair alone, shows both records. **Also wrong on the Results tab**, for a
+saved pair: its card says *"not written by molbuilder"* (`runs.about` knows only
+a calculation folder's names), and the read-only Metadata hint says the store
+*"is rebuilt from the run's files at every load"*, which is a run's case.
+
+### 5z.2 Q17 — what exists, and what the user's comments change
+
+**Exists.** A multi-frame pair is one extended-XYZ document and one sidecar
+(`model/structure-molstruct.md` § 6.1; the codec writes and reads every frame,
+`pair(frames=)` / `load(frames_out=)`; MolView's frame bar shows them). The
+transport contract makes room for frames (`engines/transport.md` § 2a.9: the
+set, the four per-frame promises, `f000` the base, one bias for a frame group,
+the electrodes and the seed computed once). The science of the average is
+written (`science/normal-modes.md` § 4c.4–4c.5: the frames at the Gauss–Hermite
+nodes of each mode's thermal distribution, `Q_j = √2 σ x_j`, three frames at
+`0, ±√3 σ` weighted `⅔, ⅙, ⅙`, `σ = Q_zp √coth(ħω/2k_BT)`, exact for a `T(Q)`
+of degree ≤ 5; § 4c.8 the static-frame picture's assumptions). The bias sweep
+built the walk, the done-door and rule 3 at a point (§ 2a.11) that a frame
+reuses.
+
+**Changed by the comments of 2026-10-08:**
+
+| what stood | what it becomes |
+|---|---|
+| TD10 (2026-09-29): a frame's details in the structure's `customized` section (W39), not `info` | **in `info.parameter`, one entry per frame, frame 0 included** — the user's spelling; W32 no longer waits on W39 |
+| decision 7 (2026-10-08): a transport citation is a finished relaxation run of ours, nothing else; `info.calculation` "has no reader on this road since" | **a frame set is cited as its pair**, whose `info.calculation` says where the optimization came from and with what parameters — `info.calculation` gains its reader back; a pair with no record stays refused (decision 7's reason: a bare structure brings nothing) |
+| § 2a.9: the rule recorded "in the pair's `info`" (`info.frame_rule`, `vibration.md` § 5.10 ③) | `info.parameter` per frame, read by transport's summary for the average |
+| § 2a.11 "Later": a run per frame (`04_device/f000/run-0`) | frames inside one run, as bias points are (`04_device/run-0/f000/`) — the 2026-10-05 rule |
+
+### 5z.3 The input contract (written first, `transport.md` § 2a.9, `structure-molstruct.md` § 6.1)
+
+1. **The pair**: one extended-XYZ document, `N ≥ 1` frames, one sidecar.
+2. **The labels**, shared by every frame: `frozen_atoms`, `L-electrode`,
+   `R-electrode`, `bridge`, and any other label (the person's, read by nobody).
+3. **`info.calculation`**: where the optimization came from and its parameters
+   (today's record: engine, deck, `contract` — basis, functional, mesh, k-grid,
+   temperature, spin, charge — and the deck's hash): the settings the
+   transport template is defaulted from, as a cited run's deck defaults them
+   today (D2).
+4. **`info.parameter`** — present when `N > 1`: a list, one entry per frame in
+   file order, frame 0 included; each entry the frame's details —
+   `mode` (index, or `null` for the equilibrium frame), `frequency_cm1`,
+   `sigma_amu12_ang` (σ), `node` (`x_j`), `q_amu12_ang` (this frame's `Q_j`),
+   `max_displacement_ang`, `weight` (`w_j`), `temperature_k`. The keys are the
+   ones `vibration.md` § 5.10 ③ already names for its frame rule. Transport
+   reads `mode`, `node` and `weight`; the rest is shown.
+5. **The per-frame promises**, checked at the citation door frame by frame and
+   naming the frame (§ 2a.9's table): the same atoms in the same order, the
+   same species, the same cell, no electrode atom moved; and, new, `len
+   (info.parameter) == N`, each entry's `weight` a number in `[0, 1]`.
+
+### 5z.4 The framework, layer by layer
+
+| layer | the change | built on |
+|---|---|---|
+| structure codec / sidecar, the Metadata page | `info.parameter` one list, one element per frame, read and written whole; a list whose length is not the frame count refused by name; the Metadata page SETS it -- the list edited there, its elements the frames' -- and shows the current frame's element beside the frame bar's pick | `pair(frames=)`, `apply_info_dict`, § 8.4a's tree and its `info.edit` door |
+| the citation door | a second kind beside the run: a pair carrying `info.calculation` -- the settings defaulted from its `contract`, the frames from the pair; the pseudopotentials from the directory the person gives that holds them all (`psml_lib`, `--psml-lib DIR`), as for a structure optimization, copied in with the record of where they came from (D2) | `compose.classify_citation`, `citation_defaults`, `init --psml-lib` |
+| the description | `task.json` names the frame set (its path and its structure hash, W39's consistency rule); the frame count is the citation's, never typed; a frame set with a self-consistent bias list refused (one bias for a frame group) | `Task`, the codec's refusals (`DescriptionError`) |
+| prep / launch | the device and the transmission carry a frame level inside the run (`run-<n>/f000/` …), the seed and the leads none; one walk per rung, frames independent — each from the seed's density, the walk goes on past a failed frame; warm takes the done frames over, cold runs all (rule 3 at the frame) | the sweep's walk (`_walk_script`), `points_in`, `continuation.done`, `products_of` |
+| status | a swept rung's row: *k of N frames done*; `status <stage>` lists the frames | `runstatus.point_rows` |
+| the record (`summarize task`) | each frame's T(E), current and spin channels; per mode, the average `⟨T⟩ = Σ_j w_j T_j` over its frames with frame 0, the curvature `T″`, and `⟨G⟩`; the static-frame caveat (§ 4c.8) beside the numbers | `collect_record`, `point_transmission` |
+| Results | the family of curves, the frame bar picking a frame and every chart following it (as the I–V pick follows a bias), the averaged curve beside; the frame's `info.parameter` in the card | the transport inspector's `selectBias` pattern; MolView's frame bar |
+| Transport tab, Task setup | the citation card shows the frame set — N frames, the per-frame table — and the came-over rows say so | the describe door's `findings`, `renderCameOver` |
+| tests | the e2e junction of § 5y (run E), cited as a three-frame pair: frame 0 and one bridge mode's `±√3 σ` frames written by the codec, the citation's refusals as API rows | `tests/test_transport_on_a_real_junction_e2e.py` |
+
+### 5z.5 Decisions for the user
+
+- **D1 — the Molbuilder tab's Load.** *Settled by the user, 2026-10-09: "add
+  one guard to the load button: ask user 'do you want to add the structure to
+  the existing view or clear the current view?' default is add."* Built the
+  same day (`tabs.md` § 2): the Load button and a double-click on a structure
+  file ask, when a structure is open, in the app's own dialog, Add focused;
+  Clear installs the file over the view (`loadIntoCanvas(..., {replace})`).
+  Generators keep adding without a question. **Still open in Q16**: a merge
+  that drops the incoming record says so, as it says a dropped cell; the
+  Results tab's two sentences for a saved pair.
+- **D2 — where a frame set's settings and pseudopotentials come from.**
+  *Settled by the user, 2026-10-09: "pseudopotential files are set by user and
+  for transport it's all the same source. we never randomly pick up files.
+  it's user's responsibility to make sure they are consistent. the record of
+  transport shows where the files are copied from."*; *"D2 should use the
+  same convention as in structure optimization: the user should provide the
+  directory that holds all pseudopotentials."* The settings default from the
+  pair's `info.calculation.contract`. The pseudopotentials come from the
+  directory the person gives that holds them all -- the template's `psml_lib`,
+  as a structure optimization takes it (`jobset init --psml-lib DIR`, the
+  form's pseudopotential directory), required for a frame set as it is for an
+  optimization (`template.md` § 6, `required`) -- copied into the calculation,
+  and the transport record says where they were copied from. No run path is
+  needed in `info.calculation`; `--psml-lib` is refused only for a cited run,
+  whose pseudopotentials come with it.
+- **D3 — `info.parameter`'s shape.** *Settled by the user, 2026-10-09: "the
+  info.parameter for a multiframe file should be one list, having the same
+  number of elements as the frames, and set in the meta data panel."* One
+  list in the sidecar, one element per frame in file order, edited on the
+  Metadata page like any `info` entry; a list whose length is not the frame
+  count is refused by name where it is set and where it is read.
+- **D4 — the frames' folders.** *Settled by the user, 2026-10-09 ("D4
+  yes")*: inside one run, as bias points are, never a run per frame.
+- **D5 — the average.** *Settled by the user, 2026-10-09: "for D5
+  (averaging method), we should go ahead with the design as discussed."* The
+  physics in full: `science/vibrational-averaging.md`. Per mode,
+  Gauss–Hermite over its frames with the shared frame 0, the weights each
+  frame's `info.parameter` states; several modes summed to second order,
+  each mode's own change shown beside the sum. **What sets its accuracy**,
+  asked by the user the same day: (1) the frames per mode -- the rule's
+  order, 3 (exact for a response of degree ≤ 5) or 5 (≤ 9), chosen per mode
+  by the frame generator and read here from `node` and `weight`; (2) which
+  modes the set holds -- an omitted mode's change is simply absent; (3) the
+  temperature, which sets each σ (physics, not accuracy); (4) when a mode
+  has both rules, how far apart its two averages may be before the record
+  says the response is not smooth there -- a transport-side setting, to be
+  stated in the record's contract with its default; (5) each frame's own
+  transport accuracy -- the device SCF tolerance, the k-grid, the energy
+  grid -- the calculation's shared settings, one value for every frame.
+
+### 5z.6 The order of work
+
+1. **Q15 closes**: the transport e2e module green on the hydrogen junction (its
+   device point stalled 2026-10-08: 557 SCF steps unchanged, dHmax
+   overflowing — read the device and lead outputs first), the basic batch once,
+   the commit.
+2. **Q16** — the Load question (built 2026-10-09), the dropped-record
+   receipt, the Results card's and hint's sentences for a saved pair; checked
+   on the page with the pair.
+3. **Q17-a, the contract text** (TD10's owed text, now with § 5z.3):
+   `transport.md` § 2a.9, § 2a.11 (the "Later" tree), § 3.1 (the second
+   citation kind); `structure-molstruct.md` § 6.1 (a frame carries its
+   `info.parameter` entry); `vibration.md` § 5.10 ③ (its rule written as
+   `info.parameter`); `results.md` § 2.5 (the frame family).
+4. **Q17-b** the codec and the Metadata page per frame; **Q17-c** the citation
+   door and the description; **Q17-d** prep, launch, status at the frame;
+   **Q17-e** the record's average; **Q17-f** Results, the Transport tab, Task
+   setup — each checked on the page.
+5. The milestone review (two rounds, fresh agents), then the plan cleaned.
+
+### 5z.7 Rows this section settles or moves
+
+TD10's text (§ 2) → § 5z.6 step 3. W32 ②–⑤ → Q17-c … Q17-f, no longer behind
+W39. W39 stays for the person's own parameters; the frame details leave it.
+V1.25 writes `info.parameter` (its generator, its own module — *"we do not worry
+about that at this point"*). § 5u.1 step 11 → Q17.
+
+**State.** D1–D5 settled 2026-10-09; the Load question built and committed (`a19ddfcc`), the averaging science written (`7a282246`). Next: Q15's run E, Q16's receipt and sentences, then Q17-a.
 
 ## 5v. Documents that lag the code — the document sweeps' input *(2026-09-29)*
 
