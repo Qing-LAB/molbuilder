@@ -632,7 +632,9 @@ class TestTitleBelongsToTheGeometryFile:
                        'Properties=species:S:1:pos:R:3 pbc="T T T"')
         s = codec.load(p)
         assert s.title == "", f"the extxyz header became a name: {s.title!r}"
-        assert s.cell is not None, "stripping the name lost the cell with it"
+        # ...nor metadata: the comment line is never read as a cell
+        # (`model/structure.md` § 2.3).
+        assert s.cell is None, "the comment line's Lattice= became the cell"
 
         # 2. ...AND A SENTENCE IS NOT A HEADER.  Only Lattice/Properties/pbc
         # are cut, so a human comment keeps its own `=`.

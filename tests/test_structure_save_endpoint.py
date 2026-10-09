@@ -147,7 +147,10 @@ def test_saving_a_range_and_downloading_it_produce_identical_bytes(web):
     handed = {f["name"]: f["text"] for f in downloaded["files"]}
     assert on_disk == handed["run.xyz"], (
         "the project save and the download produced different bytes")
-    assert on_disk.count("Lattice=") == 3, "one block per frame, each with the cell"
+    assert on_disk.splitlines().count("2") == 3, "one block per frame"
+    assert "Lattice=" not in on_disk, (
+        "the cell has one home, the sidecar -- the comment line is never "
+        "metadata (model/structure.md § 2.3)")
     assert downloaded["frames"] == 3
 
     written = sorted(p.name for p in web._root.iterdir())

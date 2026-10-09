@@ -538,20 +538,20 @@ runs here. **No other env carries notebook tooling.**
 the MD and trajectory formats calculations produce** — extended-XYZ, ASE's
 own `.traj`, plain xyz, pdb, cif, and the engine outputs ASE's readers cover
 — and `ase` is that reader; `sisl` is the same for what SIESTA and TBtrans
-write. One consequence is the frame set
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.9): a series of
-displaced structures for transport is one multi-frame extended-XYZ document
-sharing one sidecar, and the bare-metal way to make one — from a spectrum's
-normal modes, or from anything — is a notebook with `ase` in it. Tools, an
-API and a web surface for such perturbations come later; this is the floor
-they stand on.
+write. A frame set for transport is NOT made here
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.9): it is a data set
+made through molbuilder's own Structure API — the frame generator or a
+person's script, `with_frames` and `set_customized`, written by the codec with
+its sidecar (`model/structure.md` § 2.2e). A file `ase` writes carries no
+sidecar, and its comment line is never metadata (§ 2.3), so it reads as atoms
+and coordinates only.
 
 **It still holds no calculation engine** — no `pyscf`, `siesta` or `rdkit`.
 Running one from a notebook would be a second place to run a calculation,
 off the record. That half of the 2026-09-14 ruling stands. The cost that
 ruling named — a second `ase` that can drift from the host env's — is real
 and is **not checked** by the audit: both are bare conda-forge specs solved
-on the same channel, and the extended-XYZ format is stable, so the exposure
+on the same channel, and the formats it reads are stable, so the exposure
 is bounded, not zero.
 
 *(The 2026-09-14 design said: no science backend at all — `ase`, `sisl`,

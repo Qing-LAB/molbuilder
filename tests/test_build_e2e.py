@@ -798,14 +798,17 @@ class TestSendToTaskSetup:
         _register_tmp_as_picker_root(tmp_path, monkeypatch)
         calc = tmp_path / "proj" / "opt" / "boxed-run"
         calc.mkdir(parents=True)
-        xyz = calc / "water.xyz"
-        xyz.write_text(
-            '3\nLattice="18.0 0.0 0.0 0.0 18.0 0.0 0.0 0.0 18.0" '
-            'Properties=species:S:1:pos:R:3\n'
-            "O 9.000  9.000 9.000\n"
-            "H 9.957  9.000 9.000\n"
-            "H 8.761  9.927 9.000\n"
-        )
+        # A STRUCTURE THAT STATES ITS CELL is a pair: the cell lives in its
+        # sidecar, never in the comment line (`model/structure.md` § 2.3).
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+        xyz = StructureCodec().write(
+            Structure(elements=["O", "H", "H"],
+                      positions=[[9.000, 9.000, 9.000],
+                                 [9.957, 9.000, 9.000],
+                                 [8.761, 9.927, 9.000]],
+                      cell=[[18.0, 0, 0], [0, 18.0, 0], [0, 0, 18.0]]),
+            calc / "water.xyz")
         from conftest import write_pseudos
         write_pseudos(calc, ["O", "H"])
         return calc, xyz

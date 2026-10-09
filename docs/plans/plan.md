@@ -1529,7 +1529,7 @@ reuses.
 
 ### 5z.3 The input contract (written first, `transport.md` § 2a.9, `structure-molstruct.md` § 6.1)
 
-1. **The pair**: one extended-XYZ document, `N ≥ 1` frames, one sidecar.
+1. **The pair**: one XYZ document, `N ≥ 1` frames, one sidecar.
 2. **The labels**, shared by every frame: `frozen_atoms`, `L-electrode`,
    `R-electrode`, `bridge`, and any other label (the person's, read by nobody).
 3. **`info.calculation`**: where the optimization came from and its parameters
@@ -1929,10 +1929,17 @@ mutation-checked; on the page, the Molbuilder tab's Load asks which frame and
 the Results tab shows a frame set with its Customized section following the
 frame bar. **Four calls made while building, for the user's eye:** (a) an
 empty `customized` is written `null`, as every metadata field states its unset
-value, rather than left out (F.7 row 10 said *omitted*); (b) an extended-XYZ
-comment line's other `key=value` pairs are *not read*, as today, rather than
-refused — refusing would newly refuse every ASE-written file with an
-`energy=` (F.7 row 1 said *refused*); (c) `frame_at(0)` is frame 0 as it is,
+value, rather than left out (F.7 row 10 said *omitted*) — *settled by the
+user, 2026-10-09: "your recommendation on question A is okay"*; (b)
+**replaced by the user's ruling, 2026-10-09: the `.xyz` comment line is never
+metadata** (*"if we deal with a single XYZ that doesn't come with a JSON file,
+that means we know nothing about it … The metadata have always to come from the
+accompanied JSON file … If the XYZ file doesn't come with a JSON file, then we
+would notify the user that we're dumping the comments"*) — no `Lattice=`,
+`pbc=`, `energy=` or any other key is read from any file; a lone `.xyz` is
+atoms and coordinates, isolated, and the read says so, quoting the line; the
+codec writes plain XYZ, a block per frame, so the cell has one home, the
+sidecar (`model/structure.md` § 2.3); the title keeps § 2.2c's rule; (c) `frame_at(0)` is frame 0 as it is,
 and only frames 1…N state frame 0's offset — periodicity § 6.0's own words, and
 it keeps a frame-0 load exactly as before; (d) a put-back envelope
 (`/api/build/load` `{structure}`) is answered whole, as `exportFile`'s exact

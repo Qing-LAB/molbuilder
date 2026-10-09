@@ -226,8 +226,8 @@ project (§ 11.3).
 
 **Each asks which frames**, as a range, and opens on the one you are looking at —
 so exporting what is on screen is the default and costs nothing extra. Widen it
-and the format follows: one frame of Data is an `.xyz`, a range is an
-**extended-XYZ**; one frame of Image is a `.png`, a range is a `.webm` or `.gif`
+and the format follows: one frame of Data is an `.xyz` of one block, a range an
+`.xyz` of a block per frame; one frame of Image is a `.png`, a range is a `.webm` or `.gif`
 rendered frame by frame with the view you have set. A structure with one frame
 never asks, there being nothing to choose.
 
@@ -3762,7 +3762,7 @@ flowchart LR
 |---|---|---|---|:--:|
 | **Save state** (and Retract) | one point in an ordered, numbered sequence of files kept on the server — undo that survives a browser crash | **the truth** — the structure with its cell and labels, and the selection (§ 11.2) | all of them | **yes** — going back is the whole point of it |
 | **The draft** | one file beside those points, replaced each time rather than added to — what makes a reopened tab find the work you never saved | the same bytes a point is made of | all of them | no — it is not a place on the sequence, it is *where you were* |
-| **Export → Data** | the structure as data — a coordinate document and the metadata beside it (§ 11.7). One frame writes an `.xyz`; a range writes one **extended-XYZ**. The `.json` is written once either way | **the truth** — the master copy | **the range asked for**, defaulting to the displayed frame | no |
+| **Export → Data** | the structure as data — a coordinate document and the metadata beside it (§ 11.7). One frame writes an `.xyz`; a range writes one `.xyz`, a block per frame. The `.json` is written once either way | **the truth** — the master copy | **the range asked for**, defaulting to the displayed frame | no |
 | **Export → Image** | a picture of the molecule as it is drawn. One frame is a `.png`; a range is a `.webm` or `.gif`, rendered frame by frame with the view as it is set | **the drawing** | **the range asked for**, defaulting to the displayed frame | no |
 
 **When each is written.** An edit changes what would be lost if the tab closed,
@@ -3835,15 +3835,14 @@ easy action the wrong one.
 **A one-frame structure never asks.** With nothing to choose between, the range
 is the whole of it and the dialog would be a question with one answer.
 
-**Why extended XYZ for the trajectory.** A plain `.xyz` has one comment line per
-frame and nowhere to put a cell, so a periodic trajectory written that way loses
-the box on every frame — and a trajectory that has lost its cell is not the thing
-that was computed. Extended XYZ puts the cell in that comment line
-(`Lattice="…" Properties=…`), which is why every tool that reads trajectories
-expects it. The **metadata `.json` is written once**, not per frame: the labels
-and the cell block are § 6.2's shared identity, the same for frame 0 and frame
-400, and writing them four hundred times would be four hundred chances to
-disagree.
+**The cell is in the `.json`, never in the comment line** *(user,
+2026-10-09: "The metadata have always to come from the accompanied JSON file,
+which has a known origin")*. A range is plain XYZ, a block per frame, each
+comment line the title alone; the comment line is never metadata, in either
+direction (`model/structure.md` § 2.3). The **metadata `.json` is written
+once**, not per frame: the labels and the cell block are § 6.2's shared
+identity, the same for frame 0 and frame 400, and writing them four hundred
+times would be four hundred chances to disagree.
 
 Every export goes either into the project or to a download. That choice is a
 separate axis from all of the above, and it is the subject of the second half of
@@ -4505,13 +4504,9 @@ called — is the **pairing rule**, which is the codec's and has exactly one hom
 (`model/structure.md` § 2.4). A caller that builds either is keeping a second
 copy of a rule it does not own.
 
-**Both files are `.xyz`, whether it holds one frame or four hundred.** Extended
-XYZ is a strict **superset** of plain XYZ — the cell and the per-axis flags ride
-in the comment line, which a plain reader skips — so the same extension covers
-both and every tool that reads one reads the other. That is the ordinary
-convention (ASE, where the format's modern use comes from, writes extended XYZ
-to `.xyz` by default), and it is why the format can follow the frame count
-without the *name* becoming a second question.
+**The geometry is `.xyz`, whether it holds one frame or four hundred** — plain
+XYZ, a block per frame, which every tool that reads XYZ reads, and its name
+never becomes a second question.
 
 > **What went wrong here, corrected 2026-07-31.** This section briefly claimed
 > the opposite — that a range should be named `.extxyz`, and that a `.xyz`

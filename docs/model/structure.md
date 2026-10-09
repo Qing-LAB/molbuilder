@@ -7,7 +7,7 @@ sub-documents sharing the `structure-` filename prefix (so the hierarchy is
 visible in the name itself):
 - [`structure-periodicity.md`](?doc=model/structure-periodicity.md) — cell · engine offset ·
   axis_kind · vacuum (the per-axis box behaviour; the boolean `pbc()` is an
-  accessor for ASE/extxyz, not a field — `structure-periodicity.md` § 2.0a).
+  accessor for ASE (`to_ase`), not a field — `structure-periodicity.md` § 2.0a).
 - [`structure-annotations.md`](?doc=model/structure-annotations.md) — per-atom channel
   model (`tag`/`flag`/`value`) + the region-label vocabulary.
 - [`structure-molstruct.md`](?doc=model/structure-molstruct.md) — the `.molstruct.json`
@@ -336,7 +336,7 @@ no rule anywhere.
 | writer | form |
 |---|---|
 | `to_xyz:1698` | the comment line — `(comment or self.title or "Built by molbuilder")` |
-| `to_extxyz:1777,1785` | **prepended to the header** — `f"{title} {head}"` |
+| ~~`to_extxyz`~~ | **retired** 2026-10-09 with the extended-XYZ writer (§ 2.3, *the comment line is never metadata*) |
 | `to_pdb:1800` | `TITLE     {self.title:<70s}` — **truncated at 70 characters** |
 | ~~`identity_to_dict`~~ | **retired** — it no longer emits the title, so a comment line makes no sidecar |
 
@@ -541,8 +541,7 @@ bar's `1 / F` does — *"frame 1 of 3"*.
 
 | Method | Format | Guarantees |
 |---|---|---|
-| `to_xyz(*, comment="")` | xmol XYZ **text** | line 1 = `N`; line 2 = comment-or-title; then `El x y z` per atom |
-| `to_extxyz(*, comment="")` | extended-XYZ **text** | the comment line carries `Lattice=` (the RESOLVED cell) and `pbc=`; one block per frame the structure holds (§ 2.2e) |
+| `to_xyz(*, comment="")` | xmol XYZ **text** | one block per frame the structure holds (§ 2.2e): line 1 = `N`; line 2 = comment-or-title, and nothing else; then `El x y z` per atom |
 | `to_pdb()` | PDB ATOM records, as **text** | TITLE if set; serial capped `99999` (overflow → `*****`); residue id capped `9999`; chain id truncated to 1 char |
 | `to_pyscf(*, as_string=False)` (`:1647`) | PySCF `gto.M` atom kwarg | `(symbol,(x,y,z))` tuples; multi-line string if `as_string=True` |
 | `to_ase()` (`:1674`) | `ase.Atoms` | raises `ImportError` with install hint if ASE absent |
@@ -555,7 +554,7 @@ bar's `1 / F` does — *"frame 1 of 3"*.
 geometry, which a bare reader cannot.
 
 **And so do the writers, since 2026-09-22: they RETURN a document and cannot
-be handed a path.** `to_xyz`, `to_extxyz` and `to_pdb` each took an optional
+be handed a path.** `to_xyz`, the extended-XYZ writer and `to_pdb` each took an optional
 `path` and wrote a lone file to it. That is the half that loses data — the
 frozen atoms, the region labels and the explicit cell go on the floor,
 silently and at exit 0 — and it is the door every violation in this document's
@@ -579,21 +578,35 @@ had to change for it, one of them the package's own front-page example.
 > and a caller holding a path reads the file itself. `os` is no longer imported
 > by this module at all — reading stopped being a filesystem concern here.
 
-**Round-trip guarantees.** XYZ: elements + positions exact; metadata drops to
-defaults (XYZ has no slots). PDB: elements + positions + atom_names +
-residue_ids + residue_names + chain_ids exact.
+**Round-trip guarantees.** XYZ: elements + positions exact, every frame;
+metadata drops to defaults (XYZ has no slots — the comment line is not one,
+below). PDB: elements + positions + atom_names + residue_ids + residue_names +
+chain_ids exact.
 
 **`from_xyz` requirements:** line 1 = non-negative integer N; lines 2..N+2
 read; trailing blank/short lines tolerated; bad header or short atom line →
 `ValueError` with the offending line.
 
 **A document of several frames is read whole, as one frame set** (§ 2.2e),
-and its frames must BE one: a frame `k` whose atom count, species, atom order,
-`Lattice=` or `pbc=` differs from frame 0's is refused, naming `k` — the
-frames of a set share everything but their coordinates. The comment line's
-other `key=value` pairs are not read; a frame's rows live in the sidecar only
-(§ 2.2d). Choosing one frame is not the reader's: `StructureCodec.load`
+and its frames must BE one: a frame `k` whose atom count, species or atom order
+differs from frame 0's is refused, naming `k` — the frames of a set are the
+same atoms. Choosing one frame is not the reader's: `StructureCodec.load`
 (below) and `/api/build/load` take frame 0 unless asked otherwise.
+
+**The comment line is never metadata** *(user, 2026-10-09: "if we deal with a
+single XYZ that doesn't come with a JSON file, that means we know nothing about
+it … We only take the atoms and their coordinates … we don't assume any
+periodicity … The metadata have always to come from the accompanied JSON file,
+which has a known origin … We have to be very consistent and explicit")*. A
+structure's metadata — its cell, its axis kinds, its labels and channels, its
+`customized` rows, its `info` — comes from a source molbuilder knows: the
+`.molstruct.json` it wrote beside the file, or, for an engine's own file in one
+of our runs, that run's own deck (§ 2.4). The `.xyz` comment line is none of
+those: a `Lattice=`, a `pbc=` (booleans that cannot say `transport`), an
+`energy=`, an extra per-atom column — none is read, from any file, ours or
+another tool's. What the line gives is the title, by § 2.2c's rule, and nothing
+else. And molbuilder writes nothing else there: a frame set is written as plain
+XYZ, one block per frame (§ 2.4), so the cell has one home, the sidecar.
 
 **`from_pdb` / TER handling** (pinned by `test_pdb_ter.py`): a segment counter
 increments on every `TER`; each atom records `(chain_letter_or_"_",
@@ -610,6 +623,20 @@ extension (`.xyz` / `.pdb`, anything else refused by name) and applies the
 `.molstruct.json` beside it through `apply_to_structure`. **The pair is the
 file**: a reader that takes the geometry alone hands back a structure smaller
 than what is on disk.
+
+**A lone file says what was read** *(user, 2026-10-09: "If the XYZ file doesn't
+come with a JSON file, then we would notify the user that we're dumping the
+comments. And we can print out the comments … and the user can decide how to
+modify the metadata, which would eventually be saved as a JSON")*. A `.xyz`
+with no `.molstruct.json` beside it — and not an engine's own file in one of our
+runs (§ 2.4) — is read as its atoms and coordinates: isolated on every axis, no
+cell, no labels. The load answers what it did not read, and every door that
+opens a file for a person says it — the load route as a notice, `jobset init`
+and the CLI as a printed line: *"x.xyz has no .molstruct.json beside it, so
+only its atoms and coordinates were read -- no cell, no labels; its comment line
+was not read as metadata: «…»"* — the line quoted whole, so the person can set
+what they meant on the Molbuilder tab, its Cell and Metadata pages, where saving
+writes it to the sidecar.
 
 **Which frame** *(user, 2026-10-09: "keep the default reading, just take frame
 zero … If the caller doesn't provide this option, then frame zero is by
@@ -635,9 +662,9 @@ holds 3 frames; frame 1 of 3 was taken"* — a line, never a refusal.
 > `ase.io.read(..., format="extxyz")` rather than splitting lines itself. ASE is
 > a declared dependency **for this** — `pyproject.toml` names it *"XYZ I/O +
 > atomic-number table"* — and its extended-XYZ reader is a superset reader: it
-> takes the plain xmol layout and the `Lattice="…" pbc="…"` comment line alike,
-> canonicalises an external tool's `FE`/`ZN` to `Fe`/`Zn`, and reads **every**
-> frame of a multi-frame document.
+> takes the plain xmol layout and an extended-XYZ comment line alike (whose
+> keys molbuilder does not read, above), canonicalises an external tool's
+> `FE`/`ZN` to `Fe`/`Zn`, and reads **every** frame of a multi-frame document.
 >
 > The hand-rolled parser it replaced read the atoms of the first block and
 > nothing else, so a file this class had itself written with `to_extxyz` came
@@ -647,13 +674,12 @@ holds 3 frames; frame 1 of 3 was taken"* — a line, never a refusal.
 > diagnosis fixed at one call site by adding a reader beside the lossy one,
 > while every other caller kept the lossy one. That second reader is now gone.
 >
-> Two things stay ours, and both are deliberate. The **title** is read from the
-> comment line directly, because ASE's reader parses that line as `key=value`
-> pairs and a human comment (`water molecule`) would come back as
-> `{'water': True, 'molecule': True}`. And a `Lattice=` is adopted as an
-> *explicit* cell only when some axis is periodic — our own writer emits the
-> **resolved** box for isolated systems too, and adopting that would promote a
-> derived value into a stored one (§ 2.2's raw-vs-resolved line).
+> One thing stays ours, deliberately. The **title** is read from the comment
+> line directly, because ASE's reader parses that line as `key=value` pairs and
+> a human comment (`water molecule`) would come back as
+> `{'water': True, 'molecule': True}`. *(Until 2026-10-09 a `Lattice=` with a
+> periodic `pbc=` was also adopted as the cell; the comment line is no longer
+> metadata at all, above.)*
 >
 > `from_pdb` is still ours: PDB carries residue, chain and atom-name columns
 > this model owns. **A second PDB reader does exist**, in the builders —
@@ -672,13 +698,10 @@ copy of any of them:
 
 1. **the pairing rule** — `<stem>.xyz` ↔ `<stem>.molstruct.json`, including how
    the sidecar's name is derived (`molstruct.sidecar_path_for`);
-2. **the format choice** — a plain `.xyz` for one frame, extended XYZ for many,
-   decided by the frames the structure holds (§ 2.2e) and never asked as a
-   separate question; a frame set written to a `.pdb` is refused, PDB holding
-   one geometry. **Both are
-   `.xyz`**: extended XYZ is a strict superset of plain XYZ (the cell rides in
-   the comment line, which a plain reader skips), so one extension covers both
-   — the ordinary convention, and the only one `read` accepts;
+2. **the format choice** — plain XYZ, one block per frame the structure
+   holds (§ 2.2e), its comment line the title and nothing else (§ 2.3, *the
+   comment line is never metadata*); `.pdb` when the destination names it, a
+   frame set written to a `.pdb` refused, PDB holding one geometry;
 3. **the sidecar envelope** — `schema_version`, the `structure_hash` pinning it
    to its geometry, and the one serialisation (`molstruct.dumps`);
 4. **the invariants** — `no .json == empty metadata` in both directions,
@@ -836,8 +859,8 @@ only by `jobset prep`.)* Writes: `_emit` and
 > suffix — the same suffix `read` dispatches on, which is what makes the round
 > trip a guarantee rather than a coincidence — and a caller with its own answer
 > (the CLI's `--output-format`, which may name a format the extension does not)
-> passes it and is obeyed. This is a different axis from plain-vs-extended XYZ,
-> which still follows the frame count and is still never asked as a question.
+> passes it and is obeyed. This is a different axis from how many frames the
+> document holds, which follows the structure and is never asked as a question.
 
 ---
 
@@ -875,8 +898,8 @@ task #75).
 `openMolecule` is **only** for a project-file path. Generated text
 (smiles/dna/…) has no file, so generators call
 `molview.data.installMolecule({text})` directly — the model primitive, not the
-door. **Saving writes XYZ only** — the codec's generator emits a plain `.xyz`
-or an extended one and there is no PDB serializer, so a save to a `.pdb` path
+door. **Saving writes XYZ only** — the codec's generator emits a plain `.xyz`,
+one block per frame, and there is no PDB serializer, so a save to a `.pdb` path
 would receive XYZ bytes (the door forces `.xyz`). Asymmetry: `openMolecule`
 *loads* a `.pdb` (the parse seam sniffs PDB); nothing saves one.
 A 409 "exists" envelope → `{needsOverwrite:true}`, and the door confirms and

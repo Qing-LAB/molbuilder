@@ -750,11 +750,9 @@ class Structure:
         periodic" warning could never fire, both because a boolean cannot
         express the distinction it was branching on.
 
-        It exists for the two formats outside this project that require the
-        boolean form and have no richer one:
-
-          * ASE — ``Atoms(pbc=…)`` (:meth:`to_ase`);
-          * extended XYZ — the ``pbc="T T F"`` header (:meth:`to_extxyz`).
+        It exists for the one format outside this project that requires the
+        boolean form and has no richer one: ASE — ``Atoms(pbc=…)``
+        (:meth:`to_ase`).
 
         Not a stored field: ``axis_kind`` contains this and more, so storing
         the boolean view as well would be two spellings of one fact.
@@ -1664,10 +1662,16 @@ class Structure:
 
         EVERY FRAME, AS ONE FRAME SET (``model/structure.md`` § 2.2e, § 2.3):
         a document of several frames is one structure holding them, and its
-        frames must BE one -- a frame whose atom count, species, atom order,
-        ``Lattice=`` or ``pbc=`` differs from frame 0's is refused, naming it.
-        Which frame a caller gets is the codec's choice (``load``), never the
-        reader's.
+        frames must BE one -- a frame whose atom count, species or atom order
+        differs from frame 0's is refused, naming it.  Which frame a caller
+        gets is the codec's choice (``load``), never the reader's.
+
+        THE COMMENT LINE IS NEVER METADATA (``model/structure.md`` § 2.3;
+        user, 2026-10-09): no ``Lattice=``, ``pbc=``, ``energy=`` or other key
+        is read -- a structure's metadata comes from the sidecar molbuilder
+        wrote, a source it knows.  The line gives the title (§ 2.2c) and
+        nothing else, so what this returns is atoms and coordinates,
+        isolated on every axis.
 
         :param title: overrides the comment line.
         """
@@ -1681,17 +1685,14 @@ class Structure:
         lines = text.splitlines()
         comment = lines[1].strip() if len(lines) >= 2 else ""
         # ...BUT THE MACHINE HALF OF THAT LINE IS NOT A NAME.  An extended-XYZ
-        # comment is `<free text> Lattice="..." Properties=... pbc="..."`.
-        # The header states the cell, which is parsed into `cell`; calling
-        # it the title would file the same fact twice, once mislabelled, in
-        # the one line of the file another tool reads as the name
-        # (``model/structure.md`` § 2.2c).
+        # comment is `<free text> Lattice="..." Properties=... pbc="..."`,
+        # and the header is not a name (``model/structure.md`` § 2.2c) --
+        # nor metadata: none of its keys is read (§ 2.3).
         #
         # Only the three STRUCTURAL keys are cut, and only from the first one
         # on.  A sentence is what the paragraph above exists to protect, so
         # "anneal at T=300K" keeps its `=`; `Lattice`/`Properties`/`pbc` are
-        # what `to_extxyz` writes and what ASE emits, and nothing else is
-        # guessed at.
+        # what ASE emits, and nothing else is guessed at.
         _mk = _EXTXYZ_KEY.search(comment)
         if _mk is not None:
             comment = comment[:_mk.start()].strip()
@@ -1709,55 +1710,27 @@ class Structure:
             raise ValueError("XYZ holds no frames")
         first = images[0]
         symbols = list(first.get_chemical_symbols())
-        first_cell = np.asarray(first.cell, dtype=float)
-        first_pbc = tuple(bool(b) for b in first.pbc)
-        # ONE FRAME SET: the frames share everything but their coordinates.
+        # ONE FRAME SET: the frames are the same atoms in the same order.
         # Counted from 1 here, because a person reads it.
         for k, im in enumerate(images[1:], start=1):
             differs = (
                 "atom count" if len(im) != len(first) else
                 "species or atom order" if list(im.get_chemical_symbols())
-                != symbols else
-                "Lattice=" if not np.array_equal(
-                    np.asarray(im.cell, dtype=float), first_cell) else
-                "pbc=" if tuple(bool(b) for b in im.pbc) != first_pbc else
-                None)
+                != symbols else None)
             if differs:
                 raise ValueError(
                     f"frame {k + 1} of {len(images)} differs from frame 1 in "
                     f"its {differs}; the frames of one document are one frame "
-                    f"set -- the same atoms in the same order, in the same "
-                    f"cell (model/structure.md § 2.3)")
+                    f"set -- the same atoms in the same order "
+                    f"(model/structure.md § 2.3)")
         coordinates = np.asarray([im.get_positions() for im in images],
                                  dtype=float)
-
-        # THE CELL, ONLY WHERE IT MEANS ONE.  A `Lattice=` is adopted as this
-        # structure's explicit cell only when some axis is actually periodic.
-        # Our own `to_extxyz` writes the RESOLVED box for an isolated molecule
-        # too -- its bounding box plus vacuum, with `pbc="F F F"` beside it --
-        # and adopting that would promote a DERIVED value into a stored one, so
-        # the box would stop tracking the vacuum it came from
-        # (structure-periodicity.md's raw-vs-resolved line).  A `.xyz` that
-        # travels with its `.molstruct.json` gets the real cell from the
-        # sidecar anyway, applied after this parse.
-        cell = first_cell
-        periodic = first_pbc
-        carries_cell = bool(cell.any()) and any(periodic)
 
         return cls(
             elements=symbols,
             positions=coordinates[0],
             frames=(coordinates if len(coordinates) > 1 else None),
             title=(title if title is not None else comment),
-            cell=(cell.tolist() if carries_cell else None),
-            # THE BOOLEANS BECOME KINDS AT THE DOOR.  extxyz carries only
-            # `pbc="T T F"`, so this is the one place in the project that
-            # legitimately starts from booleans -- and it converts here
-            # rather than storing a second periodicity field.  `transport`
-            # cannot be recovered from a boolean and is not guessed; a pair's
-            # sidecar restores it.
-            axis_kind=(tuple("periodic" if b else "isolated"
-                             for b in periodic) if carries_cell else None),
         )
 
     # ------------------------------------------------------------------ #
@@ -1964,7 +1937,10 @@ class Structure:
     # ------------------------------------------------------------------ #
 
     def to_xyz(self, *, comment: str = "") -> str:
-        """Return XMol .xyz text.  TEXT, not a file -- see
+        """Return XMol .xyz text -- one block per frame the structure holds
+        (``model/structure.md`` § 2.2e), each block's comment line the title
+        and nothing else (§ 2.3: the comment line is never metadata; the
+        cell lives in the sidecar).  TEXT, not a file -- see
         :func:`_require_text` for the read side of the same rule;
         ``StructureCodec().write(struct, path)`` writes files.
 
@@ -1979,75 +1955,12 @@ class Structure:
         `model/structure.md` § 2.4 states the rule both halves keep -- *every
         structure-to-bytes translation goes through this codec*.
         """
-        buf = StringIO()
-        buf.write(f"{self.n_atoms}\n")
-        buf.write((comment or self.title or "Built by molbuilder").strip() + "\n")
-        for el, (x, y, z) in zip(self.elements, self.positions):
-            buf.write(f"{el:<3s} {x: 12.6f} {y: 12.6f} {z: 12.6f}\n")
-        return buf.getvalue()
-
-    # ------------------------------------------------------------------ #
-    #  Output: extended XYZ (one frame, or a whole trajectory)            #
-    # ------------------------------------------------------------------ #
-
-    def to_extxyz(self, *, comment: str = "") -> str:
-        """Return extended-XYZ TEXT for this structure -- one block per frame
-        it holds (``model/structure.md`` § 2.2e).  Not a file:
-        ``StructureCodec().write(struct, path)`` writes one, and
-        :meth:`to_xyz` records why there is no ``path`` argument.
-
-        Extended XYZ is plain XYZ with the per-frame comment line carrying
-        key=value metadata -- the convention ASE reads and writes, and what
-        every trajectory tool expects.  Two keys go out:
-
-        ``Lattice``
-            The cell **as it will actually be used** (:meth:`resolve_cell`),
-            row-major, in Angstrom.  This is the same box MolView draws and the
-            Cell page reports, so a file and the viewer it came from cannot
-            describe different systems.
-        ``pbc``
-            Which axes are periodic (``T``/``F``), from :meth:`pbc`.  It is what
-            keeps the Lattice honest: an isolated molecule still HAS a resolved
-            box -- its bounding box plus vacuum -- and writing that without
-            ``pbc="F F F"`` would tell the reader the system repeats when it
-            does not.
-
-        WHY THIS EXISTS BESIDE ``to_xyz`` AND NOT INSTEAD OF IT.  A plain
-        ``.xyz`` has nowhere to put a cell, so a periodic structure written that
-        way loses its box -- and a *trajectory* written that way loses it on
-        every frame.  ``to_xyz`` stays for the single-frame, cell-less case that
-        every code reads; this is for the cases it cannot carry.
-
-        The elements and the cell are written from ``self`` and are the same
-        for every block, which is what makes the document one frame set rather
-        than a pile of structures -- and what ``from_xyz`` checks on the way
-        back in.
-        """
-        blocks = list(self.frames) if self.n_frames > 1 else [self.positions]
-        n = self.n_atoms
-
-        # The box every frame shares.  ``resolve_cell`` can refuse on a
-        # structure whose state is contradictory -- the same degradation
-        # ``to_wire`` performs, rather than failing the write.
-        try:
-            cell = self.resolve_cell()
-        except ValueError:
-            cell = None
-        lattice = ""
-        if cell is not None:
-            flat = " ".join(f"{v:.6f}" for row in np.asarray(cell) for v in row)
-            lattice = f'Lattice="{flat}" '
-        flags = " ".join("T" if p else "F" for p in self.pbc())
-        head = (f'{lattice}Properties=species:S:1:pos:R:3 pbc="{flags}"')
         title = (comment or self.title or "Built by molbuilder").strip()
-
+        blocks = list(self.frames) if self.n_frames > 1 else [self.positions]
         buf = StringIO()
         for frame in blocks:
-            buf.write(f"{n}\n")
-            # The title rides in front of the key=value pairs, where a reader
-            # that only wants the metadata still finds it and a human still
-            # sees which structure this is.
-            buf.write(f"{title} {head}\n" if title else f"{head}\n")
+            buf.write(f"{self.n_atoms}\n")
+            buf.write(title + "\n")
             for el, (x, y, z) in zip(self.elements, frame):
                 buf.write(f"{el:<3s} {x: 12.6f} {y: 12.6f} {z: 12.6f}\n")
         return buf.getvalue()

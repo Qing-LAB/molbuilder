@@ -139,9 +139,18 @@ door = "edit"
 edit = "replace_positions"
 refused = "a frame set is not edited"
 
-# ---- A DOCUMENT OF SEVERAL FRAMES IS ONE SET (`structure.md` § 2.3) ------- #
-# The silent failure: the reader took species and cell from frame 0 and
-# positions from every frame, so a frame of other atoms loaded as frame 0's.
+# ---- WHAT A DOCUMENT GIVES (`structure.md` § 2.3) ------------------------- #
+# The silent failures: a comment line's `pbc=` booleans became the axis kinds
+# of a file nothing molbuilder knows (user, 2026-10-09: "The metadata have
+# always to come from the accompanied JSON file"); and the reader took species
+# from frame 0 and positions from every frame, so a frame of other atoms loaded
+# as frame 0's.
+
+[[case]]
+name = "a lone .xyz is atoms and coordinates: its comment line's Lattice= and pbc= are not a cell, and the read says so, quoting the line"
+door = "lone_file"
+document = "2\nLattice=\"10 0 0 0 10 0 0 0 10\" Properties=species:S:1:pos:R:3 energy=-1.5 pbc=\"T T T\"\nH 0 0 0\nH 0 0 0.74\n"
+expect = { cell = "none", axis_kind = ["isolated", "isolated", "isolated"], said = "energy=-1.5" }
 
 [[case]]
 name = "a document whose second frame holds other atoms is refused, naming the frame"

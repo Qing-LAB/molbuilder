@@ -627,9 +627,10 @@ def api_build_load():
         if not _resolved.exists():
             return jsonify({"ok": False, "error": f"no such file: {_path}"}), 404
         retired: Dict[str, Any] = {}
+        lone: list = []
         try:
             whole = StructureCodec().read(_resolved, frames=True,
-                                          retired_out=retired)
+                                          retired_out=retired, said_out=lone)
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
             return jsonify(
                 {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
@@ -642,12 +643,15 @@ def api_build_load():
         # What only the read knows is a retired corner it did not apply: said
         # here, naming it, because a person who typed it assigns it again on
         # the Cell page (plan § 5q D14).
-        said = []
+        from molbuilder.issues import Issue
+        from molbuilder.periodicity_gate import notices_for_report
+        # A LONE FILE IS ATOMS AND COORDINATES, said with its comment line
+        # quoted (`model/structure.md` § 2.3).
+        said = notices_for_report([Issue("info", s, "structure.lone_file")
+                                   for s in lone])
         if retired.get("cell_origin") is not None:
-            from molbuilder.issues import Issue
-            from molbuilder.periodicity_gate import notices_for_report
             corner = ", ".join(f"{float(v):g}" for v in retired["cell_origin"])
-            said = notices_for_report([Issue(
+            said += notices_for_report([Issue(
                 "info",
                 f"This file stored a box origin ({corner}) the way molbuilder "
                 f"no longer reads it, so it was not applied: the atoms are "

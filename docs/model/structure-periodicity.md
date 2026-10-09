@@ -75,11 +75,14 @@ because a boolean cannot express the distinction it was branching on.
 
 **The boolean survives as `Structure.pbc()`** — a method, not a property, so
 the parens say it is computed and a stale reader fails on subscript rather
-than silently taking a truthy bound method. It exists for the two formats
-outside this project that require booleans and have nothing richer:
+than silently taking a truthy bound method. It exists for the one format
+outside this project that requires booleans and has nothing richer:
 
-  * ASE — `Atoms(pbc=…)` (`to_ase`);
-  * extended XYZ — the `pbc="T T F"` header (`to_extxyz`).
+  * ASE — `Atoms(pbc=…)` (`to_ase`).
+
+*(Extended XYZ's `pbc="T T F"` header was the second until 2026-10-09: molbuilder
+neither reads nor writes it now — the comment line is never metadata,
+`structure.md` § 2.3.)*
 
 **Nothing inside molbuilder calls it.** Code that needs to know how an axis
 is treated asks `axis_kind`, which says which of the three it is. Reading the
@@ -99,7 +102,7 @@ ignoring it: every sidecar at a readable schema version carries a real
 
 Every consumer branches on this one field.
 
-| kind | cell vector on axis *i* | `vacuum[i]` | k-sampleable? | tileable (display) | `pbc()[i]` (ASE/extxyz only) | fdf |
+| kind | cell vector on axis *i* | `vacuum[i]` | k-sampleable? | tileable (display) | `pbc()[i]` (ASE only) | fdf |
 |---|---|---|---|---|---|---|
 | **periodic** | commensurate lattice (construction / import) | 0 | **yes** (a `SiestaConfig` knob) | yes | `True` | k-sampled |
 | **isolated** | `bbox[i] + 2·vacuum[i]` (§ 3) | **the only kind it applies to** — unset ⇒ 3 Å default, else exactly what you set | Γ — above 1 is warned, never refused | no | `False` | Γ box |
@@ -254,7 +257,7 @@ the box render and the fdf work on a blank molecule.
 |---|---|---|---|
 | `cell` | `struct.cell is None` | `resolve_cell()` (§ 4) | `commitPeriodicityOp("cell", 3×3)` / import / capture → `struct.cell` wins verbatim |
 | `vacuum` | `null` (unset) | `effective_vacuum()` — **3 Å per side on each `isolated` axis** (§ 6.1); 0 on periodic / transport, where vacuum does not apply | `commitPeriodicityOp("vacuum", [x,y,z])` — used verbatim, however small. `null` clears it back to the default |
-| `axis_kind` | `isolated` on every axis (a fresh molecule is a vacuum box) | the one periodicity field; `pbc()` derives the booleans for ASE/extxyz only | `commitPeriodicityOp("axis_kind", [...])` |
+| `axis_kind` | `isolated` on every axis (a fresh molecule is a vacuum box) | the one periodicity field; `pbc()` derives the booleans for ASE only | `commitPeriodicityOp("axis_kind", [...])` |
 | `block` | — (not a field: it sets all four) | — | `commitPeriodicityOp("block", {cell, box_corner, axis_kind, vacuum})` — the whole cell, checked once |
 
 **One door, five ops.** This column named `setUnitCell` / `setVacuum` /

@@ -418,7 +418,10 @@ def _struct_for_validate(path):
     """
     import numpy as np
     from .workingcopy_structure import StructureCodec
-    whole = StructureCodec().load(path, frames=True)
+    said: list = []
+    whole = StructureCodec().load(path, frames=True, said_out=said)
+    for line in said:                  # a lone .xyz (structure.md § 2.3)
+        click.echo(line, err=True)
     if whole.n_frames > 1:
         click.echo(f"{Path(path).name} holds {whole.n_frames} frames; frame 1 "
                    f"of {whole.n_frames} was taken", err=True)

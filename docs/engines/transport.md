@@ -1071,7 +1071,7 @@ reader will take an approximation for the real thing.
 
 #### What makes a set citable — ONE PAIR, many frames *(user, 2026-09-24)*
 
-> **A frame set is a multi-frame extended-XYZ document with its one sidecar.**
+> **A frame set is a multi-frame XYZ document with its one sidecar.**
 > Frame 0 is the base — the optimised junction, which is what every reader
 > takes when it asks for a structure — and frames 1…N are the
 > displacements. The labels, the frozen set, the species, the cell and the
@@ -1121,8 +1121,10 @@ rule would be, and the person takes over the responsibility a built-in rule
 would have carried.
 
 **What either one writes is the multi-frame pair above** — the base as frame
-0, the displaced geometries after it, one sidecar shared — through the codec's
-own writer (or ASE's extended-XYZ writer, which is the same format). So the
+0, the displaced geometries after it, one sidecar shared — through the
+structure's own doors (`with_frames`, `set_customized`) and the codec's writer
+(`model/structure.md` § 2.2e): a file another tool writes carries no sidecar,
+and its comment line is never metadata (§ 2.3). So the
 frame set is the **interface between the vibration work and transport**: the
 vibration side's generator (`plan.md` V1.25) writes it from a spectra file
 for one mode at the zero-point amplitude and its thermal growth (`vibration.md`

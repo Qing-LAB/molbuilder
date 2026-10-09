@@ -588,7 +588,10 @@ def init_cmd(structure, bundle: str, shape: str,
         # THE PAIR, through the one door: the geometry with its regions,
         # frozen atoms and cell -- frame 0 of a frame set, and said
         # (`model/structure.md` § 2.3, *Which frame*).
-        whole = StructureCodec().load(structure, frames=True)
+        said: list = []
+        whole = StructureCodec().load(structure, frames=True, said_out=said)
+        for line in said:              # a lone .xyz (structure.md § 2.3)
+            click.echo(line)
         if whole.n_frames > 1:
             click.echo(f"{Path(structure).name} holds {whole.n_frames} "
                        f"frames; frame 1 of {whole.n_frames} was taken")

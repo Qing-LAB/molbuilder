@@ -381,9 +381,21 @@ import { chooseFrame } from "/static/lib/projects/dialogs.js";
             const added = body.n_atoms;
             const which = body.n_frames > 1
                 ? ` (frame ${chosen} of ${body.n_frames})` : "";
-            say(n > added
+            /* AND WHAT THE READ SAID about the file -- a lone .xyz read as
+             * atoms and coordinates, its comment line quoted
+             * (model/structure.md § 2.3); a retired corner it did not apply.
+             * The answer installed above is the envelope put back, which knows
+             * nothing of the file, so what only the read said is said here;
+             * what the viewer already shows is not said twice. */
+            const shown = new Set((_mounted.data.getNotices() || [])
+                .map((x) => x.message));
+            const notes = (Array.isArray(body.notices) ? body.notices : [])
+                .filter((x) => !shown.has(x.message))
+                .map((x) => x.message).join("  ");
+            say((n > added
                 ? `Added ${_basename(path)}${which} — ${added} atoms, ${n} in total.`
-                : `Loaded ${_basename(path)}${which} — ${n} atoms.`, "ok");
+                : `Loaded ${_basename(path)}${which} — ${n} atoms.`)
+                + (notes ? "  " + notes : ""), "ok");
         }
         if (_loadBtn) {
             _loadBtn.addEventListener("click", () => _commitFile(_candidate));

@@ -5,7 +5,7 @@ MODULE: the standalone L2 codec for the ``<stem>.xyz`` (coordinates) +
 nothing else in the system may hold a second copy of:
 
   1. the PAIRING RULE -- how the sidecar's name follows the geometry's;
-  2. the FORMAT CHOICE -- a plain ``.xyz`` for one frame, extended XYZ for many,
+  2. the FORMAT CHOICE -- plain ``.xyz``, a block per frame the structure holds,
      decided by the count and never asked as a separate question;
   3. the SIDECAR ENVELOPE -- ``schema_version``, the ``structure_hash`` pinning
      it to its geometry, and the one serialisation (``molstruct.dumps``);
@@ -59,12 +59,10 @@ class StructurePair(NamedTuple):
     ONE shape for every consumer -- disk, bytes, wire -- so "what does this
     structure look like when it leaves" has one answer instead of one per caller.
 
-    ``suffix`` is ``.xyz`` unless the destination named ``.pdb``.  Within XYZ
-    it never varies, because extended XYZ is a strict superset of plain XYZ:
-    the format follows the frame count while the NAME does not have to, and
-    that choice is never asked as a question.  The CONTAINER is a different
-    axis and the caller does name it -- ``write`` reads it off the target's
-    suffix, which is the same suffix ``read`` dispatches on.
+    ``suffix`` is ``.xyz`` unless the destination named ``.pdb``: one frame or
+    many, the document is plain XYZ, a block per frame.  The CONTAINER is the
+    one axis the caller names -- ``write`` reads it off the target's suffix,
+    which is the same suffix ``read`` dispatches on.
 
     Either way it is carried here rather than assumed by each caller, because
     the pairing rule is the codec's -- a caller that appends its own extension
@@ -106,9 +104,8 @@ def _metadata_is_default(meta: dict) -> bool:
 class StructureCodec:
     """``.xyz`` + ``.molstruct.json`` ⇄ :class:`~molbuilder.structure.Structure`."""
 
-    #: THE ONE EXTENSION THIS CODEC WRITES.  One frame or four hundred, plain
-    #: XYZ or extended -- the file is ``.xyz``, because extended XYZ is a strict
-    #: superset of plain XYZ and shares its extension by convention.
+    #: THE ONE EXTENSION THIS CODEC WRITES.  One frame or four hundred, the
+    #: file is plain XYZ under ``.xyz``, a block per frame.
     GEOMETRY_SUFFIX = ".xyz"
 
     #: Extensions RECOGNISED on a target so they are replaced rather than
@@ -123,7 +120,8 @@ class StructureCodec:
     def load(self, source_path, *,
              frame: "int | None" = None,
              frames: bool = False,
-             retired_out: "dict | None" = None) -> Structure:
+             retired_out: "dict | None" = None,
+             said_out: "list | None" = None) -> Structure:
         """Read the pair back into a Structure.
 
         WHICH FRAME (``model/structure.md`` § 2.3, *Which frame*): the pair is
@@ -135,6 +133,12 @@ class StructureCodec:
         ``retired_out``: a caller that passes a dict gets each retired key the
         sidecar carried with a value -- read and ignored, and the load door
         says so (plan § 5q D14).
+
+        ``said_out``: a caller that passes a list gets what the read says to a
+        person about this file -- a LONE ``.xyz`` (no sidecar, not an engine's
+        own file in one of our runs) is atoms and coordinates only, and its
+        comment line is quoted, never read as metadata (``model/structure.md``
+        § 2.3).  Every door that opens a file for a person says it.
         """
         src = Path(source_path)
         # Parse the SOURCE in ITS OWN format (dispatch on the extension) -- the
@@ -165,27 +169,37 @@ class StructureCodec:
         if sidecar_path.exists():
             molstruct.apply_to_structure(
                 struct, molstruct.load(sidecar_path, retired_out=retired_out))
-        else:
+        elif self._engine_own(src):
             # AN ENGINE'S OWN STRUCTURE FILE -- SIESTA's `<label>.xyz` in a run
             # folder -- has no sidecar, because molbuilder writes every
             # structure as a pair and the engine writes none.  Its frame is the
             # run's: the cell and axis kinds THAT RUN'S OWN DECK recorded
             # (`runs.declared`), and the engine's origin, a stated 0
             # (`model/structure-periodicity.md` § 6.0: *"Every door that makes
-            # a structure from an engine's output states it"*).  A file
-            # molbuilder writes (`runs.about`) is never one, and a file in a
-            # folder no calculation marks belongs to no run, so every other
-            # read is as it was.
-            from .runs import about, declared, run_of
-            run = run_of(src)
-            if run is not None and not about(src)["ours"]:
-                run_frame = declared(run).frame()
-                if run_frame and run_frame.get("cell") is not None:
-                    changes = {"cell": run_frame["cell"],
-                               "engine_offset": run_frame["engine_offset"]}
-                    if run_frame.get("axis_kind"):
-                        changes["axis_kind"] = tuple(run_frame["axis_kind"])
-                    struct = struct.replace(**changes)
+            # a structure from an engine's output states it"*) -- a source
+            # molbuilder knows.
+            from .runs import declared, run_of
+            run_frame = declared(run_of(src)).frame()
+            if run_frame and run_frame.get("cell") is not None:
+                changes = {"cell": run_frame["cell"],
+                           "engine_offset": run_frame["engine_offset"]}
+                if run_frame.get("axis_kind"):
+                    changes["axis_kind"] = tuple(run_frame["axis_kind"])
+                struct = struct.replace(**changes)
+        elif suffix == ".xyz" and said_out is not None:
+            # A LONE FILE: nothing molbuilder knows states its metadata, so it
+            # is what `from_xyz` read -- atoms and coordinates -- and the read
+            # says so, quoting the comment line it did not read as metadata
+            # (`model/structure.md` § 2.3).
+            lines = text.splitlines()
+            comment = lines[1].strip() if len(lines) > 1 else ""
+            said_out.append(
+                f"{src.name} has no .molstruct.json beside it, so only its "
+                f"atoms and coordinates were read -- no cell, no labels"
+                + (f"; its comment line was not read as metadata: «{comment}»"
+                   if comment else "")
+                + ".  Set what you meant on the Molbuilder tab, its Cell and "
+                "Metadata pages; saving there writes it to the .molstruct.json.")
         # READING DOES NOT JUDGE (structure-periodicity.md § 8.2, decided
         # 2026-08-03).  A file whose sidecar holds an unusable box -- a
         # left-handed cell, or one too small for any origin -- OPENS, and what
@@ -219,6 +233,14 @@ class StructureCodec:
             return struct
         return struct.frame_at(0 if frame is None else frame)
 
+    @staticmethod
+    def _engine_own(src: Path) -> bool:
+        """Is ``src`` an engine's own structure file in one of our runs --
+        the one sidecar-less file whose frame has a known source, that run's
+        own deck (``model/structure.md`` § 2.4)?"""
+        from .runs import about, run_of
+        return run_of(src) is not None and not about(src)["ours"]
+
     # ---- THE ONE GENERATOR: a Structure -> the pair --------------------- #
     def pair(self, struct: Structure, *,
              fmt: str = "xyz") -> "StructurePair":
@@ -235,32 +257,22 @@ class StructureCodec:
         pair is the document alone and a stale sidecar beside it is removed, so
         "no .json" always means "no metadata" (:meth:`load` reads it that way).
         """
-        # ONE FRAME OR MANY, decided by the frames the structure holds and by
-        # nothing else (`model/structure.md` § 2.2e).  A frame set needs
-        # extended XYZ, because a plain .xyz has nowhere to put a cell and would
-        # lose the box on every frame; a single structure keeps the plain .xyz
-        # every code reads.  The format follows from how many there are, and is
-        # never a second question.
+        # PLAIN XYZ, A BLOCK PER FRAME the structure holds (`model/structure.md`
+        # § 2.2e), each comment line the title and nothing else: the comment
+        # line is never metadata (§ 2.3), so the cell has one home, the
+        # sidecar, and nothing here writes a second copy of it.
         #
         # THE SUFFIX IS DECIDED HERE, WITH THE FORMAT, and travels with the
         # pair.  Deriving it anywhere else is deriving it a second time, and a
         # second derivation is a chance to disagree with the bytes.
         #
-        # THE SIDECAR IS BUILT ONCE EITHER WAY.  The labels and the cell are the
+        # THE SIDECAR IS BUILT ONCE.  The labels and the cell are the
         # structure's shared identity -- the same for frame 0 and frame 400 --
-        # so there is one .json beside a trajectory, not one per frame.  Its
-        # hash pins it to the document actually written, whichever that is.
-        # THE FORMAT follows the count; THE NAME does not follow the format.
-        # Extended XYZ is a strict SUPERSET of plain XYZ -- the extra facts ride
-        # in the comment line, which a plain reader skips -- so both are written
-        # under ``.xyz``.  That is the ordinary convention (ASE, where the
-        # format's modern use comes from, writes extended XYZ to ``.xyz`` by
-        # default), and it is the only extension :meth:`load` accepts.
+        # so there is one .json beside a frame set, not one per frame.  Its
+        # hash pins it to the document actually written.
         # WHICH CONTAINER.  `fmt` is the format the DESTINATION names, not a
         # preference: `write` reads it off the target's suffix and `read`
-        # dispatches the same way.  (This is a different axis from
-        # plain-vs-extended XYZ, which follows the frame count and is never
-        # asked as a question.)
+        # dispatches the same way.
         if fmt not in ("xyz", "pdb"):
             raise ValueError(
                 f"StructureCodec.pair: unsupported format {fmt!r}; "
@@ -268,12 +280,11 @@ class StructureCodec:
         if fmt == "pdb":
             if struct.n_frames > 1:
                 raise ValueError(
-                    "StructureCodec.pair: a frame set needs extended XYZ; "
-                    "PDB holds one geometry. Write the set to a .xyz.")
+                    "StructureCodec.pair: PDB holds one geometry, and this is "
+                    "a frame set. Write the set to a .xyz.")
             document = struct.to_pdb()
         else:
-            document = (struct.to_extxyz() if struct.n_frames > 1
-                        else struct.to_xyz())
+            document = struct.to_xyz()
         meta = struct.metadata_to_dict()
         # The REAL identity columns ride the sidecar (schema 8, 2026-08-20):
         # additive "extra" -- an xyz-born structure's synthesized placeholders
@@ -304,9 +315,7 @@ class StructureCodec:
         answers with.
 
         THE SUFFIX IS THE ONE :meth:`pair` CHOSE, not the one the caller
-        guessed.  A frame set produces extended XYZ, so a caller appending ``.xyz``
-        names a file after a format it does not contain -- at the extension
-        every trajectory reader dispatches on.  Hand this a bare stem and it
+        guessed -- the pairing rule is the codec's.  Hand this a bare stem and it
         comes back named correctly; hand it a full ``<stem>.xyz`` and the suffix
         is corrected in place, which is why comparing this against :meth:`write`
         still compares the same paths.
@@ -441,12 +450,14 @@ class StructureCodec:
     def read(self, source_path, *,
              frame: "int | None" = None,
              frames: bool = False,
-             retired_out: "dict | None" = None) -> Structure:
+             retired_out: "dict | None" = None,
+             said_out: "list | None" = None) -> Structure:
         """Symmetric read-side name for :meth:`load` -- parse the geometry +
         apply its paired sidecar into a Structure (missing sidecar => empty
         metadata, not an error -- except an engine's own file where its
         run is recorded, which reads with that run's frame; see `load`).
         ``frame`` / ``frames`` choose which frame (:meth:`frame_choice`);
-        ``retired_out`` collects the retired keys it carried."""
+        ``retired_out`` collects the retired keys it carried, ``said_out``
+        what it says about a lone file."""
         return self.load(source_path, frame=frame, frames=frames,
-                         retired_out=retired_out)
+                         retired_out=retired_out, said_out=said_out)

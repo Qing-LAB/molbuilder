@@ -358,8 +358,8 @@ a rename.
 ### 6.1 One sidecar, many frames *(user, 2026-09-24)*
 
 A coordinate document may hold **several frames** — a structure holding a
-frame set is written as one extended-XYZ document (`structure.md` § 2.2e,
-§ 2.4), and `from_xyz` reads every frame of one back. **The pair stays one
+frame set is written as one XYZ document, a block per frame (`structure.md`
+§ 2.2e, § 2.4), and `from_xyz` reads every frame of one back. **The pair stays one
 sidecar**: the per-atom facts (labels, frozen set, identity columns), the
 periodicity, the `info` store and the structure's `customized` rows apply to
 **every** frame, because a frame is the same atoms, in the same order, moved.
@@ -377,9 +377,9 @@ This is what makes a multi-frame pair a legal input everywhere a structure is
 one, and a **frame set** where a door is frame-aware:
 [`engines/transport.md`](?doc=engines/transport.md) § 2a.9 defines the
 transport frame group as exactly this pair — frame 0 the base, frames 1…N the
-displacements. The axis kinds are the sidecar's (the extended-XYZ `pbc=` flag
-is boolean and cannot carry them, the unification audit's X2 ①), which is one
-more reason the frames do not travel without it.
+displacements. The cell and the axis kinds are the sidecar's alone — the
+document's comment line is never metadata (`structure.md` § 2.3) — which is
+one more reason the frames do not travel without it.
 
 **What is particular to one frame** — its displacement, the mode it moves
 along, its weight in an average — is the structure's `customized` section, one

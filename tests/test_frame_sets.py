@@ -17,7 +17,9 @@ Keys of a ``[[case]]``:
     files read back with ``load(frames=True)``;
     ``take`` -- ``Structure.take(order)``;
     ``edit`` -- the edit named by ``edit`` (``_EDITS``);
-    ``read_document`` -- ``Structure.from_xyz(document)``.
+    ``read_document`` -- ``Structure.from_xyz(document)``;
+    ``lone_file`` -- ``document`` written alone, no sidecar, and read through
+    ``StructureCodec.load(..., said_out=[...])``.
 ``refused``
     the door raises (or the route answers 400) with this text in its message.
 ``expect``
@@ -107,7 +109,7 @@ def _viewer(answer, mode):
 
 
 def _check(expect, got: Structure, built: Structure, *, written=None,
-           answer=None) -> None:
+           answer=None, said=None) -> None:
     for key, want in expect.items():
         if key == "same_set":
             assert got.n_frames == built.n_frames
@@ -144,6 +146,13 @@ def _check(expect, got: Structure, built: Structure, *, written=None,
             assert got.regions == want
         elif key == "rows_unchanged":
             assert got.customized == built.customized
+        elif key == "cell":
+            assert (got.cell is None) if want == "none" else \
+                np.allclose(got.cell, want)
+        elif key == "axis_kind":
+            assert list(got.axis_kind) == want
+        elif key == "said":
+            assert said and want in said[0], said
         else:
             raise KeyError(f"frame_sets.toml: no check for {key!r}")
 
@@ -199,6 +208,13 @@ def test_frame_set(case, tmp_path, monkeypatch):
     elif door == "read_document":
         written = None
         act = lambda: Structure.from_xyz(case["document"])  # noqa: E731
+    elif door == "lone_file":
+        lone = tmp_path / "lone.xyz"
+        lone.write_text(case["document"])
+        said: list = []
+        _check(expect, StructureCodec().load(lone, said_out=said), built,
+               said=said)
+        return
     else:
         raise KeyError(f"frame_sets.toml: no door {door!r}")
 
