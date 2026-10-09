@@ -16,8 +16,9 @@ everything.
 
 The k-point sampling -- the transport axis's one point, a lead's own count
 and the transmission's grid -- is the k-point mesh's (`engines/siesta.md`
-§ 6.1), refused on every door and tested through the road in
-`tests/test_k_point_mesh_e2e.py`.
+§ 6.1), refused on every door; it has no road case yet, since a transport
+rung is not preppable on the stand-in (plan § 5x B8 T2), and
+`tests/test_k_point_mesh_e2e.py` holds a relaxation's mesh only.
 """
 from __future__ import annotations
 

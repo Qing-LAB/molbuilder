@@ -176,32 +176,27 @@ def geometry_section(*, is_md: bool, is_nose: bool) -> Section:
 
 
 
-#: How each value is spelled, and the unit SIESTA expects with it.  A unit is
-#: part of the SPELLING, not of the value: the catalogue records ``Ry`` as the
-#: item's unit and the deck has to write it next to the number.
-_UNIT = {
-    "mesh_cutoff":            "Ry",
-    "pao_energy_shift":       "Ry",
-    "dm_energy_tolerance":    "eV",
-    "relax_force_tol":        "eV/Ang",
-    "relax_max_displ":        "Ang",
-    "md_initial_temperature": "K",
-    "md_target_temperature":  "K",
-    "md_length_timestep":     "fs",
-    "electronic_temperature": "K",
-    "fc_displacement":        "Bohr",
-    # TranSIESTA / TBtrans (`engines/transport.md` § 6.1b).  fdf reads each as
-    # an ENERGY, and says so with the unit word.  `bias_voltage_v` is held in
-    # volts and spelled in eV: the energy an electron gains across V volts is
-    # V electron-volts, so the number is the same and only the word differs
-    # (its catalogue note says so to a reader of the deck).
-    "bias_voltage_v":         "eV",
-    "negf_eq_pole_ev":        "eV",
-    "negf_neq_eta_ev":        "eV",
-    "ts_elecs_eta_ev":        "eV",
-    "tbt_elecs_eta_ev":       "eV",
-    "tbt_contours_eta_ev":    "eV",
-}
+#: THE DECK'S UNIT WORD IS THE CATALOGUE'S `unit` -- one source (plan F27;
+#: `engines/template.md` § 6.4): a unit is part of the SPELLING, not of the
+#: value, so the deck writes the item's own unit next to the number.  Two
+#: spellings differ from the catalogue's: fdf reads ASCII, so Å is `Ang`;
+#: and the bias, held in volts, is written `eV` -- the energy an electron
+#: gains across V volts is V electron-volts, so the number is the same and
+#: only the word differs (its catalogue note says so to a reader of the
+#: deck).  An item added with a `unit` renders with it, instead of bare --
+#: which TranSIESTA read as rydberg, 13.6 times the value.
+_FDF_SPELLING = {"Å": "Ang", "eV/Å": "eV/Ang"}
+_UNIT_EXCEPTION = {"bias_voltage_v": "eV"}
+
+
+def unit_word(name: str) -> Optional[str]:
+    """The unit fdf reads beside ``name``'s value, or None for a bare number."""
+    if name in _UNIT_EXCEPTION:
+        return _UNIT_EXCEPTION[name]
+    from ..template import catalogue, one
+    item = one(catalogue(), name, engine="siesta")
+    unit = item.unit if item is not None else None
+    return _FDF_SPELLING.get(unit, unit) if unit else None
 
 #: Items whose keyword is padded so a related pair reads as a column.
 #: ``XC.functional`` names the family and ``XC.authors`` the parameterisation;
@@ -351,7 +346,7 @@ def line(derived: dict):
             key = param.writes[0] if param.writes else None
         if key is None:
             return None
-        unit = _UNIT.get(param.name)
+        unit = unit_word(param.name)
         pad = _PAD.get(param.name)
         shown = f"{value} {unit}" if unit else f"{value}"
         return f"{key:<{pad}}{shown}" if pad else f"{key} {shown}"
@@ -392,7 +387,7 @@ def line(derived: dict):
             return f"{key:<{pad}}{shown}" if pad else f"{key} {shown}"
         fmt = _FMT.get(param.name)
         shown = format(param.value, fmt) if fmt else f"{param.value}"
-        unit = _UNIT.get(param.name)
+        unit = unit_word(param.name)
         value = f"{shown} {unit}" if unit else shown
         # One space unless the item is half of an aligned pair.  fdf does not
         # care, but a reader diffing two generations should see the values

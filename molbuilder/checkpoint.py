@@ -1750,10 +1750,23 @@ class Repo:
         # leftover exactly like a file, and A5 removes leftovers without asking
         # because they are not a loss.  `unlink` on a link removes the LINK; the
         # file it pointed at is somebody else's entry in this same walk.
+        emptied: set = set()
         for path in walk_entries(self.root):
             key = archive_key(self.root, path)
             if key not in tracked and key not in expected:
                 path.unlink()
+                emptied.add(path.parent)
+        # A DIRECTORY THE SWEEP EMPTIED GOES TOO (A5).  `git clean` leaves a
+        # directory holding only ignored files standing -- it reads the whole
+        # directory as ignored -- and a point folder after a run holds
+        # exactly those (`*.DM`, `*.TSHS`, `*.TSGF*`).  An empty `run-N/`
+        # left behind would be counted as an attempt by every reader of the
+        # tree, so each emptied directory is removed up to the first one
+        # that still holds something.
+        for d in sorted(emptied, key=lambda p: len(p.parts), reverse=True):
+            while d != self.root and d.is_dir() and not any(d.iterdir()):
+                d.rmdir()
+                d = d.parent
 
         adir = archive_dir(self.root, target.archive)
         for key in sorted(expected):

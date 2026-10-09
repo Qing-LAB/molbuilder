@@ -3081,6 +3081,12 @@ def cmd_checkpoint_restore(state, force, path):
     repo = _repo_or_exit(path)
     click.echo("verifying the archive, then checking what is unsaved here…",
                err=True)
+    # THE STATE THE FOLDER LEAVES, read before it moves: the ledger line
+    # below names both ends (checkpointing.md § 7).
+    try:
+        _standing = repo.status(deep=False).standing_at
+    except CheckpointError:
+        _standing = None
     try:
         target = repo.restore(state, force=force)
     except DirtyWorkingTreeError as e:
@@ -3115,6 +3121,14 @@ def cmd_checkpoint_restore(state, force, path):
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
     click.echo(f"restored to {target.short}  {target.note}")
+    # THE RESTORE IS A DECISION OF THE CALCULATION (checkpointing.md § 7;
+    # `jobset.ledger`): the ledger came back as the target wrote it, and
+    # this line says the folder was moved there, and from where -- so its
+    # order has no silent hole where the undone decisions were.
+    from molbuilder.jobset.ledger import record as _ledger
+    _ledger(repo.root, "checkpoint", f"restore {target.short}",
+            state=target.id, note=target.note,
+            from_state=(_standing.id if _standing is not None else None))
 
 
 @cmd_checkpoint.command("config",

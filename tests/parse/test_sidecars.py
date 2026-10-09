@@ -97,58 +97,6 @@ def test_sidecar_result_is_frozen():
         result.schema = "tampered/v0"   # noqa
 
 
-# ---- the transport record ---------------------------------------------- #
-
-
-def _record(tmp_path, **over):
-    """A record written by the LIVE writer, not hand-built."""
-    from molbuilder.transport.record import write_record, TRANSPORT_RESULT_SCHEMA
-    rec = {"schema": TRANSPORT_RESULT_SCHEMA, "label": "junction",
-           "energies_relative_to_ef": True, "stages": [],
-           "treatment": "single-bias", "points": [],
-           "iv": {"voltages_v": [0.0], "current_a": [1e-9]},
-           "provenance": {"slot": None,
-                          "atom_permutation": "atom-permutation.json"}}
-    rec.update(over)
-    return write_record(tmp_path, rec)
-
-
-def test_a_transport_record_is_read_by_a_parser_not_by_the_browser(tmp_path):
-    """`<label>.transport.json` is read by a Python parser.
-
-    `/api/results/dir` asks the registry what reads each file, so a result
-    kind no parser claims is understood only in the browser.
-
-    The fixture goes through `write_record`, so this cannot drift from the
-    shape actually written.
-    """
-    from molbuilder.parse import detect
-
-    p = _record(tmp_path)
-    kind = detect(str(p))
-    assert kind.name == "transport-json"
-    got = kind.parse(p)
-    assert got.schema == "transport/v1"
-    assert got.payload["label"] == "junction"
-    assert got.payload["treatment"] == "single-bias"
-    assert got.payload["iv"]["voltages_v"] == [0.0]
-
-
-def test_the_catalogue_row_lets_the_door_offer_it(tmp_path):
-    """`result_roles("transport")` must NAME the record, or the door can
-    never offer a transport calculation its own deliverable.
-
-    The row gained `staged=False` on 2026-09-18 and that half was inert:
-    `calculation` was still None, so `result_roles("transport")` answered
-    `('.molwatch.log',)` -- the progress channel of a run, for a
-    CALCULATION-level result.  `engines/transport.md` § 2a.12: the
-    transmission stage's output is the deliverable and everything else in
-    the tree exists to make it trustworthy.
-    """
-    from molbuilder.runfiles import result_roles
-    assert result_roles("transport")[0] == ".transport.json"
-
-
 # --------------------------------------------------------------------- #
 #  A benchmark sweep's plan                                             #
 # --------------------------------------------------------------------- #

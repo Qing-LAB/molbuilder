@@ -1,6 +1,5 @@
 """A recommended range and a hard limit -- one severity each, on every surface
--- through the road: the Task-setup save, the Transport tab's Send and
-`jobset init`, `jobset prep`.
+-- through the road: the Task-setup save, `jobset init`, `jobset prep`.
 
 PINS: ``docs/engines/template.md`` § 5.3 (`range` warned and never refused;
 `above` refused everywhere with one message, through ``template.why_not``;
@@ -15,11 +14,11 @@ PREVENTS, each read in the code before 2026-09-30:
   deck with at most a warning (SS-C5, PS-C22);
 * one range, two severities: a stage's value outside it refused where the
   description is saved while the same value in the template was warned
-  (SO-N4);
-* a bias list with a repeated point -- two runs of one voltage in one
-  folder -- or a point outside the item's range, said nowhere (T-F15); and
-  the Transport tab's Send and `jobset init`'s transport arm running only
-  the codec, never the description's own check.
+  (SO-N4).
+
+The transport rows -- a repeated bias point or one outside its range (T-F15),
+the two describe doors' preflight -- have no road case yet: a transport rung
+is not preppable on the stand-in (plan § 5x B8 T2).
 
 Nothing here launches an engine: prep writes the deck and stops.
 """

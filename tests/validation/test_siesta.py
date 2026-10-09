@@ -20,12 +20,12 @@ from ._helpers import _peptide_struct
 # --------------------------------------------------------------------- #
 
 
-def test_siesta_mesh_cutoff_below_range_warns(water_struct):
+def test_siesta_mesh_cutoff_below_range_warns(water_structure):
     """mesh_cutoff has a metadata range in Ry.  A value of 5 Ry must emit a
     config.mesh_cutoff warn, and it must name BOTH the meaning and the
     keyword — see the sweep below for why that is a rule and not a taste."""
     cfg = SiestaConfig(mesh_cutoff=5.0)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     out_of_range = [i for i in issues if i.where == "config.mesh_cutoff"]
     assert len(out_of_range) == 1
     assert "MeshCutoff" in out_of_range[0].message
@@ -33,7 +33,7 @@ def test_siesta_mesh_cutoff_below_range_warns(water_struct):
     assert "Ry" in out_of_range[0].message
 
 
-def test_every_range_warning_names_the_engine_keyword(water_struct):
+def test_every_range_warning_names_the_engine_keyword(water_structure):
     """The rule, swept over every field rather than pinned on one.
 
     A warning has two jobs. *"Real-space grid cutoff is too low"* says what is
@@ -73,7 +73,7 @@ def test_every_range_warning_names_the_engine_keyword(water_struct):
             continue
         cfg = dataclasses.replace(
             SiestaConfig(), **{f.name: type(lo)(hi) * 10 + 1})
-        hits = [i for i in validate(water_struct, cfg)
+        hits = [i for i in validate(water_structure, cfg)
                 if i.where == f"config.{f.name}" and "outside" in i.message]
         if not hits:
             continue
@@ -95,13 +95,13 @@ def test_every_range_warning_names_the_engine_keyword(water_struct):
                           "not have:\n  " + "\n  ".join(invented))
 
 
-def test_siesta_mesh_cutoff_in_range_no_warn(water_struct):
+def test_siesta_mesh_cutoff_in_range_no_warn(water_structure):
     cfg = SiestaConfig(mesh_cutoff=300.0)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     assert [i for i in issues if i.where == "config.mesh_cutoff"] == []
 
 
-def test_siesta_mesh_cutoff_below_production_floor_warns(water_struct):
+def test_siesta_mesh_cutoff_below_production_floor_warns(water_structure):
     """2026-05-28: a value within the dataclass range but below the
     150 Ry production floor emits a SOFT WARN with a clear nudge.
 
@@ -111,7 +111,7 @@ def test_siesta_mesh_cutoff_below_production_floor_warns(water_struct):
     the user benefits from a soft nudge.
     """
     cfg = SiestaConfig(mesh_cutoff=120.0)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     mc_issues = [i for i in issues if i.where == "config.mesh_cutoff"]
     assert len(mc_issues) == 1, (
         f"expected exactly one mesh_cutoff issue; got "
@@ -129,15 +129,15 @@ def test_siesta_mesh_cutoff_below_production_floor_warns(water_struct):
     )
 
 
-def test_siesta_mesh_cutoff_exactly_at_production_floor_no_warn(water_struct):
+def test_siesta_mesh_cutoff_exactly_at_production_floor_no_warn(water_structure):
     """Boundary: 150 Ry is the threshold; >= 150 is silent."""
     cfg = SiestaConfig(mesh_cutoff=150.0)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     assert [i for i in issues if i.where == "config.mesh_cutoff"] == []
 
 
 def test_siesta_mesh_cutoff_at_slider_floor_warns_only_via_production_rule(
-        water_struct):
+        water_structure):
     """Boundary: mc = 100 Ry is exactly the slider floor (lo of the
     dataclass metadata range, inclusive).  Below the production-
     defensible 150 Ry threshold → the production-floor rule warns.
@@ -145,7 +145,7 @@ def test_siesta_mesh_cutoff_at_slider_floor_warns_only_via_production_rule(
     Net: exactly one warn from the production rule.
     """
     cfg = SiestaConfig(mesh_cutoff=100.0)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     mc_issues = [i for i in issues if i.where == "config.mesh_cutoff"]
     assert len(mc_issues) == 1
     # Must be the production-floor message (not the range-out message).
@@ -156,14 +156,14 @@ def test_siesta_mesh_cutoff_at_slider_floor_warns_only_via_production_rule(
     )
 
 
-def test_siesta_charged_system_emits_makov_payne_notice(water_struct):
+def test_siesta_charged_system_emits_makov_payne_notice(water_structure):
     """2026-05-28: a SIESTA calc with NetCharge != 0 emits a soft
     warn about the Makov-Payne image-charge bias.  The warn names
     the formula, the typical magnitude, AND that molbuilder does
     NOT auto-apply the correction.  Surfacing > implementing here.
     """
     cfg = SiestaConfig(net_charge=+1)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     mp = [i for i in issues if i.where == "config.net_charge.makov_payne"]
     assert len(mp) == 1
     assert mp[0].severity == "warn"
@@ -180,20 +180,20 @@ def test_siesta_charged_system_emits_makov_payne_notice(water_struct):
     assert "Makov" in msg
 
 
-def test_siesta_neutral_system_no_makov_payne_notice(water_struct):
+def test_siesta_neutral_system_no_makov_payne_notice(water_structure):
     """net_charge == 0 (default, or user-set explicitly) -- the
     image-charge artefact doesn't apply, no notice."""
     cfg = SiestaConfig()   # default net_charge None -> auto-detect 0
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     assert [i for i in issues
             if i.where == "config.net_charge.makov_payne"] == []
 
 
-def test_siesta_negative_charge_also_emits_notice(water_struct):
+def test_siesta_negative_charge_also_emits_notice(water_structure):
     """The Makov-Payne bias scales as q^2 -- both signs of charge
     trigger it equally."""
     cfg = SiestaConfig(net_charge=-2)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     mp = [i for i in issues if i.where == "config.net_charge.makov_payne"]
     assert len(mp) == 1
     # The warn quotes the actual charge value for context.
@@ -201,14 +201,14 @@ def test_siesta_negative_charge_also_emits_notice(water_struct):
 
 
 def test_siesta_mesh_cutoff_below_slider_floor_emits_only_one_warning(
-        water_struct):
+        water_structure):
     """Regression: a value below the SLIDER floor (100 Ry) must
     produce exactly ONE warning -- the dataclass metadata-range one,
     not double-counted with the production-floor rule, which
     _check_siesta_mesh_cutoff gates at >= 100 Ry.
     """
     cfg = SiestaConfig(mesh_cutoff=50.0)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     mc_issues = [i for i in issues if i.where == "config.mesh_cutoff"]
     assert len(mc_issues) == 1, (
         f"expected exactly one mesh_cutoff issue; got "
@@ -216,7 +216,7 @@ def test_siesta_mesh_cutoff_below_slider_floor_emits_only_one_warning(
     )
 
 
-def test_siesta_peptide_protonation_warn(water_struct):
+def test_siesta_peptide_protonation_warn(water_structure):
     """Same hint fires under the SIESTA validator (it's an engine-
     independent property of the structure + charge config)."""
     s = _peptide_struct(["ALA","LYS","ASP","ASP","GLY"])  # +1 -2 = -1

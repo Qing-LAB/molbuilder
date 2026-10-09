@@ -45,9 +45,14 @@
     --card-min: 360px;
 }
 
+/* THE PLOT'S SIZE HAS ONE HOME: the sheet.  Plotly draws into the box the
+ * element has (no `height` in a layout), so a chart is as tall as its class
+ * says -- a HEIGHT, not a floor: a chart first drawn in a hidden tab takes
+ * Plotly's own default, and only a stated height brings it back to this
+ * size when its tab is shown and the chart is resized. */
 .transport-plot {
     width: 100%;
-    min-height: 18rem;
+    height: var(--tr-plot-h);
 }
 
 /* The convergence pair: energy and residual side by side, stacking when
@@ -61,7 +66,7 @@
 .transport-plot-half {
     flex: 1 1 320px;
     min-width: 280px;
-    min-height: 16rem;
+    height: var(--tr-plot-half-h);
 }
 
 .transport-conv-line {

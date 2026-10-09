@@ -274,19 +274,33 @@
                 row.appendChild(td(r.detail || ""));
                 const result = td("");
                 if (r.opens && rootDir) {
-                    const path = rootDir + "/" + r.dir + "/" + r.opens;
+                    const path = rootDir + "/" + r.opens;
+                    /* THE ROOT'S OWN FILE -- a transmission run, whose result
+                     * is the report at its point (results.md § 0.1) -- is
+                     * shown by re-announcing the calculation with that bias
+                     * selected; any other run is picked in place. */
+                    const atRoot = r.opens.indexOf("/") === -1;
                     const open = document.createElement("button");
                     open.type = "button";
                     open.className = "results-ladder-open";
                     open.textContent = "open";
-                    open.title = r.opens + " — shown here; the sidebar "
-                        + "stays on the calculation.";
+                    open.title = atRoot && r.point != null
+                        ? "the report at " + Number(r.point) + " V"
+                        : r.opens + " — shown here; the sidebar "
+                          + "stays on the calculation.";
                     // N identical "open" buttons name their run, and the one
                     // showing says so (ui-contract.md § 4.1).
                     open.setAttribute("aria-label", "open " + s.name + " " + name);
                     open.setAttribute("aria-pressed",
                                       pickedRun && pickedFile === path ? "true" : "false");
-                    open.addEventListener("click", () => _pickRun(path));
+                    open.addEventListener("click", () => {
+                        if (!atRoot) { _pickRun(path); return; }
+                        _backToRoot();
+                        if (r.point != null && currentHandle
+                                && typeof currentHandle.selectBias === "function") {
+                            currentHandle.selectBias(Number(r.point));
+                        }
+                    });
                     result.appendChild(open);
                 }
                 row.appendChild(result);

@@ -502,6 +502,17 @@ work, and a folder no verb can move is that promise failing.
 from another, a state no save ever held and nothing can diagnose afterwards.
 That is why the archive is verified *before* the text is touched.
 
+**The decision ledger comes back with the state, and the restore is its next
+line** *(2026-10-08, B8 C2)*. `jobset-decisions.log` is text the state holds,
+so after a restore it reads as the target wrote it — the decisions undone are
+in the state that holds them (A5). The verb then appends one line,
+`checkpoint · restore <state>`, naming the state left and the state restored,
+so the ledger's order ([`project-layout.md`](?doc=execution/project-layout.md):
+one line per decision of every verb) has no silent hole where a prep or a
+launch was undone. And a directory the restore emptied is removed with its
+files (A5): `git clean` leaves a directory of ignored files standing, and an
+empty `run-N/` would be counted as an attempt by every reader of the tree.
+
 ### 7.1 Going back and trying something else, with the original intact
 
 This is the thing the whole design exists for, so it is worth walking slowly.

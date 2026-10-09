@@ -19,7 +19,9 @@ def test_a_perfect_channels_low_bias_current_is_g0_times_v():
     T ≡ 1 the integral is exactly eV at any temperature, so I = G0·V -- the
     Landauer result, which is the contract's expectation and no code's.  A
     voltage whose window plus the Fermi tails reaches past the slice's energy
-    window is not integrated: None, with the reach named.
+    window is not integrated: None, with the reach named.  API-level by the
+    science exception (testing.md § 3a): the road reaches no transmission
+    output on the stand-in, so the integral is run here on T ≡ 1.
 
     Silent before this: no test ran the integral, so `np.trapz` -- gone from
     this numpy -- crashed `summarize task` on the road's first low-bias

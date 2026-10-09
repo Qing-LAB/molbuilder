@@ -578,7 +578,7 @@ const WORKSPACE_TAG = "results:transport";
             : "";
         if (te.length) {
             _plot(state.nodes.te, te, {
-                margin: { l: 8, r: 12, t: 8, b: 34 }, height: 340,
+                margin: { l: 8, r: 12, t: 8, b: 34 },
                 xaxis: { title: { text: "E − E_F (eV)", standoff: 4 },
                          automargin: true, zeroline: false },
                 yaxis: { title: { text: "T", standoff: 4 }, type: "log",
@@ -619,7 +619,7 @@ const WORKSPACE_TAG = "results:transport";
                     line: { color: col(i++), width: 2 } });
             });
             _plot(state.nodes.dos, tr, {
-                margin: { l: 8, r: 12, t: 8, b: 34 }, height: 340,
+                margin: { l: 8, r: 12, t: 8, b: 34 },
                 xaxis: { title: { text: "E − E_F (eV)", standoff: 4 },
                          automargin: true, zeroline: false },
                 yaxis: { title: { text: "DOS (states/eV)", standoff: 4 },
@@ -653,7 +653,7 @@ const WORKSPACE_TAG = "results:transport";
                  * 0 V slice. */
                 meta: iv.map((q) => (computed ? 0 : q.bias_v)),
             }], {
-                margin: { l: 8, r: 12, t: 8, b: 34 }, height: 300,
+                margin: { l: 8, r: 12, t: 8, b: 34 },
                 xaxis: { title: { text: "Bias (V)", standoff: 4 }, automargin: true },
                 yaxis: { title: { text: "Current (A)", standoff: 4 },
                          automargin: true, exponentformat: "e" },
@@ -841,6 +841,15 @@ const WORKSPACE_TAG = "results:transport";
                     { detail: { inspector: "transport" } }));
             })();
             return {
+                /* THE BIAS POINT, SET FROM OUTSIDE: the ladder's row for a
+                 * transmission run opens the report at its point
+                 * (results.md § 2.4) -- before the record is drawn it is
+                 * the starting selection, after it the same pick a row
+                 * click makes. */
+                selectBias(v) {
+                    if (state.points.length) _select(state, v);
+                    else state.bias = v;
+                },
                 dispose() {
                     state.disposed = true;
                     try { state.unsubFrame && state.unsubFrame(); } catch (_) { /* gone */ }

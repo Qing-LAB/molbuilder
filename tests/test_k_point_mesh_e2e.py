@@ -8,23 +8,16 @@ writer, what a kind fixes, the checks and their severities);
 one refusal, on every door); ``docs/engines/transport.md`` § 0.3a (the offset
 on every rung) and § 5 I7-I9; ``docs/plans/plan.md`` § 5w K3.
 
-PREVENTS, each read in the code before 2026-09-30:
+WHAT THIS FILE HOLDS: one case, a relaxation's mesh -- each axis sampled by
+its kind, the template's counts and offsets written, an over-sampled isolated
+axis warned in the deck's validation report.
 
-* the transport axis forced to 1 in six places, so a value the gate refused
-  was also overwritten when the deck was written;
-* a lead's ``Diag.ParallelOverK`` decided from the template's ``kx ky 1``
-  while its deck wrote ``kx ky 40``;
-* the cited offset dropped -- every transport rung wrote ``0.0`` and ``TBT.k``
-  took its list form, which carries none;
-* one fact, two severities -- a warning in the SIESTA validator and an error
-  in the transport kind's -- and the transmission's grid never held to the
-  isolated-axis rule the SCF grid was; the shared offset warned once per mesh;
-* ``electrode_kz = 1`` refused only at prep, its range admitting the value;
-* a stripe junction sampled across its vacuum stopped by TranSIESTA alone,
-  at the device, after the seed and both leads had run (the K3 review).
+The transport axis -- its one point on every rung, the lead's own count, the
+cited offset, the transmission's grid (`engines/transport.md` § 0.3a, § 5
+I7-I9) -- is refused on every door and has no road case yet: a transport
+rung is not preppable on the stand-in (plan § 5x B8 T2).
 
-Nothing here launches an engine: prep writes the decks and stops.  The form's
-locked component is the browser's to show (`test_transport_tab_e2e.py`).
+Nothing here launches an engine: prep writes the decks and stops.
 """
 from __future__ import annotations
 

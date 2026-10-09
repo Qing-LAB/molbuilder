@@ -2625,7 +2625,7 @@ In the flat shape the root is also the run folder, so the files of § 5.2 and
 | `environment.json` | the machine record this calculation is set to — its first prep's | the first prep (`jobset.machine.set_machine`) | `scheduler.record.machine_for` | record |
 | `job-set.json` | the plan: one job per prepared stage, merged per stage — and a benchmark's own, in its container | prep (`jobset.model.JobSet.write`) | `jobset.model.JobSet.load` | derived |
 | `STAGE-PLAN.md` | the plan in reading order | prep (`jobset.prep.prep_jobset`), whole at each prep | none | derived |
-| `jobset-decisions.log` | one line per decision of every verb | every verb (`jobset.ledger.record`) | none | record |
+| `jobset-decisions.log` | one line per decision of every verb — a `checkpoint restore` appends its own after the rollback ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7) | every verb (`jobset.ledger.record`) | none | record |
 | `atom-permutation.json` — only: a SIESTA vibration, or a transport calculation | the atom order the decks were written in | prep (`transport.sort.write_permutation`) | `atom_permutation.read_permutation` | derived |
 | `<element>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines._pseudo_dir`, `materialize`); `jobset init --psml-lib` | `pseudos.psml_sources` | input |
 | `junction.xyz` *(transport)* | the composed junction | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |

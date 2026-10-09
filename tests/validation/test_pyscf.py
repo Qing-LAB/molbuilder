@@ -28,12 +28,12 @@ from ._helpers import _vacuum_cell
 # --------------------------------------------------------------------- #
 
 
-def test_pyscf_grid_level_above_range_warns(water_struct):
+def test_pyscf_grid_level_above_range_warns(water_structure):
     """grid_level has metadata range (0, 9).  Beyond that value isn't
     meaningful in PySCF; warn the user before they generate a script
     that PySCF will reject."""
     cfg = PySCFConfig(grid_level=20)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     msgs = [i for i in issues if i.where == "config.grid_level"]
     assert len(msgs) == 1
 
@@ -43,37 +43,37 @@ def test_pyscf_grid_level_above_range_warns(water_struct):
 # --------------------------------------------------------------------- #
 
 
-def test_pyscf_grid_level_3_with_hybrid_warns(water_struct):
+def test_pyscf_grid_level_3_with_hybrid_warns(water_structure):
     """Hybrid functionals (B3LYP / PBE0 / M06-2X / wB97X) at grid_level
     < 4 give noisy forces.  The user can override but should know."""
     cfg = PySCFConfig(functional="B3LYP", grid_level=3)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     grid_warns = [i for i in issues if i.where == "config.grid_level"
                   and i.severity == "warn"
                   and "hybrid" in i.message.lower()]
     assert len(grid_warns) == 1
 
 
-def test_pyscf_grid_level_3_with_pure_gga_no_warn(water_struct):
+def test_pyscf_grid_level_3_with_pure_gga_no_warn(water_structure):
     """Pure LDA/GGAs (PBE / BLYP / BP86 / revPBE) are grid-robust at
     grid_level 3 — no τ-dependence — so the validator must not warn.
     (TPSS/SCAN are meta-GGAs, NOT pure GGAs; they DO warn — see the
     meta-GGA test below.)"""
     cfg = PySCFConfig(functional="PBE", grid_level=3)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     grid_warns = [i for i in issues if i.where == "config.grid_level"]
     assert grid_warns == []
 
 
 @pytest.mark.parametrize("functional", ["SCAN", "TPSS", "M06-L", "r2SCAN"])
-def test_pyscf_grid_level_3_with_meta_gga_warns(water_struct, functional):
+def test_pyscf_grid_level_3_with_meta_gga_warns(water_structure, functional):
     """SCIENTIFIC-AUDIT FIX (FN-1): the grid-sensitive class is META-GGA
     (τ-dependent XC — SCAN/TPSS/M06-L/…), NOT "hybrids" (whose HF
     exchange is analytic, off-grid).  A meta-GGA Hessian/opt at grid < 4
     must warn.  Pre-2026-07 the gate keyed on "hybrid" and SCAN/TPSS
     passed SILENTLY — the false-negative this fixes."""
     cfg = PySCFConfig(functional=functional, grid_level=3)
-    issues = validate(water_struct, cfg)
+    issues = validate(water_structure, cfg)
     grid_warns = [i for i in issues if i.where == "config.grid_level"
                   and i.severity == "warn"
                   and "meta-gga" in i.message.lower()]

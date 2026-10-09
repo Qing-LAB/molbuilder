@@ -353,7 +353,8 @@ def _emit_tbt_window(struct, cfg) -> str:
         "",
         "%block TBT.Contour.window",
         "  part line",
-        f"   from {float(lo.value):.5f} eV to {float(hi.value):.5f} eV",
+        f"   from {float(lo.value):.5f} {_sl.unit_word('transmission_emin_ev')}"
+        f" to {float(hi.value):.5f} {_sl.unit_word('transmission_emax_ev')}",
         f"    points {int(n.value)}",
         "     method mid-rule",
         "%endblock TBT.Contour.window",

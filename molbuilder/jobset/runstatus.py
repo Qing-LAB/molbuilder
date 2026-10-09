@@ -235,7 +235,18 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
             if run is None or run.stage is None:
                 continue
             got = run_state_of(run.folder, run.names, run.run)
-            opens, _trail = openable(folder)
+            if (getattr(task, "calculation", None) == "transport"
+                    and st.ref.name == "transmission"):
+                # A TRANSMISSION RUN'S RESULT IS THE CALCULATION'S REPORT AT
+                # ITS POINT (results.md § 0.1): T(E), the DOS and the current
+                # at this bias live in the record the root's task.json opens;
+                # TBtrans writes no file a viewer reads on its own.
+                from ..task import FILENAME as _task_file
+                opens_rel: Optional[str] = _task_file
+            else:
+                opens, _trail = openable(folder)
+                opens_rel = (str((folder / Path(opens).name).relative_to(root))
+                             if opens else None)
             rows.append({
                 "run": attempt_name(n),
                 "point": volts,
@@ -243,7 +254,9 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
                 "state": got.state,
                 "detail": got.detail,
                 "converged": converged_of(got),
-                "opens": Path(opens).name if opens else None,
+                # ROOT-RELATIVE: the file the row opens -- the run's own, or
+                # the root's task.json for a transmission point.
+                "opens": opens_rel,
             })
     return rows
 

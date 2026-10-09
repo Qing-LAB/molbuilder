@@ -53,9 +53,9 @@ def test_min_distance_short_is_warn():
 
 
 
-def test_min_distance_normal_bonds_no_issue(water_struct):
+def test_min_distance_normal_bonds_no_issue(water_structure):
     """Real water (O-H ~0.957 Å) must not flag any geometry issue."""
-    issues = validate(water_struct, SiestaConfig())
+    issues = validate(water_structure, SiestaConfig())
     geo = [i for i in issues if i.where == "geometry.min_distance"]
     assert geo == []
 
@@ -191,11 +191,11 @@ def test_h_ratio_runs_after_layer2_protonation():
 # --------------------------------------------------------------------- #
 
 
-def test_cell_determinant_zero_is_error(water_struct):
+def test_cell_determinant_zero_is_error(water_structure):
     """A degenerate cell (det == 0) is unusable; flag as error and
     skip the volume check below."""
     cell = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=float)
-    issues = validate(water_struct, SiestaConfig(), cell=cell)
+    issues = validate(water_structure, SiestaConfig(), cell=cell)
     # "degenerate" and "left-handed" are two faults with two different
     # repairs, so each has its own id and the checker reports one.
     errs = [i for i in issues if i.where == "cell.no_volume"]
@@ -205,10 +205,10 @@ def test_cell_determinant_zero_is_error(water_struct):
         "a flat cell is not a handedness problem")
 
 
-def test_cell_determinant_negative_is_error(water_struct):
+def test_cell_determinant_negative_is_error(water_structure):
     """A left-handed cell (negative det) breaks SIESTA's PBC math."""
     cell = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float) * 10
-    issues = validate(water_struct, SiestaConfig(), cell=cell)
+    issues = validate(water_structure, SiestaConfig(), cell=cell)
     errs = [i for i in issues if i.where == "cell.left_handed"]
     assert len(errs) == 1, [i.where for i in issues]
     assert errs[0].severity == "error"
@@ -217,20 +217,20 @@ def test_cell_determinant_negative_is_error(water_struct):
 
 
 
-def test_cell_volume_tight_is_warn(water_struct):
+def test_cell_volume_tight_is_warn(water_structure):
     """Cell volume / atom-bounding-volume < 3 -- molecule fills the box."""
     # Water bounding box ~1 x 1 x 1 Å^3 -> atom_box ~1.  Cell 1 Å -> det = 1.
     cell = np.eye(3) * 1.0
-    issues = validate(water_struct, SiestaConfig(), cell=cell)
+    issues = validate(water_structure, SiestaConfig(), cell=cell)
     vol = [i for i in issues if i.where == "cell.volume"]
     assert len(vol) == 1
     assert vol[0].severity == "warn"
 
 
 
-def test_cell_volume_generous_no_warn(water_struct):
+def test_cell_volume_generous_no_warn(water_structure):
     """A 30 Å cubic box around water is generously vacuum-padded."""
-    issues = validate(water_struct, SiestaConfig(), cell=_vacuum_cell(30.0))
+    issues = validate(water_structure, SiestaConfig(), cell=_vacuum_cell(30.0))
     vol = [i for i in issues if i.where == "cell.volume"]
     assert vol == []
 
@@ -241,21 +241,21 @@ def test_cell_volume_generous_no_warn(water_struct):
 # --------------------------------------------------------------------- #
 
 
-def test_image_distance_too_close_is_warn(water_struct):
+def test_image_distance_too_close_is_warn(water_structure):
     """A 5 Å cubic cell makes water see its own image ~5 Å away --
     well below the 6 Å "atoms still interacting" threshold."""
     cell = _vacuum_cell(5.0)
-    issues = validate(water_struct, SiestaConfig(), cell=cell)
+    issues = validate(water_structure, SiestaConfig(), cell=cell)
     msgs = [i for i in issues if i.where == "cell.image_distance"]
     assert len(msgs) == 1
     assert msgs[0].severity == "warn"
 
 
 
-def test_image_distance_generous_no_warn(water_struct):
+def test_image_distance_generous_no_warn(water_structure):
     """A 30 Å cubic cell puts water's image >25 Å away; safely
     isolated, no warning."""
-    issues = validate(water_struct, SiestaConfig(), cell=_vacuum_cell(30.0))
+    issues = validate(water_structure, SiestaConfig(), cell=_vacuum_cell(30.0))
     assert [i for i in issues if i.where == "cell.image_distance"] == []
 
 
@@ -373,11 +373,11 @@ def test_kgrid_long_vacuum_padded_axis_no_false_positive():
 
 
 
-def test_all_gamma_in_vacuum_no_warn(water_struct):
+def test_all_gamma_in_vacuum_no_warn(water_structure):
     """Pure 1x1x1 Gamma in vacuum is the molecule case; no kgrid warning."""
     cell = _vacuum_cell(30.0)
     cfg = SiestaConfig(kgrid=(1, 1, 1))
-    issues = validate(water_struct, cfg, cell=cell)
+    issues = validate(water_structure, cfg, cell=cell)
     assert [i for i in issues if i.where == "config.kgrid"] == []
 
 
