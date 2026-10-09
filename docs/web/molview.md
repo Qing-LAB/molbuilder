@@ -468,7 +468,7 @@ are identical for frame 0 and frame 400. That is exactly what makes a trajectory
 **The coordinates — one set per frame.** `frames[f][a]` is atom `a`'s position in
 frame `f`. Per-atom forces, when a calculation produced them, sit in a matching
 list of the same shape, and so do the frame's own `customized` rows
-(`rowsPerFrame[f]` — what that frame is: a displacement's mode, its weight;
+(`rowsPerFrame[f]` — what that frame is: its displacement, its weight;
 `model/structure.md` § 2.2e). **A frame carries its coordinates, its forces and
 its rows, and nothing else**, and every one of those lists has one entry per
 frame: the one place frames arrive in the model moves them together (§ 9.3). A

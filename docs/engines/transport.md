@@ -1104,23 +1104,27 @@ addable without rework. Citing a pair is § 3.1's second citation kind
 the undisplaced reference every displaced curve is compared against — and
 `f001`… follow in file order, so a curve can always say which frame it is.
 
-**Each frame's details are its `customized` rows** *(user, 2026-10-08/09;
-plan § 5z D3, § 5z.8 F)*: one row set per frame, file order
-([`model/structure.md`](?doc=model/structure.md) § 2.2d) — on each displaced
-frame the mode, the node, the weight, the rule's order, and what is shown
-beside them. **Every frame states its `weight`, frame 0 included** *(user,
-2026-10-09: "all weights should add up to 1 that's an explicit rule within
-error tolerance")*: `W_f` is frame `f`'s weight in the set's average, the
-weights sum to 1 (a mode run at both orders: its lower order's frames are the
-check beside the sum, § 2a.12), and frame 0 — the equilibrium, shared by every mode, so it
-has no `mode` and no `order` — states `W₀ = 1 − Σ W_f` over the displaced
-frames in the sum, which falls below
-zero once the displaced weights pass 1 (§ 2a.12). For one mode at three points
-the weights are `⅔, ⅙, ⅙`. *(Whether one set may hold several modes — and so frame 0's weight across them and a sum over modes — waits on the user's word, asked 2026-10-09: plan § 5z.1.)* Transport reads the rows as
+**One mode per frame set, and each frame's details are its `customized`
+rows** *(user, 2026-10-09: "i would rather let one multi-frame focus on one
+mode ... each vibration mode will have a separate prep and run as different
+task"; plan § 5z D3)*. The structure's own rows
+([`model/structure.md`](?doc=model/structure.md) § 2.2d) announce the mode the
+set samples — `mode`, `frequency_cm1`, the rule's `order`, and the frame
+generator's parameters, `max_displacement_ang` and the temperature among
+them — and each frame's rows say what that frame is: its displacement along
+the mode (`node_sigma`, `q_amu12_ang`) and its `weight`. **Every frame states
+its `weight`, frame 0 included, and the weights sum to 1** *(user, 2026-10-09:
+"all weights should add up to 1 that's an explicit rule within error
+tolerance")* — `⅔, ⅙, ⅙` for three frames. Transport reads the rows as
+`structure.customized_value("mode")` and
 `structure.customized_value("weight", frame=i)`, by names it owns as
-constants — `mode`, `node_sigma`, `weight`, `order` — computes with those alone
-(§ 2a.12's average) and shows the rest; it never asks what made the frames
-*(not built — Q17-e: the constants and the read)*. A
+constants — `mode`, `order`, `node_sigma`, `weight` — computes with those
+alone (§ 2a.12's average) and shows the rest; it never asks what made the
+frames *(not built — Q17-e: the constants and the read)*. Another mode is
+another frame set and another transport calculation; how the modes' results
+are weighed against each other is the person's *(user, 2026-10-09: "it is
+cleaner and more focused to let user to post-process the results from
+different vibrational mode and decide how they can be weighed")*. A
 set whose frames state no weights is a family of frames with no average — each
 frame's curve, and the record saying *no frame weights stated*; nothing is
 refused for that, since what the displacement means is the person's.
@@ -1188,11 +1192,12 @@ of couplings). § 2a.12 states that frame dimension of what the Results surface
 reads *(not built — Q17-e, Q17-f)*.
 
 *([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10 ③, decided
-2026-09-28: the built-in mode rule records each displaced frame's normal
-coordinate and its weight in the thermal average — as that frame's
-`customized` rows — so what is derived across the family — each mode's slope,
-curvature and averaged conductance — is computed from the pair's own rows, and
-transport still knows nothing about modes.)*
+2026-09-28, one mode per set 2026-10-09: the built-in mode rule records the
+mode in the structure's rows and each frame's normal coordinate and weight in
+the thermal average in that frame's `customized` rows — so what is derived
+across the family — the mode's slope, curvature and averaged conductance — is
+computed from the pair's own rows, and transport still knows nothing about
+modes.)*
 
 
 ### 2a.10 The bias treatment — an explicit choice, and what the result may be called
@@ -1603,39 +1608,27 @@ A frame group's deliverable is a **family** of curves and what is derived
 across it. The record's points are (frame, voltage) pairs (§ 2a.9, *Both
 axes*), each carrying its tokens, its frame's `customized` rows whole, and what
 a bias point carries — T(E), the conductance, the current, the DOS — and the
-I–V is per frame. At each voltage, from the frames' `mode`, `node_sigma`,
-`weight` and `order`, per mode ν and per rule order it was run at:
+I–V is per frame. At each voltage, from the set's `mode` and `order` and
+each frame's `node_sigma` and `weight`:
 
-- the mode's average `⟨T(E)⟩_ν = c T₀(E) + Σ_{j∈ν} W_j T_j(E)` over its
-  frames, frame 0 shared at `c`, the central weight of the rule its `order`
-  names — `⅔` for 3, `8/15` for 5 (`vibrational-averaging.md` § 4) — and its
-  change `ΔT_ν(E) = ⟨T(E)⟩_ν − T₀(E)`;
-  at E_F the averaged conductance `⟨G⟩_ν`, `⟨ΔG⟩_ν / G` in per cent of the
-  undisplaced frame's conductance, and the
-  curvature `T″_ν = (T₊ + T₋ − 2T₀)/h²` from the mode's pair of frames
-  nearest equilibrium, `h` their `Q`;
-- a mode run at both orders: both averages, and whether they agree — their
-  conductances within a stated fraction of each other, **1 %** unless the
-  person says another (`summarize task --rule-agreement`), the fraction used
-  written in the record — and, where they do not, the record says the response
-  is not smooth over the thermal range and the curvature is not one
-  (`vibrational-averaging.md` § 5.3);
+- the mode's average `⟨T(E)⟩ = Σ_f W_f T_f(E)` over every frame at its stated
+  weight, and its change `ΔT(E) = ⟨T(E)⟩ − T₀(E)`; at E_F the averaged
+  conductance `⟨G⟩`, `⟨ΔG⟩ / G` in per cent of the undisplaced frame's
+  conductance, and the curvature `T″ = (T₊ + T₋ − 2T₀)/h²` from the pair of
+  frames nearest equilibrium, `h` their `Q`;
 
-and for the set, `⟨T(E)⟩ = Σ_f W_f T_f(E)` over frame 0 and each mode's
-frames at its highest order, with every frame's stated weight — the same sum as `T₀(E) + Σ_ν ΔT_ν(E)` from each mode's highest order, since
-frame 0's `W₀ = 1 − Σ W_f` over those displaced frames subtracts `T₀` once per mode (four
-three-point modes: `W₀ = −⅓`, correct, never refused) —
-**labelled second-order** *(Whether one set may hold several modes — and so frame 0's weight across them and a sum over modes — waits on the user's word, asked 2026-10-09: plan § 5z.1.)*, each mode's own change shown beside it, and § 7 of
-the science document's assumptions beside the numbers (harmonic independent
-modes, static frames, the DFT alignment, and the voltage each average is
-taken at). **The weights are checked, never assumed**: the weights of the frames
-in the set's sum add to 1, and at each order a mode was run its displaced
-weights and that rule's central weight add to 1, both within `1e-6`, the tolerance written in the record (the frame generator
-writes every weight at full precision); the record refuses, each by name and
-with the sum it found, a set or a mode that does not, a displaced frame's
-weight outside `(0, 1]`, and a set where some frames state a weight and others
-do not. A set whose frames state no weights is a family with no average, said
-so. A point not done is a gap in the
+with § 7 of the science document's assumptions beside the numbers (a harmonic
+mode, static frames, the DFT alignment, and the voltage the average is taken
+at). **The weights are checked, never assumed**: they sum to 1 within `1e-6`,
+the tolerance written in the record (the frame generator writes every weight
+at full precision); the record refuses, by name and with the sum it found, a
+set whose weights do not, a weight outside `(0, 1]`, and a set where some
+frames state a weight and others do not. A set whose frames state no weights
+is a family with no average, said so. **One set is one mode at one rule**: the
+same mode at the other rule is another set, and comparing the two — whether
+the response is smooth over the thermal range
+(`vibrational-averaging.md` § 5.3) — is the person's, as weighing one mode
+against another is. A point not done is a gap in the
 family and the average at that voltage waits for it — never computed from the
 frames that happen to be there.
 

@@ -385,9 +385,9 @@ displacements *(its citation is designed, not built — plan § 5z, Q17-c)*. The
 document's comment line is never metadata (`structure.md` § 2.3) — which is
 one more reason the frames do not travel without it.
 
-**What is particular to one frame** — its displacement, the mode it moves
-along, its weight in an average — is the structure's `customized` section, one
-set of rows a frame (`model/structure.md` § 2.2d; plan W39, ruled
+**What is particular to one frame** — its displacement, its weight in an
+average — is the structure's `customized` section, one set of rows a frame
+(the mode the whole set samples is among the structure's own rows) (`model/structure.md` § 2.2d; plan W39, ruled
 2026-09-27/30, and § 5z.8 F), never `info`. The rows are written by what makes
 the frame set — the frame generator, a person's script, through
 `Structure.set_customized(…, frame=i)` — and never in the browser, which

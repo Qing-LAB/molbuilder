@@ -22,26 +22,28 @@ lasts millions of vibrational periods. What it reports is the transmission
 transmission of the relaxed geometry.
 
 A transport calculation on a frame set computes that average from a handful of
-**static frames**: the relaxed junction and copies of it displaced along chosen
-normal modes. Each frame is an ordinary transport calculation; the average is
-assembled afterwards from what each frame's `customized` rows say about
-it.
+**static frames**: the relaxed junction and copies of it displaced along
+**one** normal mode — one frame set per mode *(user, 2026-10-09: "i would
+rather let one multi-frame focus on one mode")*. Each frame is an ordinary
+transport calculation; the average is assembled afterwards from the mode the
+structure's `customized` rows announce and the weight each frame's own rows
+state.
 
 ```mermaid
 flowchart LR
     R["relaxed junction<br/>(a finished relaxation)"] --> V["vibration run<br/>modes ω_ν, eigenvectors L_ν"]
     V --> G["frame generator<br/>(its own module)"]
     R --> G
-    G --> F["one multi-frame pair<br/>frame 0 = relaxed<br/>frames 1…2N = ±displaced<br/>customized rows per frame,<br/>every weight stated"]
+    G --> F["one multi-frame pair for one mode<br/>frame 0 = relaxed<br/>frames 1, 2 = ±displaced (1…4 for five points)<br/>the mode in the structure's rows,<br/>each frame's node and weight in its own"]
     F --> T["transport, per frame<br/>T_j(E): device + transmission"]
     T --> A["the average<br/>⟨T(E)⟩ = Σ_j W_j T_j(E)"]
-    A --> C["⟨G⟩ = G₀ ⟨T(E_F)⟩<br/>per mode and in total"]
+    A --> C["⟨G⟩ = G₀ ⟨T(E_F)⟩<br/>for the mode"]
 ```
 
 This document answers three questions: **where** the molecule is while it
 vibrates (§ 2), **what** the measurement averages and why a lopsided response
 gives a net change (§ 3–4), and **how** few frames can compute that average and
-when they cannot (§ 5–6). § 7 lists what the picture assumes; § 8 what the
+when they cannot (§ 5); § 6 says what one mode's frames do not answer. § 7 lists what the picture assumes; § 8 what the
 record carries.
 
 ---
@@ -333,7 +335,7 @@ On the examples of § 4.3: the contact gives $1.1968$ against the exact
 $1.1972$; the level on its tail $0.0435$ against $0.0436$. Both responses are
 smooth over $\pm3\sigma$, so three frames suffice.
 
-### 5.3 When three are not enough — and how the record knows
+### 5.3 When three are not enough — and how to tell
 
 A response that is not polynomial-like over the thermal range — a level
 **crossing** $E_F$ within the vibration, as in the second row of § 4.3 — is
@@ -342,7 +344,7 @@ give $0.692$, and the disagreement between the two rules is the signal:
 
 ```mermaid
 flowchart TD
-    A["three frames per mode<br/>0, ±√3 σ"] --> B["⟨T⟩₃"]
+    A["three frames<br/>0, ±√3 σ"] --> B["⟨T⟩₃"]
     C["five frames for the mode<br/>0, ±1.356 σ, ±2.857 σ"] --> D["⟨T⟩₅"]
     B --> E{"⟨T⟩₃ and ⟨T⟩₅ agree<br/>within the stated tolerance?"}
     D --> E
@@ -350,81 +352,39 @@ flowchart TD
     E -->|no| G["T(Q) is not smooth there — a resonance<br/>crossing E_F: report ⟨T⟩₅ and SAY SO;<br/>the % change is not a curvature"]
 ```
 
-Five frames per mode cost two more transport calculations per mode; they are a
-check the frame generator offers per mode, not a default
-(`normal-modes.md` § 4c.5).
+Five frames cost two more transport calculations; they are a check the frame
+generator offers, not a default (`normal-modes.md` § 4c.5). A frame set is one
+mode at one rule — its weights summing to 1 — so the check is a second set of
+the same mode at the other rule, and comparing the two is the person's.
 
 ---
 
-## 6. Many modes in one frame set
+## 6. One mode a set — and what its frames do not answer
 
-### 6.1 Independent modes add — to second order
-
-Harmonic normal modes are independent: the joint distribution is the product
-of the single-mode Gaussians, so $\langle Q_\nu Q_\mu\rangle = \delta_{\nu\mu}\sigma_\nu^2$.
-Expanding $T$ in all the coordinates,
-
-$$
-\big\langle T\big\rangle = T_0 + \tfrac12\sum_\nu T_{\nu\nu}\,\sigma_\nu^2
-+ \mathcal O(\sigma^4),
-\qquad T_{\nu\mu} = \frac{\partial^2 T}{\partial Q_\nu\,\partial Q_\mu},
-$$
-
-the cross terms $T_{\nu\mu}$, $\nu\neq\mu$, averaging to zero. At this order
-**each mode contributes its own piece, and the pieces add**: one frame set
-needs the relaxed frame **once**, shared, and two frames per mode — never a
-frame displaced along two modes at once.
-
-$$
-N_{\text{frames}} = 1 + 2N_{\text{modes}} \quad (3\text{-point}),
-\qquad
-\Delta T_\nu = \tfrac16\big[T_{\nu+} + T_{\nu-} - 2T_0\big],
-\qquad
-\big\langle T\big\rangle \approx T_0 + \sum_\nu \Delta T_\nu .
-$$
+A frame set samples **one** mode: frame 0 and the mode's displaced frames,
+**every frame stating its weight and the weights summing to 1** *(user,
+2026-10-09: "all weights should add up to 1 that's an explicit rule within
+error tolerance")*:
 
 ```mermaid
 flowchart LR
-    F0["frame 0<br/>relaxed, T₀<br/>mode: none"] --> M1["mode 1<br/>⅔·T₀ + ⅙·(T₁₊ + T₁₋)"]
-    F1["frame 1<br/>mode 1, +√3 σ₁"] --> M1
-    F2["frame 2<br/>mode 1, −√3 σ₁"] --> M1
-    F0 --> M2["mode 2<br/>⅔·T₀ + ⅙·(T₂₊ + T₂₋)"]
-    F3["frame 3<br/>mode 2, +√3 σ₂"] --> M2
-    F4["frame 4<br/>mode 2, −√3 σ₂"] --> M2
-    M1 --> S["⟨T⟩ ≈ T₀ + ΔT₁ + ΔT₂<br/>each ΔT_ν shown beside the sum"]
-    M2 --> S
+    F0["frame 0<br/>relaxed, T₀<br/>weight ⅔"] --> M["⟨T⟩ = ⅔·T₀ + ⅙·T₊ + ⅙·T₋<br/>ΔT = ⟨T⟩ − T₀"]
+    F1["frame 1<br/>+√3 σ<br/>weight ⅙"] --> M
+    F2["frame 2<br/>−√3 σ<br/>weight ⅙"] --> M
 ```
 
-**Every frame states its weight, and the weights sum to 1** — the set's
-average written as one sum, $\langle T\rangle = \sum_f W_f\,T_f$. A displaced
-frame's $W_f$ is its node's weight ($\tfrac16$ for $\pm\sqrt3\,\sigma$); frame
-0, shared by every mode, states
-
-$$
-W_0 = 1 - \sum_{f\ \mathrm{displaced}} W_f ,
-$$
-
-because the second-order sum above subtracts $T_0$ once per mode: with
-$N$ three-point modes, $W_0 = 1 - N/3$, and from four modes on it is negative
-($-\tfrac13$ for four) — correct, and stated like every other weight. Inside
-one mode's own average frame 0 enters at its rule's central weight ($\tfrac23$
-for three points, $\tfrac{8}{15}$ for five, § 4), so each mode's displaced
-weights and that central weight sum to 1 as well. A mode run at both orders
-enters the set's sum at its five-point frames; its three-point frames are the
-check of § 5.3. *(Whether one set may hold several modes — and so frame 0's weight across them and a sum over modes — waits on the user's word, asked 2026-10-09: plan § 5z.1.)* The record checks both sums
-(`vibration.md` § 5.10 ③, `transport.md` § 2a.12).
-
-### 6.2 Where adding stops being right
-
-At fourth order cross terms appear,
-$\tfrac14\sum_{\nu<\mu}T_{\nu\nu\mu\mu}\,\sigma_\nu^2\sigma_\mu^2$, which no
-single-mode frame measures. They are small when each mode's change is small;
-when two modes each move the conductance by tens of per cent through the same
-contact, their effects compound rather than add — for the exponential contact
-of § 4.3 exactly in the exponent,
-$\langle T\rangle/T_0 = \exp\big(\sum_\nu a_\nu^2\sigma_\nu^2/2\big)$, where the
-second-order sum is the exponent's first term. So the record reports **each
-mode's own change beside the sum**, and calls the sum second-order.
+Another mode is another frame set and another transport calculation. **How
+several modes act together is not answered here.** Whether their changes add,
+compound or cancel depends on the joint motion of the modes and on the
+cross-derivatives $\partial^2T/\partial Q_\nu\partial Q_\mu$, which frames
+displaced along one mode never measure; and no thermodynamic data at hand
+supports a claim about it. So each mode's average stands on its own, and
+weighing one mode against another is the person's post-processing *(user,
+2026-10-09: "it is cleaner and more focused to let user to post-process the
+results from different vibrational mode and decide how they can be weighed to
+give an overall impact ... it is baseless to discuss how different normal mode
+would mix because there is not thermal dynamic data to support any claims at
+this point")*.
 
 ---
 
@@ -432,7 +392,7 @@ mode's own change beside the sum**, and calls the sum second-order.
 
 Each is stated beside the numbers it limits, never dropped:
 
-1. **Harmonic, independent modes.** $P(Q)$ is the Gaussian of § 2. A strongly
+1. **A harmonic mode.** $P(Q)$ is the Gaussian of § 2. A strongly
    anharmonic mode — a soft contact bond, softer outward than inward — has a
    *skewed* distribution, $\langle Q\rangle \neq 0$ and $\langle Q^3\rangle\neq0$,
    and then the odd part of $T$ no longer cancels: a second source of
@@ -462,23 +422,20 @@ Each is stated beside the numbers it limits, never dropped:
 ## 8. What the record carries
 
 From the frames and their `customized` rows
-([`model/structure.md`](?doc=model/structure.md) § 2.2d:
-`mode`, `node_sigma`, `weight`, `order`, and shown beside them
-`frequency_cm1`, `sigma_amu12_ang`, `q_amu12_ang`, `max_displacement_ang`,
-`temperature_k`; frame 0 states its `weight` and, shared by every mode, no
-`mode` or `order`; every weight stated, their sum checked to be 1), per
-mode $\nu$ — the record is `transport.md` § 2a.12's:
+([`model/structure.md`](?doc=model/structure.md) § 2.2d) — the structure's
+rows announcing the mode (`mode`, `order`, and shown beside them
+`frequency_cm1`, `sigma_amu12_ang`, `temperature_k`, `max_displacement_ang`),
+each frame's its `node_sigma`, `q_amu12_ang` and `weight`, every weight stated
+and their sum checked to be 1 — the record is `transport.md` § 2a.12's:
 
 - each frame's $T_j(E)$ and current — the family of curves;
-- $\langle T(E)\rangle_\nu$, the mode's average, and $\Delta T_\nu(E)$;
-- $\langle\Delta G\rangle_\nu / G$, in per cent, and the curvature
-  $T''_\nu$ at $E_F$;
-- when five frames were run: both averages and whether they agree (§ 5.3);
+- $\langle T(E)\rangle = \sum_j W_j T_j(E)$, the mode's average, and
+  $\Delta T(E) = \langle T(E)\rangle - T_0(E)$;
+- $\langle\Delta G\rangle / G$, in per cent, and the curvature $T''$ at $E_F$;
 
-and for the set: $T_0 + \sum_\nu \Delta T_\nu$, labelled second-order (§ 6.2),
-with § 7's assumptions beside it. Transport reads only `mode`, `node_sigma`,
-`weight` and `order` to compute; everything else is shown, so a reader can
-check that the weights are the Gauss–Hermite weights of the stated nodes.
+with § 7's assumptions beside them. Transport reads only `mode`, `order`,
+`node_sigma` and `weight` to compute; everything else is shown, so a reader
+can check that the weights are the Gauss–Hermite weights of the stated nodes.
 
 ---
 

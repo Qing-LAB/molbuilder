@@ -1084,8 +1084,9 @@ question directly. *Tool:* not built. The displaced frames are written by
 the frame-set generator (V1.25, a module of its own), as one multi-frame pair:
 frame 0 the relaxed structure, the displaced frames through the structure's
 own doors — `with_frames` for the coordinates, `set_customized(…, frame=i)`
-for each frame's rows — a displaced frame's mode, node, weight and order,
-frame 0's weight, every weight stated and the set's summing to 1
+for the rows — the structure's rows announcing the one mode the set samples,
+each frame's its node and weight, every weight stated and the set's summing
+to 1
 (`vibration.md` § 5.10 ③; `model/structure.md` § 2.2d–2.2e). The
 displacement arithmetic exists twice (the PySCF probe, the animation), and
 the amplitude has one right answer rather than being a knob — the nodes of the
@@ -1358,10 +1359,13 @@ DC readout § 4b.3's detector criterion therefore reads: `|∂μ/∂Q_ν|` large
 light drives the mode) **and** `|∂²T/∂Q_ν²|` large (the driven motion changes
 the DC current).
 
-At second order independent harmonic modes add: `⟨T⟩ − T₀ ≈ Σ_ν ½ T″_ν σ_ν²`,
-the cross terms averaging to zero because `⟨Q_ν Q_μ⟩ = 0` for `ν ≠ μ`. So each
-mode's share is a piece of the whole thermal change of the conductance, and the
-pieces compare.
+Each mode is scored on its own: one frame set, one transport calculation a
+mode (user, 2026-10-09: *"each vibration mode will have a separate prep and
+run as different task"*). How several modes act together — whether their
+changes add, compound or cancel — needs the cross-derivatives no single-mode
+frame measures and thermodynamic data no run here supplies, so it is not
+claimed; weighing the modes against each other is the person's
+(`vibrational-averaging.md` § 6).
 
 The discussion's two scores, kept side by side and never merged:
 
@@ -1382,7 +1386,7 @@ larger than `T₀` whatever the sign of the stretch.
 ### 4c.5 Three frames give the curvature and the average at once — the Gauss–Hermite nodes
 
 *The derivation in full — the thermal distribution, why a lopsided response is
-what moves the average, the rule's error and its check, many modes in one set —
+what moves the average, the rule's error and its check, one mode a set —
 is [`vibrational-averaging.md`](?doc=science/vibrational-averaging.md).*
 
 The frames along a mode belong where they answer § 4c.4's question. For a

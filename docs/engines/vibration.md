@@ -1688,7 +1688,7 @@ that exists:
 | exists | reused for |
 |---|---|
 | both eigenvector forms and the zero-point amplitude of every mode (§ 6.3) | the frames and the modes' character |
-| the frame set — one multi-frame pair, each displaced frame's rule in its `customized` rows (③; `engines/transport.md` § 2a.9, V1.25) | the one interface between a vibration and every run along its modes |
+| the frame set — one multi-frame pair for one mode, the mode in the structure's `customized` rows and each frame's node and weight in its own (③; `engines/transport.md` § 2a.9, V1.25) | the one interface between a vibration and every run along its modes |
 | the axis rule — a stage carries a sub-level for each axis it varies over (`engines/transport.md` § 2a.11) | a level per frame inside one run, the shared runs once |
 | the job's own finish, a bundle that travels (§ 5.5, I22, I23) | each frame's electronic result, written by its own job |
 | `summarize` over results that exist — nothing lost, nothing copied, matching by shape (§ 5.9, I25) | the response of each mode across its frames |
@@ -1742,10 +1742,13 @@ atoms, by a stated partition, is not. *(Found while drafting, fixed
 spelled the retired `WriteMullikenPop`; it names 5.4.2's `Charge.Mulliken`
 and `Charge.Mulliken.Format` now, `siesta/input.py`.)*
 
-**③ The frame set — the built-in mode rule, refined** (V1.25; D6, D7). One
-generator writes **one** multi-frame pair for a **list** of modes: frame 0 the
-base, then for each mode the Gauss–Hermite nodes of its thermal distribution at
-the stated temperature (three by default, five on request, science § 4c.5):
+**③ The frame set — the built-in mode rule, refined** (V1.25; D6, D7; one
+mode per set, the user 2026-10-09). One generator writes **one** multi-frame
+pair for **one** mode *(user, 2026-10-09: "i would rather let one multi-frame
+focus on one mode ... each vibration mode will have a separate prep and run as
+different task")*: frame 0 the base, then the Gauss–Hermite nodes of the
+mode's thermal distribution at the stated temperature (three by default, five
+on request, science § 4c.5):
 
 ```text
     R_A(Q_j) = R_A⁰ + Q_j · L_canonical ,   Q_j = √2 σ x_j ,   σ = Q_zp · √coth(ħω / 2k_BT)
@@ -1755,33 +1758,35 @@ the stated temperature (three by default, five on request, science § 4c.5):
 `Q_zp` and `L_canonical` are read from the result (§ 6.3) — the canonical form
 only, by § 6.3's pairing rule. The generator builds the set through the
 structure's own doors ([`model/structure.md`](?doc=model/structure.md) § 2.2d–
-2.2e): `with_frames` for the coordinates, and for every frame
-`set_customized(…, frame=i)` for its rows — on a displaced frame `mode`,
-`node_sigma`, `weight`, `order`, `frequency_cm1`, `sigma_amu12_ang`,
-`q_amu12_ang`, `max_displacement_ang`, `temperature_k` — one row set per frame,
-as many as the frames (user, 2026-10-09: *"one list, having the same number of
-elements as the frames"*). **Every frame states its `weight`, frame 0
-included** (user, 2026-10-09: *"all weights should add up to 1 that's an
-explicit rule within error tolerance"*): a displaced frame's is its node's
-Gauss–Hermite weight; frame 0, the equilibrium, shared by every mode and so
-with no `mode` or `order`, states `1 − Σ w_f` over the displaced frames in the
-set's sum, below zero once the
-displaced weights pass 1 (`engines/transport.md` § 2a.12). The generator
-writes every weight at full precision, and the weights of frame 0 and each
-mode's frames at its highest order sum to 1 (a mode given both orders keeps its
-lower order's frames as the check, `engines/transport.md` § 2a.12). For one
-mode at three points: `⅔, ⅙, ⅙`. *(Whether one set may hold several modes — and so frame 0's weight across them and a sum over modes — waits on the user's word, asked 2026-10-09: plan § 5z.1.)* The vibration run it read (its path
-and structure hash) is recorded as an `info` entry of its own. Each displaced
-frame also states its largest atomic displacement against
-that atom's nearest-neighbour distance (science § 4c.5, soft modes) — a warning
-above a stated fraction, never a refusal. The pair keeps the transport frame
-set's promises by construction — count, order, species and labels unchanged,
-and no electrode atom moves when every electrode atom is held, which the
-generator checks and says when it is not so. **One set for many modes**,
-because the base, the leads and the seed are then computed once for all of
-them ("electrodes once, seed once, device and transmission per frame",
-`engines/transport.md` § 2a.9). Two doors, one generator: the spectrum viewer
-(select modes, write the set) and one CLI verb.
+2.2e): `with_frames` for the coordinates, and `set_customized` for the rows.
+**The structure's rows announce the mode** — `mode`, `frequency_cm1`, the
+rule's `order`, `temperature_k`, `sigma_amu12_ang`, and the generator's
+parameters, `max_displacement_ang` among them (the user, 2026-10-09: *"max
+displacement is a parameter we feed to generate the multi-frame data and is
+included in the meta data (and may be more such parameters stored there,
+including frequency etc)"*). **Each frame's rows say what the frame is**,
+`set_customized(…, frame=i)` — `node_sigma`, `q_amu12_ang` and `weight` — one
+row set per frame, as many as the frames (user, 2026-10-09: *"one list,
+having the same number of elements as the frames"*). **Every frame states its
+`weight`, frame 0 included, and the weights sum to 1** (user, 2026-10-09:
+*"all weights should add up to 1 that's an explicit rule within error
+tolerance"*): each frame's node's Gauss–Hermite weight — `⅔, ⅙, ⅙` for three
+frames — written at full precision. *(How `max_displacement_ang` as the
+generator's input and the nodes of the thermal distribution meet — the
+displacements derived from the temperature, D7 — is settled when the generator
+is designed, V1.25.)* The vibration run it read (its path and structure hash)
+is recorded as an `info` entry of its own. Each displaced frame also states
+its largest atomic displacement against that atom's nearest-neighbour
+distance (science § 4c.5, soft modes) — a warning above a stated fraction,
+never a refusal. The pair keeps the transport frame set's promises by
+construction — count, order, species and labels unchanged, and no electrode
+atom moves when every electrode atom is held, which the generator checks and
+says when it is not so. **Another mode is another set**, cited by its own
+transport calculation; how the modes' results are weighed against each other
+is the person's *(user, 2026-10-09: "it is cleaner and more focused to let
+user to post-process the results from different vibrational mode and decide
+how they can be weighed to give an overall impact")*. Two doors, one
+generator: the spectrum viewer (select a mode, write its set) and one CLI verb.
 
 **④ The electronic response on a frame set — a run of its own kind** (D4, D5).
 § 5.6 already says so: "each a run of its own kind on that pair". Proposed: a
@@ -1883,7 +1888,7 @@ rigid-shift estimate against the explicit curvature.
 | D3 | the charge each mode moves (②) | **decided 2026-09-28: yes** — on for every force-constant run once SIESTA is measured to print the populations at every step, *"and result presentation should include the correct data and UI design to present it"* | one switch and no extra SCF |
 | D4 | where the electronic frames run | **decided 2026-09-28: yes**, a calculation kind of its own, `electronic` — *"make it clear the difference between pySCF and siesta, from setup and calculation and presentation"* | what § 5.6 already says; it serves `Δρ_ν` (V1.26) too, and needs no leads |
 | D5 | sisl in the SIESTA job envs | **decided 2026-09-28: in every SIESTA env**, through the env system's recipes — *"so it is always available when we need them"* (installed with M2b‴, the milestone that retired the unit-height spectrum — § 10's sisl row) | the levels are the junction's HOMO and LUMO, and sisl is SIESTA's own reader of the file they come from |
-| D6 | one frame set for many modes | yes — V1.25's "for a named mode" becomes "for named modes" — *taken as recommended unless the user objects* | the base, the leads and the seed once |
+| D6 | one frame set for many modes | ~~yes — V1.25's "for a named mode" becomes "for named modes"~~ — **reversed by the user, 2026-10-09: one mode per set** (*"i would rather let one multi-frame focus on one mode ... each vibration mode will have a separate prep and run as different task"*); how modes are weighed against each other is the person's post-processing | ~~the base, the leads and the seed once~~ — each mode's set its own transport calculation |
 | D7 | the amplitude rule — where the displaced structures the electronic and transport runs compute on sit (not the animation) | **decided 2026-09-28**: the Gauss–Hermite nodes of the thermal distribution at a stated temperature, three by default | the same frames give the curvature and the average (science § 4c.5); V1.25's "zero-point amplitude and its thermal growth" are the two ends of it |
 | D8 | the PySCF probe — how far its per-mode orbital check pushes the molecule (not the animation) | **decided 2026-09-28**: the same nodes; `electronic_structure.amplitude_ang` gives way to the node record | one amplitude rule on both engines, and a curvature needs frames above the noise |
 

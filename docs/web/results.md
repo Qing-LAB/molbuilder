@@ -616,7 +616,7 @@ Q17-e)*. A frame set's report draws the family of curves — T(E), the DOS and
 the I–V per frame — and the frame bar picks a frame, every chart following it
 as the I–V pick follows a bias point (the one owner is MolView's
 `data.setCurrentFrame`, the table above); beside the family, at each voltage,
-each mode's averaged curve and the set's second-order sum, labelled as such;
+the mode's averaged curve — one mode a set, another mode another calculation;
 and the selected frame's `customized` rows in its card, read through the
 structure's own doors.
 

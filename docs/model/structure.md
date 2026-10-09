@@ -452,12 +452,13 @@ row set per frame (§ 2.2e). Names are unique within one set, and a name that
 is the structure's may not also be a frame's.
 
 Unlike `info` (§ 2.2a) it is **STRUCTURAL**: it describes what the structure is
-for a task — a frame's displacement, the mode it moves along, its weight in an
-average — so it is in `METADATA_FIELDS`, carried by every derivation, gated
+for a task — the mode a frame set samples (the structure's rows), each frame's
+displacement and its weight in an average (that frame's rows) — so it is in `METADATA_FIELDS`, carried by every derivation, gated
 like any edit (`web/molview.md` § 9.4), and in the sidecar (schema 11,
 `structure-molstruct.md` § 2). It is never a free-form store: molbuilder
 reads only the rows whose names a subsystem owns and declares as constants
-(transport owns `mode`, `node_sigma`, `weight`, `order`, as `transport/sort.py`
+(transport owns `mode` and `order` on the structure's rows and `node_sigma`
+and `weight` on each frame's, as `transport/sort.py`
 owns the region names), and every other row is the writer's, carried and shown.
 
 **The one door, each side** — nothing else names a key of the section:
