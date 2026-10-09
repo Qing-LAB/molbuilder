@@ -112,8 +112,8 @@ class StageStatus:
     #: finish and not converge (`parse.dirs.run_status`).
     converged: Optional[str] = None
     #: A swept rung's points, in bias order -- ``{bias_v, folder, done, why,
-    #: started_from}`` each, read from the point's own files
-    #: (`continuation.done`; `engines/transport.md` § 2a.11) -- or ``[]``.
+    #: started_from, took}`` each, read from the point's own files
+    #: (`point_rows`; `engines/transport.md` § 2a.11) -- or ``[]``.
     points: List[Dict[str, Any]] = field(default_factory=list)
     #: What the run GATHERED from the rungs upstream -- ``<file> <- <run>``
     #: each, the run's own ``.gathered-from`` (`runrecord.read_gathered_from`;

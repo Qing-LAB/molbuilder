@@ -22,7 +22,7 @@ is the question `script-preparation.md` § 4.1 asks:
   declaration.  The template's items arrive because
   :mod:`molbuilder.siesta.layout`'s sections already name them, and transport
   is a calculation KIND on the siesta engine (39 shared rows, measured in
-  § 3.3) so it reuses those sections rather than restating them.
+  § 2a.13) so it reuses those sections rather than restating them.
 * **structural text is a BLOCK** — the coordinate table, ``%block TS.Elecs``
   and the reservoir blocks.  Those are written whole; a block whose VALUES are
   catalogue items (the T(E) window) asks each value through the framework's
@@ -419,7 +419,7 @@ def _emit_electrode_header(struct, cfg) -> str:
 
 
 def _seed_layout(derived, frame, state_block):
-    """The seed rung: an ordinary periodic SIESTA pass (§ 4.2 stage 1).
+    """The seed rung: an ordinary periodic SIESTA pass (§ 1, stage 1).
 
     Read down it and you have read the deck's SCIENCE, in order.  Not the
     whole file: the framework adds the banner, the USER-CUSTOM fence and the

@@ -2,9 +2,9 @@
 
 The ONE interface behind the Results tab's contract recording: given a run's own deck --
 its caller's, from the run door -- answer the electronic contract it states, in the
-catalogue's own names (:data:`RECORDED_FIELDS`) — so a recorded block
-(`info.calculation`) defaults a
-transport calculation's template when a pair carrying it is cited.
+catalogue's own names (:data:`RECORDED_FIELDS`) — the structure's provenance,
+read by the Metadata pane, the vibration's `already_relaxed` check and the
+electronic-state resolution (`web/molview.md` § 8.4a, plan F28).
 
 Per-engine, behind one door:
 

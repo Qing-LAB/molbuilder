@@ -37,7 +37,7 @@ function).
 > from the *pristine bulk* lead. **`T(E, V)`** is the transmission — the probability
 > an electron of energy `E` crosses, when the junction is held at bias `V`. A
 > calculation computes a **slice at one V**, so a single-bias run yields `T(E)`
-> and a bias scan yields the family (§ 2a.10). **`E_F`** is the **Fermi level** — the energy that
+> and a bias sweep yields the family (§ 2a.10). **`E_F`** is the **Fermi level** — the energy that
 > separates filled from empty states, and the reference energy for conductance. A
 > lead's **chemical potential μ** is the energy its electron reservoir is filled up
 > to (applying a bias offsets μ_L vs μ_R). **G₀ = 2e²/h** is the conductance quantum,
@@ -273,7 +273,9 @@ TranSIESTA expects a *metallic* electrode and that fixing the boundary is
 
 ### 0.5 Worked example — the Au–BDT–Au junction in this repo
 
-`projects/Au-BDT-Au/transport/AuBDTAu-CT`, cited from a CONCLUDED relaxation:
+`projects/claude-transport-walk/transport/au-dta-t` — the 2026-10-08 walk's
+sweep, cited from a CONCLUDED relaxation of molbuilder's own (the numbers
+below are the Au–BDT–Au design's, 2026-09; the walk's junction is smaller):
 
 | | |
 |---|---|
@@ -307,7 +309,7 @@ cited attempt's own `.fdf`.
 flowchart TD
     RX["junction relaxation<br/>(ordinary task; labeled + frozen electrodes)"]
     RX -->|"--slot junction=&lt;calc&gt;@&lt;stage&gt;/run-N"| CT["the transport calculation<br/>seed · electrode_L · electrode_R · device · transmission"]
-    CT -->|"prep + launch, stage by stage"| RUN["seed .DM → electrode .TSHS →<br/>NEGF device (bias chain) → tbtrans"]
+    CT -->|"prep + launch, stage by stage"| RUN["seed .DM → electrode .TSHS →<br/>NEGF device (a sweep when several voltages) → tbtrans"]
     RUN -->|"summarize task"| RES["&lt;label&gt;.transport.json:<br/>T(E) per bias · G(E_F) · I(V)"]
 ```
 
@@ -995,7 +997,7 @@ around an isolated lead survives only as advice: on a committed cell, the
 gate may say the transverse gap looks like an isolated lead rather than a
 bulk one, and leave the person to decide.
 
-#### The axis rule, which the bias scan already follows
+#### The axis rule, which the bias sweep already follows
 
 > **A stage carries a sub-level for each axis it varies over, and none for an
 > axis it does not.**
@@ -1044,7 +1046,7 @@ refuse to let them be reported as the same thing:
 
 - **Energy sweep** — one converged device, tbtrans evaluates T(E) across the
   window. Cheap, and it is what a frame group gives you.
-- **Bias scan** — the device NEGF SCF is **re-converged at each voltage**,
+- **Bias sweep** — the device NEGF SCF is **run at each voltage**, each point starting from the converged point before it (§ 2a.10, § 2a.11),
   because the potential drop reshapes the molecular levels. T is then a function
   of both, T(E, V).
 
@@ -1207,7 +1209,7 @@ readily, so level pinning appears at low bias.
 
 **The dependable answer is empirical, and cheap.** Converge the device at V = 0
 and at the largest V of interest, and compare the two curves *inside the bias
-window*. If they differ appreciably, the scan is needed. Two device runs to
+window*. If they differ appreciably, the sweep is needed. Two device runs to
 decide whether a whole ladder is necessary is a good trade, and it is what the
 interface should recommend rather than quoting a threshold as though it were
 settled.
@@ -1819,15 +1821,19 @@ means nothing at all.
 | `device` | **the NEGF SCF — the expensive one** | its own previous `<label>.TSDE`, **and** the seed's `.DM` as a starting density | **answered by the sweep** (§ 2a.11): a point starts from the seed's `.DM` (0 V) or the closest converged point's `.TSDE`, and one not done continues from its own last density |
 | `transmission` | **no SCF at all** — `tbtrans` reads a converged Hamiltonian and integrates | nothing | **no. There is no state to continue** |
 
-**So the question is answered per point** *(user, 2026-10-05)*: a point starts
-from a hand-over — the seed's density at 0 V, the closest converged point's
-after it — and until its cycle converges it continues from its own last
-density, in its own folder; once converged it is done and never run again,
-because a converged point is a fixed point and running it again only repeats
-it (§ 2a.11). The seed and the leads follow the same rule and rarely need it —
-they are cheap — and the transmission has no iteration to resume. *(Until
-2026-10-05 this read "the device has one": its own previous `.TSDE`, continued
-by a launch after a stop into a next attempt.)*
+**So the question is answered per point** *(user, 2026-10-05; the run rule
+2026-10-08, § 2a.11)*: a point starts from a hand-over — the seed's density at
+0 V, the closest converged point's after it. Within one run the wrapper's own
+retry (`continue_retries`) continues a point in place from its last density;
+a point still not done when the run ends is run again in the NEXT run's fresh
+point folder, from its hand-over start — never continued across runs. Once
+done it is taken over whole into every later run and never run again, because
+a converged point is a fixed point and running it again only repeats it. The
+seed and the leads follow the same rule and rarely need it — they are cheap —
+and the transmission has no iteration to resume. *(Until 2026-10-05 this read
+"the device has one": its own previous `.TSDE`, continued by a launch after a
+stop into a next attempt; until 2026-10-08 it said a point continued in place
+across launches.)*
 
 **The two hand-overs, and how SIESTA reads each.**
 
@@ -1843,10 +1849,11 @@ by a launch after a stop into a next attempt.)*
   TranSIESTA *Description*). The binary's own words, measured
   2026-09-16: *"Attempting to read DM, EDM from TSDE file"*, and
   *"Forcefully requested initialization of the DM, however the DM/TSDE file
-  does not exist!"* So a point launched again after a stop finds the `.TSDE`
-  its stopped run left and continues from it — the continuation § 2a.11 asks
-  for; and the walk copies a hand-over only into a point it has not begun, so
-  a point's own density is never overwritten by another's.
+  does not exist!"* A point's own `.TSDE` is the engine's state at that point
+  and the wrapper's retry within the run reads it; across runs it is never
+  taken over for a point not done (§ 2a.11) — the next run's point starts
+  from its hand-over, and the walk copies a hand-over only into a point it
+  has not begun, so a point's own density is never overwritten by another's.
 
 **Is `DM.UseSaveDM` honoured in a TranSIESTA run?** Measured against SIESTA
 5.4.2's own binary: yes. The one path that overrides it is a geometry
@@ -1913,7 +1920,7 @@ molbuilder jobset init --calculation transport --shape hierarchical \
 #    runs before it.
 molbuilder jobset prep task   --bundle BDT-Au/transport/BDTTrans
 molbuilder jobset launch task --bundle BDT-Au/transport/BDTTrans --mode submit
-#    ... and again for the device (a bias scan launches as ONE chain job
+#    ... and again for the device (a bias sweep launches as ONE walk
 #    walking the points), and again for the transmission
 
 # 3. read the deliverable back
@@ -1934,7 +1941,7 @@ is refused at the next rung's gather, which cannot read the junction its
 record was composed from — the way on is the state saved before the first
 rung's prep, which composes it anew (a prepared rung is not prepared again,
 [`job-system.md`](?doc=execution/job-system.md) § 5.0); `--bias` must start
-at `0.0` (the chain starts from equilibrium).  *(The old `transport bundle`
+at `0.0` (a list starts from equilibrium).  *(The old `transport bundle`
 three-run driver and its `run-transport.sh` were deleted 2026-08-29 —
 deriving and running the pieces is the composite's job.)*
 
@@ -2259,7 +2266,7 @@ applies.
 
 ---
 
-### 3.5 How it is implemented — the chain, named
+### 3.5 How it is implemented — the road, named
 
 One direction, and every step is a function that already exists except where
 marked **[new]**.
@@ -2851,7 +2858,7 @@ device. The convention (the *vocabulary* is owned by
 - **`bridge`** — the scattering region: the molecule + any lead-side atoms that
   break periodicity. **Not** a TranSIESTA block — no `%block` is emitted for it.
   **But it must be assigned, not omitted** *(corrected 2026-09-15, F15 of
-  [`execution/walkthrough-2026-09-15-junction.md`](?doc=execution/walkthrough-2026-09-15-junction.md))*:
+  the 2026-09-15 junction walkthrough, whose findings are recorded here)*:
   this bullet read *"it's implicit (the atoms in no electrode region)"*, so a
   junction labelled with only the two electrodes looks complete — and the
   composer refuses it, *after* the relaxation has run: *"5 atom(s) carry no
@@ -2978,7 +2985,7 @@ expansion in the shipped 2-terminal scope.)
 > current flows R→L. Put the `L-electrode` label on whichever lead you want as the
 > more-positive reservoir in your forward-bias measurement — under the usual
 > convention that is the low-z one. `TS.Voltage` is one value per deck — the
-> point's bias, a `role` item the rung fixes (§ 6.1b); a bias scan is a deck
+> point's bias, a `role` item the rung fixes (§ 6.1b); a bias sweep is a deck
 > per point, and its points are one run (§ 2a.11).
 
 ---
@@ -3088,8 +3095,9 @@ be.
 `wizard.electrode_wizard` / `render_electrode_fdf`,
 `transiesta.render_script` / `parse_output`, `preflight.preflight_files` /
 `format_report`, and `POST /api/transport/render`. What survives in
-`transport/preflight.py` is `parse_fdf_params` — **reading** an fdf, which four
-production callers still do; only **comparing two of them** lost its subject.
+the reader, `parse_fdf_params` (`parse/fdf.py`; `transport/preflight.py` is
+gone) — **reading** an fdf, which the citation doors still do; only
+**comparing two of them** lost its subject.
 
 **Data flow** — the single numerical contract (§ 5) is baked *identically* into
 every rung's deck; only the geometry and the open-vs-bulk boundary (`kz`,
@@ -3107,7 +3115,7 @@ flowchart LR
     TBT --> RESULT["<label>.transport.json<br/>(summarize task; T(E) per bias, G(E_F), I-V)"]
 ```
 
-> **A bias scan is one submission, and the two walks over its points fail
+> **A bias sweep is one submission, and the two walks over its points fail
 > in opposite directions** (`jobset/submit.py::_plan_sweep`; the walk of a
 > sweep that is one run, § 2a.11).
 > Both are launcher layers — each `cd`s into the point's own folder and runs
@@ -3923,14 +3931,14 @@ single-point, or a relaxation if those layers are not frozen.
 > concluded through the same verbs and wrappers as everything else; the
 > electrode `.TSHS` and seed `.DM` hand-offs are prep's GATHER (three
 > refusals per input); and the one genuinely sequenced thing — a bias
-> scan's points — rides ONE submission, the chain walker, because the
+> sweep's points — rides ONE submission, the one walk script, because the
 > `.TSDE` hand-forward is an efficiency inside one launch, not a
 > scheduling judgement between results a person should read.
 >
 - **Shipped:** the transport COMPOSITE (`--calculation transport`: citation →
-  sort → gates → five derived stages → bias chain → `summarize task` →
+  sort → gates → five derived stages → the bias sweep → `summarize task` →
   `<label>.transport.json`) and the region-label-driven derivation.  The
-  finite-bias scan ships with it (the `.TSDE`-chained walker).
+  finite-bias sweep ships with it (the `.TSDE`-chained walker).
   *(This bullet also listed "the electrode wizard" and "the
   `electrode`/`preflight` helper CLI" until 2026-09-17.  Both were the June
   2026 hand-assembly era and are **deleted** — a lead is DERIVED from the

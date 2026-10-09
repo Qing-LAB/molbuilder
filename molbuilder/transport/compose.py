@@ -8,7 +8,7 @@ trigger to run it); PARSE the relaxed geometry from the attempt's own
 what the § 4.1a fence forbids crossing the sort); overlay it on the
 cited calculation's labeled source structure; run the categorical sort
 (P2); apply the frozen-unmoved gate; extract the two electrode models
-from the sorted blocks (the wizard's move, § 4.2); and record the
+from the sorted blocks (the wizard's move, § 3); and record the
 provenance — citation, attempt, and the content hashes of the files it
 was composed from, **the attempt's own deck** among them (the fdf that
 actually ran is the truth about a result; user ruling 2026-08-28).

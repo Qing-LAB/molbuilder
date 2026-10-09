@@ -25,7 +25,7 @@ The cited relaxation DEFAULTS the electronic description at ``jobset
 init``; it does not seal it (§ 2a.7).  The shared-contract invariant holds
 because ONE value shared by five rungs cannot disagree with itself.
 
-The launch half's facts also live here: the § 4.2 DAG
+The launch half's facts also live here: the ladder's DAG (§ 1, § 6.1)
 (:func:`stage_inputs`, read by prep's gather and the done-door), the
 continuation rows (:func:`warm_declaration` — the seed's ``.DM``, the
 device's ``.TSDE``), and the sweep's points (:func:`sweep_points`,
@@ -39,7 +39,7 @@ from typing import List, Optional, Tuple
 
 from ..template import KIND_ROLES
 
-#: The composite's fixed ladder (§ 4.2) -- the five stages in
+#: The composite's fixed ladder (§ 1) -- the five stages in
 #: dependency order.  ``jobset init`` writes exactly these into
 #: ``task.json``; `prep` names its rungs from the same tuple.  They are the
 #: kind's rung ROLES too, so their one home is the catalogue's role
@@ -153,7 +153,7 @@ def points_in(run, task, stage: str) -> List[Tuple[Path, float]]:
 
 def stage_inputs(stage: str, task_label: str, *,
                  with_seed: bool = True):
-    """The § 4.2 DAG, as data: ``[(upstream stage, filename)]`` this
+    """The ladder's DAG (§ 1, § 6.1), as data: ``[(upstream stage, filename)]`` this
     stage CONSUMES from the concluded attempts of the stages before it.
 
     The filenames are derived from the SystemLabel rules the renderers
@@ -221,8 +221,9 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
     """What a transport rung takes from a run of itself it CONTINUES --
     `launch` opening its next attempt after a stop -- the § 4.2a vocabulary
     rows for the transport type, on the stages where continuing means
-    anything: the seed (its ``.DM``) and the device (its ``.TSDE``, the
-    NEGF density; read under ``DM.UseSaveDM``, which the device deck
+    anything -- the seed and the device, each with the vocabulary's carry
+    rows (`warm-files.toml` [transport]: the ``.DM``, and the ``.TSDE``,
+    the NEGF density, read under ``DM.UseSaveDM``, which the device deck
     writes ``.true.``).  A rung takes no
     ``--from`` at prep (`continuation._cannot_be_named`).
 

@@ -395,7 +395,7 @@ class Task:
     #: measure, and a person needs both at once (user, 2026-09-02).
     execution: Dict[str, Any] = field(default_factory=dict)
 
-    #: THE COMPOSITE'S INPUTS (transport-design.md § 4.1) -- slot name ->
+    #: THE COMPOSITE'S INPUTS (engines/transport.md § 2a.14, § 3.1) -- slot name ->
     #: an EXPLICIT directory citation (a tree-relative path whose FILES
     #: satisfy the 4.1b condition; ruling Q1 + the 2026-08-29 amendment).
     #: Only ``calculation="transport"`` may carry slots, and it must
@@ -413,7 +413,7 @@ class Task:
     #: a transport description carries it; false writes no key.
     swap_electrodes: bool = False
 
-    #: THE BIAS SWEEP AXIS, volts (transport-design.md § 4.3) -- like
+    #: THE BIAS SWEEP AXIS, volts (engines/transport.md § 2a.10) -- like
     #: ``bench``, a list of points the description asks for, not a
     #: machine's answer.  Empty means zero-bias only (the default every
     #: transport description says by omitting the key).  When present
@@ -461,7 +461,7 @@ class Task:
                 f"(varies={self.varies!r}, stages={self.stages!r}) -- "
                 "'varies' is what differs ACROSS the stages, so neither is "
                 "meaningful without the other (engines/stages.md 6.5)")
-        # The composite's own pairing (transport-design.md § 4.1): slots
+        # The composite's own pairing (engines/transport.md § 3.1): slots
         # belong to transport alone; transport requires the junction slot,
         # carries no structure block, and each citation names its attempt.
         if self.calculation == "transport":
@@ -805,7 +805,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
             formula=str(struct_obj.get("formula", "")),
             atoms=int(struct_obj.get("atoms", 0)))
 
-    # THE COMPOSITE'S KEYS (transport-design.md 4.1/4.3).  Shape here;
+    # THE COMPOSITE'S KEYS (engines/transport.md § 2a.14).  Shape here;
     # the pairing rules (transport-only, junction required, bias starts
     # at 0.0) live on the dataclass so object builders meet them too.
     slots_obj = _as_object(obj.get("slots", {}), where="slots")
@@ -1262,7 +1262,7 @@ def _task_to_dict(task: Task) -> dict:
     # EVERY DESCRIPTION STATES ITS KIND.
     out["calculation"] = task.calculation
     # the composite's inputs ride where the design's example puts them
-    # (transport-design.md 4.1): slots, then bias, then the stages.
+    # (engines/transport.md § 2a.14): slots, then bias, then the stages.
     if task.slots:
         out["slots"] = dict(sorted(task.slots.items()))
     if task.swap_electrodes:

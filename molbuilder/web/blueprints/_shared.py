@@ -448,7 +448,7 @@ def ok_structure_response(
     impossible.
     """
     said = list((extra or {}).get("notices") or [])
-    # THE ONE LINE (cell-plan.md § 6a): resolve once, check once, report.
+    # THE ONE LINE (archive/2026-08-20-cell-plan.md § 6a): resolve once, check once, report.
     #
     # No try/except, because there is nothing to catch: these are the
     # loading/modifying doors, and § 8.2 says they REPORT a bad box rather than

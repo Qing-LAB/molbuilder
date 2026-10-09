@@ -146,7 +146,7 @@ suffix = ".TSHS"                # TranSIESTA Hamiltonian + overlap.
 suffix = ".TSDE"                # the NEGF density -- THE warm state of a
                                 # device re-run, and the file the bias
                                 # chain hands from point to point
-                                # (transport-design.md 4.3).  No
+                                # (engines/transport.md 2a.11).  No
                                 # honoured_by: TranSIESTA reads it under
                                 # DM.UseSaveDM (m_new_dm.F90), which the
                                 # device deck always writes .true.

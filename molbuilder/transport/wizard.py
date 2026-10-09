@@ -69,7 +69,7 @@ from .transiesta import (
 #: nothing refuses on it.  The REAL principal-layer gate lives in
 #: `transport/compose.py` and compares the orbital interaction range
 #: (read from the citation's own ``.ion`` files, never guessed)
-#: against the lead's period (transport-design.md § 3).
+#: against the lead's period (engines/transport.md § 3).
 MIN_ELECTRODE_THICKNESS_ANG = 12.0
 
 

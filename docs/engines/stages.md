@@ -1932,8 +1932,8 @@ rule and the reasoning.
 > **The rule is about a LADDER, and this document once stated it as though it
 > covered everything** *(corrected 2026-08-11)*. It read *"nothing schedules a
 > stage after another, **here or anywhere**"* — and the transport composite's
-> bias chain runs a scan's points in sequence under one submission
-> (`archive/2026-09-01-transport-design.md` § 4.3; it was `transport bundle`'s
+> bias walk runs a sweep's points in sequence under one submission
+> (`engines/transport.md` § 2a.11; it was `transport bundle`'s
 > `run-transport.sh` until the composite retired it, 2026-08-29).
 >
 > **The two are different relationships, and the difference is what the rule is

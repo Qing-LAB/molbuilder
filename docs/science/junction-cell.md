@@ -267,7 +267,8 @@ to ask for anything else; `sequence="ACB"` is the alternative, and it is what
 `--electrode` now uses on that side.
 
 > **MEASURED FALSE, 2026-09-15** (F9/F10 of
-> [`execution/walkthrough-2026-09-15-junction.md`](?doc=execution/walkthrough-2026-09-15-junction.md)).
+> the 2026-09-15 junction walkthrough, F15 — its findings live in
+> [`engines/transport.md`](?doc=engines/transport.md) § 4).
 > `sequence` alone does **not** change the registry at the seam. With the
 > documented `ABC`/`ACB` mapping and `c = z_span + d`, every layer count this
 > document's § 3.1 table calls *continues* measures as **eclipsed** on

@@ -81,7 +81,7 @@ export const FROZEN_LABEL = "frozen_atoms";
  * `model/structure-annotations.md` § 5.1. */
 /* THE RESERVED TRANSPORT LABELS.  Descriptions say what each is FOR and
  * when to use it, because a transport calculation reads them as physics
- * (archive/2026-09-01-transport-design.md § 4.1a): the electrode blocks are extracted
+ * (engines/transport.md § 4): the electrode blocks are extracted
  * as the semi-infinite leads, so mislabeling silently changes the device.
  * Names are the Python constants in transport/sort.py -- one rename,
  * one place. */

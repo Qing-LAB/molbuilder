@@ -86,7 +86,7 @@ def electrode_orientation(struct: Structure) -> Optional[str]:
     """Which of the three shapes this structure's electrodes are in, or
     ``None`` when it has no two electrode blocks to compare.
 
-    The usual convention (transport-design.md § 4.1a): ``L-electrode``
+    The usual convention (engines/transport.md § 4): ``L-electrode``
     is the LOW-z lead.  ``inverted`` is NOT an error — it is a valid
     junction whose author biased the other end, and it is answered as
     its own word so every surface can say so without matching prose.

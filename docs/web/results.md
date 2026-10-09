@@ -403,7 +403,7 @@ description, the ones not prepared yet among them, `ready` or `waiting`
 ([`execution/job-system.md`](?doc=execution/job-system.md) § 5.3), before
 anything is prepared too — and `null` for anything else (a rung's directory). A **flat** calculation
 root is itself the run: it answers a state and a record like any run directory
-(§ 3a), and no ladder. A bias scan's rung reads from its first point not
+(§ 3a), and no ladder. A bias sweep's rung reads from its first point not
 finished, and its detail names the point
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11).
 
@@ -425,7 +425,7 @@ have different run results in one place such that result tab would be able to
 show them (don't have to get into individual run dir to probe, and rather
 result can display the result by simply select which run to pick")*. The
 root's answer lists every run of the calculation under its stage — each stage's
-attempts, a benchmark's trials, a bias scan's points — each with its state, its
+attempts, a benchmark's trials, a bias sweep's points — each with its state, its
 folder and the file it opens (`runstatus.every_run`: under each `stages[]` row,
 `runs: [{run, point, dir, state, converged, detail, opens}]`, `opens` relative
 to the root — **a transmission run's is the root's `task.json`, with its
@@ -492,7 +492,7 @@ owner, every view mirrors it through a cheap door; [`spectra.md`](?doc=web/spect
 | selection | its one owner | what follows it |
 |---|---|---|
 | **the frame** — which structure of the calculation's frame set (W32; one frame today, so the bar is hidden as MolView hides it for one frame) | MolView's model: `data.setCurrentFrame(i)` / `data.onFrameChange(fn)` ([`molview.md`](?doc=web/molview.md) § 6.4) — nothing keeps its own copy | the structure, T(E), DOS, I–V and the device's convergence, each redrawn for that frame |
-| **the bias point** — one of the scan's voltages (one for a single-bias calculation) | the report: one `selectedBias`, set by clicking a T(E) curve, an I–V point or a row of the points table | the highlighted curve in T(E) and DOS, the marked I–V point, the points table's row, and the device convergence tab, which shows that point's device run |
+| **the bias point** — one of the sweep's voltages (one for a single-bias calculation) | the report: one `selectedBias`, set by clicking a T(E) curve, an I–V point or a row of the points table | the highlighted curve in T(E) and DOS, the marked I–V point, the points table's row, and the device convergence tab, which shows that point's device run |
 
 **The layout** — the page's cards (`.card`, `.card-row`; [`ui-contract.md`](?doc=web/ui-contract.md)
 § 4) and panel tabs (`.panel-tabs`, `.panel-tab`, `.panel-tabpanel`), every
