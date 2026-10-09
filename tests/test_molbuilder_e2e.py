@@ -139,11 +139,14 @@ def _open(page, base_url):
     return errors
 
 
-def _load(page, path: Path):
+def _load(page, path: Path, answer=None):
     """Pick the file in the sidebar, then press Load — the only supported route.
 
     Picking is browsing; loading is a separate intent that can discard unsaved
-    work, which is why the tab makes it two acts (tabs.md).
+    work, which is why the tab makes it two acts (tabs.md).  With a structure
+    open, Load asks whether to add the file to the view or clear the view
+    (tabs.md § 2, user 2026-10-09): ``answer`` is ``"add"`` -- Enter, the
+    focused default -- or ``"clear"``.
     """
     page.evaluate(
         "(a) => window.molbuilder.projects.setShared(a.dir, a.file)",
@@ -156,6 +159,15 @@ def _load(page, path: Path):
         timeout=_ACT_MS)
     before = _atom_count_or_zero(page)
     btn.click()
+    if answer is not None:
+        asked = page.locator("dialog.molbuilder-warning-modal[open]")
+        asked.wait_for(state="visible", timeout=_ACT_MS)
+        assert ("add the structure to the existing view or clear the current "
+                "view") in asked.inner_text(), asked.inner_text()
+        if answer == "add":
+            page.keyboard.press("Enter")
+        else:
+            asked.locator("[data-action='discard']").click()
     # WAIT FOR THE CHANGE, not for a pattern the PREVIOUS state already
     # satisfies.
     page.wait_for_function(
@@ -244,7 +256,7 @@ def test_a_second_load_adds_to_the_first_instead_of_replacing_it(
     water, pair = two_files
     errors = _open(page, flask_server)
     _load(page, water)
-    _load(page, pair)
+    _load(page, pair, answer="add")
 
     # WHICH ATOMS ARE THERE, not how many: what separates an APPEND from a
     # REPLACE is that the first fragment is still identifiable, which is what
@@ -268,7 +280,7 @@ def test_the_status_line_says_a_load_was_added(
     _load(page, water)
     assert "Loaded" in page.locator("#status").inner_text()
 
-    _load(page, pair)
+    _load(page, pair, answer="add")
     status = page.locator("#status").inner_text()
     assert "Added" in status and "5 in total" in status, status
 
@@ -294,6 +306,18 @@ def test_start_empty_then_load_is_how_you_replace(
         "that should have been empty")
 
 
+def test_a_second_load_answered_clear_replaces_the_view(
+        page, flask_server, two_files):
+    """The Load button's question answered *Clear current view*: the file
+    replaces what was open (user, 2026-10-09; tabs.md § 2)."""
+    water, pair = two_files
+    _open(page, flask_server)
+    _load(page, water)
+    _load(page, pair, answer="clear")
+    assert _atom_count(page) == 2, (
+        "answered clear, the load added to the open structure")
+
+
 def test_each_append_is_a_point_the_timeline_can_come_back_to(
         page, flask_server, two_files):
     """*"all operation should automatically call state save timeline api, such
@@ -305,7 +329,7 @@ def test_each_append_is_a_point_the_timeline_can_come_back_to(
     water, pair = two_files
     _open(page, flask_server)
     _load(page, water)
-    _load(page, pair)
+    _load(page, pair, answer="add")
     assert _atom_count(page) == 5
 
     page.locator("#undo-op").click()

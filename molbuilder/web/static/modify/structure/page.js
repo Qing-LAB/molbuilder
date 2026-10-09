@@ -3,11 +3,12 @@
  * Owns the "load a structure into the canvas" gate: every Sources
  * panel (Load from project, SMILES, name, DNA, RNA, peptide) calls
  * in here.  With nothing open the structure is installed; with one
- * open it is appended (``loadIntoCanvas``).
+ * open it is appended -- or, when the caller says the person chose to
+ * clear the view, installed over it (``loadIntoCanvas``; tabs.md § 2).
  *
  * Public surface (mounted on ``window.molbuilder.structurePage``):
  *
- *   loadIntoCanvas(structure, source)
+ *   loadIntoCanvas(structure, source, how?)
  *     -> Promise<{ok: bool, cancelled?: bool}>
  *
  *     ``structure``: ``{structure: <envelope>}`` -- the loss-free
@@ -15,6 +16,9 @@
  *                    endpoint already answers with. Never a document:
  *                    the browser does not write coordinates.
  *     ``source``:    ``{kind, file?, generator_input?}``
+ *     ``how``:       ``{replace: true}`` installs over an open structure:
+ *                    the person's answer to the Load button's question
+ *                    (tabs.md § 2); absent, an open structure is added to.
  *
  *     Returns ``{ok: true}`` when the canvas was updated, or
  *     ``{ok: false}`` when the append did not apply.
@@ -80,11 +84,13 @@
     }
 
     /**
-     * ADD `structure` INTO THE CANVAS, or install it when the canvas is empty.
+     * ADD `structure` INTO THE CANVAS, or install it when the canvas is empty
+     * -- or over what is open, when ``how.replace`` says the person chose to
+     * clear the view.
      *
      * @returns {Promise<{ok: bool, cancelled?: bool}>}
      */
-    function loadIntoCanvas(structure, source) {
+    function loadIntoCanvas(structure, source, how) {
         if (!_model() || !_mod()) {
             return Promise.reject(new Error(
                 "structure-page: not bound — call _bind() first"));
@@ -116,9 +122,10 @@
          * places it on the world origin, merges the labels and lays down a
          * timeline point like any other edit.
          *
-         * REPLACING is a separate gesture: "Clear structure", then load.
-         * Nothing is discarded here, so nothing is asked; the one place that
-         * question belongs is Clear structure, which asks it.
+         * REPLACING is the person's choice, never this door's: "Clear
+         * structure", then load -- or, for a project file, the Load button's
+         * question answered "clear the current view" (user, 2026-10-09),
+         * handed here as ``how.replace``.  This door asks nothing.
          */
         function _append() {
             return _model().applyOp("append", {
@@ -145,11 +152,7 @@
                  * a file is behind the structure: a
                  * SMILES/DNA/RNA/peptide/name build passes no `file`, so the
                  * note becomes null and the loader readout stops claiming a file
-                 * that never existed.
-                 *
-                 * (The sidebar's own load does not come through here -- it goes
-                 * via `projects.parser.openMolecule` -- and records the same
-                 * note at its own gate.) */
+                 * that never existed. */
                 markLoadedFrom(filename);
                 return { ok: true };
             });
@@ -159,7 +162,7 @@
          * there is nothing.  Appending into a viewer that holds no structure
          * has nothing to append TO -- and it would leave the timeline with no
          * point 0 to retract to -- so the first thing in is installed. */
-        if (_model().getStructure() === null) {
+        if (_model().getStructure() === null || (how && how.replace === true)) {
             return _apply();
         }
         return _append();

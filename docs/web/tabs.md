@@ -145,11 +145,37 @@ below. The controller code is deliberately thin glue:
 
 ### Creating a structure — the in-gate
 
-The "Init structure" bar is how a molecule *first appears* on the canvas. Every
-source in that bar, no matter how different, funnels through **one gate**:
-`structurePage.loadIntoCanvas(structure, source)` → `molview.data.installMolecule`.
-That single funnel runs the dirty-canvas check ("you have unsaved edits —
-replace them?") so no Init source can bypass it.
+The "Init structure" bar is how a molecule reaches the canvas. Every source in
+that bar, no matter how different, funnels through **one gate**:
+`structurePage.loadIntoCanvas(structure, source, how)`, handed the server's
+envelope (`web-api.md` § 1), never a document the browser wrote.
+
+**With nothing open, the incoming structure IS the canvas**:
+`molview.data.installMolecule`, the timeline anchored at its point 0.
+
+**With a structure open, it is ADDED** — `applyOp("append")`, an edit like any
+other, a point on the timeline — so a session is assembled piece by piece
+*(user, 2026-09-07: "the load from project or other generators should by
+default ADD their results into the molview structure instead of clear the
+existing one")*. The merge's rules are `model/structure.md` § 2.2b: the
+incoming atoms centred on the origin, a label the canvas already has numbered
+(`frozen_atoms` excepted), the canvas's cell, axis kinds and `info` kept — and
+each decision returned as a receipt. A generator's result is added without a
+question.
+
+**A project file asks first** *(user, 2026-10-09: "add one guard to the load
+button: ask user 'do you want to add the structure to the existing view or
+clear the current view?' default is add")*. The Load button, and a double-click
+on a structure file in the Projects sidebar, which is the same action, ask —
+when a structure is open — *Do you want to add the structure to the existing
+view or clear the current view?* **Add** is the default: its button has the
+focus, and Enter or Escape takes it. **Clear** replaces the view with the file
+— the gate's `how.replace`, `installMolecule` over what was there, the timeline
+starting again — and the question says so when the view holds unsaved changes.
+A file's pair is a whole structure — its labels, its cell, its recorded
+calculation — and adding it to another keeps the other's record, so the
+question is where the person chooses which they meant. With nothing open the
+file is installed and nothing is asked.
 
 The sources, and what each produces (all POST `/api/build/molecule` with
 `{kind, input}` unless noted):
@@ -158,16 +184,15 @@ The sources, and what each produces (all POST `/api/build/molecule` with
 |---|---|---|---|
 | **SMILES** | `smiles` | RDKit first, **OpenBabel fallback** | the fallback rescues big/awkward molecules RDKit chokes on; the response says which backend won |
 | **By name** | `name` | PubChem → SMILES → (same fallback) | type "aspirin", get a structure |
-| **File upload** | — (`/api/build/load`) | loads your `.xyz`/`.pdb` text as-is | |
+| **Project file** | — (`/api/build/load`, `{path}`) | the server reads the `.xyz`/`.pdb` and its `.molstruct.json` sidecar (`StructureCodec`) | asks add-or-clear when a structure is open (above) |
 | **DNA** | `dna` | 3DNA (X3DNA) / AmberTools / RDKit | B/A/Z forms, single strand or duplex, optional clash relief |
 | **RNA** | `rna` | A-form canonical | |
 | **Peptide** | `peptide` | AmberTools `tleap` | extended chain from a sequence |
 
-Loading a project file from the sidebar is a *separate* loader
-(`projects.parser.openMolecule` reads the `.xyz` + its `.molstruct.json` sidecar,
-with its own discard-unsaved check), but it lands the molecule on the canvas
-through the very same `installMolecule` step — that call, not `loadIntoCanvas`, is
-the one door every path shares.
+The tabs that show one file at a time — Structure optimization, Spectrum, the
+Results inspector — open a file through `projects.parser.openMolecule`, which
+replaces what the viewer holds after its own discard-unsaved check; the
+Molbuilder tab does not, because it adds.
 
 ## 3. Structure optimization — generate a relaxation script
 

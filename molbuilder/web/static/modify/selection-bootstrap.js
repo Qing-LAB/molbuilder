@@ -301,6 +301,13 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
          * the `.xyz` AND its paired `.molstruct.json` through `StructureCodec`
          * and answers with the envelope.  The browser reads no bytes and
          * derives no sidecar path.
+         *
+         * ADD OR CLEAR IS ASKED when a structure is open (user, 2026-10-09:
+         * "ask user 'do you want to add the structure to the existing view
+         * or clear the current view?' default is add"; tabs.md § 2) -- in
+         * the app's own dialog, Add focused, so Enter and Escape add.  A
+         * file's pair is a whole structure; adding it to another keeps the
+         * other's record, so the person says which they meant.
          */
         async function _commitFile(path) {
             if (!path) return;
@@ -327,8 +334,23 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                 say(`Could not load ${path}: ${(e && e.message) || e}`, "error");
                 return;
             }
-            const gate = await window.molbuilder.structurePage.loadIntoCanvas(
-                { structure: body.structure }, { file: path });
+            const page = window.molbuilder.structurePage;
+            const open = page.getCanvasSnapshot();
+            let replace = false;
+            if (!open.isEmpty) {
+                replace = await window.molbuilder.warningModal.confirm({
+                    title: "Load " + _basename(path),
+                    body: "Do you want to add the structure to the existing "
+                        + "view or clear the current view?"
+                        + (open.isDirty ? "  Clearing it loses the view's "
+                           + "unsaved changes." : ""),
+                    cancelLabel: "Add to existing view",
+                    confirmLabel: "Clear current view",
+                });
+            }
+            const gate = await page.loadIntoCanvas(
+                { structure: body.structure }, { file: path },
+                { replace: replace });
             if (!gate || gate.ok !== true) return;
             _refreshLoadUI();
             /* SAY WHAT LANDED, and say which of the two things happened. The
