@@ -1104,7 +1104,7 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
-    electrode_kz: int = field(default=40, metadata={
+    electrode_kz: int = field(default=100, metadata={
         "category": ("accuracy", ),
         "item_kind":  "engine",
         "workflow_group": "stage",

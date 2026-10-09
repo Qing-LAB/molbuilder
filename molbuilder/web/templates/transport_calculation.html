@@ -318,11 +318,22 @@
     </ol>
     <p class="hint"><strong>Example</strong> &mdash; a gold junction three
       gold atoms wide (about 8.7&nbsp;&Aring; side to side): 4&nbsp;&times;&nbsp;4&nbsp;&times;&nbsp;1
-      in the electrode plane, 40 along the leads, 12&nbsp;&times;&nbsp;12&nbsp;&times;&nbsp;1 for
-      T(E).  Settle them in that order: the shared grid first, then the
+      in the electrode plane, 100 along the leads (the default), and the
+      transmission starts at 12&nbsp;&times;&nbsp;12&nbsp;&times;&nbsp;1 &mdash;
+      three times the electrode-plane grid, by itself.  Settle them in that order: the shared grid first, then the
       leads' count, then the transmission's grid, raising it until T(E) at
       the Fermi level moves by less than about 1&nbsp;%.  A finer grid for
       T(E) cannot rescue a shared grid that was too coarse.</p>
+    <p class="hint"><strong>One point in a repeating direction</strong>
+      &mdash; a grid of 1 along x or y, while the gold surface repeats
+      there, is known to add false peaks to T(E) and shift the conductance
+      by tens of per cent.  Describe says so beside the grid; it is a
+      warning, because one point is fine for a quick first test, and it is
+      never said for a chain in a box, where nothing repeats sideways.</p>
+    <p class="hint">Why these numbers &mdash;
+      <a href="/documents?doc=engines/transport.md" target="_blank"
+         rel="noopener">Transport contract</a> &sect;&nbsp;0.3b, with the
+      papers behind each.</p>
   </section>
 
   <section class="card" id="transport-scf-card">

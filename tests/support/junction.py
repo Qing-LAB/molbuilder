@@ -181,7 +181,7 @@ def _junction_struct(*, order="canonical", buffers=False, across=_ACROSS,
     chain in an 8 Å box is a wire, isolated across; ``across=("periodic",
     "periodic"), width=_SPACING`` is the same chain as a lattice it tiles --
     the reading a relaxation deck from before the placement record gets
-    (`compose._junction_axis_kind`).  *room* is what the transport boundary
+    (`compose.junction_axis_kind`).  *room* is what the transport boundary
     leaves, one layer spacing unless a test opens it."""
     rows = []       # (element, z, label)
     for z in _LAYERS_L:

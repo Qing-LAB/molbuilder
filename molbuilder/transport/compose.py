@@ -341,7 +341,7 @@ def resolve_citation(citation: str, tree_root: Path
     return cite_dir, classify_citation(cite_dir)
 
 
-def _junction_axis_kind(deck_text: str) -> Tuple[str, str, str]:
+def junction_axis_kind(deck_text: str) -> Tuple[str, str, str]:
     """The composed junction's axis kinds: across the transport axis, what
     the cited relaxation declared; along it, ``transport``.
 
@@ -404,14 +404,14 @@ def labeled_citation_structure(cited: CitedDir):
     # open, kz = 1, the leads enter as self-energies Σ).  ACROSS it the
     # answer is the person's, and the relaxation recorded it: its deck's
     # ENGINE-OFFSET block carries the structure's `axis_kind`
-    # (`_junction_axis_kind`).  A slab junction is periodic across; a wire or
+    # (`junction_axis_kind`).  A slab junction is periodic across; a wire or
     # chain junction is isolated across, and stating it periodic here made
     # its vacuum a contradiction the settings gate refuses (§ 6.1c).
     #
     # Stated at construction, not assigned afterwards, so `__post_init__`
     # validates the box and reconciles the axes.
     deck_text = cited.deck.read_text()
-    kinds = _junction_axis_kind(deck_text)
+    kinds = junction_axis_kind(deck_text)
     # ...and the `.XV` is the engine's frame, so it states an offset of 0 on
     # either label lane -- WHEN THE DECK RECORDED ITS PLACEMENT (§ 6.0):
     # every rung composed from it then applies nothing.  A deck with no

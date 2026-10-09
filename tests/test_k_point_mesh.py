@@ -75,3 +75,48 @@ def test_a_relaxation_samples_every_axis_by_its_kind(isolated_projects_root):
     report = next(dest.rglob("*.validation.txt")).read_text()
     assert "kgrid[1] = 3 on an isolated axis" in report, report
     assert "kgrid_displacement[2]" not in report, report
+
+
+def test_a_transport_meshs_start_and_its_one_point_warning():
+    """`engines/transport.md` § 0.3b at the two doors that hold it --
+    API-level, because a transport calculation cites a finished relaxation,
+    which only a real run makes (this module's head):
+
+    * the transmission's mesh starts at three times the SCF's count along
+      each in-plane direction the SCF samples, a count of one kept and the
+      transport axis one (`kmesh.transmission_start`);
+    * one point along a direction the electrodes repeat in is warned on a
+      transport mesh -- the shared SCF mesh on every SCF rung, the
+      transmission's own on the transmission -- and never on a direction
+      that does not repeat, nor on a count above one (`kmesh.check`).
+
+    MUTATIONS THIS MUST FAIL AGAINST: the transmission starting at the SCF's
+    counts; a one kept multiplied; the warning dropped, or said on an
+    isolated direction."""
+    from types import SimpleNamespace
+
+    from molbuilder import kmesh
+
+    assert kmesh.transmission_start((4, 4, 1)) == (12, 12, 1)
+    assert kmesh.transmission_start((1, 4, 7)) == (1, 12, 1)
+
+    slab = ("periodic", "periodic", "transport")
+    chain = ("isolated", "isolated", "transport")
+
+    def said(kgrid, tbt, kinds, shape):
+        cfg = SimpleNamespace(kgrid=kgrid, tbt_k_grid=tbt, electrode_kz=100,
+                              kgrid_displacement=(0.0, 0.0, 0.0))
+        meshes = [kmesh.mesh_for(cfg, kinds, kind="transport", rung=shape)]
+        if shape == "transmission":
+            meshes.append(kmesh.mesh_for(cfg, kinds, kind="transport",
+                                         rung=shape, program="tbtrans"))
+        return [(i.severity, i.where) for i in kmesh.check(meshes, None)]
+
+    one_each = [("warn", "config.kgrid")] * 2              # x, then y
+    for shape in ("seed", "electrode", "device"):
+        assert said((1, 1, 1), (12, 12, 1), slab, shape) == one_each, shape
+        assert said((4, 4, 1), (12, 12, 1), slab, shape) == [], shape
+        assert said((1, 1, 1), (1, 1, 1), chain, shape) == [], shape
+    assert said((4, 4, 1), (1, 1, 1), slab, "transmission") == \
+        [("warn", "config.tbt_k_grid")] * 2
+    assert said((4, 4, 1), (12, 12, 1), slab, "transmission") == []

@@ -538,6 +538,19 @@ def api_transport_describe() -> Any:
     from molbuilder.validation.task import (preflight as _task_preflight,
                                             config_class_for as _cfg_cls_for)
     _pf = _task_preflight(task, template_text=_tmpl_text)
+    # ...AND THE K-POINT MESHES EACH RUNG WILL WRITE, judged by the one
+    # check prep's gate runs (`kmesh.check`; `engines/transport.md` § 0.3b)
+    # on the junction's own axis kinds -- so one point along a direction
+    # the electrodes repeat in is said here, beside its control, and not
+    # first at prep.
+    from molbuilder.transport.compose import junction_axis_kind
+    from molbuilder.transport.deck import ladder_mesh_findings
+    try:
+        _kinds = junction_axis_kind(cited.deck.read_text(errors="replace"))
+    except ComposeError:
+        _kinds = None              # compose refuses it, by name, at prep
+    if _kinds is not None:
+        _pf = list(_pf) + ladder_mesh_findings(_tmpl_text, task, _kinds)
     _pf_errs = [i for i in _pf if i.severity == "error"]
     if _pf_errs:
         return jsonify({

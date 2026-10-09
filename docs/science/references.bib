@@ -635,3 +635,97 @@
   % (running-a-job.md 3.3).  Cite beside Yu2021 wherever the
   % ranks-per-GPU choice is discussed.
 }
+
+% ----- Transport: k-point sampling of the leads and the transmission -----
+% (engines/transport.md 0.3b -- each entry checked against Crossref,
+% 2026-10-09; the forum answer against its page.)
+
+@article{Papior2017,
+  author  = {Papior, Nick and Lorente, Nicol{\'a}s and Frederiksen, Thomas
+             and Garc{\'i}a, Alberto and Brandbyge, Mads},
+  title   = {Improvements on non-equilibrium and transport {Green} function
+             techniques: The next-generation transiesta},
+  journal = {Computer Physics Communications},
+  volume  = {212},
+  pages   = {8--24},
+  year    = {2017},
+  doi     = {10.1016/j.cpc.2016.09.022}
+  % TranSIESTA and TBtrans as molbuilder runs them (5.x): the method
+  % behind every transport rung.
+}
+% @verified 2026-10-09 Crossref
+
+@article{Thygesen2005,
+  author  = {Thygesen, K. S. and Jacobsen, K. W.},
+  title   = {Interference and $k$-point sampling in the supercell approach
+             to phase-coherent transport},
+  journal = {Physical Review B},
+  volume  = {72},
+  number  = {3},
+  pages   = {033401},
+  year    = {2005},
+  doi     = {10.1103/PhysRevB.72.033401}
+  % Gamma-only in-plane sampling: its error dominates the periodic images'
+  % interference; sparse sampling gives unphysical features in T(E) from
+  % the leads' van Hove singularities.  Cite for the in-plane meshes.
+}
+% @verified 2026-10-09 Crossref
+
+@article{Strange2008,
+  author  = {Strange, M. and Kristensen, I. S. and Thygesen, K. S. and
+             Jacobsen, K. W.},
+  title   = {Benchmark density functional theory calculations for nanoscale
+             conductance},
+  journal = {The Journal of Chemical Physics},
+  volume  = {128},
+  number  = {11},
+  pages   = {114714},
+  year    = {2008},
+  doi     = {10.1063/1.2839275}
+  % 4 x 4 in-plane k converged the conductance to a few per cent; Gamma
+  % alone: a false peak at E_F (H2), BDT 0.24 -> 0.37 G0.  Cite for the
+  % one-point warning and the shared mesh.
+}
+% @verified 2026-10-09 Crossref
+
+@article{Falkenberg2015,
+  author  = {Falkenberg, Jesper Toft and Brandbyge, Mads},
+  title   = {Simple and efficient way of speeding up transmission
+             calculations with $k$-point sampling},
+  journal = {Beilstein Journal of Nanotechnology},
+  volume  = {6},
+  pages   = {1603--1608},
+  year    = {2015},
+  doi     = {10.3762/bjnano.6.164}
+  % "A substantial number of transverse k-points" for a smooth, converged
+  % T(E).  Cite for the transmission's mesh starting denser than the SCF's.
+}
+% @verified 2026-10-09 Crossref
+
+@article{Hoft2007,
+  author  = {Hoft, R. C. and Ford, M. J. and Cortie, M. B.},
+  title   = {The effect of reciprocal-space sampling and basis set quality on
+             the calculated conductance of a molecular junction},
+  journal = {Molecular Simulation},
+  volume  = {33},
+  number  = {11},
+  pages   = {897--904},
+  year    = {2007},
+  doi     = {10.1080/08927020701435811}
+  % TranSIESTA, Au(111): conductance more sensitive to the k-sampling than
+  % to the basis; up to a factor of five over the parameters tried.
+}
+% @verified 2026-10-09 Crossref
+
+@misc{Papior2019,
+  author       = {Papior, Nick},
+  title        = {Converging k-points in {Transiesta/TBTrans}},
+  howpublished = {\url{https://answers.launchpad.net/siesta/+question/686603}},
+  note         = {SIESTA Launchpad Answers, question 686603; answers of
+                  2019-12-03 and 2019-12-04; accessed 2026-10-09}
+  % The developer's practice: a lead's k along transport "a very high
+  % number (like 100)"; the leads' and the device's in-plane meshes the
+  % same; TBtrans's mesh converged on the k-averaged T(E) and kept one
+  % for every bias.  Cite for electrode_kz and tbt_k_grid.
+}
+% @verified 2026-10-09 the page

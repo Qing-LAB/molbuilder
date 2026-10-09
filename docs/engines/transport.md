@@ -177,12 +177,10 @@ different things:
 | TBtrans's `TBT.k` | **T(E)** — sharp resonances in k⊥ | `12 12 1` or more |
 
 A grid fine enough for the density is routinely far too coarse for the
-transmission. **`TBT.k` defaults to inheriting the SCF's** — which is why
-`T(E_F)` against `TBT.k` is the standard convergence study, and why not being
-able to set it was the largest gap in this tab until 2026-09-15. *(And setting
-it has changed nothing since: the deck wrote it as a bare triple, which
-`tbtrans` skips for the SCF's grid — read in its source, § 6.1b. Written as a
-list from M5 step 1.)*
+transmission. **`TBT.k` starts at three times the SCF's in-plane counts**
+(§ 0.3b), and `T(E_F)` against `TBT.k` is the standard convergence study.
+`tbtrans` reads it only as a list or a block — a bare triple it skips for
+the SCF's grid (§ 6.1b) — so the deck writes it as the block.
 
 *(A denser `TBT.k` cannot rescue a device SCF whose own `k⊥` was too coarse:
 that `H` is simply wrong, and evaluating a wrong `H` at more k-points does
@@ -245,6 +243,53 @@ engines use it, with the transmission's `TBT.k` always in its block form,
 which carries it. *(Until then no transport deck honoured it: every rung wrote
 `0.0` and the template took `[0, 0, 0]` whatever the relaxation ran. The
 acceptance ladder relaxed at `0`, so it matched by coincidence.)*
+
+### 0.3b How dense each grid starts, and the one warning — chosen with the literature *(user, 2026-10-09)*
+
+*(User: "You should give me your recommendation of these questions based on
+scientific justification ... do a literature background search"; then "I
+agree with your choice of these parameters".)*
+
+**The three directions, first.** **z** is the transport direction: the
+device does not repeat along it — it is the one piece between two
+semi-infinite leads — so the seed, the device and the transmission take one
+point there, fixed; only a lead's own run samples z, because a lead alone is
+bulk metal that does repeat along z. **x and y** are the plane of the
+electrodes: the electrodes are infinite surfaces, so the cell repeats
+sideways, one molecule in each copy, and the points along x and y sample the
+metal surface's bands. Every grid below is one of these, and the words on the
+page say which — *along the transport direction (z)*, *in the electrode plane
+(x, y)* — never *across*, which in transport reads as from one lead to the
+other.
+
+| the grid | starts at | why | the literature |
+|---|---|---|---|
+| **a lead's points along z** — `electrode_kz`, each lead's tab | **100** (range 20–200; 1 refused) | the device takes the lead's Hamiltonian, and the self-energy built from it, as exact; a lead's bands and Fermi level sampled too coarsely along z put an error into every transmission, and nothing says so. What counts is points × the lead's length: a three-layer Au(111) lead (≈ 7 Å) is already dense at 40, a thinner one less so. The cost is the lead runs alone, roughly in step with the count; the device is untouched | TranSIESTA's developer: converging it is possible, "but it is much simpler to just use a very high number (like 100)" [`Papior2019`]; the device's z at 1 is fine (same answer) |
+| **the shared mesh in the electrode plane** — `kgrid`, the shared panel | the cited run's (§ 3.1) | one mesh for the seed, both leads and the device: each lead's self-energy is paired with the device's Hamiltonian point by point (§ 0.3) | the leads' and the device's in-plane meshes "should be the same" [`Papior2019`]; a 4 × 4 mesh converged the benchmark junctions' conductance to a few per cent [`Strange2008`] |
+| **the transmission's mesh in the electrode plane** — `tbt_k_grid`, the transmission's tab | **three times the shared mesh's count along each direction it samples more than once** (`kmesh.transmission_start`; 4 4 1 → 12 12 1); a count of one kept; z is 1 | the shared mesh converges the density, which is smooth; T(E) has sharp structure from the leads' bands that the density does not need, so it wants more points — and a finer mesh for it re-runs no SCF. One mesh serves every voltage, so a bias sweep's points are compared on one sampling. A starting point the person converges: lay T(E) from two meshes over each other until T(E_F) moves by less than about 1 % | sparse in-plane sampling gives strong, unphysical features in T(E), from the leads' van Hove singularities [`Thygesen2005`]; a substantial number of in-plane points is needed for a smooth, converged T(E) [`Falkenberg2015`]; converge by comparing the k-averaged T(E) of several meshes, and use one transmission mesh for every bias [`Papior2019`] |
+
+**The one warning — one point along a direction the electrodes repeat in.**
+On a transport calculation, a mesh — the shared one or the transmission's —
+that takes a single point along x or y while the structure repeats there is
+**warned, never refused** (`kmesh.check`, the one k-mesh check): one point is a
+legitimate quick first test. It is never said for a direction that does not
+repeat — a chain or a wire in a box, isolated sideways, where one point is
+exact. Its words name the remedy: the benchmark used 4 × 4 for a cell about
+9 Å wide. Said by prep's settings gate on every rung's deck, and when the
+Transport tab describes the calculation — each rung's mesh as the description
+resolves it (`transport/deck.ladder_mesh_findings`), the shared mesh's finding
+once beside the shared panel's control, the transmission's on its tab.
+
+| why a warning | the literature |
+|---|---|
+| a single in-plane point treats every sideways copy of the cell as in phase, and the metal's bands are seen at one place | with Γ alone, "a (unphysical) peak at the Fermi level" (an H₂ junction), and the conductance of benzenedithiol between gold raised from 0.24 to 0.37 G₀ [`Strange2008`]; the Γ-only error dominates the error from the cell's periodic images in a 3 × 3 supercell [`Thygesen2005`]; with TranSIESTA on an Au(111) junction the conductance was "more sensitive to the reciprocal-space sampling grid than the quality of the basis set", moving by up to a factor of five over the parameters tried [`Hoft2007`] |
+
+**Where each lives:** `electrode_kz`'s value in the catalogue; the 3 × rule
+in `kmesh.transmission_start`, asked by `citation_defaults._apply_kgrid` for
+the cited mesh and for a mesh the person sets on the shared panel; the warning
+in `kmesh.check`. The references are `science/references.bib`'s, each checked
+against its publisher's record (Crossref) on 2026-10-09; the method itself is
+[`Papior2017`]'s.
 
 ### 0.4 The four things that must agree, and where each is enforced
 
@@ -3005,18 +3050,22 @@ opens with, `RUNG_NOTES`); **k-points: three grids, one picture**; **SCF
 settings: each stage has its own**; **after you describe** (prepare, launch,
 read back). The rail stays on screen while the steps are worked through.
 
-**The three k-point grids, in plain words** — the physics is § 0.3; each
-item's own help (the catalogue, the one home of what it means) says the same
-and names where the other two are:
+**The three k-point grids, in plain words** — the physics is § 0.3, the
+starting values and the one warning with their literature § 0.3b; each item's
+own help (the catalogue, the one home of what it means) says the same and
+names where the other two are:
 
 | where you set it | the item | what it samples | why it is set there |
 |---|---|---|---|
 | step 2, the shared panel | **k-point mesh** (`kgrid`) | in the plane of the electrodes (x, y) — they are infinite surfaces, so the cell repeats sideways — for the seed, both leads and the device; z is 1 | each lead is attached to the device point by point, so all four use the same points (§ 0.3: Σ(k⊥) pairs with H(k⊥)) — one value, never a rung's |
-| each lead's tab | **Lead k-points along the transport direction (z)** (`electrode_kz`) | along z, for the leads alone | a lead is bulk metal, endless along z; its Fermi level and the self-energy built from it need many points there (40 by default; 1 is refused) — the device, seed and transmission are open along z and use 1 |
-| the transmission's tab | **Transmission k-points in the electrode plane (x, y)** (`tbt_k_grid`) | in the plane of the electrodes, for T(E) alone; z is 1 | T(E) changes faster from point to point in that plane than the density does, so it usually needs more points than the SCF; it starts at the shared grid's and costs a transmission re-run only |
+| each lead's tab | **Lead k-points along the transport direction (z)** (`electrode_kz`) | along z, for the leads alone | a lead is bulk metal, endless along z; its Fermi level and the self-energy built from it need many points there (100 by default, § 0.3b; 1 is refused) — the device, seed and transmission are open along z and use 1 |
+| the transmission's tab | **Transmission k-points in the electrode plane (x, y)** (`tbt_k_grid`) | in the plane of the electrodes, for T(E) alone; z is 1 | T(E) changes faster from point to point in that plane than the density does, so it usually needs more points than the SCF; it starts at three times the shared grid's count along each direction that grid samples (§ 0.3b) and costs a transmission re-run only |
 
 **The example on the page:** a gold junction three gold atoms wide (about
-8.7 Å side to side) — 4 × 4 × 1 in the electrode plane, 40 along the leads, 12 × 12 × 1 for T(E).
+8.7 Å side to side) — 4 × 4 × 1 in the electrode plane, 100 along the leads,
+12 × 12 × 1 for T(E) (the transmission's start). **One point along a direction
+the electrodes repeat in** is warned on the shared panel's or the
+transmission's control when the calculation is described (§ 0.3b).
 **The order to settle them:** the shared grid first (the total energy stops
 moving), then the leads' count (the lead's Fermi level and T(E_F) stop
 moving), then the transmission's grid (T(E_F) moves by less than about 1 %).

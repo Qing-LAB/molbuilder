@@ -69,6 +69,26 @@ _FIXED_ON_TRANSPORT: Dict[str, Tuple[Any, str]] = {
 #: hint (`science/validation.md` § 4.1, user 2026-08-20).
 VACUUM_HINT_A = 5.0
 
+#: HOW MUCH DENSER THE TRANSMISSION'S MESH STARTS than the SCF's, along each
+#: direction in the plane of the electrodes the SCF samples more than once
+#: (`engines/transport.md` § 0.3b; the user, 2026-10-09): T(E) has sharp
+#: structure there that the density does not, and a finer mesh for it re-runs
+#: no SCF.
+TRANSMISSION_PER_SCF = 3
+
+
+def transmission_start(counts) -> Tuple[int, int, int]:
+    """The transmission's starting mesh from the SCF's ``counts``:
+    :data:`TRANSMISSION_PER_SCF` times each in-plane count above one, a
+    count of one kept -- one point on a direction that does not repeat is
+    exact, and on one that does, :func:`check` says so -- and the transport
+    axis one, as every transport mesh holds it (`engines/transport.md`
+    § 0.3b)."""
+    out = [int(c) * TRANSMISSION_PER_SCF if int(c) > 1 else 1
+           for c in counts]
+    out[TRANSPORT_AXIS] = 1
+    return tuple(out)
+
 
 @dataclass(frozen=True)
 class KAxis:
@@ -233,7 +253,9 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
 
     Warnings: ``k > 1`` is the person's explicit statement (user,
     2026-08-20), and ``k = 1`` states nothing and is checked not at all --
-    save one refusal, where the engine itself stops: a transport
+    save on a transport calculation, where one point along a direction the
+    electrodes repeat in is warned (`engines/transport.md` § 0.3b; the user,
+    2026-10-09) -- and save one refusal, where the engine itself stops: a transport
     calculation's SCF mesh sampling an isolated axis more than once while the
     other transverse axis is periodic (a stripe), which TranSIESTA refuses at
     the device after the seed and both leads have run (``ts_electrode.F90``,
@@ -284,6 +306,22 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                     f"sample images of vacuum -- cost for nothing; 1 is the "
                     f"usual choice (engines/siesta.md 6.1)",
                     where))
+            elif (axis.role == "sampled" and axis.count == 1
+                  and mesh.axes[TRANSPORT_AXIS].role in ("open", "lead")):
+                # ONE POINT ALONG A DIRECTION THE ELECTRODES REPEAT IN, on a
+                # transport mesh (`engines/transport.md` § 0.3b): known to
+                # put false peaks into T(E) and move the conductance.
+                wide = (f"; this cell is {lengths[i]:.1f} A wide along "
+                        f"{AXES[i]}" if lengths is not None else "")
+                out.append(Issue(
+                    "warn",
+                    f"{name} = 1 along {AXES[i]}, a direction the electrodes "
+                    f"repeat in: a single point there samples the metal's "
+                    f"bands at one place, which is known to add false peaks "
+                    f"to T(E) and to shift the conductance by tens of per "
+                    f"cent.  The benchmark used 4 x 4 for a cell about "
+                    f"9 A wide{wide} (engines/transport.md 0.3b)",
+                    where))
             elif (axis.role == "sampled" and axis.count > 1
                   and lengths is not None):
                 gap = max(0.0, lengths[i] - float(extent[i]))
@@ -316,5 +354,5 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
 
 
 __all__ = ["AXES", "ITEMS", "KAxis", "KMesh", "LEAD_RUNGS", "TRANSPORT_AXIS",
-           "VACUUM_HINT_A", "check", "fixed", "mesh_for", "with_fixed",
-           "write"]
+           "TRANSMISSION_PER_SCF", "VACUUM_HINT_A", "check", "fixed",
+           "mesh_for", "transmission_start", "with_fixed", "write"]

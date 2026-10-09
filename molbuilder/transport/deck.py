@@ -631,12 +631,7 @@ def transport_spec(struct: Structure, cfg, *,
     # `engines/siesta.md` § 6.1): read by the block that writes each, the
     # parallel split and the settings gate.  The transmission carries two --
     # the ladder's SCF mesh and its own `TBT.k`.
-    from .. import kmesh as _kmesh
-    k_mesh = _kmesh.mesh_for(cfg, struct.axis_kind, kind="transport",
-                             rung=shape)
-    tbt_mesh = (_kmesh.mesh_for(cfg, struct.axis_kind, kind="transport",
-                                rung=shape, program="tbtrans")
-                if shape == "transmission" else None)
+    k_mesh, tbt_mesh = rung_meshes(cfg, struct.axis_kind, shape)
     derived = _derived_for(state, cfg, k_mesh, tbt_mesh)
     from .transiesta import engine_frame_for
     frame = engine_frame_for(struct)
@@ -664,6 +659,56 @@ def transport_spec(struct: Structure, cfg, *,
             if m is not None), "rung": shape}),
         created_by="molbuilder transport prep",
     )
+
+
+def rung_meshes(cfg, axis_kind, shape: str):
+    """``(SCF mesh, transmission mesh)`` one rung writes -- the ladder's SCF
+    mesh on every rung and, on the transmission, its own ``TBT.k`` (``None``
+    elsewhere) -- through the one derivation, ``kmesh.mesh_for``.  The deck
+    and the Transport tab's describe ask it, so what the tab judges is what
+    prep writes (`engines/transport.md` § 0.3b)."""
+    from .. import kmesh as _kmesh
+    k_mesh = _kmesh.mesh_for(cfg, axis_kind, kind="transport", rung=shape)
+    tbt_mesh = (_kmesh.mesh_for(cfg, axis_kind, kind="transport",
+                                rung=shape, program="tbtrans")
+                if shape == "transmission" else None)
+    return k_mesh, tbt_mesh
+
+
+def ladder_mesh_findings(template_text: str, task, axis_kind) -> list:
+    """The k-point mesh findings of every rung of ``task`` as the description
+    resolves it (the template and each rung's own values,
+    ``resolve.resolved_ladder``), on the junction's ``axis_kind`` -- judged by
+    ``kmesh.check``, the one check prep's settings gate runs on each rung's
+    deck.  A finding several rungs share (the one SCF mesh every SCF rung
+    writes) is said once; the transmission's own grid's carries its stage,
+    so it lands on that rung's tab (`engines/transport.md` § 0.3b).  An
+    unresolvable description answers none: prep refuses it in its own
+    words."""
+    import dataclasses
+    from ..config.siesta import SiestaConfig
+    from ..kmesh import check
+    from ..resolve import resolved_ladder
+    try:
+        ladder = resolved_ladder(template_text, task, SiestaConfig)
+    except Exception:          # noqa: BLE001 -- prep's refusal, not ours
+        return []
+    out: list = []
+    seen: set = set()
+    for name, cfg in ladder:
+        shape = SHAPE_OF_RUNG.get(name)
+        if shape is None:
+            continue
+        meshes = [m for m in rung_meshes(cfg, axis_kind, shape)
+                  if m is not None]
+        for issue in check(meshes, None):
+            if (issue.where, issue.message) in seen:
+                continue
+            seen.add((issue.where, issue.message))
+            if issue.where == "config.tbt_k_grid":
+                issue = dataclasses.replace(issue, stage=name)
+            out.append(issue)
+    return out
 
 
 def _derived_for(state, cfg, k_mesh, tbt_mesh=None) -> dict:
