@@ -67,11 +67,15 @@ _BOX = 8.0
 
 #: What the relaxation's template is set to before it runs -- each
 #: distinguishable from the catalogue's default (300 Ry / DZP / 300 K /
-#: unpolarized), so a value that reaches the transport template was read,
-#: not defaulted (`engines/transport.md` § 3.1).
+#: unpolarized / a mixing weight of 0.02 and a history of 8), so a value that
+#: reaches the transport template was read, not defaulted
+#: (`engines/transport.md` § 3.1).  The mixer is one a hydrogen chain
+#: converges with quickly; the cited run's SCF settings start each transport
+#: SCF stage (TD6, 2026-10-09).
 RELAXED_WITH = dict(mesh_cutoff=150.0, basis_size="SZ",
                     electronic_temperature=350.0,
-                    spin_treatment="unrestricted", unpaired_electrons=2)
+                    spin_treatment="unrestricted", unpaired_electrons=2,
+                    mixing_weight=0.1, pulay_history=6)
 
 _BIAS = (0.0, 0.2)
 
@@ -167,11 +171,9 @@ def junction(tmp_path_factory):
         relax = RealRun(tree=tree, bundle=tree / "P" / "opt" / "J")
         _run_card(relax.bundle)
         path = template_path(relax.bundle, "J")
-        # ...and a mixing weight a hydrogen chain converges at quickly, the
-        # person's choice beside them (not a cited setting).
         cfg = dataclasses.replace(
             config_from_template(path.read_text(), SiestaConfig),
-            **RELAXED_WITH, mixing_weight=0.1)
+            **RELAXED_WITH)
         path.write_text(template_with_values(cfg, engine="siesta"))
         _taken(relax, "prep", "prep", "task", "--stage", "coarse",
                "--target", "this")
@@ -191,15 +193,11 @@ def junction(tmp_path_factory):
         run.said["init"] = Said(r.exit_code, r.output)
         _run_card(run.bundle)
         run.template_at_init = (run.bundle / "T.template.toml").read_text()
-        # THE PERSON'S CHOICES in the calculation's own template: the spin
-        # restricted (the module's head says why), and a mixing weight a
-        # metallic hydrogen chain converges at in tens of cycles rather than
-        # the catalogue's 0.02 for metal junctions -- every device point runs
-        # twice in this walk.
+        # THE PERSON'S CHOICE in the calculation's own template: the spin
+        # restricted (the module's head says why).  The mixing weight the
+        # chain converges at in tens of cycles came with the citation.
         _set_by_the_person(run.bundle / "T.template.toml", "spin_treatment",
                            "restricted")
-        _set_by_the_person(run.bundle / "T.template.toml", "mixing_weight",
-                           0.1)
 
         # ...and through the Transport tab's describe, and its card's read
         # of the citation.
@@ -326,7 +324,9 @@ def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
     """The cited run's deck DEFAULTS the shared settings into this
     calculation's own template, on the CLI and on the tab alike; its spin
     treatment arrives written, and a fixed count does not -- TranSIESTA
-    cannot hold one -- so it is left blank and floats."""
+    cannot hold one -- so it is left blank and floats.  And its SCF mixer
+    starts every transport SCF stage, said to be the cited run's (TD6,
+    `engines/transport.md` § 3.1)."""
     from molbuilder.template import one, read_template
     describe = json.loads(junction.said["describe"].output)
     assert junction.said["describe"].exit_code == 200, describe
@@ -337,6 +337,9 @@ def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
         assert one(tmpl, "electronic_temperature").value == 350.0
         assert one(tmpl, "spin_treatment").value == "unrestricted"
         assert one(tmpl, "unpaired_electrons").value is None
+        for name, value in (("mixing_weight", 0.1), ("pulay_history", 6)):
+            assert one(tmpl, name).value == value, name
+            assert one(tmpl, name).source == "cited", name
 
 
 def test_each_leads_measurements_reach_the_card_under_its_name(junction):

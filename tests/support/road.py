@@ -29,6 +29,7 @@ import shlex
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 def jobset(*args, input=None):
@@ -208,7 +209,10 @@ def calls_made(calls: Path):
 #      (`launch_writes_nothing`: every file under the calculation as it was;
 #      `after_launch`: the after-prep checks below, asked again);
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
-#      `header_absent`), the deck (`deck`), the run script (`run_sh`), each
+#      `header_absent`), the deck (`deck`; and `deck_reads`, what the one fdf
+#      reader -- `parse.fdf.parse_fdf_params`, the reader every consumer of
+#      a deck asks -- reads from it, field by field), the run script
+#      (`run_sh`), each
 #      with a `_lacks` twin -- and the first three with an `_order` twin
 #      (lines standing in that order) and a `_once` twin (lines standing
 #      once each); the `sbatch` line launch shows (`line`,
@@ -819,6 +823,17 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
             names = _stage_names(bundle, case.get("stage", "coarse"))
             _road_lines(case, key,
                         _the_runs(bundle, names.name(role)).read_text())
+    # ...and the deck as its readers read it: through the one fdf reader,
+    # field by field, never by its lines
+    if "deck_reads" in case:
+        from molbuilder.parse.fdf import parse_fdf_params
+        names = _stage_names(bundle, case.get("stage", "coarse"))
+        got = parse_fdf_params(
+            _the_runs(bundle, names.name(".fdf")).read_text())
+        for field, want in case["deck_reads"].items():
+            have = getattr(got, field)
+            assert (have == want if isinstance(want, (bool, str))
+                    else have == pytest.approx(want)), (field, have, want)
     # ...a benchmark's trials, when the row names them
     if kind == "bench" and ("bench_gres" in case
                             or "bench_header_lacks" in case):

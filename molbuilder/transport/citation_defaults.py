@@ -57,6 +57,15 @@ _FROM_DECK = {
     # (:func:`siesta_config_from_citation`).
     "spin_treatment":           "spin_treatment",
     "unpaired_electrons":       "unpaired_electrons",
+    # HOW THE CITED RUN'S SCF CONVERGED -- the mixer and the criteria,
+    # each SCF stage's starting value (TD6, the user 2026-10-09: "go with
+    # way 1").  Not shared: every SCF stage carries its own and may change
+    # it on its tab (`engines/transport.md` § 2a.13).
+    "mixing_weight":            "mixing_weight",
+    "pulay_history":            "pulay_history",
+    "dm_tolerance":             "dm_tolerance",
+    "dm_energy_tolerance_ev":   "dm_energy_tolerance",
+    "scf_energy_converge":      "scf_energy_converge",
 }
 
 def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:

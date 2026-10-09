@@ -24,10 +24,10 @@ from typing import Dict, List, Optional, Tuple, Union
 # package is not installed.  Stdlib and its two siblings only.
 try:                                        # inside molbuilder
     from ..constants import BOHR_ANGSTROM as _BOHR_ANG
-    from ..units import energy_ry, length_ang, temperature_k
+    from ..units import energy_ev, energy_ry, length_ang, temperature_k
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from constants import BOHR_ANGSTROM as _BOHR_ANG
-    from units import energy_ry, length_ang, temperature_k
+    from units import energy_ev, energy_ry, length_ang, temperature_k
 
 
 #: EVERY word SIESTA accepts for each electronic-state treatment, compared
@@ -146,6 +146,18 @@ class FdfParams:
     net_charge: int = 0
     spin_treatment: Optional[str] = "restricted"
     unpaired_electrons: Optional[Union[int, str]] = 0
+    #: HOW THE DECK'S SCF CONVERGED -- the mixer and the criteria, in the
+    #: catalogue's units -- what a transport calculation citing this run
+    #: starts each SCF stage from (`engines/transport.md` § 3.1; TD6, the
+    #: user 2026-10-09).  ``None`` where the deck states none: SIESTA's own
+    #: default then ran, which a reader does not claim.  The iteration cap
+    #: and must-converge are how much compute, not how it converged, and are
+    #: not read.
+    mixing_weight: Optional[float] = None
+    pulay_history: Optional[int] = None
+    dm_tolerance: Optional[float] = None
+    dm_energy_tolerance_ev: Optional[float] = None
+    scf_energy_converge: Optional[bool] = None
 
 
 def _is_true(toks) -> bool:
@@ -191,6 +203,31 @@ def _read_state(sc, p: "FdfParams") -> None:
         total = _to_float((sc.get("spintotal") or ["0"])[0])
         p.unpaired_electrons = (int(total) if total is not None
                                 and float(total) == int(total) else None)
+
+
+def _read_scf(sc, p: "FdfParams", source: str) -> None:
+    """The deck's SCF mixer and criteria, by the keywords SIESTA 5.4.2 reads
+    (``SCF.Mixer.Weight``, ``SCF.Mixer.History``, ``DM.Tolerance``,
+    ``DM.EnergyTolerance``, ``SCF.FreeE.Converge``) -- the ones molbuilder's
+    writer spells, each item's ``engine_key``.  ``DM.EnergyTolerance`` is a
+    physical value: its unit is required, as SIESTA requires it, and read
+    in eV, the catalogue's unit."""
+    if sc.get("scfmixerweight"):
+        p.mixing_weight = _to_float(sc["scfmixerweight"][0])
+    if sc.get("scfmixerhistory"):
+        v = _to_float(sc["scfmixerhistory"][0])
+        p.pulay_history = int(v) if v is not None and v == int(v) else None
+    if sc.get("dmtolerance"):
+        p.dm_tolerance = _to_float(sc["dmtolerance"][0])
+    toks = sc.get("dmenergytolerance")
+    if toks:
+        v = _to_float(toks[0])
+        if v is not None:
+            p.dm_energy_tolerance_ev = energy_ev(
+                v, toks[1] if len(toks) > 1 else None,
+                what="DM.EnergyTolerance", source=source)
+    if "scffreeeconverge" in sc:
+        p.scf_energy_converge = _is_true(sc["scffreeeconverge"])
 
 
 def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
@@ -251,6 +288,7 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
         p.solution_method = sc["solutionmethod"][0].lower()
 
     _read_state(sc, p)
+    _read_scf(sc, p, source)
 
     # TS.HS.Save / TS.SaveHS / SaveHS  (any truthy => writes .TSHS)
     for k in ("tshssave", "tssavehs", "savehs"):

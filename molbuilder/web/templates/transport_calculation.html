@@ -328,7 +328,9 @@
     <p class="hint">The seed, both leads and the device each run their own
       SCF &mdash; the loop that repeats until the electrons settle &mdash;
       so each of their tabs carries the same SCF settings with its own
-      values, and a value set on one tab reaches that stage alone.  The
+      values, and a value set on one tab reaches that stage alone.  Each
+      starts from the values the cited relaxation converged with, marked
+      <em>from the run you cited</em>.  The
       transmission runs no SCF: it reads the device's and the leads'
       finished results, so T(E) is only as settled as those runs.</p>
     <p class="hint"><strong>Example</strong> &mdash; if the device's SCF

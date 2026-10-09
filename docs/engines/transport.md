@@ -1702,7 +1702,8 @@ Edited in one panel. Changing any of these rebuilds all five stages.
 #### Class C — Stage-local · binds nothing
 
 **Every SCF stage carries its own** (seed, both leads, device — four independent
-answers). A bulk lead and an open-boundary NEGF cycle do not converge alike, so
+answers), **each starting from the cited run's mixer and criteria** (§ 3.1,
+TD6). A bulk lead and an open-boundary NEGF cycle do not converge alike, so
 one set for all of them is a compromise none of them asked for. **Declared, not
 assumed** *(2026-10-08, B8 U1)*: each of these items carries `stages = [seed,
 electrode_L, electrode_R, device, relaxation, force_constants]` in the
@@ -2094,6 +2095,17 @@ basis, the exchange–correlation functional and its authors, the mesh cutoff, t
 orbital energy shift, the transverse k-grid, the electronic temperature and the
 spin. § 2a.3 calls them shared, and § 5 is why they cannot differ between the
 leads and the device.
+
+**And how its SCF converged** *(TD6, the user 2026-10-09: "go with way 1")*:
+the cited deck's mixer and criteria — `SCF.Mixer.Weight`,
+`SCF.Mixer.History`, `DM.Tolerance`, `DM.EnergyTolerance`,
+`SCF.FreeE.Converge` — start every SCF stage (the seed, both leads, the
+device), each marked *from the run you cited*. Unlike the settings above they
+are not shared: each SCF stage carries its own and may change it on its tab
+(§ 2a.13) — the device's, which converges unlike the periodic runs, most
+often. The iteration cap and must-converge are how much compute, not how it
+converged, and are not taken. Read through the one fdf reader
+(`parse.fdf.parse_fdf_params`), mapped by `citation_defaults._FROM_DECK`.
 
 > **The spin comes with the citation too** *(W34, built 2026-09-28)*: until then
 > the spin was shared by every rung and *answered by nobody's run* (§ 3.8.6), so a

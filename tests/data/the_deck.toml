@@ -45,6 +45,15 @@ stage_strategy = ""
 template = { relax_type = "FIRE", relax_steps = 42 }
 deck = ["MD.TypeOfRun FIRE", "MD.Steps 42"]
 
+# The SCF's mixer and criteria, as the deck states them and as the one fdf
+# reader reads them back -- what a transport calculation citing this run
+# starts each SCF stage from (`engines/transport.md` § 3.1; TD6, 2026-10-09).
+[[case]]
+name = "the deck's SCF mixer and criteria read back through the one fdf reader"
+stage_strategy = ""
+template = { mixing_weight = 0.1, pulay_history = 6, dm_tolerance = 0.0001, dm_energy_tolerance = 0.001, scf_energy_converge = true }
+deck_reads = { mixing_weight = 0.1, pulay_history = 6, dm_tolerance = 0.0001, dm_energy_tolerance_ev = 0.001, scf_energy_converge = true }
+
 # One k-point has nothing to parallelise over; several do.
 [[case]]
 name = "a Gamma-only calculation's diagonaliser is not parallelised over k-points"
