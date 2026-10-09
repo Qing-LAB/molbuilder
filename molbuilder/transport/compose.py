@@ -11,8 +11,7 @@ cited calculation's labeled source structure; run the categorical sort
 from the sorted blocks (the wizard's move, § 4.2); and record the
 provenance — citation, attempt, and the content hashes of the files it
 was composed from, **the attempt's own deck** among them (the fdf that
-actually ran is the truth about a result; user ruling 2026-08-28), and a
-cited pair's recorded contract.
+actually ran is the truth about a result; user ruling 2026-08-28).
 
 Pure composition: everything here reads the tree and returns objects;
 the caller (prep, `jobset.prep._composed_for_prep`) owns what lands on
@@ -515,8 +514,8 @@ def labeled_citation_structure(cited: CitedDir):
         f"ATOM-METADATA block and no .molstruct.json sits beside "
         f"it.  Transport derives the electrodes FROM the labels "
         f"(L-electrode / R-electrode; engines/transport.md 3.1, 4) "
-        f"-- relabel and re-relax through molbuilder, or put the "
-        f"structure's .molstruct.json in the same directory.")
+        f"-- relabel the junction and relax it through `jobset init` -> "
+        f"`prep task` -> `launch task`, then cite that run.")
 
 
 def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
@@ -542,8 +541,8 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
 
     *prior_positions* is the geometry the cited relaxation STARTED from,
     already permuted into *dev*'s order, or ``None`` when there is none to
-    compare against — form B, and the recompose-from-record path, where
-    the comparison was made when the record was written.
+    compare against — the recompose-from-record path, where the comparison
+    was made when the record was written.
 
     *atom_ids* is the sort's ``sorted_to_original``, so a refusal names
     atoms by the identity in the person's own file rather than by their
@@ -925,11 +924,9 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
             ion_dir = None      # the citation moved: UNVERIFIED, honestly
     # NO `prior_positions` HERE, and that is not an omission: this
     # rebuilds from a junction that was already composed, and the
-    # geometry the relaxation started from is not part of the record.
-    # For a form-A record the unmoved comparison ran when the record was
-    # written; for a form B one it never ran at all, because form B has
-    # no starting geometry anywhere -- which is exactly why the frozen
-    # DECLARATION is asked separately, and it does re-run here, as does
+    # geometry the relaxation started from is not part of the record --
+    # the unmoved comparison ran when the record was written.  The frozen
+    # DECLARATION is asked separately and does re-run here, as does
     # even-spacing.  Both need only the structure.
     elec_l, elec_r = _extract_and_gate_electrodes(
         dev, atom_ids=sorted_res.sorted_to_original, ion_dir=ion_dir)

@@ -4,7 +4,6 @@
  * typography scales used across every tab.  Each page
  * links this file via ``<link>`` (before its per-page stylesheet)
  * so the tokens land first and per-page rules layer on top.
- * Page-local additions sit in the importing file's ``:root`` block.
  *
  * If you change a token here, every page picks it up automatically.
  * Keep visuals subtle (this is a scientist-facing tool) -- no harsh
@@ -134,9 +133,9 @@
     /* ============================================================== */
     /*  Component-scoped palettes                                     */
     /* ============================================================== */
-    /* Global so the palette is a single source of truth.  Each family is namespaced (--ps-*,
-     * --sp-*, --mv-*) so semantic intent stays clear vs. the global
-     * tokens above. */
+    /* Global so the palette is a single source of truth.  Each family is
+     * namespaced (--ps-*, --ts-*, --tr-*, ...) so semantic intent stays
+     * clear vs. the global tokens above. */
 
     /* --- Projects sidebar (lib/projects/projects-sidebar.css) ---
      * Self-contained sidebar palette — flat black/gray backgrounds
@@ -253,7 +252,7 @@
     --rec-flag:      var(--warn-soft);
     --rec-flag-bg:   rgba(216, 166, 75, 0.10);
     --rec-ok:        var(--accent);       /* what it would go back to */
-    --rec-row-gap:   0.35rem;
+    --rec-row-gap:   var(--space-xs);
     --rec-name-w:    14rem;
     --rec-val-w:     7rem;
 
@@ -292,6 +291,9 @@
     /* --- Transport report (lib/inspectors/transport.css) --- */
     --tr-plot-h:        21.25rem; /* T(E), DOS and I-V: one chart's height */
     --tr-plot-half-h:   16rem;    /* the convergence pair, side by side */
+    --tr-pdos-name-w:   12rem;    /* the PDOS selection's name box */
+    --tr-prov-key-w:    11rem;    /* a provenance row's key column */
+    --tr-prov-file-w:   14rem;    /* a provenance file's name column */
 
     /* --- Global names --------------------------------------------------
      * Unprefixed names live here, never in a component's `:root`: a

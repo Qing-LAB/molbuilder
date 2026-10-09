@@ -84,6 +84,10 @@
 .results-file-readout.is-diverged {
     white-space: normal;
     overflow-wrap: anywhere;
+    /* `--warn-soft` is the palette's PASSIVE FLAG tone (tokens.css: "--warning
+     * = call-to-action, --warn-soft = passive flag"), which is what this is. */
+    color: var(--warn-soft);
+    font-weight: var(--weight-semibold);
 }
 
 .results-file-kind {
@@ -326,7 +330,7 @@
     text-decoration: none;
     font-size: var(--text-sm);
     font-weight: var(--weight-medium);
-    padding: 4px var(--space-sm);
+    padding: var(--space-xs) var(--space-sm);
     border-radius: var(--radius-sm);
     transition: background 120ms;
 }
@@ -590,7 +594,7 @@
     transition:      background 120ms, border-color 120ms;
 }
 .result-list-refresh:hover {
-    background:      var(--bg-card-hover, var(--bg-input));
+    background:      var(--bg-card-hover);
     border-color:    var(--accent-strong);
 }
 .result-list-refresh:disabled {
@@ -649,16 +653,6 @@
     font-size:    var(--text-sm);
     font-weight:  var(--weight-medium);
     font-style:   normal;
-}
-
-/* The header is NOT hidden, and that is load-bearing: the selected option
- * carries only the BASENAME, and the panel does not follow the sidebar, so
- * naming its folder is the whole reason that is safe.  Do not re-hide this. */
-.results-file-readout.is-diverged {
-    /* `--warn-soft` is the palette's PASSIVE FLAG tone (tokens.css: "--warning
-     * = call-to-action, --warn-soft = passive flag"), which is what this is. */
-    color: var(--warn-soft);
-    font-weight: var(--weight-semibold);
 }
 
 /* ---- Loading lock-down overlay (results/viewer.js) --------------------------

@@ -171,9 +171,11 @@ guessing at the one thing the description exists to state.
 The identity facts, read-only, from the parameter tab that wrote them: the
 calculation's name, the engine, and what it is OF — a structure's file, formula
 and atom count; for a transport calculation the junction it cites, the bias
-list it walks and how it treats that list (`single-bias`,
+list it walks, how it treats that list (`single-bias`,
 `low-bias-approximation` or `self-consistent` — the folder answer's
-`treatment`, the one rule the record names it by) — and the label every
+`treatment`, the one rule the record names it by) and whether it trades the
+two electrode labels in its own copy of the junction (`swap_electrodes`,
+[`engines/transport.md`](?doc=engines/transport.md) § 4) — and the label every
 emitted file is stemmed on. Every parameter of the description is echoed
 ([`engines/template.md`](?doc=engines/template.md) § 6.6 obligation 3).
 

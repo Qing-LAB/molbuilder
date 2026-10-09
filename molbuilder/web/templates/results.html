@@ -262,9 +262,10 @@
    is listed ahead of everything, and far ahead of the `.json` catch-all
    below.  Pinned by tests/test_inspector_registration_order.py. #}
 <script defer src="{{ url_for('static', filename='lib/inspectors/bench-summary.js') }}"></script>
-{# A COMPOUND suffix (`.transport.json`) -- specific, so it must register
-   ahead of the `.json` catch-all in source.js, or a finished conductance
-   run is shown as a text pane. #}
+{# The transport report matches the registry's `transport-task` parser (a
+   transport calculation's task.json, results.md 0.1) -- a `.json` by name,
+   so it must register ahead of the `.json` catch-all in source.js, or the
+   report is shown as a text pane. #}
 <script type="module" src="{{ url_for('static', filename='lib/inspectors/transport.js') }}"></script>
 {# A SIESTA vibration's displacement sweep (`.fc-sweep.json`) -- compound, so
    ahead of the `.json` catch-all too (engines/vibration.md 5.9). #}

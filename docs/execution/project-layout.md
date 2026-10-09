@@ -580,15 +580,16 @@ after it stopped makes `run-1`, carrying what it needs from `run-0` and leaving
 state saved before the stage's prep, restored, and a prep anew
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 
-**A transport rung is the one exception, by design** *(user, 2026-10-05;
-[`engines/transport.md`](?doc=engines/transport.md) § 2a.11)*: launching it
-again continues in its run what is not done, from its own last density. A
-bias sweep is one run, its points inside it — the points not done run, or
-continue, in their folders; a point recorded done is never rewritten; a point
-the person skips (`launch --skip`) is marked so in the run's record;
-`launch --cold` opens the next run. Not built yet: until the transport work, a
-transport rung launched again opens its next attempt, and each bias point is
-its own folder of attempts.
+**A rung that sweeps the bias reads "its own latest run" at the point**
+*(user, 2026-10-05 and 2026-10-08; [`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.11)*: launching it again opens the next run, `run-<n+1>/`, like every
+other launch; a bias sweep is one run, its points inside it. Warm, each point
+done in the latest run is taken over into the new run whole (its
+`.continued-from` naming the run that computed it, one hop) and only the
+points not done are walked, each from its hand-over start; cold
+(`launch --cold`), nothing is taken over and every point runs. A point
+recorded done is never rewritten in place, and nothing continues a point
+inside the run it was stopped in.
 
 Launched again warm, it continues from its own latest run, whose files are
 copied in — `--cold` copies none — the same explicit hand-over a stage takes
@@ -1077,8 +1078,12 @@ after you have looked at the one it builds on.
 
 `--cold` means *start this run clean*. With a directory per attempt that is
 simply *skip the copy* — a fresh attempt is empty unless something is copied
-in — so it belongs to the command that sets the run up:
-`jobset prep task --stage <stage> --cold`, then `jobset launch task --stage <stage>`
+in. It is said at **launch**, where the run is opened —
+`jobset launch task --stage <stage> --cold`, every launch warm by default or
+cold when you say so ([`job-system.md`](?doc=execution/job-system.md) § 1.5,
+rule 3; for a bias sweep, cold means every point runs) — and prep takes it
+too for an ordinary hierarchical rung, `jobset prep task --stage <stage> --cold`,
+when the copy is skipped as the run is set up
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3 owns what you type). The
 flat shape reuses one directory and opens no attempt, so there a stage starts
 clean by its run card's `restart: clean`, and `prep --cold` is refused, saying
@@ -2625,7 +2630,7 @@ In the flat shape the root is also the run folder, so the files of § 5.2 and
 | `environment.json` | the machine record this calculation is set to — its first prep's | the first prep (`jobset.machine.set_machine`) | `scheduler.record.machine_for` | record |
 | `job-set.json` | the plan: one job per prepared stage, merged per stage — and a benchmark's own, in its container | prep (`jobset.model.JobSet.write`) | `jobset.model.JobSet.load` | derived |
 | `STAGE-PLAN.md` | the plan in reading order | prep (`jobset.prep.prep_jobset`), whole at each prep | none | derived |
-| `jobset-decisions.log` | one line per decision of every verb — a `checkpoint restore` appends its own after the rollback ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7) | every verb (`jobset.ledger.record`) | none | record |
+| `jobset-decisions.log` | one line per decision of every verb — part of a checkpoint state, so a restore brings the target's back and writes none of its own ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7) | every verb (`jobset.ledger.record`) | none | record |
 | `atom-permutation.json` — only: a SIESTA vibration, or a transport calculation | the atom order the decks were written in | prep (`transport.sort.write_permutation`) | `atom_permutation.read_permutation` | derived |
 | `<element>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines._pseudo_dir`, `materialize`); `jobset init --psml-lib` | `pseudos.psml_sources` | input |
 | `junction.xyz` *(transport)* | the composed junction | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
@@ -3116,6 +3121,8 @@ than no invariant, because it fails a directory that is working correctly.
 7. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
    (§ 2.3, § 2.5): preparing and submitting are separate steps, each naming its
    stage — `jobset prep task --stage <stage>` then `jobset launch task --stage <stage>`, with `--cold` on
-   prepare because skipping the copy is a setup decision. The exact spelling is
+   launch (every launch warm or cold, [`job-system.md`](?doc=execution/job-system.md)
+   § 1.5 rule 3) and on prepare for an ordinary rung, because skipping the
+   copy is a setup decision. The exact spelling is
    in [`job-system.md`](?doc=execution/job-system.md); only cosmetic choices
    remain.

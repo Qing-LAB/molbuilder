@@ -204,9 +204,11 @@ def _transmission_layout(derived, frame, state_block):
     `TS.Elec*` / `TS.ChemPot*` blocks, `TS.Voltage`, `TS.Elecs.Bulk`, its
     own `TBT.*`): the basis and functional sections name the Hamiltonian it
     was built with, the temperature its Fermi functions start from
-    (`m_tbt_options.F90`).  The SCF settings, the solver and the output
-    group are not written -- tbtrans compiles none of the files that read
-    them (``read_options.F90``, ``write_subs.F``, ``outcoor.f``).
+    (`m_tbt_options.F90`).  The SCF settings, the solver, the MPI
+    diagonaliser lines (`Diag.ParallelOverK`, `BlockSize`, the ELPA pair)
+    and the output group are not written -- tbtrans compiles none of the
+    files that read them (``read_options.F90``, ``bands.F``,
+    ``write_subs.F``, ``outcoor.f``).
     """
     return (
         _sc.Block("identity and what this rung computes",
@@ -220,8 +222,6 @@ def _transmission_layout(derived, frame, state_block):
         _TRANSMISSION_TEMPERATURE_SECTION,
         _sl.spin_section(fixed=derived["spin_fixed"]),
         state_block,
-        _sl.mpi_section(block_size=derived.get("block_size"),
-                        algorithm=derived.get("algorithm")),
         _sc.Block("what this rung reads", _emit_transmission_run),
         _sc.Block("the junction: its electrodes and reservoirs",
                   _emit_electrode_block),
@@ -266,9 +266,9 @@ def _emit_transmission_header(struct, cfg) -> str:
         "#",
         "#  Read by tbtrans.  It reads the junction as TranSIESTA wrote it --",
         "#  the TS.Elec and TS.ChemPot blocks, TS.Voltage, TS.Elecs.Bulk --",
-        "#  and its own TBT.* settings (engines/transport.md 6.1b).  The",
-        "#  SIESTA settings are kept: tbtrans reads at least",
-        "#  ElectronicTemperature among them.",
+        "#  and its own TBT.* settings (engines/transport.md 6.1b).  Of the",
+        "#  SIESTA settings only what it reads is here: the label, the",
+        "#  basis and functional, the electronic temperature, the spin.",
         "# ================================================================== #",
         "",
         f"SystemLabel            {label}",

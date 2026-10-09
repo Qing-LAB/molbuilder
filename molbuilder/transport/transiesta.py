@@ -250,9 +250,8 @@ def _lattice_block(struct: Structure, cell: np.ndarray, *,
     """Emit the LatticeVectors block.
 
     If ``cell`` is provided (the structure's real lattice — hexagonal,
-    triclinic, whatever), it is emitted VERBATIM and the per-axis
-    vacuum is reported with a warning when an axis declared periodic
-    leaves large empty space or the transport axis (c) has vacuum.
+    triclinic, whatever), it is emitted VERBATIM; the block judges nothing
+    (the kind gate does, `validation/__init__.py`).
 
     ``fabricated`` says the structure stated no lattice, so ``cell`` is the
     orthorhombic vacuum box :func:`_emit_geometry` built from atom extents — a

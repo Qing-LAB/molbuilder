@@ -37,9 +37,9 @@
    choice list (form-components.css), set off from the bias rows above. */
 #transport-bias-treatment { margin-top: var(--space-md); }
 
-/* THE ONE OFFER: inverted electrode labels are a naming
- * mistake with a one-click fix, so card 1 shows the reason and the
- * button together.  Reason first, action under it -- and the action is
+/* THE ONE OFFER: an inverted labelling is not an error -- it biases the
+ * other end, which its author judges (transport.md § 4) -- and the tab
+ * offers the rename beside the reason.  Reason first, action under it -- and the action is
  * `.full-btn` like every other button on this page, held to its own
  * width here because it is an offer beside a sentence, not the card's
  * primary action. */

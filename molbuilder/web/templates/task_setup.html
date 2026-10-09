@@ -215,7 +215,7 @@
 
       <section class="card" id="ts-machine-card" hidden>
         <h2>What to measure</h2>
-        <p class="hint">Several values on a row means <strong>try each of
+        <p class="hint" id="ts-machine-hint">Several values on a row means <strong>try each of
           them</strong> &mdash; one trial per combination, in
           <code>&lt;stage&gt;/bench/</code>. This is a plan to measure; what
           the <em>run</em> uses is each stage's run card, in its tab below,
@@ -309,11 +309,13 @@
            person checking a description before a week of compute is checking
            the geometry as much as the parameters. #}
         {#- SAVE WRITES THE FIRST: `/api/task-setup/save` writes `task.json`
-            alone.  The other three
-            arrive together with the hand-over, from the tab the structure
-            came from (`build.py::api_task_setup_handover`). -#}
+            alone.  The others arrive with the hand-over from the tab the
+            structure came from (`build.py::api_task_setup_handover`), or
+            with the Transport tab's describe, which writes the description
+            and its template itself. -#}
         <p class="hint">What is in the folder. Save writes the first; the
-          other three arrive with the structure when you hand it over.</p>
+          others arrive when you hand a structure over, or when the Transport
+          tab describes a calculation here.</p>
         <ul class="ts-files" id="ts-file-list">
           <li>
             <span class="ts-file-name">task.json</span>

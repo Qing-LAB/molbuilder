@@ -1162,17 +1162,16 @@ def _first_difference(want: Any, got: Any, path: str = "") -> str:
 
 _REQUIRED_ITEM_KEYS = ("kind", "category", "type", "help")
 
-#: Where a template value came from (§ 6.6 obligation 2's four states, plan
-#: § 5w K7): *from the run you cited* · *from the record saved with your
-#: structure* · *you set this* · *not chosen*.
-SOURCES = ("cited", "record", "person", "default")
+#: Where a template value came from (§ 6.6 obligation 2's three states, plan
+#: § 5w K7; decision 7 retired the recorded-contract lane): *from the run
+#: you cited* · *you set this* · *not chosen*.
+SOURCES = ("cited", "person", "default")
 
 #: ...in the words every surface says them -- the one vocabulary, served
 #: with the form schema and the Task setup hover (`form-schema.md` § 1.1).
 #: ``unrecorded`` is a template written before the key existed.
 SOURCE_WORDS = {
     "cited":      "from the run you cited",
-    "record":     "from the record saved with your structure",
     "person":     "you set this",
     "default":    "not chosen",
     "unrecorded": "not recorded",

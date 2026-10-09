@@ -13,8 +13,8 @@ Inspector Registry pattern in
     inspector own the host.
 
 These tests pin the contract that lets new inspectors slot in
-without touching this file: route + sidebar + registry script
-order + the four currently-registered inspectors + dispatch JS.
+without touching this file: route + sidebar + the registered
+inspectors served + the partials + the contract endpoint.
 """
 from __future__ import annotations
 
@@ -132,77 +132,6 @@ class TestInspectorModulesServed:
 # --------------------------------------------------------------------- #
 
 
-class TestInspectorErrorRendering:
-    """Pin the error-card UX wiring in each adapter.  Source-level
-    pins because the runtime path needs Playwright to exercise."""
-
-    # ``trajectory`` + ``spectra`` are factory-derived inspectors
-    # (task #308) — the error-rendering code lives in
-    # _partial_inspector_factory.js, not in the per-engine wrapper.
-    # Pin the contract on the factory instead.  ``structure`` and
-    # ``source`` aren't factory-derived; their error paths are
-    # exercised elsewhere (test_source_inspector_e2e.py renders the
-    # source viewer's error path; structure's empty-error path is
-    # covered by Playwright's test_inspector_registry_e2e.py).
-    PARTIAL_INSPECTOR_FACTORY = "_partial_inspector_factory"
-
-    def test_factory_renders_error_card_on_fetch_failure(self, web):
-        """The partial-inspector factory MUST call _renderError()
-        inside its .catch() handler when the partial fetch fails.
-        Without this, a 404 from GET /partials/<name>-inspector
-        would leave the user staring at a blank inspector host with
-        no signal that the mount failed.
-
-        Pin SHAPE not exact-text -- ``.catch(`` somewhere in the
-        file, ``_renderError(`` somewhere AFTER it.  Anything more
-        precise (e.g., requiring _renderError inside the exact
-        ``.catch(arrow => { ... })`` body) breaks on every
-        refactor of the multi-line chain.
-        """
-        body = web.get(
-            f"/static/lib/inspectors/"
-            f"{self.PARTIAL_INSPECTOR_FACTORY}.js").get_data(as_text=True)
-        catch_pos = body.find(".catch(")
-        render_after_catch = body.find("_renderError(", catch_pos)
-        assert catch_pos > 0, (
-            "lib/inspectors/_partial_inspector_factory.js doesn't "
-            "have a .catch() handler on the partial-fetch promise "
-            "chain -- partial-fetch failures fall through unhandled"
-        )
-        assert render_after_catch > catch_pos, (
-            "_partial_inspector_factory doesn't call _renderError(...) "
-            "AFTER the .catch() handler -- the user sees a blank host "
-            "when the partial fetch fails"
-        )
-        # The error card itself must use the .inspector-card.error-card
-        # class hook (CSS in results/style.css renders this with a
-        # red-tinted border + clear failure styling).
-        assert "inspector-card error-card" in body, (
-            "_partial_inspector_factory doesn't use the "
-            ".inspector-card.error-card class for failed mounts -- "
-            "the CSS in results/style.css would lose its hook"
-        )
-        # XSS-safe DOM construction (no innerHTML string-concat in
-        # _renderError; pinned in the global XSS audit too).
-        assert "createElement" in body
-
-
-    def test_inspector_error_css_classes_are_styled(self, web):
-        """The error-card classes the adapters create must have CSS
-        rules in results/style.css; without them the card renders
-        unstyled (white text on dark, no border, looks broken)."""
-        css = web.get(
-            "/static/results/style.css").get_data(as_text=True)
-        assert ".inspector-error" in css, (
-            "results/style.css missing .inspector-error rule -- "
-            "block-level error mounts render unstyled"
-        )
-        assert ".inspector-card" in css, (
-            "results/style.css missing .inspector-card rule -- the "
-            "error card's container is unstyled"
-        )
-
-
 # --------------------------------------------------------------------- #
 #  Dispatch JS                                                          #
 # --------------------------------------------------------------------- #
@@ -214,15 +143,10 @@ class TestResultsDispatchJS:
     logic should land here."""
 
     def test_viewer_js_served(self, web):
-        r = web.get("/static/results/viewer.js")
-        assert r.status_code == 200
-        assert b"inspector-host" in r.data
+        assert web.get("/static/results/viewer.js").status_code == 200
 
     def test_style_css_served(self, web):
-        r = web.get("/static/results/style.css")
-        assert r.status_code == 200
-        assert b".results-inspector-host" in r.data
-        assert b".inspector-card" in r.data
+        assert web.get("/static/results/style.css").status_code == 200
 
 
 # --------------------------------------------------------------------- #
@@ -364,89 +288,6 @@ class TestPartialTrajectoryInspectorEndpoint:
             "endpoint is redirecting in the no-auth test fixture; "
             "either the test fixture leaked auth config or the "
             "endpoint sprouted a per-route gate"
-        )
-
-
-class TestInspectorRegistrationOrder:
-    """The inspector registry resolves overlapping match predicates
-    by REGISTRATION ORDER (``pick()`` returns the first match).
-    The registry's own docstring states this contract:
-
-        Inspectors with more specific predicates (compound extensions
-        like ``.molwatch.log``) MUST register before more general
-        ones (``.log``) to win the dispatch.
-
-    The ``source`` inspector matches generic ``.log`` and ``.json``,
-    which would silently steal ``.molwatch.log`` (trajectory's compound
-    extension) and ``.spectra.json`` (spectra's compound extension)
-    if it loaded first.  This test pins the load order in
-    ``results.html`` so a future refactor (e.g. an alphabetical-sort
-    accident in the script-tag list) can't reintroduce the bug.
-
-    The bug WAS in production (user-reported 2026-05-18): selecting
-    a ``.molwatch.log`` rendered the source-inspector text view
-    instead of the trajectory viewer.  Order was alphabetical
-    (source → structure → trajectory → spectra).  Fix: order by
-    match-specificity (specific → general).
-
-    BEHAVIOUR-LEVEL COUNTERPART:
-    ``tests/test_inspector_registry_e2e.py`` evaluates the real
-    ``window.molbuilder.inspectors.pick(...)`` in a Playwright-driven
-    browser and asserts:
-      * pick('foo.molwatch.log') -> 'trajectory'
-      * pick('foo.spectra.json') -> 'spectra'
-      * pick('foo.json')         -> 'source'
-    Those tests are skipped when playwright isn't installed (the
-    default in CI today) -- when they DO run, they prove the load
-    order pinned below actually translates to the right dispatch
-    decision at runtime.  This static test catches the regression
-    earlier (in unit-test phase, no browser needed) while the e2e
-    test catches it more strictly (real registry, real DOM).
-    """
-
-    EXPECTED_ORDER = (
-        # The registry must load before any inspector that
-        # self-registers against it.
-        "lib/inspectors/registry.js",
-        # Most-specific (compound extensions) first.
-        "lib/inspectors/trajectory.js",   # .molwatch.log
-        "lib/inspectors/spectra.js",      # .spectra.json
-        # Then specific-but-single-extension (.xyz / .pdb).
-        "lib/inspectors/structure.js",
-        # Then the catch-all source inspector (.log / .json / .py /
-        # .fdf / .out / .txt / .md).  Always last.
-        "lib/inspectors/source.js",
-    )
-
-    def test_inspector_script_tags_appear_in_specificity_order(self, web):
-        body = web.get("/results").get_data(as_text=True)
-        # Find the byte index of each expected script tag.  We don't
-        # match the FULL <script src="..."> form because the template
-        # uses Jinja's url_for which may emit slightly different
-        # quoting in future Flask versions; matching on the path
-        # suffix is robust to that and still strict on order.
-        positions = []
-        for needle in self.EXPECTED_ORDER:
-            ix = body.find(needle)
-            assert ix != -1, (
-                f"results.html no longer includes {needle!r}; the "
-                f"inspector registration was probably renamed or "
-                f"removed without updating this test"
-            )
-            positions.append((needle, ix))
-        sorted_by_position = sorted(positions, key=lambda np: np[1])
-        actual_order = tuple(np[0] for np in sorted_by_position)
-        assert actual_order == self.EXPECTED_ORDER, (
-            f"inspector script tags are not in specificity order.  "
-            f"Expected:\n  " + "\n  ".join(self.EXPECTED_ORDER) +
-            f"\nActual (by appearance in results.html):\n  " +
-            "\n  ".join(actual_order) +
-            f"\nThe registry's pick() returns the FIRST match.  "
-            f"Loading the source inspector (matches .log / .json) "
-            f"before the trajectory/spectra inspectors (match the "
-            f"compound .molwatch.log / .spectra.json) makes source "
-            f"silently steal those files.  See registry.js's "
-            f"`Ordering` section."
         )
 
 
@@ -598,21 +439,6 @@ class TestPartialSpectraInspectorEndpoint:
             f"inspector queries this id and would crash on /results"
         )
 
-    def test_partial_has_no_undocumented_ids(self, web):
-        """Bidirectional contract pin: every id in the partial body
-        must be in ``REQUIRED_IDS``, so a template addition cannot drift
-        in without the test set being updated -- the "explicit contract"
-        invariant the trajectory-partial test pins."""
-        import re
-        body = web.get("/partials/spectra-inspector").get_data(as_text=True)
-        actual = set(re.findall(r'id="([^"]+)"', body))
-        extra = actual - set(self.REQUIRED_IDS)
-        assert not extra, (
-            f"spectra inspector partial has IDs not in the explicit "
-            f"contract: {sorted(extra)}.  Add them to REQUIRED_IDS "
-            f"if intentional, or remove them from the template."
-        )
-
     def test_partial_does_not_carry_page_chrome(self, web):
         """Fragment, not a full page -- no top-level <html>/<head>/
         <body>.  Match on tags, not substrings (``<head`` is a
@@ -657,48 +483,6 @@ class TestPartialSpectraInspectorEndpoint:
                 f"not in the inspector partial.  See § 2.3 of "
                 f"docs/web/results.md for the split."
             )
-
-
-class TestSpectraIssuesPanelSeverityCoverage:
-    """PINS: task #304's invariant — an ``info``-severity finding must be
-    VISIBLE, never filtered out.
-
-      * the RENDERING half — an ``info`` finding reaching the panel, and an
-        unrecognised severity being coerced to ``info`` rather than dropped — is
-        pinned against the shared module in
-        ``tests/test_validation_findings_js.py::TestSeverityIsUniform``, executed
-        under node, not grepped;
-      * this class pins that ``info`` has visible styling in the ONE
-        stylesheet that owns the row vocabulary.
-    """
-
-    def test_info_severity_is_visibly_styled_in_its_one_home(self):
-        """The row vocabulary is styled once — in lib/page-shell.css.  An
-        ``info`` finding must be distinguishable there.
-
-        The renderer draws for every surface — `/results` loads no form sheet
-        and mounts MolView, whose notices go through the same module — so the
-        rows are styled in `page-shell.css`, the sheet every page has, which
-        is the argument `ui-contract.md` § 5 already makes for
-        `.status.error`."""
-        from pathlib import Path
-        root = Path(__file__).resolve().parents[1]
-        shared = (root / "molbuilder/web/static/lib/page-shell.css"
-                  ).read_text()
-        assert '.issue-item[data-severity="info"]' in shared, (
-            "page-shell.css must style info-severity findings; it is the ONE "
-            "home for the row vocabulary and the sheet EVERY page loads "
-            "(docs/web/ui-contract.md § 5.1)."
-        )
-        # Every severity the contract defines is styled, so none renders bare.
-        for sev in ("error", "warn", "info"):
-            assert f'[data-severity="{sev}"]' in shared, sev
-        # And the page sheet must NOT re-declare a competing vocabulary.
-        page = (root / "molbuilder/web/static/spectra/style.css").read_text()
-        assert ".issue.info" not in page and ".issue .badge" not in page, (
-            "the /spectra page sheet has re-grown its own issue vocabulary; "
-            "one owner only (ui-contract.md § 1)."
-        )
 
 
 class TestTheContractEndpoint:

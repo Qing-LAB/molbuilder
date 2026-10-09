@@ -1,7 +1,7 @@
 """Tests for molbuilder.validation.chemistry.
 
 Per docs/process/testing.md (test layout mirrors source
-layout).  Shared fixtures live in tests/validation/conftest.py.
+layout).
 """
 
 from __future__ import annotations

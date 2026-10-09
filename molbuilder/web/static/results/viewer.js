@@ -104,11 +104,16 @@
 
     function _backToRoot() {
         if (!rootSel) return;
+        /* FORCED ONLY WHEN A RUN IS SHOWING in the root's place: the root's
+         * own file is then a new mount.  With the report already on screen
+         * the same-file guard keeps it -- the curves added and the tab
+         * chosen stay (results.md § 2.5) -- and a selection lands on it. */
+        const wasPicked = pickedRun;
         pickedRun = false;
         pickedFile = "";
         document.dispatchEvent(new CustomEvent(
             window.molbuilder.constants.EVENT_FILE_SELECTED,
-            { detail: Object.assign({}, rootSel, { force: true }) }));
+            { detail: Object.assign({}, rootSel, { force: wasPicked }) }));
     }
 
     function _dirOf(path) {
@@ -284,15 +289,21 @@
                     open.type = "button";
                     open.className = "results-ladder-open";
                     open.textContent = "open";
-                    open.title = atRoot && r.point != null
-                        ? "the report at " + Number(r.point) + " V"
+                    open.title = atRoot
+                        ? (r.point != null
+                            ? "the report at " + Number(r.point) + " V"
+                            : "the report")
                         : r.opens + " — shown here; the sidebar "
                           + "stays on the calculation.";
-                    // N identical "open" buttons name their run, and the one
-                    // showing says so (ui-contract.md § 4.1).
+                    // N identical "open" buttons name their run, and a picked
+                    // run's says it is showing (ui-contract.md § 4.1); the
+                    // report's rows carry no pressed state -- its selected
+                    // point is the report's own, shown in its table.
                     open.setAttribute("aria-label", "open " + s.name + " " + name);
-                    open.setAttribute("aria-pressed",
-                                      pickedRun && pickedFile === path ? "true" : "false");
+                    if (!atRoot) {
+                        open.setAttribute("aria-pressed",
+                                          pickedRun && pickedFile === path ? "true" : "false");
+                    }
                     open.addEventListener("click", () => {
                         if (!atRoot) { _pickRun(path); return; }
                         _backToRoot();

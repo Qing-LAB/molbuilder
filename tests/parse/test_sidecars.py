@@ -104,8 +104,8 @@ def test_sidecar_result_is_frozen():
 def _job_set(tmp_path, kind):
     """A real `job-set.json` of either kind, through `JobSet.write`.
 
-    Same principle as `_record` above: the fixture goes through the
-    WRITER, so the parser cannot be tested against a shape nothing emits.
+    The fixture goes through the WRITER, so the parser cannot be tested
+    against a shape nothing emits.
     """
     from molbuilder.jobset.model import Job, JobSet, Resources
 

@@ -81,9 +81,9 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 ### 0.4 Designed, not built yet
 
-- **A transport calculation's report** (§ 2.5) is built and not yet seen on a
-  real calculation; the root offers it only once `summarize task` has written
-  the record file; the frame axis waits for plan § 5u.1 step 11.
+- **A transport calculation's report** (§ 2.5) is built and seen on the
+  walks (2026-10-08); the root opens it through its `task.json` from `init`
+  on (§ 0.1); the frame axis waits for plan § 5u.1 step 11.
 
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
@@ -390,9 +390,10 @@ is a **ladder**: N rungs, each a run directory below it. Each rung's run writes
 its own result in its directory — a vibration's spectrum in its `freq` attempt
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5); only a
 calculation that GATHERS its rungs into one result has one at the root — a
-transport calculation's I–V record, once `summarize` has read its bias points,
-and a SIESTA vibration's displacement sweep, once `summarize` has compared its
-force-constant stages (§ 5.9 there).
+transport calculation's report, composed on read from its rungs as they are
+and opened through its `task.json` (§ 0.1), and a SIESTA vibration's
+displacement sweep, once `summarize` has compared its force-constant stages
+(§ 5.9 there).
 `GET /api/results/dir` answers
 such a root with `ladder: {complete, first_incomplete, stages: [{name, seq,
 state, detail, dir, attempt, …}], offer}` —
@@ -415,8 +416,8 @@ the detail, and the rung to resume from named in the title. A person
 who opens a five-rung transport calculation therefore sees which of the five is
 outstanding — `engines/transport.md` § 2a.12's third
 requirement — instead of *pick a file*. A rung's files are read by opening the
-rung's directory; the product, when present, is what `openable` picks at the
-root.
+rung's directory; the product, when present — a transport root's `task.json`
+from `init` on — is what `openable` picks at the root.
 
 **Every run of the calculation, in one place, picked in place** *(W55 B6,
 2026-10-03 — user: "this gives a bird's eye of one parent task dir that can
@@ -480,8 +481,9 @@ selection PDOS by orbital type, p_x = p_y = half the bridge's DOS at E_F and p_z
 and s zero, as a chain along z gives; both routes and the root's answer through
 the app. **The PDOS by region** shows only the regions whose atoms are in
 TBtrans's device region — here the bridge; a lead's atoms are its electrode, not
-the device. **Not yet seen in a browser** — the report's drawing. The frame
-axis waits for step 11.
+the device. **Seen in a browser** *(2026-10-08, B8)*: the report drawn on the
+three walks, its tabs, the I–V picks and the ladder's rows opening it at a
+point. The frame axis waits for step 11.
 
 **Two selections, each with one owner** — the spectra tab's pattern (one state
 owner, every view mirrors it through a cheap door; [`spectra.md`](?doc=web/spectra.md)
@@ -630,7 +632,7 @@ one, with its run badge, notes and plots around it:
   the mode positions where none was — for a `.spectra.json` (`spectra.md`),
 - a **bench sweep summary + chart** for a sweep's `job-set.json`
   (`bench-summary.md`),
-- an **I–V table + transmission plot** for a `<label>.transport.json`,
+- the **transport report** for a transport calculation's `task.json`,
 - a SIESTA vibration's **displacement sweep** for a `<label>.fc-sweep.json`.
 
 The **markdown editor** and the **plain paginated text pane** are registered

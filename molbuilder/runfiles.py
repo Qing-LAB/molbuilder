@@ -1100,8 +1100,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # that record -- an attempt's `.continued-from`, for a stage with none of
     # its own (user, 2026-10-01: the flat layout records it too), named for
     # the run that continues.
-    Artifact(".continued-from", "the run whose restart files were carried "
-                                "in, for launch's record",
+    Artifact(".continued-from", "the run this one continues from -- a "
+                                "walked point's or a stage's start, a "
+                                "taken-over point's computing run (one hop) "
+                                "-- for launch's record",
              attempt="shared", hierarchical=CONTINUED_FROM_FILE, when="prep",
              kind="record",
              writer="prep, and launch when it runs a stage again, through "

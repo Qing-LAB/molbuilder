@@ -396,18 +396,36 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         # name (`stages.STAGE_FACT`).  The transmission's answer is its
         # points; TBtrans converges nothing and reports no total energy.
         answers = STAGE_FACT.get(name, "scf")
-        # EVERY SWEPT RUNG'S POINTS, as the status door read them: the
+        # EVERY SWEPT RUNG'S POINTS, as the status door reads them: the
         # folder each ran in, what it started from and what it alone took
         # (§ 2a.11, § 2a.12) -- the provenance chain's per-point lines, for
-        # a product rung (the transmission) as for the device.
-        if s.points:
+        # a product rung (the transmission) as for the device.  THE RUN THE
+        # TRANSMISSION GATHERED answers for its own points when it is not
+        # the stage's newest (§ 2a.12): the same per-point reader
+        # (`runstatus.point_rows`), asked for that run.
+        points = s.points
+        if run is not None and s.attempt and s.dir \
+                and run != base / s.dir / s.attempt and s.points:
+            from ..jobset.runstatus import point_rows
+            from ..runfiles import RunNames
+            from ..runrecord import launch_record
+            from .stages import products_of
+            _names = RunNames.of(task.label, token, task.shape)
+            try:
+                points, _ = point_rows(
+                    run, _names, task, name, launch=launch_record(run, _names),
+                    products=products_of(name, task.label, base_dir=base))
+            except Exception as exc:              # noqa: BLE001 -- said, never hidden
+                fact["unreadable"] = f"{run.relative_to(base)}: {exc}"
+                points = []
+        if points:
             fact["taken"] = [
                 {"bias_v": p.get("bias_v"),
                  "attempt": (f"{s.dir}/{p['folder']}" if s.dir and p.get("folder")
                              else None),
                  "started_from": p.get("started_from"),
                  "took": p.get("took") or []}
-                for p in s.points]
+                for p in points]
         if sweep_points(task, name) and answers != "product":
             # A SWEPT RUNG, POINT BY POINT -- the report's convergence card
             # follows the selected bias (`web/results.md` § 2.5); the rung's
@@ -418,7 +436,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             # reading of the point's `.continued-from` and `.gathered-from`
             # (`StageStatus.points`; § 2a.12: the provenance of a sweep's
             # points), joined by the voltage; never a second reader here.
-            said = {float(p["bias_v"]): p for p in (s.points or ())
+            said = {float(p["bias_v"]): p for p in (points or ())
                     if p.get("bias_v") is not None}
             for p in fact["by_point"]:
                 sp = said.get(float(p["bias_v"]))

@@ -1,7 +1,7 @@
 """Tests for molbuilder.validation.siesta.
 
 Per docs/process/testing.md (test layout mirrors source
-layout).  Shared fixtures live in tests/validation/conftest.py.
+layout).
 """
 
 from __future__ import annotations
@@ -315,8 +315,6 @@ class TestSiestaPseudoCoverageInPreflight:
         The severity rule is the one the missing-directory branch beside it
         already uses: a folder makes it answerable, no folder does not.
         """
-        import sys as _sys
-        _sys.path.insert(0, "tests")
         from conftest import _PSML_FIXTURE
         from molbuilder.chemistry import atomic_number
         from molbuilder.config.siesta import SiestaConfig

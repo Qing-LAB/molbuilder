@@ -1,8 +1,10 @@
-"""P6 — the transport record's parsers (`engines/transport.md` § 6,
-`transport/record.py`).
+"""The transport record's two pieces of science, asked at the API
+(`engines/transport.md` § 2a.4, § 2a.10; `transport/record.py`): the
+conductance read at E_F, and the low-bias current integrated from one T(E).
 
-What a TBtrans output says is read off the transport road's own minimal
-junction (plan Q5-Q7, `process/testing.md` § 6).
+API-level by the science exception (`process/testing.md` § 3a): the road
+reaches no transmission output on the stand-in (plan § 5x B8 T2), and each
+expectation is the contract's own number, never a code's output.
 """
 from __future__ import annotations
 
@@ -10,6 +12,8 @@ from molbuilder.transport.record import conductance_g0, linear_response_iv
 
 
 def test_conductance_needs_the_window_to_straddle_ef():
+    """G = G0 · T(E_F) is read at E_F = 0 (§ 2a.4): a window that does not
+    straddle it answers None, never an extrapolated number."""
     assert conductance_g0([0.5, 1.0], [1.0, 1.0]) is None
 
 

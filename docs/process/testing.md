@@ -7,8 +7,8 @@ that enforce the conventions; [`package-layout.md`](?doc=process/package-layout.
 — where `tests/` sits; [`ops/installation.md`](?doc=ops/installation.md) — the
 conda envs the backend tests run against.
 
-The suite is ~360 test files. Most are fast Python unit/module tests you'll write
-constantly; a smaller set drives a real browser. This doc is the map: the pyramid,
+Most of the suite is fast Python unit/module tests you'll write constantly; a
+smaller set drives a real browser. This doc is the map: the pyramid,
 where tests go, how the front-end JS is tested without a browser, and the handful
 of Playwright patterns that keep the e2e tests from being flaky.
 
@@ -31,7 +31,7 @@ the road (`jobset init → prep → launch`; the case tables, § 6), the suite's
 stand-in engine for a run's process, and machine records written in molbuilder's
 own format to describe a machine — its cores, its queues and their limits — to
 the logic that reads them.  **No engine output, saved or typed**: a test that
-needs what an engine writes — a `.out`, an `.MD.nc`, an `.XV`, a `.FC`, a
+needs what an engine writes — a `.out`, an `.MD.nc`, a `.FC`, a
 spectrum a run derived — is a tier-3 test that makes the run *(user, 2026-10-06:
 "when a test need siesta's output why is it not part of a e2e test?")*.
 `tests/fixtures/` holds an engine's INPUTS only — the H pseudopotential a live
@@ -606,7 +606,10 @@ this, assert the result." Save the browser for what needs the DOM + 3Dmol.
 
 ## 5. The browser tests (Playwright / e2e)
 
-The 19 `*_e2e.py` tests use **Playwright** against a real headless Chromium. Each
+The `*_e2e.py` tests use **Playwright** against a real headless Chromium — the
+name is the gate: a file so named drives a browser or a real engine and skips
+without one; an engine-less road test is tier 1 and named plainly *(2026-10-08,
+B8 S4: five such files lost the suffix)*. Each
 spins up a **live Flask server** in a fixture (`flask_server`) built from
 `create_app`, and drives the `page` fixture (`page.goto(f"{base}/molbuilder")`, …).
 The default `web_client` fixture builds the app with **rate-limiting disabled**
@@ -751,7 +754,8 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   it, writes the run's records as it concludes — so what a stage builds on,
   what it continues from and whether a viewer follows a run are tested
   through our own code with no engine (`tests/data/hand_overs.toml`). What
-  depends on the ENGINE's own files — the `.MD.nc`, an `.XV`, how a run
+  depends on the ENGINE's own files — the `.MD.nc`, an `.XV` as SIESTA writes
+  it, how a run
   ended, what the monitor makes of its output — is a tier-3 test that makes
   the run on the road with the engine: the smallest that shows the mechanism
   (H2; H2O at most — user, 2026-10-04: *"run are supposed to verify
@@ -830,7 +834,7 @@ tests are collected:
    after it then lack that conftest's fixtures (*fixture 'water_struct' not
    found*, on `tests/validation/` files listed after a `tests/` file). Grouped
    by directory, every file of a subdirectory follows the one that bound
-   them. A batch names directories and is never bitten.
+   them. A batch names directories and is never bitten. Options go in their `=` form (`--ignore=…`): the sort moves every path-shaped word, so an option's separate argument would be moved away from it.
 
 `run lf` stays in one process: it re-runs a handful of tests, picked by their
 ids as they are collected. It runs only when pytest's last-failed list names a

@@ -77,6 +77,19 @@ def tree_bytes(root: Path) -> dict:
     return {key_of(root, p): p.read_bytes() for p in walk_independently(root)}
 
 
+def tree_dirs(root: Path) -> set:
+    """Every directory you made, by key -- A5 says the folder equals the
+    target with no leftovers, and an empty `run-N/` is one (the readers of
+    the tree count it as an attempt)."""
+    out = set()
+    for dirpath, dirnames, _files in os.walk(root):
+        dirnames[:] = [d for d in dirnames
+                       if d not in (".git", ".binsnapshots")]
+        for d in dirnames:
+            out.add(key_of(root, Path(dirpath) / d))
+    return out
+
+
 @pytest.fixture()
 def calc(tmp_path, checkpoint_config):
     """A calculation folder whose store is decided by SIZE, not by name.
@@ -84,8 +97,12 @@ def calc(tmp_path, checkpoint_config):
     The classification is set in the server-wide config (S1c) -- the folder
     itself carries none, which is what the rule says and what the walk below
     would otherwise have to make an exception for.
+
+    ONE NAME PATTERN BESIDE THE SIZE RULE: `*.TSDE` is always-large by name
+    (gitignored), the one shape `git clean` leaves a directory of -- A5's
+    test exercises it.
     """
-    checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": ["*.TSDE"]})
     root = tmp_path / "BDT_Au_relax"
     root.mkdir()
     (root / "job.fdf").write_text("SystemLabel job\n")
@@ -698,6 +715,7 @@ def test_all_three_shapes_are_named_then_force_makes_the_folder_equal(calc):
     (calc.root / "big.bin").write_bytes(BIG)
     target = calc.save("the state to come back to")
     expected = tree_bytes(calc.root)
+    expected_dirs = tree_dirs(calc.root)
 
     (calc.root / "later.txt").write_text("from where I stood\n")
     calc.save("moved on")
@@ -705,12 +723,17 @@ def test_all_three_shapes_are_named_then_force_makes_the_folder_equal(calc):
     (calc.root / "keep.txt").write_text("edited\n")      # changed
     (calc.root / "fresh.bin").write_bytes(BIG)           # added
     (calc.root / "gone.txt").unlink()                    # deleted
+    # A DIRECTORY HOLDING ONLY A NAME-IGNORED FILE -- what a point folder
+    # holds after a run (`*.TSDE`): `git clean` leaves it standing, and the
+    # restore must remove it with its file (C3, checkpointing.md § 7).
+    (calc.root / "02_tight" / "run-0").mkdir(parents=True)
+    (calc.root / "02_tight" / "run-0" / "job.TSDE").write_bytes(BIG)   # added
 
     before = tree_bytes(calc.root)
     with pytest.raises(DirtyWorkingTreeError) as exc:
         calc.restore(target.id)
     message = str(exc.value)
-    for name in ("keep.txt", "fresh.bin", "gone.txt"):
+    for name in ("keep.txt", "fresh.bin", "gone.txt", "job.TSDE"):
         assert name in message, (
             f"the warning does not name {name!r}; nobody can consent to a "
             f"loss they were not told about")
@@ -719,6 +742,8 @@ def test_all_three_shapes_are_named_then_force_makes_the_folder_equal(calc):
     calc.restore(target.id, force=True)
     assert tree_bytes(calc.root) == expected, (
         "the folder does not equal the target state exactly")
+    assert tree_dirs(calc.root) == expected_dirs, (
+        "a directory the target never held survived the restore")
     assert not (calc.root / "later.txt").exists(), (
         "a leftover from where you stood survived the restore")
     strays = sorted(k for k in tree_bytes(calc.root)

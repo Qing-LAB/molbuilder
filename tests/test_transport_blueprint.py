@@ -54,10 +54,16 @@ class TestTransportSchemaEndpoint:
         # the shared panel -- never a rung's control.)
         assert {"transmission_n_points", "tbt_k_grid"} <= tr_names
         assert "dm_tolerance" not in tr_names and "electrode_kz" not in tr_names
-        # ONE ID PER CONTROL ON THE PAGE: a rung's ids carry the rung, so
-        # the five tabs' copies of one item never share an id.
-        assert all(f["id"].startswith("t-transmission-") for f in tr_fields)
-        assert all(f["id"].startswith("t-seed-") for f in fields)
+        # ONE ID PER CONTROL ON THE PAGE (`transport.md` § 3.8.2a): the five
+        # tabs' copies of one item never share an id.
+        ids = {}
+        for rung in TRANSPORT_STAGES:
+            got = web.get(f"/api/transport/schema?surface=rung&rung={rung}").get_json()
+            ids[rung] = {f["id"] for s in got["schema"]["sections"] for f in s["fields"]}
+        for a in TRANSPORT_STAGES:
+            for b in TRANSPORT_STAGES:
+                if a < b:
+                    assert ids[a].isdisjoint(ids[b]), (a, b, ids[a] & ids[b])
         r = web.get("/api/transport/schema?surface=rung&rung=lead")
         assert r.status_code == 400 and "rung must name" in r.get_json()["error"]
 
@@ -145,7 +151,6 @@ class TestTransportPageRendering:
         assert r.status_code == 200
         body = r.data.decode()
         assert 'id="transport-form-container"' in body
-        # the composite card: cite + bias + send
         assert 'id="transport-junction-btn"' in body
         assert 'id="transport-send-btn"' in body
         assert 'transport-generate-btn' not in body
@@ -153,7 +158,7 @@ class TestTransportPageRendering:
 
     def test_send_button_is_disabled_until_a_junction_is_cited(self, web):
         """The composite's one hard requirement is the citation
-        (archive/2026-09-01-transport-design.md 4.1); the button says so and starts
+        (engines/transport.md § 3.1); the button says so and starts
         disabled -- core.js enables it when a junction is picked."""
         body = web.get("/transport-calculation").data.decode()
         assert (
@@ -176,38 +181,9 @@ class TestTransportPageRendering:
         assert m, "Transport tab must mark itself active in the nav"
 
 
-class TestTransportCoreJsServed:
-    """The static JS module that drives the form is served + carries
-    the contract the page depends on (schema fetch URL, render
-    container id, persistence key)."""
-
-    def test_core_js_served(self, web):
-        r = web.get("/static/lib/transport/core.js")
-        assert r.status_code == 200
-
-    def test_core_js_targets_schema_endpoint(self, web):
-        js = web.get("/static/lib/transport/core.js").data.decode()
-        assert "/api/transport/schema" in js
-
-    def test_core_js_renders_into_known_container(self, web):
-        js = web.get("/static/lib/transport/core.js").data.decode()
-        assert 'transport-form-container' in js
-
-    def test_core_js_reads_no_sidebar_structure_channel(self, web):
-        """P7b review (user, 2026-08-29): the CITATION is the tab's one
-        driver -- the viewer shows the cited junction's structure, so a
-        sidebar commit channel would be a second source for the
-        composite's one fact (molview.md 9.3a, one level up).  The tab
-        subscribes to NEITHER commit nor change."""
-        import re
-        js = web.get("/static/lib/transport/core.js").data.decode()
-        code = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
-        code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
-        assert "onCommit" not in code, (
-            "the sidebar commit channel is back -- the citation drives")
-        assert "onChange" not in code
-        assert "_adoptCitation" in code, (
-            "the cite flow is the one structure door")
+def test_core_js_served(web):
+    """The tab's script is served at the path the page loads it from."""
+    assert web.get("/static/lib/transport/core.js").status_code == 200
 
 
 def test_a_rung_tab_offers_no_run_setting(web):

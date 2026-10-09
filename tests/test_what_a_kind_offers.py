@@ -31,7 +31,7 @@ from molbuilder.siesta.stages import default_siesta_stages
 
 from test_electronic_state import WATER
 from test_engine_offset_reaches_every_deck import _prep
-from test_fixed_and_shared_items_e2e import (_first_rung_overrides,
+from test_fixed_and_shared_items import (_first_rung_overrides,
                                              _template_says)
 
 

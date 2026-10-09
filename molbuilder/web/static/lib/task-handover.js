@@ -8,10 +8,11 @@
  *   * structure-optimization/viewer.js  -- engine siesta|pyscf, optimization
  *   * lib/spectra/core.js               -- engine pyscf, calculation vibration
  *   * lib/transport/core.js             -- engine siesta, calculation
- *     transport (P7b): NO structure/params -- `junction` (the citation),
- *     `bias` (volts, 0.0 first) and `stages` (per-rung override bags)
- *     ride instead, and the answer is ONE file (floor 2 = task.json
- *     alone; transport-design.md 4.1)
+ *     transport: NO structure/params -- `junction` (the citation),
+ *     `bias` (volts, 0.0 first), `low_bias_approximation`,
+ *     `swap_electrodes`, `stages` (per-rung override bags) and `shared`
+ *     ride instead, and the answer is TWO files, task.json and the
+ *     template (transport.md § 3.8.5)
  *
  * Classic script on the `window.molbuilder` namespace (same loading
  * pattern as lib/form-schema.js) so both a classic-script consumer
@@ -86,7 +87,7 @@
         const isTransport = o.calculation === "transport";
         /* The transport composite carries NO structure -- its structure
          * IS the junction citation, copied in at prep
-         * (transport-design.md 4.1).  Every other kind is OF a
+         * (transport.md § 3.1).  Every other kind is OF a
          * structure and must bring one. */
         if (!structure && !isTransport) {
             say("warn", "Load a structure first — a description is "
@@ -118,8 +119,8 @@
             return;
         }
 
-        /* THE CALCULATION NEVER LIVES IN ITS CITATION (transport-design.md
-         * 4.1b): describing into the cited directory would drop task.json --
+        /* THE CALCULATION NEVER LIVES IN ITS CITATION (transport.md
+         * § 3.1): describing into the cited directory would drop task.json --
          * and later every prep attempt -- inside the finished relaxation it
          * cites.  The sidebar selection lingers on the attempt the person
          * just browsed to cite, so this is the easy mistake to make.

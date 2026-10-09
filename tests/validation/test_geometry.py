@@ -1,17 +1,15 @@
 """Tests for molbuilder.validation.geometry.
 
 Per docs/process/testing.md (test layout mirrors source
-layout).  Shared fixtures live in tests/validation/conftest.py.
+layout).
 """
 
 from __future__ import annotations
 
-import io
-
 import numpy as np
 import pytest
 
-from molbuilder.issues import Issue, ValidationError
+from molbuilder.issues import ValidationError
 from molbuilder.pyscf import PySCFConfig
 from molbuilder.siesta import SiestaConfig
 from molbuilder.structure import Structure

@@ -1505,12 +1505,16 @@ number below is derived from it rather than chosen.
 |---|---|
 | the window | a **1:1 square**, bounded below by a minimum and above by a maximum edge |
 | the panel | **the leftover width**, with a minimum of its own |
-| **the panel's height** | **the square's edge — the same value the window uses** |
+| **the panel's height** | **its content's, with the square's edge as its minimum — the same value the window uses** *(2026-10-08, plan F5: never a pinned height)* |
 
 That last row is the one worth reading twice. The panel is not measured and it is
-not told a height by script: it is given *the same* extent the square is, so the
-two bottom-align at every width **with no JavaScript and no fixed number
-anywhere**. A layout that computed the panel's height from the window's would be
+not told a height by script: it is given *the same* extent the square is as its
+minimum, so the two bottom-align whenever the panel's content fits **with no
+JavaScript and no fixed number anywhere**, and the panel grows past the square
+only when its pinned sections (header, mode toggle, notices, the assign block)
+need the room; every page is a zero-basis fill with a floor, so the one scroll
+region inside it takes the leftover height and switching pages never resizes
+the card. A layout that computed the panel's height from the window's would be
 a second place the same fact lives, and it would be wrong for one frame after
 every resize.
 
@@ -4658,7 +4662,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.7 — the browser writes no coordinate document | the module contains no coordinate or sidecar writer at all; what leaves the export door is the structure, and the bytes are the server's |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
-| § 8.2 — the panel is not measured, it is given the same extent | the panel's height and the window's square edge come from one value; no script reads one to set the other, and they bottom-align at every width |
+| § 8.2 — the panel is not measured, it is given the same extent as its minimum | the panel's minimum height and the window's square edge come from one value; no script reads one to set the other; the panel's bottom is at or below the window's, equal when its content fits |
 | § 8.2 — the floor is the stacked minimum, not the row sum | a host narrower than the side-by-side sum still mounts, and stacks; only one narrower than the wider single piece gets the blank card and the error |
 | § 8.3 — the arrow turns, the handle does not | folding rotates the glyph only, so the handle's box keeps its shape in both layouts |
 | § 8.4 — the panel is handed one settled state, whole | every fact the panel draws arrives in one snapshot, including the pick order; a fact the store keeps but omits from it is the failure this guards |

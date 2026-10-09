@@ -1773,7 +1773,7 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
             from ..runrecord import launch_record
             _names = RunNames.of(task.label, token, task.shape)
             _launch = launch_record(newest, _names)
-            _prod = products_of(upstream, task.label)
+            _prod = products_of(upstream, task.label, base_dir=base)
             not_done = [f"{v:g} V ({why})"
                         for p_, v in points_in(newest, task, upstream)
                         for ok, why in [done(p_, _names, launch=_launch,

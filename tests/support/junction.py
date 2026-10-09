@@ -22,12 +22,23 @@ Used by ``tests/test_script_emit.py`` and
 spectrum sidecar by ``tests/parse/test_sidecars.py`` and
 ``tests/parse/test_round2_fixes.py`` (written by our writer, read back by our
 reader).
+
+Below it, THE ROAD TESTS' JUNCTION -- a chain sandwich with its leads
+labelled (`test_transport_compose` owns the layer positions) -- and the
+sandbox fixture the files that prep a description on the road share
+(``tests/test_k_point_mesh.py``, ``tests/test_hard_limits.py``,
+``tests/test_where_an_item_binds.py``).
 """
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from molbuilder.structure import Structure
+from molbuilder.transport.sort import (REGION_BRIDGE, REGION_BUFFER,
+                                         REGION_LEFT_ELECTRODE,
+                                         REGION_RIGHT_ELECTRODE)
+from test_transport_compose import _BRIDGE, _LAYERS_L, _LAYERS_R
 
 #: Two gold electrodes along z with a benzenedithiol bridge between them.
 #: Small enough to read, shaped like the real thing: the OUTER gold layers are
@@ -148,3 +159,70 @@ def spectra_sidecar(path):
     )
     dump_spectra_json(results, path)
     return path
+
+
+# ---- the road tests' junction --------------------------------------- #
+
+#: The fixture's leads are a CHAIN, one gold atom per layer, so they are
+#: ISOLATED across the transport axis in the 8 Å box they sit in -- what the
+#: relaxation deck records and `compose` carries (`engines/transport.md`
+#: § 6.1c).  One layer spacing is the room the transport boundary leaves.
+_ACROSS = ("isolated", "isolated")
+_SPACING = _LAYERS_L[1] - _LAYERS_L[0]
+
+
+def _junction_struct(*, order="canonical", buffers=False, across=_ACROSS,
+                     width=8.0, room=None):
+    """The BDT-ish fixture sandwich; ``order="scrambled"`` writes the
+    same geometry with the bridge FIRST and the leads swapped after it
+    — exactly the order the emitter's preflight refuses.
+
+    *across* and *width* are the transverse axes' kinds and length: the
+    chain in an 8 Å box is a wire, isolated across; ``across=("periodic",
+    "periodic"), width=_SPACING`` is the same chain as a lattice it tiles --
+    the reading a relaxation deck from before the placement record gets
+    (`compose._junction_axis_kind`).  *room* is what the transport boundary
+    leaves, one layer spacing unless a test opens it."""
+    rows = []       # (element, z, label)
+    for z in _LAYERS_L:
+        rows.append(("Au", z, REGION_LEFT_ELECTRODE))
+    for el, z in _BRIDGE:
+        rows.append((el, z, REGION_BRIDGE))
+    for z in _LAYERS_R:
+        rows.append(("Au", z, REGION_RIGHT_ELECTRODE))
+    if buffers:
+        for z in (-5.0, -2.5, 37.0, 39.5):
+            rows.append(("Au", z, REGION_BUFFER))
+    if order == "scrambled":
+        rows = ([r for r in rows if r[2] == REGION_BRIDGE]
+                + [r for r in rows if r[2] == REGION_RIGHT_ELECTRODE]
+                + [r for r in rows if r[2] == REGION_LEFT_ELECTRODE]
+                + [r for r in rows if r[2] == REGION_BUFFER])
+    elements = [r[0] for r in rows]
+    positions = np.array([[1.0, 1.0, r[1]] for r in rows])
+    regions: dict = {}
+    for i, r in enumerate(rows):
+        regions.setdefault(r[2], []).append(i)
+    frozen = [i for i, r in enumerate(rows)
+              if r[2] in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE)]
+    # THE CELL MUST CONTAIN THE ATOMS (the buffer padding sits at
+    # z = -5 .. 39.5), so it is sized from the geometry.
+    #
+    # AND IT IS THE STRUCTURE A TRANSPORT RUN CAN USE (M5 step 2, § 6.1c).
+    # The leads continue through the transport boundary into the image, so
+    # the room there is ONE of the lead's layer spacings.
+    # And the leads are a CHAIN, one gold atom per layer, in an 8 A box: a
+    # wire, isolated across transport, which is what it states -- periodic
+    # there would say the chain tiles a plane it does not.
+    zs = positions[:, 2]
+    c = float(zs.max() - zs.min()) + (_SPACING if room is None else room)
+    return Structure(elements=elements, positions=positions,
+                     regions=regions, frozen_atoms=frozen,
+                     cell=np.diag([width, width, c]),
+                     axis_kind=(*across, "transport"))
+
+
+@pytest.fixture(autouse=True)
+def _isolated(monkeypatch, tmp_path_factory):
+    """Same sandbox as test_prep_calculation."""
+    monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))

@@ -168,9 +168,9 @@ _STUB_BODIES = {
         'echo "stub siesta: $*"\n'
         # WHAT A ROAD ROW ASKS OF THE ENGINE (`support.road`, the row's
         # `stand_in`), and nothing else: leave the restart file SIESTA leaves,
-        # `<SystemLabel>.XV`, EMPTY -- the carry copies it and never reads it
-        # -- and end with the exit code the row gives.  Our wrapper, running
-        # this, writes the run's records itself; a test never lays them.
+        # `<SystemLabel>.XV` (below), and end with the exit code the row
+        # gives.  Our wrapper, running this, writes the run's records itself;
+        # a test never lays them.
         # ...and, with `waits_for`, run only once the calculation's ledger
         # holds the decision the row names: what a launch has written down
         # while its run runs (`job-system.md` § 6.0, step 5).

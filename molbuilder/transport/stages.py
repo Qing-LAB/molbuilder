@@ -190,17 +190,31 @@ def stage_inputs(stage: str, task_label: str, *,
 
 
 def products_of(stage: str, task_label: str, *, with_seed: bool = True,
-                transmission_product: str = ".TBT.nc") -> List[str]:
+                transmission_product: str = ".TBT.nc",
+                base_dir=None) -> List[str]:
     """What a run of ``stage`` must hold to be DONE: every file a rung
     downstream takes from it (:func:`stage_inputs`, the DAG, read the other
-    way) -- and for the transmission, which nothing downstream reads, its
-    own deliverable, the ``.TBT.nc`` (`engines/transport.md` § 2a.11)."""
+    way) -- for the transmission, which nothing downstream reads, its own
+    deliverable, the ``.TBT.nc`` -- and, with ``base_dir``, what a point
+    hands to the next point: the calculation's ``along`` row, of the files
+    this rung itself declares (the device's ``.TSDE``; the transmission
+    declares none).  THE ONE LIST `done` is asked with
+    (`engines/transport.md` § 2a.11): the gather, the walk and `status`
+    read it here and nowhere else."""
     if stage == "transmission":
-        return [f"{task_label}{transmission_product}"]
-    return sorted({fn for downstream in TRANSPORT_STAGES
-                   for up, fn in stage_inputs(downstream, task_label,
-                                              with_seed=with_seed)
-                   if up == stage})
+        out = [f"{task_label}{transmission_product}"]
+    else:
+        out = sorted({fn for downstream in TRANSPORT_STAGES
+                      for up, fn in stage_inputs(downstream, task_label,
+                                                 with_seed=with_seed)
+                      if up == stage})
+    if base_dir is not None:
+        from ..warmfiles import warm_list
+        own = {w.name for w in warm_declaration(stage, task_label, base_dir)}
+        out += [f"{task_label}{suf}"
+                for suf in warm_list("siesta", "transport", base_dir).along
+                if f"{task_label}{suf}" in own and f"{task_label}{suf}" not in out]
+    return out
 
 
 def warm_declaration(stage: str, task_label: str, base_dir=None):

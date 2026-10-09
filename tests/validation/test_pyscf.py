@@ -1,22 +1,15 @@
 """Tests for molbuilder.validation.pyscf.
 
 Per docs/process/testing.md (test layout mirrors source
-layout).  Shared fixtures live in tests/validation/conftest.py.
+layout).
 """
 
 from __future__ import annotations
 
-import io
-
-import numpy as np
 import pytest
 
-from molbuilder.issues import Issue, ValidationError
 from molbuilder.pyscf import PySCFConfig
-from molbuilder.siesta import SiestaConfig
-from molbuilder.structure import Structure
-from molbuilder.validation import report, validate
-from ._helpers import _vacuum_cell
+from molbuilder.validation import validate
 
 
 # --------------------------------------------------------------------- #

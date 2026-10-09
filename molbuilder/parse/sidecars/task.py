@@ -40,14 +40,16 @@ def _load_transport_task(path: Path) -> dict:
     """The description's JSON, or :class:`TaskReadError` saying why not --
     one reader for both halves of the parser."""
     from molbuilder.runfiles import TASK_FILE
-    from molbuilder.task import read_task
+    from molbuilder.task import Task
     p = Path(path)
     if p.name != TASK_FILE:
         raise TaskReadError(f"{p.name} is not {TASK_FILE}")
     try:
-        task = read_task(p)
-    except OSError as exc:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
         raise TaskReadError(f"{p.name} could not be read: {exc}") from exc
+    try:
+        task = Task.from_dict(obj)          # the codec's gate, on the one read
     except Exception as exc:                                  # noqa: BLE001
         raise TaskReadError(
             f"{p.name} does not read as a description: "
@@ -56,10 +58,7 @@ def _load_transport_task(path: Path) -> dict:
         raise TaskReadError(
             f"{p.name} describes a {task.calculation} calculation, whose "
             f"root opens no report")
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise TaskReadError(f"{p.name}: {exc}") from exc
+    return obj
 
 
 class TransportTaskFileParser(FileParser):

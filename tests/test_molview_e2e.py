@@ -360,8 +360,9 @@ def test_the_view_menu_opens_onto_something(demo):
 
 
 def test_the_panel_switches_pages_without_resizing_the_card(demo):
-    """§ 8.1: "Switching pages never resizes the card." The panel is given the
-    window's extent, so its height cannot depend on what is inside it (§ 8.2).
+    """§ 8.1: "Switching pages never resizes the card." Every page is a
+    zero-basis fill of the panel (§ 8.2), so the panel's height does not
+    depend on which page is showing.
     """
     before = demo.locator(".molviewer-card").bounding_box()
     pages = demo.locator(".molviewer-panel-tab")
@@ -382,15 +383,16 @@ def test_the_panel_switches_pages_without_resizing_the_card(demo):
 
 def test_the_panel_bottom_aligns_with_the_window(demo):
     """§ 8.2: the panel is not measured and is not told a height by script — it
-    is given the SAME extent the square is, "so the two bottom-align at every
-    width with no JavaScript and no fixed number anywhere".
+    is given the SAME extent the square is as its minimum, so the two
+    bottom-align whenever the panel's content fits, "with no JavaScript and no
+    fixed number anywhere"; the panel's bottom is never above the window's.
 
     A layout that computed one from the other would be a second place the same
     fact lives, and it would be wrong for one frame after every resize.
     """
     window = demo.locator(".molviewer-window").bounding_box()
     panel = demo.locator(".molviewer-panel").bounding_box()
-    assert abs((window["y"] + window["height"]) - (panel["y"] + panel["height"])) <= 1, (
+    assert (panel["y"] + panel["height"]) - (window["y"] + window["height"]) >= -1, (
         f"window ends at {window['y'] + window['height']}, "
         f"panel at {panel['y'] + panel['height']}"
     )

@@ -100,7 +100,7 @@
     min-width: 0;
 }
 .schema-section label:has(> input[type="checkbox"]):hover {
-    background: var(--bg-input-focus, rgba(255, 255, 255, 0.04));
+    background: var(--bg-input-focus);
 }
 
 /* ---- Locked fields ----
@@ -451,7 +451,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     margin: var(--space-xs) 0 0;
     padding-left: var(--space-md);
     list-style: none;
-    font-size: var(--text-2xs, 0.72rem);
+    font-size: var(--text-2xs);
     color: var(--text-muted);
 }
 .schema-help-refs li {
@@ -620,8 +620,8 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     border: 1px solid var(--rec-flag);
     background: var(--rec-flag-bg);
     border-radius: var(--radius-sm, 4px);
-    padding: var(--space-sm, 0.5rem) var(--space-md, 0.75rem);
-    margin-block: var(--space-md, 0.75rem);
+    padding: var(--space-sm) var(--space-md);
+    margin-block: var(--space-md);
 }
 
 .rec-diff > summary {
@@ -632,7 +632,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 
 .rec-diff-list {
     list-style: none;
-    margin: var(--space-sm, 0.5rem) 0 0;
+    margin: var(--space-sm) 0 0;
     padding: 0;
     display: flex;
     flex-direction: column;
@@ -643,7 +643,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     display: grid;
     grid-template-columns: auto var(--rec-name-w) var(--rec-val-w) var(--rec-val-w);
     align-items: baseline;
-    gap: var(--space-sm, 0.5rem);
+    gap: var(--space-sm);
     cursor: pointer;
 }
 
@@ -661,8 +661,8 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 
 .rec-diff-actions {
     display: flex;
-    gap: var(--space-sm, 0.5rem);
-    margin-top: var(--space-md, 0.75rem);
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
 }
 
 @media (max-width: 40rem) {

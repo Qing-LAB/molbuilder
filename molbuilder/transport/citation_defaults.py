@@ -5,8 +5,8 @@ Contract: [`engines/transport.md` § 2a.7](?doc=engines/transport.md), ruling 1
 [`engines/template.md` § 6.4](?doc=engines/template.md), the `citation` marker.
 
 **One function, called once, at `jobset init`.** It reads what the citation
-answers with — a finished run's own deck, or the settings a saved structure
-recorded from the run it came out of (§ 3.1's three cases) — and returns the
+answers with — a finished run's own deck (§ 3.1: one shape, decision 7) —
+and returns the
 :class:`~molbuilder.config.siesta.SiestaConfig` that `init` writes the
 template from. After that the template is the answer and this module has no
 further part: `prep` reads the file, not the citation.
@@ -65,7 +65,7 @@ def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
     laid on by the rule -- one point, no offset -- through the k-point mesh's
     own door (``kmesh.with_fixed``; `engines/siesta.md` § 6.1).
 
-    ONE rule, both sources (a cited deck, a recorded contract).  The cited
+    ONE rule for the cited deck.  The cited
     run was a closed periodic calculation and sampled all three axes; a
     transport calculation does not sample the transport axis at all.  Laid on
     here, where the value is born, so the template states what every rung
@@ -239,8 +239,9 @@ def transport_template_text(cite_dir, *, label: str, blank=(),
     answers with the person's choices laid over them.  **A `citation` row
     neither the citation nor the person answered is written VALUELESS**
     (`engines/transport.md` § 3.8.3; `template.md` § 6.6 obligation 2): a
-    hand-built structure answers no basis, and a value written there would
-    claim a run said something no run said -- after which no surface can
+    deck the unit door could not read answers no basis, and a value written
+    there would claim a run said something no run said -- after which no
+    surface can
     tell the person's 300 Ry from nobody's.  What `prep` then writes into
     the deck for such a row is the documented default, marked as nobody's
     choice (§ 6.6 obligation 4) -- that is `prep`'s to do, not this file's
@@ -261,8 +262,8 @@ def transport_template_text(cite_dir, *, label: str, blank=(),
         it.name for it in _T.select(_T.catalogue(), engine="siesta",
                                     citation=True)
         if "transport" in it.citation and it.name not in answered)
-    # WHERE EACH VALUE CAME FROM (`template.md` § 6.6 obligation 2): the citation's own answers -- from the run's deck, or from
-    # the record saved with the structure -- then what the person chose on
+    # WHERE EACH VALUE CAME FROM (`template.md` § 6.6 obligation 2): the
+    # citation's own answers -- from the run's deck -- then what the person chose on
     # the shared panel over them, and the calculation's own name.  A value
     # the panel holds as the citation answered it is the citation's: the
     # panel is drawn holding those answers and sends what it holds.  Every

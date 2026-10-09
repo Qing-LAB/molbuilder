@@ -801,7 +801,13 @@ def _carry_the_gather(source: Path, attempt: Path, writes: Plan, *,
     from ..runrecord import read_gathered_from, write_gathered_from
     took = read_gathered_from(source)
     for g in took:
-        f = source / g["file"]
+        # FROM THE RUN THE RECORD NAMES, never from the source attempt's
+        # own folder: an attempt is immutable (`project-layout.md` § 1.5),
+        # while the engine overwrites a gathered input in the folder it
+        # runs in (TranSIESTA writes its own density over the seed's `.DM`)
+        # -- copied from there, a cold launch would start warm under a
+        # record naming the seed.
+        f = base / g["from"] / g["file"]
         if not f.is_file():
             raise SubmitError(
                 f"{_rel(source, base)}: {g['file']}, gathered for it from "
@@ -1596,6 +1602,7 @@ def submitted_cap_notes(plans) -> List[str]:
 
 
 def _walk_script(name: str, steps, *, where: str, log: str,
+                 member_word: str = "trial",
                  bound_s: Optional[int] = None,
                  stop_on_failure: bool = False) -> str:
     """THE ONE WALK SCRIPT -- what runs several members one after another in
@@ -1627,7 +1634,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         "# activate.",
         "set -u",
         f'LOG="{log}"',
-        f'echo "[group] {when} start trials={len(steps)} per-trial-bound='
+        f'echo "[group] {when} start {member_word}s={len(steps)} per-{member_word}-bound='
         f'{f"{bound_s}s" if bound_s else "none"} '
         'job=${SLURM_JOB_ID:-none} node=$(hostname) '
         'alloc_ntasks=${SLURM_NTASKS:-unset} '
@@ -1637,7 +1644,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         # the walk starts no further member (bash runs this after the
         # running member returns; one under a per-member bound ends at it).
         f'_walk_stopped() {{ echo "[group] {when} stopped -- no further '
-        'trial" >> "$LOG"; exit 130; }',
+        f'{member_word}" >> "$LOG"; exit 130; }}',
         "trap _walk_stopped INT TERM HUP",
         "run_trial() {",
         '    _name="$1"; _dir="$2"; shift 2',
@@ -1650,7 +1657,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         "    _rc=$?",
         '    if [ "${_rc}" -eq 124 ]; then',
         (f'        echo "[group] ${{_name}} hit the {bound_s}s '
-         'per-trial bound -- killed; its artifacts read incomplete" >> "$LOG"'
+         f'per-{member_word} bound -- killed; its artifacts read incomplete" >> "$LOG"'
          if bound_s else
          '        echo "[group] ${_name} killed (124)" >> "$LOG"'),
         "    fi",
@@ -1977,17 +1984,19 @@ def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
             write_continued_from(run, str(prev.relative_to(base)),
                                  names=names, run=FIRST_ATTEMPT,
                                  plan=plan.writes)
-    # WHAT A POINT HANDS ON, by data: the calculation's `along` row, of the
-    # files this rung itself declares (the device's `.TSDE`; the
-    # transmission declares none).
-    own = {w.name for w in job.warm}
     vocabulary = warm_list(jobset.engine, "transport", base)
-    hand = [f"{task.label}{suf}" for suf in vocabulary.along
-            if f"{task.label}{suf}" in own]
     # THE ENGINE'S SCRATCH AT A POINT (`warm-files.toml` [transport]
     # scratch): recomputed by every run, so never taken over.
     scratch = {f"{task.label}{suf}" for suf in vocabulary.scratch}
-    products = products_of(stage, task.label) + hand
+    # WHAT A POINT MUST HOLD TO BE DONE -- the one list (`products_of`):
+    # what the rungs downstream take, and what a point hands to the next.
+    products = products_of(stage, task.label, base_dir=base)
+    # WHAT A POINT HANDS ON to the next point's start: the calculation's
+    # `along` row, of the files this rung itself declares (the device's
+    # `.TSDE`; the transmission declares none).
+    own = {w.name for w in job.warm}
+    hand = [f"{task.label}{suf}" for suf in vocabulary.along
+            if f"{task.label}{suf}" in own]
     taken, walked = [], []
     prev_launch = launch_record(prev, names) if prev is not None else None
     for pdir, v in points:
@@ -2061,7 +2070,7 @@ def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     gn = GroupNames(f"{names.stem}-sweep")
     launch_dir = stage_dir / LAUNCH_DIR
     script = _walk_script(
-        gn.stem, steps, where=f"{stage}'s sweep, {run.name}",
+        gn.stem, steps, where=f"{stage}'s sweep, {run.name}", member_word="point",
         log=f"{LAUNCH_DIR}/{gn.name('.log')}",
         stop_on_failure=bool(hand))
     if mode != "ask":
@@ -2262,6 +2271,7 @@ def _plan_group(jobset: JobSet, base: Path, names: List[str], *,
                                 cold=m.cold and not m.has_attempt)), ())
          for m in members],
         where="a group's one job: " + ", ".join(names),
+        member_word="stage",
         log=f"{LAUNCH_DIR}/{gn.name('.log')}")
     launch_dir = base / LAUNCH_DIR
     if mode != "ask":

@@ -1,12 +1,11 @@
-"""The k-point mesh -- every rung's sampling decided in one place -- through
-the road: `jobset init` (and the Transport tab's describe door) -> `jobset
-prep task` -> each rung's deck and its validation report, or the refusal.
+"""The k-point mesh -- every axis's sampling decided in one place -- through
+the road: `jobset init` -> `jobset prep task` -> the deck and its validation
+report, or the refusal.
 
 PINS: ``docs/engines/siesta.md`` § 6.1 (the mesh: each axis's role, the one
 writer, what a kind fixes, the checks and their severities);
 ``docs/engines/template.md`` § 5.3 (`above`, ``template.why_not``: one value,
-one refusal, on every door); ``docs/engines/transport.md`` § 0.3a (the offset
-on every rung) and § 5 I7-I9; ``docs/plans/plan.md`` § 5w K3.
+one refusal, on every door); ``docs/plans/plan.md`` § 5w K3.
 
 WHAT THIS FILE HOLDS: one case, a relaxation's mesh -- each axis sampled by
 its kind, the template's counts and offsets written, an over-sampled isolated
@@ -26,7 +25,7 @@ from click.testing import CliRunner
 
 from molbuilder.jobset._cli import jobset_group
 
-from test_transport_prep import _isolated, _junction_struct  # noqa: F401
+from support.junction import _isolated, _junction_struct  # noqa: F401
 
 
 def _prep(dest, rung, *, refused=False):

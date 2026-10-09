@@ -382,8 +382,8 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     runs for one of two config classes is not a gate; this one runs for the
     kind.
 
-    Its science: the bias advisory, the pole energy against the temperature,
-    the vacuum where the crystal continues (I12).  **The k-point sampling is
+    Its science: the pole energy against the temperature, the vacuum where
+    the crystal continues (I12), the transmission window against the bias.  **The k-point sampling is
     not here** -- the transport axis's one point, a lead's own count, the
     transmission's grid are the k-point mesh's (`kmesh.py`,
     `engines/siesta.md` § 6.1), refused on every door through

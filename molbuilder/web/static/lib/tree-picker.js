@@ -101,14 +101,16 @@ export async function pickPath(opts) {
     if (confirmBtn) confirmBtn.disabled = !path;
     tree.querySelectorAll(".is-selected").forEach((n) => {
       n.classList.remove("is-selected");
-      n.setAttribute("aria-selected", "false");
+      const r = n.querySelector(":scope > .tp-row");
+      if (r) r.setAttribute("aria-selected", "false");
     });
     if (path) {
       const node = tree.querySelector(
         `[data-path="${path.replace(/"/g, '\\"')}"]`);
       if (node) {
         node.classList.add("is-selected");
-        node.setAttribute("aria-selected", "true");
+        const r = node.querySelector(":scope > .tp-row");
+        if (r) r.setAttribute("aria-selected", "true");
       }
     }
     if (!opts.describe || !path) { meta.hidden = true; return; }
@@ -175,15 +177,19 @@ export async function pickPath(opts) {
     const li = _el("li", "tp-node");
     li.dataset.path = path;
     li.dataset.kind = kind;
-    li.setAttribute("role", "treeitem");
-    li.setAttribute("aria-selected", "false");
+    // THE ROW IS THE TREEITEM (ui-contract.md § 4.1): the element that
+    // takes focus carries the role, its name (the label's text) and both
+    // states; the list item is structure only.
+    li.setAttribute("role", "none");
 
     const row = _el("div", "tp-row");
+    row.setAttribute("role", "treeitem");
+    row.setAttribute("aria-selected", "false");
     const canPick = selectable(kind, path, name);
     if (!canPick) row.classList.add("tp-row--inert");
 
     const isDir = kind === "directory";
-    if (isDir) li.setAttribute("aria-expanded", "false");
+    if (isDir) row.setAttribute("aria-expanded", "false");
     const tw = _el("button", "tp-twisty", isDir ? "▸" : "");
     tw.type = "button";
     tw.setAttribute("aria-label", "Expand");
@@ -195,6 +201,7 @@ export async function pickPath(opts) {
     li.appendChild(row);
 
     const sub = _el("ul", "tp-children");
+    sub.setAttribute("role", "group");
     sub.hidden = true;
     li.appendChild(sub);
 
@@ -205,7 +212,7 @@ export async function pickPath(opts) {
       sub.hidden = !expanded;
       tw.textContent = expanded ? "▾" : "▸";
       tw.setAttribute("aria-label", expanded ? "Collapse" : "Expand");
-      li.setAttribute("aria-expanded", expanded ? "true" : "false");
+      row.setAttribute("aria-expanded", expanded ? "true" : "false");
       li.classList.toggle("is-open", expanded);
       if (expanded) await _expand(li);
     }

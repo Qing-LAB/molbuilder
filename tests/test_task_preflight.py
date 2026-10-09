@@ -156,7 +156,7 @@ def test_a_field_level_finding_carries_the_stage_it_came_from():
 # --------------------------------------------------------------------- #
 
 # A value outside the recommended range is warned where the description is
-# saved: `test_hard_limits_e2e.py`, on the Task-setup save.
+# saved: `test_hard_limits.py`, on the Task-setup save.
 
 def test_a_value_at_either_bound_is_accepted():
     """Inclusive, as § 3.3's ``range=[a,b]`` says.  An off-by-one here would

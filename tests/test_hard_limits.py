@@ -30,9 +30,9 @@ import pytest
 
 from molbuilder.config.pyscf import PySCFConfig
 
-from test_fixed_and_shared_items_e2e import _template_says
-from test_what_a_kind_offers_e2e import _siesta
-from test_transport_prep import _isolated  # noqa: F401 -- its sandbox, autouse
+from test_fixed_and_shared_items import _template_says
+from test_what_a_kind_offers import _siesta
+from support.junction import _isolated  # noqa: F401 -- its sandbox, autouse
 
 
 @pytest.mark.parametrize("engine, name, reason", [

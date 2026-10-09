@@ -5,7 +5,7 @@
  * Called by: one <link> beside the module's one import.
  *
  * It is not decoration: § 8.2 leans on this layout for the SIZING
- * CONTRACT — the square, the shared extent that bottom-aligns the panel with no
+ * CONTRACT — the square, the shared extent that is the panel's minimum with no
  * script, and `--molviewer-size-card-min-width` as the floor mount.js keys its
  * blank-card-with-error path to.
  *
@@ -127,6 +127,7 @@
     --molviewer-size-rail-gap:      6px;
     --molviewer-space-xs:      var(--space-xs, 4px);
     --molviewer-space-sm:      var(--space-sm, 8px);
+    --molviewer-space-md:      var(--space-md, 16px);
 
     /* ── The stack over the 3D window ─────────────────────────────────────
      * One scale, in the order the pieces sit in front of each other, so a new
@@ -170,12 +171,13 @@
     --molviewer-color-warn:                      var(--warn, #fbbf24);
     --molviewer-color-warn-bg:                   var(--warning-bg, rgba(251, 191, 36, 0.18));
     --molviewer-font-mono:                       var(--font-mono, ui-monospace, "SF Mono", Consolas, monospace);
-    --molviewer-font-ui:                         var(--font-sans, system-ui, sans-serif);
+    --molviewer-font-ui:                         var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
     --molviewer-line-normal:                     var(--line-normal, 1.5);
     --molviewer-line-snug:                       var(--line-snug, 1.4);
     --molviewer-space-lg:                        var(--space-lg, 20px);
     --molviewer-text-2xs:                        var(--text-2xs, 0.6875rem);
     --molviewer-text-sm:                         var(--text-sm, 0.875rem);
+    --molviewer-text-base:                       var(--text-base, 0.95rem);
     --molviewer-text-xs:                         var(--text-xs, 0.78rem);
 
     /* Values, not references: MolView owns these. */
@@ -362,9 +364,9 @@
 }
 
 /* Viewer: a 1:1 square sized to --molviewer-size-window-extent (== card leftover, capped at --molviewer-size-window-edge).
- * A DEFINITE square edge -- so the panel beside it can be told the SAME height and the two
- * bottom-align at any width, declaratively (the trajectory-inspector `align-items: stretch`
- * pattern, expressed here as a shared extent). */
+ * A DEFINITE square edge -- the panel beside it takes the SAME extent as its minimum, so the
+ * two bottom-align whenever the panel's content fits, declaratively, and the panel grows past
+ * it only when its pinned sections need the room (§ 8.2). */
 .molviewer-card-body > .molviewer-window {
     flex: 0 0 auto;
     width: var(--molviewer-size-window-extent);
@@ -441,7 +443,6 @@
 .molviewer-panel .molviewer-selection-card {
     flex: 1 1 auto;
     min-height: 0;
-    max-height: 100%;
     display: flex;
     flex-direction: column;
 }
@@ -464,8 +465,9 @@
 /* PIN every page section (mode toggle, Clear/Invert, the assign block) EXCEPT the click/
  * filter body, which flexes to fill the panel and holds the single scroll region. */
 /* The Cell and Metadata pages are ALL read-only info (no action buttons to keep on screen), so
- * unlike the Selection page each may simply SCROLL as a whole when it's taller than the panel --
- * it sizes to its content (compact when short), then scrolls.
+ * unlike the Selection page each SCROLLS as a whole: ONE RULE FOR EVERY PAGE -- a zero flex
+ * basis with the fill floor, so a page takes the panel's height and never asks for its
+ * content's, and switching pages never resizes the card (§ 8.1).
  *
  * KEYED BY ROLE, NOT BY IDENTITY.  § 5.6 puts TWO viewers on one page, so an id
  * would be duplicated the moment the second one mounts.  `[data-page]` says what
@@ -476,7 +478,8 @@
  * than by source order. */
 .molviewer-panel .molviewer-selection-card > .molviewer-panel-tab[data-page="cell"]:not([hidden]),
 .molviewer-panel .molviewer-selection-card > .molviewer-panel-tab[data-page="info"]:not([hidden]) {
-    flex: 0 1 auto;
+    flex: 1 1 0;
+    min-height: var(--molviewer-size-fill-rows);
     overflow-y: auto;
 }
 
@@ -523,9 +526,9 @@
      * Design tokens (tokens.css), with hex fallbacks for embeds that lack the sheet. */
     background: var(--molviewer-color-control);
     color: var(--molviewer-color-text-faint);
-    font-size: 0.85rem;
+    font-size: var(--molviewer-text-sm);
     line-height: 1;
-    border-radius: 6px;
+    border-radius: var(--molviewer-radius);
     transition: background 0.15s ease, color 0.15s ease;
 }
 /* The chevron GLYPH rotates -- NOT the button box.  Rotating the box would swap its
@@ -642,7 +645,7 @@
 .molviewer-frames-bar:not([hidden]) {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: var(--molviewer-space-xs);
     flex-wrap: nowrap;            /* the bar's OWN controls stay on one line; the slider flexes */
     /* Grow to fill the knob-bar row, but a ~15rem basis makes the bar WRAP to its own full-width
        row (the knob bar is flex-wrap:wrap) once View/Export leave it less than that -- so a small
@@ -653,13 +656,13 @@
 }
 /* Playback buttons -- ‹ prev, ▶/⏸ play-loop, › next (controls.js). */
 .molviewer-frames-play, .molviewer-frames-step {
-    padding: 0.1rem 0.45rem;
+    padding: 0.1rem var(--molviewer-space-sm);
     font-size: var(--molviewer-text-2xs); line-height: 1.4;
     cursor: pointer;
     background: var(--molviewer-color-control);
     color: var(--molviewer-color-text-dim);
     border: 1px solid var(--molviewer-color-edge-soft);
-    border-radius: 4px;
+    border-radius: var(--molviewer-radius-sm);
 }
 .molviewer-frames-play:hover, .molviewer-frames-step:hover { background: var(--molviewer-color-control-hover); }
 .molviewer-frames-slider {
@@ -672,18 +675,18 @@
 /* Transport buttons ‹ ▶ › -- a tight segmented group (shared/collapsed borders). */
 .molviewer-frames-transport { display: inline-flex; }
 .molviewer-frames-transport > button { border-radius: 0; margin-left: -1px; }
-.molviewer-frames-transport > button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.molviewer-frames-transport > button:first-child { border-radius: var(--molviewer-radius-sm) 0 0 var(--molviewer-radius-sm); margin-left: 0; }
 .molviewer-frames-transport > button:last-child  { border-radius: 0 4px 4px 0; }
 .molviewer-frames-transport > button:hover { position: relative; z-index: 1; }   /* keep the hovered border on top */
 
 /* "loop" checkbox -- small; play + ‹/› wrap at the ends when checked. */
 .molviewer-frames-loop {
-    display: inline-flex; align-items: center; gap: 0.2rem;
+    display: inline-flex; align-items: center; gap: var(--molviewer-space-xs);
     font-size: var(--molviewer-text-2xs); cursor: pointer; user-select: none;
 }
 .molviewer-frames-loop input { margin: 0; cursor: pointer; }
 .molviewer-frames-speed {
-    display: inline-flex; align-items: center; gap: 0.2rem;
+    display: inline-flex; align-items: center; gap: var(--molviewer-space-xs);
     font-size: var(--molviewer-text-2xs); user-select: none;
 }
 .molviewer-frames-speed-input {
@@ -841,7 +844,7 @@
     flex-wrap: wrap;
     align-items: baseline;
     justify-content: space-between;
-    gap: 0.6rem;
+    gap: var(--molviewer-space-sm);
 }
 
 .molviewer-selection-count {
@@ -853,7 +856,7 @@
 /* ---------- Click-mode body -------------------------------------- */
 
 .molviewer-selection-click-section {
-    margin-top: 0.5rem;
+    margin-top: var(--molviewer-space-sm);
 }
 
 /* ---------- Mode toggle -------------------------------------------- */
@@ -866,19 +869,19 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0;
-    margin: 0 0 0.6rem;
+    margin: 0 0 var(--molviewer-space-sm);
     padding: 2px;
     background: var(--molviewer-color-panel-well);
     border: 1px solid var(--molviewer-color-panel-edge);
-    border-radius: 4px;
+    border-radius: var(--molviewer-radius-sm);
 }
 
 .molviewer-selection-mode-option {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.3rem 0.6rem;
-    border-radius: 3px;
+    padding: var(--molviewer-space-xs) var(--molviewer-space-sm);
+    border-radius: var(--molviewer-radius-sm);
     cursor: pointer;
     transition: background 0.12s, color 0.12s;
 }
@@ -900,7 +903,7 @@
 }
 .molviewer-selection-mode-option > span {
     color: var(--molviewer-color-panel-text-dim);
-    font: 600 12px/1.2 var(--molviewer-font-ui);
+    font: 600 var(--molviewer-text-xs)/1.2 var(--molviewer-font-ui);
     letter-spacing: 0.03em;
     text-transform: uppercase;
 }
@@ -911,17 +914,17 @@
 /* ---------- Filter rows ------------------------------------------- */
 
 .molviewer-filter-section {
-    margin-bottom: 0.6rem;
-    padding: 0.5rem;
+    margin-bottom: var(--molviewer-space-sm);
+    padding: var(--molviewer-space-sm);
     background: var(--molviewer-color-panel-well);
     border: 1px solid var(--molviewer-color-panel-hover);
-    border-radius: 4px;
+    border-radius: var(--molviewer-radius-sm);
 }
 
 .molviewer-selection-combinator-row {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--molviewer-space-sm);
     /* No bottom margin: combinator + Apply filter are tightly
      * grouped in a flex column .molviewer-filter-footer.
      * Each direct child gets default gap from the parent's gap rule
@@ -935,8 +938,8 @@
 .molviewer-filter-footer {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    margin-top: 0.5rem;
+    gap: var(--molviewer-space-xs);
+    margin-top: var(--molviewer-space-sm);
 }
 
 /* THE small-caps caption for the whole panel (one shared class -- `web/ui-contract.md` § 1):
@@ -945,7 +948,7 @@
 .molviewer-selection-mini-label,
 .molviewer-cell-readout dt {
     color: var(--molviewer-color-panel-text-dim);
-    font: 600 11px/1.2 var(--molviewer-font-ui);
+    font: 600 var(--molviewer-control-font)/1.2 var(--molviewer-font-ui);
     letter-spacing: 0.04em;
     text-transform: uppercase;
     white-space: nowrap;
@@ -956,9 +959,9 @@
     background: var(--molviewer-color-panel-well);
     color: var(--molviewer-color-panel-text);
     border: 1px solid var(--molviewer-color-panel-edge);
-    border-radius: 3px;
-    padding: 0.18rem 0.4rem;
-    font: 11px var(--molviewer-font-ui);
+    border-radius: var(--molviewer-radius-sm);
+    padding: 0.18rem var(--molviewer-space-sm);
+    font: var(--molviewer-control-font) var(--molviewer-font-ui);
 }
 
 /* Filter-mode action row: + Add filter (left) + Apply filter
@@ -967,8 +970,8 @@
  */
 .molviewer-filter-actions {
     display: flex;
-    gap: 0.4rem;
-    margin-top: 0.4rem;
+    gap: var(--molviewer-space-sm);
+    margin-top: var(--molviewer-space-sm);
 }
 
 /* + Add filter is the panel's headline
@@ -977,16 +980,16 @@
  * immediately as "this is how I start a filter".  Compare with
  * the muted ``.molviewer-selection-add-btn`` used elsewhere. */
 .molviewer-selection-add-filter-row {
-    margin: 0.5rem 0;
+    margin: var(--molviewer-space-sm) 0;
 }
 .molviewer-selection-apply-filter-btn {
     flex: 1;
-    padding: 0.18rem 0.5rem;
-    font: 600 11px/1.15 var(--molviewer-font-ui);
+    padding: 0.18rem var(--molviewer-space-sm);
+    font: 600 var(--molviewer-control-font)/1.15 var(--molviewer-font-ui);
     background: var(--molviewer-color-pick-bg-mid);
     color: var(--molviewer-color-pick-text);
     border: 1px solid var(--molviewer-color-pick);
-    border-radius: 3px;
+    border-radius: var(--molviewer-radius-sm);
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
@@ -999,13 +1002,13 @@
 .molviewer-filter-rows {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: var(--molviewer-space-xs);
 }
 
 .molviewer-filter-empty {
     margin: 0;
     color: var(--molviewer-color-panel-text-dim);
-    font: italic 11px/1.3 var(--molviewer-font-ui);
+    font: italic var(--molviewer-control-font)/1.3 var(--molviewer-font-ui);
 }
 
 /* Grid layout so kind selector + text input + × align in a column
@@ -1015,20 +1018,20 @@
     display: grid;
     grid-template-columns: minmax(0, 7em) minmax(0, 1fr) auto;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.25rem 0.35rem;
+    gap: var(--molviewer-space-xs);
+    padding: var(--molviewer-space-xs) var(--molviewer-space-xs);
     background: var(--molviewer-color-panel-tile);
     border: 1px solid var(--molviewer-color-panel-edge);
-    border-radius: 3px;
+    border-radius: var(--molviewer-radius-sm);
 }
 
 .molviewer-filter-kind {
     background: var(--molviewer-color-panel-well);
     color: var(--molviewer-color-panel-text);
     border: 1px solid var(--molviewer-color-panel-edge);
-    border-radius: 3px;
-    padding: 0.18rem 0.4rem;
-    font: 11px var(--molviewer-font-ui);
+    border-radius: var(--molviewer-radius-sm);
+    padding: 0.18rem var(--molviewer-space-sm);
+    font: var(--molviewer-control-font) var(--molviewer-font-ui);
     min-width: 0;
 }
 
@@ -1036,9 +1039,9 @@
     background: var(--molviewer-color-panel-well);
     color: var(--molviewer-color-panel-text);
     border: 1px solid var(--molviewer-color-panel-edge);
-    border-radius: 3px;
-    padding: 0.18rem 0.4rem;
-    font: 11px var(--molviewer-font-mono);
+    border-radius: var(--molviewer-radius-sm);
+    padding: 0.18rem var(--molviewer-space-sm);
+    font: var(--molviewer-control-font) var(--molviewer-font-mono);
     min-width: 0;
 }
 
@@ -1046,11 +1049,11 @@
     background: transparent;
     color: var(--molviewer-color-panel-text-dim);
     border: 1px solid var(--molviewer-color-panel-edge);
-    border-radius: 3px;
+    border-radius: var(--molviewer-radius-sm);
     width: 1.8em;
     height: 1.8em;
     padding: 0;
-    font-size: 16px;
+    font-size: var(--molviewer-text-base);
     line-height: 1;
     cursor: pointer;
     transition: color 0.12s, border-color 0.12s, background 0.12s;
@@ -1067,7 +1070,7 @@
     position: relative;
     margin: 0;
     border: 1px solid var(--molviewer-color-panel-edge);
-    border-radius: 4px;
+    border-radius: var(--molviewer-radius-sm);
     background: var(--molviewer-color-panel-well);
     overflow: auto;
 }
@@ -1089,7 +1092,7 @@
 .molviewer-atoms-table {
     width: 100%;
     border-collapse: collapse;
-    font: 12px/1.3 var(--molviewer-font-mono);
+    font: var(--molviewer-text-xs)/1.3 var(--molviewer-font-mono);
     /* THE ROWS ARE PICKED, NOT READ.  Without this, dragging a box over them
      * also drags a native text selection, so the words go blue underneath and
      * two highlights argue about what is chosen.  Every list you pick from
@@ -1110,17 +1113,17 @@
 }
 .molviewer-atoms-table th {
     text-align: left;
-    padding: 0.35rem 0.5rem;
+    padding: var(--molviewer-space-xs) var(--molviewer-space-sm);
     font-weight: 600;
     color: var(--molviewer-color-panel-text-dim);
     font-family: var(--molviewer-font-ui);
-    font-size: 11px;
+    font-size: var(--molviewer-control-font);
     letter-spacing: 0.05em;
     text-transform: uppercase;
 }
 
 .molviewer-atoms-table td {
-    padding: 0.25rem 0.5rem;
+    padding: var(--molviewer-space-xs) var(--molviewer-space-sm);
     color: var(--molviewer-color-panel-text);
     border-top: 1px solid var(--molviewer-color-panel-tile);
     vertical-align: middle;
@@ -1165,10 +1168,10 @@
     gap: 0.25em;
     padding: 0.05em 0.25em 0.05em 0.5em;
     margin: 0 0.25em 0.15em 0;
-    font: 600 10px/1.4 var(--molviewer-font-ui);
+    font: 600 var(--molviewer-text-2xs)/1.4 var(--molviewer-font-ui);
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    border-radius: 3px;
+    border-radius: var(--molviewer-radius-sm);
 }
 .molviewer-label-region {
     background: var(--molviewer-color-include-bg);
@@ -1238,7 +1241,7 @@
     opacity: 0.85;
     padding: 0 0.35em;
     margin-left: 0.15em;
-    font-size: 14px;
+    font-size: var(--molviewer-text-sm);
     line-height: 1;
     cursor: pointer;
     border-radius: 2px;
@@ -1257,11 +1260,11 @@
 /* Clear / Invert / All, laid out as a row. */
 .molviewer-selection-actions-row {
     display: flex;
-    gap: 0.5rem;
-    margin-top: 0.4rem;
+    gap: var(--molviewer-space-sm);
+    margin-top: var(--molviewer-space-sm);
     align-items: center;
     flex-wrap: wrap;
-    row-gap: 0.4rem;
+    row-gap: var(--molviewer-space-sm);
 }
 /* Shared base for every action button (Clear, Invert, All, Assign, Add,
  * Remove).  The verb buttons in the 3-col Assign row sit on
@@ -1275,9 +1278,9 @@
     background: var(--molviewer-color-panel-edge);
     color: var(--molviewer-color-panel-text);
     border: 1px solid var(--molviewer-color-panel-edge-strong);
-    border-radius: 3px;
-    padding: 0.18rem 0.5rem;
-    font: 600 11px/1.15 var(--molviewer-font-ui);
+    border-radius: var(--molviewer-radius-sm);
+    padding: 0.18rem var(--molviewer-space-sm);
+    font: 600 var(--molviewer-control-font)/1.15 var(--molviewer-font-ui);
     letter-spacing: 0.02em;
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
@@ -1332,7 +1335,7 @@
 /* Visual divider between SELECT-side controls (mode + filters) and
  * ACT-side controls (clear + bulk label ops). */
 .molviewer-selection-divider {
-    margin: 0.6rem 0 0.5rem;
+    margin: var(--molviewer-space-sm) 0 var(--molviewer-space-sm);
     border: 0;
     border-top: 1px solid var(--molviewer-color-panel-edge);
 }
@@ -1343,8 +1346,8 @@
 .molviewer-selection-assign {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    margin-top: 0.5rem;
+    gap: var(--molviewer-space-sm);
+    margin-top: var(--molviewer-space-sm);
 }
 
 /* [hidden] MUST WIN over the display above.
@@ -1358,13 +1361,13 @@
 .molviewer-selection-target-row {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--molviewer-space-sm);
 }
 
 .molviewer-selection-verb-row {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 0.3rem;
+    gap: var(--molviewer-space-xs);
 }
 
 .molviewer-selection-assign-select,
@@ -1373,9 +1376,9 @@
     background: var(--molviewer-color-panel-well);
     color: var(--molviewer-color-panel-text);
     border: 1px solid var(--molviewer-color-panel-edge);
-    border-radius: 3px;
-    padding: 0.18rem 0.4rem;
-    font: 11px var(--molviewer-font-ui);
+    border-radius: var(--molviewer-radius-sm);
+    padding: 0.18rem var(--molviewer-space-sm);
+    font: var(--molviewer-control-font) var(--molviewer-font-ui);
     min-width: 0;
 }
 .molviewer-selection-new-label {
@@ -1387,8 +1390,8 @@
 .molviewer-notices {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
-    margin: 0.4rem 0 0 0;
+    gap: var(--molviewer-space-xs);
+    margin: var(--molviewer-space-sm) 0 0 0;
 }
 .molviewer-notices[hidden] { display: none; }
 /* COMPOSITION ONLY.
@@ -1409,7 +1412,7 @@
 .molviewer-panel-tab-switch {
     display: inline-flex;
     justify-content: flex-start;
-    gap: 1rem;
+    gap: var(--molviewer-space-md);
     margin: 0;
     padding: 0;
     background: none;
@@ -1418,7 +1421,7 @@
 .molviewer-panel-tab-option {
     display: flex;
     align-items: center;
-    padding: 0.05rem 0 0.25rem;
+    padding: 0.05rem 0 var(--molviewer-space-xs);
     border-bottom: 2px solid transparent;
     cursor: pointer;
     transition: color 0.12s, border-color 0.12s;
@@ -1462,7 +1465,7 @@
 }
 .molviewer-panel-tab-option > span {
     color: var(--molviewer-color-panel-text-dim);
-    font: 700 13px/1.2 var(--molviewer-font-ui);
+    font: 700 var(--molviewer-text-sm)/1.2 var(--molviewer-font-ui);
     letter-spacing: 0.01em;
 }
 .molviewer-panel-tab-option:hover > span { color: var(--molviewer-color-panel-text); }
@@ -1473,23 +1476,23 @@
    said whether your VACUUM is doing anything, which is what decides if an edit
    will have any effect.  Quiet by design -- it is orientation, not an alert. */
 .molviewer-cell-regime {
-    margin: 0 0 0.5rem;
-    color: var(--molviewer-color-panel-muted, var(--molviewer-color-panel-text));
-    font: 11px/1.45 var(--molviewer-font-ui);
+    margin: 0 0 var(--molviewer-space-sm);
+    color: var(--molviewer-color-panel-text-dim);
+    font: var(--molviewer-control-font)/1.45 var(--molviewer-font-ui);
 }
 
 /* Cell readout -- read-only display of the resolved periodicity (stage 2). */
 .molviewer-cell-readout {
     display: grid;
     grid-template-columns: max-content 1fr;
-    gap: 0.3rem 0.6rem;
-    margin: 0 0 0.6rem;
+    gap: var(--molviewer-space-xs) var(--molviewer-space-sm);
+    margin: 0 0 var(--molviewer-space-sm);
 }
 /* .molviewer-cell-readout dt caption style comes from the shared .molviewer-selection-mini-label rule (§2.1). */
 .molviewer-cell-readout dd { margin: 0; }
 .molviewer-cell-value {
     color: var(--molviewer-color-panel-text);
-    font: 12px/1.4 var(--molviewer-font-mono);
+    font: var(--molviewer-text-xs)/1.4 var(--molviewer-font-mono);
     word-break: break-word;
     white-space: pre;                    /* the 3x3 keeps its rows (§3b) */
     font-variant-numeric: tabular-nums;  /* columns line up between redraws */
@@ -1502,7 +1505,7 @@
 .molviewer-cell-value--inert { opacity: 0.55; }
 .molviewer-cell-inert-tag {
     opacity: 0.8;
-    font: 10px/1 var(--molviewer-font-ui);
+    font: var(--molviewer-text-2xs)/1 var(--molviewer-font-ui);
     font-style: italic;
 }
 
@@ -1598,7 +1601,7 @@
 }
 .molviewer-window-busy[hidden] { display: none; }
 .molviewer-window-busy-msg {
-    padding:        0.35rem 0.8rem;
+    padding:        var(--molviewer-space-xs) 0.8rem;
     font:           var(--molviewer-text-xs)/1.3 var(--molviewer-font-ui);
     color:          var(--molviewer-color-text);
     background:     var(--molviewer-color-surface-raised);
@@ -1714,7 +1717,7 @@
     max-width:      min(20rem, calc(100vw - 2rem));
     max-height:     min(28rem, calc(100vh - 8rem));
     overflow:       auto;
-    padding:        0.3rem 0.4rem;
+    padding:        var(--molviewer-space-xs) var(--molviewer-space-sm);
     font-size:      var(--molviewer-text-2xs);   /* compact menu: items inherit this */
     background:     var(--molviewer-color-surface-raised);
     color:          var(--molviewer-color-text);
@@ -1734,7 +1737,7 @@
 /* Untitled display-toggle group: the axes / labels / overlay / unit-cell buttons
    (plus MolView's injected isolate checkbox) stacked with a small gap. */
 .molviewer-menu-heading {
-    margin:         0 0 0.2rem 0;
+    margin:         0 0 var(--molviewer-space-xs) 0;
     font-size:      var(--molviewer-text-2xs);
     font-weight:    600;
     letter-spacing: 0.05em;
@@ -1755,7 +1758,7 @@
        instead of the larger UA button default. */
     font:           inherit;
     line-height:    1.3;                 /* tight box: match the 11px menu text, not a chunky UA button */
-    padding:        0.12rem 0.45rem;
+    padding:        0.12rem var(--molviewer-space-sm);
     background:     var(--molviewer-color-control);
     color:          var(--molviewer-color-text);
     border:         1px solid var(--molviewer-color-edge-soft);
@@ -1780,11 +1783,11 @@
 .molviewer-menu-radius-row {
     display:        flex;
     align-items:    center;
-    gap:            0.5rem;
-    margin-top:     0.4rem;
+    gap:            var(--molviewer-space-sm);
+    margin-top:     var(--molviewer-space-sm);
 }
 .molviewer-menu-radius-row > label {
-    font-size:      var(--molviewer-text-2xs);   /* match the 11px menu, not 0.8rem */
+    font-size:      var(--molviewer-text-2xs);   /* match the var(--molviewer-control-font) menu, not 0.8rem */
     color:          var(--molviewer-color-text-faint);
     flex:           0 0 auto;
 }
@@ -1805,7 +1808,7 @@
    One button in the View menu, aria-pressed carrying the state. */
 .molviewer-menu-projection {
     width:          100%;
-    padding:        0.4rem 0.6rem;
+    padding:        var(--molviewer-space-sm) var(--molviewer-space-sm);
     background:     var(--molviewer-color-control);
     color:          var(--molviewer-color-text);
     border:         1px solid var(--molviewer-color-edge-soft);
@@ -1838,7 +1841,7 @@
     display:        flex;
     flex-wrap:      wrap;
     align-items:    center;
-    gap:            0.4rem;
+    gap:            var(--molviewer-space-sm);
     padding:        3px; /* room for .molviewer-is-active outline */
 }
 .molviewer-menu-background-swatch,
@@ -1860,10 +1863,10 @@
     /* Decorative checkerboard pattern for the "transparent" swatch —
      * the greys are visual structure, not theme colors. */
     background:
-        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) 0 0/0.5rem 0.5rem, /* exempt: checkerboard */
-        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) 0.25rem 0.25rem/0.5rem 0.5rem; /* exempt: checkerboard */
+        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) 0 0/var(--molviewer-space-sm) var(--molviewer-space-sm), /* exempt: checkerboard */
+        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) var(--molviewer-space-xs) var(--molviewer-space-xs)/var(--molviewer-space-sm) var(--molviewer-space-sm); /* exempt: checkerboard */
     color:          #ffffff; /* exempt: legible on checkerboard */
-    font-size:      0.7rem;
+    font-size:      var(--molviewer-text-2xs);
     line-height:    1.6rem;
     text-align:     center;
 }
@@ -1907,7 +1910,7 @@
 }
 .molviewer-export-btn {
     flex:           0 0 auto;
-    padding:        0.3rem 0.65rem;
+    padding:        var(--molviewer-space-xs) 0.65rem;
     background:     var(--molviewer-color-control);
     color:          var(--molviewer-color-text);
     border:         1px solid var(--molviewer-color-edge-soft);
@@ -1931,12 +1934,12 @@
     gap:            4px;
 }
 .molviewer-export-section + .molviewer-export-section {
-    margin-top:     0.6rem;
-    padding-top:    0.5rem;
+    margin-top:     var(--molviewer-space-sm);
+    padding-top:    var(--molviewer-space-sm);
     border-top:     1px solid var(--molviewer-color-edge-soft);
 }
 .molviewer-export-section-label {
-    font-size:      0.7rem;
+    font-size:      var(--molviewer-text-2xs);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color:          var(--molviewer-color-text-faint);
@@ -1946,11 +1949,11 @@
 /* Narrow viewports ------------------------------------------ */
 @media (max-width: 480px) {
     .molviewer-menu-bar {
-        gap:        0.3rem;
-        padding:    0.4rem;
+        gap:        var(--molviewer-space-xs);
+        padding:    var(--molviewer-space-sm);
     }
     .molviewer-menu > summary {
-        padding:    0.3rem 0.65rem;
+        padding:    var(--molviewer-space-xs) 0.65rem;
     }
 }
 
@@ -1987,7 +1990,7 @@
     align-items:    center;
     justify-content: center;
     padding:        0;
-    font-size:      13px;
+    font-size:      var(--molviewer-text-sm);
     line-height:    1;
     cursor:         pointer;
     color:          var(--molviewer-color-text);

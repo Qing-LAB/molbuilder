@@ -718,8 +718,10 @@ function renderMachine(task) {
      * § 11): the folder answer carries the entry's own reason, and the
      * card says it in place of the rows and the adder -- the same answer
      * `renderNext` reads, so the two never disagree. */
+    const invite = $("ts-machine-hint");
     if (_fs.benchRefusal) {
         host.appendChild(el("p", { class: "hint" }, _fs.benchRefusal));
+        if (invite) invite.hidden = true;
         const noActs = $("ts-machine-actions");
         if (noActs) noActs.hidden = true;
         const fit = $("ts-machine-fit");
@@ -727,6 +729,7 @@ function renderMachine(task) {
         card.hidden = false;
         return;
     }
+    if (invite) invite.hidden = false;
 
     const bench = (task && task.bench) || {};
     const names = Object.keys(bench);
@@ -1322,7 +1325,14 @@ function renderCameOver(obj, treatment) {
             ["Bias list", bias.length
                 ? bias.map((v) => (v === 0 ? "0.0" : String(v))).join(", ")
                   + " V" : "\u2014"],
-            ["Treatment", treatment || "\u2014"]);
+            ["Treatment", treatment || "\u2014"],
+            // THE RENAME this calculation makes in its own copy of the cited
+            // junction (transport.md § 4): it decides which lead is biased
+            // positive, so it is said here with the junction.
+            ["Electrodes", obj.swap_electrodes
+                ? "L-electrode and R-electrode traded in this calculation's "
+                  + "copy (swap_electrodes: true)"
+                : "as labelled on the cited junction"]);
     } else {
         rows.push(
             ["Structure", st.source ? String(st.source).split("/").pop() : "\u2014"],

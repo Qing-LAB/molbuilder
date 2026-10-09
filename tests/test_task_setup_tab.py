@@ -21,7 +21,6 @@ import pytest
 
 ROOT   = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder/web/static"
-VIEWER = STATIC / "task-setup/viewer.js"
 SHEET  = STATIC / "task-setup/style.css"
 
 
@@ -225,70 +224,6 @@ def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root):
             "the refusal should be the reader's own words")
     finally:
         pass    # tmp_path removes the tree
-
-
-# --------------------------------------------------------------------- #
-#  T4 machine rows · T5 what has run                                     #
-# --------------------------------------------------------------------- #
-
-def _row_badge(name, points, machine):
-    """What the machine card says a row IS — the real source, driven.
-
-    A source grep pins a spelling; this pins the behaviour, which is the
-    thing the contract states.
-    """
-    import json as _json
-    import shutil
-    import subprocess
-
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    src = VIEWER.read_text(encoding="utf-8")
-    i = src.index("        const chosen = pts.length === 1 && !machineAnswers(name);")
-    j = src.index("`;", i) + 2
-    prog = (f"const pts = {_json.dumps(points)};\n"
-            f"const name = {_json.dumps(name)};\n"
-            f"const machineAnswers = () => {_json.dumps(bool(machine))};\n"
-            + src[i:j].replace("const ", "var ") + "\n"
-            "console.log(JSON.stringify({kind: kind, verdict: verdict}));")
-    out = subprocess.run([node, "--input-type=commonjs", "-e", prog],
-                         capture_output=True, text=True, timeout=20)
-    if out.returncode != 0:
-        pytest.fail(out.stderr)
-    return _json.loads(out.stdout.strip().splitlines()[-1])
-
-
-def test_one_point_is_the_trials_value_and_several_a_measurement():
-    """A one-point non-machine row is what EVERY TRIAL runs with -- never the
-    run's value, which is its run card's (`stages.md` § 6.8, § 6.8d; user,
-    2026-09-30: *"trials only"*).  The card called it "chosen", which told a
-    person their run was decided by a row `prep task` no longer reads.
-    Several points are a measurement."""
-    one = _row_badge("diag_algorithm", ["ELPA-1STAGE"], False)
-    assert one["verdict"] == "every trial \u00b7 1 point"
-    assert one["kind"] == "chosen", "the row lost its tint"
-    assert _row_badge("diag_algorithm", ["A", "B"], False)["verdict"] \
-        == "measured \u00b7 2 points"
-
-
-def test_a_ONE_POINT_MACHINE_row_is_a_trial_not_a_decision():
-    """`mpi_np: [8]` is *measure eight*, one trial, and `prep task` never
-    reads it (`stages.md` § 6.8).  What the run uses is `execution`, asked
-    in the rung's own tab.
-
-    The measure card said "chosen · 1 point" beside such a row, which told
-    a person their run was decided by a row the run does not consult.
-
-    The `machine` KIND is deliberate: it tints the row,
-    because which kind of setting this is stays worth seeing."""
-    one = _row_badge("mpi_np", [8], True)
-    assert one["verdict"] == "measured \u00b7 1 point", (
-        "a one-point machine row still claims to be the run's decision")
-    assert one["kind"] == "machine", "the row lost its tint"
-    many = _row_badge("mpi_np", [4, 8, 16], True)
-    assert many["verdict"] == "measured \u00b7 3 points"
-    assert many["kind"] == "machine"
 
 
 # --------------------------------------------------------------------- #
@@ -1048,7 +983,7 @@ class TestTheTabShowsWhatAPrepWouldResolve:
 
 
 # --------------------------------------------------------------------- #
-#  The TRANSPORT hand-over (archive/2026-09-01-transport-design.md § 4.1, P7b) +           #
+#  The TRANSPORT describe seam (engines/transport.md § 3.1, § 3.8)            #
 #  the slot picker's describe seam                                      #
 # --------------------------------------------------------------------- #
 

@@ -257,7 +257,10 @@ const WORKSPACE_TAG = "results:transport";
          * each listed voltage (`record.linear_response_iv`). */
         ["Bias [V]", "G(E_F) [G0]",
          computed ? "Current, computed from T(E, 0) [A]" : "Current, total [A]",
-         "TBtrans printed [A]"].forEach((h) => head.appendChild(_el("th", null, h)));
+         // Under the approximation TBtrans ran at 0 V only: a dash at the
+         // other voltages means not applicable, and the header says so.
+         computed ? "TBtrans printed [A] (0 V only)" : "TBtrans printed [A]"
+        ].forEach((h) => head.appendChild(_el("th", null, h)));
         table.appendChild(head);
         if (computed) {
             const zero = state.points.find((p) => Math.abs(p.bias_v) < 1e-9);
@@ -414,7 +417,10 @@ const WORKSPACE_TAG = "results:transport";
             const where = (st.attempt || "—")
                 + (st.gathered_by ? " · gathered by the " + st.gathered_by : "")
                 + (st.negf && st.negf.contour && st.negf.contour.poles
-                    ? " · " + st.negf.contour.poles + " poles" : "");
+                    ? " · " + st.negf.contour.poles + " poles" : "")
+                // THE POINT THE ROW'S NUMBERS COME FROM (results.md § 2.4).
+                + (typeof st.facts_at_v === "number"
+                    ? " · at " + st.facts_at_v + " V" : "");
             tr.appendChild(_el("td", null, where));
             table.appendChild(tr);
         });
@@ -587,7 +593,9 @@ const WORKSPACE_TAG = "results:transport";
             });
             _onClick(state.nodes.te, state);
         } else {
-            state.nodes.te.textContent = "No transmission has run yet.";
+            state.nodes.te.textContent = state.points.length && state.bias !== null
+                ? "No transmission at " + state.bias + " V yet."
+                : "No transmission has run yet.";
         }
 
         /* DOS: the selected point's total, its parts by region, the leads',
@@ -596,7 +604,9 @@ const WORKSPACE_TAG = "results:transport";
         if (!dos || !Array.isArray(dos.energy_ev)) {
             state.nodes.dos.textContent = p
                 ? "No DOS for this point" + (p.dos_why ? ": " + p.dos_why : ".")
-                : "No transmission has run yet.";
+                : (state.points.length && state.bias !== null
+                    ? "No transmission at " + state.bias + " V yet."
+                    : "No transmission has run yet.");
         } else {
             const tr = [];
             let i = 0;
@@ -699,6 +709,7 @@ const WORKSPACE_TAG = "results:transport";
                 + (s.error ? " — " + s.error : ""));
             const rm = _el("button", "transport-pdos-remove", "remove");
             rm.type = "button";
+            rm.setAttribute("aria-label", "remove the selection " + s.name);
             rm.addEventListener("click", () => {
                 state.pdos.splice(k, 1);
                 _redraw(state);

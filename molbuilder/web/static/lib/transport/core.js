@@ -1,5 +1,5 @@
 /* Transport-calculation tab core — the COMPOSITE's describe surface
- * (archive/2026-09-01-transport-design.md § 4.1, P7b).
+ * (engines/transport.md § 3.8).
  *
  * ONE driver: the junction citation.  Picking the relaxed junction's
  * directory (the shared tree-picker; its FILES make it citable) sets
@@ -163,7 +163,7 @@ const WORKSPACE_TAG = "transport";
                     var host = _el("div", { "class": "param-grid" });
                     var panel = _el("div", { "class": "tab-panel", id: pid,
                                              role: "tabpanel", hidden: "" },
-                        _el("p", { "class": "hint transport-rung-note" },
+                        _el("p", { "class": "hint" },
                             _el("strong", null, r.index + ". " + r.name + " \u2014 "),
                             r.note),
                         host);
@@ -263,7 +263,7 @@ const WORKSPACE_TAG = "transport";
         container.addEventListener("change", persist);
     }
 
-    /* THE TAB'S FACTS (4.1b, 2026-08-29): the citation (a directory
+    /* THE TAB'S FACTS: the citation (a directory
      * whose FILES satisfy the condition), the composed labeled
      * structure the server answers with (the viewer + the chemistry
      * analysis run on it -- no file path is assumed).  Both are
@@ -273,7 +273,7 @@ const WORKSPACE_TAG = "transport";
     var _junctionStructure = null;    // the composed structure envelope
 
     /* The composite's send gate: a citation is the ONE thing the
-     * describe cannot go without (transport-design.md 4.1). */
+     * describe cannot go without (transport.md § 3.1). */
     function _refreshSendButton() {
         var btn = _$("transport-send-btn");
         if (!btn) return;
@@ -297,7 +297,7 @@ const WORKSPACE_TAG = "transport";
     function _writePanelNote() {
         var ws = root.molbuilder && root.molbuilder.workspace;
         if (!ws || typeof ws.persist !== "function") return;
-        /* v3 (4.1b): the tab's ONE fact is the CITATION.  A reload
+        /* The tab's ONE fact is the CITATION.  A reload
          * re-describes it through the same seam a pick uses, so the
          * structure, the meta line and both surfaces always come back
          * fresh from the server, never from a stale copy. */
@@ -397,9 +397,8 @@ const WORKSPACE_TAG = "transport";
      * atoms, region labels, the cell — before describing.  Read-only view
      * of the citation (molview.md § 12.3), installed from the SERVER'S
      * OWN composition (describe_attempt answers the structure envelope,
-     * the same shape /api/build/load's {structure} branch takes) — a
-     * form-A citation has no .xyz on disk, so no file path is assumed
-     * (4.1b).  `enforce` makes a new citation a deliberate swap
+     * the same shape /api/build/load's {structure} branch takes).
+     * `enforce` makes a new citation a deliberate swap
      * (molview.md § 11.2a).  Best-effort: if the molview stack failed to
      * load, the tab still describes (the viewer is an aid, not a gate).
      */
@@ -435,22 +434,22 @@ const WORKSPACE_TAG = "transport";
     var _chemistry = null;
 
     /* =================================================================
-     *  The COMPOSITE (transport-design.md § 4.1): cite the junction,
+     *  The COMPOSITE (transport.md § 3.8): cite the junction,
      *  state the bias, Describe -- the tab writes the finished task.json
      *  itself (no hand-over; user ruling 2026-08-29).  The tab's facts
      *  are declared once, above.
      * ================================================================= */
 
-    /** One fetch answers everything about a picked directory: the
-     *  4.1b classification (form, contract lane), the meta line, the
-     *  composed structure for the viewer, and the citation spelling
-     *  (the server's).  ``rel`` is tree-relative
+    /** One fetch answers everything about a picked directory: whether
+     *  it is citable, the summary line, what its composition measured
+     *  (findings), the composed structure for the viewer, `fix` and the
+     *  citation spelling (the server's).  ``rel`` is tree-relative
      *  (proj.relativeToProjects). */
     /* THE RENAME IS THIS CALCULATION'S OWN (transport.md § 4; user,
      * 2026-10-04): the choice lives here until Describe writes it into the
      * description (`swap_electrodes: true`), and every describe of the
-     * citation is read WITH it, so the viewer, the lane and the meta line
-     * show the junction as this calculation will compose it.  The cited
+     * citation is read WITH it, so the viewer, the findings and the meta
+     * line show the junction as this calculation will compose it.  The cited
      * run is never written. */
     var _swapElectrodesChoice = false;
     function _describeAttempt(rel) {
@@ -533,7 +532,7 @@ const WORKSPACE_TAG = "transport";
         }
         /* The choice is made HERE and read back through the SAME door the
          * picker uses: the citation is unchanged, this calculation's
-         * reading of its labels is not, and every answer (viewer, lane,
+         * reading of its labels is not, and every answer (viewer, findings,
          * meta line) comes from the server's composition with the swap --
          * never from patching what the page already had. */
         _swapElectrodesChoice = !_swapElectrodesChoice;
@@ -554,13 +553,10 @@ const WORKSPACE_TAG = "transport";
         var vf = (root.molbuilder || {}).validationFindings;
         var fpanel = _$("transport-junction-findings");
         if (!described || !described.citation) {
-            // Not citable: the server's summary IS the condition,
-            // naming the missing file.  Card 1, with the picker.
-            // Clear any offer and any findings first -- they belong to
-            // the PREVIOUS citation, and a button left standing here
-            // would act on that one.
-            _offerFix(null);
-            if (vf && fpanel) vf.clear({ panel: fpanel });
+            // Not citable: the server's summary IS the condition, naming
+            // the missing file -- said in the status line, and nothing
+            // else changes: the citation held stays the citation, with
+            // its findings and its offer.
             _setStatus((described && described.summary)
                 || "That directory is not citable.", "warn");
             return;
@@ -687,8 +683,8 @@ const WORKSPACE_TAG = "transport";
             }
             var bias = _biasList();
             if (bias.some(isNaN)) {
-                _setSendStatus("Bias must be comma-separated volts, "
-                    + "e.g. 0.0,0.2", "error");
+                _refuseBias("Bias must be comma-separated volts, "
+                    + "e.g. 0.0,0.2");
                 return;
             }
             // THE LOW-BIAS APPROXIMATION, for several voltages -- the
@@ -754,6 +750,21 @@ const WORKSPACE_TAG = "transport";
     var _rungHosts = {};
     var _rungTabs = null;          // the rung strip's handle (select(rung))
     var _rungsSeq = 0;             // the newest draw of the rung tabs
+
+    /* A REFUSAL OF THE BIAS LIST BY THIS PAGE lands where the codec's does:
+     * beside the list, through the one renderer (validation.md 4.1 R2),
+     * and the status line says it too, as a Send's refusal does. */
+    function _refuseBias(message) {
+        var vf = (root.molbuilder || {}).validationFindings;
+        var panel = _$("transport-send-findings");
+        if (vf && panel) {
+            vf.render([{ severity: "error", message: message,
+                         where: "task.bias" }],
+                      { panel: panel, formScope: _$("parameters-card"),
+                        fieldIds: _fieldIds(), reveal: true });
+        }
+        _setSendStatus(message, "error");
+    }
 
     /* {stage -> {field name -> the DOM id its tab gave it}} from the schemas
      * this page rendered -- the id rule is the schema's, never derived here
@@ -822,10 +833,11 @@ const WORKSPACE_TAG = "transport";
                 : src.kind === "deck"
                 ? "Values from the run you cited (" + src.name + ").  Change "
                   + "any of them; a change applies to all five rungs at once."
-                : "The citation carries no deck and no record, so it answers "
-                  + "none of these.  A blank field is not chosen: the "
-                  + "template records no value for it and prep falls back to "
-                  + "the catalogue's default until you choose.";
+                : "The run you cited has a deck this build could not read "
+                  + "(card 1 names the unit), so it answers none of these.  "
+                  + "A blank field is not chosen: the template records no "
+                  + "value for it and prep falls back to the catalogue's "
+                  + "default until you choose.";
         });
     }
 
@@ -887,8 +899,8 @@ const WORKSPACE_TAG = "transport";
             var d = Number(_$("transport-bias-step").value);
             if (![a, b, d].every(isFinite) || d === 0
                 || (b - a) / d < 0) {
-                _setSendStatus("The builder needs a start, a stop and a "
-                    + "step that walks from one to the other.", "error");
+                _refuseBias("The builder needs a start, a stop and a "
+                    + "step that walks from one to the other.");
                 return;
             }
             var out = [0];

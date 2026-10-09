@@ -10,11 +10,11 @@ hand-over — nothing is awaiting, so the tab selects and decides):
                                           the kind
     GET  /api/transport/describe_attempt  the slot picker's describe
                                           seam: one line from a cited
-                                          attempt's own .fdf, plus the
-                                          server-spelled citation and
-                                          the calculation's source file
-                                          on a cited junction, once the
-                                          person agrees to the offer
+                                          run's own .fdf, what its
+                                          composition measured as
+                                          findings, the server-spelled
+                                          citation, the junction for the
+                                          viewer and `fix`
     GET  /api/transport/record            a calculation's transport
                                           record, COMPOSED ON READ
                                           (`engines/transport.md`
@@ -188,13 +188,6 @@ def api_transport_describe_attempt() -> Any:
                 state += (" -- the .XV cited is the last geometry SIESTA "
                           "wrote, not a converged minimum")
     status = state + (" · " + " · ".join(bits) if bits else "")
-    params_out = {
-        "basis_size": p.basis_size,
-        "mesh_cutoff_ry": p.mesh_cutoff_ry,
-        "xc": p.xc,
-        "kgrid": list(p.kgrid) if p.kgrid else None,
-        "n_atoms": p.n_atoms,
-    }
     concluded = bool(cited.concluded)
 
 # TWO SEPARATE QUESTIONS, and the card needs both: *what is this
@@ -266,7 +259,6 @@ def api_transport_describe_attempt() -> Any:
         "summary": status,
         "findings": _issues_to_json(findings),
         "structure": structure_wire,
-        "params": params_out,
         "fix": fix,
         # THE RENAME THIS ANSWER WAS COMPOSED WITH, so the tab shows the
         # choice it holds and offers to withdraw it (§ 4).
@@ -277,7 +269,7 @@ def api_transport_describe_attempt() -> Any:
 @bp.route("/api/transport/record", methods=["GET"])
 def api_transport_record() -> Any:
     """The transport record of the calculation ``?path=`` names -- its
-    ``<label>.transport.json``, or the calculation's folder itself, so a
+    the calculation's ``task.json`` (the report's handle), or its folder itself, so a
     ladder nothing has summarized yet has its report -- composed from its
     rungs as they are now
     (`transport.record.collect_record`, ``partial``: a ladder in progress
@@ -323,7 +315,7 @@ def api_transport_record() -> Any:
 def api_transport_pdos() -> Any:
     """The PDOS of the atoms a person selected, at one bias point
     (`web/results.md` § 2.5): ``?path=`` the calculation's
-    ``<label>.transport.json``, ``point=`` the bias in volts, ``atoms=``
+    the calculation's ``task.json`` or its folder, ``point=`` the bias in volts, ``atoms=``
     0-based indices, comma-separated, ``orbitals=`` ``all`` (default) or
     one of `tbtnc.ORBITAL_TYPES`.  Computed on request
     (`transport.record.selection_pdos`) -> ``{ok, energy_ev, pdos, atoms,
@@ -516,8 +508,6 @@ def api_transport_describe() -> Any:
             # the stages.md 6.2 rule holds here too: an override names
             # a PROMOTED field, and `varies` is the promotion
             varies=tuple(sorted({n for b in bags.values() for n in b})),
-            # ROUTED TO THE RUNG THAT OWNS EACH ONE (`engines/template.md`
-            # § 6.4's `stages` declaration).
             stages=tuple(stages_for_transport(bags)))
     except ValueError as exc:
         # THE CODEC'S REFUSAL, as a finding BESIDE THE CONTROL that wrote

@@ -1657,7 +1657,7 @@ Exposing these as controls would offer a choice with one correct answer.
 
 | parameter | keyword | what the role fixes | tier |
 |---|---|---|---|
-| `solution_method` | `SolutionMethod` | The stage's identity: a closed periodic warm-up, a bulk lead, an NEGF device | 1 |
+| `solution_method` | `SolutionMethod` | The stage's identity: a closed periodic warm-up, a bulk lead, an NEGF device. It declares the SCF rungs too (`stages`, Class C's list): on transport the role answers it; on the vibration ladder, where it is a choice, the declaration is what keeps it off a rung that runs no SCF | 1 |
 | *the transport axis's k* | `%block kgrid_Monkhorst_Pack` · `TBT.k` | Fixed at 1 on the seed, the device and the transmission, offset 0 — that axis is the open boundary and is not sampled. It is the third component of `kgrid`, `tbt_k_grid` and `kgrid_displacement`, which no rung reads: drawn locked on the form, and another value refused on every door (`kmesh.fixed`, [`siesta.md`](?doc=engines/siesta.md) § 6.1) | 2 |
 | *the leads write their Hamiltonian* | `TS.HS.Save` | A lead that omits it concludes having produced nothing the device can attach to | 1 |
 | *each lead's label* | `SystemLabel` | Derived by `prep` from the calculation's one label (`system_label`, shared — Class A): the stem the device's `TS.Elec` reference is built from | 1 |
@@ -2607,6 +2607,11 @@ is not chosen here: `group` is the outer card, `category` the legend inside.
 
 #### 3.8.2a The per-rung form is a TAB PER RUNG, and its cards fold *(user, 2026-09-24)*
 
+**A rung tab's control ids carry the rung** (`t-<rung>-<item>`; the schema
+route's `id_prefix`), so no two tabs share an id and a finding's `where` lands
+on one control ([`science/validation.md`](?doc=science/validation.md) § 4.1
+R2) *(2026-10-08, B8 U5 / S3)*.
+
 *(User: "use foldable cards, tabs etc to logically separate and organize the
 items"; "use clear titles and notes and index numbers to let the user see the
 flow and logical between those sections to understand how to setup in the
@@ -2618,7 +2623,7 @@ correct order".)*
 | **Each tab opens with one line** on what the rung computes and what it hands on — `transport/stages.py::RUNG_NOTES`, served by the schema route | the flow § 6.1 draws, read at the point of setting |
 | **A tab offers** the items the rung owns (`stages` names it) and the items any rung may set (no `stages`) | never another rung's item — that is on its own tab — and never a shared one — that is card 2 |
 | **Inside a tab the group cards fold** (`renderForm`'s `foldable` option, `form-schema.md` § 1.3): a card holding an item the rung OWNS opens; a card holding only any-rung items starts folded, its summary naming the count | the rung's own physics is what the eye lands on; the SCF, output and runtime cards are there, one click away |
-| **The describe door takes per-rung bags** — `stages: {rung: {item: value}}`, the shape `task.stages` carries — and refuses a bag naming an item the rung does not own, through the one door `prep` refuses from (`transport/stages.py::foreign_overrides`) | the flat `overrides` mapping, and the router that parked an unowned item on the device (the holding position TR8 left, TR7's surface was to replace), are gone |
+| **The describe door takes per-rung bags** — `stages: {rung: {item: value}}`, the shape `task.stages` carries — and refuses a bag naming an item the rung does not own, through the one door `prep` refuses from (`template.unread_overrides`, the description's check — `validation/task.py`) | the flat `overrides` mapping, and the router that parked an unowned item on the device (the holding position TR8 left, TR7's surface was to replace), are gone |
 
 The numbered cards and the tab strip read as one order: **1 cite the junction
 → 2 the shared description, once → 3 check the chemistry → 4 each rung, on
@@ -2632,17 +2637,19 @@ its tab → 5 describe.**
 unresolved; a surface asks for it* — and a valueless item still carries its
 `choices`, `range`, `unit` and `help`.
 
-This bites hardest on the third citation case. A hand-built structure
-answers none of the shared values, and writing catalogue defaults into those
-slots claims a run said something no run said — after which no surface can
-tell the person's 300 Ry from nobody's.
+This bites when the cited run's deck cannot be read (a unit this build does
+not convert): it then answers none of the shared values, and writing
+catalogue defaults into those slots would claim a run said something no run
+said — after which no surface could tell the person's 300 Ry from nobody's.
 
 ```
 400 Ry   from the run you cited
-400 Ry   from the record saved with your structure
 400 Ry   you set this
 (empty)  not chosen — the documented default is written into every deck and marked as nobody's choice
 ```
+
+*(Three states since decision 7, 2026-10-08: the recorded-contract lane —
+"from the record saved with your structure" — went with the structure pair.)*
 
 **The four states are the file's** *(K7, 2026-09-30)*: each template item
 records its `source` — `cited` · `record` · `person` · `default`
@@ -2660,7 +2667,7 @@ reaches the engine by omission. The line above said *"SIESTA's own default
 applies"* until 2026-09-24 — the reading from before § 6.6, left standing by
 the consolidation that wrote this section the same day.
 
-**A structure that states no settings is the citer's to fill** *(user,
+**A citation that answers no settings is the citer's to fill** *(user,
 2026-09-24: "when user choose a file that does not contain any reasonable
 values, it's user's responsibility to understand that transport calculation
 will be useless. contract is clear, workflow is clear")*. The unfilled rows
@@ -2711,7 +2718,7 @@ six scattered versions could not do.
 
 | | state |
 |---|---|
-| the citation's three cases fill the template at `init` | ✅ **done** — including the middle case, restored 2026-09-23 |
+| the citation fills the template at `init` (one shape since decision 7: a finished relaxation run's deck) | ✅ **done** |
 | the per-rung form is generated from the catalogue | ✅ **done 2026-09-24** — `?surface=rung`, the `shared`, `allocation` and staging items kept off it by their markers, and the `role` items never a control (echoed read-only since K7) |
 | the shared panel exists | ✅ **done 2026-09-24** — card 2 of the tab, `?surface=shared`, its values the citation's answers, its source named; the describe door lays the panel's values over the citation's into the template and refuses a per-rung override of any shared item, as `prep` does |
 | a value nobody chose is shown as not chosen | ✅ **done** — the panel shows an unanswered `citation` row blank, and `jobset init` and the describe door both write it VALUELESS into the template through one door, `citation_defaults.transport_template_text` (2026-09-24); **the file records each value's source** and both surfaces draw it (K7, 2026-09-30). `prep` fills a valueless row with the documented default, which is what `template.md` § 6.6 obligation 4 asks — but the deck does not yet MARK it (the row below) |
@@ -2821,13 +2828,13 @@ door's question.
 |---|---|---|---|---|---|
 | the per-rung form (`catalogue_to_form_schema(surface="rung", rung=…)`) | ✅ kept off | ✅ a rung's tab is that rung's bag (§ 3.8.2a) | ✅ echoed read-only at the rung's answer, never a control *(K7)* | ✅ the template's value, from the citation, as a blank field's hint *(K7)* | ✅ kept off |
 | the shared panel (`surface="shared"`) | ✅ is the panel, minus the `setup` group | — | — | ✅ the citation's answers, each field's source named *(K7)* | ✅ kept off |
-| the describe door (`/api/transport/describe`) | ✅ refuses a per-rung override | ✅ refuses a bag naming an item the rung does not own (`foreign_overrides`, the door `prep` asks too) | ✅ refuses | ✅ fills the template through `transport_template_text` | — |
+| the describe door (`/api/transport/describe`) | ✅ refuses a per-rung override | ✅ refuses a bag naming an item the rung does not own (`template.unread_overrides`, the door `prep` asks too) | ✅ refuses | ✅ fills the template through `transport_template_text` | — |
 | `jobset init` | — | — | ✅ valueless in the template | ✅ fills, through the same door | ✅ valueless |
 | `prep` (`_resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | ✅ refuses a stage override, pin, sweep axis or template value naming one, and puts the rung's answer into its config (`template.role_answers`, *2026-09-29*) | — (reads the template, never the citation) | ✅ fills from the machine |
 | Task setup — the column picker (`/api/task-setup/columns`) | ✅ not a column *(2026-09-24)* | ✅ the payload names the owners | ✅ not a column | — | ✅ not a column |
 | Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)* | — | — | — |
 | Task setup — a read-only echo of every shared value, with its source (§ 6.6 obligation 3) | ❌ not built | — | — | ✅ the file records the source, and the hover names it *(K7)* | — |
-| Task setup — "What came over": the description's own parameters (the junction it cites, its bias list, its treatment — `single-bias` / `low-bias-approximation` / `self-consistent`, the folder answer's `treatment` from `Task.treatment`) *(built 2026-10-08, B8 U7)* | — | — | — | ✅ the citation, named | — |
+| Task setup — "What came over": the description's own parameters (the junction it cites, its bias list, its treatment — `single-bias` / `low-bias-approximation` / `self-consistent`, the folder answer's `treatment` from `Task.treatment` — and the electrode rename, `swap_electrodes`, § 4) *(built 2026-10-08, B8 U7 / T1)* | — | — | — | ✅ the citation, named | — |
 | the deck (`prep` → `prepare_deck`) | ✅ one value, every rung | ✅ each rung its own | ✅ the rung's answer, laid on its config by `resolve` | ❌ a value nobody chose is written as the documented default but not MARKED (obligation 4) | ✅ |
 
 ---
@@ -3482,7 +3489,9 @@ none of it: it was text `siesta` never read.
   functions start from it, `m_tbt_options.F90`), `Spin`, the basis and
   functional lines that name the Hamiltonian it was built with. **It runs no
   SCF**, so the SCF settings — the solver (`SolutionMethod`; its own is
-  `TBT.SolutionMethod`), the mixer, the tolerances, the iteration budget — and
+  `TBT.SolutionMethod`), the mixer, the tolerances, the iteration budget —
+  the MPI diagonaliser lines (`Diag.ParallelOverK`, `BlockSize`, the ELPA
+  pair; `bands.F`, which nothing under `Util/TS/TBtrans` references) and
   the output group (`WriteForces` … `SaveHS`) are not written: `tbtrans`
   compiles none of the files that read them (`read_options.F90`,
   `write_subs.F`, `outcoor.f`) and its own options read none

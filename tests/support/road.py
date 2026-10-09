@@ -542,8 +542,9 @@ def _road_own_warm_files(case, bundle) -> None:
 def _road_stand_in(asked, monkeypatch, bundle) -> None:
     """What the suite's stand-in engine does on this row's launches
     (`conftest._STUB_BODIES`): end with exit code ``rc``, and -- with
-    ``leaves_restart`` -- leave the restart file SIESTA leaves, empty, so a
-    run can be continued; with ``waits_for``, run only once the
+    ``leaves_restart`` -- leave the restart file SIESTA leaves, carrying the
+    deck's geometry (`conftest`), so a run can be continued or cited; with
+    ``waits_for``, run only once the
     calculation's ledger holds that decision, ending with exit code 124
     when it does not within ten seconds -- what a launch has written down
     while its run runs.  The run's records are our wrapper's, written as it

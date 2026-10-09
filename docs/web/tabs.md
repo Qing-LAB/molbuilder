@@ -206,62 +206,58 @@ pair); a script isn't a molecule, so it takes the plain file-write door.
 
 ## 4. Transport — the composite's describe surface
 
-> **Rewired 2026-08-29** ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)
-> P7b + the same-day rulings).  The old Generate lane — sidebar pick, form,
-> device-`.fdf` preview, Copy/download — is gone; decks render at `prep`, on
-> the machine that runs them, like every other kind.
+The tab writes a transport calculation's description itself — `task.json` and
+its template, into the folder the sidebar selects (no hand-over to Task setup:
+the five stages and the hierarchical shape are fixed by design). What it is,
+rule by rule, lives in [`engines/transport.md`](?doc=engines/transport.md)
+§ 3.8; this section is the map of the page as built *(rewritten 2026-10-08,
+B8)*.
 
-**The four cards, driven by ONE fact — the citation:**
+**Five cards, driven by ONE fact — the citation:**
 
-1. **The junction** — the shared tree-picker cites a finished relaxation
-   directory (ANY directory is choosable — [`engines/transport.md`](?doc=engines/transport.md) § 3.1's FILE condition decides what qualifies: a finished relaxation's `.fdf`+`.XV`, or a labeled `.xyz`+`.molstruct.json` pair; the meta line classifies each selection and reads the
-   attempt's own `.fdf`, and says NOT CONCLUDED honestly).  Electrode
-   labels the reverse of the usual convention (`L-electrode` low z) are
-   **warned about, never blocked** — the junction cites and runs, the
-   meta line states which lead ends up biased positive, and a *Swap
-   L-electrode and R-electrode* button offers the rename for whoever
-   wants it (`transport-design.md` § 4.1a).  A read-only
-   **MolView** follows the citation: it re-opens the cited calculation's
-   labeled structure on every cite and every reload (labels are assigned
-   where the junction is built — never here).
-2. **Shared by every rung** — the template's one electronic description,
-   defaulted from the citation (its spin included) and editable here for all
-   five rungs at once.
-3. **Charge and spin** — the chemistry card for the transport kind: the CITED
-   junction's state for what the shared panel says — the charge 0 by rule, the
-   spin the one answer every rung is handed, the cited run's or, blank, worked
-   out on the whole junction. It follows every edit to the panel's spin fields
-   and changes nothing.
-4. **The physics, rung by rung** — the OVERRIDE lane only (`GET
-   /api/transport/schema` filters the sealed electronic-contract fields: those
-   are the template's to say).  Overrides travel as device-stage `varies`
-   promotions.
-5. **Describe** — the bias list plus one button.  `POST
-   /api/transport/describe` answers with the finished `task.json`; the
-   browser writes it into the selected folder and does NOT navigate, and
-   the status names the folder it wrote.  The destination must be the
-   calculation's OWN folder: describing into the cited directory is
-   refused, because the calculation never lives inside its citation
-   ([`engines/transport.md`](?doc=engines/transport.md) § 3.1) — the sidebar selection lingers on the
-   attempt the person just browsed to cite, so this is the easy mistake.
-   Task setup then reads it as an ordinary description (the run surface,
-   not a hand-over target).
+1. **The junction** — the shared tree-picker cites **a finished relaxation
+   run of molbuilder's own**, and nothing else ([`engines/transport.md`](?doc=engines/transport.md)
+   § 3.1, decision 7): its deck and `.XV` with its run record. Any other
+   directory answers *not citable* with the missing file named, and the
+   citation held stays held. The describe door answers one summary line (how
+   the run ended, the deck's facts) and **findings** through the one renderer
+   ([`science/validation.md`](?doc=science/validation.md) § 4.1): each lead's
+   seam and principal-layer measurements as information, an inverted
+   labelling (`L-electrode` the high-z block) as a warning — never a refusal,
+   the junction cites and runs — with a *Swap L-electrode and R-electrode*
+   button offering the rename as **this calculation's own** (`swap_electrodes`
+   in the description; the cited run is never written — § 4). A read-only
+   **MolView** follows the citation, re-opened on every cite and reload as
+   this calculation composes it.
+2. **Shared by every rung** — the template's one electronic description, the
+   cited run's answers with their source named, editable here for all five
+   rungs at once (§ 3.8.2, § 3.8.3).
+3. **Charge and spin** — the chemistry card for the transport kind: the cited
+   junction's state for what the shared panel says; it changes nothing.
+4. **The physics, rung by rung** — first the **bias list** (0.0 first; a
+   start/stop/step builder fills it) and, for several voltages, the
+   **treatment**: the low-bias approximation or a self-consistent sweep
+   (§ 2a.10); then one **tab per rung**, each holding that rung's own
+   settings as its override bag (§ 3.8.2a), its cards folded where the rung
+   does not own the group, the rung-fixed items echoed read-only. The
+   transmission's tab offers no SCF setting (tbtrans runs none, § 6.1b).
+5. **Describe** — one button. `POST /api/transport/describe` answers the
+   finished `task.json` and template, or refuses: a refusal lands beside the
+   control it names (the bias list, its treatment, a rung's field on its own
+   tab, brought into view), and the status line says it too. The browser
+   writes the two files into the selected folder and does not navigate; the
+   destination must be the calculation's own folder — describing into the
+   cited directory is refused (§ 3.1). Task setup then reads it as an
+   ordinary description and echoes the junction, the bias list, the
+   treatment and the rename.
 
-**Still open** (honest residue): the Results-tab transmission presenter.
-A finished junction ships `<label>.transport.json`, and **no presenter matches
-it** — `pickResult` returns null and the picker drops the file, so the
-deliverable of a five-rung run is invisible on the tab that exists to show
-results (`presenters.md` § 1; [`plans/plan.md`](?doc=plans/plan.md) § 5p.3p
-step 5).
+The deliverable is read on the Results tab: a transport root opens its
+`task.json`, which the transport report presents composed on read
+([`web/results.md`](?doc=web/results.md) § 0.1, § 2.5).
 
-*Two items stood here and are now closed by deletion, not by work:*
-`TransiestaEngine.parse_output` — which raised by design and pointed at the
-record — **and `POST /api/transport/render`**, described here as *"the engine
-registry's validation surface"*. There is no engine registry; the route's last
-browser caller stopped on 2026-08-29 and both went on 2026-09-17. The tab's
-three live routes are `/describe`, `/describe_attempt` (which also describes
-a citation with the electrode rename, `&swap_electrodes=1`) and `/schema`
-*(the `/swap_electrodes` POST, which rewrote the cited run, went 2026-10-08)*.
+The tab's three live routes are `/describe`, `/describe_attempt` (which also
+describes a citation with the electrode rename, `&swap_electrodes=1`) and
+`/schema` ([`web/web-api.md`](?doc=web/web-api.md)).
 
 ## 5. Documents — the in-app reader (this page)
 
@@ -492,7 +488,7 @@ workstream (`plans/plan.md` **W15**).
   end-to-end generate, preflight". **All four are absent from `tests/`**: the
   render endpoint, the engine and the preflight were deleted 2026-09-17 and
   this list was not swept. The transport surface is covered by
-  `test_transport_prep.py`, `test_transport_record.py`, `test_transport_cell.py`
+  `test_transport_record.py`, `test_transport_cell.py`
   and `test_transport_wizard.py`.)*
 - `test_structure_save_endpoint.py` — the server end of § 6: the route, the
   pair it writes, and the `409 needsOverwrite` contract.

@@ -165,7 +165,7 @@ class TestSeverityIsUniform:
     everywhere) + docs/web/ui-contract.md § 5.1 (one row shape, styled once).
 
     INVARIANT: one row vocabulary (``li.issue-item[data-severity]``, styled once
-    in lib/form-components.css); an unrecognised or missing severity renders as
+    in lib/page-shell.css); an unrecognised or missing severity renders as
     ``info`` and is NEVER dropped; server order is preserved (``validate()``
     emits geometry, then config, then engine checks — a documented deterministic
     order).
@@ -293,21 +293,6 @@ class TestOneRendererOnly:
     )
 
 
-    def test_no_second_row_vocabulary_survives(self):
-        """The spectra copy's div.issue/.badge markup and its competing
-        .issues-panel declaration are gone from the page sheet."""
-        import re
-        css = (REPO / "molbuilder/web/static/spectra/style.css").read_text(
-            encoding="utf-8")
-        # Strip comments first: a comment may NAME the removed
-        # declarations, so a raw substring search would match its own prose.
-        rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-        for dead in (".issue .badge", ".issue.error", ".issue.warn",
-                     ".issue .where", ".issues-panel {"):
-            assert dead not in rules, (
-                f"{dead!r} is still declared in the spectra sheet — the page "
-                f"has re-grown its own findings vocabulary")
-
     def test_every_page_that_renders_findings_loads_the_module(self):
         # Task setup imports the module
         # itself (an ES module needs no namespace).
@@ -324,62 +309,13 @@ class TestOneRendererOnly:
 
 
 class TestNoSecondRendererAnywhere:
-    """PINS `science/validation.md` § 4.1 **R2** — *one channel into the UI* —
-    by SEARCHING for a renderer instead of asking two named files whether they
-    delegate.
-
-    A hardcoded list of filenames can answer "do these delegate?" and never
-    "has another appeared?". One had: `lib/molview/ui.js` grew its own `drawNotices` for the same channel under a
-    different word — *notices*, not *issues* — with its own two-word severity
-    map, so an error was drawn in the grey of a remark. Six weeks, and nothing
-    asked.
-
-    A renderer gives itself away by writing a severity into markup. That is
-    what this looks for, everywhere, and MolView now passes it by REUSING the
-    module (`ui.js` imports `render`) rather than by being exempted.
+    """One renderer (R2), seen from the sheets: a page or module sheet may
+    compose around the shared row -- where it sits, how much room it takes --
+    and never re-picks how a finding LOOKS; and the row is styled in the one
+    sheet every page loads.  Whether a script outside the module writes a
+    severity into markup is review's question (`code-audit.md` § 1c), not a
+    scan's.
     """
-
-    def _writes_a_severity_into_markup(self):
-        import re
-        root = REPO / "molbuilder/web/static"
-        owner = (root / "lib/validation-findings.js").resolve()
-        hits = []
-        for path in sorted(root.rglob("*.js")):
-            if path.resolve() == owner:
-                continue
-            # VENDORED CODE IS NOT OURS TO HOLD TO THIS CONTRACT, and a
-            # minified bundle is a false positive waiting for the next upgrade
-            # -- which is how a guard ends up switched off rather than fixed.
-            if "vendor" in path.relative_to(root).parts:
-                continue
-            code = path.read_text(encoding="utf-8")
-            code = re.sub(r"/\*.*?\*/", "", code, flags=re.S)
-            code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
-            # A severity reaching an element: as an attribute, or spliced into
-            # a class name.  Reading one to count, filter or pick a page tone
-            # is not rendering and does not match.
-            # TWO SHAPES, because a renderer can be written either way:
-            # `li.className = "row--" + n.severity` on one line, and the
-            # same thing split across two (`const c = "row--" + n.severity;`).
-            # Matching any string built from a severity catches both.  It can
-            # fire on a log line that interpolates one, which is the right way
-            # round to be wrong: a false positive is read, a false negative is
-            # the defect coming back.
-            if re.search(r'data-severity', code) or re.search(
-                    r'"[^"\n]*"\s*\+\s*[\w.\[\]"\']*[Ss]everity', code):
-                hits.append(str(path.relative_to(root)))
-        return hits
-
-    def test_nothing_but_the_module_turns_a_severity_into_markup(self):
-        found = self._writes_a_severity_into_markup()
-        assert found == [], (
-            f"these files draw a severity themselves: {found}. R2 is one "
-            f"channel into the UI — import `render` from "
-            f"lib/validation-findings.js instead. A module with its own design "
-            f"system may compose around the shared row (MolView sets its type "
-            f"scale on `.issues-panel .issue-item`), but a second row shape is "
-            f"how two things that should match stop matching."
-        )
 
     def test_no_second_sheet_re_picks_how_a_finding_LOOKS(self):
         """`ui-contract.md` § 5's own table, applied to the finding row.

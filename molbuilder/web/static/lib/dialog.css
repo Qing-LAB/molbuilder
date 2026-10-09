@@ -157,7 +157,7 @@
     color: var(--text-secondary);
 }
 .tp-node.is-selected > .tp-row {
-    background: var(--accent-soft, var(--bg-card));
+    background: var(--accent-bg);
     color: var(--accent);
     font-weight: var(--weight-semibold);
 }

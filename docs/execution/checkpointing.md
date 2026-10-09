@@ -502,16 +502,16 @@ work, and a folder no verb can move is that promise failing.
 from another, a state no save ever held and nothing can diagnose afterwards.
 That is why the archive is verified *before* the text is touched.
 
-**The decision ledger comes back with the state, and the restore is its next
-line** *(2026-10-08, B8 C2)*. `jobset-decisions.log` is text the state holds,
+**The decision ledger is part of the state, and a restore writes nothing**
+*(2026-10-08, B8 C2 / R2-1)*. `jobset-decisions.log` is text the state holds,
 so after a restore it reads as the target wrote it — the decisions undone are
-in the state that holds them (A5). The verb then appends one line,
-`checkpoint · restore <state>`, naming the state left and the state restored,
-so the ledger's order ([`project-layout.md`](?doc=execution/project-layout.md):
-one line per decision of every verb) has no silent hole where a prep or a
-launch was undone. And a directory the restore emptied is removed with its
-files (A5): `git clean` leaves a directory of ignored files standing, and an
-empty `run-N/` would be counted as an attempt by every reader of the tree.
+in the state that holds them (A5), and the order of the folder's restores is
+`checkpoint list`'s, not the ledger's. The verb appends no line of its own: a
+line written after the rollback would be the one unsaved file the next
+restore asks about, and A5 says the folder equals the target *exactly*. And a
+directory the restore emptied is removed with its files (A5): `git clean`
+leaves a directory of ignored files standing, and an empty `run-N/` would be
+counted as an attempt by every reader of the tree.
 
 ### 7.1 Going back and trying something else, with the original intact
 
@@ -835,9 +835,10 @@ snapshot of the folder.
 > a constant inside a module. A file excluded by code nobody agreed to is
 > indistinguishable from a file lost.
 
-*Symlinks are outside the **archive**, and "regular" is load-bearing.* A stage
-links its deck and the shared pseudopotentials rather than copying them, and a
-job links the file it continues from, so a saved tree is full of links. A link
+*Symlinks are outside the **archive**, and "regular" is load-bearing.* Nothing
+molbuilder writes into a calculation is a link — every file in a stage is a
+real copy ([`project-layout.md`](?doc=execution/project-layout.md) § 1, user
+2026-08-24) — but a link a person plants is still an entry of the tree. A link
 has no content of its own — the real file is stored once, wherever it lives —
 so following one would archive that content a *second* time under the link's
 path, and a restore would then write a real file where a link belongs.

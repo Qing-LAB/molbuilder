@@ -30,7 +30,7 @@ import json
 
 import numpy as np
 import pytest
-from test_transport_prep import _isolated  # noqa: F401 -- its sandbox, autouse
+from support.junction import _isolated  # noqa: F401 -- its sandbox, autouse
 
 
 def _described(engine, stages, calculation="optimization"):

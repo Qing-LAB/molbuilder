@@ -39,9 +39,8 @@ def test_a_transport_rung_takes_no_from_or_cold(tmp_path):
     (`job-system.md` § 5.4).  ``--from`` naming another rung's run was taken
     until 2026-10-05, and its carry and the gather wrote into one attempt.
 
-    API-LEVEL: the suite's road describes no transport calculation -- one
-    cites a junction run (`tests/test_transport_prep.py` builds one, below
-    the entry) -- and this is the hand-over door's refusal, asked as prep
+    API-LEVEL: the suite's road describes no transport calculation (plan
+    § 5x B8 T2), and this is the hand-over door's refusal, asked as prep
     asks it at checkpoint 4a, before the calculation's own files are read."""
     from molbuilder.jobset.continuation import continuation_answer
     from molbuilder.task import Stage, Task, derive_run

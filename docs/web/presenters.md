@@ -15,7 +15,7 @@ module.
 When you open a file on the **Results** tab, something has to pick the right way
 to show it — a 3D structure for a `.xyz`, a trajectory movie for a
 `.molwatch.log`, a spectrum for a `.spectra.json`, a sweep summary for a
-`job-set.json`, an I–V table for a `.transport.json`, a displacement sweep for
+`job-set.json`, a transport report for a transport calculation's `task.json`, a displacement sweep for
 a `.fc-sweep.json`. This module is that switchboard: a small **registry** of
 **presenters**, one per file type, and the rule that picks the matching one and
 mounts it. (A markdown editor and a plain text pane are registered too, and
@@ -43,7 +43,7 @@ viewer for one kind of file. Today there are eight:
 | `trajectory` | `.molwatch.log`, `.out`, `*_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — *Optimization* / *SIESTA optimization* / *PySCF optimization* |
 | `spectra` | `.spectra.json` | a modes table, the mode's animation and a **chart** — the spectrum where a strength was computed, the mode positions where none was (a SIESTA result; `spectra.md` § 2) | yes — *Vibrational spectrum* (either engine's; it said *PySCF spectrum* until 2026-09-24) |
 | `bench-summary` | `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
-| `transport` | `*.transport.json` | a conductance run's **I–V table** — bias, G(E_F), current — and what is not drawn | yes — *Transport* |
+| `transport` | a transport calculation's `task.json` (the registry's `transport-task` parser; `<label>.transport.json` is `summarize`'s copy, opened as a file) | the transport **report**, composed on read: T(E) per channel, DOS and PDOS, the I–V, each rung's convergence and the provenance chain ([`results.md`](?doc=web/results.md) § 2.5) | yes — *Transport* |
 | `fc-sweep` | `*.fc-sweep.json` | a SIESTA vibration's **displacement sweep**: each force-constant stage — what it varied (with units), the displacement used, its stationarity, modes and SIESTA, and its own files — each mode's frequency per stage with the change, the shapes' overlap and the mode it matched, the force-constant changes, and the stages without a result with their state (`engines/vibration.md` § 5.9) | yes — *Spectrum* |
 | `markdown` | `.md` | a markdown **editor** with a live preview + Save | no |
 | `source` | `.fdf`, `.py`, `.log`, `.json`, `.txt` | a plain **paginated text** pane | no |
@@ -209,10 +209,11 @@ Six of the eight presenters are simple, but two — **trajectory** and
   going until its phases finish ([`spectra.md`](?doc=web/spectra.md) § 7);
 - **bench-summary** is self-contained: it reads a sweep's `job-set.json`,
   renders the trials and a chart, and re-polls on its own cadence;
-- **transport** is self-contained too: for a `<label>.transport.json` it asks
-  `/api/transport/record`, which composes the record from the rungs as they
-  are now, and draws each rung's state with the ladder's chip, the I–V table
-  and the transmission plot, once, with no polling;
+- **transport** is self-contained too: for a transport calculation's
+  `task.json` it asks `/api/transport/record`, which composes the record from
+  the rungs as they are now, and draws the report — T(E), DOS, the I–V, each
+  rung's state with the ladder's chip and its convergence — once, with no
+  polling;
 - **fc-sweep** likewise: it reads a `<label>.fc-sweep.json` and draws the
   stages' and modes' tables, once (bench-summary, transport and fc-sweep build
   their elements through one shared helper, `lib/dom.js`);

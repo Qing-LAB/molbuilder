@@ -1843,7 +1843,7 @@ projects/BDT-Au/optimization/bdt-relax/     ← the folder: the user typed this
 │   ├── <label>_01_coarse.fdf             ← template ⊕ coarse ⊕ this machine
 │   ├── <label>_01_coarse.run.sh          ← its wrapper, for this machine
 │   ├── mb_monitor.pyz                 ← the monitor's one file, beside it
-│   ├── Au.psml → ../Au.psml  …        ← shared, linked in
+│   ├── Au.psml  …                     ← a real copy of the shared pseudopotential
 │   └── run-0/  run-1/                 ← what each attempt produced
 └── 02_tight/
     ├── <label>_02_tight.fdf
@@ -1899,17 +1899,19 @@ builds, and its place in the wider tree is
 [`execution/project-layout.md`](?doc=execution/project-layout.md), and this contract reuses that materializer rather than writing a second
 one. Two of its properties are the reason:
 
-- **Shared files are stored once and linked in**, so a five-stage description
-  does not carry five copies of a pseudopotential, and the shared set is
-  obviously shared rather than coincidentally identical.
+- **Shared files have one source and are copied into every stage that needs
+  them** — the calculation's `pseudos/` is the one copy of a pseudopotential,
+  and each stage holds a real copy beside its deck, never a link (user,
+  2026-08-24: a run directory holds everything it needs, and a link holds
+  nothing; [`project-layout.md § 1`](?doc=execution/project-layout.md)).
 - **What a stage continues from is copied, not linked.** Stage 2 writes to
   `<label>.XV` itself; a link would send that write straight through into stage 1's
   directory and destroy the result it started from. A real copy closes it, and
   `prep` can make one *then and there* because the run you named has already
   finished — which is the whole payoff of stages not being chained
   ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)). The read-only
-  files — the deck, the wrapper, the monitor, the pseudopotentials — are still
-  linked; **link what the engine only reads, copy what it writes.**
+  files — the deck, the wrapper, the monitor, the pseudopotentials — are real
+  copies too: **every file in a stage is a real file, never a link.**
 
 **Why not one flat directory.** A flat folder was the earlier answer here, on the
 grounds that a shared basename makes continuing free (`job-contracts.md § 2.1`

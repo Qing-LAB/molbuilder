@@ -780,7 +780,7 @@ variant tested must render end-to-end without raising.
 was removed 2026-07), `test_siesta_stages.py` (the ladder and its strategy
 presets), `test_siesta_use_gpu.py` (§ 7's
 two orthogonal decisions, including the rejected GPU + ScaLAPACK pair),
-`test_k_point_mesh_e2e.py` (§ 6.1's mesh on every rung, through `jobset init`
+`test_k_point_mesh.py` (§ 6.1's mesh on every rung, through `jobset init`
 and `prep`), and `test_molwatch_preview.py` (the sibling log). *(This list named
 `test_cli_siesta_stages.py` and `test_siesta_form_schema_stage_table.py` until
 2026-08-16; neither file exists — they went with the `fdf` verb and the stage
