@@ -41,6 +41,9 @@ built by `workspace_payload()` (the single serializer):
 { "text": "<xyz/pdb bytes>", "source_format": "xyz",
   "title": "…", "n_atoms": 42,
   "atoms": [ { "…per-atom row…" } ],
+  "structure": { "…the structure's own dict, to_dict (model/structure.md § 2.1):
+                  positions — or frames for a frame set — and metadata,
+                  customized included…" },
   "lattice": null,
   "periodicity": { "…cell / engine_offset / axis_kind / vacuum…" },
   "annotations": { "…regions / frozen / channels…" },
@@ -87,11 +90,11 @@ caller holds.
 |---|---|
 | `/api/modify/*` | `{structure: <envelope>, …the op's own arguments, and the selection under its own key}` |
 | `/api/structure/periodicity` | `{structure: <envelope>, op, payload}` |
-| `/api/structure/save` | `{structure: <envelope>, path, overwrite, frames?}` |
-| `/api/structure/export` | `{structure: <envelope>, name?, frames?}` |
+| `/api/structure/save` | `{structure: <envelope>, path, overwrite}` — a frame set's frames and rows inside the envelope (`model/structure.md` § 2.2e) |
+| `/api/structure/export` | `{structure: <envelope>, name?}` — the same |
 | ~~`/api/build/fdf`~~ · ~~`/api/build/pyscf`~~ · `/api/build/preflight` | `{structure: <envelope>, params, structure_path?}` — the **emit** doors. `structure_path` is provenance and a dest-dir anchor, never a source of geometry or labels |
 | ~~`/api/transport/render`~~ | **DELETED 2026-09-17.** It rendered a device deck and handed the text back; no browser had called it since 2026-08-29, and a browser renders no deck (`tabs.md`) — the same ruling that retired `/api/build/fdf` and `/api/build/pyscf` on 2026-08-17. It was the last door to take a file PATH as its geometry, which is the migration described in § 2's envelope rule below |
-| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename}`. **Not the envelope** — nothing is being sent back, something is being *parsed*, and the text carries atoms only: no labels, no cell, no `info` rides beside it, because nothing sends them (plan § 5q D15). A `path` load reads all three off disk, and says when the pair carried a retired `cell_origin` it did not apply (`cell.origin_retired`, `info`, naming the corner; D14). It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run |
+| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename}`. **Not the envelope** — nothing is being sent back, something is being *parsed*, and the text carries atoms only: no labels, no cell, no `info` rides beside it, because nothing sends them (plan § 5q D15). A `path` load reads all three off disk, and says when the pair carried a retired `cell_origin` it did not apply (`cell.origin_retired`, `info`, naming the corner; D14). **Which frame** (`model/structure.md` § 2.3): `frame: i` answers that frame alone; `frames: true` the whole set, inside the envelope (`frames` in place of `positions`, each frame's rows in `metadata.customized.frames`); neither, frame 0 — as `StructureCodec.load`. Every answer carries `n_frames`, the count the file holds, so a tab can ask which frame (`tabs.md` § 2) and a viewer can ask for the set (`molview.md` § 9.4). It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run |
 | `/api/selection/eval` | `{atoms: [{element, labels, residueName, atomName, chainId}], rule}`. **Not the envelope:** no rule matches on position (`molview.md` § 9.5), so no coordinates are sent — the cut-down list is the whole of what a filter needs. `atomName` / `chainId` joined it 2026-09-07: they are what `by_atom_name` and `by_chain_id` match on, and without them the server rebuilt the structure with `Structure`'s defaults — atom name = element symbol, chain = `"A"` — so both rules answered **200 with a wrong answer** rather than refusing (`by_atom_name "CA"` never matched an alpha carbon; `by_chain_id "B"` never matched anything). Both keys are optional and fall back to those same defaults, so an older caller is unaffected |
 
 > **The text branch of `/api/build/load` is down to callers that should not be

@@ -24,7 +24,7 @@ transmission of the relaxed geometry.
 A transport calculation on a frame set computes that average from a handful of
 **static frames**: the relaxed junction and copies of it displaced along chosen
 normal modes. Each frame is an ordinary transport calculation; the average is
-assembled afterwards from what each frame's `info.parameter` entry says about
+assembled afterwards from what each frame's `customized` rows say about
 it.
 
 ```mermaid
@@ -32,7 +32,7 @@ flowchart LR
     R["relaxed junction<br/>(a finished relaxation)"] --> V["vibration run<br/>modes ω_ν, eigenvectors L_ν"]
     V --> G["frame generator<br/>(its own module)"]
     R --> G
-    G --> F["one multi-frame pair<br/>frame 0 = relaxed<br/>frames 1…2N = ±displaced<br/>info.parameter per frame"]
+    G --> F["one multi-frame pair<br/>frame 0 = relaxed<br/>frames 1…2N = ±displaced<br/>customized rows per frame"]
     F --> T["transport, per frame<br/>T_j(E): device + transmission"]
     T --> A["the average<br/>⟨T(E)⟩ = Σ_j W_j T_j(E)"]
     A --> C["⟨G⟩ = G₀ ⟨T(E_F)⟩<br/>per mode and in total"]
@@ -431,8 +431,12 @@ Each is stated beside the numbers it limits, never dropped:
    average cannot give — the inelastic steps at $eV = \hbar\omega$, a strongly
    coupled level's polaron shift — needs the electron–vibration coupling itself
    [Frederiksen2007, Galperin2007] (`vibration.md` § 5.6, level two).
-3. **One bias** for a frame group (`transport.md` § 2a.9's ruling); at low bias
-   the averaged $T(E_F)$ is the averaged conductance.
+3. **The equilibrium distribution, one voltage at a time.** The average is
+   taken over the frames at each voltage separately (`transport.md` § 2a.9,
+   *Both axes*), with weights from the thermal distribution of § 2 — the
+   junction's at equilibrium. A finite bias can heat the modes the current
+   couples to, and then their population is not that distribution; that is not
+   modelled. At low bias the averaged $T(E_F)$ is the averaged conductance.
 4. **Each frame's electrons in their ground state for that frame** (the
    Born–Oppenheimer picture): every frame runs its own self-consistent device.
 5. **The level alignment is DFT's**, frame by frame (`normal-modes.md` § 4c.6).
@@ -443,9 +447,11 @@ Each is stated beside the numbers it limits, never dropped:
 
 ## 8. What the record carries
 
-From the frames and their `info.parameter` entries (`plans/plan.md` § 5z.3:
-`mode`, `frequency_cm1`, `sigma_amu12_ang`, `node`, `q_amu12_ang`,
-`max_displacement_ang`, `weight`, `temperature_k`), per mode $\nu$:
+From the frames and their `customized` rows
+([`model/structure.md`](?doc=model/structure.md) § 2.2d:
+`mode`, `node_sigma`, `weight`, `order`, and shown beside them
+`frequency_cm1`, `sigma_amu12_ang`, `q_amu12_ang`, `max_displacement_ang`,
+`temperature_k`), per mode $\nu$ — the record is `transport.md` § 2a.12's:
 
 - each frame's $T_j(E)$ and current — the family of curves;
 - $\langle T(E)\rangle_\nu$, the mode's average, and $\Delta T_\nu(E)$;
@@ -454,9 +460,9 @@ From the frames and their `info.parameter` entries (`plans/plan.md` § 5z.3:
 - when five frames were run: both averages and whether they agree (§ 5.3);
 
 and for the set: $T_0 + \sum_\nu \Delta T_\nu$, labelled second-order (§ 6.2),
-with § 7's assumptions beside it. Transport reads only `mode`, `node` and
-`weight` to compute; everything else is shown, so a reader can check that the
-weights are the Gauss–Hermite weights of the stated nodes.
+with § 7's assumptions beside it. Transport reads only `mode`, `node_sigma`,
+`weight` and `order` to compute; everything else is shown, so a reader can
+check that the weights are the Gauss–Hermite weights of the stated nodes.
 
 ---
 

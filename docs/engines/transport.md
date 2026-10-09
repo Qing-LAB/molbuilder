@@ -876,7 +876,7 @@ row below).*
 | **Class C ships per-stage defaults** | Each stage carries an opinionated profile rather than inheriting one shared set: a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike, and the electrode's dense transport-axis k is a default, not something a person should have to discover |
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
 | **Default grouping** | The preparatory block — seed and both leads — as one submission: `jobset prep task` offers the three pre-selected, since none builds on another, and they are prepared as one group (`--stage seed --stage electrode_L --stage electrode_R` without a terminal); `jobset launch task` sends it as one job ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6; [`execution/job-system.md`](?doc=execution/job-system.md), *The task*). Then the device; then the transmission, each scan one job walking its points. The device and the transmission never share a job: the transmission builds on the device, which you look at first |
-| **A frame group runs at one bias** | § 2a.9 |
+| **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16) |
 | **The bias treatment is an exposed choice** | `low_bias_approximation`, true or false, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
 | **Automatic resubmission is deferred, and load-bearing on nothing** | The stages, their decks, the parameter map and the directory structure are identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing here waits on it. When built, the monitor is its home — it already watches a run to its end. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
 | **Net charge and gating are deferred** | Not designed now. In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is separate work. How a gate is applied in SIESTA 5.x — a charge-distribution block, a scripted hook, or neither — **has not been verified against the manual** and should be before anything depends on it |
@@ -1028,17 +1028,30 @@ frame***. Frames whose transmissions were computed with different basis sets or
 functionals are not comparable to each other — and comparing them is the entire
 reason for computing a group.
 
-#### RULING — a frame group runs at ONE bias
+#### Both axes — a device point is (frame, voltage) *(user, 2026-10-09; plan § 5z.8 A–E)*
 
-*Made 2026-09-16 (§ 2a.7).*
+> *"This is the framework design period. I would rather to have this already
+> built in and then later on we can tune it."*
 
-> **A frame group is computed at a single bias point.** Frames and bias are two
-> axes, and their product is a shape nothing walks and nobody has asked for.
+The frame is the structure's — the citation's frames, never typed — and the
+voltage is the calculation's — `task.json`'s list (§ 2a.10). A device point is
+one of each, and either axis may be one. *(This replaces the ruling of
+2026-09-16, "a frame group runs at one bias", which bounded the walk, not the
+physics; the walk takes the second level as one more loop.)*
 
-The physics agrees with the restriction: thermal averaging and IETS are
-evaluated at or near zero bias. And it leaves the cheap thing available — from a
-single converged device at one bias, **tbtrans sweeps energy**, so each frame
-yields a full T(E) curve.
+- **Within a frame**, the voltages chain as a sweep does (§ 2a.11): the 0 V
+  point from the seed's density, each further voltage from the converged point
+  before it **in the same frame**.
+- **Across frames**, nothing chains: each frame is a geometry in its own right,
+  so its 0 V point starts from the seed's density, never from another frame.
+- **A voltage that does not finish ends that frame's chain**, and the walk goes
+  on to the next frame.
+- **Under the low-bias approximation** each frame runs once, at 0 V, and its
+  I–V is computed from its own T(E, 0) at the listed voltages.
+
+The physics makes the last the cheap choice for a frame set: thermal averaging
+and IETS are evaluated at or near zero bias, and from a single converged device
+at one bias **tbtrans sweeps energy**, so each frame yields a full T(E) curve.
 
 **The one confusion this must not create.** Sweeping **energy** in the T(E)
 window and sweeping **bias** are different calculations, and the contract should
@@ -1060,38 +1073,41 @@ reader will take an approximation for the real thing.
 
 > **A frame set is a multi-frame extended-XYZ document with its one sidecar.**
 > Frame 0 is the base — the optimised junction, which is what every reader
-> takes today when it asks for a structure — and frames 1…N are the
-> displacements. The labels, the frozen set, the species and the recorded
-> contract live in the one sidecar and apply to every frame; a frame is
-> coordinates and a cell, nothing else.
+> takes when it asks for a structure — and frames 1…N are the
+> displacements. The labels, the frozen set, the species, the cell and the
+> recorded contract are the structure's and apply to every frame; a frame is
+> its coordinates and its own `customized` rows, nothing else.
 
-Nothing new is invented for it. The structure codec already writes a frame
-range as one extended-XYZ document beside one sidecar and reads every frame
-back in file order (`model/structure.md` § 5.1, `pair(frames=)` /
-`load(frames_out=)`); MolView's *Export → Data* already writes that pair for
-a frame range; a reader that does not ask for frames reopens the file as its
-first frame. So a multi-frame pair is a legal citation for every door that
-exists — it is the base — and a frame-aware door sees the set. That is what
-makes the axis addable without rework.
+Nothing new is invented for it. A `Structure` holds its frames
+([`model/structure.md`](?doc=model/structure.md) § 2.2e):
+`StructureCodec.load(path, frames=True)` gives the set, `load(path)` its frame
+0, `frame_at(i)` one frame with the set's one origin; a frame set is made
+through the structure's own doors, by the frame generator or a person's
+script. So a multi-frame pair is a legal citation for every door that exists —
+it is the base — and a frame-aware door sees the set. That is what makes the
+axis addable without rework.
 
-| the condition, checked per frame at the citation door, naming the frame | why |
-|---|---|
-| the same atom count, in the input order, as frame 0 | the sidecar's per-atom facts are indices |
-| the same species, in the same order | the seed's density and the leads' Hamiltonians are indexed by orbital |
-| **the same cell as frame 0** — a frame stating another is refused | the leads must tile one cell for every frame (I6, § 2a.9 above) |
-| **no electrode atom moved**, to the coordinate tolerance the sort uses | the exact-sharing gate: the lead Hamiltonian is truth |
+| the condition, per frame, naming the frame | why | where it is checked |
+|---|---|---|
+| the same atom count, in the input order, as frame 0 | the sidecar's per-atom facts are indices | the structure's reader (`model/structure.md` § 2.3) — a document breaking it is no frame set |
+| the same species, in the same order | the seed's density and the leads' Hamiltonians are indexed by orbital | the same |
+| **the same cell as frame 0** | the leads must tile one cell for every frame (I6, § 2a.9 above) | the same — the cell is shared, a frame cannot state another |
+| **no electrode atom moved**, to the coordinate tolerance the sort uses | the exact-sharing gate: the lead Hamiltonian is truth | the citation door, frame by frame |
 
 **The frame token is the file position**: `f000` is the base and runs too —
 the undisplaced reference every displaced curve is compared against — and
 `f001`… follow in file order, so a curve can always say which frame it is.
 
-**The rule is recorded in the sidecar when it is known.** A frame set written
-by the built-in mode rule records, in the pair's `info`, the vibration run it
-read, the mode and the amplitudes; one written by the person's own script
-records the script's name; one assembled by hand records nothing, and the
-calculation's record then says *frames supplied as files, rule not recorded*.
-Nothing is refused for that — what the displacement means is the person's
-(§ 3.1 puts the third citation case the same way).
+**Each frame's details are its `customized` rows** *(user, 2026-10-08/09;
+plan § 5z D3, § 5z.8 F)*: one row set per frame, file order, frame 0 included
+([`model/structure.md`](?doc=model/structure.md) § 2.2d) — the mode, the node,
+the weight, the rule's order, and what is shown beside them. Transport reads
+them as `structure.customized_value("weight", frame=i)`, by names it owns as
+constants — `mode`, `node_sigma`, `weight`, `order` — computes with those alone
+(§ 2a.12's average) and shows the rest; it never asks what made the frames. A
+set whose frames state no weights is a family of frames with no average — each
+frame's curve, and the record saying *no frame weights stated*; nothing is
+refused for that, since what the displacement means is the person's.
 
 #### The displacement rule may be the person's own script — and the promise it makes *(user, 2026-09-23)*
 
@@ -1123,7 +1139,7 @@ it is checkable.** Every frame the rule produces, whoever wrote it:
 | the same species, in the same species order | the orbital set is what makes the seed's density usable as a start (§ 2a.9's approximate gate) | species table per frame against the base |
 | the same labels — regions, frozen set, identity columns | the partition is what the whole ladder is built on (§ 4); a frame is the base with atoms moved, never relabelled | the frame carries no labels of its own: it inherits the base's, which makes the promise structural rather than checked |
 | **no electrode atom moves** | the exact-sharing gate above: the lead Hamiltonian is truth | electrode positions per frame against the base, to the coordinate tolerance the sort uses |
-| one base structure, an optimised junction | a group is a *displacement of* something, and the result has to say of what | the base is the group's citation |
+| one base structure, an optimised junction | a group is a *displacement of* something, and the result has to say of what | the pair is the group's citation, its `info.calculation` the optimisation frame 0 came from (§ 3.1) |
 
 What is trusted rather than checked is only what cannot be: that the
 displacement means something physically. Everything a wrong script could do
@@ -1140,10 +1156,11 @@ gives is the electrode one, and that one is checked.
 sweeps (its `bias` block). A frame group is that with a second
 axis: the device and the transmission carry the frame level, the seed and the
 leads do not, and § 2a.11's tree says so without a new mechanism. **The axis is
-declared by the citation itself**: a pair holding one frame is today's
-calculation, a pair holding more is a frame group, and the description may
-name which frames run (all, by default). Nothing above this section changes
-when the frame-aware doors are built.
+declared by the citation itself**: a pair holding one frame is a single
+geometry, a pair holding more is a frame group, and every frame runs; the
+frame count is the citation's, never typed. A device point is a frame and a
+voltage (the axes above), so a rung's points carry a level for each axis that
+varies — `f000/`, `v0.2/`, or `f000/v0.2/` (§ 2a.11).
 
 #### What this changes about the deliverable
 
@@ -1154,9 +1171,10 @@ grow a frame dimension — which is another reason to fix the axis rule now.
 
 *(Proposed 2026-09-28, [`engines/vibration.md`](?doc=engines/vibration.md)
 § 5.10: the built-in mode rule records each frame's normal coordinate and
-its weight in the thermal average, so what is derived across the family —
-each mode's slope, curvature and averaged conductance — is computed from the
-pair's own record, and transport still knows nothing about modes.)*
+its weight in the thermal average — as that frame's `customized` rows — so
+what is derived across the family — each mode's slope, curvature and averaged
+conductance — is computed from the pair's own rows, and transport still knows
+nothing about modes.)*
 
 
 ### 2a.10 The bias treatment — an explicit choice, and what the result may be called
@@ -1428,24 +1446,55 @@ the points — done or not done and why, what each started from, and what each
 alone took (a transmission point's device point). Every transport rung's
 `status <stage>` shows its gather the same way.
 
-#### Later: the frame axis (§ 2a.9), and why sharing needs no explaining
+#### The frame axis (§ 2a.9) — a level for each axis that varies *(user, 2026-10-09, D4: "yes"; plan § 5z.8 D)*
+
+A device point is a frame and a voltage (§ 2a.9, *Both axes*), so a swept
+rung's run carries a level for each axis that varies and none for one that
+does not:
+
+| frames | voltages (self-consistent) | a swept rung's run holds |
+|---|---|---|
+| 1 | 1, or the low-bias approximation | no level: `run-0/` itself |
+| 1 | several | `run-0/v0/ v0.2/ …` |
+| several | 1, or the low-bias approximation | `run-0/f000/ f001/ …` |
+| several | several | `run-0/f000/v0/ f000/v0.2/ … f001/v0/ …` |
 
 ```
-├── 01_seed/         run-0/      ← NO frame level: one density warms every frame
-├── 02_electrode_L/  run-0/      ← NO frame level: the leads do not move
+├── 01_seed/         run-0/      ← NO frame level: frame 0's density warms every frame
+├── 02_electrode_L/  run-0/      ← NO level: the leads do not move
 ├── 03_electrode_R/  run-0/
-├── 04_device/                   ← varies over frames
-│   ├── f000/ run-0/
-│   └── f001/ run-0/
+├── 04_device/                   ← varies over frames and voltages
+│   ├── f000/v0/ f000/v0.2/ f001/v0/ …   each point's prepared deck
+│   └── run-0/                   one run: every point
+│       ├── .gathered-from  <label>_L-electrode.TSHS  <label>_R-electrode.TSHS  <label>.DM
+│       └── f000/v0/ f000/v0.2/ f001/v0/ …
 └── 05_transmission/
-    ├── f000/ run-0/
-    └── f001/ run-0/
+    ├── f000/v0/ f000/v0.2/ f001/v0/ …
+    └── run-0/   .gathered-from   f000/v0/ …   ← each holds its device point's .TS.HSX
 ```
 
 The absence of a level *is* the statement that the result is shared. Nobody has
 to be told; the tree says it. `f000` is the base itself — the undisplaced
 reference curve — and the frame token is the frame's position in the cited
-multi-frame pair (§ 2a.9).
+pair, three digits (§ 2a.9). **One door answers a rung's points** — the
+(frame, voltage) pairs with their folders (`transport.stages`: `sweep_points`,
+`point_folders`, `points_in`, grown from voltages to pairs); the gather, the
+walk, the done-door, `status` and the record ask it, and none asks which axis
+it is.
+
+**Where a frame differs from a voltage, and why.** A voltage starts from the
+converged point before it, because the potential drop reshapes the levels a
+little at a time; frames are **independent** — each a geometry in its own
+right — so **each frame's first point starts from the seed's density** (the
+run's clean copy, its `.gathered-from`), never from another frame, and a
+voltage that does not finish ends **its frame's** chain while the walk goes on
+to the next frame. The seed is frame 0's geometry (the approximate gate,
+§ 2a.9: a nearby geometry's density is a start, not a result). `status` counts
+*k of N points done (F frames × V voltages)*; warm takes the done points over
+and runs the rest — a point not done starting from the closest done voltage
+before it in its frame, else the seed — and cold runs them all: rule 3 at the
+point, unchanged. `--background` leaves any of these running here
+(`execution/job-system.md` § 6.0).
 
 #### Attempts, and what is never overwritten
 
@@ -1525,9 +1574,38 @@ the calculation, and a reader needs to see which of five rungs is the one still
 outstanding — and, on a rung that sweeps the bias, which of its points are
 done, read from each point's own files (§ 2a.11).
 
-**Later, the frame dimension.** A frame group's deliverable is a **family** of
-curves plus whatever is derived across it — an average, a spread, a set of
-couplings. § 2a.9's axis rule is what keeps that additive rather than a rewrite.
+**The frame dimension** *(Q17, plan § 5z; the physics is
+[`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md))*.
+A frame group's deliverable is a **family** of curves and what is derived
+across it. The record's points are (frame, voltage) pairs (§ 2a.9, *Both
+axes*), each carrying its tokens, its frame's `customized` rows whole, and what
+a bias point carries — T(E), the conductance, the current, the DOS — and the
+I–V is per frame. At each voltage, from the frames' `mode`, `node_sigma`,
+`weight` and `order`, per mode ν and per rule order it was run at:
+
+- the mode's average `⟨T(E)⟩_ν = W₀ T₀(E) + Σ_j W_j T_j(E)` over its frames,
+  frame 0 shared, `W₀ = 1 − Σ_j W_j` (`vibration.md` § 5.10 ③), and its
+  change `ΔT_ν(E) = ⟨T(E)⟩_ν − T₀(E)`; at E_F the averaged conductance
+  `⟨G⟩_ν`, `⟨ΔG⟩_ν / G₀` in per cent of the undisplaced frame's, and the
+  curvature `T″_ν = (T₊ + T₋ − 2T₀)/h²` from the mode's pair of frames
+  nearest equilibrium, `h` their `Q`;
+- a mode run at both orders: both averages, and whether they agree — their
+  conductances within a stated fraction of each other, **1 %** unless the
+  person says another (`summarize task --rule-agreement`), the fraction used
+  written in the record — and, where they do not, the record says the response
+  is not smooth over the thermal range and the curvature is not one
+  (`vibrational-averaging.md` § 5.3);
+
+and for the set, `T₀(E) + Σ_ν ΔT_ν(E)` from each mode's highest order —
+**labelled second-order**, each mode's own change shown beside it, and § 7 of
+the science document's assumptions beside the numbers (harmonic independent
+modes, static frames, the DFT alignment, and the voltage each average is
+taken at). The record refuses to average what it cannot: a weight outside
+`[0, 1]`, a mode whose weights leave frame 0 a negative share, frame 0's stated
+weight against a mode's `1 − Σ`, each by name; a set whose frames state no
+weights is a family with no average, said so. A point not done is a gap in the
+family and the average at that voltage waits for it — never computed from the
+frames that happen to be there.
 
 
 **The report, rung by rung** ([`model/parse.md`](?doc=model/parse.md) § 5d).

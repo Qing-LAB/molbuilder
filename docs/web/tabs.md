@@ -177,6 +177,18 @@ calculation — and adding it to another keeps the other's record, so the
 question is where the person chooses which they meant. With nothing open the
 file is installed and nothing is asked.
 
+**A file of several frames asks which one first** *(user, 2026-10-09: "the
+edit or modify tab would only load a single frame. If it's pointed to a
+multi-frame, it will warn you or ask you, which frame do you want to load?")*.
+The tab holds one frame (`molview.md` § 9.4): a frame set is a data set made by
+scripts and never edited (`model/structure.md` § 2.2e). So when the load's
+answer says the file holds `F > 1` frames (`n_frames`, `web-api.md`), the tab
+asks *This file holds F frames — which one do you want to load?* (1 … F,
+frame 1 offered) and loads that one (`frame`); Cancel loads nothing. The frame
+arrives as a one-frame structure — the shared facts, `info`, the structure's
+`customized` rows, and that frame's rows as its own — and the add-or-clear
+question above follows as for any file.
+
 The sources, and what each produces (all POST `/api/build/molecule` with
 `{kind, input}` unless noted):
 
@@ -184,7 +196,7 @@ The sources, and what each produces (all POST `/api/build/molecule` with
 |---|---|---|---|
 | **SMILES** | `smiles` | RDKit first, **OpenBabel fallback** | the fallback rescues big/awkward molecules RDKit chokes on; the response says which backend won |
 | **By name** | `name` | PubChem → SMILES → (same fallback) | type "aspirin", get a structure |
-| **Project file** | — (`/api/build/load`, `{path}`) | the server reads the `.xyz`/`.pdb` and its `.molstruct.json` sidecar (`StructureCodec`) | asks add-or-clear when a structure is open (above) |
+| **Project file** | — (`/api/build/load`, `{path}`) | the server reads the `.xyz`/`.pdb` and its `.molstruct.json` sidecar (`StructureCodec`) | asks which frame when the file holds several, and add-or-clear when a structure is open (above) |
 | **DNA** | `dna` | 3DNA (X3DNA) / AmberTools / RDKit | B/A/Z forms, single strand or duplex, optional clash relief |
 | **RNA** | `rna` | A-form canonical | |
 | **Peptide** | `peptide` | AmberTools `tleap` | extended chain from a sequence |
@@ -417,8 +429,8 @@ things and no more: **what** (the viewer's export) and **a suggested stem**.
    saved is exactly what is on screen (*viewer is truth*). The tab does **not**
    scan the structure for regions or frozen atoms; the model already knows
    them, and a browser-side scan is the second source § 7 forbids.
-3. The door posts **`POST /api/structure/save`** with `{path, structure,
-   frames?}`. **The server writes the pair** — `<stem>.xyz` +
+3. The door posts **`POST /api/structure/save`** with `{path, structure}`.
+   **The server writes the pair** — `<stem>.xyz` +
    `<stem>.molstruct.json` — and stamps the sidecar's schema version and
    structure hash itself. The browser never authors the sidecar (a past bug
    wrote one the load door then rejected; the server-writes-it rule closed

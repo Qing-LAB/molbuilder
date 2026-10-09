@@ -1470,8 +1470,11 @@ Each is stated beside the numbers it limits, never dropped:
    steps at `eV = ħω`, the polaron shift of a strongly coupled level — needs the
    electron–vibration coupling itself (`vibration.md` § 5.6, level two;
    [Frederiksen2007]).
-3. **Zero bias** — a frame group runs at one bias (`engines/transport.md`
-   § 2a.9's ruling).
+3. **The equilibrium distribution** — each voltage's average is over the
+   frames at that voltage, weighted by the equilibrium thermal distribution;
+   a bias that heats the modes changes it, which is not modelled
+   (`engines/transport.md` § 2a.9, *Both axes*;
+   `science/vibrational-averaging.md` § 7).
 4. **The level alignment is DFT's** — § 4c.6's last paragraph.
 5. **The projection is the free atoms** — the extended molecule the person
    let vibrate; how much of a state or a motion is the molecule's own is its

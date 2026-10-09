@@ -30,8 +30,9 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 10,
+  "schema_version": 11,
   "n_atoms_total": 2,
+  "n_frames_total": 2,
   "structure_hash": "9f2c…(sha256 hex)",
   "created_by": "molbuilder",
   "created_at": "2026-07-26T12:00:00Z",
@@ -42,6 +43,8 @@ plus the structure's **metadata fields** spread in alongside them.
   "axis_kind": ["periodic", "periodic", "isolated"],
   "vacuum": [0.0, 0.0, 12.0],
   "annotations": {"charge": {"kind": "value", "data": {"0": 0.1}}},
+  "customized": {"rows":   [{"name": "temperature", "value": 300, "unit": "K"}],
+                 "frames": [[], [{"name": "mode", "value": 31}]]},
 
   "atom_names": ["CA", "SG"],
   "residue_ids": [14, 14],
@@ -65,25 +68,37 @@ of them and its sidecar is a v7 sidecar plus a version stamp.
 |---|---|
 | `schema_version` | the on-disk schema (§ 2) — the reader checks it first |
 | `n_atoms_total` | atom count the metadata was computed against; a mismatch on load is refused, never mis-applied |
+| `n_frames_total` | *(v11)* frame count of the paired document — what `customized.frames` is indexed against; a mismatch on load is refused like the atom count's (§ 3) |
 | `structure_hash` | sha256 content hash of the paired geometry (hex, ≥16 chars) — the integrity pin (§ 3) |
 | `created_by` / `created_at` | provenance stamp (`created_at` is ISO-8601 UTC, `…Z`) |
 | `selection_rules` | a sidecar-**only** pass-through, **not** a `Structure` field (§ 4) |
 
-**Two kinds of information, one contract** *(user, 2026-08-20)*: a fact is
-**per-atom** — it rides the atom list, one entry per atom, and survives
-atom edits because every edit layer carries it with its atom (`regions`
-membership, the identity columns, each channel's atom-indexed half) — or it
-is **system** — stored separately, whole (`cell`, `engine_offset`,
-`axis_kind`, `vacuum`, each channel's kind/color/fdf).  Everything
-in this file is one or the other, and every layer (the codec, the wire, the
-viewer's two translation doors) folds and unfolds along exactly that line.
+**Three kinds of information, one contract** *(user, 2026-08-20; the third
+2026-10-09)*: a fact is **per-atom** — it rides the atom list, one entry per
+atom, and survives atom edits because every edit layer carries it with its atom
+(`regions` membership, the identity columns, each channel's atom-indexed
+half) — or it is **system** — stored separately, whole (`cell`,
+`engine_offset`, `axis_kind`, `vacuum`, each channel's kind/color/fdf, the
+structure's `customized` rows) — or it is **per-frame** — one entry per frame,
+indexed like the frames, exactly `n_frames_total` of them (`customized.frames`;
+`model/structure.md` § 2.2e).  Everything in this file is one of the three, and
+every layer (the codec, the wire, the viewer's two translation doors) folds and
+unfolds along exactly those lines.
 
 The **metadata fields** (`regions`, `cell`, `engine_offset`,
-`axis_kind`, `vacuum`, `annotations`) are exactly the set `Structure`'s
-codec owns — they are **spread in, not re-listed** by the sidecar
-(`structure_fields_via_dataclass` round-trips them through a scratch `Structure`,
-so the sidecar can never carry a field the codec doesn't know; this is what
-closed the `cell_origin`-dropped-on-reload bug). Their meanings live in
+`axis_kind`, `vacuum`, `annotations`, `customized`) are exactly the set
+`Structure`'s codec owns (`METADATA_FIELDS`) — they are **spread in, not
+re-listed**, by the writer and the reader alike
+(`structure_fields_via_dataclass` round-trips them through a scratch `Structure`
+of `n_atoms_total` atoms and `n_frames_total` frames, so the sidecar can never
+carry a field the codec doesn't know, nor a frame row set for a frame the
+document does not hold; this is what closed the `cell_origin`-dropped-on-reload
+bug).
+
+**`customized`** (`model/structure.md` § 2.2d) is `null` when it holds no row
+at all — as every other metadata field states its unset value — and otherwise
+written whole: `rows`, and `frames` with exactly `n_frames_total` entries, an
+empty list for a frame with no rows. Their meanings live in
 `structure-periodicity.md` and `structure-annotations.md`; the codec authority
 is `structure.md § 2.2`.
 
@@ -102,12 +117,19 @@ is `structure.md § 2.2`.
 
 ## 2. Schema versioning — a readable SET, strict about shape
 
-**Current schema: v10. The reader accepts {7, 8, 9, 10} and nothing else.**
+**Current schema: v11 (being built — plan § 5z.8 F; the code writes v10 until
+it lands). The reader accepts {7, 8, 9, 10, 11} and nothing else.**
 
 ```python
-SCHEMA_VERSION    = 10                 # sidecars/molstruct.py
-READABLE_VERSIONS = frozenset({7, 8, 9, 10})
+SCHEMA_VERSION    = 11                 # sidecars/molstruct.py
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11})
 ```
+
+*(v11, 2026-10-09, plan § 5z.8 F.)* **Additive**: the optional `customized`
+block (`model/structure.md` § 2.2d) and the envelope's `n_frames_total`,
+written by every v11 writer. A v7–v10 file has neither and holds nothing
+indexed by frame, so it reads whole: its labels, cell and `info` apply to every
+frame of its document, as they always did.
 
 *(v10, 2026-09-25.)* `cell_origin` is **retired** — a v7–v9 file that carries
 it is read with it ignored, and no writer emits it again (user: *"your option
@@ -218,7 +240,8 @@ at any of them is refused, not upgraded.
 | v7 | the reserved `frozen_atoms` label moves **into** `regions` with every other label, and the top-level key is no longer written. One store, one designated accessor (`molstruct.frozen_atoms(payload)`), interpreted where it means something. **Still readable** — v8 changed nothing it states |
 | v8 | the optional **identity columns** (`atom_names`, `residue_ids`, `residue_names`, `chain_ids` — `title` was a fifth until 2026-09-23 and is now a retired key, see *Retired keys* above), written only when real, applied **full-replace** on read (an absent column resets to the synthesized default, same as the metadata block) — so a PDB-born residue identity stops being erased by a save, and an xyz-born sidecar does not grow a byte. **Still readable** |
 | v9 | *(2026-08-29)* the optional **`info` block** (`structure-info`): a free key→value store of what the caller knows about these atoms that is not the atoms. Applied **full-replace** like every other block, so a stale store cannot survive a pair that no longer carries one | **Still readable**
-| **v10** | **current** *(2026-09-25)* — `cell_origin` **retired** (read and ignored, never written) and the optional stated **`engine_offset`** added (`null` = the rule). **Readable**: v7–v9 files open with their corner ignored
+| v10 | *(2026-09-25)* — `cell_origin` **retired** (read and ignored, never written) and the optional stated **`engine_offset`** added (`null` = the rule). **Readable**: v7–v9 files open with their corner ignored
+| **v11** | **current** *(2026-10-09)* — the optional **`customized`** block (the structure's rows and each frame's) and the envelope's **`n_frames_total`**. **Readable**: a v7–v10 file holds nothing indexed by frame
 
 ### Changing the schema
 
@@ -238,8 +261,13 @@ decision the reader enforces:
 
 > **`info` never enters the hash** (2026-08-29): the store describes
 > the structure — a recorded contract, a note — and recording MORE
-> about the same atoms must not read as a different structure.  The
-> hash stays what it always was: geometry + the structural metadata.
+> about the same atoms must not read as a different structure.  Nor does
+> any metadata field: the hash is the geometry document's bytes alone
+> (below), every frame of it.  *(This said "geometry + the structural
+> metadata" until 2026-10-09; `StructureCodec.pair` has always hashed the
+> document only.)*  An identity over the geometry AND the structural
+> metadata is W39's identity hash, which waits on M2m's ruling (plan § 5z.8
+> F.7 row 8).
 
 
 `structure_hash` is the sha256 of the paired geometry file's bytes
@@ -249,8 +277,12 @@ applying it to a different geometry would mis-assign labels.
 
 Two independent guards, deliberately kept separate:
 - **On apply** (`apply_to_structure`), the sidecar's `n_atoms_total` must equal
-  the structure's atom count, or the apply is **refused** (never partially
-  applied). `structure_hash` is **not** verified here.
+  the structure's atom count, and its `n_frames_total` (v11) the structure's
+  frame count, or the apply is **refused** (`MolstructPairingError`, never
+  partially applied): labels are indexed by atom and `customized.frames` by
+  frame, and a near-miss in either puts a fact on the wrong one. A v7–v10 file
+  states no frame count and holds nothing indexed by frame. `structure_hash`
+  is **not** verified here.
 - **The caller** compares `structure_hash` against the geometry it loaded, to
   detect a sidecar paired with a *changed* structure — a stricter check the
   file-access layer owns.
@@ -289,10 +321,10 @@ flowchart LR
 | Function | Role |
 |---|---|
 | `sidecar_path_for(xyz)` | derive `<stem>.molstruct.json` from a geometry path — the one pairing rule |
-| `to_dict(fields, n_atoms_total, structure_hash, …)` | build the envelope + spread the validated metadata fields |
+| `to_dict(fields, n_atoms_total, n_frames_total, structure_hash, …)` | build the envelope + spread the validated metadata fields |
 | `save(path, …)` | atomic write (temp sibling + `os.replace`) |
 | `load(path)` / `load_text(text)` | read + validate the version → a normalised metadata dict |
-| `apply_to_structure(struct, dict)` | apply the metadata onto a `Structure` (via `apply_metadata_dict`); guards `n_atoms_total` |
+| `apply_to_structure(struct, dict)` | apply the metadata onto a `Structure` (via `apply_metadata_dict`); guards `n_atoms_total` and `n_frames_total` |
 | `MolstructJsonError` / `MolstructPairingError` | the payload is unreadable / the payload is for a **different structure**. Separate types because § 3's two guards get different answers: a surface may forgive an unreadable *version*, none may forgive a wrong *pairing* |
 
 Callers do not touch the field list — `Structure`'s two metadata methods are the
@@ -326,27 +358,37 @@ a rename.
 
 ### 6.1 One sidecar, many frames *(user, 2026-09-24)*
 
-A coordinate document may hold **several frames** — the codec writes a frame
-range as one extended-XYZ document (`structure.md` § 5.1, `pair(frames=)`),
-and ASE reads every frame of one back. **The pair stays one sidecar**: the
-per-atom facts (labels, frozen set, identity columns), the periodicity and the
-`info` store apply to **every** frame, because a frame is the same atoms, in
-the same order, moved. A frame carries coordinates and a cell and nothing
-else; a frame that restates a label would be a second source for it.
+A coordinate document may hold **several frames** — a structure holding a
+frame set is written as one extended-XYZ document (`structure.md` § 2.2e,
+§ 2.4), and `from_xyz` reads every frame of one back. **The pair stays one
+sidecar**: the per-atom facts (labels, frozen set, identity columns), the
+periodicity, the `info` store and the structure's `customized` rows apply to
+**every** frame, because a frame is the same atoms, in the same order, moved.
+A frame carries its coordinates and its own `customized` rows
+(`customized.frames[f]`) and nothing else; a frame that restated a label or a
+cell would be a second source for it.
 
 | a reader that… | gets |
 |---|---|
-| asks for a structure (`load(path)`) | **frame 0**, with the sidecar applied — today's behaviour, unchanged |
-| asks for the frames (`load(path, frames_out=[…])`) | every frame, in file order, each with the same sidecar applied |
+| asks for a structure (`load(path)`) | **frame 0**, with the sidecar applied and frame 0's rows as its own — today's behaviour, unchanged |
+| asks for one frame (`load(path, frame=i)`) | frame `i` the same way |
+| asks for the set (`load(path, frames=True)`) | every frame, in file order, in one structure — the shared facts once, each frame's rows at its index |
 
 This is what makes a multi-frame pair a legal input everywhere a structure is
 one, and a **frame set** where a door is frame-aware:
 [`engines/transport.md`](?doc=engines/transport.md) § 2a.9 defines the
 transport frame group as exactly this pair — frame 0 the base, frames 1…N the
-displacements, the rule that made them recorded in `info` when known. The
-axis kinds are the sidecar's (the extended-XYZ `pbc=` flag is boolean and
-cannot carry them, the unification audit's X2 ①), which is one more reason
-the frames do not travel without it.
+displacements. The axis kinds are the sidecar's (the extended-XYZ `pbc=` flag
+is boolean and cannot carry them, the unification audit's X2 ①), which is one
+more reason the frames do not travel without it.
+
+**What is particular to one frame** — its displacement, the mode it moves
+along, its weight in an average — is the structure's `customized` section, one
+set of rows a frame (`model/structure.md` § 2.2d; plan W39, ruled
+2026-09-27/30, and § 5z.8 F), never `info`. The rows are written by what makes
+the frame set — the frame generator, a person's script, through
+`Structure.set_customized(…, frame=i)` — never typed into the browser, which
+shows them read-only at the displayed frame.
 
 ---
 

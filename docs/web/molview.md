@@ -452,7 +452,9 @@ all of it.
 
 **The structure — the same for every frame.** Per atom: its element, the labels
 it carries, and its residue name. Plus, for the structure as a whole, an optional
-unit cell.
+unit cell, its `info` records (§ 8.4a) and its `customized` rows — named values
+about the whole structure ([`model/structure.md`](?doc=model/structure.md)
+§ 2.2d).
 
 A residue name is always there. A format that carries residues — a PDB — supplies
 real ones; a format that does not gives every atom the placeholder `MOL`, which is
@@ -465,8 +467,12 @@ are identical for frame 0 and frame 400. That is exactly what makes a trajectory
 
 **The coordinates — one set per frame.** `frames[f][a]` is atom `a`'s position in
 frame `f`. Per-atom forces, when a calculation produced them, sit in a matching
-list of the same shape. A structure that is not a trajectory is simply a list of
-**one** frame.
+list of the same shape, and so do the frame's own `customized` rows
+(`rowsPerFrame[f]` — what that frame is: a displacement's mode, its weight;
+`model/structure.md` § 2.2e). **A frame carries its coordinates, its forces and
+its rows, and nothing else**, and every one of those lists has one entry per
+frame: the one place frames arrive in the model moves them together (§ 9.3). A
+structure that is not a trajectory is simply a list of **one** frame.
 
 **Which frame, and how many there are.** One number saying which frame is meant,
 and the range it is allowed to be in. They are held together because neither is
@@ -493,6 +499,8 @@ classDiagram
       +Periodicity periodicity
       +string title
       +ChannelDefs channelDefs
+      +Map info
+      +Row[] customized
     }
     class AtomFacts {
       +string[] labels
@@ -505,6 +513,7 @@ classDiagram
     class Coordinates {
       +Frame[] frames
       +FrameForces[] forcesPerFrame
+      +Row[][] rowsPerFrame
     }
     class DisplayedFrame {
       +int index
@@ -561,8 +570,11 @@ classDiagram
 | `annotations` | per atom: the labels it carries, its identity — residue name, atom name, residue id, chain, real ones from a format that has them or the server's synthesized placeholders from one that does not (§ 6.1) — and its per-atom channel values (the sidecar's `annotations` block, atom-indexed half) | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them, writes them and filters on them (§ 9.5); the drawing does not use them. Writing one is a change to the structure, gated like any other (§ 9.4). Some label names are **reserved** and mean something downstream (§ 6.6) |
 | `periodicity` | the a/b/c vectors, the offset the structure states (if any) and the corner the box is drawn at, how each axis is treated — repeating, isolated, or a transport lead — how much empty space an isolated axis should have, and beside each of those the **resolved** answer the server worked out. `null` when the structure has none | **One fact that travels together**, which is why there is one door to change it (§ 9.3). **Carried under the field names it arrives with** — `cell`, `engine_offset`, `axis_kind`, `vacuum` (and the resolved `box_corner` beside them) — which are the same names the sidecar on disk uses, because both are the codec's. MolView holds the block, offers it, edits it through that one door, and interprets none of it. Those names and the rules for resolving them belong to [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) |
 | `title` + `channelDefs` | the structure's title, and per channel its `kind`/`color`/`fdf` — the channel-LEVEL half of the sidecar's `annotations` block | **Carried verbatim, like `periodicity`** *(2026-08-20)*: the viewer edits neither, so neither is per-atom — the atom-indexed half of each channel rides on the atoms (above), and the two doors (§ 11.1's adoption, the one outbound read) fold and unfold between this split and the wire's shape. Whether an identity value is a placeholder is the **server's** judgment; this module carries what it is given |
+| `info` | the records that describe the structure without being it (§ 8.4a) | **Shared by every frame**, carried verbatim; never hashed, never gated for the host's writes |
+| `customized` | `Row[]` — `{name, value, unit?, note?}`, the structure's named values (`model/structure.md` § 2.2d) | **Shared by every frame.** Part of the structure: written only through `data.customized` (§ 9.3), gated like any edit (§ 9.4) |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no labels |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
+| `rowsPerFrame` | `Row[][]` or `null` | `rowsPerFrame[f]` = frame `f`'s own `customized` rows; `null` when no frame has one, otherwise exactly one entry per frame. Folded in from the envelope's `metadata.customized.frames` and out again only by the two translators (§ 11.1), as the annotations are |
 
 > **A carried block keeps its own names.** MolView renames nothing it does not
 > interpret. The module once called this block `{lattice, origin, …}` and renamed
@@ -1643,6 +1655,22 @@ word, not the run's — the relaxation check does
 refuses it: the person may state what they know; the reader says whose
 statement it is.
 
+**A Customized section — the structure's named values, and the displayed
+frame's** *(W39, user 2026-09-27; plan § 5z.8 F, 2026-10-09)*.  Below the
+`info` entries the page shows the structure's `customized` rows
+([`model/structure.md`](?doc=model/structure.md) § 2.2d) — one row each, name,
+value, unit and note — and, on a structure of several frames, **the displayed
+frame's rows** under its number (*frame 2 of 7*), following the frame bar: a
+frame change redraws that section alone, through `onFrameChange` (§ 6.4).
+Unlike `info`, a row IS the structure — it says what the structure is for a
+task — so its doors, `data.customized.set` / `remove` (§ 9.3), are the person's
+and gated like every edit (§ 9.4): on a viewer that saves its structure — the
+Molbuilder tab, which holds one frame — a person adds, changes or removes a row,
+of the structure or of its frame, and the edit is recorded on the history; on
+every other viewer the section reads only. A frame set's rows are written by
+what made the set — the frame generator, a person's script through
+`Structure.set_customized(…, frame=i)` — never in the browser.
+
 **`info` is not core data.**  § 9.4's one question — *does this change
 the structure the calculation ran on?* — answers no: `info` describes
 the structure, it is not the structure.  So the host's `info` doors are
@@ -1930,13 +1958,14 @@ rather than maintained separately.
 | Edit the geometry | `applyOp(name)` (§ 11.1) | | **yes** |
 | Edit the cell | `commitPeriodicityOp` — the one way the cell changes | | **yes** |
 | Load or extend the frames | `reloadFrames` · `addFrame` · `addFrames` · `setForces` | | — *(delivery, not a change — § 9.4)* |
+| Write a named value about the structure, or about its frame | `data.customized.set` · `data.customized.remove` (§ 8.4a) | `data.customized.list` — the read | **yes** |
 | Tag the selected atoms | the label door on `selection` (§ 9.5) — the atoms it applies to are the selection, but what it writes is the structure | | **yes** |
 | Save a point, and move through the sequence | `save(step)` · `load(step)` (§ 11.2) | `undo`, which is exactly `load(-1)`. `load(0)` is not a move — it puts back the point you were on | **yes** |
 | Know where you are in the history | `state_index` · `uncommitted` | | — |
 | Make several changes land as one | `beginChange` · `endChange` — the bracket of § 11.2: writes asked for inside are held, and one lands at the end carrying the settled state | | — |
 | Ask which kind of viewer this is | `mode` — so MolView can hide the controls the gate would swallow (§ 9.4). Configuration, not data: the gate is still what makes the guarantee true | | — |
 
-Sixteen needs. That count is the honest measure of the surface; everything else
+Seventeen needs. That count is the honest measure of the surface; everything else
 is a narrower cut, and a cut earns its place only by being what a caller actually
 asks for.
 
@@ -1966,7 +1995,7 @@ read answers `null`** — "there is nothing here", which is a different answer f
 
 | Call | Parameters | Answers |
 |---|---|---|
-| `getStructure()` | — | the master copy whole: `{elements, annotations, periodicity, title, channelDefs, info, frames, forcesPerFrame}` |
+| `getStructure()` | — | the master copy whole: `{elements, annotations, periodicity, title, channelDefs, info, customized, frames, forcesPerFrame, rowsPerFrame}` |
 | `getAtoms()` | — | `[{index, element, labels, residue}]` |
 | `getElements()` · `getCoordinates()` | — | the elements; `{frames, forcesPerFrame}` |
 | `getRegions()` | — | `{label: [atom…]}` |
@@ -1977,10 +2006,10 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `currentFrame()` · `frameCount()` | — | **`0` with nothing loaded**, not `null` — they are counts |
 | `setCurrentFrame(i)` | `i` — resolved against the range, never taken on trust | — |
 | `onFrameChange(fn)` · `subscribe(fn)` | `fn` | an unsubscribe function |
-| `exportFile(range)` | `range` — `{from, to}`, inclusive, 0-based, clamped to what exists. Omitted means the displayed frame alone | `{name, structure}` for one frame; `{name, structure, frames}` when the range covers more — `frames` is **additive**, so a caller that knows nothing about ranges keeps working. `null` if the geometry and the per-atom facts disagree |
+| `exportFile(range)` | `range` — `{from, to}`, inclusive, 0-based, clamped to what exists. Omitted means the displayed frame alone | `{name, structure}` — ONE envelope, the range's frames and their rows inside it: `positions` and the frame's rows as the structure's frame 0 for one frame, `frames` and `metadata.customized.frames` for several (`model/structure.md` § 2.2e). `null` if the geometry and the per-atom facts disagree |
 | `mode` | — | **`"editable"` or `"readonly"`**, never `null` |
 | `state_index` · `uncommitted` | — | the position; whether there is unsaved work |
-| `installMolecule(input)` | `{path}` **or** `{structure}` **or** `{text, filename}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
+| `installMolecule(input)` | `{path}` **or** `{structure}` **or** `{text, filename}`; `frame?` — one frame of a file of several, 0-based; without it the whole file arrives, which a read-only viewer takes and an editable one refuses when it holds several frames (§ 9.4, *"pick a frame"*); plus `frames?` + `forces?` for a run's own trajectory (§ 9.3a, § 11.7's one exception) and `enforce?` (§ 9.4) | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `applyOp(name, args)` | `name` — a row of § 11.1's table, and the route segment. `args` — that operation's own arguments, flat | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `commitPeriodicityOp(op, payload)` | `op` — `vacuum` · `axis_kind` · `cell` · `box_corner` (the origin the person assigns; `null` is *Automatic*) · `block`. `payload` — that op's value; `null` clears | the cell block · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `reloadFrames(frames, opts)` | `opts` — `{forces?, enforce?}` | — |
@@ -1991,6 +2020,8 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `undo()` | — | exactly `load(-1)` |
 | `beginChange()` · `endChange()` | — | the bracket (§ 11.2) |
 | `selection.writeLabel(name, verb, atoms?)` | `verb` — `replace` · `add` · `remove`. `atoms` defaults to the selection | did it apply |
+| `data.customized.list(frame?)` | `frame` — omitted, the structure's rows; an index, that frame's (0-based) | a copy of the rows, `[]` when there are none |
+| `data.customized.set(name, value, opts?)` · `data.customized.remove(name, opts?)` | `value` — a number, text or true/false; `opts` — `{unit?, note?, frame?}`. A frame outside the range is refused naming the count; a name the structure's rows hold may not also be a frame's | did it apply |
 
 > **`getStructure` did not return what this table said, until 2026-09-07.** It
 > listed five keys while § 6.2 lists six fields on the master copy, so `title`,
@@ -2001,16 +2032,6 @@ read answers `null`** — "there is nothing here", which is a different answer f
 > name, and the restore banner said `(unnamed)` after every restore. A cut
 > documented as the whole is worse than a cut, because the caller does not know
 > to go elsewhere.
-
-> **`getStructure` did not return what this table said, until 2026-09-07.**
-> It listed five keys and § 6.2 lists six fields on the master copy, so
-> `title`, `channelDefs` and `info` were dropped by the reader while the
-> sentence two rows up called it *"the master copy entire"*. Callers believed
-> the sentence: the Modify tab's `#title-readout` read `.title` off this and
-> got `undefined`, so it showed the Hill formula and **never** the structure's
-> name, and the restore banner said `(unnamed)` after every restore. A cut
-> that is documented as the whole is worse than a cut, because the caller does
-> not know to go elsewhere.
 
 
 #### The cell, the axes and the vacuum — what is given and what is derived
@@ -2083,6 +2104,15 @@ The person's are gated and recorded on the history, and stamp
 `edited_by_hand` on a block that names its `source` — the Metadata page
 is their caller.
 
+**The `customized` doors** (§ 8.4a; `model/structure.md` § 2.2d): `data.customized.list(frame?)`,
+`set(name, value, {unit, note, frame})`, `remove(name, {frame})` — `frame`
+omitted, the structure's rows; an index, that frame's. They are the model's
+only writers of either list, both of them gated (a row is the structure, not a
+note about it) and recorded on the history. **The frame rows move with the
+frames**: the one place frames arrive in the model — a load, an append, a
+reload, a restore — moves `frames`, `forcesPerFrame` and `rowsPerFrame` in the
+same step, so no list is ever a frame longer than another.
+
 ### 9.3a Handing the structure to the server
 
 Everything the server is ever asked about a structure — check this, generate an
@@ -2094,7 +2124,7 @@ structure**, so one read holds them all.
 
 | You want… | Ask | You get |
 |---|---|---|
-| to **look at** the structure — how many atoms, what is labelled, is there a cell, how many frames | `getStructure()` | the master copy whole, **in this module's words**: `{elements, annotations, periodicity, title, channelDefs, info, frames, forcesPerFrame}` — *every* frame |
+| to **look at** the structure — how many atoms, what is labelled, is there a cell, how many frames | `getStructure()` | the master copy whole, **in this module's words**: `{elements, annotations, periodicity, title, channelDefs, info, customized, frames, forcesPerFrame, rowsPerFrame}` — *every* frame |
 | to **send** the structure to the server | `exportFile(range)` | the same facts **in the server's words**, for **one frame** (the one on screen, unless a range says otherwise), plus the name it came in under |
 
 **A tab never converts between them.** The renaming is a translation, and this
@@ -2189,12 +2219,16 @@ because a coordinate document is a format the server owns).
   way. One entrance means one place the rules are checked and one place the
   history is anchored.
 
-  **A trajectory arrives with it, not after it.** The server answers with one
-  geometry, because it parses a file and a file has one; the frames of a run come
-  from the tab's own parsed run file (§ 6.3). So a caller opening a trajectory
-  hands the frames over *in the same call*, and every one of them lands in a
-  single settle. Each is checked against the atoms being installed, exactly as an
-  append is (§ 10.8).
+  **A trajectory arrives with it, not after it.** A frame set the server opens
+  arrives **inside the envelope** — `frames` in place of `positions`, each
+  frame's rows in `metadata.customized.frames` (`model/structure.md` § 2.2e) —
+  when the install named no `frame`; and the frames of a run come from the
+  tab's own parsed run file (§ 6.3), handed over by the caller, whose frames
+  replace any the envelope had (§ 11.7's one exception). Either way they land
+  *in the same call*, and every one of them in a single settle. Each is checked
+  against the atoms being installed, exactly as an append is (§ 10.8). **An
+  editable viewer takes one frame** (§ 9.4): a file of several reaches it only
+  as the frame its tab asked the person for.
 
   Loading the frames in a second call breaks three rules at once, and the third
   loses data: the one entrance is no longer one, because the frames came through
@@ -2211,8 +2245,8 @@ because a coordinate document is a format the server owns).
   ever exists, even briefly, without the facts that came with it, and nothing
   reaches the model through a second door.
 - **`exportFile(range)`** — its exact inverse. Returns **the structure as
-  data** — the frames in the range, with the name it came in under — and stops
-  there (§ 11.7). The range defaults to **the frame currently displayed** (§ 6.4),
+  data** — ONE envelope, the frames in the range and their rows inside it, with
+  the name it came in under — and stops there (§ 11.7). The range defaults to **the frame currently displayed** (§ 6.4),
   which is what makes § 5.1 true at the point a user acts; asking for more is how
   a trajectory leaves. It writes no text and assembles no sidecar, because a
   coordinate document is a format the server owns, and **which** document — one
@@ -2273,6 +2307,20 @@ alter the atom count, the elements, the labels or the cell, only add positions
 for atoms whose identity was fixed at load. There is nothing there for the gate
 to protect.
 
+**An editable viewer holds one frame** *(user, 2026-10-09: "When we deal with
+multi-frame files, we refuse edits … the edit or modify tab would only load a
+single frame. If it's pointed to a multi-frame, it will warn you or ask you,
+which frame do you want to load?")*. A frame set is a data set made by scripts
+and never edited (`model/structure.md` § 2.2e). So one rule stands at the one
+place frames arrive in the model: **in an editable viewer, a second frame is
+refused** — an install of a file or envelope holding several, an `addFrame` /
+`addFrames`, a `reloadFrames` of several — with *"a frame set is not edited —
+pick a frame"*, and nothing is installed. No editing door ever meets a frame
+set, so none of them needs a rule of its own. A read-only viewer takes a frame
+set whole, as it takes a running job's frames. The tab that wants one frame of
+a file asks the person which (the Molbuilder tab's Load, `tabs.md` § 2) and
+installs that one with `frame`.
+
 > Asking instead "does this touch the master copy?" reads the same table and
 > gives the wrong answer, because appending a frame literally does. Gated on that
 > reading, a read-only viewer lost the two things it exists for: it could not
@@ -2294,6 +2342,7 @@ a viewer that threw would make every caller wrap its writes.
 | `applyOp(name, args)` | yes | **no-op** | `null` |
 | `commitPeriodicityOp(op, payload)` | yes | **no-op** | `null` |
 | `selection.writeLabel(name, verb, atoms?)` | yes | **no-op** | `false` |
+| `data.customized.set` · `data.customized.remove` | yes | **no-op** | `false` |
 | `reloadFrames(frames, opts)` | **yes** — replaces every coordinate, can shorten the run | **no-op**, unless `{enforce: true}` | `undefined` |
 | `addFrame` · `addFrames` · `setForces` | no — extend only | **runs** | `undefined` |
 | `save(step)` | records | **no-op** | `false` |
@@ -4388,6 +4437,19 @@ That was not always so, and the last door to hold out was the cell's: it took a
 `{xyz, sidecar}` blob the browser could not produce, so the one door § 6.2 gives
 the cell answered 400 to every request ever made of it, silently, for as long as
 it existed. A door whose shape only one side can speak is a door that is shut.
+
+**A frame set crosses inside the envelope, both ways** *(plan § 5z.8 F)*. In:
+a load that names no `frame` answers the whole file — the envelope with
+`frames` in place of `positions` and each frame's rows in
+`metadata.customized.frames` (`model/structure.md` § 2.1, § 2.2d) — and a load
+that names one answers that frame alone. Out: `exportFile(range)` hands over
+one envelope, the range's frames and their rows inside it. There is no `frames`
+list beside an envelope in either direction, because a list beside it is a
+second carrier the translators would have to pair by hand. **The one
+exception** is a run's own trajectory: its frames are parsed by the tab from
+the run's file (§ 6.3), carry forces and no rows, are handed to
+`installMolecule` / `reloadFrames` / `addFrames` by that tab, and replace any
+frame axis the envelope had.
 
 > The envelope's field-level JSON lives with the other wire shapes in
 > [`web-api.md`](?doc=web/web-api.md) § 1, not here. This document says *that* a

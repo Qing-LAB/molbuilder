@@ -1752,11 +1752,16 @@ the stated temperature (three by default, five on request, science § 4c.5):
 ```
 
 `Q_zp` and `L_canonical` are read from the result (§ 6.3) — the canonical form
-only, by § 6.3's pairing rule. The pair's `info.frame_rule` records the
-vibration run it read (its path and structure hash), the temperature, the
-order, and per frame `{mode, frequency_cm1, sigma_amu12_ang, node_sigma,
-q_amu12_ang, weight}`; the base's weight in each mode's average is
-`1 − Σ_j w_j`. Each frame also states its largest atomic displacement against
+only, by § 6.3's pairing rule. The generator builds the set through the
+structure's own doors ([`model/structure.md`](?doc=model/structure.md) § 2.2d–
+2.2e): `with_frames` for the coordinates, and for every frame, frame 0
+included, `set_customized(…, frame=i)` for its rows — `mode`, `node_sigma`,
+`weight`, `order`, `frequency_cm1`, `sigma_amu12_ang`, `q_amu12_ang`,
+`max_displacement_ang`, `temperature_k` (frame 0, the equilibrium, has no
+`mode`); user, 2026-10-09: *"one list, having the same number of elements as
+the frames"*. The vibration run it read (its path and structure hash) is
+recorded as an `info` entry of its own; the base's weight in each mode's
+average is `1 − Σ_j w_j`. Each frame also states its largest atomic displacement against
 that atom's nearest-neighbour distance (science § 4c.5, soft modes) — a warning
 above a stated fraction, never a refusal. The pair keeps the transport frame
 set's promises by construction — count, order, species and labels unchanged,
@@ -1796,10 +1801,12 @@ keyword — `%block ProjectedDensityOfStates`, `PDOS.kgrid.MonkhorstPack`,
 `SaveHS`, `Charge.*` — is checked against the manual-derived table before it
 is written (I21).
 
-**⑤ The response across the frames — `summarize`** (§ 5.9's pattern).
-`jobset summarize task` on an `electronic` or a `transport` calculation whose
-structure is a frame set writes `<label>.mode-response.json` at the calculation
-root — a summary of results that exist, each frame's file named by its path and
+**⑤ The response across the frames — `summarize`** (§ 5.9's pattern). **On
+transport it is the transport record's** — each frame's curve, each mode's
+average and change, the sum (`engines/transport.md` § 2a.12, built with Q17,
+plan § 5z); what follows is the `electronic` kind's, when it is built.
+`jobset summarize task` on an `electronic` calculation whose structure is a
+frame set writes `<label>.mode-response.json` at the calculation root — a summary of results that exist, each frame's file named by its path and
 none copied (I25's rule). It reads each frame's `Q` and weight from the frame
 rule, so the same writer serves both kinds and neither needs to know what a
 mode is:

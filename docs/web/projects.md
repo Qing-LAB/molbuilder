@@ -382,7 +382,7 @@ Cancel hook.
 
 **The MolView files door** — `projects.molviewFiles` *(2026-08-19)*: the one
 implementation of the `files` option every MolView mount hands in
-(`molview.md` § 11.4). `save(destination, stem, {structure, frames})` turns
+(`molview.md` § 11.4). `save(destination, stem, {structure})` turns
 the viewer's truth into the `.xyz` + `.molstruct.json` pair — `"download"`
 through `POST /api/structure/export`, delivered as **one `<stem>.zip`**
 when it is a pair (a second programmatic download is what browsers

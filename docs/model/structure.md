@@ -74,11 +74,21 @@ class Structure:
     # regions (THE label store), annotations    → structure-annotations.md
     #     (frozen_atoms is not a field: it is the reserved label's one
     #      designated read, a cut of regions)
+    # customized — the structure's rows and each frame's      → § 2.2d
+    # ── beside the metadata ──
+    # info — records that are not the structure (never hashed) → § 2.2a
+    # ── frames (§ 2.2e) ──
+    frames:        Optional[np.ndarray] = None # (F, N, 3) when F > 1;
+                                               # positions IS frames[0]
 ```
 
 **Invariants enforced by `__post_init__`** (the single validation site):
 
 - `positions` must reshape to `(N, 3)`, else `ValueError`.
+- `frames`, when given, must be `(F, N, 3)` with `F > 1`, and `positions`
+  becomes a view of `frames[0]`; a `frames` of one frame is stored as
+  `positions` alone (§ 2.2e). `customized` is `None` or holds exactly `F`
+  frame row sets, its rows valid and its names unique as § 2.2d states.
 - Every optional list, if provided, has length N; `None` gets the per-field
   default above.
 - The metadata fields are validated/reconciled here too (see
@@ -109,6 +119,8 @@ Three methods on `Structure` (`structure.py`), all shipped:
 # to_dict() — the loss-free round-trip unit; NOBODY else assembles this dict
 {
     "title": ..., "elements": [...], "positions": [[x,y,z], ...],
+    #   …or, for a frame set (§ 2.2e), "frames": [[[x,y,z], ...], ...] — one
+    #   key or the other, never both
     "atom_names": [...], "residue_ids": [...],
     "residue_names": [...], "chain_ids": [...],
     "metadata": self.metadata_to_dict(),   # the ONE metadata codec, nested verbatim
@@ -144,10 +156,13 @@ Structure.metadata_to_dict()      -> dict   # struct → JSON metadata dict (THE
 Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE reader, :533)
 ```
 
-- **Scope** = the dataclass's own metadata fields: `regions`, `cell`,
-  `engine_offset`, `axis_kind`, `vacuum`, `annotations`. (`regions` is the
+- **Scope** = the dataclass's own metadata fields, named once as
+  `METADATA_FIELDS`: `regions`, `cell`, `engine_offset`, `axis_kind`,
+  `vacuum`, `annotations`, `customized` (§ 2.2d). (`regions` is the
   whole label store; a reserved label such as `frozen_atoms` is in it, so there
   is no field of its own to serialise — `structure-annotations.md` § 2.)
+  `customized`'s frame row sets are indexed by frame, so the block is applied
+  to a structure holding the frames it describes (§ 2.2e).
 - **Strict JSON** — the dict is lists/dicts/bools/floats. `annotations` are
   JSON channel dicts (via `annotations_to_json`), **never** live `AtomChannel`
   objects (those live only in-memory; see `structure-annotations.md`).
@@ -165,14 +180,20 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
   `structure-molstruct.md`.
 
 **To add a metadata key:** (1) add the field to the dataclass with its
-`__post_init__` validation; (2) add it to `metadata_to_dict()` +
-`apply_metadata_dict()` — nowhere else; (3) if it must survive the sidecar,
-bump `SCHEMA_VERSION` and register the new version in the read module (see
-`structure-molstruct.md`); (4) if MolView must show/edit it, surface it in the web
-`to_wire` periodicity block and read it in `molview.data`; (5) add a
+`__post_init__` validation, and its name to `METADATA_FIELDS`; (2) add it to
+`metadata_to_dict()` + `apply_metadata_dict()` — nowhere else; (3) if it must
+survive the sidecar, bump `SCHEMA_VERSION` and add the new version to
+`READABLE_VERSIONS` (see `structure-molstruct.md`); (4) if MolView must show it,
+`structureFromServer` reads it from the envelope (`payload.structure`, the
+structure's own dict, as it reads `info`) and `structureForServer` writes it
+back — the model's two translators, and nothing else in the browser names it
+(`web/molview.md` § 6.2); (5) add a
 save→load→apply round-trip test. You do **not** touch `to_dict`, the sidecar
-`to_dict`, or `apply_to_structure` — they read the field set from the two
-methods above, so they pick it up for free.
+writer (`sidecars/molstruct.to_dict`), its reader
+(`parse/sidecars/molstruct.load_text`) or `apply_to_structure` — each SPREADS
+`METADATA_FIELDS` through the two methods above, so it picks the field up for
+free. *(Until 2026-10-09 the reader named the six fields by keyword, so a
+seventh would have been dropped on every load — found by the § 5z.8 review.)*
 
 **To remove one:** delete it from the dataclass + both methods, and add its
 name to `RETIRED_METADATA_KEYS` — only when ignoring it loses nothing, or by a
@@ -243,12 +264,14 @@ one is TAKEN FROM A STATED OWNER:
 | `axis_kind`, `vacuum`, `info` | **the first input**, cell or no cell | these are facts OF THE CANVAS — what the person set in the Cell tab and the contract they recorded. They are equally true of a structure that states no lattice, so a fragment arriving with a box must not restate them |
 | everything atom-indexed | joined | `regions`, the annotation channels and the residue IDs are re-indexed and unioned — see `concat`. Residue re-indexing is conditional: `renumber_residues=True` (the default) renumbers, `False` concatenates the ids verbatim |
 | `title` | **neither input** — the caller's `title=` argument (§ 2.2c) | a merged structure is not either input, so `concat` takes the name from whoever asked for the merge. `Structure.concat([a, b])` with no `title=` yields `''`; `append_structure` passes the canvas's, which is why the seam this section is about keeps its name |
+| `customized` | **the first input** — its rows and its frame's rows | named values about the canvas, as `info` is; the addition's rows are not joined, because a row about one structure is not true of the merge |
+| frames | — | a merge joins one-frame structures; a frame set is refused (§ 2.2e) |
 
 **What the merge does not carry, it says** (`modify.append_structure`'s
 notes, shown on the page that asked): the addition's cell when the canvas has
-one, its stated origin, a label it renamed, and each entry of the addition's
+one, its stated origin, a label it renamed, each entry of the addition's
 `info` — a saved pair's calculation and relaxation records, which the canvas's
-`info` replaces. A dropped record is otherwise invisible: the 2026-10-08 load
+`info` replaces — and each of its `customized` rows. A dropped record is otherwise invisible: the 2026-10-08 load
 of a relaxed junction onto an open SMILES build showed the build's metadata and
 none of the file's, with no word why (plan § 5z.1).
 
@@ -411,16 +434,116 @@ both halves were mutation-checked: before it, reverting the keyword strip
 broke nothing across 116 tests and restoring the identity column broke
 nothing across 131.
 
+### 2.2d `customized` — named values the structure carries, its own and each frame's *(W39; plan § 5z.8 F)*
+
+*(User, 2026-09-27: "provide an additional customization list so user can make
+a list of parameters as meta data to be stored in the \"customized\" category
+… a new category other than info"; "we also need a unified api for writing and
+reading them from structure, no handcrafted json operation for these
+customized parameters". 2026-10-09: "the data structure should be an indexed
+array … the API should be like having a frame as a separate parameter".)*
+
+A **row** is a named value: `name` (a non-empty string), `value` (a number,
+text or true/false), and optionally `unit` and `note`. The section holds the
+**structure's rows** — about the whole structure — and, for a structure of
+several frames, **each frame's rows**: an array indexed like the frames, one
+row set per frame (§ 2.2e). Names are unique within one set, and a name that
+is the structure's may not also be a frame's.
+
+Unlike `info` (§ 2.2a) it is **STRUCTURAL**: it describes what the structure is
+for a task — a frame's displacement, the mode it moves along, its weight in an
+average — so it is in `METADATA_FIELDS`, carried by every derivation, gated
+like any edit (`web/molview.md` § 9.4), and in the sidecar (schema 11,
+`structure-molstruct.md` § 2). It is never a free-form store: molbuilder
+reads only the rows whose names a subsystem owns and declares as constants
+(transport owns `mode`, `node_sigma`, `weight`, `order`, as `transport/sort.py`
+owns the region names), and every other row is the writer's, carried and shown.
+
+**The one door, each side** — nothing else names a key of the section:
+
+| | the door |
+|---|---|
+| write a row | `Structure.set_customized(name, value, unit=None, note=None, frame=None)` — `frame=None` the structure's rows, an index that frame's; an index outside `0 … F−1` refused, naming `F` |
+| remove one | `Structure.remove_customized(name, frame=None)` |
+| read | `Structure.customized_value(name, frame=None)` — that set only, never a fall-back to the other; `Structure.customized_rows(frame=None)` |
+| the browser | MolView's `data.customized.list(frame)` / `set(name, value, {unit, note, frame})` / `remove(name, {frame})` (`web/molview.md` § 9.3) |
+
+**On the wire and on disk** it is one block of the metadata dict, written by
+`metadata_to_dict` and applied by `apply_metadata_dict` like every structural
+field (§ 2.2) — `null` when it holds no row at all, as every field states its
+unset value, and otherwise written whole:
+
+```text
+"customized": {
+  "rows":   [ {"name": "temperature", "value": 300, "unit": "K"} ],
+  "frames": [ [ … frame 0 … ], [ … frame 1 … ], … ]      exactly F entries
+}
+```
+
+`frames` has exactly `F` entries — an empty list for a frame with no rows — so
+every per-frame list of the structure has the same length (§ 2.2e).
+
+### 2.2e Frames — a frame set is a data set *(user, 2026-10-09; plan § 5z.8 F)*
+
+> *"The multi-frame is a tool for us to manage data set that's intrinsically
+> consistent with each other … the way we create them is a set of script that
+> understand this. That's the contract."*
+
+A structure holds **one or more frames**: the facts shared by every frame (the
+identity columns, the labels and channels, the periodicity, `info`, the
+structure's `customized` rows) and, per frame, its coordinates and its
+`customized` rows. **Every per-frame list is indexed by frame and has exactly
+`F` entries, and only the frame doors change `F`.** A one-frame structure is
+`F = 1` — the same shape, never a special case.
+
+**What a frame set is.** A data set whose frames are consistent by
+construction — the same atoms in the same order, the same species, the same
+cell, each frame's rows saying what it is (a displacement along a normal mode,
+`engines/transport.md` § 2a.9). It is MADE by code that understands this,
+through the doors below — the frame generator, a person's script. **It is never
+edited**: nothing moves atoms, adds or removes them, or rewrites coordinates in
+a frame set; the browser views one and the Molbuilder tab loads one frame of it
+(`web/molview.md` § 9.4, `web/tabs.md` § 2).
+
+**Stored once.** `frames`, shape `(F, N, 3)`, present when `F > 1`, and
+`positions` is a view of frame 0 — one coordinate store, never two copies.
+`to_dict` carries `frames` instead of `positions` when `F > 1`, never both.
+
+| | the door |
+|---|---|
+| how many; one of them | `n_frames`; `frame_at(i)` → a one-frame Structure at frame `i`, its rows that frame's (as its own frame 0), its origin the set's (below) |
+| build a set | `with_frames(coordinates, frame_rows=None)` — every frame `N` atoms of the same species in the same order; frame 0 becomes `positions` |
+| reorder the atoms | `take(order)` — the order applied to every per-atom field and every frame; the transport sort's one reorder (`transport/sort.py`), which is not an edit |
+| the shared facts | labels, cell, `info`, the structure's rows change for every frame at once — they are shared |
+
+**Refused, by name**: on a set of several frames, anything that moves atoms or
+changes their number — the geometry ops (`modify.py`), `affine` / `translated`,
+`replace(positions=…)`, the merge (`concat`) — each answering *"a frame set is
+not edited — take one frame with `frame_at(i)`"*.
+
+**One origin for the set.** The offset an engine gets is the set's —
+`structure-periodicity.md` § 6.0, *A frame set gets one offset*: the stated one,
+or the rule's computed on frame 0 — and `frame_at(i)` states it, so every frame
+is handed to the engine through `cell.to_engine` with that offset.
+
+**Reading a file** (§ 2.3, § 2.4): frame 0 by default — exactly as before — or
+one frame (`frame=i`) or the whole set (`frames=True`), and a door that prints
+says when it took one frame of several, which and how many.
+
+**Counting.** The API indexes frames from 0 (`frame_at(0)`, `frame=0`, a
+transport point's `f000`); what a person reads counts them from 1, as the frame
+bar's `1 / F` does — *"frame 1 of 3"*.
+
 ### 2.3 Geometry I/O
 
 | Method | Format | Guarantees |
 |---|---|---|
 | `to_xyz(*, comment="")` | xmol XYZ **text** | line 1 = `N`; line 2 = comment-or-title; then `El x y z` per atom |
-| `to_extxyz(*, frames=None, comment="")` | extended-XYZ **text** | the comment line carries `Lattice=` (the RESOLVED cell) and `pbc=`; one block per frame |
+| `to_extxyz(*, comment="")` | extended-XYZ **text** | the comment line carries `Lattice=` (the RESOLVED cell) and `pbc=`; one block per frame the structure holds (§ 2.2e) |
 | `to_pdb()` | PDB ATOM records, as **text** | TITLE if set; serial capped `99999` (overflow → `*****`); residue id capped `9999`; chain id truncated to 1 char |
 | `to_pyscf(*, as_string=False)` (`:1647`) | PySCF `gto.M` atom kwarg | `(symbol,(x,y,z))` tuples; multi-line string if `as_string=True` |
 | `to_ase()` (`:1674`) | `ase.Atoms` | raises `ImportError` with install hint if ASE absent |
-| `from_xyz(text, *, title=None, frames_out=None)` (`:1206`) | XYZ **text** | see requirements below |
+| `from_xyz(text, *, title=None)` (`:1206`) | XYZ **text** | every frame of the document, one structure (§ 2.2e); see requirements below |
 | `from_pdb(text, *, title=None)` (`:1294`) | PDB **text** | reads `ATOM`/`HETATM`; first MODEL only; TER handling below |
 
 **The readers take a document, never a path** (`_require_text`, `:56`
@@ -461,6 +584,14 @@ residue_ids + residue_names + chain_ids exact.
 read; trailing blank/short lines tolerated; bad header or short atom line →
 `ValueError` with the offending line.
 
+**A document of several frames is read whole, as one frame set** (§ 2.2e),
+and its frames must BE one: a frame `k` whose atom count, species, atom order,
+`Lattice=` or `pbc=` differs from frame 0's is refused, naming `k` — the
+frames of a set share everything but their coordinates. The comment line's
+other `key=value` pairs are not read; a frame's rows live in the sidecar only
+(§ 2.2d). Choosing one frame is not the reader's: `StructureCodec.load`
+(below) and `/api/build/load` take frame 0 unless asked otherwise.
+
 **`from_pdb` / TER handling** (pinned by `test_pdb_ter.py`): a segment counter
 increments on every `TER`; each atom records `(chain_letter_or_"_",
 segment_index)`; a chain letter unique to one segment passes through unchanged;
@@ -470,12 +601,23 @@ one spanning multiple segments is disambiguated by appending the segment index
 `> 99999` (must write `*****`), coercing a multi-char `chain_id` to `?` (must
 truncate to first char), or crashing on a TER between ATOM blocks.
 
-**The one reading door.** `StructureCodec().load(path)` —
-`molbuilder/workingcopy_structure.py`. Dispatches on the extension (`.xyz` /
-`.pdb`, anything else refused by name) and applies the `.molstruct.json`
-beside it through `apply_to_structure`. **The pair is the file**: a reader
-that takes the geometry alone hands back a structure smaller than what is on
-disk.
+**The one reading door.** `StructureCodec().load(path, *, frame=None,
+frames=False)` — `molbuilder/workingcopy_structure.py`. Dispatches on the
+extension (`.xyz` / `.pdb`, anything else refused by name) and applies the
+`.molstruct.json` beside it through `apply_to_structure`. **The pair is the
+file**: a reader that takes the geometry alone hands back a structure smaller
+than what is on disk.
+
+**Which frame** *(user, 2026-10-09: "keep the default reading, just take frame
+zero … If the caller doesn't provide this option, then frame zero is by
+default. So we are not breaking any existing behavior")*. The pair is read
+whole and its sidecar applied to the whole set; then `load(path)` answers
+**frame 0** — `frame_at(0)`, its rows as its own — exactly as every caller has
+always had it; `load(path, frame=i)` answers frame `i`, an index outside
+`0 … F−1` refused naming `F`; `load(path, frames=True)` answers the whole set.
+A one-frame file answers the same for all three. A door that prints
+(`jobset init`, the CLI) says when it took one frame of several: *"this file
+holds 3 frames; frame 1 of 3 was taken"* — a line, never a refusal.
 
 > **`molbuilder.load()` stood here and is deleted** *(2026-09-07)*. It read
 > the geometry and not the sidecar — it predated the sidecar by two months and
@@ -528,7 +670,9 @@ copy of any of them:
 1. **the pairing rule** — `<stem>.xyz` ↔ `<stem>.molstruct.json`, including how
    the sidecar's name is derived (`molstruct.sidecar_path_for`);
 2. **the format choice** — a plain `.xyz` for one frame, extended XYZ for many,
-   decided by the count and never asked as a separate question. **Both are
+   decided by the frames the structure holds (§ 2.2e) and never asked as a
+   separate question; a frame set written to a `.pdb` is refused, PDB holding
+   one geometry. **Both are
    `.xyz`**: extended XYZ is a strict superset of plain XYZ (the cell rides in
    the comment line, which a plain reader skips), so one extension covers both
    — the ordinary convention, and the only one `read` accepts;
@@ -552,18 +696,18 @@ copy of any of them:
 
 ```python
 class StructureCodec:                       # L2 (may use the L2 sidecar codec)
-    def pair(self, struct, *, frames=None) -> StructurePair:
+    def pair(self, struct, *, fmt="xyz") -> StructurePair:
         """THE GENERATOR. A Structure as the two things that represent it
         outside memory: the coordinate document, the sidecar payload, whether
         that payload is worth keeping, and the suffix the format implies.
         Every outbound path below goes through this one call."""
 
-    def files(self, struct, target, *, frames=None) -> list[tuple[Path, bytes]]:
+    def files(self, struct, target) -> list[tuple[Path, bytes]]:
         """TO THE WIRE. The pair as bytes WITH THE NAMES THEY BELONG UNDER --
         `target`'s suffix corrected to the one `pair` chose. What `write`
         writes, without writing it."""
 
-    def write(self, struct, target, *, atomic=True, frames=None) -> Path:
+    def write(self, struct, target, *, atomic=True, fmt=None) -> Path:
         """TO DISK. The pair as one unit: geometry to `target`, and (when there
         is non-default metadata) the sidecar to sidecar_path_for(target).
         Atomic: each half staged to a temp sibling + os.replace'd; geometry
@@ -581,9 +725,11 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         own write path. The PySCF script calls it for every geometry it
         saves, imported from `mb_pyscf.pyz` (`engines/pyscf.md` § 3)."""
 
-    def read(self, source_path, *, frames_out=None) -> Structure:
+    def read(self, source_path, *, frame=None, frames=False) -> Structure:
         """BACK IN. Parse geometry (.pdb by extension, else .xyz) AND its
-        paired sidecar, applying metadata via molstruct.apply_to_structure.
+        paired sidecar, applying metadata via molstruct.apply_to_structure
+        to the whole set, then answering frame 0, frame `frame`, or with
+        `frames=True` every frame (§ 2.3, *Which frame*).
         Missing sidecar = empty metadata (NOT an error), except an engine's
         own file where its run is recorded: that run's frame. READING DOES NOT
         JUDGE: a box nothing can be done with LOADS, and is refused at the
@@ -738,7 +884,8 @@ retries with `{overwrite:true}` — the dialog is `projects`' own
 
 `molview.data` (`lib/molview/model.js`) is the browser model:
 `installMolecule({path} | {text[,sidecar,…]})`, `exportFile(range) → {name,
-structure, frames?}`, `markSaved(path)`. Named-key reads of the wire dict happen
+structure}` — ONE envelope, the range's frames and their rows inside it
+(§ 2.2e) — and `markSaved(path)`. Named-key reads of the wire dict happen
 in **one** place — the model's accessors (`getUnitCell`,
 `getUnitCellOrigin`, `getVacuum`, `getAxisKind`, …), the JS analogue of
 Structure's codec. Everywhere else the browser carries `periodicity` /
@@ -779,14 +926,14 @@ sequenceDiagram
 
 | Consumer | `file:function` | Call |
 |---|---|---|
-| Molbuilder tab — Load / dblclick | `modify/selection-bootstrap.js:_commitFile` | `POST /api/build/load`; with a structure open, the add-or-clear question (`tabs.md` § 2, *Creating a structure*); then `structurePage.loadIntoCanvas(…, {replace})` — *Add* merges through `/api/modify/append` (§ 2.2b), *Clear* installs the file over the view |
+| Molbuilder tab — Load / dblclick | `modify/selection-bootstrap.js:_commitFile` | `POST /api/build/load`; on a file of several frames, which frame (1 … F, frame 1 offered) and a second load of that one (§ 2.2e — the tab holds one frame); with a structure open, the add-or-clear question (`tabs.md` § 2, *Creating a structure*); then `structurePage.loadIntoCanvas(…, {replace})` — *Add* merges through `/api/modify/append` (§ 2.2b), *Clear* installs the file over the view |
 | Molbuilder tab — Save panel | `modify/structure/save.js:save` | `projects.molviewFiles.save("project", stem, exportFile())` — the door asks WHERE and owns the overwrite flow (`tabs.md` § 6). **It does not go through `saveMolecule`**, and since 2026-09-02 nothing does |
 | Transport commit | `lib/transport/core.js:_showInMolview` | `openMolecule(path)` + `molview.mount` |
 | Spectra commit | `spectra/viewer.js:_commitStructure` | `openMolecule(path)` + `molview.mount` |
 | Results structure inspector | `lib/inspectors/structure.js` | `openMolecule(path)` + `molview.mount` |
 | Structure-optimization | `structure-optimization/viewer.js:_commitStructure` | `openMolecule(path)`; reads state off the model |
 | Generators (smiles/dna/…) | `modify/structure/*.js` → `page.js` | `molview.data.installMolecule({text})` (not a door) |
-| Trajectory inspector | `lib/trajectory/core.js` | `installMolecule({text})` + `reloadFrames(...)` |
+| Trajectory inspector | `lib/trajectory/core.js` | `installMolecule({text})` + `reloadFrames(...)` — **the one exception to frames-in-the-envelope**: a run's frames are parsed by the tab from the run's own file, carry forces and no rows, and replace any frame axis the envelope had (`web/molview.md` § 11.7) |
 
 > The Molbuilder tab's static files live under `modify/` — the `/modify`
 > route was renamed to `/molbuilder`, but the directory name is historical.
@@ -834,6 +981,13 @@ flowchart TB
 | `molview.data` primitives | text(+sidecar) ⇄ live molecule; the atomic install | fetches a file; owns a file endpoint |
 | tab / UI | wiring buttons; UI policy (dirty/overwrite — injected) | reaches past a door |
 
+**A frame set crosses in the same envelope** (§ 2.2e): the structure's own
+dict, with `frames` in place of `positions` (§ 2.1) and every row in
+`metadata.customized` (§ 2.2d) — never a `frames` list beside it.
+`/api/build/load` answers as `StructureCodec.load` does — frame 0, `frame`, or
+the whole set with `frames` — and always says how many frames the file holds
+(`web/web-api.md`).
+
 **Where the sidecar schema lives** (server, one home):
 `sidecars/molstruct.py` — `apply_to_structure(struct, dict)` (`:370`),
 `load_text(text)`, `save(...)` (`:315`), `sidecar_path_for(xyz)` (`:89`). The
@@ -849,7 +1003,11 @@ open the paired `.xyz` to view the structure.
 A single Python test constructs a Structure with **every** metadata field set
 to a non-default value and asserts it survives each hop unchanged — the test
 that would have caught `cell_origin → 0` at the source
-(`tests/test_structure_authority_roundtrip.py`):
+(`tests/test_structure_authority_roundtrip.py`). `customized` is among them,
+its structure's rows and its frame rows, and the same hops carry a frame set
+of three frames: `to_dict → from_dict` and `StructureCodec.write → read(…,
+frames=True)` give back every frame and every frame's rows at its index, and
+`read` with no option gives frame 0 with frame 0's rows as its own:
 
 ```python
 def _fully_populated_structure():
@@ -909,3 +1067,7 @@ converters route through `StructureCodec`, so a CLI save emits the pair like
 the web save does — `modify` since 2026-09-07, `xv2xyz` with this change. And
 the door that made the violation reachable is shut rather than merely unused:
 the writers no longer accept a path at all (§ 2.3). Every surface obeys § 2.4.
+
+**Being built (plan § 5z.8 F, settled 2026-10-09):** `customized` (§ 2.2d),
+frames inside the structure (§ 2.2e) and the frame options of `load` (§ 2.3,
+§ 2.4). This text leads the code until the plan's row closes.

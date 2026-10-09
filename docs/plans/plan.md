@@ -449,7 +449,7 @@ run in M2's full batch (M2n), and nothing else runs them first.
 | **F-MDNC** | parse | **A flat stage launched again shares SIESTA's history file with the run before it**: after a second run in a flat folder `<label>.MD.nc` holds more rows than that run wrote (12 rows, where each run's output has 8 frames; measured on the end-to-end flat calculation 2026-10-08), and pairing the second run's output with it (`siesta_mdnc.align_to_reference`) matched rows 0–5 and then row 11 -- the earlier run's rows first. Whether the reader takes the newest run's rows, or a run that starts over sets the old history aside, is a design question | § 5y, the flat module's second launch | open |
 | **T-ENV** | tests | **Installer tests answer the environment manager in-process**: `tests/test_envs_one_answer_about_an_env.py` (H6, `dispatch_into_env` replaced to return a typed PySCF verify answer) and the stubs `tests/test_envs_install.py` writes -- a command's answer swapped in-process, which tier 1 forbids (`testing.md` § 0); judged under § 5y's rule in their own pass | § 5y | open |
 | **DOC-TEX** | web / docs | **done 2026-10-09** -- KaTeX 0.16.22 vendored (`static/vendor/katex/`, its row, license and citation in `static/vendor/README.md`, the npm tarball checked against the registry's hash); `lib/markdown-render.js` sets math aside before the markdown pass and `renderMathIn` draws it, on the Documents tab and the Results markdown viewer. The vendor inventory gained an upstream column, GitGraph's release (1.4.0, matched by SHA-256), a citation per component, and its notice check (`tests/test_vendor_notices.py`). KaTeX is source tree, not installation: no recipe, no `host-env.txt` line, no config key (`ops/installation.md` § 3 now says which browser library comes from where -- Plotly.js alone from the host env). `.gitattributes` keeps every vendored `.js`/`.css` out of diffs, component folders included, and names `.woff2` binary; `ops/deployment.md` § 4 lists `font-src 'self'`; a wheel built from the tree carries all 55 vendored files | 2026-10-09 | done |
-| **TD10 text** | engines / docs | **→ § 5z (Q17), 2026-10-08: a frame's details in `info.parameter`, per the user's comments of that day.** **The frame axis's contract text is owed** (ruled 2026-09-29): `engines/transport.md` § 2a.9 — the frame sub-level's folder name, the take-over rule written for frames (today inferred from the bias rule), and `customized` as where a frame's displacement lives; `model/structure-molstruct.md` § 6.1, `engines/vibration.md` § 5.6 / § 5.10 ③, `science/normal-modes.md` § 4b.6 G. **Written before any frame is built** (W32, step 11) | § 5u.1, TD10 | open |
+| **TD10 text** | engines / docs | **→ § 5z (Q17): a frame's details in the structure's `customized` frame rows (§ 5z.8 F, 2026-10-09; `info.parameter` of 2026-10-08 withdrawn by the user).** **The frame axis's contract text is owed** (ruled 2026-09-29): `engines/transport.md` § 2a.9 — the frame sub-level's folder name, the take-over rule written for frames (today inferred from the bias rule), and `customized` as where a frame's displacement lives; `model/structure-molstruct.md` § 6.1, `engines/vibration.md` § 5.6 / § 5.10 ③, `science/normal-modes.md` § 4b.6 G. **Written before any frame is built** (W32, step 11) | § 5u.1, TD10 | open |
 | **L1** | code hygiene | **Three names pyflakes calls undefined**: `template.py:1005` `Sequence`, `scheduler/probe.py:338` `Domain`, `jobset/group.py:67` `Resources` (annotations under `from __future__ import annotations`?) — read each; import or drop | B8 round 2, pyflakes over the package | open |
 | **L2** | tests | **`tests/field/test_ask_the_target.py` fails instead of skipping when invoked outside its batch** (`. does not read as a machine record`: the record path is unset) — a field test gates itself on its backend (`testing.md` § 3) | B8 round 2 | open |
 ---
@@ -1522,9 +1522,9 @@ reuses.
 
 | what stood | what it becomes |
 |---|---|
-| TD10 (2026-09-29): a frame's details in the structure's `customized` section (W39), not `info` | **in `info.parameter`, one entry per frame, frame 0 included** — the user's spelling; W32 no longer waits on W39 |
+| TD10 (2026-09-29): a frame's details in the structure's `customized` section (W39), not `info` | **kept, and built now**: one row set per frame, frame 0 included, in `customized` (§ 5z.8 F) — `info.parameter`, written here on 2026-10-08, was withdrawn by the user on 2026-10-09 (*"I regret to give you that name … info.customized"*) |
 | decision 7 (2026-10-08): a transport citation is a finished relaxation run of ours, nothing else; `info.calculation` "has no reader on this road since" | **a frame set is cited as its pair**, whose `info.calculation` says where the optimization came from and with what parameters — `info.calculation` gains its reader back; a pair with no record stays refused (decision 7's reason: a bare structure brings nothing) |
-| § 2a.9: the rule recorded "in the pair's `info`" (`info.frame_rule`, `vibration.md` § 5.10 ③) | `info.parameter` per frame, read by transport's summary for the average |
+| § 2a.9: the rule recorded "in the pair's `info`" (`info.frame_rule`, `vibration.md` § 5.10 ③) | each frame's `customized` rows, read by transport's summary for the average |
 | § 2a.11 "Later": a run per frame (`04_device/f000/run-0`) | frames inside one run, as bias points are (`04_device/run-0/f000/`) — the 2026-10-05 rule |
 
 ### 5z.3 The input contract (written first, `transport.md` § 2a.9, `structure-molstruct.md` § 6.1)
@@ -1537,29 +1537,31 @@ reuses.
    temperature, spin, charge — and the deck's hash): the settings the
    transport template is defaulted from, as a cited run's deck defaults them
    today (D2).
-4. **`info.parameter`** — present when `N > 1`: a list, one entry per frame in
-   file order, frame 0 included; each entry the frame's details —
-   `mode` (index, or `null` for the equilibrium frame), `frequency_cm1`,
-   `sigma_amu12_ang` (σ), `node` (`x_j`), `q_amu12_ang` (this frame's `Q_j`),
-   `max_displacement_ang`, `weight` (`w_j`), `temperature_k`. The keys are the
-   ones `vibration.md` § 5.10 ③ already names for its frame rule. Transport
-   reads `mode`, `node` and `weight`; the rest is shown.
+4. **Each frame's `customized` rows** (`model/structure.md` § 2.2d–2.2e; § 5z.8
+   F) — one row set per frame, file order, frame 0 included: `mode` (the mode's
+   index; frame 0, the equilibrium, has none), `node_sigma` (`Q_j / σ`),
+   `weight` (`W_j`), `order` (3 or 5), and shown beside them `frequency_cm1`,
+   `sigma_amu12_ang` (σ), `q_amu12_ang` (`Q_j`), `max_displacement_ang`,
+   `temperature_k`. The names are the ones `vibration.md` § 5.10 ③ names for its
+   frame rule. Transport reads `mode`, `node_sigma`, `weight` and `order` —
+   constants it owns, as `sort.py` owns the region names; the rest is shown.
 5. **The per-frame promises**, checked at the citation door frame by frame and
    naming the frame (§ 2a.9's table): the same atoms in the same order, the
-   same species, the same cell, no electrode atom moved; and, new, `len
-   (info.parameter) == N`, each entry's `weight` a number in `[0, 1]`.
+   same species, the same cell, no electrode atom moved; and, new, each
+   displaced frame's `weight` a number in `[0, 1]`. (One row set per frame is
+   the structure's own invariant, § 5z.8 F.1, never re-checked here.)
 
 ### 5z.4 The framework, layer by layer
 
 | layer | the change | built on |
 |---|---|---|
-| structure codec / sidecar, the Metadata page | `info.parameter` one list, one element per frame, read and written whole; a list whose length is not the frame count refused by name; the Metadata page SETS it -- the list edited there, its elements the frames' -- and shows the current frame's element beside the frame bar's pick | `pair(frames=)`, `apply_info_dict`, § 8.4a's tree and its `info.edit` door |
+| structure codec / sidecar, the Metadata page | **→ § 5z.8 F** (frames and `customized` inside the structure; the Metadata page shows the displayed frame's rows, read-only on a frame set) | — |
 | the citation door | a second kind beside the run: a pair carrying `info.calculation` -- the settings defaulted from its `contract`, the frames from the pair; the pseudopotentials from the directory the person gives that holds them all (`psml_lib`, `--psml-lib DIR`), as for a structure optimization, copied in with the record of where they came from (D2) | `compose.classify_citation`, `citation_defaults`, `init --psml-lib` |
-| the description | `task.json` names the frame set (its path and its structure hash, W39's consistency rule); the frame count is the citation's, never typed; a frame set with a self-consistent bias list refused (one bias for a frame group) | `Task`, the codec's refusals (`DescriptionError`) |
-| prep / launch | the device and the transmission carry a frame level inside the run (`run-<n>/f000/` …), the seed and the leads none; one walk per rung, frames independent — each from the seed's density, the walk goes on past a failed frame; warm takes the done frames over, cold runs all (rule 3 at the frame) | the sweep's walk (`_walk_script`), `points_in`, `continuation.done`, `products_of` |
+| the description | `task.json` names the frame set (its path and its structure hash, W39's consistency rule); the frame count is the citation's, never typed; **both axes are built in** (§ 5z.8 A–E, the user 2026-10-09): a point is (frame, voltage), any voltage list runs with any frame count, and under the low-bias approximation each frame runs once at 0 V, its I–V from its own T(E, 0) | `Task`, the codec's refusals (`DescriptionError`) |
+| prep / launch | the device and the transmission carry a level for each axis that varies inside the run (`run-<n>/f000/v0.2/` …, § 5z.8 D), the seed and the leads none; one walk per rung, frames independent — each frame's 0 V from the seed's density, each further voltage from the one before it in the same frame; a failed voltage ends that frame's chain and the walk goes on to the next frame; warm takes the done points over, cold runs all (rule 3 at the point) | the sweep's walk (`_walk_script`), `points_in`, `continuation.done`, `products_of` |
 | status | a swept rung's row: *k of N frames done*; `status <stage>` lists the frames | `runstatus.point_rows` |
-| the record (`summarize task`) | each frame's T(E), current and spin channels; per mode, the average `⟨T⟩ = Σ_j w_j T_j` over its frames with frame 0, the curvature `T″`, and `⟨G⟩`; the static-frame caveat (§ 4c.8) beside the numbers | `collect_record`, `point_transmission` |
-| Results | the family of curves, the frame bar picking a frame and every chart following it (as the I–V pick follows a bias), the averaged curve beside; the frame's `info.parameter` in the card | the transport inspector's `selectBias` pattern; MolView's frame bar |
+| the record (`summarize task`) | the transport record itself, never a second file (vibration.md § 5.10 ⑤ routes transport here): each frame's T(E), current and spin channels; per mode and order, the average over its frames with frame 0 (`W₀ = 1 − Σ W_j`), its change and the curvature; both orders compared when a mode has both, `--rule-agreement` (1 % by default) written in the record; the second-order sum with each mode's change beside it; the assumptions beside the numbers (`transport.md` § 2a.12) | `collect_record`, `point_transmission` |
+| Results | the family of curves, the frame bar picking a frame and every chart following it (as the I–V pick follows a bias), the averaged curve beside; the frame's rows in the card | the transport inspector's `selectBias` pattern; MolView's frame bar |
 | Transport tab, Task setup | the citation card shows the frame set — N frames, the per-frame table — and the came-over rows say so | the describe door's `findings`, `renderCameOver` |
 | tests | the e2e junction of § 5y (run E), cited as a three-frame pair: frame 0 and one bridge mode's `±√3 σ` frames written by the codec, the citation's refusals as API rows | `tests/test_transport_on_a_real_junction_e2e.py` |
 
@@ -1594,7 +1596,11 @@ reuses.
   number of elements as the frames, and set in the meta data panel."* One
   list in the sidecar, one element per frame in file order, edited on the
   Metadata page like any `info` entry; a list whose length is not the frame
-  count is refused by name where it is set and where it is read.
+  count is refused by name where it is set and where it is read. **Moved by
+  the user the same day**: the shape kept — one row set per frame, as many as
+  the frames — and its home the structure's `customized` section (§ 5z.8 F);
+  a frame set is never edited, so the rows are written by the script that
+  makes the set and shown on the Metadata page, not set there (F.2a).
 - **D4 — the frames' folders.** *Settled by the user, 2026-10-09 ("D4
   yes")*: inside one run, as bias points are, never a run per frame.
 - **D5 — the average.** *Settled by the user, 2026-10-09: "for D5
@@ -1602,7 +1608,8 @@ reuses.
   physics in full: `science/vibrational-averaging.md`. Per mode,
   Gauss–Hermite over its frames with the shared frame 0, the weights each
   frame's `info.parameter` states; several modes summed to second order,
-  each mode's own change shown beside the sum. **What sets its accuracy**,
+  each mode's own change shown beside the sum. *(The weights: each frame's
+  `customized` rows, § 5z.8 F.)* **What sets its accuracy**,
   asked by the user the same day: (1) the frames per mode -- the rule's
   order, 3 (exact for a response of degree ≤ 5) or 5 (≤ 9), chosen per mode
   by the frame generator and read here from `node` and `weight`; (2) which
@@ -1626,8 +1633,10 @@ reuses.
 3. **Q17-a, the contract text** (TD10's owed text, now with § 5z.3):
    `transport.md` § 2a.9, § 2a.11 (the "Later" tree), § 3.1 (the second
    citation kind); `structure-molstruct.md` § 6.1 (a frame carries its
-   `info.parameter` entry); `vibration.md` § 5.10 ③ (its rule written as
-   `info.parameter`); `results.md` § 2.5 (the frame family).
+   `customized` rows); `vibration.md` § 5.10 ③ (its rule written as frame
+   rows); `results.md` § 2.5 (the frame family). Before them, § 5z.8 F.6
+   step 1: the structure's frames and `customized` in `model/structure.md`,
+   `structure-molstruct.md`, `web/molview.md`, `web-api.md`, `tabs.md`.
 4. **Q17-b** the codec and the Metadata page per frame; **Q17-c** the citation
    door and the description; **Q17-d** prep, launch, status at the frame;
    **Q17-e** the record's average; **Q17-f** Results, the Transport tab, Task
@@ -1637,11 +1646,308 @@ reuses.
 ### 5z.7 Rows this section settles or moves
 
 TD10's text (§ 2) → § 5z.6 step 3. W32 ②–⑤ → Q17-c … Q17-f, no longer behind
-W39. W39 stays for the person's own parameters; the frame details leave it.
-V1.25 writes `info.parameter` (its generator, its own module — *"we do not worry
-about that at this point"*). § 5u.1 step 11 → Q17.
+W39 — W39 is built inside § 5z.8 F, the structure's rows and each frame's.
+V1.25 writes the frame rows through `set_customized(…, frame=i)` (its
+generator, its own module — *"we do not worry about that at this point"*).
+§ 5u.1 step 11 → Q17.
 
 **State.** D1–D5 settled 2026-10-09. Q16 done the same day (the Load question `a19ddfcc`; the record's receipt, the file card and the Metadata hint after it); the averaging science written (`7a282246`). Next: Q17-a, the contract text.
+
+### 5z.8 For review, 2026-10-09 — both axes built in, and a frame's details in `customized`
+
+*(The user, 2026-10-09: "this is the framework design period. I would rather
+to have this already built in and then later on we can tune it … we need to
+have a clear diagram of the parameters in the transport that we allow and …
+what's the logic of the cycle and how the task is managed when we submit
+one"; and on the metadata: "the info parameter, now I regret to give you that
+name … originally we have included API design to support info.customized …
+I don't want another set of function outside MolView, outside the structure
+class backend support".)* **Nothing below is built until the user says yes.**
+
+#### A. Why one bias was proposed — and withdrawn
+
+It was not a physics claim and not the user's: the contract carried a ruling
+of 2026-09-16 (§ 2a.7, *"a frame group runs at one bias"*) and it was followed
+without being asked. Its reason was the walk: a self-consistent sweep chains
+each voltage from the one before it, so every frame at every voltage is a
+second level of points. The level costs the walk one loop, not a new
+mechanism — the walk script, the done-door, warm and cold are all per point
+already. **Withdrawn: both axes are built in now**, either of them allowed to
+be one.
+
+#### B. The parameters of a transport calculation — where each lives
+
+```mermaid
+flowchart LR
+  subgraph PAIR["the cited pair — the structure"]
+    G["frames 0…F−1<br/>(coordinates; frame 0 the base)"]
+    L["labels: L-electrode, R-electrode,<br/>bridge, frozen_atoms (+ yours)"]
+    C["info.calculation<br/>(the optimisation it came from:<br/>settings to default from)"]
+    U["customized<br/>shared rows + ONE ROW SET A FRAME<br/>(mode, node_sigma, weight, order, …)"]
+  end
+  subgraph TASK["task.json — the description"]
+    J["junction = the citation<br/>(a finished relaxation run, or a pair)"]
+    B["bias: voltages_v [0, …]<br/>low_bias_approximation"]
+    S["stages: seed · electrode_L · electrode_R<br/>· device · transmission"]
+  end
+  subgraph TPL["the template — the person's settings"]
+    A["Class A, every rung (14): basis, mesh, xc, k-grid,<br/>spin, temperature, energy shift, electrodes_bulk,<br/>psml_lib, species order, label"]
+    R["per rung: SCF (7, each SCF rung), electrode_kz (leads),<br/>NEGF poles/eta (device), TBtrans window & outputs (14)"]
+    M["the machine's: ranks, threads, memory, GPU,<br/>block size, diagonaliser, retries"]
+  end
+  C -. defaults .-> A
+  G --> P["a POINT = (frame f, voltage v)"]
+  B --> P
+  U -. read per frame .-> AVG["the average over frames"]
+```
+
+The **frame** comes from the citation and is never typed; the **voltage** from
+`task.json`'s list. Neither is a template value: a point's deck is the one
+template at that point's geometry and that point's voltage.
+
+#### C. The cycle
+
+```mermaid
+flowchart TD
+  SEED["seed — periodic SCF, frame 0"] --> DEV
+  LL["electrode_L — bulk lead"] --> DEV
+  LR["electrode_R — bulk lead"] --> DEV
+  subgraph DEV["device — NEGF, one run, a point per (frame, voltage)"]
+    direction LR
+    D00["f000 · 0 V"] --> D01["f000 · 0.2 V"] --> D02["f000 · 0.4 V"]
+    D10["f001 · 0 V"] --> D11["f001 · 0.2 V"] --> D12["f001 · 0.4 V"]
+  end
+  DEV --> TR["transmission — TBtrans, one run,<br/>a point per (frame, voltage), each from its device point"]
+  TR --> REC["the record: per frame T(E,V) and its I–V;<br/>per voltage the frames' average — per mode, then summed"]
+```
+
+Each frame's 0 V point starts from the seed's density; each further voltage
+from the converged point before it **in the same frame**; frames never start
+from one another. Under the low-bias approximation each frame runs once, at
+0 V, and its I–V is computed from its own T(E, 0) at the listed voltages.
+
+#### D. The folders — a level for each axis that varies, none for one that does not
+
+| frames | voltages (self-consistent) | a swept rung's run holds |
+|---|---|---|
+| 1 | 1 (or low-bias) | no level: `run-0/` itself |
+| 1 | several | `run-0/v0/ v0.2/ …` (today) |
+| several | 1 (or low-bias) | `run-0/f000/ f001/ …` |
+| several | several | `run-0/f000/v0/ f000/v0.2/ … f001/v0/ …` |
+
+The prepared decks sit the same way in the stage folder (`04_device/f001/v0.2/`).
+One door answers a rung's points — `(frame, voltage)` pairs with their folder
+— and the gather, the walk, the done-door, `status` and the record ask it.
+
+#### E. When it is launched
+
+```mermaid
+sequenceDiagram
+  participant P as you
+  participant J as jobset
+  participant W as the walk (one job)
+  P->>J: prep task  (offers seed + both leads)
+  P->>J: launch task  (one job: the three in order)
+  P->>J: prep task  (offers the device: every point's deck, the gather once)
+  P->>J: launch task --stage device
+  J->>W: one job walking every point
+  loop each frame, in file order
+    W->>W: 0 V from the seed's density
+    W->>W: each next voltage from the previous one (this frame)
+    Note over W: a voltage that fails ends THIS frame's chain;<br/>the walk goes on to the next frame
+  end
+  P->>J: status  →  "k of N points done (F frames × V voltages)"
+  P->>J: prep / launch the transmission  (every point independent; goes on past a failure)
+  P->>J: summarize task  →  the record
+```
+
+Launched again: **warm** takes every done point over and walks the rest, a
+not-done voltage starting from the closest done voltage before it in its
+frame (else the seed); **cold** walks them all. `--background` leaves any of
+these running here.
+
+#### F. The structure whole — its frames and its `customized` section, one model, one API each side
+
+*(The user, 2026-10-09: "a bundled data structure, a bundled model view that
+understands it, and a bundled API such that the external thing doesn't have to
+care the internal implementation … consistent … flexibility and uniformity";
+"the data structure should be an indexed array … a hook … in the add frame or
+remove frame operations … such that those operations understand that it needs
+to look into customize … the API should be like having a frame as a separate
+parameter … when frames are added or removed … the index of all those
+parameters in their groups is then correctly aligned, always consistent with
+the actual frame".)*
+
+**Why it has to be the structure's own.** W39 ruled the home and the API
+(2026-09-27/30) and TD10 put a frame's details there (2026-09-29). Read
+against the code on 2026-10-09: MolView already holds a structure the way this
+needs — the facts shared by every frame (`structure`) and, beside them, lists
+indexed by frame that every frame operation keeps aligned (`frames`,
+`forcesPerFrame`: load, append, reload, the export's range, an edit, the
+history). The server's `Structure` does not: it is one geometry, and a pair's
+frames travel BESIDE it — `frames_out=` on the read, `frames=` on the write,
+a `frames` key beside the envelope on the wire — so every holder of a frame set
+pairs frames with a structure by hand, and the transport sort and the delete
+op rebuild atoms field by field and would drop every frame but one. The
+`info.parameter` attempt of 2026-10-09 was that pattern again: special cases
+at four seams, holding the count by hand. The design below moves the frames,
+and every list indexed by frame, INTO the structure on both sides, behind its
+doors.
+
+##### F.1 What a structure is — the same in both languages
+
+| part | holds | shared or per frame |
+|---|---|---|
+| identity | elements, atom names, residue ids and names, chains, title | shared |
+| labels and channels | `regions` (the reserved ones among them), `annotations` | shared |
+| periodicity | `cell`, `engine_offset`, `axis_kind`, `vacuum` | shared |
+| `customized` — the structure's rows | W39's rows: the person's or a generator's named values about the whole structure | shared |
+| `info` | records that are not the structure (`calculation`, `relaxation`); never hashed | shared |
+| **frames** | the coordinates of frame `f`, `f = 0 … F−1`; frame 0 is the one every one-frame reader takes | **per frame** |
+| **`customized` — each frame's rows** | the rows about frame `f` alone: its mode, node, weight, order, … | **per frame**, an array indexed like the frames |
+| forces *(MolView only)* | a run's forces at frame `f` | per frame |
+
+**The rule that holds it together: every per-frame list is indexed by frame
+and has exactly `F` entries, and only the frame operations change `F`** —
+each one moving every per-frame list in the same step. A one-frame structure
+is `F = 1`, the same shape, never a special case.
+
+##### F.2 The `customized` section on disk and on the wire
+
+```text
+"customized": {
+  "rows":   [ {"name": "temperature", "value": 300, "unit": "K"} ],
+  "frames": [ [],                                      ← frame 0
+              [ {"name": "mode", "value": 31},
+                {"name": "node_sigma", "value": 1.7321},
+                {"name": "weight", "value": 0.1667},
+                {"name": "order", "value": 3} ],      ← frame 1
+              … ]                                      ← exactly F entries
+}
+```
+
+A row is W39's: `name`, `value` (number, text, true/false), optional `unit`,
+optional `note`; names unique within one set. The block is `null` when it
+holds no row at all, as every metadata field states its unset value, and
+otherwise written whole — `frames` exactly `F` entries (F.7 row 10). It is a STRUCTURAL field
+(`METADATA_FIELDS`, W39): in the sidecar (schema 11, additive), in the
+identity hash, gated like any edit.
+
+##### F.2a A frame set is never edited *(user, 2026-10-09)*
+
+*"When we deal with multi-frame files, we refuse edits … the edit or modify tab
+would only load a single frame. If it's pointed to a multi-frame, it will warn
+you or ask you, which frame do you want to load?"* So **no geometry operation
+ever runs across frames**: a structure holding several frames is viewed and
+carried whole — the Results tab, the Transport tab's device view, the codec,
+transport — and edited never. The Molbuilder tab holds one frame: its Load, on
+a pair of several frames, asks which (1 … F) and installs that frame as a
+one-frame structure — the shared facts, `info`, the structure's `customized`
+rows, and that frame's rows as its own; the add-or-clear question follows as
+for any file. **Per-frame rows are therefore written by what writes the frame
+set** — the frame generator (V1.25), a person's script through
+`set_customized(…, frame=i)` — and shown, read-only, at the displayed frame.
+
+**What a frame set IS — the contract** *(user, 2026-10-09: "multi-frame
+structure with all those details like variation of displacement … we want an
+actual function or API or script and a customized thing to do this … the
+multi-frame is a tool for us to manage data set that's intrinsically consistent
+with each other … the way we create them is a set of script that understand
+this. That's the contract.")*. A frame set is a DATA SET whose frames are
+consistent with each other by construction — the same atoms, the same labels,
+the same cell, each frame's rows saying what it is — and it is MADE by code
+that knows that: the structure's own API (F.3) is the one way to build one,
+and the generator or a person's script calls it. It is not an animation and not
+a thing assembled by hand; the browser views it and never builds or edits it.
+
+##### F.3 The server's `Structure` — frames and `customized` behind its doors
+
+| need | the one door |
+|---|---|
+| how many frames; one of them | `n_frames`; `frame_at(i)` → a one-frame Structure at frame `i`, its rows that frame's |
+| build a frame set | `with_frames(coordinates, frame_rows=None)` — every frame of `N` atoms; frame 0 becomes `positions` |
+| reorder the atoms (not an edit) | `take(order)` — the order applied to every per-atom field AND every frame; the transport sort goes through it instead of rebuilding by hand |
+| a row | `set_customized(name, value, unit=None, note=None, frame=None)` · `remove_customized(name, frame=None)` · `customized_value(name, frame=None)` · `customized_rows(frame=None)` — `frame=None` the structure's rows, an index that frame's; an index outside `0 … F−1` refused naming `F` |
+| identity | W39's identity hash waits on M2m's ruling (F.7 row 8); the sidecar's `structure_hash` stays the document's pin, and a citation pins the pair's two files by their sha256 |
+
+**On a frame set, what moves atoms or changes their number or order goes
+through the frame doors** (`with_frames`, `take`) — the geometry ops
+(`modify.py`), `affine` / `translated`, `replace(positions=…)` and the merge
+(`concat`) refuse one, naming `frame_at(i)`; the shared facts (labels, cell,
+`info`, the structure's rows) change for every frame at once, because they are
+shared (F.7 row 4). The codec gains nothing per field: `metadata_to_dict` /
+`apply_metadata_dict` carry `customized` (§ 2.2's recipe), `to_dict` /
+`from_dict` carry the frames when `F > 1`; `StructureCodec.load(path)` answers
+frame 0 as today, `load(path, frame=i)` one frame and `load(path, frames=True)`
+the whole set (F.7 row 3), and `write` writes what the structure holds —
+`frames_out=` and `frames=` retired.
+
+##### F.4 MolView — the same structure, the same doors
+
+| need | the one door |
+|---|---|
+| read | `getStructure()` — the shared facts, `customized.rows`, and per frame the coordinates, the forces and the rows; `data.customized.list(frame)` |
+| a row | `data.customized.set(name, value, {unit, note, frame})` · `data.customized.remove(name, {frame})` — on a structure of ONE frame, where it is saved; gated and recorded like every edit |
+| frames arriving | `installMolecule` (a file's frames inside the envelope, or a run's handed by the tab), `addFrame` / `addFrames` / `reloadFrames` (a run's) — through **one aligner inside the model** that moves `frames`, `forcesPerFrame` and the frame rows together |
+| an edit | never meets a frame set: an EDITABLE viewer's `installMolecule` refuses one (*"pick a frame"*) — one rule at the one entrance, § 9.4's shape (F.7 row 4); read-only viewers take them whole |
+| an export | `exportFile(range)` → ONE envelope, the range's frames and their rows inside it; the `frames` beside it retired |
+| the Metadata page | a **Customized** section: the structure's rows and, on a frame set, the displayed frame's rows, following the frame bar (that section redrawn alone on a frame change, § 6.4); editable on a one-frame structure where it is saved, read-only everywhere else |
+
+##### F.5 The routes and everything outside
+
+`/api/build/load` answers frame 0 by default, one frame with `frame`, the whole
+set with `frames` — and always the file's frame count, so the Molbuilder tab
+can ask which frame and read-only viewers can ask for the set; `/api/structure/save`,
+`/api/structure/export` and the modify routes take and answer the one envelope.
+Transport reads a frame set as `structure.frame_at(i)` and
+`customized_value("weight", frame=i)`; Task setup and the Results tab read the
+same doors. **Nothing outside `Structure`, the codec and MolView's model names
+a key of `customized` or pairs frames with a structure.**
+
+##### F.6 The order of the build, once agreed
+
+1. The contract text: `model/structure.md` (§ 1 the object, § 2.2 the field,
+   a new § on frames and `customized`), `structure-molstruct.md` (schema 11,
+   § 6.1), `web/molview.md` (§ 6.1–6.2, § 8.4a, § 9.3, § 11.7), `web-api.md`
+   (the envelope).
+2. Python: `Structure` and the codec, the routes (`/api/build/load`'s
+   `frame`), `take` under the transport sort, every edit's refusal of a frame
+   set; tests that round-trip a frame set with its rows through save → load,
+   that `frame_at(i)` and `take` keep the lists aligned, and that an edit of a
+   frame set is refused by name.
+3. MolView: the model's aligner and doors, `structureFromServer` /
+   `structureForServer` / `exportFile`, the edit doors' refusal, the
+   Customized section; the Molbuilder tab's Load asking which frame; tests of
+   the same alignment and refusals in the browser model.
+4. Then Q17: transport reads the frame set through these doors.
+
+##### F.7 What the independent review changed *(2026-10-09, a fresh reviewer, its findings checked against the code)*
+
+| # | found | the design now says |
+|---|---|---|
+| 1 | `Structure.from_xyz` takes species, order and cell from frame 0 and only positions from the rest (`structure.py:1339-1371`), so a frame of other species or its own `Lattice=` loads silently | the reader REFUSES a document whose frame `k` differs from frame 0 in count, species, order, cell or periodicity, naming `k`; a frame's rows live in the sidecar only — an extended-XYZ comment line's own per-frame keys are refused, not read |
+| 2 | the sidecar reader lists the six metadata fields by keyword (`parse/sidecars/molstruct.py:79-86`, `:234-249`), so a new field would be dropped on every load; its validator builds a one-frame scratch structure, so a per-frame row count cannot be checked | the reader SPREADS `METADATA_FIELDS` (one list, `structure.md` § 2.2's recipe corrected to name it); the envelope gains `n_frames_total`, checked beside `n_atoms_total` as a pairing error (`structure-molstruct.md` § 3), and the scratch is built with that many frames |
+| 3 | `load(path)` gives frame 0 today (`structure-molstruct.md` § 6.1) and its callers — `jobset init`'s hand-over, the SIESTA deck's reader (`siesta/input.py:1713`), the lattice measurer (`web/blueprints/modify.py:950`), the CLI — take `positions` as THE geometry | **the default is kept, and the set is an option** *(user, 2026-10-09: "we can keep the default reading, just take frame zero. So we don't have to change the behavior, but for users … who would like to read the full multi-frame, then they have to supply … multi-frame true … If the caller doesn't provide this option, then frame zero is by default. So we are not breaking any existing behavior and we should clear that in the document contract")*: `StructureCodec.load(path)` answers frame 0 — its rows as its own — exactly as today; `load(path, frame=i)` answers frame `i`; `load(path, frames=True)` the whole set. Every door that already prints says, when it took one frame of several, which and how many (*"this file holds 3 frames; frame 1 was taken"*) — a line, never a refusal. `/api/build/load` answers likewise (`frame`, `frames`) and always says how many frames the file holds: read-only viewers (Results, the Transport tab's device) ask for the whole set; the Molbuilder tab, meeting a file of several, asks which frame to load (1 … F, frame 1 offered) and then asks for that one |
+| 4 | the "never edited" refusal was a list on each side, and the lists disagreed (MolView's label, info and history doors; Python's `replace(cell=…)`, the periodicity edit) — against § 9.4's *"one rule, not a list"* | **MolView: one rule at the one entrance** — an editable viewer's `installMolecule` refuses a frame set (*"pick a frame"*), so no editing door ever holds one; read-only viewers take them whole. **Python: one sentence** — on a frame set, what moves atoms or changes their number or order goes through the frame doors (`with_frames`, `take`); the shared facts (labels, cell, `info`, the structure's rows) change for every frame at once, because they are shared — the builder's API, which a script uses to make the set |
+| 5 | storing `frames` beside `positions` holds frame 0 twice, and in-place writes to `positions` (`modify.py:308-311`) would split them | **one store**: `frames`, shape `(F, N, 3)`, present when `F > 1`, and `positions` is a view of frame 0 — one dict key in `to_dict`, `frames` or `positions`, never both; in MolView the frame rows sit with the coordinates (`frames`, `forcesPerFrame`, the rows), folded in and out only by `structureFromServer` / `structureForServer`, as annotations are (`molview.md` § 6.1–6.2 amended: a frame carries its coordinates and its rows) |
+| 6 | (a question put to the user that the contract had already answered) | **already ruled, 2026-09-25** — `structure-periodicity.md` § 6.0, *A frame set gets one offset*: "the offset is computed from frame 0 and applied to every frame — frames 1…N state frame 0's offset — so no electrode atom moves between frames". Built as: `frame_at(i)` states the set's offset (the stated one, or the rule's on frame 0), so `cell.to_engine` hands every frame through the one door with that offset and `require_placed` checks each. A frame's rows become its own `frames[0]`, never merged into the structure's rows; `customized_value(name, frame=i)` reads that frame's set only, and a name in both the structure's rows and a frame's is refused |
+| 7 | two carriers had no `customized`: the merge (§ 2.2b) and the deck's metadata block (`script_emit.py:387-455`, read back at `:1941-2003`, which run viewers rebuild their structure from) | § 2.2b gains a row — the canvas's rows kept, the addition's named in the merge's notes as not carried; the deck's block carries `customized` as `frame_at(i)` gives it |
+| 8 | W39's identity hash is not defined, and its own prerequisite (M2m: V1.9's and X4 ⑤'s hashes disagree) is not ruled | **left to M2m's ruling**, not invented here; a frame-set citation is pinned by the two files' sha256 in `slot-provenance.json`, as a cited run's files are today, so a pair edited since is refused by name |
+| 9 | the run-trajectory path (`watch.py:187` composing frame 0, the run's frames handed by the tab, `trajectory/core.js:915-921`) stays outside the one envelope | named as the one exception: a run's frames are handed by the tab that parsed them, carry forces and no rows, and replace any frame axis the envelope had |
+| 10 | smaller | `customized` is `null` when wholly empty (as `engine_offset` is when unset — every metadata key is always written), otherwise written whole (`rows` and exactly `F` entries); `to_wire` stays without coordinates — frames and rows travel in `to_dict`, which the browser already reads; the envelope's allowed keys (`_shared.py:139-149`) admit `frames`; a frame set written as `.pdb` is refused; the Molbuilder tab's first load answer gives the frame count and a second asks for the frame; the names transport reads (`mode`, `node_sigma`, `weight`, `order`) are constants transport owns, as `sort.py` owns the region names; `frame_at(i)`, not `frame(i)`, beside `runs.declared(run).frame()`; the document sweep adds `transport.md` § 2a.9, `vibration.md`, the science document and `structure-molstruct.md` § 1 and § 3 |
+
+#### Questions for the user
+
+1. **Both axes**: settled by the user, 2026-10-09 — *"I would rather to have this already built in"*.
+2. **F as written**: settled by the user, 2026-10-09 — *"yes … the way we
+   create them is a set of script that understand this. That's the
+   contract."*
+3. **F.7 row 3** (loading): settled by the user, 2026-10-09 — frame 0 by
+   default, `frame=i` or `frames=True` as options, the Molbuilder tab asking
+   which frame.
+4. **F.7 row 8** — the identity hash left to M2m, the citation pinned by the
+   pair's file hashes — yes? *(Row 6 was put as a question and is not one:
+   `structure-periodicity.md` § 6.0 ruled it on 2026-09-25.)*
 
 ## 5v. Documents that lag the code — the document sweeps' input *(2026-09-29)*
 
