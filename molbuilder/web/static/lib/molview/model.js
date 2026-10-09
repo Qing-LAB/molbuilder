@@ -800,10 +800,9 @@ export function createModel(opts) {
                     ? JSON.parse(JSON.stringify(structure.info)) : {};
             },
             /* THE PERSON'S DOORS (§ 8.4a; user, 2026-10-03: "we need to
-             * allow user to edit it too").  GATED: a read-only viewer's
-             * store is rebuilt from the run's files at every load, so an
-             * edit there would vanish -- refused, as every structure edit
-             * is.  RECORDED like any other edit (`recordEdit`): the unsaved
+             * allow user to edit it too").  GATED: refused on a read-only
+             * viewer, as every structure edit is.  RECORDED like any other
+             * edit (`recordEdit`): the unsaved
              * badge rises and Retract takes it back, since a history state
              * is the structure entire, the store with it.
              *

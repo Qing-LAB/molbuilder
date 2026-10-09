@@ -335,7 +335,7 @@ def about(path) -> Dict[str, Any]:
     folder = p.parent
     place = place_of(folder)
     if not place.ours:
-        return {"ours": False}
+        return _row_about(p, None)
     label, _stage, _trial = _position(folder, place)
     return _row_about(p, label)
 
@@ -374,10 +374,16 @@ def _in_words(writer: str) -> str:
 
 
 def _row_about(path: Path, label: Optional[str]) -> Dict[str, Any]:
-    """:func:`about`'s answer for a file whose folder's label is known."""
+    """:func:`about`'s answer for a file whose folder's label is known -- or,
+    with no label, a folder no calculation claims, where a saved structure
+    pair is molbuilder's (`runfiles.saved_pair_row`)."""
     row = _rf.row_for(path, label) if label else None
     if row is None:
-        return {"ours": False}
+        saved = None if label else _rf.saved_pair_row(path)
+        if saved is None:
+            return {"ours": False}
+        return {"ours": True, "what": saved[0], "writer": _in_words(saved[1]),
+                "when": "saved", "kind": "structure"}
     return {"ours": True, "what": row.what, "writer": _in_words(row.writer),
             "when": row.when, "kind": row.kind}
 

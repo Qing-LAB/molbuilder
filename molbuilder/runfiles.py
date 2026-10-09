@@ -1737,6 +1737,40 @@ def fixed(level: Optional[str] = None,
     return rows
 
 
+#: THE STRUCTURE PAIR A PERSON SAVES, in a storage topic -- `structure/` holds
+#: files, not calculations (`project-layout.md` § 2.6) -- so no row of the
+#: catalogue names it: its stem is the person's.  What the Results file card
+#: says of each half, read by :func:`saved_pair_row` (`web/results.md` § 3b).
+SAVED_PAIR_WRITER = ("Save on the Molbuilder tab, or Export on the Results "
+                     "tab (`StructureCodec.write`)")
+SAVED_PAIR_WHAT = {
+    "structure": ("a structure -- its atoms and coordinates, every frame when "
+                  "it has several; its cell, labels and metadata are in the "
+                  "sidecar beside it"),
+    "sidecar": ("the sidecar of the structure beside it -- its cell, its "
+                "region labels and its recorded metadata"),
+}
+
+
+def saved_pair_row(path) -> Optional["tuple[str, str]"]:
+    """``(what, writer)`` for one half of a saved structure pair -- a
+    structure file with its sidecar beside it, or that sidecar with its
+    structure -- or ``None``.  The pairing is the codec's
+    (`sidecars.molstruct.sidecar_path_for`); a structure it opens is `.xyz`
+    or `.pdb`."""
+    from .sidecars.molstruct import SUFFIX, sidecar_path_for
+    p = Path(path)
+    if p.name.endswith(SUFFIX):
+        stem = p.name[:-len(SUFFIX)]
+        if any((p.parent / f"{stem}{ext}").is_file()
+               for ext in (".xyz", ".pdb")):
+            return SAVED_PAIR_WHAT["sidecar"], SAVED_PAIR_WRITER
+        return None
+    if p.suffix in (".xyz", ".pdb") and sidecar_path_for(p).is_file():
+        return SAVED_PAIR_WHAT["structure"], SAVED_PAIR_WRITER
+    return None
+
+
 def row_for(path, label: Optional[str] = None) -> Optional[Artifact]:
     """WHICH ROW OF THE CATALOGUE IS THIS FILE -- or ``None``: not a file
     molbuilder writes.

@@ -244,6 +244,14 @@ one is TAKEN FROM A STATED OWNER:
 | everything atom-indexed | joined | `regions`, the annotation channels and the residue IDs are re-indexed and unioned — see `concat`. Residue re-indexing is conditional: `renumber_residues=True` (the default) renumbers, `False` concatenates the ids verbatim |
 | `title` | **neither input** — the caller's `title=` argument (§ 2.2c) | a merged structure is not either input, so `concat` takes the name from whoever asked for the merge. `Structure.concat([a, b])` with no `title=` yields `''`; `append_structure` passes the canvas's, which is why the seam this section is about keeps its name |
 
+**What the merge does not carry, it says** (`modify.append_structure`'s
+notes, shown on the page that asked): the addition's cell when the canvas has
+one, its stated origin, a label it renamed, and each entry of the addition's
+`info` — a saved pair's calculation and relaxation records, which the canvas's
+`info` replaces. A dropped record is otherwise invisible: the 2026-10-08 load
+of a relaxed junction onto an open SMILES build showed the build's metadata and
+none of the file's, with no word why (plan § 5z.1).
+
 The first two rows are load-bearing and they point opposite ways on purpose.
 Taking the whole block from whoever carried a cell let a fragment replace a
 typed 8 Å vacuum with `(0,0,0)` and turn two isolated axes crystalline,

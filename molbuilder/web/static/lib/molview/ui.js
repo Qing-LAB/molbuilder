@@ -1851,9 +1851,10 @@ function mountPanel(doc, card, model) {
     }
     pages.info.appendChild(infoBar);
     const infoHint = el("p", "molviewer-info-hint");
-    infoHint.textContent = "Read only here: this structure's metadata is "
-        + "rebuilt from the run's files at every load.  Edit it on the "
-        + "Molbuilder or Modify tab, where the structure is saved.";
+    infoHint.textContent = "Read only here: the metadata is what the "
+        + "opened file carries -- a run's, read from its files; a saved "
+        + "structure's, from its sidecar.  To edit it, load the structure "
+        + "on the Molbuilder tab, where it is saved.";
     pages.info.appendChild(infoHint);
     const infoError = el("p", "molviewer-info-error");
     infoError.hidden = true;

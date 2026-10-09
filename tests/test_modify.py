@@ -348,10 +348,11 @@ def test_append_leaves_the_reserved_frozen_label_spelled_as_it_is():
         "the incoming frozen atom did not stay frozen after the merge")
 
 
-def test_append_keeps_the_open_structures_cell_and_says_so():
+def test_append_keeps_the_open_structures_cell_and_record_and_says_so():
     """The canvas being built in owns its box -- and the origin assigned in
-    it; an incoming fragment contributes atoms.  A dropped lattice is
-    invisible in the result, so it is said.
+    it -- and its record; an incoming fragment contributes atoms.  A dropped
+    lattice and a dropped record are invisible in the result, so each is
+    said, the record by its entries' names.
 
     Contract: `model/structure.md` § 2.2b; `model/structure-periodicity.md`
     § 6.0 (an op that joins structures takes a stated offset from the one
@@ -364,11 +365,16 @@ def test_append_keeps_the_open_structures_cell_and_says_so():
     add = _frag(["N"], [3.0])
     add.cell = np.diag([20.0, 20.0, 20.0])
     add.engine_offset = np.array([9.0, 9.0, 9.0])
+    add.info = {"calculation": {"engine": "siesta"},
+                "relaxation": {"converged": True}}
     add.__post_init__()
     out, notes = append_structure(base, add)
     assert np.allclose(out.cell, np.diag([10.0, 10.0, 10.0]))
     assert np.allclose(out.engine_offset, [1.0, 1.0, 1.0]), out.engine_offset
     assert any("not adopted" in n for n in notes), notes
+    assert "calculation" not in out.info and "relaxation" not in out.info
+    assert any("record was not carried (calculation, relaxation)" in n
+               for n in notes), notes
 
 
 def test_append_of_nothing_says_nothing_and_changes_nothing():

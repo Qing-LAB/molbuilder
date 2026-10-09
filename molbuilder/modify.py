@@ -1072,10 +1072,11 @@ def append_structure(
 ) -> "tuple[Structure, List[str]]":
     """Return ``struct`` with ``addition``'s atoms added, and what to say about it.
 
-    THE OPEN STRUCTURE IS THE ONE BEING BUILT IN.  Loading a file or running a
-    generator adds to what is on the canvas instead of replacing it, so a
-    session can be assembled piece by piece (user, 2026-09-07).  Replacing is
-    still reachable, and it is a separate gesture: start empty, then load.
+    THE OPEN STRUCTURE IS THE ONE BEING BUILT IN.  A generator's result adds
+    to what is on the canvas instead of replacing it, and so does a file the
+    person loads with *Add*, so a session can be assembled piece by piece
+    (user, 2026-09-07).  A load answered *Clear* replaces the view and does not
+    come here (`web/tabs.md` § 2, *Creating a structure*).
 
     ``center``
         Put ``addition``'s centroid on the world origin before adding it.  The
@@ -1119,7 +1120,9 @@ def append_structure(
     cell-less canvas genuinely lacks.  `axis_kind`, `vacuum` and `info` come
     from the canvas either way.  When both state a cell the addition's is
     dropped, and that is said rather than passed over, because a dropped
-    lattice is otherwise invisible.
+    lattice is otherwise invisible -- and so is the addition's record: each
+    entry of its `info` (a saved pair's calculation, its relaxation) is named
+    as not carried.
     """
     notes: List[str] = []
     if addition.n_atoms == 0:
@@ -1165,6 +1168,12 @@ def append_structure(
         notes.append(
             "the added structure's own cell was not adopted -- this "
             "structure's cell is unchanged")
+    if addition.info:
+        notes.append(
+            "the added structure's record was not carried ("
+            + ", ".join(sorted(addition.info))
+            + ") -- this structure's own is kept; to open the file with its "
+            "record, load it and answer Clear")
 
     out = Structure.concat([struct, incoming], title=struct.title or "")
     # AN EDIT OUTDATES THE RECORD, it does not erase it

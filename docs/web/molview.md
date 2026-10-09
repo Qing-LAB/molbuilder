@@ -1615,13 +1615,14 @@ page's rule, which it lacked until 2026-10-03, so a long store was cut off.
 
 **Edited where the structure is saved** *(user, 2026-10-03: "we need to
 allow user to edit it too"; "a: yes, b: yes")*.  On a viewer that saves
-its structure — the Molbuilder and Modify tabs — a person changes a
+its structure — the Molbuilder tab — a person changes a
 field's value in its row, adds an entry, removes one, or edits an entry —
 or the whole store — as JSON, applied only when it parses (the whole store
 must be a JSON object); otherwise the error is shown and nothing changes.
-**A read-only viewer — the Results tab — reads only**: its store is
-rebuilt from the run's files at every load, so an edit there would vanish
-on the next one; the page says where to edit instead.
+**A read-only viewer — the Results tab — reads only**: its store is what
+the opened file carries — a run's, read from the run's files; a saved
+structure's, from its sidecar — read again at every load, so an edit there
+would vanish on the next one; the page says where to edit instead.
 
 **A person's edit is an edit; a host's write is not.**  The person's
 doors — `data.info.edit(key, value)` and `data.info.drop(key)` — are

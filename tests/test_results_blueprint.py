@@ -531,6 +531,35 @@ class TestTheContractEndpoint:
         # ...and it is still READ: the listing is the part absence keeps.
         assert [f["name"] for f in body["files"]] == ["README.md"]
 
+
+    def test_a_saved_pair_in_a_folder_nobody_described_is_molbuilders(
+            self, isolated):
+        """`web/results.md` § 3b: the file card says what each half of a
+        saved structure pair holds and who saves it; a file beside it that
+        molbuilder did not write stays *not written by molbuilder*.  Silent
+        before 2026-10-09: a pair the Molbuilder tab saved read as not
+        molbuilder's (plan § 5z.1)."""
+        import numpy as np
+        from molbuilder.runfiles import SAVED_PAIR_WHAT
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+        root, client = isolated
+        shelf = root / "P" / "structure"
+        shelf.mkdir(parents=True)
+        StructureCodec().write(
+            Structure(elements=["H", "H"],
+                      positions=np.array([[0, 0, 0], [0, 0, 0.74]], float),
+                      regions={"bridge": [0, 1]},
+                      info={"note": "a pair with its labels and record"}),
+            shelf / "h2.xyz")
+        (shelf / "notes.txt").write_text("mine\n")
+        body = client.get("/api/results/dir?path=" + str(shelf)).get_json()
+        about = {f["name"]: f["about"] for f in body["files"]}
+        assert about["h2.xyz"]["ours"] is True, about
+        assert about["h2.xyz"]["what"] == SAVED_PAIR_WHAT["structure"]
+        assert about["h2.molstruct.json"]["what"] == SAVED_PAIR_WHAT["sidecar"]
+        assert about["notes.txt"] == {"ours": False}, about
+
     def test_a_calculations_folders_are_answered_by_the_run_door(
             self, isolated, tmp_path, monkeypatch):
         """Through the road -- `jobset init` and `prep` of an H2 relaxation,
