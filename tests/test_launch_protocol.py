@@ -2,7 +2,8 @@
 
 THE CASES ARE DATA -- ``tests/data/launch_protocol.toml`` -- and each runs
 down the road a person runs (`support.road.run_road_case`): `jobset init`,
-`prep` and `launch`, our wrapper running the suite's stand-in engine.
+`prep` and `launch`, each row stopping before an engine would run -- a
+refusal, or a dry run.
 
 PREVENTS: a dry run that wrote -- a ledger line, or an attempt opened before
 the person said yes; a refusal raised before the plan that left no line; a

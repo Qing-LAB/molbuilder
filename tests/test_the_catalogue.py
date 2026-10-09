@@ -2,8 +2,8 @@
 `docs/execution/project-layout.md` § 5), case by case.
 
 THE CASES ARE DATA -- ``tests/data/the_catalogue.toml`` -- and each runs down
-the road a person runs (`support.road.run_road_case`): `jobset init`, `prep`
-and `launch`, our wrapper running the suite's stand-in engine.
+the road a person runs (`support.road.run_road_case`): `jobset init` and
+`prep`.
 
 PREVENTS: the Task setup card naming a file no run writes -- the flat
 spelling of an attempt's launch record for a hierarchical stage, PySCF's log

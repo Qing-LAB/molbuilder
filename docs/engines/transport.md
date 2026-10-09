@@ -1374,8 +1374,12 @@ done is redone from the same start**: the 0 V point from the seed's density
 (the run's clean copy); a later point from the converged density (`.TSDE`) of
 the closest done point before it, or of the point before it in this walk — the
 manual's *"copy the TSDE from the closest, previously, calculated bias"*. The
-start of every point is decided when the launch is planned and written beside it
-(`.continued-from`), so the record says what each point started from. The device
+start of every point is decided when the launch is planned and written beside it,
+so the record says what each point started from: a point that starts from
+another point names it in its `.continued-from`; the 0 V point starts from what
+its run gathered, which its own `.gathered-from` names (`status <stage>`: *from
+what it gathered*) — the file catalogue's two words for the two starts
+(`project-layout.md` § 5). The device
 walk stops at a point that does not finish — the points after it would start
 from it; the transmission walk goes on — its points are independent — and says
 which did not.
@@ -1545,8 +1549,8 @@ its Landauer integral is I = (e/h)∫T, with no factor 2 for spin
 (`m_tbt_save.F90`) — while the conductance beside it is in G₀ = 2e²/h, both
 channels. So the record's `current_a` is the total: **twice the printed figure
 for a non-polarized calculation**, and the sum of the two channels for a
-polarized one (read once both channels are, plan K21 — until then a polarized
-point's total is left empty). The figure TBtrans printed stays beside it
+polarized one, each as TBtrans printed it (empty when it printed only one).
+The figure TBtrans printed stays beside it
 (`current_a_printed`), the spin each point ran with is the one its own deck
 states (`spin`), and the record says in words what each number is
 (`current_means`) — and so do the table `summarize` prints and the Results

@@ -60,10 +60,9 @@ CURRENT_MEANS = {
         "calculation carry the same current, so the total is twice the "
         "printed figure (current_a_printed, as TBtrans printed it)."),
     "polarized": (
-        "a spin-polarized junction's total current is the sum of its two "
-        "channels, which this record reads once both are (plan K21); until "
-        "then current_a is empty and current_a_printed is the one channel "
-        "TBtrans printed first."),
+        "current_a is the junction's total current, the sum of its two spin "
+        "channels' currents as TBtrans printed each (empty when it printed "
+        "only one); current_a_printed is the channel it printed first."),
 }
 
 #: THE CAVEAT that goes with any DFT-NEGF conductance (`engines/transport.md`

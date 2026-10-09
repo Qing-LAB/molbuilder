@@ -3,15 +3,13 @@
 § 3.2, `docs/web/results.md` § 4.1), case by case.
 
 THE CASES ARE DATA -- ``tests/data/hand_overs.toml`` -- and each runs down
-the road a person runs (`support.road.run_road_case`): `jobset init`, `prep`
-and `launch`, our wrapper running the suite's stand-in engine, which ends as
-the row says.  The runs' records are the ones our wrapper writes as each
-concludes; a test lays none (`process/testing.md` § 6).
+the road a person runs (`support.road.run_road_case`): `jobset init` and
+`prep`, deciding from the folder as it stands; a test lays no run
+(`process/testing.md` § 6).
 
-PREVENTS: a run that ended with an error built on, a stage continuing from
-an older run than the newest, and a live run a viewer stops following --
-each measured uncovered once the tests that laid their runs by hand were
-retired (2026-10-03).
+PREVENTS: a force-constant stage prepared before its relax ran, a cold start
+that skips the relax a ladder holds, a structure measured as given that was
+never stated relaxed, and a first stage's start left out of the ledger.
 """
 from __future__ import annotations
 

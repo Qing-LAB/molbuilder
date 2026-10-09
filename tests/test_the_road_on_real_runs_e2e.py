@@ -14,10 +14,7 @@ gives a stage is a file on disk (`job-contracts.md` § 2.2).
 
 Every expectation is the contract's words, read off what the commands
 answered while the runs were made and off the folders they left -- never
-a reader's number.  These rows ran on the suite's stand-in engine until
-2026-10-08 (`tests/data/hand_overs.toml`, `launch_protocol.toml`,
-`launch_values.toml`, `the_catalogue.toml`); a test that reads what a run
-left is an end-to-end test, made with the engine.
+a reader's number.
 """
 from __future__ import annotations
 

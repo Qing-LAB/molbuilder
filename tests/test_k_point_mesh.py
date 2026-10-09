@@ -13,8 +13,7 @@ axis warned in the deck's validation report.
 
 The transport axis -- its one point on every rung, the lead's own count, the
 cited offset, the transmission's grid (`engines/transport.md` § 0.3a, § 5
-I7-I9) -- is refused on every door and has no road case yet: a transport
-rung is not preppable on the stand-in (plan § 5x B8 T2).
+I7-I9) -- is refused on every door and has no road case here: a transport calculation cites a finished relaxation, which only a real run makes.
 
 Nothing here launches an engine: prep writes the decks and stops.
 """

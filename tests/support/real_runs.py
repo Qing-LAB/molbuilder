@@ -8,7 +8,7 @@ once: every module that reads a run asks for it here (*"it should be
 integrated/merged with existing e2e tests so one run of e2e would produce all
 information"*).
 
-Each fixture makes its calculation down the road -- `jobset init`, `prep`,
+Each run is made down the road -- `jobset init`, `prep`,
 `launch` -- with the real SIESTA (`_road.live_siesta`), writes down what
 every command it typed answered, and leaves the process environment as it
 found it before any test reads the run: a later test in the same worker
@@ -16,16 +16,19 @@ meets the suite's tripwire, never an engine.  A test reads the run's files
 and the answers written down; it types no command that needs the engine's
 environment.
 
-* :func:`real_h2_layered` -- an H2 optimization, layered folders, the
-  `publishable` ladder: `coarse` launched, a dry run of launching it again,
-  launched again warm and then cold, `medium` prepared on it and sent by a
-  launch that names no stage; and the run script's own dry runs, on a copy
-  of `coarse`'s prepared folder;
-* :func:`real_h2_bench` -- a two-trial benchmark of the same H2's `coarse`:
-  one trial launched by name, then the rest by a launch of the benchmark
-  under a per-trial bound;
-* :func:`real_h2_relaxed_for_vibration` -- the vibration kind's `relax`
-  stage of a held H2 (`_road.h2_relaxed_for_vibration`).
+Each is the session fixture of its name in `tests/conftest.py`:
+
+* :func:`layered` (``real_h2_layered``) -- an H2 optimization, layered
+  folders, the `publishable` ladder: `coarse` launched, a dry run of
+  launching it again, launched again warm and then cold, `medium` prepared
+  on it and sent by a launch that names no stage; and the run script's own
+  dry runs, on a copy of `coarse`'s prepared folder;
+* :func:`bench` (``real_h2_bench``) -- a two-trial benchmark of the same
+  H2's `coarse`: one trial launched by name, then the rest by a launch of
+  the benchmark under a per-trial bound;
+* :func:`relaxed_for_vibration` (``real_h2_relaxed_for_vibration``) -- the
+  vibration kind's `relax` stage of a held H2
+  (`_road.h2_relaxed_for_vibration`).
 """
 from __future__ import annotations
 
@@ -169,8 +172,7 @@ def _script_dry_runs(run: RealRun, prepared: Path, scratch: Path) -> None:
         run.said[step] = Said(done.returncode, done.stdout + done.stderr)
 
 
-@pytest.fixture(scope="session")
-def real_h2_layered(tmp_path_factory):
+def layered(tmp_path_factory) -> RealRun:
     """Run A of plan § 5y -- see the module's note."""
     with _on_the_road(tmp_path_factory, "layered") as tree:
         bundle = _described(tree, "P/opt/H2",
@@ -195,11 +197,10 @@ def real_h2_layered(tmp_path_factory):
         _taken(run, "launch naming no stage", "launch", "task", "--mode",
                "direct", "--yes")
         _taken(run, "status", "status")
-    yield run
+    return run
 
 
-@pytest.fixture(scope="session")
-def real_h2_bench(tmp_path_factory):
+def bench(tmp_path_factory) -> RealRun:
     """The benchmark of plan § 5y -- see the module's note."""
     with _on_the_road(tmp_path_factory, "bench") as tree:
         bundle = _described(tree, "P/opt/H2bench", execution=None,
@@ -211,13 +212,12 @@ def real_h2_bench(tmp_path_factory):
                "G0K1C1", "--mode", "direct", "--yes")
         _taken(run, "launch the benchmark", "launch", "bench", "coarse",
                "--mode", "direct", "--yes", "--trial-timeout", "5")
-    yield run
+    return run
 
 
-@pytest.fixture(scope="session")
-def real_h2_relaxed_for_vibration(tmp_path_factory):
+def relaxed_for_vibration(tmp_path_factory):
     """The vibration kind's `relax` stage of a held H2, run: the bundle."""
     from _road import h2_relaxed_for_vibration
     with _on_the_road(tmp_path_factory, "vibration") as tree:
         bundle = h2_relaxed_for_vibration(tree)
-    yield bundle
+    return bundle

@@ -17,8 +17,7 @@ PREVENTS, each read in the code before 2026-09-30:
   (SO-N4).
 
 The transport rows -- a repeated bias point or one outside its range (T-F15),
-the two describe doors' preflight -- have no road case yet: a transport rung
-is not preppable on the stand-in (plan § 5x B8 T2).
+the two describe doors' preflight -- have no road case here: a transport calculation cites a finished relaxation, which only a real run makes.
 
 Nothing here launches an engine: prep writes the deck and stops.
 """

@@ -2,9 +2,9 @@
 (`engines/transport.md` § 2a.4, § 2a.10; `transport/record.py`): the
 conductance read at E_F, and the low-bias current integrated from one T(E).
 
-API-level by the science exception (`process/testing.md` § 3a): the road
-reaches no transmission output on the stand-in (plan § 5x B8 T2), and each
-expectation is the contract's own number, never a code's output.
+API-level by the science exception (`process/testing.md` § 3a): each
+expectation is the contract's own number, never a code's output, on a T(E)
+whose integral the contract states exactly.
 """
 from __future__ import annotations
 
@@ -24,8 +24,8 @@ def test_a_perfect_channels_low_bias_current_is_g0_times_v():
     Landauer result, which is the contract's expectation and no code's.  A
     voltage whose window plus the Fermi tails reaches past the slice's energy
     window is not integrated: None, with the reach named.  API-level by the
-    science exception (testing.md § 3a): the road reaches no transmission
-    output on the stand-in, so the integral is run here on T ≡ 1.
+    science exception (testing.md § 3a): the integral is run here on
+    T ≡ 1, whose answer the contract states.
 
     Silent before this: no test ran the integral, so `np.trapz` -- gone from
     this numpy -- crashed `summarize task` on the road's first low-bias

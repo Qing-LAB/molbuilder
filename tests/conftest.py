@@ -1003,6 +1003,21 @@ def _isolated_workspace_store(tmp_path, monkeypatch):
 #  The real runs an end-to-end pass makes, each once (plan § 5y)         #
 # --------------------------------------------------------------------- #
 # Session fixtures, so every module that reads a run asks for the one made
-# (`support/real_runs.py`).
-from support.real_runs import (real_h2_bench, real_h2_layered,  # noqa: E402,F401
-                               real_h2_relaxed_for_vibration)
+# (`support/real_runs.py`, imported when a test asks, as every helper of the
+# suite's is here).
+@pytest.fixture(scope="session")
+def real_h2_layered(tmp_path_factory):
+    from support.real_runs import layered
+    return layered(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def real_h2_bench(tmp_path_factory):
+    from support.real_runs import bench
+    return bench(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def real_h2_relaxed_for_vibration(tmp_path_factory):
+    from support.real_runs import relaxed_for_vibration
+    return relaxed_for_vibration(tmp_path_factory)
