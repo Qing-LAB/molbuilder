@@ -571,6 +571,11 @@ class LaunchPlan:
     #: or the queue its prep recorded (:func:`_the_queue`); ``(None,
     #: None)`` for a run here or a machine with no queues.
     queue: Tuple[Optional[str], Optional[str]] = (None, None)
+    #: A run here started and left to run (``launch --background``,
+    #: `job-system.md` § 6.0): the send returns once the process exists;
+    #: its output is in the files its scripts write (the run's runwrap log,
+    #: a walk's log), and `status` follows it.
+    background: bool = False
 
     def record(self, decision: str, **facts) -> None:
         """One of this launch's decisions, written down (§ 6.0, step 5;
@@ -944,7 +949,8 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
                 told: Dict[str, object],
                 record: bool = True,
                 cold: bool = False,
-                group: Optional[Sequence[str]] = None) -> LaunchPlan:
+                group: Optional[Sequence[str]] = None,
+                background: bool = False) -> LaunchPlan:
     """STEP 1 of `job-system.md` § 6.0 -- the whole launch of a prepared
     ``jobset`` rooted at ``base_dir``, planned with nothing written: the
     work, its submissions and their members, the gates, the queue, the exact
@@ -992,6 +998,7 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     plan.told, plan.records = dict(told), record
     # the queue's source is the entry's decision, on every line
     plan.told.update(domain=plan.queue[0], domain_source=plan.queue[1])
+    plan.background = bool(background) and mode == "direct"
     return plan
 
 
@@ -1169,7 +1176,7 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
         results += [JobResult(m.name, [], m.note())
                     for m in s.members if m.follows]
         try:
-            results += _go(s, plan.record)
+            results += _go(s, plan.record, background=plan.background)
         except SubmitError as exc:
             plan.record("refused", submission=s.name, reason=str(exc))
             if not plan.tolerant:
@@ -1212,20 +1219,28 @@ def _same_folder(plan: LaunchPlan) -> None:
         f"  Nothing was sent.  Launch again to see the new plan.")
 
 
-def _go(s: Submission, record) -> List[JobResult]:
+def _go(s: Submission, record, *, background: bool = False) -> List[JobResult]:
     """THE ONE SENDER (`job-system.md` § 6.0, step 4) -- a stage, a shelf,
     a chain, here or to the scheduler: the line run where the plan said,
     each member's launch recorded by the one writer (:func:`_record_launch`),
     and the ledger told the moment it goes -- a run here when it STARTS, a
-    scheduler job when it is given its id."""
+    scheduler job when it is given its id.  ``background``: a run here is
+    started and left -- its own session, so closing the terminal does not
+    end it, and nothing attached to it, because everything its scripts print
+    already goes to their own files (the run script's runwrap log, a walk's
+    log) -- and the send does not wait."""
     env = {**os.environ, "MB_LAUNCHED_BY": "jobset-launch"}
     names = [m.name for m in s.members]
     if s.direct:
         # The launch-door claim rides the child ENV here: inheritance
         # survives forks and backgrounding, so a detached local run
         # launched through this verb never meets the gate's prompt.
+        detached = (dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+                    if background else {})
         try:
-            proc = subprocess.Popen(s.command, cwd=str(s.cwd), env=env)
+            proc = subprocess.Popen(s.command, cwd=str(s.cwd), env=env,
+                                    **detached)
         except OSError as exc:
             raise SubmitError(
                 f"{s.name}: could not run {s.command[0]!r} ({exc})") from None
@@ -1238,7 +1253,14 @@ def _go(s: Submission, record) -> List[JobResult]:
                            mode="direct", command=s.command,
                            continued_from=_flat_source(m))
         record("launched", submission=s.name, command=s.command,
-               members=names, **_member_facts(s))
+               members=names, **_member_facts(s),
+               **({"background": True, "pid": proc.pid} if background
+                  else {}))
+        if background:
+            return ([JobResult(s.name, s.command, "started in the background",
+                               detail=f"pid {proc.pid}")]
+                    + ([JobResult(m.name, [], s.rides) for m in s.members]
+                       if s.rides else []))
         rc = proc.wait()
         return ([JobResult(s.name, s.command, "ran" if rc == 0 else "failed",
                            returncode=rc)]

@@ -1794,6 +1794,23 @@ was never asked for, so a launch to a queue on a machine with none printed a
 line nobody could send; and the refusals the verb said before the send, and a
 run here until it had ended, left no line — W55 B5, D14.)*
 
+**A run here, left in the background** *(user, 2026-10-09: "add a run in
+background option for the launch when it is in a direct run … let it run in the
+background instead of having to wait for it … check the log and output later
+on")*. `launch … --mode direct --background` is the same launch — planned,
+shown, asked, sent and written down by the five steps above — whose process is
+**started and left**: its own session, so closing the terminal does not end it,
+and nothing attached to it; the send returns once the process exists, the
+ledger's `launched` line carrying `background` and its pid. **Nothing it prints
+is lost**, because nothing reaches a terminal that is not also in a file: the
+run script copies everything it prints — standard output and error — into its
+`.runwrap-<time>.log` as its first act, the engine's own output is the run's
+`.out`, and a walk appends each member's output to its log under `launch/`
+(`runwrap.py`, `submit._walk_script`). The launch prints the folder to read and
+`jobset status`, which follows the run as for any other. With `--mode submit`
+or `ask` the flag is refused, naming why: a scheduler's job already runs
+without anyone waiting on it.
+
 **A benchmark's walk.** A benchmark's trials sent together — a resource shelf
 on a queue ([`generator.md`](?doc=execution/generator.md) § 4.3a), or its
 unlaunched trials run here — go as one submission walking them in order, through

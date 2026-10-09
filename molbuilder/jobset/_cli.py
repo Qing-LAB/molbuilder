@@ -1608,7 +1608,7 @@ def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
 
 
 def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
-                  footer=(), here: bool = False):
+                  footer=(), here: bool = False, background: bool = False):
     """**Nothing is submitted unseen** (`submission.md` S4): the exact
     ``sbatch`` line of every job about to be sent -- by the code that sends
     it -- what each follows, what only the person can judge, and what the
@@ -1624,7 +1624,8 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
     from .ask import confirm, gpu_share_notes
     from ..scheduler.quantities import parse_gres_flag
     planned = [r for r in plan if r.status == "planned"]
-    lines = ["about to run here:" if here else "about to submit:"]
+    lines = [("about to start here, in the background:" if background
+              else "about to run here:") if here else "about to submit:"]
     for r in plan:
         if r.status == "planned":
             # NAME THE DOMAIN, not only the flags: where several domains
@@ -1659,7 +1660,9 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
             click.echo(line)
         return None
     return confirm("\n".join(lines), auto_yes=auto_yes,
-                   question="run this here?" if here else "submit this?")
+                   question=(("start this here, in the background?"
+                              if background else "run this here?")
+                             if here else "submit this?"))
 
 
 @jobset_group.command("launch", short_help="launch what is prepared")
@@ -1720,6 +1723,14 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "trial reads incomplete.  Unstated, no per-trial bound "
                    "exists -- each trial runs until it ends, or the job's "
                    "wall.")
+@click.option("--background", is_flag=True,
+              help="--mode direct: start the run here and return at once, "
+                   "leaving it running -- closing the terminal does not end "
+                   "it.  Nothing is lost: the run script copies everything "
+                   "it prints into its .runwrap log in the run folder, a "
+                   "walk appends each member's into its log under launch/, "
+                   "and `jobset status` follows the run (job-system.md "
+                   "6.0).")
 @click.option("--only", "only_side", default=None,
               type=click.Choice(["cpu", "gpu"]),
               help="a grouped bench: send just this side of a sweep that "
@@ -1728,7 +1739,8 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "collects it -- here or on the cluster that reaches it.")
 def submit_cmd(kind: str, words, stages, bundle: str, mode: str, domain,
                dry_run: bool, time_text, mem_text, gpu_domain,
-               auto_yes, cold, trial_timeout_min, only_side) -> None:
+               auto_yes, cold, background, trial_timeout_min,
+               only_side) -> None:
     """Launch a prepared stage: run it here (direct), hand it to the machine's
     scheduler (submit), or ask the scheduler when it would start (ask).
     Run ``prep`` first.  Before anything is sent the exact ``sbatch`` line is
@@ -1752,7 +1764,7 @@ def submit_cmd(kind: str, words, stages, bundle: str, mode: str, domain,
     try:
         _launch(said, kind, stage, trial, bundle, mode, domain, dry_run,
                 time_text, mem_text, gpu_domain, auto_yes, trial_timeout_min,
-                only_side, cold, group)
+                only_side, cold, group, background=background)
     except SubmitError as e:
         # the entry's refusal, which the entry wrote down
         raise click.ClickException(str(e)) from None
@@ -1767,7 +1779,7 @@ def submit_cmd(kind: str, words, stages, bundle: str, mode: str, domain,
 def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
             domain, dry_run: bool, time_text, mem_text, gpu_domain,
             auto_yes, trial_timeout_min, only_side, cold: bool,
-            group=None) -> None:
+            group=None, *, background: bool = False) -> None:
     """The launch verb's body (:func:`submit_cmd`, which writes down any
     refusal it raises).  ``said`` is what that line names, filled in as the
     body learns it: the mode and where it came from, the stage as the
@@ -1781,7 +1793,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         ("--domain", domain), ("--gpu-domain", gpu_domain),
         ("--time", time_text), ("--mem", mem_text),
         ("--trial-timeout", trial_timeout_min), ("--only", only_side),
-        ("--cold", True if cold else None))
+        ("--cold", True if cold else None),
+        ("--background", True if background else None))
         if v is not None]
 
     # ------------------------------------------------------------------ #
@@ -1862,6 +1875,14 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                                      typed=typed) for m in modes]))
         mode_source = "launch.mode (config)"
     said.update(mode=mode, mode_source=mode_source)
+    if background and mode != "direct":
+        # A FLAG THAT WOULD CHANGE NOTHING IS REFUSED, never dropped: a
+        # scheduler's job already runs without anyone waiting on it.
+        raise click.ClickException(
+            f"--background starts a run HERE and returns (--mode direct); "
+            f"with --mode {mode} nothing runs here to leave -- "
+            + ("the scheduler's job already runs without you."
+               if mode == "submit" else "the scheduler is only asked."))
     _refuse_flags_without_effect(
         kind=kind, mode=mode, trial=trial, domain=domain,
         time_text=time_text, mem_text=mem_text, gpu_domain=gpu_domain,
@@ -1902,7 +1923,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     plan = plan_launch(js, base, mode=mode, only=only, domain=domain,
                        gpu_domain=gpu_domain, side=only_side, mem=mem,
                        time_s=time_s, trial_timeout_s=_bound_s, told=told,
-                       record=not dry_run, cold=cold, group=group)
+                       record=not dry_run, cold=cold, group=group,
+                       background=background)
     from .commands import command
     if mode == "ask":
         results = ask_launch(plan)
@@ -1965,6 +1987,15 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     from .ledger import rel_to
     walks = ["  the walk's output: " + rel_to(base, s.log)
              for s in plan.submissions if s.direct and s.log]
+    if plan.background:
+        # WHERE A RUN LEFT IN THE BACKGROUND IS READ: its own folder -- the
+        # run script's .runwrap log holds everything it prints, the
+        # engine's .out its own output.
+        walks += ["  its output: " + rel_to(base, m.run_dir) + "/ -- the "
+                  ".runwrap log holds everything the run script prints, "
+                  "the .out the engine's own"
+                  for s in plan.submissions if s.direct and not s.log
+                  for m in s.members]
     footer = walks + (["  per-trial bound: "
                + (f"{_bound_s // 60} min" if _bound_s else
                   "none -- each trial runs until it ends"
@@ -1979,7 +2010,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         # nobody to ask the entry refuses it, written down, so a script is
         # never told it went (`project-layout.md` § 1.6.4).
         said = _show_and_ask(shown, dry_run=False, auto_yes=auto_yes,
-                             footer=footer, here=(mode == "direct"))
+                             footer=footer, here=(mode == "direct"),
+                             background=plan.background)
         # 4 · THE SEND, and 5 · THE RECORD -- the answer written down, a *no*
         # too (W55 D6), and each submission the moment it goes: a run here
         # when it starts, a scheduler job when it has its id.
@@ -1989,10 +2021,12 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
                        else "nothing launched.")
             return
 
-    verb = "WOULD run" if dry_run else "result"
+    verb = (("WOULD start" if plan.background else "WOULD run") if dry_run
+            else "result")
     for r in results:
         tail = (f"job {r.job_id}" if r.job_id else
-                (f"rc={r.returncode}" if r.returncode is not None else ""))
+                (f"rc={r.returncode}" if r.returncode is not None else
+                 (r.detail or "") if r.status.startswith("started") else ""))
         # a skipped trial was not run and WOULD not be -- its verb says so;
         # a trial or a point riding a shelf or a chain is launched BY that
         # one command
@@ -2021,6 +2055,9 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         click.echo("next -- read the measurements once they have run:\n    "
                    + command("summarize", "bench", stage, base=base)
                    if kind == "bench" else
+                   "next -- follow it while it runs, and look before the "
+                   "next stage:\n    " + command("status", base=base)
+                   if plan.background else
                    "next -- look before the next stage:\n    "
                    + command("status", base=base))
 

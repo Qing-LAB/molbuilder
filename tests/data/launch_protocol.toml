@@ -39,6 +39,24 @@ launch_mode = "direct"
 launch_refused = "--time: what a scheduler is asked for"
 launch_writes_nothing = true
 
+# ---- A RUN HERE, LEFT IN THE BACKGROUND (job-system.md § 6.0, *A run here,
+# left in the background*): planned, shown and asked as any run here; what it
+# runs once started is read off real runs.
+[[case]]
+name = "a background launch is planned, shown and asked as a run here is -- a dry run, which writes nothing"
+launch = ["--background"]
+launch_mode = "direct"
+listing = ["WOULD start", "bash H2_01_coarse.run.sh"]
+launch_writes_nothing = true
+
+[[case]]
+name = "a background launch on a queue is refused, naming why: nothing runs here to leave"
+launch = ["--background"]
+launch_mode = "submit"
+launch_sends = true
+launch_refused = "--background starts a run HERE"
+after_launch = { ledger_holds = ["refused"] }
+
 # ---- A BENCHMARK'S WALK (job-system.md § 6.0, *A benchmark's walk*)
 
 # THE DRY RUN SHOWS THE PLAN THE LAUNCH WOULD SEND (`job-system.md` § 6.0):
