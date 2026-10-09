@@ -23,6 +23,42 @@
 }
 .app-grid > .card { margin: 0; }
 
+/* ---- Two columns: the work, and a rail beside it ----
+ * The main column is worked through top to bottom; the rail beside it holds
+ * what is about the whole page -- what gets written, how the parts connect
+ * -- and stays on screen while the main column scrolls (Task setup, the
+ * Transport tab; `web/ui-contract.md` § 1).  One column below 960px: the rail
+ * is then just more page.
+ *
+ * THE RAIL TRAVELS, AND IS CAPPED: a sticky element taller than the viewport
+ * pins its own top out of reach, so it scrolls inside itself. */
+.page-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--page-aside-w);
+    gap: var(--space-lg);
+    align-items: start;
+}
+.page-main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    min-width: 0;
+}
+.page-main > .card { margin: 0; }
+.page-aside {
+    position: sticky;
+    top: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+    max-height: calc(100vh - var(--space-lg));
+    overflow-y: auto;
+}
+@media (max-width: 960px) {
+    .page-cols { grid-template-columns: minmax(0, 1fr); }
+    .page-aside { position: static; max-height: none; overflow-y: visible; }
+}
+
 @media (max-width: 785px) {
     .app-grid { margin: var(--space-sm2); gap: var(--space-sm2); }
 }

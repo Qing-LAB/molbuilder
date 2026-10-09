@@ -120,6 +120,20 @@ const WORKSPACE_TAG = "transport";
         });
     }
 
+    /* THE RAIL'S STAGE LIST is the rung list the tab strip is built from
+     * -- name, ladder index, one-line note (transport/stages.py
+     * RUNG_NOTES) -- so the two say the same thing from one answer. */
+    function _renderStageFlow(rungs) {
+        var host = root.document.getElementById("transport-stage-flow");
+        if (!host) return;
+        while (host.firstChild) host.removeChild(host.firstChild);
+        rungs.forEach(function (r) {
+            host.appendChild(_el("li", null,
+                _el("strong", null, r.index + " \u00b7 " + r.name),
+                " \u2014 " + r.note));
+        });
+    }
+
     /* THE PER-RUNG FORM IS A TAB PER RUNG (transport.md 3.8.2a): the
      * server answers the rung list -- name, ladder index, one-line note
      * -- and one schema per rung; a tab holds that rung's own items and
@@ -142,6 +156,7 @@ const WORKSPACE_TAG = "transport";
                 }
                 if (seq !== _rungsSeq) return;
                 var rungs = body.rungs || [];
+                _renderStageFlow(rungs);
                 // A REBUILD KEEPS THE TAB the person is on (the form is
                 // rebuilt when the junction changes): read the active rung
                 // off the strip being replaced, fall back to the first.

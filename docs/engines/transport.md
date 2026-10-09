@@ -2976,6 +2976,41 @@ door's question.
 
 ---
 
+#### 3.8.10 The rail, and the k-point grids as a person meets them *(user, 2026-10-09)*
+
+*(User: "include the k-grid details in documents of transport setup/design,
+and include in the UI in simple language (no jargon) and clear readability
+with examples so that these settings are connected logically as the user walk
+through them"; "a side panel in the transport tab (just like the one in the
+task setup tab), where some detailed explanation and info can be organized in
+a visually logical way".)*
+
+**Beside the five steps, a rail** — the shared two-column page
+(`form-components.css` `.page-cols` / `.page-aside`, Task setup's rail) with
+four cards about the whole calculation: **the five stages, in order** (the
+rung list the schema route answers, each rung's note — the same notes its tab
+opens with, `RUNG_NOTES`); **k-points: three grids, one picture**; **SCF
+settings: each stage has its own**; **after you describe** (prepare, launch,
+read back). The rail stays on screen while the steps are worked through.
+
+**The three k-point grids, in plain words** — the physics is § 0.3; each
+item's own help (the catalogue, the one home of what it means) says the same
+and names where the other two are:
+
+| where you set it | the item | what it samples | why it is set there |
+|---|---|---|---|
+| step 2, the shared panel | **k-point mesh** (`kgrid`) | across the junction (x, y), for the seed, both leads and the device; z is 1 | each lead is attached to the device point by point, so all four use the same points (§ 0.3: Σ(k⊥) pairs with H(k⊥)) — one value, never a rung's |
+| each lead's tab | **Lead k-points along the transport direction** (`electrode_kz`) | along z, for the leads alone | a lead is bulk metal, endless along z; its Fermi level and the self-energy built from it need many points there (40 by default; 1 is refused) — the device, seed and transmission are open along z and use 1 |
+| the transmission's tab | **Transmission k-points across the junction** (`tbt_k_grid`) | across the junction, for T(E) alone | T(E) changes faster across the junction than the density, so it usually needs more points than the SCF; it starts at the shared grid's and costs a transmission re-run only |
+
+**The example on the page:** a gold junction three gold atoms wide (about
+8.7 Å across) — 4 × 4 × 1 across, 40 along the leads, 12 × 12 × 1 for T(E).
+**The order to settle them:** the shared grid first (the total energy stops
+moving), then the leads' count (the lead's Fermi level and T(E_F) stop
+moving), then the transmission's grid (T(E_F) moves by less than about 1 %).
+A finer grid for T(E) cannot rescue a shared grid that was too coarse — the
+device's Hamiltonian would be wrong (§ 0.3).
+
 ## 4. Region labels drive everything
 
 The five rungs are all derived from **per-atom region labels** on the input

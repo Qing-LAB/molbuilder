@@ -30,43 +30,6 @@
     padding: var(--space-lg) var(--space-lg) var(--space-xl);
 }
 
-/* Two columns: the editing surface, and the file it produces.  `.card-row`
- * (page-shell) already solves "wrap at the content minimum with no media
- * query", but this page wants a fixed-ish aside rather than weighted tracks,
- * so it is a grid with a clamp on the second track instead. */
-.ts-cols {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) var(--ts-aside-w);
-    gap: var(--space-lg);
-    align-items: start;
-}
-@media (max-width: 960px) {
-    .ts-cols { grid-template-columns: minmax(0, 1fr); }
-}
-
-/* THE RAIL TRAVELS, AND IS CAPPED (task-setup.md 9a.1).  Everything about
- * the whole calculation lives here -- what gets written, and what it says
- * while it runs -- so it stays on screen while the main column is worked
- * through.
- *
- * The cap is not decoration: a five-rung ladder's per-stage list is taller
- * than the viewport, and a sticky element taller than its viewport pins its
- * own TOP out of reach -- you can never scroll back to the first file. */
-.ts-aside {
-    position: sticky;
-    top: var(--space-md);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-lg);
-    max-height: calc(100vh - var(--space-lg));
-    overflow-y: auto;
-}
-@media (max-width: 960px) {
-    /* One column: the rail is just more page, and capping it would put a
-       scrollbar inside a scroll. */
-    .ts-aside { position: static; max-height: none; overflow-y: visible; }
-}
-
 /* ---- The description itself, folded (task-setup.md 9a.1) ---- */
 
 .ts-editor-card > summary {

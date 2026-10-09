@@ -81,6 +81,9 @@
     --radius-sm:     4px;
     --radius-lg:     10px;
     --gap:           var(--space-md);  /* legacy alias — follows the grid */
+    /* The rail beside a page's main column (`.page-aside`,
+     * form-components.css) -- Task setup's and the Transport tab's. */
+    --page-aside-w:  clamp(20rem, 30vw, 25rem);
 
     /* ---- Spacing scale — A 4px GRID ------------------------------
      * Every step is a whole number of 4px units, so any two spacings in
@@ -268,7 +271,6 @@
 
     /* Layout — the two-column page and the editor pane. */
     --ts-page-max:      1240px;
-    --ts-aside-w:       clamp(20rem, 30vw, 25rem);
     --ts-editor-min-h:  30rem;   /* the CodeMirror pane's floor */
     --ts-label-w:       11.5rem; /* the settings-row name column */
     --ts-opt-min:       16rem;   /* a shape option's flex basis */

@@ -288,6 +288,14 @@ B8)*.
    ordinary description and echoes the junction, the bias list, the
    treatment and the rename.
 
+**Beside the five cards, a rail** — the shared two-column page
+(`form-components.css` `.page-cols` / `.page-aside`, as Task setup's) with
+four cards about the whole calculation, in plain words with an example each
+([`engines/transport.md`](?doc=engines/transport.md) § 3.8.10): the five
+stages in order (from the schema route's rung list), the three k-point grids
+and where each is set, whose SCF settings are whose, and what comes after
+Describe.
+
 The deliverable is read on the Results tab: a transport root opens its
 `task.json`, which the transport report presents composed on read
 ([`web/results.md`](?doc=web/results.md) § 0.1, § 2.5).
