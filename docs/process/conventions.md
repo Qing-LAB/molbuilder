@@ -115,7 +115,7 @@ table said 13, listed `pyscf` — deleted that day — and omitted `notify-token
 | `validate` | geometry (+ optional engine) checks → Issue JSON | ([`science/validation.md`](?doc=science/validation.md)) |
 | `jobset` | **every calculation, every engine** — init / prep / launch / status / summarize | ([`execution/job-system.md`](?doc=execution/job-system.md)) |
 | `envs` `pseudo` `checkpoint` `watch` | the four remaining sub-groups | |
-| `xv2xyz` `runtime-info` `monitor` | SIESTA `.XV`→the structure **pair** (`--from-run` also takes what the run declared — its labels, held atoms and axes — from its own deck) · dump a runtime-info sidecar · watch a job | |
+| `xv2xyz` `runtime-info` `monitor` | SIESTA `.XV`→the structure **pair** (`--from-run` also takes what the run declared — its labels, held atoms and axes — from its own deck, and what it says about itself, its `info.calculation` and `info.relaxation`) · dump a runtime-info sidecar · watch a job | |
 | `auth-setup` `notify-token` `serve` `jupyter` | the auth config · a run-report key · the web UI · its notebook | ([`ops/deployment.md`](?doc=ops/deployment.md)) |
 
 **NO ENGINE HAS A VERB EITHER** *(2026-09-17)*. `molbuilder pyscf` was the last

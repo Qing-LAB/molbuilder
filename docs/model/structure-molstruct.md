@@ -381,7 +381,7 @@ This is what makes a multi-frame pair a legal input everywhere a structure is
 one, and a **frame set** where a door is frame-aware:
 [`engines/transport.md`](?doc=engines/transport.md) § 2a.9 defines the
 transport frame group as exactly this pair — frame 0 the base, frames 1…N the
-displacements *(its citation is designed, not built — plan § 5z, Q17-c)*. The cell and the axis kinds are the sidecar's alone — the
+displacements, cited as § 3.1's pair (built 2026-10-09, plan § 5z Q17-c). The cell and the axis kinds are the sidecar's alone — the
 document's comment line is never metadata (`structure.md` § 2.3) — which is
 one more reason the frames do not travel without it.
 

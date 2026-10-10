@@ -43,7 +43,8 @@ from ..runfiles import RunNames, compose as _rf
 from ..pseudos import PSEUDO_DIRNAME
 from .errors import PrepError
 from .machine import machine_record, require_activation, set_machine
-from .engines import EngineSeam, engine_seam, _pseudo_dir, _screen_pseudos
+from .engines import (EngineSeam, engine_seam, _pseudo_dir, _screen_pseudos,
+                      _siesta_provide_pseudos)
 
 
 from contextlib import contextmanager
@@ -676,12 +677,18 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
     citation = task.slots["junction"]
 
     def provide_data(plan):
-        # The pseudopotentials travel with the citation, screened against
-        # the config the rung's decks render from: what it checks is each
-        # file's XC family against the functional the run will ask for.
-        _transport_provide_pseudos(composed.sorted.structure,
-                                   configure(pset[0].render_config()), base,
-                                   citation, plan=plan)
+        # The pseudopotentials: a cited run's travel with it, a cited pair's
+        # come from the library the template names (`engines/transport.md`
+        # § 3.1) -- screened against the config the rung's decks render
+        # from: what it checks is each file's XC family against the
+        # functional the run will ask for.
+        cfg = configure(pset[0].render_config())
+        if composed.provenance["kind"] == "pair":
+            _siesta_provide_pseudos(composed.sorted.structure, cfg, base,
+                                    plan=plan)
+        else:
+            _transport_provide_pseudos(composed.sorted.structure, cfg, base,
+                                       citation, plan=plan)
 
     def job_facts(job):
         # The rung's own restart files (`transport.stages.warm_declaration`:
@@ -1401,9 +1408,9 @@ def _move_progress_channel_into(attempt: Path, plan) -> None:
 
 def _transport_provide_pseudos(struct, cfg, base: Path,
                                citation: str, *, plan=None) -> None:
-    """The pseudopotentials arrive FROM THE CITATION
-    (engines/transport.md § 3.1: structure, pseudos and electronic
-    template all come with the cited junction — one template governs).
+    """A cited run's pseudopotentials arrive FROM THE RUN
+    (engines/transport.md § 3.1: the files the junction relaxed with travel
+    with it — one template governs).
 
     Idempotent, and the folder wins, exactly like the SIESTA arm: what
     ``pseudos/`` already holds (an earlier prep, or the travelled
@@ -1529,6 +1536,19 @@ def _transport_parts(task, stage: str, composed, config):
         # The junction -- and for the device it carries the region
         # partition the NEGF block is built from.
         struct, label = composed.sorted.structure, task.label
+        # A FRAME SET (`engines/transport.md` § 2a.9): the seed runs once,
+        # on frame 0; the device and the transmission run per frame, which
+        # is plan § 5z Q17-d -- until it is built they refuse a set of more
+        # than one frame by name, never running frame 0 alone.
+        if struct.n_frames > 1:
+            if stage in ("device", "transmission"):
+                raise PrepError(
+                    f"the cited junction is a frame set of "
+                    f"{struct.n_frames} frames, and the {stage} runs per "
+                    f"frame -- not built yet (plan § 5z Q17-d).  Its seed "
+                    f"and both leads run on frame 0 now "
+                    f"(engines/transport.md 2a.9, 3.1).")
+            struct = struct.frame_at(0)
 
     def labelled(cfg):
         # THE RUNG FIXES ITS LABEL (C2): every rung's `SystemLabel` is spelt

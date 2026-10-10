@@ -103,14 +103,13 @@ _TOP_KEYS = ("schema", "engine", "shape", "run",
              "notify", "slots", "bias", "swap_electrodes")
 _BIAS_KEYS = ("voltages_v", "low_bias_approximation")
 
-#: A slot citation names a DIRECTORY, explicitly, by its tree-relative
-#: path (`engines/transport.md` § 3.1: what makes the directory citable is
-#: its FILES -- a finished relaxation run of molbuilder's own, its
-#: .fdf+.XV together with its run record -- never its name or its position
-#: in molbuilder's own layout).  FORM
-#: only here: a relative path with no traversal; the tree fence and
-#: the file-condition check live where the filesystem is (`init`
-#: resolves, `prep` composes -- transport/compose.classify_citation).
+#: A slot citation names its junction explicitly, by its tree-relative
+#: path (`engines/transport.md` § 3.1): a finished relaxation run's folder,
+#: or a structure pair's .xyz -- what makes it citable is what it holds,
+#: never its name or its position in molbuilder's own layout.  FORM only
+#: here: a relative path with no traversal; the tree fence and the
+#: condition live where the filesystem is (`init` resolves, `prep` composes
+#: -- transport/compose.classify_citation).
 _CITATION_RE = re.compile(r"^(?!/)(?!.*\.\.)[^\s]+$")
 #: The SCHEDULER asks of an `allocation` block (`stages.md` § 6.8a): the
 #: three SLURM spells as text, and the one it switches -- whether a GPU ask
@@ -504,12 +503,10 @@ class Task:
         for name, cite in self.slots.items():
             if not isinstance(cite, str) or not _CITATION_RE.fullmatch(cite):
                 raise ValueError(
-                    f"task: slot {name!r} must cite a directory by its "
+                    f"task: slot {name!r} must cite its junction by its "
                     f"tree-relative path (no leading '/', no '..', no "
-                    f"whitespace); got {cite!r}.  What makes the "
-                    f"directory citable is its FILES -- a finished "
-                    f"relaxation run of molbuilder's own, its .fdf+.XV "
-                    f"together with its run record "
+                    f"whitespace); got {cite!r}: a finished relaxation "
+                    f"run's folder, or a structure pair's .xyz "
                     f"(engines/transport.md § 3.1)")
         if self.bias:
             if any(not isinstance(v, (int, float)) or isinstance(v, bool)

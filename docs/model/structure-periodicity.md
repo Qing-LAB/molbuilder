@@ -483,8 +483,9 @@ two things state one:
   own deck's records, never a sidecar looked for beside the file *(plan B12,
   D19; until 2026-10-04 the composer was `parse/dirs/atom_metadata.engine_frame_for_run_dir`
   and `xv2xyz` looked beside the `.XV` instead)*.
-  The transport citation states it only when the cited deck recorded its
-  placement — its `engine-offset` record *(user, 2026-09-25, plan § 5q D7)*:
+  The transport citation of a run states it only when the cited deck recorded
+  its placement — its `engine-offset` record *(user, 2026-09-25, plan § 5q
+  D7)*; a cited pair's is the one its sidecar states:
   a relaxation run before the record left its atoms flush against a face, so
   the rule places it instead. The shift is rigid, which changes nothing
   TranSIESTA reads but SIESTA's meV egg-box ripple, and it keeps such a

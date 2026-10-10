@@ -172,6 +172,14 @@ class Run:
                 and (run is None or rec.run == run)]
         return hits[-1][0] if hits else None
 
+    def carried(self, role: str) -> Optional[Path]:
+        """This run's CARRIED file in ``role`` -- named on its label with no
+        stage token (`runfiles`: a carried file crosses rungs, SIESTA's
+        ``<label>.XV`` / ``.DM``) -- in its own folder, or ``None``."""
+        hits = [p for p, rec in _rf.find(self.folder, self.label, role=role)
+                if rec.stage is None]
+        return hits[-1] if hits else None
+
     @property
     def deck(self) -> Optional[Path]:
         """The deck this run read, the one its engine runs

@@ -976,7 +976,10 @@ def cmd_modify(input_path, output_path,
 @click.option("--from-run", "from_run", is_flag=True, default=False,
               help="Take what the run that wrote input.XV declared about "
                    "its atoms -- its own deck's labels, held atoms and "
-                   "axis kinds.  Refused for a .XV no run of ours holds.")
+                   "axis kinds -- and what it says about itself, its "
+                   "info.calculation and info.relaxation (a pair a "
+                   "transport calculation can cite).  Refused for a .XV no "
+                   "run of ours holds.")
 def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     """Convert a SIESTA ``.XV`` final-coordinates file to a structure pair.
 
@@ -993,7 +996,9 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
 
     ``--from-run`` says the ``.XV`` is a run of ours: what that run declared
     about its atoms -- the labels, the held atoms, the axis kinds -- is
-    taken from its own deck, through the run door (:func:`_apply_run_metadata`).
+    taken from its own deck, through the run door, and what it says about
+    itself -- ``info.calculation``, ``info.relaxation`` -- from the one
+    composer the Results tab asks (:func:`_apply_run_metadata`).
 
     A FLAG, NOT A SNIFF: picking metadata out of a directory because it
     looked like a run is hard to notice when it is wrong.
@@ -1019,8 +1024,8 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
 
 def _apply_run_metadata(struct, xv_path: Path):
     """``--from-run``: ``(struct, note)`` -- ``struct`` with what the run that
-    wrote ``xv_path`` declared about its atoms, and one line saying where it
-    came from.
+    wrote ``xv_path`` declared about its atoms and what it says about itself,
+    and one line saying where it came from.
 
     THE RUN'S OWN DECK, THROUGH THE RUN DOOR (`model/structure-periodicity.md`
     § 6.0; plan B12, D19): the run that holds the ``.XV`` (`runs.run_of`) and
@@ -1061,11 +1066,22 @@ def _apply_run_metadata(struct, xv_path: Path):
     struct = struct.replace(
         engine_offset=_np.zeros(3),
         **({"axis_kind": tuple(kinds)} if kinds else {}))
-    if said.atom_metadata or kinds:
+    # WHAT THE RUN SAYS ABOUT ITSELF, from the one composer the Results tab
+    # asks (`parse.dirs.run_info`, `model/parse.md` § 5b): its deck's
+    # recorded contract and its output's relaxation record, so the pair
+    # saved here is the one a Results export saves -- citable by a
+    # transport calculation (`engines/transport.md` § 3.1).
+    from .parse.dirs.run_info import run_info
+    told = run_info(deck=said.deck, output=run.stdout) or {}
+    for key, value in told.items():
+        struct.set_info(key, value)
+    if said.atom_metadata or kinds or told:
         return struct, (f"from the run's deck {said.deck.name} — axes "
                         f"{','.join(struct.axis_kind)}, "
                         f"{len(struct.frozen_atoms)} held, "
-                        f"{len(struct.regions)} label(s) in the region store")
+                        f"{len(struct.regions)} label(s) in the region store"
+                        + (f"; info: {', '.join(sorted(told))}"
+                           if told else ""))
     where = (f"its deck {said.deck.name}" if said.deck is not None
              else "no deck of its run here")
     return struct, (f"the run declares nothing about its atoms ({where}); "

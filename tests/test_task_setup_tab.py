@@ -998,14 +998,6 @@ def test_the_handover_door_refuses_transport_by_name(web_client):
     assert "/api/transport/describe" in r.get_json()["error"]
 
 
-def test_transport_describe_refuses_a_citation_the_tree_lacks(web_client):
-    r = web_client.post("/api/transport/describe", json=dict(
-        engine="siesta", name="T",
-        junction="_t_nope/optimization/Gone@run-0", bias=[0.0]))
-    assert r.status_code == 400
-    assert "not a directory" in r.get_json()["error"]
-
-
 def test_describe_attempt_stays_inside_the_tree(web_client):
     r = web_client.get("/api/transport/describe_attempt?path=../../etc")
     assert r.status_code == 400

@@ -314,13 +314,15 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                     bias_opt, structure, psml_lib, vacuum,
                     low_bias_approximation=None,
                     stage_strategy) -> None:
-    """`init --calculation transport` -- floor 2 is task.json ALONE.
+    """`init --calculation transport` -- task.json and the calculation's
+    template, from the junction citation (engines/transport.md § 3.1): a
+    finished relaxation run, or a structure pair recording its optimization.
 
-    The structure, the pseudos and the electronic template all arrive at
-    prep from the junction citation (engines/transport.md § 3.1, Q5:
-    one template governs everything, physically enforced by deriving) --
-    so every option that would supply them here is refused naming that
-    rule rather than silently ignored.
+    The structure and the cell arrive at prep from the citation, so every
+    option that would supply them here is refused naming that rule rather
+    than silently ignored.  The pseudopotentials come with a cited run and
+    from ``--psml-lib`` for a cited pair -- refused for the first, required
+    for the second.
     """
     from pathlib import Path as _P
 
@@ -333,8 +335,6 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     for given, flag, why in (
             (structure, "--structure", "its structure IS the junction "
              "citation, copied in at prep"),
-            (psml_lib, "--psml-lib", "the pseudopotentials travel with "
-             "the cited junction"),
             (vacuum, "--vacuum", "the cell comes with the cited junction"),
             (stage_strategy, "--stage-strategy", "the composite's five "
              "stages are fixed by design (seed, electrode_L, electrode_R, "
@@ -355,33 +355,44 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
         name_, sep, cite = entry.partition("=")
         if not sep or not name_ or not cite:
             raise click.ClickException(
-                f"--slot {entry!r}: spell it NAME=DIRECTORY, e.g. "
+                f"--slot {entry!r}: spell it NAME=PATH, e.g. "
                 f"--slot junction=<project>/<topic>/<calc>/<stage>/run-N "
-                f"-- any directory whose files satisfy the citation "
-                f"condition (engines/transport.md § 3.1).")
+                f"-- a finished relaxation run's folder, or a structure "
+                f"pair's .xyz (engines/transport.md § 3.1).")
         slots[name_] = cite
     if set(slots) != {"junction"}:
         raise click.ClickException(
             "a transport calculation takes exactly one slot, `junction` "
-            "-- the directory holding the relaxed junction it composes "
-            "from: a finished relaxation run of molbuilder's own, its "
-            ".fdf+.XV together with its run record "
-            "(engines/transport.md § 3.1).")
+            "-- the relaxed junction it composes from: a finished "
+            "relaxation run of molbuilder's own, or a structure pair that "
+            "records its optimization (engines/transport.md § 3.1).")
 
-    # The cited directory goes through the SAME tree fence every
-    # calculation path uses (2.5b) and is classified against the 4.1b
-    # FILE condition right here -- a citation that cannot compose is
-    # refused at init, naming the missing file (strict composition, Q2).
-    resolved = _resolve_bundle(None, None, slots["junction"],
-                               must_exist=True)
+    # THE CITATION DOOR prep composes through (`compose.resolve_citation`):
+    # the tree fence, then § 3.1's condition by what the path is -- a
+    # citation that cannot compose is refused at init, naming what is
+    # missing (strict composition, Q2).
     from ..projects import projects_root
-    citation = str(_P(resolved).relative_to(projects_root()))
-    from ..transport.compose import ComposeError, classify_citation
+    from ..transport.compose import CitedPair, ComposeError, resolve_citation
     from .. import template as _T
+    root = _P(projects_root()).expanduser().resolve()
+    raw = _P(slots["junction"]).expanduser()
+    if raw.is_absolute():
+        try:
+            raw = raw.resolve().relative_to(root)
+        except ValueError:
+            raise click.ClickException(
+                f"--slot junction={slots['junction']}: {raw} is not inside "
+                f"the projects tree ({root}); give its path from the tree's "
+                f"root.")
     try:
-        classify_citation(_P(resolved))
+        resolved, cited = resolve_citation(str(raw), root)
     except ComposeError as exc:
         raise click.ClickException(str(exc))
+    citation = str(resolved.relative_to(root))
+    pair = isinstance(cited, CitedPair)
+    dest = (out_dir if out_dir.is_absolute()
+            else _P(_resolve_bundle(None, None, str(out_dir),
+                                    must_exist=False)))
 
     bias = ()
     if bias_opt:
@@ -408,10 +419,16 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
 
     # THE TEMPLATE'S TEXT FIRST -- before the folder exists -- so a
     # citation it refuses (one that carried a net charge, ES7,
-    # `science/chemistry-correctness.md` § 2a) leaves nothing behind.
-    from ..transport.citation_defaults import transport_template_text
+    # `science/chemistry-correctness.md` § 2a; a pair with no
+    # pseudopotential directory, or a run with one, § 3.1) leaves nothing
+    # behind.
+    from ..transport.citation_defaults import (check_pseudopotentials,
+                                               transport_template_text)
     try:
-        _tmpl_text = transport_template_text(_P(resolved), label=task.label)
+        check_pseudopotentials(cited, psml_lib)
+        _tmpl_text = transport_template_text(
+            resolved, label=task.label,
+            **({"psml_lib": str(psml_lib)} if psml_lib else {}))
     except ValueError as exc:
         raise click.ClickException(str(exc))
     # THE DESCRIPTION'S OWN CHECK (gate ③), which every describe runs
@@ -426,7 +443,6 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
             click.echo(f"note: {issue.message}", err=True)
     except ValidationError as exc:
         raise click.ClickException(str(exc))
-    dest = out_dir if out_dir.is_absolute() else         _P(_resolve_bundle(None, None, str(out_dir), must_exist=False))
     dest.mkdir(parents=True, exist_ok=True)
     write_task(dest / TASK_FILENAME, task)
 
@@ -450,10 +466,15 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     click.echo(f"  {tmpl.name}")
     click.echo("")
     click.echo("The template carries the shared electronic description, "
-               "filled in from the run you cited -- change anything in it "
-               "and every stage follows, because there is one of it.  The "
-               "structure and pseudopotentials still arrive at prep from "
-               "the citation.  On the machine that will run it:")
+               "filled in from the "
+               + ("record of the optimization your pair carries"
+                  if pair else "run you cited")
+               + " -- change anything in it and every stage follows, "
+               "because there is one of it.  The structure arrives at prep "
+               "from the citation, and the pseudopotentials "
+               + ("from the directory you named" if pair
+                  else "from the run you cited")
+               + ".  On the machine that will run it:")
     # THE FIRST COMMAND A PERSON COPIES: the stages `prep task` offers
     # pre-selected (D2) -- the seed and both leads, one job.
     from .commands import command, words_for
@@ -496,7 +517,9 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
               help="where to read pseudopotentials from -- a path INSIDE "
                    "the projects tree, measured from the tree root (the "
                    "convention is `pseudopotential`).  The files travel "
-                   "with the calculation; the path does not.")
+                   "with the calculation; the path does not.  A transport "
+                   "calculation takes it for a cited structure pair, whose "
+                   "pseudopotentials are not beside it.")
 @click.option("--vacuum", type=float, default=None, metavar="ANGSTROM",
               help="isolation vacuum (A) per side on isolated axes. Needed "
                    "for a flat or linear molecule from a bare XYZ, which "
@@ -508,10 +531,10 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                    "REQUIRED -- never assumed.")
 @click.option("--slot", "slots_opt", multiple=True, metavar="NAME=CITATION",
               help="a composite input (transport only): "
-                   "--slot junction=<dir> (a directory whose files "
-                   "satisfy engines/transport.md § 3.1).  The "
-                   "attempt is named explicitly, never picked "
-                   "(engines/transport.md § 3.1).")
+                   "--slot junction=<path> -- a finished relaxation run's "
+                   "folder, or a structure pair's .xyz that records its "
+                   "optimization (engines/transport.md § 3.1).  Named "
+                   "explicitly, never picked.")
 @click.option("--bias", "bias_opt", default=None, metavar="V0,V1,...",
               help="transport only: the bias points in volts, starting at "
                    "0.0 (engines/transport.md 2a.10).  Several state "

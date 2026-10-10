@@ -1102,21 +1102,28 @@ run reads its own deck, never another stage's. A deck that states nothing, a
 PySCF deck (no extractor yet) or no run of ours is `None` — a missing contract
 block is an ordinary state, never a guess. *(Until 2026-10-04 this took the
 one `.fdf` in a directory, or nothing, so a flat calculation with two stages
-recorded none — plan W56, the review's ruling 1.)* Transport's citation still
-asks a cited folder for its one deck, as a refusal
-([`transport.md` § 3.1](?doc=engines/transport.md); open in the plan).
+recorded none — plan W56, the review's ruling 1.)* Transport's citation asks
+the run door too: a cited folder is the run it speaks for, its deck that run's
+([`transport.md` § 3.1](?doc=engines/transport.md); W56-2, 2026-10-09).
 
 **The record speaks the catalogue's names** *(user, 2026-10-02: "if only three
 readers for D2, i'd rather unify the names, rather than having a drift from
 contract")*. A key is the setting's catalogue item — `basis_size`,
 `mesh_cutoff`, `pao_energy_shift`, `xc_functional`, `xc_authors`, `kgrid`,
-`kgrid_displacement`, `electronic_temperature`, and the electronic state's
-`net_charge`, `spin_treatment`, `unpaired_electrons` — in the catalogue's unit,
-so every reader takes it as it stands: the vibration check (`contract_fields_of(cfg)`
-gives the calculation about to run in the same names, so a difference reads
-*"mesh_cutoff: relaxed with 300, this run 400"*) and the transport citation
-(`transport/citation_defaults.py`). Which engine and which deck the values came
-from is the block's own `engine`, `source` and `source_sha256`.
+`kgrid_displacement`, `electronic_temperature`, the electronic state's
+`net_charge`, `spin_treatment`, `unpaired_electrons`, and how the run's SCF
+converged — `mixing_weight`, `pulay_history`, `dm_tolerance`,
+`dm_energy_tolerance`, `scf_energy_converge` (`SCF_RECORD_KEYS`, 2026-10-09:
+TD6's starting values for every transport SCF stage, `transport.md` § 3.1) —
+in the catalogue's unit, so every reader takes it as it stands: the vibration
+check (`contract_fields_of(cfg)` gives the level of theory about to run in the
+same names, so a difference reads *"mesh_cutoff: relaxed with 300, this run
+400"*; the SCF settings are not a level of theory and are not compared) and
+the transport citation (`transport/citation_defaults.py`), which reads a cited
+run's deck through this door and a cited pair's record as this door wrote it.
+A deck that states no level of theory has no record, whatever its SCF
+settings. Which engine and which deck the values came from is the block's own
+`engine`, `source` and `source_sha256`.
 
 *(A record written before 2026-10-02 named four of them differently —
 `siesta_mesh_cutoff_ry`, `energy_shift_ry`, `electronic_temperature_k`,
@@ -1165,7 +1172,11 @@ second read.
 The composer (`dirs/run_info.py`) puts it beside `calculation`; the Results
 tab's structure inspector records both into the viewer's `info` store, so a
 pair exported from a finished relaxation carries them
-([`web/molview.md` § 8.4a](?doc=web/molview.md)). **The consumer that asked
+([`web/molview.md` § 8.4a](?doc=web/molview.md)); `molbuilder xv2xyz
+--from-run` asks the same composer of the run that holds the `.XV` — its own
+deck, its own output (`Run.stdout`) — so a pair saved on the command line
+carries the same block (2026-10-09: the CLI's road to a citable pair,
+`transport.md` § 3.1). **The consumer that asked
 for it** is the vibration kind ([`engines/vibration.md` § 2.2](?doc=engines/vibration.md)):
 a structure stated relaxed is checked against its own record —
 `validation/sidecar.py::check_relaxation_record`, the fingerprint first, then

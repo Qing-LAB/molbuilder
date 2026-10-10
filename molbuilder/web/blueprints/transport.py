@@ -53,34 +53,26 @@ bp = Blueprint("transport", __name__)
 
 
 def _fence(raw: str):
-    """A tree-relative path → ``(citation, directory, root, refusal)``.
-
-    ONE fence for both citation doors: contain the path to the projects
-    tree, require a directory, and compute the citation string the rest
-    of the composite speaks in.  ``refusal`` is a ready answer when
-    either test fails and ``None`` when neither did.
-
-    The two doors diverge only AFTER this, and deliberately: describing
-    an unciteable directory answers 200 with the condition as its
-    summary (that is how a person learns what a citation needs), while
-    renaming one is simply a bad request.  Sharing the fence keeps that
-    difference visible instead of hiding it inside two copies of the
-    same three lines.
-    """
+    """A tree-relative path → ``(citation, path, root, refusal)``: the path
+    contained to the projects tree, required to exist, and the citation
+    string the rest of the composite speaks in.  ``refusal`` is a ready
+    answer when either test fails and ``None`` when neither did -- a bad
+    request, where a path that exists and is not citable answers 200 with
+    the condition as its summary (that is how a person learns what a
+    citation needs)."""
     from pathlib import Path
 
     from molbuilder.projects import OutsideRoot, contain, projects_root
     root = Path(projects_root()).resolve()
     try:
-        cite_dir = contain(root / raw, root)
+        cited = contain(root / raw, root)
     except OutsideRoot as exc:
         return None, None, root, (
             jsonify({"ok": False, "error": str(exc)}), 400)
-    if not cite_dir.is_dir():
+    if not cited.exists():
         return None, None, root, (
-            jsonify({"ok": False,
-                     "error": f"{raw} is not a directory"}), 404)
-    return str(cite_dir.relative_to(root)), cite_dir, root, None
+            jsonify({"ok": False, "error": f"{raw} does not exist"}), 404)
+    return str(cited.relative_to(root)), cited, root, None
 
 
 # ===================================================================== #
@@ -96,12 +88,13 @@ def api_transport_describe_attempt() -> Any:
     the junction slot (user ruling: the condition is FILES, never
     layout).
 
-    ``?path=`` is tree-relative.  ONE SHAPE of citation (decision 7): a
-    finished relaxation run of molbuilder's own.  A directory that is
-    not one answers ``citation: null`` with the refusal as the summary,
-    naming exactly which file is missing (the condition stated).  A
-    citation's ``summary`` is one line: how the run ended (CONCLUDED /
-    not / exit code) and the deck's facts.  What its composition
+    ``?path=`` is tree-relative: a finished relaxation run's folder, or a
+    structure pair's ``.xyz`` (§ 3.1).  A path that is neither answers
+    ``citation: null`` with the refusal as the summary, naming what is
+    missing (the condition stated).  A citation's ``summary`` is one
+    line: how a run ended (CONCLUDED / not / exit code), or a pair's
+    frames and the deck its record names, then what its recorded
+    contract states.  What its composition
     MEASURED rides ``findings`` -- rows of the one finding vocabulary
     (`science/validation.md` § 4.1 R2): each lead's seam and
     principal-layer measurements as ``info``, the electrode orientation
@@ -115,11 +108,12 @@ def api_transport_describe_attempt() -> Any:
     ``fix`` is a word the tab can act on (today only
     ``"swap_electrodes"``), never prose to match.
     """
-    from molbuilder.transport.compose import (ComposeError,
+    from molbuilder.transport.compose import (CitedPair, ComposeError,
                                               classify_citation,
                                               compose_junction,
                                               labeled_citation_structure)
     from molbuilder.issues import Issue
+    from molbuilder.parse.contract import contract_of
     from molbuilder.parse.fdf import parse_fdf_params
     from molbuilder.transport.sort import (ORDER_INVERTED,
                                            electrode_orientation)
@@ -132,63 +126,75 @@ def api_transport_describe_attempt() -> Any:
     # calculation will compose it; the cited run is read, never written.
     swap = str(request.args.get("swap_electrodes") or "").lower() in (
         "1", "true", "yes")
-    citation, cite_dir, root, refusal = _fence(raw)
+    citation, cited_path, root, refusal = _fence(raw)
     if refusal is not None:
         return refusal
     try:
-        cited = classify_citation(cite_dir)
+        cited = classify_citation(cited_path)
     except ComposeError as exc:
         # Not citable -- the refusal IS the answer (it names the
         # missing file and states the whole condition).
         return jsonify({"ok": True, "citation": None,
                         "summary": str(exc), "findings": []}), 200
 
-    deck_text = cited.deck.read_text()
-    try:
-        p = parse_fdf_params(deck_text)
-    except UnknownUnit as exc:
-        # DESCRIBED, NOT REFUSED -- the same shape as the refusal
-        # above: this route answers with the junction it can see and
-        # appends what it could not read.  A deck stating a unit this
-        # build cannot convert is a card with one line missing, not a
-        # 500 on the tab.
-        unread = f"the deck cannot be read: {exc}"
-        return jsonify({"ok": True, "citation": citation, "summary": unread,
-                        "findings": _issues_to_json([Issue("error", unread)])
-                        }), 200
-    bits = []
-    if p.basis_size:
-        bits.append(str(p.basis_size))
-    if p.mesh_cutoff_ry:
-        bits.append(f"{p.mesh_cutoff_ry:g} Ry")
-    if p.xc:
-        bits.append(str(p.xc))
-    if p.kgrid:
-        bits.append("k " + "x".join(str(k) for k in p.kgrid)
-                    + (" shifted " + " ".join(
-                           f"{s:g}" for s in p.kgrid_displacement)
-                       if any(p.kgrid_displacement or ()) else ""))
-    if p.n_atoms:
-        bits.append(f"{p.n_atoms} atoms")
-    # HOW IT ENDED AND WHAT IT CONVERGED (`engines/transport.md` § 3.1):
-    # said where a person chooses, so a geometry that did not converge is
-    # cited knowingly -- its .XV is then the last geometry SIESTA wrote.
-    if cited.concluded is None:
-        state = ("NOT CONCLUDED -- still running, or force-stopped "
-                 "(the two look identical on disk)")
-    elif cited.exit_code != 0:
-        state = (f"ENDED WITH EXIT CODE {cited.exit_code} "
-                 f"({cited.concluded.strip()}) -- not citable until the "
-                 f"relaxation runs to its end")
+    # WHAT ITS RECORD SAYS -- the recorded contract, the one reader of both
+    # kinds (`parse.contract.contract_of`; § 3.1): a cited run's deck, a
+    # cited pair's `info.calculation` as that door wrote it.
+    if isinstance(cited, CitedPair):
+        record = cited.calculation
+        n_atoms = cited.structure.n_atoms
+        state = (f"STRUCTURE PAIR · {cited.n_frames} frame"
+                 f"{'' if cited.n_frames == 1 else 's'} · optimized with "
+                 f"{record.get('source') or 'a deck its record does not name'}")
+        concluded = True
     else:
-        state = f"CONCLUDED ({cited.concluded.strip()})"
-        if cited.converged:
-            state += " · " + cited.converged
-            if cited.converged.endswith("NO"):
-                state += (" -- the .XV cited is the last geometry SIESTA "
-                          "wrote, not a converged minimum")
+        try:
+            n_atoms = parse_fdf_params(cited.deck.read_text()).n_atoms
+        except UnknownUnit as exc:
+            # DESCRIBED, NOT REFUSED -- the same shape as the refusal
+            # above: this route answers with the junction it can see and
+            # appends what it could not read.  A deck stating a unit this
+            # build cannot convert is a card with one line missing, not a
+            # 500 on the tab.
+            unread = f"the deck cannot be read: {exc}"
+            return jsonify({"ok": True, "citation": citation,
+                            "summary": unread,
+                            "findings": _issues_to_json(
+                                [Issue("error", unread)])}), 200
+        record = contract_of(cited.deck)
+        # HOW IT ENDED AND WHAT IT CONVERGED (`engines/transport.md` § 3.1):
+        # said where a person chooses, so a geometry that did not converge
+        # is cited knowingly -- its .XV is then the last geometry SIESTA
+        # wrote.
+        if cited.concluded is None:
+            state = ("NOT CONCLUDED -- still running, or force-stopped "
+                     "(the two look identical on disk)")
+        elif cited.exit_code != 0:
+            state = (f"ENDED WITH EXIT CODE {cited.exit_code} "
+                     f"({cited.concluded.strip()}) -- not citable until the "
+                     f"relaxation runs to its end")
+        else:
+            state = f"CONCLUDED ({cited.concluded.strip()})"
+            if cited.converged:
+                state += " · " + cited.converged
+                if cited.converged.endswith("NO"):
+                    state += (" -- the .XV cited is the last geometry "
+                              "SIESTA wrote, not a converged minimum")
+        concluded = bool(cited.concluded)
+    c = (record or {}).get("contract") or {}
+    bits = [str(c["basis_size"])] if c.get("basis_size") else []
+    if c.get("mesh_cutoff"):
+        bits.append(f"{c['mesh_cutoff']:g} Ry")
+    if c.get("xc_functional") and c.get("xc_authors"):
+        bits.append(f"{c['xc_functional']}/{c['xc_authors']}".upper())
+    if c.get("kgrid"):
+        shift = c.get("kgrid_displacement") or ()
+        bits.append("k " + "x".join(str(k) for k in c["kgrid"])
+                    + (" shifted " + " ".join(f"{s:g}" for s in shift)
+                       if any(shift) else ""))
+    if n_atoms:
+        bits.append(f"{n_atoms} atoms")
     status = state + (" · " + " · ".join(bits) if bits else "")
-    concluded = bool(cited.concluded)
 
 # TWO SEPARATE QUESTIONS, and the card needs both: *what is this
 # junction* (always answerable from the citation's own files) and
@@ -526,7 +532,9 @@ def api_transport_describe() -> Any:
     # surfaces from (`_panel_template`) -- a value its field cannot take, or
     # a citation it refuses (a cited run that carried a net charge, ES7),
     # said here by name rather than failing the whole response.
+    from molbuilder.transport.citation_defaults import check_pseudopotentials
     try:
+        check_pseudopotentials(cited, shared_chosen.get("psml_lib"))
         _tmpl_text = _panel_template(cited.path, shared_chosen,
                                      label=task.label)
     except ValueError as exc:
@@ -546,7 +554,7 @@ def api_transport_describe() -> Any:
     from molbuilder.transport.compose import junction_axis_kind
     from molbuilder.transport.deck import ladder_mesh_findings
     try:
-        _kinds = junction_axis_kind(cited.deck.read_text(errors="replace"))
+        _kinds = junction_axis_kind(cited)
     except ComposeError:
         _kinds = None              # compose refuses it, by name, at prep
     if _kinds is not None:

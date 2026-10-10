@@ -17,11 +17,14 @@ THE ROAD: the junction relaxed as an ordinary optimization, its template set
 as a person sets it -- each value distinguishable from the catalogue's
 default, and the spin unrestricted with a fixed count; then the transport
 calculation described citing that run, on the CLI and through the Transport
-tab's describe; its spin set restricted in its template, as a person sets
-it; the seed and both leads prepared and launched as one group; the device's
-two-point self-consistent sweep launched, launched again warm (refused:
-every point is done), and cold; the transmission over the device's newest
-run; the record.
+tab's describe; its spin set restricted in its template, and three SCF
+stages' own mixing weights on Task setup's stage table, as a person sets
+them; the seed and both leads prepared and launched as one group; the
+device's two-point self-consistent sweep launched, launched again warm
+(refused: every point is done), and cold; the transmission over the device's
+newest run; the record.  And the relaxation saved as a structure pair
+(`molbuilder xv2xyz --from-run`), cited by a second transport calculation,
+its seed and leads prepared from the pair.
 
 THE TRANSPORT RUNS RESTRICTED because a polarized moment that floats, as
 every transport rung's does, starts each atom at its full moment, aligned
@@ -78,6 +81,12 @@ RELAXED_WITH = dict(mesh_cutoff=150.0, basis_size="SZ",
                     mixing_weight=0.1, pulay_history=6)
 
 _BIAS = (0.0, 0.2)
+
+#: Each SCF stage's own mixing weight, set on its tab -- every one distinct
+#: from the cited run's 0.1 and from each other, so a deck carrying another
+#: stage's value is told apart; electrode_R sets none and runs the
+#: template's, the cited run's (`engines/transport.md` § 2a.13, § 3.8.2a).
+_OWN_MIXING = {"seed": 0.12, "electrode_L": 0.15, "device": 0.08}
 
 
 def _junction() -> dict:
@@ -182,6 +191,18 @@ def junction(tmp_path_factory):
         cite = "P/opt/J/01_coarse/run-0"
         cited_before = _files(tree / cite)
 
+        # THE PAIR -- the finished relaxation saved as a structure pair on
+        # the command line, as the Results tab's export saves it: what the
+        # run declared about its atoms and what it says about itself.
+        from click.testing import CliRunner
+        from molbuilder import cli
+        from molbuilder.runs import run_of
+        pair = "P/structure/relaxed.xyz"
+        r = CliRunner().invoke(cli.cli, [
+            "xv2xyz", str(run_of(tree / cite).carried(".XV")),
+            str(tree / pair), "--from-run"])
+        assert r.exit_code == 0, r.output
+
         # THE TRANSPORT CALCULATION, described on the CLI.
         r = jobset("init", "--calculation", "transport", "--engine", "siesta",
                    "--shape", "hierarchical", "--bundle", "P/transport/T",
@@ -198,10 +219,21 @@ def junction(tmp_path_factory):
         # chain converges at in tens of cycles came with the citation.
         _set_by_the_person(run.bundle / "T.template.toml", "spin_treatment",
                            "restricted")
+        # ...AND THREE SCF STAGES' OWN MIXING WEIGHTS, on Task setup's stage
+        # table -- the page's door, its Save.
+        client = create_app(config={}).test_client()
+        task = json.loads((run.bundle / "task.json").read_text())
+        for st in task["stages"]:
+            if st["name"] in _OWN_MIXING:
+                st["overrides"] = {"mixing_weight": _OWN_MIXING[st["name"]]}
+        task["varies"] = sorted(set(task["varies"]) | {"mixing_weight"})
+        s = client.post("/api/task-setup/save",
+                        json={"dest": str(run.bundle),
+                              "text": json.dumps(task)})
+        assert s.status_code == 200, s.get_json()
 
         # ...and through the Transport tab's describe, and its card's read
         # of the citation.
-        client = create_app(config={}).test_client()
         b = client.post("/api/transport/describe", json=dict(
             engine="siesta", name="T2", junction=cite, bias=[0.0]))
         run.said["describe"] = Said(b.status_code, json.dumps(b.get_json()))
@@ -241,9 +273,27 @@ def junction(tmp_path_factory):
         _taken(run, "launch transmission", "launch", "task", "--stage",
                "transmission", "--mode", "direct", "--yes")
         _taken(run, "summarize", "summarize", "task")
+
+        # THE PAIR CITED -- a second transport calculation, its
+        # pseudopotentials from the library, its spin restricted as the
+        # first's; its seed and both leads prepared from the pair.
+        r = jobset("init", "--calculation", "transport", "--engine", "siesta",
+                   "--shape", "hierarchical", "--bundle", "P/transport/F",
+                   "--slot", f"junction={pair}",
+                   "--psml-lib", "pseudopotential")
+        assert r.exit_code == 0, r.output
+        from_pair = RealRun(tree=tree, bundle=tree / "P" / "transport" / "F")
+        _run_card(from_pair.bundle)
+        run.pair_template = (from_pair.bundle / "F.template.toml").read_text()
+        _set_by_the_person(from_pair.bundle / "F.template.toml",
+                           "spin_treatment", "restricted")
+        _taken(from_pair, "prep seed and leads", "prep", "task", *leads,
+               "--target", "this")
         run.cite = cite
         run.cited_before = cited_before
         run.relax = relax
+        run.pair = pair
+        run.from_pair = from_pair
     yield run
 
 
@@ -340,6 +390,71 @@ def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
         for name, value in (("mixing_weight", 0.1), ("pulay_history", 6)):
             assert one(tmpl, name).value == value, name
             assert one(tmpl, name).source == "cited", name
+
+
+def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
+        junction):
+    """§ 3.1: a structure pair saved from a finished relaxation -- here by
+    `molbuilder xv2xyz --from-run`, as the Results tab exports one -- is a
+    citation, and its record defaults the transport template exactly as the
+    run it was saved from does: one reader of the recorded contract
+    (`parse.contract.contract_of`), so the two kinds cannot default a
+    template differently.  Its pseudopotentials come from the library named
+    at init, the person's; its record names its kind and frame count, and
+    its seed and both leads prepared from it."""
+    from molbuilder.template import one, read_template, select
+    from molbuilder.transport.compose import load_compose_record
+    by_run = read_template(junction.template_at_init)
+    by_pair = read_template(junction.pair_template)
+    cited = [it.name for it in select(by_run, engine="siesta")
+             if it.source == "cited"]
+    assert "mixing_weight" in cited and "mesh_cutoff" in cited, cited
+    for name in cited:
+        assert ((one(by_pair, name).value, one(by_pair, name).source)
+                == (one(by_run, name).value, "cited")), name
+    psml = one(by_pair, "psml_lib")
+    assert (psml.value, psml.source) == ("pseudopotential", "person")
+    record = load_compose_record(junction.from_pair.bundle,
+                                 citation=junction.pair,
+                                 tree_root=junction.tree)
+    assert record is not None
+    assert (record.provenance["kind"], record.provenance["frames"]) == (
+        "pair", 1)
+
+
+def _prepared_decks(run, stage):
+    """The decks ``stage`` prepared: its one deck in the stage's folder, or
+    each point's (`transport.stages.point_folders`) -- named by the run's
+    one naming door (`runfiles.RunNames`)."""
+    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.runfiles import RunNames
+    from molbuilder.task import read_task
+    from molbuilder.transport.stages import point_folders
+    task = read_task(run.bundle / "task.json")
+    home = stage_home(run.bundle, task, stage)
+    names = RunNames.of(task.label, home.token, task.shape)
+    folders = [f for f, _v in point_folders(run.bundle, task, stage)]
+    return [f / names.name(".fdf") for f in (folders or [home.dir])]
+
+
+def test_each_scf_stage_writes_its_own_mixer_and_the_transmission_none(
+        junction):
+    """SCF-RUNG (`engines/transport.md` § 2a.13 Class C, § 3.8.2a; TD12): a
+    mixing weight set on one stage's tab reaches that stage's decks alone; a
+    stage that sets none writes the template's -- the cited run's 0.1, TD6;
+    and the transmission, which runs no SCF, writes none.  Each deck is read
+    through the one fdf reader (`parse.fdf.parse_fdf_params`).  The
+    mechanism once sent the T(E) window to the device's deck."""
+    from molbuilder.parse.fdf import parse_fdf_params
+    want = {**_OWN_MIXING, "electrode_R": RELAXED_WITH["mixing_weight"],
+            "transmission": None}
+    for stage, weight in want.items():
+        decks = _prepared_decks(junction, stage)
+        assert decks, stage
+        for deck in decks:
+            got = parse_fdf_params(deck.read_text()).mixing_weight
+            assert (got is None if weight is None
+                    else got == pytest.approx(weight)), (deck, got, weight)
 
 
 def test_each_leads_measurements_reach_the_card_under_its_name(junction):

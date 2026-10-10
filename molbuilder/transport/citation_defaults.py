@@ -5,8 +5,9 @@ Contract: [`engines/transport.md` § 2a.7](?doc=engines/transport.md), ruling 1
 [`engines/template.md` § 6.4](?doc=engines/template.md), the `citation` marker.
 
 **One function, called once, at `jobset init`.** It reads what the citation
-answers with — a finished run's own deck (§ 3.1: one shape, decision 7) —
-and returns the
+answers with — its recorded contract (§ 3.1): a cited run's own deck through
+`parse.contract.contract_of`, a cited pair's ``info.calculation`` as that door
+wrote it when the pair was saved — and returns the
 :class:`~molbuilder.config.siesta.SiestaConfig` that `init` writes the
 template from. After that the template is the answer and this module has no
 further part: `prep` reads the file, not the citation.
@@ -17,8 +18,10 @@ One template shared by every stage satisfies that exactly, and permits the
 ordinary practice of relaxing with a cheap description and transporting with an
 accurate one.
 
-**What is taken, and what is not.** Only the shared electronic description —
-the items the catalogue tags `citation = ["transport"]`. The geometry,
+**What is taken, and what is not.** The items the catalogue tags
+`citation = ["transport"]` — the shared electronic description and how the
+cited run's SCF converged — each read from the record by its own name, the
+catalogue's. The geometry,
 the region partition and the pseudopotentials still travel with the citation
 at prep: they are not parameters, they are the structure (§ 2a.3's
 *"results that propagate"*, and § 2a.9's structure input).
@@ -32,49 +35,14 @@ from typing import TYPE_CHECKING, Any, Dict
 if TYPE_CHECKING:                                    # pragma: no cover
     from ..config.siesta import SiestaConfig
 
-#: What the cited deck answers -> the catalogue's own spelling for it.
-#:
-#: The left side is :class:`~molbuilder.parse.fdf.FdfParams`, which
-#: reads an `.fdf`; the right is :class:`SiestaConfig`, which is the
-#: catalogue's vocabulary. The pairs here, and the k-point mesh below them
-#: -- ``kgrid`` and its offset ``kgrid_displacement``, rows tagged
-#: ``citation = ["transport"]`` too -- which is separate because it is the
-#: one value not copied verbatim: the transport axis is laid on by the rule
-#: (:func:`_apply_kgrid`).
-#: Keeping the mapping beside the reader is what stops it drifting from the
-#: declaration.
-_FROM_DECK = {
-    "basis_size":               "basis_size",
-    "mesh_cutoff_ry":           "mesh_cutoff",
-    "energy_shift_ry":          "pao_energy_shift",
-    "electronic_temperature_k": "electronic_temperature",
-    "xc_functional":            "xc_functional",
-    "xc_authors":               "xc_authors",
-    # THE SPIN THE CITED RUN CARRIED (`science/chemistry-correctness.md`
-    # § 2a, ES7): shared by every rung, defaulted from the run the junction
-    # was relaxed in.  The CHARGE is not a
-    # transport item -- a cited charge is refused instead
-    # (:func:`siesta_config_from_citation`).
-    "spin_treatment":           "spin_treatment",
-    "unpaired_electrons":       "unpaired_electrons",
-    # HOW THE CITED RUN'S SCF CONVERGED -- the mixer and the criteria,
-    # each SCF stage's starting value (TD6, the user 2026-10-09: "go with
-    # way 1").  Not shared: every SCF stage carries its own and may change
-    # it on its tab (`engines/transport.md` § 2a.13).
-    "mixing_weight":            "mixing_weight",
-    "pulay_history":            "pulay_history",
-    "dm_tolerance":             "dm_tolerance",
-    "dm_energy_tolerance_ev":   "dm_energy_tolerance",
-    "scf_energy_converge":      "scf_energy_converge",
-}
 
 def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
-    """The cited run's k-point mesh, as the transport calculation takes it:
+    """The citation's k-point mesh, as the transport calculation takes it:
     the transverse pair and its offset carry over, and the transport axis is
     laid on by the rule -- one point, no offset -- through the k-point mesh's
     own door (``kmesh.with_fixed``; `engines/siesta.md` § 6.1).
 
-    ONE rule for the cited deck.  The cited
+    ONE rule for both kinds and for the person's own mesh.  The cited
     run was a closed periodic calculation and sampled all three axes; a
     transport calculation does not sample the transport axis at all.  Laid on
     here, where the value is born, so the template states what every rung
@@ -112,11 +80,14 @@ def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
 
 @dataclass(frozen=True)
 class CitationAnswers:
-    """What the cited run answers of the shared electronic description
-    (`engines/transport.md` § 3.1, § 3.8.1): ``values`` in ``SiestaConfig``'s
-    field names, ``source`` ``"deck"`` (the run's own deck) or ``"none"`` (a
-    deck the unit door could not read), and ``source_name`` the file the
-    answers were read from."""
+    """What the citation answers of the items it defaults
+    (`engines/transport.md` § 3.1, § 3.8.1): ``kind``, the citation's --
+    ``"run"`` or ``"pair"``; ``values`` in ``SiestaConfig``'s field names;
+    ``source`` ``"deck"`` (a cited run's own deck), ``"pair"`` (a cited
+    pair's record) or ``"none"`` (a record that states nothing, or a deck
+    the unit door could not read); and ``source_name`` the file the answers
+    were read from."""
+    kind: str
     values: Dict[str, Any]
     source: str
     source_name: str = ""
@@ -126,42 +97,40 @@ class CitationAnswers:
     net_charge: int = 0
 
 
-def citation_answers(cite_dir) -> CitationAnswers:
-    """Read the cited directory once (`engines/transport.md` § 3.8.0: at
-    `init`, into this calculation's own template): the cited run's deck
-    answers the electronic description (§ 3.1 -- a citation is a finished
-    relaxation run of molbuilder's own).
-    """
-    from .compose import classify_citation
-    from ..parse.fdf import parse_fdf_params
+def citation_answers(cited_path) -> CitationAnswers:
+    """Read the citation once (`engines/transport.md` § 3.8.0: at `init`,
+    into this calculation's own template): its recorded contract -- a cited
+    run's deck read through `contract_of`, a cited pair's
+    ``info.calculation`` as `contract_of` wrote it -- each item the
+    catalogue tags ``citation = ["transport"]`` taken by its own name, the
+    k-point mesh by its rule (:func:`_apply_kgrid`)."""
+    from .compose import CitedPair, classify_citation
+    from ..parse.contract import K_MESH_RECORD_KEYS, contract_of
+    from .. import template as _T
 
-    kw: Dict[str, Any] = {}
-    cited = classify_citation(Path(cite_dir))
-    p = None
-    if cited.deck is not None:
-        from ..units import UnknownUnit
-        try:
-            p = parse_fdf_params(cited.deck.read_text(encoding="utf-8",
-                                                      errors="replace"))
-        except UnknownUnit:
-            # A deck the unit door refuses answers nothing here; the
-            # refusal itself is prep's to raise, by name.
-            p = None
-    if p is None:
-        # A deck the unit door refuses answers nothing here; the refusal
-        # itself is prep's to raise, by name.
-        source, source_name = "none", ""
-        charge = 0
+    cited = classify_citation(Path(cited_path))
+    kind = "pair" if isinstance(cited, CitedPair) else "run"
+    if kind == "pair":
+        record, source, name = cited.calculation, "pair", cited.path.name
     else:
-        for src, dst in _FROM_DECK.items():
-            v = getattr(p, src, None)
-            if v is not None:
-                kw[dst] = v
-        if getattr(p, "kgrid", None):
-            _apply_kgrid(kw, p.kgrid,      # the one rule, both sources
-                         getattr(p, "kgrid_displacement", None))
-        source, source_name = "deck", cited.deck.name
-        charge = int(p.net_charge)
+        record, source, name = contract_of(cited.deck), "deck", cited.deck.name
+    contract = (record or {}).get("contract") or {}
+    if not contract:
+        # A record that states nothing -- a deck the unit door refuses
+        # answers nothing here; the refusal itself is prep's to raise, by
+        # name.
+        return CitationAnswers(kind=kind, values={}, source="none",
+                               source_name="")
+    taken = [it.name for it in _T.select(_T.catalogue(), engine="siesta",
+                                         citation=True)
+             if "transport" in it.citation
+             and it.name not in K_MESH_RECORD_KEYS]
+    kw: Dict[str, Any] = {k: contract[k] for k in taken
+                          if contract.get(k) is not None}
+    if contract.get("kgrid"):
+        _apply_kgrid(kw, contract["kgrid"],       # the one rule, both kinds
+                     contract.get("kgrid_displacement"))
+    charge = int(contract.get("net_charge") or 0)
     # A FIXED COUNT A TRANSPORT RUNG CANNOT HOLD is not defaulted
     # (`engines/transport.md` § 3.1's spin note, T-F20): TranSIESTA stops on
     # a fixed total spin, so under `unrestricted` the cited run's number is
@@ -169,15 +138,14 @@ def citation_answers(cite_dir) -> CitationAnswers:
     # floats by the kind's own rule (`electronic_state.count_must_float`),
     # which each rung's deck says.
     from ..electronic_state import FREE, count_must_float
-    from ..template import catalogue, is_member, offered, one
     # ...NOR A TREATMENT IT CANNOT RUN (non-collinear, spin-orbit: TranSIESTA
     # stops on more than two spin components) -- the treatment and its count
     # are left blank and worked out on the junction, which each rung's deck
     # says (`template.md` § 6.3a).
-    _can = offered(one(catalogue(), "spin_treatment", engine="siesta"),
-                   "siesta", "transport")
+    _can = _T.offered(_T.one(_T.catalogue(), "spin_treatment",
+                             engine="siesta"), "siesta", "transport")
     if (kw.get("spin_treatment") is not None
-            and not is_member(kw["spin_treatment"], _can)):
+            and not _T.is_member(kw["spin_treatment"], _can)):
         kw.pop("spin_treatment")
         kw.pop("unpaired_electrons", None)
     if (count_must_float("siesta", "transport", kw.get("spin_treatment"))
@@ -185,8 +153,8 @@ def citation_answers(cite_dir) -> CitationAnswers:
         kw.pop("unpaired_electrons")
     if "mesh_cutoff" in kw:
         kw["mesh_cutoff"] = float(kw["mesh_cutoff"])
-    return CitationAnswers(values=kw, source=source, source_name=source_name,
-                           net_charge=charge)
+    return CitationAnswers(kind=kind, values=kw, source=source,
+                           source_name=name, net_charge=charge)
 
 
 def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
@@ -226,6 +194,28 @@ def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
     base = apply_recommended(SiestaConfig(system_label=label), "transport",
                              engine="siesta")
     return dataclasses.replace(base, **kw)
+
+
+def check_pseudopotentials(cited, psml_lib) -> None:
+    """THE PSEUDOPOTENTIALS BY THE CITATION'S KIND (`engines/transport.md`
+    § 3.1), asked by both roads that describe a transport calculation --
+    `jobset init` and the Transport tab's describe door: a cited run's
+    travel with it, so a directory named for one is refused; a cited pair
+    brings none, so the directory that holds them all is required, as a
+    structure optimization's is.  Raises ``ValueError`` naming the rule."""
+    from .compose import CitedPair
+    if isinstance(cited, CitedPair) and not psml_lib:
+        raise ValueError(
+            f"{cited.path.name} is a structure pair, and a pair brings no "
+            f"pseudopotentials: name the directory that holds them all "
+            f"(`jobset init --psml-lib DIR`, the template's `psml_lib`), as a "
+            f"structure optimization does -- the convention is the bare name "
+            f"`pseudopotential`, the projects tree's own "
+            f"(engines/transport.md § 3.1).")
+    if not isinstance(cited, CitedPair) and psml_lib:
+        raise ValueError(
+            "a pseudopotential directory does not apply to a cited run -- its "
+            "pseudopotentials travel with it (engines/transport.md § 3.1).")
 
 
 def _the_persons(chosen) -> Dict[str, Any]:
@@ -274,12 +264,12 @@ def transport_template_text(cite_dir, *, label: str, blank=(),
                                     citation=True)
         if "transport" in it.citation and it.name not in answered)
     # WHERE EACH VALUE CAME FROM (`template.md` § 6.6 obligation 2): the
-    # citation's own answers -- from the run's deck -- then what the person chose on
-    # the shared panel over them, and the calculation's own name.  A value
+    # citation's own answers -- its recorded contract -- then what the person
+    # chose on the shared panel over them, and the calculation's own name.  A value
     # the panel holds as the citation answered it is the citation's: the
     # panel is drawn holding those answers and sends what it holds.  Every
     # other item is nobody's choice (`default`).
-    via = {"deck": "cited"}.get(cited.source)
+    via = {"deck": "cited", "pair": "cited"}.get(cited.source)
     sources = {k: via for k in cited.values if via and k not in blank}
     sources.update({k: "person" for k, v in mine.items()
                     if not (k in sources and cited.values[k] == v)})

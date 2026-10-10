@@ -1,5 +1,5 @@
-"""The transport citation (`engines/transport.md` § 3.1, decision 7): what
-is refused by name before any run is read.
+"""The lead gate the transport citation asks (`engines/transport.md` § 3.1,
+§ 4): what is refused or measured on the structure alone.
 
 What a citation of a finished relaxation composes -- the leads it cuts, how
 the run ended, the electrode rename on this calculation's own copy -- reads
@@ -13,7 +13,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from molbuilder.transport.compose import ComposeError, compose_junction
 from molbuilder.transport.sort import (REGION_BRIDGE, REGION_LEFT_ELECTRODE,
                                        REGION_RIGHT_ELECTRODE)
 
@@ -47,27 +46,6 @@ def _junction(*, frozen: bool = True) -> dict:
             "regions": regions,
             "cell": [8.0, 8.0, 37.0],
             "axis_kind": ["periodic", "periodic", "transport"]}
-
-
-def test_a_saved_structure_is_not_a_citation_and_the_refusal_names_the_road(
-        tmp_path):
-    """Decision 7: a structure saved from the Molbuilder tab -- an
-    `.xyz + .molstruct.json` pair -- is no citation: it brings no
-    pseudopotentials and no record of a run.  The refusal states the whole
-    condition and the road to a citable run."""
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-    j = _junction()
-    StructureCodec().write(
-        Structure(elements=j["elements"],
-                  positions=np.asarray(j["positions"], dtype=float),
-                  regions=j["regions"], cell=np.diag(j["cell"]),
-                  axis_kind=tuple(j["axis_kind"])),
-        tmp_path / "P" / "structure" / "junction.xyz")
-    with pytest.raises(ComposeError) as e:
-        compose_junction("P/structure", tree_root=tmp_path)
-    msg = str(e.value)
-    assert "no .fdf and no .XV" in msg and "relaxation run of molbuilder's own" in msg
 
 
 def test_a_lead_that_was_not_held_is_refused_by_name():

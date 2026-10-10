@@ -1652,7 +1652,7 @@ are how a layer asks which is which instead of carrying its own list of names.
 | marker | who answers | when | what the template holds |
 |---|---|---|---|
 | `allocation` | the scheduler | at `prep`, on the machine that runs it | nothing — declared, valueless |
-| `citation` | the cited run | at **`jobset init`**, once | **a value**, which the person may then change |
+| `citation` | the citation's recorded contract — a cited run's deck, or a cited pair's `info.calculation` (`engines/transport.md` § 3.1) | at **`jobset init`**, once | **a value**, which the person may then change |
 | `role` | the rung — the catalogue's `value`, or the rung's own `role_values` answer, or the bias point it renders | at `resolve`, for each rung | nothing — declared, valueless; no door may set it (the third answerer, below) |
 | `shared` | *(not an answerer — a scope)* | — | whatever answered it; the value binds every rung and no stage overrides it |
 

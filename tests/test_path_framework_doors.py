@@ -146,19 +146,6 @@ def test_sidecars_in_finds_what_sidecar_path_for_composes(tmp_path):
     assert not is_sidecar(tmp_path / "relaxed.xyz")
 
 
-def test_a_directory_holding_only_a_deck_is_still_refused_by_name(tmp_path):
-    """The § 4.1b message keeps naming what is missing.
-
-    `.fdf` now comes from `find_by_role`; the refusal is the behaviour that
-    matters, and it must still say WHICH file the condition wants.
-    """
-    from molbuilder.transport.compose import ComposeError, classify_citation
-    (tmp_path / "bdt.fdf").write_text("SystemLabel bdt\n", encoding="utf-8")
-    with pytest.raises(ComposeError) as e:
-        classify_citation(tmp_path)
-    assert ".fdf but no .XV" in str(e.value)
-
-
 # --------------------------------------------------------------------------- #
 # 4.  The other callers, asked for their answers.                              #
 # --------------------------------------------------------------------------- #

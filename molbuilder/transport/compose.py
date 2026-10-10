@@ -24,7 +24,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -35,6 +35,9 @@ from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
                    SortResult, sort_by, write_permutation)
 from ..units import UnknownUnit
 from .wizard import ElectrodeModel, extract_electrode_model
+
+if TYPE_CHECKING:                                    # pragma: no cover
+    from ..runs import Run
 
 
 class ComposeError(Exception):
@@ -61,21 +64,30 @@ from ..runfiles import SLOT_PROVENANCE_FILE as PROVENANCE_FILE  # noqa: E402
 CELL_AGREEMENT_TOL_ANG = 1e-6
 
 
-def record_files() -> Tuple[str, ...]:
-    """WHAT THE TRAVELLED RECORD CONSISTS OF — one answer, read by the
-    write and by the load, so they cannot disagree about whether a copy
-    is complete: the sorted geometry and its label file, the provenance,
-    the permutation, and the cited run's deck (the electronic contract IS
-    the file).
+#: The citation kinds a record names (`engines/transport.md` § 3.1).
+CITATION_KINDS = ("run", "pair")
+
+
+def record_files(kind: str) -> Tuple[str, ...]:
+    """WHAT THE TRAVELLED RECORD CONSISTS OF for a citation of ``kind`` —
+    one answer, read by the write and by the load, so they cannot disagree
+    about whether a copy is complete: the sorted geometry and its label file
+    (every frame, and a cited pair's ``info.calculation``), the provenance,
+    the permutation, and a cited run's deck (the electronic contract IS the
+    file).
 
     The geometry's label file is not named literally: it is whatever
     the codec pairs with :data:`JUNCTION_GEOMETRY`, asked of the codec's
     own rule (`sidecars.molstruct.sidecar_path_for`).
     """
     from ..sidecars.molstruct import sidecar_path_for
-    return (JUNCTION_GEOMETRY,
-            sidecar_path_for(Path(JUNCTION_GEOMETRY)).name,
-            PROVENANCE_FILE, PERMUTATION_FILE, JUNCTION_DECK)
+    if kind not in CITATION_KINDS:
+        raise ValueError(f"record_files: a citation is one of "
+                         f"{', '.join(CITATION_KINDS)}, not {kind!r}")
+    return ((JUNCTION_GEOMETRY,
+             sidecar_path_for(Path(JUNCTION_GEOMETRY)).name,
+             PROVENANCE_FILE, PERMUTATION_FILE)
+            + ((JUNCTION_DECK,) if kind == "run" else ()))
 
 
 def _unusable_cell(struct) -> Optional[str]:
@@ -180,15 +192,15 @@ class ComposedJunction:
     relaxed: Optional[Structure]
     electrode_left: ElectrodeModel
     electrode_right: ElectrodeModel
-    #: the cited deck TEXT, verbatim — the fdf that actually ran is the
+    #: a cited run's deck TEXT, verbatim — the fdf that actually ran is the
     #: truth about a result, so the copy that travels is the file itself,
-    #: re-parseable anywhere (user ruling 2026-08-28).  ``None`` only on
-    #: a record loaded back whose deck copy is missing, which the loader
-    #: refuses.
+    #: re-parseable anywhere (user ruling 2026-08-28).  ``None`` for a cited
+    #: pair, whose record of the run is its ``info.calculation``, carried by
+    #: the junction's own sidecar.
     deck_text: Optional[str]
-    #: citation · resolved paths · content hashes · how the cited run ended
-    #: and what it converged — written beside the copies so a result can
-    #: always say which junction built it
+    #: the citation's kind · its path · content hashes · how a cited run
+    #: ended and what it converged, or a cited pair's frame count — written
+    #: beside the copies so a result can always say which junction built it
     provenance: Dict[str, object]
 
 
@@ -197,15 +209,17 @@ def _sha256(path: Path) -> str:
 
 
 @dataclass(frozen=True)
-class CitedDir:
-    """The cited relaxation run (`engines/transport.md` § 3.1): the one
-    deck and the one ``.XV`` of a run of molbuilder's own, and how that
-    run ended.  Layout, names and tree position play no part (user ruling
-    2026-08-29); being a run of ours -- launched by `jobset`, with the
-    wrapper's record -- does (decision 7, 2026-10-08)."""
+class CitedRun:
+    """The cited relaxation run (`engines/transport.md` § 3.1): the run the
+    cited folder speaks for (`runs.run_of`), its deck, the ``.XV`` SIESTA
+    wrote under its label, and how that run ended.  Layout, names and tree
+    position play no part (user ruling 2026-08-29); being a run of ours --
+    launched by `jobset`, with the wrapper's record -- does (decision 7,
+    2026-10-08)."""
     path: Path
-    deck: Path                    # the one .fdf
-    xv: Path                      # the one .XV
+    run: "Run"                    # the run the folder speaks for
+    deck: Path                    # that run's deck (`Run.deck`)
+    xv: Path                      # its carried .XV (`Run.carried`)
     #: the run record's concluded line -- ``rc=0 at <date>`` -- or ``None``
     #: for a run still going (or force-stopped: no file tells those apart);
     #: classification RECORDS that, compose refuses it (§ 3.1).
@@ -218,208 +232,275 @@ class CitedDir:
     converged: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class CitedPair:
+    """The cited structure pair (`engines/transport.md` § 3.1, § 2a.9): its
+    ``.xyz`` and its sidecar, the structure they hold -- every frame, frame 0
+    the base -- and ``calculation``, the record of the optimization frame 0
+    came from (``info.calculation``, `parse.contract.contract_of`'s
+    shape)."""
+    path: Path                    # the .xyz
+    sidecar: Path                 # its .molstruct.json
+    structure: Structure          # every frame (`StructureCodec.load(frames=True)`)
+    calculation: Dict[str, object]
+
+    @property
+    def n_frames(self) -> int:
+        return self.structure.n_frames
+
+
 #: The citation condition, in one sentence — used verbatim by every
 #: refusal so the user always learns the WHOLE condition, not just the
 #: half they tripped on.
 CITATION_CONDITION = (
-    "a citable directory is a relaxation run of molbuilder's own that has "
-    "finished: exactly one .fdf and exactly one .XV together, launched by "
-    "`jobset launch` so its run record says how it ended, its region labels "
-    "in the deck's block or the .molstruct.json beside it "
-    "(engines/transport.md 3.1).  A saved structure is not one: relax the "
-    "junction through `jobset init` -> `prep task` -> `launch task` and "
-    "cite that run")
+    "a citation is a relaxation run of molbuilder's own that has finished "
+    "-- its folder, launched by `jobset launch` so its run record says how "
+    "it ended, its region labels in its deck's block -- or a structure pair "
+    "that records the optimization it came from -- its .xyz, its "
+    ".molstruct.json carrying info.calculation, as the Results tab or "
+    "`molbuilder xv2xyz --from-run` saves a finished relaxation "
+    "(engines/transport.md 3.1).  Relax the junction through `jobset init` "
+    "-> `prep task` -> `launch task`, then cite that run or the pair saved "
+    "from it")
 
 
-def classify_citation(cite_dir: Path) -> CitedDir:
-    """Classify a directory against § 3.1's citation condition: a
-    relaxation run of molbuilder's own.  Raises :class:`ComposeError`
-    naming exactly which file is missing (or ambiguous), or that the folder
-    holds no run of ours -- a relaxation SIESTA was handed by hand, or a
-    saved structure, is not a citation: relax it through `jobset` first
-    (decision 7, 2026-10-08).
+def classify_citation(cited: Path) -> "CitedRun | CitedPair":
+    """Classify a citation against § 3.1's condition by what the path is: a
+    folder is a relaxation run of molbuilder's own (:func:`_classify_run`), a
+    file a structure pair (:func:`_classify_pair`).  Raises
+    :class:`ComposeError` naming what is missing.
 
     CLASSIFYING IS NOT COMPOSING: a run still going, or one that ended with
     an error, is RECORDED here -- describing a transport calculation ahead
     of its relaxation is legal -- and refused by :func:`compose_junction`.
     """
+    cited = Path(cited)
+    if cited.is_file():
+        return _classify_pair(cited)
+    return _classify_run(cited)
+
+
+def _classify_run(cite_dir: Path) -> CitedRun:
+    """A cited folder, read through the run door (`runs.run_of`,
+    `execution/architecture.md` § 3.2): the run it speaks for -- in a run's
+    own folder its one stage, at a flat calculation's root the stage the
+    root speaks for -- its deck and its carried ``.XV``; its launch record
+    and how it ended, the run record's doors."""
     from molbuilder.runrecord import (LaunchRecordError, ending,
                                       launch_record)
-    from ..runfiles import find_by_role
-    cite_dir = Path(cite_dir)
-    # THE DECK IS OURS AND THE REST IS NOT (`project-layout.md` § 4.5):
-    # `.fdf` is a role `runfiles.WRITTEN` declares, so the catalogue searches
-    # for it; `.XV` is SIESTA's own restart file, which `WRITTEN` deliberately
-    # does not enumerate.
-    decks = find_by_role(cite_dir, ".fdf")
-    xvs = sorted(p for p in cite_dir.glob("*.XV") if p.is_file())
-    if not decks or not xvs:
-        if decks:
-            what = f"{len(decks)} .fdf but no .XV"
-        elif xvs:
-            what = f"{len(xvs)} .XV but no .fdf"
-        else:
-            what = "no .fdf and no .XV"
-        raise ComposeError(
-            f"{cite_dir} is not citable: it holds {what}.  "
-            f"{CITATION_CONDITION}.")
-    if len(decks) > 1:
-        raise ComposeError(
-            f"{cite_dir} holds {len(decks)} .fdf files "
-            f"({', '.join(d.name for d in decks)}) -- the citation "
-            f"names a directory, so the directory must answer "
-            f"unambiguously.  Keep one deck, or cite a directory "
-            f"holding one.")
-    if len(xvs) > 1:
-        raise ComposeError(
-            f"{cite_dir} holds {len(xvs)} .XV files "
-            f"({', '.join(x.name for x in xvs)}) -- ambiguous; keep "
-            f"the relaxation's own one.")
-    deck = decks[0]
-    # A RUN OF OURS, through the run door (`runs.run_of`): the folder's
-    # calculation reads and the deck is a stage's; its launch record is the
-    # one door's answer (`runrecord.launch_record`), and a description or a
-    # record that does not read is refused by name -- never "launched" or
-    # "not".  A folder no calculation claims holds no run of ours.
+    from .. import calcdirs
     from ..runs import place_of, run_of
     place = place_of(cite_dir)
     if place.problem:
         raise ComposeError(place.problem)
-    cited = run_of(deck)
+    run = run_of(cite_dir)
+    if run is None or run.stage is None:
+        where = ("no calculation claims this folder"
+                 if not place.ours else
+                 "it is a stage's folder, not a run -- cite one of its runs"
+                 if place.role == calcdirs.CONTAINER else
+                 "nothing was launched here")
+        raise ComposeError(
+            f"{cite_dir} holds no run of molbuilder's: {where}.  "
+            f"{CITATION_CONDITION}.")
+    deck = run.deck
+    xv = run.carried(".XV")
+    if deck is None or xv is None:
+        missing = " and ".join(
+            what for what, got in (("no deck", deck), ("no .XV", xv))
+            if got is None)
+        raise ComposeError(
+            f"{cite_dir} holds the run {run.basename} with {missing}: SIESTA "
+            f"writes {run.label}.XV at the relaxation's first geometry step, "
+            f"beside the deck it ran.  {CITATION_CONDITION}.")
     try:
-        launched = (cited is not None and cited.stage is not None
-                    and launch_record(cite_dir, cited.names) is not None)
+        launched = launch_record(cite_dir, run.names) is not None
     except LaunchRecordError as e:
         raise ComposeError(str(e)) from e
     # HOW THE CITED RUN ENDED, asked of the one door (`runrecord.ending`,
-    # `execution/architecture.md` § 3.2) about THIS deck -- deck-scoped,
-    # never the directory's `run_status`, which can answer for a neighbour
-    # rung's run.
+    # `execution/architecture.md` § 3.2) about THIS run's deck -- never the
+    # directory's `run_status`, which can answer for a neighbour stage's run.
     end = ending(cite_dir, deck.stem)
     if not launched and not end.concluded:
         raise ComposeError(
-            f"{cite_dir} holds {deck.name} and {xvs[0].name}, but no run of "
+            f"{cite_dir} holds {deck.name} and {xv.name}, but no run of "
             f"molbuilder's: nothing launched it and nothing recorded how it "
-            f"ended.  {CITATION_CONDITION}.  Relax the junction through "
-            f"`jobset init` -> `prep task` -> `launch task`, then cite that "
-            f"run.")
+            f"ended.  {CITATION_CONDITION}.")
     # WHAT IT CONVERGED, the run door's reading of its output (the same the
     # status verb prints): carried into the provenance and said by the tab,
     # so a geometry that did not converge is cited knowingly.
-    converged = None
-    if cited is not None and cited.stage is not None:
-        from ..jobset.runstatus import converged_of
-        from ..parse.dirs.rundir import run_state_of
-        try:
-            converged = converged_of(run_state_of(cite_dir, cited.names))
-        except Exception:                                  # noqa: BLE001
-            converged = None
-    return CitedDir(path=cite_dir, deck=deck, xv=xvs[0],
+    from ..jobset.runstatus import converged_of
+    from ..parse.dirs.rundir import run_state_of
+    try:
+        converged = converged_of(run_state_of(cite_dir, run.names))
+    except Exception:                                      # noqa: BLE001
+        converged = None
+    return CitedRun(path=cite_dir, run=run, deck=deck, xv=xv,
                     concluded=end.line, exit_code=end.code,
                     converged=converged)
 
 
+def _classify_pair(path: Path) -> CitedPair:
+    """A cited structure pair: every frame through the codec
+    (`StructureCodec.load(frames=True)`), its ``info.calculation`` -- what
+    the settings default from -- and the per-frame promise only the
+    citation can check (`engines/transport.md` § 2a.9): every frame keeps
+    the electrode atoms where frame 0 has them, within
+    `wizard.FROZEN_TOL_ANG`, because every frame shares the leads'
+    calculation.  The same atoms, species and cell are the structure's own
+    invariant, refused by its reader."""
+    from ..sidecars.molstruct import sidecar_path_for
+    from ..workingcopy_structure import StructureCodec
+    sidecar = sidecar_path_for(path)
+    try:
+        struct = StructureCodec().load(path, frames=True)
+    except (ValueError, OSError) as exc:
+        raise ComposeError(f"{path} does not read as a structure pair: "
+                           f"{exc}") from exc
+    calc = (struct.info or {}).get("calculation")
+    if not isinstance(calc, dict) or not isinstance(calc.get("contract"),
+                                                    dict):
+        why = ("it has no .molstruct.json beside it" if not sidecar.is_file()
+               else f"{sidecar.name} records no optimization")
+        raise ComposeError(
+            f"{path} carries no info.calculation -- {why} -- so nothing says "
+            f"which settings its geometry was optimized with.  "
+            f"{CITATION_CONDITION}.")
+    _frames_keep_the_leads(struct, path)
+    return CitedPair(path=path, sidecar=sidecar, structure=struct,
+                     calculation=calc)
+
+
+def _frames_keep_the_leads(struct: Structure, path: Path) -> None:
+    """Every frame's electrode atoms where frame 0 has them (§ 2a.9: the
+    lead Hamiltonian is truth for every frame), measured as the lead gate
+    measures an unmoved atom -- the distance, against
+    `wizard.FROZEN_TOL_ANG` -- refused naming each frame and its atoms, in
+    the pair's own atom order."""
+    from .wizard import FROZEN_TOL_ANG
+    regions = struct.regions or {}
+    leads = sorted(set(regions.get(REGION_LEFT_ELECTRODE, ()))
+                   | set(regions.get(REGION_RIGHT_ELECTRODE, ())))
+    if struct.n_frames < 2 or not leads:
+        return
+    frames = np.asarray(struct.frames, dtype=float)
+    broken = []
+    for f in range(1, len(frames)):
+        dist = np.linalg.norm(frames[f][leads] - frames[0][leads], axis=1)
+        moved = [(i, float(d)) for i, d in zip(leads, dist)
+                 if d > FROZEN_TOL_ANG]
+        if moved:
+            shown = ", ".join(f"atom {i} ({struct.elements[i]}) by {d:.4f} A"
+                              for i, d in moved[:3])
+            more = f" and {len(moved) - 3} more" if len(moved) > 3 else ""
+            broken.append(f"frame {f} moves {shown}{more}")
+    if broken:
+        raise ComposeError(
+            f"{path.name}: {'; '.join(broken)} -- every frame of a set "
+            f"shares the leads' calculation, so an electrode atom stays where "
+            f"frame 0 has it, within {FROZEN_TOL_ANG:g} A "
+            f"(engines/transport.md 2a.9).  Write the frames with the "
+            f"electrodes held.")
+
+
 def resolve_citation(citation: str, tree_root: Path
-                     ) -> Tuple[Path, CitedDir]:
-    """The citation's directory, fenced to the tree and classified
-    against the run's file condition (`engines/transport.md` § 3.1).
-    Public: the web
-    hand-over validates a citation through the SAME door prep composes
-    through."""
+                     ) -> "Tuple[Path, CitedRun | CitedPair]":
+    """The citation's path, fenced to the tree and classified against § 3.1's
+    condition (`engines/transport.md` § 3.1).  Public: the web hand-over
+    validates a citation through the SAME door prep composes through."""
     from ..projects import OutsideRoot, contain
     try:
-        cite_dir = contain(tree_root / citation, tree_root)
+        cited = contain(tree_root / citation, tree_root)
     except OutsideRoot as exc:
         raise ComposeError(
             f"the junction citation {citation!r} leaves the projects "
             f"tree: {exc}")
-    if not cite_dir.is_dir():
+    if not cited.exists():
         raise ComposeError(
-            f"the junction citation {citation!r} is not a directory "
-            f"under the projects tree.  The citation names a directory "
-            f"whose FILES satisfy the condition: {CITATION_CONDITION}.")
-    return cite_dir, classify_citation(cite_dir)
+            f"the junction citation {citation!r} names nothing under the "
+            f"projects tree.  {CITATION_CONDITION}.")
+    return cited, classify_citation(cited)
 
 
-def junction_axis_kind(deck_text: str) -> Tuple[str, str, str]:
+def _with_transport(across, where: str) -> Tuple[str, str, str]:
+    """The junction's axis kinds: ``across`` -- the cited structure's kinds
+    off the transport axis, each periodic or isolated -- and ``transport``
+    along it, the axis `kmesh` states (the cell's third), so the composition
+    and every rung's k-point mesh read one statement.  A record that says
+    something else across is refused, naming ``where`` it said it: read as
+    periodic it would replace the person's declaration without a word."""
+    from ..kmesh import TRANSPORT_AXIS
+    kinds = [str(k) for k in across]
+    if len(kinds) != 3 or not all(
+            k in ("periodic", "isolated")
+            for i, k in enumerate(kinds) if i != TRANSPORT_AXIS):
+        raise ComposeError(
+            f"{where} records the axis kinds {kinds!r}; across the transport "
+            f"axis a junction is periodic or isolated, so this record does "
+            f"not say which (engines/transport.md 6.1c)")
+    kinds[TRANSPORT_AXIS] = "transport"
+    return tuple(kinds)
+
+
+def junction_axis_kind(cited: "CitedRun | CitedPair") -> Tuple[str, str, str]:
     """The composed junction's axis kinds: across the transport axis, what
-    the cited relaxation declared; along it, ``transport``.
+    the cited structure declared; along it, ``transport``.
 
-    The relaxation's deck records its structure's kinds in its ENGINE-OFFSET
+    A cited run's deck records its structure's kinds in its ENGINE-OFFSET
     block (`script_emit.emit_engine_offset`), so a person who built a wire or
     chain junction -- isolated across, `engines/transport.md` § 6.1c -- keeps
-    that declaration through the composition.  A deck that records none is
-    read periodic across.
+    that declaration through the composition; a deck that records none is
+    read periodic across.  A cited pair states its own (its sidecar's).
     """
+    if isinstance(cited, CitedPair):
+        return _with_transport(cited.structure.axis_kind, cited.sidecar.name)
     from ..deck_record import extract_engine_offset
-    from ..kmesh import TRANSPORT_AXIS
-
-    def _with_transport(across):
-        # THE TRANSPORT AXIS IS THE ONE `kmesh` STATES (the cell's third):
-        # the composition and every rung's k-point mesh read one statement.
-        kinds = list(across)
-        kinds.insert(TRANSPORT_AXIS, "transport")
-        return tuple(kinds)
-
-    recorded = (extract_engine_offset(deck_text) or {}).get("axis_kind")
-    if not recorded:
-        return _with_transport(("periodic", "periodic"))
-    across = tuple(str(k) for i, k in enumerate(recorded)
-                   if i != TRANSPORT_AXIS)
-    if len(recorded) == 3 and all(k in ("periodic", "isolated")
-                                  for k in across):
-        return _with_transport(across)
-    # A RECORD THAT SAYS SOMETHING ELSE IS NOT SILENCE.  Read as "periodic
-    # across" it would replace the person's declaration with the old default
-    # without a word -- so it is refused, naming what it says.
-    raise ComposeError(
-        f"the cited deck records the axis kinds {list(recorded)!r}; across "
-        f"the transport axis a junction is periodic or isolated, so this "
-        f"record does not say which (engines/transport.md 6.1c)")
+    recorded = (extract_engine_offset(
+        cited.deck.read_text(errors="replace")) or {}).get("axis_kind")
+    return _with_transport(recorded or ("periodic",) * 3,
+                           f"the cited deck {cited.deck.name}")
 
 
-def labeled_citation_structure(cited: CitedDir):
-    """The cited directory's LABELED structure, and where its labels
-    live -- ``(structure, source)`` with *source* the deck (in-body
-    block) or the ``.molstruct.json`` that carries them.
+def labeled_citation_structure(cited: "CitedRun | CitedPair"):
+    """The citation's LABELED structure, and the file its labels live in --
+    ``(structure, source)``: a cited run's relaxed geometry with its deck's
+    labels (``source`` the deck), or a cited pair's frames, its sidecar the
+    source.
 
     ONE door, because its callers must agree about which labels are
     real: the composition itself (and the swap it applies to its own
     copy) and the orientation question the tab asks before composing.
     A second reading with its own precedence is how a tab offers to
     swap the labels of a file that is not the one being read.
-
-    The precedence is the deck's own block FIRST, then exactly one sidecar
-    beside it (§ 3.1).
     """
-    from ..script_emit import (_extract_atom_metadata_dict,
-                               apply_atom_metadata)
-    from ..sidecars.molstruct import (MolstructPairingError,
-                                      apply_to_structure)
-    from ..sidecars.molstruct import load as load_sidecar
+    kinds = junction_axis_kind(cited)
+    if isinstance(cited, CitedPair):
+        # THE PAIR'S OWN BOX AND LABELS, z transport: stated at the one
+        # door, so `__post_init__` validates the box against the kinds.
+        try:
+            return (cited.structure.replace(axis_kind=kinds), cited.sidecar)
+        except ValueError as exc:
+            raise ComposeError(
+                f"{cited.path.name} states a cell transport cannot use: "
+                f"{exc}") from exc
+    from ..runs import declared
+    from ..script_emit import apply_atom_metadata
+    from ..sidecars.molstruct import MolstructPairingError
 
     cell, xv_elements, xv_pos = read_xv(cited.xv)
-    # STATED AT CONSTRUCTION, AND Z IS TRANSPORT.  Along z the answer is
-    # settled for every transport run (`engines/transport.md` § 5 I8: z is
-    # open, kz = 1, the leads enter as self-energies Σ).  ACROSS it the
-    # answer is the person's, and the relaxation recorded it: its deck's
-    # ENGINE-OFFSET block carries the structure's `axis_kind`
-    # (`junction_axis_kind`).  A slab junction is periodic across; a wire or
-    # chain junction is isolated across, and stating it periodic here made
-    # its vacuum a contradiction the settings gate refuses (§ 6.1c).
-    #
-    # Stated at construction, not assigned afterwards, so `__post_init__`
-    # validates the box and reconciles the axes.
-    deck_text = cited.deck.read_text()
-    kinds = junction_axis_kind(deck_text)
+    # STATED AT CONSTRUCTION, AND Z IS TRANSPORT (`junction_axis_kind`):
+    # along z every transport run is open (`engines/transport.md` § 5 I8);
+    # across it the relaxation's deck recorded the person's answer -- a slab
+    # junction periodic, a wire or chain junction isolated (§ 6.1c).  Stated
+    # at construction, so `__post_init__` validates the box and reconciles
+    # the axes.
+    said = declared(cited.run)
     # ...and the `.XV` is the engine's frame, so it states an offset of 0 on
     # either label lane -- WHEN THE DECK RECORDED ITS PLACEMENT (§ 6.0):
     # every rung composed from it then applies nothing.  A deck with no
     # `engine-offset` record states none, and the rule centres its junction
     # -- a rigid shift, and the relaxation stays citable.
-    from ..deck_record import extract_engine_offset
-    stated = (np.zeros(3) if extract_engine_offset(deck_text) is not None
-              else None)
+    stated = np.zeros(3) if said.engine_offset is not None else None
     try:
         struct = Structure(elements=list(xv_elements), positions=xv_pos.copy(),
                            cell=cell, axis_kind=kinds,
@@ -432,91 +513,36 @@ def labeled_citation_structure(cited: CitedDir):
 
     # THE DECK SET THE BOX AND THE .XV CAME BACK WITH IT.  A fixed-cell
     # relaxation cannot move it, so a disagreement means these two files
-    # are not from one run -- the case a stray `.XV` left in the
-    # directory produces.  Checked before the labels, because a label
+    # are not from one run.  Checked before the labels, because a label
     # applied to the wrong geometry is the worse failure.
     from ..parse.fdf import parse_fdf_params as _parse_params
     from ..units import UnknownUnit as _UnknownUnit
     try:
-        _deck_cell = _parse_params(deck_text, source=cited.deck.name).cell_ang
+        _deck_cell = _parse_params(cited.deck.read_text(),
+                                   source=cited.deck.name).cell_ang
     except _UnknownUnit:
         _deck_cell = None      # the unit refusal is compose_junction's to raise
     _cells_agree_or_refuse(f"the deck {cited.deck.name}", _deck_cell,
                            cited.xv.name, cell)
-    block = _extract_atom_metadata_dict(deck_text)
+    # THE LABELS ARE WHAT THE RUN DECLARED: its deck's block, read by the
+    # run door (`runs.declared`) and applied by the block's one reader.
     try:
-        if block is not None and apply_atom_metadata(struct, block):
+        if said.atom_metadata is not None and apply_atom_metadata(
+                struct, said.atom_metadata) and struct.regions:
             return struct, cited.deck
     except MolstructPairingError as exc:
-        # THE SAME DISAGREEMENT the deck-vs-.XV gate below names, reaching us
-        # one step earlier because the deck's label block states the count
-        # too.  One guard, in the reader; the file names are the context only
-        # this caller has, so they are added here rather than duplicated
-        # there.
+        # The deck's label block states the atom count too, so a deck and a
+        # `.XV` from two relaxations disagree here first.
         raise ComposeError(
             f"the deck {cited.deck.name} and {cited.xv.name} do not describe "
             f"the same relaxation: {exc}")
-
-    # Through the finder (§ 4.5).
-    from ..sidecars.molstruct import sidecars_in
-    sidecars = sidecars_in(cited.path)
-    if len(sidecars) > 1:
-        raise ComposeError(
-            f"the cited deck {cited.deck.name} carries no ATOM-METADATA "
-            f"block and {cited.path} holds {len(sidecars)} "
-            f".molstruct.json files -- ambiguous; keep the one "
-            f"that labels this relaxation.")
-    if len(sidecars) == 1:
-        _side = load_sidecar(sidecars[0])
-        # `apply_to_structure` is a full REPLACE of the metadata block --
-        # cell included -- so the sidecar's box would silently displace
-        # the relaxation's.  It is the same junction, so the two must
-        # already agree; if they do not, one file is not from this run.
-        _cells_agree_or_refuse(sidecars[0].name, _side.get("cell"),
-                               cited.xv.name, cell)
-        # COMPLETE THE BLOCK, DO NOT PATCH THE RESULT.  `apply_metadata_dict`
-        # is a full replace and `model/structure.md` § 2.2 says what an absent
-        # key means: absent `cell` -> non-periodic.
-        #
-        # The relaxation's own box is the box, and z is transport
-        # (`engines/transport.md` § 5 I8), so both are stated here and the one
-        # authority applies them together.
-        #
-        # AND THE ORIGIN IS THIS FRAME'S, NOT THE AUTHORING PAIR'S.  These
-        # coordinates came from the `.XV` -- SIESTA's own frame, the cell at
-        # (0,0,0) -- so the structure states what the construction above
-        # stated: 0 when the deck recorded its placement, else none, for the
-        # rule (`model/structure-periodicity.md` § 6.0).  The cell above is a
-        # SHAPE and survives the change of frame; the authoring pair's
-        # placement belonged to different coordinates and does not travel.
-        apply_to_structure(struct, {
-            **_side,
-            "cell": _side.get("cell") or [[float(x) for x in row]
-                                          for row in cell],
-            "engine_offset": (None if stated is None
-                              else [float(v) for v in stated]),
-            # STATED, NOT DEFAULTED: `load_sidecar` normalises the payload
-            # through a scratch `Structure`, whose `__post_init__` always
-            # fills the kinds -- so a sidecar that states none arrives as
-            # `["isolated"] * 3`.
-            #
-            # A cited relaxation being composed into a junction has exactly
-            # one answer here -- the construction's above: transport along z
-            # (`engines/transport.md` § 5 I8), and across it what the
-            # relaxation's deck recorded -- so it is stated outright rather
-            # than offered as a fallback the loader makes unreachable.
-            "axis_kind": list(kinds),
-        })
-        if struct.regions:
-            return struct, sidecars[0]
     raise ComposeError(
-        f"the cited relaxation in {cited.path} carries no region "
-        f"labels: the deck {cited.deck.name} has no in-body "
-        f"ATOM-METADATA block and no .molstruct.json sits beside "
-        f"it.  Transport derives the electrodes FROM the labels "
-        f"(L-electrode / R-electrode; engines/transport.md 3.1, 4) "
-        f"-- relabel the junction and relax it through `jobset init` -> "
-        f"`prep task` -> `launch task`, then cite that run.")
+        f"the cited relaxation in {cited.path} carries no region labels: its "
+        f"deck {cited.deck.name} has no ATOM-METADATA block.  Transport "
+        f"derives the electrodes FROM the labels (L-electrode / R-electrode; "
+        f"engines/transport.md 3.1, 4) -- label the junction on the "
+        f"Molbuilder tab and relax it through `jobset init` -> `prep task` -> "
+        f"`launch task`, then cite that run.")
 
 
 def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
@@ -653,17 +679,90 @@ def _with_swapped_leads(struct, source_name: str):
 
 def compose_junction(citation: str, *, tree_root,
                      swap_electrodes: bool = False) -> ComposedJunction:
-    """The whole § 4.1–4.2 compose: citation → sorted, gated, extracted.
+    """The whole § 4.1–4.2 compose: citation → sorted, gated, extracted --
+    from either kind (`engines/transport.md` § 3.1): a cited run's relaxed
+    geometry (:func:`_run_parts`) or a cited pair's frames
+    (:func:`_pair_parts`), then one sort, one extraction, one record.
 
     Raises :class:`ComposeError` (refusals naming what to run first) or
     :class:`~molbuilder.transport.sort.SortError` (the § 4.1a label
     gates) — the caller surfaces either verbatim.
     """
-    from ..workingcopy_structure import StructureCodec
-
     tree_root = Path(tree_root)
-    cite_dir, cited = resolve_citation(citation, tree_root)
+    _path, cited = resolve_citation(citation, tree_root)
+    parts = (_pair_parts(cited, swap_electrodes)
+             if isinstance(cited, CitedPair)
+             else _run_parts(cited, citation, swap_electrodes))
+    relaxed, start, ion_dir, deck_text, files, said = parts
 
+    sorted_res = sort_by(relaxed, "transport")
+    dev = sorted_res.structure
+
+    # The electrode models, extracted from the SORTED blocks -- and the
+    # § 3 lead gates, which is the same step: a block that is not frozen
+    # bulk does not become a model (`wizard.extract_electrode_model`).
+    #
+    # The starting geometry goes in the SORTED device's index order, so
+    # the gate compares atom i against atom i; `sorted_to_original[new] =
+    # old` is exactly the indexing `categorical_sort` used to build the
+    # sorted positions.  The same tuple travels as `atom_ids` so a
+    # refusal names atoms the way the person's own file does.
+    prior = (None if start is None
+             else start[list(sorted_res.sorted_to_original)])
+    elec_l, elec_r = _extract_and_gate_electrodes(
+        dev, prior_positions=prior,
+        atom_ids=sorted_res.sorted_to_original, ion_dir=ion_dir)
+
+    provenance = {
+        "schema": "molbuilder/slot-provenance@1",
+        # WHICH KIND was cited (§ 3.1): it decides which files the record
+        # holds (`record_files`).
+        "kind": "pair" if isinstance(cited, CitedPair) else "run",
+        # THE RENAME THIS COPY CARRIES (§ 4): the record answers for the
+        # choice it was composed with, as it answers for its citation.
+        "swap_electrodes": bool(swap_electrodes),
+        "slot": "junction",
+        "citation": citation,
+        # The files this junction was composed from, with hashes -- a
+        # result can always say which bytes built it, and a cited pair
+        # edited since is refused by name (`load_compose_record`).
+        "files": files,
+        **said,
+    }
+    return ComposedJunction(
+        sorted=sorted_res,
+        relaxed=relaxed,
+        electrode_left=elec_l,
+        electrode_right=elec_r,
+        deck_text=deck_text,
+        provenance=provenance,
+    )
+
+
+def _pair_parts(cited: CitedPair, swap_electrodes: bool):
+    """A cited pair, ready to sort: ``(junction, start, ion_dir, deck_text,
+    files, said)`` -- every frame with its labels (the swap applied to this
+    calculation's copy), no starting geometry (a pair holds the one it was
+    saved with), no ``.ion`` directory and no deck (none beside a pair), its
+    two files' hashes, and its frame count for the record."""
+    struct, source = labeled_citation_structure(cited)
+    if swap_electrodes:
+        struct = _with_swapped_leads(struct, Path(source).name)
+    _bad = _unusable_cell(struct)
+    if _bad:
+        raise ComposeError(
+            f"the cited pair {cited.path.name} {_bad} -- a junction needs its "
+            f"lattice (science/junction-cell.md).")
+    files = {f.name: _sha256(f) for f in (cited.path, cited.sidecar)}
+    return struct, None, None, None, files, {"frames": cited.n_frames}
+
+
+def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
+    """A cited run, ready to sort: ``(junction, start, ion_dir, deck_text,
+    files, said)`` -- its relaxed geometry with its deck's labels, the
+    geometry it started from (the deck's coordinate block, for the lead
+    gate's *frozen means unmoved*), the run's folder for the ``.ion`` files,
+    the deck verbatim, the files' hashes, and how the run ended."""
     if cited.concluded is None:
         raise ComposeError(
             f"the cited relaxation {citation!r} has not CONCLUDED -- it is "
@@ -679,8 +778,7 @@ def compose_junction(citation: str, *, tree_root,
             f"the relaxation to its end, then cite it (engines/transport.md "
             f"3.1).")
 
-    # ---- the cited run: deck + .XV, everything from its directory --
-    deck, xv_path, concluded = cited.deck, cited.xv, cited.concluded
+    deck, xv_path = cited.deck, cited.xv
     deck_text = deck.read_text()
     # The cited deck's own reading, for the gates below.
     try:
@@ -691,49 +789,37 @@ def compose_junction(citation: str, *, tree_root,
         # a fixed ratio.  The reader's own sentence names the field.
         raise ComposeError(f"the cited deck cannot be read: {exc}")
 
-    # The labeled source structure, from THIS directory (§ 3.1) --
-    # through the one door the tab's orientation question also
-    # reads, so both agree on which labels are real and where they
-    # live.  It is also the ONLY reader of the
-    # .XV on this path: a second parse here would be a second
-    # answer to "what does this relaxation say", free to drift.
-    #
-    # KEEP THE SOURCE.  Form A's labels may come from the deck's own
-    # block or from a .molstruct.json beside it, and which one it
-    # was belongs in the provenance: it is a file this junction was
-    # composed from.  A swap renames the labels on this calculation's
-    # copy (`_with_swapped_leads`) and never writes that file.
+    # The labeled source structure, through the one door the tab's
+    # orientation question also reads, so both agree on which labels are
+    # real.  It is also the ONLY reader of the .XV on this path: a second
+    # parse here would be a second answer to "what does this relaxation
+    # say", free to drift.  A swap renames the labels on this calculation's
+    # copy (`_with_swapped_leads`) and never writes the deck.
     struct, label_source = labeled_citation_structure(cited)
     if swap_electrodes:
         struct = _with_swapped_leads(struct, Path(label_source).name)
-    # THE GUARD FORM B HAS HAD ALL ALONG.  `Structure.cell`'s setter
-    # is permissive, so an unusable box travels to the construction
-    # below and raises a bare ValueError there -- and `prep` catches
-    # only ComposeError/SortError, so it reaches the person as a
-    # traceback instead of a sentence.
+    # `Structure.cell`'s setter is permissive, so an unusable box would
+    # travel to the construction below and raise a bare ValueError there --
+    # and `prep` catches only ComposeError/SortError, so it would reach the
+    # person as a traceback instead of a sentence.
     _bad = _unusable_cell(struct)
     if _bad:
         raise ComposeError(
             f"the cited relaxation in {cited.path} {_bad} -- a junction "
             f"needs its lattice (science/junction-cell.md).  The deck's "
-            f"%block LatticeVectors and the .XV both carry one; if the "
-            f"labels come from a .molstruct.json, its `cell` must not "
-            f"be null.")
+            f"%block LatticeVectors and the .XV both carry one.")
     cell = np.asarray(struct.cell, dtype=float)
-    xv_elements = list(struct.elements)
     xv_pos = np.asarray(struct.positions, dtype=float)
 
-    if params.n_atoms is not None and params.n_atoms != len(xv_elements):
+    if params.n_atoms is not None and params.n_atoms != len(xv_pos):
         raise ComposeError(
             f"the deck {deck.name} declares {params.n_atoms} atoms "
-            f"but {xv_path.name} carries {len(xv_elements)} -- the "
+            f"but {xv_path.name} carries {len(xv_pos)} -- the "
             f"two files do not describe the same relaxation.")
 
-    # THE GEOMETRY THE RELAXATION STARTED FROM (§ 3.1), read here
-    # because only form A has one: the deck's own coordinate block.
-    # The extraction compares it against the .XV to decide "frozen
-    # means unmoved" (§ 3, ruling Q3); without it that question has
-    # no start to measure from and the refusal below says so.
+    # THE GEOMETRY THE RELAXATION STARTED FROM (§ 3.1): the deck's own
+    # coordinate block.  The extraction compares it against the .XV to
+    # decide "frozen means unmoved" (§ 3, ruling Q3).
     if params.coords_ang is None:
         raise ComposeError(
             f"the deck {deck.name} carries no convertible "
@@ -748,73 +834,31 @@ def compose_junction(citation: str, *, tree_root,
             f"the deck {deck.name}'s coordinate block ({len(src_pos)} "
             f"atoms) does not match {xv_path.name} ({len(xv_pos)}) -- "
             f"the two files do not describe the same relaxation.")
-    # `src_pos` goes to the extraction, which asks whether these
-    # atoms moved as part of deciding whether the block is a lead.
 
     # THE RELAXED COORDINATES AND THE BOX THEY CAME BACK IN, and nothing
     # else stated by hand: ``replace`` carries every other field the cited
     # junction states (`model/structure.md` § 2.2a).
     relaxed = struct.replace(positions=xv_pos.copy(), cell=cell)
-
-    sorted_res = sort_by(relaxed, "transport")
-    dev = sorted_res.structure
-
-    # The electrode models, extracted from the SORTED blocks -- and the
-    # § 3 lead gates, which is the same step: a block that is not frozen
-    # bulk does not become a model (`wizard.extract_electrode_model`).
-    #
-    # The starting geometry goes in the SORTED device's index order, so
-    # the gate compares atom i against atom i; `sorted_to_original[new] =
-    # old` is exactly the indexing `categorical_sort` used to build the
-    # sorted positions.  The same tuple travels as `atom_ids` so a
-    # refusal names atoms the way the person's own file does.
-    prior = (None if src_pos is None
-             else src_pos[list(sorted_res.sorted_to_original)])
-    elec_l, elec_r = _extract_and_gate_electrodes(
-        dev, prior_positions=prior,
-        atom_ids=sorted_res.sorted_to_original, ion_dir=cite_dir)
-
-    provenance = {
-        "schema": "molbuilder/slot-provenance@1",
-        # THE RENAME THIS COPY CARRIES (§ 4): the record answers for the
-        # choice it was composed with, as it answers for its citation.
-        "swap_electrodes": bool(swap_electrodes),
-        "slot": "junction",
-        "citation": citation,
-        # The files this junction was composed from, with hashes -- a
-        # result can always say which bytes built it.  `label_source` is
-        # here because the electrode REGIONS are a fact about this junction
-        # as much as its coordinates are, and they may live in a
-        # .molstruct.json beside the deck.  (When they live in the deck, the
-        # dict keys dedupe.)
-        "files": {f.name: _sha256(f)
-                  for f in (deck, xv_path, label_source)
-                  if f is not None},
+    files = {f.name: _sha256(f) for f in (deck, xv_path)}
+    said = {
         # HOW THE CITED RUN ENDED -- its record's line -- and what it
         # converged, the run door's reading of its output (§ 3.1): a
         # geometry cited with `geometry NO` is cited knowingly, and the
         # `.XV` it hands over is then the last geometry SIESTA wrote.
-        "evidence": concluded,
+        "evidence": cited.concluded,
         "relaxation": {"converged": cited.converged,
                        "exit_code": cited.exit_code},
     }
-    return ComposedJunction(
-        sorted=sorted_res,
-        relaxed=relaxed,
-        electrode_left=elec_l,
-        electrode_right=elec_r,
-        deck_text=deck_text,
-        provenance=provenance,
-    )
+    return relaxed, src_pos, cited.path, deck_text, files, said
 
 
 def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
     """The composed junction, ON DISK beside the transport calculation's
     ``task.json`` — § 4.1's *"the cited structure is COPIED in with
     provenance"*, whole: the SORTED structure PAIR (the geometry every
-    stage renders from AND the file carrying its region labels), the
-    attempt's own deck verbatim (the electronic contract, re-parseable
-    anywhere), and the two sidecars.  With these the folder travels:
+    stage renders from -- every frame -- AND the file carrying its region
+    labels), a cited run's own deck verbatim (the electronic contract,
+    re-parseable anywhere), and the two sidecars.  With these the folder travels:
     :func:`load_compose_record` rebuilds the junction on a machine where
     the cited tree does not exist.
 
@@ -832,7 +876,7 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
     write_json(base_dir / PROVENANCE_FILE, composed.provenance)
     write_permutation(base_dir, composed.sorted)
 
-    expected = record_files()
+    expected = record_files(composed.provenance["kind"])
     missing = [n for n in expected if not (base_dir / n).is_file()]
     if missing:
         raise ComposeError(
@@ -842,6 +886,25 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
             f"rely on it.  (The geometry travels as a PAIR; its label "
             f"file is what carries the electrode regions.)")
     return list(expected)
+
+
+def _pair_unchanged(cited: CitedPair, provenance, citation: str) -> None:
+    """A cited pair's two files, against the hashes its record pinned
+    (`engines/transport.md` § 3.1) -- refused by name when either changed:
+    the seed and the leads ran on what the pair said then, and a frame set
+    is a data set, made once by the script that writes it."""
+    pinned = provenance.get("files") or {}
+    changed = [f.name for f in (cited.path, cited.sidecar)
+               if pinned.get(f.name) != _sha256(f)]
+    if changed:
+        raise ComposeError(
+            f"the cited pair {citation!r} has changed since this calculation "
+            f"was composed from it: {', '.join(changed)} no longer "
+            f"{'holds' if len(changed) == 1 else 'hold'} the bytes "
+            f"{PROVENANCE_FILE} pinned.  This calculation's stages ran on "
+            f"the pair as it was; cite the pair as it is now in a new "
+            f"transport calculation (`jobset init`), or restore it "
+            f"(engines/transport.md 3.1).")
 
 
 def load_compose_record(base_dir, *, citation: str, tree_root=None,
@@ -872,10 +935,12 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     copy was made.
 
     *tree_root* is what keeps the principal-layer half of those gates
-    working here: the orbital ranges live in the CITED directory's
-    ``.ion`` files, which the travelled folder does not carry.  Without
-    it the condition degrades honestly to UNVERIFIED (a note on the
-    model) rather than silently passing.
+    working here: the orbital ranges live in a CITED run's ``.ion`` files,
+    which the travelled folder does not carry.  Without it the condition
+    degrades honestly to UNVERIFIED (a note on the model) rather than
+    silently passing.  With it, a cited PAIR is held to the bytes it was
+    composed from (§ 3.1): one edited since is refused by name, because the
+    seed and the leads already ran on what it said then.
     """
     base_dir = Path(base_dir)
     prov_path = base_dir / PROVENANCE_FILE
@@ -903,7 +968,12 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
         return _no(f"the record beside it was composed with "
                    f"swap_electrodes {bool(provenance.get('swap_electrodes', False))}, "
                    f"and this task now says {bool(swap_electrodes)}")
-    missing = [n for n in record_files()
+    kind = provenance.get("kind")
+    if kind not in CITATION_KINDS:
+        return _no(f"the record beside it names no citation kind "
+                   f"({PROVENANCE_FILE} says {kind!r}), so it does not say "
+                   f"which files it holds")
+    missing = [n for n in record_files(kind)
                if not (base_dir / n).is_file()]
     if missing:
         return _no(f"the record beside it is incomplete -- "
@@ -912,7 +982,7 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     deck_path = base_dir / JUNCTION_DECK
     perm = read_permutation(base_dir)
     from ..workingcopy_structure import StructureCodec
-    dev = StructureCodec().load(base_dir / JUNCTION_GEOMETRY)
+    dev = StructureCodec().load(base_dir / JUNCTION_GEOMETRY, frames=True)
     sorted_res = SortResult(
         structure=dev,
         original_to_sorted=perm.original_to_sorted,
@@ -921,9 +991,13 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     ion_dir = None
     if tree_root is not None:
         try:
-            ion_dir, _cited = resolve_citation(citation, Path(tree_root))
+            cited_path, cited = resolve_citation(citation, Path(tree_root))
         except ComposeError:
-            ion_dir = None      # the citation moved: UNVERIFIED, honestly
+            cited = None        # the citation moved: UNVERIFIED, honestly
+        if isinstance(cited, CitedPair):
+            _pair_unchanged(cited, provenance, citation)
+        elif cited is not None:
+            ion_dir = cited_path
     # NO `prior_positions` HERE, and that is not an omission: this
     # rebuilds from a junction that was already composed, and the
     # geometry the relaxation started from is not part of the record --

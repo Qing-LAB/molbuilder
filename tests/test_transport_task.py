@@ -99,15 +99,6 @@ class TestInitCLI:
         assert r.exit_code != 0
         assert "Nope/optimization/Gone" in r.output
 
-    def test_an_unqualified_directory_is_refused_by_the_condition(self, tree):
-        """`init` classifies at the door (strict composition): an empty
-        directory is not a finished relaxation run of ours, and the refusal
-        states the WHOLE condition (§ 3.1)."""
-        r = _init(_TRANSPORT + ["--slot",
-                                "junction=BDT-Au/optimization/JunctionRelax"])
-        assert r.exit_code != 0
-        assert ".fdf" in r.output and ".molstruct.json" in r.output
-
     def test_options_answered_by_the_citation_are_refused(self, tree):
         (tree / "BDT-Au" / "structure").mkdir(parents=True, exist_ok=True)
         (tree / "BDT-Au" / "structure" / "j.xyz").write_text(

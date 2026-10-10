@@ -921,7 +921,7 @@ row below).*
 | **Class C ships per-stage defaults** | Each stage carries an opinionated profile rather than inheriting one shared set: a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike, and the electrode's dense transport-axis k is a default, not something a person should have to discover |
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
 | **Default grouping** | The preparatory block — seed and both leads — as one submission: `jobset prep task` offers the three pre-selected, since none builds on another, and they are prepared as one group (`--stage seed --stage electrode_L --stage electrode_R` without a terminal); `jobset launch task` sends it as one job ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6; [`execution/job-system.md`](?doc=execution/job-system.md), *The task*). Then the device; then the transmission, each scan one job walking its points. The device and the transmission never share a job: the transmission builds on the device, which you look at first |
-| **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). The voltage axis is built (§ 2a.11); the frame axis is designed, not built (plan § 5z, Q17-c … Q17-f) |
+| **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). The voltage axis is built (§ 2a.11); a frame set is cited (§ 3.1, Q17-c); its points, record and Results are plan § 5z, Q17-d … Q17-f |
 | **The bias treatment is an exposed choice** | `low_bias_approximation`, true or false, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
 | **Automatic resubmission is deferred, and load-bearing on nothing** | The stages, their decks, the parameter map and the directory structure are identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing here waits on it. When built, the monitor is its home — it already watches a run to its end. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
 | **Net charge and gating are deferred** | Not designed now. In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is separate work. How a gate is applied in SIESTA 5.x — a charge-distribution block, a scripted hook, or neither — **has not been verified against the manual** and should be before anything depends on it |
@@ -993,10 +993,10 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 
 ### 2a.9 The structure input, and the frame axis — making room, not building
 
-*Added 2026-09-16 at the user's direction. The frame axis is designed and
-**not built** — the citation of a frame set, the frame inside a run, the
-record's average and the Results family are plan § 5z, Q17-c … Q17-f; the
-structure side is built (a `Structure` holds its frames and each frame's
+*Added 2026-09-16 at the user's direction. A frame set is cited (§ 3.1,
+built 2026-10-09, plan § 5z Q17-c); the frame inside a run, the record's
+average and the Results family are designed and **not built** — plan § 5z,
+Q17-d … Q17-f; the structure side is built (a `Structure` holds its frames and each frame's
 `customized` rows, `model/structure.md` § 2.2d–2.2e). What is settled here is
 what the contract must say so that adding the axis needs no rework — and,
 since 2026-09-24, **what a frame set IS**: one multi-frame structure pair
@@ -1135,15 +1135,14 @@ through the structure's own doors, by the frame generator or a person's
 script. So every door that reads one structure reads a multi-frame pair as its
 base, and a frame-aware door sees the set. That is what makes the axis
 addable without rework. Citing a pair is § 3.1's second citation kind
-*(designed 2026-10-09, not built — plan § 5z, Q17-c: today
-`compose.classify_citation` accepts only a finished relaxation run)*.
+(`compose.classify_citation`, built 2026-10-09).
 
 | the condition, per frame, naming the frame | why | where it is checked |
 |---|---|---|
 | the same atom count, in the input order, as frame 0 | the sidecar's per-atom facts are indices | the structure's reader (`model/structure.md` § 2.3) — a document breaking it is no frame set |
 | the same species, in the same order | the seed's density and the leads' Hamiltonians are indexed by orbital | the same |
 | **the same cell as frame 0** | the leads must tile one cell for every frame (I6, § 2a.9 above) | the same — the cell is shared, a frame cannot state another |
-| **no electrode atom moved**, within the tolerance the citation door's frozen-atom check uses (`wizard.FROZEN_TOL_ANG`, 10⁻³ Å) | the exact-sharing gate: the lead Hamiltonian is truth | the citation door, frame by frame *(not built — Q17-c)* |
+| **no electrode atom moved**, within the tolerance the citation door's frozen-atom check uses (`wizard.FROZEN_TOL_ANG`, 10⁻³ Å) | the exact-sharing gate: the lead Hamiltonian is truth | the citation door, frame by frame, naming the frame and the atom (`compose.classify_citation`) |
 
 **The frame token is the file position**: `f000` is the base and runs too —
 the undisplaced reference every displaced curve is compared against — and
@@ -1205,7 +1204,7 @@ it is checkable.** Every frame the rule produces, whoever wrote it:
 | the same atom count, in the **input order** — the script never sees the sorted copy; the sort runs per frame at prep, under one permutation for the whole group (`model/overview.md` § 2.2) | the sidecar's labels are indices; the seed's density and the leads' Hamiltonians are indexed the same way | count and index, per frame, against the base |
 | the same species, in the same species order | the orbital set is what makes the seed's density usable as a start (§ 2a.9's approximate gate) | species table per frame against the base |
 | the same labels — regions, frozen set, identity columns | the partition is what the whole ladder is built on (§ 4); a frame is the base with atoms moved, never relabelled | the frame carries no labels of its own: it inherits the base's, which makes the promise structural rather than checked |
-| **no electrode atom moves** | the exact-sharing gate above: the lead Hamiltonian is truth | electrode positions per frame against the base, within `wizard.FROZEN_TOL_ANG` (10⁻³ Å) *(not built — Q17-c)* |
+| **no electrode atom moves** | the exact-sharing gate above: the lead Hamiltonian is truth | electrode positions per frame against the base, within `wizard.FROZEN_TOL_ANG` (10⁻³ Å), at the citation door |
 | one base structure, an optimised junction | a group is a *displacement of* something, and the result has to say of what | the pair is the group's citation, its `info.calculation` the optimisation frame 0 came from (§ 3.1) |
 
 What is trusted rather than checked is only what cannot be: that the
@@ -1834,7 +1833,7 @@ nearly free — so these *should* differ across stages.
 | `mpi_np` · `omp_threads` · `max_memory_mb` · `gpu_count` | the allocation |
 | `block_size` · `parallel_over_k` · `diag_algorithm` · `use_gpu` | how the diagonaliser is decomposed across ranks |
 | `continue_retries` | how many times the wrapper retries — on a transport point, continuing the point's own cycle from its own last density (§ 2a.11) |
-| ~~`psml_lib`~~ | *(Class A since the catalogue marked it `shared`: one set of pseudopotentials per calculation, every rung built on it — for transport the set travels with a cited run, and comes from the person's directory for a cited pair, § 3.1 (not built, Q17-c), `template.md` § 5)* |
+| ~~`psml_lib`~~ | *(Class A since the catalogue marked it `shared`: one set of pseudopotentials per calculation, every rung built on it — for transport the set travels with a cited run, and comes from the person's directory for a cited pair, § 3.1, `template.md` § 5)* |
 
 #### Deferred
 
@@ -2088,8 +2087,8 @@ molbuilder jobset summarize task        # -> <label>.transport.json + the I-V ta
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json`, print the I–V table | `transport/record.py` |
 | ~~`transport electrode`~~ · ~~`transport preflight`~~ | **DELETED 2026-09-17** with the `transport` verb group — the hand-assembly pair. A lead is derived from the citation at prep, and § 5's invariants are held by construction or by the validation pass |
 
-**Gotchas:** the citation names a DIRECTORY explicitly (§ 3.1 below) —
-nothing is ever picked for you; a citation re-pointed after a rung is prepared
+**Gotchas:** the citation names a run's folder or a pair's `.xyz`
+explicitly (§ 3.1 below) — nothing is ever picked for you; a citation re-pointed after a rung is prepared
 is refused at the next rung's gather, which cannot read the junction its
 record was composed from — the way on is the state saved before the first
 rung's prep, which composes it anew (a prepared rung is not prepared again,
@@ -2108,17 +2107,23 @@ structure brings no pseudopotentials, so citing one ended in the contract's own
 relaxation SIESTA was handed by hand brings no record of how it ended.*
 
 A transport calculation starts by pointing at one of two things: **a
-relaxation run of molbuilder's own that has finished**, or **a structure pair
-that records the optimization its geometry came from** — one frame, or a frame
-set (§ 2a.9). The second is designed (2026-10-09) and **not built** — plan
-§ 5z, Q17-c; today the citation door accepts the first alone
-(`compose.classify_citation`, its `CITATION_CONDITION`), and `jobset init`
-refuses `--psml-lib` for every transport calculation.
+relaxation run of molbuilder's own that has finished** — a folder — or **a
+structure pair that records the optimization its geometry came from** — its
+`.xyz` — one frame, or a frame set (§ 2a.9). `task.json`'s `junction` names
+it by its tree-relative path; the citation door classifies it by what the
+path is (`compose.classify_citation`, its `CITATION_CONDITION`) *(the pair
+built 2026-10-09, plan § 5z Q17-c)*.
 
 | what you point at | it holds | you get | the settings come from |
 |---|---|---|---|
-| **a finished relaxation run** — `<calc>/<NN>_<stage>/run-<n>` | its one `.fdf` and one `.XV`; its launch record and the wrapper's conclusion (`runrecord.ending`); its region labels in the deck's block or the `.molstruct.json` beside it; its pseudopotentials | geometry · labels · **settings** · how it ended and what it converged | the deck that actually ran |
-| **a structure pair** — `<name>.xyz` and its `<name>.molstruct.json` *(not built — Q17-c)* | the frames; the labels; `info.calculation`, the record of the optimization frame 0 came from — its engine, its deck and the deck's `contract` (basis, functional, mesh, k-grid, temperature, spin, charge) | geometry (every frame) · labels · **settings** | the pair's `info.calculation.contract`; the pseudopotentials from the directory you give that holds them all |
+| **a finished relaxation run** — its folder, `<calc>/<NN>_<stage>/run-<n>`, or a flat calculation's root | the run the folder speaks for (`runs.run_of`): its deck, the `.XV` SIESTA wrote under its label, its launch record and the wrapper's conclusion (`runrecord.ending`); its region labels in that deck's block (`runs.declared`); its pseudopotentials | geometry · labels · **settings** · how it ended and what it converged | the deck that actually ran, read through `parse.contract.contract_of` |
+| **a structure pair** — `<name>.xyz` and its `<name>.molstruct.json` | the frames; the labels; `info.calculation`, the record of the optimization frame 0 came from — its engine, its deck and the deck's `contract` (basis, functional, mesh, k-grid, temperature, spin, charge, and how its SCF converged), written by `contract_of` when the pair was saved (the Results tab, `molbuilder xv2xyz --from-run`) | geometry (every frame) · labels · **settings** | the pair's `info.calculation.contract`; the pseudopotentials from the directory you give that holds them all |
+
+**The run door reads both kinds' settings the same way**: a cited run's deck
+through `contract_of` when the transport is described, a pair's record as
+`contract_of` wrote it when the pair was saved — one mapping onto the
+catalogue's names (`model/parse.md` § 5b), so the two kinds cannot default a
+template differently.
 
 **The pair's condition** *(user, 2026-10-09, D2: "D2 should use the same
 convention as in structure optimization: the user should provide the directory
@@ -2128,12 +2133,24 @@ is refused by name, because a bare structure brings nothing to default the
 settings from. The pseudopotentials come from the directory the person gives —
 the template's `psml_lib`, `jobset init --psml-lib DIR` or the form's
 pseudopotential directory — required as it is for a structure optimization,
-copied into the calculation, and the transport record says where they were
-copied from; `--psml-lib` is refused only for a cited run, whose
-pseudopotentials come with it. The pair's two files are pinned by their sha256
-in `slot-provenance.json`, as a cited run's files are, so a pair edited since
-is refused by name. A frame set's per-frame promises (§ 2a.9) are checked at
-this door, frame by frame.
+copied into the calculation by prep, and the template's `psml_lib` row says
+where they were copied from; `--psml-lib` is refused for a cited run, whose
+pseudopotentials come with it, and required for a pair — one rule, asked by
+both roads that describe (`citation_defaults.check_pseudopotentials`: `jobset
+init` and the Transport tab's describe door). The pair's two files
+are pinned by their sha256 in `slot-provenance.json`, as a cited run's files
+are, so a pair edited since is refused by name at the next prep. A frame set's
+per-frame promises (§ 2a.9) are checked at this door, frame by frame, naming
+the frame. The pair's axis kinds are its own across the transport axis, and z
+is transport (§ 5 I8). The principal-layer condition reads the orbital ranges
+from the `.ion` files SIESTA leaves beside a run; a pair has none beside it,
+so the condition is *unverified* on the lead's notes, and TranSIESTA checks
+the leads' connectivity itself when it runs.
+
+**A frame set runs its seed and both leads on frame 0** (§ 2a.9: electrodes
+once, seed once); its device and transmission run per frame with Q17-d, and
+until then their prep refuses a set of more than one frame by name. A pair of
+one frame runs the whole ladder.
 
 **Settings** here means what every stage of the calculation must agree on: the
 basis, the exchange–correlation functional and its authors, the mesh cutoff, the
@@ -2150,7 +2167,8 @@ are not shared: each SCF stage carries its own and may change it on its tab
 (§ 2a.13) — the device's, which converges unlike the periodic runs, most
 often. The iteration cap and must-converge are how much compute, not how it
 converged, and are not taken. Read through the one fdf reader
-(`parse.fdf.parse_fdf_params`), mapped by `citation_defaults._FROM_DECK`.
+(`parse.fdf.parse_fdf_params`) into the recorded contract (`contract_of`,
+its `SCF_RECORD_KEYS`), so a pair saved from a run carries them too.
 
 > **The spin comes with the citation too** *(W34, built 2026-09-28)*: until then
 > the spin was shared by every rung and *answered by nobody's run* (§ 3.8.6), so a
@@ -2175,14 +2193,21 @@ converged, and are not taken. Read through the one fdf reader
 > into the template (it is left blank, and floats), and a stated count is
 > refused by name.
 
-**A run's condition is the folder's files, and that it is a run of ours.** One
-`.fdf` and one `.XV` — two of either is refused by name, telling you what the
-folder holds. Launched by `jobset launch`, so its launch record and the
-wrapper's conclusion say how it ended (`runrecord.ending`,
-[`execution/architecture.md`](?doc=execution/architecture.md) § 3.2): a folder
-with the two files and no run of ours is refused, naming the road — relax the
-junction through `jobset init` → `prep task` → `launch task`, then cite that
-run. Its name and where it sits in the tree never matter.
+**A run's condition is that it is a run of ours, read through the run door**
+*(W56-2, 2026-10-09)*. The folder is the run it speaks for (`runs.run_of`,
+[`execution/architecture.md`](?doc=execution/architecture.md) § 3.2): the
+highest stage launched there and its newest run — in a run's own folder its
+one stage, at a flat calculation's root the stage the root speaks for, the
+other stages' decks beside it being theirs. Its deck is that stage's
+(`Run.deck`), its geometry the `.XV` SIESTA wrote under the run's label (a
+carried file, `Run.carried`), its labels its deck's block (`runs.declared`).
+Launched by `jobset launch`, so its launch record and the wrapper's
+conclusion say how it ended (`runrecord.ending`): a folder no calculation
+claims, or one where nothing was launched, holds no run of ours and is
+refused, naming the road — relax the junction through `jobset init` →
+`prep task` → `launch task`, then cite that run. Its name and where it sits
+in the tree never matter. Every deck molbuilder writes from a labelled
+structure carries the labels' block.
 
 **What is said about how it ended.** The citation carries the run's conclusion
 line and what its output says it converged — *geometry yes* / *geometry NO*,
@@ -2209,11 +2234,11 @@ whatever the engine left when it failed.
 > **History.** The three-row table stood from 2026-09-23 (its middle row, a
 > saved structure "that remembers its run", had been lost once and restored —
 > `archive/2026-09-01-transport-design.md` § 4.1b). The two structure rows went
-> on 2026-10-08 with decision 7; the `info.calculation` block the Results tab
-> writes into a saved structure's sidecar, which that middle row read, has no
-> reader on this road today. The pair row above (designed 2026-10-09, Q17-c)
-> is its reader: a pair that records its optimization brings the settings to
-> default from, and the person's pseudopotential directory brings the rest.
+> on 2026-10-08 with decision 7. The pair row above (designed and built
+> 2026-10-09, Q17-c) reads the `info.calculation` block the Results tab and
+> `xv2xyz --from-run` write into a saved structure's sidecar: a pair that
+> records its optimization brings the settings to default from, and the
+> person's pseudopotential directory brings the rest.
 
 ---
 
@@ -2725,9 +2750,10 @@ item 7's *"shown locked"*, § 8's *"sealed at both doors"*, and the whole of
 
 #### 3.8.1 Choosing — name the run, and what it brought
 
-§ 3.1's one case, in its words: a finished relaxation run of molbuilder's own.
-The meta line says how it ended and what it converged, then what its deck
-answered:
+§ 3.1's first case, a finished relaxation run of molbuilder's own: the meta
+line says how it ended and what it converged, then what its deck answered (a
+cited pair's line — its frames and the record it carries — is plan § 5z
+Q17-f):
 
 ```
 CONCLUDED (rc=0 at …) · geometry yes · SZP · 150 Ry · GGA/PBE · k 1x1x1 · 52 atoms
@@ -2912,7 +2938,7 @@ six scattered versions could not do.
 
 | | state |
 |---|---|
-| the citation fills the template at `init` (one shape since decision 7: a finished relaxation run's deck) | ✅ **done** |
+| the citation fills the template at `init` — a finished relaxation run's deck, or a pair's `info.calculation`, through one reader of the recorded contract (§ 3.1) | ✅ **done** (the pair 2026-10-09) |
 | the per-rung form is generated from the catalogue | ✅ **done 2026-09-24** — `?surface=rung`, the `shared`, `allocation` and staging items kept off it by their markers, and the `role` items never a control (echoed read-only since K7) |
 | the shared panel exists | ✅ **done 2026-09-24** — card 2 of the tab, `?surface=shared`, its values the citation's answers, its source named; the describe door lays the panel's values over the citation's into the template and refuses a per-rung override of any shared item, as `prep` does |
 | a value nobody chose is shown as not chosen | ✅ **done** — the panel shows an unanswered `citation` row blank, and `jobset init` and the describe door both write it VALUELESS into the template through one door, `citation_defaults.transport_template_text` (2026-09-24); **the file records each value's source** and both surfaces draw it (K7, 2026-09-30). `prep` fills a valueless row with the documented default, which is what `template.md` § 6.6 obligation 4 asks — but the deck does not yet MARK it (the row below) |
@@ -3250,7 +3276,7 @@ run.
 | I8 | Device kz = 1 | seed, device, transmission | open boundary (no periodicity along transport) | **fixed** — the rung's mesh writes 1; `kmesh.fixed` through `template.why_not` refuses another value on every door |
 | I9 | Electrode kz dense (converged) | electrode | it's a *periodic bulk* run; thin cell → large Brillouin zone (BZ) | **`electrode_kz`'s own limit and range** — refused at 1 (`above`), warned below 20 (`range`), on every door *(the kind's validator held both from 2026-09-17 until 2026-09-30)* |
 | I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ must map atom-for-atom onto the device | **construction** — the extraction clones them |
-| I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `compose.py::_extract_and_gate_electrodes` — **refuses**, from orbital ranges READ out of the citation's `.ion` files |
+| I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `compose.py::_extract_and_gate_electrodes` — **refuses**, from orbital ranges READ out of a cited run's `.ion` files; a cited pair has none beside it, so the lead's note says *unverified* and TranSIESTA checks the leads' connectivity when it runs (§ 3.1) |
 | I12 | no vacuum where the crystal continues — the room at the transport boundary is one layer spacing of the lead; a transverse axis declared periodic is reached across by the lead | every rung | a gap along transport = a severed lead, not a junction; vacuum on a periodic axis contradicts the declaration | **`cell.transport_vacuum`**, **`cell.transverse_vacuum`** — `_validate_transport_kind`, **error**, measured from the lead (§ 6.1c; re-homed 2026-09-17, measured from the lead since M5 step 2) |
 | P2 | the transmission window reaches the bias window — `transmission_emin_ev … emax_ev` covers ±(\|V\|/2 + 5 kT), both leads' Fermi tails at μ = ±V/2 | the transmission; the description | TBtrans integrates the current over its window and says nothing when the window cuts it short | **`config.transmission_emax_ev`** — one rule, `record.window_short_of`: the transmission deck's gate (**error**, its own V), the description's preflight (**error**, the largest listed V, the resolved transmission rung's window and temperature), the record (a voltage it does not integrate is blank with the reach named) (§ 2a.10; 2026-10-08) |
 | I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | **construction** — `TS.HS.Save` is a `role` item on the electrode rung |
@@ -3308,7 +3334,7 @@ be.
 
 | Layer | Module | Role |
 |---|---|---|
-| Composition | `transport/compose.py` | citation → parsed `.XV` → categorical sort → electrode extraction, which IS the lead gate (frozen, unmoved, evenly spaced — `wizard.extract_electrode_model`, consolidated there 2026-09-20); the travelling record (`junction.xyz` + `junction.cited.fdf` + sidecars). Holds I11 — it reads real orbital ranges from the citation's `.ion` files and refuses a lead thinner than its own principal layer |
+| Composition | `transport/compose.py` | citation — a run's parsed `.XV` with its deck's labels, or a pair's frames — → categorical sort → electrode extraction, which IS the lead gate (frozen, unmoved, evenly spaced — `wizard.extract_electrode_model`, consolidated there 2026-09-20); the travelling record (`junction.xyz` + sidecars, and a cited run's `junction.cited.fdf`). Holds I11 — it reads real orbital ranges from a cited run's `.ion` files and refuses a lead thinner than its own principal layer |
 | Electrode extraction | `transport/wizard.py` (`ElectrodeModel`, `extract_electrode_model`) | **derives** a bulk lead from the labeled device — it ASKS `transiesta._find_electrode_regions` for the partition and `cell.detect_layers` / `cell.bulk_z_period` for the z-period (§ 7.1) rather than re-deriving either. `as_structure()` hands `prep` a `Structure`, so the lead renders through the same seam as every other rung |
 | Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the per-rung bags (`stages_for_transport`), the bias points and the containers each rung runs in; it renders no deck (`transport/deck.py` tables the shapes) |
 | Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry` and `emit_electrode_declarations` as its emission library (`_emit_basis_and_xc` was deleted 2026-09-18; `_emit_transiesta_block` became `emit_electrode_declarations` on 2026-09-29, its values moving to the catalogue) |
@@ -3860,8 +3886,9 @@ against a 2.88 Å bond, 1.41) and passes; a single-layer lead does not (1.73).
 A correctly tiled fcc(111), (100) or (110) lead measures 1.000.
 
 **The declaration reaches the junction.** `compose` takes the transverse
-kinds the cited relaxation's deck recorded — its ENGINE-OFFSET block carries
-the structure's `axis_kind` — and states transport along z; it stated every
+kinds the citation recorded — a cited run's deck in its ENGINE-OFFSET block,
+which carries the structure's `axis_kind`, a cited pair in its own sidecar —
+and states transport along z (`compose.junction_axis_kind`); it stated every
 junction periodic across until 2026-09-29, which made a wire's vacuum a
 contradiction. The lead cut from the junction keeps the pair
 (`ElectrodeModel.transverse_kind`). A deck written before that record states
@@ -3913,11 +3940,11 @@ reorders it, and hands two views of it to the renderer.
 ```mermaid
 flowchart TB
     XV["<b>1 · the citation</b><br/>.XV: cell + positions + elements<br/>the deck: contract, start coords, labels"]
-    LOAD["<b>2 · labeled_citation_structure</b><br/>cell from the .XV · labels from the deck block<br/>or one sidecar · axis_kind: z STATED, x/y as the relaxation recorded · origin stripped"]
+    LOAD["<b>2 · labeled_citation_structure</b><br/>a run: cell from the .XV · labels from its deck's block<br/>a pair: its own frames, cell and labels<br/>axis_kind: z STATED, x/y as the citation recorded"]
     GATE["<b>3 · _unusable_cell</b><br/>refuses: no cell · not 3 finite vectors · no volume"]
     OVER["<b>4 · replace(positions, cell)</b><br/>the relaxed overlay"]
     SORT["<b>5 · categorical_sort</b><br/>atoms reordered [buf][lower][bridge][upper][buf]<br/>permutation recorded"]
-    REC["<b>6 · write_compose_record</b><br/>junction.xyz + .molstruct.json + cited.fdf<br/>+ provenance + permutation"]
+    REC["<b>6 · write_compose_record</b><br/>junction.xyz + .molstruct.json (every frame)<br/>+ a run's cited.fdf + provenance + permutation"]
     EX["<b>7 · extract_electrode_model → as_structure</b><br/>a SUBSET: the lead<br/>device's lat_a/lat_b verbatim + derived z-period"]
     EM["<b>8 · _emit_geometry</b><br/>cell verbatim · atoms shifted by −origin<br/>species re-derived"]
 
@@ -3935,9 +3962,9 @@ and hop 7 only for the two electrode rungs.
 | hop | the cell | why |
 |---|---|---|
 | 1 | SIESTA wrote it into the `.XV` | a fixed-cell relaxation ends in the box it started in |
-| 2 | read from the `.XV`, **never from the atoms** | § 7: the box is not recoverable from atom extents. If a sidecar carries the labels, its `cell` is *completed* from the `.XV` rather than allowed to replace it |
+| 2 | a cited run's: read from the `.XV`, **never from the atoms**, and agreeing with the deck's `LatticeVectors`; a cited pair's: the one its sidecar states | § 7: the box is not recoverable from atom extents |
 | 3 | **refused** if absent, non-finite or flat | the citation is the one place user input enters, so it is the one place that checks — and transport derives no cell of its own, by ruling (§ 2a.9; I14) |
-| 4–5 | carried through `replace()` | a reorder states the per-atom fields and nothing else, so the box rides along untouched |
+| 4–5 | carried through `replace()` (hop 4 is a cited run's alone: a pair's coordinates are its frames) | a reorder states the per-atom fields and nothing else, so the box rides along untouched |
 | 6 | written to the sidecar, read back verbatim | |
 | 7 | **lateral taken verbatim, transport DERIVED** | the two halves differ on purpose — see below |
 | 8 | emitted verbatim | |
@@ -3985,7 +4012,7 @@ sideways.
 | regions, annotations, `info`, identity | hops 2→6 | `replace()` names the per-atom fields and carries everything else, so the label store, the recorded contract and the identity columns all survive the sort |
 | regions, annotations, `info`, identity | **hop 7 — NOT carried** | `as_structure()` states elements, positions, title, cell and `axis_kind`, and nothing else. A lead therefore renders with no region partition (correct — it has no partition to state), and also with no recorded contract and no identity columns |
 | `axis_kind` | **z stated at hop 2; x and y as the relaxation recorded them** *(since M5 step 2)* | along z it is a fact of *being a transport calculation*: I8 settles it, z is open. Across z it is the person's declaration, and the relaxation's deck recorded it — its ENGINE-OFFSET block carries the structure's kinds (since 2026-09-25): a slab junction is periodic across, a wire or chain junction isolated (§ 6.1c). A deck from before that record states none, and its junction is read periodic across, as every junction was until 2026-09-29. The `.XV` and the metadata block carry no kinds; SIESTA has no such concept |
-| `engine_offset` | **stated `0` at hop 2, when the cited deck carries its `engine-offset` record** | the `.XV` is SIESTA's own frame, the cell at the origin, so the junction states an offset of 0 with its coordinates (`structure-periodicity.md` § 6.0) on either label lane. A deck with no record was prepared before the rule and left its atoms flush against a face, so its junction states none and the rule centres it (plan § 5q D7). An authoring sidecar's offset belonged to *different* coordinates and is never carried |
+| `engine_offset` | **a cited run's: stated `0` at hop 2, when the cited deck carries its `engine-offset` record; a cited pair's: the one its sidecar states** | the `.XV` is SIESTA's own frame, the cell at the origin, so the junction states an offset of 0 with its coordinates (`structure-periodicity.md` § 6.0) on either label lane. A deck with no record was prepared before the rule and left its atoms flush against a face, so its junction states none and the rule centres it (plan § 5q D7). An authoring sidecar's offset belonged to *different* coordinates and is never carried |
 
 #### Where the box and the atoms come from
 

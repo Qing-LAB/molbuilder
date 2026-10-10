@@ -52,7 +52,8 @@ def contract_of(deck) -> Optional[Dict[str, Any]]:
 #: from contract"), so a reader takes a key as it stands.  Read by
 #: :func:`contract_fields_of` here and by the transport citation fill
 #: (`transport/citation_defaults.py`).  The k-point mesh is apart
-#: (:data:`K_MESH_RECORD_KEYS`); the electronic state's three ride at the end.
+#: (:data:`K_MESH_RECORD_KEYS`), and so are the SCF settings
+#: (:data:`SCF_RECORD_KEYS`); the electronic state's three ride at the end.
 RECORDED_FIELDS = ("basis_size", "mesh_cutoff", "pao_energy_shift",
                    "electronic_temperature", "xc_functional", "xc_authors",
                    "net_charge", "spin_treatment", "unpaired_electrons")
@@ -66,6 +67,14 @@ STATE_RECORD_KEYS = ("net_charge", "spin_treatment", "unpaired_electrons")
 #: rule (`transport/citation_defaults._apply_kgrid`, the transport axis laid
 #: on), never verbatim, and nothing compares them field by field.
 K_MESH_RECORD_KEYS = ("kgrid", "kgrid_displacement")
+
+#: HOW THE RUN'S SCF CONVERGED -- the mixer and the criteria, by their
+#: catalogue names: what a transport citation starts each SCF stage from
+#: (TD6, the user 2026-10-09: "go with way 1"; `engines/transport.md` § 3.1),
+#: so a pair saved from a run carries them as its deck does.  Not a level of
+#: theory: nothing compares them, and they make no record on their own.
+SCF_RECORD_KEYS = ("mixing_weight", "pulay_history", "dm_tolerance",
+                   "dm_energy_tolerance", "scf_energy_converge")
 
 
 def contract_fields_of(cfg, *, state=None) -> Dict[str, Any]:
@@ -257,12 +266,18 @@ def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
         "net_charge":               p.net_charge,
         "spin_treatment":           p.spin_treatment,
         "unpaired_electrons":       p.unpaired_electrons,
+        # How its SCF converged (`SCF_RECORD_KEYS`).
+        "mixing_weight":            p.mixing_weight,
+        "pulay_history":            p.pulay_history,
+        "dm_tolerance":             p.dm_tolerance,
+        "dm_energy_tolerance":      p.dm_energy_tolerance_ev,
+        "scf_energy_converge":      p.scf_energy_converge,
     }.items() if v is not None}
-    # THE STATE RIDES WITH A CONTRACT; IT DOES NOT MAKE ONE.  SIESTA's
-    # defaults answer it for every deck, so it is always known -- and a deck
-    # that states no level of theory has nothing to cite, whatever its
-    # state.
-    if not set(contract) - set(STATE_RECORD_KEYS):
+    # THE STATE AND THE SCF SETTINGS RIDE WITH A CONTRACT; THEY DO NOT MAKE
+    # ONE.  SIESTA's defaults answer the state for every deck, so it is
+    # always known -- and a deck that states no level of theory has nothing
+    # to cite, whatever its state or its mixer.
+    if not set(contract) - set(STATE_RECORD_KEYS) - set(SCF_RECORD_KEYS):
         return None
     return {
         "engine": "siesta",
