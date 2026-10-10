@@ -30,10 +30,14 @@ The launch half's facts also live here: the ladder's DAG (§ 1, § 6.1)
 continuation rows (:func:`warm_declaration` — the seed's ``.DM``, the
 device's ``.TSDE``), and the sweep's points (:func:`sweep_points`,
 :func:`point_folders`, :func:`points_in`; their folder names are the
-codec's one spelling, ``task.bias_token``).
+codec's one spelling, ``task.bias_token``).  A point is a frame and a
+voltage (:class:`Point`, :func:`rung_points`; `engines/transport.md` § 2a.9
+*Both axes*): every reader of a rung's points asks these doors and none asks
+which axis varies.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -131,24 +135,92 @@ def sweep_points(task, stage: str) -> Tuple[float, ...]:
     return bias_points(task) if stage in per_point_rungs() else ()
 
 
-def point_folders(base, task, stage: str) -> List[Tuple[Path, float]]:
-    """A swept rung's PREPARED points -- ``[(<stage>/v<V>, V)]``, each
+def frame_token(frame: int) -> str:
+    """A frame's folder token: its position in the cited set, three digits
+    -- ``f000`` the base (`engines/transport.md` § 2a.9)."""
+    return f"f{int(frame):03d}"
+
+
+@dataclass(frozen=True)
+class Point:
+    """One point of a rung that runs per point (`engines/transport.md`
+    § 2a.9 *Both axes*, § 2a.11): a frame of the cited set and a voltage,
+    each ``None`` when that axis does not vary for the calculation -- and
+    its folder below the stage or a run, a level for each axis that varies:
+    ``f001/v0.2``, ``f001``, ``v0.2``."""
+    frame: Optional[int] = None
+    volts: Optional[float] = None
+
+    @property
+    def rel(self) -> str:
+        from ..task import bias_token
+        return "/".join(
+            ([frame_token(self.frame)] if self.frame is not None else [])
+            + ([bias_token(self.volts)] if self.volts is not None else []))
+
+    @property
+    def bias_v(self) -> float:
+        """The voltage the point runs at: its own, or 0 V on a calculation
+        that sweeps no bias (`engines/transport.md` § 2a.10)."""
+        return 0.0 if self.volts is None else float(self.volts)
+
+    def words(self) -> str:
+        """The point as a person reads it: ``frame 1 · 0.2 V``."""
+        return " · ".join(
+            ([f"frame {self.frame}"] if self.frame is not None else [])
+            + ([f"{self.volts:g} V"] if self.volts is not None else []))
+
+
+def frames_of(base) -> int:
+    """How many frames the cited junction holds -- the citation's, never
+    typed (`engines/transport.md` § 2a.9): the composed record's
+    (`slot-provenance.json`, written at the calculation's first prep).  No
+    record yet means nothing is prepared, so no rung has points on disk: 1."""
+    from .compose import PROVENANCE_FILE
+    from ..persist import read_json
+    prov = Path(base) / PROVENANCE_FILE
+    return int((read_json(prov) or {}).get("frames") or 1) \
+        if prov.is_file() else 1
+
+
+def rung_points(task, stage: str, *, frames: int) -> Tuple[Point, ...]:
+    """THE POINTS ``stage`` RUNS AT -- one door, asked by prep, the gather,
+    the walk, `status` and the record (`engines/transport.md` § 2a.11): for a
+    rung that runs per point (:func:`per_point_rungs`: the device, the
+    transmission), each of the cited set's ``frames`` when it holds more than
+    one, and each voltage of a self-consistent sweep (:func:`sweep_points`),
+    frames outer -- each frame's voltages one chain; ``()`` for a rung that
+    varies over neither, which runs once."""
+    volts = sweep_points(task, stage)
+    fs = (tuple(range(int(frames)))
+          if int(frames) > 1 and stage in per_point_rungs() else ())
+    if not volts and not fs:
+        return ()
+    return tuple(Point(frame=f, volts=v)
+                 for f in (fs or (None,)) for v in (volts or (None,)))
+
+
+def point_folders(base, task, stage: str, *, frames: Optional[int] = None
+                  ) -> List[Tuple[Path, Point]]:
+    """A rung's PREPARED points -- ``[(<stage>/<point>, Point)]``, each
     folder holding that point's deck and run script, what every run of the
-    stage copies -- or ``[]`` for a rung that does not sweep
-    (`engines/transport.md` § 2a.11).  The voltages are :func:`sweep_points`'."""
+    stage copies -- or ``[]`` for a rung that runs once
+    (`engines/transport.md` § 2a.11).  ``frames`` is the cited set's count
+    when the caller holds the junction (prep, before its record is on
+    disk); else the record's (:func:`frames_of`)."""
     from ..jobset.materialize import stage_home
-    from ..task import bias_token
     stage_dir = stage_home(base, task, stage).dir
-    return [(stage_dir / bias_token(v), float(v))
-            for v in sweep_points(task, stage)]
+    n = frames if frames is not None else frames_of(base)
+    return [(stage_dir / pt.rel, pt)
+            for pt in rung_points(task, stage, frames=n)]
 
 
-def points_in(run, task, stage: str) -> List[Tuple[Path, float]]:
-    """A swept run's points -- ``[(run-<n>/v<V>, V)]`` -- or ``[]`` for a
-    run of a rung that does not sweep (`engines/transport.md` § 2a.11)."""
-    from ..task import bias_token
-    return [(Path(run) / bias_token(v), float(v))
-            for v in sweep_points(task, stage)]
+def points_in(run, task, stage: str, *, base) -> List[Tuple[Path, Point]]:
+    """A run's points -- ``[(run-<n>/<point>, Point)]`` -- or ``[]`` for a
+    run of a rung that runs once (`engines/transport.md` § 2a.11); the
+    frames are the record's of the calculation at ``base``."""
+    return [(Path(run) / pt.rel, pt)
+            for pt in rung_points(task, stage, frames=frames_of(base))]
 
 
 def stage_inputs(stage: str, task_label: str, *,

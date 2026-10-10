@@ -636,11 +636,12 @@ def bring_files(jobset: JobSet, job, base, src_dir, run, names, plan
 @dataclass(frozen=True)
 class SweepRun:
     """A swept stage's run (`engines/transport.md` § 2a.11): its folder, its
-    points in bias order -- ``[(run-<n>/v<V>, V)]`` -- and whether it is a
+    points in walk order -- ``[(run-<n>/<point>, Point)]``, each frame's
+    voltages in turn (`transport.stages.rung_points`) -- and whether it is a
     fresh one (``False``: the unlaunched run prep opened, reused)."""
     stage:  str
     dir:    Path
-    points: List[Tuple[Path, float]]
+    points: List[Tuple[Path, object]]
     fresh:  bool
 
 
@@ -666,11 +667,11 @@ def open_sweep_run(jobset: JobSet, base_dir, stage_name: str, task, *,
                                  FIRST_ATTEMPT), True
     else:
         run, fresh = resolve_attempt(stage_dir, rn)
-    sources = dict((v, d) for d, v in point_folders(base, task, stage_name))
-    points = points_in(run, task, stage_name)
-    for pdir, v in points:
+    sources = dict((pt, d) for d, pt in point_folders(base, task, stage_name))
+    points = points_in(run, task, stage_name, base=base)
+    for pdir, pt in points:
         open_run(base, pdir, plan)
-        bring_files(jobset, job, base, sources[v], pdir, rn, plan)
+        bring_files(jobset, job, base, sources[pt], pdir, rn, plan)
     return SweepRun(stage=stage_name, dir=run, points=points, fresh=fresh)
 
 

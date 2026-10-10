@@ -513,7 +513,7 @@ def _structure_for(task, base: Path):
 #  (`script-preparation.md` § 3.0)                                       #
 # --------------------------------------------------------------------- #
 
-def _at_no_point(cfg, volts):
+def _at_no_point(cfg, point):
     return cfg
 
 
@@ -539,15 +539,18 @@ class Rung:
     #: -- a vibration's block, the relaxation it builds on, the cell; the
     #: junction's electronic state.
     spec_extra: Callable = lambda element, cfg: {}
-    #: ``((folder, volts), ...)``: the folders each holding a deck written at
-    #: that point -- a sweep's (`engines/transport.md` § 2a.10-11) -- each
-    #: with its own wrapper and attempt ladder; the element's own deck is
-    #: written at the first.  Empty: one deck, in the element's folder.
+    #: ``((folder, point), ...)``: the folders each holding a deck written at
+    #: that point -- a frame and a voltage (`transport.stages.Point`,
+    #: `engines/transport.md` § 2a.9-11) -- each with its own wrapper and
+    #: attempt ladder.  Empty: one deck, in the element's folder.
     points: tuple = ()
-    #: ``(cfg, volts) -> cfg``: a deck's config at its point -- the rung
+    #: ``(cfg, point) -> cfg``: a deck's config at its point -- the rung
     #: answers the bias, the one value the catalogue does not hold
     #: (`engines/template.md` § 6.4).
     at_point: Callable = _at_no_point
+    #: ``point -> struct``: the structure a point's deck describes -- its
+    #: frame of the cited set; ``None``, every deck describes ``struct``.
+    struct_at: Optional[Callable] = None
     #: ``(plan) -> None``: the data files, when the kind's come from
     #: somewhere other than the engine's library (transport: the citation);
     #: ``None`` is the engine's own step (`EngineSeam.provide_data`).
@@ -673,7 +676,10 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
     struct, configure, state = _transport_parts(task, stage, composed,
                                                 pset[0].render_config())
     from ..transport.stages import point_folders, warm_declaration
-    points = tuple(point_folders(base, task, stage))
+    # THE RUNG'S POINTS (`transport.stages.rung_points`): a frame of the
+    # cited set and a voltage each, the frames the junction composed here.
+    points = tuple(point_folders(base, task, stage,
+                                 frames=composed.sorted.structure.n_frames))
     citation = task.slots["junction"]
 
     def provide_data(plan):
@@ -702,8 +708,9 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
                        if stage == "transmission" else job.resources))
     return Rung(struct=struct, render_kind="transport", configure=configure,
                 spec_extra=lambda element, cfg: {"state": state},
-                points=points, at_point=_at_bias, provide_data=provide_data,
-                job_facts=job_facts)
+                points=points, at_point=_at_point,
+                struct_at=lambda pt: _at_frame(struct, pt),
+                provide_data=provide_data, job_facts=job_facts)
 
 
 #: THE KINDS WITH STEPS OF THEIR OWN, keyed by ``(engine, kind)``, each with
@@ -1105,20 +1112,23 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             # swept rung, one in each point's folder, written at its point
             # and none at the stage level (`engines/transport.md` § 2a.11).
             spec = None
-            for _out, _volts in (list(rung.points) or [(_jdir, None)]):
+            for _out, _point in (list(rung.points) or [(_jdir, None)]):
                 plan.folder(_out)
-                _at = rung.at_point(cfg, _volts)
+                _at = rung.at_point(cfg, _point)
+                _struct = (rung.struct_at(_point)
+                           if rung.struct_at is not None
+                           and _point is not None else rung.struct)
                 with _user_error_as_prep():
                     with _calling("spec_for", engine=task.engine,
                                   where=script):
                         _spec = seam.spec_for(
-                            rung.struct, _at, names=_names,
+                            _struct, _at, names=_names,
                             calculation=rung.render_kind,
                             **rung.spec_extra(element, cfg),
                             # A TRIAL'S DECK NAMES ITS OWN LAUNCH (plan § 5w
                             # K12) -- the bench lane is SIESTA's alone.
                             **({"trial": _trial} if _trial else {}))
-                    _sc.prepare_deck(_spec, rung.struct, _at, _out / script,
+                    _sc.prepare_deck(_spec, _struct, _at, _out / script,
                                      log=log, dest_dir=base,
                                      findings=findings, plan=plan)
                 spec = spec or _spec
@@ -1133,8 +1143,12 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             # nothing would ever write to it again.  AND NAMED FOR ITS DECK
             # (`job-contracts.md` § 6.3: the trajectory log takes the deck's
             # basename): the element's label, the deck's own.
-            for _seed_dir in ([d for d, _ in rung.points] or [_jdir]):
-                _seed_trajectory_log(rung.struct, cfg, _seed_dir,
+            for _seed_dir, _point in (list(rung.points) or [(_jdir, None)]):
+                _seed_trajectory_log((rung.struct_at(_point)
+                                      if rung.struct_at is not None
+                                      and _point is not None
+                                      else rung.struct),
+                                     cfg, _seed_dir,
                                      engine=task.engine, names=_names,
                                      frame=spec.engine_frame,
                                      relaxes=(rung.render_kind
@@ -1244,17 +1258,17 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
         from .materialize import open_sweep_run
         sweep = open_sweep_run(js, base, stage, task, plan=plan,
                                shape=resolved.shape)
-        for pdir, _v in sweep.points:
+        for pdir, _point in sweep.points:
             _move_progress_channel_into(pdir, plan)
-        by_volts = {v: inputs for v, inputs in (gather or ())}
+        by_point = {pt: inputs for pt, inputs in (gather or ())}
         _gather_into(base, sweep.dir,
-                     list(dict.fromkeys(fi for inputs in by_volts.values()
+                     list(dict.fromkeys(fi for inputs in by_point.values()
                                         for fi in inputs
                                         if all(fi in other for other
-                                               in by_volts.values()))),
+                                               in by_point.values()))),
                      plan)
-        for pdir, v in sweep.points:
-            _gather_into(base, pdir, by_volts.get(v, []), plan)
+        for pdir, pt in sweep.points:
+            _gather_into(base, pdir, by_point.get(pt, []), plan)
         if opened is not None:
             opened.append(sweep)
     elif kind == "ladder" and stage:
@@ -1268,7 +1282,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             # what it continues from, beside its files (§ 1.6.3).
             _flat_continued_from(base, task, stage, continuation, plan)
         # A TRANSPORT RUNG'S GATHER, into the run it opened.
-        for _volts, inputs in (gather or ()):
+        for _point, inputs in (gather or ()):
             if reports:
                 _gather_into(base, Path(reports[0].dir), inputs, plan)
 
@@ -1343,9 +1357,9 @@ def _what_this_prep_takes(stage: str, continuation, gather) -> List[str]:
     if continuation is not None:
         out.append(f"`{stage}` "
                    + continuation.line(copied=continuation.carries or ()))
-    for volts, inputs in (gather or ()):
+    for point, inputs in (gather or ()):
         if inputs:
-            at = "" if volts is None else f" at {volts:g} V"
+            at = "" if point is None else f" at {point.words()}"
             out.append(f"`{stage}`{at} gathers "
                        + ", ".join(f"{fn} <- {src}" for src, fn in inputs))
     return out or [f"`{stage}` takes nothing from another run"]
@@ -1537,17 +1551,10 @@ def _transport_parts(task, stage: str, composed, config):
         # partition the NEGF block is built from.
         struct, label = composed.sorted.structure, task.label
         # A FRAME SET (`engines/transport.md` § 2a.9): the seed runs once,
-        # on frame 0; the device and the transmission run per frame, which
-        # is plan § 5z Q17-d -- until it is built they refuse a set of more
-        # than one frame by name, never running frame 0 alone.
-        if struct.n_frames > 1:
-            if stage in ("device", "transmission"):
-                raise PrepError(
-                    f"the cited junction is a frame set of "
-                    f"{struct.n_frames} frames, and the {stage} runs per "
-                    f"frame -- not built yet (plan § 5z Q17-d).  Its seed "
-                    f"and both leads run on frame 0 now "
-                    f"(engines/transport.md 2a.9, 3.1).")
+        # on frame 0; the device and the transmission run per frame, each
+        # point's deck its frame (`_at_frame`).
+        from ..transport.stages import per_point_rungs
+        if struct.n_frames > 1 and stage not in per_point_rungs():
             struct = struct.frame_at(0)
 
     def labelled(cfg):
@@ -1605,6 +1612,21 @@ def _transport_rung(task, stage: str, composed, allocation, *,
     struct, configure, state = _transport_parts(task, stage, composed,
                                                 element.render_config())
     return struct, configure(element.render_config()), state, element
+
+
+def _at_frame(struct, point):
+    """The structure a point's deck describes: its frame of the cited set
+    (`engines/transport.md` § 2a.9), or the junction as it is for a point
+    with no frame level."""
+    return (struct.frame_at(point.frame)
+            if point is not None and point.frame is not None else struct)
+
+
+def _at_point(cfg, point):
+    """A transport deck's config at its point -- its voltage
+    (:func:`_at_bias`); a point with no voltage level runs at the 0 V
+    `resolve` laid on."""
+    return _at_bias(cfg, point.volts if point is not None else None)
 
 
 def _at_bias(cfg, volts):
@@ -1714,7 +1736,7 @@ def _transport_spec(task, stage: str, struct, config, state, volts=None, *,
 
 
 def transport_inputs(base_dir, task, stage: str, *, template_text,
-                     bias: Optional[float] = None) -> List[tuple]:
+                     point=None) -> List[tuple]:
     """What one attempt of ``stage`` takes from the runs upstream -- the
     § 4.2 DAG's inputs, the composite's other half of *"warm files are
     COPIED in at prep"*: ``[(source attempt, filename)]``, decided at
@@ -1741,9 +1763,8 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
     taken from where lands in ``.gathered-from`` beside the copies, so a
     result can always say which electrode run fed it.
     """
-    from ..transport.stages import (points_in, products_of, sweep_points,
-                                     stage_inputs)
-    from ..task import bias_token
+    from ..transport.stages import (frames_of, points_in, products_of,
+                                     rung_points, stage_inputs)
     from .continuation import done, usable
 
     base = Path(base_dir)
@@ -1757,10 +1778,11 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         home = stage_home(base, task, upstream)
         token, up_dir = home.token, home.dir
         current_deck = up_dir / _rf(task.label, ".fdf", token)
-        # A SWEPT UPSTREAM -- the device, for a swept transmission -- is ONE
-        # RUN taken whole: its newest run, every point done, the point at
-        # this voltage read (`engines/transport.md` § 2a.11).
-        up_points = sweep_points(task, upstream)
+        # AN UPSTREAM THAT RUNS PER POINT -- the device, for the
+        # transmission -- is ONE RUN taken whole: its newest run, every point
+        # done, the point this attempt is for read -- the same frame and the
+        # same voltage (`engines/transport.md` § 2a.11).
+        up_points = rung_points(task, upstream, frames=frames_of(base))
         # THE WAYS ON, by what the upstream rung's state says (§ 5.3: what
         # molbuilder prints, you can type): one not prepared is prepared and
         # launched; a prepared one is launched, or let finish, or -- to run
@@ -1794,8 +1816,9 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
             _names = RunNames.of(task.label, token, task.shape)
             _launch = launch_record(newest, _names)
             _prod = products_of(upstream, task.label, base_dir=base)
-            not_done = [f"{v:g} V ({why})"
-                        for p_, v in points_in(newest, task, upstream)
+            not_done = [f"{pt.words()} ({why})"
+                        for p_, pt in points_in(newest, task, upstream,
+                                                base=base)
                         for ok, why in [done(p_, _names, launch=_launch,
                                              products=_prod)]
                         if not ok]
@@ -1821,9 +1844,9 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
                     f"whose newest run"
                     + (f", {newest.relative_to(base)}," if newest else "")
                     + f" {why}.  {first}{q2}")
-        # WHERE THE FILE IS: the run -- or, for a swept upstream, its point
-        # at this voltage.
-        where = newest / bias_token(bias) if up_points else newest
+        # WHERE THE FILE IS: the run -- or, for an upstream that runs per
+        # point, its point at this one.
+        where = newest / point.rel if up_points else newest
         # THE SAME CALCULATION, not the same bytes.  A deck that renders
         # through the framework carries a generated-at timestamp and the
         # generator's git sha, and neither says anything about what the
@@ -1837,9 +1860,9 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
             composed = _composed_junction(base, task)
         now = _rung_deck_now(base, task, upstream, composed,
                              template_text=template_text,
-                             # THE UPSTREAM'S OWN AXIS (`sweep_points`): a
-                             # rung that does not sweep ran once, at 0 V.
-                             volts=(bias if up_points else None))
+                             # THE UPSTREAM'S OWN POINTS (`rung_points`): a
+                             # rung that runs once ran at 0 V, on frame 0.
+                             point=(point if up_points else None))
         ran = where / current_deck.name
         if not (ran.is_file()
                 and _sc.same_calculation(ran.read_text(), now)):
@@ -1894,7 +1917,7 @@ def _composed_junction(base, task):
 
 
 def _rung_deck_now(base, task, stage: str, composed, *, template_text,
-                   volts=None) -> str:
+                   point=None) -> str:
     """The deck ``stage`` renders NOW -- its text exactly as `prep task`
     writes it, from the current template, junction and the rung's run card
     (`_transport_rung`, `_transport_spec`, `script_emit.render_deck`).
@@ -1907,7 +1930,9 @@ def _rung_deck_now(base, task, stage: str, composed, *, template_text,
     struct, config, state, _element = _transport_rung(
         task, stage, composed, Resources(), template_text=template_text,
         pins=pins or None)
-    spec, cfg = _transport_spec(task, stage, struct, config, state, volts,
+    struct = _at_frame(struct, point)
+    spec, cfg = _transport_spec(task, stage, struct, config, state,
+                                point.volts if point is not None else None,
                                 base=base)
     with _user_error_as_prep():
         return _sc.render_deck(spec, struct, cfg, verbose=True,
@@ -1915,12 +1940,14 @@ def _rung_deck_now(base, task, stage: str, composed, *, template_text,
 
 
 def gather_sources(base_dir, task, stage: str, *, template_text: str
-                   ) -> List[Tuple[Optional[float], List[tuple]]]:
-    """What this rung takes from the runs upstream -- ``[(volts, [(source,
-    filename), ...]), ...]``: one entry, ``volts`` ``None``, for a rung that
-    does not sweep; one per voltage for a swept rung, each gathered against
-    **its own** voltage (the transmission at *v* reads the device's point at
-    *v*, never another's) (`engines/transport.md` § 2a.11).
+                   ) -> List[Tuple[Optional[object], List[tuple]]]:
+    """What this rung takes from the runs upstream -- ``[(point, [(source,
+    filename), ...]), ...]``: one entry, ``point`` ``None``, for a rung that
+    runs once; one per point for a rung that runs per point
+    (`transport.stages.rung_points`), each gathered against **its own**
+    point (the transmission at a frame and a voltage reads the device's
+    point at that frame and voltage, never another's)
+    (`engines/transport.md` § 2a.11).
 
     **Decided at prep's checkpoint 4a, with what every stage continues
     from** (`job-system.md` § 5.0; recorded as `.gathered-from`): refused
@@ -1929,11 +1956,12 @@ def gather_sources(base_dir, task, stage: str, *, template_text: str
     `prep_calculation` asked directly renders the decks without it: a deck
     is the reviewable artifact, whether or not the rungs before it have
     run."""
-    from ..transport.stages import sweep_points
+    from ..transport.stages import frames_of, rung_points
     base = Path(base_dir)
-    return [(volts, transport_inputs(base, task, stage, bias=volts,
-                                     template_text=template_text))
-            for volts in (sweep_points(task, stage) or (None,))]
+    return [(pt, transport_inputs(base, task, stage, point=pt,
+                                  template_text=template_text))
+            for pt in (rung_points(task, stage, frames=frames_of(base))
+                       or (None,))]
 
 
 def _merge_run_jobset(path: Path, new: JobSet,
@@ -2346,9 +2374,9 @@ class PrepAnswer:
                          "brought": list(a.brought), "copied": list(a.copied),
                          "continued_from": a.continued_from, "cold": a.cold}
                         if a is not None else None),
-            "points": [{"attempt": rel(att), "bias": v,
-                        "gathered": carried(got)}
-                       for att, v, got in self.points],
+            "points": [{"attempt": rel(att), "frame": pt.frame,
+                        "bias": pt.volts, "gathered": carried(got)}
+                       for att, pt, got in self.points],
             "gathered": carried(self.gathered),
             "resources": self.resources,
             "deck": self.deck,
@@ -2816,9 +2844,9 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 # A SWEPT RUNG'S RUN: each point, with what it gathered, as
                 # decided at 4a (`engines/transport.md` § 2a.11).
                 sweep = opened[0]
-                by_volts = {v: inputs for v, inputs in (gather or ())}
-                out.points = [(pdir, v, by_volts.get(v, []))
-                              for pdir, v in sweep.points]
+                by_point = {pt: inputs for pt, inputs in (gather or ())}
+                out.points = [(pdir, pt, by_point.get(pt, []))
+                              for pdir, pt in sweep.points]
                 # EVERY POINT LAUNCHES THE ONE JOB, with one shape: the
                 # first point says what it is (A13).
                 run_dir = sweep.points[0][0] if sweep.points else None
@@ -2898,8 +2926,10 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #     its launch, *prepared* -- the answer both doors show.
         # A TRANSPORT RUNG'S GATHER, as decided at 4a and copied: each file,
         # the run it came from, the point it was gathered at.
-        took = [{"file": fn, "from": src, "volts": volts}
-                for volts, inputs in (gather or ())
+        took = [{"file": fn, "from": src,
+                 "frame": point.frame if point is not None else None,
+                 "volts": point.volts if point is not None else None}
+                for point, inputs in (gather or ())
                 for src, fn in inputs]
         if kind == "task":
             if continuation is not None:

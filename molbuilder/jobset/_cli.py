@@ -1372,10 +1372,9 @@ def _echo_prep_answer(ans, base, *, group=None, last: bool = True) -> None:
         if ans.continuation is not None:
             click.echo("  " + ans.continuation.line())
     elif ans.points:
-        from ..task import bias_token as _bias_token
-        for att, v, got in ans.points:
-            at = f" @ {_bias_token(v)}" if v is not None else ""
-            click.echo(f"prepared {stage}{at}: {Path(att).relative_to(base)}")
+        for att, pt, got in ans.points:
+            click.echo(f"prepared {stage} @ {pt.rel}: "
+                       f"{Path(att).relative_to(base)}")
             for src, fn in got:
                 click.echo(f"  gathered: {fn} <- {src}")
         next_line = ("next -- one job walks the points in order:\n"

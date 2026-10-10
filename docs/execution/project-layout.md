@@ -821,8 +821,8 @@ can spend a week computing from a geometry you would have rejected in a minute.
 `attempt_dir`); a **try** is one start of the wrapper inside it, which every
 file of it carries as `-run<N>`. A bias sweep's run holds a folder per point,
 and each point folder holds that point's tries (`transport.md` § 2a.11). A
-frame set's frames are a level above the voltages — `run-<n>/f000/v0.2/` —
-designed, not built (plan § 5z, Q17-d).*
+frame set's frames are a level above the voltages — `run-<n>/f000/v0.2/`,
+a level for each axis that varies (`transport.md` § 2a.11).*
 
 | | a run (`attempt` in the code) | a try |
 |---|---|---|
@@ -2739,8 +2739,8 @@ benchmark's alone:
 | `bench-result.json` | every trial's timing and the winner — the benchmark's archival trace | `jobset summarize` (`run_summarize_jobset`) | none | record |
 <!-- /manifest -->
 
-A grouped launch — a benchmark's trials, a bias sweep's points, or a task's
-stages sharing one job, in order — keeps its machinery in a `launch/` folder:
+A grouped launch — a benchmark's trials, a swept rung's points (each a frame
+and a voltage, `transport.md` § 2a.11), or a task's stages sharing one job, in order — keeps its machinery in a `launch/` folder:
 `<stage>/launch/` for a sweep (its walk beside its `.log`), the container's
 `launch/` for a group of stages, and the benchmark's container for its trials;
 `run.json`'s command names the walk relative to that folder:
@@ -2748,7 +2748,7 @@ stages sharing one job, in order — keeps its machinery in a `launch/` folder:
 <!-- manifest:launch -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a bias sweep's points, or a task's stages sharing one job, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
+| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a swept rung's points, or a task's stages sharing one job, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
 | `<group>.sbatch` — only: launched to a queue | its queue header | launch (`jobset/submit.py`), written again at each launch -- a task's group's by its prep (`prep.prep_group`), and by launch only for stages first named together there | none | derived |
 | `<group>.log` | every member's output, in order | the group's sequencer, as it runs | none | record |
 <!-- /manifest -->

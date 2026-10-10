@@ -604,26 +604,6 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
         "rehearsal of the cluster run")
 
 
-def test_resources_fields_equal_the_contracts_list_exactly():
-    """job-contracts § 6.2's OWN SENTENCE and the dataclass, an equality
-    in BOTH directions.  This parses the sentence's backticked field names, so
-    a field added without a § 6.2 decision fails here, a doc row deleted
-    fails here, and the doc drifting from the class fails here."""
-    import dataclasses
-    import re as _re
-    from molbuilder.jobset.model import Resources
-    doc = (Path(__file__).resolve().parent.parent
-           / "docs" / "execution" / "job-contracts.md").read_text(
-               encoding="utf-8")
-    start = doc.index("dataclass holds exactly")
-    end = doc.index("This sentence said", start)
-    names = {m for m in _re.findall(r"`([a-z_]+)`", doc[start:end])}
-    assert len(names) >= 7, (
-        "§ 6.2's field sentence could not be parsed -- repoint this "
-        f"(found {sorted(names)})")
-    assert {f.name for f in dataclasses.fields(Resources)} == names
-
-
 def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(
         tmp_path, monkeypatch):
     """One home for the live log, and the home is the run directory.

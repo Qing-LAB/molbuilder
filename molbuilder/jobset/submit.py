@@ -47,7 +47,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 # The record's one spelling for a wall, written in ONE place.  A second
 # formatter here would be a second answer to "what does a walltime look
@@ -1084,13 +1084,13 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
 
 
 def _a_sweep(jobset: JobSet, base: Path, stage: str):
-    """The description, when ``stage`` is a swept transport rung
-    (`transport.stages.sweep_points`) -- launched as ONE job walking its
-    run's points -- else ``None``."""
+    """The description, when ``stage`` is a transport rung that runs per
+    point (`transport.stages.rung_points`: a frame and a voltage each) --
+    launched as ONE job walking its run's points -- else ``None``."""
     if jobset.kind != "ladder":
         return None
     from ..task import FILENAME, read_task
-    from ..transport.stages import sweep_points
+    from ..transport.stages import frames_of, rung_points
     desc = base / FILENAME
     if not desc.is_file():
         return None
@@ -1098,7 +1098,8 @@ def _a_sweep(jobset: JobSet, base: Path, stage: str):
         task = read_task(desc)
     except Exception as exc:                                  # noqa: BLE001
         raise SubmitError(f"{desc}: {exc}") from None
-    if task.calculation != "transport" or not sweep_points(task, stage):
+    if task.calculation != "transport" or not rung_points(
+            task, stage, frames=frames_of(base)):
         return None
     return task
 
@@ -1626,7 +1627,8 @@ def submitted_cap_notes(plans) -> List[str]:
 def _walk_script(name: str, steps, *, where: str, log: str,
                  member_word: str = "trial",
                  bound_s: Optional[int] = None,
-                 stop_on_failure: bool = False) -> str:
+                 stop_on_failure: bool = False,
+                 chains: Optional[List[Any]] = None) -> str:
     """THE ONE WALK SCRIPT -- what runs several members one after another in
     one submission: a benchmark's trials (a shelf sent to a queue, or its
     unlaunched trials run here, `generator.md` § 4.3a), a group's stages
@@ -1638,8 +1640,11 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     for every other walk.  ``bound_s`` is a per-member bound, a member past
     it killed and read incomplete (a benchmark's).  A member that fails
     leaves the rest to run, and the walk exits nonzero when any failed --
-    unless ``stop_on_failure`` (a device sweep: the points after a failed
-    one would start from it), when the walk stops there.  Stopped by the
+    unless ``stop_on_failure`` (a device's points: the ones after a failed
+    one would start from it), when the members after it IN ITS CHAIN are not
+    run -- ``chains`` names each step's chain (a device point's frame,
+    `engines/transport.md` § 2a.9), one chain when none is named -- and the
+    walk goes on with the other chains.  Stopped by the
     person (Ctrl-C, a lost terminal, a cancel), it starts no further member.
     THE TWO-LAYER MODEL HOLDS (`job-system.md` § 6): this file orders, copies
     the starts and bounds; each member's own ``.run.sh`` activates its
@@ -1662,6 +1667,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         'alloc_ntasks=${SLURM_NTASKS:-unset} '
         'alloc_cpus=${SLURM_CPUS_PER_TASK:-unset}" >> "$LOG"',
         "fails=0",
+        *[f"_chain_{i}=0" for i in range(len(dict.fromkeys(chains or [None])))],
         # STOPPED BY THE PERSON -- Ctrl-C, a lost terminal, a scancel --
         # the walk starts no further member (bash runs this after the
         # running member returns; one under a per-member bound ends at it).
@@ -1691,23 +1697,32 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         "}",
     ]
     import shlex as _shlex
-    for member, folder, run_sh, args, before in steps:
+    chain_of = {c: i for i, c in enumerate(dict.fromkeys(chains or [None]))}
+    for k, (member, folder, run_sh, args, before) in enumerate(steps):
+        body = []
         for src, dst in before:
             # ITS START, copied just before it runs (`along`): from a point
             # done before it, which may be one this very walk finished.
-            lines.append(f'cp -f {_shlex.quote(src)} {_shlex.quote(dst)}/ '
-                         f'&& echo "[group] {member}: starts from {src}" '
-                         f'>> "$LOG"')
+            body.append(f'cp -f {_shlex.quote(src)} {_shlex.quote(dst)}/ '
+                        f'&& echo "[group] {member}: starts from {src}" '
+                        f'>> "$LOG"')
         call = (f'run_trial "{member}" "{folder}" "{run_sh}"'
                 + (f" {args}" if args else ""))
-        if stop_on_failure:
-            # THE POINTS AFTER IT WOULD START FROM IT: the walk stops.
-            call += (f' || {{ echo "[group] {when} stopped at {member} -- '
-                     'the members after it would start from it; done '
-                     'fails=${fails}" >> "$LOG"; exit 1; }')
-        else:
-            call += " || true"
-        lines.append(call)
+        if not stop_on_failure:
+            lines += body + [call + " || true"]
+            continue
+        # THE POINTS AFTER IT IN ITS CHAIN WOULD START FROM IT: they are not
+        # run, and the walk goes on with the other chains.
+        flag = f"_chain_{chain_of[chains[k] if chains else None]}"
+        call += (f' || {{ echo "[group] {when} {member} failed -- the '
+                 f'members after it in its chain would start from it, so '
+                 f'they are not run" >> "$LOG"; {flag}=1; }}')
+        lines += [f'if [ "${{{flag}}}" -eq 0 ]; then', *[f"    {b}" for b in body],
+                  f"    {call}",
+                  "else",
+                  f'    echo "[group] {when} {member} not run -- its chain '
+                  f'stopped at a failed member" >> "$LOG"',
+                  "fi"]
     lines += [f'echo "[group] {when} done fails=${{fails}}" >> "$LOG"',
               "exit $(( fails > 0 ))", ""]
     return "\n".join(lines)
@@ -1955,15 +1970,17 @@ def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     gathered (never gathered again), and, *warm*, takes over each point done
     there (its files copied, its `.continued-from` naming the run it came
     from) and walks the rest; ``cold``, it walks every point.  Each walked
-    point starts from the point before it in bias order -- the files the
-    calculation's `along` row names and the rung itself declares (a device's
-    `.TSDE`), copied just before it runs -- or, the first, from its own
-    gathered inputs.  A rung that hands nothing forward (the transmission)
-    walks on past a point that fails; one that does stops there.  The walk is
+    point starts from the point before it IN ITS FRAME, in bias order -- the
+    files the calculation's `along` row names and the rung itself declares (a
+    device's `.TSDE`), copied just before it runs -- or, a frame's first,
+    from its own gathered inputs: frames never start from one another
+    (`engines/transport.md` § 2a.9 *Both axes*).  A rung that hands nothing
+    forward (the transmission) walks on past a point that fails; one that
+    does ends that frame's chain there, and the walk goes on to the next
+    frame.  The walk is
     the one walk script (:func:`_walk_script`); the request is the sum of the
     walked points' walls (`group.envelope`)."""
     from ..runrecord import launch_record, next_run, write_continued_from
-    from ..task import bias_token
     from ..transport.stages import products_of
     from ..warmfiles import warm_list
     from .continuation import done
@@ -1991,7 +2008,7 @@ def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
         _refuse_cold_first(job, cold, base)
         run = latest
         from ..transport.stages import points_in
-        points = points_in(run, task, stage)
+        points = points_in(run, task, stage, base=base)
     else:
         prev = latest
         sweep = open_sweep_run(jobset, base, stage, task, plan=plan.writes,
@@ -2021,14 +2038,14 @@ def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
             if f"{task.label}{suf}" in own]
     taken, walked = [], []
     prev_launch = launch_record(prev, names) if prev is not None else None
-    for pdir, v in points:
+    for pdir, pt in points:
         if prev is not None and not cold:
-            src = prev / pdir.name
+            src = prev / pt.rel
             ok, _why = done(src, names, launch=prev_launch, products=products)
             if ok:
-                taken.append((pdir, v, src))
+                taken.append((pdir, pt, src))
                 continue
-        walked.append((pdir, v))
+        walked.append((pdir, pt))
     if not walked:
         raise SubmitError(
             f"{stage}: every point of {prev.relative_to(base)} is done, so a "
@@ -2055,37 +2072,42 @@ def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                   else str(src.relative_to(base)))
         write_continued_from(pdir, origin, names=names,
                              run=FIRST_ATTEMPT, plan=plan.writes)
-    # THE WALK: each point in bias order, its start the point before it.
-    by_v = [v for _p, v in points]
-    folder = {v: p_ for p_, v in points}
-    steps, said = [], []
-    for pdir, v in walked:
-        k = by_v.index(v)
-        before = ([(f"{run.name}/{folder[by_v[k - 1]].name}/{f}",
-                    f"{run.name}/{pdir.name}") for f in hand]
-                  if hand and k > 0 else [])
+    # THE WALK: each frame's voltages in bias order, a point's start the
+    # point before it in ITS frame (`engines/transport.md` § 2a.9).
+    order = [pt for _p, pt in points]
+
+    def _before(pt):
+        mine = [q for q in order if q.frame == pt.frame]
+        k = mine.index(pt)
+        return mine[k - 1] if k > 0 else None
+    steps, said, chains = [], [], []
+    for pdir, pt in walked:
+        prior = _before(pt)
+        before = ([(f"{run.name}/{prior.rel}/{f}", f"{run.name}/{pt.rel}")
+                   for f in hand] if hand and prior is not None else [])
         try:
-            check_launch_matches_deck(stage_dir / pdir.name, job)
+            check_launch_matches_deck(stage_dir / pt.rel, job)
         except DeckLaunchMismatch as e:
             raise SubmitError(str(e)) from e
         tries = next_run(pdir, names)
-        steps.append((f"{stage}@{bias_token(v)}",
-                      f"{run.name}/{pdir.name}", names.name(".run.sh"),
+        steps.append((f"{stage}@{pt.rel}",
+                      f"{run.name}/{pt.rel}", names.name(".run.sh"),
                       " ".join(_run_sh_args(job.resources, tries)), before))
+        chains.append(pt.frame)
         if before:
             # ITS START, decided now and written beside it: the record says
             # what each point started from (`engines/transport.md` § 2a.11).
             write_continued_from(
-                pdir, str((run / folder[by_v[k - 1]].name).relative_to(base)),
+                pdir, str((run / prior.rel).relative_to(base)),
                 names=names, run=tries, plan=plan.writes)
-        said.append(f"{v:g} V" + (f" (from {by_v[k - 1]:g} V's "
+        said.append(pt.words() + (f" (from {prior.words()}'s "
                                   f"{', '.join(hand)})" if before else ""))
-        plan.reads += [_as_found(stage_dir / pdir.name / f, base)
+        plan.reads += [_as_found(stage_dir / pt.rel / f, base)
                        for f in (job.script, names.name(".run.sh"))]
-    walk = ((f"takes over {', '.join(f'{v:g} V' for _p, v, _s in taken)} "
+    walk = ((f"takes over {', '.join(pt.words() for _p, pt, _s in taken)} "
              f"done in {prev.name}; " if taken else "")
             + f"runs {', '.join(said)}")
-    member = _Member(job, stage_dir, run, True, stage_dir / walked[0][0].name,
+    member = _Member(job, stage_dir, run, True, stage_dir / walked[0][1].rel,
                      names=names, run=FIRST_ATTEMPT, label=stage,
                      base=base, again=prev is not None, cold=cold,
                      walk=walk)
@@ -2094,7 +2116,7 @@ def _plan_sweep(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
     script = _walk_script(
         gn.stem, steps, where=f"{stage}'s sweep, {run.name}", member_word="point",
         log=f"{LAUNCH_DIR}/{gn.name('.log')}",
-        stop_on_failure=bool(hand))
+        stop_on_failure=bool(hand), chains=chains)
     if mode != "ask":
         open_container(base, launch_dir, plan.writes)
         plan.writes.text(launch_dir / gn.name(".run.sh"), script)
@@ -2148,12 +2170,12 @@ def _carry_sweep_gather(prev_run: Path, run: Path, points, writes,
     if shared:
         write_gathered_from(run, [(g["from"], g["file"]) for g in shared],
                             plan=writes)
-    for pdir, _v in points:
-        mine = read_gathered_from(prev_run / pdir.name)
+    for pdir, pt in points:
+        mine = read_gathered_from(prev_run / pt.rel)
         for g in mine:
             from_run = any(x["file"] == g["file"] and x["from"] == g["from"]
                            for x in shared)
-            writes.copy((prev_run if from_run else prev_run / pdir.name)
+            writes.copy((prev_run if from_run else prev_run / pt.rel)
                         / g["file"], pdir / g["file"])
         if mine:
             write_gathered_from(pdir, [(g["from"], g["file"]) for g in mine],

@@ -208,7 +208,7 @@ MISSING = ("missing", "the job set names this run's folder; it is not on "
                       "disk", None)
 
 
-def point_rows(run, names, task, stage: str, *, launch, products):
+def point_rows(run, names, task, stage: str, *, launch, products, base):
     """A SWEPT RUN'S POINTS AS `status` READS THEM -- `StageStatus.points`'
     rows for ``run``: the folder each ran in, whether it is done, what it
     started from (its `.continued-from`) and what it alone took (its
@@ -223,7 +223,7 @@ def point_rows(run, names, task, stage: str, *, launch, products):
     from ..runrecord import read_continued_from
     gathered = _gathered_lines(run)
     pts, running = [], False
-    for pdir, v in points_in(run, task, stage):
+    for pdir, pt in points_in(run, task, stage, base=base):
         ok, why = done(pdir, names, launch=launch, products=products)
         if not ok and pdir.is_dir():
             running = running or run_status(pdir, names.stem,
@@ -231,7 +231,8 @@ def point_rows(run, names, task, stage: str, *, launch, products):
         src = (read_continued_from(pdir, names, 0) if pdir.is_dir()
                else None)
         took = [g for g in _gathered_lines(pdir) if g not in gathered]
-        pts.append({"bias_v": v, "folder": f"{run.name}/{pdir.name}",
+        pts.append({"frame": pt.frame, "bias_v": pt.bias_v,
+                    "point": pt.words(), "folder": f"{run.name}/{pt.rel}",
                     "done": ok, "why": why, "started_from": src,
                     "took": took})
     return pts, running
@@ -257,11 +258,12 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
         folders: List[tuple] = []
         if getattr(task, "calculation", None) == "transport":
             from ..transport.stages import points_in
-            folders = [(p, v) for p, v in points_in(run_dir, task, st.ref.name)
+            folders = [(p, pt) for p, pt in points_in(run_dir, task,
+                                                      st.ref.name, base=root)
                        if p.is_dir()]
         if not folders:
             folders = [(run_dir, None)]
-        for folder, volts in folders:
+        for folder, pt in folders:
             run = run_of(folder)
             if run is None or run.stage is None:
                 continue
@@ -280,7 +282,8 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
                              if opens else None)
             rows.append({
                 "run": attempt_name(n),
-                "point": volts,
+                "point": pt.bias_v if pt is not None else None,
+                "frame": pt.frame if pt is not None else None,
                 "dir": str(folder.relative_to(root)),
                 "state": got.state,
                 "detail": got.detail,
@@ -351,11 +354,9 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
     when nothing has run yet, else ``failed`` -- and its points, each done
     or not done and what it started from.  ``None`` for a rung that does
     not sweep."""
-    from ..transport.stages import points_in, products_of, sweep_points
-    from ..warmfiles import warm_list
-    from ..parse.dirs import run_status
-    from .continuation import done
-    if task is None or not sweep_points(task, job.name):
+    from ..transport.stages import frames_of, products_of, rung_points
+    if task is None or not rung_points(task, job.name,
+                                       frames=frames_of(base)):
         return None
     run = latest_attempt(d)
     if run is None:
@@ -367,10 +368,17 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
         return StageStatus(ref=ref, dir=d.name, state="unreadable",
                            detail=str(e), attempt=run.name)
     products = products_of(job.name, task.label, base_dir=base)
-    pts, running = point_rows(run, names, task, job.name, launch=launch,
+    pts, running = point_rows(run, names, task, job.name, base=base,
+                              launch=launch,
                               products=products)
     n_done = sum(p["done"] for p in pts)
-    summary = f"{n_done} of {len(pts)} points done"
+    # THE COUNT AND ITS AXES, in full every time (`engines/transport.md`
+    # § 2a.11): *k of N points done (F frames × V voltages)*.
+    n_frames = len({p["frame"] for p in pts})
+    n_volts = len({p["bias_v"] for p in pts})
+    summary = (f"{n_done} of {len(pts)} points done ({n_frames} "
+               f"frame{'' if n_frames == 1 else 's'} × {n_volts} "
+               f"voltage{'' if n_volts == 1 else 's'})")
     # CONVERGED, in its own column (`job-system.md`, rule 4): every point
     # done says yes for a rung with an SCF (`STAGE_FACT`: the transmission
     # converges nothing); a point that finished without converging says NO;
@@ -394,7 +402,7 @@ def _sweep_status(base: Path, jobset: JobSet, job, task, *, d: Path,
     else:
         first = next(p for p in pts if not p["done"])
         state = "failed"
-        detail = f"{summary}; {first['bias_v']:g} V: {first['why']}"
+        detail = f"{summary}; {first['point']}: {first['why']}"
     return StageStatus(
         ref=ref, dir=d.name, state=state, detail=detail,
         converged=converged,
@@ -632,12 +640,14 @@ def _sweep_took_over(s: StageStatus) -> str:
     taken over from an earlier run, named by that run; a run that took none
     over walked every point (the first launch, or ``--cold``)."""
     here = f"{s.dir}/{s.attempt}/"
-    taken = [(p["bias_v"], p["started_from"]) for p in s.points
+    taken = [(p["point"], p["started_from"]) for p in s.points
              if p.get("started_from") and not p["started_from"].startswith(here)]
     if not taken:
         return "nothing taken over -- every point walked"
-    runs = sorted({src.rsplit("/", 1)[0] for _v, src in taken})
-    return (", ".join(f"{v:g} V" for v, _s in taken) + " taken over from "
+    # THE RUN a point was taken over from: `<stage>/run-<n>`, the folders
+    # below it its point's levels.
+    runs = sorted({"/".join(src.split("/")[:2]) for _w, src in taken})
+    return (", ".join(w for w, _s in taken) + " taken over from "
             + ", ".join(runs) + "; the rest walked")
 
 

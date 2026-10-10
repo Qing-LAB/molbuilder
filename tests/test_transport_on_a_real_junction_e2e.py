@@ -23,8 +23,11 @@ them; the seed and both leads prepared and launched as one group; the
 device's two-point self-consistent sweep launched, launched again warm
 (refused: every point is done), and cold; the transmission over the device's
 newest run; the record.  And the relaxation saved as a structure pair
-(`molbuilder xv2xyz --from-run`), cited by a second transport calculation,
-its seed and leads prepared from the pair.
+(`molbuilder xv2xyz --from-run`), a frame set of three written from it by a
+script through the structure's API (frame 0 the pair, the bridge moved
++/-0.02 A along z in frames 1 and 2), and a second transport calculation
+citing the set, its two-point self-consistent sweep at every frame: a point
+per frame and voltage.
 
 THE TRANSPORT RUNS RESTRICTED because a polarized moment that floats, as
 every transport rung's does, starts each atom at its full moment, aligned
@@ -87,6 +90,11 @@ _BIAS = (0.0, 0.2)
 #: stage's value is told apart; electrode_R sets none and runs the
 #: template's, the cited run's (`engines/transport.md` § 2a.13, § 3.8.2a).
 _OWN_MIXING = {"seed": 0.12, "electrode_L": 0.15, "device": 0.08}
+
+#: The frame set the second calculation cites: frame 0 the relaxed pair, the
+#: bridge moved along z by these in the frames after it -- the electrodes
+#: held where frame 0 has them (`engines/transport.md` § 2a.9).
+_FRAME_SHIFTS_ANG = (0.0, 0.02, -0.02)
 
 
 def _junction() -> dict:
@@ -274,13 +282,30 @@ def junction(tmp_path_factory):
                "transmission", "--mode", "direct", "--yes")
         _taken(run, "summarize", "summarize", "task")
 
-        # THE PAIR CITED -- a second transport calculation, its
+        # THE FRAME SET, written from the pair by a script through the
+        # structure's own doors (`Structure.with_frames`, the codec).
+        from molbuilder.transport.sort import REGION_BRIDGE
+        from molbuilder.workingcopy_structure import StructureCodec
+        base_pair = StructureCodec().load(tree / pair)
+        bridge = base_pair.regions[REGION_BRIDGE]
+        frames = []
+        for dz in _FRAME_SHIFTS_ANG:
+            pos = np.asarray(base_pair.positions, dtype=float).copy()
+            pos[bridge, 2] += dz
+            frames.append(pos)
+        frame_set = "P/structure/frames.xyz"
+        StructureCodec().write(base_pair.with_frames(np.stack(frames)),
+                               tree / frame_set)
+
+        # THE SET CITED -- a second transport calculation, its
         # pseudopotentials from the library, its spin restricted as the
-        # first's; its seed and both leads prepared from the pair.
+        # first's; the whole ladder, a point per frame and voltage.
         r = jobset("init", "--calculation", "transport", "--engine", "siesta",
                    "--shape", "hierarchical", "--bundle", "P/transport/F",
-                   "--slot", f"junction={pair}",
-                   "--psml-lib", "pseudopotential")
+                   "--slot", f"junction={frame_set}",
+                   "--psml-lib", "pseudopotential",
+                   "--bias", ",".join(f"{v:g}" for v in _BIAS),
+                   "--no-low-bias-approximation")
         assert r.exit_code == 0, r.output
         from_pair = RealRun(tree=tree, bundle=tree / "P" / "transport" / "F")
         _run_card(from_pair.bundle)
@@ -289,6 +314,18 @@ def junction(tmp_path_factory):
                            "spin_treatment", "restricted")
         _taken(from_pair, "prep seed and leads", "prep", "task", *leads,
                "--target", "this")
+        _taken(from_pair, "launch seed and leads", "launch", "task", *leads,
+               "--mode", "direct", "--yes")
+        _taken(from_pair, "prep device", "prep", "task", "--stage", "device",
+               "--target", "this")
+        _taken(from_pair, "launch device", "launch", "task", "--stage",
+               "device", "--mode", "direct", "--yes")
+        _taken(from_pair, "status device", "status", "device")
+        _taken(from_pair, "prep transmission", "prep", "task", "--stage",
+               "transmission", "--target", "this")
+        _taken(from_pair, "launch transmission", "launch", "task", "--stage",
+               "transmission", "--mode", "direct", "--yes")
+        run.frame_set = frame_set
         run.cite = cite
         run.cited_before = cited_before
         run.relax = relax
@@ -395,13 +432,13 @@ def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
 def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
         junction):
     """§ 3.1: a structure pair saved from a finished relaxation -- here by
-    `molbuilder xv2xyz --from-run`, as the Results tab exports one -- is a
-    citation, and its record defaults the transport template exactly as the
-    run it was saved from does: one reader of the recorded contract
-    (`parse.contract.contract_of`), so the two kinds cannot default a
-    template differently.  Its pseudopotentials come from the library named
-    at init, the person's; its record names its kind and frame count, and
-    its seed and both leads prepared from it."""
+    `molbuilder xv2xyz --from-run`, as the Results tab exports one, and a
+    frame set written from it -- is a citation, and its record defaults the
+    transport template exactly as the run it was saved from does: one reader
+    of the recorded contract (`parse.contract.contract_of`), so the two kinds
+    cannot default a template differently.  Its pseudopotentials come from
+    the library named at init, the person's; its record names its kind and
+    frame count."""
     from molbuilder.template import one, read_template, select
     from molbuilder.transport.compose import load_compose_record
     by_run = read_template(junction.template_at_init)
@@ -414,11 +451,11 @@ def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
     psml = one(by_pair, "psml_lib")
     assert (psml.value, psml.source) == ("pseudopotential", "person")
     record = load_compose_record(junction.from_pair.bundle,
-                                 citation=junction.pair,
+                                 citation=junction.frame_set,
                                  tree_root=junction.tree)
     assert record is not None
     assert (record.provenance["kind"], record.provenance["frames"]) == (
-        "pair", 1)
+        "pair", len(_FRAME_SHIFTS_ANG))
 
 
 def _prepared_decks(run, stage):
@@ -530,6 +567,103 @@ def test_the_transmission_takes_the_devices_newest_run_whole(junction):
     _said(junction, "prep transmission", "04_device/run-1")
     for v in _BIAS:
         assert (_point(junction, "05_transmission", 0, v)).is_dir(), v
+
+
+# --------------------------------------------------------------------- #
+#  A frame set -- a point per frame and voltage (§ 2a.9, § 2a.11)        #
+# --------------------------------------------------------------------- #
+
+def _frame_point(run, rung, f, v):
+    from molbuilder.transport.stages import Point
+    return run.bundle / rung / "run-0" / Point(frame=f, volts=v).rel
+
+
+def _the_geometry_it_ran(point):
+    """The first geometry step of the run in ``point``, read as the Results
+    tab reads a run: the file that holds its result (`runs.openable`),
+    parsed by the registry."""
+    from molbuilder.parse import detect
+    from molbuilder.runs import openable
+    output, trail = openable(point)
+    assert output is not None, trail
+    steps = [fr for fr in detect(output).parse(str(output)).frames
+             if fr.structure is not None]
+    return np.asarray(steps[0].structure.positions, dtype=float)
+
+
+def test_a_frame_sets_device_runs_a_point_per_frame_and_voltage(junction):
+    """§ 2a.11's frame axis: the device's one run holds a level for each axis
+    that varies -- a frame folder, a voltage folder in it -- each point
+    holding what the rungs downstream take from it, computed on ITS frame's
+    geometry; `status` counts the points with their axes, *k of N points
+    done (F frames × V voltages)*."""
+    from molbuilder.task import read_task
+    from molbuilder.transport.sort import REGION_BRIDGE
+    from molbuilder.workingcopy_structure import StructureCodec
+    run = junction.from_pair
+    label = read_task(run.bundle / "task.json").label
+    for f in range(len(_FRAME_SHIFTS_ANG)):
+        for v in _BIAS:
+            p = _frame_point(run, "04_device", f, v)
+            for suffix in (".TS.HSX", ".TSDE"):
+                assert (p / f"{label}{suffix}").is_file(), (p, suffix)
+    # Against frame 0's point at the same voltage, a frame's point has the
+    # bridge moved by the frame's shift along z and nothing else moved.
+    n_bridge = len(StructureCodec().load(run.tree / junction.frame_set)
+                   .regions[REGION_BRIDGE])
+    for v in _BIAS:
+        at_0 = _the_geometry_it_ran(_frame_point(run, "04_device", 0, v))
+        for f in range(1, len(_FRAME_SHIFTS_ANG)):
+            moved = (_the_geometry_it_ran(_frame_point(run, "04_device", f, v))
+                     - at_0)
+            shift = _FRAME_SHIFTS_ANG[f] - _FRAME_SHIFTS_ANG[0]
+            assert np.allclose(moved[:, :2], 0.0, atol=1e-4), (f, v)
+            assert np.isclose(moved[:, 2], shift, atol=1e-4).sum() == n_bridge
+            assert (np.isclose(moved[:, 2], 0.0, atol=1e-4).sum()
+                    == len(moved) - n_bridge), (f, v, moved[:, 2])
+    n = len(_FRAME_SHIFTS_ANG) * len(_BIAS)
+    _said(run, "status device",
+          f"{n} of {n} points done ({len(_FRAME_SHIFTS_ANG)} frames × "
+          f"{len(_BIAS)} voltages)")
+
+
+def test_each_frame_starts_from_the_seed_and_its_voltages_chain_in_it(
+        junction):
+    """§ 2a.9 *Both axes*: frames are independent -- each frame's first
+    voltage starts from what the run gathered, the seed's density (its own
+    `.gathered-from`, no `.continued-from`) -- and within a frame each next
+    voltage starts from the converged point before it in THAT frame (its
+    `.continued-from`)."""
+    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.runfiles import RunNames
+    from molbuilder.runrecord import read_continued_from, read_gathered_from
+    from molbuilder.task import read_task
+    run = junction.from_pair
+    task = read_task(run.bundle / "task.json")
+    names = RunNames.of(task.label, stage_home(run.bundle, task,
+                                               "device").token, task.shape)
+    for f in range(len(_FRAME_SHIFTS_ANG)):
+        first = _frame_point(run, "04_device", f, _BIAS[0])
+        assert read_continued_from(first, names, 0) is None, first
+        assert any(g["from"] == "01_seed/run-0"
+                   for g in read_gathered_from(first)), first
+        nxt = _frame_point(run, "04_device", f, _BIAS[1])
+        assert read_continued_from(nxt, names, 0) == str(
+            first.relative_to(run.bundle)), nxt
+
+
+def test_a_transmission_point_reads_the_device_at_its_frame_and_voltage(
+        junction):
+    """§ 2a.11: each transmission point gathers the device's Hamiltonian of
+    the same frame and the same voltage, never another's."""
+    from molbuilder.runrecord import read_gathered_from
+    run = junction.from_pair
+    for f in range(len(_FRAME_SHIFTS_ANG)):
+        for v in _BIAS:
+            got = read_gathered_from(_frame_point(run, "05_transmission", f, v))
+            hsx = [g["from"] for g in got if g["file"].endswith(".TS.HSX")]
+            assert hsx == [str(_frame_point(run, "04_device", f, v)
+                               .relative_to(run.bundle))], (f, v, got)
 
 
 # --------------------------------------------------------------------- #

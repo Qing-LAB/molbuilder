@@ -102,7 +102,7 @@ def _takes_lines(got) -> List[str]:
     file each point takes from its own point of one run names that run and
     the count."""
     srcs: Dict[str, List[str]] = {}
-    for _v, inputs in got:
+    for _point, inputs in got:
         for src, fn in inputs:
             if src not in srcs.setdefault(fn, []):
                 srcs[fn].append(src)
@@ -111,7 +111,9 @@ def _takes_lines(got) -> List[str]:
         if len(where) == 1:
             out.append(f"{fn} <- {where[0]}")
             continue
-        runs = {w.rsplit("/", 1)[0] for w in where}
+        # THE RUN a point lies in: `<stage>/run-<n>`, the folders below it
+        # its point's levels (a frame, a voltage).
+        runs = {"/".join(w.split("/")[:2]) for w in where}
         out.append(f"{fn} <- {runs.pop()} ({len(where)} points)"
                    if len(runs) == 1 else f"{fn} <- " + ", ".join(where))
     return out

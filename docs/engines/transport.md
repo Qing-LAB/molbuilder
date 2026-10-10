@@ -922,7 +922,7 @@ row below).*
 | **Class C ships per-stage defaults** | Each stage carries an opinionated profile rather than inheriting one shared set: a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike, and the electrode's dense transport-axis k is a default, not something a person should have to discover |
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
 | **Default grouping** | The preparatory block — seed and both leads — as one submission: `jobset prep task` offers the three pre-selected, since none builds on another, and they are prepared as one group (`--stage seed --stage electrode_L --stage electrode_R` without a terminal); `jobset launch task` sends it as one job ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6; [`execution/job-system.md`](?doc=execution/job-system.md), *The task*). Then the device; then the transmission, each scan one job walking its points. The device and the transmission never share a job: the transmission builds on the device, which you look at first |
-| **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). The voltage axis is built (§ 2a.11); a frame set is cited (§ 3.1, Q17-c); its points, record and Results are plan § 5z, Q17-d … Q17-f |
+| **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). Both axes are built (§ 2a.11): a frame set is cited (§ 3.1, Q17-c) and its points run (Q17-d); its record's average and its Results are plan § 5z, Q17-e … Q17-f |
 | **The bias treatment is an exposed choice** | `low_bias_approximation`, true or false, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
 | **Automatic resubmission is deferred, and load-bearing on nothing** | The stages, their decks, the parameter map and the directory structure are identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing here waits on it. When built, the monitor is its home — it already watches a run to its end. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
 | **Net charge and gating are deferred** | Not designed now. In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is separate work. How a gate is applied in SIESTA 5.x — a charge-distribution block, a scripted hook, or neither — **has not been verified against the manual** and should be before anything depends on it |
@@ -995,9 +995,10 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 ### 2a.9 The structure input, and the frame axis — making room, not building
 
 *Added 2026-09-16 at the user's direction. A frame set is cited (§ 3.1,
-built 2026-10-09, plan § 5z Q17-c); the frame inside a run, the record's
-average and the Results family are designed and **not built** — plan § 5z,
-Q17-d … Q17-f; the structure side is built (a `Structure` holds its frames and each frame's
+built 2026-10-09, plan § 5z Q17-c) and the frame is a level inside a run
+(§ 2a.11, built 2026-10-10, Q17-d); the record's average and the Results
+family are designed and **not built** — plan § 5z, Q17-e … Q17-f; the
+structure side is built (a `Structure` holds its frames and each frame's
 `customized` rows, `model/structure.md` § 2.2d–2.2e). What is settled here is
 what the contract must say so that adding the axis needs no rework — and,
 since 2026-09-24, **what a frame set IS**: one multi-frame structure pair
@@ -1466,9 +1467,10 @@ another point names it in its `.continued-from`; the 0 V point starts from what
 its run gathered, which its own `.gathered-from` names (`status <stage>`: *from
 what it gathered*) — the file catalogue's two words for the two starts
 (`project-layout.md` § 5). The device
-walk stops at a point that does not finish — the points after it would start
-from it; the transmission walk goes on — its points are independent — and says
-which did not.
+walk ends a frame's chain at a voltage that does not finish — the voltages
+after it in that frame would start from it — and goes on to the next frame;
+the transmission walk goes on — its points are independent — and says which
+did not.
 
 **Launched again — the run/stage contract's rule 3, read at the point**
 (`job-system.md`, *What molbuilder does for you*, 3): every launch is a new run,
@@ -1516,9 +1518,14 @@ alone took (a transmission point's device point). Every transport rung's
 
 #### The frame axis (§ 2a.9) — a level for each axis that varies *(user, 2026-10-09, D4: "yes"; plan § 5z.8 D)*
 
-*Designed, not built — plan § 5z, Q17-d. Built today: the voltage level
-(`run-0/` or `run-0/v<V>/`), its doors answering voltages
-(`transport.stages.sweep_points`, `point_folders`, `points_in`).*
+*Built 2026-10-10 (plan § 5z Q17-d): a point is `transport.stages.Point` —
+a frame and a voltage, each `None` when its axis does not vary — and one door
+answers a rung's points, `rung_points` (the frames the citation's, from the
+composed record, `frames_of`; the voltages the description's), with
+`point_folders` and `points_in` placing them; prep, the gather, the walk,
+`status` and the record ask it. The record of a frame set — each frame's
+T(E) and the average over them — is Q17-e, and until then it is refused by
+name.*
 
 A device point is a frame and a voltage (§ 2a.9, *Both axes*), so a swept
 rung's run carries a level for each axis that varies and none for one that
@@ -2151,9 +2158,8 @@ so the condition is *unverified* on the lead's notes, and TranSIESTA checks
 the leads' connectivity itself when it runs.
 
 **A frame set runs its seed and both leads on frame 0** (§ 2a.9: electrodes
-once, seed once); its device and transmission run per frame with Q17-d, and
-until then their prep refuses a set of more than one frame by name. A pair of
-one frame runs the whole ladder.
+once, seed once); its device and transmission run per frame, a point each
+frame and voltage (§ 2a.11).
 
 **Settings** here means what every stage of the calculation must agree on: the
 basis, the exchange–correlation functional and its authors, the mesh cutoff, the
@@ -3382,8 +3388,9 @@ flowchart LR
 >
 > - the **device** walk hands the previous point's `.TSDE` (the NEGF
 >   density) forward, so `V_{i+1}` converges from `V_i` instead of from
->   scratch — and therefore **stops on a failed point**: walking on would
->   converge from a state the failure poisoned;
+>   scratch — and therefore **ends a frame's chain at a failed point**:
+>   walking on in that frame would converge from a state the failure
+>   poisoned, and the next frame starts from the seed, as every frame does;
 > - the **transmission** walk hands nothing forward — each point re-reads
 >   the device's saved H — so a bad point says nothing about the next: the
 >   walk **continues**, and the exit code reports any failure.

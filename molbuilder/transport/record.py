@@ -90,6 +90,22 @@ class RecordError(Exception):
     fix first, ready to surface verbatim."""
 
 
+def _one_frame_or_refuse(base: Path) -> None:
+    """THE RECORD OF A FRAME SET IS NOT BUILT YET (plan § 5z Q17-e): each
+    frame's T(E), current and channels, and the mode's average over them
+    (`engines/transport.md` § 2a.12).  Until it is, a calculation citing a
+    set of more than one frame is refused here by name, never read as if its
+    frames were one point each voltage."""
+    from .stages import frames_of
+    n = frames_of(base)
+    if n > 1:
+        raise RecordError(
+            f"this calculation cites a frame set of {n} frames, and the "
+            f"record of a frame set -- each frame's T(E), current and "
+            f"channels, and the average over them -- is not built yet (plan "
+            f"§ 5z Q17-e).  Its points run and `jobset status` lists them.")
+
+
 def record_path(base_dir, label: str) -> Path:
     """The ONE spelling of the record's location -- composed, not concatenated.
 
@@ -330,7 +346,8 @@ def result_folders(base: Path, task, stage: str, run: Optional[Path] = None
     if sweep_points(task, stage):
         if run is None:
             return [(v, None, None) for v in sweep_points(task, stage)]
-        return [(v, p, run) for p, v in points_in(run, task, stage)]
+        return [(pt.bias_v, p, run)
+                for p, pt in points_in(run, task, stage, base=base)]
     return [(0.0, run, run)]
 
 
@@ -413,7 +430,8 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             try:
                 points, _ = point_rows(
                     run, _names, task, name, launch=launch_record(run, _names),
-                    products=products_of(name, task.label, base_dir=base))
+                    products=products_of(name, task.label, base_dir=base),
+                    base=base)
             except Exception as exc:              # noqa: BLE001 -- said, never hidden
                 fact["unreadable"] = f"{run.relative_to(base)}: {exc}"
                 points = []
@@ -681,6 +699,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                         tbt_file)
 
     base = Path(base_dir)
+    _one_frame_or_refuse(base)
     points_out: List[Dict] = []
     pending: List[Dict] = []
     failed: List[Dict] = []
@@ -847,6 +866,7 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
     missing."""
     from .tbtnc import TbtError, selection_pdos as _pdos, tbt_file
     base = Path(base_dir)
+    _one_frame_or_refuse(base)
 
     def _at(stage: str) -> Optional[Path]:
         # A RUNG THAT DOES NOT SWEEP has one result, at 0 V, which serves
