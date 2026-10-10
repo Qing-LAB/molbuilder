@@ -301,7 +301,10 @@ array bridge (`spectra/pyscf_vibration.py`); the harmonic path, the
 wavenumbers, the display form and the thermochemistry with its temperature
 grid (`spectra/normal_modes.py`) — the steps the SIESTA route takes too; the
 structure hash, the result's writer and its non-finite scrub
-(`sidecars/spectra.py`); the mode selector (§ 4.8); and the `constants` module,
+(`sidecars/spectra.py`), with the derived values the writer states beside
+every mode and the activity rule they ask (`spectra/derived.py`,
+`spectra/activity.py`, [`vibration.md`](?doc=engines/vibration.md) § 6.6);
+the mode selector (§ 4.8); and the `constants` module,
 for the one factor its Raman block converts with. Prep writes the file beside
 every PySCF script and copies it into every attempt with the script. Its first
 lines, right after its docstring, put that file on the import path — when the

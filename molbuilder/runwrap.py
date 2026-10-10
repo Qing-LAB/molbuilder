@@ -3805,6 +3805,7 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "normal_modes.py":         "molbuilder.spectra.normal_modes",
     "results.py":              "molbuilder.spectra.results",
     "activity.py":             "molbuilder.spectra.activity",
+    "derived.py":              "molbuilder.spectra.derived",
     "methods.py":              "molbuilder.spectra.methods",
     "spectra_sidecar.py":      "molbuilder.sidecars.spectra",
     "fdf.py":                  "molbuilder.parse.fdf",
@@ -3898,6 +3899,11 @@ PYSCF_COMPANIONS: Dict[str, str] = {
     "pyscf_vibration.py":       "molbuilder.spectra.pyscf_vibration",
     "normal_modes.py":          "molbuilder.spectra.normal_modes",
     "spectra_sidecar.py":       "molbuilder.sidecars.spectra",
+    # THE DERIVED VALUES, stated by the one writer at every write
+    # (`spectra.derived`, `engines/vibration.md` § 6.6), and the activity
+    # rule they ask.
+    "derived.py":               "molbuilder.spectra.derived",
+    "activity.py":              "molbuilder.spectra.activity",
     "mode_selection.py":        "molbuilder.spectra.selection",
 }
 

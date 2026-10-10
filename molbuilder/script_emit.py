@@ -508,11 +508,12 @@ def emit_vibration_record(payload: Mapping[str, Any]) -> str:
     ``relax_force_tol``), ``temperature_K`` (the thermochemistry's, from the
     template), ``already_relaxed`` (the person's statement, as made) and
     ``relaxation`` (the `relax` stage's relaxation record,
-    `parse.contract.relaxation_of`, or ``None``).  Written by the framework
-    from :attr:`DeckSpec.vibration`; read back by
+    `parse.contract.relaxation_of`, or ``None``) and ``masses_amu`` (every
+    atom's mass in the deck's order, stated by `prep`, I3).  Written by the
+    framework from :attr:`DeckSpec.vibration`; read back by
     `deck_record.extract_vibration_record`, beside the job as on the host."""
     out: List[str] = [begin_marker(BLOCK_VIBRATION),
-                      "# format: molbuilder-vibration/v2"]
+                      "# format: molbuilder-vibration/v3"]
     out.extend(f"# {line}" for line in _compact_json_lines(dict(payload)))
     out.append(end_marker(BLOCK_VIBRATION))
     return "\n".join(out)

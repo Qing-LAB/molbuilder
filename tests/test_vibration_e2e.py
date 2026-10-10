@@ -202,6 +202,17 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
                                / "W.spectra.json"))
     assert r.engine == "pyscf" and len(r.modes) == 3
 
+    # THE RESULT STATES EVERY ATOM'S MASS -- `chemistry.atomic_mass`'s, the
+    # table the deck's masses are stated from (I3) -- and each mode's derived
+    # values beside it, which the reader above took and checked
+    # (`engines/vibration.md` § 6.2, § 6.6).
+    from molbuilder.chemistry import atomic_mass
+    from molbuilder.spectra.derived import DERIVED_MODE_KEYS
+    eq = d["equilibrium"]
+    assert eq["masses_amu"] == [atomic_mass(e) for e in eq["elements"]], eq
+    for m in d["modes"]:
+        assert all(k in m for k in DERIVED_MODE_KEYS), sorted(m)
+
 
 def test_modes_are_matched_by_their_mass_weighted_shape_not_their_rank(
         tmp_path, monkeypatch):

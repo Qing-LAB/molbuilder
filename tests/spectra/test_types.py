@@ -262,10 +262,14 @@ class TestSpectraResults:
         v6: + the OPTIONAL ``removed_motions`` block (what the harmonic
             analysis projected out before diagonalising); additive, so
             v4 and v5 files still read whole.
+        v7 (2026-10-10): + ``equilibrium.masses_amu`` beside the geometry,
+            and each mode's derived values stated by every writer and
+            checked on read (`engines/vibration.md` § 6.1, § 6.6); v4-v6
+            files still read whole.
         """
         r = _make_results()
-        assert r.schema_version == SCHEMA_VERSION == 6
-        assert READABLE_SCHEMA_VERSIONS == {4, 5, 6}
+        assert r.schema_version == SCHEMA_VERSION == 7
+        assert READABLE_SCHEMA_VERSIONS == {4, 5, 6, 7}
         # The additive rule, executed: a v4 payload reads whole.
         d = r.to_dict(); d["schema_version"] = 4
         for k in ("phase_relaxation", "relaxation", "thermo"):

@@ -456,10 +456,9 @@ for a task — the mode a frame set samples (the structure's rows), each frame's
 displacement and its weight in an average (that frame's rows) — so it is in `METADATA_FIELDS`, carried by every derivation, gated
 like any edit (`web/molview.md` § 9.4), and in the sidecar (schema 11,
 `structure-molstruct.md` § 2). It is never a free-form store: molbuilder
-reads only the rows whose names a subsystem owns and declares as constants
-(transport owns `mode` and `order` on the structure's rows and `node_sigma`
-and `weight` on each frame's — `transport/average.py`'s constants, as
-`transport/sort.py` owns the region names), and every other row is the
+reads only the rows whose names a subsystem owns and declares as constants —
+a mode's frame set's (§ 2.2f, `frameset.py`'s constants, as
+`transport/sort.py` owns the region names) — and every other row is the
 writer's, carried and shown.
 
 **The one door, each side** — nothing else names a key of the section:
@@ -478,7 +477,7 @@ unset value, and otherwise written whole:
 
 ```text
 "customized": {
-  "rows":   [ {"name": "temperature", "value": 300, "unit": "K"} ],
+  "rows":   [ {"name": "temperature_k", "value": 300, "unit": "K"} ],
   "frames": [ [ … frame 0 … ], [ … frame 1 … ], … ]      exactly F entries
 }
 ```
@@ -540,9 +539,93 @@ by as much as the frames differ, while still taking frame 0's offset.
 one frame (`frame=i`) or the whole set (`frames=True`), and a door that prints
 says when it took one frame of several, which and how many.
 
-**Counting.** The API indexes frames from 0 (`frame_at(0)`, `frame=0`, a
-transport point's `f000`); what a person reads counts them from 1, as the frame
-bar's `1 / F` does — *"frame 1 of 3"*.
+**Counting — one frame number for a person** *(user, 2026-10-10: "unify the
+frame index, we have one api on the molview for frame and that should be the
+starting point and standard")*. The API indexes frames from 0, as MolView's
+does (`frame_at(0)`, `frame=0`, `setCurrentFrame(0)`, a record's `frame`);
+everything a person reads counts them from 1, as the frame bar's `1 / F` does —
+*"frame 1 of 3"* — **a folder name included**: a transport point's frame level
+is `f001` for frame 0 (`engines/transport.md` § 2a.11). One translation each
+side, as the atom index has (`model/overview.md` § 2): `structure.frame_words`
+in Python, MolView's `toDisplay` / `fromDisplay` in the browser; nothing writes
+a `+ 1` of its own.
+
+### 2.2f A mode's frame set — what each frame is, raw beside derived *(user, 2026-10-10; plan § 5z)*
+
+> *"what we need to define here is how these parameters of the vibration and
+> position is clearly and well defined within the .xyz/.json such that there is
+> no confusion and all information is consistent and complete"*; *"we should
+> save not only the mass correct value but also the raw values — we should
+> always allow post data processing and correction when we need to"*;
+> *"explicit is always better than implicit in data science"*.
+
+A frame set that samples **one** vibration mode — frame 0 the equilibrium, the
+frames after it displaced along the mode — states in the pair itself what every
+frame is: where it sits along the mode, how far its atoms moved, and its weight
+in an average. **The coordinates are the truth; the rows and the channel
+describe them**, and every one that can be checked against the coordinates is.
+Nothing is kept only in its corrected form, so any correction can be redone
+from the file: the mass-weighted position sits beside the plain displacement
+and the masses it was weighted by.
+
+This section is the definition's one home. The frame generator writes it
+(`engines/vibration.md` § 5.10 ③), a person's script may write it, the
+transport citation door checks it (`engines/transport.md` § 2a.9), and the
+transport record and data file carry it (§ 2a.12 there). Its names are
+molbuilder's own, constants of `molbuilder/frameset.py` — as `transport/sort.py`
+owns the region names — and **the units are in the names**, as in the vibration
+result the values come from (`engines/vibration.md` § 6.8); a row's `unit`
+field, when written, states the same unit, for the eye.
+
+| where | name | kind | meaning | unit |
+|---|---|---|---|---|
+| the `.xyz` | every frame's coordinates | given | frame 0 the equilibrium geometry the mode is taken at; frames 1… displaced along the mode | Å |
+| the `mass_amu` channel | each atom's mass | given | the masses the mode's coordinate is weighted by — the vibration result's own, `equilibrium.masses_amu`; every atom, a positive finite number | amu |
+| the structure's rows | `mode_index_1based` | given | which mode, counted as the vibration result counts it (`index_1based`) | — |
+| | `frequency_cm1` | given | the mode's wavenumber, as the result states it | cm⁻¹ |
+| | `temperature_k` | given | the temperature whose thermal distribution the weights sample | K |
+| | `zero_point_amplitude_amu12_ang` | given | the mode's zero-point amplitude `Q_zp = √(ħ/2ω)`, as the result states it | amu^½·Å |
+| | `sigma_amu12_ang` | derived | the mode's thermal spread at that temperature, `σ = Q_zp · √coth(ħω / 2k_BT)` | amu^½·Å |
+| each frame's rows | `displacement_ang` | measured | the frame's plain displacement from frame 0, `√(Σ_A \|ΔR_A\|²)` over every atom — no masses | Å |
+| | `max_atom_displacement_ang` | measured | its largest single atom's, `max_A \|ΔR_A\|` | Å |
+| | `q_amu12_ang` | derived | its position along the mode — ONE number for the whole mode, every atom displaced by `q · L_A`: its size `√(Σ_A m_A \|ΔR_A\|²)`, its sign the side of frame 0 it sits on | amu^½·Å |
+| | `node_sigma` | derived | the same position in units of the spread, `q / σ` | — |
+| | `weight` | given | the frame's share of the mode's average (`engines/transport.md` § 2a.12) | — |
+| `info.vibration` | `run` · `result_sha256` | given | the vibration run the mode was read from — its folder, read through the run door — and the sha256 of its result file (the identity hash waits on M2m, as a cited pair's pin does, `structure-molstruct.md` § 3) | — |
+
+*Given* is stated by the vibration result, the coordinates or the script;
+*measured* is computed from the coordinates alone, before any correction;
+*derived* is computed from the others by the formula shown.
+
+**The rules** — checked at the transport citation door, frame by frame and
+naming the frame (`engines/transport.md` § 2a.9), by `frameset.check`:
+
+1. **All or none.** A set states every row and the channel above, or none of
+   them. With none it is a family of frames — each frame's curve its own, no
+   average. Half-stated is refused, naming what is missing.
+2. **Frame 0 is the equilibrium**: its `displacement_ang`,
+   `max_atom_displacement_ang`, `q_amu12_ang` and `node_sigma` are 0.
+3. **The measured rows match the coordinates**, and **the frames move along one
+   mode, at their stated positions**: with `u_f = √m · ΔR_f` (each atom's
+   displacement scaled by the square root of its stated mass) and `ê` the
+   direction of the frame farthest along it, signed by that frame's `q`, every
+   frame's `u_f` equals `q_f · ê` — its size, its side and its direction at
+   once. The coordinates are written to six decimals (`Structure.to_xyz`), so
+   each of these is checked to within what that rounding allows: `√3·10⁻⁶` Å a
+   displaced atom, `√3·10⁻⁶·√(Σ m)` amu^½·Å for `q`.
+4. **The derived rows match their formulas**: `σ` against `Q_zp`, the frequency
+   and the temperature; each `node_sigma` against `q / σ` — to a relative
+   `10⁻⁹`, since each is the formula of values stated at full precision.
+5. **The weights**: each a number in (0, 1], the set's summing to 1 within
+   `10⁻⁶` — refused with the sum found.
+6. **A row's `unit`**, when written, is the unit its name states.
+
+How many frames there are, and where they sit, is the writer's — the frame
+generator's default is the Gauss–Hermite nodes of the mode's thermal
+distribution (`science/vibrational-averaging.md` § 5) — and a row naming that
+rule or its parameters (`max_displacement_ang`, the rule's name) is the
+writer's own, carried and shown. Molbuilder computes with each frame's weight
+alone; it never asks what made the frames.
 
 ### 2.3 Geometry I/O
 

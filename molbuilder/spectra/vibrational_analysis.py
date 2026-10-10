@@ -139,6 +139,7 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     frozen_atom_idxs = sorted(permutation.original_of(held_b))
     everyone = list(range(n))
     positions_in, _ = permutation.rows_to_input_order(R, everyone)
+    masses_in, _ = permutation.rows_to_input_order(masses, everyone)
     elements_in, _ = permutation.rows_to_input_order(
         np.asarray(elements, dtype=object), everyone)
     elements_in = [str(e) for e in elements_in]
@@ -243,6 +244,9 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
         raman_route="none",
         equilibrium_elements=elements_in,
         equilibrium_positions_ang=np.asarray(positions_in, dtype=float),
+        # THE MASSES THE ANALYSIS WEIGHTED BY, beside the geometry
+        # (`engines/vibration.md` § 6.2, I3): what the deck stated.
+        equilibrium_masses_amu=np.asarray(masses_in, dtype=float),
         engine_metadata=dict(engine_metadata or {}),
     )
 

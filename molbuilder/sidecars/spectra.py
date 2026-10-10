@@ -110,6 +110,10 @@ def write_spectra_payload(payload: dict,
 
     Behaviour:
 
+      * every mode's derived values -- the activity classes, the zero-point
+        amplitude and displacement -- are stated beside its own keys by the
+        one derivation (`spectra.derived`), whichever engine built the
+        payload;
       * ``payload`` is encoded with ``allow_nan=False`` —
         a non-finite scalar anywhere in the payload raises
         :class:`ValueError` BEFORE any bytes hit disk, so the engine
@@ -144,6 +148,16 @@ def write_spectra_payload(payload: dict,
         disk full).  The temp file is cleaned up before re-raise.
     """
     p = os.fspath(path)
+
+    # EVERY MODE'S DERIVED VALUES, stated beside what they come from by the
+    # one derivation (`spectra.derived`, `engines/vibration.md` § 6.6) -- in
+    # this writer, so every engine's file states them alike at every write.
+    if payload.get("modes"):
+        try:                                # inside molbuilder
+            from ..spectra.derived import with_derived
+        except ImportError:                 # beside a job, in a bundle
+            from derived import with_derived
+        payload = {**payload, "modes": with_derived(payload["modes"])}
 
     # ``allow_nan=False`` is the safety net: dataclass __post_init__
     # validates shapes but doesn't enforce finiteness on scalar

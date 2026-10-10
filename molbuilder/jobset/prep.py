@@ -315,15 +315,19 @@ def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
 #  The five steps, entire — `project-layout.md` § 2.3.1                  #
 # --------------------------------------------------------------------- #
 
-def _vibration_block(stage: str, cfg, relaxed_by, *, criterion) -> dict:
+def _vibration_block(stage: str, cfg, relaxed_by, *, criterion,
+                     struct) -> dict:
     """A SIESTA force-constant deck's `vibration` block: the facts its job's
     finish reads and no SIESTA keyword states (`engines/vibration.md`
     § 5.3), built here because only `prep` holds all of them -- the stage,
     its resolved config, the relax run it read the coordinates from
     (:func:`_vibration_stage_geometry`), the molbuilder rendering the deck.
     ``criterion`` is the relaxation rung's own ``relax_force_tol`` -- the
-    force the reference geometry was relaxed to (plan § 5w K4)."""
+    force the reference geometry was relaxed to (plan § 5w K4).  ``struct``
+    is the structure the deck is written from, whose atoms' masses the block
+    states (`chemistry.atomic_mass`, I3)."""
     from .. import __version__ as _mb_version
+    from ..chemistry import atomic_mass
     from ..pyscf.stages import VIBRATION_RELAX_STAGE
     from ..spectra.siesta_vibration import vibration_record
     # The record is of the ladder's relaxation rung: `_vibration_stage_geometry`
@@ -338,6 +342,7 @@ def _vibration_block(stage: str, cfg, relaxed_by, *, criterion) -> dict:
         relaxation=relaxed_by,
         relaxation_stage=VIBRATION_RELAX_STAGE,
         temperature_K=float(cfg.temperature_K),
+        masses_amu=[atomic_mass(el) for el in struct.elements],
         molbuilder_version=str(_mb_version))
 
 
@@ -630,7 +635,8 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
                 # of nothing (§ 5.5).
                 **({"vibration": _vibration_block(pset.stage, cfg,
                                                    relaxed_by,
-                                                   criterion=criterion)}
+                                                   criterion=criterion,
+                                                   struct=struct)}
                    if finishes and not element.is_trial else {}),
                 # THE RELAX STAGE'S RECORD reaches every deck at its
                 # geometry -- a trial's too, which carries no finish (V1.36).

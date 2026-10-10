@@ -1084,10 +1084,11 @@ question directly. *Tool:* not built. The displaced frames are written by
 the frame-set generator (V1.25, a module of its own), as one multi-frame pair:
 frame 0 the relaxed structure, the displaced frames through the structure's
 own doors — `with_frames` for the coordinates, `set_customized(…, frame=i)`
-for the rows — the structure's rows announcing the one mode the set samples,
-each frame's its node and weight, every weight stated and the set's summing
-to 1
-(`vibration.md` § 5.10 ③; `model/structure.md` § 2.2d–2.2e). The
+for the rows, the `mass_amu` channel for each atom's mass — stating what every
+frame is, raw values beside derived ones: the one mode the set samples, each
+frame's plain displacement and its mass-weighted position along the mode, every
+weight stated and the set's summing to 1 (`vibration.md` § 5.10 ③;
+`model/structure.md` § 2.2f). The
 displacement arithmetic exists twice (the PySCF probe, the animation), and
 the amplitude has one right answer rather than being a knob — the nodes of the
 thermal distribution, paired with the canonical eigenvector (`vibration.md`
@@ -1221,7 +1222,7 @@ designed as one each and need a decision.
 | ~~V1.22~~ | **built 2026-09-24** — `engine_metadata.fc_asymmetry_max_ev_ang2`; no warning threshold yet | on an axial block the off-diagonals vanish by symmetry (§ 4b.6 C) | § 4b.6 C |
 | ~~V1.30~~ | **built 2026-09-24** — one stationarity rule for both routes: the largest absolute force component over the free atoms against the template's own tolerance (`geom_gmax` on PySCF, `relax_force_tol` on SIESTA), a plain warning above it | the two routes answer the same assertion by different rules (§ 4b.5 A, § 4b.6 A) | R5 |
 | ~~V1.28~~ | **built 2026-09-24** — `info.relaxation` beside `info.calculation` on a pair exported from the Results tab (`model/parse.md` § 5b.1): engine, the run's tolerance, the largest remaining force component, the held atoms, the geometry's fingerprint; both kinds' gates read it against the calculation about to run (`vibration.md` § 2.2, the record table). The PySCF deck's own pair recording it is V1.31 | the assertion was the person's memory of a run the tree already held | § 4b.6 A |
-| ~~V1.29~~ | **built 2026-09-24** — the mass-calibrated displacement per mode: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang`, derived at every serialisation (`vibration.md` § 6.3) | the transport step displaces along this, not along the display form | § 4b.5 F |
+| ~~V1.29~~ | **built 2026-09-24** — the mass-calibrated displacement per mode: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang`, derived by one function, written by both engines from schema 7 and checked on read (`vibration.md` § 6.3, § 6.6) | the transport step displaces along this, not along the display form | § 4b.5 F |
 | V1.23 | **a δ-convergence report**: two stages at δ and δ/2, and a comparison of `ω_ν` and `e_ν` between them printed by a verb | **built 2026-09-28**: `jobset summarize task` → `<label>.fc-sweep.json` and the printed table (`engines/vibration.md` § 5.9); the mesh pairing is a stage the person describes | § 4b.6 C |
 | V1.24 | **mode matching across runs**: the overlap of eigenvectors in the shared free subspace, mass-weighted, between Model A/B/C runs or between a PySCF and a SIESTA run of the same molecule | the active-region convergence test and the cross-engine comparison are both this one calculation | § 4b.6 F, § 4b.3 |
 | V1.25 | **mode-displaced structure pairs on SIESTA** at the zero-point and thermal amplitudes, paired with the canonical eigenvector, the held atoms unmoved — the input to PDOS, density-difference and transport runs | level one of `vibration.md` § 5.6; the third link of the chain on the engine that shares the transport's model | § 4b.6 G |
@@ -1437,7 +1438,7 @@ changes the molecule's charge or its potential — then
 ```
 
 One transmission curve at the base geometry (the transport calculation's
-`f000`) and each mode's level-shift rate estimate every mode's curvature. The
+frame 0, `f001`) and each mode's level-shift rate estimate every mode's curvature. The
 rate comes from the electronic frames — or, if the force-constant run can write
 `∂H/∂R` (`vibration.md` § 5.6, level two), from first-order perturbation theory
 for every mode with no extra SCF. What the estimate cannot see is exactly what

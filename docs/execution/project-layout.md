@@ -821,7 +821,7 @@ can spend a week computing from a geometry you would have rejected in a minute.
 `attempt_dir`); a **try** is one start of the wrapper inside it, which every
 file of it carries as `-run<N>`. A bias sweep's run holds a folder per point,
 and each point folder holds that point's tries (`transport.md` § 2a.11). A
-frame set's frames are a level above the voltages — `run-<n>/f000/v0.2/`,
+frame set's frames are a level above the voltages — `run-<n>/f001/v0.2/` for frame 0,
 a level for each axis that varies (`transport.md` § 2a.11).*
 
 | | a run (`attempt` in the code) | a try |

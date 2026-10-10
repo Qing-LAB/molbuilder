@@ -122,3 +122,9 @@ HZ_EV: float = 4.135667696e-15
 #: 1 wavenumber (cm⁻¹) in electronvolt — DERIVED from `HARTREE_CM1`, so
 #: the two spellings of the same physics cannot drift.
 CM1_EV: float = HARTREE_EV / HARTREE_CM1
+
+#: hc/k_B -- kelvin per wavenumber: a mode of ν̃ cm⁻¹ has ħω/k_BT =
+#: ν̃ · CM1_KELVIN / T.  DERIVED from the two above, so the Spectrum page,
+#: the thermal spread of a mode (`spectra.derived.thermal_spread_amu12_ang`)
+#: and anything else asking the question read one number.
+CM1_KELVIN: float = CM1_EV / BOLTZMANN_EV_K

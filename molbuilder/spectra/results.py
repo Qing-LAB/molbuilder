@@ -43,10 +43,8 @@ Schema version: :data:`SCHEMA_VERSION`; the reader accepts
 
 from __future__ import annotations
 
-import math
-
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
@@ -60,12 +58,19 @@ import numpy as np
 #          in-deck relaxation is a TRACKED step) and the OPTIONAL `thermo`
 #          block.  ADDITIVE -- a v4 file lacks them and reads whole, which is
 #          why the reader accepts a SET (the molstruct sidecar's own rule).
-SCHEMA_VERSION = 6   # 6: + the OPTIONAL `removed_motions` block -- how many
-#                    whole-body motions the harmonic analysis projected out
-#                    before diagonalising, and their Cartesian patterns over
-#                    the free atoms (science/normal-modes.md R7: what was
-#                    removed is stated beside what was kept).  ADDITIVE.
-READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6})
+#  v6: + the OPTIONAL `removed_motions` block -- how many whole-body motions
+#          the harmonic analysis projected out before diagonalising, and
+#          their Cartesian patterns over the free atoms (science/normal-modes.md
+#          R7: what was removed is stated beside what was kept).  ADDITIVE.
+SCHEMA_VERSION = 7   # 7: + `equilibrium.masses_amu`, every atom's mass as
+#                    the deck stated it and the analysis weighted by it, beside
+#                    the geometry (I3); and each mode's DERIVED values -- the
+#                    activity classes, the zero-point amplitude and
+#                    displacement -- written by every engine through
+#                    `spectra.derived` and checked on read (engines/vibration.md
+#                    § 6.6).  A v4-v6 file reads as before: no masses, its
+#                    derived values computed on read.
+READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7})
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -150,15 +155,15 @@ _MODE_KEYS = frozenset({
     "ir_intensity_km_mol", "eigenvector_canonical", "eigenvector_display",
     "has_imag", "electronic_structure",
     "eigenvector_free",                 # schema v1's single vector, read as both
-    # DERIVED at every serialisation, never stored (`spectra/activity.py`,
-    # the § 9b row): a file carries them, a reader recomputes them.
+    # DERIVED (`spectra.derived`, `engines/vibration.md` § 6.6): the
+    # activity classes, the zero-point amplitude and the mass-calibrated
+    # displacement at it -- stated by every writer from v7, checked on read.
     "ir_active", "raman_active", "activity_class",
-    # DERIVED the same way (`engines/vibration.md` § 6.3): the zero-point
-    # amplitude and the mass-calibrated displacement at it.
     "zero_point_amplitude_amu12_ang", "zero_point_displacement_ang",
 })
 _EQUILIBRIUM_KEYS = frozenset({
     "scf_energy_eh", "mo_energies_eh", "homo_idx", "elements", "positions_ang",
+    "masses_amu",
 })
 _RESULTS_KEYS = frozenset({
     "schema_version", "engine", "engine_version", "molbuilder_version",
@@ -462,6 +467,7 @@ class ModeData:
 def motion_share_by_element(elements: List[str],
                             eigenvector: Any,
                             atom_idxs: Optional[List[int]] = None,
+                            masses_amu: Optional[Sequence[float]] = None,
                             ) -> Dict[str, float]:
     """Each element's share of a mode's motion, summing to 1.
 
@@ -487,9 +493,12 @@ def motion_share_by_element(elements: List[str],
 
     ``atom_idxs`` maps eigenvector rows onto ``elements`` when the mode
     covers only the free atoms -- the free-atom list from the result.
-    Omit it when there is one row per atom.  Shares are returned largest
-    first, and a mode with no motion at all returns ``{}`` rather than
-    dividing by zero.
+    Omit it when there is one row per atom.  ``masses_amu`` is every
+    atom's mass as the result states it (``equilibrium.masses_amu``, schema
+    7); a result before it states none, and the shares are then weighted by
+    ``chemistry.atomic_mass``, the table every deck's masses are stated from
+    (`engines/vibration.md` § 6.6).  Shares are returned largest first, and
+    a mode with no motion at all returns ``{}`` rather than dividing by zero.
     """
     from ..chemistry import atomic_mass
 
@@ -518,7 +527,9 @@ def motion_share_by_element(elements: List[str],
                 f"structure ({len(elements)} atoms)"
             )
         el = str(elements[at])
-        w = atomic_mass(el) * float(np.dot(row, row))
+        m = (float(masses_amu[at]) if masses_amu is not None
+             else atomic_mass(el))
+        w = m * float(np.dot(row, row))
         weight[el] = weight.get(el, 0.0) + w
         total += w
     if total <= 0.0:
@@ -675,6 +686,11 @@ class SpectraResults:
     # XYZ in the input form.
     equilibrium_elements:      Optional[List[str]]  = None
     equilibrium_positions_ang: Optional[np.ndarray] = None
+    #: v7: every atom's mass in amu, in the input order -- the masses the
+    #: analysis weighted by, as the deck stated them (`engines/vibration.md`
+    #: § 6.2, I3).  Travels with the geometry: from v7 a file stating the
+    #: geometry states them, and a file before v7 states none.
+    equilibrium_masses_amu:    Optional[np.ndarray] = None
 
     # Engine-specific noise (parsing diagnostics, version detail) --
     # kept here so the common schema doesn't bloat for engine-only
@@ -819,6 +835,29 @@ class SpectraResults:
                     f"SpectraResults: geometry has {n_geom} atoms but "
                     f"n_atoms_total = {self.n_atoms_total}"
                 )
+        # THE MASSES TRAVEL WITH THE GEOMETRY (v7, I3): one positive finite
+        # number per atom, stated wherever the geometry is.
+        if self.equilibrium_masses_amu is not None:
+            if self.equilibrium_positions_ang is None:
+                raise ValueError(
+                    "SpectraResults: equilibrium masses without the geometry "
+                    "they belong to")
+            self.equilibrium_masses_amu = _reject_complex_then_asarray(
+                self.equilibrium_masses_amu,
+                field="SpectraResults.equilibrium_masses_amu")
+            m = self.equilibrium_masses_amu
+            if m.shape != (int(self.n_atoms_total),) or not (
+                    np.isfinite(m).all() and (m > 0).all()):
+                raise ValueError(
+                    f"SpectraResults: equilibrium masses_amu must be one "
+                    f"positive finite number per atom ({self.n_atoms_total}); "
+                    f"got {m.tolist()}")
+        elif (int(self.schema_version) >= 7
+                and self.equilibrium_positions_ang is not None):
+            raise ValueError(
+                f"SpectraResults: a schema-{self.schema_version} result states "
+                f"its geometry without its masses -- equilibrium.masses_amu "
+                f"travels with it (engines/vibration.md 6.2)")
 
         # Cross-mode shape consistency.  Allow the empty-modes case
         # (in-progress write before phase 2 -- no harmonic analysis yet).
@@ -848,52 +887,18 @@ class SpectraResults:
                         f"size {w}; expected {es_window} to match earlier modes"
                     )
 
-    def _modes_with_activity(self) -> List[Dict[str, Any]]:
-        """Mode dicts, each carrying its activity classification.
-
-        Computed here rather than stored on :class:`ModeData` because
-        the decision needs the whole run: a mode is active when it
-        clears a fraction of the STRONGEST band in its own channel, and
-        one mode does not know the others.  Recomputed on every
-        serialisation so a sidecar written before the classification
-        existed gains it on read -- no re-run required.
-        """
+    def _modes_with_derived(self) -> List[Dict[str, Any]]:
+        """Mode dicts, each with its DERIVED values stated beside the rest --
+        the activity classes (a whole-run decision: a mode is active when
+        it clears a fraction of the STRONGEST band in its own channel, and
+        one mode does not know the others) and the zero-point amplitude and
+        displacement -- through the one derivation every writer uses
+        (`spectra.derived`, `engines/vibration.md` § 6.6)."""
         try:                                # inside molbuilder
-            from .activity import classify_modes
-        except ImportError:                 # beside a job, in mb_vibration.pyz
-            from activity import classify_modes
-        rows = [m.to_dict() for m in self.modes]
-        if not rows:
-            return rows
-        flags = classify_modes(
-            [m.ir_intensity_km_mol for m in self.modes],
-            [m.raman_activity_a4_amu for m in self.modes],
-        )
-        for row, flag in zip(rows, flags):
-            row.update(flag)
-        # THE MASS-CALIBRATED DISPLACEMENT (`engines/vibration.md` § 6.3):
-        # the zero-point amplitude Q_zp = sqrt(hbar / 2 omega) in amu^1/2.A
-        # and every free atom's displacement at it, Q_zp * L_canonical, in A
-        # -- what a vibration-coupled transport step displaces along.
-        # Derived here, never stored, like the activity classes: a file
-        # written before the keys existed gains them on read, and no writer
-        # can put a second convention beside the canonical vector.  An
-        # imaginary mode has no amplitude.
-        try:                                # inside molbuilder
-            from ..constants import ZERO_POINT_Q2_AMU_ANG2_CM1 as _Q2
-        except ImportError:                 # beside a job, in mb_vibration.pyz
-            from constants import ZERO_POINT_Q2_AMU_ANG2_CM1 as _Q2
-        for row, m in zip(rows, self.modes):
-            nu = float(m.frequency_cm1)
-            if m.has_imag or not nu > 0.0:
-                row["zero_point_amplitude_amu12_ang"] = None
-                row["zero_point_displacement_ang"] = None
-            else:
-                q_zp = math.sqrt(_Q2 / nu)
-                row["zero_point_amplitude_amu12_ang"] = q_zp
-                row["zero_point_displacement_ang"] = (
-                    q_zp * m.eigenvector_canonical).tolist()
-        return rows
+            from .derived import with_derived
+        except ImportError:                 # beside a job, in a bundle
+            from derived import with_derived
+        return with_derived([m.to_dict() for m in self.modes])
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -921,15 +926,15 @@ class SpectraResults:
                    if self.equilibrium_elements is not None else {}),
                 **({"positions_ang": self.equilibrium_positions_ang.tolist()}
                    if self.equilibrium_positions_ang is not None else {}),
+                **({"masses_amu":    self.equilibrium_masses_amu.tolist()}
+                   if self.equilibrium_masses_amu is not None else {}),
             },
 
-            # Activity classification rides WITH the modes, decided
-            # once in `spectra.activity` against the whole run.  It is
-            # a whole-run judgement -- "active" means "above a fraction
-            # of the strongest band in this channel" -- so it cannot be
-            # a property of a mode in isolation, and it must not be
-            # re-derived as an epsilon in the viewer.
-            "modes":                self._modes_with_activity(),
+            # THE DERIVED VALUES ride WITH the modes, through the one
+            # derivation (`spectra.derived`): the activity classes -- a
+            # whole-run judgement, never re-derived as an epsilon in the
+            # viewer -- and the zero-point amplitude and displacement.
+            "modes":                self._modes_with_derived(),
             "selected_mode_idxs_1based": [int(i) for i in self.selected_mode_idxs_1based],
 
             "config":               dict(self.config),
@@ -974,12 +979,30 @@ class SpectraResults:
                 f"supported; this molbuilder build reads "
                 f"{sorted(READABLE_SCHEMA_VERSIONS)} (v5 and v6 added only "
                 f"optional blocks -- relaxation/thermo, then "
-                f"removed_motions -- so a v4 file reads whole; older "
-                f"versions do not)."
+                f"removed_motions -- and v7 the masses and the stated "
+                f"derived values, so a v4 file reads whole; older versions "
+                f"do not)."
             )
         _refuse_unknown_keys(d, _RESULTS_KEYS, "SpectraResults")
         eq = d["equilibrium"]
         _refuse_unknown_keys(eq, _EQUILIBRIUM_KEYS, "SpectraResults.equilibrium")
+        # THE DERIVED VALUES A v7 FILE STATES ARE ITS INPUTS' (§ 6.6): each
+        # computed again by the one derivation, and a file stating another
+        # is refused by name.  A file before v7 states them or not; they are
+        # computed on read either way.
+        if int(sv) >= 7:
+            try:                            # inside molbuilder
+                from .derived import disagreements
+            except ImportError:             # beside a job, in a bundle
+                from derived import disagreements
+            wrong = disagreements(d.get("modes") or [])
+            if wrong:
+                raise ValueError(
+                    "SpectraResults: the derived values this file states are "
+                    "not its own inputs' (engines/vibration.md 6.6) -- "
+                    + "; ".join(wrong[:5])
+                    + (f"; and {len(wrong) - 5} more" if len(wrong) > 5
+                       else ""))
         return cls(
             schema_version       = int(d["schema_version"]),
             engine               = str(d["engine"]),
@@ -1007,6 +1030,10 @@ class SpectraResults:
             equilibrium_positions_ang  = (
                 np.asarray(eq["positions_ang"], dtype=float)
                 if "positions_ang" in eq else None
+            ),
+            equilibrium_masses_amu     = (
+                np.asarray(eq["masses_amu"], dtype=float)
+                if "masses_amu" in eq else None
             ),
 
             modes                = [ModeData.from_dict(m) for m in d["modes"]],

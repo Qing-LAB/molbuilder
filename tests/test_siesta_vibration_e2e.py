@@ -204,6 +204,25 @@ def _common_assertions(d):
     # one hydrogen near 3000 cm-1 swings about 0.075 A at its zero point
     m0 = d["modes"][0]
     assert 0.06 < m0["zero_point_amplitude_amu12_ang"] < 0.09
+    _states_its_masses_and_derived_values(d)
+    # no strength is computed on this route, so no mode can be placed in a
+    # channel (`engines/vibration.md` § 6.5)
+    assert {m["activity_class"] for m in d["modes"]} == {"partial"}
+
+
+def _states_its_masses_and_derived_values(d):
+    """`engines/vibration.md` § 6.2, § 6.6, I3: the result states every
+    atom's mass -- `chemistry.atomic_mass`'s, the table every deck's masses
+    are stated from -- and each mode's derived values beside it, and its own
+    reader takes them (it refuses a derived value its inputs contradict)."""
+    from molbuilder.chemistry import atomic_mass
+    from molbuilder.sidecars.spectra import parse_spectra_json_dict
+    from molbuilder.spectra.derived import DERIVED_MODE_KEYS
+    eq = d["equilibrium"]
+    assert eq["masses_amu"] == [atomic_mass(e) for e in eq["elements"]], eq
+    for m in d["modes"]:
+        assert all(k in m for k in DERIVED_MODE_KEYS), sorted(m)
+    parse_spectra_json_dict(d)
 
 
 def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond(

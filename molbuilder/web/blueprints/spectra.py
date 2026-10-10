@@ -85,7 +85,7 @@ def _page_constants():
     return {
         "hartree_ev":          C.HARTREE_EV,               # 1 Eh in eV
         "hartree_kcal_mol":    C.HARTREE_EV / C.KCAL_MOL_EV,  # 1 Eh in kcal/mol
-        "cm1_kelvin":          C.CM1_EV / C.BOLTZMANN_EV_K,   # hc/k_B, K per cm-1
+        "cm1_kelvin":          C.CM1_KELVIN,               # hc/k_B, K per cm-1
     }
 
 
@@ -104,10 +104,12 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None):
     carbon for a ring stretch -- and that needs atomic masses, because
     hydrogen has the largest displacement in almost every mode of an organic
     molecule while carrying almost none of the motion.  The browser has no
-    masses, the .spectra.json carries none, and shipping a periodic table
-    into JavaScript to fix that would be a second copy of a table ASE already
-    provides (``chemistry.atomic_mass``).  The server has it, so the server
-    answers.
+    masses.  A schema-7 result states its own (``equilibrium.masses_amu``,
+    the masses its modes were weighted by), and the shares are weighted by
+    them; an older one states none, and ``chemistry.atomic_mass`` -- the
+    table every deck's masses are stated from -- weights them.  Shipping a
+    periodic table into JavaScript would be a second copy of that table, so
+    the server answers.
 
     COMPUTED AT LOAD, NOT STORED.  Every result already written -- including
     the ones on disk right now -- gains the field the moment it is opened; a
@@ -137,6 +139,7 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None):
             payload.get("ir_fd_step_ang"))
 
     elements = (payload.get("equilibrium") or {}).get("elements") or []
+    masses = (payload.get("equilibrium") or {}).get("masses_amu")
     # An empty free-atom list is "not recorded", not "no atom is free" -- a
     # result that never tracked the partition has one eigenvector row per atom,
     # which is what passing None means downstream.
@@ -147,7 +150,7 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None):
             continue
         try:
             mode["motion_share_by_element"] = motion_share_by_element(
-                elements, rows, free)
+                elements, rows, free, masses_amu=masses)
         except (ValueError, KeyError):
             pass
     # HOW THE RUN THE FILE BELONGS TO IS DOING -- the one door's answer, which

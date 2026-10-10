@@ -249,9 +249,10 @@ from is the whole of this control.
 
 #### exaggerated — a drawing convention
 
-The eigenvector is rescaled so the largest per-atom vector has length 1
-(`eigenvector_display`, dimensionless), and the slider states how many ångström
-that largest swing is. The default **0.15 Å** is roughly a tenth of a bond
+The eigenvector is rescaled so its largest absolute Cartesian component is 1
+(`eigenvector_display`, dimensionless — `engines/vibration.md` § 6.3; this said
+*the largest per-atom vector has length 1*, which the code has never done), and
+the slider states how many ångström that largest component swings. The default **0.15 Å** is roughly a tenth of a bond
 length: visible without looking dislocated.
 
 This is a **visualisation choice and not a result.** Jmol, Avogadro and GaussView
@@ -279,9 +280,10 @@ works in — a wavenumber ν̃ in cm⁻¹, since ω = 2πcν̃ — this evaluate
 ```
 
 **The tab does not compute this number.** Every mode in the file carries it
-as `zero_point_amplitude_amu12_ang`, derived at every serialisation from the
-one constant in `constants.py` ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 6.3, § 6.6); the animation reads it and applies only the thermal factor
+as `zero_point_amplitude_amu12_ang`, derived from the one constant in
+`constants.py` by the one function both engines write it with, and checked on
+read ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.3, § 6.6; a file
+before schema 7 gains it on read); the animation reads it and applies only the thermal factor
 below. *(A second spelling of the constant lived in the tab until
 2026-09-24.)*
 
@@ -422,13 +424,14 @@ not get wrong about a number quoted from this panel.
 
 **The server**, in `/api/spectra/load` — not the browser, and not the file.
 
-The share needs atomic masses. The `.spectra.json` stores none, and the browser
-has none. The **table already exists**: ASE ships the IUPAC standard atomic
-weights, and `chemistry.py` already reaches into `ase.data` for atomic numbers,
-so `chemistry.atomic_mass` is a *name for that table* rather than a second copy
-of it. Typing 118 masses into this program — in Python or, worse, into
-JavaScript — would have been a second source of truth that no test would notice
-going stale.
+The share needs atomic masses, and the browser has none. **A result from
+schema 7 states its own** — `equilibrium.masses_amu`, the masses its analysis
+weighted by ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.2, I3) —
+and the share is computed from them; an older result states none, and its
+share is computed from `chemistry.atomic_mass`, the name for ASE's IUPAC
+standard weights, the table `prep` states every deck's masses from. Typing 118
+masses into this program — in Python or, worse, into JavaScript — would have
+been a second source of truth that no test would notice going stale.
 
 It is computed **when a result is opened, not when it is written**:
 

@@ -778,6 +778,8 @@ class TestGeometryRoundTrip:
             [0.0, 0.0, 0.0],
             [0.96, 0.0, 0.0],
         ])
+        # The masses travel with the geometry (`engines/vibration.md` § 6.2).
+        results.equilibrium_masses_amu = np.array([15.999, 1.008])
         # Re-run __post_init__ via the constructor since we
         # mutated fields directly.
         results.__post_init__()

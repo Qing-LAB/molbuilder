@@ -201,7 +201,7 @@ def extract_engine_offset(text: str) -> Optional[Dict[str, Any]]:
 def extract_vibration_record(text: str) -> Optional[Dict[str, Any]]:
     """The VIBRATION block's payload -- ``{stage, force_criterion_ev_ang,
     temperature_K, already_relaxed, relaxation, relaxation_stage,
-    molbuilder_version}`` (format ``molbuilder-vibration/v2``), built by
+    masses_amu, molbuilder_version}`` (format ``molbuilder-vibration/v3``), built by
     `spectra.siesta_vibration.vibration_record` and written by
     `script_emit.emit_vibration_record` -- or ``None`` for a deck that
     carries none: every deck but a SIESTA force-constant one."""

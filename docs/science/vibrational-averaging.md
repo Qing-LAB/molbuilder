@@ -100,7 +100,8 @@ $$
 $$
 
 $Q_{\mathrm{zp}}$ is in every vibration result already
-(`zero_point_displacement`, `vibration.md` § 6.3), so
+(`zero_point_amplitude_amu12_ang`, `vibration.md` § 6.3; this named
+`zero_point_displacement`, which is $Q_{\mathrm{zp}}\,\mathbf L$ per atom in Å), so
 $\sigma = Q_{\mathrm{zp}}\sqrt{\coth(\hbar\omega/2k_BT_{\mathrm K})}$. At
 298 K:
 
@@ -348,7 +349,7 @@ flowchart TD
     C["five frames for the mode<br/>0, ±1.356 σ, ±2.857 σ"] --> D["⟨T⟩₅"]
     B --> E{"⟨T⟩₃ and ⟨T⟩₅ agree<br/>within the stated tolerance?"}
     D --> E
-    E -->|yes| F["the expansion holds over the thermal range:<br/>report ⟨T⟩₅, the curvature, the % change"]
+    E -->|yes| F["the expansion holds over the thermal range:<br/>report ⟨T⟩₅ and the % change"]
     E -->|no| G["T(Q) is not smooth there — a resonance<br/>crossing E_F: report ⟨T⟩₅ and SAY SO;<br/>the % change is not a curvature"]
 ```
 
@@ -421,21 +422,28 @@ Each is stated beside the numbers it limits, never dropped:
 
 ## 8. What the record carries
 
-From the frames and their `customized` rows
-([`model/structure.md`](?doc=model/structure.md) § 2.2d) — the structure's
-rows announcing the mode (`mode`, `order`, and shown beside them
-`frequency_cm1`, `sigma_amu12_ang`, `temperature_k`, `max_displacement_ang`),
-each frame's its `node_sigma`, `q_amu12_ang` and `weight`, every weight stated
-and their sum checked to be 1 — the record is `transport.md` § 2a.12's:
+The frame set states what every frame is, raw values beside derived ones —
+the mode as the vibration result numbers it, its frequency, the temperature,
+the zero-point amplitude and the spread $\sigma$; each frame's plain
+displacement, its mass-weighted position $Q_j$ and $Q_j/\sigma$, its weight;
+every atom's mass — in one definition whose home is
+[`model/structure.md`](?doc=model/structure.md) § 2.2f, checked when the set
+is cited. The transport record (`transport.md` § 2a.12) carries:
 
-- each frame's $T_j(E)$ and current — the family of curves;
-- $\langle T(E)\rangle = \sum_j W_j T_j(E)$, the mode's average, and
-  $\Delta T(E) = \langle T(E)\rangle - T_0(E)$;
-- $\langle\Delta G\rangle / G$, in per cent, and the curvature $T''$ at $E_F$;
+- each frame's $T_j(E)$ and current — the family of curves — beside its rows;
+- $\langle T(E)\rangle = \sum_j W_j T_j(E)$, the mode's average at every
+  frame's stated weight, and $\Delta T(E) = \langle T(E)\rangle - T_0(E)$;
+- at $E_F$ the averaged conductance beside the base frame's, and
+  $\langle\Delta G\rangle / G$ in per cent;
 
-with § 7's assumptions beside them. Transport reads only `mode`, `order`,
-`node_sigma` and `weight` to compute; everything else is shown, so a reader
-can check that the weights are the Gauss–Hermite weights of the stated nodes.
+with § 7's assumptions beside them. It computes with the weights alone, and
+**no curvature or slope**: a level crossing $E_F$ within the vibration makes
+$T(Q)$ jump between frames, and a difference of three frames is then no
+derivative (§ 5.3) — so a number shaped like one would mislead (the user,
+2026-10-10). What is derived across the frames — a slope, the curvature where
+the response is smooth, a comparison with another mode's set — is the
+analysis's, made on the data file, where every frame's transmission sits
+beside its $Q_j$ and its weight (`transport.md` § 2a.12, *the data file*).
 
 ---
 

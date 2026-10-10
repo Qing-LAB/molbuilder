@@ -131,7 +131,7 @@ These are **different and must not be conflated**.
 flowchart TB
     CH["annotation channels<br/>(the data model)"]
     subgraph PERSIST["§4a PERSIST — engine-agnostic, round-trippable"]
-        SC[".molstruct.json sidecar<br/>(schema v6)"]
+        SC[".molstruct.json sidecar<br/>(sidecars/molstruct.SCHEMA_VERSION)"]
         BLK[".fdf / .py ATOM-METADATA block<br/>(script_emit)"]
     end
     subgraph TRANSLATE["§4b TRANSLATE — one-way, engine-required input"]
@@ -149,11 +149,13 @@ flowchart TB
 The channels persist **identically wherever a structure is saved**:
 
 - **`.molstruct.json` sidecar.** `annotations` rides alongside `regions`/`cell`/…
-  The annotations field was **added at schema v4**; the **current schema is v9**
-  (`sidecars/molstruct.SCHEMA_VERSION` — cite the constant, never re-spell it).
+  The annotations field was **added at schema v4**; the current schema is
+  `sidecars/molstruct.SCHEMA_VERSION`, and the versions read are
+  `sidecars/molstruct.READABLE_VERSIONS` — cite the constants, never re-spell
+  them (this text said *v9* and *{7, 8, 9}* while the code had moved to 11).
   v7 moved the reserved `frozen_atoms` label into `regions` and stopped writing
   a top-level key for it — one store means one key. **Schema 3–6 do not load**:
-  the reader accepts `{7, 8, 9}` and nothing else, and `apply_metadata_dict`
+  the reader accepts nothing before 7, and `apply_metadata_dict`
   raises on a top-level `frozen_atoms` because it is not a metadata field.
   (This said the opposite — that v3–v6 still load and are folded in — until
   2026-09-05. Nothing folded them: `METADATA_FIELDS` has never contained the
@@ -348,14 +350,23 @@ the two built-in engine translations (`frozen_atoms` → `Geometry.Constraints`,
 tags → transport blocks); the region-label vocabulary + `ELECTRODE_LABELS`
 (Python, § 5); the JS L1/L2/L3 channel model + the generalized filter.
 
-**Open work** (`plans/plan.md` **W15**): **`value`-channel filtering
-end-to-end** — the server must resolve a `by_value` rule, and the channels
-must reach the browser on the load door (`/api/build/load`), which is where
-every other per-atom fact arrives. *(This named `/api/selection/atoms` until
-2026-09-07. That route is deleted — it read a file the browser had already
-loaded, which is the opposite of where this feature belongs: MolView holds the
-atoms, so a value channel travels with them.)* There is no
-`value`-channel *producer* yet (no feature writes per-atom charge/spin), so the
-`value` kind is modelled but not yet exercised. The **generic `fdf`-strategy
+**The first value channel molbuilder owns: `mass_amu`** *(2026-10-10)* —
+each atom's mass, the one a mode's frame set's coordinate is weighted by,
+defined with that set ([`model/structure.md`](?doc=model/structure.md)
+§ 2.2f) and spelled once, `frameset.MASS_CHANNEL`. Every atom carries one, a
+positive finite number in amu; molbuilder reads it there and nowhere else
+reads a mass off a structure. Any other value channel is the writer's: carried,
+remapped and shown, never read for a meaning.
+
+**Open work** (`plans/plan.md` **W15**): **`value`-channel filtering and
+display** — the server must resolve a `by_value` rule, and MolView must show a
+value channel. The channels already reach the browser on the load door
+(`/api/build/load`, `structure_to_dict`) and travel in MolView's model and back
+(this said they must still be brought there). *(This named
+`/api/selection/atoms` until 2026-09-07. That route is deleted — it read a file
+the browser had already loaded, which is the opposite of where this feature
+belongs: MolView holds the atoms, so a value channel travels with them.)* The
+first producer is a mode's frame set (`mass_amu`, above); no feature writes
+per-atom charge or spin yet. The **generic `fdf`-strategy
 registry** for translating *new* channels into engine blocks is the additive
 extension point above; only the two built-ins are wired today.

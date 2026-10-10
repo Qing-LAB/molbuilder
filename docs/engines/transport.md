@@ -331,7 +331,7 @@ below are the Au–BDT–Au design's, 2026-09; the walk's junction is smaller):
 | electrode k | `2 2 40` — the same 2×2, **transport dense** (the wizard's default) |
 | bias | `0.0` → equilibrium, so the non-equilibrium contour settings are inert |
 | what prep writes | `01_seed` … `05_transmission`, **a deck each plus its `.validation.txt`** — every rung goes through `spec_for` → `DeckSpec` → `prepare_deck`, so the validate → render → read-back-check → report chain is the same one every other kind gets (§ 2a.14). *(This row said the opposite, describing a `write_text` arm deleted on 2026-09-16.)* |
-| the deliverable | `<label>.transport.json` — T(E) per bias, G(E_F), the I–V table |
+| the deliverable | `<label>.transport.json` — T(E) per bias, G(E_F), the I–V table — and `<label>.transport.nc`, the same results as data on their grid, raw beside derived (§ 2a.12) |
 
 ## 1. The mental model — one citation → five derived stages
 
@@ -632,7 +632,10 @@ DOS and eigenchannels TBtrans was asked for; and the provenance — which
 relaxation, which lead runs, which device run, and what each point started
 from. And the caveat that goes with any DFT-NEGF conductance: plain GGA puts the
 molecule's levels too close to E_F and overestimates a molecular junction's
-conductance, often by one to two orders of magnitude (§ 2).
+conductance, often by one to two orders of magnitude (§ 2). Beside it,
+`<label>.transport.nc`: the same composition as data on its grid — every point's
+raw outputs beside what molbuilder derives from them, a frame set's rows beside
+each frame's values — for analysis (§ 2a.12, *the data file*).
 
 **What it holds today** *(2026-10-07)*: each rung's state and detail — the one
 status door's, as `jobset status` and the ladder say it — with a rung's SCF as
@@ -1148,36 +1151,42 @@ addable without rework. Citing a pair is § 3.1's second citation kind
 | the same species, in the same order | the seed's density and the leads' Hamiltonians are indexed by orbital | the same |
 | **the same cell as frame 0** | the leads must tile one cell for every frame (I6, § 2a.9 above) | the same — the cell is shared, a frame cannot state another |
 | **no electrode atom moved**, within the tolerance the citation door's frozen-atom check uses (`wizard.FROZEN_TOL_ANG`, 10⁻³ Å) | the exact-sharing gate: the lead Hamiltonian is truth | the citation door, frame by frame, naming the frame and the atom (`compose.classify_citation`) |
+| **a mode's frame set states what each frame is, completely and consistently** — every row and the `mass_amu` channel of [`model/structure.md`](?doc=model/structure.md) § 2.2f, or none of them | a frame's weight is what the record averages with, and its position along the mode is what any analysis reads; a half-stated or contradictory set would average or report the wrong thing in silence | the citation door, by § 2.2f's rules (`frameset.check`), naming the frame and the row — before anything runs |
 
-**The frame token is the file position**: `f000` is the base and runs too —
-the undisplaced reference every displaced curve is compared against — and
-`f001`… follow in file order, so a curve can always say which frame it is.
+**The frame token is the frame's count, as a person counts it**: `f001` is the
+base — frame 0 in the API, the undisplaced reference every displaced curve is
+compared against, and it runs too — and `f002`… follow in file order, so a
+folder and a sentence say the same number (*frame 2 of 3* is `f002`;
+`model/structure.md` § 2.2e: the API counts from 0, everything a person reads
+from 1, a folder name included; `transport.stages.frame_token`).
 
-**One mode per frame set, and each frame's details are its `customized`
-rows** *(user, 2026-10-09: "i would rather let one multi-frame focus on one
-mode ... each vibration mode will have a separate prep and run as different
-task"; plan § 5z D3)*. The structure's own rows
-([`model/structure.md`](?doc=model/structure.md) § 2.2d) announce the mode the
-set samples — `mode`, `frequency_cm1`, the rule's `order`, and the frame
-generator's parameters, `max_displacement_ang` and the temperature among
-them — and each frame's rows say what that frame is: its displacement along
-the mode (`node_sigma`, `q_amu12_ang`) and its `weight`. **Every frame states
-its `weight`, frame 0 included, and the weights sum to 1** *(user, 2026-10-09:
-"all weights should add up to 1 that's an explicit rule within error
-tolerance")* — `⅔, ⅙, ⅙` for three frames. Transport reads the rows as
-`structure.customized_value("mode")` and
-`structure.customized_value("weight", frame=i)`, by names it owns as
-constants — `mode`, `order`, `node_sigma`, `weight` — computes with those
-alone (§ 2a.12's average) and shows the rest; it never asks what made the
-frames *(the constants and the read: `transport/average.py`, built
-2026-10-10, Q17-e)*. Another mode is
+**One mode per frame set, and what each frame is, stated in the pair**
+*(user, 2026-10-09: "i would rather let one multi-frame focus on one mode ...
+each vibration mode will have a separate prep and run as different task"; plan
+§ 5z D3; the definition, 2026-10-10)*. A set that samples a mode carries a
+mode's frame set ([`model/structure.md`](?doc=model/structure.md) § 2.2f, the
+definition's one home): the mode as the vibration result numbers it, its
+frequency, the temperature, the zero-point amplitude and the spread on the
+structure's rows; each frame's plain displacement, its mass-weighted position
+along the mode and that position in units of the spread, and its weight on its
+own rows; each atom's mass on the `mass_amu` channel; where the mode came from
+in `info.vibration` — raw values beside derived ones, so any analysis can redo
+a correction from the file. **Every frame states its `weight`, frame 0
+included, and the weights sum to 1** *(user, 2026-10-09: "all weights should
+add up to 1 that's an explicit rule within error tolerance")* — `⅔, ⅙, ⅙` for
+three frames. **The citation door checks the whole definition**, frame by frame
+(the table above, § 2.2f's rules), so a set the record would average wrongly
+is refused before anything runs. Transport **computes with each frame's weight
+alone** (§ 2a.12's average) and carries every other row and the masses into
+its record and data file, beside each frame's values; it never asks what made
+the frames, nor how many there are — that is the script's. Another mode is
 another frame set and another transport calculation; how the modes' results
 are weighed against each other is the person's *(user, 2026-10-09: "it is
 cleaner and more focused to let user to post-process the results from
-different vibrational mode and decide how they can be weighed")*. A
-set whose frames state no weights is a family of frames with no average — each
-frame's curve, and the record saying *no frame weights stated*; nothing is
-refused for that, since what the displacement means is the person's.
+different vibrational mode and decide how they can be weighed")*. A set
+stating none of the definition is a family of frames with no average — each
+frame's curve its own, and the record saying so; nothing is refused for that,
+since what the displacement means is the person's.
 
 #### The displacement rule may be the person's own script — and the promise it makes *(user, 2026-09-23)*
 
@@ -1212,6 +1221,7 @@ it is checkable.** Every frame the rule produces, whoever wrote it:
 | the same labels — regions, frozen set, identity columns | the partition is what the whole ladder is built on (§ 4); a frame is the base with atoms moved, never relabelled | the frame carries no labels of its own: it inherits the base's, which makes the promise structural rather than checked |
 | **no electrode atom moves** | the exact-sharing gate above: the lead Hamiltonian is truth | electrode positions per frame against the base, within `wizard.FROZEN_TOL_ANG` (10⁻³ Å), at the citation door |
 | one base structure, an optimised junction | a group is a *displacement of* something, and the result has to say of what | the pair is the group's citation, its `info.calculation` the optimisation frame 0 came from (§ 3.1) |
+| what each frame is, if it says — a mode's frame set's rows and masses, all of them, consistent with the coordinates | the record averages with the weights and every analysis reads the positions | [`model/structure.md`](?doc=model/structure.md) § 2.2f's rules, at the citation door, naming the frame and the row |
 
 What is trusted rather than checked is only what cannot be: that the
 displacement means something physically. Everything a wrong script could do
@@ -1232,23 +1242,24 @@ declared by the citation itself**: a pair holding one frame is a single
 geometry, a pair holding more is a frame group, and every frame runs; the
 frame count is the citation's, never typed. A device point is a frame and a
 voltage (the axes above), so a rung's points carry a level for each axis that
-varies — `f000/`, `v0.2/`, or `f000/v0.2/` (§ 2a.11).
+varies — `f001/`, `v0.2/`, or `f001/v0.2/` (§ 2a.11).
 
 #### What this changes about the deliverable
 
 The result of a frame group is not one transmission curve but a **family** of
-them, plus whatever is derived across the family (an average, a variance, a set
-of couplings). § 2a.12 states that frame dimension of what the Results surface
-reads *(the record's half built 2026-10-10, `transport/average.py`, Q17-e;
-the Results family Q17-f)*.
+them, each beside what its frame is, and the mode's average at its stated
+weights. § 2a.12 states that frame dimension of what the Results surface reads
+and of the data file *(the record's half built 2026-10-10, `transport/average.py`,
+Q17-e; the Results family Q17-f)*. What else is derived across the family — a
+slope, a variance, a comparison with another mode's set — is the analysis's,
+made on the data file, where every frame's values sit beside its rows.
 
 *([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10 ③, decided
-2026-09-28, one mode per set 2026-10-09: the built-in mode rule records the
-mode in the structure's rows and each frame's normal coordinate and weight in
-the thermal average in that frame's `customized` rows — so what is derived
-across the family — the mode's slope, curvature and averaged conductance — is
-computed from the pair's own rows, and transport still knows nothing about
-modes.)*
+2026-09-28, one mode per set 2026-10-09, the definition 2026-10-10: the
+built-in mode rule writes a mode's frame set —
+[`model/structure.md`](?doc=model/structure.md) § 2.2f — so everything about
+the mode travels in the pair's own rows, and transport still knows nothing
+about modes.)*
 
 
 ### 2a.10 The bias treatment — an explicit choice, and what the result may be called
@@ -1540,27 +1551,27 @@ does not:
 |---|---|---|
 | 1 | 1, or the low-bias approximation | no level: `run-0/` itself |
 | 1 | several | `run-0/v0/ v0.2/ …` |
-| several | 1, or the low-bias approximation | `run-0/f000/ f001/ …` |
-| several | several | `run-0/f000/v0/ f000/v0.2/ … f001/v0/ …` |
+| several | 1, or the low-bias approximation | `run-0/f001/ f002/ …` |
+| several | several | `run-0/f001/v0/ f001/v0.2/ … f002/v0/ …` |
 
 ```
 ├── 01_seed/         run-0/      ← NO frame level: frame 0's density warms every frame
 ├── 02_electrode_L/  run-0/      ← NO level: the leads do not move
 ├── 03_electrode_R/  run-0/
 ├── 04_device/                   ← varies over frames and voltages
-│   ├── f000/v0/ f000/v0.2/ f001/v0/ …   each point's prepared deck
+│   ├── f001/v0/ f001/v0.2/ f002/v0/ …   each point's prepared deck
 │   └── run-0/                   one run: every point
 │       ├── .gathered-from  <label>_L-electrode.TSHS  <label>_R-electrode.TSHS  <label>.DM
-│       └── f000/v0/ f000/v0.2/ f001/v0/ …
+│       └── f001/v0/ f001/v0.2/ f002/v0/ …
 └── 05_transmission/
-    ├── f000/v0/ f000/v0.2/ f001/v0/ …
-    └── run-0/   .gathered-from   f000/v0/ …   ← each holds its device point's .TS.HSX
+    ├── f001/v0/ f001/v0.2/ f002/v0/ …
+    └── run-0/   .gathered-from   f001/v0/ …   ← each holds its device point's .TS.HSX
 ```
 
 The absence of a level *is* the statement that the result is shared. Nobody has
-to be told; the tree says it. `f000` is the base itself — the undisplaced
-reference curve — and the frame token is the frame's position in the cited
-pair, three digits (§ 2a.9). **One door answers a rung's points** — the
+to be told; the tree says it. `f001` is the base itself — frame 0, the
+undisplaced reference curve — and the frame token is the frame's count in the
+cited pair as a person counts it, three digits (§ 2a.9). **One door answers a rung's points** — the
 (frame, voltage) pairs with their folders (`transport.stages`: `sweep_points`,
 `point_folders`, `points_in`, grown from voltages to pairs); the gather, the
 walk, the done-door, `status` and the record ask it, and none asks which axis
@@ -1663,42 +1674,96 @@ done, read from each point's own files (§ 2a.11).
 is Q17-f, and the PDOS of a selection, which names no frame yet, refuses a
 frame set by name until then; the physics is
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md))*.
-A frame group's deliverable is a **family** of curves and what is derived
-across it. The record's points are (frame, voltage) pairs (§ 2a.9, *Both
-axes*), each carrying its tokens, its frame's `customized` rows whole, and what
-a bias point carries — T(E), the conductance, the current, the DOS — and the
-I–V is per frame. At each voltage, from the set's `mode` and `order` and
-each frame's `node_sigma` and `weight`:
+A frame group's deliverable is a **family** of curves, each beside what its
+frame is. The record's points are (frame, voltage) pairs (§ 2a.9, *Both
+axes*), each carrying its frame, its tokens, its frame's `customized` rows
+whole, and what a bias point carries — T(E), the conductance, the current, the
+DOS — and the I–V is per frame. At each voltage, from each frame's stated
+weight alone:
 
-- the mode's average `⟨T(E)⟩ = Σ_f W_f T_f(E)` over every frame at its stated
-  weight, and its change `ΔT(E) = ⟨T(E)⟩ − T₀(E)`; at E_F the averaged
-  conductance `⟨G⟩`, `⟨ΔG⟩ / G` in per cent of the undisplaced frame's
-  conductance, and the curvature at E_F `T″ = (T₊ + T₋ − 2T₀)/h²` from the
-  pair of frames nearest equilibrium, `h` their node in units of the mode's
-  spread (`node_sigma`, Q/σ) — so `T″` is per σ², and the science's score
-  `½ T″σ²/T₀` is `½ T″/T₀` here — from the four names transport reads
-  (§ 2a.9);
+- the mode's average `⟨T(E)⟩ = Σ_f W_f T_f(E)` over every frame, and its change
+  `ΔT(E) = ⟨T(E)⟩ − T₀(E)` from the base frame's; at E_F the averaged
+  conductance `⟨G⟩` beside the base frame's, and `⟨ΔG⟩ / G` in per cent of it;
 
 with § 7 of the science document's assumptions beside the numbers (a harmonic
-mode, static frames, the DFT alignment, and the voltage the average is taken
-at). **The weights are checked, never assumed**: they sum to 1 within `1e-6`,
-the tolerance written in the record (the frame generator writes every weight
-at full precision); the record refuses, by name and with the sum it found, a
-set whose weights do not, a weight outside `(0, 1]`, and a set where some
-frames state a weight and others do not. A set whose frames state no weights
-is a family with no average, said so. The weights are checked **first**, before
-any run is read, so a set's broken weights are said at the record's first read
-once the calculation's first prep has composed the junction — the Results tab
-and `summarize task` alike — and each frame is named as a person counts it,
-from 1, with its folder token: *frame 2 of 3 (f001)* (`model/structure.md`
-§ 2.2e). **One set is one mode at one rule**: the
-same mode at the other rule is another set, and comparing the two — whether
-the response is smooth over the thermal range
-(`vibrational-averaging.md` § 5.3) — is the person's, as weighing one mode
-against another is. A point not done is a gap in the
-family and the average at that voltage waits for it — never computed from the
-frames that happen to be there.
+mode, static frames, the equilibrium distribution at each voltage, each frame
+its own ground state, the DFT alignment, the electrodes unmoved), and the
+mode's definition beside them — the structure's rows of
+[`model/structure.md`](?doc=model/structure.md) § 2.2f. **Nothing else is
+derived across the frames** — no slope and no curvature: a level crossing E_F
+within the vibration makes the transmission jump between frames, and a
+difference of a few frames is then no derivative, so a number shaped like one
+would mislead (science § 5.3; the user, 2026-10-10). What is derived across
+them — a slope, a curvature where the response is smooth, a ranking against
+another mode's set — is the analysis's, made on the data file below, where
+every frame's values sit beside its rows. **The weights are checked at the
+citation door**, with the rest of the definition (§ 2a.9; § 2.2f's rules:
+each in `(0, 1]`, the set's summing to 1 within `10⁻⁶`, refused with the sum
+found), so the record reads checked rows and states their sum and the
+tolerance beside the average. A set stating none of the definition is a family
+with no average, said so. **One set is one mode at one rule**: the same mode at
+the other rule is another set, and comparing the two — whether the response is
+smooth over the thermal range (`vibrational-averaging.md` § 5.3) — is the
+person's, as weighing one mode against another is. A point not done is a gap in
+the family and the average at that voltage waits for it — never computed from
+the frames that happen to be there. Every frame is named as a person counts it,
+from 1: *frame 2 of 3* is `f002` (`model/structure.md` § 2.2e).
 
+**The data file, `<label>.transport.nc`** *(user, 2026-10-10: "doing a
+derivative is trivial if the result are saved with these parameter and
+calculation results consistently aligned and logically organized in the right
+form"; "full data record with clear meaning/definition is crucial"; NetCDF
+chosen the same day)*. `summarize task` writes it beside
+`<label>.transport.json`, from the same composition (`record.collect_record`):
+the JSON is the report the Results tab and `summarize` read; the data file is
+the same results on their grid, for analysis — every point's raw outputs beside
+what molbuilder derives from them, a frame set's definition beside every
+frame's values, and each variable saying what it is. NetCDF-4, written with
+`netCDF4` (declared in the molbuilder env, 2026-10-10), read by any NetCDF
+reader — xarray, netCDF4, sisl — and by molbuilder's own door
+(`transport/datafile.py`). **One shape for every transport calculation**: one
+structure at one voltage is a 1 × 1 grid, never a different layout.
+
+| dimension | what it runs over |
+|---|---|
+| `frame` | the cited structure's frames — 1 for one structure |
+| `bias` | the voltages the device and the transmission ran at — the sweep's, or 0 V |
+| `energy` | the transmission's energy grid, E − E_F |
+| `spin` | the spin channels TBtrans wrote — one, or `up` and `down` |
+| `iv_bias` | the I–V's voltages — the description's list (under the low-bias approximation, more than ran) |
+| `atom` · `xyz` | the composed junction's atoms, in its order — the sorted copy every deck is written in, `atom-permutation.json` the way back — and the three Cartesian components |
+| `region` · `lead` · `eigenchannel` | the device's regions molbuilder owns (L-electrode, bridge, R-electrode); the two leads; the eigenchannels TBtrans was asked for |
+
+The coordinates are variables along their dimensions: `frame` (0-based,
+MolView's index) and `frame_token` (`f001` …), `bias_v`, `energy_ev`,
+`iv_bias_v`, `spin`, `region`, `lead`; along `frame` every per-frame row of a
+mode's frame set (§ 2.2f), along `atom` each atom's `element` and `mass_amu` —
+the fill value where the set states none.
+
+| variable | over | kind | what it is |
+|---|---|---|---|
+| `positions_ang` | frame, atom, xyz | given | every frame's coordinates as composed |
+| `transmission_by_spin` | frame, bias, spin, energy | raw | T(E) as each point's `.TBT.AVTRANS` file states it, channel by channel |
+| `transmission` | frame, bias, energy | derived | per spin channel — the one, or `(T↑ + T↓)/2` — what G is computed from |
+| `conductance_g0` | frame, bias | derived | `G / G₀ = T` at E − E_F = 0, linearly interpolated |
+| `current_a_printed` | frame, bias | raw | the current TBtrans printed — one spin channel's |
+| `current_a` | frame, bias | derived | the junction's total: twice the printed figure unpolarized, the channels' sum polarized |
+| `iv_current_a` | frame, iv_bias | derived | the I–V — each point's own total (self-consistent), or the record's linear response from that frame's 0 V slice (low-bias) |
+| `device_ef_ev` · `device_vha_ev` | frame, bias | raw | the device point's NEGF Fermi level and boundary Hartree potential, as TranSIESTA printed them |
+| `dos_total` · `dos_region` · `lead_spectral_dos` · `lead_bulk_dos` · `eigenchannel_transmission` | frame, bias, (region · lead · eigenchannel), energy | raw | from each point's `.TBT.nc`, k-averaged (`transport/tbtnc.py`) |
+| `done` | frame, bias | — | 1 when the point has its transmission; 0 otherwise, its values the fill value — a gap, never filled in |
+| `point_folder` | frame, bias | — | the transmission point's folder, tree-relative — where its raw values were read |
+| `average_transmission` · `average_delta_transmission` | bias, energy | derived | the mode's average at the stated weights, and its change from frame 0's |
+| `average_conductance_g0` · `average_conductance_change_percent` | bias | derived | at E_F, and in per cent of frame 0's |
+
+**Every variable says what it is**: `units`, `long_name`, `definition` — how it
+is obtained, the formula for a derived one — and, for a raw one, `source`, the
+file it was read from. The file says what it is: `schema`
+(`molbuilder/transport-data@1`), the label, the treatment, the citation and its
+kind, `energies_relative_to_ef`, the DFT-NEGF caveat; for a frame set the
+structure's rows of § 2.2f, `info.vibration`, the weights' sum and tolerance
+and the average's assumptions; and the reason there is no average, when there
+is none.
 
 **The report, rung by rung** ([`model/parse.md`](?doc=model/parse.md) § 5d).
 Each rung has its run record — computation, setup with what the engine used,
@@ -2099,7 +2164,7 @@ molbuilder jobset launch task --bundle BDT-Au/transport/BDTTrans --mode submit
 #    walking the points), and again for the transmission
 
 # 3. read the deliverable back
-molbuilder jobset summarize task        # -> <label>.transport.json + the I-V table
+molbuilder jobset summarize task        # -> <label>.transport.json + <label>.transport.nc + the I-V table
 ```
 
 | Command | Does | Code |
@@ -2107,7 +2172,7 @@ molbuilder jobset summarize task        # -> <label>.transport.json + the I-V ta
 | `jobset init --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
 | `jobset prep task [--stage <stage> ...]` | show the ladder, offer the ready stages (`jobset/ready.py`); compose (sort · gates · extract) on first contact, then render each picked rung's deck + gather its inputs; several picked are one group | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `_transport_rung_of` |
 | `jobset launch task [--stage <stage> ...]` | send what is prepared and not launched — a group as one job; a bias sweep's device or transmission goes as one job walking its points | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_sweep` |
-| `jobset summarize task` | parse TBtrans output → `<label>.transport.json`, print the I–V table | `transport/record.py` |
+| `jobset summarize task` | parse TBtrans output → `<label>.transport.json` (the report) and `<label>.transport.nc` (the data file, § 2a.12), print the I–V table | `transport/record.py`, `transport/datafile.py` |
 | ~~`transport electrode`~~ · ~~`transport preflight`~~ | **DELETED 2026-09-17** with the `transport` verb group — the hand-assembly pair. A lead is derived from the citation at prep, and § 5's invariants are held by construction or by the validation pass |
 
 **Gotchas:** the citation names a run's folder or a pair's `.xyz`
@@ -2166,7 +2231,9 @@ init` and the Transport tab's describe door). The pair's two files
 are pinned by their sha256 in `slot-provenance.json`, as a cited run's files
 are, so a pair edited since is refused by name at the next prep. A frame set's
 per-frame promises (§ 2a.9) are checked at this door, frame by frame, naming
-the frame. The pair's axis kinds are its own across the transport axis, and z
+the frame — a mode's frame set's definition among them
+([`model/structure.md`](?doc=model/structure.md) § 2.2f), before anything
+runs. The pair's axis kinds are its own across the transport axis, and z
 is transport (§ 5 I8). The principal-layer condition reads the orbital ranges
 from the `.ion` files SIESTA leaves beside a run; a pair has none beside it,
 so the condition is *unverified* on the lead's notes, and TranSIESTA checks
@@ -3367,7 +3434,9 @@ be.
 | Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c) and the pole energy's 20-pole floor (§ 6.1c). § 5 names which holder holds which; the k-point sampling (I7–I9) is the mesh's, [`siesta.md`](?doc=engines/siesta.md) § 6.1 |
 | k-point mesh | `kmesh.py` | every rung's sampling — the shared transverse pair, the open axis's one point, a lead's `electrode_kz`, the transmission's `tbt_k_grid`, the offset on every rung — decided once and read by the writer, the settings gate and the record ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize task`); a point whose transmission has not run reads as **pending**, never as a failure |
-| Frame average | `transport/average.py` | a frame set's weight rule and the mode's average over its frames, from the four `customized` names transport owns (§ 2a.9, § 2a.12) — read by the record |
+| Frame average | `transport/average.py` | the mode's average over a frame set's frames at their stated weights (§ 2a.12) — read by the record |
+| Data file | `transport/datafile.py` | the record's composition as `<label>.transport.nc` — every point's raw outputs beside what is derived from them, on one grid, each variable defined (§ 2a.12) — and its reader |
+| A mode's frame set | `molbuilder/frameset.py` | the definition's names and its rules (`model/structure.md` § 2.2f), asked by the citation door (§ 2a.9) |
 
 **Retired 2026-09-17, and not replaced** — the June 2026 hand-assembly era
 (§ 6a): `transport/engine_base.py` (a `Protocol` registry), `transport/results.py`
@@ -3392,7 +3461,7 @@ flowchart LR
     EL -->|"<label>_L.TSHS · <label>_R.TSHS"| DEVICE
     DEVICE -->|".TSDE: a converged point starts the next"| DEVICE
     DEVICE -->|"<label>.TS.HSX (5.x; the 4.x device .TSHS retired)"| TBT["05_transmission<br/>(tbtrans; the deck says<br/>TBT.HS <label>.TS.HSX)"]
-    TBT --> RESULT["<label>.transport.json<br/>(summarize task; T(E) per bias, G(E_F), I-V)"]
+    TBT --> RESULT["<label>.transport.json + .transport.nc<br/>(summarize task; T(E) per point, G(E_F), I-V)"]
 ```
 
 > **A bias sweep is one submission, and the two walks over its points fail

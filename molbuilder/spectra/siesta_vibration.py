@@ -32,8 +32,9 @@ EVERY INPUT IS A RECORD THE ATTEMPT HOLDS, and each is read by its owner:
   * the run's output (FC step 0's geometry and forces, SIESTA's version) --
     SIESTA's one reading pass, `siesta_reader`;
   * ``atom-permutation.json``, the copy in the attempt -- `atom_permutation`;
-  * the masses -- ASE's standard weights by atomic number, the table
-    `chemistry.atomic_mass` reads (I3).
+  * the masses -- every atom's, as `prep` stated them in the ``vibration``
+    block from `chemistry.atomic_mass` (I3): the analysis weights by them and
+    the result states them.
 
 WHICH ATOMS WERE NUDGED is the deck's ``FC.First``..``FC.Last`` -- the range
 the run was told, which the ``.FC``'s own row count must agree with -- and
@@ -50,10 +51,6 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
-# ASE AT LOAD, not where the masses are read: the wrapper asks whether the
-# finish loads before the engine starts (`mb_vibration.pyz loads`), and a job
-# env without ASE must fail that question, not the expensive run's end.
-from ase.data import atomic_masses
 
 # TWO WAYS, because this module travels beside the job (see the header).
 try:                                        # inside molbuilder
@@ -97,6 +94,7 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
                      already_relaxed: bool,
                      relaxation: Optional[Mapping[str, Any]],
                      temperature_K: float,
+                     masses_amu: Sequence[float],
                      molbuilder_version: str,
                      relaxation_stage: Optional[str] = None) -> dict:
     """The deck's ``vibration`` block (`engines/vibration.md` § 5.3): what
@@ -105,8 +103,9 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
     config (``relax_force_tol``, ``already_relaxed``), the `relax` stage's
     relaxation record it read the coordinates from
     (`parse.contract.relaxation_of_output`, ``None`` without one) and that
-    stage's name, the thermochemistry's temperature, and the molbuilder that
-    renders the deck -- and placed in the deck as given
+    stage's name, the thermochemistry's temperature, every atom's mass in
+    the deck's order (``masses_amu``, `chemistry.atomic_mass`'s, I3), and
+    the molbuilder that renders the deck -- and placed in the deck as given
     (`script_emit.emit_vibration_record`).  Its keys are read by
     :func:`result_of` -- and, before the deck is written, its
     ``relaxation`` by the stage's own checks (`validate`'s ``prior``,
@@ -127,6 +126,7 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
             "relaxation_stage": (str(relaxation_stage)
                                  if relaxation is not None else None),
             "temperature_K": float(temperature_K),
+            "masses_amu": [float(m) for m in masses_amu],
             "molbuilder_version": str(molbuilder_version)}
 
 
@@ -283,8 +283,19 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
             f"{run.deck.name}'s vibration block states no temperature_K -- "
             f"a deck prepared before its finish summed at the template's "
             f"temperature (2026-09-28): prepare the stage again")
+    # THE MASSES, as `prep` stated them (I3) -- one per atom of the deck.
+    masses = rec.get("masses_amu")
+    if masses is None:
+        raise FinishError(
+            f"{run.deck.name}'s vibration block states no masses_amu -- a "
+            f"deck prepared before the masses were stated in it (2026-10-10, "
+            f"format v3): prepare the stage again")
+    if len(masses) != n:
+        raise FinishError(
+            f"{run.deck.name}'s vibration block states {len(masses)} masses "
+            f"for its {n} atoms")
     res = vibrational_analysis(
-        H, [float(atomic_masses[z]) for z in run.atomic_numbers],
+        H, [float(m) for m in masses],
         run.positions_ang, run.elements, run.held,
         axis_kind=run.axis_kind, cell=run.cell, permutation=run.permutation,
         label=run.label, engine="siesta", engine_version=run.siesta_version,

@@ -564,8 +564,10 @@ class TestLoadEndpoint:
 
     def test_load_says_which_atoms_each_mode_belongs_to(self, web_client):
         """The panel describes a mode by the atoms that CARRY it, and working
-        that out needs atomic masses — which the browser does not have and the
-        .spectra.json does not store.  So the server computes it at load.
+        that out needs atomic masses — which the browser does not have; a
+        schema-7 result states the masses its modes were weighted by
+        (`engines/vibration.md` § 6.2).  So the server computes it at load,
+        from those.
 
         The fixture is the trap in miniature: the hydrogen has the larger
         displacement (1.15 against 0.98) and the carbon owns the mode.  Read
@@ -578,6 +580,7 @@ class TestLoadEndpoint:
         original.equilibrium_elements      = ["C", "H"]
         original.equilibrium_positions_ang = np.array([[0., 0., 0.],
                                                        [1.09, 0., 0.]])
+        original.equilibrium_masses_amu    = np.array([12.011, 1.008])
         original.modes[0].eigenvector_canonical = np.array([[0.98, 0., 0.],
                                                             [1.15, 0., 0.]])
         original.modes[0].eigenvector_display   = original.modes[0].eigenvector_canonical
