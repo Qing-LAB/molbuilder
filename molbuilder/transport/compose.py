@@ -290,6 +290,7 @@ def _frames_keep_the_leads(struct: Structure, path: Path) -> None:
     measures an unmoved atom -- the distance, against
     `wizard.FROZEN_TOL_ANG` -- refused naming each frame and its atoms, in
     the pair's own atom order."""
+    from .stages import frame_words
     from .wizard import FROZEN_TOL_ANG
     regions = struct.regions or {}
     leads = sorted(set(regions.get(REGION_LEFT_ELECTRODE, ()))
@@ -306,12 +307,14 @@ def _frames_keep_the_leads(struct: Structure, path: Path) -> None:
             shown = ", ".join(f"atom {i} ({struct.elements[i]}) by {d:.4f} A"
                               for i, d in moved[:3])
             more = f" and {len(moved) - 3} more" if len(moved) > 3 else ""
-            broken.append(f"frame {f} moves {shown}{more}")
+            broken.append(f"{frame_words(f, len(frames))} moves "
+                          f"{shown}{more}")
     if broken:
         raise ComposeError(
             f"{path.name}: {'; '.join(broken)} -- every frame of a set "
             f"shares the leads' calculation, so an electrode atom stays where "
-            f"frame 0 has it, within {FROZEN_TOL_ANG:g} A "
+            f"the base, {frame_words(0, len(frames))}, has it, within "
+            f"{FROZEN_TOL_ANG:g} A "
             f"(engines/transport.md 2a.9).  Write the frames with the "
             f"electrodes held.")
 

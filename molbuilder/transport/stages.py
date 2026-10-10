@@ -37,7 +37,7 @@ which axis varies.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -141,6 +141,14 @@ def frame_token(frame: int) -> str:
     return f"f{int(frame):03d}"
 
 
+def frame_words(frame: int, n_frames: Optional[int] = None) -> str:
+    """A frame as a person reads it -- counted from 1, as the frame bar
+    counts (`model/structure.md` § 2.2e), with its folder token, so the two
+    counts are never confused: ``frame 2 of 3 (f001)``."""
+    of = f" of {int(n_frames)}" if n_frames is not None else ""
+    return f"frame {int(frame) + 1}{of} ({frame_token(frame)})"
+
+
 @dataclass(frozen=True)
 class Point:
     """One point of a rung that runs per point (`engines/transport.md`
@@ -150,6 +158,9 @@ class Point:
     ``f001/v0.2``, ``f001``, ``v0.2``."""
     frame: Optional[int] = None
     volts: Optional[float] = None
+    #: How many frames the set holds -- said in the point's words, never
+    #: part of which point it is.
+    of: Optional[int] = field(default=None, compare=False)
 
     @property
     def rel(self) -> str:
@@ -165,9 +176,11 @@ class Point:
         return 0.0 if self.volts is None else float(self.volts)
 
     def words(self) -> str:
-        """The point as a person reads it: ``frame 1 · 0.2 V``."""
+        """The point as a person reads it: ``frame 2 of 3 (f001) · 0.2 V``
+        (:func:`frame_words`)."""
         return " · ".join(
-            ([f"frame {self.frame}"] if self.frame is not None else [])
+            ([frame_words(self.frame, self.of)] if self.frame is not None
+             else [])
             + ([f"{self.volts:g} V"] if self.volts is not None else []))
 
 
@@ -196,7 +209,7 @@ def rung_points(task, stage: str, *, frames: int) -> Tuple[Point, ...]:
           if int(frames) > 1 and stage in per_point_rungs() else ())
     if not volts and not fs:
         return ()
-    return tuple(Point(frame=f, volts=v)
+    return tuple(Point(frame=f, volts=v, of=int(frames) if fs else None)
                  for f in (fs or (None,)) for v in (volts or (None,)))
 
 

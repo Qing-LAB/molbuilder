@@ -612,7 +612,8 @@ the road.
 
 **The frame family** *(designed 2026-10-09, not built — plan § 5z, Q17-f; the
 record's half is [`engines/transport.md`](?doc=engines/transport.md) § 2a.12,
-Q17-e)*. A frame set's report draws the family of curves — T(E), the DOS and
+built 2026-10-10, Q17-e: each point names its frame and carries that frame's
+rows, the I–V a `frame` column, and the record the mode's `average`)*. A frame set's report draws the family of curves — T(E), the DOS and
 the I–V per frame — and the frame bar picks a frame, every chart following it
 as the I–V pick follows a bias point (the one owner is MolView's
 `data.setCurrentFrame`, the table above); beside the family, at each voltage,

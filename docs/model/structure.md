@@ -458,8 +458,9 @@ like any edit (`web/molview.md` § 9.4), and in the sidecar (schema 11,
 `structure-molstruct.md` § 2). It is never a free-form store: molbuilder
 reads only the rows whose names a subsystem owns and declares as constants
 (transport owns `mode` and `order` on the structure's rows and `node_sigma`
-and `weight` on each frame's, as `transport/sort.py`
-owns the region names), and every other row is the writer's, carried and shown.
+and `weight` on each frame's — `transport/average.py`'s constants, as
+`transport/sort.py` owns the region names), and every other row is the
+writer's, carried and shown.
 
 **The one door, each side** — nothing else names a key of the section:
 

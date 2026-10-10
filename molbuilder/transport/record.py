@@ -8,8 +8,10 @@ integral — parsed, never recomputed).  Both formats were pinned against
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@3``): T(E)
-per bias point, the I–V table -- the junction's TOTAL current, with the
+``<label>.transport.json`` (``molbuilder/transport-result@4``): T(E)
+per point -- a frame and a voltage -- the I–V table per frame, the mode's
+average over a frame set (`average.mode_average`), the junction's TOTAL
+current, with the
 figure TBtrans printed and the factor between them (:data:`CURRENT_MEANS`)
 -- and the provenance that says which junction built it — the citation (from ``slot-provenance.json``) and
 the atom-permutation reference, so every downstream index can be
@@ -32,19 +34,25 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ..atom_permutation import PERMUTATION_FILE
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
 
-#: ``@3``: each rung's ``state`` is the status door's word (``finished``,
-#: ``failed``, ``running`` ...) with its ``detail``, and a point without a
-#: transmission is ``pending`` or ``failed`` by its run's state.
-#: ``current_a`` is the junction's TOTAL current -- both spin channels --
-#: with TBtrans's printed figure beside it (``current_a_printed``).  An
-#: older record is refused by its version, and `summarize task` writes it
-#: again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@3"
+if TYPE_CHECKING:
+    from .stages import Point
+
+#: ``@4``: a point is a frame and a voltage -- every point, pending and
+#: failed entry carries its ``frame`` (``None`` on a calculation with no
+#: frame axis) and its folder ``tokens``, a point its frame's
+#: ``customized`` rows whole; the I-V carries a ``frame`` column; the
+#: ``average`` block is the mode's average over a frame set (§ 2a.12).
+#: ``@3``: each rung's ``state`` is the status door's word with its
+#: ``detail``; a point without a transmission is ``pending`` or ``failed``;
+#: ``current_a`` is the junction's TOTAL current, TBtrans's printed figure
+#: beside it.  An older record is refused by its version, and `summarize
+#: task` writes it again.
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@4"
 
 #: What the record's current IS, said in the record (`engines/transport.md`
 #: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
@@ -91,19 +99,18 @@ class RecordError(Exception):
 
 
 def _one_frame_or_refuse(base: Path) -> None:
-    """THE RECORD OF A FRAME SET IS NOT BUILT YET (plan § 5z Q17-e): each
-    frame's T(E), current and channels, and the mode's average over them
-    (`engines/transport.md` § 2a.12).  Until it is, a calculation citing a
-    set of more than one frame is refused here by name, never read as if its
-    frames were one point each voltage."""
+    """THE PDOS OF A SELECTION AT A FRAME IS NOT BUILT YET (plan § 5z
+    Q17-f, with the Results tab's frame bar): its door names a voltage and
+    no frame, so a calculation citing a set of more than one frame is
+    refused here by name, never read at another frame's point."""
     from .stages import frames_of
     n = frames_of(base)
     if n > 1:
         raise RecordError(
-            f"this calculation cites a frame set of {n} frames, and the "
-            f"record of a frame set -- each frame's T(E), current and "
-            f"channels, and the average over them -- is not built yet (plan "
-            f"§ 5z Q17-e).  Its points run and `jobset status` lists them.")
+            f"this calculation cites a frame set of {n} frames, and the PDOS "
+            f"of a selection names no frame yet (plan § 5z Q17-f, with the "
+            f"Results tab's frame bar).  Each frame's DOS and PDOS by region "
+            f"are in the record's points.")
 
 
 def record_path(base_dir, label: str) -> Path:
@@ -332,23 +339,25 @@ def _outs_newest_first(where: Path, token: str) -> List[Path]:
 
 
 def result_folders(base: Path, task, stage: str, run: Optional[Path] = None
-                   ) -> List[Tuple[float, Optional[Path], Optional[Path]]]:
-    """``(voltage, folder, run)`` of each result ``stage`` holds now: a swept
-    rung's latest run, a point folder per voltage; any other rung's latest
-    run, at 0 V -- ``folder`` ``None`` while no run is open
+                   ) -> List[Tuple["Point", Optional[Path], Optional[Path]]]:
+    """``(point, folder, run)`` of each result ``stage`` holds now: a rung
+    that runs per point (`stages.rung_points`: a frame, a voltage, or both),
+    its latest run's point folders; any other rung's latest run, as the one
+    point ``Point()`` at 0 V -- ``folder`` ``None`` while no run is open
     (`engines/transport.md` § 2a.11).  ``run`` is where the launch record
     lies; given, that run is read instead of the latest (the device run
     the transmission gathered, § 2a.12)."""
     from ..jobset.materialize import latest_attempt, stage_home
-    from .stages import points_in, sweep_points
+    from .stages import Point, frames_of, points_in, rung_points
     if run is None:
         run = latest_attempt(stage_home(base, task, stage).dir)
-    if sweep_points(task, stage):
+    pts = rung_points(task, stage, frames=frames_of(base))
+    if pts:
         if run is None:
-            return [(v, None, None) for v in sweep_points(task, stage)]
-        return [(pt.bias_v, p, run)
+            return [(pt, None, None) for pt in pts]
+        return [(pt, p, run)
                 for p, pt in points_in(run, task, stage, base=base)]
-    return [(0.0, run, run)]
+    return [(Point(), run, run)]
 
 
 def _stage_facts(base: Path, task, label: str) -> List[Dict]:
@@ -379,7 +388,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     from ..jobset.materialize import ladder_homes
     from ..jobset.model import FILENAME as JOBSET_FILENAME, JobSet
     from ..jobset.runstatus import jobset_status
-    from .stages import STAGE_FACT, TRANSPORT_STAGES, sweep_points
+    from .stages import STAGE_FACT, TRANSPORT_STAGES, frames_of, rung_points
 
     jpath = base / JOBSET_FILENAME
     status = jobset_status(JobSet.load(jpath) if jpath.is_file() else None,
@@ -437,26 +446,28 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
                 points = []
         if points:
             fact["taken"] = [
-                {"bias_v": p.get("bias_v"),
+                {"frame": p.get("frame"), "bias_v": p.get("bias_v"),
                  "attempt": (f"{s.dir}/{p['folder']}" if s.dir and p.get("folder")
                              else None),
                  "started_from": p.get("started_from"),
                  "took": p.get("took") or []}
                 for p in points]
-        if sweep_points(task, name) and answers != "product":
-            # A SWEPT RUNG, POINT BY POINT -- the report's convergence card
-            # follows the selected bias (`web/results.md` § 2.5); the rung's
-            # own facts are its first point's.
+        if rung_points(task, name, frames=frames_of(base)) \
+                and answers != "product":
+            # A RUNG THAT RUNS PER POINT, POINT BY POINT -- the report's
+            # convergence card follows the selected point (`web/results.md`
+            # § 2.5); the rung's own facts are its first point's.
             fact["by_point"] = _rung_points(base, task, name, token, answers,
                                             run=run)
             # WHAT EACH POINT STARTED FROM AND TOOK -- the status door's own
             # reading of the point's `.continued-from` and `.gathered-from`
             # (`StageStatus.points`; § 2a.12: the provenance of a sweep's
-            # points), joined by the voltage; never a second reader here.
-            said = {float(p["bias_v"]): p for p in (points or ())
-                    if p.get("bias_v") is not None}
+            # points), joined by the point -- its frame and its voltage;
+            # never a second reader here.
+            said = {(p.get("frame"), float(p["bias_v"])): p
+                    for p in (points or ()) if p.get("bias_v") is not None}
             for p in fact["by_point"]:
-                sp = said.get(float(p["bias_v"]))
+                sp = said.get((p.get("frame"), float(p["bias_v"])))
                 if sp is not None:
                     p["started_from"] = sp.get("started_from")
                     p["took"] = sp.get("took") or []
@@ -477,9 +488,12 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
                           if p.get("energy_ev") is not None), None)
             if first is not None:
                 fact.update({k: first[k] for k in first
-                             if k not in ("bias_v", "attempt", "state",
-                                          "detail", "started_from", "took")})
+                             if k not in ("bias_v", "frame", "point",
+                                          "attempt", "state", "detail",
+                                          "started_from", "took")})
                 fact["facts_at_v"] = first["bias_v"]
+                fact["facts_at_frame"] = first["frame"]
+                fact["facts_at"] = first["point"]
             out.append(fact)
             continue
         outs = (_outs_newest_first(run, token)
@@ -500,15 +514,20 @@ def gathered_device_run(base: Path, task) -> Optional[Path]:
     nothing (`engines/transport.md` § 2a.12: the provenance is what was
     gathered, never the newest run by file time)."""
     from ..runrecord import read_gathered_from
-    from .stages import sweep_points
-    for _v, where, _run in result_folders(base, task, "transmission"):
+    from .stages import frames_of, rung_points
+    device = rung_points(task, "device", frames=frames_of(base))
+    # A DEVICE THAT RUNS PER POINT names its point: the run is as many
+    # folders above it as the point has levels (`f001/v0.2`: two).
+    levels = len(Path(device[0].rel).parts) if device else 0
+    for _pt, where, _run in result_folders(base, task, "transmission"):
         if where is None:
             continue
         for g in read_gathered_from(where):
             if g["file"].endswith(".TS.HSX"):
                 src = base / g["from"]
-                # A SWEPT DEVICE names its point: the run is the folder above.
-                return src.parent if sweep_points(task, "device") else src
+                for _ in range(levels):
+                    src = src.parent
+                return src
     return None
 
 
@@ -606,17 +625,18 @@ def _contour_facts(contours: Dict) -> Dict:
 
 def _rung_points(base: Path, task, name: str, token: str,
                  answers: str, run: Optional[Path] = None) -> List[Dict]:
-    """``[{bias_v, attempt, state, detail, ...science}]`` -- each bias
-    point of a sweep's rung, its state the run door's (`run_status`) and its
-    own answer (:func:`_science`); ``run`` names the run to read instead
-    of the latest."""
+    """``[{frame, bias_v, point, attempt, state, detail, ...science}]`` --
+    each point of a rung that runs per point, its state the run door's
+    (`run_status`) and its own answer (:func:`_science`); ``run`` names the
+    run to read instead of the latest."""
     from ..parse.dirs import run_status
     from ..runfiles import RunNames
     from ..runrecord import LaunchRecordError, launch_record
     names = RunNames.of(task.label, token, task.shape)
     out: List[Dict] = []
-    for v, where, run in result_folders(base, task, name, run=run):
-        entry: Dict = {"bias_v": v}
+    for pt, where, run in result_folders(base, task, name, run=run):
+        entry: Dict = {"frame": pt.frame, "bias_v": pt.bias_v,
+                       "point": pt.words()}
         if where is None or not where.is_dir():
             from ..jobset.runstatus import MISSING
             entry.update(state=MISSING[0], detail=MISSING[1])
@@ -680,6 +700,11 @@ def _chain(base: Path, stages: List[Dict]) -> List[Dict]:
 def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     """Walk the transmission attempts and build the record dict.
 
+    **A FRAME SET'S WEIGHTS ARE CHECKED FIRST** (`average.frame_weights`,
+    `engines/transport.md` § 2a.12): a set whose weights break the rule is
+    refused by name before anything is read, and its record carries the
+    mode's average at each voltage (`average.mode_average`).
+
     Reads each point's LATEST attempt, its state the run door's
     (`parse.dirs.run_status`): a point with its transmission is in
     ``points``; one not launched, queued or running is ``pending`` -- never
@@ -694,12 +719,18 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from ..parse.dirs import run_status
     from ..runfiles import JUNCTION_FILE, RunNames
     from ..runrecord import LaunchRecordError, launch_record
+    from .average import FrameSetError, frame_weights, mode_average
     from .compose import PROVENANCE_FILE
+    from .stages import frames_of, rung_points
     from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
                         tbt_file)
 
     base = Path(base_dir)
-    _one_frame_or_refuse(base)
+    junction = _junction_set(base)
+    try:
+        weights = frame_weights(junction) if junction is not None else None
+    except FrameSetError as exc:
+        raise RecordError(str(exc)) from exc
     points_out: List[Dict] = []
     pending: List[Dict] = []
     failed: List[Dict] = []
@@ -712,10 +743,15 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     # point at once).
     rung = next(f for f in stages if f["stage"] == "transmission")
     opened = False                        # an attempt open: it is prepared
-    for v, where, run in result_folders(base, task, "transmission"):
+    for pt, where, run in result_folders(base, task, "transmission"):
+        v = pt.bias_v
+        # WHICH POINT, on every entry: its frame (``None`` with no frame
+        # axis), its folder below the run, and in words.
+        at = {"frame": pt.frame, "bias_v": v, "tokens": pt.rel,
+              "point": pt.words()}
         opened = opened or where is not None
         if where is None:
-            pending.append({"bias_v": v, "state": rung["state"],
+            pending.append({**at, "state": rung["state"],
                             "why": rung.get("detail") or ""})
             continue
         rel = str(where.relative_to(base))
@@ -724,12 +760,12 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         try:
             launch = launch_record(run, names)
         except LaunchRecordError as exc:
-            failed.append({"bias_v": v, "attempt": rel,
+            failed.append({**at, "attempt": rel,
                            "state": "unreadable", "why": str(exc)})
             continue
         st = run_status(where, names.stem, launch=launch)
         if st.state != "finished":
-            entry = {"bias_v": v, "attempt": rel, "state": st.state,
+            entry = {**at, "attempt": rel, "state": st.state,
                      "why": st.detail}
             (pending if st.state in ("pending", "queued", "running")
              else failed).append(entry)
@@ -741,7 +777,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         try:
             read = point_transmission(where, task.label, spin)
         except (OSError, ValueError, RecordError) as exc:
-            failed.append({"bias_v": v, "attempt": rel, "state": "finished",
+            failed.append({**at, "attempt": rel, "state": "finished",
                            "why": f"the run finished without its "
                                   f"transmission: {exc} ({st.detail})"})
             continue
@@ -759,7 +795,12 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                 dos_why = str(exc)
         energies = read["energy_ev"]
         points_out.append({
-            "bias_v": v,
+            **at,
+            # ITS FRAME'S ROWS, whole -- what the frame is, as its writer
+            # stated it (`model/structure.md` § 2.2d).
+            "customized": (junction.customized_rows(
+                frame=pt.frame if pt.frame is not None else 0)
+                if junction is not None else []),
             "attempt": rel,
             **read,
             "conductance_g0": conductance_g0(energies, read["transmission"]),
@@ -787,11 +828,17 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                + block(run_first("transmission", base=base_dir)))
             + "\n"
             + "".join(f"  ({what}: "
-                      + "; ".join(f"{p['bias_v']:g} V, {p['state']} "
-                                  f"({p['why']})" for p in got) + ")\n"
+                      + "; ".join(f"{p['point'] or 'the one point'}, "
+                                  f"{p['state']} ({p['why']})"
+                                  for p in got) + ")\n"
                       for what, got in (("pending", pending),
                                         ("failed", failed)) if got))
 
+    try:
+        average = mode_average(junction, weights, points_out,
+                               pending + failed)
+    except FrameSetError as exc:
+        raise RecordError(str(exc)) from exc
     provenance = None
     prov_file = base / PROVENANCE_FILE
     if prov_file.is_file():
@@ -831,7 +878,12 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         # THE I-V: each point's own TBtrans current -- or, under the low-bias
         # approximation, computed by the record from the one 0 V slice for
         # every listed voltage (`linear_response_iv`, § 2a.10).
-        "iv": _iv(base, task, treatment, points_out),
+        "iv": _iv(base, task, treatment, points_out,
+                  [pt.frame for pt in rung_points(
+                      task, "transmission", frames=frames_of(base))]
+                  or [None]),
+        # THE MODE'S AVERAGE over a frame set, at each voltage (§ 2a.12).
+        "average": average,
         # WHAT THE CURRENT IS, in the record's own words -- for each spin the
         # points were run with (one, for a junction decided once).
         "current_means": {s: CURRENT_MEANS[s]
@@ -856,6 +908,16 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     return record
 
 
+def _junction_set(base: Path):
+    """The calculation's composed junction, every frame
+    (`compose.write_compose_record`, read through the codec), or ``None``
+    before its first prep composed it."""
+    from ..runfiles import JUNCTION_FILE
+    from ..workingcopy_structure import StructureCodec
+    path = base / JUNCTION_FILE
+    return StructureCodec().load(path, frames=True) if path.is_file() else None
+
+
 def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
                    ) -> Dict:
     """The PDOS of ``atoms`` at the bias point ``bias_v``, narrowed to one
@@ -871,12 +933,12 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
     def _at(stage: str) -> Optional[Path]:
         # A RUNG THAT DOES NOT SWEEP has one result, at 0 V, which serves
         # every voltage -- a single bias's, and the low-bias approximation's
-        # (`stages.sweep_points`).
+        # (`stages.rung_points`).
         found = result_folders(base, task, stage)
         if len(found) == 1:
             return found[0][1]
-        return next((w for v, w, _r in found
-                     if abs(v - float(bias_v)) < 1e-9), None)
+        return next((w for pt, w, _r in found
+                     if abs(pt.bias_v - float(bias_v)) < 1e-9), None)
 
     if not any(abs(float(v) - float(bias_v)) < 1e-9
                for v in (task.bias or (0.0,))):
@@ -898,27 +960,53 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
         raise RecordError(f"{nc.name}: {exc}") from exc
 
 
-def _iv(base: Path, task, treatment: str, points_out: List[Dict]) -> Dict:
-    """The record's I-V block.  ``computed`` says where the currents came
-    from: ``tbtrans`` -- each point's own printed integral -- or
-    ``linear-response`` -- the record's integral of the 0 V slice for each
-    listed voltage, with the Fermi tails at the electronic temperature the
-    0 V point's own deck states (`engines/transport.md` § 2a.10)."""
+def _iv(base: Path, task, treatment: str, points_out: List[Dict],
+        frames: List[Optional[int]]) -> Dict:
+    """The record's I-V block -- PER FRAME (`engines/transport.md` § 2a.12):
+    columns ``frame`` (each row's frame, ``None`` on a calculation with no
+    frame axis), ``voltages_v``, ``current_a``, ``current_a_printed``.
+    ``computed`` says where the currents came from: ``tbtrans`` -- each
+    point's own printed integral -- or ``linear-response`` -- the record's
+    integral of each frame's own 0 V slice for every listed voltage, with
+    the Fermi tails at the electronic temperature that point's deck states
+    (§ 2a.10).  The frames share one transmission deck, so ``kt_ev``,
+    ``window_ev`` and the ``notes`` keyed by voltage are the block's; a
+    frame whose 0 V point has not run is noted under its token (``all``
+    with no frame axis)."""
+    from .stages import frame_token, frame_words
     if treatment == "low-bias-approximation":
-        zero = next((p for p in points_out if abs(p["bias_v"]) < 1e-9), None)
-        if zero is None:
-            return {"voltages_v": [float(v) for v in task.bias],
-                    "current_a": [None for _ in task.bias],
-                    "computed": "linear-response",
-                    "notes": {"all": "the 0 V transmission has not run"}}
-        kt = BOLTZMANN_EV_K * deck_temperature_k(base / zero["attempt"])
-        iv = linear_response_iv(zero["energy_ev"], zero["transmission"],
-                                list(task.bias), kt)
-        iv["current_a_printed"] = [zero["current_a_printed"]
-                                   if abs(v) < 1e-9 else None
-                                   for v in iv["voltages_v"]]
-        return iv
-    return {"voltages_v": [p["bias_v"] for p in points_out],
+        out: Dict = {"frame": [], "voltages_v": [], "current_a": [],
+                     "current_a_printed": [], "computed": "linear-response",
+                     "kt_ev": None, "window_ev": None, "notes": {}}
+        for f in frames:
+            zero = next((p for p in points_out if p["frame"] == f
+                         and abs(p["bias_v"]) < 1e-9), None)
+            if zero is None:
+                for v in task.bias:
+                    out["frame"].append(f)
+                    out["voltages_v"].append(float(v))
+                    out["current_a"].append(None)
+                    out["current_a_printed"].append(None)
+                out["notes"][frame_token(f) if f is not None else "all"] = (
+                    f"the 0 V transmission of {frame_words(f, len(frames))} "
+                    f"has not run" if f is not None
+                    else "the 0 V transmission has not run")
+                continue
+            kt = BOLTZMANN_EV_K * deck_temperature_k(base / zero["attempt"])
+            iv = linear_response_iv(zero["energy_ev"], zero["transmission"],
+                                    list(task.bias), kt)
+            for v, i in zip(iv["voltages_v"], iv["current_a"]):
+                out["frame"].append(f)
+                out["voltages_v"].append(v)
+                out["current_a"].append(i)
+                out["current_a_printed"].append(
+                    zero["current_a_printed"] if abs(v) < 1e-9 else None)
+            out["notes"].update(iv["notes"])
+            if out["kt_ev"] is None:
+                out["kt_ev"], out["window_ev"] = iv["kt_ev"], iv["window_ev"]
+        return out
+    return {"frame": [p["frame"] for p in points_out],
+            "voltages_v": [p["bias_v"] for p in points_out],
             "current_a": [p["current_a"] for p in points_out],
             "current_a_printed": [p["current_a_printed"] for p in points_out],
             "computed": "tbtrans"}
@@ -977,10 +1065,12 @@ def fermi_frames(stages: List[Dict]) -> Optional[Dict]:
     if leads:
         out["lead_ef_ev"] = leads
     vha = dev.get("vha_ev")
-    # WHICH POINT THESE DEVICE FIGURES ARE -- a swept rung's facts are its
-    # first point's (`_stage_facts`), and the sentence says so.
+    # WHICH POINT THESE DEVICE FIGURES ARE -- a rung that runs per point
+    # has its first point's facts (`_stage_facts`), and the sentence says
+    # which, in the point's words.
     at_v = (by.get("device") or {}).get("facts_at_v")
-    where = f" at {at_v:g} V" if at_v is not None else ""
+    at = (by.get("device") or {}).get("facts_at")
+    where = f" at {at}" if at else ""
     note = ("Fermi levels are in each run's own frame: the seed's and the "
             "leads' in their periodic cells (cell-average potential zero); "
             "the device's after TranSIESTA fixes the Hartree potential on "
@@ -989,6 +1079,7 @@ def fermi_frames(stages: List[Dict]) -> Optional[Dict]:
         out["vha_ev"] = vha
         if at_v is not None:
             out["at_v"] = at_v
+            out["at"] = at
         out["device_ef_in_seed_frame_ev"] = dev["ef"] + vha
         note += (f" (ts-Vha {vha:+.3f} eV{where}) -- in the seed's frame "
                  f"it is {dev['ef'] + vha:.3f} eV")
@@ -1026,22 +1117,27 @@ TREATMENT_NOTE = {
 
 
 def iv_table_text(record: Dict) -> str:
-    """The printed deliverable: one row per point — G(E_F), the junction's
-    total current, and the figure TBtrans printed -- then what the current
-    is, in the record's words (:data:`CURRENT_MEANS`)."""
+    """The printed deliverable: one row per point -- its frame's token,
+    G(E_F), the junction's total current, and the figure TBtrans printed --
+    then what the current is, in the record's words (:data:`CURRENT_MEANS`),
+    and the mode's average at each voltage, or why there is none."""
     lines = [f"transport record — {record['label']}: "
              f"{len(record['points'])} point(s)"
              + (f", {len(record['pending'])} pending"
                 if record.get("pending") else "")
              + (f", {len(record['failed'])} failed"
                 if record.get("failed") else "")]
-    lines.append(f"  {'V [V]':>8}  {'G(E_F) [G0]':>12}  "
+    lines.append(f"  {'frame':>5}  {'V [V]':>8}  {'G(E_F) [G0]':>12}  "
                  f"{'I total [A]':>12}  {'I printed [A]':>13}")
+
+    def _frame(p) -> str:
+        return (p["tokens"].split("/")[0] if p.get("frame") is not None
+                else "--")
     for p in record["points"]:
         g = p["conductance_g0"]
         i, i0 = p["current_a"], p.get("current_a_printed")
         lines.append(
-            f"  {p['bias_v']:>8.3f}  "
+            f"  {_frame(p):>5}  {p['bias_v']:>8.3f}  "
             + (f"{g:>12.4f}" if g is not None else f"{'--':>12}")
             + "  "
             + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
@@ -1049,22 +1145,64 @@ def iv_table_text(record: Dict) -> str:
             + (f"{i0:>13.4e}" if i0 is not None else f"{'--':>13}"))
     for what in ("pending", "failed"):
         for p in record.get(what, ()):
-            lines.append(f"  {p['bias_v']:>8.3f}  {what:>12}  "
-                         f"{p['state']:>12}  ({p['why']})")
+            lines.append(f"  {_frame(p):>5}  {p['bias_v']:>8.3f}  "
+                         f"{what:>12}  {p['state']:>12}  ({p['why']})")
     iv = record.get("iv") or {}
     if iv.get("computed") == "linear-response":
-        # THE RECORD'S OWN I-V, from the one 0 V slice (`linear_response_iv`).
-        lines.append(f"  I(V) computed from T(E, 0), kT = {iv.get('kt_ev', 0):.4f} eV, "
-                     f"window {iv.get('window_ev')} eV:")
-        for v, i in zip(iv.get("voltages_v", ()), iv.get("current_a", ())):
-            note = (iv.get("notes") or {}).get(f"{v:g}")
-            lines.append(f"  {v:>8.3f}  {'':>12}  "
+        # THE RECORD'S OWN I-V, from each frame's 0 V slice
+        # (`linear_response_iv`).
+        kt = iv.get("kt_ev")
+        lines.append("  I(V) computed from T(E, 0)"
+                     + (f", kT = {kt:.4f} eV, window {iv.get('window_ev')} eV"
+                        if kt is not None else "")
+                     + ":")
+        from .stages import frame_token
+        for f, v, i in zip(iv.get("frame", ()), iv.get("voltages_v", ()),
+                           iv.get("current_a", ())):
+            notes = iv.get("notes") or {}
+            note = notes.get(f"{v:g}") or (
+                notes.get(frame_token(f)) if f is not None
+                else notes.get("all"))
+            lines.append(f"  {frame_token(f) if f is not None else '--':>5}  "
+                         f"{v:>8.3f}  {'':>12}  "
                          + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
                          + (f"  ({note})" if note else ""))
     for spin, means in sorted((record.get("current_means") or {}).items()):
         lines.append(f"  {spin}: {means}")
     lines.append(f"  {record['treatment']}: {record['treatment_note']}")
+    lines.extend(_average_lines(record.get("average") or {}))
     frames = record.get("fermi_frames")
     if frames and frames.get("note"):
         lines.append(f"  E_F: {frames['note']}")
     return "\n".join(lines)
+
+
+def _average_lines(avg: Dict) -> List[str]:
+    """The mode's average, as `summarize` prints it: the mode and its
+    weights, at each voltage the averaged conductance, its change in per
+    cent of the base frame's and the curvature -- or why there is none."""
+    if not avg.get("frames") or avg["frames"] < 2:
+        return []
+    head = (f"  the mode's average over {avg['frames']} frames -- mode "
+            f"{avg.get('mode')!r}, order {avg.get('order')!r}")
+    if avg.get("why"):
+        return [head + f": {avg['why']}"]
+    lines = [head + f", weights {avg['weights']} (sum "
+             f"{avg['weight_sum']!r}, within {avg['tolerance']:g} of 1):"]
+    for e in avg.get("at", ()):
+        if e.get("why"):
+            lines.append(f"  {e['bias_v']:>8.3f} V  {e['why']}")
+            continue
+        g, d = e.get("conductance_g0"), e.get("conductance_change_percent")
+        c = e.get("curvature") or {}
+        lines.append(
+            f"  {e['bias_v']:>8.3f} V  <G> = "
+            + (f"{g:.4f} G0" if g is not None else "--")
+            + ", change "
+            + (f"{d:+.2f} %" if d is not None
+               else f"-- ({e.get('conductance_why')})")
+            + " of the base frame's, T'' at E_F "
+            + (f"{c['value']:+.4e} per sigma^2" if c.get("value") is not None
+               else f"-- ({c.get('why')})"))
+    lines.append("  it assumes: " + " ".join(avg.get("assumptions") or ()))
+    return lines

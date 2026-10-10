@@ -643,7 +643,9 @@ T(E_F), the conductance and the current (total and as printed), and from the
 point's `.TBT.nc` (read with sisl, `transport/tbtnc.py`) the device DOS, its
 PDOS by region, the leads' spectral and bulk DOS and the transmission
 eigenchannels; the points without a transmission as `pending` or `failed` in
-their run's words; the treatment; the provenance slot and the chain — each
+their run's words; for a frame set, each point's frame and that frame's
+`customized` rows, the I–V per frame, and the mode's average at each voltage
+(§ 2a.12, built 2026-10-10); the treatment; the provenance slot and the chain — each
 rung's `.gathered-from`; the DFT-NEGF caveat. The PDOS of any atoms, by orbital
 type, is asked of `/api/transport/pdos`. The Results tab composes the record on
 read (`/api/transport/record`); `summarize task` writes the same composition to
@@ -922,7 +924,7 @@ row below).*
 | **Class C ships per-stage defaults** | Each stage carries an opinionated profile rather than inheriting one shared set: a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike, and the electrode's dense transport-axis k is a default, not something a person should have to discover |
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
 | **Default grouping** | The preparatory block — seed and both leads — as one submission: `jobset prep task` offers the three pre-selected, since none builds on another, and they are prepared as one group (`--stage seed --stage electrode_L --stage electrode_R` without a terminal); `jobset launch task` sends it as one job ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6; [`execution/job-system.md`](?doc=execution/job-system.md), *The task*). Then the device; then the transmission, each scan one job walking its points. The device and the transmission never share a job: the transmission builds on the device, which you look at first |
-| **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). Both axes are built (§ 2a.11): a frame set is cited (§ 3.1, Q17-c) and its points run (Q17-d); its record's average and its Results are plan § 5z, Q17-e … Q17-f |
+| **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). Both axes are built (§ 2a.11): a frame set is cited (§ 3.1, Q17-c), its points run (Q17-d) and its record carries each frame's point and the mode's average (§ 2a.12, Q17-e); its Results are plan § 5z, Q17-f |
 | **The bias treatment is an exposed choice** | `low_bias_approximation`, true or false, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
 | **Automatic resubmission is deferred, and load-bearing on nothing** | The stages, their decks, the parameter map and the directory structure are identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing here waits on it. When built, the monitor is its home — it already watches a run to its end. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
 | **Net charge and gating are deferred** | Not designed now. In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is separate work. How a gate is applied in SIESTA 5.x — a charge-distribution block, a scripted hook, or neither — **has not been verified against the manual** and should be before anything depends on it |
@@ -996,8 +998,9 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 
 *Added 2026-09-16 at the user's direction. A frame set is cited (§ 3.1,
 built 2026-10-09, plan § 5z Q17-c) and the frame is a level inside a run
-(§ 2a.11, built 2026-10-10, Q17-d); the record's average and the Results
-family are designed and **not built** — plan § 5z, Q17-e … Q17-f; the
+(§ 2a.11, built 2026-10-10, Q17-d), and its record carries each frame's
+point and the mode's average (§ 2a.12, built 2026-10-10, Q17-e); the Results
+family is designed and **not built** — plan § 5z, Q17-f; the
 structure side is built (a `Structure` holds its frames and each frame's
 `customized` rows, `model/structure.md` § 2.2d–2.2e). What is settled here is
 what the contract must say so that adding the axis needs no rework — and,
@@ -1166,7 +1169,8 @@ tolerance")* — `⅔, ⅙, ⅙` for three frames. Transport reads the rows as
 `structure.customized_value("weight", frame=i)`, by names it owns as
 constants — `mode`, `order`, `node_sigma`, `weight` — computes with those
 alone (§ 2a.12's average) and shows the rest; it never asks what made the
-frames *(not built — Q17-e: the constants and the read)*. Another mode is
+frames *(the constants and the read: `transport/average.py`, built
+2026-10-10, Q17-e)*. Another mode is
 another frame set and another transport calculation; how the modes' results
 are weighed against each other is the person's *(user, 2026-10-09: "it is
 cleaner and more focused to let user to post-process the results from
@@ -1235,7 +1239,8 @@ varies — `f000/`, `v0.2/`, or `f000/v0.2/` (§ 2a.11).
 The result of a frame group is not one transmission curve but a **family** of
 them, plus whatever is derived across the family (an average, a variance, a set
 of couplings). § 2a.12 states that frame dimension of what the Results surface
-reads *(not built — Q17-e, Q17-f)*.
+reads *(the record's half built 2026-10-10, `transport/average.py`, Q17-e;
+the Results family Q17-f)*.
 
 *([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10 ③, decided
 2026-09-28, one mode per set 2026-10-09: the built-in mode rule records the
@@ -1524,8 +1529,8 @@ answers a rung's points, `rung_points` (the frames the citation's, from the
 composed record, `frames_of`; the voltages the description's), with
 `point_folders` and `points_in` placing them; prep, the gather, the walk,
 `status` and the record ask it. The record of a frame set — each frame's
-T(E) and the average over them — is Q17-e, and until then it is refused by
-name.*
+point and the mode's average at each voltage — is § 2a.12's (Q17-e, built
+the same day).*
 
 A device point is a frame and a voltage (§ 2a.9, *Both axes*), so a swept
 rung's run carries a level for each axis that varies and none for one that
@@ -1653,8 +1658,10 @@ the calculation, and a reader needs to see which of five rungs is the one still
 outstanding — and, on a rung that sweeps the bias, which of its points are
 done, read from each point's own files (§ 2a.11).
 
-**The frame dimension** *(designed, not built — plan § 5z, Q17-e and Q17-f;
-the physics is
+**The frame dimension** *(the record built 2026-10-10 — plan § 5z Q17-e,
+`transport/average.py`, read by `record.collect_record`; the Results family
+is Q17-f, and the PDOS of a selection, which names no frame yet, refuses a
+frame set by name until then; the physics is
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md))*.
 A frame group's deliverable is a **family** of curves and what is derived
 across it. The record's points are (frame, voltage) pairs (§ 2a.9, *Both
@@ -1666,8 +1673,11 @@ each frame's `node_sigma` and `weight`:
 - the mode's average `⟨T(E)⟩ = Σ_f W_f T_f(E)` over every frame at its stated
   weight, and its change `ΔT(E) = ⟨T(E)⟩ − T₀(E)`; at E_F the averaged
   conductance `⟨G⟩`, `⟨ΔG⟩ / G` in per cent of the undisplaced frame's
-  conductance, and the curvature `T″ = (T₊ + T₋ − 2T₀)/h²` from the pair of
-  frames nearest equilibrium, `h` their `Q`;
+  conductance, and the curvature at E_F `T″ = (T₊ + T₋ − 2T₀)/h²` from the
+  pair of frames nearest equilibrium, `h` their node in units of the mode's
+  spread (`node_sigma`, Q/σ) — so `T″` is per σ², and the science's score
+  `½ T″σ²/T₀` is `½ T″/T₀` here — from the four names transport reads
+  (§ 2a.9);
 
 with § 7 of the science document's assumptions beside the numbers (a harmonic
 mode, static frames, the DFT alignment, and the voltage the average is taken
@@ -1676,7 +1686,12 @@ the tolerance written in the record (the frame generator writes every weight
 at full precision); the record refuses, by name and with the sum it found, a
 set whose weights do not, a weight outside `(0, 1]`, and a set where some
 frames state a weight and others do not. A set whose frames state no weights
-is a family with no average, said so. **One set is one mode at one rule**: the
+is a family with no average, said so. The weights are checked **first**, before
+any run is read, so a set's broken weights are said at the record's first read
+once the calculation's first prep has composed the junction — the Results tab
+and `summarize task` alike — and each frame is named as a person counts it,
+from 1, with its folder token: *frame 2 of 3 (f001)* (`model/structure.md`
+§ 2.2e). **One set is one mode at one rule**: the
 same mode at the other rule is another set, and comparing the two — whether
 the response is smooth over the thermal range
 (`vibrational-averaging.md` § 5.3) — is the person's, as weighing one mode
@@ -3352,6 +3367,7 @@ be.
 | Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c) and the pole energy's 20-pole floor (§ 6.1c). § 5 names which holder holds which; the k-point sampling (I7–I9) is the mesh's, [`siesta.md`](?doc=engines/siesta.md) § 6.1 |
 | k-point mesh | `kmesh.py` | every rung's sampling — the shared transverse pair, the open axis's one point, a lead's `electrode_kz`, the transmission's `tbt_k_grid`, the offset on every rung — decided once and read by the writer, the settings gate and the record ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize task`); a point whose transmission has not run reads as **pending**, never as a failure |
+| Frame average | `transport/average.py` | a frame set's weight rule and the mode's average over its frames, from the four `customized` names transport owns (§ 2a.9, § 2a.12) — read by the record |
 
 **Retired 2026-09-17, and not replaced** — the June 2026 hand-assembly era
 (§ 6a): `transport/engine_base.py` (a `Protocol` registry), `transport/results.py`
