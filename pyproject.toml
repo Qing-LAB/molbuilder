@@ -75,6 +75,9 @@ dependencies = [
     "biopython>=1.81",           # required by PeptideBuilder
     "flask>=3.0",                # bundled web UI (build + watch); core post-merge
     "click>=8.1",                # CLI plumbing for `molbuilder ...` subcommands
+    "netCDF4>=1.6",              # the transport data file, <label>.transport.nc
+                                 # (engines/transport.md 2a.12), written and read
+                                 # here; also TBtrans's .TBT.nc, read directly
     "sisl>=0.14",                # SIESTA / TranSIESTA / TBtrans output parsing
                                  # (NetCDF binary + ASCII).  Required by the
                                  # Transport tab for T(E) reading, eigenchannel

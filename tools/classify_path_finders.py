@@ -156,11 +156,6 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
     #    the search."*  What an engine writes is not knowable by enumeration
     #    (`job-contracts.md` § 4.2), which is why `runfiles.WRITTEN` is the
     #    list that CAN be complete and stops where our own writing stops.
-    ("molbuilder/transport/compose.py", "classify_citation", "*.XV"):
-        ("foreign - not a name we compose",
-         "SIESTA's own restart file -- the geometry it saves and reloads.  "
-         "The survey's hand-written vocabulary claimed this one as ours until "
-         "2026-09-08, which is why the table is derived from `WRITTEN` now"),
     ("molbuilder/builders/backends/_threedna.py", "_copy_standard_bases",
      "Atomic[._]?.pdb"):
         ("foreign - not a name we compose",

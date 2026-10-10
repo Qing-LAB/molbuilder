@@ -23,14 +23,16 @@ them; the seed and both leads prepared and launched as one group; the
 device's two-point self-consistent sweep launched, launched again warm
 (refused: every point is done), and cold; the transmission over the device's
 newest run; the record.  And the relaxation saved as a structure pair
-(`molbuilder xv2xyz --from-run`), a frame set of three written from it by a
-script through the structure's API (frame 0 the pair, the bridge moved
-+/-0.02 A along z in frames 1 and 2, the mode and each frame's node and
-weight in its rows), and a second transport calculation citing the set, its
-two-point self-consistent sweep at every frame: a point per frame and
-voltage, and the record's average over the frames.  And the weight rule's
-cases (`tests/data/frame_weights.toml`): a set each, written from the same
-pair, described, its seed and leads prepared, its record read.
+(`molbuilder xv2xyz --from-run`); a SIESTA vibration of that pair, its
+two free atoms; a frame set of three written from the vibration's highest
+mode by a script through the structure's API, as the frame generator writes
+one (frame 0 the pair, frames at +/-sqrt(3) sigma, the mode's definition
+stated in full, `model/structure.md` § 2.2f); and a second transport
+calculation citing the set, its two-point self-consistent sweep at every
+frame: a point per frame and voltage, the record's average over the frames,
+and the data file.  And the definition's rules
+(`tests/data/frame_set_definition.toml`): the set with one rule broken each,
+cited at `jobset init`.
 
 THE TRANSPORT RUNS RESTRICTED because a polarized moment that floats, as
 every transport rung's does, starts each atom at its full moment, aligned
@@ -95,24 +97,21 @@ _BIAS = (0.0, 0.2)
 #: template's, the cited run's (`engines/transport.md` § 2a.13, § 3.8.2a).
 _OWN_MIXING = {"seed": 0.12, "electrode_L": 0.15, "device": 0.08}
 
-#: The frame set the second calculation cites: frame 0 the relaxed pair, the
-#: bridge moved along z by these in the frames after it -- the electrodes
-#: held where frame 0 has them (`engines/transport.md` § 2a.9).
-_FRAME_SHIFTS_ANG = (0.0, 0.02, -0.02)
-
-#: What the script states the set samples (`engines/transport.md` § 2a.9):
-#: one mode at the three-point rule, and each frame's node in units of the
-#: mode's spread with its Gauss-Hermite weight -- the base at 0 with 2/3, the
-#: two displaced frames at +/-sqrt(3) with 1/6 each, mirrored as the shifts
-#: above are (`science/vibrational-averaging.md` § 5.1).
-_MODE = 1
-_ORDER = 3
+#: The frame set the second calculation cites, written by a script from a
+#: real SIESTA vibration of the relaxed pair, as the frame generator writes
+#: one (`model/structure.md` § 2.2f; `engines/vibration.md` § 5.10 ③): frame 0
+#: the pair, then the Gauss-Hermite nodes of the mode's thermal distribution
+#: at +/-sqrt(3) sigma, each with its weight
+#: (`science/vibrational-averaging.md` § 5.1).
 _NODES_SIGMA = (0.0, 3 ** 0.5, -(3 ** 0.5))
 _WEIGHTS = (2 / 3, 1 / 6, 1 / 6)
+_TEMPERATURE_K = 300.0
+_N_FRAMES = len(_NODES_SIGMA)
 
-#: The weight rule's cases (§ 2a.12), each a frame set of its own.
-_WEIGHT_CASES = tomllib.loads(
-    (Path(__file__).parent / "data" / "frame_weights.toml").read_text())["case"]
+#: The definition's rules (§ 2.2f), each a case of its own.
+_DEFINITION_CASES = tomllib.loads(
+    (Path(__file__).parent / "data" / "frame_set_definition.toml")
+    .read_text())["case"]
 
 
 def _junction() -> dict:
@@ -153,30 +152,95 @@ def _write_junction(tree: Path) -> str:
     return "P/structure/junction.xyz"
 
 
-def _write_frame_set(tree: Path, pair: str, path: str, weights,
-                     unstated=()) -> None:
-    """A frame set written from the pair by a script, through the
-    structure's own doors (`model/structure.md` § 2.2d-2.2e): frame 0 the
-    pair, the bridge moved by :data:`_FRAME_SHIFTS_ANG` along z; the mode and
-    the rule's order on the structure's rows; each frame's node and -- but
-    for the frames in ``unstated`` -- its weight on its own."""
-    from molbuilder.transport.sort import REGION_BRIDGE
+def _mode_frame_set(tree: Path, pair: str, result: str):
+    """The frame set a script writes from the vibration run ``result`` (its
+    folder, tree-relative), through the structure's own doors
+    (`model/structure.md` § 2.2d-2.2f): its highest mode; frame 0 the pair,
+    then each node's frame, every atom displaced by ``q * L``; the
+    definition stated in full -- the mode, frequency and zero-point amplitude
+    as the result states them, the temperature, the spread from them; each
+    frame's plain displacement, largest atom's, ``q``, ``q / sigma`` and
+    weight; every atom's mass, the result's; where the mode came from."""
+    import hashlib
+    import json as _json
+    from molbuilder.frameset import MASS_CHANNEL
+    from molbuilder.sidecars.spectra import parse_spectra_json
+    from molbuilder.spectra.derived import thermal_spread_amu12_ang
+    from molbuilder.structure import AtomChannel
     from molbuilder.workingcopy_structure import StructureCodec
+    path = tree / result / "V.spectra.json"
+    res = parse_spectra_json(str(path))
+    mode = res.modes[-1]
+    q_zp = _json.loads(path.read_text())["modes"][-1][
+        "zero_point_amplitude_amu12_ang"]
+    sigma = thermal_spread_amu12_ang(q_zp, mode.frequency_cm1, _TEMPERATURE_K)
+    L = np.zeros((res.n_atoms_total, 3))
+    L[res.free_atom_idxs] = mode.eigenvector_canonical
     base = StructureCodec().load(tree / pair)
-    bridge = base.regions[REGION_BRIDGE]
-    frames = []
-    for dz in _FRAME_SHIFTS_ANG:
-        pos = np.asarray(base.positions, dtype=float).copy()
-        pos[bridge, 2] += dz
-        frames.append(pos)
-    built = base.with_frames(np.stack(frames))
-    built.set_customized("mode", _MODE)
-    built.set_customized("order", _ORDER)
-    for f, (node, w) in enumerate(zip(_NODES_SIGMA, weights)):
-        built.set_customized("node_sigma", node, frame=f)
-        if f not in unstated:
-            built.set_customized("weight", w, frame=f)
-    StructureCodec().write(built, tree / path)
+    qs = [node * sigma for node in _NODES_SIGMA]
+    built = base.with_frames(np.stack([base.positions + q * L for q in qs]))
+    built.set_channel(MASS_CHANNEL, AtomChannel(
+        "value", {i: float(m) for i, m in
+                  enumerate(res.equilibrium_masses_amu)}))
+    for name, value, unit in (
+            ("mode_index_1based", mode.index_1based, None),
+            ("frequency_cm1", mode.frequency_cm1, "cm-1"),
+            ("temperature_k", _TEMPERATURE_K, "K"),
+            ("zero_point_amplitude_amu12_ang", q_zp, "amu^1/2 A"),
+            ("sigma_amu12_ang", sigma, "amu^1/2 A")):
+        built.set_customized(name, value, unit=unit)
+    for f, (q, w) in enumerate(zip(qs, _WEIGHTS)):
+        moved = q * L
+        for name, value, unit in (
+                ("displacement_ang", float(np.linalg.norm(moved)), "A"),
+                ("max_atom_displacement_ang",
+                 float(np.linalg.norm(moved, axis=1).max()), "A"),
+                ("q_amu12_ang", q, "amu^1/2 A"),
+                ("node_sigma", q / sigma, None),
+                ("weight", w, None)):
+            built.set_customized(name, value, unit=unit, frame=f)
+    built.set_info("vibration", {
+        "run": result,
+        "result_sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+    return built
+
+
+def _with_case(built, case):
+    """The good set with ``case``'s one change (`tests/data/
+    frame_set_definition.toml`): rows restated, scaled or dropped, the mass
+    channel dropped, a unit restated -- or none of the definition at all."""
+    from molbuilder.frameset import MASS_CHANNEL
+    if case.get("none"):
+        bare = built.with_frames(np.asarray(built.frames, dtype=float))
+        for row in list(bare.customized_rows()):
+            bare.remove_customized(row["name"])
+        for f in range(bare.n_frames):
+            for row in list(bare.customized_rows(f)):
+                bare.remove_customized(row["name"], frame=f)
+        bare.annotations.pop(MASS_CHANNEL, None)
+        (bare.info or {}).pop("vibration", None)
+        return bare
+
+    def row(name, frame):
+        return next(r for r in built.customized_rows(frame)
+                    if r["name"] == name)
+    for e in case.get("set", ()):
+        r = row(e["row"], e.get("frame"))
+        built.set_customized(e["row"], e["value"], unit=r.get("unit"),
+                             frame=e.get("frame"))
+    for e in case.get("scale", ()):
+        r = row(e["row"], e.get("frame"))
+        built.set_customized(e["row"], r["value"] * e["by"],
+                             unit=r.get("unit"), frame=e.get("frame"))
+    for e in case.get("unit", ()):
+        r = row(e["row"], e.get("frame"))
+        built.set_customized(e["row"], r["value"], unit=e["unit"],
+                             frame=e.get("frame"))
+    for e in case.get("drop", ()):
+        built.remove_customized(e["row"], frame=e.get("frame"))
+    if case.get("drop_channel"):
+        built.annotations.pop(MASS_CHANNEL, None)
+    return built
 
 
 def _run_card(bundle: Path) -> None:
@@ -194,18 +258,21 @@ def _files(d: Path) -> dict:
 
 def _set_by_the_person(template: Path, name: str, value) -> None:
     """One item of a calculation's template changed as a person changes it
-    in the file: its value, and its source `person` (`engines/template.md`
-    § 6.6)."""
+    in the file: its value -- written in, for an item left blank -- and its
+    source `person` (`engines/template.md` § 6.6)."""
     from molbuilder.template import one, read_template
     lines = template.read_text().splitlines(keepends=True)
     at = lines.index(f"[item.{name}]\n")
     end = next((i for i in range(at + 1, len(lines))
                 if lines[i].startswith("[")), len(lines))
+    said = {"value = ": f"value = {json.dumps(value)}\n",
+            "source = ": 'source = "person"\n'}
     for i in range(at + 1, end):
-        if lines[i].startswith("value = "):
-            lines[i] = f"value = {json.dumps(value)}\n"
-        elif lines[i].startswith("source = "):
-            lines[i] = 'source = "person"\n'
+        for key, line in list(said.items()):
+            if lines[i].startswith(key):
+                lines[i] = line
+                del said[key]
+    lines[at + 1:at + 1] = list(said.values())
     template.write_text("".join(lines))
     assert one(read_template(template.read_text()), name).value == value
 
@@ -326,10 +393,34 @@ def junction(tmp_path_factory):
                "transmission", "--mode", "direct", "--yes")
         _taken(run, "summarize", "summarize", "task")
 
-        # THE FRAME SET, written from the pair by a script through the
-        # structure's own doors.
+        # THE MODE -- a SIESTA vibration of the relaxed pair, on the road:
+        # its free atoms the bridge's middle two, held as the relaxation held
+        # them, the box ticked (the pair IS the relaxed geometry), at the
+        # relaxation's own settings.
+        from molbuilder.workingcopy_structure import StructureCodec
+        r = jobset("init", "--structure", pair, "--bundle", "P/frequency/V",
+                   "--engine", "siesta", "--shape", "hierarchical",
+                   "--calculation", "vibration", "--name", "V",
+                   "--psml-lib", "pseudopotential")
+        assert r.exit_code == 0, r.output
+        vib = RealRun(tree=tree, bundle=tree / "P" / "frequency" / "V")
+        _run_card(vib.bundle)
+        vt = json.loads((vib.bundle / "task.json").read_text())
+        vt["stages"] = [s for s in vt["stages"] if s["name"] == "freq"]
+        (vib.bundle / "task.json").write_text(json.dumps(vt, indent=2))
+        for name, value in {**RELAXED_WITH, "already_relaxed": True}.items():
+            _set_by_the_person(vib.bundle / "V.template.toml", name, value)
+        _taken(vib, "prep freq", "prep", "task", "--stage", "freq",
+               "--target", "this")
+        _taken(vib, "launch freq", "launch", "task", "--stage", "freq",
+               "--mode", "direct", "--yes")
+        vibration = "P/frequency/V/01_freq/run-0"
+
+        # THE FRAME SET, written from that mode by a script through the
+        # structure's own doors, the definition stated in full.
         frame_set = "P/structure/frames.xyz"
-        _write_frame_set(tree, pair, frame_set, _WEIGHTS)
+        StructureCodec().write(_mode_frame_set(tree, pair, vibration),
+                               tree / frame_set)
 
         # THE SET CITED -- a second transport calculation, its
         # pseudopotentials from the library, its spin restricted as the
@@ -361,30 +452,39 @@ def junction(tmp_path_factory):
                "transmission", "--mode", "direct", "--yes")
         _taken(from_pair, "summarize", "summarize", "task")
 
-        # THE WEIGHT RULE'S CASES: a set each, described, its seed and leads
-        # prepared -- which composes the junction; nothing is launched --
-        # and its record read where the Results tab reads it.
-        run.weights_said = {}
-        for k, case in enumerate(_WEIGHT_CASES):
-            path = f"P/structure/weights{k}.xyz"
-            _write_frame_set(tree, pair, path, case["weights"],
-                             unstated=case.get("unstated", ()))
-            bundle = f"P/transport/W{k}"
+        # THE DEFINITION'S RULES (`tests/data/frame_set_definition.toml`):
+        # the good set with one change each, cited at `jobset init`, the door
+        # that refuses it; the set stating none of the definition described,
+        # its seed and leads prepared -- which composes the junction -- and
+        # its record read where the Results tab reads it.
+        run.definition_said = {}
+        for k, case in enumerate(_DEFINITION_CASES):
+            path = f"P/structure/case{k}.xyz"
+            StructureCodec().write(
+                _with_case(_mode_frame_set(tree, pair, vibration), case),
+                tree / path)
+            bundle = f"P/transport/C{k}"
             r = jobset("init", "--calculation", "transport",
                        "--engine", "siesta", "--shape", "hierarchical",
                        "--bundle", bundle, "--slot", f"junction={path}",
                        "--psml-lib", "pseudopotential",
                        "--bias", ",".join(f"{v:g}" for v in _BIAS),
                        "--no-low-bias-approximation")
+            if "refused" in case:
+                run.definition_said[case["name"]] = Said(r.exit_code,
+                                                         r.output)
+                continue
             assert r.exit_code == 0, r.output
-            w = RealRun(tree=tree, bundle=tree / bundle)
-            _run_card(w.bundle)
-            _set_by_the_person(w.bundle / f"W{k}.template.toml",
+            c = RealRun(tree=tree, bundle=tree / bundle)
+            _run_card(c.bundle)
+            _set_by_the_person(c.bundle / f"C{k}.template.toml",
                                "spin_treatment", "restricted")
-            _taken(w, "prep seed and leads", "prep", "task", *leads,
+            _taken(c, "prep seed and leads", "prep", "task", *leads,
                    "--target", "this")
-            got = client.get(f"/api/transport/record?path={w.bundle}")
-            run.weights_said[case["name"]] = (got.status_code, got.get_json())
+            got = client.get(f"/api/transport/record?path={c.bundle}")
+            run.definition_said[case["name"]] = (got.status_code,
+                                                 got.get_json())
+        run.vibration = vibration
         run.frame_set = frame_set
         run.cite = cite
         run.cited_before = cited_before
@@ -515,7 +615,7 @@ def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
                                  tree_root=junction.tree)
     assert record is not None
     assert (record.provenance["kind"], record.provenance["frames"]) == (
-        "pair", len(_FRAME_SHIFTS_ANG))
+        "pair", _N_FRAMES)
 
 
 def _prepared_decks(run, stage):
@@ -651,6 +751,13 @@ def _the_geometry_it_ran(point):
     return np.asarray(steps[0].structure.positions, dtype=float)
 
 
+def _the_set(junction):
+    """The cited frame set, every frame, read through the codec."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    return StructureCodec().load(junction.tree / junction.frame_set,
+                                 frames=True)
+
+
 def test_a_frame_sets_device_runs_a_point_per_frame_and_voltage(junction):
     """§ 2a.11's frame axis: the device's one run holds a level for each axis
     that varies -- a frame folder, a voltage folder in it -- each point
@@ -658,32 +765,29 @@ def test_a_frame_sets_device_runs_a_point_per_frame_and_voltage(junction):
     geometry; `status` counts the points with their axes, *k of N points
     done (F frames × V voltages)*."""
     from molbuilder.task import read_task
-    from molbuilder.transport.sort import REGION_BRIDGE
-    from molbuilder.workingcopy_structure import StructureCodec
+    from molbuilder.transport.record import composed_junction
     run = junction.from_pair
     label = read_task(run.bundle / "task.json").label
-    for f in range(len(_FRAME_SHIFTS_ANG)):
+    for f in range(_N_FRAMES):
         for v in _BIAS:
             p = _frame_point(run, "04_device", f, v)
             for suffix in (".TS.HSX", ".TSDE"):
                 assert (p / f"{label}{suffix}").is_file(), (p, suffix)
-    # Against frame 0's point at the same voltage, a frame's point has the
-    # bridge moved by the frame's shift along z and nothing else moved.
-    n_bridge = len(StructureCodec().load(run.tree / junction.frame_set)
-                   .regions[REGION_BRIDGE])
+    # Against frame 0's point at the same voltage, each frame's point moved
+    # its atoms as the composed set's own frame moves them -- the deck's
+    # atom order -- and by nothing else.
+    composed = np.asarray(composed_junction(run.bundle).frames, dtype=float)
     for v in _BIAS:
         at_0 = _the_geometry_it_ran(_frame_point(run, "04_device", 0, v))
-        for f in range(1, len(_FRAME_SHIFTS_ANG)):
+        for f in range(1, _N_FRAMES):
             moved = (_the_geometry_it_ran(_frame_point(run, "04_device", f, v))
                      - at_0)
-            shift = _FRAME_SHIFTS_ANG[f] - _FRAME_SHIFTS_ANG[0]
-            assert np.allclose(moved[:, :2], 0.0, atol=1e-4), (f, v)
-            assert np.isclose(moved[:, 2], shift, atol=1e-4).sum() == n_bridge
-            assert (np.isclose(moved[:, 2], 0.0, atol=1e-4).sum()
-                    == len(moved) - n_bridge), (f, v, moved[:, 2])
-    n = len(_FRAME_SHIFTS_ANG) * len(_BIAS)
+            assert np.allclose(moved, composed[f] - composed[0],
+                               atol=1e-4), (f, v)
+            assert np.abs(moved).max() > 1e-3, (f, v)
+    n = _N_FRAMES * len(_BIAS)
     _said(run, "status device",
-          f"{n} of {n} points done ({len(_FRAME_SHIFTS_ANG)} frames × "
+          f"{n} of {n} points done ({_N_FRAMES} frames × "
           f"{len(_BIAS)} voltages)")
 
 
@@ -702,7 +806,7 @@ def test_each_frame_starts_from_the_seed_and_its_voltages_chain_in_it(
     task = read_task(run.bundle / "task.json")
     names = RunNames.of(task.label, stage_home(run.bundle, task,
                                                "device").token, task.shape)
-    for f in range(len(_FRAME_SHIFTS_ANG)):
+    for f in range(_N_FRAMES):
         first = _frame_point(run, "04_device", f, _BIAS[0])
         assert read_continued_from(first, names, 0) is None, first
         assert any(g["from"] == "01_seed/run-0"
@@ -718,7 +822,7 @@ def test_a_transmission_point_reads_the_device_at_its_frame_and_voltage(
     the same frame and the same voltage, never another's."""
     from molbuilder.runrecord import read_gathered_from
     run = junction.from_pair
-    for f in range(len(_FRAME_SHIFTS_ANG)):
+    for f in range(_N_FRAMES):
         for v in _BIAS:
             got = read_gathered_from(_frame_point(run, "05_transmission", f, v))
             hsx = [g["from"] for g in got if g["file"].endswith(".TS.HSX")]
@@ -729,22 +833,35 @@ def test_a_transmission_point_reads_the_device_at_its_frame_and_voltage(
 def test_a_frame_sets_record_has_a_point_per_frame_and_voltage(junction):
     """§ 2a.12's frame dimension: a frame set's record has a point per frame
     and voltage, each carrying its frame, its folder's tokens and its
-    frame's `customized` rows whole -- the node and weight the script
-    stated -- and the I-V is per frame: each row tagged by the frame its
+    frame's `customized` rows whole -- what the cited set states for that
+    frame -- and the I-V is per frame: each row tagged by the frame its
     point ran."""
     from molbuilder.transport.stages import Point
     rec = _record(junction.from_pair)
+    cited = _the_set(junction)
     got = {(p["frame"], p["bias_v"]): p for p in rec["points"]}
-    assert sorted(got) == [(f, v) for f in range(len(_FRAME_SHIFTS_ANG))
+    assert sorted(got) == [(f, v) for f in range(_N_FRAMES)
                            for v in _BIAS], sorted(got)
     for (f, v), p in got.items():
         assert p["tokens"] == Point(frame=f, volts=v).rel, p["tokens"]
-        rows = {r["name"]: r["value"] for r in p["customized"]}
-        assert rows == {"node_sigma": _NODES_SIGMA[f],
-                        "weight": _WEIGHTS[f]}, (f, rows)
+        assert p["customized"] == cited.customized_rows(f), (f, p)
     iv = rec["iv"]
     assert list(zip(iv["frame"], iv["voltages_v"], iv["current_a"])) == [
         (p["frame"], p["bias_v"], p["current_a"]) for p in rec["points"]]
+
+
+def _frame_curves(run, label, volts):
+    """Each frame's T(E) at ``volts``, read from the transmission TBtrans
+    wrote at that frame's point, through its parser."""
+    from molbuilder.parse.engines.tbtrans import transmission_files
+    from molbuilder.transport.record import parse_avtrans
+    curves = []
+    for f in range(_N_FRAMES):
+        files = transmission_files(
+            _frame_point(run, "05_transmission", f, volts), label)
+        energies, t = parse_avtrans(files["unpolarized"][0].read_text())
+        curves.append(np.asarray(t, dtype=float))
+    return np.asarray(energies, dtype=float), curves
 
 
 def test_the_mode_average_is_every_frames_curve_at_its_stated_weight(
@@ -753,29 +870,26 @@ def test_the_mode_average_is_every_frames_curve_at_its_stated_weight(
     the record's average is the sum over every frame of its T(E) -- read
     from the transmission TBtrans wrote at that frame's point -- at the
     weight the frame states; its change is from the base frame's; at E_F
-    the averaged conductance, its change in per cent of the base's, and the
-    curvature (T+ + T- - 2 T0) / h^2 from the frames at +/-sqrt(3), per
-    sigma^2.  The mode, the rule's order, the weights with their sum and
-    tolerance, and the assumptions are stated beside the numbers."""
-    from molbuilder.parse.engines.tbtrans import transmission_files
+    the averaged conductance beside the base's and the change in per cent.
+    The mode's definition -- the cited set's structure rows -- the weights
+    with their sum and tolerance, and the assumptions are stated beside the
+    numbers."""
+    from molbuilder.frameset import read as read_frame_set
     from molbuilder.task import read_task
-    from molbuilder.transport.record import parse_avtrans
     run = junction.from_pair
     label = read_task(run.bundle / "task.json").label
     avg = _record(run)["average"]
-    assert (avg["frames"], avg["mode"], avg["order"]) == (3, _MODE, _ORDER)
+    fs = read_frame_set(_the_set(junction))
+    assert avg["frames"] == _N_FRAMES
+    for name, value in fs.structure_rows().items():
+        assert avg[name] == value, (name, avg[name], value)
     assert avg["weights"] == list(_WEIGHTS) and avg["tolerance"] == 1e-6
     assert abs(avg["weight_sum"] - 1.0) <= avg["tolerance"]
     assert avg["why"] is None and len(avg["assumptions"]) == 6
     assert [e["bias_v"] for e in avg["at"]] == list(_BIAS)
     for e in avg["at"]:
         assert e["waits_for"] == [] and e["why"] is None, e
-        curves = []
-        for f in range(len(_FRAME_SHIFTS_ANG)):
-            files = transmission_files(
-                _frame_point(run, "05_transmission", f, e["bias_v"]), label)
-            energies, t = parse_avtrans(files["unpolarized"][0].read_text())
-            curves.append(np.asarray(t, dtype=float))
+        energies, curves = _frame_curves(run, label, e["bias_v"])
         expect = sum(w * c for w, c in zip(_WEIGHTS, curves))
         assert np.allclose(e["transmission"], expect, rtol=1e-12, atol=0)
         assert np.allclose(e["delta_transmission"], expect - curves[0],
@@ -786,31 +900,77 @@ def test_the_mode_average_is_every_frames_curve_at_its_stated_weight(
         assert e["base_conductance_g0"] == pytest.approx(g[0], rel=1e-12)
         assert e["conductance_change_percent"] == pytest.approx(
             100.0 * (g_avg - g[0]) / g[0], rel=1e-6, abs=1e-12)
-        c = e["curvature"]
-        assert (c["per"], c["frames"]) == ("sigma^2", [1, 2]), c
-        assert c["h_sigma"] == pytest.approx(3 ** 0.5, rel=1e-12)
-        assert c["value"] == pytest.approx((g[1] + g[2] - 2.0 * g[0]) / 3.0,
-                                           rel=1e-6, abs=1e-12)
 
 
-@pytest.mark.parametrize("case", _WEIGHT_CASES,
-                         ids=[c["name"] for c in _WEIGHT_CASES])
-def test_the_weight_rule(junction, case):
-    """§ 2a.12: the record checks a frame set's weights, never assumes them
-    -- refused by name, with the sum it found, when they break the rule; a
-    family with no average, said so, when no frame states one
-    (`tests/data/frame_weights.toml`)."""
-    status, body = junction.weights_said[case["name"]]
+@pytest.mark.parametrize("case", _DEFINITION_CASES,
+                         ids=[c["name"] for c in _DEFINITION_CASES])
+def test_the_definition_is_checked_at_the_citation(junction, case):
+    """`model/structure.md` § 2.2f: a mode's frame set states what every
+    frame is, completely and consistently, and the transport citation door
+    checks it frame by frame before anything runs -- each rule broken once,
+    on the real mode's set, refused at `jobset init` naming the frame and the
+    row; a set stating none of it a family of frames with no average, said
+    so (`tests/data/frame_set_definition.toml`)."""
+    said = junction.definition_said[case["name"]]
     if "refused" in case:
-        assert status == 400, body
+        assert said.exit_code != 0, said.output
         for words in case["refused"]:
-            assert words in body["error"], (words, body["error"])
+            assert words in said.output, (words, said.output)
         return
+    status, body = said
     assert status == 200, body
     avg = body["record"]["average"]
     assert avg["at"] == [], avg
     for words in case["no_average"]:
         assert words in avg["why"], (words, avg["why"])
+
+
+def test_the_data_file_holds_every_point_beside_its_frames_definition(
+        junction):
+    """§ 2a.12, *the data file*: `<label>.transport.nc`, read through its
+    door, holds every point on one grid -- frame x voltage x energy -- its
+    T(E) TBtrans's own, each frame's definition rows and every atom's mass
+    and coordinates beside it, the mode's average at the stated weights; every
+    variable says what it is, a raw one where it was read from; and a
+    calculation of one structure has the same layout, one frame."""
+    from molbuilder.frameset import FRAME_ROWS, MASS_CHANNEL
+    from molbuilder.task import read_task
+    from molbuilder.transport.datafile import (VARIABLES, data_file_path,
+                                               read_data_file)
+    from molbuilder.transport.record import composed_junction
+    run = junction.from_pair
+    label = read_task(run.bundle / "task.json").label
+    got = read_data_file(data_file_path(run.bundle, label))
+    V = {k: v["data"] for k, v in got["variables"].items()}
+    assert list(V["frame"]) == list(range(_N_FRAMES))
+    assert list(V["frame_token"]) == [f"f{f + 1:03d}" for f in range(_N_FRAMES)]
+    assert list(V["bias_v"]) == list(_BIAS)
+    for b, v in enumerate(_BIAS):
+        energies, curves = _frame_curves(run, label, v)
+        assert np.array_equal(V["energy_ev"], energies)
+        for f in range(_N_FRAMES):
+            assert V["done"][f, b] == 1
+            assert np.array_equal(V["transmission"][f, b], curves[f])
+        assert np.allclose(V["average_transmission"][b],
+                           sum(w * c for w, c in zip(_WEIGHTS, curves)),
+                           rtol=1e-12, atol=0)
+    composed = composed_junction(run.bundle)
+    for r in FRAME_ROWS:
+        assert list(V[r.name]) == [composed.customized_value(r.name, frame=f)
+                                   for f in range(_N_FRAMES)], r.name
+    masses = composed.annotations[MASS_CHANNEL].data
+    assert list(V["mass_amu"]) == [masses[i] for i in range(composed.n_atoms)]
+    assert np.array_equal(V["positions_ang"],
+                          np.asarray(composed.frames, dtype=float))
+    for var in VARIABLES:
+        attrs = got["variables"][var.name]["attrs"]
+        assert attrs["long_name"] and attrs["definition"], var.name
+        assert "units" in attrs and attrs["kind"] == var.kind, var.name
+        if var.kind == "raw":
+            assert attrs["source"], var.name
+    one = read_data_file(data_file_path(junction.bundle, "T"))["variables"]
+    assert one["transmission"]["data"].shape[:2] == (1, len(_BIAS))
+    assert one["transmission"]["dims"] == ("frame", "bias", "energy")
 
 
 # --------------------------------------------------------------------- #

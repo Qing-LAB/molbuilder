@@ -328,6 +328,15 @@ IDENTITY_FIELDS = ("atom_names", "residue_ids", "residue_names",
 _DEFAULT_ISOLATED_VACUUM = 3.0
 
 
+def frame_words(frame: int, n_frames: Optional[int] = None) -> str:
+    """A frame as a person reads it -- counted from 1, as MolView's frame bar
+    counts (`model/structure.md` § 2.2e): ``frame 2 of 3`` for frame index 1.
+    THE ONE TRANSLATION on this side, as `toDisplay` is the browser's:
+    nothing writes a ``+ 1`` of its own."""
+    of = f" of {int(n_frames)}" if n_frames is not None else ""
+    return f"frame {int(frame) + 1}{of}"
+
+
 def _vacuum_from_stored(raw) -> Optional[Tuple[float, float, float]]:
     """Read a stored vacuum.  ``None`` means nobody chose one; ``[0,0,0]``
     means somebody chose no gap.  Those are different, and both are honoured.
@@ -1710,8 +1719,8 @@ class Structure:
             raise ValueError("XYZ holds no frames")
         first = images[0]
         symbols = list(first.get_chemical_symbols())
-        # ONE FRAME SET: the frames are the same atoms in the same order.
-        # Counted from 1 here, because a person reads it.
+        # ONE FRAME SET: the frames are the same atoms in the same order,
+        # each named as a person counts it (`frame_words`).
         for k, im in enumerate(images[1:], start=1):
             differs = (
                 "atom count" if len(im) != len(first) else
@@ -1719,10 +1728,10 @@ class Structure:
                 != symbols else None)
             if differs:
                 raise ValueError(
-                    f"frame {k + 1} of {len(images)} differs from frame 1 in "
-                    f"its {differs}; the frames of one document are one frame "
-                    f"set -- the same atoms in the same order "
-                    f"(model/structure.md § 2.3)")
+                    f"{frame_words(k, len(images))} differs from "
+                    f"{frame_words(0)} in its {differs}; the frames of one "
+                    f"document are one frame set -- the same atoms in the "
+                    f"same order (model/structure.md § 2.3)")
         coordinates = np.asarray([im.get_positions() for im in images],
                                  dtype=float)
 

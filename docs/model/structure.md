@@ -547,10 +547,10 @@ everything a person reads counts them from 1, as the frame bar's `1 / F` does �
 *"frame 1 of 3"* — **a folder name included**: a transport point's frame level
 is `f001` for frame 0 (`engines/transport.md` § 2a.11). One translation each
 side, as the atom index has (`model/overview.md` § 2): `structure.frame_words`
-in Python, MolView's `toDisplay` / `fromDisplay` in the browser; nothing writes
-a `+ 1` of its own.
+in Python, MolView's `toDisplay` / `fromDisplay` in MolView (`web/molview.md`
+§ 11.5); neither writes a `+ 1` of its own.
 
-### 2.2f A mode's frame set — what each frame is, raw beside derived *(user, 2026-10-10; plan § 5z)*
+### 2.2f A mode's frame set — what each frame is, raw beside derived *(user, 2026-10-10; built the same day, plan § 5z Q17-e2)*
 
 > *"what we need to define here is how these parameters of the vibration and
 > position is clearly and well defined within the .xyz/.json such that there is
@@ -575,7 +575,8 @@ transport record and data file carry it (§ 2a.12 there). Its names are
 molbuilder's own, constants of `molbuilder/frameset.py` — as `transport/sort.py`
 owns the region names — and **the units are in the names**, as in the vibration
 result the values come from (`engines/vibration.md` § 6.8); a row's `unit`
-field, when written, states the same unit, for the eye.
+field, when written, states the same unit, for the eye, in its ASCII spelling
+— `cm-1`, `K`, `A`, `amu^1/2 A` — and a number without a unit writes none.
 
 | where | name | kind | meaning | unit |
 |---|---|---|---|---|
@@ -598,7 +599,8 @@ field, when written, states the same unit, for the eye.
 *derived* is computed from the others by the formula shown.
 
 **The rules** — checked at the transport citation door, frame by frame and
-naming the frame (`engines/transport.md` § 2a.9), by `frameset.check`:
+naming the frame (`engines/transport.md` § 2a.9), by `frameset.read` — the
+set's definition, checked, or none when it states none:
 
 1. **All or none.** A set states every row and the channel above, or none of
    them. With none it is a family of frames — each frame's curve its own, no
@@ -611,8 +613,10 @@ naming the frame (`engines/transport.md` § 2a.9), by `frameset.check`:
    direction of the frame farthest along it, signed by that frame's `q`, every
    frame's `u_f` equals `q_f · ê` — its size, its side and its direction at
    once. The coordinates are written to six decimals (`Structure.to_xyz`), so
-   each of these is checked to within what that rounding allows: `√3·10⁻⁶` Å a
-   displaced atom, `√3·10⁻⁶·√(Σ m)` amu^½·Å for `q`.
+   each of these is checked to within what that rounding allows: a displaced
+   atom within `√3·10⁻⁶` Å, the plain displacement within `√3·10⁻⁶·√N` Å, and
+   a frame's mass-weighted position within twice `√3·10⁻⁶·√(Σ m)` amu^½·Å —
+   the rounding of the frame and of the direction it is measured along.
 4. **The derived rows match their formulas**: `σ` against `Q_zp`, the frequency
    and the temperature; each `node_sigma` against `q / σ` — to a relative
    `10⁻⁹`, since each is the formula of values stated at full precision.

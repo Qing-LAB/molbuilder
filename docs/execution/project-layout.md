@@ -2627,6 +2627,7 @@ In the flat shape the root is also the run folder, so the files of § 5.2 and
 | `<label>.source.molstruct.json` | its cell and its region labels | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.template.toml.pre-m6` — only: a template migrated | the template as it was before `jobset migrate` rewrote it | `jobset migrate` | none | record |
 | `<label>.transport.json` *(transport)* | the transport results, summarised by `summarize task` from the transmission points that ran | `jobset summarize task` (`transport.record.write_record`) | `parse.sidecars.transport.TransportRecordFileParser` | result |
+| `<label>.transport.nc` *(transport)* | the transport results as data on their grid -- every point's raw outputs beside what is derived from them, a frame set's definition beside every frame's values (NetCDF-4) | `jobset summarize task` (`transport.datafile.write_data_file`) | `transport.datafile.read_data_file` | result |
 | `<label>.fc-sweep.json` *(SIESTA, vibration)* — only: two or more force-constant stages | the force-constant stages compared, when the ladder has two or more (a displacement sweep), by `summarize task`: each stage and what it varied, every mode's frequency per stage, the force-constant changes, and where each stage's files are | `jobset summarize task` (`spectra.displacement_sweep.write_sweep`) | `parse.sidecars.fc_sweep.FcSweepRecordFileParser` | result |
 | `<base>.<engine>.<shape>.pipeline.log` | what each step of a prep received, decided and produced | every prep, from either door, beside its `STAGE-PLAN.md` (`pipeline_log.PipelineLog`) | none | record |
 | `task.json` | the description: what varies, the stages, the shape, the structure | `jobset init`; Task setup's Save; the Transport tab's describe, which the browser writes | `task.read_task` | source |
@@ -2748,7 +2749,7 @@ and a voltage, `transport.md` § 2a.11), or a task's stages sharing one job, in 
 <!-- manifest:launch -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a swept rung's points, or a task's stages sharing one job, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
+| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a bias sweep's points, or a task's stages sharing one job, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
 | `<group>.sbatch` — only: launched to a queue | its queue header | launch (`jobset/submit.py`), written again at each launch -- a task's group's by its prep (`prep.prep_group`), and by launch only for stages first named together there | none | derived |
 | `<group>.log` | every member's output, in order | the group's sequencer, as it runs | none | record |
 <!-- /manifest -->

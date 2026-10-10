@@ -1055,6 +1055,18 @@ WRITTEN: "tuple[Artifact, ...]" = (
              level="calculation", kind="result",
              writer="`jobset summarize task` (`transport.record.write_record`)",
              door="parse.sidecars.transport.TransportRecordFileParser"),
+    # THE SAME RESULTS AS DATA (`engines/transport.md` § 2a.12, *the data
+    # file*): frame x voltage x energy, raw beside derived, every variable
+    # defined -- written beside the record by the same verb.
+    Artifact(".transport.nc", "the transport results as data on their grid "
+                              "-- every point's raw outputs beside what is "
+                              "derived from them, a frame set's definition "
+                              "beside every frame's values (NetCDF-4)",
+             staged=False, calculation="transport", when="summarize",
+             level="calculation", kind="result",
+             writer="`jobset summarize task` "
+                    "(`transport.datafile.write_data_file`)",
+             door="transport.datafile.read_data_file"),
     # A SIESTA VIBRATION'S DISPLACEMENT SWEEP, summarised (`engines/
     # vibration.md` § 5.9): written at the calculation root by `summarize task`
     # when the ladder holds two or more force-constant stages -- a record of

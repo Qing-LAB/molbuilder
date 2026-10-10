@@ -1278,7 +1278,7 @@ _HOST = Recipe(
     # SELF-CONTAINED and no other env carries notebook tooling.  See
     # `_JUPYTER`.
     verify_argv=("python", "-c",
-                 "import ase, sisl, rdkit, flask, click, plotly; "
+                 "import ase, sisl, netCDF4, rdkit, flask, click, plotly; "
                  "print('host env OK')"),
     verify_expect_contains="host env OK",
 )

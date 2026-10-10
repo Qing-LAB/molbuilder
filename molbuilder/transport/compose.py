@@ -260,8 +260,10 @@ def _classify_pair(path: Path) -> CitedPair:
     citation can check (`engines/transport.md` § 2a.9): every frame keeps
     the electrode atoms where frame 0 has them, within
     `wizard.FROZEN_TOL_ANG`, because every frame shares the leads'
-    calculation.  The same atoms, species and cell are the structure's own
-    invariant, refused by its reader."""
+    calculation; and a mode's frame set states what every frame is,
+    completely and consistently (`frameset.read`, `model/structure.md`
+    § 2.2f), before anything runs.  The same atoms, species and cell are the
+    structure's own invariant, refused by its reader."""
     from ..sidecars.molstruct import sidecar_path_for
     from ..workingcopy_structure import StructureCodec
     sidecar = sidecar_path_for(path)
@@ -280,6 +282,14 @@ def _classify_pair(path: Path) -> CitedPair:
             f"which settings its geometry was optimized with.  "
             f"{CITATION_CONDITION}.")
     _frames_keep_the_leads(struct, path)
+    # A MODE'S FRAME SET'S DEFINITION, checked here -- the door every road
+    # that cites passes -- so a set the record would average wrongly is
+    # refused before anything runs (`engines/transport.md` § 2a.9).
+    from ..frameset import FrameSetError, read as read_frame_set
+    try:
+        read_frame_set(struct)
+    except FrameSetError as exc:
+        raise ComposeError(f"{path.name}: {exc}") from exc
     return CitedPair(path=path, sidecar=sidecar, structure=struct,
                      calculation=calc)
 
@@ -290,7 +300,7 @@ def _frames_keep_the_leads(struct: Structure, path: Path) -> None:
     measures an unmoved atom -- the distance, against
     `wizard.FROZEN_TOL_ANG` -- refused naming each frame and its atoms, in
     the pair's own atom order."""
-    from .stages import frame_words
+    from ..structure import frame_words
     from .wizard import FROZEN_TOL_ANG
     regions = struct.regions or {}
     leads = sorted(set(regions.get(REGION_LEFT_ELECTRODE, ()))

@@ -24,7 +24,7 @@
  * rather than taken off a global.  § 4's rule is "nothing it needs comes from
  * a global", and mounting must publish nothing; an import breaks neither. */
 import { render as renderFindings } from "../validation-findings.js";
-import { toDisplay } from "./_atom.js";
+import { fromDisplay, toDisplay } from "./_atom.js";
 import { FROZEN_LABEL, PREDEFINED_LABELS, PREDEFINED_LABEL_NAMES }
     from "./model-jobs.js";
 
@@ -1018,7 +1018,7 @@ function askExportDialog(doc, card, model, opts) {
                 // user saying "between these", so they are ordered, not
                 // refused.
                 const raw = [Number(fromEl.value), Number(toEl.value)]
-                    .map((n) => (Number.isFinite(n) ? Math.round(n) - 1 : 0))
+                    .map((n) => (Number.isFinite(n) ? fromDisplay(Math.round(n)) : 0))
                     .map((n) => Math.min(Math.max(0, n), count - 1))
                     .sort((a, b) => a - b);
                 range = { from: raw[0], to: raw[1] };
@@ -2426,8 +2426,9 @@ function mountPanel(doc, card, model) {
         if (mine.length || count > 1) {
             const sub = el("div", "molviewer-info-head");
             const t = el("span", "molviewer-info-key");
-            // Counted from 1, as the frame bar counts.
-            t.textContent = count > 1 ? "Frame " + (at + 1) + " of " + count
+            // Counted from 1, as the frame bar counts -- the one
+            // translation (§ 11.5).
+            t.textContent = count > 1 ? "Frame " + toDisplay(at) + " of " + count
                                       : "This frame";
             sub.appendChild(t);
             block.appendChild(sub);

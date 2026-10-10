@@ -423,8 +423,9 @@ def _struct_for_validate(path):
     for line in said:                  # a lone .xyz (structure.md § 2.3)
         click.echo(line, err=True)
     if whole.n_frames > 1:
-        click.echo(f"{Path(path).name} holds {whole.n_frames} frames; frame 1 "
-                   f"of {whole.n_frames} was taken", err=True)
+        from .structure import frame_words
+        click.echo(f"{Path(path).name} holds {whole.n_frames} frames; "
+                   f"{frame_words(0, whole.n_frames)} was taken", err=True)
     struct = StructureCodec.frame_choice(whole)
     return struct, (np.asarray(struct.cell, dtype=float)
                     if struct.cell is not None else None)

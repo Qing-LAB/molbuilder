@@ -24,6 +24,7 @@ conda pip
 conda numpy
 conda ase
 conda sisl
+conda netcdf4
 # NOTHING NOTEBOOK-RELATED BELONGS HERE: `molbuilder-jupyternb` holds the
 # server, the kernel and the analysis stack, and no other env carries notebook
 # tooling (recipes.py `_JUPYTER`).

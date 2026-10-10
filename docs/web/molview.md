@@ -4065,6 +4065,10 @@ measurement readout, the atom-list column, the atom-number labels in the 3D
 window (§ 10.3 step 2), the filter panel. That is why they cannot drift apart,
 and why the first atom reads as `#1` everywhere even though the code sees `0`.
 
+**A frame number crosses the same way** (`model/structure.md` § 2.2e): the
+frame bar's `1 / F`, the export dialog's range and its file name, and the
+Customized heading's *Frame 1 of 3* go through the same two functions.
+
 This is the browser end of a rule that spans the whole application — the same
 translation exists on the server side, and the number a user reads must equal the
 atom number in the generated input file. Its single home is

@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from ..structure import frame_words
 from ..template import KIND_ROLES
 
 #: The composite's fixed ladder (§ 1) -- the five stages in
@@ -136,17 +137,11 @@ def sweep_points(task, stage: str) -> Tuple[float, ...]:
 
 
 def frame_token(frame: int) -> str:
-    """A frame's folder token: its position in the cited set, three digits
-    -- ``f000`` the base (`engines/transport.md` § 2a.9)."""
-    return f"f{int(frame):03d}"
-
-
-def frame_words(frame: int, n_frames: Optional[int] = None) -> str:
-    """A frame as a person reads it -- counted from 1, as the frame bar
-    counts (`model/structure.md` § 2.2e), with its folder token, so the two
-    counts are never confused: ``frame 2 of 3 (f001)``."""
-    of = f" of {int(n_frames)}" if n_frames is not None else ""
-    return f"frame {int(frame) + 1}{of} ({frame_token(frame)})"
+    """A frame's folder token: its count in the cited set as a person counts
+    it, three digits -- ``f001`` the base, frame 0 in the API
+    (`engines/transport.md` § 2a.9; `model/structure.md` § 2.2e: a folder name
+    is read by a person).  The count is `structure.frame_words`' own."""
+    return f"f{int(frame) + 1:03d}"
 
 
 @dataclass(frozen=True)
@@ -176,8 +171,8 @@ class Point:
         return 0.0 if self.volts is None else float(self.volts)
 
     def words(self) -> str:
-        """The point as a person reads it: ``frame 2 of 3 (f001) · 0.2 V``
-        (:func:`frame_words`)."""
+        """The point as a person reads it: ``frame 2 of 3 · 0.2 V``
+        (`structure.frame_words`), its folder ``f002/v0.2``."""
         return " · ".join(
             ([frame_words(self.frame, self.of)] if self.frame is not None
              else [])

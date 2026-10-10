@@ -616,8 +616,9 @@ def init_cmd(structure, bundle: str, shape: str,
         for line in said:              # a lone .xyz (structure.md § 2.3)
             click.echo(line)
         if whole.n_frames > 1:
+            from ..structure import frame_words
             click.echo(f"{Path(structure).name} holds {whole.n_frames} "
-                       f"frames; frame 1 of {whole.n_frames} was taken")
+                       f"frames; {frame_words(0, whole.n_frames)} was taken")
         struct = StructureCodec.frame_choice(whole)
         if vacuum is not None:
             # The same channel the Modify -> Cell tab uses: the vacuum lives on
@@ -1526,10 +1527,18 @@ def summarize_cmd(kind: str, words, bundle: str,
             except RecordError as e:
                 raise click.ClickException(str(e))
             out = write_record(_P(bundle), rec)
+            # THE SAME RESULTS AS DATA, on their grid, beside the report
+            # (`engines/transport.md` § 2a.12, *the data file*).
+            from ..transport.datafile import DataFileError, write_data_file
+            try:
+                data = write_data_file(_P(bundle), _tt, rec)
+            except DataFileError as e:
+                raise click.ClickException(str(e))
             click.echo(iv_table_text(rec))
             click.echo(f"-> {out}")
+            click.echo(f"-> {data}")
             _ledger(_P(bundle), "summarize", "transport-record",
-                    out=str(out), points=len(rec["points"]),
+                    out=str(out), data=str(data), points=len(rec["points"]),
                     pending=len(rec["pending"]), failed=len(rec["failed"]))
             return
         if _is_vibration:

@@ -1,0 +1,68 @@
+# A MODE'S FRAME SET -- its definition's rules (`model/structure.md` § 2.2f),
+# each broken once.  Run by `tests/test_transport_on_a_real_junction_e2e.py`
+# (`test_the_definition_is_checked_at_the_citation`): every case starts from
+# the set a script writes from a real SIESTA vibration of the relaxed
+# junction -- frame 0 the pair, frames at +/-sqrt(3) sigma along its highest
+# mode, the definition stated in full -- makes the case's one change, and
+# cites it at `jobset init`, the door that checks it.  Frames are named as a
+# person counts them, from 1 (`model/structure.md` § 2.2e).
+#
+# Keys of a [[case]]:
+#   set           rows restated: {row, frame (0-based; omitted: the
+#                 structure's), value}
+#   scale         rows scaled: {row, frame, by}
+#   unit          a row's unit restated: {row, frame, unit}
+#   drop          rows removed: {row, frame}
+#   drop_channel  the mass_amu channel removed
+#   none          the frames written with none of the definition
+#   refused       `jobset init` refuses, these words in what it says
+#   no_average    the record is composed and says why there is no average,
+#                 in these words
+
+[[case]]
+name = "the weights do not sum to 1"
+set = [{row = "weight", frame = 0, value = 0.5},
+       {row = "weight", frame = 1, value = 0.25},
+       {row = "weight", frame = 2, value = 0.125}]
+refused = ["the 3 frames' weights sum to 0.875, not 1 within 1e-06"]
+
+[[case]]
+name = "a weight outside (0, 1]"
+set = [{row = "weight", frame = 0, value = 1.2}]
+refused = ["frame 1 of 3's weight is 1.2", "a weight is a number in (0, 1]"]
+
+[[case]]
+name = "a frame states no weight"
+drop = [{row = "weight", frame = 2}]
+refused = ["does not state frame 3 of 3's weight"]
+
+[[case]]
+name = "the masses are not stated"
+drop_channel = true
+refused = ["does not state the mass_amu channel"]
+
+[[case]]
+name = "a frame is not where its coordinates put it"
+scale = [{row = "q_amu12_ang", frame = 2, by = 2.0},
+         {row = "node_sigma", frame = 2, by = 2.0}]
+refused = ["frame 3 of 3 does not sit at q_amu12_ang"]
+
+[[case]]
+name = "the spread is not its formula's"
+scale = [{row = "sigma_amu12_ang", by = 1.1}]
+refused = ["the structure's sigma_amu12_ang is"]
+
+[[case]]
+name = "the base is not at rest"
+set = [{row = "node_sigma", frame = 0, value = 0.1}]
+refused = ["frame 1 of 3 is the equilibrium the mode is taken at, so its node_sigma is 0, not 0.1"]
+
+[[case]]
+name = "a unit not the one its name states"
+unit = [{row = "frequency_cm1", unit = "eV"}]
+refused = ["the structure's frequency_cm1 states the unit 'eV', not 'cm-1'"]
+
+[[case]]
+name = "the set states none of the definition"
+none = true
+no_average = ["the set states no mode's definition"]

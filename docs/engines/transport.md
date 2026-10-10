@@ -1002,7 +1002,9 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 *Added 2026-09-16 at the user's direction. A frame set is cited (§ 3.1,
 built 2026-10-09, plan § 5z Q17-c) and the frame is a level inside a run
 (§ 2a.11, built 2026-10-10, Q17-d), and its record carries each frame's
-point and the mode's average (§ 2a.12, built 2026-10-10, Q17-e); the Results
+point and the mode's average, the data file beside it (§ 2a.12, built
+2026-10-10, Q17-e and Q17-e2), the set's definition checked at the citation
+door (`model/structure.md` § 2.2f, Q17-e2); the Results
 family is designed and **not built** — plan § 5z, Q17-f; the
 structure side is built (a `Structure` holds its frames and each frame's
 `customized` rows, `model/structure.md` § 2.2d–2.2e). What is settled here is
@@ -1151,7 +1153,7 @@ addable without rework. Citing a pair is § 3.1's second citation kind
 | the same species, in the same order | the seed's density and the leads' Hamiltonians are indexed by orbital | the same |
 | **the same cell as frame 0** | the leads must tile one cell for every frame (I6, § 2a.9 above) | the same — the cell is shared, a frame cannot state another |
 | **no electrode atom moved**, within the tolerance the citation door's frozen-atom check uses (`wizard.FROZEN_TOL_ANG`, 10⁻³ Å) | the exact-sharing gate: the lead Hamiltonian is truth | the citation door, frame by frame, naming the frame and the atom (`compose.classify_citation`) |
-| **a mode's frame set states what each frame is, completely and consistently** — every row and the `mass_amu` channel of [`model/structure.md`](?doc=model/structure.md) § 2.2f, or none of them | a frame's weight is what the record averages with, and its position along the mode is what any analysis reads; a half-stated or contradictory set would average or report the wrong thing in silence | the citation door, by § 2.2f's rules (`frameset.check`), naming the frame and the row — before anything runs |
+| **a mode's frame set states what each frame is, completely and consistently** — every row and the `mass_amu` channel of [`model/structure.md`](?doc=model/structure.md) § 2.2f, or none of them | a frame's weight is what the record averages with, and its position along the mode is what any analysis reads; a half-stated or contradictory set would average or report the wrong thing in silence | the citation door, by § 2.2f's rules (`frameset.read`), naming the frame and the row — before anything runs |
 
 **The frame token is the frame's count, as a person counts it**: `f001` is the
 base — frame 0 in the API, the undisplaced reference every displaced curve is
@@ -1249,8 +1251,9 @@ varies — `f001/`, `v0.2/`, or `f001/v0.2/` (§ 2a.11).
 The result of a frame group is not one transmission curve but a **family** of
 them, each beside what its frame is, and the mode's average at its stated
 weights. § 2a.12 states that frame dimension of what the Results surface reads
-and of the data file *(the record's half built 2026-10-10, `transport/average.py`,
-Q17-e; the Results family Q17-f)*. What else is derived across the family — a
+and of the data file *(built 2026-10-10: the record, `transport/average.py`,
+Q17-e; the data file, `transport/datafile.py`, Q17-e2; the Results family
+Q17-f)*. What else is derived across the family — a
 slope, a variance, a comparison with another mode's set — is the analysis's,
 made on the data file, where every frame's values sit beside its rows.
 
@@ -1670,7 +1673,8 @@ outstanding — and, on a rung that sweeps the bias, which of its points are
 done, read from each point's own files (§ 2a.11).
 
 **The frame dimension** *(the record built 2026-10-10 — plan § 5z Q17-e,
-`transport/average.py`, read by `record.collect_record`; the Results family
+`transport/average.py`, read by `record.collect_record`; the data file Q17-e2,
+`transport/datafile.py`; the Results family
 is Q17-f, and the PDOS of a selection, which names no frame yet, refuses a
 frame set by name until then; the physics is
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md))*.
@@ -1728,7 +1732,7 @@ structure at one voltage is a 1 × 1 grid, never a different layout.
 |---|---|
 | `frame` | the cited structure's frames — 1 for one structure |
 | `bias` | the voltages the device and the transmission ran at — the sweep's, or 0 V |
-| `energy` | the transmission's energy grid, E − E_F |
+| `energy` | the transmission's energy grid, E − E_F, as `.TBT.AVTRANS` prints it — five decimals of an eV (`f10.5`, `m_tbt_save.F90`); each DOS, from `.TBT.nc` at full precision, sits on the same points within half that decimal |
 | `spin` | the spin channels TBtrans wrote — one, or `up` and `down` |
 | `iv_bias` | the I–V's voltages — the description's list (under the low-bias approximation, more than ran) |
 | `atom` · `xyz` | the composed junction's atoms, in its order — the sorted copy every deck is written in, `atom-permutation.json` the way back — and the three Cartesian components |
@@ -1751,8 +1755,8 @@ the fill value where the set states none.
 | `iv_current_a` | frame, iv_bias | derived | the I–V — each point's own total (self-consistent), or the record's linear response from that frame's 0 V slice (low-bias) |
 | `device_ef_ev` · `device_vha_ev` | frame, bias | raw | the device point's NEGF Fermi level and boundary Hartree potential, as TranSIESTA printed them |
 | `dos_total` · `dos_region` · `lead_spectral_dos` · `lead_bulk_dos` · `eigenchannel_transmission` | frame, bias, (region · lead · eigenchannel), energy | raw | from each point's `.TBT.nc`, k-averaged (`transport/tbtnc.py`) |
-| `done` | frame, bias | — | 1 when the point has its transmission; 0 otherwise, its values the fill value — a gap, never filled in |
-| `point_folder` | frame, bias | — | the transmission point's folder, tree-relative — where its raw values were read |
+| `done` | frame, bias | state | 1 when the point has its transmission; 0 otherwise, its values the fill value — a gap, never filled in |
+| `point_folder` | frame, bias | state | the transmission point's folder, tree-relative — where its raw values were read |
 | `average_transmission` · `average_delta_transmission` | bias, energy | derived | the mode's average at the stated weights, and its change from frame 0's |
 | `average_conductance_g0` · `average_conductance_change_percent` | bias | derived | at E_F, and in per cent of frame 0's |
 
