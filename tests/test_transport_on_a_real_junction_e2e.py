@@ -1008,6 +1008,51 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     assert one["transmission"]["dims"] == ("frame", "bias_v", "energy_ev")
 
 
+def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
+    """§ 2a.12, *the data file*: every run's convergence on the grid it
+    varies over -- each device point's SCF history in its own (frame,
+    voltage) cell on the `scf_cycle` axis, the cycles past its last the fill
+    value; the once-run rungs on the `rung` axis; each point's state; the
+    NEGF charges by TranSIESTA's own columns; the leads compared -- each as
+    the record it is composed from states it."""
+    from molbuilder.task import read_task
+    from molbuilder.transport.datafile import data_file_path, read_data_file
+    run = junction.from_pair
+    label = read_task(run.bundle / "task.json").label
+    got = read_data_file(data_file_path(run.bundle, label))
+    V = {k: v["data"] for k, v in got["variables"].items()}
+    rec = _record(run)
+    by = {s["stage"]: s for s in rec["stages"]}
+    for p in by["device"]["by_point"]:
+        cell = (p["frame"], list(_BIAS).index(p["bias_v"]))
+        rows = p["scf"]
+        assert rows and V["device_scf_cycles"][cell] == len(rows), cell
+        assert list(V["device_scf_ddmax"][cell][:len(rows)]) == [
+            r["dDmax"] for r in rows], cell
+        assert list(V["device_scf_phase"][cell][:len(rows)]) == [
+            r["phase"] for r in rows], cell
+        assert np.isnan(V["device_scf_ddmax"][cell][len(rows):]).all(), cell
+        assert V["device_state"][cell] == p["state"], cell
+        assert V["device_scf_converged"][cell] == int(p["scf_converged"])
+        charges = p["negf"]["charges"]
+        parts = list(V["charge_part"])
+        assert {k: V["device_charge"][cell][parts.index(k)]
+                for k in charges} == charges, cell
+    assert list(V["rung"]) == ["seed", "electrode_L", "electrode_R"]
+    for r, name in enumerate(V["rung"]):
+        rows = by[name]["scf"]
+        assert V["rung_scf_cycles"][r] == len(rows), name
+        assert list(V["rung_scf_energy_ev"][r][:len(rows)]) == [
+            c["energy"] for c in rows], name
+        assert V["rung_fermi_ev"][r] == by[name]["fermi_ev"], name
+        assert V["rung_state"][r] == by[name]["state"], name
+    for p in rec["points"]:
+        cell = (p["frame"], list(_BIAS).index(p["bias_v"]))
+        assert V["point_state"][cell] == p["state"] == "finished", cell
+    assert got["attrs"]["leads_ef_differ_ev"] == rec["leads"]["differ_ev"]
+    assert got["attrs"]["Conventions"] == "CF-1.8"
+
+
 # --------------------------------------------------------------------- #
 #  The record (§ 2a.12)                                                  #
 # --------------------------------------------------------------------- #

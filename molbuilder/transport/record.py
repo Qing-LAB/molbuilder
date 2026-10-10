@@ -808,6 +808,9 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                 frame=pt.frame if pt.frame is not None else 0)
                 if junction is not None else []),
             "attempt": rel,
+            # ITS STATE, the run door's word, as a pending or failed point
+            # states its own (`engines/transport.md` § 2a.12).
+            "state": st.state,
             **read,
             "conductance_g0": conductance_g0(energies, read["transmission"]),
             # THE TOTAL, and the figure it came from (`CURRENT_MEANS`), with

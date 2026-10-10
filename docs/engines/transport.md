@@ -1740,6 +1740,9 @@ structure at one voltage is a 1 × 1 grid, never a different layout.
 | `iv_bias_v` | the I–V's voltages — the description's list, in its order (under the low-bias approximation, more than ran), or 0 V |
 | `atom` · `xyz` | the composed junction's atoms, in its order — the sorted copy every deck is written in, `atom-permutation.json` the way back — and the three Cartesian components |
 | `region` · `lead` · `eigenchannel` | the device's regions molbuilder owns (L-electrode, bridge, R-electrode); the two leads, as TBtrans names them (`L`, `R`; `transiesta.LEAD_NAMES`); the eigenchannels a point's `.TBT.nc` holds — those TBtrans was asked for (`TBT.T.Eig`), none where no file is read (K21) |
+| `rung` | the rungs that run once — `seed`, `electrode_L`, `electrode_R`, by their stage names |
+| `scf_cycle` | an SCF row's index within its run, from 0 — every row of the run's last step, a device's periodic start and its NEGF loop alike; a run of fewer rows padded with the fill value |
+| `charge_part` | TranSIESTA's charge columns, as its `ts-q:` header names them — `D` the device, `E1` `C1` … each electrode and its coupling |
 
 **Every dimension is a coordinate of its own name** (a NetCDF coordinate
 variable): `frame` (0-based, MolView's index), `bias_v`, `energy_ev`, `spin`,
@@ -1767,6 +1770,15 @@ row of a mode's frame set (§ 2.2f); along `atom` each atom's `element` and
 | `point_folder` | frame, bias_v | state | the transmission point's folder, relative to the calculation's — where its raw values were read; for a point not done, where its attempt is |
 | `average_transmission` · `average_delta_transmission` | bias_v, energy_ev | derived | the mode's average at the stated weights, and its change from frame 0's |
 | `average_conductance_g0` · `average_conductance_change_percent` | bias_v | derived | at E_F, and in per cent of frame 0's |
+| `point_state` | frame, bias_v | state | the transmission point's run state, the run door's word (`finished`, `failed`, `pending` …) — beside `done` |
+| `device_state` · `device_scf_converged` | frame, bias_v | state | the device point's run state, and whether its SCF converged (1, 0) |
+| `device_energy_ev` · `device_negf_cycles` · `device_dq` | frame, bias_v | raw | the NEGF phase's last energy — never compared across points or calculations (§ 1.1) — how many NEGF cycles ran, and the last one's charge change |
+| `device_charge` | frame, bias_v, charge_part | raw | the last NEGF cycle's charges, column by column, as TranSIESTA printed them |
+| `device_contour_poles` · `device_neq_emin_ev` · `device_neq_emax_ev` · `device_neq_points` | frame, bias_v | raw | the contour TranSIESTA echoed: its equilibrium contour's poles; under a bias, the non-equilibrium line's window and points |
+| `device_scf_cycles` | frame, bias_v | state | how many rows the device point's SCF history holds — the cycles beyond it are the fill value |
+| `device_scf_iscf` · `device_scf_energy_ev` · `device_scf_delta_e_ev` · `device_scf_ddmax` · `device_scf_dhmax_ev` · `device_scf_ef_ev` · `device_scf_dq` · `device_scf_vha_ev` · `device_scf_phase` | frame, bias_v, scf_cycle | raw | each SCF row of the device point's run, as SIESTA printed it: its own cycle number, the energy and its change, the density-matrix and Hamiltonian residuals, E_F, and on a NEGF row the charge change and the boundary potential; `phase` `periodic` or `negf` |
+| `rung_state` · `rung_scf_converged` · `rung_energy_ev` · `rung_fermi_ev` · `rung_scf_cycles` | rung | state · raw | each once-run rung's state, convergence, energy, Fermi level — a lead's the reference every T(E) is measured against — and its SCF history's length |
+| `rung_scf_iscf` · `rung_scf_energy_ev` · `rung_scf_delta_e_ev` · `rung_scf_ddmax` · `rung_scf_dhmax_ev` · `rung_scf_ef_ev` | rung, scf_cycle | raw | each once-run rung's SCF rows, as the device's |
 
 **Every variable says what it is**: `units` — one spelling a unit, the
 ångström `angstrom` and the ampere `A` — `long_name`, `definition` — how it is
@@ -1777,8 +1789,45 @@ kind, `energies_relative_to_ef`, the DFT-NEGF caveat; how the I–V was computed
 (`iv_computed`; under the low-bias approximation its `iv_kt_ev`, `iv_window_ev`
 and `iv_notes`, the voltages the window does not reach); for a frame set the
 structure's rows of § 2.2f, `info.vibration`, the weights' sum and tolerance
-and the average's assumptions; and the reason there is no average, when there
-is none.
+and the average's assumptions; the reason there is no average, when there is
+none; the leads' Fermi levels compared (`leads_ef_differ_ev`,
+`leads_ef_agree`, `leads_ef_tolerance_ev`), the Fermi levels each in its run's
+frame (`fermi_frames`) and each run's SCF tolerances (`scf_criteria`), as JSON;
+and `Conventions` `CF-1.8`. The large arrays are compressed (zlib), which a
+reader undoes by itself.
+
+**Reading it in a notebook** — `molbuilder-jupyternb` carries xarray and
+netCDF4 (`web/jupyter.md` § 7), and every axis is a coordinate, so a
+cross-section is one selection by value:
+
+```python
+import xarray as xr
+ds = xr.open_dataset("J.transport.nc")
+
+# every frame's T(E) at 0.2 V, one curve each, the legend the frame index
+ds.transmission.sel(bias_v=0.2).plot.line(x="energy_ev", hue="frame")
+
+# along the mode instead of by frame: q is a coordinate of the frame axis,
+# so the response to the displacement is a derivative along it
+along_q = ds.swap_dims(frame="q_amu12_ang").sortby("q_amu12_ang")
+along_q.conductance_g0.differentiate("q_amu12_ang")
+
+# the mode's average beside the base frame's curve
+ds.average_transmission.sel(bias_v=0.0).plot(x="energy_ev")
+ds.transmission.sel(frame=0, bias_v=0.0).plot(x="energy_ev")
+
+# the device's convergence at one point, its cycles only
+pt = ds.sel(frame=1, bias_v=0.2)
+pt.device_scf_ddmax.isel(scf_cycle=slice(0, int(pt.device_scf_cycles)))
+
+# a selection's PDOS, from the point's own .TBT.nc, by sisl
+import sisl
+tbt = sisl.get_sile(f"{pt.point_folder.item()}/J.TBT.nc")
+tbt.DOS(atoms=[10, 11])          # the device's atoms, by index
+```
+
+`point_folder` is relative to the calculation's folder, and every index — an
+atom's, a frame's — is the code's own, from 0 (`model/overview.md` § 2).
 
 **The report, rung by rung** ([`model/parse.md`](?doc=model/parse.md) § 5d).
 Each rung has its run record — computation, setup with what the engine used,

@@ -70,7 +70,9 @@ class Var:
     a label of them.  An ``auxiliary`` variable labels the points of its one
     dimension -- each variable over that dimension names it in its CF
     ``coordinates`` attribute, so a NetCDF reader opens it as a
-    coordinate."""
+    coordinate.  ``fill`` is an integer variable's fill value, where a cell
+    can be not stated (a flag of a run that did not run: neither 0 nor 1);
+    a number's is NaN, a text's the empty string."""
     name: str
     dims: Tuple[str, ...]
     kind: str
@@ -80,6 +82,48 @@ class Var:
     source: str = ""
     dtype: Any = "f8"
     auxiliary: bool = False
+    fill: Any = None
+
+
+#: THE SCF ROW, column by column -- the record's names (`record._SCF_FIELDS`,
+#: the SIESTA reader's) and the file's, each with its unit, kind and words,
+#: for every run's history alike: ``(key, suffix, kind, units, long name,
+#: definition, dtype, fill)``.
+_SCF_COLUMNS = (
+    ("cycle", "iscf", "raw", "1", "the cycle's number",
+     "SIESTA's own cycle number (iscf), from 1 in each phase", "i4", -1),
+    ("energy", "energy_ev", "raw", "eV", "the cycle's energy",
+     "E_KS, the Kohn-Sham energy", "f8", None),
+    ("delta_E", "delta_e_ev", "derived", "eV", "the energy's change",
+     "E_KS minus the cycle before's, in the same phase; 0 at a phase's "
+     "first cycle (the SIESTA reader's convention)", "f8", None),
+    ("dDmax", "ddmax", "raw", "1", "the density matrix's largest change",
+     "dDmax, as SIESTA printed it", "f8", None),
+    ("dHmax", "dhmax_ev", "raw", "eV", "the Hamiltonian's largest change",
+     "dHmax, as SIESTA printed it", "f8", None),
+    ("ef", "ef_ev", "raw", "eV", "the cycle's Fermi level",
+     "Ef, as SIESTA printed it", "f8", None),
+)
+#: The columns a device's NEGF rows add -- TranSIESTA's charge change and
+#: boundary Hartree potential -- and each row's phase.
+_NEGF_SCF_COLUMNS = (
+    ("dq", "dq", "raw", "e", "the cycle's charge change",
+     "dQ of the ts-q: line (NEGF rows)", "f8", None),
+    ("vha_ev", "vha_ev", "raw", "eV", "the boundary Hartree potential",
+     "ts-Vha (NEGF rows)", "f8", None),
+    ("phase", "phase", "state", "", "the cycle's phase",
+     "periodic -- the start -- or negf", str, None),
+)
+
+
+def _scf_vars(prefix: str, dims: Tuple[str, ...],
+              columns) -> Tuple[Var, ...]:
+    """A run's SCF history over ``dims``, a variable per column."""
+    return tuple(Var(f"{prefix}_scf_{suffix}", dims, kind, units, long_name,
+                     definition, source="the run's SIESTA output",
+                     dtype=dtype, fill=fill)
+                 for (_key, suffix, kind, units, long_name, definition,
+                      dtype, fill) in columns)
 
 
 def _frame_set_vars() -> Tuple[Var, ...]:
@@ -227,6 +271,75 @@ def _variables() -> Tuple[Var, ...]:
         Var("average_conductance_change_percent", ("bias_v",), "derived", "%",
             "the averaged conductance's change",
             "100 (<G> - G_0) / G_0, in per cent of frame 0's"),
+        # EVERY RUN'S STATE AND CONVERGENCE, on the grid it varies over.
+        Var("rung", ("rung",), "coordinate", "", "rung",
+            "the rungs that run once, by their stage names", dtype=S),
+        Var("scf_cycle", ("scf_cycle",), "coordinate", "1", "SCF row",
+            "an SCF row's index within its run, from 0: every row of the "
+            "run's last step, the periodic start and the NEGF loop alike",
+            dtype="i4"),
+        Var("charge_part", ("charge_part",), "coordinate", "",
+            "TranSIESTA's charge column",
+            "as its ts-q: header names them: D the device, E1 C1 ... each "
+            "electrode and its coupling", dtype=S),
+        Var("point_state", ("frame", "bias_v"), "state", "",
+            "the transmission point's state",
+            "the run door's word for its run (finished, failed, pending ...)",
+            dtype=S),
+        Var("device_state", ("frame", "bias_v"), "state", "",
+            "the device point's state", "the run door's word for its run",
+            dtype=S),
+        Var("device_scf_converged", ("frame", "bias_v"), "state", "1",
+            "the device point's SCF converged",
+            "1 converged, 0 not, -1 not stated", dtype="i1", fill=-1),
+        Var("device_energy_ev", ("frame", "bias_v"), "raw", "eV",
+            "the NEGF phase's last energy",
+            "never compared across points or calculations "
+            "(engines/transport.md 1.1)",
+            source="the device point's SIESTA output"),
+        Var("device_negf_cycles", ("frame", "bias_v"), "raw", "1",
+            "how many NEGF cycles ran",
+            "the NEGF rows of the run's SCF history -- TranSIESTA's loop, "
+            "after the periodic start", source="the device point's SIESTA "
+            "output", dtype="i4", fill=-1),
+        Var("device_dq", ("frame", "bias_v"), "raw", "e",
+            "the last NEGF cycle's charge change", "dQ of its ts-q: line",
+            source="the device point's SIESTA output"),
+        Var("device_charge", ("frame", "bias_v", "charge_part"), "raw", "e",
+            "the last NEGF cycle's charges", "column by column, as "
+            "TranSIESTA printed them", source="the device point's SIESTA "
+            "output"),
+        Var("device_contour_poles", ("frame", "bias_v"), "raw", "1",
+            "the equilibrium contour's poles", "as TranSIESTA echoed it",
+            source="the device point's SIESTA output", dtype="i4", fill=-1),
+        Var("device_neq_emin_ev", ("frame", "bias_v"), "raw", "eV",
+            "the non-equilibrium line's lower end", "under a bias",
+            source="the device point's SIESTA output"),
+        Var("device_neq_emax_ev", ("frame", "bias_v"), "raw", "eV",
+            "the non-equilibrium line's upper end", "under a bias",
+            source="the device point's SIESTA output"),
+        Var("device_neq_points", ("frame", "bias_v"), "raw", "1",
+            "the non-equilibrium line's points", "under a bias",
+            source="the device point's SIESTA output", dtype="i4", fill=-1),
+        Var("device_scf_cycles", ("frame", "bias_v"), "state", "1",
+            "how many SCF rows the device point holds",
+            "the cycles beyond it are the fill value", dtype="i4", fill=0),
+        *_scf_vars("device", ("frame", "bias_v", "scf_cycle"),
+                   _SCF_COLUMNS + _NEGF_SCF_COLUMNS),
+        Var("rung_state", ("rung",), "state", "", "the rung's state",
+            "the run door's word for its run", dtype=S),
+        Var("rung_scf_converged", ("rung",), "state", "1",
+            "the rung's SCF converged", "1 converged, 0 not, -1 not stated",
+            dtype="i1", fill=-1),
+        Var("rung_energy_ev", ("rung",), "raw", "eV", "the rung's energy",
+            "its run's last energy", source="the rung's SIESTA output"),
+        Var("rung_fermi_ev", ("rung",), "raw", "eV", "the rung's Fermi level",
+            "its last SCF cycle's -- a lead's the reference every T(E) is "
+            "measured against", source="the rung's SIESTA output"),
+        Var("rung_scf_cycles", ("rung",), "state", "1",
+            "how many SCF rows the rung holds",
+            "the cycles beyond it are the fill value", dtype="i4", fill=0),
+        *_scf_vars("rung", ("rung", "scf_cycle"), _SCF_COLUMNS),
     )
 
 
@@ -270,7 +383,8 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     from ..frameset import STRUCTURE_ROWS, read as read_frame_set
     from ..persist import write_bytes
     from .record import composed_junction
-    from .stages import frame_token, frames_of, rung_points
+    from .stages import (TRANSPORT_STAGES, frame_token, frames_of,
+                         per_point_rungs, rung_points)
     from .transiesta import LEAD_NAMES
     base = Path(base_dir)
     junction = composed_junction(base)
@@ -298,11 +412,25 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     iv = record.get("iv") or {}
     iv_biases = _voltages(task.bias or ()) or [0.0]
     n_atoms = junction.n_atoms if junction is not None else 0
+    # EVERY RUN'S CONVERGENCE: the rungs that run once, by the stage table;
+    # the device's runs, one a point; one SCF-row axis long enough for the
+    # longest; TranSIESTA's charge columns as its header named them.
+    by_stage = {s.get("stage"): s for s in record.get("stages") or ()}
+    once = [s for s in TRANSPORT_STAGES if s not in per_point_rungs()]
+    device = by_stage.get("device") or {}
+    device_runs = list(device.get("by_point") or ()) or (
+        [device] if device else [])
+    histories = ([by_stage.get(r) or {} for r in once] + device_runs)
+    n_cycles = max((len(h.get("scf") or ()) for h in histories), default=0)
+    parts = list(dict.fromkeys(
+        k for h in device_runs
+        for k in (((h.get("negf") or {}).get("charges")) or {})))
 
     dims = {"frame": n_frames, "bias_v": len(biases), "energy_ev": len(grid),
             "spin": len(spins), "iv_bias_v": len(iv_biases), "atom": n_atoms,
             "xyz": 3, "region": len(_REGIONS), "lead": len(leads),
-            "eigenchannel": n_eig}
+            "eigenchannel": n_eig, "rung": len(once), "scf_cycle": n_cycles,
+            "charge_part": len(parts)}
     values: Dict[str, Any] = {}
     nan = np.nan
 
@@ -312,7 +440,8 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         if var.dtype is str:
             return np.full(shape, "", dtype=object)
         if var.dtype in ("i1", "i4"):
-            return np.zeros(shape, dtype=var.dtype)
+            return np.full(shape, 0 if var.fill is None else var.fill,
+                           dtype=var.dtype)
         return np.full(shape, nan)
     for v in VARIABLES:
         values[v.name] = full(v.name)
@@ -329,6 +458,9 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     values["region"][:] = list(_REGIONS)
     values["lead"][:] = leads
     values["eigenchannel"][:] = np.arange(n_eig)
+    values["rung"][:] = once
+    values["scf_cycle"][:] = np.arange(n_cycles)
+    values["charge_part"][:] = parts
     if junction is not None:
         values["element"][:] = [str(e) for e in junction.elements]
         values["positions_ang"][:] = np.asarray(
@@ -345,6 +477,7 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     for p in done_points:
         f, b = at(p)
         values["done"][f, b] = 1
+        values["point_state"][f, b] = p.get("state") or ""
         values["point_folder"][f, b] = p.get("attempt") or ""
         values["transmission"][f, b] = p["transmission"]
         chans = p.get("channels") or {}
@@ -379,13 +512,17 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     for p in list(record.get("pending") or ()) + list(record.get("failed")
                                                        or ()):
         f, b = at(p)
+        values["point_state"][f, b] = p.get("state") or ""
         values["point_folder"][f, b] = p.get("attempt") or ""
     for f, v, i in zip(iv.get("frame") or [None] * len(iv_biases),
                        iv.get("voltages_v") or (), iv.get("current_a") or ()):
         if i is not None:
             values["iv_current_a"][0 if f is None else int(f),
                                    _index(v, iv_biases)] = i
-    _device_facts(record, biases, values)
+    _device_facts(device, device_runs, biases, parts, values)
+    for r, name in enumerate(once):
+        _run_facts(by_stage.get(name) or {}, "rung", (r,), values,
+                   _SCF_COLUMNS)
     average = record.get("average") or {}
     for e in average.get("at") or ():
         b = _index(e["bias_v"], biases)
@@ -428,14 +565,32 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
         attrs["iv_kt_ev"] = float(iv["kt_ev"])
         attrs["iv_window_ev"] = [float(x) for x in iv["window_ev"]]
     attrs["iv_notes"] = json.dumps(iv.get("notes") or {})
+    # THE LEADS COMPARED, THE FERMI FRAMES, EACH RUN'S TOLERANCES (§ 2a.12).
+    leads_agree = record.get("leads") or {}
+    for key, name in (("differ_ev", "leads_ef_differ_ev"),
+                      ("agree", "leads_ef_agree"),
+                      ("tolerance_ev", "leads_ef_tolerance_ev")):
+        if leads_agree.get(key) is not None:
+            attrs[name] = (int(leads_agree[key]) if key == "agree"
+                           else float(leads_agree[key]))
+    attrs["fermi_frames"] = json.dumps(record.get("fermi_frames") or {})
+    attrs["scf_criteria"] = json.dumps(
+        {name: by_stage[name]["scf_criteria"] for name in TRANSPORT_STAGES
+         if (by_stage.get(name) or {}).get("scf_criteria")})
+    attrs["Conventions"] = "CF-1.8"
 
     ds = netCDF4.Dataset("transport.nc", "w", memory=4096, format="NETCDF4")
     for name, size in dims.items():
         ds.createDimension(name, size)
     auxiliary = [a for a in VARIABLES if a.auxiliary]
     for var in VARIABLES:
-        kw = {} if var.dtype is str or var.dtype in ("i1", "i4") else {
-            "fill_value": np.nan}
+        # THE FILL VALUE, said: NaN for a number, the variable's own for an
+        # integer that can be not stated; compressed unless text.
+        kw = ({} if var.dtype is str else
+              {"zlib": True, "complevel": 4,
+               **({"fill_value": np.nan} if var.dtype not in ("i1", "i4")
+                  else {"fill_value": var.fill} if var.fill is not None
+                  else {})})
         nc = ds.createVariable(var.name, var.dtype, var.dims, **kw)
         # THE LABELS OF ITS POINTS, named for a NetCDF reader (CF
         # `coordinates`): every auxiliary coordinate along its dimensions.
@@ -456,27 +611,61 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     return out
 
 
-def _device_facts(record: Dict, biases: Sequence[float],
+def _device_facts(device: Dict, runs: Sequence[Dict],
+                  biases: Sequence[float], parts: Sequence[str],
                   values: Dict[str, Any]) -> None:
-    """Each point's device facts -- its NEGF Fermi level and boundary
-    potential -- from the record's device rung: a rung that runs per point,
-    point by point; one that runs once, its one run's, at every point."""
-    device = next((s for s in record.get("stages") or ()
-                   if s.get("stage") == "device"), None) or {}
-    if device.get("by_point"):
-        for p in device["by_point"]:
-            negf = p.get("negf") or {}
+    """Each point's device facts from the record's device rung -- its run
+    state, convergence, NEGF figures, contour and SCF history: a rung that
+    runs per point, point by point; one that runs once, its one run's, at
+    every point."""
+    for p in runs:
+        if device.get("by_point"):
             f = 0 if p.get("frame") is None else int(p["frame"])
-            b = _index(p["bias_v"], biases)
-            for key, name in (("ef", "device_ef_ev"),
-                              ("vha_ev", "device_vha_ev")):
-                if negf.get(key) is not None:
-                    values[name][f, b] = negf[key]
-        return
-    negf = device.get("negf") or {}
-    for key, name in (("ef", "device_ef_ev"), ("vha_ev", "device_vha_ev")):
-        if negf.get(key) is not None:
-            values[name][...] = negf[key]
+            cell = (f, _index(p["bias_v"], biases))
+        else:
+            cell = (Ellipsis,)
+        negf = p.get("negf") or {}
+        contour = negf.get("contour") or {}
+        line = contour.get("neq_line") or {}
+        for value, name in ((negf.get("ef"), "device_ef_ev"),
+                            (negf.get("vha_ev"), "device_vha_ev"),
+                            (negf.get("energy"), "device_energy_ev"),
+                            (negf.get("cycles"), "device_negf_cycles"),
+                            (negf.get("dq"), "device_dq"),
+                            (contour.get("poles"), "device_contour_poles"),
+                            (line.get("emin_ev"), "device_neq_emin_ev"),
+                            (line.get("emax_ev"), "device_neq_emax_ev"),
+                            (line.get("points"), "device_neq_points")):
+            if value is not None:
+                values[name][cell] = value
+        for k, part in enumerate(parts):
+            if part in (negf.get("charges") or {}):
+                values["device_charge"][cell + (k,)] = negf["charges"][part]
+        _run_facts(p, "device", cell, values,
+                   _SCF_COLUMNS + _NEGF_SCF_COLUMNS)
+
+
+def _run_facts(run: Dict, prefix: str, cell: Tuple, values: Dict[str, Any],
+               columns) -> None:
+    """One run's state, convergence and SCF history into ``prefix``'s
+    variables at ``cell`` -- a rung's index, or a device point's (frame,
+    voltage)."""
+    if run.get("state"):
+        values[f"{prefix}_state"][cell] = run["state"]
+    if run.get("scf_converged") is not None:
+        values[f"{prefix}_scf_converged"][cell] = int(bool(
+            run["scf_converged"]))
+    if prefix == "rung":
+        for key, name in (("energy_ev", "rung_energy_ev"),
+                          ("fermi_ev", "rung_fermi_ev")):
+            if run.get(key) is not None:
+                values[name][cell] = run[key]
+    rows = run.get("scf") or ()
+    values[f"{prefix}_scf_cycles"][cell] = len(rows)
+    for c, row in enumerate(rows):
+        for (key, suffix, *_rest) in columns:
+            if row.get(key) is not None:
+                values[f"{prefix}_scf_{suffix}"][cell + (c,)] = row[key]
 
 
 def read_data_file(path) -> Dict[str, Any]:
