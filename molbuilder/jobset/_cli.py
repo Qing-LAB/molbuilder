@@ -1526,14 +1526,16 @@ def summarize_cmd(kind: str, words, bundle: str,
                 rec = collect_record(_P(bundle), _tt)
             except RecordError as e:
                 raise click.ClickException(str(e))
-            out = write_record(_P(bundle), rec)
             # THE SAME RESULTS AS DATA, on their grid, beside the report
-            # (`engines/transport.md` § 2a.12, *the data file*).
+            # (`engines/transport.md` § 2a.12, *the data file*) -- written
+            # first, as the one of the two that can refuse, so a refusal
+            # leaves the pair the last summarize wrote.
             from ..transport.datafile import DataFileError, write_data_file
             try:
                 data = write_data_file(_P(bundle), _tt, rec)
             except DataFileError as e:
                 raise click.ClickException(str(e))
+            out = write_record(_P(bundle), rec)
             click.echo(iv_table_text(rec))
             click.echo(f"-> {out}")
             click.echo(f"-> {data}")

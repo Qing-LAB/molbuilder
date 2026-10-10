@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from ..structure import frame_words
+from ..structure import frame_words, to_display
 from ..template import KIND_ROLES
 
 #: The composite's fixed ladder (§ 1) -- the five stages in
@@ -97,6 +97,20 @@ def resolvable_override_names() -> frozenset:
                      if f.name not in on_the_card)
 
 
+#: How close two voltages are when they are one point's, in V: a voltage is
+#: typed to a few decimals and read back as written, so any difference
+#: beyond float noise is another voltage.
+SAME_VOLTS_V = 1e-9
+
+
+def same_volts(a: float, b: float) -> bool:
+    """``a`` and ``b`` are one voltage -- THE rule a reader asks when it
+    finds a voltage it was given along the axis (the record, its average,
+    the data file).  Points joined by the values one door gave both sides
+    (`rung_points`) carry the same floats and are joined by them."""
+    return abs(float(a) - float(b)) < SAME_VOLTS_V
+
+
 def bias_points(task) -> Tuple[float, ...]:
     """The sweep's points, in the order the description states them —
     the codec already enforced that the list starts at 0.0 (the chain
@@ -140,8 +154,9 @@ def frame_token(frame: int) -> str:
     """A frame's folder token: its count in the cited set as a person counts
     it, three digits -- ``f001`` the base, frame 0 in the API
     (`engines/transport.md` § 2a.9; `model/structure.md` § 2.2e: a folder name
-    is read by a person).  The count is `structure.frame_words`' own."""
-    return f"f{int(frame) + 1:03d}"
+    is read by a person), through the one translation,
+    `structure.to_display`."""
+    return f"f{to_display(frame):03d}"
 
 
 @dataclass(frozen=True)

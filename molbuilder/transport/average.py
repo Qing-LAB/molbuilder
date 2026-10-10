@@ -22,6 +22,8 @@ from __future__ import annotations
 import math
 from typing import Dict, List, Optional
 
+from .stages import same_volts
+
 #: What the average assumes, said beside its numbers
 #: (`science/vibrational-averaging.md` § 7).
 ASSUMPTIONS = (
@@ -43,9 +45,6 @@ ASSUMPTIONS = (
     "The electrodes do not move: the held atoms are the leads, shared by "
     "every frame.",
 )
-
-#: How close two voltages must be to be one.
-_SAME = 1e-9
 
 
 class AverageError(ValueError):
@@ -100,7 +99,7 @@ def mode_average(n_frames: Optional[int], frame_set,
     voltages: List[float] = []
     for p in list(points) + list(missing):
         v = float(p["bias_v"])
-        if not any(abs(v - u) < _SAME for u in voltages):
+        if not any(same_volts(v, u) for u in voltages):
             voltages.append(v)
     block["at"] = [_at_voltage(v, n_frames, weights, points, missing)
                    for v in voltages]
@@ -112,7 +111,7 @@ def _at_voltage(v: float, n: int, weights: List[float],
     """One voltage's entry of :func:`mode_average`."""
     import numpy as np
     from ..structure import frame_words
-    here = {p["frame"]: p for p in points if abs(float(p["bias_v"]) - v) < _SAME}
+    here = {p["frame"]: p for p in points if same_volts(p["bias_v"], v)}
     waits = [f for f in range(n) if f not in here]
     # EVERY KEY, EVERY ENTRY: ``None`` where this voltage has no value.
     entry: Dict = {"bias_v": v, "waits_for": waits, "why": None,

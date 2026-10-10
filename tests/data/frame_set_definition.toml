@@ -14,6 +14,8 @@
 #   unit          a row's unit restated: {row, frame, unit}
 #   drop          rows removed: {row, frame}
 #   drop_channel  the mass_amu channel removed
+#   still         every frame written at frame 0's coordinates, its rows as
+#                 the case leaves them
 #   none          the frames written with none of the definition
 #   refused       `jobset init` refuses, these words in what it says
 #   no_average    the record is composed and says why there is no average,
@@ -42,10 +44,25 @@ drop_channel = true
 refused = ["does not state the mass_amu channel"]
 
 [[case]]
+name = "a frame's displacement is not its coordinates'"
+scale = [{row = "displacement_ang", frame = 2, by = 2.0}]
+refused = ["frame 3 of 3's displacement_ang is", "its coordinates give"]
+
+[[case]]
 name = "a frame is not where its coordinates put it"
 scale = [{row = "q_amu12_ang", frame = 2, by = 2.0},
          {row = "node_sigma", frame = 2, by = 2.0}]
 refused = ["frame 3 of 3 does not sit at q_amu12_ang"]
+
+[[case]]
+name = "the frames do not move"
+still = true
+set = [{row = "displacement_ang", frame = 1, value = 0.0},
+       {row = "displacement_ang", frame = 2, value = 0.0},
+       {row = "max_atom_displacement_ang", frame = 1, value = 0.0},
+       {row = "max_atom_displacement_ang", frame = 2, value = 0.0}]
+refused = ["frame 2 of 3 does not sit at q_amu12_ang",
+           "frame 3 of 3 does not sit at q_amu12_ang"]
 
 [[case]]
 name = "the spread is not its formula's"
@@ -53,9 +70,14 @@ scale = [{row = "sigma_amu12_ang", by = 1.1}]
 refused = ["the structure's sigma_amu12_ang is"]
 
 [[case]]
+name = "a frame's node is not its q over the spread"
+scale = [{row = "node_sigma", frame = 1, by = 2.0}]
+refused = ["frame 2 of 3's node_sigma is", "q_amu12_ang / sigma_amu12_ang gives"]
+
+[[case]]
 name = "the base is not at rest"
-set = [{row = "node_sigma", frame = 0, value = 0.1}]
-refused = ["frame 1 of 3 is the equilibrium the mode is taken at, so its node_sigma is 0, not 0.1"]
+set = [{row = "displacement_ang", frame = 0, value = 1e-7}]
+refused = ["frame 1 of 3 is the equilibrium the mode is taken at, so its displacement_ang is 0, not 1e-07"]
 
 [[case]]
 name = "a unit not the one its name states"

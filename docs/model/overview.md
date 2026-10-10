@@ -61,7 +61,7 @@ them silently is the classic off-by-one hazard.
 | Layer | Base | Where |
 |---|---|---|
 | **Internal / machine** | **0-based** | Python `Structure` (`regions`/positions), the `.molstruct.json` sidecar + the `.fdf`/`.py` ATOM-METADATA block, `/api/selection/*` rules, the JS selection store `atom.index`, all wiring |
-| **User-facing** | **1-based** | everything a user reads or types: the atom-list index column, the viewer's atom labels, measurement chips, the "by atom index" filter |
+| **User-facing** | **1-based** | everything a user reads or types: the atom-list index column, the viewer's atom labels, measurement chips, the "by atom index" filter, an atom a refusal names |
 | **Engine input** | **engine-specific** | SIESTA `.fdf` (1-based), geomeTRIC `$freeze` (1-based), PySCF `mol.atom` (0-based) |
 
 ### 2.1 Identity, carriage, and the only three translation points
@@ -98,7 +98,7 @@ translation is needed.
 
 | Boundary | Direction | The single API |
 |---|---|---|
-| internal → display | 0 → 1-based | `toDisplay` (`lib/molview/_atom-index.js`) |
+| internal → display | 0 → 1-based | `toDisplay` (`lib/molview/_atom.js`) in the browser; `structure.to_display` in Python — an atom's index and a frame's (`model/structure.md` § 2.2e) |
 | user input → internal | 1 → 0-based | `fromDisplay` / `shiftExpression` (same module) |
 | internal → engine input | 0-based → engine convention | `engine_atom_index.py` — `to_engine_index(i, engine)` (dispatch), or the FACT functions `siesta_atom_index`/`geometric_atom_index` (1-based) / `pyscf_atom_index` (0-based) |
 | engine output → internal | engine convention → 0-based | `engine_atom_index.py` — `from_engine_index(n, engine)` (the inverse; return leg of the round-trip) |
@@ -110,8 +110,9 @@ including the round-trip identity `from_engine_index(to_engine_index(i, e), e) =
 It exposes the per-engine FACT functions **and** the engine-parametrized
 `to_engine_index` / `from_engine_index` dispatch, backed by one base-offset
 registry so a new engine defines both directions in a single line. The JS
-`_atom-index.js` (`toDisplay`/`fromDisplay`/`shiftExpression`) is the single
-web-UI implementation; the standalone viewer embed inlines `+1` at the label,
+`_atom.js` (`toDisplay`/`fromDisplay`/`shiftExpression`) is the single
+web-UI implementation, and `structure.to_display` the single Python one —
+what a message names an atom or a frame by; the standalone viewer embed inlines `+1` at the label,
 drift-guarded against `toDisplay`.
 
 **The load-bearing invariant.** Engine coordinate blocks emit atoms in internal

@@ -120,8 +120,9 @@ def collect_sweep(base_dir, task, *,
     stage with a result yet, or stages that describe different atoms or were
     measured at different geometries."""
     from .. import __version__ as _mb_version
-    from ..chemistry import atomic_mass
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
+    from ..structure import to_display
+    from .results import mass_of
     from ..engine_atom_index import from_engine_index
     from ..jobset.commands import rollback
     from ..jobset.materialize import latest_attempt
@@ -258,8 +259,9 @@ def collect_sweep(base_dir, task, *,
                 != list(ref.equilibrium_elements or [])):
             raise SweepError(
                 f"stages {ref_name!r} and {name!r} describe different atoms "
-                f"(free atoms {list(ref.free_atom_idxs)} against "
-                f"{list(res.free_atom_idxs)}): not one calculation's sweep")
+                f"(free atoms {[to_display(i) for i in ref.free_atom_idxs]} "
+                f"against {[to_display(i) for i in res.free_atom_idxs]}): not "
+                f"one calculation's sweep")
         # ONE GEOMETRY, or the comparison is not a displacement's: each
         # result's structure hash pins the geometry its force constants were
         # taken at (`engines/vibration.md` § 6.2), and each stage took the
@@ -288,7 +290,7 @@ def collect_sweep(base_dir, task, *,
                 + rollback("their prep", base=base))
 
     # WHICH MODE IS WHICH, by shape, against the first stage with a result.
-    masses = [atomic_mass(ref.equilibrium_elements[i])
+    masses = [mass_of(i, ref.equilibrium_elements, ref.equilibrium_masses_amu)
               for i in ref.free_atom_idxs]
     matched = {name: match_modes(ref, res, masses)
                for name, res, _f, _m in loaded}

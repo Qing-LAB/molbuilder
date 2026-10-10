@@ -188,7 +188,7 @@ flowchart LR
   S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, the kind's ladder;<br/>Save writes task.json;<br/>the stage's tab prints the commands<br/>(--target when the CLI would refuse to guess)"]
   T -->|"prep task --stage freq"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA: &lt;label&gt;_01_freq.fdf (from a sorted copy)"]
   P -->|"launch task --stage freq"| R["the run — the job writes the result itself<br/>PySCF: the script writes it<br/>SIESTA: the force-constant run leaves &lt;label&gt;.FC,<br/>then the finish (mb_vibration.pyz) derives the modes"]
-  R --> A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 6"]
+  R --> A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 7"]
   A --> V["Results tab<br/>chart · modes table · animation ·<br/>electronic structure · thermochemistry"]
 ```
 
@@ -485,7 +485,7 @@ phase.
 
 mol = gto.M(atoms = EVERY atom, held ones included; basis, charge, spin, ...)
 _mb_configure_scf / _mb_configure_theory   # the generated dressers (§ 4.3)
-state = {schema_version: 6, engine: 'pyscf', phases: empty, ...}; write the artifact
+state = {schema_version: 7, engine: 'pyscf', phases: empty, ...}; write the artifact
 
 # Phase 0 — relaxation (§ 4.2)
 if not ALREADY_RELAXED:
@@ -1441,7 +1441,7 @@ with the free set, a permutation whose two directions are not inverse
 bijections, a deck whose free atoms are not one trailing run, a `vibration`
 block that states no `temperature_K` (format v1, prepared before 2026-09-28 —
 prepare the stage anew from the state saved before its preparation) or no
-`masses_amu` (format v2, prepared before 2026-10-10 — the same), and an output whose reference step describes other
+`masses_amu` (format v2, prepared before 2026-10-10 — the same) or a mass count other than its atoms', and an output whose reference step describes other
 atoms. The modes are at **Γ** (R3) — the
 centre of the Brillouin zone, `q = 0`, where every cell moves in phase: a
 force-constant run over the cell as given is the Γ matrix; a phonon
@@ -1944,7 +1944,7 @@ refused by name.
 | `n_atoms_total` · `free_atom_idxs` · `frozen_atom_idxs` | both | 0-based, in the **input** order (SIESTA: inverted through the record); the two lists partition `range(n_atoms_total)` and the reader refuses otherwise |
 | `equilibrium.{scf_energy_eh, mo_energies_eh, homo_idx}` | PySCF | the reference SCF and its orbital ladder — the **energy subgroup** of the equilibrium block, which travels whole or not at all: **`null` in all three on SIESTA** (a periodic engine has a Fermi level, not a HOMO), and `null` in one slot only is a broken file. The two geometry keys below are separate and always present |
 | `equilibrium.{elements, positions_ang}` | both | the geometry the Hessian is taken at (§ 4.2) — what the animation draws from |
-| `equilibrium.masses_amu` | both, from v7 | every atom's mass in amu, in the input order — the masses the analysis weighted by, as the deck states them (I3): one positive finite number per atom, refused otherwise (§ 6.7). What a mode's frame set's `mass_amu` channel is copied from ([`model/structure.md`](?doc=model/structure.md) § 2.2f) |
+| `equilibrium.masses_amu` | both, from v7, wherever the geometry is | every atom's mass in amu, in the input order — the masses the analysis weighted by, as the deck states them (I3): one positive finite number per atom, refused otherwise (§ 6.7). What a mode's frame set's `mass_amu` channel is copied from ([`model/structure.md`](?doc=model/structure.md) § 2.2f) |
 | `modes[]` | both | ascending frequency; every entry a vibration (§ 6.3) |
 | `removed_motions.{count, patterns}` | both | what the harmonic analysis removed before diagonalising: the count and the orthonormal Cartesian patterns over the free atoms; `len(modes) = 3·n_free − count` by construction |
 | `hessian_scope` · `n_atoms_in_hessian` · `hessian_density_fit` | both | `free` (second derivatives for the free atoms only) or `all`; how many; whether the Hessian itself was density-fitted (`false` on the reduced route, `null` on SIESTA) |
@@ -2056,8 +2056,9 @@ writers store them**, computed by one function both bundles carry
 file is a full record a person reads without molbuilder (§ 6.8). The reader
 computes them again with the same function and refuses a file whose stored
 value disagrees (§ 6.7) — a file never carries a number its own inputs
-contradict. A file before v7 carries none of them and reads as before, each
-computed on read.
+contradict. A file before v7 reads as before, each computed on read — the
+PySCF deck's stated none, and what the SIESTA finish's stated is computed
+again in its place, unchecked.
 
 **The activity class is a decision, so its rule is part of the file's
 definition**: changing the rule below is a new schema version, never a silent
@@ -2078,24 +2079,28 @@ symmetry. Built 2026-09-11, confirmed as the rule 2026-09-23; pinned on CO₂ by
 `tests/spectra/test_activity.py`.
 
 **The element shares are a view, added at load**: `motion_share_by_element` —
-each element's share of the mass-weighted motion, `m_i|L_i|² / Σ m_k|L_k|²` —
-from the file's own masses (§ 6.2), and from `chemistry.atomic_mass` for a
-file before v7, which states none ([`web/spectra.md`](?doc=web/spectra.md)
-§ 4.2).
+each element's share of the mass-weighted motion, `m_i|L_i|² / Σ m_k|L_k|²`
+([`web/spectra.md`](?doc=web/spectra.md) § 4.2). It and a displacement
+sweep's mode matching (§ 5.9) weight by **one rule**, `results.mass_of`: the
+file's own masses (§ 6.2), and `chemistry.atomic_mass`'s for a file before
+v7, which states none.
 
 ### 6.7 What the reader refuses
 
 `SpectraResults` is built at the boundary and refuses, by name: a schema
-version outside `{4, 5, 6, 7}`; in a v7 file, masses that are not one
-positive finite number per atom, and a stored derived value (§ 6.6) that
-disagrees with its derivation beyond a relative `10⁻⁹`; free and frozen lists
+version outside `{4, 5, 6, 7}`; masses that are not one positive finite
+number per atom, or that come without the geometry they belong to; in a v7
+file, the geometry without its masses — `equilibrium.masses_amu` travels with
+`equilibrium.positions_ang`, so an in-progress file not yet at its geometry
+states neither — a mode that does not state one of its derived values, and a
+stored derived value (§ 6.6) that disagrees with its derivation beyond a
+relative `10⁻⁹`; free and frozen lists
 that do not partition
 `range(n_atoms_total)` (a count-only check once passed `free = [0, 1, 5]` for
 three atoms and the viewer silently dropped a displacement); a mode whose
 eigenvector does not carry one row per free atom; an equilibrium energy
 subgroup (`scf_energy_eh`, `mo_energies_eh`, `homo_idx`) with `null` in some
-slots and numbers in others; and — in the working tree, § 10 —
-a key it does not know, at every block, because a misspelled
+slots and numbers in others; and a key it does not know, at every block, because a misspelled
 `ir_intesity_km_mol` used to serve a chart titled *not computed* with every
 number present and thrown away, and a file claiming 10¹² atoms used to be
 answered with a `MemoryError`. `/api/spectra/load` turns each refusal into a
@@ -2161,7 +2166,7 @@ Each names where it holds and what pins it.
 |---|---|---|---|
 | I1 | **One derivation of the surviving motions** (R1): `rigid_motions` is the only place `n_rigid` is computed; no call site tabulates it, branches on `len(F)`, or asks whether a molecule is straight | `spectra/normal_modes.py`; the deck imports it; `methods._mode_count`, the two preflights and the SIESTA finish calls it | `tests/spectra/test_normal_modes.py` (every row of the science § 7 table, three mutations each); review |
 | I2 | **One harmonic path** (R3, R4): both engines hand `vibrational_modes` the block, the masses and the geometry; there is no free-molecule branch and no engine branch after the block | the PySCF deck (imported from `mb_pyscf.pyz`), `spectra/vibrational_analysis.py` (the SIESTA finish) | the rank gate against PySCF on free molecules; the held-water and H₂ end-to-end runs |
-| I3 | **One mass convention, stated once**: isotope-averaged masses, decided at prep by `chemistry.atomic_mass` and written into the deck — the PySCF deck's `MASSES_AMU`, which the deck checks against the masses PySCF's own routines use and refuses to run on a difference; the SIESTA deck's `vibration` block, which the finish reads — weighted by, and stated in the result (`equilibrium.masses_amu`); `Σ m\|L\|² = 1` in amu; one wavenumber constant derived from its parts *(until 2026-10-10 the SIESTA finish read ASE's table itself and the PySCF deck PySCF's — equal numbers from two tables)* | `chemistry.atomic_mass`, the two deck renderers, `constants.CM1_PER_SQRT_HARTREE_BOHR2_AMU` | the BDT pair (C–H stretches equal to 0.001 cm⁻¹ free vs held); `tests/spectra/test_atom_index_contract.py`; the end-to-end runs read the result's masses |
+| I3 | **One mass convention, stated once**: isotope-averaged masses, decided at prep by `chemistry.atomic_mass` and written into the deck — the PySCF deck's `MASSES_AMU`, which the deck checks against the masses PySCF's own routines use and refuses to run on a difference; the SIESTA deck's `vibration` block, which the finish reads — weighted by, and stated in the result (`equilibrium.masses_amu`); `Σ m\|L\|² = 1` in amu; one wavenumber constant derived from its parts *(until 2026-10-10 the SIESTA finish read ASE's table itself and the PySCF deck PySCF's — equal numbers from two tables)* | `chemistry.atomic_mass`, the two deck renderers, `constants.CM1_PER_SQRT_HARTREE_BOHR2_AMU` | the BDT pair (C–H stretches equal to 0.001 cm⁻¹ free vs held); the end-to-end runs, SIESTA's and PySCF's, read the result's masses and every mode's `Σ m\|L\|² = 1` in them |
 | I4 | **The Hessian is over the free atoms**, and the run says so (R8): `hessian_scope`, `n_atoms_in_hessian`, `hessian_density_fit` | `spectra/pyscf_vibration.dipole_derivatives`; the FC range on SIESTA | the free-atom-block check in `tests/test_vibration_e2e.py`; `tests/test_siesta_vibration_deck.py` |
 | I5 | **Stationarity is judged on the free atoms** (R5), and the number is recorded beside the all-atom one | `_vib_gradient_check`; the relax callback | the held-water run's `relaxation` block |
 | I6 | **The held set has one source** — the structure's `frozen_atoms` region — and reaches every phase from it: the PySCF `$freeze` file, the free-atom Hessian, the SIESTA `Geometry.Constraints` and FC range | `VibrationConfigView.frozen_indices`; `fc_facts` | `tests/test_vibration_render_gate.py`; the wrapper's constraint banner reads the deck's one spelling |

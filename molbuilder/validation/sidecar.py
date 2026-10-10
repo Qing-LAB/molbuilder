@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any, List, Mapping, Optional, Tuple
 
 from ..issues import Issue
-from ..structure import Structure
+from ..structure import Structure, to_display
 
 
 def _check_frozen_atoms_consumed(struct: Structure, *,
@@ -100,8 +100,8 @@ def check_electrode_labels_are_frozen(struct: Structure, *,
     if not loose:
         return []
     els = getattr(struct, "elements", ())
-    shown = ", ".join(f"{i} ({els[i]})" if i < len(els) else str(i)
-                      for i in loose[:6])
+    shown = ", ".join(f"{to_display(i)} ({els[i]})" if i < len(els)
+                      else str(to_display(i)) for i in loose[:6])
     more = f" and {len(loose) - 6} more" if len(loose) > 6 else ""
     return [Issue(
         "warn",

@@ -100,8 +100,8 @@ $$
 $$
 
 $Q_{\mathrm{zp}}$ is in every vibration result already
-(`zero_point_amplitude_amu12_ang`, `vibration.md` § 6.3; this named
-`zero_point_displacement`, which is $Q_{\mathrm{zp}}\,\mathbf L$ per atom in Å), so
+(`zero_point_amplitude_amu12_ang`, `vibration.md` § 6.3, beside
+`zero_point_displacement_ang`, $Q_{\mathrm{zp}}\,\mathbf L$ per atom in Å), so
 $\sigma = Q_{\mathrm{zp}}\sqrt{\coth(\hbar\omega/2k_BT_{\mathrm K})}$. At
 298 K:
 

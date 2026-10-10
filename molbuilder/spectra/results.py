@@ -48,6 +48,13 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
+# TWO WAYS, because this module travels beside the SIESTA finish
+# (`runwrap.VIBRATION_COMPANIONS`).
+try:                                        # inside molbuilder
+    from .derived import DERIVED_MODE_KEYS, disagreements, with_derived
+except ImportError:                         # beside a job, in a bundle
+    from derived import DERIVED_MODE_KEYS, disagreements, with_derived
+
 
 # SCHEMA_VERSION (incremented when the on-disk JSON shape changes):
 #
@@ -155,11 +162,9 @@ _MODE_KEYS = frozenset({
     "ir_intensity_km_mol", "eigenvector_canonical", "eigenvector_display",
     "has_imag", "electronic_structure",
     "eigenvector_free",                 # schema v1's single vector, read as both
-    # DERIVED (`spectra.derived`, `engines/vibration.md` § 6.6): the
-    # activity classes, the zero-point amplitude and the mass-calibrated
-    # displacement at it -- stated by every writer from v7, checked on read.
-    "ir_active", "raman_active", "activity_class",
-    "zero_point_amplitude_amu12_ang", "zero_point_displacement_ang",
+    # DERIVED (`spectra.derived`, `engines/vibration.md` § 6.6) -- stated by
+    # every writer from v7, checked on read.
+    *DERIVED_MODE_KEYS,
 })
 _EQUILIBRIUM_KEYS = frozenset({
     "scf_energy_eh", "mo_energies_eh", "homo_idx", "elements", "positions_ang",
@@ -340,7 +345,7 @@ class ModeData:
     ir_intensity_km_mol:   Optional[float]
 
     # Cartesian normal mode in the canonical mass-weighted convention:
-    #     Σ_k m_k |L_k|² = 1     (m_k in atomic units of mass)
+    #     Σ_k m_k |L_k|² = 1     (m_k in amu, `equilibrium.masses_amu`)
     # Use for any physics that depends on the actual amplitude of
     # nuclear motion -- Raman activity (Placzek 45a²+7γ² lands in
     # Å⁴/amu directly), IR intensity, electron-phonon coupling
@@ -464,6 +469,18 @@ class ModeData:
 # --------------------------------------------------------------------- #
 
 
+def mass_of(i: int, elements: Sequence[str],
+            masses_amu: Optional[Sequence[float]] = None) -> float:
+    """Atom ``i``'s mass a result is weighted by, in amu: as the result
+    states it (``equilibrium.masses_amu``, schema 7), or -- for a result
+    before it, which states none -- ``chemistry.atomic_mass``'s, the table
+    every deck's masses are stated from (`engines/vibration.md` § 6.6)."""
+    if masses_amu is not None:
+        return float(masses_amu[i])
+    from ..chemistry import atomic_mass
+    return atomic_mass(str(elements[i]))
+
+
 def motion_share_by_element(elements: List[str],
                             eigenvector: Any,
                             atom_idxs: Optional[List[int]] = None,
@@ -500,8 +517,6 @@ def motion_share_by_element(elements: List[str],
     (`engines/vibration.md` § 6.6).  Shares are returned largest first, and
     a mode with no motion at all returns ``{}`` rather than dividing by zero.
     """
-    from ..chemistry import atomic_mass
-
     rows = np.asarray(eigenvector, dtype=float)
     if rows.ndim != 2 or rows.shape[1] != 3:
         raise ValueError(
@@ -527,9 +542,7 @@ def motion_share_by_element(elements: List[str],
                 f"structure ({len(elements)} atoms)"
             )
         el = str(elements[at])
-        m = (float(masses_amu[at]) if masses_amu is not None
-             else atomic_mass(el))
-        w = m * float(np.dot(row, row))
+        w = mass_of(at, elements, masses_amu) * float(np.dot(row, row))
         weight[el] = weight.get(el, 0.0) + w
         total += w
     if total <= 0.0:
@@ -894,10 +907,6 @@ class SpectraResults:
         one mode does not know the others) and the zero-point amplitude and
         displacement -- through the one derivation every writer uses
         (`spectra.derived`, `engines/vibration.md` § 6.6)."""
-        try:                                # inside molbuilder
-            from .derived import with_derived
-        except ImportError:                 # beside a job, in a bundle
-            from derived import with_derived
         return with_derived([m.to_dict() for m in self.modes])
 
     def to_dict(self) -> Dict[str, Any]:
@@ -991,10 +1000,6 @@ class SpectraResults:
         # is refused by name.  A file before v7 states them or not; they are
         # computed on read either way.
         if int(sv) >= 7:
-            try:                            # inside molbuilder
-                from .derived import disagreements
-            except ImportError:             # beside a job, in a bundle
-                from derived import disagreements
             wrong = disagreements(d.get("modes") or [])
             if wrong:
                 raise ValueError(

@@ -187,7 +187,10 @@ def write_permutation(directory, result: SortResult, *,
 
 
 def _atom_word(struct: Structure, i: int) -> str:
-    return f"atom {i} ({struct.elements[i]})"
+    """An atom as a person reads it -- counted from 1
+    (`model/overview.md` § 2, `structure.to_display`) -- with its element."""
+    from ..structure import to_display
+    return f"atom {to_display(i)} ({struct.elements[i]})"
 
 
 def _partition_of(struct: Structure) -> List[str]:

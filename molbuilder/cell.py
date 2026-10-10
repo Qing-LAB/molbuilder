@@ -50,7 +50,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from .issues import Issue, ValidationError
-from .structure import Structure
+from .structure import Structure, to_display
 
 #: THE zero-volume threshold, in Å³.
 #:
@@ -262,11 +262,12 @@ def _outside(frac: Optional[np.ndarray],
 
 
 def _name_outside(bad, kinds: Sequence[str]) -> str:
-    """``{axis: atoms}`` in words -- "a (isolated): atom(s) 2; c (transport):
-    atom(s) 0, 1" -- the one wording both the Cell page and the deck use."""
+    """``{axis: atoms}`` in words -- "a (isolated): atom(s) 3; c (transport):
+    atom(s) 1, 2", each atom counted from 1 (`structure.to_display`) -- the
+    one wording both the Cell page and the deck use."""
     return "; ".join(
         f"{'abc'[i]} ({kinds[i]}): atom(s) "
-        f"{', '.join(str(k) for k in list(atoms)[:8])}"
+        f"{', '.join(str(to_display(k)) for k in list(atoms)[:8])}"
         f"{' …' if len(atoms) > 8 else ''}"
         for i, atoms in sorted(dict(bad).items()))
 
@@ -425,7 +426,7 @@ def check(rc: ResolvedCell) -> List[Issue]:
         out.append(Issue(
             "warn",
             f"Some atoms are outside the box -- "
-            f"{_name_outside(rc.outside_atoms, rc.axis_kind)} (0-based). "
+            f"{_name_outside(rc.outside_atoms, rc.axis_kind)}. "
             f"Room to spare at each end, in "
             f"Å — a negative number means atoms stick out that side: {gaps}. "
             f"The box sits at the origin this structure states -- one you "

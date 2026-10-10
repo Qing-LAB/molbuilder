@@ -213,15 +213,21 @@ def _common_assertions(d):
 def _states_its_masses_and_derived_values(d):
     """`engines/vibration.md` § 6.2, § 6.6, I3: the result states every
     atom's mass -- `chemistry.atomic_mass`'s, the table every deck's masses
-    are stated from -- and each mode's derived values beside it, and its own
-    reader takes them (it refuses a derived value its inputs contradict)."""
+    are stated from -- and its modes are weighted by those masses (each
+    canonical vector `Σ m|L|² = 1` in them); each mode's derived values sit
+    beside it, and its own reader takes them (it refuses a derived value its
+    inputs contradict)."""
+    import numpy as np
     from molbuilder.chemistry import atomic_mass
     from molbuilder.sidecars.spectra import parse_spectra_json_dict
     from molbuilder.spectra.derived import DERIVED_MODE_KEYS
     eq = d["equilibrium"]
     assert eq["masses_amu"] == [atomic_mass(e) for e in eq["elements"]], eq
+    stated = np.asarray(eq["masses_amu"])[d["free_atom_idxs"]]
     for m in d["modes"]:
         assert all(k in m for k in DERIVED_MODE_KEYS), sorted(m)
+        L = np.asarray(m["eigenvector_canonical"])
+        assert abs(float((stated[:, None] * L * L).sum()) - 1.0) < 1e-6, m
     parse_spectra_json_dict(d)
 
 

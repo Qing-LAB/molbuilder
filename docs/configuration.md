@@ -506,7 +506,7 @@ ways — from the package, or from the bundle.
 job also carries its FINISH, `mb_vibration.pyz` (`runwrap.VIBRATION_COMPANIONS`,
 `engines/vibration.md` § 5.5): the analysis that turns the run's force
 constants into its spectrum.  It needs arrays, so its rule is **the standard
-library, numpy and ASE — which the SIESTA job envs carry for it — AND
+library and numpy — which the SIESTA job envs carry for it — AND
 travels**; its members import each other the same two ways.  The monitor's
 set stays stdlib-only: the bundles are built by one builder from their own
 tables, and nothing of the finish's reaches the monitor.

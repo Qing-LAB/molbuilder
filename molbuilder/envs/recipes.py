@@ -1468,14 +1468,16 @@ _SIESTA = Recipe(
     conda_packages=(_PYTHON_SPEC, "siesta=5.4.2=mpi_openmpi_*", "numactl",
                     # git: uniform across every env -- see _HOST.
                     "git",
-                    # numpy + ASE: what a SIESTA job's own python imports
-                    # to FINISH a vibration -- the harmonic analysis and
-                    # the standard atomic weights, run beside the job
-                    # after the force-constant run (`engines/vibration.md`
-                    # § 5.5, `runwrap.VIBRATION_COMPANIONS`); ASE also for
-                    # the file IO later work may need (plan W36 ⑤).  Both
-                    # are in the GPU recipe too, so the GPU switch never
-                    # changes what a job can import.
+                    # numpy: what a SIESTA job's own python imports to
+                    # FINISH a vibration -- the harmonic analysis, run
+                    # beside the job after the force-constant run, its
+                    # masses read from the deck, where prep states them
+                    # (`engines/vibration.md` § 5.5,
+                    # `runwrap.VIBRATION_COMPANIONS`).  ASE: for the file
+                    # IO a job's own python may need -- a monitor reader
+                    # of a run's files among it (plan W36 ⑤; the user,
+                    # 2026-10-10).  Both are in the GPU recipe too, so the
+                    # GPU switch never changes what a job can import.
                     #
                     # sisl: SIESTA's own reader of its outputs -- the
                     # Hamiltonian and overlap (.HSX, .TSHS, binary),
@@ -2420,11 +2422,12 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             # SIESTA 5.4 INSTALL.md § "Required domain-specific
             # libraries" recommends.
             #
-            # numpy + ASE: what the job's own python imports to finish a
-            # vibration (`engines/vibration.md` § 5.5) -- and sisl, SIESTA's
-            # own reader of its binary outputs: the same three the packaged
-            # recipe carries, so the GPU switch never changes what a job can
-            # import (plan W36 ⑤; `engines/vibration.md` § 5.10 D5).
+            # numpy: what the job's own python imports to finish a
+            # vibration (`engines/vibration.md` § 5.5); ASE, for the file IO
+            # a job's own python may need; and sisl, SIESTA's own reader of
+            # its binary outputs: the same three the packaged recipe
+            # carries, so the GPU switch never changes what a job can import
+            # (plan W36 ⑤; `engines/vibration.md` § 5.10 D5).
             "numpy", "ase", "sisl",
         ),
         build_spec=_SIESTA_GPU_BUILD,

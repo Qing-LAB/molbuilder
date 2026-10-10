@@ -2683,9 +2683,11 @@
                 basis:         free,
                 /* WHICH ATOMS THE MODE BELONGS TO -- {"C": 0.914, "H": 0.086}.
                  * Computed by the server at /api/spectra/load, because it needs
-                 * atomic masses and neither this page nor the .spectra.json has
-                 * any.  Absent on a result the server could not weigh (an element
-                 * ASE does not know), so every reader treats it as optional. */
+                 * the masses: a schema-7 file states its own, an older one
+                 * none, and the one rule for both is the server's
+                 * (`results.mass_of`); this page holds no mass table.  Absent
+                 * on a result the server could not weigh (an element ASE does
+                 * not know), so every reader treats it as optional. */
                 share:         mode.motion_share_by_element || null,
                 // TEXT, not a number (§ 12.3): the sign carries meaning -- a
                 // negative frequency is a saddle point, not a small number -- and

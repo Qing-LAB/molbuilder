@@ -627,10 +627,14 @@ def test_the_cell_page_and_the_deck_give_one_containment_answer(miss, outside):
     assert (found is not None, refused is not None) == (outside, outside), (
         f"Cell page named={found is not None}, deck refused={refused}")
     if outside:
-        # The SAME atom, named by both, under the deck's own id (D11, D12).
-        where = f"c (transport): atom(s) {lo} "
-        assert where in found.message, found.message
-        assert where in refused and "[deck.atoms_outside]" in refused, refused
+        # The SAME atom, named by both -- counted from 1, as a person reads
+        # it (`model/overview.md` § 2) -- under the deck's own id (D11, D12).
+        import re
+        from molbuilder.structure import to_display
+        where = re.compile(rf"c \(transport\): atom\(s\) {to_display(lo)}(?!\d)")
+        assert where.search(found.message), found.message
+        assert where.search(refused) and "[deck.atoms_outside]" in refused, \
+            refused
 
 
 def test_where_the_atoms_go_does_not_depend_on_the_axis_kind():

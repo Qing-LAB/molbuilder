@@ -1,6 +1,6 @@
 """A SIESTA vibration, finished by its own job: what the force-constant run left -> the result.
 
-MODULE  spectra.siesta_vibration (L2; numpy, ASE, the standard library and its
+MODULE  spectra.siesta_vibration (L2; numpy, the standard library and its
         siblings -- nothing that needs the package installed)
 ROLE    the SIESTA route's FINISH (`engines/vibration.md` § 5.5): read a
         finished force-constant run and the deck that ran it, each record

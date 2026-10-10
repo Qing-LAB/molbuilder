@@ -87,7 +87,7 @@ def test_an_unfrozen_lead_is_refused_and_told_to_freeze():
         extract_electrode_model(dev, "L-electrode")
     msg = str(e.value)
     assert "NOT FROZEN" in msg
-    assert "0 (Au)" in msg, f"the atoms must be named: {msg}"
+    assert "1 (Au)" in msg, f"the atoms must be named: {msg}"
     assert "freeze them" in msg, f"and the fix must be named: {msg}"
 
 
@@ -97,7 +97,7 @@ def test_one_unfrozen_atom_is_enough():
     dev.frozen_atoms = [0, 1, 2]          # the 4th Au of L is loose
     with pytest.raises(ValueError) as e:
         extract_electrode_model(dev, "L-electrode")
-    assert "1 atom(s)" in str(e.value) and "3 (Au)" in str(e.value)
+    assert "1 atom(s)" in str(e.value) and "4 (Au)" in str(e.value)
 
 
 def test_the_bridge_is_not_required_to_be_frozen():
@@ -118,7 +118,7 @@ def test_a_lead_that_moved_is_refused_when_a_starting_geometry_is_given():
     with pytest.raises(ValueError) as e:
         extract_electrode_model(dev, "L-electrode", prior_positions=prior)
     msg = str(e.value)
-    assert "MOVED" in msg and "atom 2 (Au)" in msg and "0.0500" in msg
+    assert "MOVED" in msg and "atom 3 (Au)" in msg and "0.0500" in msg
 
 
 def test_an_unmoved_lead_passes_with_a_starting_geometry():

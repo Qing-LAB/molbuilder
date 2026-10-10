@@ -70,9 +70,11 @@ def thermal_spread_amu12_ang(zero_point_amplitude_amu12_ang: float,
                              temperature_k: float) -> float:
     """The spread of a harmonic mode's coordinate at ``temperature_k``,
     ``sigma = Q_zp * sqrt(coth(hbar omega / 2 k_B T))`` in amu^1/2.A --
-    exactly the Gaussian's width at every temperature, ``Q_zp`` as T goes to
-    0 (`science/vibrational-averaging.md` § 2).  ``hbar omega / k_B T`` is
-    ``nu * CM1_KELVIN / T``."""
+    exactly the Gaussian's width at every temperature, ``Q_zp`` at 0 K, its
+    limit (`science/vibrational-averaging.md` § 2).  ``hbar omega / k_B T``
+    is ``nu * CM1_KELVIN / T``."""
+    if float(temperature_k) == 0.0:
+        return float(zero_point_amplitude_amu12_ang)
     x = float(frequency_cm1) * CM1_KELVIN / (2.0 * float(temperature_k))
     return float(zero_point_amplitude_amu12_ang) * math.sqrt(
         1.0 / math.tanh(x))

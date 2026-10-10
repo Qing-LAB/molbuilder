@@ -36,7 +36,7 @@ def test_an_unfrozen_lead_is_named_atom_by_atom():
     issues = check_electrode_labels_are_frozen(_junction(frozen=[0, 1]))
     assert len(issues) == 1
     msg = issues[0].message
-    assert "3 (Au)" in msg and "4 (Au)" in msg, (
+    assert "4 (Au)" in msg and "5 (Au)" in msg, (
         f"the unfrozen lead atoms must be named: {msg}")
     assert "frozen_atoms" in msg, "and the fix must be named"
 

@@ -113,6 +113,12 @@ _CHANNEL_KINDS = ("tag", "flag", "value")
 #: boundary that touches both.
 FROZEN_LABEL = "frozen_atoms"
 
+#: How many decimals of an Angstrom :meth:`Structure.to_xyz` writes each
+#: coordinate to -- the precision a geometry file keeps
+#: (``model/structure.md`` § 2.3), and what a frame set's checks allow for
+#: (``frameset``).
+XYZ_DECIMALS = 6
+
 #: THE metadata field set -- what :meth:`Structure.metadata_to_dict` writes and
 #: :meth:`Structure.apply_metadata_dict` accepts, named once so the two cannot
 #: enumerate different sets.  A dict carrying anything else is REFUSED rather
@@ -328,13 +334,21 @@ IDENTITY_FIELDS = ("atom_names", "residue_ids", "residue_names",
 _DEFAULT_ISOLATED_VACUUM = 3.0
 
 
+def to_display(index: int) -> int:
+    """An atom's or a frame's index, counted from 0 in code, as the number a
+    person reads, counted from 1 (`model/overview.md` § 2;
+    `model/structure.md` § 2.2e).  THE ONE TRANSLATION on this side, as
+    MolView's `toDisplay` is the browser's: nothing writes a ``+ 1`` of its
+    own."""
+    return int(index) + 1
+
+
 def frame_words(frame: int, n_frames: Optional[int] = None) -> str:
     """A frame as a person reads it -- counted from 1, as MolView's frame bar
-    counts (`model/structure.md` § 2.2e): ``frame 2 of 3`` for frame index 1.
-    THE ONE TRANSLATION on this side, as `toDisplay` is the browser's:
-    nothing writes a ``+ 1`` of its own."""
+    counts (`model/structure.md` § 2.2e): ``frame 2 of 3`` for frame index 1,
+    through :func:`to_display`."""
     of = f" of {int(n_frames)}" if n_frames is not None else ""
-    return f"frame {int(frame) + 1}{of}"
+    return f"frame {to_display(frame)}{of}"
 
 
 def _vacuum_from_stored(raw) -> Optional[Tuple[float, float, float]]:
@@ -1971,7 +1985,8 @@ class Structure:
             buf.write(f"{self.n_atoms}\n")
             buf.write(title + "\n")
             for el, (x, y, z) in zip(self.elements, frame):
-                buf.write(f"{el:<3s} {x: 12.6f} {y: 12.6f} {z: 12.6f}\n")
+                buf.write(f"{el:<3s} {x: 12.{XYZ_DECIMALS}f} "
+                          f"{y: 12.{XYZ_DECIMALS}f} {z: 12.{XYZ_DECIMALS}f}\n")
         return buf.getvalue()
 
     # ------------------------------------------------------------------ #

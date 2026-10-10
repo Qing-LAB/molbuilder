@@ -842,7 +842,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
 
     try:
         average = mode_average(
-            junction.n_frames if junction is not None else None, frame_set,
+            frames_of(base) if junction is not None else None, frame_set,
             points_out, pending + failed)
     except AverageError as exc:
         raise RecordError(str(exc)) from exc
@@ -933,6 +933,7 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
     device run's ``.ORB_INDX`` at the same point -- the two runs share the
     composed junction's atom order.  :class:`RecordError` names what is
     missing."""
+    from .stages import same_volts
     from .tbtnc import TbtError, selection_pdos as _pdos, tbt_file
     base = Path(base_dir)
     _one_frame_or_refuse(base)
@@ -945,9 +946,9 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
         if len(found) == 1:
             return found[0][1]
         return next((w for pt, w, _r in found
-                     if abs(pt.bias_v - float(bias_v)) < 1e-9), None)
+                     if same_volts(pt.bias_v, bias_v)), None)
 
-    if not any(abs(float(v) - float(bias_v)) < 1e-9
+    if not any(same_volts(v, bias_v)
                for v in (task.bias or (0.0,))):
         raise RecordError(f"no transmission point at {bias_v:g} V")
     where = _at("transmission")
@@ -981,14 +982,14 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
     frame whose 0 V point has not run is noted under its token (``all``
     with no frame axis)."""
     from ..structure import frame_words
-    from .stages import frame_token
+    from .stages import frame_token, same_volts
     if treatment == "low-bias-approximation":
         out: Dict = {"frame": [], "voltages_v": [], "current_a": [],
                      "current_a_printed": [], "computed": "linear-response",
                      "kt_ev": None, "window_ev": None, "notes": {}}
         for f in frames:
             zero = next((p for p in points_out if p["frame"] == f
-                         and abs(p["bias_v"]) < 1e-9), None)
+                         and same_volts(p["bias_v"], 0.0)), None)
             if zero is None:
                 for v in task.bias:
                     out["frame"].append(f)
@@ -1008,7 +1009,8 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                 out["voltages_v"].append(v)
                 out["current_a"].append(i)
                 out["current_a_printed"].append(
-                    zero["current_a_printed"] if abs(v) < 1e-9 else None)
+                    zero["current_a_printed"] if same_volts(v, 0.0)
+                    else None)
             out["notes"].update(iv["notes"])
             if out["kt_ev"] is None:
                 out["kt_ev"], out["window_ev"] = iv["kt_ev"], iv["window_ev"]

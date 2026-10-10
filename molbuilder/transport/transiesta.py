@@ -66,6 +66,10 @@ _ISOLATED_ELECTRODE_VACUUM_ANG = 15.0
 #: the decks have always carried.
 _BLOCK_NAME = {REGION_LEFT_ELECTRODE: "L", REGION_RIGHT_ELECTRODE: "R"}
 
+#: THE TWO LEADS as TBtrans names them -- the ``TS.Elecs`` blocks, in
+#: `sort.ELECTRODE_LABELS`' order: what its outputs key each lead by.
+LEAD_NAMES = tuple(_BLOCK_NAME[label] for label in ELECTRODE_LABELS)
+
 
 def electrode_hs_stem(job_name: str, label: str) -> str:
     """The ONE spelling of an electrode run's identity — its SystemLabel,

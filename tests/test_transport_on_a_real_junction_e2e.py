@@ -162,7 +162,6 @@ def _mode_frame_set(tree: Path, pair: str, result: str):
     frame's plain displacement, largest atom's, ``q``, ``q / sigma`` and
     weight; every atom's mass, the result's; where the mode came from."""
     import hashlib
-    import json as _json
     from molbuilder.frameset import MASS_CHANNEL
     from molbuilder.sidecars.spectra import parse_spectra_json
     from molbuilder.spectra.derived import thermal_spread_amu12_ang
@@ -171,8 +170,7 @@ def _mode_frame_set(tree: Path, pair: str, result: str):
     path = tree / result / "V.spectra.json"
     res = parse_spectra_json(str(path))
     mode = res.modes[-1]
-    q_zp = _json.loads(path.read_text())["modes"][-1][
-        "zero_point_amplitude_amu12_ang"]
+    q_zp = res.to_dict()["modes"][-1]["zero_point_amplitude_amu12_ang"]
     sigma = thermal_spread_amu12_ang(q_zp, mode.frequency_cm1, _TEMPERATURE_K)
     L = np.zeros((res.n_atoms_total, 3))
     L[res.free_atom_idxs] = mode.eigenvector_canonical
@@ -186,16 +184,17 @@ def _mode_frame_set(tree: Path, pair: str, result: str):
             ("mode_index_1based", mode.index_1based, None),
             ("frequency_cm1", mode.frequency_cm1, "cm-1"),
             ("temperature_k", _TEMPERATURE_K, "K"),
-            ("zero_point_amplitude_amu12_ang", q_zp, "amu^1/2 A"),
-            ("sigma_amu12_ang", sigma, "amu^1/2 A")):
+            ("zero_point_amplitude_amu12_ang", q_zp, "amu^1/2 angstrom"),
+            ("sigma_amu12_ang", sigma, "amu^1/2 angstrom")):
         built.set_customized(name, value, unit=unit)
     for f, (q, w) in enumerate(zip(qs, _WEIGHTS)):
         moved = q * L
         for name, value, unit in (
-                ("displacement_ang", float(np.linalg.norm(moved)), "A"),
+                ("displacement_ang", float(np.linalg.norm(moved)),
+                 "angstrom"),
                 ("max_atom_displacement_ang",
-                 float(np.linalg.norm(moved, axis=1).max()), "A"),
-                ("q_amu12_ang", q, "amu^1/2 A"),
+                 float(np.linalg.norm(moved, axis=1).max()), "angstrom"),
+                ("q_amu12_ang", q, "amu^1/2 angstrom"),
                 ("node_sigma", q / sigma, None),
                 ("weight", w, None)):
             built.set_customized(name, value, unit=unit, frame=f)
@@ -208,7 +207,8 @@ def _mode_frame_set(tree: Path, pair: str, result: str):
 def _with_case(built, case):
     """The good set with ``case``'s one change (`tests/data/
     frame_set_definition.toml`): rows restated, scaled or dropped, the mass
-    channel dropped, a unit restated -- or none of the definition at all."""
+    channel dropped, a unit restated, every frame at frame 0's coordinates
+    -- or none of the definition at all."""
     from molbuilder.frameset import MASS_CHANNEL
     if case.get("none"):
         bare = built.with_frames(np.asarray(built.frames, dtype=float))
@@ -240,6 +240,12 @@ def _with_case(built, case):
         built.remove_customized(e["row"], frame=e.get("frame"))
     if case.get("drop_channel"):
         built.annotations.pop(MASS_CHANNEL, None)
+    if case.get("still"):
+        built = built.with_frames(
+            np.stack([np.asarray(built.frames[0], dtype=float)]
+                     * built.n_frames),
+            frame_rows=[built.customized_rows(f)
+                        for f in range(built.n_frames)])
     return built
 
 
@@ -928,11 +934,14 @@ def test_the_definition_is_checked_at_the_citation(junction, case):
 def test_the_data_file_holds_every_point_beside_its_frames_definition(
         junction):
     """§ 2a.12, *the data file*: `<label>.transport.nc`, read through its
-    door, holds every point on one grid -- frame x voltage x energy -- its
-    T(E) TBtrans's own, each frame's definition rows and every atom's mass
-    and coordinates beside it, the mode's average at the stated weights; every
-    variable says what it is, a raw one where it was read from; and a
-    calculation of one structure has the same layout, one frame."""
+    door, holds every point on one grid -- frame x voltage x energy, the
+    I-V's voltages the description's -- its T(E) TBtrans's own, each frame's
+    definition rows and every atom's mass and coordinates beside it, the
+    device's facts, the I-V and the mode's average each at its own point as
+    the record states them; every dimension a coordinate of its own name and
+    the labels of its points coordinates beside it; every variable says what
+    it is, a raw one where it was read from; and a calculation of one
+    structure has the same layout, one frame."""
     from molbuilder.frameset import FRAME_ROWS, MASS_CHANNEL
     from molbuilder.task import read_task
     from molbuilder.transport.datafile import (VARIABLES, data_file_path,
@@ -945,6 +954,7 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     assert list(V["frame"]) == list(range(_N_FRAMES))
     assert list(V["frame_token"]) == [f"f{f + 1:03d}" for f in range(_N_FRAMES)]
     assert list(V["bias_v"]) == list(_BIAS)
+    assert list(V["iv_bias_v"]) == list(_BIAS)
     for b, v in enumerate(_BIAS):
         energies, curves = _frame_curves(run, label, v)
         assert np.array_equal(V["energy_ev"], energies)
@@ -962,15 +972,40 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     assert list(V["mass_amu"]) == [masses[i] for i in range(composed.n_atoms)]
     assert np.array_equal(V["positions_ang"],
                           np.asarray(composed.frames, dtype=float))
+    # EACH VALUE PLACED BY ITS OWN POINT, as the record states it: the
+    # device's facts, the I-V, the averaged conductance.
+    rec = _record(run)
+    device = next(s for s in rec["stages"] if s["stage"] == "device")
+    for p in device["by_point"]:
+        f, b = p["frame"], list(_BIAS).index(p["bias_v"])
+        assert V["device_ef_ev"][f, b] == p["negf"]["ef"], (f, b)
+        assert V["device_vha_ev"][f, b] == p["negf"]["vha_ev"], (f, b)
+    for f, v, i in zip(rec["iv"]["frame"], rec["iv"]["voltages_v"],
+                       rec["iv"]["current_a"]):
+        assert V["iv_current_a"][f, list(_BIAS).index(v)] == i, (f, v)
+    for e in rec["average"]["at"]:
+        assert V["average_conductance_g0"][list(_BIAS).index(e["bias_v"])] \
+            == e["conductance_g0"], e["bias_v"]
+    # EVERY DIMENSION A COORDINATE OF ITS OWN NAME, and the labels of a
+    # dimension's points named as its coordinates (CF `coordinates`).
+    dims = {d for v in got["variables"].values() for d in v["dims"]}
+    for d in dims:
+        assert got["variables"][d]["dims"] == (d,), d
+    frame_labels = {"frame_token", *(r.name for r in FRAME_ROWS)}
+    attrs_of = {k: v["attrs"] for k, v in got["variables"].items()}
+    assert set(attrs_of["transmission"]["coordinates"].split()) \
+        == frame_labels
+    assert set(attrs_of["positions_ang"]["coordinates"].split()) \
+        == frame_labels | {"element", MASS_CHANNEL}
     for var in VARIABLES:
-        attrs = got["variables"][var.name]["attrs"]
+        attrs = attrs_of[var.name]
         assert attrs["long_name"] and attrs["definition"], var.name
         assert "units" in attrs and attrs["kind"] == var.kind, var.name
         if var.kind == "raw":
             assert attrs["source"], var.name
     one = read_data_file(data_file_path(junction.bundle, "T"))["variables"]
     assert one["transmission"]["data"].shape[:2] == (1, len(_BIAS))
-    assert one["transmission"]["dims"] == ("frame", "bias", "energy")
+    assert one["transmission"]["dims"] == ("frame", "bias_v", "energy_ev")
 
 
 # --------------------------------------------------------------------- #

@@ -546,9 +546,10 @@ does (`frame_at(0)`, `frame=0`, `setCurrentFrame(0)`, a record's `frame`);
 everything a person reads counts them from 1, as the frame bar's `1 / F` does —
 *"frame 1 of 3"* — **a folder name included**: a transport point's frame level
 is `f001` for frame 0 (`engines/transport.md` § 2a.11). One translation each
-side, as the atom index has (`model/overview.md` § 2): `structure.frame_words`
-in Python, MolView's `toDisplay` / `fromDisplay` in MolView (`web/molview.md`
-§ 11.5); neither writes a `+ 1` of its own.
+side, the atom index's own (`model/overview.md` § 2): `structure.to_display`
+in Python — `structure.frame_words` the sentence, `transport.stages.frame_token`
+the folder — and MolView's `toDisplay` / `fromDisplay` in MolView
+(`web/molview.md` § 11.5); neither side writes a `+ 1` of its own.
 
 ### 2.2f A mode's frame set — what each frame is, raw beside derived *(user, 2026-10-10; built the same day, plan § 5z Q17-e2)*
 
@@ -576,7 +577,9 @@ molbuilder's own, constants of `molbuilder/frameset.py` — as `transport/sort.p
 owns the region names — and **the units are in the names**, as in the vibration
 result the values come from (`engines/vibration.md` § 6.8); a row's `unit`
 field, when written, states the same unit, for the eye, in its ASCII spelling
-— `cm-1`, `K`, `A`, `amu^1/2 A` — and a number without a unit writes none.
+— `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom`, the ångström spelled out as
+UDUNITS spells it, since `A` is the ampere's — and a number without a unit
+writes none.
 
 | where | name | kind | meaning | unit |
 |---|---|---|---|---|
@@ -603,8 +606,9 @@ naming the frame (`engines/transport.md` § 2a.9), by `frameset.read` — the
 set's definition, checked, or none when it states none:
 
 1. **All or none.** A set states every row and the channel above, or none of
-   them. With none it is a family of frames — each frame's curve its own, no
-   average. Half-stated is refused, naming what is missing.
+   them — each value a number, `mode_index_1based` a whole number from 1. With
+   none it is a family of frames — each frame's curve its own, no average.
+   Half-stated is refused, naming what is missing.
 2. **Frame 0 is the equilibrium**: its `displacement_ang`,
    `max_atom_displacement_ang`, `q_amu12_ang` and `node_sigma` are 0.
 3. **The measured rows match the coordinates**, and **the frames move along one
@@ -612,14 +616,17 @@ set's definition, checked, or none when it states none:
    displacement scaled by the square root of its stated mass) and `ê` the
    direction of the frame farthest along it, signed by that frame's `q`, every
    frame's `u_f` equals `q_f · ê` — its size, its side and its direction at
-   once. The coordinates are written to six decimals (`Structure.to_xyz`), so
+   once; when that frame did not move there is no direction, and every frame
+   must then neither move nor state a position. The coordinates are written to six decimals (`Structure.to_xyz`), so
    each of these is checked to within what that rounding allows: a displaced
    atom within `√3·10⁻⁶` Å, the plain displacement within `√3·10⁻⁶·√N` Å, and
    a frame's mass-weighted position within twice `√3·10⁻⁶·√(Σ m)` amu^½·Å —
    the rounding of the frame and of the direction it is measured along.
-4. **The derived rows match their formulas**: `σ` against `Q_zp`, the frequency
-   and the temperature; each `node_sigma` against `q / σ` — to a relative
-   `10⁻⁹`, since each is the formula of values stated at full precision.
+4. **The derived rows match their formulas**, on the formulas' domain — the
+   frequency, `Q_zp` and `σ` positive (a real mode), the temperature 0 K or
+   above, where `σ = Q_zp`: `σ` against `Q_zp`, the frequency and the
+   temperature; each `node_sigma` against `q / σ` — to a relative `10⁻⁹`,
+   since each is the formula of values stated at full precision.
 5. **The weights**: each a number in (0, 1], the set's summing to 1 within
    `10⁻⁶` — refused with the sum found.
 6. **A row's `unit`**, when written, is the unit its name states.

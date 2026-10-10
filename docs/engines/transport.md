@@ -1718,9 +1718,12 @@ derivative is trivial if the result are saved with these parameter and
 calculation results consistently aligned and logically organized in the right
 form"; "full data record with clear meaning/definition is crucial"; NetCDF
 chosen the same day)*. `summarize task` writes it beside
-`<label>.transport.json`, from the same composition (`record.collect_record`):
-the JSON is the report the Results tab and `summarize` read; the data file is
-the same results on their grid, for analysis — every point's raw outputs beside
+`<label>.transport.json`, from the same composition (`record.collect_record`)
+and first — a refusal (the record does not lay out on one grid) leaves the
+pair the last `summarize` wrote:
+the JSON is the report — what `summarize` writes for the command line, the
+Results tab composing the same record on read — and the data file is the same
+results on their grid, for analysis — every point's raw outputs beside
 what molbuilder derives from them, a frame set's definition beside every
 frame's values, and each variable saying what it is. NetCDF-4, written with
 `netCDF4` (declared in the molbuilder env, 2026-10-10), read by any NetCDF
@@ -1731,40 +1734,48 @@ structure at one voltage is a 1 × 1 grid, never a different layout.
 | dimension | what it runs over |
 |---|---|
 | `frame` | the cited structure's frames — 1 for one structure |
-| `bias` | the voltages the device and the transmission ran at — the sweep's, or 0 V |
-| `energy` | the transmission's energy grid, E − E_F, as `.TBT.AVTRANS` prints it — five decimals of an eV (`f10.5`, `m_tbt_save.F90`); each DOS, from `.TBT.nc` at full precision, sits on the same points within half that decimal |
-| `spin` | the spin channels TBtrans wrote — one, or `up` and `down` |
-| `iv_bias` | the I–V's voltages — the description's list (under the low-bias approximation, more than ran) |
+| `bias_v` | the voltages the device and the transmission ran at — the description's list, in its order, or 0 V |
+| `energy_ev` | the transmission's energy grid, E − E_F, as `.TBT.AVTRANS` prints it — five decimals of an eV (`f10.5`, `m_tbt_save.F90`); each DOS, from `.TBT.nc` at full precision, sits on the same points within half that decimal |
+| `spin` | the spin channels TBtrans wrote, by the record's names — the one channel of a `non-polarized` run, or `up` and `down` |
+| `iv_bias_v` | the I–V's voltages — the description's list, in its order (under the low-bias approximation, more than ran), or 0 V |
 | `atom` · `xyz` | the composed junction's atoms, in its order — the sorted copy every deck is written in, `atom-permutation.json` the way back — and the three Cartesian components |
-| `region` · `lead` · `eigenchannel` | the device's regions molbuilder owns (L-electrode, bridge, R-electrode); the two leads; the eigenchannels TBtrans was asked for |
+| `region` · `lead` · `eigenchannel` | the device's regions molbuilder owns (L-electrode, bridge, R-electrode); the two leads, as TBtrans names them (`L`, `R`; `transiesta.LEAD_NAMES`); the eigenchannels a point's `.TBT.nc` holds — those TBtrans was asked for (`TBT.T.Eig`), none where no file is read (K21) |
 
-The coordinates are variables along their dimensions: `frame` (0-based,
-MolView's index) and `frame_token` (`f001` …), `bias_v`, `energy_ev`,
-`iv_bias_v`, `spin`, `region`, `lead`; along `frame` every per-frame row of a
-mode's frame set (§ 2.2f), along `atom` each atom's `element` and `mass_amu` —
-the fill value where the set states none.
+**Every dimension is a coordinate of its own name** (a NetCDF coordinate
+variable): `frame` (0-based, MolView's index), `bias_v`, `energy_ev`, `spin`,
+`iv_bias_v`, `atom`, `xyz`, `region`, `lead`, `eigenchannel` — so a reader
+selects by value, `transmission.sel(bias_v=0.2)`. **The labels of a
+dimension's points are coordinates beside it** (CF auxiliary coordinates,
+named in each variable's `coordinates` attribute, which xarray and netCDF4
+read): along `frame` its folder `frame_token` (`f001` …, empty for one
+structure, which has no frame level) and every per-frame
+row of a mode's frame set (§ 2.2f); along `atom` each atom's `element` and
+`mass_amu` — the fill value where the set states none.
 
 | variable | over | kind | what it is |
 |---|---|---|---|
 | `positions_ang` | frame, atom, xyz | given | every frame's coordinates as composed |
-| `transmission_by_spin` | frame, bias, spin, energy | raw | T(E) as each point's `.TBT.AVTRANS` file states it, channel by channel |
-| `transmission` | frame, bias, energy | derived | per spin channel — the one, or `(T↑ + T↓)/2` — what G is computed from |
-| `conductance_g0` | frame, bias | derived | `G / G₀ = T` at E − E_F = 0, linearly interpolated |
-| `current_a_printed` | frame, bias | raw | the current TBtrans printed — one spin channel's |
-| `current_a` | frame, bias | derived | the junction's total: twice the printed figure unpolarized, the channels' sum polarized |
-| `iv_current_a` | frame, iv_bias | derived | the I–V — each point's own total (self-consistent), or the record's linear response from that frame's 0 V slice (low-bias) |
-| `device_ef_ev` · `device_vha_ev` | frame, bias | raw | the device point's NEGF Fermi level and boundary Hartree potential, as TranSIESTA printed them |
-| `dos_total` · `dos_region` · `lead_spectral_dos` · `lead_bulk_dos` · `eigenchannel_transmission` | frame, bias, (region · lead · eigenchannel), energy | raw | from each point's `.TBT.nc`, k-averaged (`transport/tbtnc.py`) |
-| `done` | frame, bias | state | 1 when the point has its transmission; 0 otherwise, its values the fill value — a gap, never filled in |
-| `point_folder` | frame, bias | state | the transmission point's folder, tree-relative — where its raw values were read |
-| `average_transmission` · `average_delta_transmission` | bias, energy | derived | the mode's average at the stated weights, and its change from frame 0's |
-| `average_conductance_g0` · `average_conductance_change_percent` | bias | derived | at E_F, and in per cent of frame 0's |
+| `transmission_by_spin` | frame, bias_v, spin, energy_ev | raw | T(E) as each point's `.TBT.AVTRANS` file states it, channel by channel |
+| `transmission` | frame, bias_v, energy_ev | derived | per spin channel — the one, or `(T↑ + T↓)/2` — what G is computed from |
+| `conductance_g0` | frame, bias_v | derived | `G / G₀ = T` at E − E_F = 0, linearly interpolated |
+| `current_a_printed` | frame, bias_v | raw | the current TBtrans printed — one spin channel's |
+| `current_a` | frame, bias_v | derived | the junction's total: twice the printed figure unpolarized, the channels' sum polarized |
+| `iv_current_a` | frame, iv_bias_v | derived | the I–V — each point's own total (`iv_computed` `tbtrans`), or the record's linear response from that frame's 0 V slice (`linear-response`, the low-bias approximation): `I(V) = G₀ ∫ T(E, 0) [f(E − eV/2) − f(E + eV/2)] dE` at `iv_kt_ev`, the fill value where the window does not reach (§ 2a.10) |
+| `device_ef_ev` · `device_vha_ev` | frame, bias_v | raw | the device point's NEGF Fermi level and boundary Hartree potential, as TranSIESTA printed them — wherever the device point ran, its transmission done or not |
+| `dos_total` · `dos_region` · `lead_spectral_dos` · `lead_bulk_dos` · `eigenchannel_transmission` | frame, bias_v, (region · lead · eigenchannel), energy_ev | raw | from each point's `.TBT.nc`, k-averaged (`transport/tbtnc.py`); a polarized point's two files (`.TBT_UP.nc`, `.TBT_DN.nc`) are not read yet, its DOS the fill value (plan K21) |
+| `done` | frame, bias_v | state | 1 when the point has its transmission; 0 otherwise, its transmission's values the fill value — a gap, never filled in |
+| `point_folder` | frame, bias_v | state | the transmission point's folder, relative to the calculation's — where its raw values were read; for a point not done, where its attempt is |
+| `average_transmission` · `average_delta_transmission` | bias_v, energy_ev | derived | the mode's average at the stated weights, and its change from frame 0's |
+| `average_conductance_g0` · `average_conductance_change_percent` | bias_v | derived | at E_F, and in per cent of frame 0's |
 
-**Every variable says what it is**: `units`, `long_name`, `definition` — how it
-is obtained, the formula for a derived one — and, for a raw one, `source`, the
+**Every variable says what it is**: `units` — one spelling a unit, the
+ångström `angstrom` and the ampere `A` — `long_name`, `definition` — how it is
+obtained, the formula for a derived one — and, for a raw one, `source`, the
 file it was read from. The file says what it is: `schema`
 (`molbuilder/transport-data@1`), the label, the treatment, the citation and its
-kind, `energies_relative_to_ef`, the DFT-NEGF caveat; for a frame set the
+kind, `energies_relative_to_ef`, the DFT-NEGF caveat; how the I–V was computed
+(`iv_computed`; under the low-bias approximation its `iv_kt_ev`, `iv_window_ev`
+and `iv_notes`, the voltages the window does not reach); for a frame set the
 structure's rows of § 2.2f, `info.vibration`, the weights' sum and tolerance
 and the average's assumptions; and the reason there is no average, when there
 is none.

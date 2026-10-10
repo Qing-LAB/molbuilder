@@ -95,9 +95,10 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None):
 
     WHY THE PAYLOAD IS NOT SIMPLY ``to_dict()``.  ``to_dict`` is the ON-DISK
     format: ``from_dict(to_dict(x)) == x``, byte-equal modulo float
-    formatting, and the emitter writes it.  Derived facts must not leak into
-    it or the file grows fields the schema never declared.  So this wraps it:
-    the file's own fields, unchanged, plus a computed one.
+    formatting, and the writer writes it -- the derived values its schema
+    declares included (`engines/vibration.md` § 6.6).  A view is not one of
+    them, so this wraps it: the file's own fields, unchanged, plus a computed
+    one.
 
     WHAT IS ADDED, and why it cannot be computed in the browser.
     ``motion_share_by_element`` says which atoms a mode belongs to -- 91%

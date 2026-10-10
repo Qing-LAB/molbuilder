@@ -369,7 +369,7 @@ def _finish_check_block(finish: Optional[str]) -> str:
         f'    echo "ERROR: this job cannot finish itself: {finish} does not '
         f'load on the job\'s python (${{_mb_py:-none found}}) -- the engine '
         f'was not started, so no run is lost.  Its imports are the standard '
-        f'library, numpy and ASE, which the job env carries '
+        f'library and numpy, which the job env carries '
         f'(envs/recipes.py)." >&2\n'
         f'    [ -n "$_mb_fin_said" ] && echo "$_mb_fin_said" >&2\n'
         f'    printf "rc=1 at %s; {FINISH_CANNOT_LOAD} ({finish})\\n" '
@@ -3794,10 +3794,10 @@ def companion_source(name: str,
 #: with.
 #:
 #: **Each module's own file, imported two ways** (package, or beside the
-#: job), like the monitor's; unlike the monitor's, the set needs **numpy and
-#: ASE**, which the SIESTA job envs carry for it (`envs/recipes.py`): the
-#: rule for joining is *imports only the standard library, numpy, ASE and
-#: the other members*.  The SIESTA end-to-end run proves the set whole: its
+#: job), like the monitor's; unlike the monitor's, the set needs **numpy**,
+#: which the SIESTA job envs carry for it (`envs/recipes.py`): the rule for
+#: joining is *imports only the standard library, numpy and the other
+#: members* (`engines/vibration.md` I23).  The SIESTA end-to-end run proves the set whole: its
 #: job's python cannot import molbuilder (`tests/test_siesta_vibration_e2e.py`).
 VIBRATION_COMPANIONS: Dict[str, str] = {
     "siesta_vibration.py":     "molbuilder.spectra.siesta_vibration",
@@ -3836,7 +3836,7 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
 from .runfiles import VIBRATION_BUNDLE  # noqa: E402,F401 -- the catalogue's name
 
 #: The finish bundle's entry.  A set that cannot load on the job's python --
-#: most often an env without numpy or ASE -- says so in the session log's own
+#: most often an env without numpy -- says so in the session log's own
 #: line, with the traceback, and exits 1: the job then fails, because the
 #: spectrum IS this stage's result (`engines/vibration.md` § 5.5).
 _VIBRATION_MAIN = (
@@ -3848,7 +3848,7 @@ _VIBRATION_MAIN = (
     f"    sys.stderr.write({(LOG_LINE + chr(10))!r} % "
     f"(time.strftime({LOG_CLOCK!r}), 'ERROR', "
     f"'vibration: {VIBRATION_BUNDLE} did not load -- %s: %s (it needs "
-    f"numpy and ASE in the job env: envs/recipes.py)' "
+    f"numpy in the job env: envs/recipes.py)' "
     "% (type(_e).__name__, _e)))\n"
     "    traceback.print_exc()\n"
     "    raise SystemExit(1)\n"

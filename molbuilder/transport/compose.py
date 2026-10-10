@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 import numpy as np
 
 from ..atom_permutation import PERMUTATION_FILE, read_permutation
-from ..structure import Structure
+from ..structure import Structure, to_display
 from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
                    SortResult, sort_by, write_permutation)
 from .wizard import ElectrodeModel, extract_electrode_model
@@ -314,7 +314,8 @@ def _frames_keep_the_leads(struct: Structure, path: Path) -> None:
         moved = [(i, float(d)) for i, d in zip(leads, dist)
                  if d > FROZEN_TOL_ANG]
         if moved:
-            shown = ", ".join(f"atom {i} ({struct.elements[i]}) by {d:.4f} A"
+            shown = ", ".join(f"atom {to_display(i)} ({struct.elements[i]}) "
+                              f"by {d:.4f} A"
                               for i, d in moved[:3])
             more = f" and {len(moved) - 3} more" if len(moved) > 3 else ""
             broken.append(f"{frame_words(f, len(frames))} moves "

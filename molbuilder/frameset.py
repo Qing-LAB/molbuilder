@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
-from .structure import frame_words
+from .structure import XYZ_DECIMALS, frame_words, to_display
 
 #: Each atom's mass, the value channel the mode's coordinate is weighted by
 #: -- molbuilder's own (`model/structure-annotations.md`).
@@ -60,11 +60,11 @@ ROWS: Tuple[Row, ...] = (
     Row("mode_index_1based", "structure", "given", None),
     Row("frequency_cm1", "structure", "given", "cm-1"),
     Row("temperature_k", "structure", "given", "K"),
-    Row("zero_point_amplitude_amu12_ang", "structure", "given", "amu^1/2 A"),
-    Row("sigma_amu12_ang", "structure", "derived", "amu^1/2 A"),
-    Row("displacement_ang", "frame", "measured", "A"),
-    Row("max_atom_displacement_ang", "frame", "measured", "A"),
-    Row("q_amu12_ang", "frame", "derived", "amu^1/2 A"),
+    Row("zero_point_amplitude_amu12_ang", "structure", "given", "amu^1/2 angstrom"),
+    Row("sigma_amu12_ang", "structure", "derived", "amu^1/2 angstrom"),
+    Row("displacement_ang", "frame", "measured", "angstrom"),
+    Row("max_atom_displacement_ang", "frame", "measured", "angstrom"),
+    Row("q_amu12_ang", "frame", "derived", "amu^1/2 angstrom"),
     Row("node_sigma", "frame", "derived", None),
     Row("weight", "frame", "given", None),
 )
@@ -78,9 +78,10 @@ WEIGHT_SUM_TOLERANCE = 1e-6
 #: the formula of values stated at full precision.
 FORMULA_RTOL = 1e-9
 #: How far one written coordinate may be from the value it stands for: half
-#: of the six decimals `Structure.to_xyz` writes.  A displacement between two
-#: frames is then within twice it per component, `sqrt(3)` times that an atom.
-COORDINATE_HALF_DECIMAL_ANG = 0.5e-6
+#: the last of the decimals `Structure.to_xyz` writes (`XYZ_DECIMALS`).  A
+#: displacement between two frames is then within twice it per component,
+#: `sqrt(3)` times that an atom.
+COORDINATE_HALF_DECIMAL_ANG = 0.5 * 10.0 ** -XYZ_DECIMALS
 
 
 class FrameSetError(ValueError):
@@ -204,6 +205,19 @@ def read(structure) -> Optional[ModeFrameSet]:
     temp = float(srows["temperature_k"]["value"])
     q_zp = float(srows["zero_point_amplitude_amu12_ang"]["value"])
     sigma = float(srows["sigma_amu12_ang"]["value"])
+    # RULE 4's DOMAIN -- a real mode at a temperature: what the formulas
+    # below are defined on, so each is checked, never divided by zero.
+    undefined = [
+        f"the structure's {name} is {v!r}, not {what}"
+        for name, v, ok, what in (
+            ("frequency_cm1", nu, nu > 0.0, "positive -- a real mode"),
+            ("zero_point_amplitude_amu12_ang", q_zp, q_zp > 0.0, "positive"),
+            ("sigma_amu12_ang", sigma, sigma > 0.0, "positive"),
+            ("temperature_k", temp, temp >= 0.0, "0 K or above"))
+        if not ok]
+    if undefined:
+        raise FrameSetError("; ".join(undefined)
+                            + " (model/structure.md 2.2f)")
 
     # RULE 2 -- FRAME 0 IS THE EQUILIBRIUM.
     at_rest = [name for name in ("displacement_ang",
@@ -228,8 +242,9 @@ def read(structure) -> Optional[ModeFrameSet]:
     q = np.array([value(f, "q_amu12_ang") for f in range(n)])
     g = int(np.argmax(np.abs(q)))
     norm_g = float(np.linalg.norm(u[g]))
-    e_hat = (np.sign(q[g]) * u[g] / norm_g if norm_g > 0.0
-             else np.zeros_like(u[g]))
+    # No frame moved, so there is no direction to measure along: a frame
+    # then sits at its q only when it neither moves nor states a position.
+    e_hat = (np.sign(q[g]) * u[g] / norm_g if norm_g > 0.0 else None)
     for f in range(n):
         disp = float(np.linalg.norm(dR[f]))
         top = float(np.linalg.norm(dR[f], axis=1).max())
@@ -240,13 +255,15 @@ def read(structure) -> Optional[ModeFrameSet]:
                 bad.append(f"{frame_words(f, n)}'s {name} is "
                            f"{value(f, name)!r}; its coordinates give "
                            f"{measured!r}")
-        off = float(np.linalg.norm(u[f] - q[f] * e_hat))
+        off = (float(np.linalg.norm(u[f] - q[f] * e_hat))
+               if e_hat is not None
+               else math.hypot(float(np.linalg.norm(u[f])), q[f]))
         if off > 2.0 * tol_q:
             bad.append(
                 f"{frame_words(f, n)} does not sit at q_amu12_ang "
-                f"{q[f]!r} along the mode the set moves along: its "
-                f"mass-weighted displacement is {off:.3g} amu^1/2 A from "
-                f"there (size {float(np.linalg.norm(u[f])):.6g})")
+                f"{float(q[f])!r} along the mode the set moves along: its "
+                f"mass-weighted displacement is {off:.3g} amu^1/2 angstrom "
+                f"from there (size {float(np.linalg.norm(u[f])):.6g})")
 
     # RULE 4 -- THE DERIVED ROWS MATCH THEIR FORMULAS.
     from .spectra.derived import thermal_spread_amu12_ang
@@ -258,9 +275,10 @@ def read(structure) -> Optional[ModeFrameSet]:
     for f in range(n):
         node = value(f, "node_sigma")
         if not math.isclose(node, q[f] / sigma, rel_tol=FORMULA_RTOL,
-                            abs_tol=1e-12):
+                            abs_tol=0.0):
             bad.append(f"{frame_words(f, n)}'s node_sigma is {node!r}; "
-                       f"q_amu12_ang / sigma_amu12_ang gives {q[f] / sigma!r}")
+                       f"q_amu12_ang / sigma_amu12_ang gives "
+                       f"{float(q[f] / sigma)!r}")
 
     # RULE 5 -- THE WEIGHTS.
     weights = [value(f, "weight") for f in range(n)]
@@ -268,11 +286,10 @@ def read(structure) -> Optional[ModeFrameSet]:
                for f, w in enumerate(weights) if not 0.0 < w <= 1.0]
     if outside:
         bad.append("; ".join(outside) + " -- a weight is a number in (0, 1]")
-    else:
-        total = math.fsum(weights)
-        if abs(total - 1.0) > WEIGHT_SUM_TOLERANCE:
-            bad.append(f"the {n} frames' weights sum to {total!r}, not 1 "
-                       f"within {WEIGHT_SUM_TOLERANCE:g}")
+    total = math.fsum(weights)
+    if abs(total - 1.0) > WEIGHT_SUM_TOLERANCE:
+        bad.append(f"the {n} frames' weights sum to {total!r}, not 1 "
+                   f"within {WEIGHT_SUM_TOLERANCE:g}")
     if bad:
         raise FrameSetError("; ".join(bad) + " (model/structure.md 2.2f)")
 
@@ -296,7 +313,8 @@ def _masses(channel, n_atoms: int, bad: List[str]) -> List[float]:
     for i in range(n_atoms):
         v = _number(data.get(i))
         if v is None or not v > 0.0:
-            bad.append(f"atom {i + 1}'s {MASS_CHANNEL} is {data.get(i)!r}, "
+            bad.append(f"atom {to_display(i)}'s {MASS_CHANNEL} is "
+                       f"{data.get(i)!r}, "
                        f"not a positive mass")
         out.append(v if v is not None else float("nan"))
     return out

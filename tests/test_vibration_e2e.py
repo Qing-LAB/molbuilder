@@ -546,15 +546,16 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     assert wrap_logs, "the wrapper writes its session log beside the run"
     header = wrap_logs[-1].read_text(errors="replace")
     assert "frozen_atoms: 1 listed indices" in header, header[:1500]
-    # Every mode is orthogonal to every removed motion in the mass metric
-    # (science/normal-modes.md § 7 point 3), read off the artifact itself.
+    # Every mode is normalised and orthogonal to every removed motion in the
+    # mass metric of the masses the result states (I3; science/normal-modes.md
+    # § 7 point 3), read off the artifact itself.
     import numpy as np
-    from molbuilder.chemistry import atomic_mass
-    masses = np.array([atomic_mass(e) for e in d["equilibrium"]["elements"]])
+    masses = np.asarray(d["equilibrium"]["masses_amu"])
     free = d["free_atom_idxs"]
     sqm = np.sqrt(masses[free])
     for m in d["modes"]:
         L = np.asarray(m["eigenvector_canonical"]) * sqm[:, None]
+        assert abs(float((L * L).sum()) - 1.0) < 1e-6, m["index_1based"]
         for pat in d["removed_motions"]["patterns"]:
             v = np.asarray(pat) * sqm[:, None]
             v /= np.linalg.norm(v)
