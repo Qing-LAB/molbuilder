@@ -19,6 +19,14 @@
 (function () {
     "use strict";
 
+    /* A TRANSPORT POINT AS THE UI NAMES IT -- `Frame 2 of 3 · 0.2 V` -- the
+     * one wording the report's table and legend use too
+     * (`lib/results/point-words.js`; results.md § 2.5).  A module, loaded
+     * once; the ladder is drawn once it is. */
+    let _pointWords = null;
+    const _wordsReady = import("/static/lib/results/point-words.js")
+        .then((m) => { _pointWords = m.pointWords; });
+
     const $ = (id) => document.getElementById(id);
 
     const els = {
@@ -271,8 +279,9 @@
                 const row = document.createElement("tr");
                 row.className = "is-run";
                 row.appendChild(td(""));
-                const name = r.run + (r.point != null
-                    ? " \u00b7 " + Number(r.point) + " V" : "");
+                const words = r.point != null
+                    ? _pointWords(r.of > 1 ? r.frame : null, r.of, r.point) : "";
+                const name = r.run + (words ? " \u00b7 " + words : "");
                 row.appendChild(td(name));
                 row.appendChild(td(chip(r.state)));
                 row.appendChild(td(r.converged || "\u2014"));
@@ -290,9 +299,7 @@
                     open.className = "results-ladder-open";
                     open.textContent = "open";
                     open.title = atRoot
-                        ? (r.point != null
-                            ? "the report at " + Number(r.point) + " V"
-                            : "the report")
+                        ? (words ? "the report at " + words : "the report")
                         : r.opens + " — shown here; the sidebar "
                           + "stays on the calculation.";
                     // N identical "open" buttons name their run, and a picked
@@ -308,8 +315,9 @@
                         if (!atRoot) { _pickRun(path); return; }
                         _backToRoot();
                         if (r.point != null && currentHandle
-                                && typeof currentHandle.selectBias === "function") {
-                            currentHandle.selectBias(Number(r.point));
+                                && typeof currentHandle.selectPoint === "function") {
+                            currentHandle.selectPoint({ frame: r.frame,
+                                                        bias: Number(r.point) });
                         }
                     });
                     result.appendChild(open);
@@ -407,8 +415,9 @@
             else { rootSel = null; rootDir = ""; }
         }
         // THE LADDER, ABOVE THE PANEL, on every answer: a root's product is
-        // shown with it, and anything that is not a root hides it.
-        _renderLadder(ladder);
+        // shown with it, and anything that is not a root hides it -- drawn
+        // once its rows' wording has loaded, in the order announced.
+        _wordsReady.then(() => _renderLadder(ladder));
         const reg  = (window.molbuilder || {}).inspectors;
         if (!reg) {
             _hideLoading();

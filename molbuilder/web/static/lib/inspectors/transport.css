@@ -45,21 +45,12 @@
     --card-min: 360px;
 }
 
-/* THE PLOT'S SIZE HAS ONE HOME: the sheet.  Plotly draws into the box the
- * element has (no `height` in a layout), so a chart is as tall as its class
- * says -- a HEIGHT, not a floor: a chart first drawn in a hidden tab takes
- * Plotly's own default, and only a stated height brings it back to this
- * size when its tab is shown and the chart is resized. */
-.transport-plot {
-    width: 100%;
-    height: var(--tr-plot-h);
-}
-/* A convergence half-plot carries both classes: its height is the one
- * declaration above, with the half's value. */
-.transport-plot-half { --tr-plot-h: var(--tr-plot-half-h); }
+/* A chart's box (lib/plot-box.css): its height, from a token. */
+.transport-plot { --plot-box-h: var(--tr-plot-h); }
 
-/* The convergence pair: energy and residual side by side, stacking when
- * narrow. */
+/* The convergence pair: energy and residual side by side, each at its basis,
+ * stacking when two bases no longer fit; a lone one shrinks with the card
+ * (the box's own `min-width: 0`). */
 .transport-conv-plots {
     display: flex;
     flex-wrap: wrap;
@@ -67,8 +58,8 @@
 }
 
 .transport-plot-half {
-    flex: 1 1 320px;
-    min-width: 280px;
+    --plot-box-h: var(--tr-plot-half-h);
+    flex: 1 1 var(--tr-plot-half-basis);
 }
 
 .transport-conv-line {
@@ -104,31 +95,10 @@
     align-items: baseline;
 }
 
-/* The I–V and rung tables: numbers in columns, so they compare by eye. */
-.transport-iv,
-.transport-rungs {
-    border-collapse: collapse;
-    font-variant-numeric: tabular-nums;
-    font-size: var(--text-sm);
-}
-
-.transport-iv th,
-.transport-iv td,
-.transport-rungs th,
-.transport-rungs td {
-    padding: var(--space-xs) var(--space-sm);
-    border-bottom: 1px solid var(--border-subtle);
-}
-
-/* A numeric table aligns a column's header with its cells. */
+/* The I–V and rung tables are page-shell's number table: the I–V's columns
+ * aligned as numbers, header with cells; the rungs' header as its words. */
 .transport-iv td,
 .transport-iv th { text-align: right; }
-
-.transport-iv th,
-.transport-rungs th {
-    color: var(--text-muted);
-    font-weight: var(--weight-semibold);
-}
 .transport-rungs th { text-align: left; }
 
 /* A row that picks a bias point says so; a computed row (the low-bias

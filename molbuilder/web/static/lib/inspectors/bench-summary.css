@@ -42,13 +42,10 @@
     color: var(--text-primary);
 }
 
-.bench-chart {
-    width: 100%;
-    /* Three stacked panels need room to be read.  At 220px they were
-       ~55px each once the legend and the x-axis took their share, which
-       is not a plot, it is a sparkline with axis labels. */
-    min-height: 600px;
-}
+/* A chart's box (lib/plot-box.css).  Three stacked panels need room to be
+   read: at 220px they were ~55px each once the legend and the x-axis took
+   their share, which is not a plot, it is a sparkline with axis labels. */
+.bench-chart { --plot-box-h: var(--bench-chart-h); }
 
 /* The chart's own key + how to read the quantities.  Below the figure
    because it explains what is already drawn; a reader who does not need

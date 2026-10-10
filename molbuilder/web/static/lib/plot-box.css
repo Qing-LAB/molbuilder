@@ -1,0 +1,27 @@
+/* The box a Plotly chart is drawn in -- the `plot-box` class, in the module's
+ * markup beside its own (lib/plot-box.js draws into nothing else;
+ * web/results.md § 2.5).  THE BOX LEADS AND THE DRAWING FOLLOWS -- the rules
+ * SpectrumChart's own frame keeps (spectrumchart.md § 11), each from a break
+ * measured on this page:
+ *
+ *   * A stated HEIGHT, never `auto` or a floor: the drawing is sized from the
+ *     box, so a box sized from the drawing collapses onto it -- and a chart
+ *     first drawn in a hidden tab keeps Plotly's default height.  The module's
+ *     own class says it, as `--plot-box-h`, from a token.
+ *   * `min-width: 0`: a grid or flex track's automatic floor is its content's
+ *     width -- the drawing's last one -- so without it a track never shrinks
+ *     below what was drawn, and a chart drawn hidden at Plotly's default 700 px
+ *     pushed its neighbour out of the card.
+ *   * CONTENT-BOX sizing: Plotly draws at the box's computed width and height,
+ *     which under the page's `border-box` count the border and the padding in
+ *     -- every pixel of either a pixel drawn past the content's edge.  Sized
+ *     content-box, what Plotly reads is the area it draws in, and a frame
+ *     around it is the module's to give.
+ *   * `overflow: hidden`: a drawing waiting for its resize never paints over
+ *     its neighbour. */
+.plot-box {
+    box-sizing: content-box;
+    height: var(--plot-box-h);
+    min-width: 0;
+    overflow: hidden;
+}

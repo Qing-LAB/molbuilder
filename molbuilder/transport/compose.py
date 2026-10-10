@@ -168,6 +168,9 @@ class CitedPair:
     sidecar: Path                 # its .molstruct.json
     structure: Structure          # every frame (`StructureCodec.load(frames=True)`)
     calculation: Dict[str, object]
+    #: A mode's frame set's definition, checked (`frameset.read`), or
+    #: ``None`` for one structure or a family stating none.
+    frame_set: "Optional[object]" = None
 
     @property
     def n_frames(self) -> int:
@@ -287,11 +290,24 @@ def _classify_pair(path: Path) -> CitedPair:
     # refused before anything runs (`engines/transport.md` § 2a.9).
     from ..frameset import FrameSetError, read as read_frame_set
     try:
-        read_frame_set(struct)
+        frame_set = read_frame_set(struct)
     except FrameSetError as exc:
         raise ComposeError(f"{path.name}: {exc}") from exc
     return CitedPair(path=path, sidecar=sidecar, structure=struct,
-                     calculation=calc)
+                     calculation=calc, frame_set=frame_set)
+
+
+def frame_set_answer(cited) -> Dict[str, object]:
+    """What a citation's frames are, as every page that shows them reads it
+    (`engines/transport.md` § 3.8.1: the describe door, Task setup's echo):
+    ``{n_frames, definition}`` -- a cited pair's frame count and, for a
+    mode's set, its definition (`frameset.ModeFrameSet.to_wire`); a cited
+    run is one structure."""
+    if not isinstance(cited, CitedPair):
+        return {"n_frames": 1, "definition": None}
+    return {"n_frames": cited.n_frames,
+            "definition": (cited.frame_set.to_wire()
+                           if cited.frame_set is not None else None)}
 
 
 def _frames_keep_the_leads(struct: Structure, path: Path) -> None:

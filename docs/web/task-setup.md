@@ -176,7 +176,13 @@ list it walks, how it treats that list (`single-bias`,
 `treatment`, the one rule the record names it by) and whether it trades the
 two electrode labels in its own copy of the junction (`swap_electrodes`,
 [`engines/transport.md`](?doc=engines/transport.md) § 4) — and the label every
-emitted file is stemmed on. Every parameter of the description is echoed
+emitted file is stemmed on. **A cited frame set says what its frames are**,
+under them: its count and, for a mode's set, its mode line and a row per
+frame — the frame-set card the Transport tab's junction card draws, from the
+describe door's own helper (`compose.frame_set_answer`,
+[`engines/transport.md`](?doc=engines/transport.md) § 3.8.1), through the
+folder answer's `frame_set`; a citation that does not read says why, and the
+folder still opens. Every parameter of the description is echoed
 ([`engines/template.md`](?doc=engines/template.md) § 6.6 obligation 3).
 
 **They are shown because you are about to commit a week of compute against
@@ -1211,7 +1217,9 @@ from the same answer:
   attempt** — opened, what was brought in, what it starts from (the
   run it continues from, a cold start you asked for, what a transport rung
   gathered, or nothing from another run), what was copied from which
-  attempt — or, on a transport bias scan, one attempt per point;
+  attempt — or, on a transport rung that runs per point, one attempt per
+  point, each named by its frame and its voltage as the UI names a point
+  (`lib/results/point-words.js`);
 * **what a transport rung gathered** from the newest finished runs upstream;
 * **the resources** the stage will launch with, and **whether the deck
   agrees**: a deck rendered for another width is said here, before `launch`

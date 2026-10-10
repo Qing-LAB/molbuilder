@@ -290,9 +290,19 @@
     /* --- Transport tab (transport/style.css) --- */
     --tr-bias-num-w:    8ch;     /* a start / stop / step box: the volts it holds */
     --tr-offer-min-w:   12rem;   /* the swap-electrodes offer's button */
+    /* --- Trajectory viewer (lib/trajectory/trajectory-inspector.css) --- */
+    --traj-plot-h:      clamp(200px, 24vh, 260px); /* one of the plots row's charts */
+    /* --- Bench summary (lib/inspectors/bench-summary.css) --- */
+    --bench-chart-h:    600px;    /* up to three stacked panels, each readable */
+    /* --- Spectra results (lib/inspectors/spectra.css) --- */
+    /* A tab's figure: the spectrum frame's height (spectrumchart/_style.css
+     * keeps its own, the same), so the figures stand alike. */
+    --sp-figure-h:      clamp(220px, 34vh, 460px);
+    --sp-figure-min:    22rem;    /* a figure stops being readable below it */
     /* --- Transport report (lib/inspectors/transport.css) --- */
     --tr-plot-h:        21.25rem; /* T(E), DOS and I-V: one chart's height */
     --tr-plot-half-h:   16rem;    /* the convergence pair, side by side */
+    --tr-plot-half-basis: 20rem;  /* one of the pair's width before it stacks */
     --tr-pdos-name-w:   12rem;    /* the PDOS selection's name box */
     --tr-prov-key-w:    11rem;    /* a provenance row's key column */
     --tr-prov-file-w:   14rem;    /* a provenance file's name column */

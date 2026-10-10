@@ -490,6 +490,21 @@ def junction(tmp_path_factory):
             got = client.get(f"/api/transport/record?path={c.bundle}")
             run.definition_said[case["name"]] = (got.status_code,
                                                  got.get_json())
+            run.family = path
+
+        # THE TRANSPORT TAB'S CARD, for each kind it cites (§ 3.8.1): what
+        # the describe door says each citation's frames are, and whether the
+        # shared panel asks a pseudopotential directory of the person.
+        run.tab_said = {}
+        for kind, cited in (("run", cite), ("mode's set", frame_set),
+                            ("family", run.family)):
+            d = client.get(f"/api/transport/describe_attempt?path={cited}")
+            s = client.get(f"/api/transport/schema?surface=shared"
+                           f"&junction={cited}")
+            run.tab_said[kind] = (d.get_json(), s.get_json())
+        # ...and Task setup's echo of the frame-set calculation (its § 3).
+        run.folder_said = client.get(
+            f"/api/task-setup/folder?dir={from_pair.bundle}").get_json()
         run.vibration = vibration
         run.frame_set = frame_set
         run.cite = cite
@@ -1051,6 +1066,39 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
         assert V["point_state"][cell] == p["state"] == "finished", cell
     assert got["attrs"]["leads_ef_differ_ev"] == rec["leads"]["differ_ev"]
     assert got["attrs"]["Conventions"] == "CF-1.8"
+
+
+def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
+    """§ 3.8.1: the Transport tab cites either kind of § 3.1 -- and for a
+    pair the describe door says what its frames are: a mode's set its
+    definition, as the definition's own door reads the pair (the wire
+    `frameset.ModeFrameSet.to_wire` builds from `frameset.ROWS`); a family
+    its count and no definition; a run one structure.  The shared panel
+    asks the pseudopotential directory of the person exactly for a pair,
+    which brings none; and Task setup's folder answer echoes the frame-set
+    calculation's frames as the describe door states them."""
+    from molbuilder.frameset import read as read_frame_set
+    from molbuilder.workingcopy_structure import StructureCodec
+    expect = read_frame_set(StructureCodec().load(
+        junction.tree / junction.frame_set, frames=True)).to_wire()
+    fields = {}
+    for kind, (described, schema) in junction.tab_said.items():
+        assert described["ok"] and described["citation"], (kind, described)
+        assert schema["ok"], (kind, schema)
+        fields[kind] = {f["name"] for sec in schema["schema"]["sections"]
+                        for f in sec["fields"]}
+    assert junction.tab_said["mode's set"][0]["frame_set"] == {
+        "n_frames": _N_FRAMES, "definition": expect}
+    assert junction.tab_said["family"][0]["frame_set"] == {
+        "n_frames": _N_FRAMES, "definition": None}
+    assert junction.tab_said["run"][0]["frame_set"] == {
+        "n_frames": 1, "definition": None}
+    assert "psml_lib" in fields["mode's set"] and "psml_lib" in fields["family"]
+    assert "psml_lib" not in fields["run"]
+    # TASK SETUP ECHOES THE SAME FRAMES, through the same helper
+    # (`web/task-setup.md` § 3).
+    assert junction.folder_said["frame_set"] \
+        == junction.tab_said["mode's set"][0]["frame_set"]
 
 
 # --------------------------------------------------------------------- #

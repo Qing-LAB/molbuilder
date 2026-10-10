@@ -31,7 +31,7 @@ flowchart TD
 | Layer | Owns |
 |---|---|
 | `lib/tokens.css` | **only** the design tokens — every color, spacing, size, and type value (§ 2). Nothing else. |
-| `lib/page-shell.css` | the shell (`body`, `.app-header` — the banner, a class since 2026-09-28 because a bare `header` selector dressed every `<header>` on the page — `main`), the generic form controls, `.card`, the `.status` message severities, **the finding row (`.issues-panel`, `.issue-item[data-severity]`)** — *moved here from form-components 2026-09-11: one renderer for every surface needs one stylesheet on every surface, and `/results` loads no form sheet but mounts MolView, which draws notices through that renderer* — the app-shell + sidebar dock geometry, `.card-row`, the spinner. |
+| `lib/page-shell.css` | the shell (`body`, `.app-header` — the banner, a class since 2026-09-28 because a bare `header` selector dressed every `<header>` on the page — `main`), the generic form controls, `.card`, the `.status` message severities, **the finding row (`.issues-panel`, `.issue-item[data-severity]`)** — *moved here from form-components 2026-09-11: one renderer for every surface needs one stylesheet on every surface, and `/results` loads no form sheet but mounts MolView, which draws notices through that renderer* — the app-shell + sidebar dock geometry, `.card-row`, the spinner, **the toggle button** (`.toggle-button`, a button that stays pressed — `aria-pressed`) and **the number table** (`.num-table`, numbers in columns — the transport report's tables, the frame-set card on the Transport tab and Task setup) *(2026-10-10)*. |
 | `lib/form-components.css` | the **shared form-page widgets** — the form grid, hints, the shared buttons, the viewer chrome, the engine strip (`.tabs` / `.tab-btn` / `.tab-panel`, whose behaviour is `lib/tab-strip.js`), the two-column page and its travelling rail (`.page-cols` / `.page-main` / `.page-aside`, Task setup's and the Transport tab's — `--page-aside-w`), and the one findings rule only a form can use (a finding sitting beside its `.schema-field` control). |
 | `lib/<module>/*.css` | one self-contained component each (the projects sidebar, the fused MolView card, the selection panel, the form renderer, the embed), class-prefixed so they don't collide. |
 | `<tab>/style.css` | **composition only** — arranging a page: max-width, centering, per-instance token values. |
@@ -144,9 +144,11 @@ past its floor, overflowed its host by exactly the shortfall. A media query
 cannot read a custom property, so the literal stays; the arithmetic lives
 beside it in `page-shell.css`. Also **720px**
 (the parameter grid flattens to one column so labels sit above inputs), plus the
-module-specific ones: **960px** (task-setup), **900px** (the spectra
-inspector), **768px** (markdown), **480px** (the load monitor and MolView)
-and **40rem** (form-schema). All animation honors `prefers-reduced-motion`.
+module-specific ones: **960px** (task-setup), **768px** (markdown),
+**480px** (the load monitor and MolView) and **40rem** (form-schema). *(The
+spectra inspector's **900px** went on 2026-10-10: it stacked the two
+thermochemistry figures by the window's width, which a sidebar changes
+nothing of; a `min()` grid floor stacks them by the panel's.)* All animation honors `prefers-reduced-motion`.
 
 *(Recounted 2026-08-25. This listed `1100`, which is in no stylesheet, and
 omitted three that are — a doc inventory drifts silently because nothing

@@ -135,7 +135,9 @@ levels do meant scrolling between two places and holding one in memory.
 **Selecting a mode never switches tab.** All three update underneath and you stay
 where you were looking. Becoming visible is an event rather than a style change:
 a 3D canvas and a chart both take their size from a box, and a box in a hidden
-tab has none — so opening a tab re-fits the viewer and re-sizes the chart.
+tab has none — so opening a tab re-fits the viewer, and a chart sees its box
+come back by itself ([`results.md`](?doc=web/results.md) § 2.5, *one Plotly
+box*).
 
 The **Modes table** is a table of every vibrational mode — its number,
 frequency, Raman activity, IR intensity, whether it is imaginary, and whether

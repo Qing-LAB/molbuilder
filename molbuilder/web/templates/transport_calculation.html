@@ -13,6 +13,7 @@
 {# MolView component styles — the fused card (viewer + selection/cell panel) that
    card 1 mounts for structure inspection. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/molview.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/frameset/card.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='transport/style.css') }}">
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    Defines window.molbuilder.runtime (register/whenReady). #}
@@ -97,6 +98,11 @@
       </span>
     </div>
     <p id="transport-junction-meta" class="hint" hidden></p>
+    {#- WHAT ITS FRAMES ARE -- a frame set's count and, for a mode's set, its
+        mode line and per-frame table (engines/transport.md § 3.8.1), drawn
+        by the one frame-set card (lib/frameset/card.js) from the describe
+        door's `frame_set`. -#}
+    <div id="transport-junction-frameset" class="frameset-card" hidden></div>
     {#- WHAT THE CITATION'S COMPOSITION MEASURED -- each lead's seam and
         principal-layer measurements (info), the electrode orientation
         (warn), a composition refusal (error) -- through the one renderer

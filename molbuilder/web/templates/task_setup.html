@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/frameset/card.css') }}">
 {# Layer 5 last: the tab's own sheet composes, and every value in it is a
    token from lib/tokens.css (ui-contract.md § 1). #}
 <link rel="stylesheet" href="{{ url_for('static', filename='task-setup/style.css') }}">
@@ -72,6 +73,10 @@
           change it there, not here — changing these is changing what the
           calculation <em>is</em>.</p>
         <dl class="ts-facts" id="ts-facts"></dl>
+        {#- A cited frame set's frames -- its count and, for a mode's set, its
+            mode line and per-frame table -- by the one frame-set card
+            (engines/transport.md § 3.8.1; task-setup.md § 3). -#}
+        <div id="ts-frameset" class="frameset-card" hidden></div>
       </section>
 
       <section class="card" id="ts-shape-card" hidden>

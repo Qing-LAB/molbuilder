@@ -257,13 +257,14 @@ B8)*.
 
 **Five cards, driven by ONE fact — the citation:**
 
-1. **The junction** — the shared tree-picker cites **a finished relaxation
-   run of molbuilder's own** ([`engines/transport.md`](?doc=engines/transport.md)
-   § 3.1): its folder, read as the Results tab reads a run. Any other
-   directory answers *not citable* with the condition named, and the citation
-   held stays held. *(§ 3.1's second kind, a structure pair, is cited on the
-   command line today; the picker taking a `.xyz` and a pseudopotential
-   directory on this tab are plan § 5z Q17-f.)* The describe door answers one
+1. **The junction** — the shared tree-picker cites either kind of
+   [`engines/transport.md`](?doc=engines/transport.md) § 3.1: **a finished
+   relaxation run of molbuilder's own** — its folder, read as the Results tab
+   reads a run — or **a structure pair** — its `.xyz`, a frame set's included,
+   whose frames the card's frame-set table states (§ 3.8.1 there), and whose
+   pseudopotential directory the shared panel then asks. Anything else
+   answers *not citable* with the condition named, and the citation held
+   stays held. The describe door answers one
    summary line (how the run ended, what its record states) and **findings** through the one renderer
    ([`science/validation.md`](?doc=science/validation.md) § 4.1): each lead's
    seam and principal-layer measurements as information, an inverted

@@ -1,11 +1,12 @@
-/* scfplot.js — one run's SCF, drawn: energy and residual per iteration.
+/* scfplot.js — a run's SCF, drawn: energy and residual per iteration; one
+ * run, or several on one axis.
  *
  * THE ONE SCF PLOT (`web/trajectory.md` § 2–3; `web/results.md` § 2.5): the
  * trajectory viewer and the transport report both draw a run's SCF through
  * it, into the two elements each hands in — never by document id, so several
  * can share a page.
  *
- * ``rows`` are one step's SCF cycles as the readers give them
+ * Each run's ``rows`` are one step's SCF cycles as the readers give them
  * (``{cycle, energy, delta_E, gnorm | dHmax, phase?}``).  **Each phase is a
  * trace on its own iteration axis** — a TranSIESTA device's periodic start
  * and its NEGF loop are different calculations — and the last phase is shown
@@ -42,28 +43,44 @@
         return ph === "negf" ? "NEGF" : (ph ? ph : "SCF");
     }
 
-    /* Draw ``rows`` into ``energyEl`` and ``residualEl``.  Answers
-     * ``{phases, residual}`` -- what was drawn, for the caller's status
-     * line -- or ``null`` when there is nothing to draw (the caller hides
-     * its section). */
-    function draw(energyEl, residualEl, rows, opts) {
+    /* Draw ``runs`` -- ``[{name, rows}]``, one run's SCF each, one or many
+     * -- into ``energyEl`` and ``residualEl``: a trace per run and phase,
+     * coloured by phase for one run and by run for several (a frame set's
+     * device runs, `web/results.md` § 2.5), each run's last phase shown
+     * and its earlier ones a legend click away.  Answers ``{phases,
+     * residual}`` -- what was drawn, for the caller's status line -- or
+     * ``null`` when there is nothing to draw (the caller hides its
+     * section). */
+    function draw(energyEl, residualEl, runs, opts) {
         const o = opts || {};
         const Plotly = root.Plotly;
-        if (!Plotly || !Array.isArray(rows) || rows.length === 0) return null;
+        const given = (Array.isArray(runs) ? runs : []).filter(
+            (r) => r && Array.isArray(r.rows) && r.rows.length);
+        if (!Plotly || !given.length) return null;
         const theme = root.molbuilder.plotTheme();
         const layoutOf = root.molbuilder.themedLayout;
-        const groups = phasesOf(rows);
-        const last = groups.length - 1;
         const colour = (i) => theme.palette[i % theme.palette.length];
-        const shown = (i) => (i === last ? true : "legendonly");
-        const several = groups.length > 1;
+        const many = given.length > 1;
+        /* EVERY TRACE, run by run and phase by phase. */
+        const traces = [];
+        given.forEach((run, r) => {
+            const groups = phasesOf(run.rows);
+            groups.forEach((g, i) => traces.push({
+                run: r, group: g, last: i === groups.length - 1,
+                name: (many ? run.name + (groups.length > 1
+                    ? " · " + _name(g.phase) : "") : _name(g.phase)),
+                colour: colour(many ? r : i),
+            }));
+        });
+        const several = traces.length > 1;
+        const shown = (tr) => (tr.last ? true : "legendonly");
 
-        Plotly.react(energyEl, groups.map((g, i) => ({
-            x: g.rows.map((c) => c.cycle),
-            y: g.rows.map((c) => c.energy),
+        root.molbuilder.plotBox.draw(energyEl, traces.map((tr) => ({
+            x: tr.group.rows.map((c) => c.cycle),
+            y: tr.group.rows.map((c) => c.energy),
             mode: "lines+markers", marker: { size: 4 },
-            line: { color: colour(i), width: 1.5 },
-            name: _name(g.phase), visible: shown(i),
+            line: { color: tr.colour, width: 1.5 },
+            name: tr.name, visible: shown(tr),
         })), layoutOf({
             title: { text: o.energyTitle || "SCF energy", font: { size: 12 } },
             margin: { l: 8, r: 12, t: 28, b: 30 },
@@ -77,12 +94,13 @@
             yaxis: { title: { text: "E (eV)", standoff: 4 },
                      tickformat: ".9~r", zeroline: false,
                      automargin: true, nticks: 5 },
-        }, theme), { displayModeBar: false, responsive: true });
+        }, theme), { displayModeBar: false });
 
-        const res = residualOf(rows);
+        const phases = Array.from(new Set(traces.map((tr) => tr.group.phase)));
+        const res = residualOf(given[0].rows);
         if (!res || !residualEl) {
             if (residualEl) residualEl.hidden = true;
-            return { phases: groups.map((g) => g.phase), residual: null };
+            return { phases: phases, residual: null };
         }
         residualEl.hidden = false;
         const [key, name] = res;
@@ -90,15 +108,13 @@
         const critPhases = Object.keys(crit);
         const shapes = [];
         const notes = [];
-        groups.forEach((g, i) => {
-            /* THE PHASE'S OWN CRITERION; rows that state no phase are the
-             * run's one phase. */
-            const ph = g.phase || (critPhases.length === 1 ? critPhases[0]
-                                                           : null);
-            const c = ph && crit[ph] ? crit[ph][name] : null;
-            if (!c || typeof c.tolerance !== "number" || c.required === false)
-                return;
-            if (i !== last) return;     // the line of the phase on screen
+        /* THE CRITERION OF THE PHASE ON SCREEN, once: every run drawn is one
+         * deck's, so it is one line. */
+        const onScreen = traces.find((tr) => tr.last && tr.run === 0);
+        const ph = onScreen.group.phase
+            || (critPhases.length === 1 ? critPhases[0] : null);
+        const c = ph && crit[ph] ? crit[ph][name] : null;
+        if (c && typeof c.tolerance === "number" && c.required !== false) {
             shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1,
                           yref: "y", y0: c.tolerance, y1: c.tolerance,
                           line: { color: theme.success, width: 1.5,
@@ -108,13 +124,13 @@
                          text: "tol " + c.tolerance.toExponential(1),
                          font: { size: 9, color: theme.success },
                          showarrow: false });
-        });
-        Plotly.react(residualEl, groups.map((g, i) => ({
-            x: g.rows.map((c) => c.cycle),
-            y: g.rows.map((c) => c[key]),
+        }
+        root.molbuilder.plotBox.draw(residualEl, traces.map((tr) => ({
+            x: tr.group.rows.map((c) => c.cycle),
+            y: tr.group.rows.map((c) => c[key]),
             mode: "lines+markers", marker: { size: 4 },
-            line: { color: colour(i), width: 1.5 },
-            name: _name(g.phase) + " " + name, visible: shown(i),
+            line: { color: tr.colour, width: 1.5 },
+            name: tr.name + " " + name, visible: shown(tr),
         })), layoutOf({
             title: { text: "SCF residual " + name, font: { size: 12 } },
             margin: { l: 8, r: 12, t: 28, b: 30 },
@@ -126,8 +142,8 @@
                      type: "log", zeroline: false, tickformat: ".0e",
                      automargin: true, nticks: 5 },
             shapes: shapes, annotations: notes,
-        }, theme), { displayModeBar: false, responsive: true });
-        return { phases: groups.map((g) => g.phase), residual: name };
+        }, theme), { displayModeBar: false });
+        return { phases: phases, residual: name };
     }
 
     root.molbuilder = root.molbuilder || {};

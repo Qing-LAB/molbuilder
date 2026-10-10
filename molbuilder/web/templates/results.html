@@ -12,6 +12,10 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/state-chip.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+{#- The box every Plotly chart here is drawn in (lib/plot-box.js): a shared
+    sheet, so with the shared ones, before the presenters' (ui-contract.md § 1,
+    lowest layer first). -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/plot-box.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='results/style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/results/run-panel.css') }}">
@@ -33,6 +37,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/spectra.css') }}">
 {# The bench-sweep inspector's own sheet (docs/web/bench-summary.md). #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/bench-summary.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/frame-axis.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/transport.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/fc-sweep.css') }}">
 {# Plotly: trajectory inspector charts energy / force / SCF traces. #}
@@ -228,8 +233,9 @@
 {#- The one element builder the record viewers below share (bench-summary,
     transport, fc-sweep); before them, since they are deferred. -#}
 <script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
-<!-- The charts' colours from the tokens, and the one SCF plot -- the
-     trajectory viewer's and the transport report's (web/results.md 2.5). -->
+<!-- The charts' box and colours, and the one SCF plot -- the trajectory
+     viewer's and the transport report's (web/results.md 2.5). -->
+<script src="{{ url_for('static', filename='lib/plot-box.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/plot-theme.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/scfplot/scfplot.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>

@@ -111,6 +111,7 @@ def api_transport_describe_attempt() -> Any:
     from molbuilder.transport.compose import (CitedPair, ComposeError,
                                               classify_citation,
                                               compose_junction,
+                                              frame_set_answer,
                                               labeled_citation_structure)
     from molbuilder.issues import Issue
     from molbuilder.transport.sort import (ORDER_INVERTED,
@@ -260,6 +261,8 @@ def api_transport_describe_attempt() -> Any:
         # THE RENAME THIS ANSWER WAS COMPOSED WITH, so the tab shows the
         # choice it holds and offers to withdraw it (§ 4).
         "swap_electrodes": swap,
+        # WHAT ITS FRAMES ARE (§ 3.8.1): the count, and a mode's definition.
+        "frame_set": frame_set_answer(cited),
     })
 
 
@@ -331,6 +334,8 @@ def api_transport_pdos() -> Any:
     try:
         task = read_task(base / FILENAME)
         point = float(request.args.get("point", ""))
+        raw_frame = request.args.get("frame")
+        frame = None if raw_frame in (None, "") else int(raw_frame)
         atoms = [int(a) for a in
                  str(request.args.get("atoms") or "").split(",") if a]
     except Exception as exc:                                  # noqa: BLE001
@@ -338,7 +343,8 @@ def api_transport_pdos() -> Any:
             f"the request does not read: {exc}")}), 400
     try:
         got = selection_pdos(base, task, point, atoms,
-                             str(request.args.get("orbitals") or "all"))
+                             str(request.args.get("orbitals") or "all"),
+                             frame=frame)
     except RecordError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, **got})
@@ -607,7 +613,8 @@ def api_transport_schema() -> Any:
     citation's source so the page can say where the numbers came from.
     """
     from molbuilder.projects import projects_root
-    from molbuilder.transport.citation_defaults import citation_answers
+    from molbuilder.transport.citation_defaults import (asked_of_the_person,
+                                                        citation_answers)
     from molbuilder.transport.compose import ComposeError, resolve_citation
     from molbuilder.transport.stages import (RUNG_NOTES, TRANSPORT_STAGES,
                                              resolvable_override_names)
@@ -632,6 +639,10 @@ def api_transport_schema() -> Any:
     citation = str(request.args.get("junction") or "")
     source: Dict[str, Any] = {"kind": "none", "name": ""}
     template = None
+    # WHAT THE CITATION ASKS OF THE PERSON joins the shared panel -- a pair's
+    # pseudopotential directory (§ 3.8.1) -- by the rule the describe door's
+    # check asks too.
+    asks: tuple = ()
     if citation:
         try:
             _, cited = resolve_citation(citation, projects_root())
@@ -653,6 +664,7 @@ def api_transport_schema() -> Any:
             return jsonify({"ok": False, "error": str(exc)}), 400
         answers = citation_answers(cited.path)
         source = {"kind": answers.source, "name": answers.source_name}
+        asks = asked_of_the_person(cited)
     # ONE ID PER CONTROL ON THE PAGE: the five rung tabs render the same
     # items, so a rung's controls carry the rung in their ids
     # (`t-device-max-scf-iter`), and a finding's `stage` picks its own
@@ -661,7 +673,7 @@ def api_transport_schema() -> Any:
                                       f"t-{rung}" if rung else "t",
                                       calculation="transport",
                                       surface=surface, rung=rung,
-                                      template=template)
+                                      template=template, asks=asks)
     response: Dict[str, Any] = {"ok": True, "surface": surface,
                                 "source": source}
     if surface == "rung":

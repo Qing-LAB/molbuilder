@@ -227,8 +227,9 @@
     grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
     gap: var(--gap);
 }
+/* A chart's box (lib/plot-box.css): its height, and its frame. */
 .plot {
-    height: clamp(200px, 24vh, 260px);
+    --plot-box-h: var(--traj-plot-h);
     border: 1px solid var(--border-strong);
     background: var(--bg-card);
     border-radius: var(--radius);

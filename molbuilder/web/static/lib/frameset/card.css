@@ -1,0 +1,26 @@
+/* The frame-set card (lib/frameset/card.js; engines/transport.md § 3.8.1).
+   Tokens only. */
+.frameset-card[hidden] { display: none; }
+
+.frameset-card {
+    margin: var(--space-sm) 0;
+}
+
+.frameset-line {
+    margin: 0 0 var(--space-xs);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+
+/* The per-frame table is page-shell's number table: every column a number
+ * but the frame's, each kept on one line. */
+.frameset-table th,
+.frameset-table td {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.frameset-table .frameset-frame {
+    text-align: left;
+    color: var(--text-secondary);
+}

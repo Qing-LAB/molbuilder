@@ -24,7 +24,7 @@ import math
 import re
 import typing
 from dataclasses import fields
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from flask import jsonify
 
@@ -541,6 +541,7 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
                              surface: Optional[str] = None,
                              rung: Optional[str] = None,
                              template=None,
+                             asks: Sequence[str] = (),
                              ) -> Dict[str, Any]:
     """The Build form's schema for *engine*, from the catalogue.
 
@@ -560,7 +561,9 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     § 3.8.2): ``"shared"`` is the panel that edits the TEMPLATE -- every item
     the catalogue marks `shared` for this kind, except the `setup` group,
     whose two members (the identity, the pseudopotential directory) the
-    description and the citation answer themselves -- and ``"rung"`` is the
+    description and the citation answer themselves -- save ``asks``, what
+    the citation asks of the person (`citation_defaults.asked_of_the_person`:
+    a pair's pseudopotential directory) -- and ``"rung"`` is the
     per-rung form, which never offers a shared item.  ``None`` is every
     surface at once, the ordinary kinds' one form.
 
@@ -625,7 +628,8 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
              if calculation not in it.role or it.name in echoed]
     if surface == "shared":
         items = [it for it in items
-                 if calculation in it.shared and it.group != "setup"]
+                 if calculation in it.shared
+                 and (it.group != "setup" or it.name in asks)]
     elif surface == "rung":
         items = [it for it in items if calculation not in it.shared]
     elif surface is not None:

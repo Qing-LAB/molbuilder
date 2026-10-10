@@ -354,8 +354,8 @@
             ticks: "outside", ticklen: 4,
             tickfont: { size: 14 },
         };
-        root.Plotly.newPlot(hostEl, traces, layout,
-                            { displayModeBar: false, responsive: true });
+        root.molbuilder.plotBox.draw(hostEl, traces, layout,
+                                     { displayModeBar: false });
         return true;
     }
 
@@ -475,6 +475,9 @@
     }
 
     function render(host, data) {
+        // The chart of the poll before goes with its box (lib/plot-box.js).
+        host.querySelectorAll(".plot-box").forEach(
+            (c) => root.molbuilder.plotBox.release(c));
         host.innerHTML = "";
         const wrap = el("div", "bench-summary card");
 
@@ -551,7 +554,7 @@
         }
         wrap.appendChild(verdict);
 
-        const chart = el("div", "bench-chart");
+        const chart = el("div", "bench-chart plot-box");
         wrap.appendChild(chart);
 
         /* HOW TO READ IT.  The figures are exact and still not
@@ -654,10 +657,8 @@
                     state.disposed = true;
                     if (state.timer) root.clearTimeout(state.timer);
                     state.timer = null;
-                    try {
-                        const c = host.querySelector(".bench-chart");
-                        if (c && root.Plotly) root.Plotly.purge(c);
-                    } catch (_) { /* the chart may never have been drawn */ }
+                    const c = host.querySelector(".plot-box");
+                    if (c) root.molbuilder.plotBox.release(c);
                     host.innerHTML = "";
                 },
             };

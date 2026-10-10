@@ -122,6 +122,24 @@ class ModeFrameSet:
         beside the average."""
         return {r.name: getattr(self, r.name) for r in STRUCTURE_ROWS}
 
+    def to_wire(self) -> Dict[str, Any]:
+        """The definition as data a page shows without knowing its names --
+        every row of :data:`ROWS`, in its order, with its unit and kind:
+        ``{structure: [{name, value, unit, kind}], columns: [{name, unit,
+        kind}], frames: [[a value per column] per frame], masses_amu,
+        vibration}`` (`engines/transport.md` § 3.8.1)."""
+        return {
+            "structure": [{"name": r.name, "value": getattr(self, r.name),
+                           "unit": r.unit, "kind": r.kind}
+                          for r in STRUCTURE_ROWS],
+            "columns": [{"name": r.name, "unit": r.unit, "kind": r.kind}
+                        for r in FRAME_ROWS],
+            "frames": [[getattr(f, r.name) for r in FRAME_ROWS]
+                       for f in self.frames],
+            "masses_amu": list(self.masses_amu),
+            "vibration": dict(self.vibration),
+        }
+
 
 def _number(value: Any) -> Optional[float]:
     """``value`` as a finite number, or ``None`` -- true/false is not a

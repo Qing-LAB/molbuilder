@@ -6,14 +6,17 @@
  * never the copy `summarize task` wrote.  It decides nothing about the
  * physics: every number drawn is one the record carries.
  *
- * TWO SELECTIONS, ONE OWNER EACH (the spectra tab's pattern):
+ * TWO SELECTIONS, ONE OWNER EACH (the spectra tab's pattern), and a point is
+ * the pair of them (`engines/transport.md` § 2a.9):
  *   * the FRAME -- MolView's model owns it (`data.setCurrentFrame` /
  *     `data.onFrameChange`, `web/molview.md` § 6.4); nothing here keeps a
- *     copy.  A calculation has one frame until the frame axis (plan § 5u.1
- *     step 11), and MolView hides its bar for one frame;
+ *     copy (`_frame` asks it).  MolView hides its bar for one structure;
  *   * the BIAS POINT -- this report owns it (`state.bias`): a click on a
- *     T(E) curve, an I-V point or a table row sets it, and T(E), the DOS,
- *     the I-V and the device's convergence follow.
+ *     curve, an I-V point or a table row sets it.
+ * THE FRAME IS AN AXIS of every chart (`web/results.md` § 2.5): each card
+ * draws one frame -- the frame bar's -- or all frames, a legend entry each
+ * (`lib/frame-axis.js`); every point is found by `_pointAt` and named by
+ * `lib/results/point-words.js`, and nothing else.
  *
  * Built from what exists: MolView mounted read-only (the structure
  * presenter's door), the one SCF plot (`lib/scfplot/scfplot.js`), the
@@ -22,6 +25,8 @@
  */
 import { mount } from "/static/lib/molview/index.js";
 import { molviewFiles } from "../projects/molview-doors.js";
+import { ALL, ONE, frameAxisControl } from "../frame-axis.js";
+import { frameWords, pointWords } from "../results/point-words.js";
 
 /* WHO THESE BYTES BELONG TO (workspace.md § 4): the viewer's `owner`. */
 const WORKSPACE_TAG = "results:transport";
@@ -53,14 +58,13 @@ const WORKSPACE_TAG = "results:transport";
             node.textContent = "Plotly is not loaded on this page.";
             return;
         }
-        root.Plotly.react(node, traces,
-                          root.molbuilder.themedLayout(layout),
-                          { displayModeBar: false, responsive: true });
+        root.molbuilder.plotBox.draw(node, traces,
+                                     root.molbuilder.themedLayout(layout),
+                                     { displayModeBar: false });
     }
 
     /* PANEL TABS -- the page's `.panel-tabs` markup (`ui-contract.md`); a
-     * panel's charts are resized when it is shown, since a chart drawn
-     * hidden has no width. */
+     * chart in a panel shown follows its box by itself (`lib/plot-box.js`). */
     let _tabsSeq = 0;
     function _tabs(names) {
         const bar = _el("div", "panel-tabs");
@@ -80,11 +84,6 @@ const WORKSPACE_TAG = "results:transport";
                 buttons[n].setAttribute("aria-selected", on ? "true" : "false");
                 buttons[n].tabIndex = on ? 0 : -1;
             });
-            if (root.Plotly) {
-                panels[name].querySelectorAll(".js-plotly-plot").forEach((p) => {
-                    try { root.Plotly.Plots.resize(p); } catch (_) { /* not drawn */ }
-                });
-            }
         }
         names.forEach(([key, label]) => {
             const b = _el("button", "panel-tab", label);
@@ -135,6 +134,11 @@ const WORKSPACE_TAG = "results:transport";
         const stages = Array.isArray(rec.stages) ? rec.stages : [];
         state.points = pts;
         state.iv = rec.iv || {};
+        state.average = rec.average || {};
+        // THE SET'S FRAME COUNT, as the record states it (its `average`
+        // block names the composed junction's, `engines/transport.md`
+        // § 2a.12); one structure is one.
+        state.nFrames = Number(state.average.frames) || 1;
         if (state.bias === null && pts.length) state.bias = pts[0].bias_v;
 
         const wrap = _el("div", "transport-record");
@@ -142,7 +146,9 @@ const WORKSPACE_TAG = "results:transport";
         head.appendChild(_el("h3", "transport-title",
             "Transport — " + (rec.label || "(unlabelled)")));
         head.appendChild(_el("p", "transport-sub",
-            rec.treatment + " · " + pts.length + " point" + (pts.length === 1 ? "" : "s")
+            rec.treatment
+            + (state.nFrames > 1 ? " · " + state.nFrames + " frames" : "")
+            + " · " + pts.length + " point" + (pts.length === 1 ? "" : "s")
             + " with a transmission"
             + (pending.length ? " · " + pending.length + " pending" : "")
             + (failed.length ? " · " + failed.length + " failed" : "")
@@ -168,20 +174,24 @@ const WORKSPACE_TAG = "results:transport";
         wrap.appendChild(row);
 
         state.nodes = {
-            te: _el("div", "transport-plot"),
+            te: _el("div", "transport-plot plot-box"),
             eig: _el("p", "transport-note"),
-            dos: _el("div", "transport-plot"),
-            iv: _el("div", "transport-plot"),
+            avg: _el("p", "transport-note"),
+            dos: _el("div", "transport-plot plot-box"),
+            iv: _el("div", "transport-plot plot-box"),
             table: null,
         };
         _fillTE(tabs.panels.te, rec, state);
         _fillDOS(tabs.panels.dos, rec, file, state);
         _fillIV(tabs.panels.iv, rec, pending, failed, state);
+        _frameControl(tabs.panels.te, state, "te");
+        _frameControl(tabs.panels.dos, state, "dos");
+        _frameControl(tabs.panels.iv, state, "iv");
 
         /* ROW 2: every rung's convergence. */
         wrap.appendChild(_convergence(stages, state));
         /* ROW 3: the rungs, the provenance, the caveat. */
-        wrap.appendChild(_rungs(rec, stages));
+        wrap.appendChild(_rungs(rec, stages, state));
         host.appendChild(wrap);
 
         _mountDevice(molHost, state, rec.junction_file);
@@ -195,6 +205,19 @@ const WORKSPACE_TAG = "results:transport";
         panel.appendChild(_el("p", "transport-note", rec.treatment_note));
         panel.appendChild(state.nodes.te);
         panel.appendChild(state.nodes.eig);
+        /* THE MODE'S AVERAGE, said under the family in *all frames*: the
+         * record's numbers, never worked out here (§ 2a.12). */
+        panel.appendChild(state.nodes.avg);
+    }
+
+    /* THE FRAME AXIS ON A CARD (`web/results.md` § 2.5): one frame -- the
+     * frame bar's -- or all frames, shown only for a frame set; switching
+     * redraws the card. */
+    function _frameControl(panel, state, key) {
+        if (state.nFrames < 2) return;
+        panel.insertBefore(frameAxisControl(root.document, state.frameMode[key],
+            (m) => { state.frameMode[key] = m; _redraw(state); }),
+            panel.firstChild);
     }
 
     function _fillDOS(panel, rec, file, state) {
@@ -246,63 +269,81 @@ const WORKSPACE_TAG = "results:transport";
          * so the record's own words stand on this tab too. */
         panel.appendChild(_el("p", "transport-note", rec.treatment_note));
         panel.appendChild(state.nodes.iv);
-        const table = _el("table", "transport-iv");
+        const table = _el("table", "num-table transport-iv");
         const head = _el("tr");
         const iv = rec.iv || {};
         const computed = iv.computed === "linear-response";
+        const n = state.nFrames;
         /* THE CURRENT IS THE JUNCTION'S TOTAL, both spin channels, beside
          * the figure TBtrans printed -- one channel's (`engines/
          * transport.md` § 2a.4; `record.py` CURRENT_MEANS).  Under the
          * low-bias approximation the record computed it from T(E, 0) for
          * each listed voltage (`record.linear_response_iv`). */
-        ["Bias [V]", "G(E_F) [G0]",
+        [n > 1 ? "Point" : "Bias [V]", "G(E_F) [G0]",
          computed ? "Current, computed from T(E, 0) [A]" : "Current, total [A]",
          // Under the approximation TBtrans ran at 0 V only: a dash at the
          // other voltages means not applicable, and the header says so.
          computed ? "TBtrans printed [A] (0 V only)" : "TBtrans printed [A]"
         ].forEach((h) => head.appendChild(_el("th", null, h)));
         table.appendChild(head);
+        /* A ROW IS A POINT -- a frame and a voltage -- named as the frame bar
+         * counts, and a pick moves both (`web/results.md` § 2.5). */
+        function pickRow(frame, bias, cells, pickable) {
+            const tr = _el("tr", "transport-iv-row" + (pickable ? " is-pick" : ""));
+            tr.dataset.frame = String(frame);
+            tr.dataset.bias = String(bias);
+            const words = pointWords(n > 1 ? frame : null, n, bias);
+            const first = _el("td", null);
+            if (pickable) {
+                // THE PICK IS A BUTTON (ui-contract.md § 4.1): the first cell
+                // names the point and takes the keyboard; the row's click is
+                // the mouse's wider target for the same pick.
+                const pick = _el("button", "transport-iv-pick", words);
+                pick.type = "button";
+                pick.setAttribute("aria-label", "show the point " + words);
+                first.appendChild(pick);
+                tr.addEventListener("click", () => _select(state, { frame, bias }));
+            } else {
+                first.textContent = words;
+            }
+            tr.appendChild(first);
+            cells.forEach((c) => tr.appendChild(_el("td", null, c)));
+            table.appendChild(tr);
+        }
         if (computed) {
-            const zero = state.points.find((p) => Math.abs(p.bias_v) < 1e-9);
+            const frames = iv.frame || [];
             (iv.voltages_v || []).forEach((v, k) => {
-                const tr = _el("tr", "transport-iv-row");
-                tr.dataset.bias = String(v);
-                tr.appendChild(_el("td", null, _fmt(v, 3, false)));
-                tr.appendChild(_el("td", null,
-                    Math.abs(v) < 1e-9 && zero ? _fmt(zero.conductance_g0, 4, false) : "—"));
+                const f = frames[k] == null ? 0 : frames[k];
+                const zero = _pointAt(state, f, 0);
                 const i = (iv.current_a || [])[k];
                 const note = (iv.notes || {})[String(Number(v))];
-                tr.appendChild(_el("td", null, i === null || i === undefined
-                    ? (note || "—") : _fmt(i, 4, true)));
-                tr.appendChild(_el("td", null,
-                    _fmt(((iv.current_a_printed || [])[k]), 4, true)));
-                table.appendChild(tr);
+                pickRow(f, v, [
+                    Math.abs(v) < 1e-9 && zero ? _fmt(zero.conductance_g0, 4, false) : "—",
+                    i === null || i === undefined ? (note || "—") : _fmt(i, 4, true),
+                    _fmt(((iv.current_a_printed || [])[k]), 4, true),
+                // EVERY ROW OF A FRAME IS ITS ONE 0 V SLICE'S, so a row picks
+                // nothing of its own -- the frame bar picks the frame.
+                ], false);
             });
+            /* A FRAME'S OWN NOTE -- its 0 V transmission not run -- under the
+             * table, in the record's words; a voltage's note stands in its
+             * row. */
+            Object.keys(iv.notes || {}).forEach((key) => {
+                if (!isFinite(Number(key))) {
+                    panel.appendChild(_el("p", "transport-note", iv.notes[key]));
+                }
+            });
+        } else {
+            state.points.forEach((p) => pickRow(_pf(p), p.bias_v, [
+                _fmt(p.conductance_g0, 4, false), _fmt(p.current_a, 4, true),
+                _fmt(p.current_a_printed, 4, true)], true));
         }
-        state.points.forEach((p) => {
-            if (computed) return;
-            const tr = _el("tr", "transport-iv-row is-pick");
-            tr.dataset.bias = String(p.bias_v);
-            // THE PICK IS A BUTTON (ui-contract.md § 4.1): the bias cell
-            // names the point and takes the keyboard; the row's click is
-            // the mouse's wider target for the same pick.
-            const pick = _el("button", "transport-iv-pick", _fmt(p.bias_v, 3, false));
-            pick.type = "button";
-            pick.setAttribute("aria-label", "show the " + _fmt(p.bias_v, 3, false) + " V point");
-            const biasCell = _el("td", null);
-            biasCell.appendChild(pick);
-            tr.appendChild(biasCell);
-            tr.appendChild(_el("td", null, _fmt(p.conductance_g0, 4, false)));
-            tr.appendChild(_el("td", null, _fmt(p.current_a, 4, true)));
-            tr.appendChild(_el("td", null, _fmt(p.current_a_printed, 4, true)));
-            tr.addEventListener("click", () => _select(state, p.bias_v));
-            table.appendChild(tr);
-        });
         /* A POINT WITHOUT ITS TRANSMISSION, in its run's words: pending is
          * still to come, never a failure; failed ended without it. */
         pending.concat(failed).forEach((p) => {
             const tr = _el("tr", "transport-pending");
-            tr.appendChild(_el("td", null, _fmt(p.bias_v, 3, false)));
+            tr.appendChild(_el("td", null,
+                pointWords(n > 1 ? _pf(p) : null, n, p.bias_v)));
             const st = _el("td");
             st.appendChild(_chip(p.state));
             tr.appendChild(st);
@@ -340,29 +381,44 @@ const WORKSPACE_TAG = "results:transport";
             const panel = tabs.panels[st.stage];
             const line = _el("div", "transport-conv-line");
             const pair = _el("div", "transport-conv-plots");
-            const e = _el("div", "transport-plot transport-plot-half");
-            const r = _el("div", "transport-plot transport-plot-half");
+            const e = _el("div", "transport-plot-half plot-box");
+            const r = _el("div", "transport-plot-half plot-box");
             pair.appendChild(e);
             pair.appendChild(r);
             panel.appendChild(line);
             panel.appendChild(pair);
             state.conv[st.stage] = { st, line, e, r };
+            /* A RUNG WITH A POINT PER FRAME -- the device -- carries the
+             * frame axis; the seed and the leads have no frame. */
+            if (Array.isArray(st.by_point)
+                    && st.by_point.some((p) => _pf(p) > 0)) {
+                _frameControl(panel, state, "conv");
+            }
         });
         return card;
     }
 
     function _drawConvergence(state) {
+        const n = state.nFrames;
+        const frame = _frame(state);
         Object.values(state.conv || {}).forEach(({ st, line, e, r }) => {
-            /* A SCAN'S RUNG speaks for the selected bias point. */
-            const src = Array.isArray(st.by_point)
-                ? (st.by_point.find((p) => p.bias_v === state.bias)
-                   || st.by_point[0])
+            /* A SCAN'S RUNG speaks for the selected point -- its frame and
+             * its voltage; in *all frames*, every frame's run at the
+             * voltage, on one axis. */
+            const pts = Array.isArray(st.by_point) ? st.by_point : null;
+            const src = pts
+                ? (pts.find((p) => _pf(p) === frame && p.bias_v === state.bias)
+                   || pts[0])
                 : st;
+            const runs = pts && state.frameMode.conv === ALL
+                ? pts.filter((p) => p.bias_v === state.bias).map((p) => (
+                      { name: frameWords(_pf(p), n), rows: p.scf || [] }))
+                : [{ name: "", rows: Array.isArray(src.scf) ? src.scf : [] }];
             line.replaceChildren();
             line.appendChild(_chip(src.state || st.state));
             const bits = [];
             if (src.bias_v !== undefined && src.bias_v !== null)
-                bits.push(_fmt(src.bias_v, 3, false) + " V");
+                bits.push(pointWords(n > 1 ? _pf(src) : null, n, src.bias_v));
             if (src.detail) bits.push(src.detail);
             if (src.negf) {
                 bits.push("NEGF: " + src.negf.cycles + " cycles");
@@ -373,19 +429,20 @@ const WORKSPACE_TAG = "results:transport";
             }
             line.appendChild(_el("span", "transport-stage-detail",
                                  " " + bits.join(" · ")));
-            const rows = Array.isArray(src.scf) ? src.scf : [];
-            e.hidden = !rows.length;
-            r.hidden = !rows.length;
-            if (rows.length) {
-                root.molbuilder.scfPlot.draw(e, r, rows,
+            const any = runs.some((x) => x.rows.length);
+            e.hidden = !any;
+            r.hidden = !any;
+            if (any) {
+                root.molbuilder.scfPlot.draw(e, r, runs,
                                              { criteria: src.scf_criteria || {} });
             }
         });
     }
 
-    function _rungs(rec, stages) {
+    function _rungs(rec, stages, state) {
+        const n = state.nFrames;
         const card = _card("Rungs and provenance", "transport-rungs-card");
-        const table = _el("table", "transport-rungs");
+        const table = _el("table", "num-table transport-rungs");
         const head = _el("tr");
         ["Rung", "State", "E_F [eV]", "E [eV]", "SCF", "Attempt"].forEach(
             (h) => head.appendChild(_el("th", null, h)));
@@ -420,7 +477,8 @@ const WORKSPACE_TAG = "results:transport";
                     ? " · " + st.negf.contour.poles + " poles" : "")
                 // THE POINT THE ROW'S NUMBERS COME FROM (results.md § 2.4).
                 + (typeof st.facts_at_v === "number"
-                    ? " · at " + st.facts_at_v + " V" : "");
+                    ? " · at " + pointWords(n > 1 ? st.facts_at_frame : null,
+                                            n, st.facts_at_v) : "");
             tr.appendChild(_el("td", null, where));
             table.appendChild(tr);
         });
@@ -470,7 +528,8 @@ const WORKSPACE_TAG = "results:transport";
                          * file ("<file> <- <run>"). */
                         (p.took || []).forEach((g) => bits.push(String(g)));
                         pts.appendChild(_el("li", null,
-                            Number(p.bias_v) + " V: "
+                            pointWords(n > 1 ? p.frame : null, n, p.bias_v)
+                            + ": "
                             + (bits.length ? bits.join(", ")
                                : "started from what the run gathered")));
                     });
@@ -539,10 +598,49 @@ const WORKSPACE_TAG = "results:transport";
     /*  The selections                                                     */
     /* ------------------------------------------------------------------ */
 
-    function _select(state, bias) {
-        if (state.bias === bias) return;
+    /* A POINT PICKED -- a curve, an I-V point, a table row, the ladder:
+     * ``at`` is ``{frame, bias}``, either left out to keep it.  The voltage
+     * is this report's; the frame goes to its owner, the frame bar, whose
+     * change redraws (`_mountDevice`). */
+    function _select(state, at) {
+        const bias = at && at.bias !== undefined ? at.bias : state.bias;
+        const frame = at && at.frame !== undefined && at.frame !== null
+            ? at.frame : _frame(state);
+        if (bias === state.bias && frame === _frame(state)) return;
         state.bias = bias;
+        if (frame !== _frame(state) && _setFrame(state, frame)) return;
         _loadPdos(state);
+    }
+
+    /* THE FRAME, asked of its one owner -- MolView's model -- each time;
+     * before the viewer is up, the one a caller asked to open at. */
+    function _frame(state) {
+        const d = state.handle && state.handle.data;
+        return d && typeof d.currentFrame === "function"
+            ? d.currentFrame() : (state.pendingFrame || 0);
+    }
+
+    /* The frame told to its owner; ``false`` before the viewer is up, the
+     * frame then held to be told once it is. */
+    function _setFrame(state, frame) {
+        const d = state.handle && state.handle.data;
+        if (d && typeof d.setCurrentFrame === "function") {
+            d.setCurrentFrame(frame);
+            return true;
+        }
+        state.pendingFrame = frame;
+        return false;
+    }
+
+    /* A record entry's frame: its index, or 0 for one structure's. */
+    function _pf(p) {
+        return p.frame === null || p.frame === undefined ? 0 : p.frame;
+    }
+
+    /* THE ONE LOOKUP: the point at (frame, voltage), or null. */
+    function _pointAt(state, frame, bias) {
+        return state.points.find(
+            (p) => _pf(p) === frame && p.bias_v === bias) || null;
     }
 
     /* THE ATOMS SELECTED in the device card -- MolView's own selection,
@@ -558,122 +656,178 @@ const WORKSPACE_TAG = "results:transport";
                   .sort((a, b) => a - b);
     }
 
-    function _point(state) {
-        return state.points.find((p) => p.bias_v === state.bias) || null;
-    }
-
     function _redraw(state) {
         const pts = state.points;
-        const p = _point(state);
+        const n = state.nFrames;
+        const frame = _frame(state);
+        const p = _pointAt(state, frame, state.bias);
         const t = root.molbuilder.plotTheme();
         const col = (i) => t.palette[i % t.palette.length];
+        const all = (key) => n > 1 && state.frameMode[key] === ALL;
+        const here = pointWords(n > 1 ? frame : null, n, state.bias);
+        const nothingYet = () => (pts.length && state.bias !== null
+            ? "No transmission at " + here + " yet."
+            : "No transmission has run yet.");
+        const axes = {
+            margin: { l: 8, r: 12, t: 8, b: 34 },
+            xaxis: { title: { text: "E − E_F (eV)", standoff: 4 },
+                     automargin: true, zeroline: false },
+            legend: { orientation: "h", y: -0.2 },
+        };
 
-        /* T(E): one curve per bias, the selected one bold, its eigenchannels
-         * beneath it. */
+        /* T(E): one frame -- a curve per voltage, the selected one bold, its
+         * eigenchannels beneath; all frames -- a curve per frame at the
+         * selected voltage, the frame bar's bold, and the mode's average
+         * dashed beside them (`web/results.md` § 2.5). */
         const te = [];
-        pts.forEach((q, i) => {
-            if (!Array.isArray(q.transmission) || !q.transmission.length) return;
-            const on = q.bias_v === state.bias;
-            te.push({ x: q.energy_ev, y: q.transmission, mode: "lines",
-                      name: _fmt(q.bias_v, 3, false) + " V",
-                      line: { color: col(i), width: on ? 2.5 : 1 },
-                      opacity: on ? 1 : 0.55, meta: q.bias_v });
-        });
-        const eig = (p && p.dos && Array.isArray(p.dos.eigenchannels))
-            ? p.dos.eigenchannels : [];
-        eig.forEach((ch, k) => te.push({
-            x: p.dos.energy_ev, y: ch, mode: "lines",
-            name: "channel " + (k + 1),
-            line: { color: t.muted, width: 1, dash: "dot" } }));
-        state.nodes.eig.textContent = p && !eig.length
-            ? "No eigenchannels for this point" + (p.dos_why ? ": " + p.dos_why : ".")
-            : "";
-        if (te.length) {
-            _plot(state.nodes.te, te, {
-                margin: { l: 8, r: 12, t: 8, b: 34 },
-                xaxis: { title: { text: "E − E_F (eV)", standoff: 4 },
-                         automargin: true, zeroline: false },
-                yaxis: { title: { text: "T", standoff: 4 }, type: "log",
-                         automargin: true, exponentformat: "power" },
-                legend: { orientation: "h", y: -0.2 },
+        state.nodes.avg.textContent = "";
+        if (all("te")) {
+            pts.filter((q) => q.bias_v === state.bias).forEach((q) => {
+                if (!Array.isArray(q.transmission) || !q.transmission.length) return;
+                const f = _pf(q);
+                const on = f === frame;
+                te.push({ x: q.energy_ev, y: q.transmission, mode: "lines",
+                          name: frameWords(f, n),
+                          line: { color: col(f), width: on ? 2.5 : 1 },
+                          opacity: on ? 1 : 0.6, meta: { frame: f, bias: q.bias_v } });
             });
+            const a = (state.average.at || []).find((e) => e.bias_v === state.bias);
+            if (a && Array.isArray(a.transmission)) {
+                te.push({ x: a.energy_ev, y: a.transmission, mode: "lines",
+                          name: "mode average",
+                          line: { color: t.ink, width: 2, dash: "dash" } });
+            }
+            /* THE RECORD'S NUMBERS for the average, or why there is none. */
+            state.nodes.avg.textContent = a && a.conductance_g0 !== null
+                    && a.conductance_g0 !== undefined
+                ? "Mode average at " + Number(state.bias) + " V: ⟨G⟩ = "
+                  + _fmt(a.conductance_g0, 4, false) + " G0 — " + frameWords(0)
+                  + "'s " + _fmt(a.base_conductance_g0, 4, false) + " G0, "
+                  + _fmt(a.conductance_change_percent, 2, false) + " %; the "
+                  + "weights sum to " + _fmt(state.average.weight_sum, 6, false)
+                  + ", checked to " + state.average.tolerance + "."
+                : ((a && (a.why || a.conductance_why)) || state.average.why || "");
+        } else {
+            pts.filter((q) => _pf(q) === frame).forEach((q, i) => {
+                if (!Array.isArray(q.transmission) || !q.transmission.length) return;
+                const on = q.bias_v === state.bias;
+                te.push({ x: q.energy_ev, y: q.transmission, mode: "lines",
+                          name: _fmt(q.bias_v, 3, false) + " V",
+                          line: { color: col(i), width: on ? 2.5 : 1 },
+                          opacity: on ? 1 : 0.55, meta: { frame: frame, bias: q.bias_v } });
+            });
+            const eig = (p && p.dos && Array.isArray(p.dos.eigenchannels))
+                ? p.dos.eigenchannels : [];
+            eig.forEach((ch, k) => te.push({
+                x: p.dos.energy_ev, y: ch, mode: "lines",
+                name: "channel " + (k + 1),
+                line: { color: t.muted, width: 1, dash: "dot" } }));
+            state.nodes.eig.textContent = p && !eig.length
+                ? "No eigenchannels for this point" + (p.dos_why ? ": " + p.dos_why : ".")
+                : "";
+        }
+        if (te.length) {
+            _plot(state.nodes.te, te, { ...axes,
+                yaxis: { title: { text: "T", standoff: 4 }, type: "log",
+                         automargin: true, exponentformat: "power" } });
             _onClick(state.nodes.te, state);
         } else {
-            state.nodes.te.textContent = state.points.length && state.bias !== null
-                ? "No transmission at " + state.bias + " V yet."
-                : "No transmission has run yet.";
+            state.nodes.te.textContent = nothingYet();
         }
 
-        /* DOS: the selected point's total, its parts by region, the leads',
-         * and every selection added. */
-        const dos = p && p.dos;
-        if (!dos || !Array.isArray(dos.energy_ev)) {
-            state.nodes.dos.textContent = p
-                ? "No DOS for this point" + (p.dos_why ? ": " + p.dos_why : ".")
-                : (state.points.length && state.bias !== null
-                    ? "No transmission at " + state.bias + " V yet."
-                    : "No transmission has run yet.");
-        } else {
+        /* DOS: one frame -- the selected point's total, its parts by region,
+         * the leads', every selection added; all frames -- each frame's total
+         * at the selected voltage. */
+        if (all("dos")) {
             const tr = [];
-            let i = 0;
-            if (dos.total) tr.push({ x: dos.energy_ev, y: dos.total, mode: "lines",
-                name: "device (total)", line: { color: t.ink, width: 2 } });
-            Object.keys(dos.by_label || {}).forEach((lab) => tr.push({
-                x: dos.energy_ev, y: dos.by_label[lab], mode: "lines",
-                name: lab, line: { color: col(i++), width: 1.5 } }));
-            Object.keys(dos.lead_spectral || {}).forEach((e) => tr.push({
-                x: dos.energy_ev, y: dos.lead_spectral[e], mode: "lines",
-                name: "spectral " + e, visible: "legendonly",
-                line: { color: col(i++), width: 1, dash: "dash" } }));
-            Object.keys(dos.lead_bulk || {}).forEach((e) => tr.push({
-                x: dos.energy_ev, y: dos.lead_bulk[e], mode: "lines",
-                name: "bulk " + e, visible: "legendonly",
-                line: { color: col(i++), width: 1, dash: "dot" } }));
-            state.pdos.forEach((s) => {
-                if (s.curve) tr.push({ x: s.curve.energy_ev, y: s.curve.pdos,
-                    mode: "lines", name: s.name + " (" + s.orbitals + ")",
-                    line: { color: col(i++), width: 2 } });
+            pts.filter((q) => q.bias_v === state.bias).forEach((q) => {
+                const d = q.dos;
+                if (!d || !Array.isArray(d.energy_ev) || !d.total) return;
+                const f = _pf(q);
+                tr.push({ x: d.energy_ev, y: d.total, mode: "lines",
+                          name: frameWords(f, n) + " (total)",
+                          line: { color: col(f), width: f === frame ? 2.5 : 1 } });
             });
-            _plot(state.nodes.dos, tr, {
-                margin: { l: 8, r: 12, t: 8, b: 34 },
-                xaxis: { title: { text: "E − E_F (eV)", standoff: 4 },
-                         automargin: true, zeroline: false },
-                yaxis: { title: { text: "DOS (states/eV)", standoff: 4 },
-                         automargin: true },
-                legend: { orientation: "h", y: -0.2 },
-            });
+            if (tr.length) {
+                _plot(state.nodes.dos, tr, { ...axes,
+                    yaxis: { title: { text: "DOS (states/eV)", standoff: 4 },
+                             automargin: true } });
+            } else {
+                state.nodes.dos.textContent = nothingYet();
+            }
+        } else {
+            const dos = p && p.dos;
+            if (!dos || !Array.isArray(dos.energy_ev)) {
+                state.nodes.dos.textContent = p
+                    ? "No DOS for this point" + (p.dos_why ? ": " + p.dos_why : ".")
+                    : nothingYet();
+            } else {
+                const tr = [];
+                let i = 0;
+                if (dos.total) tr.push({ x: dos.energy_ev, y: dos.total, mode: "lines",
+                    name: "device (total)", line: { color: t.ink, width: 2 } });
+                Object.keys(dos.by_label || {}).forEach((lab) => tr.push({
+                    x: dos.energy_ev, y: dos.by_label[lab], mode: "lines",
+                    name: lab, line: { color: col(i++), width: 1.5 } }));
+                Object.keys(dos.lead_spectral || {}).forEach((e) => tr.push({
+                    x: dos.energy_ev, y: dos.lead_spectral[e], mode: "lines",
+                    name: "spectral " + e, visible: "legendonly",
+                    line: { color: col(i++), width: 1, dash: "dash" } }));
+                Object.keys(dos.lead_bulk || {}).forEach((e) => tr.push({
+                    x: dos.energy_ev, y: dos.lead_bulk[e], mode: "lines",
+                    name: "bulk " + e, visible: "legendonly",
+                    line: { color: col(i++), width: 1, dash: "dot" } }));
+                state.pdos.forEach((s) => {
+                    if (s.curve) tr.push({ x: s.curve.energy_ev, y: s.curve.pdos,
+                        mode: "lines", name: s.name + " (" + s.orbitals + ")",
+                        line: { color: col(i++), width: 2 } });
+                });
+                _plot(state.nodes.dos, tr, { ...axes,
+                    yaxis: { title: { text: "DOS (states/eV)", standoff: 4 },
+                             automargin: true } });
+            }
         }
         _drawPdosList(state);
 
-        /* I-V: the curve, its points clickable, the selected one marked.
-         * Under the low-bias approximation the curve is the record's own
-         * I(V) computed from T(E, 0) (`record.linear_response_iv`), one
-         * value per listed voltage, the measured 0 V slice its only point
-         * (`engines/transport.md` § 2a.12). */
+        /* I-V: the frame's curve, or one per frame, its points clickable, the
+         * selected one marked.  Under the low-bias approximation each curve
+         * is the record's own I(V) computed from that frame's T(E, 0)
+         * (`record.linear_response_iv`), one value per listed voltage, the
+         * measured 0 V slice its only point (`engines/transport.md`
+         * § 2a.12). */
         const computed = state.iv && state.iv.computed === "linear-response";
-        const iv = computed
-            ? (state.iv.voltages_v || []).map((v, k) => (
-                  { bias_v: v, current_a: (state.iv.current_a || [])[k] }))
-                  .filter((q) => q.current_a !== null && q.current_a !== undefined)
-            : pts.filter((q) => q.current_a !== null && q.current_a !== undefined);
-        if (iv.length) {
-            _plot(state.nodes.iv, [{
-                x: iv.map((q) => q.bias_v), y: iv.map((q) => q.current_a),
+        const frames = all("iv") ? Array.from({ length: n }, (_, f) => f) : [frame];
+        const ivTraces = frames.map((f) => {
+            const rows = computed
+                ? (state.iv.voltages_v || []).map((v, k) => ({
+                      frame: (state.iv.frame || [])[k],
+                      bias_v: v, current_a: (state.iv.current_a || [])[k] }))
+                      .filter((q) => (q.frame == null ? 0 : q.frame) === f)
+                : pts.filter((q) => _pf(q) === f);
+            const got = rows.filter((q) => q.current_a !== null && q.current_a !== undefined);
+            return {
+                x: got.map((q) => q.bias_v), y: got.map((q) => q.current_a),
                 mode: "lines+markers",
-                name: computed ? "I computed from T(E, 0)" : "I (total)",
-                line: { color: t.accent, width: 1.5,
+                name: n > 1 ? frameWords(f, n)
+                            : (computed ? "I computed from T(E, 0)" : "I (total)"),
+                line: { color: n > 1 ? col(f) : t.accent, width: 1.5,
                         dash: computed ? "dash" : "solid" },
-                marker: { size: iv.map((q) => (q.bias_v === state.bias ? 12 : 6)) },
+                marker: { size: got.map((q) => (f === frame
+                    && q.bias_v === state.bias ? 12 : 6)) },
                 /* A click selects the slice behind the point: under the
-                 * low-bias approximation every point comes from the one
-                 * 0 V slice. */
-                meta: iv.map((q) => (computed ? 0 : q.bias_v)),
-            }], {
+                 * low-bias approximation every point of a frame comes from
+                 * its one 0 V slice. */
+                meta: got.map((q) => ({ frame: f, bias: computed ? 0 : q.bias_v })),
+            };
+        }).filter((tr) => tr.x.length);
+        if (ivTraces.length) {
+            _plot(state.nodes.iv, ivTraces, {
                 margin: { l: 8, r: 12, t: 8, b: 34 },
                 xaxis: { title: { text: "Bias (V)", standoff: 4 }, automargin: true },
                 yaxis: { title: { text: "Current (A)", standoff: 4 },
                          automargin: true, exponentformat: "e" },
-                showlegend: false,
+                showlegend: ivTraces.length > 1,
+                legend: { orientation: "h", y: -0.2 },
             });
             _onClick(state.nodes.iv, state);
         } else {
@@ -681,7 +835,8 @@ const WORKSPACE_TAG = "results:transport";
         }
         if (state.nodes.table) {
             state.nodes.table.querySelectorAll(".transport-iv-row").forEach((tr) => {
-                const on = Number(tr.dataset.bias) === state.bias;
+                const on = Number(tr.dataset.frame) === frame
+                    && Number(tr.dataset.bias) === state.bias;
                 tr.classList.toggle("is-selected", on);
                 const pick = tr.querySelector(".transport-iv-pick");
                 if (pick) pick.setAttribute("aria-pressed", on ? "true" : "false");
@@ -690,8 +845,9 @@ const WORKSPACE_TAG = "results:transport";
         _drawConvergence(state);
     }
 
-    /* A CLICK ON A CURVE OR A POINT selects its bias -- each trace carries
-     * its bias as `meta`.  Bound once per chart. */
+    /* A CLICK ON A CURVE OR A POINT selects its point -- each trace carries
+     * ``{frame, bias}`` as `meta` (per marker, on the I-V).  Bound once per
+     * chart. */
     function _onClick(node, state) {
         if (node.dataset.bound || typeof node.on !== "function") return;
         node.dataset.bound = "1";
@@ -699,8 +855,8 @@ const WORKSPACE_TAG = "results:transport";
             const pt = ev && ev.points && ev.points[0];
             if (!pt) return;
             const m = pt.data.meta;
-            const bias = Array.isArray(m) ? m[pt.pointIndex] : m;
-            if (typeof bias === "number") _select(state, bias);
+            const at = Array.isArray(m) ? m[pt.pointIndex] : m;
+            if (at && typeof at.bias === "number") _select(state, at);
         });
     }
 
@@ -725,16 +881,19 @@ const WORKSPACE_TAG = "results:transport";
         });
     }
 
-    /* EACH SELECTION'S PDOS AT THE SELECTED POINT, asked of the server
-     * (`/api/transport/pdos`) -- nothing is summed here. */
+    /* EACH SELECTION'S PDOS AT THE SELECTED POINT -- its frame and its
+     * voltage -- asked of the server (`/api/transport/pdos`); nothing is
+     * summed here. */
     async function _loadPdos(state) {
         const bias = state.bias;
+        const frame = _frame(state);
         if (bias !== null && state.pdos.length) {
             await Promise.all(state.pdos.map(async (s) => {
                 try {
                     const q = "/api/transport/pdos?path="
                         + encodeURIComponent(state.file)
                         + "&point=" + encodeURIComponent(bias)
+                        + (state.nFrames > 1 ? "&frame=" + frame : "")
                         + "&atoms=" + s.atoms.join(",")
                         + "&orbitals=" + encodeURIComponent(s.orbitals);
                     const body = await (await fetch(q)).json();
@@ -753,7 +912,7 @@ const WORKSPACE_TAG = "results:transport";
                 }
             }));
         }
-        if (state.disposed || bias !== state.bias) return;
+        if (state.disposed || bias !== state.bias || frame !== _frame(state)) return;
         _redraw(state);
     }
 
@@ -797,11 +956,19 @@ const WORKSPACE_TAG = "results:transport";
          * 2026-10-08 road walk, plan § 5x.7 F3).  The window's one camera
          * action beyond reset (`mount` handle `lookAlong`). */
         if (typeof handle.lookAlong === "function") handle.lookAlong("x");
-        /* THE FRAME'S ONE OWNER is the model; the report follows it.  One
-         * frame until the frame axis -- the record carries no frame yet. */
+        /* THE FRAME'S ONE OWNER is the model; the report follows it -- every
+         * chart, and each selection's PDOS asked again at the new frame. */
         if (handle.data && typeof handle.data.onFrameChange === "function") {
-            state.unsubFrame = handle.data.onFrameChange(() => _redraw(state));
+            state.unsubFrame = handle.data.onFrameChange(() => _loadPdos(state));
         }
+        /* THE FRAME A CALLER ASKED TO OPEN AT (the ladder's row), told to
+         * its owner now it is up. */
+        if (state.pendingFrame !== null && state.pendingFrame !== undefined) {
+            const f = state.pendingFrame;
+            state.pendingFrame = null;
+            _setFrame(state, f);
+        }
+        _redraw(state);
     }
 
     /* ------------------------------------------------------------------ */
@@ -824,7 +991,9 @@ const WORKSPACE_TAG = "results:transport";
         mount(host, file, ctx) {
             const state = { bias: null, points: [], pdos: [], nodes: {},
                             conv: null, handle: null, unsubFrame: null,
-                            disposed: false, file: file, dir: _dirOf(file) };
+                            disposed: false, file: file, dir: _dirOf(file),
+                            nFrames: 1, average: {}, pendingFrame: null,
+                            frameMode: { te: ONE, dos: ONE, iv: ONE, conv: ONE } };
             (async function () {
                 let rec;
                 try {
@@ -858,24 +1027,23 @@ const WORKSPACE_TAG = "results:transport";
                     { detail: { inspector: "transport" } }));
             })();
             return {
-                /* THE BIAS POINT, SET FROM OUTSIDE: the ladder's row for a
-                 * transmission run opens the report at its point
-                 * (results.md § 2.4) -- before the record is drawn it is
-                 * the starting selection, after it the same pick a row
-                 * click makes. */
-                selectBias(v) {
-                    if (state.points.length) _select(state, v);
-                    else state.bias = v;
+                /* THE POINT, SET FROM OUTSIDE -- ``{frame, bias}``: the
+                 * ladder's row for a transmission run opens the report at
+                 * its point (results.md § 2.4) -- before the record is drawn
+                 * the starting selection, after it the same pick a row click
+                 * makes. */
+                selectPoint(at) {
+                    if (state.points.length) { _select(state, at); return; }
+                    if (at && at.bias !== undefined) state.bias = at.bias;
+                    if (at && at.frame !== undefined && at.frame !== null)
+                        state.pendingFrame = at.frame;
                 },
                 dispose() {
                     state.disposed = true;
                     try { state.unsubFrame && state.unsubFrame(); } catch (_) { /* gone */ }
                     try { state.handle && state.handle.dispose(); } catch (_) { /* gone */ }
-                    if (root.Plotly) {
-                        host.querySelectorAll(".js-plotly-plot").forEach((p) => {
-                            try { root.Plotly.purge(p); } catch (_) { /* never drawn */ }
-                        });
-                    }
+                    host.querySelectorAll(".plot-box").forEach(
+                        (p) => root.molbuilder.plotBox.release(p));
                     host.innerHTML = "";
                 },
             };

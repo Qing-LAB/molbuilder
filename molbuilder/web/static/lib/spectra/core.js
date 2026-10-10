@@ -216,7 +216,6 @@
         // the top level of `state` (not in any bucket) because it's a wrapper-managed
         // external resource.
         vib:            null,
-        esResizeObserver:    null,   // the same, for the level diagram
         modeTab:             "table", // which of the three views is on screen
         vibMounting:    false,   // one build per mount, not one per mode click
         vibStructure:   null,    // which structure the viewer holds (§ 5.1)
@@ -2177,29 +2176,6 @@
         return _theme;
     }
 
-    /* Plotly's `responsive: true` listens to the WINDOW, and the window is not
-     * what changes here -- the sidebar collapses, the inspector panel resizes,
-     * the container query flips the layout, and the window never moves.  So each
-     * chart watches its own box.
-     *
-     * One observer, installed once, for the one figure this tab still draws. */
-    function _watchEsWidth(el) {
-        const key = "esResizeObserver";
-        const node = el;
-        if (state[key] || !node) return;
-        if (typeof ResizeObserver === "undefined") return;
-        let last = 0;
-        const obs = new ResizeObserver(function (entries) {
-            const w = entries[0] && entries[0].contentRect.width;
-            if (!w || Math.abs(w - last) < 1) return;   // ignore sub-pixel noise
-            last = w;
-            if (typeof Plotly === "undefined") return;
-            try { Plotly.Plots.resize(node); } catch (_) {}
-        });
-        obs.observe(node);
-        state[key] = obs;
-    }
-
     function renderESPanel() {
         if (!els.esPanel) return;
         if (!state.results || state.selectedMode == null) {
@@ -2233,7 +2209,7 @@
              * innerHTML underneath the library leaves that figure's internal
              * state attached to a node that no longer contains it. */
             if (typeof Plotly !== "undefined") {
-                try { Plotly.purge(els.esBarDiagram); } catch (_) {}
+                root.molbuilder.plotBox.release(els.esBarDiagram);
             }
             // `.status` keeps newlines (white-space: pre-line), so the "\n"
             // breaks the line.
@@ -2290,8 +2266,8 @@
             els.esBarDiagram.innerHTML =
                 '<p class="status muted">chart library unavailable on this page</p>';
         } else {
-            Plotly.react(els.esBarDiagram, fig.traces, fig.layout, fig.config);
-            _watchEsWidth(els.esBarDiagram);
+            root.molbuilder.plotBox.draw(els.esBarDiagram, fig.traces,
+                                         fig.layout, fig.config);
         }
 
         /* THE NUMBERS, GROUPED BY THE QUESTION THEY ANSWER.
@@ -2496,7 +2472,6 @@
 
         const config = {
             displaylogo: false,
-            responsive: true,
             scrollZoom: true,          // wheel over the plot zooms the energy axis
             modeBarButtonsToRemove: ["select2d", "lasso2d", "zoom2d", "toggleSpikelines"],
         };
@@ -3065,9 +3040,9 @@
      * WHY THIS IS NOT JUST TOGGLING `hidden`.  A box inside a hidden panel has
      * no size, and both a 3-D canvas and a Plotly figure take their size FROM
      * their box.  Mounted or drawn while their tab was hidden, they come back
-     * with a zero-size drawing surface.  So becoming visible is an event, and each view is
-     * told to re-measure: the viewer re-fits its camera to the box
-     * (vibrationview.md § 8 `refit`), the chart re-runs Plotly's resize.
+     * with a zero-size drawing surface.  So becoming visible is an event: the
+     * viewer is told to re-fit its camera to the box (vibrationview.md § 8
+     * `refit`), and a chart sees its box come back by itself (lib/plot-box.js).
      */
     const MODE_TABS = ["table", "viewer", "es", "thermo"];
 
@@ -3087,14 +3062,6 @@
         // Now that the box has a size again, let what draws into it catch up.
         if (name === "viewer" && state.vib) {
             try { state.vib.refit(); } catch (_) {}
-        }
-        if (name === "es" && typeof Plotly !== "undefined" && els.esBarDiagram) {
-            try { Plotly.Plots.resize(els.esBarDiagram); } catch (_) {}
-        }
-        if (name === "thermo" && typeof Plotly !== "undefined") {
-            for (const el of [els.thermoCurves, els.thermoDecomp]) {
-                if (el) { try { Plotly.Plots.resize(el); } catch (_) {} }
-            }
         }
     }
 
@@ -3335,11 +3302,11 @@
         const gRel = grid.g_eh.map((g) => kcal(g - eElec));
         const ts   = T.map((Ti, i) => kcal(Ti * grid.s_eh_k[i]));
         const config = {
-            displaylogo: false, responsive: true,
+            displaylogo: false,
             modeBarButtonsToRemove: ["select2d", "lasso2d",
                                      "toggleSpikelines"],
         };
-        Plotly.react(els.thermoCurves, [
+        root.molbuilder.plotBox.draw(els.thermoCurves, [
             { x: T, y: gRel, name: rrho ? "G − E_elec" : "F_vib",
               mode: "lines", line: { color: t.homo, width: 2 } },
             { x: T, y: hRel, name: rrho ? "H − E_elec" : "ZPE + U_vib",
@@ -3383,7 +3350,7 @@
             : { x: ["ZPE", "U_vib", "−T·S_vib", "F_vib"],
                 y: [zpe, uvib, mts, gnet],
                 c: [t.stick, t.homo, t.lumo, t.stickSel] };
-        Plotly.react(els.thermoDecomp, [{
+        root.molbuilder.plotBox.draw(els.thermoDecomp, [{
             type: "bar", x: bars.x, y: bars.y, marker: { color: bars.c },
         }], {
             margin: { t: 8, r: 8, b: 34, l: 52 },
@@ -3698,16 +3665,13 @@
             if (chart) { try { chart.dispose(); } catch (_) {} }
             chart = null;
             chartReady = null;
-            /* The level diagram is still this tab's own figure, and a
-             * purged-but-still-observed node leaks an observer per mount -- the
-             * inspector is mounted and disposed every time the user switches
-             * result files. */
-            if (typeof Plotly !== "undefined" && els.esBarDiagram) {
-                try { Plotly.purge(els.esBarDiagram); } catch (_) {}
-            }
-            if (state.esResizeObserver) {
-                try { state.esResizeObserver.disconnect(); } catch (_) {}
-                state.esResizeObserver = null;
+            /* The tab's own figures, let go: the inspector is mounted and
+             * disposed every time the user switches result files. */
+            if (typeof Plotly !== "undefined") {
+                for (const el of [els.esBarDiagram, els.thermoCurves,
+                                  els.thermoDecomp]) {
+                    if (el) root.molbuilder.plotBox.release(el);
+                }
             }
         },
         /**

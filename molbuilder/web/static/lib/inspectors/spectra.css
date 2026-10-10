@@ -364,10 +364,11 @@
 }
 
 /* Queries `.results-summary` (declared above): the diagram stops being readable
-   below roughly 22rem and the numbers below --es-numbers-min, so 40rem is where
-   the two together stop fitting -- not a round number picked for looks.  A
-   container query condition cannot read a custom property, which is why this
-   one threshold is written out.
+   below --sp-figure-min (22rem) and the numbers below --es-numbers-min (11rem),
+   so 40rem is where the two together stop fitting -- not a round number picked
+   for looks.  A container query condition cannot read a custom property, which
+   is why this one threshold is written out: a change to either value is a
+   change here.
    The figure takes what is left AFTER the numbers, rather than a share of the
    whole: three columns of levels do not get more readable with more width, so
    growing the box should not grow the plot without limit. */
@@ -380,37 +381,15 @@
     }
 }
 
+/* A chart's box (lib/plot-box.css: a stated height, sized content-box, never
+   wider than its track): this figure's height and its frame.  The sheet owns
+   the BOX and the library what is inside it -- no width rule here. */
 .es-bar-diagram {
-    min-width: 0;
-    /* THE BOX MUST STATE ITS HEIGHT, and this is not a style choice.
-     *
-     * Each chart watches its own box and calls Plotly.Plots.resize, which sizes
-     * the plot FROM the container.  With height:auto the container's height is
-     * whatever the plot draws, so the first resize measured a box whose height
-     * came from a plot that was about to be resized to it: the two collapsed
-     * onto each other and left a 10px strip -- the padding and borders alone --
-     * with the plot's SVG overflowing across the numbers panel beside it.
-     *
-     * So the box leads and the plot follows -- the rule SpectrumChart's own
-     * frame keeps for the spectrum above (`web/spectrumchart.md` § 11), which
-     * is why that host carries no height of its own.  The same clamp as that
-     * frame (`spectrumchart/_style.css`), so the two figures stand the same
-     * height. */
-    height: clamp(220px, 34vh, 460px);
+    --plot-box-h: var(--sp-figure-h);
     background: var(--bg-card);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius);
-    /* NO PADDING.  Plotly sizes itself from the container's clientWidth, which
-       INCLUDES padding -- so every pixel of padding here is a pixel the figure
-       draws past its own right edge.  The plot's own margins already keep the
-       axis labels off the border, so the box gives it the whole content area. */
-    padding: 0;
-    /* A figure mid-resize must never paint over its neighbour. */
-    overflow: hidden;
 }
-/* Plotly sizes its own <svg> and re-sizes it through Plotly.Plots.resize when
-   the box changes (core.js _watchEsWidth).  A width rule here would fight
-   that, so the sheet owns the BOX and the library owns what is inside it. */
 .es-bar-diagram p.status { padding: var(--space-md); margin: 0; }
 
 /* NO INK RULES HERE.  The level diagram is drawn by Plotly -- the same
@@ -533,14 +512,16 @@
 }
 
 /* ---- Thermochemistry tab (v5 `thermo`; plan § 2b) ---------------
-   The BOX owns the chart height (same rule as .es-bar-diagram):
-   Plotly layouts carry no `height`. */
+   Two figures side by side while both stay readable, stacked when they do
+   not -- decided by the panel's width, not the window's (ui-contract.md § 3).
+   Each is a chart's box (lib/plot-box.css), the level diagram's height. */
 .thermo-charts {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns:
+        repeat(auto-fit, minmax(min(var(--sp-figure-min), 100%), 1fr));
     gap: var(--space-sm2);
 }
-.thermo-chart { min-height: 260px; }
+.thermo-chart { --plot-box-h: var(--sp-figure-h); }
 /* The run's status line, above the phase dots: a line of its own, so none
  * of page-shell's left indent (meant for a status trailing a button) and
  * none of a paragraph's default margins. */
@@ -553,9 +534,6 @@
     color: var(--text-secondary);
     font-size: var(--text-sm);
     line-height: 1.55;
-}
-@media (max-width: 900px) {
-    .thermo-charts { grid-template-columns: 1fr; }
 }
 
 /* ---- Methods text (the Results panel) ------------------------------

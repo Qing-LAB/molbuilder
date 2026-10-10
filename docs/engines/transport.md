@@ -1674,9 +1674,8 @@ done, read from each point's own files (§ 2a.11).
 
 **The frame dimension** *(the record built 2026-10-10 — plan § 5z Q17-e,
 `transport/average.py`, read by `record.collect_record`; the data file Q17-e2,
-`transport/datafile.py`; the Results family
-is Q17-f, and the PDOS of a selection, which names no frame yet, refuses a
-frame set by name until then; the physics is
+`transport/datafile.py`; the Results family Q17-f3, the PDOS of a selection
+asked at a frame and a voltage (`record.selection_pdos`); the physics is
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md))*.
 A frame group's deliverable is a **family** of curves, each beside what its
 frame is. The record's points are (frame, voltage) pairs (§ 2a.9, *Both
@@ -2284,8 +2283,8 @@ files are copied from")*. The pair carries `info.calculation`; a pair with none
 is refused by name, because a bare structure brings nothing to default the
 settings from. The pseudopotentials come from the directory the person gives —
 `jobset init --psml-lib DIR`, written as the template's `psml_lib`, the
-person's (the Transport tab's pseudopotential directory, and its picker taking
-a `.xyz`, are plan § 5z Q17-f) — required as it is for a structure
+person's (on the Transport tab, the shared panel's field, shown exactly when
+the citation is a pair, § 3.8.1) — required as it is for a structure
 optimization, copied into the calculation by prep, and the transport
 calculation's record shows where they were copied from: its template's
 `psml_lib` row, and the seed deck's note naming that directory; `--psml-lib` is refused for a cited run, whose
@@ -2907,17 +2906,42 @@ item 7's *"shown locked"*, § 8's *"sealed at both doors"*, and the whole of
 
 #### 3.8.1 Choosing — name the run, and what it brought
 
-§ 3.1's first case, a finished relaxation run of molbuilder's own: the meta
-line says how it ended and what it converged, then what its deck answered (a
-cited pair's line — its frames and the record it carries — is plan § 5z
-Q17-f):
+The picker takes either kind of § 3.1 — a run's folder or a structure pair's
+`.xyz` (the shared tree-picker's `any` mode) — and the describe door
+classifies each selection before you confirm. A finished relaxation run of
+molbuilder's own: the meta line says how it ended and what it converged, then
+what its deck answered; a pair: its frames and the deck its record names, then
+what that record states:
 
 ```
 CONCLUDED (rc=0 at …) · geometry yes · SZP · 150 Ry · GGA/PBE · k 1x1x1 · 52 atoms
 CONCLUDED (rc=0 at …) · geometry NO -- its last geometry is the last one SIESTA wrote, not a converged minimum · …
 NOT CONCLUDED -- still running, or force-stopped (the two look identical on disk)
 ENDED WITH EXIT CODE 1 (…) -- not citable until the relaxation runs to its end
+STRUCTURE PAIR · 3 frames · optimized with J_01_coarse.fdf · SZ · 150 Ry · … · 22 atoms
 ```
+
+**A frame set says what each frame is** *(Q17-f2)* — under the meta line,
+the frame-set card, one renderer for every page that shows a citation's
+frames (this card, Task setup's echo — `web/task-setup.md` § 3): for a mode's
+set, its mode line — the structure's rows of
+[`model/structure.md`](?doc=model/structure.md) § 2.2f, each with its unit —
+and a table, a row per frame, numbered as the frame bar numbers them (1 … F),
+each frame's rows a column under its name and unit; for a set stating none of
+the definition, *N frames — a family: each frame's curve its own, no
+average*; for one structure, nothing. The data is the describe door's
+`frame_set` — `{n_frames, definition}`, the definition
+`frameset.ModeFrameSet.to_wire()`, built from `frameset.ROWS`, so the
+columns are the definition's own and the card keeps no list
+(`compose.frame_set_answer`, asked by the describe door and Task setup's
+folder answer alike).
+
+**The pseudopotential directory is asked for a pair**, on the shared panel:
+the `setup` items a citation asks of the person
+(`citation_defaults.asked_of_the_person` — `psml_lib` for a pair, which
+brings none; nothing for a run, whose pseudopotentials travel with it) join
+the panel, and the describe door's check (`check_pseudopotentials`) asks the
+same function — so the field shows exactly when the check requires it.
 
 A path that is neither kind — a folder holding a relaxation SIESTA was
 handed by hand, a pair with no `info.calculation` — answers the refusal
@@ -2950,7 +2974,7 @@ markers the catalogue carries, never by a list a blueprint keeps:
 | `calculations` | not a parameter of this kind | — | — |
 | `allocation` | the scheduler answers at prep | no | no |
 | `role` | the rung's own identity; a choice with one correct answer | no | never a control: **echoed read-only** at the rung's answer, with why (`locked`, `form-schema.md` § 1.1; K7, 2026-09-30) |
-| `shared` *(§ 3.8.6, decided 2026-09-24)* | binds every rung | **yes** — except the `setup` group, whose two members the description (the identity) and the citation (the pseudopotentials: a cited run's travel with it, a cited pair's directory is named at `init`) answer themselves; the same group rule that keeps `staging` off every form (`form-schema.md` § 1.3) | **no** |
+| `shared` *(§ 3.8.6, decided 2026-09-24)* | binds every rung | **yes** — except the `setup` group, whose two members the description (the identity) and the citation (the pseudopotentials: a cited run's travel with it) answer themselves, save what the citation asks of the person — a pair's pseudopotential directory (§ 3.8.1, `citation_defaults.asked_of_the_person`); the same group rule that keeps `staging` off every form (`form-schema.md` § 1.3) | **no** |
 | `citation` | a cited run DEFAULTS it at `init` | yes, showing its provenance | no |
 | `stages` | only these rungs may own it | — | routed to those rungs |
 
@@ -3204,7 +3228,7 @@ door's question.
 | door | `shared` — binds every rung | `stages` — which rungs own it | `role` — the rung decides | `citation` — who defaults it | `allocation` — the scheduler |
 |---|---|---|---|---|---|
 | the per-rung form (`catalogue_to_form_schema(surface="rung", rung=…)`) | ✅ kept off | ✅ a rung's tab is that rung's bag (§ 3.8.2a) | ✅ echoed read-only at the rung's answer, never a control *(K7)* | ✅ the template's value, from the citation, as a blank field's hint *(K7)* | ✅ kept off |
-| the shared panel (`surface="shared"`) | ✅ is the panel, minus the `setup` group | — | — | ✅ the citation's answers, each field's source named *(K7)* | ✅ kept off |
+| the shared panel (`surface="shared"`) | ✅ is the panel, minus the `setup` group save what the citation asks (§ 3.8.1) | — | — | ✅ the citation's answers, each field's source named *(K7)* | ✅ kept off |
 | the describe door (`/api/transport/describe`) | ✅ refuses a per-rung override | ✅ refuses a bag naming an item the rung does not own (`template.unread_overrides`, the door `prep` asks too) | ✅ refuses | ✅ fills the template through `transport_template_text` | — |
 | `jobset init` | — | — | ✅ valueless in the template | ✅ fills, through the same door | ✅ valueless |
 | `prep` (`_resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | ✅ refuses a stage override, pin, sweep axis or template value naming one, and puts the rung's answer into its config (`template.role_answers`, *2026-09-29*) | — (reads the template, never the citation) | ✅ fills from the machine |
@@ -4364,8 +4388,8 @@ single-point, or a relaxation if those layers are not frozen.
 - **Web tab (rewired 2026-08-29, P7b + same-day review):** the tab is the
   composite's WHOLE describe surface — cite the junction through the
   shared tree-picker (ANY directory choosable — what qualifies it is § 3.1's condition for a run, and the meta line classifies each selection through
-  `/api/transport/describe_attempt`, which reads a run or a pair (the tab's
-  picker takes folders; a `.xyz` is plan § 5z Q17-f), and the
+  `/api/transport/describe_attempt`, which reads a run or a pair (the
+  picker takes a run's folder or a pair's `.xyz`, § 3.8.1), and the
   VIEWER follows the citation: MolView loads the cited calculation's
   labeled structure and the chemistry analysis runs on it), state the
   bias, and **Describe writes the finished `task.json`** into the selected

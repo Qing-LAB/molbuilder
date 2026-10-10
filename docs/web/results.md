@@ -83,9 +83,9 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 - **A transport calculation's report** (§ 2.5) is built and seen on the
   walks (2026-10-08); the root opens it through its `task.json` from `init`
-  on (§ 0.1); its frame family — the curves per frame, the frame bar every
-  chart follows, the average beside them — is designed and not built (plan
-  § 5z, Q17-f; § 2.5).
+  on (§ 0.1); its frame axis — every chart's *one frame* / *all frames*, the
+  points and the ladder named by frame and voltage — is being built (plan
+  § 5z, Q17-f3; § 2.5).
 
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
@@ -429,10 +429,10 @@ result can display the result by simply select which run to pick")*. The
 root's answer lists every run of the calculation under its stage — each stage's
 attempts, a benchmark's trials, a bias sweep's points — each with its state, its
 folder and the file it opens (`runstatus.every_run`: under each `stages[]` row,
-`runs: [{run, point, dir, state, converged, detail, opens}]`, `opens` relative
+`runs: [{run, point, frame, of, dir, state, converged, detail, opens}]` — a point's voltage, its frame's index and the set's frame count —, `opens` relative
 to the root — **a transmission run's is the root's `task.json`, with its
 `point`**: its result is the report at that bias (§ 0.1), and its row's *open*
-re-announces the calculation with that bias as the report's `selectedBias`
+re-announces the calculation with that point — its frame and its voltage — as the report's selection (the handle's `selectPoint({frame, bias})`)
 (§ 2.5), never a file of its own — TBtrans writes none a viewer reads
 *(2026-10-08, B8 R1-02 / F23)*); the states are
 status's reading of each run (`run_state_of`), which reads **every** attempt,
@@ -493,8 +493,8 @@ owner, every view mirrors it through a cheap door; [`spectra.md`](?doc=web/spect
 
 | selection | its one owner | what follows it |
 |---|---|---|
-| **the frame** — which structure of the calculation's frame set (*designed, not built — plan § 5z, Q17-f*; one frame today, so the bar is hidden as MolView hides it for one frame) | MolView's model: `data.setCurrentFrame(i)` / `data.onFrameChange(fn)` ([`molview.md`](?doc=web/molview.md) § 6.4) — nothing keeps its own copy | the structure, T(E), DOS, I–V and the device's convergence, each redrawn for that frame |
-| **the bias point** — one of the sweep's voltages (one for a single-bias calculation) | the report: one `selectedBias`, set by clicking a T(E) curve, an I–V point or a row of the points table | the highlighted curve in T(E) and DOS, the marked I–V point, the points table's row, and the device convergence tab, which shows that point's device run |
+| **the frame** — which structure of the calculation's frame set (one structure: MolView hides its bar) | MolView's model: `data.setCurrentFrame(i)` / `data.onFrameChange(fn)` ([`molview.md`](?doc=web/molview.md) § 6.4) — nothing keeps its own copy | the structure, every chart's *one frame* view, the points table's row, the device's convergence and a selection's PDOS — and in *all frames* the frame drawn bold |
+| **the bias point** — one of the sweep's voltages (one for a single-bias calculation) | the report: one `bias`, set by clicking a curve, an I–V point or a row of the points table — a row and the ladder setting the frame too, through its owner (`selectPoint({frame, bias})`) | the highlighted curve in T(E) and DOS, the marked I–V point, the points table's row, and the device convergence tab, which shows that point's device run |
 
 **The layout** — the page's cards (`.card`, `.card-row`; [`ui-contract.md`](?doc=web/ui-contract.md)
 § 4) and panel tabs (`.panel-tabs`, `.panel-tab`, `.panel-tabpanel`), every
@@ -592,6 +592,25 @@ its own:
   the trace palette), which the transport, SCF and bench charts use; the
   spectra tab's `_esTheme` is its model. SpectrumChart keeps its own sealed
   palette ([`spectrumchart.md`](?doc=web/spectrumchart.md) § 11).
+* **One Plotly box**: every chart on this page — the transport report's, the
+  SCF plot, the spectra tab's level diagram and thermochemistry, the bench
+  chart, the trajectory's energy and force — is drawn through one door,
+  `lib/plot-box.js` (`molbuilder.plotBox.draw`, `release`), into a box that
+  states its size: the module's markup makes the element a box (the
+  `plot-box` class beside its own — `draw` refuses any other), so it stands
+  at its size before a drawing and after one; `lib/plot-box.css` gives it a
+  stated height, content-box sizing (what Plotly reads is the area it draws
+  in, a frame around it the module's) and no floor wider than its track; the
+  module's own class says the height (`--plot-box-h`, a token). The chart is
+  redrawn when **its box** changes — a
+  sidebar folding, a tab shown, a grid reflowing — never on the window's
+  resize alone, and a box with no size, in a hidden tab, is fitted when it is
+  shown. *(Until 2026-10-10 each viewer kept its own way or none: the
+  thermochemistry figures, drawn in their hidden tab at Plotly's default
+  700 px, never shrank back and pushed the decomposition past the card's
+  edge; the transport report's charts kept their first width through a
+  sidebar fold.)* SpectrumChart keeps its own sealed door to the same rules
+  ([`spectrumchart.md`](?doc=web/spectrumchart.md) § 11).
 * **MolView unchanged**: mounted read-only, the frame through its own API. It
   does not colour atoms by label in the scene today; the labels are on its
   Selection page, and `by label` selects a region. Colouring the regions in
@@ -610,16 +629,41 @@ tabs, the two selections; ③ the frame family (plan § 5z, Q17-f — designed, 
 built). Checked on the dev server against a real transport calculation, through
 the road.
 
-**The frame family** *(designed 2026-10-09, not built — plan § 5z, Q17-f; the
-record's half is [`engines/transport.md`](?doc=engines/transport.md) § 2a.12,
-built 2026-10-10, Q17-e: each point names its frame and carries that frame's
-rows, the I–V a `frame` column, and the record the mode's `average`)*. A frame set's report draws the family of curves — T(E), the DOS and
-the I–V per frame — and the frame bar picks a frame, every chart following it
-as the I–V pick follows a bias point (the one owner is MolView's
-`data.setCurrentFrame`, the table above); beside the family, at each voltage,
-the mode's averaged curve — one mode a set, another mode another calculation;
-and the selected frame's `customized` rows in its card, read through the
-structure's own doors.
+**The frame family — the frame an axis of every result** *(designed
+2026-10-09; the user, 2026-10-10: "frame is orthogonal to all those
+calculations so the logical way to present it is that each presentation of
+T(E), DOS etc would be able to either plot results from different frames in
+one plot with legends, or select a frame for display"; the record's half is
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.12, built
+2026-10-10, Q17-e: each point names its frame and carries that frame's rows,
+the I–V a `frame` column, the record the mode's `average`)*. The frame is an
+axis, as the voltage is, and **every chart card carries the one frame control**
+— *one frame* or *all frames* — one component, shown only when the
+calculation holds several frames:
+
+| chart | *one frame* — the frame bar's | *all frames* — a legend entry each |
+|---|---|---|
+| T(E) | that frame's curve at each voltage, the selected voltage bold — as for one structure | every frame's T(E) at the selected voltage; beside them, dashed, the mode's average at it when the set states its mode (`record.average`), and under the card the averaged conductance, its change from frame 0's, the weights' sum and the assumptions |
+| DOS | that frame's total, regions, leads and your selections, at the selected voltage | every frame's total DOS at the selected voltage |
+| I–V | that frame's curve, the selected voltage marked | one curve per frame |
+| convergence, the device | that frame's device run at the selected voltage | every frame's device SCF at the selected voltage, on one axis |
+
+The seed and the leads have no frame, so their convergence tabs carry no
+control. **The points table** lists every (frame, voltage) — each row named
+as the frame bar counts, *Frame 2 of 3 · 0.2 V* — and a click moves the frame
+bar and the selected voltage together; **the ladder's rows** name the frame
+the same way and open the report at that point. A legend entry clicked hides
+its curve — Plotly's own legend, nothing built. **The selected frame's
+`customized` rows** are MolView's Info page's, which follows the frame bar
+([`molview.md`](?doc=web/molview.md) § 6.4) — never a second copy here.
+**The PDOS of a selection** is asked at the selected frame and voltage
+(`/api/transport/pdos`, its `frame`). **One selection model, one lookup,
+one wording**: the frame is MolView's and the voltage the report's, a point is
+found by the pair of them and nothing else, and every place a point is named
+— the legend, the table, the ladder — says it as `lib/results/point-words.js`
+does, the frame bar's numbers through MolView's `toDisplay`. The device's
+*all frames* is the one SCF plot drawing several runs on one axis
+(`lib/scfplot/scfplot.js`, which takes a list of runs, one or many).
 
 ## 3. Showing the file
 

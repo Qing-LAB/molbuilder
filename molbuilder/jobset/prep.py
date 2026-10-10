@@ -2380,7 +2380,7 @@ class PrepAnswer:
                          "brought": list(a.brought), "copied": list(a.copied),
                          "continued_from": a.continued_from, "cold": a.cold}
                         if a is not None else None),
-            "points": [{"attempt": rel(att), "frame": pt.frame,
+            "points": [{"attempt": rel(att), "frame": pt.frame, "of": pt.of,
                         "bias": pt.volts, "gathered": carried(got)}
                        for att, pt, got in self.points],
             "gathered": carried(self.gathered),

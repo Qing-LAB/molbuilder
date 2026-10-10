@@ -1,0 +1,12 @@
+/* The frame-axis control (lib/frame-axis.js; web/results.md § 2.5).
+   Tokens only; the buttons are page-shell's toggle buttons. */
+.frame-axis {
+    display: inline-flex;
+    gap: var(--space-xs);
+    margin: 0 0 var(--space-xs);
+}
+
+.frame-axis-btn {
+    font-size: var(--text-xs);
+    padding: var(--space-xs) var(--space-sm);
+}

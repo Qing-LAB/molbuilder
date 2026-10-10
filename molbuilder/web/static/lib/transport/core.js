@@ -1,8 +1,9 @@
 /* Transport-calculation tab core — the COMPOSITE's describe surface
  * (engines/transport.md § 3.8).
  *
- * ONE driver: the junction citation.  Picking the relaxed junction's
- * directory (the shared tree-picker; its FILES make it citable) sets
+ * ONE driver: the junction citation.  Picking the relaxed junction -- a
+ * run's folder, or a structure pair's .xyz (the shared tree-picker; its
+ * FILES make it citable, engines/transport.md § 3.1) -- sets
  * everything downstream — the viewer loads the CITED
  * calculation's own labeled structure, the chemistry analysis runs on
  * it, and Describe writes the FINISHED task.json into the selected
@@ -591,6 +592,11 @@ const WORKSPACE_TAG = "transport";
             meta.hidden = false;
             meta.textContent = described.summary || "";
         }
+        /* WHAT ITS FRAMES ARE (transport.md § 3.8.1), by the one card. */
+        var fsHost = _$("transport-junction-frameset");
+        import("../frameset/card.js").then(function (mod) {
+            mod.renderFrameSet(fsHost, described.frame_set || null);
+        });
         /* WHAT THE COMPOSITION MEASURED -- each lead's measurements, the
          * orientation warning, a refusal -- through the one renderer
          * (validation.md 4.1 R2), under the one-line summary. */
@@ -628,24 +634,24 @@ const WORKSPACE_TAG = "transport";
                 return (proj && proj.relativeToProjects)
                     ? String(proj.relativeToProjects(path) || "") : path;
             }
-            /* THE one pop-out picker (lib/tree-picker.js): ANY
-             * directory can be chosen -- what makes it citable is its
-             * FILES and that it is a run of ours (transport.md \u00a7 3.1,
-             * decision 7: a finished relaxation run, launched through
-             * jobset), and the describe seam classifies each selection
-             * so the meta line answers before you confirm. */
+            /* THE one pop-out picker (lib/tree-picker.js), taking either
+             * kind of transport.md \u00a7 3.1 -- a finished relaxation run's
+             * folder (a run of ours, launched through jobset), or a
+             * structure pair's .xyz -- and the describe seam classifies each
+             * selection so the meta line answers before you confirm. */
             import("../tree-picker.js").then(function (mod) {
                 return mod.pickPath({
                     title: "Cite the relaxed junction",
                     hint: "Pick the finished relaxation RUN of the "
                         + "junction (<calculation>/<NN>_<stage>/run-<n>, "
-                        + "launched through jobset).  \u25b8 expands.",
-                    mode: "dir",
+                        + "launched through jobset), or a structure pair's "
+                        + ".xyz -- a frame set's included.  \u25b8 expands.",
+                    mode: "any",
                     describe: function (path) {
                         return _describeAttempt(toRel(path))
                             .then(function (b) { return b.summary || ""; });
                     },
-                    confirmLabel: "Cite this directory",
+                    confirmLabel: "Cite this",
                 });
             }).then(function (picked) {
                 if (!picked) return;

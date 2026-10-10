@@ -25,6 +25,8 @@ import { clear as clearFindings,
          render as renderFindings } from "../lib/validation-findings.js";
 // § 5.2: the declared type decides what a cell's text means.
 import { CELL_READERS } from "./cell-readers.js";
+import { renderFrameSet } from "../lib/frameset/card.js";
+import { pointWords } from "../lib/results/point-words.js";
 
 const TASK_JSON     = "task.json";
 /* The hand-over a parameter tab leaves (`stages.md` § 6.5a).  Read ONLY when
@@ -1140,7 +1142,7 @@ async function loadFolder(projects, dir, opts) {
              + ` · ${(task.stages || []).length} stage(s)`);
 
     _mode = "description"; _handover = null; _task = task;
-    renderCameOver(task, said.treatment);
+    renderCameOver(task, said.treatment, said.frame_set);
     /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1), and into
      * `_fs`, which `loadFolder` replaces wholesale.  A separate variable
      * here would be a reset somebody has to remember. */
@@ -1304,11 +1306,15 @@ function setCell(i, col, raw) {
  * (`treatment`, the folder answer's word from the one rule the record
  * names it by).  Every parameter of the description is echoed here
  * (`template.md` § 6.6 obligation 3). */
-function renderCameOver(obj, treatment) {
+function renderCameOver(obj, treatment, frameSet) {
     const host = $("ts-facts");
     const card = $("ts-came-card");
     if (!host || !card) return;
     host.textContent = "";
+    /* THE CITED JUNCTION'S FRAMES, by the one card (transport.md § 3.8.1),
+     * from the folder's answer; nothing for one structure or another kind. */
+    renderFrameSet($("ts-frameset"), obj && frameSet && frameSet.n_frames
+        ? frameSet : null);
     if (!obj) { card.hidden = true; return; }
     const run = obj.run || {};
     const st  = obj.structure || {};
@@ -1321,6 +1327,7 @@ function renderCameOver(obj, treatment) {
         const bias = (obj.bias && obj.bias.voltages_v) || [];
         rows.push(
             ["Junction",  (obj.slots && obj.slots.junction) || "\u2014"],
+            ...(frameSet && frameSet.why ? [["Its frames", frameSet.why]] : []),
             // 0 V keeps its full spelling, as the bias list is written.
             ["Bias list", bias.length
                 ? bias.map((v) => (v === 0 ? "0.0" : String(v))).join(", ")
@@ -2702,8 +2709,11 @@ function _showPrepAnswer(wrap, say, r, head) {
     }
     const took = would ? "would gather: " : "gathered: ";
     for (const p of (r.points || [])) {
+        /* THE POINT IT IS, named as everywhere in the UI (point-words.js):
+         * its frame and its voltage. */
+        const at = pointWords(p.of > 1 ? p.frame : null, p.of, p.bias);
         line((would ? "would open attempt " : "Attempt ") + p.attempt
-             + (p.bias === null ? "" : " @ " + p.bias + " V"));
+             + (at ? " @ " + at : ""));
         for (const g of (p.gathered || [])) line(took + g.file + " ← " + g.from);
     }
     for (const g of (r.gathered || [])) line(took + g.file + " ← " + g.from);

@@ -102,21 +102,6 @@ class RecordError(Exception):
     fix first, ready to surface verbatim."""
 
 
-def _one_frame_or_refuse(base: Path) -> None:
-    """THE PDOS OF A SELECTION AT A FRAME IS NOT BUILT YET (plan § 5z
-    Q17-f, with the Results tab's frame bar): its door names a voltage and
-    no frame, so a calculation citing a set of more than one frame is
-    refused here by name, never read at another frame's point."""
-    from .stages import frames_of
-    n = frames_of(base)
-    if n > 1:
-        raise RecordError(
-            f"this calculation cites a frame set of {n} frames, and the PDOS "
-            f"of a selection names no frame yet (plan § 5z Q17-f, with the "
-            f"Results tab's frame bar).  Each frame's DOS and PDOS by region "
-            f"are in the record's points.")
-
-
 def record_path(base_dir, label: str) -> Path:
     """The ONE spelling of the record's location -- composed, not concatenated.
 
@@ -928,38 +913,52 @@ def composed_junction(base: Path):
     return StructureCodec().load(path, frames=True) if path.is_file() else None
 
 
-def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str
-                   ) -> Dict:
-    """The PDOS of ``atoms`` at the bias point ``bias_v``, narrowed to one
-    orbital type (`tbtnc.selection_pdos`; `web/results.md` § 2.5): read from
-    that point's transmission run's ``.TBT.nc``, each orbital's type from the
-    device run's ``.ORB_INDX`` at the same point -- the two runs share the
-    composed junction's atom order.  :class:`RecordError` names what is
-    missing."""
-    from .stages import same_volts
+def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
+                   frame: Optional[int] = None) -> Dict:
+    """The PDOS of ``atoms`` at the point (``frame``, ``bias_v``), narrowed
+    to one orbital type (`tbtnc.selection_pdos`; `web/results.md` § 2.5):
+    read from that point's transmission run's ``.TBT.nc``, each orbital's
+    type from the device run's ``.ORB_INDX`` at the same point -- the two
+    runs share the composed junction's atom order.  ``frame`` is the frame's
+    index, named for a frame set and for nothing else.
+    :class:`RecordError` names what is missing."""
+    from ..structure import frame_words
+    from .stages import Point, frames_of, same_volts
     from .tbtnc import TbtError, selection_pdos as _pdos, tbt_file
     base = Path(base_dir)
-    _one_frame_or_refuse(base)
+    n = frames_of(base)
+    # THE POINT IS A FRAME AND A VOLTAGE (`engines/transport.md` § 2a.9):
+    # a frame set's names its frame, one structure's names none.
+    if n > 1 and frame is None:
+        raise RecordError(f"this calculation cites a frame set of {n} "
+                          f"frames: name the frame (its index, 0 … {n - 1})")
+    if frame is not None and not 0 <= int(frame) < n:
+        raise RecordError(f"{frame_words(int(frame))} is not one of this "
+                          f"calculation's {n} frame(s): 0 … {n - 1}")
+    want = Point(frame=None if frame is None else int(frame), volts=bias_v)
+    said = (frame_words(int(frame), n) + " · " if frame is not None
+            else "") + f"{bias_v:g} V"
 
     def _at(stage: str) -> Optional[Path]:
         # A RUNG THAT DOES NOT SWEEP has one result, at 0 V, which serves
         # every voltage -- a single bias's, and the low-bias approximation's
-        # (`stages.rung_points`).
+        # (`stages.rung_points`); a rung that does is found at the point.
         found = result_folders(base, task, stage)
         if len(found) == 1:
             return found[0][1]
         return next((w for pt, w, _r in found
-                     if same_volts(pt.bias_v, bias_v)), None)
+                     if pt.frame == want.frame
+                     and same_volts(pt.bias_v, want.bias_v)), None)
 
     if not any(same_volts(v, bias_v)
                for v in (task.bias or (0.0,))):
         raise RecordError(f"no transmission point at {bias_v:g} V")
     where = _at("transmission")
     if where is None:
-        raise RecordError(f"no transmission point at {bias_v:g} V")
+        raise RecordError(f"no transmission point at {said}")
     nc = tbt_file(where, task.label)
     if nc is None:
-        raise RecordError(f"the transmission at {bias_v:g} V has written "
+        raise RecordError(f"the transmission at {said} has written "
                           f"no {task.label}.TBT.nc")
     dev = _at("device")
     orb = (dev / f"{task.label}.ORB_INDX") if dev is not None else None

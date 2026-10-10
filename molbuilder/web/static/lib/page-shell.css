@@ -392,6 +392,33 @@ button:disabled {
     cursor: not-allowed;
     opacity: 0.6;
 }
+/* A toggle button -- one that stays pressed while its choice is on screen,
+   `aria-pressed` (ui-contract.md § 4.1): the accent's edge and wash, hovered
+   or not.  Opt-in by the class, so a component with a pressed look of its own
+   keeps it. */
+.toggle-button[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-bg);
+}
+
+/* ---- Number tables ------------------------------------------------
+ * Numbers in columns, so they compare by eye -- the transport report's points
+ * and rungs, the frame-set card on the Transport tab and Task setup.  One
+ * look; each table's own class aligns its columns. */
+.num-table {
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--text-sm);
+}
+.num-table th,
+.num-table td {
+    padding: var(--space-xs) var(--space-sm);
+    border-bottom: 1px solid var(--border-subtle);
+}
+.num-table th {
+    color: var(--text-muted);
+    font-weight: var(--weight-semibold);
+}
 
 /* ---- Status helper ---------------------------------------------- */
 

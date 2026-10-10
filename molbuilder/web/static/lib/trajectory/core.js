@@ -143,8 +143,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
     //
     // Every element-level addEventListener inside mountInspector
     // goes through _on(), which registers the teardown at the same moment
-    // as the registration; non-listener teardowns (a ResizeObserver to
-    // disconnect) go through _listeners.defer().  ONE registry, drained by
+    // as the registration; non-listener teardowns go through
+    // _listeners.defer().  ONE registry, drained by
     // dispose() in one call, then the per-resource teardowns (polling
     // timer, in-flight HTTP request, embed handle).
     //
@@ -1305,7 +1305,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // the eye to the run's progress, then the plots show "where".
         _renderConvergenceSummary();
 
-        Plotly.react("energy-plot", [{
+        window.molbuilder.plotBox.draw($("energy-plot"), [{
             x: x,
             y: energies_plot,
             mode: "lines+markers",
@@ -1332,7 +1332,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                      tickformat: ".6~r", zeroline: false,
                      automargin: true, nticks: 5 },
             font: { family: "system-ui, sans-serif", size: 10 },
-        }, { displayModeBar: false, responsive: true });
+        }, { displayModeBar: false });
 
         // Two traces when the engine reports both.
         //
@@ -1418,7 +1418,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 forceYType = "log";
             }
         }
-        Plotly.react("force-plot", forceTraces, {
+        window.molbuilder.plotBox.draw($("force-plot"), forceTraces, {
             title: { text: "Max force", font: { size: 13 } },
             margin: { l: 8, r: 12, t: 32,
                       b: hasBothTraces ? 58 : 32 },
@@ -1449,60 +1449,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
             },
             shapes:      forceShapes,
             annotations: forceAnnotations,
-        }, { displayModeBar: false, responsive: true });
+        }, { displayModeBar: false });
 
         renderScfProgress();
-
-        // ----- Post-layout resize fix --------------------------- //
-        //
-        // The .plots-row CSS uses `grid-template-columns:
-        // repeat(auto-fit, minmax(280px, 1fr))`.  When
-        // renderScfProgress unhides the two SCF plots, the grid
-        // reflows from 2 cells to 4 cells -- each cell goes from
-        // ~50% of the row width down to ~25%.  Plotly's
-        // `responsive: true` config only listens for window
-        // resize, NOT for CSS-grid track changes, so the energy
-        // + force plots' SVGs stay at their original (wider) size
-        // and overlap into the neighbouring cells.  Same problem
-        // in reverse when SCF data goes away later.
-        //
-        // Fix: explicitly resize every visible plot once the
-        // visibility decisions are stable.  Plotly.Plots.resize
-        // is a no-op if the container size didn't actually
-        // change, so this is cheap to run unconditionally.
-        resizePlots();
-    }
-
-    /* THE PLOTS ARE TOLD THEIR SIZE; they never work it out themselves.
-     *
-     * Plotly draws a fixed-width SVG and `responsive: true` only re-draws on
-     * WINDOW resize.  Every other way this card changes width leaves the SVG
-     * frozen at whatever it measured at draw time:
-     *
-     *   * the SCF plots appearing / disappearing reflows the grid from 2 cells
-     *     to 4, so each cell halves;
-     *   * folding the Projects sidebar changes the column width with no window
-     *     resize at all -- `projects-sidebar.js` toggles a body class and
-     *     notifies nobody.
-     *
-     * Measured 2026-08-05 on a live run: drawn folded the SVG was 283 px; after
-     * unfolding the container was 550 px and the SVG was still 283.  Drawn
-     * unfolded and then folded, the same 267 px goes the other way and the
-     * plots overflow their cells.
-     *
-     * `Plotly.Plots.resize` is a no-op when the size did not actually change,
-     * so this is cheap to call unconditionally. */
-    const PLOT_IDS = ["energy-plot", "force-plot",
-                      "scf-energy-plot", "scf-gnorm-plot"];
-
-    function resizePlots() {
-        PLOT_IDS.forEach((id) => {
-            const el = $(id);
-            if (el && !el.hidden) {
-                try { Plotly.Plots.resize(el); }
-                catch (_) { /* element not yet plotted; ignore */ }
-            }
-        });
     }
 
     /*  Render the SCF-iteration progress for the most recent step.
@@ -1634,7 +1583,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // THE ONE SCF PLOT (`lib/scfplot/scfplot.js`): each phase a trace
         // on its own iteration axis, the last shown, each phase's own
         // criterion where the run requires it (web/trajectory.md § 2-3).
-        window.molbuilder.scfPlot.draw(scfEnergyEl, scfGnormEl, current, {
+        window.molbuilder.scfPlot.draw(scfEnergyEl, scfGnormEl,
+                                       [{ name: "", rows: current }], {
             criteria: _scfCriteria(),
             energyTitle: "SCF energy (current step)",
         });
@@ -2361,29 +2311,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
             loadByPath(p);
         };
         _on(document, C.EVENT_REFRESH_REQUESTED, _onRefresh);
-
-        /* WATCH THE CONTAINER, don't wait to be told -- as the 3-D viewer
-         * beside these plots does.  A width change with no re-render (the
-         * sidebar fold) reaches no render pass.
-         *
-         * Observing the row covers every cause -- fold, unfold, window resize,
-         * the SCF grid reflow, and any future layout change -- without the
-         * sidebar and the plots having to know about each other. */
-        const plotsRow = rootEl.querySelector(".plots-row");
-        if (plotsRow && typeof ResizeObserver === "function") {
-            /* NO requestAnimationFrame COALESCING HERE: rAF does not run in
-             * a tab that is not rendering, so a `pending` guard set by an
-             * observer fire while the tab is hidden would swallow EVERY later
-             * resize for the life of the mount.
-             *
-             * `Plotly.Plots.resize` already returns early when the size has
-             * not changed.  Straight call, no state to get wrong. */
-            const ro = new ResizeObserver(() => { resizePlots(); });
-            ro.observe(plotsRow);
-            _listeners.defer(() => {
-                try { ro.disconnect(); } catch (_) {}
-            });
-        }
     }
 
     function startPolling() {
@@ -2641,9 +2568,13 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // It tears down in reverse, so the most recent registration
             // goes first -- the order they would be re-attached in on a
             // remount -- and covers every element-level listener from the
-            // mount plus the deferred ResizeObserver.  Its per-teardown
-            // catch keeps one buggy teardown from blocking the rest.
+            // mount.  Its per-teardown catch keeps one buggy teardown from
+            // blocking the rest.
             _listeners.disposeAll();
+            // The plots let go (lib/plot-box.js): Plotly's state and the
+            // watch on each box.
+            rootEl.querySelectorAll(".plot-box").forEach(
+                (el) => window.molbuilder.plotBox.release(el));
             // Contract § 2: dispose -> transition('IDLE').  The
             // matrix § 3 row "dispose / unmount" runs the full
             // reset (aborts, timer stop, bucket clears).

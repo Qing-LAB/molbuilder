@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Tuple
 
 if TYPE_CHECKING:                                    # pragma: no cover
     from ..config.siesta import SiestaConfig
@@ -200,15 +200,27 @@ def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
     return dataclasses.replace(base, **kw)
 
 
+def asked_of_the_person(cited) -> Tuple[str, ...]:
+    """THE `setup` ITEMS A CITATION ASKS OF THE PERSON, by its kind
+    (`engines/transport.md` § 3.1, § 3.8.1): a cited pair brings no
+    pseudopotentials, so its directory -- ``psml_lib`` -- is asked; a cited
+    run's travel with it, so nothing is.  Asked by the pseudopotential check
+    and by the shared panel alike, so the field shows exactly when the check
+    requires it."""
+    from .compose import CitedPair
+    return ("psml_lib",) if isinstance(cited, CitedPair) else ()
+
+
 def check_pseudopotentials(cited, psml_lib) -> None:
     """THE PSEUDOPOTENTIALS BY THE CITATION'S KIND (`engines/transport.md`
     § 3.1), asked by both roads that describe a transport calculation --
     `jobset init` and the Transport tab's describe door: a cited run's
     travel with it, so a directory named for one is refused; a cited pair
     brings none, so the directory that holds them all is required, as a
-    structure optimization's is.  Raises ``ValueError`` naming the rule."""
-    from .compose import CitedPair
-    if isinstance(cited, CitedPair) and not psml_lib:
+    structure optimization's is (:func:`asked_of_the_person`).  Raises
+    ``ValueError`` naming the rule."""
+    asked = "psml_lib" in asked_of_the_person(cited)
+    if asked and not psml_lib:
         raise ValueError(
             f"{cited.path.name} is a structure pair, and a pair brings no "
             f"pseudopotentials: name the directory that holds them all "
@@ -216,7 +228,7 @@ def check_pseudopotentials(cited, psml_lib) -> None:
             f"structure optimization does -- the convention is the bare name "
             f"`pseudopotential`, the projects tree's own "
             f"(engines/transport.md § 3.1).")
-    if not isinstance(cited, CitedPair) and psml_lib:
+    if not asked and psml_lib:
         raise ValueError(
             "a pseudopotential directory does not apply to a cited run -- its "
             "pseudopotentials travel with it (engines/transport.md § 3.1).")
