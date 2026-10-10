@@ -112,10 +112,11 @@ def _variables() -> Tuple[Var, ...]:
     S = str
     return (
         Var("frame", ("frame",), "coordinate", "1", "frame index",
-            "counted from 0, as MolView's API counts; a person counts from 1 "
-            "(model/structure.md 2.2e)", dtype="i4"),
+            "its index, counted from 0 as MolView's API counts; only the "
+            "UI's display numbers frames from 1 (model/structure.md 2.2e)",
+            dtype="i4"),
         Var("frame_token", ("frame",), "coordinate", "", "the frame's folder",
-            "counted from 1: f001 is frame 0 (engines/transport.md 2a.11); "
+            "its index: f000 is frame index 0 (engines/transport.md 2a.11); "
             "empty for one structure, which has no frame level",
             dtype=S, auxiliary=True),
         Var("bias_v", ("bias_v",), "coordinate", "V", "bias voltage",

@@ -306,7 +306,7 @@ def test_modify_delete_only(tmp_path):
     inp  = tmp_path / "in.xyz"
     outp = tmp_path / "out.xyz"
     inp.write_text(_bdt_stub_xyz())
-    rc = cli.main(["modify", str(inp), str(outp), "--delete", "1,2"])
+    rc = cli.main(["modify", str(inp), str(outp), "--delete", "1,2", "--yes"])
     assert rc == 0
     text = outp.read_text()
     assert text.startswith("2\n"), f"expected 2-atom output; got:\n{text}"
@@ -319,7 +319,7 @@ def test_modify_orient_only(tmp_path):
     outp = tmp_path / "out.xyz"
     inp.write_text(_bdt_stub_xyz())
     rc = cli.main(["modify", str(inp), str(outp),
-                   "--orient-axis", "0,3"])
+                   "--orient-axis", "0,3", "--yes"])
     assert rc == 0
     import re
     lines = outp.read_text().splitlines()[2:]
@@ -368,7 +368,7 @@ def test_modify_warns_when_orient_suboptions_unused(tmp_path, capsys):
     outp = tmp_path / "out.xyz"
     inp.write_text(_bdt_stub_xyz())
     rc = cli.main(["modify", str(inp), str(outp),
-                   "--delete", "1",
+                   "--delete", "1", "--yes",
                    "--angle", "30"])     # --angle without --orient-axis
     assert rc == 0
     err = capsys.readouterr().err
@@ -382,8 +382,9 @@ def test_modify_electrode_single_mode(tmp_path):
     oriented = tmp_path / "oriented.xyz"
     outp = tmp_path / "out.xyz"
     inp.write_text(_bdt_stub_xyz())
-    cli.main(["modify", str(inp), str(oriented), "--orient-axis", "0,3"])
-    rc = cli.main(["modify", str(oriented), str(outp),
+    cli.main(["modify", str(inp), str(oriented), "--orient-axis", "0,3",
+              "--yes"])
+    rc = cli.main(["modify", str(oriented), str(outp), "--yes",
                    "--electrode", "Au:111:3x3x2@contact=2.4:+z=3"])
     assert rc == 0
     text = outp.read_text()
@@ -410,7 +411,7 @@ def test_modify_stdin_stdout_pipe(tmp_path, monkeypatch, capsys):
     outp = tmp_path / "out.xyz"
     inp.write_text(_bdt_stub_xyz())
     # Step 1: read file, write to stdout
-    rc = cli.main(["modify", str(inp), "-", "--delete", "1"])
+    rc = cli.main(["modify", str(inp), "-", "--delete", "1", "--yes"])
     assert rc == 0
     captured = capsys.readouterr()
     stdout_xyz = captured.out
@@ -419,10 +420,49 @@ def test_modify_stdin_stdout_pipe(tmp_path, monkeypatch, capsys):
     )
     # Step 2: feed that text in via stdin to a second invocation
     monkeypatch.setattr("sys.stdin", io.StringIO(stdout_xyz))
-    rc = cli.main(["modify", "-", str(outp), "--orient-axis", "0,2"])
+    rc = cli.main(["modify", "-", str(outp), "--orient-axis", "0,2", "--yes"])
     assert rc == 0
     final = outp.read_text()
     assert final.startswith("3\n")
+
+
+def test_modify_asks_to_agree_that_atom_indices_count_from_0(tmp_path):
+    """`model/overview.md` § 2: the atom indices typed at the CLI are the
+    code's own, counted from 0, while the UI's atom list numbers the same
+    atoms from 1 -- so `modify` says so, names the atoms it was given, and
+    acts only once that is agreed: with no one to ask (no terminal) it is
+    refused, naming `--yes`, and writes nothing; agreed, the atom at index 0
+    is the one that goes."""
+    from click.testing import CliRunner
+    from molbuilder.workingcopy_structure import StructureCodec
+    inp, outp = tmp_path / "in.xyz", tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())                     # S C C S
+    refused = CliRunner().invoke(cli.cli, ["modify", str(inp), str(outp),
+                                           "--delete", "1"])
+    assert refused.exit_code != 0, refused.output
+    for words in ("count from 0", "atom index 1 (C)", "--yes"):
+        assert words in refused.output, (words, refused.output)
+    assert not outp.exists()
+    agreed = CliRunner().invoke(cli.cli, ["modify", str(inp), str(outp),
+                                          "--delete", "1", "--yes"])
+    assert agreed.exit_code == 0, agreed.output
+    assert StructureCodec().load(outp).elements == ["S", "C", "S"]
+
+
+def test_modify_refuses_a_file_of_several_frames(tmp_path):
+    """`model/structure.md` § 2.3: an edit acts on one structure, and the
+    command line has no one to ask which frame -- so a file of several
+    frames is refused, naming how many and the ways to take one out, and
+    nothing is written."""
+    from click.testing import CliRunner
+    inp, outp = tmp_path / "in.xyz", tmp_path / "out.xyz"
+    inp.write_text("2\na\nH 0 0 0\nH 0 0 0.74\n2\nb\nH 0 0 0\nH 0 0 0.80\n")
+    res = CliRunner().invoke(cli.cli, ["modify", str(inp), str(outp),
+                                       "--rotate", "z:90"])
+    assert res.exit_code != 0, res.output
+    for words in ("holds 2 frames", "frame=i", "Modify tab"):
+        assert words in res.output, (words, res.output)
+    assert not outp.exists()
 
 
 # --------------------------------------------------------------------- #
@@ -495,7 +535,8 @@ def _run_electrode(tmp_path, st, spec):
     inp = tmp_path / "in.xyz"
     StructureCodec().write(st, inp)
     out = tmp_path / "out.xyz"
-    assert cli.main(["modify", str(inp), str(out), "--electrode", spec]) == 0
+    assert cli.main(["modify", str(inp), str(out), "--electrode", spec,
+                     "--yes"]) == 0
     return StructureCodec().load(out)
 
 
@@ -533,7 +574,7 @@ def test_a_centre_index_off_the_end_is_refused_by_the_flag(tmp_path):
     from molbuilder.workingcopy_structure import StructureCodec
     StructureCodec().write(st, inp)
     with pytest.raises(SystemExit):
-        cli.main(["modify", str(inp), str(tmp_path / "o.xyz"),
+        cli.main(["modify", str(inp), str(tmp_path / "o.xyz"), "--yes",
                   "--electrode", "Au:111:2x2x1@contact=2.4:+z=5"])
 
 
@@ -578,7 +619,7 @@ def test_electrode_registry_is_per_slab_and_reaches_the_builder(tmp_path):
     for tag, reg in (("a", ""), ("b", ":registry=B")):
         out = tmp_path / f"{tag}.xyz"
         res = CliRunner().invoke(cli.cli, [
-            "modify", str(src), str(out),
+            "modify", str(src), str(out), "--yes",
             "--electrode", f"Au:111:3x3x3@contact=2.4{reg}:+z=1"])
         assert res.exit_code == 0, res.output
         p = np.asarray(StructureCodec().load(out).positions, dtype=float)

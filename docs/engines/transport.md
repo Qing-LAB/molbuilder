@@ -1155,12 +1155,12 @@ addable without rework. Citing a pair is § 3.1's second citation kind
 | **no electrode atom moved**, within the tolerance the citation door's frozen-atom check uses (`wizard.FROZEN_TOL_ANG`, 10⁻³ Å) | the exact-sharing gate: the lead Hamiltonian is truth | the citation door, frame by frame, naming the frame and the atom (`compose.classify_citation`) |
 | **a mode's frame set states what each frame is, completely and consistently** — every row and the `mass_amu` channel of [`model/structure.md`](?doc=model/structure.md) § 2.2f, or none of them | a frame's weight is what the record averages with, and its position along the mode is what any analysis reads; a half-stated or contradictory set would average or report the wrong thing in silence | the citation door, by § 2.2f's rules (`frameset.read`), naming the frame and the row — before anything runs |
 
-**The frame token is the frame's count, as a person counts it**: `f001` is the
-base — frame 0 in the API, the undisplaced reference every displaced curve is
-compared against, and it runs too — and `f002`… follow in file order, so a
-folder and a sentence say the same number (*frame 2 of 3* is `f002`;
-`model/structure.md` § 2.2e: the API counts from 0, everything a person reads
-from 1, a folder name included; `transport.stages.frame_token`).
+**The frame token is the frame's index**: `f000` is the base — frame index 0,
+the undisplaced reference every displaced curve is compared against, and it
+runs too — and `f001`… follow in file order, so a folder and a message say the
+same index (*frame index 1 (of 3)* is `f001`; `model/structure.md` § 2.2e: the
+code's index everywhere, a folder name included, a number only on the UI's
+display; `transport.stages.frame_token`).
 
 **One mode per frame set, and what each frame is, stated in the pair**
 *(user, 2026-10-09: "i would rather let one multi-frame focus on one mode ...
@@ -1244,7 +1244,7 @@ declared by the citation itself**: a pair holding one frame is a single
 geometry, a pair holding more is a frame group, and every frame runs; the
 frame count is the citation's, never typed. A device point is a frame and a
 voltage (the axes above), so a rung's points carry a level for each axis that
-varies — `f001/`, `v0.2/`, or `f001/v0.2/` (§ 2a.11).
+varies — `f000/`, `v0.2/`, or `f000/v0.2/` (§ 2a.11).
 
 #### What this changes about the deliverable
 
@@ -1554,27 +1554,27 @@ does not:
 |---|---|---|
 | 1 | 1, or the low-bias approximation | no level: `run-0/` itself |
 | 1 | several | `run-0/v0/ v0.2/ …` |
-| several | 1, or the low-bias approximation | `run-0/f001/ f002/ …` |
-| several | several | `run-0/f001/v0/ f001/v0.2/ … f002/v0/ …` |
+| several | 1, or the low-bias approximation | `run-0/f000/ f001/ …` |
+| several | several | `run-0/f000/v0/ f000/v0.2/ … f001/v0/ …` |
 
 ```
 ├── 01_seed/         run-0/      ← NO frame level: frame 0's density warms every frame
 ├── 02_electrode_L/  run-0/      ← NO level: the leads do not move
 ├── 03_electrode_R/  run-0/
 ├── 04_device/                   ← varies over frames and voltages
-│   ├── f001/v0/ f001/v0.2/ f002/v0/ …   each point's prepared deck
+│   ├── f000/v0/ f000/v0.2/ f001/v0/ …   each point's prepared deck
 │   └── run-0/                   one run: every point
 │       ├── .gathered-from  <label>_L-electrode.TSHS  <label>_R-electrode.TSHS  <label>.DM
-│       └── f001/v0/ f001/v0.2/ f002/v0/ …
+│       └── f000/v0/ f000/v0.2/ f001/v0/ …
 └── 05_transmission/
-    ├── f001/v0/ f001/v0.2/ f002/v0/ …
-    └── run-0/   .gathered-from   f001/v0/ …   ← each holds its device point's .TS.HSX
+    ├── f000/v0/ f000/v0.2/ f001/v0/ …
+    └── run-0/   .gathered-from   f000/v0/ …   ← each holds its device point's .TS.HSX
 ```
 
 The absence of a level *is* the statement that the result is shared. Nobody has
-to be told; the tree says it. `f001` is the base itself — frame 0, the
-undisplaced reference curve — and the frame token is the frame's count in the
-cited pair as a person counts it, three digits (§ 2a.9). **One door answers a rung's points** — the
+to be told; the tree says it. `f000` is the base itself — frame index 0, the
+undisplaced reference curve — and the frame token is the frame's index in the
+cited pair, three digits (§ 2a.9). **One door answers a rung's points** — the
 (frame, voltage) pairs with their folders (`transport.stages`: `sweep_points`,
 `point_folders`, `points_in`, grown from voltages to pairs); the gather, the
 walk, the done-door, `status` and the record ask it, and none asks which axis
@@ -1710,8 +1710,8 @@ the other rule is another set, and comparing the two — whether the response is
 smooth over the thermal range (`vibrational-averaging.md` § 5.3) — is the
 person's, as weighing one mode against another is. A point not done is a gap in
 the family and the average at that voltage waits for it — never computed from
-the frames that happen to be there. Every frame is named as a person counts it,
-from 1: *frame 2 of 3* is `f002` (`model/structure.md` § 2.2e).
+the frames that happen to be there. Every frame is named by its index:
+*frame index 1 (of 3)* is `f001` (`model/structure.md` § 2.2e).
 
 **The data file, `<label>.transport.nc`** *(user, 2026-10-10: "doing a
 derivative is trivial if the result are saved with these parameter and
@@ -1747,7 +1747,7 @@ variable): `frame` (0-based, MolView's index), `bias_v`, `energy_ev`, `spin`,
 selects by value, `transmission.sel(bias_v=0.2)`. **The labels of a
 dimension's points are coordinates beside it** (CF auxiliary coordinates,
 named in each variable's `coordinates` attribute, which xarray and netCDF4
-read): along `frame` its folder `frame_token` (`f001` …, empty for one
+read): along `frame` its folder `frame_token` (`f000` …, empty for one
 structure, which has no frame level) and every per-frame
 row of a mode's frame set (§ 2.2f); along `atom` each atom's `element` and
 `mass_amu` — the fill value where the set states none.

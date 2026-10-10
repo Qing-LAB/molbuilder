@@ -28,10 +28,11 @@
  * which is why they cannot drift apart, and why the first atom reads as #1
  * everywhere even though the code sees 0.
  *
- * This is the browser end of a rule that spans the application: the same
- * translation exists on the server side, and the number a user reads must equal
- * the atom number in the generated input file. Its single home is
- * model/overview.md § 2; MolView defers to it rather than restating it.
+ * This is the browser end of a rule that spans the application: the server
+ * never translates -- its messages name the index, said as one -- and the
+ * number a user reads here equals the atom number in the generated input file.
+ * Its single home is model/overview.md § 2; MolView defers to it rather than
+ * restating it.
  */
 
 /** The number a user reads, from the number the code holds. */
@@ -45,7 +46,7 @@ export function fromDisplay(number) { return number - 1; }
  *
  *     "1-4, 6, 10-11"  --shiftExpression(-1)-->  "0-3, 5, 9-10"
  *
- * § 9.5: "by atom index" is the one filter row that crosses the numbering
+ * § 9.5: "by atom number" is the one filter row that crosses the numbering
  * boundary, because an atom's index is not something it HAS — it is where it
  * sits. The user types 1-based, matching what is on screen; the rule sent is
  * 0-based; and the shift happens exactly once, here, at the point the row
@@ -99,7 +100,7 @@ export function shiftExpression(expression, delta) {
  *              lists in one step; adding the channel here first would break the
  *              rule in the direction it exists to prevent.
  *
- * The "by atom index" row of § 9.5 is deliberately not a channel: an index is
+ * The "by atom number" row of § 9.5 is deliberately not a channel: an index is
  * where an atom sits, not something it carries, which is why it is the one rule
  * matched against positions and the one that crosses the numbering boundary.
  */

@@ -314,14 +314,16 @@ class Said:
 
 
 def confirm(text: str, *, auto_yes: bool = False, echo=None,
-            prompt=None, question: str = "submit this?") -> Said:
+            prompt=None, question: str = "submit this?",
+            err: bool = False) -> Said:
     """**The one interface** — show it, then act on the answer.
 
     ``auto_yes`` is how a person says *I have decided to trust this*; its
     absence is not permission.  ``echo``/``prompt`` are injected so the same
     function serves a terminal, a test, and anything else that can show a
     string and read a yes — the browser included.  ``question`` is what is asked: a run here is asked as a submission is
-    (`submission.md` S4).
+    (`submission.md` S4).  ``err`` asks on stderr, for a command whose stdout
+    is its output (`molbuilder modify ... -`).
     """
     import click
     # THROUGH THE GUARDED DOOR: a bare `sys.stdin.isatty()` raises on exactly
@@ -329,7 +331,7 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
     # closed, `AttributeError` when it is None).  `hints` is floor 1 with no
     # dependencies, so asking it is a downward import (A7).
     from ..envs.hints import stdin_can_answer
-    echo = echo or click.echo
+    echo = echo or (lambda s: click.echo(s, err=err))
     echo(text)
     if auto_yes:
         echo("  (--yes)")
@@ -342,7 +344,7 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
         return Said(False, "no answer (not a terminal): nothing sent",
                     asked=False)
     prompt = prompt or (lambda: click.confirm(f"  {question}",
-                                              default=True))
+                                              default=True, err=err))
     yes = bool(prompt())
     return Said(yes, "yes" if yes else "no")
 

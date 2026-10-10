@@ -1054,8 +1054,10 @@ function exportStem(model, source, range) {
     const lo = range ? range.from : model.currentFrame();
     const hi = range ? range.to : model.currentFrame();
     if (lo === 0 && hi === count - 1) return base;
-    if (lo === hi) return base + "_frame" + toDisplay(lo);
-    return base + "_frame" + toDisplay(lo) + "-" + toDisplay(hi);
+    // A FILE IS NAMED BY THE INDEX, as every file is (model/overview.md § 2):
+    // the dialog asks in the frame bar's numbers, the name keeps the code's.
+    if (lo === hi) return base + "_frame" + lo;
+    return base + "_frame" + lo + "-" + hi;
 }
 
 
@@ -2694,7 +2696,7 @@ function mountPanel(doc, card, model) {
             // hard-coded (§ 9.5) — but WHICH RULES EXIST is the server's
             // vocabulary, and these are its names.
             for (const [value, label] of [["by_element", "By element"],
-                                          ["by_index",   "By atom index"],
+                                          ["by_index",   "By atom number"],
                                           ["by_residue", "By residue"],
                                           ["by_label",   "By label"]]) {
                 const option = doc.createElement("option");

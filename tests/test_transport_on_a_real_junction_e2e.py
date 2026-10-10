@@ -952,7 +952,7 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     got = read_data_file(data_file_path(run.bundle, label))
     V = {k: v["data"] for k, v in got["variables"].items()}
     assert list(V["frame"]) == list(range(_N_FRAMES))
-    assert list(V["frame_token"]) == [f"f{f + 1:03d}" for f in range(_N_FRAMES)]
+    assert list(V["frame_token"]) == [f"f{f:03d}" for f in range(_N_FRAMES)]
     assert list(V["bias_v"]) == list(_BIAS)
     assert list(V["iv_bias_v"]) == list(_BIAS)
     for b, v in enumerate(_BIAS):

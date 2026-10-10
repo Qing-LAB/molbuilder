@@ -16,7 +16,7 @@
  * in the module/store.  See docs/web/molview.md for the full
  * architecture.
  */
-import { mount } from "/static/lib/molview/index.js";
+import { fromDisplay, mount } from "/static/lib/molview/index.js";
 import { init as startOpControls } from "./viewer.js";
 import { init as startCellPanel }  from "./periodicity.js";
 import { init as startSlabPanel }  from "./slab-panel.js";
@@ -352,7 +352,7 @@ import { chooseFrame } from "/static/lib/projects/dialogs.js";
                 if (n == null) return;
                 chosen = n;
                 if (n !== 1) {
-                    body = await load({ frame: n - 1 });
+                    body = await load({ frame: fromDisplay(n) });
                     if (!body) return;
                 }
             }

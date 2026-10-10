@@ -17,8 +17,8 @@ current → target status picture.
 `.molstruct.json` sidecar it round-trips with),
 [`model/structure-annotations.md`](?doc=model/structure-annotations.md)
 (`regions` / `frozen_atoms` / annotation channels),
-[`model/overview.md`](?doc=model/overview.md) (the 0-based-internal /
-1-based-user atom-index rule), and
+[`model/overview.md`](?doc=model/overview.md) (the index convention: an
+index from 0 everywhere, a number from 1 only on the UI's display), and
 [`engines/overview.md`](?doc=engines/overview.md) (the UI → config → script
 boundary contract and the script-wrapper contract that this doc's script
 blocks physically implement).
@@ -74,7 +74,8 @@ warm-file vocabulary (what carries a run into the next) is § 4.
 
 Two conventions bind everything below and are stated once here:
 
-- **Atom indices are 0-based internally, 1-based only at the human edge.**
+- **Atom indices are 0-based everywhere but the UI's display**, which numbers
+  atoms from 1 (`model/overview.md` § 2).
   Every JSON payload in this doc (`regions`, `frozen_atoms`, ATOM-METADATA,
   the sidecar) uses **0-based** indices. Engine input *coordinate blocks* use
   the engine's own convention (SIESTA `.fdf` is 1-based). The full rule and

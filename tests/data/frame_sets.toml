@@ -27,6 +27,11 @@ rows = [{ name = "temperature", value = 300, unit = "K" }]
 frame_rows = [[],
               [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }],
               [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }]]
+# Beside the rows a person wrote (`temperature`, `mode`), parts of a mode's
+# definition (`structure.md` § 2.2f): the frames' `weight`, the `mass_amu`
+# channel and `info.vibration`.
+channels = { mass_amu = [1.008, 1.008] }
+info = { vibration = { run = "P/frequency/V/01_freq/run-0", result_sha256 = "0000000000000000000000000000000000000000000000000000000000000000" } }
 
 # ---- WRITTEN AND READ BACK (`structure.md` § 2.3-2.4, § 5) ---------------- #
 # The silent failure each row guards: a frame, or a frame's rows, dropped on
@@ -46,10 +51,10 @@ load = {}
 expect = { n_frames = 1, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.74]], rows = [{ name = "temperature", value = 300, unit = "K" }], frame_rows = [], engine_offset = "none" }
 
 [[case]]
-name = "read at one frame, that frame and its rows, placed at frame 0's origin (periodicity § 6.0: one offset for the set)"
+name = "read at one frame, that frame and the rows a person wrote, placed at frame 0's origin (periodicity § 6.0: one offset for the set) -- a mode's definition left behind: its weight, the mass_amu channel, info.vibration (structure.md § 2.2e)"
 door = "save_load"
 load = { frame = 2 }
-expect = { n_frames = 1, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.68]], frame_rows = [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }], engine_offset = [0.0, 0.0, 0.63] }
+expect = { n_frames = 1, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.68]], rows = [{ name = "temperature", value = 300, unit = "K" }], frame_rows = [{ name = "mode", value = 1 }], engine_offset = [0.0, 0.0, 0.63], channels_absent = ["mass_amu"], info_absent = ["vibration"] }
 
 [[case]]
 name = "a frame outside the set is refused, naming how many there are"
@@ -156,4 +161,4 @@ expect = { cell = "none", axis_kind = ["isolated", "isolated", "isolated"], said
 name = "a document whose second frame holds other atoms is refused, naming the frame"
 door = "read_document"
 document = "2\nfirst\nH 0 0 0\nH 0 0 0.74\n2\nsecond\nH 0 0 0\nLi 0 0 0.74\n"
-refused = "frame 2 of 2 differs from frame 1 in its species or atom order"
+refused = "frame index 1 (of 2) differs from frame index 0 in its species or atom order"

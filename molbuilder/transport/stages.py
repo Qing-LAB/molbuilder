@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from ..structure import frame_words, to_display
+from ..structure import frame_words
 from ..template import KIND_ROLES
 
 #: The composite's fixed ladder (§ 1) -- the five stages in
@@ -151,12 +151,11 @@ def sweep_points(task, stage: str) -> Tuple[float, ...]:
 
 
 def frame_token(frame: int) -> str:
-    """A frame's folder token: its count in the cited set as a person counts
-    it, three digits -- ``f001`` the base, frame 0 in the API
-    (`engines/transport.md` § 2a.9; `model/structure.md` § 2.2e: a folder name
-    is read by a person), through the one translation,
-    `structure.to_display`."""
-    return f"f{to_display(frame):03d}"
+    """A frame's folder token: its index in the cited set, three digits --
+    ``f000`` the base, frame index 0 (`engines/transport.md` § 2a.9;
+    `model/structure.md` § 2.2e: the code's index everywhere but the UI's
+    display, a folder name included)."""
+    return f"f{int(frame):03d}"
 
 
 @dataclass(frozen=True)
@@ -186,8 +185,8 @@ class Point:
         return 0.0 if self.volts is None else float(self.volts)
 
     def words(self) -> str:
-        """The point as a person reads it: ``frame 2 of 3 · 0.2 V``
-        (`structure.frame_words`), its folder ``f002/v0.2``."""
+        """The point as a message names it: ``frame index 1 (of 3) · 0.2 V``
+        (`structure.frame_words`), its folder ``f001/v0.2``."""
         return " · ".join(
             ([frame_words(self.frame, self.of)] if self.frame is not None
              else [])

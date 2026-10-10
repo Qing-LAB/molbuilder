@@ -4,7 +4,7 @@
 The rows of ``docs/web/molview.md`` § 13.3 guarded here:
 
     § 11.5 one translation, one place
-    § 9.5  by atom index crosses the numbering boundary once
+    § 9.5  by atom number crosses the numbering boundary once
     § 6.2  the data holds what the filter enumerates
     § 6.6  MolView interprets no reserved label
     § 10.3 the two steps, in that order

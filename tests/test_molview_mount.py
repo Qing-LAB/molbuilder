@@ -95,22 +95,27 @@ def _run(snippet: str):
 # § 4 — the module is self-contained
 # ---------------------------------------------------------------------------
 
-def test_the_entry_point_offers_two_names_and_no_others():
-    """§ 4, § 9.1: "`mount` and `formula`. Nothing else in the module is
-    importable, and this is the only import a consumer ever writes."
-    """
+def test_the_entry_point_offers_its_four_names_and_no_others():
+    """§ 4, § 9.1: "`mount`, `formula`, `toDisplay` and `fromDisplay`. Nothing
+    else in the module is importable, and this is the only import a consumer
+    ever writes."  The two translations are the one place a number is made
+    from an index (`model/overview.md` § 2): frame index 0 reads as 1, and
+    back."""
     out = _run(
         """
         console.log(JSON.stringify({
             exports: Object.keys(MV).sort(),
             formula: MV.formula(["C","H","H","H","H"]),
             empty: MV.formula([]),
+            shown: MV.toDisplay(0),
+            back: MV.fromDisplay(MV.toDisplay(7)),
         }));
         """
     )
-    assert out["exports"] == ["formula", "mount"], (
-        f"the entry point exports more than the contract allows: {out['exports']}"
+    assert out["exports"] == ["formula", "fromDisplay", "mount", "toDisplay"], (
+        f"the entry point exports other than the contract allows: {out['exports']}"
     )
+    assert (out["shown"], out["back"]) == (1, 7)
     assert out["formula"] == "CH4", "C and H first, then the rest"
     assert out["empty"] == "—"
 
@@ -1212,8 +1217,8 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
     assert out["opened"]["defaults"] == ["2", "2"], (
         f"the dialog must open on the DISPLAYED frame: {out['opened']['defaults']}"
     )
-    assert out["stem"] == "wire_frame2-4", (
-        f"the stem names both ends (§ 11.4): {out['stem']!r}"
+    assert out["stem"] == "wire_frame1-3", (
+        f"the stem names both ends by their index (§ 11.4): {out['stem']!r}"
     )
     assert out["frameCount"] == 3, (
         f"the chosen range did not reach exportFile: {out['frameCount']}"

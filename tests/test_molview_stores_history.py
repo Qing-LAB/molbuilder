@@ -5,7 +5,7 @@ The rows of ``docs/web/molview.md`` § 13.3 guarded here:
 
     § 9.5  the selection survives an editor switch
     § 9.5  a half-typed row constrains nothing
-    § 9.5  by atom index crosses the numbering boundary once
+    § 9.5  by atom number crosses the numbering boundary once
     § 9.5  a label is a change to the truth
     § 9.6  the camera is not kept, saved or read back
     § 11.2 state is the truth, not the view of it

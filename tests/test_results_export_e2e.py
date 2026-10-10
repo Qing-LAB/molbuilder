@@ -221,7 +221,7 @@ def test_a_siesta_trajectory_saves_the_box_its_output_states(
     root = _open(page, flask_server, monkeypatch, siesta_run, out)
     wait_for_viewer(page, atoms=2, frames=len(frames))
     offered = save_to_project(page, "siesta-trajectory", frames=len(frames))
-    assert offered == f"{out.stem}_frame{len(frames)}", offered
+    assert offered == f"{out.stem}_frame{len(frames) - 1}", offered
     _holds_the_engines_frame(root / "siesta-trajectory.xyz", cell,
                              frames[-1].structure.positions)
 

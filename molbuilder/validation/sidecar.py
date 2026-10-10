@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any, List, Mapping, Optional, Tuple
 
 from ..issues import Issue
-from ..structure import Structure, to_display
+from ..structure import Structure, atom_words
 
 
 def _check_frozen_atoms_consumed(struct: Structure, *,
@@ -99,14 +99,11 @@ def check_electrode_labels_are_frozen(struct: Structure, *,
     loose = sorted(lead_idx - frozen)
     if not loose:
         return []
-    els = getattr(struct, "elements", ())
-    shown = ", ".join(f"{to_display(i)} ({els[i]})" if i < len(els)
-                      else str(to_display(i)) for i in loose[:6])
-    more = f" and {len(loose) - 6} more" if len(loose) > 6 else ""
+    shown = atom_words(loose, getattr(struct, "elements", ()), limit=6)
     return [Issue(
         "warn",
         (f"{len(loose)} atom(s) carry an electrode label but are NOT frozen: "
-         f"{shown}{more}.  A transport calculation takes the lead atoms out "
+         f"{shown}.  A transport calculation takes the lead atoms out "
          f"of this structure by that label and treats them as pristine bulk, "
          f"so they must come through {run} unmoved -- and nothing "
          f"holds them.  Add them to \"frozen_atoms\" in /modify before "

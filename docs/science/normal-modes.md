@@ -1438,7 +1438,7 @@ changes the molecule's charge or its potential — then
 ```
 
 One transmission curve at the base geometry (the transport calculation's
-frame 0, `f001`) and each mode's level-shift rate estimate every mode's curvature. The
+frame index 0, `f000`) and each mode's level-shift rate estimate every mode's curvature. The
 rate comes from the electronic frames — or, if the force-constant run can write
 `∂H/∂R` (`vibration.md` § 5.6, level two), from first-order perturbation theory
 for every mode with no extra SCF. What the estimate cannot see is exactly what

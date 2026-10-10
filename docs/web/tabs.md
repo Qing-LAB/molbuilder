@@ -186,8 +186,13 @@ answer says the file holds `F > 1` frames (`n_frames`, `web-api.md`), the tab
 asks *This file holds F frames — which one do you want to load?* (1 … F,
 frame 1 offered) and loads that one (`frame`); Cancel loads nothing. The frame
 arrives as a one-frame structure — the shared facts, `info`, the structure's
-`customized` rows, and that frame's rows as its own — and the add-or-clear
-question above follows as for any file.
+`customized` rows, and that frame's rows as its own; **a mode's definition
+left behind** (`model/structure.md` § 2.2e, § 2.2f: its rows, the `mass_amu`
+channel and `info.vibration` — one frame is no sample of the mode) — and the
+add-or-clear question above follows as for any file. So every edit here acts
+on one frame (user, 2026-10-10: *"when we constrain what is loaded, calling
+modify would always work on a single frame"*); a file of several frames is
+never edited, and is viewed in the Results tab's MolView.
 
 The sources, and what each produces (all POST `/api/build/molecule` with
 `{kind, input}` unless noted):

@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from ..issues import Issue
-from ..structure import Structure
+from ..structure import Structure, atom_words
 
 
 def _sentence(text: str) -> str:
@@ -276,11 +276,9 @@ def spectra_render_checks(struct: Structure,
             if bad:
                 issues.append(Issue(
                     severity="error",
-                    message=(f"\"Freeze by atom index\" contains "
-                             f"out-of-range numbers {bad}.  This "
-                             f"structure has {n} atoms; valid "
-                             f"indices are 0..{n - 1} (counting "
-                             f"from zero)."),
+                    message=(f"the frozen atoms name {atom_words(bad)}, "
+                             f"outside this structure's {n} atoms -- its "
+                             f"indices are 0 … {n - 1}."),
                     where="structure.regions",
                 ))
 
@@ -300,7 +298,7 @@ def spectra_render_checks(struct: Structure,
         issues.append(Issue(
             severity="info",
             message=(
-                f"{len(frozen_now)} atom(s) (indices {frozen_now}) are "
+                f"{len(frozen_now)} atom(s) ({atom_words(frozen_now)}) are "
                 f"frozen: the deck's relaxation, when it runs, holds them "
                 f"fixed (geomeTRIC $freeze; under already_relaxed there is "
                 f"no relaxation), and the Hessian is taken over the free "
@@ -519,8 +517,9 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     if bad:
         issues.append(Issue(
             severity="error",
-            message=(f"the frozen set names atom index(es) {bad}, outside "
-                     f"this structure's {n} atoms (0-based)."),
+            message=(f"the frozen set names {atom_words(bad)}, outside "
+                     f"this structure's {n} atoms -- its indices are "
+                     f"0 … {n - 1}."),
             where="structure.regions"))
         return issues
     n_free = n - len(held)

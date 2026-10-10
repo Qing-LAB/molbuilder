@@ -50,7 +50,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from .issues import Issue, ValidationError
-from .structure import Structure, to_display
+from .structure import Structure, atom_words
 
 #: THE zero-volume threshold, in Å³.
 #:
@@ -262,13 +262,12 @@ def _outside(frac: Optional[np.ndarray],
 
 
 def _name_outside(bad, kinds: Sequence[str]) -> str:
-    """``{axis: atoms}`` in words -- "a (isolated): atom(s) 3; c (transport):
-    atom(s) 1, 2", each atom counted from 1 (`structure.to_display`) -- the
-    one wording both the Cell page and the deck use."""
+    """``{axis: atoms}`` in words -- "a (isolated): atom index 2; c
+    (transport): atom indices 0, 1", each atom by its index
+    (`structure.atom_words`) -- the one wording both the Cell page and the
+    deck use."""
     return "; ".join(
-        f"{'abc'[i]} ({kinds[i]}): atom(s) "
-        f"{', '.join(str(to_display(k)) for k in list(atoms)[:8])}"
-        f"{' …' if len(atoms) > 8 else ''}"
+        f"{'abc'[i]} ({kinds[i]}): {atom_words(list(atoms), limit=8)}"
         for i, atoms in sorted(dict(bad).items()))
 
 
@@ -604,7 +603,7 @@ def require_placed(frame: "EngineFrame", axis_kind) -> None:
         raise ValidationError([Issue(
             "error",
             f"atoms lie outside the cell after placement -- "
-            f"{_name_outside(bad, kinds)} (0-based). "
+            f"{_name_outside(bad, kinds)}. "
             f"Along a non-periodic axis the engine would get an atom outside "
             f"its box. Make the cell longer there, or move the origin the "
             f"structure states -- one you assigned, or an engine's own -- or "

@@ -306,7 +306,7 @@ def test_an_origin_that_leaves_an_atom_outside_is_refused_naming_it(
     _dest, _stage, said = _prep(isolated_projects_root, assigned, cfg, stages,
                                 engine, refused=True)
     assert "outside the cell" in said, said
-    assert "a (isolated): atom(s) 3 " in said, said
+    assert re.search(r"a \(isolated\): atom index 2(?!\d)", said), said
     assert "b (" not in said and "c (" not in said, said
     # Under the hand-off's own id: the Cell page warned of the same atom as
     # `cell.atoms_outside`, and one id carries one severity (plan § 5q D11).

@@ -4,8 +4,8 @@
 # the set a script writes from a real SIESTA vibration of the relaxed
 # junction -- frame 0 the pair, frames at +/-sqrt(3) sigma along its highest
 # mode, the definition stated in full -- makes the case's one change, and
-# cites it at `jobset init`, the door that checks it.  Frames are named as a
-# person counts them, from 1 (`model/structure.md` § 2.2e).
+# cites it at `jobset init`, the door that checks it.  Frames are named by
+# their index, from 0 (`model/structure.md` § 2.2e).
 #
 # Keys of a [[case]]:
 #   set           rows restated: {row, frame (0-based; omitted: the
@@ -31,12 +31,12 @@ refused = ["the 3 frames' weights sum to 0.875, not 1 within 1e-06"]
 [[case]]
 name = "a weight outside (0, 1]"
 set = [{row = "weight", frame = 0, value = 1.2}]
-refused = ["frame 1 of 3's weight is 1.2", "a weight is a number in (0, 1]"]
+refused = ["frame index 0 (of 3)'s weight is 1.2", "a weight is a number in (0, 1]"]
 
 [[case]]
 name = "a frame states no weight"
 drop = [{row = "weight", frame = 2}]
-refused = ["does not state frame 3 of 3's weight"]
+refused = ["does not state frame index 2 (of 3)'s weight"]
 
 [[case]]
 name = "the masses are not stated"
@@ -46,13 +46,13 @@ refused = ["does not state the mass_amu channel"]
 [[case]]
 name = "a frame's displacement is not its coordinates'"
 scale = [{row = "displacement_ang", frame = 2, by = 2.0}]
-refused = ["frame 3 of 3's displacement_ang is", "its coordinates give"]
+refused = ["frame index 2 (of 3)'s displacement_ang is", "its coordinates give"]
 
 [[case]]
 name = "a frame is not where its coordinates put it"
 scale = [{row = "q_amu12_ang", frame = 2, by = 2.0},
          {row = "node_sigma", frame = 2, by = 2.0}]
-refused = ["frame 3 of 3 does not sit at q_amu12_ang"]
+refused = ["frame index 2 (of 3) does not sit at q_amu12_ang"]
 
 [[case]]
 name = "the frames do not move"
@@ -61,8 +61,8 @@ set = [{row = "displacement_ang", frame = 1, value = 0.0},
        {row = "displacement_ang", frame = 2, value = 0.0},
        {row = "max_atom_displacement_ang", frame = 1, value = 0.0},
        {row = "max_atom_displacement_ang", frame = 2, value = 0.0}]
-refused = ["frame 2 of 3 does not sit at q_amu12_ang",
-           "frame 3 of 3 does not sit at q_amu12_ang"]
+refused = ["frame index 1 (of 3) does not sit at q_amu12_ang",
+           "frame index 2 (of 3) does not sit at q_amu12_ang"]
 
 [[case]]
 name = "the spread is not its formula's"
@@ -72,12 +72,12 @@ refused = ["the structure's sigma_amu12_ang is"]
 [[case]]
 name = "a frame's node is not its q over the spread"
 scale = [{row = "node_sigma", frame = 1, by = 2.0}]
-refused = ["frame 2 of 3's node_sigma is", "q_amu12_ang / sigma_amu12_ang gives"]
+refused = ["frame index 1 (of 3)'s node_sigma is", "q_amu12_ang / sigma_amu12_ang gives"]
 
 [[case]]
 name = "the base is not at rest"
 set = [{row = "displacement_ang", frame = 0, value = 1e-7}]
-refused = ["frame 1 of 3 is the equilibrium the mode is taken at, so its displacement_ang is 0, not 1e-07"]
+refused = ["frame index 0 (of 3) is the equilibrium the mode is taken at, so its displacement_ang is 0, not 1e-07"]
 
 [[case]]
 name = "a unit not the one its name states"

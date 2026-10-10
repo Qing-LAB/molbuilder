@@ -28,6 +28,7 @@ Keys of a ``[[case]]``:
 from __future__ import annotations
 
 import json
+import re
 import tomllib
 from pathlib import Path
 
@@ -35,7 +36,7 @@ import numpy as np
 import pytest
 
 from molbuilder import modify
-from molbuilder.structure import Structure
+from molbuilder.structure import AtomChannel, Structure
 from molbuilder.workingcopy_structure import StructureCodec
 
 _TABLE = tomllib.loads(
@@ -53,6 +54,11 @@ def _the_set() -> Structure:
     for row in _SET["rows"]:
         built.set_customized(row["name"], row["value"], unit=row.get("unit"),
                              note=row.get("note"))
+    for name, values in (_SET.get("channels") or {}).items():
+        built.set_channel(name, AtomChannel(
+            "value", {i: float(v) for i, v in enumerate(values)}))
+    for key, value in (_SET.get("info") or {}).items():
+        built.set_info(key, value)
     return built
 
 
@@ -153,6 +159,10 @@ def _check(expect, got: Structure, built: Structure, *, written=None,
             assert list(got.axis_kind) == want
         elif key == "said":
             assert said and want in said[0], said
+        elif key == "channels_absent":
+            assert not set(want) & set(got.annotations or {}), got.annotations
+        elif key == "info_absent":
+            assert not set(want) & set(got.info or {}), got.info
         else:
             raise KeyError(f"frame_sets.toml: no check for {key!r}")
 
@@ -219,7 +229,7 @@ def test_frame_set(case, tmp_path, monkeypatch):
         raise KeyError(f"frame_sets.toml: no door {door!r}")
 
     if refused:
-        with pytest.raises(ValueError, match=refused):
+        with pytest.raises(ValueError, match=re.escape(refused)):
             act()
         return
     _check(expect, act(), built, written=written)

@@ -51,7 +51,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from . import cell as _cell
-from .structure import (FROZEN_LABEL, Structure, copy_annotations,
+from .structure import (FROZEN_LABEL, Structure, atom_words, copy_annotations,
                         remap_annotations)
 
 
@@ -304,7 +304,8 @@ def _moved_subset(struct: Structure, R, t, indices: Sequence[int]) -> Structure:
     for i in keep:
         if not 0 <= i < n:
             raise ValueError(
-                f"atom index {i} out of range [0, {n}) for a {n}-atom structure")
+                f"{atom_words(i)} out of range [0, {n}) for a {n}-atom "
+                f"structure")
     pos = struct.positions.copy()
     if keep:
         pos[keep] = pos[keep] @ np.asarray(R, dtype=float).T + np.asarray(t, dtype=float)

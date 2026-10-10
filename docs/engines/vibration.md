@@ -1805,7 +1805,7 @@ calculation kind `electronic` on SIESTA — one SCF per frame, in the cell and a
 the settings of the vibration the frames came from, so the modes and the screen
 share one model (taken the way transport takes its shared values from the
 relaxation it cites, `engines/transport.md` § 2a.7), the frames on the axis
-rule's sub-level inside one run (`01_scf/run-0/f001/`, `f002/…`, as transport's
+rule's sub-level inside one run (`01_scf/run-0/f000/`, `f001/…`, as transport's
 frames sit, `engines/transport.md` § 2a.11). Each frame writes its
 own result through a finish — § 5.5's pattern, its bundle under I23 — as
 `<label>.electronic.json`:

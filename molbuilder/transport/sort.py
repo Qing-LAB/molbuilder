@@ -38,7 +38,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 from ..atom_permutation import PERMUTATION_FILE, PERMUTATION_SCHEMA
-from ..structure import Structure
+from ..structure import Structure, atom_words
 
 # --------------------------------------------------------------------- #
 #  The region-label vocabulary -- `model/structure-annotations.md` § 5   #
@@ -186,13 +186,6 @@ def write_permutation(directory, result: SortResult, *,
     return out
 
 
-def _atom_word(struct: Structure, i: int) -> str:
-    """An atom as a person reads it -- counted from 1
-    (`model/overview.md` § 2, `structure.to_display`) -- with its element."""
-    from ..structure import to_display
-    return f"atom {to_display(i)} ({struct.elements[i]})"
-
-
 def _partition_of(struct: Structure) -> List[str]:
     """One partition label per atom, or the two named refusals."""
     n = len(struct.elements)
@@ -203,11 +196,10 @@ def _partition_of(struct: Structure) -> List[str]:
 
     unlabeled = [i for i in range(n) if not membership[i]]
     if unlabeled:
-        shown = ", ".join(_atom_word(struct, i) for i in unlabeled[:8])
-        more = f" and {len(unlabeled) - 8} more" if len(unlabeled) > 8 else ""
+        shown = atom_words(unlabeled, struct.elements, limit=8)
         raise SortError(
-            f"{len(unlabeled)} atom(s) carry no partition label: {shown}"
-            f"{more}.  Every atom must be exactly one of "
+            f"{len(unlabeled)} atom(s) carry no partition label: {shown}.  "
+            f"Every atom must be exactly one of "
             f"{', '.join(PARTITION_LABELS)} (`interface` and other "
             f"labels ride on top and do not count) -- an unlabeled atom "
             f"has no place in TranSIESTA's atom order and would be "
@@ -216,7 +208,7 @@ def _partition_of(struct: Structure) -> List[str]:
     doubled = [i for i in range(n) if len(membership[i]) > 1]
     if doubled:
         shown = "; ".join(
-            f"{_atom_word(struct, i)}: {' + '.join(membership[i])}"
+            f"{atom_words(i, struct.elements)}: {' + '.join(membership[i])}"
             for i in doubled[:8])
         more = f" and {len(doubled) - 8} more" if len(doubled) > 8 else ""
         raise SortError(
@@ -312,7 +304,7 @@ def categorical_sort(struct: Structure) -> SortResult:
     buf_lo, buf_hi = _layer_major(buf_lo), _layer_major(buf_hi)
     if misplaced:
         shown = "; ".join(
-            f"{_atom_word(struct, i)} at z={z[i]:.3f} A"
+            f"{atom_words(i, struct.elements)} at z={z[i]:.3f} A"
             for i in misplaced[:6])
         more = f" and {len(misplaced) - 6} more" if len(misplaced) > 6 else ""
         raise SortError(

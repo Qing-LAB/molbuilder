@@ -225,13 +225,19 @@ class StructureCodec:
         ``/api/build/load``: frame 0 unless asked (*"keep the default
         reading, just take frame zero"*, user 2026-10-09), frame ``frame`` --
         0-based, refused outside the set naming its count -- or with
-        ``frames`` the whole set."""
+        ``frames`` the whole set.  ONE FRAME TAKEN OUT OF SEVERAL leaves a
+        mode's definition behind (``model/structure.md`` § 2.2e,
+        `frameset.without_definition`)."""
         if frames and frame is not None:
             raise ValueError("ask for one frame or for the whole set, not "
                              "both")
         if frames:
             return struct
-        return struct.frame_at(0 if frame is None else frame)
+        one = struct.frame_at(0 if frame is None else frame)
+        if struct.n_frames > 1:
+            from .frameset import without_definition
+            without_definition(one)
+        return one
 
     @staticmethod
     def _engine_own(src: Path) -> bool:

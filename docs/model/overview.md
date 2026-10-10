@@ -51,17 +51,25 @@ of these (and into the engines + the web UI), so it lives here.
 
 ---
 
-## 2. The atom-index convention (0-based internal, 1-based user-facing)
+## 2. The index convention — the code's index everywhere, a number on the UI's display
 
-Atom indices use **two bases with a single explicit conversion boundary** — a
-deliberate design, because arrays/JSON are 0-based by nature while scientists
-count atoms 1-based (SIESTA `.fdf`, PDB serials, counting `.xyz` lines). Mixing
-them silently is the classic off-by-one hazard.
+Atoms and frames carry **two counts with a single explicit conversion
+boundary**, the UI's display — a deliberate design, because arrays/JSON are
+0-based by nature while scientists count atoms 1-based (SIESTA `.fdf`, PDB
+serials, counting `.xyz` lines). Mixing them silently is the classic off-by-one
+hazard, so each count has its own word: an **index** counts from 0, a
+**number** from 1.
 
-| Layer | Base | Where |
+*(User, 2026-10-10: "anything CLI means direct programming, so we don't
+reinterpret the meaning. only UI display would do so"; "we will give
+notification to user to agree that indices start from 0 and could be
+different from atom list in the UI".)*
+
+| Layer | Count | Where |
 |---|---|---|
-| **Internal / machine** | **0-based** | Python `Structure` (`regions`/positions), the `.molstruct.json` sidecar + the `.fdf`/`.py` ATOM-METADATA block, `/api/selection/*` rules, the JS selection store `atom.index`, all wiring |
-| **User-facing** | **1-based** | everything a user reads or types: the atom-list index column, the viewer's atom labels, measurement chips, the "by atom index" filter, an atom a refusal names |
+| **Internal / machine** | **index, from 0** | Python `Structure` (`regions`/positions, frames), the `.molstruct.json` sidecar + the `.fdf`/`.py` ATOM-METADATA block, `/api/selection/*` rules, the JS selection store `atom.index`, all wiring |
+| **The command line, the files, every message molbuilder writes** | **index, from 0 — said as one** | what a person types at the CLI (`molbuilder modify --delete 0,3`), which the command says counts from 0 and asks to be agreed before it acts (`jobset.ask.confirm`, `--yes`); every refusal, warning and printed line — *atom index 3 (Au)*, *frame index 1 (of 3)*, through `structure.atom_words` / `structure.frame_words`, the word *index* in each; a folder named for a frame (`f001` is frame index 1) — the code's own index, never reinterpreted |
+| **The UI's own display** | **number, from 1** | the atom list's `#` column, the viewer's atom labels, measurement chips, the "by atom number" filter, the frame bar's `1 / F`, a frame picker, the Customized heading's *Frame 2 of 3* |
 | **Engine input** | **engine-specific** | SIESTA `.fdf` (1-based), geomeTRIC `$freeze` (1-based), PySCF `mol.atom` (0-based) |
 
 ### 2.1 Identity, carriage, and the only three translation points
@@ -98,8 +106,8 @@ translation is needed.
 
 | Boundary | Direction | The single API |
 |---|---|---|
-| internal → display | 0 → 1-based | `toDisplay` (`lib/molview/_atom.js`) in the browser; `structure.to_display` in Python — an atom's index and a frame's (`model/structure.md` § 2.2e) |
-| user input → internal | 1 → 0-based | `fromDisplay` / `shiftExpression` (same module) |
+| internal → display | 0 → 1-based | `toDisplay` (`lib/molview/_atom.js`) — the browser's, an atom's index and a frame's (`model/structure.md` § 2.2e); Python never converts: a message names the index itself |
+| UI input → internal | 1 → 0-based | `fromDisplay` / `shiftExpression` (same module); the CLI takes the index as typed, said and agreed |
 | internal → engine input | 0-based → engine convention | `engine_atom_index.py` — `to_engine_index(i, engine)` (dispatch), or the FACT functions `siesta_atom_index`/`geometric_atom_index` (1-based) / `pyscf_atom_index` (0-based) |
 | engine output → internal | engine convention → 0-based | `engine_atom_index.py` — `from_engine_index(n, engine)` (the inverse; return leg of the round-trip) |
 
@@ -111,9 +119,11 @@ It exposes the per-engine FACT functions **and** the engine-parametrized
 `to_engine_index` / `from_engine_index` dispatch, backed by one base-offset
 registry so a new engine defines both directions in a single line. The JS
 `_atom.js` (`toDisplay`/`fromDisplay`/`shiftExpression`) is the single
-web-UI implementation, and `structure.to_display` the single Python one —
-what a message names an atom or a frame by; the standalone viewer embed inlines `+1` at the label,
-drift-guarded against `toDisplay`.
+web-UI implementation — the one place a number is made from an index; the
+standalone viewer embed inlines `+1` at the label, drift-guarded against
+`toDisplay`. Python makes none: `structure.atom_words` and
+`structure.frame_words` are the one spelling of an atom and a frame in a
+message, the index as it is.
 
 **The load-bearing invariant.** Engine coordinate blocks emit atoms in internal
 `Structure` order for every kind that does not sort, so engine atom

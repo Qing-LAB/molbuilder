@@ -20,12 +20,8 @@
  *
  * Spec: docs/web/tabs.md; docs/web/molview.md.
  */
-import { formula as mvFormula } from "/static/lib/molview/index.js";
-
-// The atom number as the user sees it. MolView exports `mount` and `formula` and
-// nothing else (molview.md § 4), so this is not imported; § 11.5's one home for
-// the translation is inside the module, where its own panel and readout use it.
-const displayNumber = (index) => index + 1;
+import { formula as mvFormula, toDisplay as displayNumber }
+    from "/static/lib/molview/index.js";
 
 /**
  * Start the Modify tab's op controls against a viewer.

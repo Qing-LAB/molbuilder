@@ -53,7 +53,7 @@ import re as _re
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union  # noqa: F401 -- `Any` annotates AtomChannel.data
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union  # noqa: F401 -- `Any` annotates AtomChannel.data
 
 import numpy as np
 
@@ -334,21 +334,37 @@ IDENTITY_FIELDS = ("atom_names", "residue_ids", "residue_names",
 _DEFAULT_ISOLATED_VACUUM = 3.0
 
 
-def to_display(index: int) -> int:
-    """An atom's or a frame's index, counted from 0 in code, as the number a
-    person reads, counted from 1 (`model/overview.md` § 2;
-    `model/structure.md` § 2.2e).  THE ONE TRANSLATION on this side, as
-    MolView's `toDisplay` is the browser's: nothing writes a ``+ 1`` of its
-    own."""
-    return int(index) + 1
-
-
 def frame_words(frame: int, n_frames: Optional[int] = None) -> str:
-    """A frame as a person reads it -- counted from 1, as MolView's frame bar
-    counts (`model/structure.md` § 2.2e): ``frame 2 of 3`` for frame index 1,
-    through :func:`to_display`."""
-    of = f" of {int(n_frames)}" if n_frames is not None else ""
-    return f"frame {to_display(frame)}{of}"
+    """A frame as every message names it -- by its index, counted from 0 as
+    in code, said as one: ``frame index 1 (of 3)`` (`model/structure.md`
+    § 2.2e; `model/overview.md` § 2).  THE ONE SPELLING of a frame on this
+    side; only the UI's display counts from 1 (MolView's `toDisplay`)."""
+    of = f" (of {int(n_frames)})" if n_frames is not None else ""
+    return f"frame index {int(frame)}{of}"
+
+
+def atom_words(indices: Union[int, Sequence[int]],
+               elements: Union[Sequence[str], Mapping[int, str]] = (), *,
+               limit: Optional[int] = None) -> str:
+    """Atoms as every message names them -- by their index, counted from 0
+    as in code, said as one, each with its element where ``elements`` knows
+    it: ``atom index 3 (Au)``; ``atom indices 3 (Au), 4 (Au) and 12 more``
+    past ``limit`` (`model/overview.md` § 2).  ``elements`` is a structure's
+    list, or ``{index: element}`` for atoms named by another order's index.
+    THE ONE SPELLING of an atom on this side; only the UI's display numbers
+    atoms from 1 (MolView's `toDisplay`)."""
+    idx = [int(indices)] if isinstance(indices, (int, np.integer)) else [
+        int(i) for i in indices]
+    shown = idx if limit is None else idx[:limit]
+
+    def one(i: int) -> str:
+        el = (elements.get(i) if isinstance(elements, Mapping)
+              else (elements[i] if 0 <= i < len(elements) else None))
+        return f"{i} ({el})" if el else str(i)
+    more = (f" and {len(idx) - len(shown)} more" if len(shown) < len(idx)
+            else "")
+    return (f"atom {'index' if len(idx) == 1 else 'indices'} "
+            f"{', '.join(one(i) for i in shown)}{more}")
 
 
 def _vacuum_from_stored(raw) -> Optional[Tuple[float, float, float]]:
@@ -1440,8 +1456,8 @@ class Structure:
         f = int(frame)
         if not 0 <= f < self.n_frames:
             raise ValueError(
-                f"frame {f} is outside this structure's {self.n_frames} "
-                f"frame(s): 0 … {self.n_frames - 1}")
+                f"{frame_words(f)} is outside this structure's "
+                f"{self.n_frames} frame(s): 0 … {self.n_frames - 1}")
         return f
 
     def frame_at(self, i: int) -> "Structure":
@@ -1734,7 +1750,7 @@ class Structure:
         first = images[0]
         symbols = list(first.get_chemical_symbols())
         # ONE FRAME SET: the frames are the same atoms in the same order,
-        # each named as a person counts it (`frame_words`).
+        # each named by its index (`frame_words`).
         for k, im in enumerate(images[1:], start=1):
             differs = (
                 "atom count" if len(im) != len(first) else

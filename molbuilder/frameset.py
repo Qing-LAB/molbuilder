@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
-from .structure import XYZ_DECIMALS, frame_words, to_display
+from .structure import XYZ_DECIMALS, atom_words, frame_words
 
 #: Each atom's mass, the value channel the mode's coordinate is weighted by
 #: -- molbuilder's own (`model/structure-annotations.md`).
@@ -301,6 +301,21 @@ def read(structure) -> Optional[ModeFrameSet]:
         masses_amu=tuple(masses), vibration=dict(info))
 
 
+def without_definition(structure) -> None:
+    """Take a mode's definition off ``structure``, in place -- § 2.2f's rows,
+    the :data:`MASS_CHANNEL` channel and ``info.vibration``: what one frame
+    taken out of a set becomes (`model/structure.md` § 2.2e), one frame being
+    no sample of a mode's distribution.  The rows a person wrote, the labels
+    and the rest of ``info`` stay."""
+    for r in STRUCTURE_ROWS:
+        structure.remove_customized(r.name)
+    for f in range(structure.n_frames):
+        for r in FRAME_ROWS:
+            structure.remove_customized(r.name, frame=f)
+    (structure.annotations or {}).pop(MASS_CHANNEL, None)
+    structure.drop_info(INFO_KEY)
+
+
 def _masses(channel, n_atoms: int, bad: List[str]) -> List[float]:
     """Every atom's mass from the :data:`MASS_CHANNEL` channel -- one
     positive finite number per atom, its gaps and bad values added to
@@ -313,7 +328,7 @@ def _masses(channel, n_atoms: int, bad: List[str]) -> List[float]:
     for i in range(n_atoms):
         v = _number(data.get(i))
         if v is None or not v > 0.0:
-            bad.append(f"atom {to_display(i)}'s {MASS_CHANNEL} is "
+            bad.append(f"{atom_words(i)}'s {MASS_CHANNEL} is "
                        f"{data.get(i)!r}, "
                        f"not a positive mass")
         out.append(v if v is not None else float("nan"))

@@ -14,7 +14,7 @@ import numpy as np
 from molbuilder.chemistry import symbol_for_z
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import StructureResult
-from molbuilder.structure import Structure
+from molbuilder.structure import Structure, atom_words
 
 from ._helpers import build_structure_result
 
@@ -97,21 +97,21 @@ def _atoms_from(lines: List[str], name: str):
         toks = raw.split()
         if len(toks) < 5:
             raise SiestaXVError(
-                f"{name}: atom row {i+1} has {len(toks)} tokens; "
+                f"{name}: {atom_words(i)}'s row has {len(toks)} tokens; "
                 f"expected at least 5 (ispec iza x y z [vx vy vz])."
             )
         try:
             iza = int(toks[1])
         except ValueError as exc:
             raise SiestaXVError(
-                f"{name}: atom row {i+1} has non-integer Z {toks[1]!r}."
+                f"{name}: {atom_words(i)}'s row has non-integer Z {toks[1]!r}."
             ) from exc
         # MOLBUILDER'S OWN TABLE, not ase's.
         try:
             elements.append(symbol_for_z(iza))
         except ValueError as exc:
             raise SiestaXVError(
-                f"{name}: atom row {i+1} has atomic number {iza} "
+                f"{name}: {atom_words(i)}'s row has atomic number {iza} "
                 f"outside the element table."
             ) from exc
         positions_bohr[i] = [

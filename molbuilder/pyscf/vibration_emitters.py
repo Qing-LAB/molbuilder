@@ -1183,7 +1183,8 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
         out.append("        _dp = _dipole_debye(_mf_plus)")
         out.append("        _dm = _dipole_debye(_mf_minus)")
         out.append("        DMU_DR[_k_idx, _dir] = (_dp - _dm) / (2 * RAMAN_FD_STEP_ANG)")
-    out.append("    print(f'  Raman FD: atom {_atom_idx + 1}/{N_ATOMS} done')")
+    out.append("    print(f'  Raman FD: atom index {_atom_idx} done "
+               "({_k_idx + 1}/{len(FREE_ATOM_IDXS)})')")
     out.append("")
     out.append("# Per-mode Raman activity in Å^4 / amu via Placzek's formula.")
     out.append("#")

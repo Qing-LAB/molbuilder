@@ -33,7 +33,7 @@ import click
 from .chemistry import BackendUnavailable as _BackendUnavailable
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
-from .structure import Structure
+from .structure import Structure, atom_words
 
 
 # --------------------------------------------------------------------- #
@@ -408,13 +408,50 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
         sys.exit(2)
 
 
-def _struct_for_validate(path):
+def _agree_to_atom_indices(struct, indices, *, auto_yes: bool,
+                           check_range: bool = True) -> None:
+    """THE CLI'S ATOM INDICES, AGREED (`model/overview.md` § 2; user,
+    2026-10-10: *"we will give notification to user to agree that indices
+    start from 0 and could be different from atom list in the UI"*): what a
+    person typed is the code's own index, counted from 0 and never
+    reinterpreted, while the UI's atom list numbers the same atoms from 1 --
+    so the command says so, names the atoms, and asks before it acts
+    (`jobset.ask.confirm`, on stderr: stdout may be the structure; ``--yes``
+    for a script or a pipe, which has no one to ask).  An index outside the
+    structure is refused first -- unless ``check_range`` is off, for
+    `--electrode`, whose later slabs may centre on atoms an earlier one adds
+    and are checked against the grown structure, slab by slab."""
+    from .jobset.ask import confirm
+    n = struct.n_atoms
+    outside = sorted({int(i) for i in indices if not 0 <= int(i) < n})
+    if outside and check_range:
+        raise click.BadParameter(
+            f"{atom_words(outside)} {'is' if len(outside) == 1 else 'are'} "
+            f"outside this {n}-atom structure, whose indices are 0 … {n - 1}")
+    said = confirm(
+        f"Atom indices count from 0 here, as in code -- the UI's atom list "
+        f"numbers the same atoms from 1, so atom index 0 is #1 there.\n"
+        f"  This call names "
+        f"{atom_words(sorted({int(i) for i in indices}), struct.elements)}.",
+        auto_yes=auto_yes, question="act on these atoms?", err=True)
+    if not said.asked:
+        raise click.ClickException(
+            "no terminal to agree that these atom indices count from 0 -- "
+            "pass --yes to agree; nothing written")
+    if not said:
+        raise click.ClickException("not agreed -- nothing written")
+
+
+def _struct_for_validate(path, *, one_frame_only: bool = False):
     """Read either XYZ or PDB through the codec; return (Structure, optional
     cell array).
 
     FRAME 0 OF A FRAME SET, SAID (``model/structure.md`` § 2.3, *Which
     frame*): the CLI's commands work on one structure, and a door that prints
     says when it took one frame of several -- a line, never a refusal.
+    ``one_frame_only`` is the editing command's: a file of several frames is
+    REFUSED (§ 2.3: an edit acts on one structure, and the command line has
+    no one to ask which).
     """
     import numpy as np
     from .workingcopy_structure import StructureCodec
@@ -422,6 +459,13 @@ def _struct_for_validate(path):
     whole = StructureCodec().load(path, frames=True, said_out=said)
     for line in said:                  # a lone .xyz (structure.md § 2.3)
         click.echo(line, err=True)
+    if whole.n_frames > 1 and one_frame_only:
+        raise click.ClickException(
+            f"{Path(path).name} holds {whole.n_frames} frames -- molbuilder "
+            f"modify edits one structure, and a frame set is not edited "
+            f"(model/structure.md 2.3): take the frame you mean out first, "
+            f"with a script (StructureCodec().load(path, frame=i)) or in the "
+            f"Modify tab, which asks which")
     if whole.n_frames > 1:
         from .structure import frame_words
         click.echo(f"{Path(path).name} holds {whole.n_frames} frames; "
@@ -701,11 +745,13 @@ def _infer_output_format(path):
 # are allowed where geometrically meaningful (delete: flatten;
 # electrode: apply each in order).
 @click.option("--delete", multiple=True, metavar="INDICES",
-              help="comma-separated atom indices to delete (0-based); "
+              help="comma-separated atom indices to delete -- counted from "
+                   "0, as in code (the UI's atom list numbers atoms from 1); "
                    "may be repeated, all entries flattened into one pass")
 @click.option("--orient-axis", default=None, metavar="A0,A1",
-              help="rotate so the vector from atom A0 to atom A1 forms "
-                   "--angle (degrees, default 0) with --axis")
+              help="rotate so the vector from atom index A0 to atom index A1 "
+                   "-- counted from 0, as in code -- forms --angle (degrees, "
+                   "default 0) with --axis")
 @click.option("--rotate", multiple=True, metavar="AXIS:ANGLE",
               help="rotate every atom around AXIS (x/y/z) by ANGLE "
                    "degrees, e.g. 'z:90'.  Single-instance per call: "
@@ -713,8 +759,8 @@ def _infer_output_format(path):
 @click.option("--electrode", multiple=True,
               metavar="ELEM:PLANE:MxNxL@KEY=VAL:CENTER_INDICES",
               help="add ONE FCC slab, centred on the CENTROID of the "
-                   "trailing atom-index list (1 index -> that atom, 2 -> "
-                   "their midpoint, N -> centroid).  "
+                   "trailing atom-index list, counted from 0 (1 index -> "
+                   "that atom, 2 -> their midpoint, N -> centroid).  "
                    "'Au:111:3x3x2@contact=2.4:+z=3' -- contact is the "
                    "centre-to-closest-layer distance for that side.  Repeat "
                    "the flag for the other side, or for stepped contacts.  "
@@ -749,6 +795,10 @@ def _infer_output_format(path):
                    "--electrode in this call; default uses the value "
                    "from molbuilder/data/fcc_lattice.json")
 # Universal
+@click.option("--yes", "auto_yes", is_flag=True,
+              help="agree, without being asked, that the atom indices given "
+                   "count from 0 -- for a script or a pipe, which has no one "
+                   "to ask")
 @click.option("--output-format",
               type=click.Choice(["xyz", "pdb"]), default=None,
               help="output file format (default: infer from extension; "
@@ -757,7 +807,7 @@ def cmd_modify(input_path, output_path,
                delete, orient_axis, rotate, electrode,
                axis, angle, center,
                orthogonal, electrode_offset, lattice_constant,
-               output_format):
+               auto_yes, output_format):
     """Edit a structure: one operation TYPE per CLI call.  The operation
     types are mutually exclusive; chain calls via stdin/stdout pipes
     (`-` for input or output) for multi-step workflows.
@@ -772,9 +822,10 @@ def cmd_modify(input_path, output_path,
     Examples -- canonical Au-bdt-Au junction in a 3-step pipe.  One slab
     per flag: each says which side it goes on and how far it stands off.
 
-        # input: relaxed BDT geometry with 4 atoms (S-C-C-S)
-        molbuilder modify bdt.xyz - --orient-axis 0,3 --center midpoint |
-          molbuilder modify - junction.xyz \\
+        # input: relaxed BDT geometry with 4 atoms (S-C-C-S); the atom
+        # indices count from 0, and --yes agrees to it in a pipe
+        molbuilder modify bdt.xyz - --orient-axis 0,3 --center midpoint --yes |
+          molbuilder modify - junction.xyz --yes \\
               --electrode Au:111:3x3x2@contact=2.4:registry=B:+z=3 \\
               --electrode Au:111:3x3x2@contact=2.4:registry=A:-z=0
 
@@ -870,16 +921,29 @@ def cmd_modify(input_path, output_path,
                 )
 
     with _resolve_input_path(input_path) as resolved:
-        struct, _cell = _struct_for_validate(resolved)
+        struct, _cell = _struct_for_validate(resolved, one_frame_only=True)
     n_in = struct.n_atoms
+
+    # THE ATOM INDICES TYPED, read once and agreed before anything acts.
+    typed: list = []
+    if op_types["--delete"]:
+        indices = _parse_index_csv(delete, "--delete")
+        typed = list(indices)
+    elif op_types["--orient-axis"]:
+        anchors = _parse_two_ints_csv(orient_axis, "--orient-axis")
+        typed = list(anchors)
+    elif op_types["--electrode"]:
+        specs = [_parse_electrode_spec(s) for s in electrode]
+        typed = [i for spec in specs for i in spec["center_indices"] or ()]
+    if typed:
+        _agree_to_atom_indices(struct, typed, auto_yes=auto_yes,
+                               check_range=not op_types["--electrode"])
 
     try:
         if op_types["--delete"]:
-            indices = _parse_index_csv(delete, "--delete")
             struct = delete_atoms(struct, indices)
 
         elif op_types["--orient-axis"]:
-            anchors = _parse_two_ints_csv(orient_axis, "--orient-axis")
             struct = orient_along_axis(struct, anchors, axis=axis,
                                         angle=angle, center=center)
 
@@ -918,16 +982,15 @@ def cmd_modify(input_path, output_path,
             # slab starts that walk on is `registry=` in the spec, because
             # the walk alone does not decide the seam (§ 3.2).
             offset_xy = _parse_xy_csv(electrode_offset, "--electrode-offset")
-            for spec_str in electrode:
-                spec = _parse_electrode_spec(spec_str)
+            for spec_str, spec in zip(electrode, specs):
                 idx = spec["center_indices"]
                 if idx:
                     for i in idx:
                         if not (0 <= i < struct.n_atoms):
                             raise click.BadParameter(
-                                f"--electrode {spec_str!r}: centre index {i} "
-                                f"is out of range for a {struct.n_atoms}-atom "
-                                f"structure")
+                                f"--electrode {spec_str!r}: centre "
+                                f"{atom_words(i)} is out of range for a "
+                                f"{struct.n_atoms}-atom structure")
                     anchor = np.asarray(
                         struct.positions, dtype=float)[idx].mean(axis=0)
                 else:

@@ -60,8 +60,8 @@ current code.
 >   (The switch on screen is named "Show atom labels", which is where the
 >   collision comes from.)
 >
-> Atom numbering: **0-based in code, 1-based on screen**, translated in exactly
-> one place (§ 11.5).
+> Atoms: an **index from 0 in code, a number from 1 on screen**, translated in
+> exactly one place (§ 11.5).
 
 ---
 
@@ -151,7 +151,7 @@ atom to pick — so turn isolate off to select again.
 
 The panel beside the viewer is the other way to select. **Click** mode picks by
 hand; **Filter** mode selects everything matching a rule — by element (`Au,C`),
-by atom index (`1-4, 6, 10-11`), by residue (`ALA,DA`), or by label
+by atom number (`1-4, 6, 10-11`), by residue (`ALA,DA`), or by label
 (`L-electrode`). Add several rows and combine them: **Match all** (an atom must
 satisfy every row), **Match any** (any one row is enough), or **Match none** —
 every atom that satisfies *no* row, which is how you take the rest of a structure
@@ -325,11 +325,15 @@ it.
 **One entry point, and nothing else is importable.**
 
 ```js
-import { mount, formula } from "/static/lib/molview/index.js";
+import { mount, formula, toDisplay, fromDisplay } from "/static/lib/molview/index.js";
 ```
 
 That is the whole surface. `mount` makes a viewer; `formula` turns a list of
-elements into a Hill formula and needs no viewer. Every other file in the module
+elements into a Hill formula and needs no viewer; `toDisplay` / `fromDisplay`
+are the browser's one translation between an index and the number a person
+reads (§ 11.5), for a page outside MolView that shows or asks one — the Modify
+tab's frame picker and its anchor text (`model/overview.md` § 2: *"one place a
+number is made from an index"*). Every other file in the module
 is internal — the model, the stores, the renderEngine, the panel, the sealed
 layer. A consumer that imports any of them directly has broken the module, not
 found a shortcut.
@@ -806,12 +810,12 @@ how they come to disagree about what exists.
 
 **`by label` chooses; the other rules type.** A label that is not defined matches
 no atom, so a free-text box on that rule can only ever produce an empty selection
-and a user wondering why. `by element`, `by atom index` and `by residue` stay
+and a user wondering why. `by element`, `by atom number` and `by residue` stay
 typed: a symbol, a range and a residue name are written, not picked. A row still
 carrying a name that has since gone keeps showing it rather than silently
 becoming the first option — the rule is still what the row says it is.
 
-**A row's value belongs to its kind.** Change a row from `by atom index` to
+**A row's value belongs to its kind.** Change a row from `by atom number` to
 `by label` and what was typed does not come with it: `3-7` is a range of atoms,
 not a label, and a rule that kept it would be saying something it cannot mean.
 The row comes back empty — a chooser that has not been filled in says *choose a
@@ -1848,8 +1852,8 @@ plus one rule (§ 9.4) that cuts across all of them.
 
 ### 9.1 The module entry point
 
-`mount` and `formula` (§ 4). Nothing else in the module is importable, and this
-is the only import a consumer ever writes.
+`mount`, `formula`, `toDisplay` and `fromDisplay` (§ 4). Nothing else in the
+module is importable, and this is the only import a consumer ever writes.
 
 ### 9.2 The handle — for a tab that wants a viewer
 
@@ -2498,7 +2502,7 @@ passed the whole suite. Measured, 2026-08-30. `stores.js` deleted it, and
   | Row | Matches | What the user types |
   |---|---|---|
   | by element | atoms of those elements | `Au,C` |
-  | by atom index | atoms at those positions | `1-4, 6, 10-11` |
+  | by atom number | atoms at those positions | `1-4, 6, 10-11` |
   | by residue | atoms in residues of those names | `ALA,DA` |
   | by label | atoms carrying that label — reserved names included (§ 6.6) | picked from the labels present |
 
@@ -2511,7 +2515,7 @@ passed the whole suite. Measured, 2026-08-30. `stores.js` deleted it, and
   anything to intersect with yet" is the correct reading of a blank row, and
   treating it as "match nothing" would make the panel feel broken mid-typing.
 
-- **By atom index is the one row that crosses the numbering boundary.** An atom's
+- **By atom number is the one row that crosses the numbering boundary.** An atom's
   index is not something it *has* — it is *where it sits* — so it is the one rule
   matched against positions rather than names. The user types 1-based, matching
   what is on screen; the rule sent is 0-based; the shift happens exactly once, at
@@ -4040,8 +4044,10 @@ That is not an academic distinction — it is exactly where this went wrong:
 > **saved state** throughout.
 
 **An export out of a trajectory names the frames it came from.** The stem
-carries them — `wire_frame50` for one, `wire_frame40-120` for a range — so the
-file says what is in it without anyone having to remember. A structure with one
+carries their indices — `wire_frame49` for one, `wire_frame39-119` for a range,
+a file being named by the code's index as every file is (`model/overview.md`
+§ 2), while the dialog asks in the numbers the frame bar shows — so the file
+says what is in it without anyone having to remember. A structure with one
 frame gets no suffix, and neither does a range that covers the whole run: in both
 cases there is nothing to disambiguate it from.
 
@@ -4052,12 +4058,12 @@ extension is not a second decision to make here.
 
 ### 11.5 One atom-numbering translation, in one place
 
-Atom numbers are **0-based in code** and **1-based on screen**, and MolView never
-writes a bare `+1` of its own anywhere.
+An atom's **index counts from 0 in code**, its **number from 1 on screen**, and
+MolView never writes a bare `+1` of its own anywhere.
 
 One shared piece of code owns the translation in both directions: the number a
 user reads, and the reverse — turning a typed 1-based input like `1-4, 6` in the
-"by atom index" filter row back into the 0-based numbers the server expects
+"by atom number" filter row back into the 0-based numbers the server expects
 (§ 9.5).
 
 **Every** surface that shows or accepts an atom number goes through it: the
@@ -4066,12 +4072,15 @@ window (§ 10.3 step 2), the filter panel. That is why they cannot drift apart,
 and why the first atom reads as `#1` everywhere even though the code sees `0`.
 
 **A frame number crosses the same way** (`model/structure.md` § 2.2e): the
-frame bar's `1 / F`, the export dialog's range and its file name, and the
-Customized heading's *Frame 1 of 3* go through the same two functions.
+frame bar's `1 / F`, the export dialog's range, the Customized heading's
+*Frame 1 of 3* and the Modify tab's frame picker go through the same two
+functions — exported for that page (§ 4) — while an export's file name keeps
+the index (§ 11.4).
 
-This is the browser end of a rule that spans the whole application — the same
-translation exists on the server side, and the number a user reads must equal the
-atom number in the generated input file. Its single home is
+This is the browser end of a rule that spans the whole application: the server
+never translates — its messages name the index, said as one
+(`structure.atom_words`) — and the number a user reads here equals the atom
+number in the generated input file. Its single home is
 [`model/overview.md`](?doc=model/overview.md) § 2, and MolView defers to it
 rather than restating it.
 
@@ -4758,7 +4767,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 9.4 — a read-only viewer has no history | `save`, `load` and `undo` do nothing, and the unsaved-changes badge never appears |
 | § 9.5 — the selection survives an editor switch | moving between click and filter mode leaves the selection exactly as it was |
 | § 9.5 — a half-typed row constrains nothing | a blank row combined under *and* leaves the other rows' result intact rather than emptying it |
-| § 9.5 — by atom index crosses the numbering boundary once | a typed range like `1-4, 6` selects the atoms a user would count off on screen, at any structure size, without drifting by one — and the shift happens at one point, not at each row |
+| § 9.5 — by atom number crosses the numbering boundary once | a typed range like `1-4, 6` selects the atoms a user would count off on screen, at any structure size, without drifting by one — and the shift happens at one point, not at each row |
 | § 9.5 — a label is a change to the truth | applying a label replaces that label's previous set of atoms, and in a read-only viewer it does nothing at all |
 | § 9.5 — one selection per owner | a read-only viewer's selection changes leave an editable viewer's selection untouched |
 | § 9.6 — the camera is not kept, saved or read back | nothing above the drawing reports where the camera is pointing, and a reload fits it to the structure rather than restoring an angle |
@@ -4870,7 +4879,7 @@ below lives under `lib/molview/`.
 
 | File / directory | Owns |
 |---|---|
-| `index.js` | the entry point — `mount`, `formula` (§ 4) |
+| `index.js` | the entry point — `mount`, `formula`, `toDisplay`, `fromDisplay` (§ 4) |
 | `mount.js` | assembling the card, the handle, the playback timer (§ 8, § 9.2) |
 | `model.js` | the model — the master copy and the data API (§ 6, § 9.3) |
 | `model-jobs.js` | the model's helpers (§ 7.3) — load in, write out, the geometry edits, the cell edit — and the one place the server's names become this module's (§ 11.1) |

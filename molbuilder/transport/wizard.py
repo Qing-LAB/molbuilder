@@ -58,7 +58,7 @@ import numpy as np
 
 from ..cell import (LAYER_TOL_ANG, bulk_z_period, classify_seam,
                     detect_layers)
-from ..structure import Structure, to_display
+from ..structure import Structure, atom_words
 from .sort import ELECTRODE_LABELS
 from .transiesta import (
     _compute_cell_from_extents,
@@ -190,9 +190,8 @@ FROZEN_TOL_ANG = 1e-3
 
 def _atoms_named(device: Structure, idxs, atom_ids=None,
                  limit: int = 6) -> str:
-    """``3 (Au), 4 (Au) and 12 more`` -- the spelling `validation/sidecar`
-    uses, in the identity the person can act on, counted from 1
-    (`structure.to_display`, `model/overview.md` § 2).
+    """``atom indices 3 (Au), 4 (Au) and 12 more`` (`structure.atom_words`),
+    in the identity the person can act on.
 
     `engine_atom_index`: the canonical atom identity is the index in the
     source file's order, which is what the Modify tab shows.  A device
@@ -201,14 +200,9 @@ def _atoms_named(device: Structure, idxs, atom_ids=None,
     means this device's indices are already canonical.
     """
     els = getattr(device, "elements", ()) or ()
-
-    def name(i):
-        shown_i = to_display(atom_ids[i] if atom_ids is not None else i)
-        return f"{shown_i} ({els[i]})" if i < len(els) else str(shown_i)
-
-    shown = ", ".join(name(i) for i in idxs[:limit])
-    more = f" and {len(idxs) - limit} more" if len(idxs) > limit else ""
-    return shown + more
+    shown = [atom_ids[i] if atom_ids is not None else i for i in idxs]
+    return atom_words(shown, {s: els[i] for s, i in zip(shown, idxs)
+                              if i < len(els)}, limit=limit)
 
 
 def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
@@ -313,8 +307,7 @@ def _refuse_unless_frozen_bulk(
     moved = [(i, d) for i, d in moved if d > FROZEN_TOL_ANG]
     if moved:
         shown = "; ".join(
-            f"atom {to_display(atom_ids[i] if atom_ids is not None else i)} "
-            f"({device.elements[i]}) moved {d:.4f} A"
+            f"{_atoms_named(device, [i], atom_ids)} moved {d:.4f} A"
             for i, d in moved[:6])
         more = f" and {len(moved) - 6} more" if len(moved) > 6 else ""
         raise ValueError(

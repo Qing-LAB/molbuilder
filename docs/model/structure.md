@@ -537,19 +537,30 @@ by as much as the frames differ, while still taking frame 0's offset.
 
 **Reading a file** (§ 2.3, § 2.4): frame 0 by default — exactly as before — or
 one frame (`frame=i`) or the whole set (`frames=True`), and a door that prints
-says when it took one frame of several, which and how many.
+says when it took one frame of several, which and how many. **One frame taken
+out of several leaves a mode's definition behind** (§ 2.2f; user, 2026-10-10:
+*"when we constrain what is loaded, calling modify would always work on a
+single frame"*): the frame arrives with the shared facts, `info` and the rows
+a person wrote, never the definition's rows, its `mass_amu` channel or
+`info.vibration` — one frame is no sample of a mode's distribution, and
+carrying them would make it a one-frame set that contradicts itself
+(`StructureCodec.frame_choice`, the one rule for which frame a read answers
+with; `frameset.without_definition`). A one-frame file is what it is.
 
-**Counting — one frame number for a person** *(user, 2026-10-10: "unify the
-frame index, we have one api on the molview for frame and that should be the
-starting point and standard")*. The API indexes frames from 0, as MolView's
-does (`frame_at(0)`, `frame=0`, `setCurrentFrame(0)`, a record's `frame`);
-everything a person reads counts them from 1, as the frame bar's `1 / F` does —
-*"frame 1 of 3"* — **a folder name included**: a transport point's frame level
-is `f001` for frame 0 (`engines/transport.md` § 2a.11). One translation each
-side, the atom index's own (`model/overview.md` § 2): `structure.to_display`
-in Python — `structure.frame_words` the sentence, `transport.stages.frame_token`
-the folder — and MolView's `toDisplay` / `fromDisplay` in MolView
-(`web/molview.md` § 11.5); neither side writes a `+ 1` of its own.
+**Counting — the frame's index, everywhere but the UI's display** *(user,
+2026-10-10: "unify the frame index, we have one api on the molview for frame
+and that should be the starting point and standard"; "anything CLI means
+direct programming, so we don't reinterpret the meaning. only UI display would
+do so")*. The API indexes frames from 0, as MolView's does (`frame_at(0)`,
+`frame=0`, `setCurrentFrame(0)`, a record's `frame`), and so does everything
+molbuilder writes, said as an index — *frame index 1 (of 3)*
+(`structure.frame_words`), **a folder name included**: a transport point's
+frame level is `f001` for frame index 1 (`engines/transport.md` § 2a.11,
+`transport.stages.frame_token`). Only the UI's own display counts from 1 — the
+frame bar's `1 / F`, the Modify tab's frame picker, the Customized heading's
+*Frame 2 of 3* — through MolView's `toDisplay` / `fromDisplay`
+(`web/molview.md` § 11.5), the atom index's own convention
+(`model/overview.md` § 2); nothing else writes a `+ 1`.
 
 ### 2.2f A mode's frame set — what each frame is, raw beside derived *(user, 2026-10-10; built the same day, plan § 5z Q17-e2)*
 
@@ -755,8 +766,14 @@ whole and its sidecar applied to the whole set; then `load(path)` answers
 always had it; `load(path, frame=i)` answers frame `i`, an index outside
 `0 … F−1` refused naming `F`; `load(path, frames=True)` answers the whole set.
 A one-frame file answers the same for all three. A door that prints
-(`jobset init`, the CLI) says when it took one frame of several: *"this file
-holds 3 frames; frame 1 of 3 was taken"* — a line, never a refusal.
+(`jobset init`, `molbuilder validate`) says when it took one frame of
+several: *"this file holds 3 frames; frame index 0 (of 3) was taken"* — a
+line, never a refusal. **`molbuilder modify` refuses a file of several frames**
+(user, 2026-10-10: *"on a cli, we do not allow direct operation on a
+multiframe file because it creates a whole cluster of options and cases"*): an
+edit acts on one structure, and on the command line there is no one to ask
+which frame — a frame is taken out by a script (`load(path, frame=i)`) or in
+the Modify tab, which asks.
 
 > **`molbuilder.load()` stood here and is deleted** *(2026-09-07)*. It read
 > the geometry and not the sidecar — it predated the sidecar by two months and

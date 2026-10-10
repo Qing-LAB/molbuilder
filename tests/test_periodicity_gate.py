@@ -648,7 +648,7 @@ class TestPeriodicityDoor:
         assert said, (f"atoms left the box and nothing said so: "
                       f"{_wheres(body.get('notices'))}")
         # ...and NAMED, as the deck will name them (plan § 5q D12).
-        assert "a (isolated): atom(s) 1, 2, 3" in said[0]["message"], said
+        assert "a (isolated): atom indices 0, 1, 2" in said[0]["message"], said
 
     def test_a_fixed_box_is_not_still_reported_as_broken(self, client):
         """molview.md § 6.8: a CONDITION describes the state the answer carries.

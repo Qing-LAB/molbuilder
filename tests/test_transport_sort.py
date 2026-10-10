@@ -191,7 +191,7 @@ class TestRefusalsNameAtoms:
         struct, _ = _junction(shuffle=False, extra=[("H", 8.0, None)])
         with pytest.raises(SortError) as e:
             categorical_sort(struct)
-        assert "atom 9 (H)" in str(e.value)
+        assert "atom index 8 (H)" in str(e.value)
         assert "no partition label" in str(e.value)
 
     def test_a_double_labeled_atom_is_refused_naming_both(self):
@@ -200,7 +200,7 @@ class TestRefusalsNameAtoms:
         with pytest.raises(SortError) as e:
             categorical_sort(struct)
         msg = str(e.value)
-        assert "atom 1 (Au)" in msg
+        assert "atom index 0 (Au)" in msg
         assert REGION_LEFT_ELECTRODE in msg and REGION_BRIDGE in msg
 
     def test_a_buffer_atom_inside_the_blocks_is_refused(self):
@@ -212,7 +212,7 @@ class TestRefusalsNameAtoms:
         with pytest.raises(SortError) as e:
             categorical_sort(struct)
         msg = str(e.value)
-        assert "atom 9 (He)" in msg and "OUTSIDE" in msg
+        assert "atom index 8 (He)" in msg and "OUTSIDE" in msg
 
     def test_interface_rides_on_top_without_tripping_the_partition(self):
         struct, _ = _junction(shuffle=False)
