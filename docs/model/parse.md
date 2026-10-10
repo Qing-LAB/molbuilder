@@ -866,8 +866,10 @@ a FileParser never depends on the directory composer.
 **What a run DECLARED is not a companion, and no parser looks for it.** The held
 atoms, the regions, the axis kinds and the cell the atoms were placed in are the
 run's deck's records, read through the run's one door, `declared(run)`
-(`execution/architecture.md` § 3.2), by the door that builds a view — the
-trajectory load, the codec reading an engine's own structure file, `xv2xyz`.
+(`execution/architecture.md` § 3.2), by the door that builds a view —
+`runs.view_of`, which the trajectory load, `xv2xyz --from-run` and the
+transport citation ask, and the codec reading an engine's own structure
+file.
 
 **The atoms a run holds are stated by its own output, the same for both
 engines** *(user, 2026-10-04: "there is no reason why siesta can manage to

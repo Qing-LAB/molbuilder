@@ -9,8 +9,9 @@ hand-over — nothing is awaiting, so the tab selects and decides):
                                           from the catalogue narrowed to
                                           the kind
     GET  /api/transport/describe_attempt  the slot picker's describe
-                                          seam: one line from a cited
-                                          run's own .fdf, what its
+                                          seam: one line from what the
+                                          citation records -- a run or a
+                                          pair -- what its
                                           composition measured as
                                           findings, the server-spelled
                                           citation, the junction for the
@@ -46,7 +47,6 @@ from ._shared import (
     issues_to_json as _issues_to_json,
 )
 
-from molbuilder.units import UnknownUnit
 
 
 bp = Blueprint("transport", __name__)
@@ -113,8 +113,6 @@ def api_transport_describe_attempt() -> Any:
                                               compose_junction,
                                               labeled_citation_structure)
     from molbuilder.issues import Issue
-    from molbuilder.parse.contract import contract_of
-    from molbuilder.parse.fdf import parse_fdf_params
     from molbuilder.transport.sort import (ORDER_INVERTED,
                                            electrode_orientation)
 
@@ -137,9 +135,9 @@ def api_transport_describe_attempt() -> Any:
         return jsonify({"ok": True, "citation": None,
                         "summary": str(exc), "findings": []}), 200
 
-    # WHAT ITS RECORD SAYS -- the recorded contract, the one reader of both
-    # kinds (`parse.contract.contract_of`; § 3.1): a cited run's deck, a
-    # cited pair's `info.calculation` as that door wrote it.
+    # WHAT ITS RECORD SAYS (§ 3.1): a cited pair's `info.calculation`; a
+    # cited run's, its view as the Results tab reads it (`runs.view_of`) --
+    # and what is not there is said, never filled in.
     if isinstance(cited, CitedPair):
         record = cited.calculation
         n_atoms = cited.structure.n_atoms
@@ -148,24 +146,14 @@ def api_transport_describe_attempt() -> Any:
                  f"{record.get('source') or 'a deck its record does not name'}")
         concluded = True
     else:
-        try:
-            n_atoms = parse_fdf_params(cited.deck.read_text()).n_atoms
-        except UnknownUnit as exc:
-            # DESCRIBED, NOT REFUSED -- the same shape as the refusal
-            # above: this route answers with the junction it can see and
-            # appends what it could not read.  A deck stating a unit this
-            # build cannot convert is a card with one line missing, not a
-            # 500 on the tab.
-            unread = f"the deck cannot be read: {exc}"
-            return jsonify({"ok": True, "citation": citation,
-                            "summary": unread,
-                            "findings": _issues_to_json(
-                                [Issue("error", unread)])}), 200
-        record = contract_of(cited.deck)
+        from molbuilder.runs import declared, view_of
+        said = declared(cited.run)
+        record = (view_of(cited.run).info or {}).get("calculation")
+        n_atoms = (said.atom_metadata or {}).get("n_atoms_total")
         # HOW IT ENDED AND WHAT IT CONVERGED (`engines/transport.md` § 3.1):
         # said where a person chooses, so a geometry that did not converge
-        # is cited knowingly -- its .XV is then the last geometry SIESTA
-        # wrote.
+        # is cited knowingly -- what it hands over is then the last geometry
+        # SIESTA wrote.
         if cited.concluded is None:
             state = ("NOT CONCLUDED -- still running, or force-stopped "
                      "(the two look identical on disk)")
@@ -178,8 +166,11 @@ def api_transport_describe_attempt() -> Any:
             if cited.converged:
                 state += " · " + cited.converged
                 if cited.converged.endswith("NO"):
-                    state += (" -- the .XV cited is the last geometry "
-                              "SIESTA wrote, not a converged minimum")
+                    state += (" -- its last geometry is the last one SIESTA "
+                              "wrote, not a converged minimum")
+        if record is None:
+            state += (f" · its deck {said.deck.name if said.deck else ''} "
+                      f"states no settings this build reads")
         concluded = bool(cited.concluded)
     c = (record or {}).get("contract") or {}
     bits = [str(c["basis_size"])] if c.get("basis_size") else []

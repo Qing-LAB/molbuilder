@@ -2437,7 +2437,6 @@ So these searches have no door and must not grow one:
 | the search | whose name it is |
 |---|---|
 | `*.XV`, `*{suffix}` from `warmfiles.warm_list` | SIESTA's restart state. The vocabulary already comes from one home (`<engine>/warm-files.toml`); only the loop is local |
-| a bare `*.xyz` in a cited directory | a person's structure file. Its SIDECAR is ours, and is paired through the composer |
 | `*_geom_optim.xyz` | geomeTRIC's, via the declared `pyscf.input.ROLE_GEOM_TRAJ`. It cannot go through `find_by_role` and that refusal is the grammar's own rule: without a label, a trailing `_geom_optim.xyz` cannot be told from a stage token named `..._geom_optim` with `.xyz` as the role |
 | conda-meta's `*.json` | conda's |
 
@@ -2640,8 +2639,8 @@ In the flat shape the root is also the run folder, so the files of § 5.2 and
 | `atom-permutation.json` — only: a SIESTA vibration, or a transport calculation | the atom order the decks were written in | prep (`transport.sort.write_permutation`) | `atom_permutation.read_permutation` | derived |
 | `<element>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines._pseudo_dir`, `materialize`); `jobset init --psml-lib` | `pseudos.psml_sources` | input |
 | `junction.xyz` *(transport)* | the composed junction | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
-| `junction.molstruct.json` *(transport)* | its cell and its region labels | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
-| `junction.cited.fdf` *(transport)* | the deck the junction was cited from, as it was | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
+| `junction.molstruct.json` *(transport)* | its cell, its region labels and the citation's record | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
+| `junction.cited.fdf` *(transport)* — only: a run is cited | the deck the junction was cited from, as it was | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
 | `slot-provenance.json` *(transport)* | where each part of the junction came from, with hashes | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | record |
 | `.gitignore` | which files the saved states keep by content in `.binsnapshots/` rather than in git | `checkpoint.save_before`, before every Save and prep | `checkpoint.Repo` | record |
 | `.git/` | the folder's saved states | `checkpoint.save_before`, before every Save and prep | `checkpoint.Repo` | record |

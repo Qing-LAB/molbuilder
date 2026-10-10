@@ -1027,12 +1027,13 @@ def _apply_run_metadata(struct, xv_path: Path):
     wrote ``xv_path`` declared about its atoms and what it says about itself,
     and one line saying where it came from.
 
-    THE RUN'S OWN DECK, THROUGH THE RUN DOOR (`model/structure-periodicity.md`
-    § 6.0; plan B12, D19): the run that holds the ``.XV`` (`runs.run_of`) and
-    what its deck declared (`runs.declared`) -- its atom-metadata block (the
-    labels, the held atoms, the annotations), applied by that block's one
-    reader, and its engine-offset record's axis kinds.  Nothing is looked for
-    beside the ``.XV`` by its name.
+    THE RUN'S VIEW, THE ONE EVERY DOOR THAT BUILDS A STRUCTURE FROM A RUN
+    ASKS (`runs.view_of`, `model/parse.md` § 5.3, § 5b; plan B12, D19): the
+    run that holds the ``.XV`` (`runs.run_of`), what its deck declared --
+    labels, held atoms, axis kinds -- and what it says about itself, its
+    ``info.calculation`` and ``info.relaxation`` (its own output,
+    `Run.stdout`), so the pair saved here is the one a Results export saves.
+    Nothing is looked for beside the ``.XV`` by its name.
 
     THE ``.XV``'s CELL AND THE ENGINE'S ORIGIN: these coordinates are the
     engine's own, so the cell is the one the run ended on and the offset a
@@ -1042,10 +1043,7 @@ def _apply_run_metadata(struct, xv_path: Path):
     A ``.XV`` no run of ours holds is refused: the flag says a run is there,
     and nothing declares this file's atoms.
     """
-    import numpy as _np
-    from .runs import declared, run_of
-    from .script_emit import apply_atom_metadata
-    from .sidecars.molstruct import MolstructPairingError
+    from .runs import declared, run_of, view_of
 
     run = run_of(xv_path)
     if run is None:
@@ -1055,33 +1053,23 @@ def _apply_run_metadata(struct, xv_path: Path):
             f"above it; project-layout.md § 1.4a), so nothing declares its "
             f"atoms.  Without --from-run the .XV converts on its own.")
     said = declared(run)
-    if said.atom_metadata:
-        try:
-            apply_atom_metadata(struct, said.atom_metadata)
-        except MolstructPairingError as exc:
-            raise click.ClickException(
-                f"--from-run: {said.deck.name} declares other atoms than "
-                f"{xv_path.name} holds: {exc}") from exc
-    kinds = (said.engine_offset or {}).get("axis_kind")
-    struct = struct.replace(
-        engine_offset=_np.zeros(3),
-        **({"axis_kind": tuple(kinds)} if kinds else {}))
-    # WHAT THE RUN SAYS ABOUT ITSELF, from the one composer the Results tab
-    # asks (`parse.dirs.run_info`, `model/parse.md` § 5b): its deck's
-    # recorded contract and its output's relaxation record, so the pair
-    # saved here is the one a Results export saves -- citable by a
-    # transport calculation (`engines/transport.md` § 3.1).
-    from .parse.dirs.run_info import run_info
-    told = run_info(deck=said.deck, output=run.stdout) or {}
-    for key, value in told.items():
-        struct.set_info(key, value)
-    if said.atom_metadata or kinds or told:
+    stated = (said.atom_metadata or {}).get("n_atoms_total")
+    if said.atom_metadata_for() is not None and stated != struct.n_atoms:
+        raise click.ClickException(
+            f"--from-run: {said.deck.name} declares labels for {stated} "
+            f"atoms, and {xv_path.name} holds {struct.n_atoms} -- they are "
+            f"not one run's.")
+    view = view_of(run, output=run.stdout, n_atoms=struct.n_atoms,
+                   lattice=[[float(v) for v in row] for row in struct.cell])
+    struct = view.structure(struct.elements, struct.positions)
+    told = sorted(view.info or {})
+    if view.atom_metadata or (said.engine_offset or {}).get("axis_kind") \
+            or told:
         return struct, (f"from the run's deck {said.deck.name} — axes "
                         f"{','.join(struct.axis_kind)}, "
                         f"{len(struct.frozen_atoms)} held, "
                         f"{len(struct.regions)} label(s) in the region store"
-                        + (f"; info: {', '.join(sorted(told))}"
-                           if told else ""))
+                        + (f"; info: {', '.join(told)}" if told else ""))
     where = (f"its deck {said.deck.name}" if said.deck is not None
              else "no deck of its run here")
     return struct, (f"the run declares nothing about its atoms ({where}); "

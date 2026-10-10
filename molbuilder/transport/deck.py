@@ -551,14 +551,29 @@ def _emit_solver_note(struct, cfg) -> str:
         "# geometry was relaxed upstream and moving it here would invalidate",
         "# the electrode partition the whole ladder is built on.",
         "#",
-        "# PSEUDOPOTENTIALS: this rung does not name a `psml_lib`.  Its",
-        "# .psml files travel with the CITED junction -- `prep` copies them",
-        "# into the calculation's `pseudos/` directory beside this deck, and",
-        "# `jobset init` refuses a --psml-lib for a transport calculation",
-        "# for exactly that reason.  If SIESTA cannot find a pseudo, the",
-        "# citation did not carry it; do not add a library path here.",
+        *_pseudopotential_note(cfg),
         "",
     ])
+
+
+def _pseudopotential_note(cfg) -> list:
+    """Where this calculation's ``.psml`` files came from, by the citation's
+    kind (`engines/transport.md` § 3.1): a cited pair's from the directory
+    the template's ``psml_lib`` names, a cited run's with the run."""
+    lib = getattr(cfg, "psml_lib", None)
+    if lib:
+        return [
+            "# PSEUDOPOTENTIALS: `prep` copies this calculation's .psml files",
+            f"# from {lib} -- the template's `psml_lib`, named at `jobset",
+            "# init` for a cited structure pair, which carries none -- into",
+            "# the calculation's `pseudos/` directory beside this deck.",
+        ]
+    return [
+        "# PSEUDOPOTENTIALS: this calculation's .psml files travel with the",
+        "# CITED run -- `prep` copies them into the calculation's `pseudos/`",
+        "# directory beside this deck.  If SIESTA cannot find a pseudo, the",
+        "# cited run did not carry it.",
+    ]
 
 
 #: What an SCF rung's mesh says beside its values -- ADVICE, not the rule: the

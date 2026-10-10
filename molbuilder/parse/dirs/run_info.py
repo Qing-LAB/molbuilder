@@ -17,8 +17,9 @@ Two keys:
 
 * ``calculation`` — the electronic contract the run's own deck records
   (``parse.contract.contract_of``), in the catalogue's own names
-  (``parse.contract.RECORDED_FIELDS``),
-  so a cited pair defaults a transport calculation's template.
+  (``parse.contract.RECORDED_FIELDS``, the k-point mesh and the SCF
+  settings), so a cited run or pair defaults a transport calculation's
+  template.
 * ``relaxation`` — what the run did to the geometry it left, read from
   the output the viewer has open, which the caller hands down
   (``parse.contract.relaxation_of``, `model/parse.md` § 5b.1): its force
@@ -28,8 +29,10 @@ Two keys:
   stated relaxed (`engines/vibration.md` § 2.2).
 
 Callers, each handing the output it has open:
-  * ``web/blueprints/watch.py::_run_metadata`` — the block every
-    ``/api/watch/load`` answer carries: the file the load opened.
+  * ``runs.view_of`` — the view of a run every door that builds a structure
+    from one asks: the Results tab's load (``/api/watch/load``, the file it
+    opened), ``xv2xyz --from-run`` (the run's own output), the transport
+    citation (the run door's choice, ``runs.openable``).
   * ``web/blueprints/results.py::api_results_contract`` — the structure
     inspector's door: the run door's choice for the structure's folder
     (``runs.openable``).

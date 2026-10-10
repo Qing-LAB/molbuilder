@@ -1181,7 +1181,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "(`transport.compose.write_compose_record`)",
              door="transport.compose.load_compose_record"),
     Artifact(name=JUNCTION_SIDECAR_FILE,
-             what="its cell and its region labels",
+             what="its cell, its region labels and the citation's record",
              calculation="transport", when="prep", level="calculation",
              kind="derived",
              writer="a transport calculation's first prep "
@@ -1193,7 +1193,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              kind="derived",
              writer="a transport calculation's first prep "
                     "(`transport.compose.write_compose_record`)",
-             door="transport.compose.load_compose_record"),
+             door="transport.compose.load_compose_record",
+             only="a run is cited"),
     Artifact(name=SLOT_PROVENANCE_FILE,
              what="where each part of the junction came from, with hashes",
              calculation="transport", when="prep", level="calculation",

@@ -406,12 +406,11 @@ def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
     from molbuilder.transport.compose import load_compose_record
     by_run = read_template(junction.template_at_init)
     by_pair = read_template(junction.pair_template)
-    cited = [it.name for it in select(by_run, engine="siesta")
-             if it.source == "cited"]
-    assert "mixing_weight" in cited and "mesh_cutoff" in cited, cited
-    for name in cited:
-        assert ((one(by_pair, name).value, one(by_pair, name).source)
-                == (one(by_run, name).value, "cited")), name
+    def cited(tmpl):
+        return {it.name: it.value for it in select(tmpl, engine="siesta")
+                if it.source == "cited"}
+    assert "mixing_weight" in cited(by_run) and "mesh_cutoff" in cited(by_run)
+    assert cited(by_pair) == cited(by_run)
     psml = one(by_pair, "psml_lib")
     assert (psml.value, psml.source) == ("pseudopotential", "person")
     record = load_compose_record(junction.from_pair.bundle,

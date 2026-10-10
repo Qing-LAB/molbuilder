@@ -44,8 +44,7 @@ from molbuilder.parse import (
     detect as detect_parser,
 )
 from molbuilder.parse.contract import engine_of
-from molbuilder.runs import Declared, declared, openable, run_answer, run_of
-from molbuilder.parse.dirs.run_info import run_info
+from molbuilder.runs import openable, run_answer, run_of, view_of
 from molbuilder.parse.engines._helpers import (
     trajectory_result_to_legacy_dict as trajectory_to_legacy_dict,
 )
@@ -203,29 +202,16 @@ def _frame0_structure(
     if not frames:
         return None
     try:
-        from molbuilder.structure import Structure
-        first = frames[0]
-        # THE RUN'S BOX, set as the structure is built (plan § 5q D15): the
-        # block its deck answered (`runs.Declared.frame`), under the
-        # structure's own field names -- the cell, the stated 0, the kinds.
-        per = meta.get("periodicity") or {}
-        struct = Structure(
-            elements=[str(a[0]) for a in first],
-            positions=[[float(a[1]), float(a[2]), float(a[3])] for a in first],
-            cell=per.get("cell"),
-            engine_offset=per.get("engine_offset"),
-            axis_kind=(tuple(per["axis_kind"]) if per.get("axis_kind")
-                       else None),
-        )
+        import json as _json
+        from molbuilder.runs import RunView
         meta_json = meta.get("atom_metadata")
-        if meta_json:
-            import json as _json
-            from molbuilder.script_emit import apply_atom_metadata
-            apply_atom_metadata(struct, _json.loads(meta_json))
-        info = meta.get("info")
-        if isinstance(info, dict) and info:
-            struct.apply_info_dict(info)
-        return struct.to_dict()
+        view = RunView(atom_metadata=(_json.loads(meta_json)
+                                      if meta_json else None),
+                       periodicity=meta.get("periodicity"),
+                       info=meta.get("info"))
+        first = frames[0]
+        return view.structure([a[0] for a in first],
+                              [a[1:4] for a in first]).to_dict()
     except Exception:                                   # noqa: BLE001
         # A run that cannot be assembled still OPENS -- the frames are the
         # point, and the tab falls back to what it always had.
@@ -257,39 +243,31 @@ def _run_metadata(
     structure it ran on?* -- and a new metadata category joins them as a
     KEY inside ``info`` (``parse.dirs.run_info``), not as a fourth field.
     """
-    # WHAT THE RUN DECLARED, FROM ITS OWN DECK -- the run the opened file
-    # belongs to (`runs.run_of`), its labels and its box both read from
-    # that one deck (`runs.declared`), never the first deck a search of
-    # the folder meets (plan B12).  No run of ours, as for an upload:
-    # nothing declared, the output's own lattice alone.
-    _run = run_of(output) if output else None
-    said = declared(_run) if _run is not None else Declared()
+    # THE VIEW OF THE RUN the opened file belongs to (`runs.view_of`): its
+    # labels and box from its own deck, its record from `run_info` -- the
+    # one view every door that builds a structure from a run asks.  No run
+    # of ours, as for an upload: the output's own lattice and record alone.
     frames = (data or {}).get("frames")
-    md = said.atom_metadata_for(len(frames[0]) if frames else None)
+    view = view_of(run_of(output) if output else None, output=output,
+                   traj=traj, n_atoms=len(frames[0]) if frames else None,
+                   lattice=(data or {}).get("lattice"))
     import json as _json
     return {
         # Per-atom metadata (region labels / frozen tags / annotation
-        # channels) the Build tab embedded in the run's input script:
-        # coordinates come from the output logs, the labels from the
-        # deck.  A JSON string, applied downstream through
-        # apply_atom_metadata; None when the run carries no block.
-        "atom_metadata": _json.dumps(md) if md else None,
+        # channels) the Build tab embedded in the run's input script, as a
+        # JSON string the viewer applies; None when the run carries no block.
+        "atom_metadata": (_json.dumps(view.atom_metadata)
+                          if view.atom_metadata else None),
         # The run's box (the cell from the output logs, the axis kinds
         # from the deck's ENGINE-OFFSET record, and the engine's origin,
         # 0).  The viewer passes it through verbatim -- guessing
         # periodicity in the browser is the one thing the Cell rules
         # refuse.
-        "periodicity":   said.frame((data or {}).get("lattice")),
-        # What the run says ABOUT itself: today the electronic contract
-        # its deck records, as `info.calculation`.  Rides installMolecule
-        # in and exportFile out (molview.md § 8.4a), so an export from a
-        # results view carries the contract and a transport citation of
-        # that pair seals its fields rather than leaving them open.
-        # ``output`` -- the file this load opened, the one on screen -- so
-        # the run's record is of it, and ``traj`` its parse, so the record
-        # reads it rather than parsing it again.
-        "info":          run_info(deck=said.deck, output=output,
-                                 traj=traj),
+        "periodicity":   view.periodicity,
+        # What the run says ABOUT itself (`info.calculation`,
+        # `info.relaxation`).  Rides installMolecule in and exportFile out
+        # (molview.md § 8.4a), so an export from a results view carries it.
+        "info":          view.info,
     }
 
 

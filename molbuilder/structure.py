@@ -2202,8 +2202,7 @@ class Structure:
           renamed — the settings still stand, but what they were sorted on
           may not.  ``structure_modified`` says the geometry or the cell
           moved, so the mesh cutoff and transverse k-mesh were converged
-          for something that is no longer there.  `transport/compose.py`
-          reads both and warns in those words.
+          for something that is no longer there.
 
         Called at the places that ARE edits, not inside `replace()`:
         `transport.sort.categorical_sort` reorders atoms through the same

@@ -253,11 +253,13 @@ B8)*.
 **Five cards, driven by ONE fact — the citation:**
 
 1. **The junction** — the shared tree-picker cites **a finished relaxation
-   run of molbuilder's own**, and nothing else ([`engines/transport.md`](?doc=engines/transport.md)
-   § 3.1, decision 7): its deck and `.XV` with its run record. Any other
-   directory answers *not citable* with the missing file named, and the
-   citation held stays held. The describe door answers one summary line (how
-   the run ended, the deck's facts) and **findings** through the one renderer
+   run of molbuilder's own** ([`engines/transport.md`](?doc=engines/transport.md)
+   § 3.1): its folder, read as the Results tab reads a run. Any other
+   directory answers *not citable* with the condition named, and the citation
+   held stays held. *(§ 3.1's second kind, a structure pair, is cited on the
+   command line today; the picker taking a `.xyz` and a pseudopotential
+   directory on this tab are plan § 5z Q17-f.)* The describe door answers one
+   summary line (how the run ended, what its record states) and **findings** through the one renderer
    ([`science/validation.md`](?doc=science/validation.md) § 4.1): each lead's
    seam and principal-layer measurements as information, an inverted
    labelling (`L-electrode` the high-z block) as a warning — never a refusal,

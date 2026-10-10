@@ -114,7 +114,8 @@ family once it is set. The Send asks the same check of the folder it writes
 into (`validation.siesta.pseudopotential_findings`: pseudopotentials already
 beside the calculation count, as at `prep`) and refuses until every element is
 covered — its findings beside the field, the page brought to it. Not PySCF's (it
-reads no pseudopotentials) nor transport's (they come with the citation).
+reads no pseudopotentials) nor transport's (a cited run's come with it; a cited
+pair's from the directory `jobset init --psml-lib` names, prep's door).
 
 > **History (2026-07).** Two changes produced the unified set above: (a) XC-*family*
 > mismatch was split off as `xc_family_mismatch` → **ERROR** (an earlier version

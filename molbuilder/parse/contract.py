@@ -10,7 +10,8 @@ Per-engine, behind one door:
 
 * **SIESTA** — the ``.fdf`` through the shipped parameter parser
   (``parse_fdf_params``): basis, energy shift, XC spelling, mesh
-  cutoff, k-grid, electronic temperature.
+  cutoff, k-grid, electronic temperature, the electronic state, and how
+  its SCF converged (:data:`SCF_RECORD_KEYS`).
 * **PySCF** — no deck-parameter extractor exists yet; a ``.py`` deck
   answers ``None`` for now (recorded on the plan's board — the
   interface is the point, the second engine drops in behind it).

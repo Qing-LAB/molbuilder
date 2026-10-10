@@ -333,6 +333,59 @@ def declared(run: Run) -> Declared:
                     engine_offset=extract_engine_offset(text))
 
 
+@dataclass(frozen=True)
+class RunView:
+    """What a run says about the structure it ran on -- the one view every
+    door that builds a structure from a run builds (`model/parse.md` § 5.3,
+    § 5b): the Results tab's load, `xv2xyz --from-run`, the transport
+    citation.  ``atom_metadata``, its deck's label block for these atoms
+    (:meth:`Declared.atom_metadata_for`); ``periodicity``, the box the engine
+    had (:meth:`Declared.frame`); ``info``, what the run says about itself
+    (`parse.dirs.run_info`: ``calculation``, ``relaxation``).  Each ``None``
+    when the run says nothing of it."""
+    atom_metadata: Optional[Dict[str, Any]] = None
+    periodicity: Optional[Dict[str, Any]] = None
+    info: Optional[Dict[str, Any]] = None
+
+    def structure(self, elements, positions):
+        """One geometry step of the run as a ``Structure``, with what the
+        run says about it: the box, set as the structure is built, under
+        the structure's own field names (plan § 5q D15); the labels; the
+        ``info`` record."""
+        from molbuilder.script_emit import apply_atom_metadata
+        from molbuilder.structure import Structure
+        per = self.periodicity or {}
+        struct = Structure(
+            elements=[str(e) for e in elements],
+            positions=[[float(v) for v in p] for p in positions],
+            cell=per.get("cell"),
+            engine_offset=per.get("engine_offset"),
+            axis_kind=(tuple(per["axis_kind"]) if per.get("axis_kind")
+                       else None))
+        if self.atom_metadata:
+            apply_atom_metadata(struct, self.atom_metadata)
+        if self.info:
+            struct.apply_info_dict(self.info)
+        return struct
+
+
+def view_of(run: Optional[Run], *, output=None, traj: Any = None,
+            n_atoms: Optional[int] = None, lattice=None) -> RunView:
+    """THE VIEW OF A RUN (:class:`RunView`) -- three sources, one question:
+    *what does this run say about the structure it ran on?*  The labels and
+    the axis kinds from what its deck declared (:func:`declared`, for a
+    structure of ``n_atoms``), the box from ``lattice`` -- its output's -- or
+    its deck's record, and what it says about itself from ``run_info`` of
+    its deck and ``output``, the file read (``traj`` its parse, so it is not
+    parsed again).  ``run`` ``None`` -- a file no run of ours holds -- is a
+    view of the output alone: its lattice and its own record."""
+    from molbuilder.parse.dirs.run_info import run_info
+    said = declared(run) if run is not None else Declared()
+    return RunView(atom_metadata=said.atom_metadata_for(n_atoms),
+                   periodicity=said.frame(lattice),
+                   info=run_info(deck=said.deck, output=output, traj=traj))
+
+
 def about(path) -> Dict[str, Any]:
     """WHAT A FILE IS -- its row of the catalogue, read back with its run's
     label (`runfiles.row_for`): ``{ours: True, what, writer, when, kind}``;
@@ -571,5 +624,6 @@ def folder_answer(directory) -> Dict[str, Any]:
             "files": files}
 
 
-__all__ = ["Place", "place_of", "speaking", "Run", "run_of", "about",
-           "run_answer", "openable", "folder_answer"]
+__all__ = ["Place", "place_of", "speaking", "Run", "run_of", "Declared",
+           "declared", "RunView", "view_of", "about", "run_answer",
+           "openable", "folder_answer"]

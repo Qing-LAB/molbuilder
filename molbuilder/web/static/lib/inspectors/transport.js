@@ -496,7 +496,13 @@ const WORKSPACE_TAG = "results:transport";
             r.appendChild(_el("span", cls || "transport-prov-val", String(v)));
             dl.appendChild(r);
         }
-        if (prov.citation) row("cited run", prov.citation);
+        /* THE CITATION'S KIND (§ 3.1): a run's folder, or a structure
+         * pair's .xyz -- and a pair's frames. */
+        if (prov.citation) {
+            row(prov.kind === "pair" ? "cited pair" : "cited run",
+                prov.citation);
+        }
+        if (prov.kind === "pair" && prov.frames) row("frames", prov.frames);
         /* HOW THE CITED RUN ENDED AND WHAT IT CONVERGED (§ 3.1): its
          * record's line, and the status verb's reading of its geometry. */
         if (prov.evidence) row("concluded", prov.evidence);
@@ -504,7 +510,7 @@ const WORKSPACE_TAG = "results:transport";
         if (relaxed.converged) {
             row("converged", relaxed.converged
                 + (/NO$/.test(relaxed.converged)
-                    ? " — the .XV cited is the last geometry SIESTA wrote, "
+                    ? " — the geometry cited is the last one SIESTA wrote, "
                       + "not a converged minimum" : ""),
                 /NO$/.test(relaxed.converged)
                     ? "transport-prov-val is-weak" : "transport-prov-val");

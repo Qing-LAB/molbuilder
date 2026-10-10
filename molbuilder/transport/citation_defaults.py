@@ -100,12 +100,14 @@ class CitationAnswers:
 def citation_answers(cited_path) -> CitationAnswers:
     """Read the citation once (`engines/transport.md` § 3.8.0: at `init`,
     into this calculation's own template): its recorded contract -- a cited
-    run's deck read through `contract_of`, a cited pair's
-    ``info.calculation`` as `contract_of` wrote it -- each item the
-    catalogue tags ``citation = ["transport"]`` taken by its own name, the
-    k-point mesh by its rule (:func:`_apply_kgrid`)."""
+    run's, its view as the Results tab reads it (`runs.view_of`: its deck
+    through `contract_of`), a cited pair's ``info.calculation`` as that door
+    wrote it -- each item the catalogue tags ``citation = ["transport"]``
+    taken by its own name, the k-point mesh by its rule
+    (:func:`_apply_kgrid`)."""
     from .compose import CitedPair, classify_citation
-    from ..parse.contract import K_MESH_RECORD_KEYS, contract_of
+    from ..parse.contract import K_MESH_RECORD_KEYS
+    from ..runs import declared, view_of
     from .. import template as _T
 
     cited = classify_citation(Path(cited_path))
@@ -113,7 +115,9 @@ def citation_answers(cited_path) -> CitationAnswers:
     if kind == "pair":
         record, source, name = cited.calculation, "pair", cited.path.name
     else:
-        record, source, name = contract_of(cited.deck), "deck", cited.deck.name
+        deck = declared(cited.run).deck
+        record = (view_of(cited.run).info or {}).get("calculation")
+        source, name = "deck", (deck.name if deck is not None else "")
     contract = (record or {}).get("contract") or {}
     if not contract:
         # A record that states nothing -- a deck the unit door refuses
@@ -178,12 +182,12 @@ def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
         # number -- so the junction must be neutral, and a geometry relaxed
         # at another charge is not this junction's.
         raise ValueError(
-            f"the cited run carried a net charge of {answers.net_charge:+d} "
-            f"({answers.source_name or 'its record'}), and a transport "
-            f"calculation cannot: its boundaries are open and the leads set "
-            f"the electron number, so the junction must be neutral "
-            f"(engines/transport.md § 2a.7).  Relax the junction neutral and "
-            f"cite that run.")
+            f"the citation's record states a net charge of "
+            f"{answers.net_charge:+d} ({answers.source_name or 'its record'}), "
+            f"and a transport calculation cannot: its boundaries are open and "
+            f"the leads set the electron number, so the junction must be "
+            f"neutral (engines/transport.md § 2a.7).  Relax the junction "
+            f"neutral and cite that run, or the pair saved from it.")
     kw = {k: v for k, v in answers.values.items() if k not in blank}
     kw.update(_the_persons(chosen))
     # UNDER BOTH, the kind's own recommendations (`engines/template.md`
