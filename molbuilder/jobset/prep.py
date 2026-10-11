@@ -1136,7 +1136,8 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                             **({"trial": _trial} if _trial else {}))
                     _sc.prepare_deck(_spec, _struct, _at, _out / script,
                                      log=log, dest_dir=base,
-                                     findings=findings, plan=plan)
+                                     findings=findings, plan=plan,
+                                     sources=element.deck_sources)
                 spec = spec or _spec
             if seam.sibling_artifacts is not None:
                 with _calling("sibling_artifacts", engine=task.engine,
@@ -1942,7 +1943,8 @@ def _rung_deck_now(base, task, stage: str, composed, *, template_text,
                                 base=base)
     with _user_error_as_prep():
         return _sc.render_deck(spec, struct, cfg, verbose=True,
-                               dest_dir=base).text
+                               dest_dir=base,
+                               sources=_element.deck_sources).text
 
 
 def gather_sources(base_dir, task, stage: str, *, template_text: str

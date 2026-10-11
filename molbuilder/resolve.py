@@ -120,6 +120,13 @@ class ResolvedConfig:
     #: ``{field: source}`` — ``template`` · ``stage`` · ``sweep`` · ``pin``
     #: · ``role`` (the rung's own answer, laid on last).
     provenance: Mapping[str, str] = field(default_factory=dict)
+    #: WHO SET EACH VALUE THE RUNG'S DECK IS RENDERED FROM, as ``((item,
+    #: words), ...)`` -- the deck's PROVENANCE table (`job-contracts.md`
+    #: § 3.2, `engines/template.md` § 6.6 obligation 5): the kind's engine
+    #: and deck items this rung reads, the scheduler's excepted, each in
+    #: :data:`LAYER_WORDS` and, for the template's, the template's own record
+    #: of it (`template.SOURCE_WORDS`); the rows the rung decided first.
+    deck_sources: Tuple[Tuple[str, str], ...] = ()
 
     @property
     def is_trial(self) -> bool:
@@ -319,9 +326,45 @@ def _refuse_a_stated_answer(template_text: str, engine: str,
             f"the template.")
 
 
-#: Where a resolved value came from, in words -- `provenance`'s own sources.
-_SOURCE_WORDS = {"template": "the template", "stage": "this stage's override",
-                 "sweep": "a sweep point", "pin": "a pin", "role": "the rung"}
+#: Where a resolved value came from, in words -- `provenance`'s own sources,
+#: and the run's allocation, which the deck writer's config folds in
+#: (:meth:`ResolvedConfig.render_config`).  Said by a refusal and by the
+#: deck's PROVENANCE table alike.
+LAYER_WORDS = {"template": "the template", "stage": "this stage's override",
+               "sweep": "a sweep point", "pin": "a pin", "role": "the rung",
+               "allocation": "the run's allocation"}
+
+
+def _deck_items(engine: str, kind: str, stage: str) -> frozenset:
+    """The items a rung's deck is rendered from -- the kind's engine and
+    deck items the rung reads (`template.reads`), the scheduler's excepted:
+    their values are the run's, which the deck's ``resolved-defaults``
+    reports."""
+    from .template import catalogue, reads, select
+    return frozenset(
+        it.name for it in select(catalogue(), engine=engine,
+                                 kind=("engine", "deck"), calculation=kind)
+        if not it.allocation and reads(it, engine, kind, stage))
+
+
+def _deck_sources(values, provenance: Mapping[str, str],
+                  origins: Mapping[str, Optional[str]],
+                  names: frozenset) -> Tuple[Tuple[str, str], ...]:
+    """``((item, who), ...)`` for :attr:`ResolvedConfig.deck_sources`, in
+    the pipeline log's order (`pipeline_log.config_rows`: what the rung
+    decided first).  A template value says whose it is as the template
+    records it -- *not recorded* for a file written before the record."""
+    from .pipeline_log import config_rows
+    from .template import SOURCE_WORDS
+    rows = []
+    for name, _value, src in config_rows(values, provenance):
+        if name not in names:
+            continue
+        who = LAYER_WORDS.get(src, src)
+        if src == "template":
+            who = f"{who} · {SOURCE_WORDS[origins.get(name) or 'unrecorded']}"
+        rows.append((name, who))
+    return tuple(rows)
 
 
 def _refuse_what_cannot_stand(values, provenance: Mapping[str, str],
@@ -341,7 +384,7 @@ def _refuse_what_cannot_stand(values, provenance: Mapping[str, str],
             src = provenance.get(it.name, "template")
             shown = list(have) if isinstance(have, tuple) else have
             raise ResolveError(
-                f"{_SOURCE_WORDS.get(src, src)} sets {it.name} = "
+                f"{LAYER_WORDS.get(src, src)} sets {it.name} = "
                 f"{shown!r}{clause}.")
 
 
@@ -417,6 +460,14 @@ def resolve(template_text: str, task, config_cls, *,
     fixed = fixed_by_role(_engine, _kind)
     answers = role_answers(_engine, _kind, stage_obj.name)
     _refuse_a_stated_answer(template_text, _engine, _kind)
+
+    # WHOSE EACH TEMPLATE VALUE IS, as the file records it, and the items
+    # this rung's deck is rendered from: the deck's PROVENANCE table says,
+    # per value, who set it (`job-contracts.md` § 3.2).
+    from .template import read_template
+    origins = {it.name: it.source for it in read_template(template_text).items}
+    deck_items = _deck_items(_engine, _kind,
+                             stage_obj.name if stage_obj is not None else stage)
 
     if stage_obj is not None and stage_obj.overrides:
         # A RUN SETTING is the rung's run card's (`engines/stages.md`
@@ -611,6 +662,7 @@ def resolve(template_text: str, task, config_cls, *,
             point=dict(point),
             label=_label_for(task.label, point),
             provenance=prov,
+            deck_sources=_deck_sources(values, prov, origins, deck_items),
         ))
 
     # Two points may render ONE label -- the token drops out-of-set

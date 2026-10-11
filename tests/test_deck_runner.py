@@ -329,7 +329,10 @@ def test_a_real_engine_reports_the_keywords_its_deck_writes(engine):
         f"{len(str(deck).splitlines())} lines. An empty or near-empty list "
         f"makes the check gate vacuous.")
     present = set(str(deck).splitlines())
-    for line in deck.emitted:
+    # One emission may be several lines, each of them evidence -- the gate's
+    # own rule (`script_emit.check_deck`): a fixed spin's pair, a fitting
+    # basis left to PySCF said above its call.
+    for line in (ln for e in deck.emitted for ln in e.splitlines()):
         assert line in present, (
             f"{engine}: reported writing {line!r} and the rendered deck does "
             f"not contain that line -- the report is the gate's only input")

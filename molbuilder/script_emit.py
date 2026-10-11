@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Mapping,
-                    Optional, Tuple)
+                    Optional, Sequence, Tuple)
 
 # The HOOK BOUNDARY (§ 4.6).  A real import, not a TYPE_CHECKING one: this is
 # called, not annotated.  `issues` is L1 and imports nothing, so there is no
@@ -281,7 +281,9 @@ def emit_provenance(generator_version: str,
                     generated_at: str,
                     resolved_defaults: Optional[Dict[str, str]] = None,
                     form_config_hash: Optional[str] = None,
-                    engine: Optional[str] = None) -> str:
+                    engine: Optional[str] = None,
+                    parameters: Optional[Sequence[Tuple[str, str]]] = None,
+                    parameters_unrecorded: bool = False) -> str:
     """Emit the PROVENANCE block.
 
     ``resolved_defaults`` is a flat dict of "field -> description";
@@ -298,6 +300,13 @@ def emit_provenance(generator_version: str,
     ``running-a-job.md`` § 4.2's resolution order.  Optional so the
     signature stays additive; a caller with nothing to declare emits
     the block exactly as before.
+
+    ``parameters`` is WHO SET EACH VALUE THE DECK IS RENDERED FROM, as
+    ``(item, who)`` rows (`job-contracts.md` § 3.2, `engines/template.md`
+    § 6.6 obligation 5) -- ``resolve``'s ``deck_sources``, each by the
+    template's own name for it.  A deck rendered without them says so
+    (``parameters_unrecorded``); a run script, which renders from no item,
+    carries neither.
     """
     out: List[str] = [begin_marker(BLOCK_PROVENANCE)]
     if engine:
@@ -306,6 +315,16 @@ def emit_provenance(generator_version: str,
     out.append(f"#   generated-at         {generated_at}")
     if form_config_hash:
         out.append(f"#   form-config-hash     {form_config_hash}")
+    if parameters:
+        out.append(f"#   {_PARAMETERS_KEY}:          who set each value this "
+                   f"deck is rendered from")
+        w_name = max(len(r[0]) for r in parameters)
+        for name, who in parameters:
+            out.append(f"#     {name:<{w_name}}  {who}")
+    elif parameters_unrecorded:
+        out.append(f"#   {_PARAMETERS_KEY}:          not recorded -- this "
+                   f"deck was rendered without the description's record of "
+                   f"who set each value")
     if resolved_defaults:
         out.append("#   resolved-defaults:")
         max_key = max(len(k) for k in resolved_defaults.keys())
@@ -640,6 +659,8 @@ __all__ = [
     "emit_atom_metadata", "emit_user_custom_placeholder",
     # In-body application
     "apply_atom_metadata",
+    # An item nobody set, said where its line would be
+    "not_set_line",
     # USER-CUSTOM round-trip
     "replace_user_custom_inner", "merge_user_custom_from_target",
     # Git / time
@@ -857,6 +878,26 @@ def parameter(name: str, engine: str, *, config=None,
     elif decl is not None and deck_text is not None:
         resolved = _deck_answer(decl, deck_text)
     return Parameter(name=name, engine=engine, declaration=decl, value=resolved)
+
+
+def not_set_line(param: "Parameter", keyword: str = "") -> str:
+    """The line an item writes when nobody set it and the engine's own default
+    applies -- ``# <keyword> not written: <not_set>``, where its line would be
+    (`engines/template.md` § 6.6 obligation 4): no value reaches the engine by
+    omission.  ``#`` opens a comment in both engines' decks, an fdf line and a
+    Python one.  The words are the item's own ``not_set``; an item meeting this
+    state without one is refused, since the deck would leave the engine's
+    default unsaid.  ``keyword`` names it where the item writes no keyword of
+    its own -- an argument of another call, PySCF's ``auxbasis``."""
+    decl = param.declaration
+    said = getattr(decl, "not_set", "") if decl is not None else ""
+    if not said:
+        raise ValueError(
+            f"{param.name}: writes nothing here and declares no not_set, so "
+            f"the deck cannot say which default the engine takes "
+            f"(engines/template.md § 5)")
+    key = keyword or (param.writes[0] if param.writes else param.name)
+    return f"# {key} not written: {said}"
 
 
 def _deck_answer(decl, deck_text: str):
@@ -1250,7 +1291,9 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
 
 
 def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
-                log=None, dest_dir=None) -> "RenderedDeck":
+                log=None, dest_dir=None,
+                sources: Optional[Sequence[Tuple[str, str]]] = None
+                ) -> "RenderedDeck":
     """Sub-steps **structure** through **record**, in that order.
 
     **The layout is walked in order**, and a member of it is either a
@@ -1333,11 +1376,16 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     with _calling("provenance_defaults", engine=spec.engine):
         _defaults = (spec.provenance_defaults(cfg)
                      if spec.provenance_defaults else None)
+    # WHO SET EACH VALUE -- `resolve`'s rows, handed over by every road that
+    # renders (`sources`; `job-contracts.md` § 3.2).  None handed is said,
+    # never left blank.
     record: List[str] = [emit_provenance(
         generator_version=molbuilder_git_sha(),
         generated_at=generated_at_now(),
         resolved_defaults=_defaults,
-        engine=spec.engine)]
+        engine=spec.engine,
+        parameters=sources,
+        parameters_unrecorded=sources is None)]
     # NAMED AS THEY GO IN, not counted afterwards.  Re-deriving which blocks
     # a list of three strings holds is the guess this file exists to replace.
     in_record: List[str] = ["PROVENANCE"]
@@ -1577,7 +1625,8 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
 
 def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
                  verbose: bool = True, log=None, dest_dir=None,
-                 findings: "Optional[list]" = None, plan=None):
+                 findings: "Optional[list]" = None, plan=None,
+                 sources: Optional[Sequence[Tuple[str, str]]] = None):
     """**Validate → render → write → check**, in that order, for one deck.
 
     The shared spine of `script-preparation.md` § 3's per-deck sub-steps. The
@@ -1599,6 +1648,10 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     ``plan`` (`jobset.planned.Plan`) receives the deck and its report instead
     of the disk, and the check reads the deck's text as the plan will write
     it: `prep` decides everything before it writes (`job-system.md` § 5.0).
+
+    ``sources`` is who set each value the deck is rendered from --
+    ``ResolvedConfig.deck_sources`` -- written into its PROVENANCE block
+    (`job-contracts.md` § 3.2).
     """
     from .validation import report
     if log is not None:
@@ -1606,7 +1659,7 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     # 3.3 validate runs inside `render_deck`, on the subject the SPEC names --
     # one owner for the step.
     rendered = render_deck(spec, struct, cfg, verbose=verbose, log=log,
-                           dest_dir=dest_dir)
+                           dest_dir=dest_dir, sources=sources)
     written = write_script(path, rendered.text, plan=plan)     # 3.10 write
     text = (plan.read_text(written) if plan is not None
             else written.read_text(encoding="utf-8"))
@@ -1717,8 +1770,13 @@ def _extract_header_text(text: str) -> Optional[str]:
 _PROVENANCE_KV_RE = re.compile(
     r"^#\s+(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
 
+#: THE PROVENANCE BLOCK'S SUB-BLOCKS -- a ``<name>:`` header, then indented
+#: rows read as ``<name>.<key>``: what the auto-policy chose
+#: (``resolved-defaults``) and who set each value (``parameters``).  The
+#: header's own words, where it carries any, read as ``<name>``.
+_PARAMETERS_KEY = "parameters"
 _PROVENANCE_DEFAULTS_HDR = re.compile(
-    r"^#\s+resolved-defaults\s*:\s*$")
+    r"^#\s+(?P<sub>resolved-defaults|parameters)\s*:\s*(?P<note>.*?)\s*$")
 
 _PROVENANCE_DEFAULTS_KV_RE = re.compile(
     r"^#\s{4,}(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
@@ -1746,19 +1804,22 @@ def _extract_provenance_dict(text: str) -> Optional[Dict[str, str]]:
     if begin_idx is None or end_idx is None:
         return None
     out: Dict[str, str] = {}
-    in_defaults = False
+    sub = None
     for raw in lines[begin_idx + 1: end_idx]:
-        if _PROVENANCE_DEFAULTS_HDR.match(raw):
-            in_defaults = True
+        hm = _PROVENANCE_DEFAULTS_HDR.match(raw)
+        if hm:
+            sub = hm.group("sub")
+            if hm.group("note"):
+                out[sub] = hm.group("note")
             continue
-        if in_defaults:
+        if sub is not None:
             dm = _PROVENANCE_DEFAULTS_KV_RE.match(raw)
             if dm:
-                out[f"resolved-defaults.{dm.group('key')}"] = dm.group("val")
+                out[f"{sub}.{dm.group('key')}"] = dm.group("val")
                 continue
-            # A non-defaults-shaped line ends the sub-block; the
+            # A line not shaped as a row ends the sub-block; the
             # top-level k/v matcher below may still pick it up.
-            in_defaults = False
+            sub = None
         m = _PROVENANCE_KV_RE.match(raw)
         if m:
             out[m.group("key")] = m.group("val")

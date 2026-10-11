@@ -881,8 +881,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             _layout.spin_section(fixed=_derived["spin_fixed"]),
             _sc.Block("spin notes, net charge and k-points",
                       lambda s, c: _after_spin(s, c)),
-            _layout.mpi_section(block_size=_derived["block_size"],
-                                algorithm=_derived["algorithm"]),
+            _layout.mpi_section(algorithm=_derived["algorithm"]),
             *((_layout.geometry_section(
                    is_md=_derived["is_md"],
                    is_nose=_derived["relax_kind"] == "NOSE"),)

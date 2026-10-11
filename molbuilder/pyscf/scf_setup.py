@@ -163,11 +163,13 @@ def emit_solvent_lines(cfg) -> List[str]:
     this build (-DENABLE_SMD) and ddCOSMO has no analytic Hessian --
     both refuse upstream in the kind validator with the reason and the
     references; only PCM reaches this emitter for a vibration deck.
-    Empty ``solvent`` -> no lines (gas phase).
+    Empty ``solvent`` -> the gas phase, said in one comment where the
+    decoration would be (`engines/template.md` § 6.6 obligation 4).
     """
     solvent = str(getattr(cfg, "solvent", "") or "").lower()
     if not solvent:
-        return []
+        from ..script_emit import not_set_line, parameter
+        return [not_set_line(parameter("solvent", "pyscf"))]
     eps = SOLVENTS.get(solvent)
     if eps is None:
         raise ValueError(
@@ -190,7 +192,6 @@ def emit_solvent_apply_fn(cfg) -> List[str]:
     energy is not an approximation, it is an inconsistency -- every
     ``mf`` passes through this function or none does.  Gas phase ->
     an identity function, so call sites never branch."""
-    lines = emit_solvent_lines(cfg)
     out = [
         "",
         "",
@@ -198,9 +199,6 @@ def emit_solvent_apply_fn(cfg) -> List[str]:
         '    """Solvent decoration, identical at EVERY construction',
         '    (equilibrium / displaced / relaxation) -- pyscf.md § 7a."""',
     ]
-    if lines:
-        out += ["    " + ln for ln in lines]
-    else:
-        out.append("    pass  # gas phase")
+    out += ["    " + ln for ln in emit_solvent_lines(cfg)]
     out.append("    return mf")
     return out

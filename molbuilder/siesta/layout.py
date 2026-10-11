@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from ..script_emit import Parameter, Section
+from ..script_emit import Parameter, Section, not_set_line
 
 #: The basis and the real-space grid.
 BASIS_SECTION = Section(
@@ -104,24 +104,22 @@ def spin_section(*, fixed: bool) -> Section:
 
 
 
-def mpi_section(*, block_size, algorithm) -> Section:
+def mpi_section(*, algorithm) -> Section:
     """How the work is split across ranks — built **per render**.
 
     Which items appear depends on answers this deck has already worked out, so
     the table cannot be a constant:
 
     * ``BlockSize`` has a third state.  ``block_size`` unset (``None``) means
-      *do not emit the keyword at all* and let SIESTA choose (`tuning.md`
-      § 2.11), which is not the same as emitting a number; 0 is past the
-      item's limit and refused on every door (`engines/template.md` § 5.3).
+      *write no value* and let SIESTA choose (`tuning.md` § 2.11), which is
+      not the same as emitting a number -- the deck says so in its place,
+      ``# BlockSize not written: …`` (`engines/template.md` § 6.6 obligation
+      4); 0 is past the item's limit and refused on every door (§ 5.3).
     * ``Diag.Algorithm`` and its GPU switch are only meaningful for an ELPA
       solver; ScaLAPACK has no such knobs, and writing them would be the deck
       claiming a setting the solver never reads.
     """
-    items = []
-    if block_size is not None:
-        items.append("block_size")
-    items.append("parallel_over_k")
+    items = ["block_size", "parallel_over_k"]
     if str(algorithm or "").upper().startswith("ELPA"):
         items += ["diag_algorithm", "use_gpu"]
     return Section("Parallel execution (MPI)", tuple(items), note=(
@@ -231,7 +229,8 @@ _FMT = {"dm_tolerance": ".1e", "dm_energy_tolerance": ".1e",
         "tbt_elecs_eta_ev": ".6f",
         "tbt_contours_eta_ev": ".6f"}
 
-#: Items whose 0 means LEAVE IT TO THE ENGINE, so 0 writes nothing.  Each of
+#: Items whose 0 means LEAVE IT TO THE ENGINE, so 0 writes no value -- the
+#: deck says which rule then applies, in the item's `not_set`.  Each of
 #: these engine defaults is a FORMULA rather than a number -- the
 #: non-equilibrium and the device Green function's broadenings are the
 #: leads' smallest over ten -- and a number written in its place would
@@ -323,7 +322,10 @@ def line(derived: dict):
     def _mpi(param):
         value = computed.get(param.name)
         if value is None:
-            return None
+            # Nobody set it, and the engine works it out: said, not left
+            # silent (`engines/template.md` § 6.6 obligation 4).
+            return (not_set_line(param)
+                    if param.known and param.declaration.optional else None)
         key = param.writes[0] if param.writes else None
         if key is None:
             return None
@@ -432,10 +434,16 @@ def line(derived: dict):
             return _mpi(param)
         if param.name in override or param.name == "md_target_temperature":
             return _geometry(param)
-        if not param.known or param.value is None:
+        if not param.known:
             return None
+        # NOBODY SET IT, AND THE ENGINE'S OWN DEFAULT APPLIES: the deck says
+        # so where the line would be, in the item's own words -- an optional
+        # item at no value, or one whose 0 leaves the engine's rule
+        # (`engines/template.md` § 6.6 obligation 4).
+        if param.value is None:
+            return not_set_line(param) if param.declaration.optional else None
         if param.name in _ZERO_LEAVES_IT_TO_THE_ENGINE and not param.value:
-            return None
+            return not_set_line(param)
         if len(param.writes) == 2:
             return _pair(param)
         text = _plain(param)

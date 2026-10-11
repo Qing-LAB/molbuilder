@@ -343,6 +343,7 @@ label = "Abort if the SCF hits its cycle cap"
 null_label = "(SIESTA default: abort)"
 optional = true
 tier = "advanced"
+not_set = "SIESTA stops the run when an SCF loop ends unconverged -- its own default, true (read_options.F90)"
 help = """
 What SIESTA does when a geometry step's SCF loop hits max_scf_iter without meeting its tolerances: abort the run (true, SIESTA's own default), or accept the unconverged density and continue with a warning (false).
 
@@ -615,6 +616,7 @@ label = "Target temperature (NVT)"
 null_label = "(use MD.InitialTemperature)"
 optional = true
 tier = "advanced"
+not_set = "SIESTA's own default is 0 K (read_options.F90); a Nose run never meets it, because a blank target is written as the initial temperature"
 help = """
 The temperature a Nose-Hoover thermostat holds the system at during NVT dynamics (K).
 
@@ -864,6 +866,7 @@ group = "budget"
 label = "ScaLAPACK block size"
 null_label = "(auto)"
 optional = true
+not_set = "SIESTA works out its own block size from the ranks and the orbital count (initparallel.F, set_blocksizedefault)"
 help = """
 How many consecutive orbitals go to one MPI rank before the distribution moves to the next -- the ScaLAPACK block. It cannot change the answer, only how evenly the ranks are fed and therefore how long the run takes.
 It has two states. Left as (auto) the keyword is not written and SIESTA uses its own automatic, which is what its manual declares as the default. Set to a number, that number is written verbatim -- which is what you want after benchmarking, and a benchmark is the only thing that really answers this: the best block depends on the matrix size, the rank count, the interconnect and the node's memory layout at once.
@@ -883,6 +886,7 @@ type = "bool"
 group = "budget"
 label = "ParallelOverK"
 optional = true
+not_set = "SIESTA's own default, false: the ranks split the orbitals, not the k-points (diag_option.F90); a blank one is chosen from the k-point mesh before the deck is written"
 help = """
 How the MPI ranks split the diagonalisation: over k-points (on) or over orbitals (off).  Left blank it is chosen automatically from your k-point mesh -- off for a Gamma-only run, on when the mesh holds more than one k-point.
 Splitting over k-points when there is only one leaves the other ranks nothing to do.
@@ -1069,6 +1073,7 @@ label = "Net charge"
 null_label = "(auto)"
 optional = true
 tier = "basic"
+not_set = "the engine's own default is a neutral system -- SIESTA's NetCharge 0, PySCF's charge 0; a blank one is resolved by the electronic state before any deck is written"
 help = """
 Net charge of the system, in units of |e|.  Sign convention: -1 = one extra electron; +1 = one missing electron.
 
@@ -1102,6 +1107,7 @@ group = "profile"
 label = "Spin treatment"
 null_label = "(auto)"
 optional = true
+not_set = "the engine's own default is no spin polarisation -- SIESTA's Spin non-polarized, PySCF's restricted SCF; a blank one is resolved by the electronic state before any deck is written"
 help = """
 How the two spin channels are solved.
   restricted       every electron paired: one set of orbitals for both spins.  Closed-shell molecules, and metals that carry no moment (Cu, Ag, Au).
@@ -1143,6 +1149,7 @@ group = "profile"
 label = "Unpaired electrons (2S)"
 null_label = "(auto)"
 optional = true
+not_set = "the engine's own default fixes no count -- SIESTA writes no Spin.Fix, PySCF's spin is 0; a blank one is resolved by the electronic state before any deck is written"
 help = """
 The number of unpaired electrons, 2S -- NOT the multiplicity 2S+1.  So 0 = closed shell, 1 = doublet, 2 = triplet, and so on.  Enter a multiplicity here by mistake and you ask for a different electronic state.
 free lets the moment float to whatever the SCF finds -- SIESTA only, and the only value under non-collinear and spin-orbit, and under unrestricted on a transport calculation: TranSIESTA cannot hold a fixed total spin.  PySCF always fixes the count.
@@ -1275,6 +1282,7 @@ type = "str"
 group = "profile"
 label = "Auxiliary fitting basis"
 optional = true
+not_set = "PySCF picks the fitting basis matched to the orbital basis when density fitting is on (pyscf.df.addons.make_auxbasis)"
 help = """
 The smaller extra basis that density fitting uses to approximate the electron-repulsion integrals, which is what makes density fitting fast.
 Leave it as None and density_fit() auto-picks a fitting basis matched to your orbital basis. Name one yourself only to reproduce a setup that specified it; a fitting basis that does not match the orbital basis adds fitting error for no speed.
@@ -1583,6 +1591,7 @@ group = "profile"
 label = "Solvent"
 null_label = "(gas phase)"
 optional = true
+not_set = "no solvent model: the molecule is computed in the gas phase"
 help = """
 Surround the molecule with an implicit solvent instead of vacuum: PySCF wraps the SCF in a polarizable continuum rather than placing real solvent molecules.  Name the liquid (water / methanol / dmso / chloroform / ...), or leave it blank for a gas-phase calculation.
 """
@@ -1917,6 +1926,7 @@ null_label = "(no lower bound)"
 group = "profile"
 label = "Min frequency"
 tier = "advanced"
+not_set = "no lower bound: every mode is kept"
 help = """
 Restrict the orbital-energy data to modes at or above this frequency.  Useful for skipping low-frequency rocking and librational modes, which are often noisy and rarely matter for transport.  Ignored when Mode selection is explicit.
 Caveat: a window can skip a mode whose electron-phonon coupling is strong but whose frequency falls outside it ([Galperin2007]).
@@ -1936,6 +1946,7 @@ null_label = "(no upper bound)"
 group = "profile"
 label = "Max frequency"
 tier = "advanced"
+not_set = "no upper bound: every mode is kept"
 help = """
 Restrict the orbital-energy data to modes at or below this frequency.  Combine it with Min frequency to target a specific spectral window, for example 2800-3200 cm^-1 for C-H stretches.  Ignored when Mode selection is explicit.
 """
@@ -2307,6 +2318,7 @@ range = [0.0, 1.0]
 group = "stage"
 label = "Device Green-function broadening"
 tier = "advanced"
+not_set = "tbtrans takes a tenth of the smallest electrode broadening (TBT.Elecs.Eta), 0.1 meV at its 1 meV (m_tbt_contour.F90)"
 help = """
 The imaginary part used on the device Green function -- the small broadening that keeps sharp features finite.  0 leaves the engine's own default, which is a FORMULA -- min(electrode eta)/10 -- so a number here replaces it rather than restating it.
 """
@@ -2550,6 +2562,7 @@ range = [0.0, 1.0]
 group = "stage"
 label = "Non-equilibrium broadening"
 tier = "advanced"
+not_set = "TranSIESTA takes a tenth of the smallest electrode broadening (TS.Elecs.Eta), 0.1 meV at its 1 meV (m_ts_contour_neq.f90)"
 help = """
 The small imaginary part added to the energy along the non-equilibrium contour, which smooths that integration.  0 leaves the engine's own default in place.  It is inert at zero bias, where there is no non-equilibrium window to integrate.
 """

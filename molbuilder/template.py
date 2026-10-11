@@ -310,6 +310,13 @@ class Item:
     # called.
     label:      str = ""                    # "MPI ranks (np)" -- the human name
     null_label: str = ""                    # "(auto)" -- what UNSET is called
+    #: WHAT THE ENGINE DOES WHEN THIS ITEM WRITES NOTHING, one sentence from
+    #: the engine's source (§ 5, § 6.6 obligation 4): the deck writes
+    #: ``# <keyword> not written: <not_set>`` where the line would be, so no
+    #: value reaches the engine by omission (`script_emit.not_set_line`).
+    #: Required on every optional engine or deck item the scheduler does not
+    #: answer -- checked by :func:`catalogue`.
+    not_set: str = ""
 
     # --- § 6.2 / § 6.3 / § 6.4 (schema @2) ---------------------------- #
     #: Which questions this item answers.  FIRST is the panel; the rest make
@@ -901,7 +908,7 @@ _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "ancho
                    "allocation",
                    "citation", "shared", "role", "role_values", "stages",
                    "unit", "range", "above", "tightens", "tier", "pattern",
-                   "group", "label", "null_label", "read_by", "help")
+                   "group", "label", "null_label", "not_set", "read_by", "help")
 
 
 def _item_payload(it: Item) -> Dict[str, Any]:
@@ -980,6 +987,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["label"] = it.label
     if it.null_label:
         out["null_label"] = it.null_label
+    if it.not_set:
+        out["not_set"] = it.not_set
     if it.read_by:
         out["read_by"] = list(it.read_by)
     out["help"] = it.help
@@ -1079,6 +1088,15 @@ def catalogue() -> "Template":
             if start is not None and not is_member(start, members):
                 _refuse(f"a {kind} starts at {start!r}, which offered.{key} "
                         f"does not let it take", where=it.name)
+        # WHAT THE ENGINE DOES WHEN NOTHING IS WRITTEN IS SAID (§ 5,
+        # § 6.6 obligation 4): an optional item's deck line can be left
+        # out, and the deck then says which default applies -- in this
+        # item's own words, so none may be missing.
+        if (it.optional and it.kind in ("engine", "deck")
+                and not it.allocation and not it.not_set):
+            _refuse("an optional item the deck may leave out declares no "
+                    "not_set -- what the engine does when it writes nothing "
+                    "(engines/template.md § 5)", where=it.name)
     return parsed
 
 
@@ -1718,6 +1736,7 @@ def _item_from(name: str, body: Any) -> Item:
         required=tuple(body.get("required", ()) or ()),
         stages=tuple(body.get("stages", ()) or ()),
         null_label=str(body.get("null_label", "") or ""),
+        not_set=str(body.get("not_set", "") or ""),
     )
 
 

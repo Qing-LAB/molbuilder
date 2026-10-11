@@ -3146,7 +3146,7 @@ six scattered versions could not do.
 | an override on a rung the `stages` marker excludes is refused at `prep` | ✅ **done 2026-09-24** — beside the shared refusal in `_resolve_transport`; the describe door routed by the declaration since TR8, the other roads reached `resolve`, which knows no ownership |
 | a foreign rung's cell on the stage table is disabled, naming the owners | ✅ **done 2026-09-24** — the column payload carries `stages`; the cell is shown and not editable |
 | the shared values echoed read-only, with their source, on Task setup | ❌ **not built** — the template file is shown whole (`template.md` § 6.6 obligation 3). The form schema has the source and a read-only state since K7 (`form-schema.md` § 1.1), and the Task setup hover names a value's source |
-| a value nobody chose is MARKED as such in the deck | ❌ **not built** — `template.md` § 6.6 obligation 4. *(The file's half — each value's source, obligation 2 — is built, K7.)* |
+| a value nobody chose is MARKED as such in the deck | ✅ **done 2026-10-11** — each deck's PROVENANCE block says who set each value it is rendered from, a value nobody chose *the template · not chosen*, and a setting left to the engine says so where its line would be, in its own `not_set` (`template.md` § 6.6 obligations 4 and 5; `job-contracts.md` § 3.2). *(The file's half — each value's source, obligation 2 — is built, K7.)* |
 | the device deck carries only what `siesta` reads | ✅ **done 2026-09-29** (M5 step 1) — the device deck carries no `TBT.*` line (`deck.py::_device_layout`): `siesta` reads none (its binary holds none); the transmission deck keeps the `TS.*` declarations `tbtrans` reads (§ 6.1b) |
 | one panel per engine (§ 3.8.8) | ❌ **not built** |
 | the per-rung form is a tab per rung, its group cards foldable, each tab opening with the rung's note (§ 3.8.2a) | ✅ **done 2026-09-24** |
@@ -3253,7 +3253,7 @@ door's question.
 | Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)* | — | — | — |
 | Task setup — a read-only echo of every shared value, with its source (§ 6.6 obligation 3) | ❌ not built | — | — | ✅ the file records the source, and the hover names it *(K7)* | — |
 | Task setup — "What came over": the description's own parameters (the junction it cites, its bias list, its treatment — `single-bias` / `low-bias-approximation` / `self-consistent`, the folder answer's `treatment` from `Task.treatment` — and the electrode rename, `swap_electrodes`, § 4; a frame set's card, § 3.8.1, from the folder answer's `frame_set`) *(built 2026-10-08, B8 U7 / T1; the frame set 2026-10-10, Q17-f4)* | — | — | — | ✅ the citation, named | — |
-| the deck (`prep` → `prepare_deck`) | ✅ one value, every rung | ✅ each rung its own | ✅ the rung's answer, laid on its config by `resolve` | ❌ a value nobody chose is written as the documented default but not MARKED (obligation 4) | ✅ |
+| the deck (`prep` → `prepare_deck`) | ✅ one value, every rung | ✅ each rung its own | ✅ the rung's answer, laid on its config by `resolve` | ✅ who set each value, in its PROVENANCE block — a value nobody chose *not chosen* (obligation 4, 2026-10-11) | ✅ |
 
 ---
 

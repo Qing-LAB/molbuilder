@@ -130,6 +130,23 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     # and the template's baseline is still there, so the file is complete
     assert re.search(r"⊕\s+mesh_cutoff\s+300\.0\s+<- template", text), text
 
+    # THE DECK SAYS THE SAME, in its PROVENANCE block -- the record opened
+    # months later, when the log is long gone (`job-contracts.md` § 3.2,
+    # `engines/template.md` § 6.6 obligation 5) -- read through its reader.
+    from molbuilder.runfiles import find
+    from molbuilder.script_emit import _extract_provenance_dict
+    from molbuilder.template import SOURCE_WORDS
+    (deck, _rf), = find(dest, "BDT", role=".fdf")
+    block = _extract_provenance_dict(deck.read_text(encoding="utf-8"))
+    who = {k.split(".", 1)[1]: v
+           for k, v in block.items() if k.startswith("parameters.")}
+    assert who["relax_type"] == "this stage's override", who
+    assert who["write_forces"] == "the rung", who
+    assert who["mesh_cutoff"] in {f"the template · {w}"
+                                  for w in SOURCE_WORDS.values()}, who
+    # the scheduler's answers are the run's, reported beside, never as rows
+    assert "mpi_np" not in who, who
+
 
 def test_the_engines_derived_context_is_in_the_log(tmp_path):
     """**W10's one per-render context**, which no other record carries.

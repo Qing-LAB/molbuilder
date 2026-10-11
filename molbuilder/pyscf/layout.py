@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ..script_emit import Parameter, Section
+from ..script_emit import Parameter, Section, not_set_line, parameter
 
 #: The SCF settings, in the order a reader meets them.  Names are CATALOGUE
 #: names; the engine keyword each one writes is the catalogue's ``anchor`` and
@@ -193,8 +193,13 @@ def line(cfg, *, is_dft: bool):
             if not value:
                 return None
             aux = getattr(cfg, "auxbasis", None)
-            return (f'mf = mf.density_fit(auxbasis="{aux}")' if aux
-                    else "mf = mf.density_fit()")
+            if aux:
+                return f'mf = mf.density_fit(auxbasis="{aux}")'
+            # NOBODY CHOSE THE FITTING BASIS, and PySCF picks one: said
+            # above the call (`engines/template.md` § 6.6 obligation 4).
+            return (not_set_line(parameter("auxbasis", "pyscf"),
+                                 keyword="auxbasis")
+                    + "\nmf = mf.density_fit()")
         if name == "dispersion":
             if value == "none":
                 return None

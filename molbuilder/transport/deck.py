@@ -181,8 +181,7 @@ def _device_layout(derived, frame, state_block):
         # the keyword, not at the topic.
         _sl.spin_section(fixed=derived["spin_fixed"]),
         state_block,
-        _sl.mpi_section(block_size=derived.get("block_size"),
-                        algorithm=derived.get("algorithm")),
+        _sl.mpi_section(algorithm=derived.get("algorithm")),
         _sc.Block("what this rung runs", _emit_device_run),
         _sc.Block("the junction: its electrodes and reservoirs",
                   _emit_electrode_block),
@@ -392,8 +391,7 @@ def _electrode_layout(derived, frame, state_block):
         _sl.SCF_TAIL_SECTION,
         _sl.spin_section(fixed=derived["spin_fixed"]),
         state_block,
-        _sl.mpi_section(block_size=derived.get("block_size"),
-                        algorithm=derived.get("algorithm")),
+        _sl.mpi_section(algorithm=derived.get("algorithm")),
         TS_ELECTRODE_SECTION,
         _sl.OUTPUT_SECTION,
     )
@@ -444,8 +442,7 @@ def _seed_layout(derived, frame, state_block):
         _sl.SCF_TAIL_SECTION,
         _sl.spin_section(fixed=derived["spin_fixed"]),
         state_block,
-        _sl.mpi_section(block_size=derived.get("block_size"),
-                        algorithm=derived.get("algorithm")),
+        _sl.mpi_section(algorithm=derived.get("algorithm")),
         _sl.OUTPUT_SECTION,
     )
 

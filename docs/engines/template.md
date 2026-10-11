@@ -748,6 +748,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
+| `not_set` | **what the engine does when this item writes nothing**, in one sentence read from the engine's source — *"SIESTA works out its own block size from the ranks and the orbital count (`initparallel.F`, `set_blocksizedefault`)"*. Where an item's line would be and the engine's own default applies — an `optional` item at no value, or an item whose 0 leaves the engine's own rule (`negf_neq_eta_ev`, `tbt_contours_eta_ev`, `siesta/layout.py`) — the deck writes `# <keyword> not written: <not_set>` in its place, so no value reaches the engine by omission (§ 6.6 obligation 4). **Required on every `optional` item of kind `engine` or `deck` that the scheduler does not answer**, checked when the catalogue is read; an item in that state with none is refused where the deck is written. `null_label` names the same state on a form in a few words; this is the deck's sentence *(named `not_set`, not `unset`, because unset reads as removed by a person — the user, 2026-10-11)* |
 | `range` · `unit` · `choices` | bounds, unit label, enum members. `unit` is also the **deck's unit word**: the SIESTA renderer writes it beside the number (`siesta/layout.unit_word`, one source — plan F27), spelling Å as fdf's `Ang`; the bias, held in volts, is written `eV`, the one declared exception. `range` is a **recommendation**: a value outside it is warned on every surface and refused on none (§ 5.3) |
 | `above` | **a hard limit: the value must be greater than `value`**, and `why` is the reason — `above = { value = 0, why = "SIESTA divides each force difference by it (ofc.f90)" }`. Refused on every surface with one message, through `template.why_not` (§ 5.3, 2026-09-30); for a triple, each component |
 | `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). **What each card says** — its title and the line under it — has one home, `template.GROUP_WORDS`, served with every form schema as `group_words` (`web/form-schema.md` § 1.3). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
@@ -1997,10 +1998,14 @@ Five obligations, each naming the reader it binds.
   § 3.8.2's *"must never show a shared value"* reads *never as a control,
   always as an echo*; the echo of every shared value on Task setup is not
   built (§ 3.8.9);
-* an `optional` item at `None` writes nothing: `BlockSize`
+* ~~an `optional` item at `None` writes nothing: `BlockSize`
   (`siesta/input.py:497`); and `TBT.Verbosity` reaches every transport deck
-  from a field no catalogue row declares
-  ([`transport.md`](?doc=engines/transport.md) § 2a.13);
+  from a field no catalogue row declares~~ — **closed**: `TBT.Verbosity` has
+  its row since 2026-09-29 ([`transport.md`](?doc=engines/transport.md)
+  § 2a.13), and since 2026-10-11 an item that writes nothing because nobody
+  set it says so in its place, in its own `not_set` (§ 5) — `SCF.MustConverge`
+  left blank, `BlockSize` left to SIESTA, PySCF's fitting basis and solvent,
+  the two broadenings at 0;
 * ~~the spin treatment itself reaches SIESTA by silence: no deck writes `Spin`
   (measured 2026-09-24, on every transport rung)~~ — **closed 2026-09-28
   (M6)**: every SIESTA deck writes `Spin`, `non-polarized` included, and an
@@ -2016,14 +2021,14 @@ Five obligations, each naming the reader it binds.
 
 **Three mechanism choices, each with the proposal the 2026-09-22
 structure-API audit made — all three ruled as proposed on 2026-09-29**
-([`plans/plan.md`](?doc=plans/plan.md) § 5u.2, TD5); the first is built, the
-other two are not (plan § 5u.1, step 10):
+([`plans/plan.md`](?doc=plans/plan.md) § 5u.2, TD5); all three built, the
+second and third on 2026-10-11 (plan § 5u.1, step 10):
 
 | the choice | proposed |
 |---|---|
 | the source key on a template item, and its vocabulary | `source`, one of `cited` · `person` · `default` — **ruled 2026-09-29, built (K7); `record` retired with decision 7, 2026-10-08**. The one writer (`template_with_values`) writes it from what its caller knows: a cited run's answers are `cited`, what the person's form sent `person`, and everything else `default` — *not chosen* (its value is what the writer wrote before: the documented default, or none for transport's unanswered `citation` rows, § 3.8.3). The one reader (`read_template`) reads it, and every form field carries it (`form-schema.md` § 1.1). A template written before has no `source`: it reads as *not recorded*, said so and never guessed, until the next describe writes one |
-| where a deck carries its per-parameter table | *(ruled, not built: `script_emit.emit_provenance` writes no per-parameter table)* the PROVENANCE reserved block grows it — the deck is what is opened months later, `.validation.txt` is never read back, and G4's text comparison already tolerates that block's rendering moment — rather than a file beside the deck |
-| the deck's *not set* line for an `optional` item at `None` | *(ruled, not built)* a comment naming the engine default that applies |
+| where a deck carries its per-parameter table | the PROVENANCE reserved block grows it — the deck is what is opened months later, `.validation.txt` is never read back, and G4's text comparison already tolerates that block's rendering moment — rather than a file beside the deck. **Its shape** *(2026-10-11)*: `parameters:`, one row per item the rung's deck is rendered from — the kind's `engine` and `deck` items the rung reads (`reads`), the scheduler's excepted — each by its name — the template's own word for it — and **who set its value**, in the words of `resolve`'s layers (*a pin · a sweep point · this stage's override · the rung*) and, for the template's, the template's own (*the template · from the junction you cited · you set this · not chosen · not recorded*); the rows a rung decided first, as the pipeline log orders them (`pipeline_log.config_rows`). `resolve` puts them on each element (`ResolvedConfig.deck_sources`), and every road that renders a deck hands them over — prep's, and the re-render the gather compares with (`job-contracts.md` § 3.2) |
+| the deck's *not set* line for an `optional` item at `None` | a comment where the line would be, `# <keyword> not written: <not_set>` — the item's `not_set` (§ 5), written by the engine's line door, which alone knows whether an item it writes nothing for is not set or does not apply to this run (a target temperature in a CG relaxation). One helper words it for both engines (`script_emit.not_set_line`) *(2026-10-11)* |
 
 ---
 

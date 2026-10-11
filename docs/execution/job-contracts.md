@@ -1175,6 +1175,12 @@ generation time:
 #   generator-version    git e8a4f81
 #   generated-at         2026-06-16T17:30:00-07:00
 #   form-config-hash     sha256:7c4d…            # optional
+#   parameters:          who set each value this deck is rendered from
+#     mixing_weight    this stage's override
+#     solution_method  the rung
+#     max_scf_iter     the template · you set this
+#     mesh_cutoff      the template · from the junction you cited
+#     dm_tolerance     the template · not chosen
 #   resolved-defaults:
 #     mpi_np            auto -> 4 (gpu+mps policy)
 #     BlockSize         auto
@@ -1203,6 +1209,22 @@ generation time:
   and the directory decoder simply answered `siesta` for everything.
 - `generator-version` is the molbuilder git SHA (short); `git log <sha>` in the
   repo recovers the full generator state.
+- `parameters` is **who set each value the deck is rendered from**
+  ([`engines/template.md`](?doc=engines/template.md) § 6.6 obligation 5,
+  *2026-10-11*): a row per item of the rung's — the kind's `engine` and `deck`
+  items the rung reads, the scheduler's excepted, which `resolved-defaults`
+  reports — by the template's own name for it, and where its value came from:
+  `resolve`'s layer (*a pin · a sweep point · this stage's override · the
+  rung*) and, for the template's, the template's own record of it (*the
+  template · from the junction you cited · you set this · not chosen · not
+  recorded*). *Not chosen* is the documented default, written because nobody
+  chose a value — obligation 4's mark. The rows a rung decided come first.
+  `prep` hands them over on every road that renders a deck — the one that
+  writes it and the one the gather compares with (`same_calculation`), so the
+  two render the same rows; a deck rendered without them says *not recorded*
+  in their place. *(The keyword each writes is not a column: an item two
+  engines share carries both engines' keywords (`engines/template.md` § 6.3),
+  so a PySCF deck would name SIESTA's.)*
 - `generated-at` is ISO-8601 with timezone.
 - `resolved-defaults` lists a fixed set of parallel/resource knobs — `mpi_np`,
   `omp_threads`, `BlockSize`, `use_gpu` (and the PySCF equivalents:
