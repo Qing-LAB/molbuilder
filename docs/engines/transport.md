@@ -2290,9 +2290,13 @@ calculation's record shows where they were copied from: its template's
 `psml_lib` row, and the seed deck's note naming that directory; `--psml-lib` is refused for a cited run, whose
 pseudopotentials come with it, and required for a pair — one rule, asked by
 both roads that describe (`citation_defaults.check_pseudopotentials`: `jobset
-init` and the Transport tab's describe door). The pair's two files
+init` and the Transport tab's describe door). **Once a calculation
+cites a pair, leave the pair alone** *(the user, 2026-10-10: "effort should
+be tell user what not to do")*: a new or changed frame set is a new file,
+cited by a new transport calculation (`jobset init`). The pair's two files
 are pinned by their sha256 in `slot-provenance.json`, as a cited run's files
-are, so a pair edited since is refused by name at the next prep. A frame set's
+are, and a pair edited all the same is refused by name at the next prep,
+saying so. A frame set's
 per-frame promises (§ 2a.9) are checked at this door, frame by frame, naming
 the frame — a mode's frame set's definition among them
 ([`model/structure.md`](?doc=model/structure.md) § 2.2f), before anything
