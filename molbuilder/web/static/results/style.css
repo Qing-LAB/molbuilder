@@ -14,8 +14,8 @@
  *                              one-off surfaces
  *
  * Out of scope (handled by inspector-specific stylesheets):
- *   * lib/trajectory/trajectory-inspector.css -- trajectory's viewer-card /
- *     plots-row etc.  Those are LARGER concrete elements
+ *   * lib/trajectory/trajectory-inspector.css -- trajectory's
+ *     .trajectory-plots-row etc.  Those are LARGER concrete elements
  *     that wouldn't benefit from the generic .inspector-section frame.
  *   * lib/inspectors/spectra.css -- the spectra inspector partial's
  *     .modes-table / .mode-viewer-wrap / .spectrum-chart etc.  Same
@@ -32,7 +32,7 @@
    =========================================================== */
 
 .results-main {
-    /* 1200 not 960: trajectory's plots-row needs the width to keep
+    /* 1200 not 960: trajectory's .trajectory-plots-row needs the width to keep
      * the energy + force traces legible without wrapping.  Sidebar +
      * page-shell padding still leave room on common 1440-wide
      * displays; on narrow viewports the inspector cards fall back to
@@ -75,7 +75,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--text-primary);
 }
 /* ...EXCEPT when the line carries the warning.  "The sidebar has moved on;
  * Reload to follow" is appended to the END of the path, so an ellipsis cut
@@ -211,10 +210,10 @@
     list-style: none;
     display: grid;
     /* Two-column on wide; auto-collapse to one on narrow.  See
-     * docs/web/ui-contract.md — the ``min(280px, 100%)``
-     * floor lets the list shrink below 280 px when the container
-     * is narrower than that. */
-    grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+     * docs/web/ui-contract.md § 3 — the min() floor lets the list
+     * shrink below --results-list-min when the container is narrower
+     * than that. */
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--results-list-min), 100%), 1fr));
     gap: var(--space-sm);
 }
 

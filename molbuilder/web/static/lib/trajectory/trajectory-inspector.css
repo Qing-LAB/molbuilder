@@ -70,8 +70,8 @@
 .trajectory-force-controls label.check > input[type="checkbox"] {
     flex: 0 0 auto;
 }
-.trajectory-force-scale { width: var(--traj-force-scale-w); }
-.trajectory-force-min   { width: var(--traj-force-min-w); }
+.trajectory-force-controls .trajectory-force-scale { width: var(--traj-force-scale-w); }
+.trajectory-force-controls .trajectory-force-min   { width: var(--traj-force-min-w); }
 .trajectory-force-controls .row-with-readout {
     display: flex;
     align-items: center;
@@ -92,7 +92,7 @@
  *   wide:   4 columns
  *   narrow: 2 columns
  *   phone:  1 column
- * ``auto-fit, minmax(280px, 1fr)`` gives this without media queries
+ * ``auto-fit, minmax(min(--traj-plot-min, 100%), 1fr)`` gives this without media queries
  * and automatically collapses hidden cells (when SCF data is
  * absent, those two cells carry ``hidden`` and ``display: none``,
  * so the remaining 2 plots take half the width each). */
@@ -118,12 +118,12 @@
     transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .plots-toolbar-btn:hover {
-    background: var(--accent, #6ba6ff);
-    border-color: var(--accent, #6ba6ff);
+    background: var(--accent);
+    border-color: var(--accent);
     color: var(--text-on-accent);
 }
 .plots-toolbar-btn:focus-visible {
-    outline: 2px solid var(--accent, #6ba6ff);
+    outline: 2px solid var(--accent);
     outline-offset: 1px;
 }
 
@@ -144,7 +144,7 @@
     background:     var(--bg-card);
     color:          var(--text-primary);
     font-size:      var(--text-sm);
-    line-height:    1.4;
+    line-height:    var(--line-snug);
 }
 .convergence-summary.is-off-target {
     border-left-color: var(--warn-soft);
@@ -207,7 +207,7 @@
     margin:         var(--space-xs) 0 0;
     color:          var(--text-secondary);
     font-size:      var(--text-xs);
-    line-height:    1.4;
+    line-height:    var(--line-snug);
 }
 .convergence-summary-hint[hidden] { display: none; }
 
@@ -245,7 +245,7 @@
     margin: var(--space-sm) 0;
     color: var(--text-muted);
     font-size: var(--text-sm);
-    line-height: 1.4;
+    line-height: var(--line-snug);
 }
 .trajectory-empty-status[hidden] { display: none; }
 .trajectory-empty-status-text { display: inline; }
@@ -273,7 +273,7 @@
     flex-wrap: wrap;
     box-shadow: var(--shadow-soft);
 }
-.scf-banner strong { color: var(--accent); font-weight: 600; }
+.scf-banner strong { color: var(--accent); font-weight: var(--weight-semibold); }
 .scf-status {
     color: var(--text-secondary);
     font-family: var(--font-mono);
@@ -303,10 +303,10 @@
     background:     var(--bg-card);
     color:          var(--text-primary);
     font-size:      var(--text-sm);
-    line-height:    1.35;
+    line-height:    var(--line-snug);
 }
 .trajectory-run-state-label {
-    font-weight:    600;
+    font-weight:    var(--weight-semibold);
     font-size:      var(--text-sm);
     color:          var(--text-primary);
     letter-spacing: 0;
@@ -315,12 +315,12 @@
 .trajectory-run-state-label::before {
     display:        inline-block;
     margin-right: 0.45em;
-    font-weight:    700;
+    font-weight:    var(--weight-bold);
     /* Match icon vertical baseline. */
     transform:      translateY(0);
 }
 .trajectory-run-state-detail {
-    font-weight:    400;
+    font-weight:    var(--weight-normal);
     font-size:      var(--text-sm);
     color:          var(--text-secondary);
 }
@@ -328,7 +328,7 @@
    hardware numbers line up.  Empty -> ::before suppressed so a
    leading divider doesn't sit alone. */
 .runtime-summary {
-    font-weight:    400;
+    font-weight:    var(--weight-normal);
     font-size:      var(--text-xs);
     color:          var(--text-muted);
     font-family:    var(--font-mono);
@@ -404,7 +404,7 @@
     display:  flex;
     align-items: center;
     gap: var(--space-sm);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
 }
 .parse-warnings-summary::-webkit-details-marker { display: none; }
 .parse-warnings-icon { font-size: 1rem; }

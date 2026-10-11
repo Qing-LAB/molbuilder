@@ -24,7 +24,7 @@
  *   * .status helper + scrollbar treatment
  *
  * Out of scope (lives in per-tab / per-inspector stylesheets):
- *   * any class specific to a tab (.viewer-card, .modes-table,
+ *   * any class specific to a tab (.modes-table,
  *     .results-fallback, ...)
  *
  * Tokens come from lib/tokens.css; this file references them via
@@ -428,7 +428,7 @@ button:disabled {
     margin-left: var(--space-xs);
     /* Multi-line error messages render with their newlines preserved. */
     white-space: pre-line;
-    line-height: var(--line-normal);
+    line-height: var(--line-snug);
     /* A status names paths ("Loading /abs/path…"), and a path has no space
      * to break at: without this it ran out of its box. */
     overflow-wrap: anywhere;
@@ -541,10 +541,14 @@ button:disabled {
  * .card-row -- a RESPONSIVE ROW OF CARDS.  Reusable by any tab (modify, results,
  * spectra, ...): put `class="card-row"` on the container.
  *
- * Children sit side by side while each one's min-width fits, then WRAP to a new
- * row automatically -- content-driven, NO media-query breakpoint.  A card can
- * never be squeezed below its min-width into its neighbour (the crush/overlap
- * failure mode of a fixed grid-template with a too-small track min).
+ * Children sit side by side while their preferred widths (--card-basis) fit,
+ * then WRAP to a new row -- content-driven, NO media-query breakpoint.  A card
+ * alone on its line shrinks with the row but never below its --card-min, so it
+ * is never squeezed into its neighbour (the crush/overlap failure of a fixed
+ * grid-template with a too-small track min) -- and never past a row narrower
+ * than that minimum either: the floor is min(--card-min, 100%), the same
+ * min() floor a grid track takes (ui-contract.md § 3), so a narrow phone
+ * gets the row's width and no horizontal scrollbar.
  *
  * Each child tunes ITSELF with three custom properties (named, not magic
  * literals buried in the layout rule):
@@ -563,7 +567,7 @@ button:disabled {
 }
 .card-row > * {
     flex: var(--card-weight, 1) 1 var(--card-basis, 320px);
-    min-width: var(--card-min, 300px);
+    min-width: min(var(--card-min, 300px), 100%);
 }
 
 /* ---- Spinner — the ONE global loading indicator (§2.1 shared primitive) ------
@@ -677,7 +681,7 @@ button:disabled {
     border-left: 3px solid var(--border-soft);
     background: var(--bg-input);
     color: var(--text-secondary);
-    line-height: var(--line-normal);
+    line-height: var(--line-snug);
     display: flex;
     gap: var(--space-sm);
     align-items: baseline;

@@ -290,6 +290,7 @@
     /* --- Trajectory viewer (lib/trajectory/trajectory-inspector.css) --- */
     --traj-plot-h:      clamp(200px, 24vh, 260px); /* one of the plots row's charts */
     --traj-plot-min:    280px;    /* a plots-row cell's floor before it stacks */
+    --results-list-min: 280px;    /* the empty card's supported-files list, a column's floor */
     --traj-readout-w:   28px;     /* a force knob's value readout */
     --traj-force-scale-w: 7rem;   /* the arrow-scale slider */
     --traj-force-min-w: 4.5rem;   /* the smallest-force box: a number */
@@ -304,6 +305,8 @@
     --sp-range-min-w:   6rem;     /* a control's slider */
     --sp-output-min-w:  3.2em;    /* the slider's value beside it */
     --sp-filter-min-w:  160px;    /* the modes table's filter box */
+    --sp-number-w:      5.5em;    /* a chart control's number box */
+    --sp-sort-glyph:    0.7em;    /* a sorted column's arrow, beside its title */
     --sp-table-max-h:   clamp(320px, 55vh, 760px); /* the modes table, its own tab */
     --sp-viewer-h:      clamp(200px, 26vh, 320px); /* the mode viewer's box */
     --sp-viewer-range-w: 9rem;    /* the mode viewer's sliders */

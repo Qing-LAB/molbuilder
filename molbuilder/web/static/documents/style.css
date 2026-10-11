@@ -38,7 +38,7 @@
     cursor: pointer;
     user-select: none;
     font-size: var(--text-xs);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--text-tertiary);
@@ -53,7 +53,7 @@
     width: 12px;
     text-align: center;
     flex-shrink: 0;
-    line-height: 1.4;
+    line-height: var(--line-snug);
 }
 
 .docs-tree-body { padding-left: var(--space-md); }
@@ -77,13 +77,15 @@
 }
 .docs-link.is-active .docs-link-name,
 .docs-link-parent.is-active .docs-link-name {
-    color: var(--text-on-accent);
-    font-weight: 600;
+    /* ON A WASH, NOT A FILL: --accent-bg is a light tint over the card, so
+       the selected name takes the accent's light ink, never the dark text
+       an accent fill takes (--text-on-accent). */
+    color: var(--accent-hover);
+    font-weight: var(--weight-semibold);
 }
 .docs-link.is-active .docs-link-subtitle,
 .docs-link-parent.is-active .docs-link-subtitle {
-    color: var(--text-on-accent);
-    opacity: 0.8;
+    color: var(--text-secondary);
 }
 
 /* Parent doc inside a tree header — inherits .docs-link pattern. */
@@ -143,7 +145,7 @@
     font-size: var(--text-lg);
     cursor: pointer;
     padding: 0 var(--space-xs);
-    line-height: 1.4;
+    line-height: var(--line-snug);
 }
 .docs-theme-btn:hover {
     color: var(--text-primary);

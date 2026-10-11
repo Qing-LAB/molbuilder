@@ -117,8 +117,13 @@ hits a magic width. Three mechanisms carry most of it:
   `minmax(min(340px, 100%), 1fr)` — so a track can shrink to the container width
   instead of forcing a horizontal scrollbar on a narrow phone.
 - **`.card-row`** — a flex row whose children declare a weight, a preferred
-  width, and a minimum; it wraps at the content minimum with **no media query at
-  all**, so a card never squeezes below its minimum into its neighbor.
+  width, and a minimum; it wraps when the cards' preferred widths no longer fit
+  side by side, with **no media query at all**, and a card alone on its line
+  shrinks with the row but never below its minimum — so it never squeezes into
+  its neighbor — nor past a row narrower than that minimum: the floor is
+  `min(--card-min, 100%)`, the grids' `min()` floor above *(corrected
+  2026-10-10: this said "wraps at the content minimum", which a flex line does
+  not do — it wraps on each card's basis, clamped by its minimum)*.
 - **Container queries** — an embeddable sizes itself to *its own* width, not the
   page's. The fused MolView card flips from side-by-side to stacked at
   `@container (max-width: 692px)` (the sum of the viewer minimum, the rail, the

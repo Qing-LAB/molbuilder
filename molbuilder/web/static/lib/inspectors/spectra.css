@@ -46,14 +46,14 @@
 }
 .spectra-section-header h3 {
     margin: 0;
-    font: var(--weight-semibold) var(--text-base)/1.2 var(--font-sans);
+    font: var(--weight-semibold) var(--text-base)/var(--line-tight) var(--font-sans);
     color: var(--text-primary);
 }
 /* Subsection heading inside a section (e.g. "Spectrum", "Modes"
  * inside the Results section). */
 .subsection-h {
     margin: var(--space-md) 0 var(--space-sm);
-    font: var(--weight-semibold) var(--text-base)/1.2 var(--font-sans);
+    font: var(--weight-semibold) var(--text-base)/var(--line-tight) var(--font-sans);
     color: var(--text-primary);
 }
 
@@ -121,7 +121,7 @@
     color: var(--text-primary);
 }
 .spectrum-controls input[type="number"] {
-    width: 5.5em;
+    width: var(--sp-number-w);
     padding: var(--space-xs) var(--space-sm);
     text-align: right;
     font-variant-numeric: tabular-nums;
@@ -215,7 +215,7 @@
 .modes-table th.sort-asc::after,
 .modes-table th.sort-desc::after {
     content: " ▲";
-    font-size: 0.7em;
+    font-size: var(--sp-sort-glyph);
     margin-left: var(--space-xs);
     color: var(--text-secondary);
 }
@@ -228,7 +228,7 @@
     outline: 1px solid var(--warning);
     outline-offset: -1px;
 }
-.modes-table tbody tr.mode-imag td:nth-child(2) { color: var(--ps-danger-fg); }
+.modes-table tbody tr.mode-imag td:nth-child(2) { color: var(--error); }
 /* ---- The mode viewer, in its own tab ----
  *
  * VibrationView renders the equilibrium structure inside #mode-viewer and
@@ -533,7 +533,7 @@
     margin: 0 0 var(--space-sm);
     color: var(--text-secondary);
     font-size: var(--text-sm);
-    line-height: 1.55;
+    line-height: var(--line-normal);
 }
 
 /* ---- Methods text (the Results panel) ------------------------------
@@ -548,7 +548,7 @@
  * alone, so the heading's own top margin is dropped here -- the two stacked
  * into a double gap above "Methods text". */
 .methods-block > summary { cursor: pointer; margin: 0; }
-.methods-hint { font-weight: 400; opacity: 0.7; }
+.methods-hint { font-weight: var(--weight-normal); opacity: 0.7; }
 .methods-actions {
     display: flex;
     align-items: center;
