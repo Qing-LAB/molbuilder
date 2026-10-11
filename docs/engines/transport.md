@@ -4109,11 +4109,16 @@ while the electrode rung that sees the second alone refuses the same
 calculation, and two one-atom leads measure the distance between the leads
 as a bond.
 
-**What the transverse check does not catch.** It catches vacuum, not a cell
-that is one atom column too long: a multi-layer fcc(111) lead in such a cell
-is still bonded across the boundary through its next layer (the reach 4.08 Å
-against a 2.88 Å bond, 1.41) and passes; a single-layer lead does not (1.73).
-A correctly tiled fcc(111), (100) or (110) lead measures 1.000.
+**What the transverse check does not catch — by design.** It checks the
+structure against its own declaration: vacuum where the axis is declared
+periodic. Whether the lead's cell tiles the crystal is the person's to judge,
+not molbuilder's (TD14 retired, the user 2026-10-11: *"our check should
+really be the most obvious, and consistency check. we are creating tools, not
+to invent or limit scientific exploration"*). So a cell one atom column too
+long passes on a multi-layer fcc(111) lead, which is still bonded across the
+boundary through its next layer (the reach 4.08 Å against a 2.88 Å bond,
+1.41); a single-layer one is caught as vacuum (1.73). A correctly tiled
+fcc(111), (100) or (110) lead measures 1.000.
 
 **The declaration reaches the junction.** `compose` takes the transverse
 kinds the citation recorded — a cited run's deck in its ENGINE-OFFSET block,
