@@ -1172,7 +1172,7 @@ generation time:
 ```
 # === molbuilder provenance BEGIN ===
 #   engine               siesta
-#   generator-version    git e8a4f81
+#   generator-version    2.0.0 (git e8a4f81)
 #   generated-at         2026-06-16T17:30:00-07:00
 #   form-config-hash     sha256:7c4d…            # optional
 #   parameters:          who set each value this deck is rendered from
@@ -1209,8 +1209,19 @@ generation time:
   travel destroys, and that every reader needs first, was the one fact the
   snapshot did not carry. Readers guessed it from file extensions instead,
   and the directory decoder simply answered `siesta` for everything.
-- `generator-version` is the molbuilder git SHA (short); `git log <sha>` in the
-  repo recovers the full generator state.
+- `generator-version` is **molbuilder's version and its git commit**,
+  `2.0.0 (git e8a4f81)` (`script_emit.generator_version`); `git log <sha>` in
+  the repo recovers the full generator state. The version is what a later
+  molbuilder compares (`script_emit.written_by`): the version moves with every
+  change to what molbuilder writes into a file
+  ([`process/conventions.md`](?doc=process/conventions.md) § 2,
+  *Versioning*), so a transport gather that meets an upstream run's deck
+  written by another version refuses naming both versions and the
+  [changelog](?doc=process/changelog.md), not a change of the description. A
+  file written before 2.0.0 names only its commit (`git e8a4f81`) and reads
+  as *before 2.0.0*. The field stays masked when two decks are compared
+  (`deck_record.without_stamps`): which build wrote a deck is not what it
+  computes.
 - `parameters` is **who set each value the deck is rendered from**
   ([`engines/template.md`](?doc=engines/template.md) § 6.6 obligation 5,
   *2026-10-11*): a row per item of the rung's — the kind's `engine` and `deck`

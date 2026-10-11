@@ -69,22 +69,36 @@ shape of the repository rather than a result: when such a test went red the docs
 were not wrong, the layout had moved. So the contrast this paragraph draws is
 gone, and both headers stand on review.
 
-### Versioning — what counts as a breaking change
+### Versioning — when the number moves *(the user, 2026-10-11)*
 
-molbuilder is a **1.x project** (`1.1.0` today, pinned in `pyproject.toml` and
-`molbuilder/__init__.py`). The version tracks the *promises the code makes about
-files it writes*, not the size of the diff:
+molbuilder's version has **one home**, `__version__` in `molbuilder/__init__.py`;
+`pyproject.toml` reads it (`[tool.setuptools.dynamic]`). Each release is a git
+tag, `v<version>` — `v2.0.0` on 2026-10-11, the first since `v1.1.0`
+(2026-05-11). The version tracks **what molbuilder writes into a file**, not the
+size of the diff:
 
-- **Removing or renaming a promised output file** — an emitted script, a sidecar,
-  a bundle member — is a **minor bump** (1.x → 1.x+1) and needs a note in the
-  owning domain doc saying what moved and what reads the old name.
-- **Adding an optional field or a new file** is a **patch**. Existing readers keep
-  working, so nothing breaks.
+| the number | moves when | example |
+|---|---|---|
+| **middle** (2.**x**.0) | **any change to what molbuilder writes into a file** — a deck's lines, a record's fields, a file's name, a new file, a description's keys | a deck that lists who set each value |
+| **last** (2.0.**x**) | a change that writes every file as before | a fix inside the browser |
+| **first** (**x**.0.0) | a release the user declares | 2.0.0 |
 
-The rule exists because downstream things — a user's run directory, a parser, a
-sidecar reader — key off those names. `.out` → `.pyscf.log`
+**Every move of the middle number has its line in the
+[changelog](?doc=process/changelog.md)** — the version, the date, what changed
+in which file — written in the commit that makes the change. **Every deck and
+run script records the version that wrote it** (`generator-version`,
+[`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 3.2), so a
+check that meets a file from an older molbuilder names both versions instead
+of calling the file different (*"prepared by molbuilder 2.0.0; this is
+2.1.0"*); a file written before 2.0.0 records only its git commit and reads as
+*before 2.0.0*.
+
+The rule exists because downstream things — a user's run directory, a parser,
+the gather that compares a run's deck with the one prep writes now — key off
+what a file says. `.out` → `.pyscf.log`
 ([`execution/job-contracts.md § 2.2`](?doc=execution/job-contracts.md)) is the
-worked example: a one-line rename that silently broke a viewer's dispatch.
+worked example of a change nobody recorded: a one-line rename that silently
+broke a viewer's dispatch.
 
 ## 3. The CLI surface
 

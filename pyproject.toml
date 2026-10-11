@@ -40,7 +40,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "molbuilder"
-version = "1.1.0"
+# THE VERSION HAS ONE HOME, `molbuilder/__init__.py`'s `__version__`, read
+# here by `[tool.setuptools.dynamic]` below -- the number every deck and run
+# script records (`job-contracts.md` § 3.2) and the rule for when it moves
+# (`process/conventions.md` § 2, *Versioning*).
+dynamic = ["version"]
 description = "Build 3-D molecules from sequences / SMILES / names; emit SIESTA / PySCF / ASE input."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -188,6 +192,9 @@ molbuilder = "molbuilder.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["molbuilder*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "molbuilder.__version__" }
 
 [tool.setuptools.package-data]
 molbuilder = [

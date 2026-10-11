@@ -622,6 +622,31 @@ def emit_user_custom_placeholder() -> str:
 # --------------------------------------------------------------------- #
 
 
+def generator_version() -> str:
+    """What every deck and run script records as ``generator-version``:
+    molbuilder's version and the git commit -- ``2.0.0 (git eecc65ea)``
+    (`job-contracts.md` § 3.2).  The version is what a later molbuilder
+    compares (`process/conventions.md` § 2, *Versioning*); the commit says
+    which build, where the repository is at hand."""
+    from . import __version__
+    return f"{__version__} ({molbuilder_git_sha()})"
+
+
+#: The version a ``generator-version`` value names -- its first word, three
+#: numbers -- absent from a file written before 2.0.0, which named only its
+#: git commit.
+_VERSION_RE = re.compile(r"^(\d+\.\d+\.\d+)\b")
+
+
+def written_by(text: str) -> Optional[str]:
+    """The molbuilder version that wrote a deck or run script, read from
+    its PROVENANCE block -- ``None`` for one written before 2.0.0, which
+    recorded only its git commit, or for a file with no block."""
+    block = _extract_provenance_dict(text) or {}
+    m = _VERSION_RE.match(block.get("generator-version", ""))
+    return m.group(1) if m else None
+
+
 def molbuilder_git_sha() -> str:
     """Return the molbuilder git SHA (short form), or ``"unknown"``.
 
@@ -667,7 +692,8 @@ __all__ = [
     # USER-CUSTOM round-trip
     "replace_user_custom_inner", "merge_user_custom_from_target",
     # Git / time
-    "molbuilder_git_sha", "generated_at_now",
+    "molbuilder_git_sha", "generator_version", "written_by",
+    "generated_at_now",
 ]
 
 
@@ -1383,7 +1409,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     # renders (`sources`; `job-contracts.md` § 3.2).  None handed is said,
     # never left blank.
     record: List[str] = [emit_provenance(
-        generator_version=molbuilder_git_sha(),
+        generator_version=generator_version(),
         generated_at=generated_at_now(),
         resolved_defaults=_defaults,
         engine=spec.engine,

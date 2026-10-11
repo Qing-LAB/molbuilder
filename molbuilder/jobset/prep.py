@@ -1883,15 +1883,34 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
                              # rung that runs once ran at 0 V, on frame 0.
                              point=(point if up_points else None))
         ran = where / current_deck.name
-        if not (ran.is_file()
-                and _sc.same_calculation(ran.read_text(), now)):
+        ran_text = ran.read_text() if ran.is_file() else None
+        if not (ran_text is not None
+                and _sc.same_calculation(ran_text, now)):
+            # WHICH MOLBUILDER WROTE IT, said by version when it was not this
+            # one (`process/conventions.md` § 2, *Versioning*): a deck
+            # written by another version differs because molbuilder writes
+            # it differently, and the changelog says how -- not because the
+            # description changed.
+            from .. import __version__ as _this
+            then = _sc.written_by(ran_text) if ran_text is not None else None
+            if ran_text is not None and then != _this:
+                raise PrepError(
+                    f"{upstream}'s newest run, {where.relative_to(base)}, was "
+                    f"prepared by "
+                    + (f"molbuilder {then}" if then else
+                       "a molbuilder from before 2.0.0")
+                    + f", and this is molbuilder {_this}: the deck it would "
+                    f"write for {upstream} now differs from the one that "
+                    f"ran, so its {filename} cannot be taken as part of this "
+                    f"calculation (what changed between the versions: "
+                    f"docs/process/changelog.md).  To run it with this "
+                    f"molbuilder, {redo}")
             raise PrepError(
                 f"{upstream}'s newest run, {where.relative_to(base)}, did "
                 f"not run the deck {upstream} renders now -- its template, "
-                f"its junction or its run card changed since it ran, or this "
-                f"molbuilder writes the deck differently from the one that "
-                f"prepared it, so its {filename} may answer a different "
-                f"calculation.  To run it as it is described now, {redo}")
+                f"its junction or its run card changed since it ran, so its "
+                f"{filename} answers a different calculation.  To run it as "
+                f"it is described now, {redo}")
         # ...AND HOLDS THE FILE (`engines/transport.md` § 6.1).
         if not (where / filename).is_file():
             raise PrepError(

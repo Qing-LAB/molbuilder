@@ -49,6 +49,13 @@ where the report is not on screen, *a cited pair is left alone*).
 lists, one chart theme (`lib/plot-theme.js`) and one series palette
 (`--series-1…5`) for every chart.
 
+**molbuilder 2.0.0** *(2026-10-11, tag `v2.0.0`; the user: "we are closer
+to release")*: the version has one home (`molbuilder/__init__.py`), every deck
+and run script records it, and the middle number moves with every change to
+what molbuilder writes into a file, with its line in the changelog
+(`process/conventions.md` § 2, *Versioning*; `process/changelog.md`). Step 7's
+deck changes are the first: 2.1.0.
+
 **Next, in order** (the queue, § 0a): **Q5**, **Q7**, **Q9**, **Q12**,
 **Q13**, **Q11** — as the queue orders them.
 

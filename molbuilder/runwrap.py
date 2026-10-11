@@ -3456,7 +3456,7 @@ def render_run_wrapper(script_path: Path, *,
     else:
         _resolved_defaults["mpi_np"] = str(mpi_np)
     _provenance = _sc.emit_provenance(
-        generator_version=_sc.molbuilder_git_sha(),
+        generator_version=_sc.generator_version(),
         generated_at=_sc.generated_at_now(),
         resolved_defaults=_resolved_defaults,
         # The engine this run script launches -- the same answer its deck's
