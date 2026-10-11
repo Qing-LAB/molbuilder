@@ -2143,37 +2143,19 @@
      * own module, docs/web/spectrumchart.md), so they live beside the diagram
      * and are named for it.
      */
-    /* THE CHART PALETTE, READ FROM THE STYLESHEET.
-     *
-     * Plotly takes colours as JavaScript values, so a chart cannot inherit them
-     * the way an element does.
-     *
-     * The tokens are the source of truth (lib/tokens.css), so this asks the
-     * document for their computed values and hands Plotly the answer.  One read,
-     * cached: they cannot change without a reload.
-     */
-    let _theme = null;
+    /* THE LEVEL DIAGRAM'S AND THE THERMOCHEMISTRY'S COLOURS, BY ROLE -- from
+     * the one chart theme (`lib/plot-theme.js`), which reads every colour from
+     * the tokens; nothing here reads a token or keeps a copy of one.  A level's
+     * frontier: the HOMO the accent, the LUMO the warm soft one; the
+     * thermochemistry's bars: the accent's strong shade, the warning for the
+     * total. */
     function _esTheme() {
-        if (_theme) return _theme;
-        const css = getComputedStyle(document.documentElement);
-        const tok = (name, fallback) =>
-            (css.getPropertyValue(name) || "").trim() || fallback;
-        _theme = {
-            paper:  tok("--bg-card",         "#1d2128"),
-            grid:   tok("--border-soft",     "#2c313a"),
-            axis:   tok("--border-strong",   "#3a3f48"),
-            ink:    tok("--text-secondary",  "#a8aebb"),
-            dim:    tok("--text-muted",      "#959ba7"),
-            homo:   tok("--accent",          "#6ba6ff"),
-            lumo:   tok("--warn-soft",       "#d8a64b"),
-            // The spectrum's sticks: a real mode, an imaginary one, the
-            // selected one, and the envelope over them.
-            stick:     tok("--accent-strong", "#4a8de0"),
-            stickImag: tok("--error",         "#f87171"),
-            stickSel:  tok("--warning",       "#fbbf24"),
-            envelope:  tok("--accent-hover",  "#8ab8ff"),
+        const t = root.molbuilder.plotTheme();
+        return {
+            grid: t.grid, axis: t.axis, ink: t.ink, dim: t.muted,
+            homo: t.accent, lumo: t.warnSoft,
+            stick: t.accentStrong, stickSel: t.warning,
         };
-        return _theme;
     }
 
     function renderESPanel() {
@@ -2257,15 +2239,15 @@
          * from here.  Re-set on every mode change so switching modes always
          * lands on the whole picture rather than inside the previous mode's
          * zoom, which would show a different molecule's window without saying so. */
-        const fig = _renderLevelDiagram({
-            minus: minus, eq: eq, plus: plus,
-            homo_idx: hi, lumo_idx: li,
-        });
-        fig.layout.yaxis.range = [yMin, yMax];
         if (typeof Plotly === "undefined") {
             els.esBarDiagram.innerHTML =
                 '<p class="status muted">chart library unavailable on this page</p>';
         } else {
+            const fig = _renderLevelDiagram({
+                minus: minus, eq: eq, plus: plus,
+                homo_idx: hi, lumo_idx: li,
+            });
+            fig.layout.yaxis.range = [yMin, yMax];
             root.molbuilder.plotBox.draw(els.esBarDiagram, fig.traces,
                                          fig.layout, fig.config);
         }
@@ -2461,8 +2443,6 @@
                 // drag to pan, double-click to come back.
                 fixedrange: false,
             },
-            plot_bgcolor: th.paper,
-            paper_bgcolor: th.paper,
             font: { color: th.ink, size: 10 },
             hovermode: "closest",
             dragmode: "pan",
@@ -2475,7 +2455,10 @@
             scrollZoom: true,          // wheel over the plot zooms the energy axis
             modeBarButtonsToRemove: ["select2d", "lasso2d", "zoom2d", "toggleSpikelines"],
         };
-        return { traces: traces, layout: layout, config: config };
+        // THE ONE CHART THEME'S LAYOUT -- its font, its axes' colours, the
+        // card showing through -- under this diagram's own keys.
+        return { traces: traces, layout: root.molbuilder.themedLayout(layout),
+                 config: config };
     }
 
     // ----- Mode-animation viewer (§ 9.2.3) ---------------------
@@ -3235,7 +3218,8 @@
     // no pressure enters it (engines/vibration.md § 4.7).
     //
     // Tab-owned Plotly, same rules as the ES level diagram: colours
-    // from _esTheme()'s CSS tokens, NO `height` in the layout (the
+    // by role from the one chart theme (`_esTheme`, `lib/plot-theme.js`),
+    // its layout through `themedLayout`, NO `height` in the layout (the
     // .thermo-chart box owns it), and a plain degrade when Plotly is
     // not on the page (/results loads it; /spectra does not mount
     // this panel at all).
@@ -3313,10 +3297,9 @@
               mode: "lines", line: { color: t.stick, width: 2 } },
             { x: T, y: ts, name: rrho ? "T·S" : "T·S_vib", mode: "lines",
               line: { color: t.lumo, width: 2 } },
-        ], {
+        ], root.molbuilder.themedLayout({
             // NO height -- the .thermo-chart box owns it.
             margin: { t: 8, r: 8, b: 34, l: 52 },
-            plot_bgcolor: t.paper, paper_bgcolor: t.paper,
             font: { color: t.ink, size: 10 },
             showlegend: true,
             legend: { orientation: "h",
@@ -3327,7 +3310,7 @@
                                          : "kcal/mol, vibrational contributions",
                               font: { size: 10 } },
                      gridcolor: t.grid, zeroline: false },
-        }, config);
+        }), config);
 
         // --- The decomposition at the grid point nearest the headline T --
         // Every bar is read off the grid; the parts sum to the last bar.
@@ -3352,9 +3335,8 @@
                 c: [t.stick, t.homo, t.lumo, t.stickSel] };
         root.molbuilder.plotBox.draw(els.thermoDecomp, [{
             type: "bar", x: bars.x, y: bars.y, marker: { color: bars.c },
-        }], {
+        }], root.molbuilder.themedLayout({
             margin: { t: 8, r: 8, b: 34, l: 52 },
-            plot_bgcolor: t.paper, paper_bgcolor: t.paper,
             font: { color: t.ink, size: 10 },
             showlegend: false,
             xaxis: { gridcolor: t.grid, zeroline: false },
@@ -3363,7 +3345,7 @@
                               font: { size: 10 } },
                      gridcolor: t.grid, zeroline: true,
                      zerolinecolor: t.axis },
-        }, config);
+        }), config);
     }
 
     function renderSpectrumChart(modes) {

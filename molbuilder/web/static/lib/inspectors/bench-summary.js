@@ -102,14 +102,6 @@
     //: common colour-vision deficiencies (blue / orange / green / pink).
     const PALETTE = ["#5aa9e6", "#f4a259", "#69c37b", "#e07a9c", "#b48ead"];
 
-    /** A design token's value, with the literal that mirrors it as the
-     *  fallback -- the embed-safety pattern (`ui-contract.md` § 2), because
-     *  Plotly is handed colours as strings and cannot read a `var()`. */
-    function _token(name, fallback) {
-        const v = getComputedStyle(document.documentElement)
-            .getPropertyValue(name).trim();
-        return v || fallback;
-    }
     const PANELS = [
         { title: "s / iter", series: [
             { key: "s_per_iter", name: "s/iter", digits: 1,
@@ -203,13 +195,15 @@
         const traces = [];
         // ONE key entry per group across the WHOLE figure.
         const legended = new Set();
+        // THE ONE CHART THEME (`lib/plot-theme.js`).
+        const theme = root.molbuilder.plotTheme();
         const layout = {
             margin: { l: 64, r: 20, t: 34, b: 52 },
             paper_bgcolor: "rgba(0,0,0,0)",
             plot_bgcolor: "rgba(0,0,0,0)",
             /* The card's own type, not Plotly's 12px default -- the panel
                labels were smaller than every other word on the page. */
-            font: { color: getComputedStyle(document.body).color, size: 15 },
+            font: { color: theme.text, family: theme.font, size: 15 },
             showlegend: groups.length > 1
                         || live.some((p) => p.series.length > 1),
             legend: { orientation: "h", y: 1.18, x: 0,
@@ -226,11 +220,11 @@
                tokens at draw time so it follows the theme instead of
                freezing one palette (`ui-contract.md` § 2). */
             hoverlabel: {
-                bgcolor: _token("--bg-page", "#14171c"),
-                bordercolor: _token("--border-strong", "#3a3f48"),
+                bgcolor: theme.page,
+                bordercolor: theme.edge,
                 font: {
-                    color: _token("--text-primary", "#e6e9ef"),
-                    family: getComputedStyle(document.body).fontFamily,
+                    color: theme.text,
+                    family: theme.font,
                     size: 14,
                 },
                 align: "left",
@@ -259,7 +253,7 @@
                    read as strongly as the data.  A hairline at ~6% alpha is
                    enough to carry the eye across to the axis and disappears
                    the moment you stop looking for it. */
-                gridcolor: "rgba(255,255,255,0.07)",
+                gridcolor: theme.grid,
                 zeroline: false,
                 ticks: "outside", ticklen: 4,
                 tickfont: { size: 13 },

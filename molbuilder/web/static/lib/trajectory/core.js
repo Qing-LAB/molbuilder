@@ -941,28 +941,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
     /*  Plotly traces                                                      */
     /* ------------------------------------------------------------------ */
 
-    // Read theme tokens once per makePlots() so the trace colours
-    // track lib/tokens.css.  Falls back to literal hex if the token
-    // isn't defined (e.g. a partial CSS load), so the plot never
-    // ends up colourless.  The non-themable plot-only colours
-    // (the red "all atoms" force trace) stay literal because they encode scientific-plot conventions
-    // that should be stable across themes — see _trajectory_inspector
-    // documentation in docs/web/results.md.
-    function _themeColors() {
-        const cs = getComputedStyle(document.documentElement);
-        const get = (name, fb) =>
-            (cs.getPropertyValue(name) || "").trim() || fb;
-        return {
-            // Token-driven (theme-responsive)
-            accent:     get("--accent",     "#6ba6ff"),
-            success:    get("--success",    "#4ade80"),
-            warnSoft:   get("--warn-soft",  "#d8a64b"),
-            textMuted:  get("--text-muted", "#959ba7"),
-            // Non-themable plot conventions
-            forceAllAtoms: "#d62728",   // red — "all atoms" informational trace
-            energy:        "#1f77b4",   // blue — single-trace
-        };
-    }
 
     // Pull convergence_targets out of runtime_info.  Returns null
     // when the parser didn't find them (older runs / non-molbuilder
@@ -1292,7 +1270,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const max_forces_c_plot = has_constrained
             ? _plottableIdx.map(i => max_forces_c_raw[i])
             : [];
-        const theme = _themeColors();
+        // THE ONE CHART THEME (`lib/plot-theme.js`): the colours and the
+        // font every chart on the page draws with.
+        const theme = window.molbuilder.plotTheme();
         const ct = _convergenceTargets();
 
         // Render the empty-state banner BEFORE the plots so it
@@ -1309,11 +1289,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
             x: x,
             y: energies_plot,
             mode: "lines+markers",
-            line: { color: theme.energy, width: 1.5 },
+            line: { color: theme.accent, width: 1.5 },
             marker: { size: 6 },
             name: "E_KS",
             connectgaps: false,
-        }], {
+        }], window.molbuilder.themedLayout({
             title: { text: "Total energy", font: { size: 13 } },
             // automargin: true lets Plotly pick the left/bottom
             // margins from the actual tick-label widths -- shorter
@@ -1331,8 +1311,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             yaxis: { title: { text: "E_KS (eV)", standoff: 4 },
                      tickformat: ".6~r", zeroline: false,
                      automargin: true, nticks: 5 },
-            font: { family: window.molbuilder.plotTheme().font, size: 10 },
-        }, { displayModeBar: false });
+        }, theme), { displayModeBar: false });
 
         // Two traces when the engine reports both.
         //
@@ -1354,7 +1333,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             x: x,
             y: max_forces_plot,
             mode: "lines+markers",
-            line: { color: theme.forceAllAtoms, width: 1.5,
+            line: { color: theme.error, width: 1.5,
                     dash: (constrained && constrained.length)
                             ? "dash" : "solid" },
             marker: { size: (constrained && constrained.length) ? 4 : 6 },
@@ -1418,7 +1397,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 forceYType = "log";
             }
         }
-        window.molbuilder.plotBox.draw($("force-plot"), forceTraces, {
+        window.molbuilder.plotBox.draw($("force-plot"), forceTraces,
+                                       window.molbuilder.themedLayout({
             title: { text: "Max force", font: { size: 13 } },
             margin: { l: 8, r: 12, t: 32,
                       b: hasBothTraces ? 58 : 32 },
@@ -1438,7 +1418,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
                      type: forceYType,
                      zeroline: false,
                      automargin: true, nticks: 5 },
-            font: { family: window.molbuilder.plotTheme().font, size: 10 },
             showlegend: hasBothTraces,
             legend: {
                 orientation: "h",
@@ -1449,7 +1428,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             },
             shapes:      forceShapes,
             annotations: forceAnnotations,
-        }, { displayModeBar: false });
+        }, theme), { displayModeBar: false });
 
         renderScfProgress();
     }

@@ -460,7 +460,9 @@ async function _renderGraph(states) {
             dot: { size: 6 },
             message: {
                 color:    cssVar("--ps-fg", "#dcdcdc"),
-                font:     "11px system-ui, sans-serif",
+                // The app's font and its densest type step, from the tokens.
+                font:     cssVar("--text-2xs", "0.6875rem") + " "
+                          + cssVar("--font-sans", "system-ui, sans-serif"),
                 displayAuthor: false,
                 displayHash:   true,
             },

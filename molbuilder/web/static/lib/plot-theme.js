@@ -32,12 +32,18 @@
             success: get("--success"),
             warning: get("--warning"),
             error:   get("--error"),
+            warnSoft: get("--warn-soft"),
+            accentStrong: get("--accent-strong"),
+            accentHover:  get("--accent-hover"),
+            page:    get("--bg-page"),       // a hover label's ground
+            edge:    get("--border-strong"), // a hover label's edge
+            text:    get("--text-primary"),  // a hover label's words
             font:    get("--font-sans"),
         };
         /* THE TRACE PALETTE, in order: the n-th curve of a chart takes the
          * n-th colour, wrapping. */
         t.palette = [t.accent, t.warning, t.success, t.error,
-                     get("--warn-soft"), t.muted];
+                     t.warnSoft, t.muted];
         return t;
     }
 
