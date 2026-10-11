@@ -184,7 +184,7 @@ def test_the_form_and_the_stage_table_offer_the_kinds_set():
     # but restricted's 0 (`engines/transport.md` § 3.1's spin note).
     from molbuilder.web.app import create_app
     body = create_app(config={}).test_client().get(
-        "/api/transport/schema?surface=shared").get_json()
+        "/api/transport/schema?engine=siesta&surface=shared").get_json()
     shared = {f["name"]: f.get("choices") for s in body["schema"]["sections"]
               for f in s["fields"]}
     assert shared["spin_treatment"] == ["restricted", "unrestricted"], shared

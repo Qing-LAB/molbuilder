@@ -391,11 +391,19 @@ def api_transport_describe() -> Any:
     _RESOLVABLE = resolvable_override_names()
 
     body = request.get_json(silent=True) or {}
-    engine = str(body.get("engine") or "siesta").lower()
-    if engine != "siesta":
+    # THE ENGINE IS THE PANEL THE PERSON DESCRIBED ON (`engines/transport.md`
+    # § 3.8.8), named by the page and never defaulted; one that runs no
+    # transport is refused, saying why.
+    from molbuilder.transport.stages import why_no_transport
+    engine = str(body.get("engine") or "")
+    if not engine:
         return jsonify({"ok": False,
-                        "error": "transport is SIESTA-first "
-                                 "(TranSIESTA)"}), 400
+                        "error": "engine must name the engine the "
+                                 "calculation is described on -- the "
+                                 "transport tab's engine strip names it"}), 400
+    no = why_no_transport(engine)
+    if no:
+        return jsonify({"ok": False, "error": f"engine {engine!r}: {no}"}), 400
     citation = str(body.get("junction") or "")
     if not citation:
         return jsonify({"ok": False,
@@ -458,10 +466,10 @@ def api_transport_describe() -> Any:
     # The one rule for "binds every stage" (`template.shared_by_every_stage`),
     # which `resolve` refuses at prep for every kind -- asked here too, so
     # the tab refuses while changing it is still free.
-    _shared_names = _T.shared_by_every_stage("siesta", "transport")
+    _shared_names = _T.shared_by_every_stage(engine, "transport")
     # ...and the one rule for "the rung fixes it", which `resolve` refuses
     # at prep for every kind, with the same reason.
-    _role_names = _T.fixed_by_role("siesta", "transport")
+    _role_names = _T.fixed_by_role(engine, "transport")
     # THE VOCABULARY IS WHAT PREP CAN RESOLVE, and it is asked rather than
     # listed (`stages.resolvable_override_names`).
     for _rung, _name in [(r, n) for r, b in bags.items() for n in b]:
@@ -507,7 +515,7 @@ def api_transport_describe() -> Any:
                                      f"marks `shared` for transport"}), 400
     try:
         task = Task(
-            engine="siesta", shape="hierarchical",
+            engine=engine, shape="hierarchical",
             run=derive_run(typed, citation,
                            stage_names=TRANSPORT_STAGES),
             structure=None, calculation="transport",
@@ -626,7 +634,8 @@ def api_transport_schema() -> Any:
                                                         citation_answers)
     from molbuilder.transport.compose import ComposeError, resolve_citation
     from molbuilder.transport.stages import (RUNG_NOTES, TRANSPORT_STAGES,
-                                             resolvable_override_names)
+                                             resolvable_override_names,
+                                             why_no_transport)
     from molbuilder import template as _T
 
     surface = str(request.args.get("surface") or "rung")
@@ -634,6 +643,18 @@ def api_transport_schema() -> Any:
         return jsonify({"ok": False,
                         "error": f"surface must be 'rung' or 'shared', "
                                  f"not {surface!r}"}), 400
+    # ONE ANSWER PER ENGINE (`engines/transport.md` § 3.8.8): the engine is
+    # the panel the form is drawn on, named by the page, never defaulted --
+    # and one that runs no transport is refused, saying why.
+    engine = str(request.args.get("engine") or "")
+    if not engine:
+        return jsonify({"ok": False,
+                        "error": "engine must name the engine whose form "
+                                 "this is -- the transport tab's engine "
+                                 "strip names it"}), 400
+    no = why_no_transport(engine)
+    if no:
+        return jsonify({"ok": False, "error": f"engine {engine!r}: {no}"}), 400
     # ONE RUNG'S TAB (§ 3.8.2a): `&rung=<name>` narrows the rung surface to
     # the items that rung owns plus the ones any rung may set.  Without it
     # the answer is every rung item at once, and it carries the rung list
@@ -678,13 +699,13 @@ def api_transport_schema() -> Any:
     # items, so a rung's controls carry the rung in their ids
     # (`t-device-max-scf-iter`), and a finding's `stage` picks its own
     # tab's (`validation-findings.js`); the shared panel's are `t-…`.
-    schema = catalogue_to_form_schema("siesta",
+    schema = catalogue_to_form_schema(engine,
                                       f"t-{rung}" if rung else "t",
                                       calculation="transport",
                                       surface=surface, rung=rung,
                                       template=template, asks=asks)
     response: Dict[str, Any] = {"ok": True, "surface": surface,
-                                "source": source}
+                                "engine": engine, "source": source}
     if surface == "rung":
         response["rung"] = rung
         response["rungs"] = [{"name": n, "index": i, "note": RUNG_NOTES[n]}

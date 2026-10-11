@@ -544,8 +544,8 @@ def junction(tmp_path_factory):
         for kind, cited in (("run", cite), ("mode's set", frame_set),
                             ("family", run.family)):
             d = client.get(f"/api/transport/describe_attempt?path={cited}")
-            s = client.get(f"/api/transport/schema?surface=shared"
-                           f"&junction={cited}")
+            s = client.get(f"/api/transport/schema?engine=siesta"
+                           f"&surface=shared&junction={cited}")
             run.tab_said[kind] = (d.get_json(), s.get_json())
         # ...and Task setup's echo of the frame-set calculation (its § 3).
         run.folder_said = client.get(

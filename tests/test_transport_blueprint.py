@@ -17,12 +17,24 @@ def web():
 
 class TestTransportSchemaEndpoint:
 
-    def test_returns_ok_envelope(self, web):
-        r = web.get("/api/transport/schema")
-        assert r.status_code == 200
+    @pytest.mark.parametrize("query, refused", [
+        ("", "engine must name the engine"),
+        ("?engine=orca", "'orca' is no engine molbuilder knows"),
+        ("?engine=pyscf", "no PySCF-NEGF backend is built yet"),
+        ("?engine=siesta", None),
+    ])
+    def test_the_engine_is_named_never_defaulted(self, web, query, refused):
+        """`engines/transport.md` § 3.8.8: the schema answers per engine; an
+        engine that runs no transport -- unknown, or known with no backend --
+        is a clean refusal saying why, and no engine is never a defaulted
+        answer."""
+        r = web.get("/api/transport/schema" + query)
         body = r.get_json()
-        assert body["ok"] is True
-        assert "schema" in body
+        if refused:
+            assert r.status_code == 400 and refused in body["error"], body
+        else:
+            assert r.status_code == 200 and body["ok"] is True, body
+            assert body["engine"] == "siesta" and "schema" in body
 
     def test_a_rungs_tab_offers_its_own_items_and_what_any_rung_may_set(self, web):
         """`engines/transport.md` § 3.8.2a: the per-rung form is a tab per
@@ -33,12 +45,12 @@ class TestTransportSchemaEndpoint:
         un-narrowed answer carries the rung list the strip is built from:
         name, one-based ladder index, one-line note."""
         from molbuilder.transport.stages import RUNG_NOTES, TRANSPORT_STAGES
-        body = web.get("/api/transport/schema?surface=rung").get_json()
+        body = web.get("/api/transport/schema?engine=siesta&surface=rung").get_json()
         assert [r["name"] for r in body["rungs"]] == list(TRANSPORT_STAGES)
         assert [r["index"] for r in body["rungs"]] == [1, 2, 3, 4, 5]
         assert all(r["note"] == RUNG_NOTES[r["name"]] and r["note"]
                    for r in body["rungs"])
-        seed = web.get("/api/transport/schema?surface=rung&rung=seed").get_json()
+        seed = web.get("/api/transport/schema?engine=siesta&surface=rung&rung=seed").get_json()
         assert seed["ok"] and seed["rung"] == "seed"
         fields = [f for s in seed["schema"]["sections"] for f in s["fields"]]
         assert fields and all("stages" in f for f in fields)
@@ -46,7 +58,7 @@ class TestTransportSchemaEndpoint:
             [f["name"] for f in fields if f["stages"] and "seed" not in f["stages"]])
         names = {f["name"] for f in fields}
         assert "transmission_n_points" not in names and "dm_tolerance" in names
-        tr = web.get("/api/transport/schema?surface=rung&rung=transmission").get_json()
+        tr = web.get("/api/transport/schema?engine=siesta&surface=rung&rung=transmission").get_json()
         tr_fields = [f for s in tr["schema"]["sections"] for f in s["fields"]]
         tr_names = {f["name"] for f in tr_fields}
         # tbtrans runs no SCF (`transport.md` § 6.1b): its tab offers none
@@ -64,7 +76,7 @@ class TestTransportSchemaEndpoint:
         from molbuilder.template import GROUPS
         ids = {}
         for rung in TRANSPORT_STAGES:
-            got = web.get(f"/api/transport/schema?surface=rung&rung={rung}").get_json()
+            got = web.get(f"/api/transport/schema?engine=siesta&surface=rung&rung={rung}").get_json()
             ids[rung] = {f["id"] for s in got["schema"]["sections"] for f in s["fields"]}
             assert got["schema"]["stage"] == rung
             assert got["schema"]["stage_words"].startswith(rung + "'s own values")
@@ -73,7 +85,7 @@ class TestTransportSchemaEndpoint:
             for b in TRANSPORT_STAGES:
                 if a < b:
                     assert ids[a].isdisjoint(ids[b]), (a, b, ids[a] & ids[b])
-        r = web.get("/api/transport/schema?surface=rung&rung=lead")
+        r = web.get("/api/transport/schema?engine=siesta&surface=rung&rung=lead")
         assert r.status_code == 400 and "rung must name" in r.get_json()["error"]
 
     def test_the_rung_surface_never_offers_a_shared_value(self, web):
@@ -93,8 +105,8 @@ class TestTransportSchemaEndpoint:
                 if "transport" in it.role}
         machine = {it.name for it in select(cat, engine="siesta",
                                              allocation=True)}
-        for lane in ("", "?surface=rung"):
-            body = web.get(f"/api/transport/schema{lane}").get_json()
+        for lane in ("", "&surface=rung"):
+            body = web.get(f"/api/transport/schema?engine=siesta{lane}").get_json()
             assert body["ok"] is True and body["surface"] == "rung"
             fields = [f for s in body["schema"]["sections"]
                       for f in s["fields"]]
@@ -121,7 +133,7 @@ class TestTransportSchemaEndpoint:
         cat = catalogue()
         expected = {it.name for it in select(cat, engine="siesta", shared=True)
                     if "transport" in it.shared and it.group != "setup"}
-        body = web.get("/api/transport/schema?surface=shared").get_json()
+        body = web.get("/api/transport/schema?engine=siesta&surface=shared").get_json()
         assert body["ok"] is True and body["surface"] == "shared"
         offered = {f["name"] for s in body["schema"]["sections"]
                    for f in s["fields"]}
@@ -129,7 +141,7 @@ class TestTransportSchemaEndpoint:
         assert body["source"] == {"kind": "none", "name": ""}
 
     def test_an_unknown_surface_is_refused(self, web):
-        r = web.get("/api/transport/schema?surface=lane")
+        r = web.get("/api/transport/schema?engine=siesta&surface=lane")
         assert r.status_code == 400
 
 
@@ -137,7 +149,7 @@ class TestTransportSchemaEndpoint:
         """Every field must carry the metadata form-schema.js needs
         to render (kind + label).  A bare ``{name: ...}`` blob
         would crash renderForm at runtime."""
-        body = web.get("/api/transport/schema").get_json()
+        body = web.get("/api/transport/schema?engine=siesta").get_json()
         missing = []
         for s in body["schema"]["sections"]:
             for f in s.get("fields", []):
@@ -160,6 +172,11 @@ class TestTransportPageRendering:
         assert r.status_code == 200
         body = r.data.decode()
         assert 'id="transport-form-container"' in body
+        # ONE TAB PER ENGINE (`engines/transport.md` § 3.8.8): an engine
+        # that runs no transport is drawn DISABLED, its title saying why.
+        from molbuilder.transport.stages import why_no_transport
+        pyscf = body.split('data-tab="pyscf"')[1].split(">")[0]
+        assert "disabled" in pyscf and why_no_transport("pyscf") in pyscf
         assert 'id="transport-junction-btn"' in body
         assert 'id="transport-send-btn"' in body
         assert 'transport-generate-btn' not in body
@@ -201,7 +218,7 @@ def test_a_rung_tab_offers_no_run_setting(web):
     `block_size` and `parallel_over_k` -- each then refused at the save
     with *"put it on the run card"* (the K5 review's A2, 2026-09-30)."""
     from molbuilder.template import run_settings
-    body = web.get("/api/transport/schema?surface=rung").get_json()
+    body = web.get("/api/transport/schema?engine=siesta&surface=rung").get_json()
     names = {f["name"] for s in body["schema"]["sections"]
              for f in s["fields"]}
     assert names, "the rung surface offered nothing"

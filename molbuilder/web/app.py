@@ -602,7 +602,13 @@ def create_app(*, config=None) -> Flask:
 
     @app.route("/transport-calculation")
     def transport_calculation_page():
-        return render_template("transport_calculation.html")
+        # THE ENGINE STRIP, one tab per engine (`engines/transport.md`
+        # § 3.8.8): the first that runs transport is the panel described on.
+        from molbuilder.transport.stages import engine_tabs
+        engines = engine_tabs()
+        live = next(i for i, e in enumerate(engines) if e["runs"])
+        return render_template("transport_calculation.html",
+                               engines=engines, live=live)
 
     @app.route("/documents")
     def documents_page():

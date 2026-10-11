@@ -378,9 +378,15 @@ a.btn-like:hover {
     border-radius: 0;
     transition: color 120ms, border-color 120ms, background 120ms;
 }
-.tab-btn:hover {
+.tab-btn:hover:not(:disabled) {
     color: var(--text-primary);
     background: var(--bg-card-hover);
+}
+/* AN ENGINE THAT CANNOT RUN THIS KIND is drawn and cannot be chosen; its
+ * title says why (engines/transport.md § 3.8.8). */
+.tab-btn:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
 }
 .tab-btn.active {
     color: var(--accent);

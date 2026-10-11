@@ -342,6 +342,42 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
             for r in warm_list("siesta", "transport", base_dir).carry_rules]
 
 
+#: EACH ENGINE'S NAME ON THE TRANSPORT TAB -- the program that runs the
+#: open-boundary calculation on it (`engines/transport.md` § 3.8.8).
+ENGINE_WORDS = {"siesta": "TranSIESTA", "pyscf": "PySCF-NEGF"}
+
+
+def engine_tabs() -> List[Dict[str, object]]:
+    """The transport tab's engine strip, one entry per engine molbuilder
+    knows (`runfiles.engines`), those that run a transport calculation
+    first (`electronic_state.engines_for`): its name, its word here,
+    whether it runs one, and, for one that does not, why -- the disabled
+    tab's title (§ 3.8.8)."""
+    from ..electronic_state import engines_for
+    from ..runfiles import engines
+    runs = engines_for("transport")
+    return [{"name": e, "label": ENGINE_WORDS.get(e, e), "runs": e in runs,
+             "why": why_no_transport(e)}
+            for e in sorted(engines(), key=lambda e: e not in runs)]
+
+
+def why_no_transport(engine: str) -> Optional[str]:
+    """Why ``engine`` cannot describe a transport calculation, or ``None``
+    when it can -- one sentence for the disabled tab and every door that
+    refuses the engine (§ 3.8.8)."""
+    from ..electronic_state import engines_for
+    from ..runfiles import engines
+    runs = engines_for("transport")
+    if engine in runs:
+        return None
+    ships = " and ".join(ENGINE_WORDS.get(e, e) for e in runs)
+    if engine not in engines():
+        return (f"{engine!r} is no engine molbuilder knows; transport ships "
+                f"on {ships}")
+    return (f"no {ENGINE_WORDS.get(engine, engine)} backend is built yet; "
+            f"transport ships on {ships}")
+
+
 #: What each rung computes and hands on -- the ONE-LINE NOTE a surface puts
 #: beside the rung's name (`engines/transport.md` § 2a.3 "the results that
 #: propagate", § 6.1; the tab strip of § 3.8.2a).  The index a surface shows

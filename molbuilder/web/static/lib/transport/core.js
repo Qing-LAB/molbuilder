@@ -70,6 +70,7 @@ const WORKSPACE_TAG = "transport";
      * that lands after a newer ask went out draws nothing (``null``). */
     function _fetchSurface(surface, host, formSchema, rung, renderOpts, isCurrent) {
         var url = SCHEMA_URL + "?surface=" + surface
+            + "&engine=" + encodeURIComponent(_engine())
             + (_junction ? "&junction=" + encodeURIComponent(_junction) : "")
             + (rung ? "&rung=" + encodeURIComponent(rung) : "")
             + (rung && _junction
@@ -97,6 +98,16 @@ const WORKSPACE_TAG = "transport";
                     + (e && e.message ? e.message : String(e)));
                 return null;
             });
+    }
+
+    /* THE ENGINE THE CALCULATION IS DESCRIBED ON is the engine strip's
+     * active tab (engines/transport.md 3.8.8) -- drawn by the page from
+     * the engines molbuilder knows; an engine that runs no transport is a
+     * disabled tab, so it is never this. */
+    function _engine() {
+        var b = root.document.querySelector(
+            "#transport-engine-tabs .tab-btn.active");
+        return (b && b.dataset.tab) || "";
     }
 
     function _el(tag, attrs) {
@@ -153,7 +164,8 @@ const WORKSPACE_TAG = "transport";
         // nothing -- a late one would point `_rungHosts` at a tab already
         // gone from the page, and the Send would read that.
         var seq = ++_rungsSeq;
-        return root.fetch(SCHEMA_URL + "?surface=rung")
+        return root.fetch(SCHEMA_URL + "?surface=rung&engine="
+                          + encodeURIComponent(_engine()))
             .then(function (r) { return r.json(); })
             .then(function (body) {
                 if (!body || !body.ok) {
@@ -757,7 +769,7 @@ const WORKSPACE_TAG = "transport";
                         reveal: true,
                     });
                 },
-                engine: "siesta",
+                engine: _engine(),
                 calculation: "transport",
                 junction: _junction,
                 swap_electrodes: _swapElectrodesChoice,
@@ -974,9 +986,11 @@ const WORKSPACE_TAG = "transport";
                 kind: "transport",
                 forms: function () {
                     var host = _$("transport-shared-container");
-                    return (host && _sharedSchema)
-                        ? { siesta: { host: host, schema: _sharedSchema } }
-                        : {};
+                    var out = {};
+                    if (host && _sharedSchema) {
+                        out[_engine()] = { host: host, schema: _sharedSchema };
+                    }
+                    return out;
                 },
                 structure: function () { return _junctionStructure; },
             });

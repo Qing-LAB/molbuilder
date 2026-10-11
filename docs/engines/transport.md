@@ -3174,7 +3174,7 @@ six scattered versions could not do.
 | the shared values echoed read-only, with their source, on Task setup | ✅ **done 2026-10-11** — the *What came over* card's *Shared by every stage*, every value the kind shares with its source, from the folder answer's `template.shared` (`web/task-setup.md` § 3; `template.md` § 6.6 obligation 3) |
 | a value nobody chose is MARKED as such in the deck | ✅ **done 2026-10-11** — each deck's PROVENANCE block says who set each value it is rendered from, a value nobody chose *the template · not chosen*, and a setting left to the engine says so where its line would be, in its own `not_set` (`template.md` § 6.6 obligations 4 and 5; `job-contracts.md` § 3.2). *(The file's half — each value's source, obligation 2 — is built, K7.)* |
 | the device deck carries only what `siesta` reads | ✅ **done 2026-09-29** (M5 step 1) — the device deck carries no `TBT.*` line (`deck.py::_device_layout`): `siesta` reads none (its binary holds none); the transmission deck keeps the `TS.*` declarations `tbtrans` reads (§ 6.1b) |
-| one panel per engine (§ 3.8.8) | ❌ **not built** |
+| one panel per engine (§ 3.8.8) | ✅ **done 2026-10-11** — card 4's engine strip, one tab per engine molbuilder knows (`transport.stages.engine_tabs`, from `runfiles.engines` / `electronic_state.engines_for`): TranSIESTA live, PySCF-NEGF disabled with its reason; the schema route, the describe door and `jobset init` refuse an engine that runs no transport with one sentence (`why_no_transport`) |
 | the per-rung form is a tab per rung, its group cards foldable, each tab opening with the rung's note (§ 3.8.2a) | ✅ **done 2026-09-24** |
 
 ---
@@ -3257,7 +3257,16 @@ person sees it.
 | **a known engine with no backend is a DISABLED tab** | *(the user's choice, against hiding it and against live fields)* — drawn from the known engines, disabled, its title saying what would make it live: *no PySCF-NEGF backend is built yet; transport ships on TranSIESTA*. A disabled button cannot be chosen, so nothing can be described on it and no field of its can travel; what it buys is that the separation is visible on the page, and the tab goes live the day a backend registers |
 | **what does not change** | the citation, the region labels, the five derived stages, the bias and the shared panel are the **composite's**, not an engine's (§§ 3.1, 4, 5). Only the per-rung form is per-engine, because that is the only part of the surface whose vocabulary an engine owns |
 
-Status: ❌ not built — W30 ⑤.
+Status: ✅ **built 2026-10-11** (W30 ⑤, plan § 5u.1 step 8). The strip is
+drawn by the page from `transport.stages.engine_tabs()` — one tab per engine
+molbuilder knows (`runfiles.engines`), live where the engine runs a
+transport calculation (`electronic_state.engines_for("transport")`), else
+disabled with `why_no_transport`'s sentence as its title and its panel's one
+line. The active tab is the engine: core.js sends it on both schema surfaces
+(`&engine=`) and in the describe body, and `task.json` records it. A missing
+engine, an unknown one and one with no backend are each refused by name, at
+the schema route and at the describe door alike — and `jobset init` refuses
+an engine with the same sentence.
 
 ---
 

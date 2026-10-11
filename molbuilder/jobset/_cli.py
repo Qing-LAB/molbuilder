@@ -35,6 +35,9 @@ from .runstatus import jobset_status, render_stage_status, render_status
 
 #: A11: the name comes from the module that writes the file.
 from .model import FILENAME as _JOBSET_FILE
+# EVERY ENGINE MOLBUILDER KNOWS, the catalogue's (`runfiles.engines`) -- the
+# one list `--engine` offers, never restated here.
+from ..runfiles import engines as _rf_engines
 
 
 def _load(bundle: str) -> tuple:
@@ -343,10 +346,12 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
             raise click.ClickException(
                 f"{flag} does not apply to a transport calculation -- "
                 f"{why} (engines/transport.md § 3.1).")
-    if engine != "siesta":
-        raise click.ClickException(
-            f"transport is SIESTA-first (TranSIESTA); engine {engine!r} "
-            f"has no transport ladder yet.")
+    # THE ONE SENTENCE every door refuses an engine with (`transport.stages.
+    # why_no_transport`, `engines/transport.md` § 3.8.8).
+    from ..transport.stages import why_no_transport
+    no = why_no_transport(engine)
+    if no:
+        raise click.ClickException(f"engine {engine!r}: {no}.")
     # shape: the codec owns the transport==hierarchical pairing (task.py
     # __post_init__); the Task construction below surfaces it by name.
 
@@ -508,7 +513,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
               help="what you call this calculation; the label and the run id "
                    "derive from it. Default: the destination folder's name.")
 @click.option("--engine", required=True,
-              type=click.Choice(("siesta", "pyscf")),
+              type=click.Choice(_rf_engines()),
               help="whose parameters these are. REQUIRED -- never assumed.")
 @click.option("--psml-lib", default=None, metavar="DIR",
               # NO click-level exists check: the anchor rule lives in

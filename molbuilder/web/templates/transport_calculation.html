@@ -237,11 +237,35 @@
       § 2a.13 every parameter and what it writes, § 0.2 the three k-grid
       axes, § 0.4 the four things that must agree.
     </p>
-    {#- the host of card 4's rung strip and its panels (3.8.2a); each
-        panel holds its own .param-grid, so the host is not one -#}
-    <div id="transport-form-container">
-      <p class="muted">Loading form schema&hellip;</p>
+    {#- ONE PANEL PER ENGINE (engines/transport.md 3.8.8): a tab per engine
+        molbuilder knows (`transport.stages.engine_tabs`); the panel is the
+        engine the calculation is described on.  An engine that runs no
+        transport is a DISABLED tab, its title saying why -- nothing can be
+        described on it. -#}
+    <div class="tabs" role="tablist" aria-label="Engine"
+         id="transport-engine-tabs">
+      {%- for e in engines %}
+      <button type="button" class="tab-btn{% if e.runs and loop.index0 == live %} active{% endif %}"
+              role="tab" data-tab="{{ e.name }}"
+              aria-controls="transport-engine-panel-{{ e.name }}"
+              aria-selected="{{ 'true' if e.runs and loop.index0 == live else 'false' }}"
+              {%- if not e.runs %} disabled title="{{ e.why }}"{% endif %}>{{ e.label }}</button>
+      {%- endfor %}
     </div>
+    {%- for e in engines %}
+    <div class="tab-panel" id="transport-engine-panel-{{ e.name }}"
+         role="tabpanel"{% if not (e.runs and loop.index0 == live) %} hidden{% endif %}>
+      {%- if e.runs and loop.index0 == live %}
+      {#- the host of card 4's rung strip and its panels (3.8.2a); each
+          panel holds its own .param-grid, so the host is not one -#}
+      <div id="transport-form-container">
+        <p class="muted">Loading form schema&hellip;</p>
+      </div>
+      {%- else %}
+      <p class="hint">{{ e.why }}</p>
+      {%- endif %}
+    </div>
+    {%- endfor %}
   </section>
 
   {#- ===================== 5. Describe ===================== -#}

@@ -975,6 +975,11 @@ async function loadFolder(projects, dir, opts) {
     /* EVERY per-folder fact resets before the branch, so no branch can
      * act on the previous folder's. */
     _task = null;
+    /* ...THE BUFFER'S TOO: every branch below writes the editor from what
+     * is on disk, so no hand edit survives a load -- and the text it
+     * replaces (the empty one a folder with no description leaves) must
+     * not make a card the load itself moves (`setShape`) refused over it. */
+    _bufferParses = true;
     _shape = "";
     _handover = null;
     _resetPerFolderState(keep);
@@ -3605,8 +3610,13 @@ function setShape(shape) {
      * which is what `_task.schema` asks; the hand-over branch below is about
      * BUILDING one, and only that has to happen once. */
     if (shape && _task && _task.schema === "molbuilder/task@1") {
-        _task.shape = shape;
-        syncFromModel();
+        // ...AND ONLY A CHANGE IS WRITTEN: the load repaints the shape the
+        // description already carries, and writing that through would mark
+        // a file nobody edited as edited (and open the editor's fold).
+        if (_task.shape !== shape) {
+            _task.shape = shape;
+            syncFromModel();
+        }
         refreshSave();
         return;
     }
