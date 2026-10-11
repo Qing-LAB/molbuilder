@@ -592,23 +592,23 @@ field, when written, states the same unit, for the eye, in its ASCII spelling
 UDUNITS spells it, since `A` is the ampere's — and a number without a unit
 writes none.
 
-| where | name | kind | meaning | unit |
-|---|---|---|---|---|
-| the `.xyz` | every frame's coordinates | given | frame 0 the equilibrium geometry the mode is taken at; frames 1… displaced along the mode | Å |
-| the `mass_amu` channel | each atom's mass | given | the masses the mode's coordinate is weighted by — the vibration result's own, `equilibrium.masses_amu`; every atom, a positive finite number | amu |
-| the structure's rows | `mode_index_1based` | given | which mode, counted as the vibration result counts it (`index_1based`) | — |
-| | `frequency_cm1` | given | the mode's wavenumber, as the result states it | cm⁻¹ |
-| | `temperature_k` | given | the temperature whose thermal distribution the weights sample | K |
-| | `zero_point_amplitude_amu12_ang` | given | the mode's zero-point amplitude `Q_zp = √(ħ/2ω)`, as the result states it | amu^½·Å |
-| | `sigma_amu12_ang` | derived | the mode's thermal spread at that temperature, `σ = Q_zp · √coth(ħω / 2k_BT)` | amu^½·Å |
-| each frame's rows | `displacement_ang` | measured | the frame's plain displacement from frame 0, `√(Σ_A \|ΔR_A\|²)` over every atom — no masses | Å |
-| | `max_atom_displacement_ang` | measured | its largest single atom's, `max_A \|ΔR_A\|` | Å |
-| | `q_amu12_ang` | derived | its position along the mode — ONE number for the whole mode, every atom displaced by `q · L_A`: its size `√(Σ_A m_A \|ΔR_A\|²)`, its sign the side of frame 0 it sits on | amu^½·Å |
-| | `node_sigma` | derived | the same position in units of the spread, `q / σ` | — |
-| | `weight` | given | the frame's share of the mode's average (`engines/transport.md` § 2a.12) | — |
-| `info.vibration` | `run` · `result_sha256` | given | the vibration run the mode was read from — its folder, read through the run door — and the sha256 of its result file (the identity hash waits on M2m, as a cited pair's pin does, `structure-molstruct.md` § 3) | — |
+| where | name | kind | meaning | unit | on a page |
+|---|---|---|---|---|---|
+| the `.xyz` | every frame's coordinates | given | frame 0 the equilibrium geometry the mode is taken at; frames 1… displaced along the mode | Å | — |
+| the `mass_amu` channel | each atom's mass | given | the masses the mode's coordinate is weighted by — the vibration result's own, `equilibrium.masses_amu`; every atom, a positive finite number | amu | — |
+| the structure's rows | `mode_index_1based` | given | which mode, counted as the vibration result counts it (`index_1based`) | — | Mode |
+| | `frequency_cm1` | given | the mode's wavenumber, as the result states it | cm⁻¹ | Frequency (cm⁻¹) |
+| | `temperature_k` | given | the temperature whose thermal distribution the weights sample | K | Temperature (K) |
+| | `zero_point_amplitude_amu12_ang` | given | the mode's zero-point amplitude `Q_zp = √(ħ/2ω)`, as the result states it | amu^½·Å | Zero-point amplitude (amu½·Å) |
+| | `sigma_amu12_ang` | derived | the mode's thermal spread at that temperature, `σ = Q_zp · √coth(ħω / 2k_BT)` | amu^½·Å | Thermal spread σ (amu½·Å) |
+| each frame's rows | `displacement_ang` | measured | the frame's plain displacement from frame 0, `√(Σ_A \|ΔR_A\|²)` over every atom — no masses | Å | Displacement (Å) |
+| | `max_atom_displacement_ang` | measured | its largest single atom's, `max_A \|ΔR_A\|` | Å | Largest atom move (Å) |
+| | `q_amu12_ang` | derived | its position along the mode — ONE number for the whole mode, every atom displaced by `q · L_A`: its size `√(Σ_A m_A \|ΔR_A\|²)`, its sign the side of frame 0 it sits on | amu^½·Å | Position along the mode, q (amu½·Å) |
+| | `node_sigma` | derived | the same position in units of the spread, `q / σ` | — | q in units of σ |
+| | `weight` | given | the frame's share of the mode's average (`engines/transport.md` § 2a.12) | — | Weight |
+| `info.vibration` | `run` · `result_sha256` | given | the vibration run the mode was read from — its folder, read through the run door — and the sha256 of its result file (the identity hash waits on M2m, as a cited pair's pin does, `structure-molstruct.md` § 3) | — | — |
 
-*Given* is stated by the vibration result, the coordinates or the script;
+*On a page* is how a page says the row (`frameset.ROWS`' `words` and page unit): the plain words, the stored name on hover (`engines/transport.md` § 3.8.1). *Given* is stated by the vibration result, the coordinates or the script;
 *measured* is computed from the coordinates alone, before any correction;
 *derived* is computed from the others by the formula shown.
 

@@ -245,6 +245,15 @@
         host.appendChild(title);
         const table = document.createElement("table");
         table.className = "results-ladder-table";
+        // A TRANSMISSION ROW'S "open" SHOWS THE REPORT AT ITS POINT -- when
+        // the report is what the panel shows; when another file is, this
+        // says what to do.
+        const reportFirst = document.createElement("p");
+        reportFirst.className = "status";
+        reportFirst.hidden = true;
+        reportFirst.textContent = "To see this point, open the report "
+            + "first: choose task.json in the Result file menu above, then "
+            + "click \u201copen\u201d on this row again.";
         // THE COLUMNS, named -- the state and whether the run converged are
         // two facts (`runstatus.StageStatus.converged`), side by side.
         const head = document.createElement("tr");
@@ -314,10 +323,16 @@
                     open.addEventListener("click", () => {
                         if (!atRoot) { _pickRun(path); return; }
                         _backToRoot();
-                        if (r.bias_v != null && currentHandle
+                        if (r.bias_v == null) return;
+                        if (currentHandle
                                 && typeof currentHandle.selectPoint === "function") {
+                            reportFirst.hidden = true;
                             currentHandle.selectPoint({ frame: r.frame,
                                                         bias: Number(r.bias_v) });
+                        } else {
+                            // THE REPORT IS NOT ON SCREEN -- another file
+                            // of the calculation is -- so say how to get there.
+                            reportFirst.hidden = false;
                         }
                     });
                     result.appendChild(open);
@@ -327,6 +342,7 @@
             });
         });
         host.appendChild(table);
+        host.appendChild(reportFirst);
         if (pickedRun) {
             const back = document.createElement("button");
             back.type = "button";

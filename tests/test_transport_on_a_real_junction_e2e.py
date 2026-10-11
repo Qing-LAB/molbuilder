@@ -109,18 +109,24 @@ _TEMPERATURE_K = 300.0
 _N_FRAMES = len(_NODES_SIGMA)
 
 #: A mode's frame set's rows as `model/structure.md` § 2.2f's table states
-#: them -- ``(name, kind, unit)``, the structure's and each frame's -- what the
-#: Transport tab's card shows for the set the fixture wrote (§ 3.8.1).
-_SET_ROWS = (("mode_index_1based", "given", None),
-             ("frequency_cm1", "given", "cm-1"),
-             ("temperature_k", "given", "K"),
-             ("zero_point_amplitude_amu12_ang", "given", "amu^1/2 angstrom"),
-             ("sigma_amu12_ang", "derived", "amu^1/2 angstrom"))
-_FRAME_ROWS = (("displacement_ang", "measured", "angstrom"),
-               ("max_atom_displacement_ang", "measured", "angstrom"),
-               ("q_amu12_ang", "derived", "amu^1/2 angstrom"),
-               ("node_sigma", "derived", None),
-               ("weight", "given", None))
+#: them -- ``(name, kind, unit, words, page unit)``, the structure's and each
+#: frame's -- what the Transport tab's card shows for the set the fixture
+#: wrote (§ 3.8.1).
+_SET_ROWS = (("mode_index_1based", "given", None, "Mode", None),
+             ("frequency_cm1", "given", "cm-1", "Frequency", "cm⁻¹"),
+             ("temperature_k", "given", "K", "Temperature", "K"),
+             ("zero_point_amplitude_amu12_ang", "given", "amu^1/2 angstrom",
+              "Zero-point amplitude", "amu½·Å"),
+             ("sigma_amu12_ang", "derived", "amu^1/2 angstrom",
+              "Thermal spread σ", "amu½·Å"))
+_FRAME_ROWS = (("displacement_ang", "measured", "angstrom",
+                "Displacement", "Å"),
+               ("max_atom_displacement_ang", "measured", "angstrom",
+                "Largest atom move", "Å"),
+               ("q_amu12_ang", "derived", "amu^1/2 angstrom",
+                "Position along the mode, q", "amu½·Å"),
+               ("node_sigma", "derived", None, "q in units of σ", None),
+               ("weight", "given", None, "Weight", None))
 
 #: The PDOS of a selection -- every atom of the junction -- asked where the
 #: Results tab asks it (`/api/transport/pdos`, `web/results.md` § 2.5), a
@@ -1136,11 +1142,13 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
         return next(r["value"] for r in pair.customized_rows(frame)
                     if r["name"] == name)
     expect = {
-        "structure": [{"name": n, "value": stated(n), "unit": u, "kind": k}
-                      for n, k, u in _SET_ROWS],
-        "columns": [{"name": n, "unit": u, "kind": k}
-                    for n, k, u in _FRAME_ROWS],
-        "frames": [[stated(n, f) for n, _k, _u in _FRAME_ROWS]
+        "structure": [{"name": n, "value": stated(n), "unit": u, "kind": k,
+                       "words": w, "page_unit": pu}
+                      for n, k, u, w, pu in _SET_ROWS],
+        "columns": [{"name": n, "unit": u, "kind": k, "words": w,
+                     "page_unit": pu}
+                    for n, k, u, w, pu in _FRAME_ROWS],
+        "frames": [[stated(row[0], f) for row in _FRAME_ROWS]
                    for f in range(_N_FRAMES)],
         "masses_amu": [float(pair.annotations[MASS_CHANNEL].data[i])
                        for i in range(pair.n_atoms)],

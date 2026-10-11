@@ -22,9 +22,14 @@ function _fmt(v) {
     return typeof v === "number" ? String(Number(v.toPrecision(6))) : String(v);
 }
 
-/** A row's name with its unit, as the definition states both. */
+/** A row as a page says it -- its words, with its unit -- and, on hover,
+ *  the name the file stores it under and what kind of number it is. */
 function _label(row) {
-    return row.unit ? row.name + " (" + row.unit + ")" : row.name;
+    return row.page_unit ? row.words + " (" + row.page_unit + ")" : row.words;
+}
+
+function _stored(row) {
+    return row.name + " — " + row.kind;
 }
 
 function _el(doc, tag, cls, text) {
@@ -54,16 +59,23 @@ export function renderFrameSet(host, frameSet) {
             + "(it states no mode's definition, model/structure.md § 2.2f)."));
         return;
     }
-    const mode = _el(doc, "p", "frameset-line");
-    mode.textContent = n + " frames of one mode — " + def.structure
-        .map((r) => _label(r) + " " + _fmt(r.value)).join(" · ");
+    // THE MODE LINE: each row its words, its value and its unit -- "Mode 6
+    // · Frequency 2548.37 cm⁻¹ · …" -- the stored name on hover.
+    const mode = _el(doc, "p", "frameset-line", n + " frames of one mode — ");
+    def.structure.forEach((r, i) => {
+        if (i) mode.appendChild(doc.createTextNode(" · "));
+        const bit = _el(doc, "span", null, r.words + " " + _fmt(r.value)
+                        + (r.page_unit ? " " + r.page_unit : ""));
+        bit.title = _stored(r);
+        mode.appendChild(bit);
+    });
     host.appendChild(mode);
     const table = _el(doc, "table", "num-table frameset-table");
     const head = _el(doc, "tr");
     head.appendChild(_el(doc, "th", null, "Frame"));
     for (const c of def.columns) {
         const th = _el(doc, "th", null, _label(c));
-        th.title = c.kind;
+        th.title = _stored(c);
         head.appendChild(th);
     }
     table.appendChild(_el(doc, "thead")).appendChild(head);

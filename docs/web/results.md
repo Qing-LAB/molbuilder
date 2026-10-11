@@ -426,7 +426,7 @@ folder and the file it opens (`runstatus.every_run`: under each `stages[]` row,
 `runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens}]` — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`) —, `opens` relative
 to the root — **a transmission run's is the root's `task.json`, with its
 `point`**: its result is the report at that bias (§ 0.1), and its row's *open*
-re-announces the calculation with that point — its frame and its voltage — as the report's selection (the handle's `selectPoint({frame, bias})`)
+re-announces the calculation with that point — its frame and its voltage — as the report's selection (the handle's `selectPoint({frame, bias})`) — and when the panel shows another file of the calculation, `<label>.transport.json` opened as a file, the ladder says so: *open the report first — choose task.json in the Result file menu* *(the user, 2026-10-10)*
 (§ 2.5), never a file of its own — TBtrans writes none a viewer reads
 *(2026-10-08, B8 R1-02 / F23)*); the states are
 status's reading of each run (`run_state_of`), which reads **every** attempt,

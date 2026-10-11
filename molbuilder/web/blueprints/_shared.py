@@ -692,11 +692,18 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     # AND THE WORDS ITS CARDS SAY, from their one home (`template.GROUP_WORDS`,
     # form-schema.md § 1.3); a form of one rung's own values names the rung
     # and says once whose its values are (`template.stage_words`).
+    # THE SETUP CARD SAYS WHAT ITS FIELDS ON THIS FORM ASK (`template.
+    # setup_words`); a form showing none of them draws no Setup card.
+    shown_setup = [f["name"] for sec in sections for f in sec["fields"]
+                   if f.get("workflow_group") == "setup"]
     out = {"config": engine, "id_prefix": id_prefix, "sections": sections,
            "source_words": dict(_T.SOURCE_WORDS),
            # A LIST, in the vocabulary's order: the order IS the cards'
            # order, and a JSON object's keys are sorted on the wire.
-           "group_words": [{"group": g, "title": t, "subtitle": sub}
+           "group_words": [{"group": g, "title": t,
+                            "subtitle": (_T.setup_words(shown_setup)
+                                         if g == "setup" and shown_setup
+                                         else sub)}
                            for g, (t, sub) in _T.GROUP_WORDS.items()]}
     if rung is not None:
         out["stage"] = rung

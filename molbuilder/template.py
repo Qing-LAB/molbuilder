@@ -133,11 +133,9 @@ GROUPS = ("setup", "profile", "stage", "budget", "output", "staging")
 #: ``staging`` has no card on a parameter form -- its members are each
 #: stage's run card -- and its words say so.
 GROUP_WORDS = {
-    "setup": ("Setup",
-              "Start here.  What this run is CALLED, and where its "
-              "pseudopotentials come from.  Nothing can be built until both "
-              "are answered, and every output file is named after the "
-              "first."),
+    # The Setup card's line depends on which of its fields the form shows:
+    # `SETUP_WORDS`, below.
+    "setup": ("Setup", None),
     "profile": ("Run profile",
                 "WHAT you're computing -- the method and the physical "
                 "character of the system: functional, basis, charge and "
@@ -163,6 +161,43 @@ GROUP_WORDS = {
 if tuple(GROUP_WORDS) != GROUPS:      # one vocabulary, in one order
     raise RuntimeError("template.GROUP_WORDS must name every group of "
                        "template.GROUPS, in its order")
+
+#: THE SETUP CARD'S LINE, one for each set of its fields a form shows -- what
+#: to fill in, with an example (the user, 2026-10-10: "you can be elaborate
+#: for different situations").  A SIESTA form shows the system label and the
+#: pseudopotential folder; a PySCF form the job name; the Transport tab's
+#: shared panel the folder alone, for a cited structure pair.
+SETUP_WORDS = {
+    frozenset({"system_label", "psml_lib"}):
+        "Start here.  Give the run a name and pick its pseudopotential "
+        "folder.  The name begins every file the run writes -- for example "
+        "water, so its files are water_01_coarse.fdf, water.XV and so on.  "
+        "The folder holds one .psml file for each element of the structure "
+        "-- for example pseudopotential/, with O.psml and H.psml for water.  "
+        "Nothing can be built until both are filled in.",
+    frozenset({"job_name"}):
+        "Start here.  Give the run a name.  It begins every file the run "
+        "writes -- for example water, so its script is water_01_coarse.py "
+        "and its log water_01_coarse.log.  Nothing can be built until it is "
+        "filled in.",
+    frozenset({"psml_lib"}):
+        "Pick the pseudopotential folder: one .psml file for each element of "
+        "the junction -- for example pseudopotential/, with Au.psml, C.psml, "
+        "H.psml and S.psml for a gold-benzenedithiol junction.  The structure "
+        "pair you cited brings none of its own, so the run takes them from "
+        "this folder.  Nothing can be built until it is filled in.",
+}
+
+
+def setup_words(shown) -> str:
+    """The Setup card's line for a form showing the Setup fields ``shown``
+    (their names).  A set with no line here is refused: a form that shows a
+    new combination needs its own words, never another's."""
+    key = frozenset(shown)
+    if key not in SETUP_WORDS:
+        raise ValueError(f"the Setup card has no line for a form showing "
+                         f"{sorted(key)} -- add one to template.SETUP_WORDS")
+    return SETUP_WORDS[key]
 
 
 def stage_words(stage: str) -> str:

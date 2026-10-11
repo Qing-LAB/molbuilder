@@ -48,27 +48,41 @@ class Row:
     """One row of the definition: its ``name`` (its unit in it), ``where`` it
     lives (``structure`` -- the structure's rows -- or ``frame``, each
     frame's), its ``kind`` (``given``, ``measured`` from the coordinates, or
-    ``derived`` from the others) and the ASCII spelling of its ``unit``
-    (``None``: a number without one)."""
+    ``derived`` from the others), the ASCII spelling of its ``unit``
+    (``None``: a number without one) -- the file's -- and how a page says
+    it: its ``words`` and its ``page_unit`` (the name stays one hover
+    away, `engines/transport.md` § 3.8.1)."""
     name: str
     where: str
     kind: str
     unit: Optional[str]
+    words: str
+    page_unit: Optional[str]
 
 
 #: THE DEFINITION, as data -- `model/structure.md` § 2.2f's table, read by
 #: every rule below and by every door that writes or reads a set.
 ROWS: Tuple[Row, ...] = (
-    Row("mode_index_1based", "structure", "given", None),
-    Row("frequency_cm1", "structure", "given", "cm-1"),
-    Row("temperature_k", "structure", "given", "K"),
-    Row("zero_point_amplitude_amu12_ang", "structure", "given", "amu^1/2 angstrom"),
-    Row("sigma_amu12_ang", "structure", "derived", "amu^1/2 angstrom"),
-    Row("displacement_ang", "frame", "measured", "angstrom"),
-    Row("max_atom_displacement_ang", "frame", "measured", "angstrom"),
-    Row("q_amu12_ang", "frame", "derived", "amu^1/2 angstrom"),
-    Row("node_sigma", "frame", "derived", None),
-    Row("weight", "frame", "given", None),
+    Row("mode_index_1based", "structure", "given", None,
+        "Mode", None),
+    Row("frequency_cm1", "structure", "given", "cm-1",
+        "Frequency", "cm⁻¹"),
+    Row("temperature_k", "structure", "given", "K",
+        "Temperature", "K"),
+    Row("zero_point_amplitude_amu12_ang", "structure", "given",
+        "amu^1/2 angstrom", "Zero-point amplitude", "amu½·Å"),
+    Row("sigma_amu12_ang", "structure", "derived", "amu^1/2 angstrom",
+        "Thermal spread σ", "amu½·Å"),
+    Row("displacement_ang", "frame", "measured", "angstrom",
+        "Displacement", "Å"),
+    Row("max_atom_displacement_ang", "frame", "measured", "angstrom",
+        "Largest atom move", "Å"),
+    Row("q_amu12_ang", "frame", "derived", "amu^1/2 angstrom",
+        "Position along the mode, q", "amu½·Å"),
+    Row("node_sigma", "frame", "derived", None,
+        "q in units of σ", None),
+    Row("weight", "frame", "given", None,
+        "Weight", None),
 )
 STRUCTURE_ROWS = tuple(r for r in ROWS if r.where == "structure")
 FRAME_ROWS = tuple(r for r in ROWS if r.where == "frame")
@@ -126,15 +140,18 @@ class ModeFrameSet:
 
     def to_wire(self) -> Dict[str, Any]:
         """The definition as data a page shows without knowing its names --
-        every row of :data:`ROWS`, in its order, with its unit and kind:
-        ``{structure: [{name, value, unit, kind}], columns: [{name, unit,
-        kind}], frames: [[a value per column] per frame], masses_amu,
-        vibration}`` (`engines/transport.md` § 3.8.1)."""
+        every row of :data:`ROWS`, in its order, with its unit, its kind and
+        its page words: ``{structure: [{name, value, unit, kind, words,
+        page_unit}], columns: [{name, unit, kind, words, page_unit}],
+        frames: [[a value per column] per frame], masses_amu, vibration}``
+        (`engines/transport.md` § 3.8.1)."""
         return {
             "structure": [{"name": r.name, "value": getattr(self, r.name),
-                           "unit": r.unit, "kind": r.kind}
+                           "unit": r.unit, "kind": r.kind,
+                           "words": r.words, "page_unit": r.page_unit}
                           for r in STRUCTURE_ROWS],
-            "columns": [{"name": r.name, "unit": r.unit, "kind": r.kind}
+            "columns": [{"name": r.name, "unit": r.unit, "kind": r.kind,
+                         "words": r.words, "page_unit": r.page_unit}
                         for r in FRAME_ROWS],
             "frames": [[getattr(f, r.name) for r in FRAME_ROWS]
                        for f in self.frames],

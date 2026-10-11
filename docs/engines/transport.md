@@ -2931,9 +2931,14 @@ STRUCTURE PAIR · 3 frames · optimized with J_01_coarse.fdf · SZ · 150 Ry · 
 the frame-set card, one renderer for every page that shows a citation's
 frames (this card, Task setup's echo — `web/task-setup.md` § 3): for a mode's
 set, its mode line — the structure's rows of
-[`model/structure.md`](?doc=model/structure.md) § 2.2f, each with its unit —
-and a table, a row per frame, numbered as the frame bar numbers them (1 … F),
-each frame's rows a column under its name and unit; for a set stating none of
+[`model/structure.md`](?doc=model/structure.md) § 2.2f in plain words, each
+with its value and unit (*Mode 6 · Frequency 2548.37 cm⁻¹ · Temperature
+300 K · …*) — and a table, a row per frame, numbered as the frame bar numbers
+them (1 … F), each frame's rows a column under its words and unit
+(*Displacement (Å)*, *Weight*); the name the file stores each under, and its
+kind, on hover *(the user, 2026-10-10: plain words on the page, the stored
+name one hover away)*. The words and the page's unit are the definition's own
+(`frameset.ROWS`), beside each name; for a set stating none of
 the definition, *N frames — a family: each frame's curve its own, no
 average*; for one structure, nothing. The data is the describe door's
 `frame_set` — `{n_frames, definition}`, the definition

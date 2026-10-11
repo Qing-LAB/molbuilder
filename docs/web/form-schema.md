@@ -160,7 +160,13 @@ decides nothing about which cards fold.
 their titles and the line under each come with the schema as `group_words` —
 a list in the vocabulary's order, which is the cards' order — from their one
 home, `template.GROUP_WORDS` — served as `source_words` is, so
-the renderer keeps no copy. The words are true on every form: a stage may
+the renderer keeps no copy. **The Setup card's line follows the fields the
+form shows** (`template.SETUP_WORDS`, chosen by `setup_words`): a SIESTA
+form's run name and pseudopotential folder, a PySCF form's run name, the
+Transport tab's panel's folder alone for a cited structure pair — each line
+saying what to fill in, with an example; a form showing a combination with no
+line is refused when its schema is built *(the user, 2026-10-10: "you can be
+elaborate for different situations")*. The words are true on every form: a stage may
 override any setting that is not shared, so no card says its settings are set
 once for every stage. **A form of one stage's own values** — the transport
 tab's rung tabs ([`engines/transport.md`](?doc=engines/transport.md) § 3.8.2a)
