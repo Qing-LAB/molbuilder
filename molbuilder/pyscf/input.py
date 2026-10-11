@@ -21,7 +21,6 @@ module instead of the actual PySCF library).
 
 from __future__ import annotations
 
-import math
 from typing import List, Optional
 
 from ..config.pyscf import PySCFConfig
@@ -547,22 +546,6 @@ def spec_for(struct: Structure,
         settings sits between them in the deck too.
         """
         out: List[str] = []
-        # SCF convergence is judged on TWO quantities -- the energy change
-        # and the orbital-gradient norm -- and it is the gradient that
-        # decides how clean the forces are.  PySCF derives it from the
-        # energy tolerance when unset (verified in scf.hf.kernel: ``if
-        # conv_tol_grad is None: conv_tol_grad = numpy.sqrt(conv_tol)``),
-        # so tightening conv_tol alone moves the force criterion only as a
-        # square root.  Either way the script states the effective number:
-        # a derived value the user cannot see is the same problem as an
-        # undocumented one.
-        if cfg.scf_conv_tol_grad <= 0:
-            _grad_tol = math.sqrt(cfg.scf_conv_tol)
-            if v:
-                out.append(f"# mf.conv_tol_grad left at PySCF's default: "
-                           f"sqrt(conv_tol) = {_grad_tol:.2e}.")
-                out.append("# Set cfg.scf_conv_tol_grad (e.g. 1e-6) to fix it "
-                           "independently of the energy tolerance.")
         if not cfg.level_shift:
             out += _layout.hard_scf_hint(state)
         if cfg.chkfile:

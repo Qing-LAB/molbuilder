@@ -1219,12 +1219,14 @@ generation time:
   `resolve`'s layer (*a pin · a sweep point · this stage's override · the
   rung*) and, for the template's, the template's own record of it (*the
   template · from the junction you cited · you set this · not chosen · not
-  recorded*). *Not chosen* is the documented default, written because nobody
-  chose a value — obligation 4's mark — save for an electronic-state item,
-  whose blank the electronic state decides, and the row says so. A value a
-  step after `resolve` sets is said as that step's (`resolve.SET_AFTER`): a
-  transport rung's `SystemLabel`, spelt from the calculation's, and a bench
-  trial's, with its coordinate. The rows a rung decided come first, each
+  recorded*). *Not chosen* marks a value nobody chose — obligation 4's mark:
+  the documented default, written; and for an optional item nobody set, the
+  row says who answers it instead (`resolve.BLANK_ANSWERED_BY`): the
+  electronic state, the k-point mesh (`Diag.ParallelOverK`), a Nosé run's
+  initial temperature, or the engine's own default, which the deck's not-set
+  line names. A value a step after `resolve` sets is said as that step's
+  (`resolve.SET_AFTER`): a transport rung's `SystemLabel`, spelt from the
+  calculation's, and a bench trial's, with its coordinate. The rows a rung decided come first, each
   layer's by name.
   `prep` hands them over on every road that renders a deck — the one that
   writes it and the one the gather compares with (`same_calculation`), so the

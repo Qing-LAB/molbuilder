@@ -45,6 +45,7 @@ from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
                     Union)
 
 from .jobset.model import Resources
+from .template import STATE_ITEMS
 
 
 class ResolveError(Exception):
@@ -125,7 +126,9 @@ class ResolvedConfig:
     #: § 3.2, `engines/template.md` § 6.6 obligation 5): the kind's engine
     #: and deck items this rung reads, the scheduler's excepted, each in
     #: :data:`LAYER_WORDS` and, for the template's, the template's own record
-    #: of it (`template.SOURCE_WORDS`); the rows the rung decided first.
+    #: of it (`template.SOURCE_WORDS`), an optional item nobody set with who
+    #: answers it (:data:`BLANK_ANSWERED_BY`); the rows the rung decided
+    #: first.  A value prep sets after it is re-worded there (:data:`SET_AFTER`).
     deck_sources: Tuple[Tuple[str, str], ...] = ()
 
     @property
@@ -332,50 +335,62 @@ LAYER_WORDS = {"template": "the template", "stage": "this stage's override",
                "sweep": "a sweep point", "pin": "a pin", "role": "the rung"}
 
 #: WHO SETS A VALUE AFTER THE LAYERS -- the deck's PROVENANCE table's words
-#: for it (`job-contracts.md` § 3.2), one home: a blank electronic-state
-#: item, which the electronic state decides and the deck writes (ES1,
-#: `science/chemistry-correctness.md` § 2a; its own note says from what);
-#: and the deck's ``SystemLabel`` where prep spells it -- a transport rung's
-#: from the calculation's label (`jobset/prep.py`, C2), a bench trial's with
-#: its coordinate (`job-contracts.md` § 6.3).
+#: for the deck's ``SystemLabel`` where prep spells it (`job-contracts.md`
+#: § 3.2): a transport rung's from the calculation's label
+#: (`jobset/prep.py`, C2), a bench trial's with its coordinate
+#: (`job-contracts.md` § 6.3).
 SET_AFTER = {
-    "state": "the electronic state decides it",
     "rung_label": "the rung -- spelt from the calculation's label",
     "trial_label": "this trial -- the calculation's label with its coordinate",
 }
 
+#: WHO ANSWERS AN OPTIONAL ITEM NOBODY SET -- the table's words after *not
+#: chosen*.  For these the deck writes a value molbuilder works out: the
+#: electronic state's (ES1, `science/chemistry-correctness.md` § 2a; the
+#: deck's own note says from what), the k-point split from the mesh and a
+#: Nosé run's target from its initial temperature (`siesta/input.py`).
+#: Every other is the engine's own default, which the deck's not-set line
+#: names (`engines/template.md` § 6.6 obligation 4).
+BLANK_ANSWERED_BY = {
+    **{name: "the electronic state decides it" for name in STATE_ITEMS},
+    "parallel_over_k": "worked out from the k-point mesh",
+    "md_target_temperature": "the initial temperature, on a Nose run",
+}
+BLANK_ENGINE = "the engine's own default"
 
-def _deck_items(engine: str, kind: str, stage: str) -> frozenset:
-    """The items a rung's deck is rendered from -- the kind's engine and
-    deck items the rung reads (`template.reads`), the scheduler's excepted:
-    their values are the run's, which the deck's ``resolved-defaults``
-    reports."""
+
+def _deck_items(engine: str, kind: str, stage: str) -> Mapping[str, bool]:
+    """The items a rung's deck is rendered from, each with whether it is
+    optional -- the kind's engine and deck items the rung reads
+    (`template.reads`), the scheduler's excepted: their values are the
+    run's, which the deck's ``resolved-defaults`` reports."""
     from .template import catalogue, reads, select
-    return frozenset(
-        it.name for it in select(catalogue(), engine=engine,
-                                 kind=("engine", "deck"), calculation=kind)
-        if not it.allocation and reads(it, engine, kind, stage))
+    return {it.name: it.optional
+            for it in select(catalogue(), engine=engine,
+                             kind=("engine", "deck"), calculation=kind)
+            if not it.allocation and reads(it, engine, kind, stage)}
 
 
 def _deck_sources(values, provenance: Mapping[str, str],
                   origins: Mapping[str, Optional[str]],
-                  names: frozenset) -> Tuple[Tuple[str, str], ...]:
+                  items: Mapping[str, bool]) -> Tuple[Tuple[str, str], ...]:
     """``((item, who), ...)`` for :attr:`ResolvedConfig.deck_sources`, in
     the pipeline log's order (`pipeline_log.config_rows`: what the rung
     decided first).  A template value says whose it is as the template
     records it -- *not recorded* for a file written before the record -- and
-    a blank electronic-state item who decides the value the deck writes."""
+    an optional item nobody set says who answers it
+    (:data:`BLANK_ANSWERED_BY`, else the engine's own default)."""
     from .pipeline_log import config_rows
-    from .template import SOURCE_WORDS, STATE_ITEMS
+    from .template import SOURCE_WORDS
     rows = []
     for name, value, src in config_rows(values, provenance):
-        if name not in names:
+        if name not in items:
             continue
         who = LAYER_WORDS.get(src, src)
         if src == "template":
             who = f"{who} · {SOURCE_WORDS[origins.get(name) or 'unrecorded']}"
-        if name in STATE_ITEMS and value is None:
-            who = f"{who} · {SET_AFTER['state']}"
+        if value is None and items[name]:
+            who = f"{who} · {BLANK_ANSWERED_BY.get(name, BLANK_ENGINE)}"
         rows.append((name, who))
     return tuple(rows)
 
@@ -488,7 +503,7 @@ def resolve(template_text: str, task, config_cls, *,
     origins = {it.name: it.source for it in read_template(template_text).items}
     deck_items = _deck_items(_engine, _kind, stage_obj.name)
 
-    if stage_obj is not None and stage_obj.overrides:
+    if stage_obj.overrides:
         # A RUN SETTING is the rung's run card's (`engines/stages.md`
         # § 6.8d, plan § 5w K5) -- the machine's answers and a person's
         # alike.  It arrives here as a pin, from `execution`.
@@ -702,7 +717,7 @@ def resolve(template_text: str, task, config_cls, *,
         _seen[el.label] = el.point
     return ParameterSet(elements=tuple(elements),
                         axes=_axes_of(sweep, points),
-                        stage=(stage_obj.name if stage_obj else None))
+                        stage=stage_obj.name)
 
 
 def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any]]:
@@ -1051,4 +1066,4 @@ _DROP_RE = re.compile(r"[^A-Za-z0-9_]")
 
 __all__ = ["ParameterSet", "ResolvedConfig", "ResolveError", "ALLOCATION_FIELDS",
            "MachineTranslation", "resolve", "point_token", "LAYER_WORDS",
-           "SET_AFTER", "said_by"]
+           "SET_AFTER", "BLANK_ANSWERED_BY", "BLANK_ENGINE", "said_by"]

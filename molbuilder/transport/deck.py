@@ -102,8 +102,8 @@ TS_DEVICE_SECTION = _sc.Section(
      "negf_eq_pole_ev", "negf_neq_eta_ev"),
     note=(
         "# Read by siesta in its NEGF mode (TranSIESTA) -- this rung.  An item",
-        "# absent below was left at 0, which leaves it to TranSIESTA: its own",
-        "# default there is a rule, not a number (engines/transport.md 6.1b).",
+        "# left at 0 leaves it to TranSIESTA, whose own default there is a",
+        "# rule, not a number: its line says which (engines/transport.md 6.1b).",
     ))
 
 #: What tbtrans reads of TranSIESTA's settings: `TBT.Voltage` defaults to
@@ -149,8 +149,8 @@ TBT_SECTION = _sc.Section(
     note=(
         "# Read by tbtrans, which runs no SCF: it takes the converged",
         "# Hamiltonian the device rung wrote (TBT.HS above) and the leads'",
-        "# .TSHS, and evaluates T(E) on the window above.  An item absent",
-        "# below was left at 0, which leaves it to tbtrans's own rule.",
+        "# .TSHS, and evaluates T(E) on the window above.  An item left at",
+        "# 0 leaves it to tbtrans's own rule, and its line says which.",
     ))
 
 

@@ -731,6 +731,7 @@ ITS SIDE EFFECT ON ANOTHER KEYWORD: WriteMDXmol (the .ANI animation file) defaul
 """
 
 [item.write_coor_xmol]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -789,6 +790,7 @@ MOLBUILDER DOES NOT READ THIS FILE.  Trajectory coordinates come from <label>.MD
 """
 
 [item.write_hs]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -854,6 +856,7 @@ PySCF: one process, on the GPUs the job is given.
 """
 
 [item.block_size]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
 kind = "engine"
 category = ["execution"]
 engines = ["siesta"]
@@ -876,6 +879,7 @@ It does not fix ``propor: ERROR: IMAX = 0``. BS = 1, 2 and 4 all crash at the sa
 """
 
 [item.parallel_over_k]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
 kind = "engine"
 category = ["execution"]
 engines = ["siesta"]
@@ -928,6 +932,7 @@ How much memory this run may use.  Left blank -- the normal state -- there is no
 Each engine applies a number its own way: SIESTA's run script caps the run with `ulimit -v` (the deck records the number in a comment); PySCF's deck passes it to mol.max_memory, which PySCF consults to choose in-core versus out-of-core.  Blank, the PySCF deck writes `max_memory = None` and PySCF keeps its own setting (PYSCF_MAX_MEMORY, else 4000 MB).
 """
 [item.use_gpu]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
 # ONE item for both engines' one question: DOES THIS RUN USE A GPU?
 # (ruled 2026-08-13, template.md 6.3).
 #
@@ -960,6 +965,7 @@ PySCF: run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf exte
 """
 
 [item.diag_algorithm]
+stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_constants"]
 kind = "engine"
 category = ["execution"]
 engines = ["siesta"]
@@ -1410,6 +1416,7 @@ range = [0.0, 0.01]
 group = "stage"
 label = "scf.conv_tol_grad"
 tier = "advanced"
+not_set = "PySCF takes the square root of the energy tolerance, conv_tol (pyscf.scf.hf.kernel)"
 help = """
 The second SCF stopping test: how small the orbital gradient must get -- how far the orbitals still want to rotate.
 0 means take PySCF's own value, sqrt(conv_tol), which is ~3e-5 at conv_tol=1e-9.
@@ -2318,7 +2325,7 @@ range = [0.0, 1.0]
 group = "stage"
 label = "Device Green-function broadening"
 tier = "advanced"
-not_set = "tbtrans takes a tenth of the smallest electrode broadening (TBT.Elecs.Eta), 0.1 meV at its 1 meV (m_tbt_contour.F90)"
+not_set = "tbtrans takes a tenth of the smallest electrode broadening, TBT.Elecs.Eta (m_tbt_contour.F90)"
 help = """
 The imaginary part used on the device Green function -- the small broadening that keeps sharp features finite.  0 leaves the engine's own default, which is a FORMULA -- min(electrode eta)/10 -- so a number here replaces it rather than restating it.
 """
@@ -2562,7 +2569,7 @@ range = [0.0, 1.0]
 group = "stage"
 label = "Non-equilibrium broadening"
 tier = "advanced"
-not_set = "TranSIESTA takes a tenth of the smallest electrode broadening (TS.Elecs.Eta), 0.1 meV at its 1 meV (m_ts_contour_neq.f90)"
+not_set = "TranSIESTA takes a tenth of the smallest electrode broadening, TS.Elecs.Eta (m_ts_contour_neq.f90)"
 help = """
 The small imaginary part added to the energy along the non-equilibrium contour, which smooths that integration.  0 leaves the engine's own default in place.  It is inert at zero bias, where there is no non-equilibrium window to integrate.
 """

@@ -133,10 +133,11 @@ def emit_density_fit_kw(cfg) -> List[str]:
         "# density_fit's keyword arguments, ONE home (pyscf.md § 7a):",
         "# auxbasis rides the density-fitting call as its argument.",
     ]
-    if not aux:
+    if not aux and getattr(cfg, "density_fit", False):
         # NOBODY CHOSE THE FITTING BASIS, and PySCF picks one: said here, as
         # the one-`mf` deck says it above its call (`engines/template.md`
-        # § 6.6 obligation 4).
+        # § 6.6 obligation 4) -- where density fitting is on, the one case
+        # the basis applies to.
         from ..script_emit import not_set_line, parameter
         out.append(not_set_line(parameter("auxbasis", "pyscf"),
                                 keyword="auxbasis"))

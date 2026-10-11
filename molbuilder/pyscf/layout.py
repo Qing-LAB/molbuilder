@@ -223,7 +223,10 @@ def line(cfg, *, is_dft: bool):
             return f"mf.conv_tol  = {value:.1e}"
         if name == "scf_conv_tol_grad":
             if not value or value <= 0:
-                return None
+                # 0 LEAVES PYSCF'S OWN RULE, and the deck says which
+                # (`engines/template.md` § 6.6 obligation 4).
+                return not_set_line(parameter(name, "pyscf"),
+                                    keyword="mf.conv_tol_grad")
             return f"mf.conv_tol_grad = {value:.1e}    # set explicitly"
         if name == "scf_max_cycle":
             return f"mf.max_cycle = {value}"

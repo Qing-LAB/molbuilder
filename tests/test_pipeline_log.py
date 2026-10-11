@@ -144,9 +144,11 @@ def test_every_resolved_value_carries_its_source(tmp_path):
     assert who["write_forces"] == "the rung", who
     assert who["mesh_cutoff"] in {f"the template · {w}"
                                   for w in SOURCE_WORDS.values()}, who
-    # a blank spin is the electronic state's to decide, and the row says so
-    from molbuilder.resolve import SET_AFTER
-    assert who["spin_treatment"].endswith(SET_AFTER["state"]), who
+    # an optional item nobody set says who answers it: the electronic state
+    # for a blank spin, the k-point mesh for the ranks' split
+    from molbuilder.resolve import BLANK_ANSWERED_BY
+    for name in ("spin_treatment", "parallel_over_k"):
+        assert who[name].endswith(BLANK_ANSWERED_BY[name]), who
     # the scheduler's answers are the run's, reported beside, never as rows
     assert "mpi_np" not in who, who
 

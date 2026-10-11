@@ -1361,8 +1361,8 @@ function renderCameOver(obj, treatment, frameSet, shared) {
 
 /** EVERY VALUE SHARED BY EVERY STAGE, read-only, each with whose it is --
  *  the folder answer's `template.shared` (task-setup.md § 3,
- *  engines/template.md § 6.6 obligation 3), in the catalogue's order and by
- *  its label.  A value nobody gave shows the template's answer, none, beside
+ *  engines/template.md § 6.6 obligation 3), in the catalogue's category
+ *  order and by each one's label.  A value nobody gave shows the template's answer, none, beside
  *  its words. */
 function renderShared(rows) {
     const wrap = $("ts-shared-wrap");

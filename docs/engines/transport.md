@@ -3961,7 +3961,11 @@ none of it: it was text `siesta` never read.
   (`m_tbt_options.F90`). The catalogue says the same with `stages`: the eight
   SCF items declare the four SCF rungs (and vibration's two roles), so the
   transmission's tab never offers them and `prep` refuses one there by name
-  (§ 2a.13 Class C, § 3.8.9).
+  (§ 2a.13 Class C, § 3.8.9) — and so, since 2026-10-11, do the diagonaliser
+  items (`block_size`, `parallel_over_k`, `diag_algorithm`, `use_gpu`) and
+  the output switches a person sets (`write_coor_xmol`, `write_hs`); the two
+  the rung fixes, `write_forces` and `write_coor_step`, keep their one answer
+  for every rung (`template.md` § 6.4).
 * **The leads' bulk treatment is ONE value for the device and the
   transmission** — `electrodes_bulk`, a shared value. TranSIESTA reads it for
   the device's self-consistent run, and `tbtrans` takes `TS.Elecs.Bulk` as the
@@ -3981,7 +3985,8 @@ none of it: it was text `siesta` never read.
   window's three values are written by the rung's own block, each asked of
   the framework's door and written with its note. `TBT.HS` is a rung line derived from the label, not
   a setting, and has no row. An item left at a zero that means *the
-  program's own rule* writes nothing, and its note says so. The electrode
+  program's own rule* writes no value, and says so where its line would be,
+  in its own `not_set` (`template.md` § 6.6 obligation 4). The electrode
   declarations stay a block: they are derived from the region labels, and no
   parameter models them.
 * **`TBT.k` is written as a list, `TBT.k [2 2 1]`** — the only line form

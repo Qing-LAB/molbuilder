@@ -137,7 +137,10 @@ def same_calculation(a: str, b: str) -> bool:
     The stamps are masked by the one rule a plan's identity is asked by too
     (`deck_record.without_stamps`): fields, never whole fences -- the
     atom-metadata fence holds the region partition, and two decks that
-    disagree about THAT are emphatically not the same calculation.
+    disagree about THAT are emphatically not the same calculation.  The
+    provenance block's ``parameters`` table is compared too: a value whose
+    setter changed is a description that changed, and a prepared ladder's
+    description does not change under it (`job-contracts.md` § 3.2).
     """
     return (without_stamps(a.encode("utf-8"))
             == without_stamps(b.encode("utf-8")))
@@ -1776,7 +1779,8 @@ _PROVENANCE_KV_RE = re.compile(
 #: header's own words, where it carries any, read as ``<name>``.
 _PARAMETERS_KEY = "parameters"
 _PROVENANCE_DEFAULTS_HDR = re.compile(
-    r"^#\s+(?P<sub>resolved-defaults|parameters)\s*:\s*(?P<note>.*?)\s*$")
+    r"^#\s+(?P<sub>resolved-defaults|" + _PARAMETERS_KEY
+    + r")\s*:\s*(?P<note>.*?)\s*$")
 
 _PROVENANCE_DEFAULTS_KV_RE = re.compile(
     r"^#\s{4,}(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")

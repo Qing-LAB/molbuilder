@@ -1681,7 +1681,8 @@ def _folder_template(folder, label, *, engine=None, kind=None) -> dict:
             for it in select(tmpl) if it.is_set}
     # EVERY VALUE SHARED BY EVERY STAGE, read-only, with whose it is: not a
     # column of the stage table (`shared`, § 5), so the one place on this
-    # page a reader sees them -- in the catalogue's order, by its label.  A
+    # page a reader sees them -- in the catalogue's category order, by each
+    # one's label.  A
     # value nobody gave reads as the template has it: none, *not chosen*.
     shared = []
     if engine and kind:
