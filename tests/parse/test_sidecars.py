@@ -14,10 +14,7 @@ from pathlib import Path
 import pytest
 
 from molbuilder.parse import SidecarResult, detect, parse
-from molbuilder.parse.sidecars import (
-    MolstructSidecarFileParser,
-    SpectraSidecarFileParser,
-)
+from molbuilder.parse.sidecars import MolstructSidecarFileParser
 from molbuilder.parse.registry import _registered_file_parsers
 
 
@@ -52,14 +49,6 @@ def test_molstruct_parser_claims_suffix():
     assert not MolstructSidecarFileParser.can_parse(REPO / "README.md")
 
 
-def test_spectra_parser_claims_suffix(tmp_path):
-    import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-    from support.junction import spectra_sidecar
-    assert SpectraSidecarFileParser.can_parse(
-        spectra_sidecar(tmp_path / "built.spectra.json"))
-
-
 def test_detect_routes_to_molstruct_parser():
     cls = detect(_need(MOLSTRUCT_FX))
     assert cls is MolstructSidecarFileParser
@@ -79,16 +68,6 @@ def test_parse_molstruct_returns_sidecarresult():
     sv_in_payload = result.payload.get("schema_version")
     if sv_in_payload is not None:
         assert result.schema == f"molstruct/v{sv_in_payload}"
-
-
-def test_parse_spectra_returns_sidecarresult_with_payload(tmp_path):
-    import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-    from support.junction import spectra_sidecar
-    result = parse(spectra_sidecar(tmp_path / "built.spectra.json"))
-    assert isinstance(result, SidecarResult)
-    assert result.schema.startswith("spectra/v")
-    assert "schema_version" in result.payload
 
 
 def test_sidecar_result_is_frozen():

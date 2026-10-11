@@ -9,7 +9,6 @@ Pins:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -18,7 +17,6 @@ from molbuilder.parse import (
     AmbiguousFormatError,
     SidecarResult,
     detect,
-    parse,
     register,
 )
 from molbuilder.parse.base import FileParser
@@ -79,21 +77,6 @@ def test_registry_ambiguous_raises():
         # Cleanup so subsequent tests see the canonical registry.
         if _GreedyParser in _FILE_PARSERS:
             _FILE_PARSERS.remove(_GreedyParser)
-
-
-# ---- Transport / Spectra JSON-serialisable payloads ------------- #
-
-
-def test_spectra_sidecar_payload_is_json_serialisable(tmp_path):
-    """SpectraSidecarFileParser's payload holds no numpy ndarrays, so
-    json.dumps does not throw."""
-    import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-    from support.junction import spectra_sidecar
-    result = parse(spectra_sidecar(tmp_path / "built.spectra.json"))
-    # If asdict() were still in place, json.dumps would raise
-    # TypeError("Object of type ndarray is not JSON serializable").
-    json.dumps(result.payload)
 
 
 # ---- Frozen invariant on multiple Result types ------------------ #

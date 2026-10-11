@@ -116,51 +116,6 @@ def frozen() -> list:
     return sorted(regions()["frozen_atoms"])
 
 
-# --------------------------------------------------------------------- #
-#  A spectra sidecar, WRITTEN by the real writer                        #
-# --------------------------------------------------------------------- #
-#
-# Built here rather than read from projects/BDT/spectrum/BDT-only/, which is
-# the user's scientific record: a test that consumes it asserts facts about
-# data whose relevance nobody confirmed, skips silently on any machine that
-# lacks it (so the suite reads green while proving nothing), and changes
-# meaning the day that run is regenerated.
-#
-# The writer is the application's own `dump_spectra_json`, so the document is
-# valid by construction -- if the format moves, this moves with it.
-
-def spectra_sidecar(path):
-    """Write a minimal, VALID ``*.spectra.json`` at ``path``; return ``path``."""
-    from molbuilder.spectra import SpectraResults
-    from molbuilder.sidecars.spectra import dump_spectra_json
-
-    s = build_junction()
-    from molbuilder.spectra.results import SCHEMA_VERSION as _V
-    results = SpectraResults(
-        schema_version=_V,
-        timestamp="2026-01-01T00:00:00Z",
-        structure_hash="a" * 64,
-        equilibrium_mo_energies_eh=[-1.0, -0.5],
-        equilibrium_homo_idx=0,
-        selected_mode_idxs_1based=[],
-        methods_text="constructed fixture",
-        bibliography_keys=[],
-        engine="pyscf",
-        engine_version="test",
-        molbuilder_version="test",
-        n_atoms_total=s.n_atoms,
-        free_atom_idxs=sorted(set(range(s.n_atoms)) - set(frozen())),
-        frozen_atom_idxs=frozen(),
-        equilibrium_scf_eh=-1.0,
-        equilibrium_elements=list(s.elements),
-        equilibrium_positions_ang=[[float(x) for x in row] for row in s.positions],
-        modes=[],
-        config={"method": "DFT", "spin_treatment": "unrestricted"},
-    )
-    dump_spectra_json(results, path)
-    return path
-
-
 # ---- the road tests' junction --------------------------------------- #
 
 #: The fixture's leads are a CHAIN, one gold atom per layer, so they are

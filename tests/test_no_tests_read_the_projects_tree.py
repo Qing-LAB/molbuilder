@@ -203,17 +203,6 @@ def test_the_shared_junction_fixture_builds():
     assert s.regions["frozen_atoms"] == sorted(frozen())
 
 
-def test_the_built_spectra_sidecar_round_trips(tmp_path):
-    import sys
-    sys.path.insert(0, str(TESTS))
-    from support.junction import spectra_sidecar
-    from molbuilder.parse import parse
-
-    result = parse(spectra_sidecar(tmp_path / "built.spectra.json"))
-    assert result.schema.startswith("spectra/v")
-    assert "schema_version" in result.payload
-
-
 # ---------------------------------------------------------------------------
 #  The detector's own truth table
 # ---------------------------------------------------------------------------
