@@ -170,8 +170,9 @@ def point_transmission(where, label: str, spin: str) -> Dict:
     (`parse.engines.tbtrans.transmission_files`): ``energy_ev`` and
     ``transmission`` -- **per spin channel, so G = G0 · T(E_F)** with
     G0 = 2e²/h: the unpolarized file's T as it is; a polarized point's two
-    channels averaged, (T↑ + T↓)/2, each kept whole in ``channels`` -- and
-    ``transmission_file``.  :class:`RecordError` names what is missing: a
+    channels averaged, (T↑ + T↓)/2, each kept whole in ``channels`` and
+    their sum in ``transmission_total`` -- and ``transmission_file``.
+    :class:`RecordError` names what is missing: a
     polarized deck whose run wrote one channel is not done
     (`engines/transport.md` § 2a.12)."""
     from ..parse.engines.tbtrans import transmission_files
@@ -189,6 +190,9 @@ def point_transmission(where, label: str, spin: str) -> Dict:
         return {"energy_ev": e_up,
                 "transmission": [(a + b) / 2.0 for a, b in zip(t_up, t_dn)],
                 "channels": {"up": t_up, "down": t_dn},
+                # THE TOTAL, T↑ + T↓, what the report draws beside the two
+                # (`web/results.md` § 2.5).
+                "transmission_total": [a + b for a, b in zip(t_up, t_dn)],
                 "transmission_file": [files["up"][0].name,
                                       files["down"][0].name]}
     if not files.get("unpolarized"):
@@ -229,6 +233,10 @@ def point_currents(where, token: str, spin: str) -> Dict:
             by = {r.get("channel"): r["current_a"] for r in mine}
             if "up" in by and "down" in by:
                 out["current_a"] = by["up"] + by["down"]
+                # EACH SPIN'S, as TBtrans printed it -- the I-V draws them
+                # beside the total (`web/results.md` § 2.5).
+                out["current_by_spin_a"] = {"up": by["up"],
+                                            "down": by["down"]}
         else:
             out["current_a"] = 2.0 * mine[0]["current_a"]
         break
@@ -718,7 +726,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
     from .compose import PROVENANCE_FILE
     from .stages import frames_of, rung_points
     from .tbtnc import (ORBITAL_NOTE, ORBITAL_TYPES, TbtError, point_dos,
-                        tbt_file)
+                        spin_dos, tbt_files)
 
     base = Path(base_dir)
     junction = composed_junction(base)
@@ -777,17 +785,27 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                                   f"transmission: {exc} ({st.detail})"})
             continue
         # THE DOS, ITS PARTS AND THE EIGENCHANNELS, from the point's own
-        # `.TBT.nc` (`tbtnc.point_dos`; `web/results.md` § 2.5).
-        nc = tbt_file(where, task.label)
+        # `.TBT.nc` -- a polarized point's two, summed over spin with each
+        # spin's own beside (`tbtnc.point_dos` / `spin_dos`;
+        # `web/results.md` § 2.5).
+        ncs = tbt_files(where, task.label)
         dos = None
         dos_why = None
-        if nc is None:
-            dos_why = f"{task.label}.TBT.nc is not in {rel}"
-        else:
-            try:
-                dos = point_dos(nc, regions)
-            except TbtError as exc:
-                dos_why = str(exc)
+        try:
+            if spin == "polarized":
+                missing = [f"{task.label}.TBT_{c}.nc"
+                           for c, k in (("UP", "up"), ("DN", "down"))
+                           if k not in ncs]
+                if missing:
+                    dos_why = f"{' and '.join(missing)} not in {rel}"
+                else:
+                    dos = spin_dos(ncs["up"], ncs["down"], regions)
+            elif "unpolarized" in ncs:
+                dos = point_dos(ncs["unpolarized"], regions)
+            else:
+                dos_why = f"{task.label}.TBT.nc is not in {rel}"
+        except TbtError as exc:
+            dos_why = str(exc)
         energies = read["energy_ev"]
         points_out.append({
             **at,
@@ -928,7 +946,7 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     :class:`RecordError` names what is missing."""
     from ..structure import frame_words
     from .stages import Point, frames_of, same_volts
-    from .tbtnc import TbtError, selection_pdos as _pdos, tbt_file
+    from .tbtnc import TbtError, spin_selection_pdos as _pdos, tbt_files
     base = Path(base_dir)
     n = frames_of(base)
     # THE POINT IS A FRAME AND A VOLTAGE (`engines/transport.md` § 2a.9):
@@ -966,10 +984,11 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     read_at, where = _at("transmission")
     if where is None:
         raise RecordError(f"no transmission point at {said}")
-    nc = tbt_file(where, task.label)
-    if nc is None:
+    ncs = tbt_files(where, task.label)
+    if "unpolarized" not in ncs and not ("up" in ncs and "down" in ncs):
         raise RecordError(f"the transmission at {said} has written "
-                          f"no {task.label}.TBT.nc")
+                          f"no {task.label}.TBT.nc (nor both "
+                          f"{task.label}.TBT_UP.nc and .TBT_DN.nc)")
     # THE DEVICE RUN THE TRANSMISSION GATHERED, as every device fact beside
     # a transmission is (`engines/transport.md` § 2a.12) -- never a newer one.
     _dev_at, dev = _at("device", run=gathered_device_run(base, task))
@@ -977,13 +996,14 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     try:
         # THE POINT IT WAS READ AT, stated beside the answer: under the
         # low-bias approximation a voltage's PDOS is its frame's 0 V slice.
-        return {**_pdos(nc, orb, atoms, orbitals),
+        return {**_pdos(ncs, orb, atoms, orbitals),
                 "point": Point(frame=read_at.frame, volts=read_at.volts,
                                of=want.of).to_wire()}
     except (TbtError, OSError, ValueError) as exc:
         # A FILE THAT DOES NOT READ is a refusal in its words, as the record
         # says every other one.
-        raise RecordError(f"{nc.name}: {exc}") from exc
+        raise RecordError(f"{', '.join(p.name for p in ncs.values())}: "
+                          f"{exc}") from exc
 
 
 def _iv(base: Path, task, treatment: str, points_out: List[Dict],
@@ -998,13 +1018,21 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
     (§ 2a.10).  The frames share one transmission deck, so ``kt_ev``,
     ``window_ev`` and the ``notes`` keyed by voltage are the block's; a
     frame whose 0 V point has not run is noted under its token (``all``
-    with no frame axis)."""
+    with no frame axis).  A POLARIZED calculation adds ``current_up_a`` and
+    ``current_down_a``, each spin's current beside the total
+    (`web/results.md` § 2.5): TBtrans's printed figures, or under the
+    approximation each spin's own integral, half of
+    :func:`linear_response_iv` of that spin's T(E, 0) -- the integral is
+    the two-channel G₀'s."""
     from ..structure import frame_words
     from .stages import frame_token, same_volts
+    polarized = any(p.get("spin") == "polarized" for p in points_out)
     if treatment == "low-bias-approximation":
         out: Dict = {"frame": [], "voltages_v": [], "current_a": [],
                      "current_a_printed": [], "computed": "linear-response",
                      "kt_ev": None, "window_ev": None, "notes": {}}
+        if polarized:
+            out["current_up_a"], out["current_down_a"] = [], []
         for f in frames:
             zero = next((p for p in points_out if p["frame"] == f
                          and same_volts(p["bias_v"], 0.0)), None)
@@ -1014,6 +1042,9 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                     out["voltages_v"].append(float(v))
                     out["current_a"].append(None)
                     out["current_a_printed"].append(None)
+                    if polarized:
+                        out["current_up_a"].append(None)
+                        out["current_down_a"].append(None)
                 out["notes"][frame_token(f) if f is not None else "all"] = (
                     f"the 0 V transmission of {frame_words(f, len(frames))} "
                     f"has not run" if f is not None
@@ -1022,6 +1053,15 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
             kt = BOLTZMANN_EV_K * deck_temperature_k(base / zero["attempt"])
             iv = linear_response_iv(zero["energy_ev"], zero["transmission"],
                                     list(task.bias), kt)
+            if polarized:
+                chans = zero.get("channels") or {}
+                for spin in ("up", "down"):
+                    got = (linear_response_iv(zero["energy_ev"], chans[spin],
+                                              list(task.bias), kt)
+                           ["current_a"] if spin in chans
+                           else [None] * len(iv["current_a"]))
+                    out[f"current_{spin}_a"].extend(
+                        None if i is None else i / 2.0 for i in got)
             for v, i in zip(iv["voltages_v"], iv["current_a"]):
                 out["frame"].append(f)
                 out["voltages_v"].append(v)
@@ -1033,11 +1073,17 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
             if out["kt_ev"] is None:
                 out["kt_ev"], out["window_ev"] = iv["kt_ev"], iv["window_ev"]
         return out
-    return {"frame": [p["frame"] for p in points_out],
-            "voltages_v": [p["bias_v"] for p in points_out],
-            "current_a": [p["current_a"] for p in points_out],
-            "current_a_printed": [p["current_a_printed"] for p in points_out],
-            "computed": "tbtrans"}
+    out = {"frame": [p["frame"] for p in points_out],
+           "voltages_v": [p["bias_v"] for p in points_out],
+           "current_a": [p["current_a"] for p in points_out],
+           "current_a_printed": [p["current_a_printed"] for p in points_out],
+           "computed": "tbtrans"}
+    if polarized:
+        for spin in ("up", "down"):
+            out[f"current_{spin}_a"] = [
+                (p.get("current_by_spin_a") or {}).get(spin)
+                for p in points_out]
+    return out
 
 
 def write_record(base_dir, record: Dict) -> Path:

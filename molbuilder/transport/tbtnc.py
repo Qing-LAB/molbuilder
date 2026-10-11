@@ -44,11 +44,52 @@ class TbtError(Exception):
     """The file cannot answer what was asked -- the message says why."""
 
 
-def tbt_file(run_dir: Path, label: str) -> Optional[Path]:
-    """The transmission run's ``<label>.TBT.nc`` in ``run_dir``, or
-    ``None`` -- the spin-polarized run's two files are plan K21's."""
-    p = Path(run_dir) / f"{label}.TBT.nc"
-    return p if p.is_file() else None
+def tbt_files(run_dir: Path, label: str) -> Dict[str, Path]:
+    """The transmission run's ``.TBT.nc`` files in ``run_dir``, by spin --
+    ``{"unpolarized": …}`` or ``{"up": …, "down": …}`` -- each that is
+    there (`web/results.md` § 2.5).  TBtrans names them as it names its
+    transmission files, one name per channel
+    (``siesta_grammar.TBT_CHANNELS``)."""
+    from ..parse.engines.siesta_grammar import TBT_CHANNELS
+    out = {}
+    for spin, tag in TBT_CHANNELS:
+        p = Path(run_dir) / f"{label}{tag}nc"
+        if p.is_file():
+            out[spin] = p
+    return out
+
+
+def _sum(a: List[float], b: List[float]) -> List[float]:
+    return [x + y for x, y in zip(a, b)]
+
+
+def spin_dos(up: Path, down: Path, regions: Dict[str, Sequence[int]]) -> Dict:
+    """The DOS block of a POLARIZED point (`web/results.md` § 2.5): each
+    quantity of :func:`point_dos` summed over the two channels' files, and
+    ``by_spin`` -- each channel's own ``total`` and ``eigenchannels`` --
+    beside.  The two files are of one run, so their energy grids are one;
+    a run whose two differ is refused, never summed."""
+    a, b = point_dos(up, regions), point_dos(down, regions)
+    if len(a["energy_ev"]) != len(b["energy_ev"]) or any(
+            abs(x - y) > 1e-9 for x, y in zip(a["energy_ev"],
+                                              b["energy_ev"])):
+        raise TbtError(f"{Path(up).name} and {Path(down).name} are on "
+                       f"different energy grids -- not one run's two spins")
+    out: Dict = {"energy_ev": a["energy_ev"]}
+    if "total" in a and "total" in b:
+        out["total"] = _sum(a["total"], b["total"])
+        out["by_label"] = {k: _sum(v, b["by_label"][k])
+                           for k, v in a.get("by_label", {}).items()
+                           if k in b.get("by_label", {})}
+    for key in ("lead_spectral", "lead_bulk"):
+        both = {e: _sum(v, b[key][e]) for e, v in a.get(key, {}).items()
+                if e in b.get(key, {})}
+        if both:
+            out[key] = both
+    out["by_spin"] = {
+        spin: {k: d[k] for k in ("total", "eigenchannels") if k in d}
+        for spin, d in (("up", a), ("down", b))}
+    return out
 
 
 def _open(nc: Path):
@@ -109,6 +150,18 @@ def point_dos(nc: Path, regions: Dict[str, Sequence[int]]) -> Dict:
             out["eigenchannels"] = [_floats(eig[:, i])
                                     for i in range(eig.shape[1])]
     return out
+
+
+def spin_selection_pdos(files: Dict[str, Path], orb_indx: Optional[Path],
+                        atoms: Sequence[int], orbitals: str = "all") -> Dict:
+    """:func:`selection_pdos` over a point's files (:func:`tbt_files`): the
+    one file's, or a polarized point's two channels summed
+    (`web/results.md` § 2.5)."""
+    if "unpolarized" in files:
+        return selection_pdos(files["unpolarized"], orb_indx, atoms, orbitals)
+    a = selection_pdos(files["up"], orb_indx, atoms, orbitals)
+    b = selection_pdos(files["down"], orb_indx, atoms, orbitals)
+    return {**a, "pdos": _sum(a["pdos"], b["pdos"])}
 
 
 def selection_pdos(nc: Path, orb_indx: Optional[Path],

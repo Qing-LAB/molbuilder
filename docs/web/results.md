@@ -505,6 +505,40 @@ the points table named *Frame 2 of 3 · 0.2 V*, a row moving the frame bar,
 *all frames* on T(E) (the mode's average dashed, its numbers and
 assumptions under the card), the DOS and the device's convergence.
 
+**A spin-polarised calculation shows each spin and their total, told apart by
+colour and legend** *(the user, 2026-10-11: "use color/legend to correctly
+present up and down spin and total current"; built after the first polarised
+run, `claude-transport-walk/transport/h-spin`)*. Every number is the record's
+— the sums too — and the colours are the plot theme's (`plotTheme()`): spin
+up the first series colour, spin down the second, the total the ink, bold:
+
+| chart | a polarized point | from |
+|---|---|---|
+| T(E) | the selected point's **T↑**, **T↓** and **T↑ + T↓ (total)**; the other voltages' totals as thin curves in the muted ink; under *all frames* each frame's (T↑ + T↓)/2, the transmission the mode's average is of, the axis saying so | `channels.up` · `channels.down` · `transmission_total`; `transmission` |
+| DOS | the device's DOS **↑**, **↓** and **total**; the regions, the leads and your selections as totals; the eigenchannels per spin, *channel k ↑* / *↓* | `dos.by_spin.{up,down}.total` · `dos.total`; `dos.by_label` … summed over the two files; `dos.by_spin.{up,down}.eigenchannels` |
+| I–V | **I↑**, **I↓** and **I total** | `iv.current_up_a` · `iv.current_down_a` · `iv.current_a` |
+
+The DOS reads both of the run's files, `<label>.TBT_UP.nc` and
+`<label>.TBT_DN.nc` (`tbtnc.tbt_files`), each quantity summed over the two
+and each spin's own total and eigenchannels kept beside (`tbtnc.spin_dos`); a
+selection's PDOS is the two files' sum. Under the low-bias approximation each
+spin's current is the record's own integral of that spin's T(E, 0),
+`I_σ = (e/h) ∫ T_σ(E, 0) [f(E − eV/2) − f(E + eV/2)] dE`, beside the total.
+**A non-polarized calculation is drawn as before**, its axes saying what its
+curves are — *T (each spin, ↑ = ↓)*, *DOS (states/eV, each spin)*: SIESTA and
+TBtrans compute one channel and treat the other as the same, TBtrans's T and
+DOS carry no spin factor (the DOS `− Im G S / 2π`, `m_tbt_tri_scat.F90:153`;
+the current's prefactor `e²/h`, *"no spin degeneracy"*,
+`m_tbt_save.F90:2043`), G = G₀·T(E_F) carries the spin's factor 2 in
+G₀ = 2e²/h, and the total current is twice the channel's TBtrans printed — so
+a polarized run's T↑ + T↓ and its DOS ↑ + ↓ stand where a non-polarized run's
+2T and 2·DOS would. A polarized DOS axis says *↑ + ↓ unless marked* on one
+frame — the regions, the leads and your selections are the two spins summed —
+and *↑ + ↓* under all frames, where every curve is a total. Under the
+low-bias approximation every computed current is dashed, and on one frame its
+legend says it is *computed from T(E, 0)*; under all frames each legend names
+its frame.
+
 **Two selections, each with one owner** — the spectra tab's pattern (one state
 owner, every view mirrors it through a cheap door; [`spectra.md`](?doc=web/spectra.md)
 § 3–4):
@@ -556,7 +590,7 @@ exists or is named here; nothing worked out in the browser:
 |---|---|---|
 | ladder, rung states | `stages[]` — the status door's state and detail | `/api/transport/record` (built) |
 | device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) |
-| T(E) | per point and spin channel, from `.TBT.AVTRANS_<L>-<R>` (and `TBT_UP` / `TBT_DN`) | `points[].transmission` in the record, each channel kept in `channels` (`record.point_transmission`, built); no spin-polarized run has been read through it yet (plan § 5w, K21) |
+| T(E) | per point and spin channel, from `.TBT.AVTRANS_<L>-<R>` (and `TBT_UP` / `TBT_DN`) | `points[].transmission` in the record — per spin channel, `(T↑ + T↓)/2` for a polarized point — each channel kept in `channels` and their sum in `transmission_total` (`record.point_transmission`) |
 | DOS and PDOS | from the transmission run's `<label>.TBT.nc` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12): **DOS** — the device's total density of states, its Green-function DOS (`TBT.DOS.Gf`, written per device orbital, energy and k); **PDOS** — the same DOS split by region, summing each label's orbitals (L-electrode, bridge, R-electrode — the labels molbuilder owns, [`molview.md`](?doc=web/molview.md) § 6.6), so the bridge's PDOS shows where the molecule's levels sit against E_F; the **left** lead's spectral DOS (`TBT.DOS.A` — TBtrans writes it for the first electrode only unless `TBT.DOS.A.All`, which the catalogue does not carry yet, plan § 5u.1 step 7); both leads' bulk DOS (`TBT.DOS.Elecs`) | **new**: read on the server with sisl's TBtrans reader (sisl 0.16 and netCDF4 are in the `molbuilder` env), k-averaged, added per point to the record as `dos: {total, by_label: {label: [...]}, lead_spectral: {L: [...]}, lead_bulk: {L: [...], R: [...]}}` on T(E)'s energy grid, E − E_F |
 | PDOS of a selection | the same per-orbital DOS, summed over **the atoms you choose**, optionally only their orbitals of one type — below | **new**: `GET /api/transport/pdos?path=&point=&frame=&atoms=&orbitals=` (`frame` a frame set's index) — stateless, read from that point's `.TBT.nc` and the device run's `.ORB_INDX` on request, on T(E)'s grid |
 | eigenchannels | `TBT.T.Eig` (4 by default): the transmission of each channel at each energy — eigenvalues only; TBtrans writes no channel wavefunctions with this deck | **new**, from the same `.TBT.nc`: per point `eigenchannels: [[...], ...]`, drawn under T(E) on the same axis |

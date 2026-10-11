@@ -2720,7 +2720,7 @@ does not name (§ 5.3).
 | | every row of `siesta/warm-files.toml` | for presence only: the run script's banner, and which engine a folder holds |
 | **carried** | `.XV .DM .MD.nc .MD .MDE .ANI`; `.CG` between stages of one optimizer | `warmfiles.warm_list` (§ 5.3) |
 | **read by nothing** | `0_NORMAL_EXIT` (on purpose: `runrecord.ending`), `MESSAGES`, `CLOCK`, `FORCE_STRESS`, `BASIS_ENTHALPY`, `BASIS_HARRIS_ENTHALPY`, `OUTVARS.yml`, `PARALLEL_DIST`, `NON_TRIMMED_KP_LIST`; `<label>.alloc`, `.bib`, `.BASIS_ENTHALPY`, `.BONDS`, `.BONDS_FINAL`, `.FA`, `.FAC`, `.KP`, `.ORB_INDX`, `.MD_CAR`, `.STRUCT_OUT`; `<El>.ion.nc`, `<El>.ion.xml` | ⚠ `.BONDS` is spelled `.Bonds` in `siesta/warm-files.toml` (D26) |
-| **TranSIESTA, TBtrans** | an electrode rung's `<electrode stem>.TSHS` and the device's `<label>.TS.HSX`, gathered into the rungs after them (§ 5.3, `transport.stages`); the device's `<label>.TSDE`, carried along a bias sweep; `<label>.TBT.AVTRANS_<pair>` | `transport.record` ⚠ not a spin-polarized point's `.TBT_UP.` / `.TBT_DN.` files (plan K21) |
+| **TranSIESTA, TBtrans** | an electrode rung's `<electrode stem>.TSHS` and the device's `<label>.TS.HSX`, gathered into the rungs after them (§ 5.3, `transport.stages`); the device's `<label>.TSDE`, carried along a bias sweep; `<label>.TBT.AVTRANS_<pair>` | `transport.record` — a spin-polarized point's `.TBT_UP.` / `.TBT_DN.` files too: both channels' transmission and both `.nc` files, summed and kept per spin (`tbtnc.spin_dos`, 2026-10-11) |
 
 ### 5.5 Benchmarks and launch groups
 

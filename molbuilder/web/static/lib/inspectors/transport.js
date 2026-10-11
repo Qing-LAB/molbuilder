@@ -688,6 +688,13 @@ const WORKSPACE_TAG = "results:transport";
         const col = (i) => t.palette[i % t.palette.length];
         const all = (key) => n > 1 && state.frameMode[key] === ALL;
         const here = pointWords(frame, n, state.bias);
+        /* A SPIN-POLARISED CALCULATION draws each spin and their total, told
+         * apart by colour and legend (`web/results.md` § 2.5): spin up the
+         * first series colour, spin down the second, the total the ink --
+         * so in it no voltage or region borrows a spin's colour.  Every
+         * number is the record's, the sums too. */
+        const spinRun = pts.some((q) => q.channels);
+        const UP = t.palette[0], DOWN = t.palette[1];
         const nothingYet = () => (pts.length && state.bias !== null
             ? "No transmission at " + here + " yet."
             : "No transmission has run yet.");
@@ -740,24 +747,60 @@ const WORKSPACE_TAG = "results:transport";
             pts.filter((q) => _pf(q) === frame).forEach((q, i) => {
                 if (!Array.isArray(q.transmission) || !q.transmission.length) return;
                 const on = q.bias_v === state.bias;
-                te.push({ x: q.energy_ev, y: q.transmission, mode: "lines",
-                          name: pointWords(null, n, q.bias_v),
-                          line: { color: col(i), width: on ? 2.5 : 1 },
-                          opacity: on ? 1 : 0.55, meta: { frame: frame, bias: q.bias_v } });
+                const at = pointWords(null, n, q.bias_v);
+                const meta = { frame: frame, bias: q.bias_v };
+                if (q.channels && on) {
+                    // THE SELECTED POINT: each spin, and their total.
+                    te.push({ x: q.energy_ev, y: q.channels.up, mode: "lines",
+                              name: "T↑ · " + at, meta: meta,
+                              line: { color: UP, width: 1.75 } });
+                    te.push({ x: q.energy_ev, y: q.channels.down, mode: "lines",
+                              name: "T↓ · " + at, meta: meta,
+                              line: { color: DOWN, width: 1.75 } });
+                    te.push({ x: q.energy_ev, y: q.transmission_total,
+                              mode: "lines", name: "T↑ + T↓ (total) · " + at,
+                              meta: meta, line: { color: t.ink, width: 2.5 } });
+                } else if (q.channels) {
+                    // ANOTHER VOLTAGE: its total, quiet.
+                    te.push({ x: q.energy_ev, y: q.transmission_total,
+                              mode: "lines", name: "T↑ + T↓ · " + at,
+                              meta: meta, opacity: 0.55,
+                              line: { color: t.muted, width: 1 } });
+                } else {
+                    te.push({ x: q.energy_ev, y: q.transmission, mode: "lines",
+                              name: at,
+                              line: { color: col(i), width: on ? 2.5 : 1 },
+                              opacity: on ? 1 : 0.55, meta: meta });
+                }
             });
-            const eig = (p && p.dos && Array.isArray(p.dos.eigenchannels))
-                ? p.dos.eigenchannels : [];
-            eig.forEach((ch, k) => te.push({
-                x: p.dos.energy_ev, y: ch, mode: "lines",
-                name: "channel " + (k + 1),
-                line: { color: t.muted, width: 1, dash: "dot" } }));
-            state.nodes.eig.textContent = p && !eig.length
+            // THE EIGENCHANNELS, one set per spin on a polarised point.
+            const bySpin = p && p.dos && p.dos.by_spin;
+            const sets = bySpin
+                ? [["↑", UP, (bySpin.up || {}).eigenchannels],
+                   ["↓", DOWN, (bySpin.down || {}).eigenchannels]]
+                : [["", t.muted, p && p.dos && p.dos.eigenchannels]];
+            let nEig = 0;
+            sets.forEach(([mark, color, eig]) => (Array.isArray(eig) ? eig : [])
+                .forEach((ch, k) => {
+                    nEig += 1;
+                    te.push({ x: p.dos.energy_ev, y: ch, mode: "lines",
+                              name: "channel " + (k + 1) + (mark ? " " + mark : ""),
+                              line: { color: color, width: 1, dash: "dot" } });
+                }));
+            state.nodes.eig.textContent = p && !nEig
                 ? "No eigenchannels for this point" + (p.dos_why ? ": " + p.dos_why : ".")
                 : "";
         }
         if (te.length) {
+            /* THE AXIS SAYS WHAT T IS: a polarised point's curves name their
+             * spin; a non-polarised run's one curve is each spin's, ↑ = ↓ --
+             * the channel G = G₀·T(E_F) reads, half its 2T total; under
+             * "all frames" a polarised run draws (T↑ + T↓)/2, the transmission
+             * the mode's average is of. */
+            const tTitle = !spinRun ? "T (each spin, ↑ = ↓)"
+                : (all("te") ? "(T↑ + T↓)/2" : "T");
             _plot(state.nodes.te, te, { ...axes,
-                yaxis: { title: { text: "T", standoff: 4 }, type: "log",
+                yaxis: { title: { text: tTitle, standoff: 4 }, type: "log",
                          automargin: true, exponentformat: "power" } });
             _onClick(state.nodes.te, state);
         } else {
@@ -778,8 +821,12 @@ const WORKSPACE_TAG = "results:transport";
                           line: { color: col(f), width: f === frame ? 2.5 : 1 } });
             });
             if (tr.length) {
+                // TBtrans's DOS has no spin factor: a non-polarised run's is
+                // each spin's, a polarised run's the two summed.
                 _plot(state.nodes.dos, tr, { ...axes,
-                    yaxis: { title: { text: "DOS (states/eV)", standoff: 4 },
+                    yaxis: { title: { text: spinRun ? "DOS (states/eV, ↑ + ↓)"
+                                          : "DOS (states/eV, each spin)",
+                                      standoff: 4 },
                              automargin: true } });
             } else {
                 // THE TRANSMISSIONS THERE, THEIR DOS NOT: said in the
@@ -798,28 +845,47 @@ const WORKSPACE_TAG = "results:transport";
                     : nothingYet());
             } else {
                 const tr = [];
+                // A POLARISED POINT keeps the first two colours for its spins,
+                // and every other curve cycles through the rest.
+                const bySpin = dos.by_spin;
                 let i = 0;
+                const other = (k) => (bySpin
+                    ? t.palette[2 + (k % Math.max(1, t.palette.length - 2))]
+                    : col(k));
+                if (bySpin) {
+                    [["↑", UP, bySpin.up], ["↓", DOWN, bySpin.down]].forEach(
+                        ([mark, color, d]) => {
+                            if (d && Array.isArray(d.total)) tr.push({
+                                x: dos.energy_ev, y: d.total, mode: "lines",
+                                name: "device " + mark,
+                                line: { color: color, width: 1.5 } });
+                        });
+                }
                 if (dos.total) tr.push({ x: dos.energy_ev, y: dos.total, mode: "lines",
-                    name: "device (total)", line: { color: t.ink, width: 2 } });
+                    name: bySpin ? "device total (↑ + ↓)" : "device (total)",
+                    line: { color: t.ink, width: 2 } });
                 Object.keys(dos.by_label || {}).forEach((lab) => tr.push({
                     x: dos.energy_ev, y: dos.by_label[lab], mode: "lines",
-                    name: lab, line: { color: col(i++), width: 1.5 } }));
+                    name: lab, line: { color: other(i++), width: 1.5 } }));
                 Object.keys(dos.lead_spectral || {}).forEach((e) => tr.push({
                     x: dos.energy_ev, y: dos.lead_spectral[e], mode: "lines",
                     name: "spectral " + e, visible: "legendonly",
-                    line: { color: col(i++), width: 1, dash: "dash" } }));
+                    line: { color: other(i++), width: 1, dash: "dash" } }));
                 Object.keys(dos.lead_bulk || {}).forEach((e) => tr.push({
                     x: dos.energy_ev, y: dos.lead_bulk[e], mode: "lines",
                     name: "bulk " + e, visible: "legendonly",
-                    line: { color: col(i++), width: 1, dash: "dot" } }));
+                    line: { color: other(i++), width: 1, dash: "dot" } }));
                 state.pdos.forEach((s) => {
                     if (!s.curve || s.at !== _pointKey(frame, state.bias)) return;
                     tr.push({ x: s.curve.energy_ev, y: s.curve.pdos,
                         mode: "lines", name: s.name + " (" + s.orbitals + ")",
-                        line: { color: col(i++), width: 2 } });
+                        line: { color: other(i++), width: 2 } });
                 });
                 _plot(state.nodes.dos, tr, { ...axes,
-                    yaxis: { title: { text: "DOS (states/eV)", standoff: 4 },
+                    yaxis: { title: { text: bySpin
+                                          ? "DOS (states/eV, ↑ + ↓ unless marked)"
+                                          : "DOS (states/eV, each spin)",
+                                      standoff: 4 },
                              automargin: true } });
             }
         }
@@ -857,6 +923,32 @@ const WORKSPACE_TAG = "results:transport";
                 meta: got.map((q) => ({ frame: f, bias: computed ? 0 : q.bias_v })),
             };
         }).filter((tr) => tr.x.length);
+        /* EACH SPIN'S CURRENT beside the total, on a polarised calculation's
+         * one frame (`web/results.md` § 2.5): the total then takes the ink. */
+        const ivSpin = state.iv && Array.isArray(state.iv.current_up_a)
+            && !all("iv") && ivTraces.length === 1;
+        if (ivSpin) {
+            const total = ivTraces[0];
+            // UNDER THE APPROXIMATION every curve says it is computed.
+            const how = computed ? ", computed from T(E, 0)" : "";
+            total.name = "I total" + how;
+            total.line = { ...total.line, color: t.ink, width: 2.5 };
+            const rows = (state.iv.voltages_v || []).map((v, k) => ({
+                frame: (state.iv.frame || [])[k], bias_v: v,
+                up: state.iv.current_up_a[k],
+                down: (state.iv.current_down_a || [])[k] }))
+                .filter((q) => (q.frame == null ? 0 : q.frame) === frame);
+            [["up", "I↑" + how, UP], ["down", "I↓" + how, DOWN]].forEach(([key, name, color]) => {
+                const got = rows.filter((q) => q[key] !== null && q[key] !== undefined);
+                if (!got.length) return;
+                ivTraces.push({ x: got.map((q) => q.bias_v),
+                    y: got.map((q) => q[key]), mode: "lines+markers", name: name,
+                    line: { color: color, width: 1.5, dash: computed ? "dash" : "solid" },
+                    marker: { size: 6 },
+                    meta: got.map((q) => ({ frame: frame,
+                                            bias: computed ? 0 : q.bias_v })) });
+            });
+        }
         if (ivTraces.length) {
             _plot(state.nodes.iv, ivTraces, {
                 margin: { l: 8, r: 12, t: 8, b: 34 },

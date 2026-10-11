@@ -38,11 +38,19 @@ from .stages import same_volts
 #: The file's schema, stated in it.
 DATA_SCHEMA = "molbuilder/transport-data@1"
 
-#: Where every DOS variable is read from -- one file a point, so a polarized
-#: point's two (``.TBT_UP.nc``, ``.TBT_DN.nc``) are not read yet and its DOS
-#: is the fill value (plan K21).
-_TBT_NC_SOURCE = ("<label>.TBT.nc -- a polarized point's .TBT_UP.nc and "
-                  ".TBT_DN.nc are not read yet: the fill value (plan K21)")
+#: Where every DOS variable is read from, and WHAT ITS SPIN IS: TBtrans's DOS
+#: carries no spin factor (``m_tbt_tri_scat.F90``), so a non-polarized
+#: point's is each spin's (↑ = ↓) and a polarized point's two files are
+#: summed (`tbtnc.spin_dos`) -- ↑ + ↓, as the record's ``dos`` states it.
+_TBT_NC_SOURCE = ("<label>.TBT.nc -- each spin's, up = down, for a "
+                  "non-polarized point; a polarized point's .TBT_UP.nc and "
+                  ".TBT_DN.nc summed, up + down")
+
+#: The eigenchannels are one file's own -- never summed over spin: a
+#: polarized point's are one set per spin, in the record (``dos.by_spin``).
+_EIG_SOURCE = ("<label>.TBT.nc of a non-polarized point -- each spin's, "
+               "up = down; a polarized point's are one set per spin, in the "
+               "record, none here")
 
 #: The regions molbuilder owns in the device, in order along z.
 _REGIONS = (REGION_LEFT_ELECTRODE, REGION_BRIDGE, REGION_RIGHT_ELECTRODE)
@@ -197,7 +205,8 @@ def _variables() -> Tuple[Var, ...]:
         Var("eigenchannel", ("eigenchannel",), "coordinate", "1",
             "eigenchannel", "counted from 0, as TBtrans orders them -- as "
             "many as its .TBT.nc holds, those it was asked for (TBT.T.Eig); "
-            "none where no file is read (plan K21)", dtype="i4"),
+            "none where no file is read, nor for a polarized point, whose "
+            "eigenchannels are one set per spin, in the record", dtype="i4"),
         *_frame_set_vars(),
         Var("positions_ang", ("frame", "atom", "xyz"), "given", "angstrom",
             "atom positions", "every frame's coordinates as composed"),
@@ -251,7 +260,7 @@ def _variables() -> Tuple[Var, ...]:
         Var("eigenchannel_transmission",
             ("frame", "bias_v", "eigenchannel", "energy_ev"), "raw", "1",
             "eigenchannel transmission", "TBT.T.Eig, k-averaged",
-            source=_TBT_NC_SOURCE),
+            source=_EIG_SOURCE),
         Var("done", ("frame", "bias_v"), "state", "1", "the point is done",
             "1 when the point has its transmission; 0 otherwise, its "
             "transmission's values the fill value -- a gap, never filled "
