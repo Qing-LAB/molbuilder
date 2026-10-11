@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
+from ..chemistry import is_atom
 from ..issues import Issue
 from ..structure import Structure
 
@@ -78,8 +79,10 @@ def validate_geometry(struct: Structure,
     # and let the scientist decide whether it applies -- that judgement is
     # theirs, and a warning that hedges honestly costs them one line.
     if n >= 1:
-        n_h     = sum(1 for e in struct.elements if e == "H")
-        n_heavy = sum(1 for e in struct.elements if e != "H")
+        # BY ELEMENT, not by label (`chemistry.is_atom`): a labelled
+        # methane's H1..H4 are hydrogens.
+        n_h     = sum(1 for e in struct.elements if is_atom(e, "H"))
+        n_heavy = len(struct.elements) - n_h
         if n_heavy > 0 and (n_h / n_heavy) < 0.3:
             issues.append(Issue(
                 "warn",

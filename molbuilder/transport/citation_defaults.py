@@ -167,7 +167,8 @@ def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
     template from: the citation's answers (:func:`citation_answers`), then
     what the person chose on the shared panel (``chosen``, in the same
     field names) laid over them -- the person may change any of it, for
-    all five rungs at once (`engines/transport.md` § 2a.7 ruling 1).
+    every rung that reads it at once (`engines/transport.md` § 2a.7 ruling
+    1).
 
     ``blank`` names the items the person emptied on the panel: a blank is
     not chosen (`web/form-schema.md` § 1.1), so the citation's value is not

@@ -1374,7 +1374,8 @@ function renderShared(rows) {
         const value = renderValue(r.value, r.unit) || "\u2014";
         host.appendChild(el("div", null,
             el("dt", null, r.label),
-            el("dd", null, value + " \u00b7 " + r.said)));
+            el("dd", null, value + " \u00b7 " + r.said
+                           + (r.scope ? " \u00b7 " + r.scope : ""))));
     }
 }
 

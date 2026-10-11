@@ -670,6 +670,10 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
         # the fact a rung's tab folds its cards by, and the stage table
         # disables cells by.
         field["stages"] = list(it.stages)
+        # ...AND ON THE SHARED PANEL, WHICH RUNGS ONE SHARED VALUE IS FOR,
+        # in the template's words (`template.shared_scope_words`, TD11).
+        if surface == "shared" and it.stages:
+            field["scope"] = _T.shared_scope_words(it)
         # WHAT THIS KIND CAN TAKE ON THIS ENGINE, and nothing else (the
         # catalogue's `offered`, `template.md` § 6.3a): the one set `resolve`
         # and the settings gate refuse by, so the form never offers what prep

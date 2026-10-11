@@ -254,7 +254,7 @@ every field of the two engine classes has its help in the catalogue, and
 `help_for` is the only reader.
 
 **The rest of that duplication is the debt, and it is measured rather than
-guarded.** **496 facts live in two places** (measured 2026-08-20 at 307, 618
+guarded.** **512 facts live in two places** (measured 2026-08-20 at 307, 618
 on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item, 486 once the one-choice `engine` item retired, and 489 with `already_relaxed` on SIESTA, all 2026-09-24, and 486 once
 `wrap_into_cell` retired on 2026-09-25, 482 on 2026-09-28 once PySCF's
 `es_top_n` and `es_threshold` were removed and `temperature_K` joined SIESTA,
@@ -266,10 +266,13 @@ the same day once PySCF's one-choice `optimizer` retired with `berny`, and
 491 on 2026-10-01 when `gpu_count` gained PySCF (`execution/gpu.md` § 1.1),
 and 496 on 2026-10-08 with `ts_elecs_eta_ev` -- `TS.Elecs.Eta`, the device's
 self-energy broadening, which the device deck left to TranSIESTA's own
-default until then (`transport.md` § 6.1b) —
+default until then (`transport.md` § 6.1b) — and 512 at 2.1.0 (2026-10-11)
+with `ts_solution_method`, `tbt_solution_method`, `ts_hartree_fix` and
+`negf_neq_fermi_cutoff_kt`, four TranSIESTA / tbtrans lines the decks left
+unsaid until then (`transport.md` § 2a.13) —
 every fall in the series came from deleting a home rather than from adding a
 check, and the rises are items gaining a home: two merged items gaining a
-second engine, whose declarations `config/state.py` writes once, and two
+second engine, whose declarations `config/state.py` writes once, and six
 keywords the catalogue had not declared).
 **The six mirrored facts are compared on every run** — `MIRRORED` plus
 `workflow_group`, by `test_every_mirrored_fact_agrees`, which goes red naming
@@ -441,6 +444,21 @@ engines     = ["siesta"]                # REQUIRED — which engines this
 |---|---|
 | `schema` | the `@major` convention ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6): a higher major makes an old reader **refuse rather than guess** |
 | `engines` | which schemas the items belong to. Without it a reader cannot know which config class to rebuild, and would have to infer it from the item names. A reader given an engine not in this list refuses rather than returning an empty catalogue — *"this calculation does not run on that engine"* and *"no items matched"* are different answers |
+
+**And one written by molbuilder since 2.1.0: `written_by`** — the molbuilder
+version that wrote the file (`written_by = "2.1.0"`;
+[`process/conventions.md`](?doc=process/conventions.md) § 2, *Versioning*).
+Not required, since a file written before 2.1.0 has none and is read as
+written before it; three whole numbers when present, refused otherwise. **It
+is what a reader asks when an item's meaning changed at a version**: before
+2.1.0 a `0` for `negf_neq_eta_ev` or `tbt_contours_eta_ev` meant *not set*,
+since then a `0` is written to the deck as zero broadening, so a file written
+before 2.1.0 that holds one is refused, naming `molbuilder jobset migrate`,
+which rewrites it blank — what it meant (`template.ZERO_WAS_NOT_SET`,
+[`transport.md`](?doc=engines/transport.md) § 2a.13). The file's
+`written_by` dates its calculation's stages too: a rung's override of 0 in
+`task.json` beside such a template is refused at `prep` the same way
+(`template.zeros_written_before`, asked by `resolve`).
 
 **On every item — four required keys**, and each earns *required* by a goal:
 
@@ -741,18 +759,19 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
 | `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`, the spin's `spin_treatment` and `unpaired_electrons` (2026-09-28), the grid's offset `kgrid_displacement` (2026-09-30, `engines/siesta.md` § 6.1), and the SCF's mixer and criteria — `mixing_weight`, `pulay_history`, `dm_tolerance`, `dm_energy_tolerance`, `scf_energy_converge` — each SCF stage's starting value, not shared (2026-10-09, TD6). It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
 | `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the `citation` rows and on `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6); and on the calculation's identity for every SIESTA kind — `system_label`, `species_order`, `psml_lib` (2026-09-29, K1): each rung reads what the one before it wrote under that label, numbered by that species table (the `.XV` holds each atom's species index, `ioxv.F`) and built on that pseudopotential set. Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2), saying why (`template.why_shared`). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
-| `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
+| `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`, and since 2.1.0 on the device's `ts_hartree_fix` and the transmission's `tbt_solution_method`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
 | `role_values` | **a rung whose role gives another answer than `value`**, by the rung's name — `role_values = { device = "transiesta" }` on `solution_method`. Only on a `role` item; each value passes the item's own `type` at parse time, as `recommended`'s do. Like `recommended`, a catalogue key: it does not travel into a calculation's template, whose role items hold no value — `resolve` asks the catalogue (`template.role_answers`) |
-| `stages` | **which rungs of the kind read it, by the rung's ROLE** — `stages = ["electrode_L", "electrode_R"]` on a lead's item, `stages = ["relaxation"]` on the relaxation settings (2026-09-30, plan § 5w K4); only those rungs may carry their own value, and on a `role` item, which nobody sets, it names the rungs that write it. Absent means every rung reads it (§ 6.4) |
+| `stages` | **which rungs of the kind read it, by the rung's ROLE** — `stages = ["electrode_L", "electrode_R"]` on a lead's item, `stages = ["relaxation"]` on the relaxation settings (2026-09-30, plan § 5w K4); only those rungs may carry their own value, and on a `role` item, which nobody sets, it names the rungs that write it. Absent means every rung reads it (§ 6.4). **With `shared`, one value carried by the named rungs only** — `electrodes_bulk`, `stages = ["device", "transmission"]` (TD11, 2026-10-11): no stage sets its own, the other rungs' decks never write it, and the shared panel and Task setup say which rungs it is for (`template.shared_scope_words`); a refusal says why (`why_shared`) |
 | `tightens` | **which way a ladder makes this item tighter** — `"down"` for a tolerance, `"up"` for a mesh cutoff (2026-09-30, plan § 5w K4). Set where [`tuning.md`](?doc=engines/tuning.md) § 2 gives a tier table and nowhere else; the ladder check reads it on every engine ([`stages.md`](?doc=engines/stages.md) § 4 R3) |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
-| `not_set` | **what the engine does when this item writes nothing**, in one sentence read from the engine's source — *"SIESTA works out its own block size from the ranks and the orbital count (`initparallel.F`, `set_blocksizedefault`)"*. Where an item's line would be and the engine's own default applies — an `optional` item at no value, or an item whose 0 leaves the engine's own rule (`negf_neq_eta_ev`, `tbt_contours_eta_ev`, `siesta/layout.py`) — the deck writes `# <keyword> not written: <not_set>` in its place, so no value reaches the engine by omission (§ 6.6 obligation 4). **Required on every `optional` item of kind `engine` or `deck` that the scheduler does not answer**, checked when the catalogue is read; an item in that state with none is refused where the deck is written. `null_label` names the same state on a form in a few words; this is the deck's sentence *(named `not_set`, not `unset`, because unset reads as removed by a person — the user, 2026-10-11)* |
+| `not_set` | **what the engine does when this item writes nothing**, in one sentence read from the engine's source — *"SIESTA works out its own block size from the ranks and the orbital count (`initparallel.F`, `set_blocksizedefault`)"*. Where an item's line would be and the engine's own default applies — an `optional` item at no value — the deck writes `# <keyword> not written: <not_set>` in its place, so no value reaches the engine by omission (§ 6.6 obligation 4). **Required on every `optional` item of kind `engine` or `deck` that the scheduler does not answer**, checked when the catalogue is read; an item in that state with none is refused where the deck is written. `null_label` names the same state on a form in a few words; this is the deck's sentence *(named `not_set`, not `unset`, because unset reads as removed by a person — the user, 2026-10-11)* |
 | `range` · `unit` · `choices` | bounds, unit label, enum members. `unit` is also the **deck's unit word**: the SIESTA renderer writes it beside the number (`siesta/layout.unit_word`, one source — plan F27), spelling Å as fdf's `Ang`; the bias, held in volts, is written `eV`, the one declared exception. `range` is a **recommendation**: a value outside it is warned on every surface and refused on none (§ 5.3) |
 | `above` | **a hard limit: the value must be greater than `value`**, and `why` is the reason — `above = { value = 0, why = "SIESTA divides each force difference by it (ofc.f90)" }`. Refused on every surface with one message, through `template.why_not` (§ 5.3, 2026-09-30); for a triple, each component |
+| `at_least` | **the same, inclusive: the value must be at least `value`** — for an engine whose own rule is *larger than or equal to*: `at_least = { value = 2.5, why = "TranSIESTA stops a run below 2.5 …" }` on `negf_neq_fermi_cutoff_kt` (`m_ts_contour_neq.f90`, 2.1.0). The limit refuses exactly what the engine refuses, through the same door (`template.why_not`, § 5.3) |
 | `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). **What each card says** — its title and the line under it — has one home, `template.GROUP_WORDS`, served with every form schema as `group_words` (`web/form-schema.md` § 1.3). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
-| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 17 optional items only 14 carry one, so three would silently lose the option *(`dispersion` stopped being optional on 2026-09-28: its "none" is a value, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 7a)* (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
+| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 19 optional items only 16 carry one, so three would silently lose the option *(`dispersion` stopped being optional on 2026-09-28: its "none" is a value, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 7a; the two NEGF device broadenings became optional at 2.1.0, blank being *not set*, [`transport.md`](?doc=engines/transport.md) § 2a.13)* (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
 | `required` | **which calculation KINDS' forms draw this optional item as required** — `required = ["optimization", "vibration"]` on `psml_lib` (2026-09-30, plan § 5w K20): unset stays a state the item has, but on those kinds the Send refuses until its question is answered, so the form marks it required and shows it red while it is empty. A list, like `calculations`; absence means *not required*. It refuses nothing itself — the Send's check does ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1) |
 | `tier` | `basic` or `advanced`. A judgement about the **parameter**, not about the widget: a surface dims the advanced ones so a first-time reader is not asked to weigh every knob at once |
 | `pattern` | a regex the value must match. Two items have one — `system_label`, `job_name` — and nothing else in the vocabulary can express *"letters, digits, hyphens, underscores; no dots"* |
@@ -949,6 +968,14 @@ source:
 | `kgrid` · `tbt_k_grid` | 0 | a k-point count per axis: 0 samples nothing (SIESTA's `kgrid.F` counts the points as the grid's determinant) |
 | `electrode_kz` | **1** | a lead is periodic bulk along transport: one point there gives a wrong lead Hamiltonian, and the device attaches the self-energy built from it — a wrong transmission with no runtime error ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 
+**An inclusive limit is `at_least`** — the same shape, `at_least = { value =
+N, why = "<why>" }`, for an engine whose own rule is *at least N*, so the
+limit refuses exactly what the engine refuses *(2.1.0)*:
+
+| item | at least | why |
+|---|---|---|
+| `negf_neq_fermi_cutoff_kt` | 2.5 | TranSIESTA stops a run below 2.5 kT: the Fermi function still has weight at E_F + 2.5 kT (`m_ts_contour_neq.f90`) |
+
 A value the engine takes is not a limit, however odd: `relax_steps = 0` is a
 single point (`MD.Steps`, `read_options.F90`), and `prep bench` pins exactly
 that to measure one SCF on the rung's own deck — so the item keeps its range.
@@ -972,8 +999,8 @@ draws one refusal** — the first that holds of:
 2. **a choice the kind does not offer** (§ 6.3a) — the electronic state's items
    excepted, whose resolved values that family judges, and a value that is not
    one of the item's `choices` at all, which is the declared type's refusal;
-3. **a value at or below its limit** — each component of a triple, the fixed
-   components left to (1).
+3. **a value past its limit** — at or below an `above`, below an
+   `at_least`; each component of a triple, the fixed components left to (1).
 
 **A value refused draws that refusal alone**: its range warning stands aside,
 and so does any check on what is built from it — the k-point mesh made from a
@@ -2005,7 +2032,8 @@ Five obligations, each naming the reader it binds.
   § 2a.13), and since 2026-10-11 an item that writes nothing because nobody
   set it says so in its place, in its own `not_set` (§ 5) — `SCF.MustConverge`
   left blank, `BlockSize` left to SIESTA, PySCF's fitting basis and solvent,
-  the two broadenings at 0;
+  the two NEGF device broadenings left blank (a 0 there is written, since
+  2.1.0);
 * ~~the spin treatment itself reaches SIESTA by silence: no deck writes `Spin`
   (measured 2026-09-24, on every transport rung)~~ — **closed 2026-09-28
   (M6)**: every SIESTA deck writes `Spin`, `non-polarized` included, and an
@@ -2387,8 +2415,9 @@ takes it from there.
 > ### ⛔ `fingerprint` is RETIRED — deleted 2026-08-14
 >
 > A template used to carry a digest of the *shape* it was written against, and
-> the preflight compared it. **It is gone, and the file has two top-level keys
-> rather than three.**
+> the preflight compared it. **It is gone, and the file has two required top-level
+> keys rather than three** (`written_by`, since 2.1.0, is a record of who
+> wrote it, not required — § 3).
 >
 > **What it was worth, measured:** one writer (`describe`), one reader (the
 > preflight), and the reader emitted a **warning that never blocked anything**.

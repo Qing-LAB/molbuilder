@@ -342,6 +342,11 @@ class Item:
     #: never one.  Every door asks :func:`why_not`, so the refusal is one
     #: message wherever it is met; a triple is held per component.
     above: Tuple[Any, ...] = ()
+    #: THE SAME, INCLUSIVE: the value must be at least ``bound`` -- an engine
+    #: whose rule is *larger than or equal to* (TranSIESTA's Fermi cutoff,
+    #: 2.5 kT, `m_ts_contour_neq.f90`), so the limit refuses exactly what the
+    #: engine refuses (§ 5.3, 2.1.0).
+    at_least: Tuple[Any, ...] = ()
     #: WHICH WAY A LADDER TIGHTENS THIS ITEM (plan § 5w K4): ``"down"`` -- a
     #: tighter setting is a smaller number (a tolerance) -- or ``"up"`` (a
     #: mesh cutoff); ``""`` when no tier table says (`engines/tuning.md`
@@ -604,14 +609,19 @@ class Item:
 
 @dataclass(frozen=True)
 class Template:
-    """A parsed template: the two top-level keys, and the items in order.
+    """A parsed template: the top-level keys, and the items in order.
 
-    ``schema`` and ``engines``.
+    ``schema`` and ``engines``, and ``written_by``.
     """
     #: Every engine this calculation can run on (§ 6.3).  A @1 file yields a
     #: one-element list.
     engines: Tuple[str, ...] = ()
     items: Tuple[Item, ...] = ()
+    #: THE MOLBUILDER VERSION THAT WROTE THE FILE (§ 3, since 2.1.0) --
+    #: ``None`` for a file written before, which said nothing.  What a
+    #: reader asks when an item's meaning changed at a version
+    #: (:data:`ZERO_WAS_NOT_SET`).
+    written_by: Optional[str] = None
 
     # Read the items through ``select(t, ...)``; ask for one through
     # ``one(t, name, engine=...)`` (`engines/template.md` § 2.2, § 8.0).
@@ -907,7 +917,8 @@ _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "ancho
                    "choices", "value", "source", "default", "recommended", "offered", "optional", "required",
                    "allocation",
                    "citation", "shared", "role", "role_values", "stages",
-                   "unit", "range", "above", "tightens", "tier", "pattern",
+                   "unit", "range", "above", "at_least", "tightens", "tier",
+                   "pattern",
                    "group", "label", "null_label", "not_set", "read_by", "help")
 
 
@@ -944,6 +955,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["range"] = list(it.range)
     if it.above:
         out["above"] = {"value": it.above[0], "why": it.above[1]}
+    if it.at_least:
+        out["at_least"] = {"value": it.at_least[0], "why": it.at_least[1]}
     if it.tightens:
         out["tightens"] = it.tightens
     if it.group:
@@ -1192,9 +1205,14 @@ def _emit(items, *, engines, title: str = "") -> str:
     standing between a quoting bug and a file that parses cleanly and says
     something else.
     """
+    from . import __version__
     payload = {
         "schema": SCHEMA,
         "engines": list(engines),
+        # WHICH MOLBUILDER WROTE IT (§ 3): a later reader names a file by it
+        # when an item's meaning changed since (`process/conventions.md`
+        # § 2, *Versioning*).
+        "written_by": __version__,
         "item": {it.name: _item_payload(it) for it in items},
     }
 
@@ -1204,6 +1222,7 @@ def _emit(items, *, engines, title: str = "") -> str:
             lines.append(f"# {ln}".rstrip())
     lines.append(f"schema      = {_toml_value(SCHEMA)}")
     lines.append(f"engines     = {_toml_value(list(engines))}")
+    lines.append(f"written_by  = {_toml_value(payload['written_by'])}")
     for it in items:
         body = _item_payload(it)
         lines.append("")
@@ -1360,7 +1379,12 @@ def read_template(text: str) -> Template:
                 f"(engines = {list(engines_t)}). An item's `engines` narrows "
                 f"the file's list; it cannot widen it (engines/template.md "
                 f"§ 6.3)", where=_it.name)
-    return Template(engines=engines_t, items=items)
+    written_by = raw.get("written_by")
+    if written_by is not None and not (
+            isinstance(written_by, str) and _VERSION.fullmatch(written_by)):
+        _refuse(f"'written_by' is the molbuilder version that wrote the "
+                f"file, three numbers like \"2.1.0\" -- not {written_by!r}")
+    return Template(engines=engines_t, items=items, written_by=written_by)
 
 
 def _is_int(v) -> bool:
@@ -1490,7 +1514,8 @@ def _tightens_from(name: str, raw) -> str:
     return raw
 
 
-def _above_from(name: str, body: Mapping, type_: str) -> Tuple[Any, ...]:
+def _above_from(name: str, body: Mapping, type_: str,
+                key: str = "above") -> Tuple[Any, ...]:
     """An item's hard limit (§ 5.3), ``(bound, why)``: a number the value
     must exceed and the sentence every refusal gives, on a numeric item --
     and the item's own DEFAULT and each kind's RECOMMENDED value obey it,
@@ -1499,19 +1524,24 @@ def _above_from(name: str, body: Mapping, type_: str) -> Tuple[Any, ...]:
     calculation's template that is a person's answer, and a value past the
     limit is refused where every value is, by the one per-value door
     (:func:`why_not`) with its one message."""
-    raw = body.get("above")
+    raw = body.get(key)
     if raw is None:
         return ()
+    # `above` is strict, `at_least` inclusive: a value breaks the limit when
+    # it is at or below the bound, or below it.
+    breaks = ((lambda x, b: x <= b) if key == "above"
+              else (lambda x, b: x < b))
+    must = "greater than" if key == "above" else "at least"
     bound = raw.get("value") if isinstance(raw, Mapping) else None
     why = raw.get("why") if isinstance(raw, Mapping) else None
     if (not isinstance(raw, Mapping) or set(raw) != {"value", "why"}
             or isinstance(bound, bool) or not isinstance(bound, (int, float))
             or not isinstance(why, str) or not why.strip()):
-        _refuse("`above` is a hard limit: a number the value must exceed and "
-                "the reason, e.g. above = { value = 0, why = \"SIESTA divides "
-                "by it\" }", where=name)
+        _refuse(f"`{key}` is a hard limit: a number the value must be "
+                f"{must} and the reason, e.g. {key} = {{ value = 0, why = "
+                f"\"SIESTA divides by it\" }}", where=name)
     if type_ not in ("int", "float", "int3", "float3", "pow2"):
-        _refuse(f"`above` bounds a number, and this item is {type_!r}",
+        _refuse(f"`{key}` bounds a number, and this item is {type_!r}",
                 where=name)
     # ...AND EVERY VALUE THE CATALOGUE STARTS A CALCULATION ON: the default,
     # and each kind's `recommended` -- a kind is never started on a value it
@@ -1523,9 +1553,9 @@ def _above_from(name: str, body: Mapping, type_: str) -> Tuple[Any, ...]:
                      else ())]
     for what, v in starts:
         parts = v if isinstance(v, (list, tuple)) else (v,)
-        if v is not None and any(float(x) <= bound for x in parts):
+        if v is not None and any(breaks(float(x), bound) for x in parts):
             _refuse(f"its {what} {v!r} breaks its own limit -- it must be "
-                    f"greater than {bound}: {why}", where=name)
+                    f"{must} {bound}: {why}", where=name)
     return (bound, why.strip())
 
 
@@ -1724,6 +1754,7 @@ def _item_from(name: str, body: Any) -> Item:
         offered=_offered_from(name, body.get("offered"), type_, choices,
                               tuple(body.get("engines", ()) or ())),
         above=_above_from(name, body, type_),
+        at_least=_above_from(name, body, type_, key="at_least"),
         tightens=_tightens_from(name, body.get("tightens")),
         refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
@@ -1848,9 +1879,25 @@ def why_run_setting(name: str) -> str:
 IDENTITY_ITEMS = ("system_label", "species_order", "psml_lib")
 
 
+def shared_by(name: str) -> str:
+    """WHO SHARES a `shared` item, in words -- *every stage of this
+    calculation*, or the stages its ``stages`` names (§ 5, TD11): what a
+    refusal says after *"is shared by"*, before :func:`why_shared`."""
+    scoped = _scoped_shared(name)
+    return (f"the {_rungs_words(scoped.stages)} stages of this calculation"
+            if scoped is not None else "every stage of this calculation")
+
+
+def _scoped_shared(name: str) -> Optional["Item"]:
+    """The catalogue item ``name`` when it is `shared` and names its
+    ``stages`` -- one value for those rungs only -- else ``None``."""
+    return next((it for it in catalogue().items
+                 if it.name == name and it.shared and it.stages), None)
+
+
 def why_shared(name: str) -> str:
     """Why a `shared` item cannot be one stage's -- the clause a refusal
-    puts after *"is shared by every stage of this calculation"*."""
+    puts after *"is shared by <who>"* (:func:`shared_by`)."""
     if name in STATE_ITEMS:
         return ("the electronic state belongs to the calculation, never to "
                 "a stage -- every stage's warm files are a density for one "
@@ -1861,8 +1908,28 @@ def why_shared(name: str) -> str:
                 "it wrote under that name, numbered by that table (the `.XV` "
                 "holds each atom's species index) and built on that set "
                 "(engines/template.md § 5, `shared`)")
+    if _scoped_shared(name) is not None:
+        return ("they are the rungs that read it, and must not be able to "
+                "disagree about it (engines/template.md § 5, `shared` with "
+                "`stages`)")
     return ("the electrode and the device must not be able to disagree "
             "about it (engines/transport.md § 2a.7)")
+
+
+def shared_scope_words(item: "Item") -> str:
+    """WHICH RUNGS a `shared` value binds, in words -- ``""`` when every rung
+    reads it, else the rungs its ``stages`` names: `shared` with `stages` is
+    one value carried by the named rungs only (§ 5, TD11).  Said beside the
+    value on the transport tab's shared panel and in Task setup's echo."""
+    return (f"read by the {_rungs_words(item.stages)} rungs only"
+            if item.stages else "")
+
+
+def _rungs_words(stages) -> str:
+    """``device and transmission`` -- rung roles joined as a sentence."""
+    names = list(stages)
+    return (names[0] if len(names) == 1
+            else ", ".join(names[:-1]) + " and " + names[-1])
 
 
 #: THE RUNG ROLES each kind's ``stages`` names (§ 6.4, plan § 5w K4): which
@@ -2027,8 +2094,9 @@ def why_not(item: "Item", value: Any, *, engine: str,
        item's ``choices``: a value that is not one is the declared type's
        refusal, and the electronic state's items are that family's, which
        judges their RESOLVED values;
-    3. a value at or below its limit (``above``), each component of a
-       triple -- the fixed components left to (1).
+    3. a value past its limit -- at or below an ``above``, below an
+       ``at_least`` -- each component of a triple, the fixed components
+       left to (1).
 
     The clause reads after *"<who> sets <name> = <value>"*: each door names
     who.  A value that does not hold the item's declared type -- ``"0"``
@@ -2054,13 +2122,18 @@ def why_not(item: "Item", value: Any, *, engine: str,
             return (f", which {a_kind(kind)} does not offer: "
                     f"{why_not_offered(item.name, value, engine, kind)}.  It "
                     f"offers {', '.join(map(str, can))}")
+    parts = [v for i, v in enumerate(value if triple else (value,))
+             if i not in held]
     if item.above:
         bound, why = item.above
-        parts = [v for i, v in enumerate(value if triple else (value,))
-                 if i not in held]
         if any(v <= bound for v in parts):
             return (f": {'each component' if triple else 'it'} must be "
                     f"greater than {bound} -- {why}")
+    if item.at_least:
+        bound, why = item.at_least
+        if any(v < bound for v in parts):
+            return (f": {'each component' if triple else 'it'} must be "
+                    f"at least {bound} -- {why}")
     return None
 
 
@@ -2272,6 +2345,64 @@ def one(t: "Template", name: str, *, engine: str = None) -> Optional[Item]:
         f"does not apply here (engines/template.md § 8.0).")
 
 
+#: A molbuilder version: three whole numbers.
+_VERSION = re.compile(r"\d+\.\d+\.\d+")
+
+
+def version_key(version: Optional[str]) -> Tuple[int, ...]:
+    """A version as numbers to compare -- ``None``, a file written before
+    versions were recorded, as the earliest of all."""
+    return tuple(int(x) for x in version.split(".")) if version else (0,)
+
+
+#: TWO ITEMS WHOSE 0 CHANGED MEANING AT 2.1.0 (`engines/transport.md`
+#: § 2a.13).  Before, molbuilder wrote nothing for a 0 and the engine's own
+#: rule applied -- a tenth of the leads' broadening; since, a 0 is written
+#: as 0 -- no broadening on the device, which TranSIESTA and tbtrans take as
+#: a value of its own -- and the engine's rule is the item left blank.  A
+#: template written before that holds 0 for one is refused, naming
+#: ``jobset migrate``, which rewrites it blank: what it meant.
+ZERO_WAS_NOT_SET = ("negf_neq_eta_ev", "tbt_contours_eta_ev")
+ZERO_MEANING_CHANGED_AT = "2.1.0"
+
+
+def written_before_zero_changed(tmpl: "Template") -> bool:
+    """Was the calculation written before a 0 on :data:`ZERO_WAS_NOT_SET`
+    changed meaning -- its template's ``written_by`` older, or absent?"""
+    return version_key(tmpl.written_by) < version_key(ZERO_MEANING_CHANGED_AT)
+
+
+def zeros_written_before(tmpl: "Template", stages=()) -> List[str]:
+    """Where a calculation written before :data:`ZERO_MEANING_CHANGED_AT`
+    holds 0 for an item of :data:`ZERO_WAS_NOT_SET` -- what it meant was
+    *not set*: the template's own items by name, and each stage's override
+    in ``stages`` as ``stage '<name>' <item>``.  The template's
+    ``written_by`` dates the whole calculation, its stages' overrides in
+    `task.json` with it (a rung's tab writes a 0 typed there into its bag).
+    """
+    if not written_before_zero_changed(tmpl):
+        return []
+    return ([it.name for it in tmpl.items
+             if it.name in ZERO_WAS_NOT_SET and it.is_set and it.value == 0]
+            + [f"stage {st.name!r} {k}" for st in stages
+               for k, v in (st.overrides or {}).items()
+               if k in ZERO_WAS_NOT_SET and v == 0])
+
+
+def why_zeros_written_before(tmpl: "Template", where: List[str]) -> str:
+    """The refusal of :func:`zeros_written_before`'s answer -- one sentence
+    for the template reader and the stage door alike."""
+    return (f"template written by "
+            + (f"molbuilder {tmpl.written_by}" if tmpl.written_by
+               else f"a molbuilder from before {ZERO_MEANING_CHANGED_AT}")
+            + f": {', '.join(where)} holds 0, which before "
+            f"{ZERO_MEANING_CHANGED_AT} meant 'not set' (the program's own "
+            f"rule, a tenth of the leads' broadening) and since means no "
+            f"broadening on the device.  Run `molbuilder jobset migrate "
+            f"--bundle <calculation>` to rewrite it as not set, which is "
+            f"what it meant (docs/process/changelog.md 2.1.0).")
+
+
 def config_from_template(text: str, config_cls):
     """An ordinary instance of *config_cls*, rebuilt from a template.
 
@@ -2301,6 +2432,11 @@ def config_from_template(text: str, config_cls):
     eng = engine_name(config_cls)
     mine = select(parsed, engine=eng) if parsed.engines else parsed.items
     vals = {it.name: it.value for it in mine if it.is_set}
+    # A 0 WRITTEN BEFORE ITS MEANING CHANGED meant *not set*; read now, it
+    # would be written as a real 0 -- another calculation, in silence.
+    zeros = zeros_written_before(parsed)
+    if zeros:
+        raise ValueError(why_zeros_written_before(parsed, zeros))
     machine = sorted(k for k in vals
                      if k not in known
                      and any(f.name == k
@@ -2430,6 +2566,7 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "read_template", "config_from_template",
            "template_fields", "engine_name", "is_member",
            "STATE_ITEMS", "shared_by_every_stage", "why_shared",
+           "shared_by", "shared_scope_words",
            "run_settings", "why_run_setting",
            "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
            "fixed_on_every_rung", "why_role", "offered", "why_not_offered",

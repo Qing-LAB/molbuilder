@@ -2248,7 +2248,8 @@ def _probe_consent_merge(before, probed, *, yes: bool):
 @jobset_group.command("migrate",
                       short_help="rewrite a calculation an older molbuilder "
                                  "wrote: its records whole, a flat one's run "
-                                 "files numbered, its charge and spin items")
+                                 "files numbered, its charge and spin items, "
+                                 "its zeros that meant not set")
 @_bundle_option()
 def migrate_cmd(bundle: str) -> None:
     """Rewrite a calculation an older molbuilder wrote.
@@ -2262,12 +2263,16 @@ def migrate_cmd(bundle: str) -> None:
     written before are renamed for their stage's newest run.  Its TEMPLATE (2026-09-28): the
     electronic state's items (science/chemistry-correctness.md § 2a) --
     PySCF's `spin` and the R/U inside its `method`, SIESTA's
-    `spin_treatment` spellings and `spin_total`.
+    `spin_treatment` spellings and `spin_total`.  Its ZEROS THAT MEANT NOT
+    SET (2.1.0): before 2.1.0 a 0 for `negf_neq_eta_ev` or
+    `tbt_contours_eta_ev` -- in the template, or a rung's override in
+    task.json -- wrote no line, and the program's own rule applied; since,
+    0 is no broadening.  Each is written blank, which is what it meant.
 
     What the calculation was is KEPT -- every old value becomes a stated
     one -- and each change is printed.  Each old file rewritten stays beside
-    the new one (`<name>.pre-w57`, `<name>.pre-m6`); a renamed one keeps
-    every byte.  The readers refuse such a file, naming this command."""
+    the new one (`<name>.pre-w57`, `<name>.pre-m6`, `<name>.pre-2.1.0`); a
+    renamed one keeps every byte.  The readers refuse such a file, naming this command."""
     from .migrate import MigrateError, migrate_state
     try:
         said = migrate_state(bundle)

@@ -1653,7 +1653,8 @@ def _folder_template(folder, label, *, engine=None, kind=None) -> dict:
     # THE door, not a glob (`template.find_template`): this tab and `prep`
     # read the same file.
     from molbuilder.template import (SOURCE_WORDS, find_template,
-                                     read_template, select)
+                                     read_template, select,
+                                     shared_scope_words)
     if label is None:
         return {"ok": True, "name": None, "values": {}}
     try:
@@ -1698,7 +1699,9 @@ def _folder_template(folder, label, *, engine=None, kind=None) -> dict:
                 "unit": it.unit,
                 "value": own.value if own is not None and own.is_set else None,
                 "said": SOURCE_WORDS[(own.source if own is not None else None)
-                                     or "unrecorded"]})
+                                     or "unrecorded"],
+                # ...and which rungs it is for, when not every one reads it.
+                "scope": shared_scope_words(it)})
     return {"ok": True, "name": found.name, "values": values, "said": said,
             "shared": shared}
 

@@ -59,7 +59,8 @@ class TestRole:
         """
         assert {i.name for i in T.select(cat, engine="siesta", role=True)} == {
             "solution_method", "ts_hs_save", "bias_voltage_v",
-            "write_forces", "write_coor_step"}
+            "write_forces", "write_coor_step",
+            "tbt_solution_method", "ts_hartree_fix"}
 
     def test_a_role_item_is_not_offered_as_a_column(self, cat):
         """The reader that makes the declaration bite.
@@ -136,14 +137,20 @@ class TestStages:
             "electrode_kz", "ts_hs_save"} | scf
         # The device writes the Hamiltonian the transmission attaches to
         # (`ts_hs_save`, the role item shared with the leads) and states the
-        # self-energy broadening its NEGF loop uses (2026-10-08, F16).
+        # self-energy broadening its NEGF loop uses (2026-10-08, F16), the
+        # bias window's reach, its inversion and its Hartree plane (2.1.0).
         assert owned["device"] == {"negf_eq_pole_ev", "negf_neq_eta_ev",
                                    "bias_voltage_v", "ts_hs_save",
-                                   "ts_elecs_eta_ev"} | scf
+                                   "ts_elecs_eta_ev",
+                                   "negf_neq_fermi_cutoff_kt",
+                                   "ts_solution_method", "ts_hartree_fix",
+                                   "electrodes_bulk"} | scf
         # THE LEADS' BULK TREATMENT IS NO RUNG'S ALONE (2026-09-29): tbtrans
         # takes it as the default of its own, so it is one shared value the
-        # device and the transmission both write (`transport.md` § 6.1b).
-        assert "electrodes_bulk" not in set().union(*owned.values())
+        # device and the transmission both write (`transport.md` § 6.1b) --
+        # and only they: `shared` with `stages` (TD11, `template.md` § 5).
+        assert {r for r, names in owned.items()
+                if "electrodes_bulk" in names} == {"device", "transmission"}
         assert "transport" in T.one(cat, "electrodes_bulk",
                                     engine="siesta").shared
         assert "transmission_emin_ev" in owned["transmission"]

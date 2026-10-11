@@ -2318,16 +2318,20 @@ anchor = "TBT.Contours.Eta"
 engine_key = "TBT.Contours.Eta"
 manual = "SIESTA 5.4.2 TBtrans §'Contour options'"
 type = "float"
-value = 0.0
-default = 0.0
+optional = true
 unit = "eV"
 range = [0.0, 1.0]
 group = "stage"
 label = "Device Green-function broadening"
+null_label = "(not set: a tenth of the leads')"
 tier = "advanced"
 not_set = "tbtrans takes a tenth of the smallest electrode broadening, TBT.Elecs.Eta (m_tbt_contour.F90)"
 help = """
-The imaginary part used on the device Green function -- the small broadening that keeps sharp features finite.  0 leaves the engine's own default, which is a FORMULA -- min(electrode eta)/10 -- so a number here replaces it rather than restating it.
+How much the device's states are broadened when tbtrans computes T(E) and the DOS -- how smooth the curves come out along the energy axis.
+Blank and 0 are two different answers:
+  Blank (not set) -- no value is written, and tbtrans uses a tenth of the leads' own broadening (TBT.Elecs.Eta, on this tab): 0.1 meV at the 1 meV default.
+  0 -- written as 0: no broadening on the device, only the leads' own.  The manual says one generally need not use another value, but that where states sit only in the molecule a small broadening helps the numerics -- which is why tbtrans's own default is not 0 (SIESTA 5.4.2 `m_tbt_contour.F90`, `tbtrans.tex`).
+  A number -- written as given, in eV.
 """
 
 [item.tbt_dos_gf]
@@ -2562,16 +2566,108 @@ anchor = "TS.Contours.nEq.Eta"
 engine_key = "TS.Contours.nEq.Eta"
 manual = "SIESTA 5.4.2 TranSIESTA §'Complex contour'"
 type = "float"
-value = 0.0
-default = 0.0
+optional = true
 unit = "eV"
 range = [0.0, 1.0]
 group = "stage"
-label = "Non-equilibrium broadening"
+label = "Non-equilibrium broadening (device)"
+null_label = "(not set: a tenth of the leads')"
 tier = "advanced"
 not_set = "TranSIESTA takes a tenth of the smallest electrode broadening, TS.Elecs.Eta (m_ts_contour_neq.f90)"
 help = """
-The small imaginary part added to the energy along the non-equilibrium contour, which smooths that integration.  0 leaves the engine's own default in place.  It is inert at zero bias, where there is no non-equilibrium window to integrate.
+How much the device's states are broadened on the non-equilibrium part of TranSIESTA's integration -- the stretch between the two leads' Fermi levels, which only a voltage opens.  It does nothing at zero bias.
+Blank and 0 are two different answers:
+  Blank (not set) -- no value is written, and TranSIESTA uses a tenth of the leads' own broadening (TS.Elecs.Eta, set beside it): 0.1 meV at the 1 meV default.  This is TranSIESTA's own choice: the device's broadening stays below the leads' while states that sit only in the molecule are still smoothed.
+  0 -- written as 0: no broadening on the device at all, only the leads' own.  SIESTA's manual says it may be set to 0 for most systems; TranSIESTA refuses it only when a lead's broadening is 0 too, and molbuilder always writes the leads' (SIESTA 5.4.2 `m_ts_contour_neq.f90`).
+  A number -- written as given, in eV.
+"""
+
+[item.ts_solution_method]
+stages = ["device"]
+kind = "engine"
+category = ["execution"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.SolutionMethod"
+engine_key = "TS.SolutionMethod"
+manual = "SIESTA 5.4.2 TranSIESTA §'Options' (TS.SolutionMethod)"
+type = "enum"
+choices = ["BTD", "full"]
+value = "BTD"
+default = "BTD"
+group = "budget"
+label = "How TranSIESTA inverts the device matrix"
+tier = "advanced"
+help = """
+The arithmetic TranSIESTA uses to compute the device's Green function -- speed and memory, never the answer: every method gives the same result.
+  BTD -- block-tridiagonal: the junction cut into slices along the transport direction, each coupled only to its neighbours.  TranSIESTA's own default, and the method its manual recommends and says "need not be changed".
+  full -- the whole matrix at once: slower and heavier, sensible only for a small device.
+(TranSIESTA has a third, MUMPS, only when it is built with that library; the packaged SIESTA is not, so it is not offered.)  Written on the device's deck either way, so the deck says which ran (SIESTA 5.4.2 `m_ts_options.F90`).
+"""
+
+[item.tbt_solution_method]
+stages = ["transmission"]
+role = ["transport"]
+kind = "engine"
+category = ["method"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.SolutionMethod"
+engine_key = "TBT.SolutionMethod"
+manual = "SIESTA 5.4.2 TBtrans (m_tbt_options.F90: TBT.SolutionMethod)"
+type = "enum"
+choices = ["BTD"]
+value = "BTD"
+default = "BTD"
+group = "profile"
+label = "How tbtrans inverts the device matrix"
+tier = "advanced"
+help = """
+The arithmetic tbtrans uses for the device's Green function: block-tridiagonal, BTD.  It is the only method tbtrans has -- any other word stops it ("Unrecognized TBtrans solution method", SIESTA 5.4.2 `m_tbt_options.F90`) -- so the transmission writes it fixed, to say what runs.
+"""
+
+[item.ts_hartree_fix]
+stages = ["device"]
+role = ["transport"]
+kind = "engine"
+category = ["method"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.Hartree.Fix"
+engine_key = "TS.Hartree.Fix"
+manual = "SIESTA 5.4.2 TranSIESTA §'Electrostatic potential' (TS.Hartree.Fix)"
+type = "enum"
+choices = ["C"]
+value = "C"
+default = "C"
+group = "profile"
+label = "Where the electrostatic potential is held"
+tier = "advanced"
+help = """
+The plane of the cell where TranSIESTA holds the electrostatic (Hartree) potential fixed, so the device's potential has a reference the leads share.  It follows from the transport direction: molbuilder's is always the cell's third axis, C (along z), and TranSIESTA's own default is that axis's letter -- so the device writes C, fixed, to say what runs.
+Any other spelling, -C included, is read as a different request and makes TranSIESTA warn that the plane "is now YOUR responsibility" (SIESTA 5.4.2 `m_ts_hartree.F90`).
+"""
+
+[item.negf_neq_fermi_cutoff_kt]
+stages = ["device"]
+kind = "engine"
+category = ["convergence"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.Contours.nEq.Fermi.Cutoff"
+engine_key = "TS.Contours.nEq.Fermi.Cutoff"
+manual = "SIESTA 5.4.2 TranSIESTA §'Complex contour' (TS.Contours.nEq.Fermi.Cutoff)"
+type = "float"
+value = 5.0
+default = 5.0
+range = [2.5, 20.0]
+at_least = { value = 2.5, why = "TranSIESTA stops a run below 2.5: the Fermi function still has weight at E_F + 2.5 kT (m_ts_contour_neq.f90)" }
+group = "stage"
+label = "Bias window's reach past each Fermi level (in kT)"
+tier = "advanced"
+help = """
+How far past each lead's Fermi level the non-equilibrium part of TranSIESTA's integration reaches, counted in kT (k_B times the electronic temperature): the window runs from the lower Fermi level minus this many kT to the upper one plus it.  It does nothing at zero bias, where there is no window.
+5, TranSIESTA's own default, catches the Fermi functions' tails; TranSIESTA stops a run below 2.5 (SIESTA 5.4.2 `m_ts_contour_neq.f90`).  A plain number -- the deck writes no unit word, because TranSIESTA reads it in kT.
 """
 
 [item.ts_elecs_eta_ev]
@@ -2598,6 +2694,7 @@ Written explicitly because it decides the self-energies every density this rung 
 
 [item.electrodes_bulk]
 shared = ["transport"]
+stages = ["device", "transmission"]
 kind = "engine"
 category = ["method"]
 engines = ["siesta"]

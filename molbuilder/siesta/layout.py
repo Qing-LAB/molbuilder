@@ -218,7 +218,8 @@ _PAD = {
     "negf_neq_eta_ev": 23, "ts_elecs_eta_ev": 23, "tbt_elecs_eta_ev": 23,
     "tbt_contours_eta_ev": 23, "tbt_spin": 23, "tbt_dos_gf": 23,
     "tbt_dos_a": 23, "tbt_dos_elecs": 23, "tbt_t_eig": 23, "tbt_t_bulk": 23,
-    "tbt_t_all": 23, "tbt_verbosity": 23,
+    "tbt_t_all": 23, "tbt_verbosity": 23, "negf_neq_fermi_cutoff_kt": 30,
+    "ts_solution_method": 23, "ts_hartree_fix": 23, "tbt_solution_method": 23,
 }
 
 #: Items SIESTA wants in scientific notation.  Formatting is spelling, so it
@@ -229,21 +230,6 @@ _FMT = {"dm_tolerance": ".1e", "dm_energy_tolerance": ".1e",
         "tbt_elecs_eta_ev": ".6f",
         "tbt_contours_eta_ev": ".6f"}
 
-#: Items whose 0 means LEAVE IT TO THE ENGINE, so 0 writes no value -- the
-#: deck says which rule then applies, in the item's `not_set`.  Each of
-#: these engine defaults is a FORMULA rather than a number -- the
-#: non-equilibrium and the device Green function's broadenings are the
-#: leads' smallest over ten -- and a number written in its place would
-#: REPLACE the rule: an explicit 0 broadening overrides the formula
-#: (`engines/transport.md` § 6.1b; each item's note says what 0 leaves).
-#: Where the default IS a number, the item writes it: `TBT.Spin 0` is
-#: tbtrans's own default, all channels (`m_tbt_hs.F90`).
-#:
-#: THE POLE ENERGY IS NOT IN THIS SET (§ 6.1c).  TranSIESTA's own choice for it -- about 42 poles at 300 K -- lost the
-#: charge on a real device where a stated 10 eV held it, so the energy is
-#: always written, and the settings gate refuses one under 20 poles.
-_ZERO_LEAVES_IT_TO_THE_ENGINE = frozenset({
-    "negf_neq_eta_ev", "tbt_contours_eta_ev"})
 
 
 def k_mesh_lines(mesh, *, notes: bool = True) -> list:
@@ -438,12 +424,12 @@ def line(derived: dict):
             return None
         # NOBODY SET IT, AND THE ENGINE'S OWN DEFAULT APPLIES: the deck says
         # so where the line would be, in the item's own words -- an optional
-        # item at no value, or one whose 0 leaves the engine's rule
-        # (`engines/template.md` § 6.6 obligation 4).
+        # item at no value (`engines/template.md` § 6.6 obligation 4).  A 0
+        # is a value like any other, written as given: for the two NEGF
+        # broadenings it means no device broadening, which is not what
+        # leaving them out means (2.1.0, `engines/transport.md` § 2a.13).
         if param.value is None:
             return not_set_line(param) if param.declaration.optional else None
-        if param.name in _ZERO_LEAVES_IT_TO_THE_ENGINE and not param.value:
-            return not_set_line(param)
         if len(param.writes) == 2:
             return _pair(param)
         text = _plain(param)

@@ -189,7 +189,9 @@ stage*: each item the catalogue marks `shared` for this calculation's kind,
 by its label, with its value and whose it is (*from the junction you cited ·
 you set this · not chosen · not recorded*), read-only
 ([`engines/template.md`](?doc=engines/template.md) § 6.6 obligation 3,
-*2026-10-11*). No stage may change one, so none is a column of the stage table
+*2026-10-11*) — and, for a value only some rungs read, which ones
+(`template.shared_scope_words`: *read by the device and transmission rungs
+only*, § 5's `shared` with `stages`). No stage may change one, so none is a column of the stage table
 (§ 5) — which made this card the one place on the page a reader sees them.
 The folder's answer carries them (`template.shared`, read by the template's
 own reader beside the catalogue's `shared`); the page keeps no list.

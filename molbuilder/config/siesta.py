@@ -977,7 +977,9 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
-    tbt_contours_eta_ev: float = field(default=0.0, metadata={
+    # BLANK IS NOT 0 (2.1.0): unset leaves tbtrans's own rule, a tenth of
+    # the leads' broadening; 0 is no device broadening (the catalogue's help).
+    tbt_contours_eta_ev: Optional[float] = field(default=None, metadata={
         "category": ("convergence", ),
         "item_kind":  "engine",
         "workflow_group": "stage",
@@ -1084,11 +1086,53 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
-    negf_neq_eta_ev: float = field(default=0.0, metadata={
+    ts_solution_method: str = field(default="BTD", metadata={
+        "category": ("execution", ),
+        "item_kind":  "engine",
+        "workflow_group": "budget",
+        "label":       "How TranSIESTA inverts the device matrix",
+        "engine_key":  "TS.SolutionMethod",
+        "choices":     ("BTD", "full"),
+        "tier":        "advanced",
+    })
+
+    tbt_solution_method: str = field(default="BTD", metadata={
+        "category": ("method", ),
+        "item_kind":  "engine",
+        "workflow_group": "profile",
+        "label":       "How tbtrans inverts the device matrix",
+        "engine_key":  "TBT.SolutionMethod",
+        "choices":     ("BTD",),
+        "tier":        "advanced",
+    })
+
+    ts_hartree_fix: str = field(default="C", metadata={
+        "category": ("method", ),
+        "item_kind":  "engine",
+        "workflow_group": "profile",
+        "label":       "Where the electrostatic potential is held",
+        "engine_key":  "TS.Hartree.Fix",
+        "choices":     ("C",),
+        "tier":        "advanced",
+    })
+
+    negf_neq_fermi_cutoff_kt: float = field(default=5.0, metadata={
         "category": ("convergence", ),
         "item_kind":  "engine",
         "workflow_group": "stage",
-        "label":       "Non-equilibrium broadening",
+        "label":       "Bias window's reach past each Fermi level (in kT)",
+        "engine_key":  "TS.Contours.nEq.Fermi.Cutoff",
+        "range":       (2.5, 20.0),
+        "tier":        "advanced",
+    })
+
+    # BLANK IS NOT 0 (2.1.0): unset leaves TranSIESTA's own rule, a tenth of
+    # the leads' broadening; 0 is no device broadening (the catalogue's help).
+    negf_neq_eta_ev: Optional[float] = field(default=None, metadata={
+        "category": ("convergence", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Non-equilibrium broadening (device)",
         "engine_key":  "TS.Contours.nEq.Eta",
         "unit":        "eV",
         "range":       (0.0, 1.0),

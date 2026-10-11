@@ -99,11 +99,13 @@ def rung_of(stage_token: Optional[str]) -> str:
 TS_DEVICE_SECTION = _sc.Section(
     "TranSIESTA -- how the device's open-boundary run is solved",
     ("bias_voltage_v", "electrodes_bulk", "ts_elecs_eta_ev",
-     "negf_eq_pole_ev", "negf_neq_eta_ev"),
+     "negf_eq_pole_ev", "negf_neq_eta_ev", "negf_neq_fermi_cutoff_kt",
+     "ts_solution_method", "ts_hartree_fix"),
     note=(
         "# Read by siesta in its NEGF mode (TranSIESTA) -- this rung.  An item",
-        "# left at 0 leaves it to TranSIESTA, whose own default there is a",
-        "# rule, not a number: its line says which (engines/transport.md 6.1b).",
+        "# not set is not written, and TranSIESTA applies its own rule there:",
+        "# its line says which.  A 0 is written as 0 -- a value of its own",
+        "# (engines/transport.md 6.1b).",
     ))
 
 #: What tbtrans reads of TranSIESTA's settings: `TBT.Voltage` defaults to
@@ -143,14 +145,16 @@ _TRANSMISSION_TEMPERATURE_SECTION = _sc.Section(
 #: `TBT.*` keyword, which is why the device deck carries none.
 TBT_SECTION = _sc.Section(
     "TBtrans -- how T(E) is computed from the device's Hamiltonian",
-    ("tbt_elecs_eta_ev", "tbt_contours_eta_ev", "tbt_spin",
+    ("tbt_solution_method", "tbt_elecs_eta_ev", "tbt_contours_eta_ev",
+     "tbt_spin",
      "tbt_dos_gf", "tbt_dos_a", "tbt_dos_elecs", "tbt_t_eig", "tbt_t_bulk",
      "tbt_t_all", "tbt_verbosity"),
     note=(
         "# Read by tbtrans, which runs no SCF: it takes the converged",
         "# Hamiltonian the device rung wrote (TBT.HS above) and the leads'",
-        "# .TSHS, and evaluates T(E) on the window above.  An item left at",
-        "# 0 leaves it to tbtrans's own rule, and its line says which.",
+        "# .TSHS, and evaluates T(E) on the window above.  An item not set",
+        "# is not written, and tbtrans applies its own rule there: its line",
+        "# says which.  A 0 is written as 0 -- a value of its own.",
     ))
 
 
@@ -268,6 +272,10 @@ def _emit_transmission_header(struct, cfg) -> str:
         "#  and its own TBT.* settings (engines/transport.md 6.1b).  Of the",
         "#  SIESTA settings only what it reads is here: the label, the",
         "#  basis and functional, the electronic temperature, the spin.",
+        "#",
+        "#  What tbtrans actually read -- every keyword it asked for and the",
+        "#  value it used, this deck's or its own default -- is in its own",
+        "#  log beside the output: fdf.<date>T<time>.log.",
         "# ================================================================== #",
         "",
         f"SystemLabel            {label}",
@@ -288,10 +296,9 @@ def _emit_device_run(struct, cfg) -> str:
         "# --- TranSIESTA, at this rung's bias point ---",
         "#",
         "# `SolutionMethod transiesta` -- in the SCF section above, fixed by",
-        "# this rung -- switches the SCF cycle to NEGF.  (`TS.SolutionMethod`",
-        "# is a different keyword -- the NEGF inversion algorithm -- and",
-        "# naming the engine there stops SIESTA 5.4.2 with 'Unrecognized",
-        "# TranSiesta solution method'; measured 2026-06-18.)",
+        "# this rung -- switches the SCF cycle to NEGF.  (`TS.SolutionMethod`,",
+        "# in the TranSIESTA section below, is a different keyword: how the",
+        "# NEGF Green's function is inverted.)",
         "",
         "# Start the NEGF SCF from a saved density when one is present: the",
         "# seed rung leaves <SystemLabel>.DM beside this deck, and a .TSDE",

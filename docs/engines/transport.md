@@ -1877,7 +1877,7 @@ says where the value is edited, what it binds, and what changing it costs.
 
 #### Class A — Shared · decided once · binds every stage (and every frame)
 
-Edited in one panel. Changing any of these rebuilds all five stages.
+Edited in one panel. Changing any of these rebuilds every stage that reads it — all five, but `electrodes_bulk`, which the device and the transmission read alone (TD11).
 
 | parameter | keyword | the decision it is | tier |
 |---|---|---|---|
@@ -1891,7 +1891,7 @@ Edited in one panel. Changing any of these rebuilds all five stages.
 | `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly. Held by one rule, `chemistry.species_order` (I15, § 5) | 2 |
 | `kgrid` *(transverse part)* | `%block kgrid_Monkhorst_Pack` | The transverse Brillouin-zone sampling. Leads and device share one transverse cell, and the self-energy is folded in per transverse k-point, so two grids cannot be combined. *(Advisory as to whether the density suffices; checkable that they agree)* | 2 + 3 |
 | `kgrid_displacement` | same block | The grid's offset — same argument. An offset that differs is a different sampling, and TranSIESTA itself refuses a lead whose offset differs from the device's. Acts across the transport axis only; Γ-centred on a hexagonal cell. **Cited and written on every rung since 2026-09-30** (§ 0.3a; [`siesta.md`](?doc=engines/siesta.md) § 6.1) | 2 |
-| `electrodes_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device takes the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert. **Shared since 2026-09-29, and the device's alone before** (`elecs_bulk`, `stages = ["device"]`): TranSIESTA reads it for the device and `tbtrans` takes it as the default of its own setting, so the transmission must read the same value (§ 6.1b) | 3 |
+| `electrodes_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device takes the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert. **Shared since 2026-09-29, and the device's alone before** (`elecs_bulk`, `stages = ["device"]`): TranSIESTA reads it for the device and `tbtrans` takes it as the default of its own setting, so the transmission must read the same value (§ 6.1b). **One value for those two rungs only** (`shared` with `stages = ["device", "transmission"]`, TD11, 2026-10-11): the seed's and the leads' decks never write it, and the shared panel says which rungs it is for ([`template.md`](?doc=engines/template.md) § 5) | 3 |
 | *the lead layer count inside the device* | — | Not a transport parameter at all: **geometry**, settled when the junction was built and relaxed. Screening must be complete before the lead boundary, or the self-energy attaches to a region that is not bulk-like. Transport **inherits and verifies** it | 2 |
 
 #### Class C — Stage-local · binds nothing
@@ -1929,7 +1929,9 @@ naming one there is refused where it is written (§ 3.8.9).
 |---|---|---|---|
 | `negf_eq_pole_ev` | `TS.Contours.Eq.Pole` | Where the equilibrium contour's poles sit on the imaginary axis | 3 |
 | *the equilibrium contour* | `contour.eq` in each `%block TS.ChemPot.<name>` | **Stated, not left to the engine**: a circle and a tail whose lower bound sits below the seed's lowest eigenvalue — the manual's own rule. Without `contour.eq` TranSIESTA falls back to a continued fraction of 42 poles (`Src/m_ts_chem_pot.F90`), under the 50 the manual asks for; on a real device that lost 29 electrons on the first NEGF step, before any mixing, where 123 poles conserved the charge. The settings gate refuses a contour that cannot cover the spectrum | 2 |
-| `negf_neq_eta_ev` | `TS.Contours.nEq.Eta` | The non-equilibrium contour's broadening. **Inert at zero bias** — there is no non-equilibrium window to integrate | 3 |
+| `ts_elecs_eta_ev` | `TS.Elecs.Eta` | The leads' self-energy broadening in the device's NEGF loop. 1 meV, TranSIESTA's own default, written | 3 |
+| `negf_neq_eta_ev` | `TS.Contours.nEq.Eta` | The non-equilibrium contour's broadening of the device. **Inert at zero bias** — there is no non-equilibrium window to integrate. **Blank is not set** — the line is not written and TranSIESTA takes a tenth of the smallest lead broadening; **0 is written as 0** — no broadening on the device, a value of its own (below) | 3 |
+| `negf_neq_fermi_cutoff_kt` | `TS.Contours.nEq.Fermi.Cutoff` | How far past each lead's Fermi level the bias window reaches, in kT. 5, TranSIESTA's own default, written; **refused below 2.5**, where TranSIESTA stops the run (`at_least`, `m_ts_contour_neq.f90:141-144`) *(2.1.0)* | 3 |
 
 **The transmission owns** — and this is the cheap, iterative panel: none of it
 binds anything, so re-running against an unchanged device costs seconds.
@@ -1940,7 +1942,7 @@ binds anything, so re-running against an unchanged device costs seconds.
 | `transmission_n_points` | same block | Resolution. A resonance narrower than the spacing is invisible | 3 |
 | `tbt_k_grid` | `TBT.k` | Transverse sampling for T(E). A grid converged for a total energy is routinely far too coarse for a transmission | 3 |
 | `tbt_elecs_eta_ev` | `TBT.Elecs.Eta` | Lead self-energy broadening: too large smears real resonances flat, too small turns them into noise | 3 |
-| `tbt_contours_eta_ev` | `TBT.Contours.Eta` | The device Green function's broadening | 3 |
+| `tbt_contours_eta_ev` | `TBT.Contours.Eta` | The device Green function's broadening. **Blank is not set** — not written, and tbtrans takes a tenth of the smallest lead broadening; **0 is written as 0** — none (below) | 3 |
 | `tbt_spin` | `TBT.Spin` | Which spin channel is reported | 3 |
 | `tbt_t_eig` | `TBT.T.Eig` | Eigenchannel decomposition — what turns one number into a picture of which orbital pathway carries the current | 3 |
 | `tbt_t_bulk` · `tbt_t_all` | `TBT.T.Bulk` · `TBT.T.All` | The pristine-lead baseline; every electrode pair rather than the first | 3 |
@@ -1968,11 +1970,31 @@ Exposing these as controls would offer a choice with one correct answer.
 | *each lead's label* | `SystemLabel` | Derived by `prep` from the calculation's one label (`system_label`, shared — Class A): the stem the device's `TS.Elec` reference is built from | 1 |
 | `bias_voltage_v` | `TS.Voltage` | The bias point this rung's deck is for: the description's axis (`task.bias`) names it, and each point's device and transmission decks carry its own (§ 2a.10) | 1 |
 | `write_forces` · `write_coor_step` | `WriteForces` · `WriteCoorStep` | Every step's forces and coordinates in the output, which molbuilder reads back — fixed on every SIESTA kind, not only here (`template.md` § 6.4) | 1 |
+| `tbt_solution_method` | `TBT.SolutionMethod` | `BTD`, on the transmission: the only method tbtrans has — any other word stops it (`m_tbt_options.F90:490`). Written, so the deck says what runs *(2.1.0)* | 1 |
+| `ts_hartree_fix` | `TS.Hartree.Fix` | `C`, on the device: the plane where the Hartree potential is held, which follows from the transport axis — always the cell's third, along z. TranSIESTA's own default is that axis's letter; any other spelling, `-C` included, is a different request it warns about (`m_ts_hartree.F90:50-72`). Written, so the deck says what runs *(2.1.0)* | 1 |
 
 *(`wrap_into_cell` left this table on 2026-09-25, with the knob: no atom is
 wrapped any more. Every rung's atoms are placed by the engine offset
 (`model/structure-periodicity.md` § 6.0), a rigid translation that cannot
 reorder a lead's range, so what this row protected is now structural.)*
+
+**Blank and 0 are two answers** *(2.1.0, user 2026-10-11)*. On the two
+device broadenings — `negf_neq_eta_ev`, `tbt_contours_eta_ev` — the engine's
+own rule, when no line is written, is *a tenth of the smallest lead
+broadening* (`m_ts_contour_neq.f90`, `m_tbt_contour.F90`), and an explicit 0
+is a different calculation: no broadening on the device, which TranSIESTA and
+tbtrans both take. So **blank means not set** — the item has no value, the
+deck writes no line, and its not-set comment says which rule applies
+(`script_emit.not_set_line`) — and **a number, 0 included, is written as that
+number**. Before 2.1.0 molbuilder read a 0 there as *not set* and wrote
+nothing; a calculation written then that holds one — in its template, or as
+a rung's override in `task.json`, which the device or transmission tab
+writes when a 0 is typed there — is refused, naming `molbuilder jobset
+migrate`, which writes it blank — what it meant: the override taken out and
+the template's item left blank, since each of the two is read by one rung
+alone
+([`template.md`](?doc=engines/template.md) § 3, `written_by`;
+[`process/changelog.md`](?doc=process/changelog.md) 2.1.0).
 
 #### Class E — Machine · per stage · changes no answer
 
@@ -1983,6 +2005,7 @@ nearly free — so these *should* differ across stages.
 |---|---|
 | `mpi_np` · `omp_threads` · `max_memory_mb` · `gpu_count` | the allocation |
 | `block_size` · `parallel_over_k` · `diag_algorithm` · `use_gpu` | how the diagonaliser is decomposed across ranks |
+| `ts_solution_method` | `TS.SolutionMethod`, the device's: how TranSIESTA inverts the device matrix — speed and memory, never the answer. `BTD` (TranSIESTA's default, which its manual recommends) or `full`; `MUMPS` exists only in a build with that library, which the packaged SIESTA is not, so it is not offered. Set on the device's run card, and written, so the deck says which ran (`m_ts_options.F90:180`) *(2.1.0)* |
 | `continue_retries` | how many times the wrapper retries — on a transport point, continuing the point's own cycle from its own last density (§ 2a.11) |
 | ~~`psml_lib`~~ | *(Class A since the catalogue marked it `shared`: one set of pseudopotentials per calculation, every rung built on it — for transport the set travels with a cited run, and comes from the person's directory for a cited pair, § 3.1, `template.md` § 5)* |
 
@@ -3984,9 +4007,9 @@ none of it: it was text `siesta` never read.
   item, the rung's bias point) among them since 2026-09-29 — and the T(E)
   window's three values are written by the rung's own block, each asked of
   the framework's door and written with its note. `TBT.HS` is a rung line derived from the label, not
-  a setting, and has no row. An item left at a zero that means *the
-  program's own rule* writes no value, and says so where its line would be,
-  in its own `not_set` (`template.md` § 6.6 obligation 4). The electrode
+  a setting, and has no row. An item left blank -- not set -- writes no
+  value, and says so where its line would be, in its own `not_set`
+  (`template.md` § 6.6 obligation 4); a 0 is written as 0 (§ 2a.13, 2.1.0). The electrode
   declarations stay a block: they are derived from the region labels, and no
   parameter models them.
 * **`TBT.k` is written as a list, `TBT.k [2 2 1]`** — the only line form

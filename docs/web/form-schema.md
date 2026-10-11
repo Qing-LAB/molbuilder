@@ -68,6 +68,7 @@ is where the *data* comes from.
 | `default` | the item's default **for this kind** (`template.recommended_for`) — a HINT beside a field with no value, never a value |
 | `value` · `source` | **the calculation's template**, when the surface is drawn from one (`catalogue_to_form_schema(template=)`): the item's value and where it came from (`engines/template.md` § 6.6 obligation 2). A value nobody chose (`default`) is not carried — that field is blank. With no template, no field has a value. The words a source is said in ride once, as the schema's `source_words` (`template.SOURCE_WORDS`: *from the junction you cited* · *you set this* · *not chosen* · *not recorded*), and every surface says them from there |
 | `locked` | derived from the kind: an item the RUNG fixes (`role`, `engines/template.md` § 6.4), echoed read-only — `{value, why}`, the rung's answer (`template.role_answers`; on a form for the whole calculation, the answers every rung gives alike, `fixed_on_every_rung`) and the reason (`why_role`). Drawn disabled at its value with the reason beside it, never collected (§ 6.6 obligation 3: shown, never a control). The bias carries no value — each point of the description's list is its own (`template.PER_POINT`) *(2026-09-30, K7)* |
+| `scope` | on the shared panel only, an item that is `shared` **and** names `stages`: which rungs its one value is for, in the template's words (`template.shared_scope_words` — *read by the device and transmission rungs only*; [`engines/template.md`](?doc=engines/template.md) § 5, TD11). Drawn as a hint line beside the field. An item every rung reads carries none — the panel's heading says it *(2026-10-11)* |
 | `choices` | the item's `choices`, **narrowed to what the kind offers** on this engine (`offered`, `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30): a vibration's relaxation shows three relaxers, a PySCF vibration's spin `restricted` alone |
 | `min` / `max` | `range` |
 | `engine_key` | the item's **`engine_key`** — the full spelling. `expands` is the fallback for a `deck` item whose several keywords are the honest answer, and `anchor` the last resort. *(This said `anchor` first until 2026-08-15, and an anchor is deliberately the bare leading keyword — so the badge read `gto.M` on four different PySCF controls, `mf` on three more, and nothing at all on the eleven whose key is a molbuilder note.)* |
@@ -119,7 +120,7 @@ field it names ([`engines/template.md`](?doc=engines/template.md) § 5.3).
 
 | key | why the form cannot derive it |
 |---|---|
-| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of **17** optional items only **14** carry one, so three would silently lose their *(auto)* option |
+| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of **19** optional items only **16** carry one, so three would silently lose their *(auto)* option |
 | `tier` | `basic` / `advanced`. A judgement about the parameter, not about the widget — the form dims advanced fields |
 | `pattern` | a regex the value must match. Two items have one (`system_label`, `job_name`) and nothing else can express it |
 

@@ -1,6 +1,7 @@
 """Rewrite a calculation an older molbuilder wrote: its records written whole
-(2026-10-06), a flat calculation's run files numbered (2026-10-06), and its
-template's electronic-state items (2026-09-28).
+(2026-10-06), a flat calculation's run files numbered (2026-10-06), its
+template's electronic-state items (2026-09-28), and its template's zeros that
+meant *not set* (2.1.0).
 
 **The run files** (`_migrate_run_numbers`): in the flat shape each run's
 files -- every row the catalogue numbers where a stage's runs share a
@@ -43,6 +44,19 @@ stage, because which value the whole calculation should carry is the
 person's to say.
 
 The old template is kept beside the new one as ``<name>.pre-m6``.
+
+**The zeros that meant not set** (2.1.0, `engines/transport.md` § 2a.13):
+before 2.1.0 a 0 for ``negf_neq_eta_ev`` or ``tbt_contours_eta_ev`` wrote no
+line and left the broadening to the program's own rule; since, a 0 is written
+as zero broadening and *not set* is the item left blank.  A calculation
+whose template was written before 2.1.0 (its ``written_by`` older, or absent)
+holding such a 0 -- in the template, refused by
+``template.config_from_template``, or as a rung's override in `task.json`,
+refused by ``resolve`` -- names this command, which writes the item blank --
+what it meant: a rung's override is taken out too, since each item is read
+by one rung alone -- says so, and keeps each old file as
+``<name>.pre-2.1.0`` (``.pre-m6`` / ``.pre-w57`` when an earlier step
+rewrites it too).
 """
 from __future__ import annotations
 
@@ -291,8 +305,9 @@ def migrate_state(base) -> List[str]:
     """Rewrite the calculation in ``base``; return what changed, line by line
     -- its records (:func:`_migrate_records`: the readers refuse a file
     written before they were whole), a flat calculation's run files numbered
-    (:func:`_migrate_run_numbers`) and its template's electronic-state
-    items, all decided before any is written.  Each old file rewritten is
+    (:func:`_migrate_run_numbers`), its template's electronic-state
+    items and its zeros, and its stages', that meant *not set* before 2.1.0
+    (:func:`_migrate_template`), all decided before any is written.  Each old file rewritten is
     kept beside its new one; a renamed one is its new one.
 
     Raises :class:`MigrateError` when there is nothing to migrate or it cannot
@@ -304,15 +319,27 @@ def migrate_state(base) -> List[str]:
     said, writes, task = _migrate_records(base)
     n_said, moves = _migrate_run_numbers(base, task)
     try:
-        t_said, t_writes = _migrate_template(base, task)
+        t_said, t_writes, t_task = _migrate_template(base, task)
     except _NothingInTheTemplate:
         if not said and not moves:
             raise MigrateError(
                 f"{base} holds nothing an older molbuilder wrote -- its "
                 f"records are whole, its run files carry their run's "
-                f"number, and its template carries no item written before "
-                f"the electronic state's.") from None
-        t_said, t_writes = [], []
+                f"number, and its template carries no item an older "
+                f"molbuilder meant otherwise.") from None
+        t_said, t_writes, t_task = [], [], task
+    if t_task is not task:
+        # ONE WRITE OF task.json: the stages' old zeros taken out, on top of
+        # whatever the records step gave it; the old file kept once.
+        from ..persist import json_text
+        from ..task import FILENAME as TASK_FILENAME
+        task_path, text = base / TASK_FILENAME, json_text(t_task.to_dict())
+        if any(p == task_path for p, _x in writes):
+            writes = [(p, text if p == task_path else x) for p, x in writes]
+        else:
+            from ..template import ZERO_MEANING_CHANGED_AT
+            t_writes.append((task_path, text,
+                             f".pre-{ZERO_MEANING_CHANGED_AT}"))
     taken = [new for _old, new in moves if new.exists()]
     if taken:
         raise MigrateError(
@@ -334,14 +361,17 @@ def migrate_state(base) -> List[str]:
 
 
 class _NothingInTheTemplate(MigrateError):
-    """The template carries no item written before the electronic state's."""
+    """The template carries no item written before the electronic state's,
+    and the calculation no 0 written before 2.1.0 that meant *not set*."""
 
 
 def _migrate_template(base: Path, task):
     """The template's charge and spin items, rewritten into the electronic
-    state's -- this module's first migration (2026-09-28).  ``task`` is the
+    state's -- this module's first migration (2026-09-28) -- and its zeros,
+    and its stages', that meant *not set* (2.1.0).  ``task`` is the
     description as the records step left it.  Nothing is written here:
-    returns what changed and the write (``(path, text, kept-as suffix)``)."""
+    returns what changed, the write (``(path, text, kept-as suffix)``) and
+    the description, its stages' old zeros taken out."""
     from .. import template as _T
     from ..config.pyscf import PySCFConfig
     from ..config.siesta import SiestaConfig
@@ -373,14 +403,41 @@ def _migrate_template(base: Path, task):
     old_values = {k for k in ("method", "spin_treatment")
                   if k in vals and vals[k] in (_PYSCF_CLASS if k == "method"
                                                else _SIESTA_TREATMENT)}
-    if not old_items and not old_values:
+    # A 0 WRITTEN BEFORE 2.1.0 on the two NEGF broadenings meant *not set*
+    # (`template.ZERO_WAS_NOT_SET`): written blank, what it meant.  On a
+    # stage it is the override taken out and the item written blank: each
+    # of the two is read by one rung alone (its `stages`), so *not set on
+    # that rung* is *not set*.
+    zeros = _T.zeros_written_before(parsed)
+    stage_zeros = ([(st.name, k) for st in (task.stages or ())
+                    for k, v in (st.overrides or {}).items()
+                    if k in _T.ZERO_WAS_NOT_SET and v == 0
+                    and _T.reads(_T.one(_T.catalogue(), k, engine=engine),
+                                 engine, kind, st.name)]
+                   if _T.written_before_zero_changed(parsed) else [])
+    if stage_zeros:
+        import dataclasses
+        task = dataclasses.replace(task, stages=tuple(
+            dataclasses.replace(st, overrides={
+                k: v for k, v in (st.overrides or {}).items()
+                if (st.name, k) not in stage_zeros})
+            for st in task.stages))
+    zero_said = ([f"{name} = 0 -> not set" for name in zeros]
+                 + [f"stage {st!r} {name} = 0 -> not set (the override "
+                    f"taken out of task.json; the template's {name} is "
+                    f"written blank, since only that rung reads it)"
+                    for st, name in stage_zeros])
+    zeros = list(dict.fromkeys(zeros + [name for _st, name in stage_zeros]))
+    if not old_items and not old_values and not zeros:
         raise _NothingInTheTemplate(
             f"{tmpl.name} carries no item written before the electronic "
-            f"state's.")
+            f"state's, and no 0 written before "
+            f"{_T.ZERO_MEANING_CHANGED_AT} that meant 'not set'.")
+    state_said = bool(old_items or old_values)
 
     staged = [(st.name, k) for st in (task.stages or ())
-              for k in (st.overrides or {}) if k in _OLD_NAMES
-              or k in _T.STATE_ITEMS]
+              for k in (st.overrides or {}) if state_said
+              and (k in _OLD_NAMES or k in _T.STATE_ITEMS)]
     if staged:
         name, item = staged[0]
         raise MigrateError(
@@ -392,12 +449,15 @@ def _migrate_template(base: Path, task):
             f"remove the override from task.json, and run the migration "
             f"again.")
 
-    state, said = _map_state(engine, vals)
-    said = renamed + said
+    state, said = (_map_state(engine, vals) if state_said else ({}, []))
+    said = renamed + said + [
+        f"{line} (before {_T.ZERO_MEANING_CHANGED_AT} a 0 meant the "
+        f"program's own rule; since, it means no broadening)"
+        for line in zero_said]
     config_cls = PySCFConfig if engine == "pyscf" else SiestaConfig
     known = _T.template_fields(config_cls)
     kept = {k: v for k, v in vals.items()
-            if k in known and k not in _OLD_NAMES}
+            if k in known and k not in _OLD_NAMES and k not in zeros}
     kept.update(state)
     try:
         cfg = config_cls(**kept)
@@ -406,7 +466,7 @@ def _migrate_template(base: Path, task):
     # Unset stays unset: an item the old file left valueless is written
     # valueless again, so a row nobody answered is not given a default.
     valueless = [it.name for it in mine
-                 if not it.is_set and it.name in known
+                 if (not it.is_set or it.name in zeros) and it.name in known
                  and it.name not in _T.STATE_ITEMS]
     # WHERE EACH VALUE CAME FROM, as the old file says it (§ 6.6 obligation
     # 2): a file written before sources were recorded says nothing, so every
@@ -428,8 +488,9 @@ def _migrate_template(base: Path, task):
         raise MigrateError(
             f"{tmpl.name} rewritten would still be refused, so nothing was "
             f"written: {exc}") from exc
-    return (said + [f"the old template is kept as {tmpl.name}.pre-m6"],
-            [(tmpl, new_text, ".pre-m6")])
+    keep = ".pre-m6" if state_said else f".pre-{_T.ZERO_MEANING_CHANGED_AT}"
+    return (said + [f"the old template is kept as {tmpl.name}{keep}"],
+            [(tmpl, new_text, keep)], task)
 
 
 def _leading_comment(text: str) -> str:

@@ -483,7 +483,19 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
     buffer_idx = sorted((struct.regions or {}).get(REGION_BUFFER, []))
     n_total = struct.n_atoms
 
-    # Per-electrode blocks.
+    # Per-electrode blocks -- and what their one fixed line says, in the
+    # deck, since a reader meets `bloch` there and not here.
+    lines.append(
+        "# `bloch 1 1 1` in each block: the lead's cell is used as it is, "
+        "never")
+    lines.append(
+        "# repeated.  The lead was cut from this junction's own lead atoms, "
+        "so its")
+    lines.append(
+        "# cell IS the device's cross-section; a factor above 1 would tile a "
+        "smaller")
+    lines.append(
+        "# lead cell up to it (SIESTA 5.4.2 ts_electrode.F90).")
     for i, (label, block_name, idxs) in enumerate(electrodes):
         cp = chempot_for[block_name]
         sid = semi_inf.get(i, "+A3")
@@ -553,6 +565,16 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
         "# written with its note beside this block: at zero bias the ±V/2")
     lines.append(
         "# split is inert; at a finite bias it sets the two Fermi levels.")
+    lines.append(
+        "# Both reservoirs take the one ElectronicTemperature every rung "
+        "shares:")
+    lines.append(
+        "# no `temp` line is written in either block, and TranSIESTA and "
+        "tbtrans")
+    lines.append(
+        "# then give each the run's own (SIESTA 5.4.2 m_ts_chem_pot.F90,")
+    lines.append(
+        "# m_tbt_options.F90).")
     lines.extend([
         "%block TS.ChemPots",
         "  Left",

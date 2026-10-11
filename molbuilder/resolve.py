@@ -489,7 +489,8 @@ def resolve(template_text: str, task, config_cls, *,
     # answers are laid on each element last, so the gate, the record and
     # the deck read one value.
     from .template import (engine_name, fixed_by_role, role_answers,
-                           shared_by_every_stage, why_role, why_shared)
+                           shared_by, shared_by_every_stage, why_role,
+                           why_shared)
     _engine = engine_name(config_cls)
     _kind = task.calculation
     fixed = fixed_by_role(_engine, _kind)
@@ -499,8 +500,10 @@ def resolve(template_text: str, task, config_cls, *,
     # WHOSE EACH TEMPLATE VALUE IS, as the file records it, and the items
     # this rung's deck is rendered from: the deck's PROVENANCE table says,
     # per value, who set it (`job-contracts.md` § 3.2).
-    from .template import read_template
-    origins = {it.name: it.source for it in read_template(template_text).items}
+    from .template import (read_template, why_zeros_written_before,
+                           zeros_written_before)
+    _parsed = read_template(template_text)
+    origins = {it.name: it.source for it in _parsed.items}
     deck_items = _deck_items(_engine, _kind, stage_obj.name)
 
     if stage_obj.overrides:
@@ -524,10 +527,10 @@ def resolve(template_text: str, task, config_cls, *,
             raise ResolveError(
                 f"stage {stage_obj.name!r} overrides "
                 f"{', '.join(map(repr, bound))}, which "
-                f"{'is' if len(bound) == 1 else 'are'} shared by every "
-                f"stage of this calculation: {why_shared(bound[0])}.  "
+                f"{'is' if len(bound) == 1 else 'are'} shared by "
+                f"{shared_by(bound[0])}: {why_shared(bound[0])}.  "
                 f"Change {'it' if len(bound) == 1 else 'them'} in the "
-                f"template, where the value applies to every stage at once.")
+                f"template, where one value applies to every stage that reads it.")
         # ...nor one the RUNG fixes (T-F5: a device override of the bias in
         # a single-bias calculation ran the device at one voltage and the
         # transmission, which reads the device's Hamiltonian, at another).
@@ -549,6 +552,12 @@ def resolve(template_text: str, task, config_cls, *,
             raise ResolveError(
                 f"stage {stage_obj.name!r} overrides {unread[0]!r}, "
                 f"{why_unread(unread[0], _engine, _kind, stage_obj.name)}.")
+        # ...nor A 0 WRITTEN BEFORE ITS MEANING CHANGED, which meant *not
+        # set*, as the template's did (`template.ZERO_WAS_NOT_SET`, 2.1.0)
+        # -- refused by the same rule, naming `jobset migrate`.
+        _zeros = zeros_written_before(_parsed, [stage_obj])
+        if _zeros:
+            raise ResolveError(why_zeros_written_before(_parsed, _zeros))
         try:
             base = effective_config(base, stage_obj.overrides)
         except ValueError as exc:

@@ -301,7 +301,8 @@ def test_each_electrode_block_declares_its_REGION_SIZE():
 
 
 def test_the_device_deck_states_its_identity_and_method():
-    """SystemLabel is the config's label and the solver is the NEGF one.
+    """SystemLabel is the config's label, the solver is the NEGF one, and
+    the NEGF inversion is the config's own -- two keywords, two values.
 
     Read back through the fdf parser rather than matched as substrings, so
     the emitter's column spacing is not part of the contract.
@@ -311,10 +312,11 @@ def test_the_device_deck_states_its_identity_and_method():
     cfg = SiestaConfig(system_label="au_bdt_au_test")
     scalars, _blocks = _parse_fdf(_live_device_deck(cfg.system_label))
     assert scalars.get("systemlabel") == [cfg.system_label]
-    # `SolutionMethod transiesta`, NOT `TS.SolutionMethod` -- 5.4.2 rejects
-    # the latter with "Unrecognized TranSiesta solution method" (measured).
+    # `SolutionMethod` switches the SCF to NEGF; `TS.SolutionMethod` is how
+    # the Green's function is inverted -- 5.4.2 stops on `transiesta` there
+    # ("Unrecognized TranSiesta solution method", measured).
     assert scalars.get("solutionmethod") == ["transiesta"]
-    assert "tssolutionmethod" not in scalars
+    assert scalars.get("tssolutionmethod") == [cfg.ts_solution_method]
 
 
 def test_the_transmission_window_carries_the_configured_point_count():

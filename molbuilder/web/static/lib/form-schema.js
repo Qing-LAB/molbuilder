@@ -513,6 +513,12 @@
             labelEl.appendChild(el("span", { class: "lock-reason" },
                                    "fixed: " + f.locked.why));
         }
+        // WHICH RUNGS A SHARED VALUE IS FOR, when not every rung reads it
+        // (`scope`, the shared panel's; form-schema.md § 1.1) -- the same
+        // `.lock-reason` hint line, in the server's words.
+        if (f.scope) {
+            labelEl.appendChild(el("span", { class: "lock-reason" }, f.scope));
+        }
         // WHY A COMPONENT IS LOCKED, beside the control -- the same
         // `.lock-reason` hint a locked field carries (form-schema.css).
         if (f.fixed) {

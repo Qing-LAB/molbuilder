@@ -486,13 +486,14 @@ def api_transport_describe() -> Any:
             # § 2a.7: the cited run DEFAULTS these values; what stays true
             # is that every rung shares them).
             return jsonify({"ok": False,
-                            "error": f"{_name!r} is shared by every stage "
-                                     f"of this calculation, so it cannot be a "
-                                     f"per-stage override: "
+                            "error": f"{_name!r} is shared by "
+                                     f"{_T.shared_by(_name)}, so it cannot be "
+                                     f"a per-stage override: "
                                      f"{_T.why_shared(_name)}.  Change it on "
                                      f"the shared panel, which edits the "
-                                     f"calculation's template -- there it "
-                                     f"applies to all five rungs at once."
+                                     f"calculation's template -- there one "
+                                     f"value applies to every rung that "
+                                     f"reads it."
                             }), 400
     # A RUNG'S VALUE ON A RUNG THAT DOES NOT READ IT is the description's
     # own check's to refuse, below, as at every describe and at prep
