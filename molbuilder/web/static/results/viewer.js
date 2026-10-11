@@ -257,7 +257,7 @@
         // THE COLUMNS, named -- the state and whether the run converged are
         // two facts (`runstatus.StageStatus.converged`), side by side.
         const head = document.createElement("tr");
-        ["#", "stage", "state", "converged", "detail", "result"].forEach((h) => {
+        ["#", "stage", "state", "converged", "detail", "result", "files"].forEach((h) => {
             const th = document.createElement("th");
             th.textContent = h;
             head.appendChild(th);
@@ -277,6 +277,7 @@
             tr.appendChild(td(chip(s.state)));
             tr.appendChild(td(s.converged || "\u2014"));
             tr.appendChild(td(s.detail || ""));
+            tr.appendChild(td(""));
             tr.appendChild(td(""));
             table.appendChild(tr);
             /* EVERY RUN OF THE RUNG, picked in place (results.md \u00a7 2.4):
@@ -338,6 +339,27 @@
                     result.appendChild(open);
                 }
                 row.appendChild(result);
+                /* WHAT THE RUN READ AND WHAT WAS CHECKED BEFORE IT WAS
+                 * WRITTEN (results.md § 2.4): the run's deck and the
+                 * `.validation.txt` prep wrote beside it -- each named by
+                 * the server, opened in the sidebar's file viewer, as the
+                 * Run panel's View opens a deck (§ 3a). */
+                const files = td("");
+                const proj = window.molbuilder.projects;
+                [["input", r.deck], ["check report", r.validation]]
+                    .forEach(([word, rel]) => {
+                        if (!rel || !rootDir || !proj
+                                || typeof proj.showPreview !== "function") return;
+                        const b = document.createElement("button");
+                        b.type = "button";
+                        b.className = "results-ladder-open";
+                        b.textContent = word;
+                        b.title = rel + " — opens in the sidebar's file viewer.";
+                        b.setAttribute("aria-label", word + " of " + s.name + " " + name);
+                        b.addEventListener("click", () => proj.showPreview(rootDir + "/" + rel));
+                        files.appendChild(b);
+                    });
+                row.appendChild(files);
                 table.appendChild(row);
             });
         });

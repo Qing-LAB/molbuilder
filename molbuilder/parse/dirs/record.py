@@ -466,8 +466,9 @@ def _deck(f: RunFiles) -> Dict[str, Any]:
         "path": f.deck.name,
         "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
     # THE STAGE'S OWN DECK, where the run door places it (`runs.Run.
-    # stage_deck`): in the stage's folder in the hierarchy; in the flat shape
-    # it is the run's own, one file, with nothing to compare.
+    # stage_deck`): in the folder prep wrote it in -- the stage's, or a bias
+    # point's within it, in the hierarchy; in the flat shape, and for a
+    # benchmark trial, it is the run's own, one file, with nothing to compare.
     stage_deck = f.stage_deck
     if (stage_deck is not None and stage_deck.is_file()
             and stage_deck.resolve() != f.deck.resolve()):

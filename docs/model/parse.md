@@ -1623,9 +1623,12 @@ with the default alone — SIESTA has not started, so `asked` is the deck's and
 ### 5d.4 The deck as run
 
 Its name and sha256 · `current`, whether it is still the stage's deck
-(`script_emit.same_calculation` against the deck in the stage container above
-the attempt, where the run door places it — `runs.Run.stage_deck`; a flat
-run's deck IS its stage's, one file, so a flat record states none) · for a gathered rung, what was taken from which attempt, read
+(`script_emit.same_calculation` against the deck prep wrote, in the folder
+the run's was copied from — the stage's, or a bias point's within it
+(`runs.Run.prepared`, since 2026-10-11; the stage's folder alone until then,
+which a bias point's run never matched), where the run door places it —
+`runs.Run.stage_deck`; a flat
+run's deck IS its stage's, one file, so a flat record states none, nor does a benchmark trial's, whose deck is rendered into its run) · for a gathered rung, what was taken from which attempt, read
 from `.gathered-from` (`runrecord.read_gathered_from`, beside its writer
 `write_gathered_from`) — the provenance a transport record cites, never a newest-file guess.
 

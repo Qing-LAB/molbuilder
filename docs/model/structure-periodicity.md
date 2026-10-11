@@ -348,8 +348,9 @@ stated offset (`Structure.engine_offset`, sidecar v10), the retirement of
 `cell_origin`, the readers of engine output, the wire and MolView, and the Cell
 page's origin (plan § 5q.6, P1–P3); one offset for a frame set followed on
 2026-10-09 (`Structure.frame_at`, below). Not yet built: the design-frame
-exports plan § 5q.5 still marks open, and the transport deck viewer (plan § 2,
-W30 ④). The scope and the order of work are
+exports plan § 5q.5 still marks open. *(The transport deck viewer, W30 ④,
+was built 2026-10-11 on the Results ladder, for every calculation —
+[`web/results.md`](?doc=web/results.md) § 2.4.)* The scope and the order of work are
 [`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33). The clauses this section
 supersedes say so at their own site; they no longer describe the running code,
 and the phase-4 doc sweep deletes them.*

@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from molbuilder import calcdirs
 from molbuilder import runfiles as _rf
 from molbuilder.identity import parse_token
-from molbuilder.paths import trial_label, trial_point
+from molbuilder.paths import attempt_index, trial_label, trial_point
 
 
 # --------------------------------------------------------------------- #
@@ -218,16 +218,58 @@ class Run:
         return log_of_run(self.folder, self.label, self.run, self.stage)
 
     @property
+    def prepared(self) -> Path:
+        """THE FOLDER PREP WROTE THIS RUN'S FILES IN -- its deck, the
+        `.validation.txt` beside it, its run script (`project-layout.md`
+        § 5.2) -- which launch copies into the run: the run's folder with
+        its run level taken out.  A stage's ``run-<n>/`` is the stage's
+        folder, a bias point's ``run-<n>/f001/v0/`` the stage's
+        ``f001/v0/``; the flat shape has no run level, and a benchmark
+        trial's deck is rendered into its run (`materialize.trial_work_dir`),
+        so for both the run's own folder is it."""
+        if self.trial:
+            return self.folder
+        try:
+            parts = self.folder.resolve().relative_to(
+                self.place.root.resolve()).parts
+        except ValueError:
+            return self.folder
+        return self.place.root.joinpath(
+            *(p for p in parts if attempt_index(p) is None))
+
+    @property
     def stage_deck(self) -> Optional[Path]:
         """The stage's own deck, the copy prep writes (`project-layout.md`
-        § 5.2): in the stage's folder in the hierarchy, the run's own in the
-        flat shape, where one folder is both."""
+        § 5.2), in :attr:`prepared` -- the stage's folder in the hierarchy,
+        a bias point's within it, the run's own in the flat shape, where one
+        folder is both."""
         deck = self.deck
-        if deck is None:
-            return None
-        if self.place.task.shape == "flat" or self.stage is None:
+        if deck is None or self.stage is None:
             return deck
-        return self.place.root / self.stage / deck.name
+        return self.prepared / deck.name
+
+    @property
+    def report(self) -> Optional[Path]:
+        """What the generator checked before it wrote this run's deck -- the
+        `.validation.txt` prep writes beside it, in :attr:`prepared`
+        (`runfiles.WRITTEN`) -- or ``None``: also when prep has written
+        another deck there since this run's (a re-prep), whose report the
+        file now is, when that one is another calculation
+        (`script_emit.same_calculation`, as the record's ``current`` asks)."""
+        deck, prepared = self.deck, self.stage_deck
+        if deck is None or prepared is None or not prepared.is_file():
+            return None
+        if prepared.resolve() != deck.resolve():
+            from molbuilder.script_emit import same_calculation
+            # Read as the record reads a deck (`record._read`): one file
+            # that will not decode costs its own row, never the ladder's.
+            if not same_calculation(
+                    deck.read_text(encoding="utf-8", errors="replace"),
+                    prepared.read_text(encoding="utf-8", errors="replace")):
+                return None
+        hits = _rf.find(self.prepared, self.label, role=".validation.txt",
+                        stage=self.stage)
+        return hits[-1][0] if hits else None
 
 
 def run_of(path, stage: Optional[str] = None) -> Optional[Run]:

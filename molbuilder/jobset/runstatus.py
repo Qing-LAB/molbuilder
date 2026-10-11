@@ -282,6 +282,15 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
                 opens, _trail = openable(folder)
                 opens_rel = (str((folder / Path(opens).name).relative_to(root))
                              if opens else None)
+            # WHAT THE RUN READ AND WHAT WAS CHECKED BEFORE IT WAS WRITTEN,
+            # root-relative (`web/results.md` § 2.4): the deck in the run's
+            # folder, and the `.validation.txt` prep wrote beside the deck
+            # it copied -- through the run door, never by a name.
+            deck, report = run.deck, run.report
+
+            def _rel(p: Optional[Path]) -> Optional[str]:
+                return (str(p.resolve().relative_to(root.resolve()))
+                        if p is not None else None)
             rows.append({
                 "run": attempt_name(n),
                 # THE POINT, in its one wire form (`stages.Point.to_wire`):
@@ -296,6 +305,8 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
                 # ROOT-RELATIVE: the file the row opens -- the run's own, or
                 # the root's task.json for a transmission point.
                 "opens": opens_rel,
+                "deck": _rel(deck),
+                "validation": _rel(report),
             })
     return rows
 

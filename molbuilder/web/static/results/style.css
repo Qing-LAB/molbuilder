@@ -185,11 +185,11 @@
     font-size: var(--text-sm);
     white-space: nowrap;
 }
-/* The result column holds one control per run: it never wraps and is
- * sized to that control alone (the smallest share the auto layout can
- * give a column), so the detail column keeps the rest of the width. */
-.results-ladder-table td:last-child,
-.results-ladder-table th:last-child { width: 1%; white-space: nowrap; }
+/* The result and files columns hold a run's controls: they never wrap and
+ * are sized to those controls alone (the smallest share the auto layout
+ * can give a column), so the detail column keeps the rest of the width. */
+.results-ladder-table td:nth-last-child(-n+2),
+.results-ladder-table th:nth-last-child(-n+2) { width: 1%; white-space: nowrap; }
 .results-ladder-open,
 .results-ladder-back {
     font-size: var(--text-xs);
@@ -197,6 +197,7 @@
     padding: 0 var(--space-sm);
     line-height: var(--line-loose);
 }
+.results-ladder-open + .results-ladder-open { margin-left: var(--space-xs); }
 .results-ladder-back { margin-top: var(--space-xs); }
 
 .results-fallback .inspector-card-note {

@@ -596,6 +596,15 @@ class TestTheContractEndpoint:
         assert body["status"] is None and body["record"] is None, (
             "a container is not a run")
         assert body["ladder"] is not None, "a calculation root has a ladder"
+        # ...and under each rung every run, with what it read and what was
+        # checked before it was written (`web/results.md` § 2.4): the deck in
+        # the run's folder, the `.validation.txt` beside the deck prep wrote,
+        # in the stage's folder -- the run's with its `run-<n>` level out.
+        coarse = next(s for s in body["ladder"]["stages"]
+                      if s["name"] == "coarse")
+        assert [(r["deck"], r["validation"]) for r in coarse["runs"]] == [
+            ("01_coarse/run-0/H2_01_coarse.fdf",
+             "01_coarse/H2_01_coarse.validation.txt")], coarse["runs"]
 
         attempt = bundle / "01_coarse" / "run-0"
         body = client.get("/api/results/dir?path=" + str(attempt)).get_json()

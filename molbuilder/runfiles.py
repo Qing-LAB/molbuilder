@@ -904,7 +904,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
                                 "the deck",
              when="prep", level="stage", kind="record",
              writer="prep (`script_emit.write_validation_report`), beside "
-                    "the deck"),
+                    "the deck",
+             door="runs.Run.report"),
     # ---- what the DECK writes for itself ------------------------------
     # A file the generated script writes is molbuilder's too -- it is our
     # deck that writes it.

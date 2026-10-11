@@ -423,7 +423,7 @@ result can display the result by simply select which run to pick")*. The
 root's answer lists every run of the calculation under its stage — each stage's
 attempts, a benchmark's trials, a bias sweep's points — each with its state, its
 folder and the file it opens (`runstatus.every_run`: under each `stages[]` row,
-`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens}]` — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`) —, `opens` relative
+`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens, deck, validation}]` — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`) —, `opens` relative
 to the root — **a transmission run's is the root's `task.json`, with its
 `point`**: its result is the report at that bias (§ 0.1), and its row's *open*
 re-announces the calculation with that point — its frame and its voltage — as the report's selection (the handle's `selectPoint({frame, bias})`) — and when the panel shows another file of the calculation, `<label>.transport.json` opened as a file, the ladder says so: *open the report first — choose task.json in the Result file menu* *(the user, 2026-10-10)*
@@ -442,6 +442,22 @@ fact came from. A flat calculation's root lists its stages' runs the same way,
 by run number. *(Until 2026-10-03 the ladder's rows were text: a run was read
 by moving the sidebar into its folder, a root's product hid the ladder, and
 status read only each stage's newest attempt.)*
+
+**And what each run read, and what was checked before it was written** *(the
+user, 2026-10-11: "this would give the view a logical starting place so the
+user see the summary and guide to go down to other places")*. Each run's row
+carries two more buttons, under *files*: **input** — the deck the run read,
+in its own folder (`Run.deck`) — and **check report** — the `.validation.txt`
+prep wrote beside the deck it copied, in the stage's folder or the bias
+point's within it (`Run.report`, in `Run.prepared`) — while that deck is
+still the one the run read (`script_emit.same_calculation`, the record's
+`current`): after a re-prep that changed the calculation the file there checks
+the new deck, so an earlier run draws no *check report*. Each opens in the
+sidebar's file viewer, as the Run panel's **View** does (§ 3a); the panel
+keeps its result. The server names both files, root-relative, on each run of
+`runs[]` (`deck`, `validation`, `runstatus.every_run`); a button whose file is
+not there is not drawn. So a transport calculation's every input — each
+rung's, each frame's and each voltage's — is one click from the ladder.
 
 ### 2.5 A transport calculation's report *(plan § 5u.1 step 9; designed and built 2026-10-07)*
 
