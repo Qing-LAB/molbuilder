@@ -108,6 +108,38 @@ _WEIGHTS = (2 / 3, 1 / 6, 1 / 6)
 _TEMPERATURE_K = 300.0
 _N_FRAMES = len(_NODES_SIGMA)
 
+#: A mode's frame set's rows as `model/structure.md` § 2.2f's table states
+#: them -- ``(name, kind, unit)``, the structure's and each frame's -- what the
+#: Transport tab's card shows for the set the fixture wrote (§ 3.8.1).
+_SET_ROWS = (("mode_index_1based", "given", None),
+             ("frequency_cm1", "given", "cm-1"),
+             ("temperature_k", "given", "K"),
+             ("zero_point_amplitude_amu12_ang", "given", "amu^1/2 angstrom"),
+             ("sigma_amu12_ang", "derived", "amu^1/2 angstrom"))
+_FRAME_ROWS = (("displacement_ang", "measured", "angstrom"),
+               ("max_atom_displacement_ang", "measured", "angstrom"),
+               ("q_amu12_ang", "derived", "amu^1/2 angstrom"),
+               ("node_sigma", "derived", None),
+               ("weight", "given", None))
+
+#: The PDOS of a selection -- every atom of the junction -- asked where the
+#: Results tab asks it (`/api/transport/pdos`, `web/results.md` § 2.5), a
+#: row each: the point ``at`` -- (frame index, voltage) -- whose total DOS
+#: it is, or the words it is ``refused`` with.
+_PDOS_ASKS = (
+    {"name": "a frame set's point", "calc": "P/transport/F",
+     "query": "frame=1&point=0.2&orbitals=all", "at": (1, 0.2)},
+    {"name": "by orbital type, through the device run's orbital index",
+     "calc": "P/transport/F", "query": "frame=2&point=0&orbitals=s",
+     "at": (2, 0.0)},
+    {"name": "a frame set's point that names no frame",
+     "calc": "P/transport/F", "query": "point=0.2",
+     "refused": "name the frame (its index, 0 … 2)"},
+    {"name": "one structure's point that names a frame",
+     "calc": "P/transport/T", "query": "frame=0&point=0.2",
+     "refused": "cites one structure"},
+)
+
 #: The definition's rules (§ 2.2f), each a case of its own.
 _DEFINITION_CASES = tomllib.loads(
     (Path(__file__).parent / "data" / "frame_set_definition.toml")
@@ -490,7 +522,8 @@ def junction(tmp_path_factory):
             got = client.get(f"/api/transport/record?path={c.bundle}")
             run.definition_said[case["name"]] = (got.status_code,
                                                  got.get_json())
-            run.family = path
+            if case.get("none"):            # the set stating no definition
+                run.family = path
 
         # THE TRANSPORT TAB'S CARD, for each kind it cites (§ 3.8.1): what
         # the describe door says each citation's frames are, and whether the
@@ -505,6 +538,15 @@ def junction(tmp_path_factory):
         # ...and Task setup's echo of the frame-set calculation (its § 3).
         run.folder_said = client.get(
             f"/api/task-setup/folder?dir={from_pair.bundle}").get_json()
+        # THE PDOS OF A SELECTION, every atom of the junction, asked where
+        # the Results tab asks it, a row of `_PDOS_ASKS` each.
+        everyone = ",".join(str(i) for i in range(StructureCodec().load(
+            tree / frame_set, frames=True).n_atoms))
+        run.pdos_said = {}
+        for ask in _PDOS_ASKS:
+            got = client.get(f"/api/transport/pdos?path={tree / ask['calc']}"
+                             f"&atoms={everyone}&{ask['query']}")
+            run.pdos_said[ask["name"]] = (got.status_code, got.get_json())
         run.vibration = vibration
         run.frame_set = frame_set
         run.cite = cite
@@ -1077,10 +1119,33 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
     asks the pseudopotential directory of the person exactly for a pair,
     which brings none; and Task setup's folder answer echoes the frame-set
     calculation's frames as the describe door states them."""
-    from molbuilder.frameset import read as read_frame_set
+    from molbuilder.frameset import MASS_CHANNEL
     from molbuilder.workingcopy_structure import StructureCodec
-    expect = read_frame_set(StructureCodec().load(
-        junction.tree / junction.frame_set, frames=True)).to_wire()
+    # WHAT THE CARD SAYS, from § 2.2f's table and the rows the script wrote
+    # -- the pair's own, read back -- never from the definition's reader.
+    pair = StructureCodec().load(junction.tree / junction.frame_set,
+                                 frames=True)
+
+    def stated(name, frame=None):
+        return next(r["value"] for r in pair.customized_rows(frame)
+                    if r["name"] == name)
+    expect = {
+        "structure": [{"name": n, "value": stated(n), "unit": u, "kind": k}
+                      for n, k, u in _SET_ROWS],
+        "columns": [{"name": n, "unit": u, "kind": k}
+                    for n, k, u in _FRAME_ROWS],
+        "frames": [[stated(n, f) for n, _k, _u in _FRAME_ROWS]
+                   for f in range(_N_FRAMES)],
+        "masses_amu": [float(pair.annotations[MASS_CHANNEL].data[i])
+                       for i in range(pair.n_atoms)],
+        "vibration": pair.info["vibration"],
+    }
+    # ...and those rows the script's own: its weights, its nodes, its
+    # temperature.
+    assert [row[-1] for row in expect["frames"]] == list(_WEIGHTS)
+    assert [row[3] for row in expect["frames"]] == pytest.approx(
+        list(_NODES_SIGMA), rel=1e-12)
+    assert stated("temperature_k") == _TEMPERATURE_K
     fields = {}
     for kind, (described, schema) in junction.tab_said.items():
         assert described["ok"] and described["citation"], (kind, described)
@@ -1099,6 +1164,31 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
     # (`web/task-setup.md` § 3).
     assert junction.folder_said["frame_set"] \
         == junction.tab_said["mode's set"][0]["frame_set"]
+
+
+@pytest.mark.parametrize("ask", _PDOS_ASKS, ids=lambda a: a["name"])
+def test_a_selections_pdos_is_asked_at_its_frame_and_voltage(junction, ask):
+    """`web/results.md` § 2.5: the PDOS of a selection is asked at the
+    selected frame and voltage -- the per-orbital DOS summed over the atoms'
+    orbitals, so every atom of the junction (the device region's counted,
+    the rest named outside it) is that point's total DOS, as the record
+    states it, and no other point's; a frame set's point names its frame,
+    one structure's names none, and either asked otherwise is refused by
+    name (`web/web-api.md`, `/api/transport/pdos`)."""
+    status, body = junction.pdos_said[ask["name"]]
+    if "refused" in ask:
+        assert status == 400 and ask["refused"] in body["error"], body
+        return
+    assert status == 200 and body["ok"], body
+    points = _record(junction.from_pair)["points"]
+    point = next(p for p in points if (p["frame"], p["bias_v"]) == ask["at"])
+    assert body["energy_ev"] == point["dos"]["energy_ev"]
+    assert np.allclose(body["pdos"], point["dos"]["total"], rtol=1e-9,
+                       atol=0), ask["name"]
+    others = [p for p in points if (p["frame"], p["bias_v"]) != ask["at"]]
+    assert others and not any(
+        np.allclose(body["pdos"], p["dos"]["total"], rtol=1e-6, atol=0)
+        for p in others), "the points' DOS do not tell them apart"
 
 
 # --------------------------------------------------------------------- #

@@ -273,8 +273,8 @@ def _classify_pair(path: Path) -> CitedPair:
     try:
         struct = StructureCodec().load(path, frames=True)
     except (ValueError, OSError) as exc:
-        raise ComposeError(f"{path} does not read as a structure pair: "
-                           f"{exc}") from exc
+        raise ComposeError(f"{path} does not read as a structure pair "
+                           f"({exc}).  {CITATION_CONDITION}.") from exc
     calc = (struct.info or {}).get("calculation")
     if not isinstance(calc, dict) or not isinstance(calc.get("contract"),
                                                     dict):

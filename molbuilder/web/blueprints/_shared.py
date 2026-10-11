@@ -648,6 +648,12 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     for it in items:
         panel = it.category[0] if it.category else "procedure"
         field = _item_to_field(it, id_prefix, calculation)
+        # WHAT THE CITATION ASKS OF THE PERSON is drawn required, as the
+        # kinds that declare an item are: shown and required by one answer
+        # (`citation_defaults.asked_of_the_person`; `engines/transport.md`
+        # § 3.1, "required for a pair").
+        if it.name in asks:
+            field["required"] = True
         # THE TEMPLATE'S VALUE, AND WHOSE IT IS (form-schema.md § 1.1): a
         # value somebody gave -- a cited run, the structure's record, the
         # person -- or one written before sources were recorded.  A value

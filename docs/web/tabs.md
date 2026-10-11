@@ -271,12 +271,13 @@ B8)*.
    labelling (`L-electrode` the high-z block) as a warning — never a refusal,
    the junction cites and runs — with a *Swap L-electrode and R-electrode*
    button offering the rename as **this calculation's own** (`swap_electrodes`
-   in the description; the cited run is never written — § 4). A read-only
+   in the description; the cited junction is never written — § 4). A read-only
    **MolView** follows the citation, re-opened on every cite and reload as
    this calculation composes it.
 2. **Shared by every rung** — the template's one electronic description, the
-   cited run's answers with their source named, editable here for all five
-   rungs at once (§ 3.8.2, § 3.8.3).
+   citation's answers with their source named — a run's deck, or the record
+   of the optimization a pair carries — editable here for all five rungs at
+   once (§ 3.8.2, § 3.8.3).
 3. **Charge and spin** — the chemistry card for the transport kind: the cited
    junction's state for what the shared panel says; it changes nothing.
 4. **The physics, rung by rung** — first the **bias list** (0.0 first; a
@@ -293,8 +294,8 @@ B8)*.
    writes the two files into the selected folder and does not navigate; the
    destination must be the calculation's own folder — describing into the
    cited directory is refused (§ 3.1). Task setup then reads it as an
-   ordinary description and echoes the junction, the bias list, the
-   treatment and the rename.
+   ordinary description and echoes the junction — a frame set's card
+   included — the bias list, the treatment and the rename.
 
 **Beside the five cards, a rail** — the shared two-column page
 (`form-components.css` `.page-cols` / `.page-aside`, as Task setup's) with

@@ -23,7 +23,8 @@ hand-over — nothing is awaiting, so the tab selects and decides):
                                           and every point's, as they are
                                           now
     GET  /api/transport/pdos              the PDOS of selected atoms at
-                                          one bias point, by orbital type
+                                          one point -- a frame and a
+                                          voltage -- by orbital type
     POST /api/transport/describe          the FINISHED task.json text —
                                           the web spelling of `jobset
                                           init --calculation transport`;
@@ -82,8 +83,9 @@ def _fence(raw: str):
 
 @bp.route("/api/transport/describe_attempt", methods=["GET"])
 def api_transport_describe_attempt() -> Any:
-    """Classify a picked directory against `engines/transport.md` § 3.1's
-    citation condition and describe what it provides — the `describe`
+    """Classify a picked path -- a run's folder or a pair's ``.xyz`` --
+    against `engines/transport.md` § 3.1's citation condition and describe
+    what it provides — the `describe`
     seam the shared tree-picker feeds on when the Transport tab picks
     the junction slot (user ruling: the condition is FILES, never
     layout).
@@ -313,9 +315,10 @@ def api_transport_record() -> Any:
 
 @bp.route("/api/transport/pdos", methods=["GET"])
 def api_transport_pdos() -> Any:
-    """The PDOS of the atoms a person selected, at one bias point
-    (`web/results.md` § 2.5): ``?path=`` the calculation's
-    the calculation's ``task.json`` or its folder, ``point=`` the bias in volts, ``atoms=``
+    """The PDOS of the atoms a person selected, at one point -- a frame
+    and a voltage (`web/results.md` § 2.5): ``?path=`` the calculation's
+    ``task.json`` or its folder, ``point=`` the bias in volts, ``frame=``
+    the frame's index for a frame set (absent for one structure), ``atoms=``
     0-based indices, comma-separated, ``orbitals=`` ``all`` (default) or
     one of `tbtnc.ORBITAL_TYPES`.  Computed on request
     (`transport.record.selection_pdos`) -> ``{ok, energy_ev, pdos, atoms,
@@ -600,11 +603,14 @@ def api_transport_schema() -> Any:
     item that is not `shared`, `role`, `allocation` or staging; its values
     are override bags, routed to the rung that owns each by the `stages`
     marker.  ``?surface=shared`` is the panel that edits the TEMPLATE:
-    every item marked `shared` for transport, outside the `setup` group.
+    every item marked `shared` for transport, outside the `setup` group --
+    save what the citation asks of the person, drawn required
+    (`citation_defaults.asked_of_the_person`: a pair's pseudopotential
+    directory).
     With ``&junction=<citation>`` both are drawn from the template this
     calculation's describe will write (`_panel_template`, plan § 5w K7):
     each field carries its value and where it came from (`form-schema.md`
-    § 1.1) -- the shared panel holding the cited directory's answers (a
+    § 1.1) -- the shared panel holding the citation's answers (a
     deck's, a record's, or none; a `citation` row it does not answer is
     not chosen, § 3.8.3), and a rung's tab showing what the rung runs
     unless it sets its own.  A rung's tab also takes ``&shared=<json>``,

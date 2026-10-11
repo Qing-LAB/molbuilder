@@ -1005,8 +1005,8 @@ built 2026-10-09, plan § 5z Q17-c) and the frame is a level inside a run
 point and the mode's average, the data file beside it (§ 2a.12, built
 2026-10-10, Q17-e and Q17-e2), the set's definition checked at the citation
 door (`model/structure.md` § 2.2f, Q17-e2); the Results
-family is designed and **not built** — plan § 5z, Q17-f; the
-structure side is built (a `Structure` holds its frames and each frame's
+family is built and seen on the page (`web/results.md` § 2.5, Q17-f,
+2026-10-10); the structure side is built (a `Structure` holds its frames and each frame's
 `customized` rows, `model/structure.md` § 2.2d–2.2e). What is settled here is
 what the contract must say so that adding the axis needs no rework — and,
 since 2026-09-24, **what a frame set IS**: one multi-frame structure pair
@@ -1774,7 +1774,7 @@ row of a mode's frame set (§ 2.2f); along `atom` each atom's `element` and
 | `device_energy_ev` · `device_negf_cycles` · `device_dq` | frame, bias_v | raw | the NEGF phase's last energy — never compared across points or calculations (§ 1.1) — how many NEGF cycles ran, and the last one's charge change |
 | `device_charge` | frame, bias_v, charge_part | raw | the last NEGF cycle's charges, column by column, as TranSIESTA printed them |
 | `device_contour_poles` · `device_neq_emin_ev` · `device_neq_emax_ev` · `device_neq_points` | frame, bias_v | raw | the contour TranSIESTA echoed: its equilibrium contour's poles; under a bias, the non-equilibrium line's window and points |
-| `device_scf_cycles` | frame, bias_v | state | how many rows the device point's SCF history holds — the cycles beyond it are the fill value |
+| `device_scf_cycles` | frame, bias_v | state | how many rows the device point's SCF history holds — the cycles beyond it are the fill value; −1, its own fill, where none ran (0 is a count) |
 | `device_scf_iscf` · `device_scf_energy_ev` · `device_scf_delta_e_ev` · `device_scf_ddmax` · `device_scf_dhmax_ev` · `device_scf_ef_ev` · `device_scf_dq` · `device_scf_vha_ev` · `device_scf_phase` | frame, bias_v, scf_cycle | raw | each SCF row of the device point's run, as SIESTA printed it: its own cycle number, the energy and its change, the density-matrix and Hamiltonian residuals, E_F, and on a NEGF row the charge change and the boundary potential; `phase` `periodic` or `negf` |
 | `rung_state` · `rung_scf_converged` · `rung_energy_ev` · `rung_fermi_ev` · `rung_scf_cycles` | rung | state · raw | each once-run rung's state, convergence, energy, Fermi level — a lead's the reference every T(E) is measured against — and its SCF history's length |
 | `rung_scf_iscf` · `rung_scf_energy_ev` · `rung_scf_delta_e_ev` · `rung_scf_ddmax` · `rung_scf_dhmax_ev` · `rung_scf_ef_ev` | rung, scf_cycle | raw | each once-run rung's SCF rows, as the device's |
@@ -2316,7 +2316,7 @@ leads and the device.
 the cited deck's mixer and criteria — `SCF.Mixer.Weight`,
 `SCF.Mixer.History`, `DM.Tolerance`, `DM.EnergyTolerance`,
 `SCF.FreeE.Converge` — start every SCF stage (the seed, both leads, the
-device), each marked *from the run you cited*. Unlike the settings above they
+device), each marked *from the junction you cited*. Unlike the settings above they
 are not shared: each SCF stage carries its own and may change it on its tab
 (§ 2a.13) — the device's, which converges unlike the periodic runs, most
 often. The iteration cap and must-converge are how much compute, not how it
@@ -3044,13 +3044,15 @@ catalogue defaults into those slots would claim a run said something no run
 said — after which no surface could tell the person's 300 Ry from nobody's.
 
 ```
-400 Ry   from the run you cited
+400 Ry   from the junction you cited
 400 Ry   you set this
 (empty)  not chosen — the documented default is written into every deck and marked as nobody's choice
 ```
 
-*(Three states since decision 7, 2026-10-08: the recorded-contract lane —
-"from the record saved with your structure" — went with the structure pair.)*
+*(Three states since decision 7, 2026-10-08, when the recorded-contract lane
+— "from the record saved with your structure" — went with the structure pair;
+the pair came back as a citation with Q17-c, under the one `cited` state, and
+its words name the junction — a run or a pair — since 2026-10-10.)*
 
 **The three states are the file's** *(K7, 2026-09-30)*: each template item
 records its `source` — `cited` · `person` · `default`
@@ -3235,7 +3237,7 @@ door's question.
 | Task setup — the column picker (`/api/task-setup/columns`) | ✅ not a column *(2026-09-24)* | ✅ the payload names the owners | ✅ not a column | — | ✅ not a column |
 | Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)* | — | — | — |
 | Task setup — a read-only echo of every shared value, with its source (§ 6.6 obligation 3) | ❌ not built | — | — | ✅ the file records the source, and the hover names it *(K7)* | — |
-| Task setup — "What came over": the description's own parameters (the junction it cites, its bias list, its treatment — `single-bias` / `low-bias-approximation` / `self-consistent`, the folder answer's `treatment` from `Task.treatment` — and the electrode rename, `swap_electrodes`, § 4) *(built 2026-10-08, B8 U7 / T1)* | — | — | — | ✅ the citation, named | — |
+| Task setup — "What came over": the description's own parameters (the junction it cites, its bias list, its treatment — `single-bias` / `low-bias-approximation` / `self-consistent`, the folder answer's `treatment` from `Task.treatment` — and the electrode rename, `swap_electrodes`, § 4; a frame set's card, § 3.8.1, from the folder answer's `frame_set`) *(built 2026-10-08, B8 U7 / T1; the frame set 2026-10-10, Q17-f4)* | — | — | — | ✅ the citation, named | — |
 | the deck (`prep` → `prepare_deck`) | ✅ one value, every rung | ✅ each rung its own | ✅ the rung's answer, laid on its config by `resolve` | ❌ a value nobody chose is written as the documented default but not MARKED (obligation 4) | ✅ |
 
 ---
@@ -4387,7 +4389,7 @@ single-point, or a relaxation if those layers are not frozen.
   like this one goes stale.)*
 - **Web tab (rewired 2026-08-29, P7b + same-day review):** the tab is the
   composite's WHOLE describe surface — cite the junction through the
-  shared tree-picker (ANY directory choosable — what qualifies it is § 3.1's condition for a run, and the meta line classifies each selection through
+  shared tree-picker (a run's folder or a pair's `.xyz` — what qualifies it is § 3.1's condition, and the meta line classifies each selection through
   `/api/transport/describe_attempt`, which reads a run or a pair (the
   picker takes a run's folder or a pair's `.xyz`, § 3.8.1), and the
   VIEWER follows the citation: MolView loads the cited calculation's

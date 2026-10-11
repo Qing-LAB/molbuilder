@@ -279,8 +279,8 @@
                 const row = document.createElement("tr");
                 row.className = "is-run";
                 row.appendChild(td(""));
-                const words = r.point != null
-                    ? _pointWords(r.of > 1 ? r.frame : null, r.of, r.point) : "";
+                const words = r.bias_v != null
+                    ? _pointWords(r.frame, r.of, r.bias_v) : "";
                 const name = r.run + (words ? " \u00b7 " + words : "");
                 row.appendChild(td(name));
                 row.appendChild(td(chip(r.state)));
@@ -314,10 +314,10 @@
                     open.addEventListener("click", () => {
                         if (!atRoot) { _pickRun(path); return; }
                         _backToRoot();
-                        if (r.point != null && currentHandle
+                        if (r.bias_v != null && currentHandle
                                 && typeof currentHandle.selectPoint === "function") {
                             currentHandle.selectPoint({ frame: r.frame,
-                                                        bias: Number(r.point) });
+                                                        bias: Number(r.bias_v) });
                         }
                     });
                     result.appendChild(open);
@@ -417,7 +417,15 @@
         // THE LADDER, ABOVE THE PANEL, on every answer: a root's product is
         // shown with it, and anything that is not a root hides it -- drawn
         // once its rows' wording has loaded, in the order announced.
-        _wordsReady.then(() => _renderLadder(ladder));
+        _wordsReady.then(() => _renderLadder(ladder), (e) => {
+            // THE WORDING DID NOT LOAD: said where the ladder stands, never
+            // a ladder silently missing.
+            const host = $("results-ladder");
+            if (!host) return;
+            host.hidden = false;
+            host.textContent = "The ladder could not be drawn: "
+                + "lib/results/point-words.js did not load (" + e + ").";
+        });
         const reg  = (window.molbuilder || {}).inspectors;
         if (!reg) {
             _hideLoading();

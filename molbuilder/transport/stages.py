@@ -39,7 +39,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ..structure import frame_words
 from ..template import KIND_ROLES
@@ -185,12 +185,19 @@ class Point:
         return 0.0 if self.volts is None else float(self.volts)
 
     def words(self) -> str:
-        """The point as a message names it: ``frame index 1 (of 3) · 0.2 V``
-        (`structure.frame_words`), its folder ``f001/v0.2``."""
+        """The point as a message names it, in full: ``frame index 1 (of 3)
+        · 0.2 V`` (`structure.frame_words`) -- the voltage said where the
+        axis does not vary too, the 0 V it runs at; its folder
+        ``f001/v0.2``."""
         return " · ".join(
             ([frame_words(self.frame, self.of)] if self.frame is not None
-             else [])
-            + ([f"{self.volts:g} V"] if self.volts is not None else []))
+             else []) + [f"{self.bias_v:g} V"])
+
+    def to_wire(self) -> Dict[str, object]:
+        """THE POINT ON THE WIRE -- one form, for every answer that names a
+        point (prep's, the run list's, the record's): its frame's index, how
+        many frames the set holds, the voltage it runs at."""
+        return {"frame": self.frame, "of": self.of, "bias_v": self.bias_v}
 
 
 def frames_of(base) -> int:

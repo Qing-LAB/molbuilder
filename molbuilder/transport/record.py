@@ -932,6 +932,10 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     if n > 1 and frame is None:
         raise RecordError(f"this calculation cites a frame set of {n} "
                           f"frames: name the frame (its index, 0 … {n - 1})")
+    if n == 1 and frame is not None:
+        raise RecordError(f"this calculation cites one structure, so a "
+                          f"point names no frame: leave out "
+                          f"{frame_words(int(frame))}")
     if frame is not None and not 0 <= int(frame) < n:
         raise RecordError(f"{frame_words(int(frame))} is not one of this "
                           f"calculation's {n} frame(s): 0 … {n - 1}")
@@ -939,16 +943,17 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     said = (frame_words(int(frame), n) + " · " if frame is not None
             else "") + f"{bias_v:g} V"
 
-    def _at(stage: str) -> Optional[Path]:
-        # A RUNG THAT DOES NOT SWEEP has one result, at 0 V, which serves
-        # every voltage -- a single bias's, and the low-bias approximation's
-        # (`stages.rung_points`); a rung that does is found at the point.
-        found = result_folders(base, task, stage)
-        if len(found) == 1:
-            return found[0][1]
-        return next((w for pt, w, _r in found
-                     if pt.frame == want.frame
-                     and same_volts(pt.bias_v, want.bias_v)), None)
+    def _at(stage: str, run: Optional[Path] = None) -> Optional[Path]:
+        # THE POINT BY EACH AXIS THE RUNG VARIES (`stages.rung_points`): an
+        # axis a rung does not vary is ``None`` on its points, and its one
+        # result serves every value of it -- a rung that runs once serves
+        # every point, one that runs per frame every voltage (a single
+        # bias, the low-bias approximation).
+        return next((w for pt, w, _r in result_folders(base, task, stage,
+                                                       run=run)
+                     if (pt.frame is None or pt.frame == want.frame)
+                     and (pt.volts is None
+                          or same_volts(pt.bias_v, want.bias_v))), None)
 
     if not any(same_volts(v, bias_v)
                for v in (task.bias or (0.0,))):
@@ -960,7 +965,9 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     if nc is None:
         raise RecordError(f"the transmission at {said} has written "
                           f"no {task.label}.TBT.nc")
-    dev = _at("device")
+    # THE DEVICE RUN THE TRANSMISSION GATHERED, as every device fact beside
+    # a transmission is (`engines/transport.md` § 2a.12) -- never a newer one.
+    dev = _at("device", run=gathered_device_run(base, task))
     orb = (dev / f"{task.label}.ORB_INDX") if dev is not None else None
     try:
         return _pdos(nc, orb, atoms, orbitals)

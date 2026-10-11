@@ -323,7 +323,8 @@ def _variables() -> Tuple[Var, ...]:
             source="the device point's SIESTA output", dtype="i4", fill=-1),
         Var("device_scf_cycles", ("frame", "bias_v"), "state", "1",
             "how many SCF rows the device point holds",
-            "the cycles beyond it are the fill value", dtype="i4", fill=0),
+            "the cycles beyond it are the fill value; -1 where none ran",
+            dtype="i4", fill=-1),
         *_scf_vars("device", ("frame", "bias_v", "scf_cycle"),
                    _SCF_COLUMNS + _NEGF_SCF_COLUMNS),
         Var("rung_state", ("rung",), "state", "", "the rung's state",
@@ -338,7 +339,8 @@ def _variables() -> Tuple[Var, ...]:
             "measured against", source="the rung's SIESTA output"),
         Var("rung_scf_cycles", ("rung",), "state", "1",
             "how many SCF rows the rung holds",
-            "the cycles beyond it are the fill value", dtype="i4", fill=0),
+            "the cycles beyond it are the fill value; -1 where none ran",
+            dtype="i4", fill=-1),
         *_scf_vars("rung", ("rung", "scf_cycle"), _SCF_COLUMNS),
     )
 

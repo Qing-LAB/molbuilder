@@ -9,9 +9,11 @@ ROLE    the definition as data -- every row a mode's frame set states, where
         (:data:`INFO_KEY`) -- and its one reader, :func:`read`, which checks
         § 2.2f's six rules and answers the set as a typed value, or ``None``
         for a structure that states none of it
-USED-BY the transport citation door (`transport.compose`), the transport
-        record (`transport.record`, `transport.average`), and the frame
-        generator when it is built (`engines/vibration.md` § 5.10 ③)
+USED-BY the transport citation door (`transport.compose`, whose
+        `frame_set_answer` -- the describe door's and Task setup's -- is
+        `ModeFrameSet.to_wire`), the transport record (`transport.record`,
+        `transport.average`), the data file (`transport.datafile`), and the
+        frame generator when it is built (`engines/vibration.md` § 5.10 ③)
 
 **The coordinates are the truth; the rows and the channel describe them**
 (user, 2026-10-10: "full data record with clear meaning/definition is

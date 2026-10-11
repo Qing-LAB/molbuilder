@@ -65,6 +65,15 @@
         return drawn;
     }
 
+    /** A sentence in place of the chart -- why there is none: the chart let
+     *  go first, so a later draw builds it afresh (Plotly's state left on
+     *  an element whose drawing was overwritten updates a drawing that is
+     *  no longer there), then the words, in the box at its size. */
+    function say(el, text) {
+        release(el);
+        el.textContent = text;
+    }
+
     /** The chart gone from ``el``: Plotly's state purged, the box let go. */
     function release(el) {
         const obs = watching.get(el);
@@ -73,5 +82,5 @@
     }
 
     root.molbuilder = root.molbuilder || {};
-    root.molbuilder.plotBox = { draw, release };
+    root.molbuilder.plotBox = { draw, say, release };
 })(typeof window !== "undefined" ? window : this);

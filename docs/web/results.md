@@ -423,7 +423,7 @@ result can display the result by simply select which run to pick")*. The
 root's answer lists every run of the calculation under its stage — each stage's
 attempts, a benchmark's trials, a bias sweep's points — each with its state, its
 folder and the file it opens (`runstatus.every_run`: under each `stages[]` row,
-`runs: [{run, point, frame, of, dir, state, converged, detail, opens}]` — a point's voltage, its frame's index and the set's frame count —, `opens` relative
+`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens}]` — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`) —, `opens` relative
 to the root — **a transmission run's is the root's `task.json`, with its
 `point`**: its result is the report at that bias (§ 0.1), and its row's *open*
 re-announces the calculation with that point — its frame and its voltage — as the report's selection (the handle's `selectPoint({frame, bias})`)
@@ -542,7 +542,7 @@ exists or is named here; nothing worked out in the browser:
 | device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) |
 | T(E) | per point and spin channel, from `.TBT.AVTRANS_<L>-<R>` (and `TBT_UP` / `TBT_DN`) | `points[].transmission` in the record, each channel kept in `channels` (`record.point_transmission`, built); no spin-polarized run has been read through it yet (plan § 5w, K21) |
 | DOS and PDOS | from the transmission run's `<label>.TBT.nc` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12): **DOS** — the device's total density of states, its Green-function DOS (`TBT.DOS.Gf`, written per device orbital, energy and k); **PDOS** — the same DOS split by region, summing each label's orbitals (L-electrode, bridge, R-electrode — the labels molbuilder owns, [`molview.md`](?doc=web/molview.md) § 6.6), so the bridge's PDOS shows where the molecule's levels sit against E_F; the **left** lead's spectral DOS (`TBT.DOS.A` — TBtrans writes it for the first electrode only unless `TBT.DOS.A.All`, which the catalogue does not carry yet, plan § 5u.1 step 7); both leads' bulk DOS (`TBT.DOS.Elecs`) | **new**: read on the server with sisl's TBtrans reader (sisl 0.16 and netCDF4 are in the `molbuilder` env), k-averaged, added per point to the record as `dos: {total, by_label: {label: [...]}, lead_spectral: {L: [...]}, lead_bulk: {L: [...], R: [...]}}` on T(E)'s energy grid, E − E_F |
-| PDOS of a selection | the same per-orbital DOS, summed over **the atoms you choose**, optionally only their orbitals of one type — below | **new**: `GET /api/transport/pdos?path=&point=&atoms=&orbitals=` — stateless, read from that point's `.TBT.nc` and the device run's `.ORB_INDX` on request, on T(E)'s grid |
+| PDOS of a selection | the same per-orbital DOS, summed over **the atoms you choose**, optionally only their orbitals of one type — below | **new**: `GET /api/transport/pdos?path=&point=&frame=&atoms=&orbitals=` (`frame` a frame set's index) — stateless, read from that point's `.TBT.nc` and the device run's `.ORB_INDX` on request, on T(E)'s grid |
 | eigenchannels | `TBT.T.Eig` (4 by default): the transmission of each channel at each energy — eigenvalues only; TBtrans writes no channel wavefunctions with this deck | **new**, from the same `.TBT.nc`: per point `eigenchannels: [[...], ...]`, drawn under T(E) on the same axis |
 | I–V | `iv` in the record | built (table); the curve is new, drawn from the same arrays |
 | convergence | each rung's SCF history, phase-tagged: `cycle, energy, delta_E, dDmax, dHmax, ef, phase` (`periodic` / `negf`), and on a NEGF row the charges, `dq` and `vha_ev` (the SIESTA reader, `siesta_reader.py`) | **new** in the record: per rung `scf: [...]`, read by the same parse the record already makes of each rung's output. `/api/watch/*` cannot serve it: it holds one file for the whole server, the trajectory viewer's |
@@ -627,9 +627,9 @@ point not run, an output not written — is said in its card.
 **Built in this order**, each a milestone with its review: ① the record's new
 fields (DOS, eigenchannels, NEGF figures, the chain) and the SCF-plot module with
 the phase split, the trajectory viewer moved onto it; ② the report's cards and
-tabs, the two selections; ③ the frame family (plan § 5z, Q17-f — designed, not
-built). Checked on the dev server against a real transport calculation, through
-the road.
+tabs, the two selections; ③ the frame family (plan § 5z, Q17-f — built and
+seen on the page 2026-10-10). Checked on the dev server against a real
+transport calculation, through the road.
 
 **The frame family — the frame an axis of every result** *(designed
 2026-10-09; the user, 2026-10-10: "frame is orthogonal to all those

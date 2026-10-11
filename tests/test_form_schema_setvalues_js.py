@@ -433,11 +433,11 @@ def test_a_template_value_is_held_or_shown_as_what_a_blank_runs(
 
     _mount(page, flask_server, schema)
     assert _collect(page) == {"tbt_k_grid": [4, 4, 1], "must": None}
-    assert _said(page, "f-tk") == "from the run you cited"
+    assert _said(page, "f-tk") == SOURCE_WORDS["cited"]
     _set(page, {"tbt_k_grid": [1, 1, 1]})
     assert _said(page, "f-tk") == "you set this"
     _set(page, {"tbt_k_grid": [4, 4, 1]})
-    assert _said(page, "f-tk") == "from the run you cited"
+    assert _said(page, "f-tk") == SOURCE_WORDS["cited"]
     assert page.evaluate(
         "() => { const s = document.getElementById('f-solver');"
         "        return [s.disabled, s.value]; }") == [True, "transiesta"]
@@ -445,7 +445,7 @@ def test_a_template_value_is_held_or_shown_as_what_a_blank_runs(
     _mount(page, flask_server, schema, holds="overrides")
     assert _collect(page) == {"tbt_k_grid": None, "must": None}
     assert _said(page, "f-tk") == ("not chosen \u00b7 4, 4, 1 "
-                                   "from the run you cited")
+                                   + SOURCE_WORDS["cited"])
     _set(page, {"tbt_k_grid": [1, 1, 1], "must": True})
     assert _collect(page) == {"tbt_k_grid": [1, 1, 1], "must": True}
 

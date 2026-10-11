@@ -962,6 +962,9 @@ function _resetPerFolderState(keep) {
     _planSeq++;
     { const plan = $("ts-plan"); if (plan) plan.hidden = true; }
     hideWritten();
+    /* WHAT CAME OVER IS THIS FOLDER'S TOO: hidden until its description
+     * paints it, so a folder that answers nothing shows no other's. */
+    renderCameOver(null, null, null);
 }
 
 
@@ -1327,7 +1330,8 @@ function renderCameOver(obj, treatment, frameSet) {
         const bias = (obj.bias && obj.bias.voltages_v) || [];
         rows.push(
             ["Junction",  (obj.slots && obj.slots.junction) || "\u2014"],
-            ...(frameSet && frameSet.why ? [["Its frames", frameSet.why]] : []),
+            // THE CITATION THAT DOES NOT RESOLVE, in its reader's words.
+            ...(frameSet && frameSet.why ? [["The citation", frameSet.why]] : []),
             // 0 V keeps its full spelling, as the bias list is written.
             ["Bias list", bias.length
                 ? bias.map((v) => (v === 0 ? "0.0" : String(v))).join(", ")
@@ -2711,7 +2715,7 @@ function _showPrepAnswer(wrap, say, r, head) {
     for (const p of (r.points || [])) {
         /* THE POINT IT IS, named as everywhere in the UI (point-words.js):
          * its frame and its voltage. */
-        const at = pointWords(p.of > 1 ? p.frame : null, p.of, p.bias);
+        const at = pointWords(p.frame, p.of, p.bias_v);
         line((would ? "would open attempt " : "Attempt ") + p.attempt
              + (at ? " @ " + at : ""));
         for (const g of (p.gathered || [])) line(took + g.file + " ← " + g.from);

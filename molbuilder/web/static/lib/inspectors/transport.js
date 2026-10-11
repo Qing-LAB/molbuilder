@@ -9,13 +9,16 @@
  * TWO SELECTIONS, ONE OWNER EACH (the spectra tab's pattern), and a point is
  * the pair of them (`engines/transport.md` § 2a.9):
  *   * the FRAME -- MolView's model owns it (`data.setCurrentFrame` /
- *     `data.onFrameChange`, `web/molview.md` § 6.4); nothing here keeps a
- *     copy (`_frame` asks it).  MolView hides its bar for one structure;
+ *     `data.onFrameChange`, `web/molview.md` § 6.4) once the junction is in
+ *     it; nothing here keeps a copy (`_frame` asks it) -- until then, or
+ *     when the junction cannot be opened, the report holds the frame a pick
+ *     asked for.  MolView hides its bar for one structure;
  *   * the BIAS POINT -- this report owns it (`state.bias`): a click on a
  *     curve, an I-V point or a table row sets it.
  * THE FRAME IS AN AXIS of every chart (`web/results.md` § 2.5): each card
  * draws one frame -- the frame bar's -- or all frames, a legend entry each
- * (`lib/frame-axis.js`); every point is found by `_pointAt` and named by
+ * (`lib/frame-axis.js`); every point is found by one lookup (`_find`, over
+ * the record's points or a rung's) and named by
  * `lib/results/point-words.js`, and nothing else.
  *
  * Built from what exists: MolView mounted read-only (the structure
@@ -287,25 +290,22 @@ const WORKSPACE_TAG = "results:transport";
         ].forEach((h) => head.appendChild(_el("th", null, h)));
         table.appendChild(head);
         /* A ROW IS A POINT -- a frame and a voltage -- named as the frame bar
-         * counts, and a pick moves both (`web/results.md` § 2.5). */
-        function pickRow(frame, bias, cells, pickable) {
-            const tr = _el("tr", "transport-iv-row" + (pickable ? " is-pick" : ""));
-            tr.dataset.frame = String(frame);
-            tr.dataset.bias = String(bias);
-            const words = pointWords(n > 1 ? frame : null, n, bias);
+         * counts, and a pick moves both (`web/results.md` § 2.5): ``at`` is
+         * the point the row picks, the slice its numbers come from. */
+        function pickRow(frame, bias, cells, at) {
+            const tr = _el("tr", "transport-iv-row is-pick");
+            tr.dataset.frame = String(at.frame);
+            tr.dataset.bias = String(at.bias);
+            const words = pointWords(frame, n, bias);
             const first = _el("td", null);
-            if (pickable) {
-                // THE PICK IS A BUTTON (ui-contract.md § 4.1): the first cell
-                // names the point and takes the keyboard; the row's click is
-                // the mouse's wider target for the same pick.
-                const pick = _el("button", "transport-iv-pick", words);
-                pick.type = "button";
-                pick.setAttribute("aria-label", "show the point " + words);
-                first.appendChild(pick);
-                tr.addEventListener("click", () => _select(state, { frame, bias }));
-            } else {
-                first.textContent = words;
-            }
+            // THE PICK IS A BUTTON (ui-contract.md § 4.1): the first cell
+            // names the point and takes the keyboard; the row's click is the
+            // mouse's wider target for the same pick.
+            const pick = _el("button", "transport-iv-pick", words);
+            pick.type = "button";
+            pick.setAttribute("aria-label", "show the point " + words);
+            first.appendChild(pick);
+            tr.addEventListener("click", () => _select(state, at));
             tr.appendChild(first);
             cells.forEach((c) => tr.appendChild(_el("td", null, c)));
             table.appendChild(tr);
@@ -322,8 +322,8 @@ const WORKSPACE_TAG = "results:transport";
                     i === null || i === undefined ? (note || "—") : _fmt(i, 4, true),
                     _fmt(((iv.current_a_printed || [])[k]), 4, true),
                 // EVERY ROW OF A FRAME IS ITS ONE 0 V SLICE'S, so a row picks
-                // nothing of its own -- the frame bar picks the frame.
-                ], false);
+                // that slice -- the pick the I-V chart's point makes.
+                ], { frame: f, bias: 0 });
             });
             /* A FRAME'S OWN NOTE -- its 0 V transmission not run -- under the
              * table, in the record's words; a voltage's note stands in its
@@ -336,14 +336,15 @@ const WORKSPACE_TAG = "results:transport";
         } else {
             state.points.forEach((p) => pickRow(_pf(p), p.bias_v, [
                 _fmt(p.conductance_g0, 4, false), _fmt(p.current_a, 4, true),
-                _fmt(p.current_a_printed, 4, true)], true));
+                _fmt(p.current_a_printed, 4, true)],
+                { frame: _pf(p), bias: p.bias_v }));
         }
         /* A POINT WITHOUT ITS TRANSMISSION, in its run's words: pending is
          * still to come, never a failure; failed ended without it. */
         pending.concat(failed).forEach((p) => {
             const tr = _el("tr", "transport-pending");
             tr.appendChild(_el("td", null,
-                pointWords(n > 1 ? _pf(p) : null, n, p.bias_v)));
+                pointWords(_pf(p), n, p.bias_v)));
             const st = _el("td");
             st.appendChild(_chip(p.state));
             tr.appendChild(st);
@@ -401,24 +402,32 @@ const WORKSPACE_TAG = "results:transport";
     function _drawConvergence(state) {
         const n = state.nFrames;
         const frame = _frame(state);
+        const t = root.molbuilder.plotTheme();
         Object.values(state.conv || {}).forEach(({ st, line, e, r }) => {
             /* A SCAN'S RUNG speaks for the selected point -- its frame and
              * its voltage; in *all frames*, every frame's run at the
-             * voltage, on one axis. */
+             * voltage, on one axis, the frame bar's bold. */
             const pts = Array.isArray(st.by_point) ? st.by_point : null;
-            const src = pts
-                ? (pts.find((p) => _pf(p) === frame && p.bias_v === state.bias)
-                   || pts[0])
-                : st;
+            const src = pts ? _find(pts, frame, state.bias) : st;
+            if (!src) {
+                line.replaceChildren(_el("span", "transport-stage-detail",
+                    pointWords(frame, n, state.bias)
+                    + " · this rung has not run at this point"));
+                e.hidden = true;
+                r.hidden = true;
+                return;
+            }
             const runs = pts && state.frameMode.conv === ALL
                 ? pts.filter((p) => p.bias_v === state.bias).map((p) => (
-                      { name: frameWords(_pf(p), n), rows: p.scf || [] }))
+                      { name: frameWords(_pf(p), n), rows: p.scf || [],
+                        colour: t.palette[_pf(p) % t.palette.length],
+                        bold: _pf(p) === frame }))
                 : [{ name: "", rows: Array.isArray(src.scf) ? src.scf : [] }];
             line.replaceChildren();
             line.appendChild(_chip(src.state || st.state));
             const bits = [];
             if (src.bias_v !== undefined && src.bias_v !== null)
-                bits.push(pointWords(n > 1 ? _pf(src) : null, n, src.bias_v));
+                bits.push(pointWords(_pf(src), n, src.bias_v));
             if (src.detail) bits.push(src.detail);
             if (src.negf) {
                 bits.push("NEGF: " + src.negf.cycles + " cycles");
@@ -477,7 +486,7 @@ const WORKSPACE_TAG = "results:transport";
                     ? " · " + st.negf.contour.poles + " poles" : "")
                 // THE POINT THE ROW'S NUMBERS COME FROM (results.md § 2.4).
                 + (typeof st.facts_at_v === "number"
-                    ? " · at " + pointWords(n > 1 ? st.facts_at_frame : null,
+                    ? " · at " + pointWords(st.facts_at_frame,
                                             n, st.facts_at_v) : "");
             tr.appendChild(_el("td", null, where));
             table.appendChild(tr);
@@ -528,7 +537,7 @@ const WORKSPACE_TAG = "results:transport";
                          * file ("<file> <- <run>"). */
                         (p.took || []).forEach((g) => bits.push(String(g)));
                         pts.appendChild(_el("li", null,
-                            pointWords(n > 1 ? p.frame : null, n, p.bias_v)
+                            pointWords(p.frame, n, p.bias_v)
                             + ": "
                             + (bits.length ? bits.join(", ")
                                : "started from what the run gathered")));
@@ -612,20 +621,19 @@ const WORKSPACE_TAG = "results:transport";
         _loadPdos(state);
     }
 
-    /* THE FRAME, asked of its one owner -- MolView's model -- each time;
-     * before the viewer is up, the one a caller asked to open at. */
+    /* THE FRAME, asked of its one owner -- MolView's model, once the
+     * junction is in it (`state.frames`) -- each time; until then, or when
+     * the junction cannot be opened, the report holds it. */
     function _frame(state) {
-        const d = state.handle && state.handle.data;
-        return d && typeof d.currentFrame === "function"
-            ? d.currentFrame() : (state.pendingFrame || 0);
+        return state.frames ? state.frames.currentFrame()
+                            : (state.pendingFrame || 0);
     }
 
-    /* The frame told to its owner; ``false`` before the viewer is up, the
-     * frame then held to be told once it is. */
+    /* The frame told to its owner -- ``true``, its change redraws -- or,
+     * with no owner yet, held here: ``false``, the caller redraws. */
     function _setFrame(state, frame) {
-        const d = state.handle && state.handle.data;
-        if (d && typeof d.setCurrentFrame === "function") {
-            d.setCurrentFrame(frame);
+        if (state.frames) {
+            state.frames.setCurrentFrame(frame);
             return true;
         }
         state.pendingFrame = frame;
@@ -637,10 +645,19 @@ const WORKSPACE_TAG = "results:transport";
         return p.frame === null || p.frame === undefined ? 0 : p.frame;
     }
 
-    /* THE ONE LOOKUP: the point at (frame, voltage), or null. */
+    /* A point as a key -- which (frame, voltage) an answer belongs to. */
+    function _pointKey(frame, bias) {
+        return frame + "|" + bias;
+    }
+
+    /* THE ONE LOOKUP: the entry at (frame, voltage) of a list of points --
+     * the record's, or a rung's `by_point` -- or null. */
+    function _find(list, frame, bias) {
+        return list.find((p) => _pf(p) === frame && p.bias_v === bias) || null;
+    }
+
     function _pointAt(state, frame, bias) {
-        return state.points.find(
-            (p) => _pf(p) === frame && p.bias_v === bias) || null;
+        return _find(state.points, frame, bias);
     }
 
     /* THE ATOMS SELECTED in the device card -- MolView's own selection,
@@ -664,7 +681,7 @@ const WORKSPACE_TAG = "results:transport";
         const t = root.molbuilder.plotTheme();
         const col = (i) => t.palette[i % t.palette.length];
         const all = (key) => n > 1 && state.frameMode[key] === ALL;
-        const here = pointWords(n > 1 ? frame : null, n, state.bias);
+        const here = pointWords(frame, n, state.bias);
         const nothingYet = () => (pts.length && state.bias !== null
             ? "No transmission at " + here + " yet."
             : "No transmission has run yet.");
@@ -681,6 +698,7 @@ const WORKSPACE_TAG = "results:transport";
          * dashed beside them (`web/results.md` § 2.5). */
         const te = [];
         state.nodes.avg.textContent = "";
+        state.nodes.eig.textContent = "";
         if (all("te")) {
             pts.filter((q) => q.bias_v === state.bias).forEach((q) => {
                 if (!Array.isArray(q.transmission) || !q.transmission.length) return;
@@ -700,11 +718,15 @@ const WORKSPACE_TAG = "results:transport";
             /* THE RECORD'S NUMBERS for the average, or why there is none. */
             state.nodes.avg.textContent = a && a.conductance_g0 !== null
                     && a.conductance_g0 !== undefined
-                ? "Mode average at " + Number(state.bias) + " V: ⟨G⟩ = "
-                  + _fmt(a.conductance_g0, 4, false) + " G0 — " + frameWords(0)
-                  + "'s " + _fmt(a.base_conductance_g0, 4, false) + " G0, "
-                  + _fmt(a.conductance_change_percent, 2, false) + " %; the "
-                  + "weights sum to " + _fmt(state.average.weight_sum, 6, false)
+                ? "Mode average at " + pointWords(null, n, state.bias)
+                  + ": ⟨G⟩ = " + _fmt(a.conductance_g0, 4, false) + " G0 — "
+                  + frameWords(0, n) + "'s "
+                  + _fmt(a.base_conductance_g0, 4, false) + " G0, "
+                  + (a.conductance_change_percent !== null
+                     && a.conductance_change_percent !== undefined
+                      ? _fmt(a.conductance_change_percent, 2, false) + " %"
+                      : "no change stated: " + (a.conductance_why || ""))
+                  + "; the weights sum to " + _fmt(state.average.weight_sum, 6, false)
                   + ", checked to " + state.average.tolerance + ".  It assumes: "
                   + (state.average.assumptions || []).join(" ")
                 : ((a && (a.why || a.conductance_why)) || state.average.why || "");
@@ -713,7 +735,7 @@ const WORKSPACE_TAG = "results:transport";
                 if (!Array.isArray(q.transmission) || !q.transmission.length) return;
                 const on = q.bias_v === state.bias;
                 te.push({ x: q.energy_ev, y: q.transmission, mode: "lines",
-                          name: _fmt(q.bias_v, 3, false) + " V",
+                          name: pointWords(null, n, q.bias_v),
                           line: { color: col(i), width: on ? 2.5 : 1 },
                           opacity: on ? 1 : 0.55, meta: { frame: frame, bias: q.bias_v } });
             });
@@ -733,7 +755,7 @@ const WORKSPACE_TAG = "results:transport";
                          automargin: true, exponentformat: "power" } });
             _onClick(state.nodes.te, state);
         } else {
-            state.nodes.te.textContent = nothingYet();
+            root.molbuilder.plotBox.say(state.nodes.te, nothingYet());
         }
 
         /* DOS: one frame -- the selected point's total, its parts by region,
@@ -754,14 +776,14 @@ const WORKSPACE_TAG = "results:transport";
                     yaxis: { title: { text: "DOS (states/eV)", standoff: 4 },
                              automargin: true } });
             } else {
-                state.nodes.dos.textContent = nothingYet();
+                root.molbuilder.plotBox.say(state.nodes.dos, nothingYet());
             }
         } else {
             const dos = p && p.dos;
             if (!dos || !Array.isArray(dos.energy_ev)) {
-                state.nodes.dos.textContent = p
+                root.molbuilder.plotBox.say(state.nodes.dos, p
                     ? "No DOS for this point" + (p.dos_why ? ": " + p.dos_why : ".")
-                    : nothingYet();
+                    : nothingYet());
             } else {
                 const tr = [];
                 let i = 0;
@@ -779,7 +801,8 @@ const WORKSPACE_TAG = "results:transport";
                     name: "bulk " + e, visible: "legendonly",
                     line: { color: col(i++), width: 1, dash: "dot" } }));
                 state.pdos.forEach((s) => {
-                    if (s.curve) tr.push({ x: s.curve.energy_ev, y: s.curve.pdos,
+                    if (!s.curve || s.at !== _pointKey(frame, state.bias)) return;
+                    tr.push({ x: s.curve.energy_ev, y: s.curve.pdos,
                         mode: "lines", name: s.name + " (" + s.orbitals + ")",
                         line: { color: col(i++), width: 2 } });
                 });
@@ -811,7 +834,8 @@ const WORKSPACE_TAG = "results:transport";
                 mode: "lines+markers",
                 name: n > 1 ? frameWords(f, n)
                             : (computed ? "I computed from T(E, 0)" : "I (total)"),
-                line: { color: n > 1 ? col(f) : t.accent, width: 1.5,
+                line: { color: n > 1 ? col(f) : t.accent,
+                        width: all("iv") && f === frame ? 2.5 : 1.5,
                         dash: computed ? "dash" : "solid" },
                 marker: { size: got.map((q) => (f === frame
                     && q.bias_v === state.bias ? 12 : 6)) },
@@ -832,7 +856,7 @@ const WORKSPACE_TAG = "results:transport";
             });
             _onClick(state.nodes.iv, state);
         } else {
-            state.nodes.iv.textContent = "No current yet.";
+            root.molbuilder.plotBox.say(state.nodes.iv, "No current yet.");
         }
         if (state.nodes.table) {
             state.nodes.table.querySelectorAll(".transport-iv-row").forEach((tr) => {
@@ -889,7 +913,13 @@ const WORKSPACE_TAG = "results:transport";
         const bias = state.bias;
         const frame = _frame(state);
         if (bias !== null && state.pdos.length) {
+            /* EACH ANSWER KEPT WITH THE POINT IT WAS ASKED AT, and only the
+             * newest ask's: an answer that lands after a later pick is
+             * dropped, and a curve is drawn only at its own point. */
+            const at = _pointKey(frame, bias);
             await Promise.all(state.pdos.map(async (s) => {
+                s.asked = at;
+                const keep = () => s.asked === at;
                 try {
                     const q = "/api/transport/pdos?path="
                         + encodeURIComponent(state.file)
@@ -898,6 +928,8 @@ const WORKSPACE_TAG = "results:transport";
                         + "&atoms=" + s.atoms.join(",")
                         + "&orbitals=" + encodeURIComponent(s.orbitals);
                     const body = await (await fetch(q)).json();
+                    if (!keep()) return;
+                    s.at = at;
                     if (body && body.ok) {
                         s.curve = body;
                         s.error = body.outside_device && body.outside_device.length
@@ -908,6 +940,8 @@ const WORKSPACE_TAG = "results:transport";
                         s.error = (body && body.error) || "no answer";
                     }
                 } catch (e) {
+                    if (!keep()) return;
+                    s.at = at;
                     s.curve = null;
                     s.error = String(e);
                 }
@@ -945,30 +979,31 @@ const WORKSPACE_TAG = "results:transport";
                 + ((handle && handle.error) || "molview.mount failed.");
             return;
         }
-        state.handle = handle;
+        state.handle = handle;              // disposed with the report
         const res = await proj.parser.openMolecule(
             handle, (state.dir ? state.dir + "/" : "") + junctionFile);
+        if (state.disposed) return;
         if (res && res.ok === false) {
             molHost.appendChild(_el("p", "transport-note",
                 "The composed junction could not be opened: " + (res.error || "")));
+            _redraw(state);                 // the report keeps the frame
+            return;
         }
         /* SIDE-ON: the transport axis is c = z, and looked at down z a
          * junction is a square with the molecule hidden inside it (the
          * 2026-10-08 road walk, plan § 5x.7 F3).  The window's one camera
          * action beyond reset (`mount` handle `lookAlong`). */
         if (typeof handle.lookAlong === "function") handle.lookAlong("x");
-        /* THE FRAME'S ONE OWNER is the model; the report follows it -- every
-         * chart, and each selection's PDOS asked again at the new frame. */
-        if (handle.data && typeof handle.data.onFrameChange === "function") {
-            state.unsubFrame = handle.data.onFrameChange(() => _loadPdos(state));
-        }
-        /* THE FRAME A CALLER ASKED TO OPEN AT (the ladder's row), told to
-         * its owner now it is up. */
+        /* THE FRAME'S ONE OWNER is the model, now the junction is in it:
+         * the frame held until now told to it, and the report following it
+         * -- every chart, and each selection's PDOS asked again at the new
+         * frame. */
+        state.frames = handle.data;
         if (state.pendingFrame !== null && state.pendingFrame !== undefined) {
-            const f = state.pendingFrame;
+            state.frames.setCurrentFrame(state.pendingFrame);
             state.pendingFrame = null;
-            _setFrame(state, f);
         }
+        state.unsubFrame = state.frames.onFrameChange(() => _loadPdos(state));
         _redraw(state);
     }
 
@@ -991,7 +1026,8 @@ const WORKSPACE_TAG = "results:transport";
 
         mount(host, file, ctx) {
             const state = { bias: null, points: [], pdos: [], nodes: {},
-                            conv: null, handle: null, unsubFrame: null,
+                            conv: null, handle: null, frames: null,
+                            unsubFrame: null, drawn: false,
                             disposed: false, file: file, dir: _dirOf(file),
                             nFrames: 1, average: {}, pendingFrame: null,
                             frameMode: { te: ONE, dos: ONE, iv: ONE, conv: ONE } };
@@ -1020,6 +1056,7 @@ const WORKSPACE_TAG = "results:transport";
                 }
                 if (state.disposed) return;
                 render(host, rec, file, state);
+                state.drawn = true;
                 /* FIRST RENDER ON SCREEN: the picker drops its "Parsing..."
                  * line on this event (`lib/results/file-picker.js`). */
                 root.document.dispatchEvent(new root.CustomEvent(
@@ -1034,7 +1071,7 @@ const WORKSPACE_TAG = "results:transport";
                  * the starting selection, after it the same pick a row click
                  * makes. */
                 selectPoint(at) {
-                    if (state.points.length) { _select(state, at); return; }
+                    if (state.drawn) { _select(state, at); return; }
                     if (at && at.bias !== undefined) state.bias = at.bias;
                     if (at && at.frame !== undefined && at.frame !== null)
                         state.pendingFrame = at.frame;

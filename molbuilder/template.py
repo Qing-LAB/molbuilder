@@ -1219,7 +1219,7 @@ SOURCES = ("cited", "person", "default")
 #: with the form schema and the Task setup hover (`form-schema.md` § 1.1).
 #: ``unrecorded`` is a template written before the key existed.
 SOURCE_WORDS = {
-    "cited":      "from the run you cited",
+    "cited":      "from the junction you cited",
     "person":     "you set this",
     "default":    "not chosen",
     "unrecorded": "not recorded",

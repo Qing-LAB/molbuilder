@@ -5,8 +5,9 @@
  *   * the sidebar's Move/Copy destination question (dirs only);
  *   * the Modify tab's slab panel, picking the relaxed file a lattice is
  *     measured from;
- *   * the Transport tab's junction citation: any directory, with the
- *     meta line from the caller's `describe`.
+ *   * the Transport tab's junction citation: a run's folder or a pair's
+ *     `.xyz` (mode "any"), with the meta line from the caller's
+ *     `describe`.
  *
  * The metadata seam is `describe(path, entry)`: the caller supplies
  * what a selection MEANS (an fdf summary, a file size, nothing) and

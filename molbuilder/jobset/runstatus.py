@@ -282,11 +282,11 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
                              if opens else None)
             rows.append({
                 "run": attempt_name(n),
-                "point": pt.bias_v if pt is not None else None,
-                "frame": pt.frame if pt is not None else None,
-                # HOW MANY FRAMES the set holds, beside the frame -- what a
-                # row is named by on a page (`web/results.md` § 2.5).
-                "of": pt.of if pt is not None else None,
+                # THE POINT, in its one wire form (`stages.Point.to_wire`):
+                # its frame, how many frames the set holds, its voltage --
+                # what a row is named by on a page (`web/results.md` § 2.5).
+                **(pt.to_wire() if pt is not None
+                   else {"frame": None, "of": None, "bias_v": None}),
                 "dir": str(folder.relative_to(root)),
                 "state": got.state,
                 "detail": got.detail,

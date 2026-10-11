@@ -11,8 +11,9 @@
  * trace on its own iteration axis** — a TranSIESTA device's periodic start
  * and its NEGF loop are different calculations — and the last phase is shown
  * by default, the earlier ones a legend click away.  The residual is PySCF's
- * ``|g|`` or SIESTA's ``dHmax``, whichever the rows carry; each phase's own
- * criterion is a dashed line where the run requires it (``criteria``:
+ * ``|g|`` or SIESTA's ``dHmax``, whichever the rows carry; the criterion of
+ * the phase on screen is a dashed line where the run requires it -- one line,
+ * every run drawn being one deck's (``criteria``:
  * ``{phase: {residual: {tolerance, unit, required}}}``).
  */
 (function (root) {
@@ -43,11 +44,13 @@
         return ph === "negf" ? "NEGF" : (ph ? ph : "SCF");
     }
 
-    /* Draw ``runs`` -- ``[{name, rows}]``, one run's SCF each, one or many
-     * -- into ``energyEl`` and ``residualEl``: a trace per run and phase,
-     * coloured by phase for one run and by run for several (a frame set's
-     * device runs, `web/results.md` § 2.5), each run's last phase shown
-     * and its earlier ones a legend click away.  Answers ``{phases,
+    /* Draw ``runs`` -- ``[{name, rows, colour?, bold?}]``, one run's SCF
+     * each, one or many -- into ``energyEl`` and ``residualEl``: a trace per
+     * run and phase, coloured by phase for one run and by run for several
+     * (a frame set's device runs, `web/results.md` § 2.5) -- a run's own
+     * ``colour`` when the caller gives it, so a run keeps the colour it has
+     * on the caller's other charts -- the ``bold`` run drawn heavier, each
+     * run's last phase shown and its earlier ones a legend click away.  Answers ``{phases,
      * residual}`` -- what was drawn, for the caller's status line -- or
      * ``null`` when there is nothing to draw (the caller hides its
      * section). */
@@ -69,7 +72,8 @@
                 run: r, group: g, last: i === groups.length - 1,
                 name: (many ? run.name + (groups.length > 1
                     ? " · " + _name(g.phase) : "") : _name(g.phase)),
-                colour: colour(many ? r : i),
+                colour: many && run.colour ? run.colour : colour(many ? r : i),
+                width: run.bold ? 2.5 : 1.5,
             }));
         });
         const several = traces.length > 1;
@@ -79,7 +83,7 @@
             x: tr.group.rows.map((c) => c.cycle),
             y: tr.group.rows.map((c) => c.energy),
             mode: "lines+markers", marker: { size: 4 },
-            line: { color: tr.colour, width: 1.5 },
+            line: { color: tr.colour, width: tr.width },
             name: tr.name, visible: shown(tr),
         })), layoutOf({
             title: { text: o.energyTitle || "SCF energy", font: { size: 12 } },
@@ -129,7 +133,7 @@
             x: tr.group.rows.map((c) => c.cycle),
             y: tr.group.rows.map((c) => c[key]),
             mode: "lines+markers", marker: { size: 4 },
-            line: { color: tr.colour, width: 1.5 },
+            line: { color: tr.colour, width: tr.width },
             name: tr.name + " " + name, visible: shown(tr),
         })), layoutOf({
             title: { text: "SCF residual " + name, font: { size: 12 } },

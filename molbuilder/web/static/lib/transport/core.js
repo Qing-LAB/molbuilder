@@ -66,7 +66,9 @@ const WORKSPACE_TAG = "transport";
      * Resolves to the answer body; renders an error paragraph and
      * resolves to null on failure so the page never fails silently.
      */
-    function _fetchSurface(surface, host, formSchema, rung, renderOpts) {
+    /* ``isCurrent``, given, is asked before anything is drawn: an answer
+     * that lands after a newer ask went out draws nothing (``null``). */
+    function _fetchSurface(surface, host, formSchema, rung, renderOpts, isCurrent) {
         var url = SCHEMA_URL + "?surface=" + surface
             + (_junction ? "&junction=" + encodeURIComponent(_junction) : "")
             + (rung ? "&rung=" + encodeURIComponent(rung) : "")
@@ -83,11 +85,13 @@ const WORKSPACE_TAG = "transport";
                 });
             })
             .then(function (body) {
+                if (isCurrent && !isCurrent()) return null;
                 while (host.firstChild) host.removeChild(host.firstChild);
                 formSchema.renderForm(host, body.schema, renderOpts || {});
                 return body;
             })
             .catch(function (e) {
+                if (isCurrent && !isCurrent()) return null;
                 _renderErrorParagraph(host,
                     "Could not load the " + surface + " form: "
                     + (e && e.message ? e.message : String(e)));
@@ -279,8 +283,8 @@ const WORKSPACE_TAG = "transport";
         container.addEventListener("change", persist);
     }
 
-    /* THE TAB'S FACTS: the citation (a directory
-     * whose FILES satisfy the condition), the composed labeled
+    /* THE TAB'S FACTS: the citation (a run's folder or a pair's .xyz
+     * that satisfies § 3.1's condition), the composed labeled
      * structure the server answers with (the viewer + the chemistry
      * analysis run on it -- no file path is assumed).  Both are
      * /api/transport/describe_attempt's answers, adopted whole -- the tab
@@ -456,7 +460,7 @@ const WORKSPACE_TAG = "transport";
      *  are declared once, above.
      * ================================================================= */
 
-    /** One fetch answers everything about a picked directory: whether
+    /** One fetch answers everything about a picked path: whether
      *  it is citable, the summary line, what its composition measured
      *  (findings), the composed structure for the viewer, `fix` and the
      *  citation spelling (the server's).  ``rel`` is tree-relative
@@ -519,12 +523,12 @@ const WORKSPACE_TAG = "transport";
         say.className = "hint";
         say.textContent = (holds
             ? "This calculation composes the junction with L-electrode and "
-              + "R-electrode traded (swap_electrodes: true); the cited run "
-              + "is unchanged.  "
+              + "R-electrode traded (swap_electrodes: true); the cited "
+              + "junction is unchanged.  "
             : "")
             + "A rename in this calculation's own copy of the junction: "
             + "the two labels trade names when it is composed, and the "
-            + "description records it.  The cited run is never written; "
+            + "description records it.  The cited junction is never written; "
             + "another calculation citing it makes its own choice.";
         var btn = root.document.createElement("button");
         btn.type = "button";
@@ -580,7 +584,7 @@ const WORKSPACE_TAG = "transport";
         _junction = described.citation;
         _junctionStructure = described.structure || null;
         // BOTH SURFACES FOLLOW THE CITATION: the shared panel holds what the
-        // cited directory answers (3.8.1), and each rung's tab shows what
+        // citation answers (3.8.1), and each rung's tab shows what
         // that rung runs -- drawn from the template the panel describes, so
         // after it.
         _fetchAndRenderShared(root.molbuilder && root.molbuilder.formSchema)
@@ -771,6 +775,7 @@ const WORKSPACE_TAG = "transport";
     var _rungHosts = {};
     var _rungTabs = null;          // the rung strip's handle (select(rung))
     var _rungsSeq = 0;             // the newest draw of the rung tabs
+    var _sharedSeq = 0;            // the newest draw of the shared panel
 
     /* A REFUSAL OF THE BIAS LIST BY THIS PAGE lands where the codec's does:
      * beside the list, through the one renderer (validation.md 4.1 R2),
@@ -838,7 +843,14 @@ const WORKSPACE_TAG = "transport";
                 }, 300);
             });
         }
-        return _fetchSurface("shared", host, formSchema).then(function (body) {
+        // A SEQUENCE, as the rung tabs': the panel's host outlives each
+        // citation, so an answer for an earlier citation that lands late
+        // must not draw that citation's panel under this one.
+        var seq = ++_sharedSeq;
+        return _fetchSurface("shared", host, formSchema, null, null,
+                             function () { return seq === _sharedSeq; })
+                .then(function (body) {
+            if (seq !== _sharedSeq) return;
             if (body) _sharedSchema = body.schema;
             // The panel is rendered for the junction now (or could not be):
             // the chemistry card answers for what it says, about the
