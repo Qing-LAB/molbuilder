@@ -1178,9 +1178,11 @@ generation time:
 #   parameters:          who set each value this deck is rendered from
 #     mixing_weight    this stage's override
 #     solution_method  the rung
+#     dm_tolerance     the template · not chosen
 #     max_scf_iter     the template · you set this
 #     mesh_cutoff      the template · from the junction you cited
-#     dm_tolerance     the template · not chosen
+#     spin_treatment   the template · not chosen · the electronic state decides it
+#     system_label     the rung -- spelt from the calculation's label
 #   resolved-defaults:
 #     mpi_np            auto -> 4 (gpu+mps policy)
 #     BlockSize         auto
@@ -1218,7 +1220,12 @@ generation time:
   rung*) and, for the template's, the template's own record of it (*the
   template · from the junction you cited · you set this · not chosen · not
   recorded*). *Not chosen* is the documented default, written because nobody
-  chose a value — obligation 4's mark. The rows a rung decided come first.
+  chose a value — obligation 4's mark — save for an electronic-state item,
+  whose blank the electronic state decides, and the row says so. A value a
+  step after `resolve` sets is said as that step's (`resolve.SET_AFTER`): a
+  transport rung's `SystemLabel`, spelt from the calculation's, and a bench
+  trial's, with its coordinate. The rows a rung decided come first, each
+  layer's by name.
   `prep` hands them over on every road that renders a deck — the one that
   writes it and the one the gather compares with (`same_calculation`), so the
   two render the same rows; a deck rendered without them says *not recorded*

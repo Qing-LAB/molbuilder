@@ -129,11 +129,19 @@ def emit_density_fit_kw(cfg) -> List[str]:
     it, so the auxiliary basis cannot be honored at one site and
     dropped at the other."""
     aux = getattr(cfg, "auxbasis", None)
-    return [
+    out = [
         "# density_fit's keyword arguments, ONE home (pyscf.md § 7a):",
         "# auxbasis rides the density-fitting call as its argument.",
-        f"_MB_DF_KW = {{'auxbasis': {aux!r}}} if {aux!r} else {{}}",
     ]
+    if not aux:
+        # NOBODY CHOSE THE FITTING BASIS, and PySCF picks one: said here, as
+        # the one-`mf` deck says it above its call (`engines/template.md`
+        # § 6.6 obligation 4).
+        from ..script_emit import not_set_line, parameter
+        out.append(not_set_line(parameter("auxbasis", "pyscf"),
+                                keyword="auxbasis"))
+    out.append(f"_MB_DF_KW = {{'auxbasis': {aux!r}}} if {aux!r} else {{}}")
+    return out
 
 
 #: Dielectric constants for the PCM continuum -- one home both decks read
@@ -169,7 +177,7 @@ def emit_solvent_lines(cfg) -> List[str]:
     solvent = str(getattr(cfg, "solvent", "") or "").lower()
     if not solvent:
         from ..script_emit import not_set_line, parameter
-        return [not_set_line(parameter("solvent", "pyscf"))]
+        return [not_set_line(parameter("solvent", "pyscf"), keyword="solvent")]
     eps = SOLVENTS.get(solvent)
     if eps is None:
         raise ValueError(

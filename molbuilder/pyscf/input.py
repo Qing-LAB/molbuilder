@@ -531,13 +531,12 @@ def spec_for(struct: Structure,
         The layout is walked in order, so what sits between two runs of
         settings sits between them in the deck too.
         """
-        out: List[str] = []
-        if cfg.solvent:
-            # ONE spelling for both decks (scf_setup.emit_solvent_lines).
-            # The mf.PCM() form -- not pcm.PCM(mf) -- is load-bearing: only
-            # the decorated-SCF form exposes .with_solvent.
-            from .scf_setup import emit_solvent_lines
-            out += emit_solvent_lines(cfg)
+        # ONE spelling for both decks (scf_setup.emit_solvent_lines): the
+        # PCM decoration, or the gas phase said where it would be.  The
+        # mf.PCM() form -- not pcm.PCM(mf) -- is load-bearing: only the
+        # decorated-SCF form exposes .with_solvent.
+        from .scf_setup import emit_solvent_lines
+        out: List[str] = list(emit_solvent_lines(cfg))
         out.append("")
         return "\n".join(out) if out else None
 

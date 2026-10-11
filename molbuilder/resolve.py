@@ -326,13 +326,23 @@ def _refuse_a_stated_answer(template_text: str, engine: str,
             f"the template.")
 
 
-#: Where a resolved value came from, in words -- `provenance`'s own sources,
-#: and the run's allocation, which the deck writer's config folds in
-#: (:meth:`ResolvedConfig.render_config`).  Said by a refusal and by the
-#: deck's PROVENANCE table alike.
+#: Where a resolved value came from, in words -- `provenance`'s own sources.
+#: Said by a refusal and by the deck's PROVENANCE table alike.
 LAYER_WORDS = {"template": "the template", "stage": "this stage's override",
-               "sweep": "a sweep point", "pin": "a pin", "role": "the rung",
-               "allocation": "the run's allocation"}
+               "sweep": "a sweep point", "pin": "a pin", "role": "the rung"}
+
+#: WHO SETS A VALUE AFTER THE LAYERS -- the deck's PROVENANCE table's words
+#: for it (`job-contracts.md` § 3.2), one home: a blank electronic-state
+#: item, which the electronic state decides and the deck writes (ES1,
+#: `science/chemistry-correctness.md` § 2a; its own note says from what);
+#: and the deck's ``SystemLabel`` where prep spells it -- a transport rung's
+#: from the calculation's label (`jobset/prep.py`, C2), a bench trial's with
+#: its coordinate (`job-contracts.md` § 6.3).
+SET_AFTER = {
+    "state": "the electronic state decides it",
+    "rung_label": "the rung -- spelt from the calculation's label",
+    "trial_label": "this trial -- the calculation's label with its coordinate",
+}
 
 
 def _deck_items(engine: str, kind: str, stage: str) -> frozenset:
@@ -353,18 +363,28 @@ def _deck_sources(values, provenance: Mapping[str, str],
     """``((item, who), ...)`` for :attr:`ResolvedConfig.deck_sources`, in
     the pipeline log's order (`pipeline_log.config_rows`: what the rung
     decided first).  A template value says whose it is as the template
-    records it -- *not recorded* for a file written before the record."""
+    records it -- *not recorded* for a file written before the record -- and
+    a blank electronic-state item who decides the value the deck writes."""
     from .pipeline_log import config_rows
-    from .template import SOURCE_WORDS
+    from .template import SOURCE_WORDS, STATE_ITEMS
     rows = []
-    for name, _value, src in config_rows(values, provenance):
+    for name, value, src in config_rows(values, provenance):
         if name not in names:
             continue
         who = LAYER_WORDS.get(src, src)
         if src == "template":
             who = f"{who} · {SOURCE_WORDS[origins.get(name) or 'unrecorded']}"
+        if name in STATE_ITEMS and value is None:
+            who = f"{who} · {SET_AFTER['state']}"
         rows.append((name, who))
     return tuple(rows)
+
+
+def said_by(sources, name: str, who: str) -> Tuple[Tuple[str, str], ...]:
+    """``sources`` with ``name``'s row saying ``who`` -- for a value a step
+    after ``resolve`` sets (:data:`SET_AFTER`), so the deck's table names
+    the step that set what the deck writes."""
+    return tuple((n, who if n == name else w) for n, w in sources)
 
 
 def _refuse_what_cannot_stand(values, provenance: Mapping[str, str],
@@ -466,8 +486,7 @@ def resolve(template_text: str, task, config_cls, *,
     # per value, who set it (`job-contracts.md` § 3.2).
     from .template import read_template
     origins = {it.name: it.source for it in read_template(template_text).items}
-    deck_items = _deck_items(_engine, _kind,
-                             stage_obj.name if stage_obj is not None else stage)
+    deck_items = _deck_items(_engine, _kind, stage_obj.name)
 
     if stage_obj is not None and stage_obj.overrides:
         # A RUN SETTING is the rung's run card's (`engines/stages.md`
@@ -1031,4 +1050,5 @@ _DROP_RE = re.compile(r"[^A-Za-z0-9_]")
 
 
 __all__ = ["ParameterSet", "ResolvedConfig", "ResolveError", "ALLOCATION_FIELDS",
-           "MachineTranslation", "resolve", "point_token"]
+           "MachineTranslation", "resolve", "point_token", "LAYER_WORDS",
+           "SET_AFTER", "said_by"]

@@ -3832,16 +3832,16 @@ in each rung's block, and the settings gate and the record read the config's
 > own answer declared on the item, and `resolve` hands every rung its answer.
 
 **The tests that hold it.**
-`test_transport_prep.py::TestTheRungFixesItsOwn::test_each_rung_writes_what_it_fixes_from_its_config`
-preps the ladder through `molbuilder jobset prep` and reads each rung's line
-and its *fixed* note — the device's `transiesta`, the leads' `diagon` and
-`TS.HS.Save` — and the class's other tests refuse a rung's own bias and a
-template's.
+`test_template_role_and_stages.py` holds the declarations — a role item
+carries no value and is never offered, and each transport item is routed to
+the rung that owns it.
 `test_transport_au_bdt_au_validation.py::test_the_device_deck_states_its_identity_and_method`
 reads the device deck the live path renders for the NEGF solver, and for the
 absence of `TS.SolutionMethod`.  *(It was named
 `…::test_render_script_emits_correct_atom_counts` and drove the deleted
-renderer until 2026-09-17.)*
+renderer until 2026-09-17.  `test_transport_prep.py::TestTheRungFixesItsOwn`,
+which prepped the ladder and read each rung's fixed line, was retired with the
+tests that lay a run that never happened, `cdec94da`, 2026-10-03.)*
 
 **The general rule this is an instance of.**  Before offering a keyword as a
 parameter, ask who can answer it.  If only the rung can — the value is what

@@ -1149,7 +1149,7 @@ group = "profile"
 label = "Unpaired electrons (2S)"
 null_label = "(auto)"
 optional = true
-not_set = "the engine's own default fixes no count -- SIESTA writes no Spin.Fix, PySCF's spin is 0; a blank one is resolved by the electronic state before any deck is written"
+not_set = "the engine's own default fixes no count -- SIESTA's Spin.Fix is false, PySCF's spin is 0; a blank one is resolved by the electronic state before any deck is written"
 help = """
 The number of unpaired electrons, 2S -- NOT the multiplicity 2S+1.  So 0 = closed shell, 1 = doublet, 2 = triplet, and so on.  Enter a multiplicity here by mistake and you ask for a different electronic state.
 free lets the moment float to whatever the SCF finds -- SIESTA only, and the only value under non-collinear and spin-orbit, and under unrestricted on a transport calculation: TranSIESTA cannot hold a fixed total spin.  PySCF always fixes the count.

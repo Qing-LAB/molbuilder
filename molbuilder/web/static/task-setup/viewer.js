@@ -1308,8 +1308,8 @@ function setCell(i, col, raw) {
  * file, formula and atom count, or, for a transport calculation, the
  * junction it cites, the bias list it walks and how it treats that list
  * (`treatment`, the folder answer's word from the one rule the record
- * names it by).  Every parameter of the description is echoed here
- * (`template.md` § 6.6 obligation 3). */
+ * names it by); and every value shared by every stage, with whose it is
+ * (`renderShared`, `template.md` § 6.6 obligation 3). */
 function renderCameOver(obj, treatment, frameSet, shared) {
     const host = $("ts-facts");
     const card = $("ts-came-card");

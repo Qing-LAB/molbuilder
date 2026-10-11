@@ -564,6 +564,11 @@ class Rung:
     #: the kind answers it per rung -- a transport rung's restart files, the
     #: transmission's program.
     job_facts: Callable = lambda job: job
+    #: ``element -> ((item, who), ...)``: who set each value the rung's decks
+    #: are rendered from -- `resolve`'s rows, and the rung's own words for a
+    #: value its steps set after them (a transport rung's label;
+    #: `job-contracts.md` § 3.2).
+    sources: Callable = lambda element: element.deck_sources
 
 
 def _described_rung(base, task, pset, *, seam, template_text, sweep,
@@ -713,6 +718,7 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
             resources=(dataclasses.replace(job.resources, program="tbtrans")
                        if stage == "transmission" else job.resources))
     return Rung(struct=struct, render_kind="transport", configure=configure,
+                sources=_transport_sources,
                 spec_extra=lambda element, cfg: {"state": state},
                 points=points, at_point=_at_point,
                 struct_at=lambda pt: _at_frame(struct, pt),
@@ -1088,6 +1094,10 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             # (a lead's own label, the junction's state) -- identity for
             # every kind with no steps of its own.
             cfg = rung.configure(element.render_config())
+            # WHO SET EACH VALUE THE DECKS WRITE, the rung's own steps
+            # included (`job-contracts.md` § 3.2).
+            from ..resolve import SET_AFTER, said_by
+            _sources = rung.sources(element)
             if element.is_trial:
                 # The deck's OWN identity line carries the trial label -- this,
                 # not the filename, is what keys SIESTA's warm files away from
@@ -1095,6 +1105,8 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                 with _calling("relabel", engine=task.engine,
                               where=element.label):
                     cfg = seam.relabel(cfg, element.label)
+                _sources = said_by(_sources, "system_label",
+                                   SET_AFTER["trial_label"])
                 # The forced cold has ONE setter -- the measurement pin
                 # (`_MEASUREMENT_PINS`, resolved with provenance "pin") --
                 # and ONE verifier, the submission door
@@ -1137,7 +1149,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                     _sc.prepare_deck(_spec, _struct, _at, _out / script,
                                      log=log, dest_dir=base,
                                      findings=findings, plan=plan,
-                                     sources=element.deck_sources)
+                                     sources=_sources)
                 spec = spec or _spec
             if seam.sibling_artifacts is not None:
                 with _calling("sibling_artifacts", engine=task.engine,
@@ -1876,9 +1888,10 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
             raise PrepError(
                 f"{upstream}'s newest run, {where.relative_to(base)}, did "
                 f"not run the deck {upstream} renders now -- its template, "
-                f"its junction or its run card changed since it ran, so its "
-                f"{filename} answers a different calculation.  To run it as "
-                f"it is described now, {redo}")
+                f"its junction or its run card changed since it ran, or this "
+                f"molbuilder writes the deck differently from the one that "
+                f"prepared it, so its {filename} may answer a different "
+                f"calculation.  To run it as it is described now, {redo}")
         # ...AND HOLDS THE FILE (`engines/transport.md` § 6.1).
         if not (where / filename).is_file():
             raise PrepError(
@@ -1923,6 +1936,17 @@ def _composed_junction(base, task):
     return composed
 
 
+def _transport_sources(element):
+    """Who set each value a transport rung's decks write: `resolve`'s rows,
+    the label said as the rung's -- it spells every rung's ``SystemLabel``
+    from the calculation's (:func:`_transport_parts`, C2).  Asked by both
+    roads that render a rung, so the deck the gather compares with says
+    what the prepared one says."""
+    from ..resolve import SET_AFTER, said_by
+    return said_by(element.deck_sources, "system_label",
+                   SET_AFTER["rung_label"])
+
+
 def _rung_deck_now(base, task, stage: str, composed, *, template_text,
                    point=None) -> str:
     """The deck ``stage`` renders NOW -- its text exactly as `prep task`
@@ -1944,7 +1968,7 @@ def _rung_deck_now(base, task, stage: str, composed, *, template_text,
     with _user_error_as_prep():
         return _sc.render_deck(spec, struct, cfg, verbose=True,
                                dest_dir=base,
-                               sources=_element.deck_sources).text
+                               sources=_transport_sources(_element)).text
 
 
 def gather_sources(base_dir, task, stage: str, *, template_text: str

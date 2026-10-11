@@ -47,7 +47,8 @@ def _auto_block_size(n_atoms: int,
                      gpu_mode: bool = False) -> int:
     """The largest ``BlockSize`` a deck's rank count allows -- the top of
     the BENCH-MARKS window (:func:`_block_size_bounds`).  No deck is given
-    it: an unset ``block_size`` writes no line, and SIESTA picks its own.
+    it: an unset ``block_size`` writes no value -- the deck says SIESTA picks
+    its own, in the item's ``not_set``.
 
     It does NOT guard against ``propor: ERROR: IMAX = 0``.  An empirical
     sweep on 2026-05-28: SIESTA crashes IDENTICALLY with
@@ -412,9 +413,9 @@ def _parallel_facts(cfg, mesh) -> dict:
 
     **Derivation, not emission** -- and at SPEC time, for the same reason
     `_relaxation_facts` is: the MPI section's membership depends on these
-    answers (no ``BlockSize`` line at all when the value is unset, no
-    ``Diag.*`` when the solver is ScaLAPACK), so the layout cannot be read
-    until they exist (`script-preparation.md` § 4.1).
+    answers (no ``Diag.*`` when the solver is ScaLAPACK), and an unset
+    ``BlockSize`` is said as such where its line would be, so the layout
+    cannot be read until they exist (`script-preparation.md` § 4.1).
 
     ``over_k``'s automatic answer is *more than one point* on ``mesh``,
     the k-point mesh THIS deck writes (`kmesh.mesh_for`, `engines/siesta.md`
