@@ -181,8 +181,10 @@ choice replaced hand-rolled SVG on 2026-08-05. The SVG was right while the figur
 was static; once it needed zoom, pan, a reset and a hover readout, writing those
 four by hand beside a chart library already loaded on the page would have been
 inventing a wheel in view of the wheel. Plotly takes colours as values rather
-than inheriting CSS, so the diagram takes its colours by role (`_esTheme` in
-`lib/spectra/core.js`) from the one chart theme, `lib/plot-theme.js`, which
+than inheriting CSS, so the diagram takes its colours (`_esTheme` in
+`lib/spectra/core.js` — the HOMO and the LUMO the series palette's first and
+second, the thermochemistry's curves and bars in its order) from the one chart
+theme, `lib/plot-theme.js`, which
 reads the tokens off the document and hands them over — the tokens stay the one
 source of truth for every chart ([`results.md`](?doc=web/results.md) § 2.5,
 *one Plotly theme*).

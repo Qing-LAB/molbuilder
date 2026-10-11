@@ -75,7 +75,9 @@ Two naming tiers:
 
 - **Global (unprefixed)** — the shared vocabulary: surfaces (`--bg-page`,
   `--bg-card`, …), text (`--text-primary/-secondary/-muted`), the accent
-  (`--accent`), the severities (`--success`, `--error`, `--warning`), and the
+  (`--accent`), the severities (`--success`, `--error`, `--warning`), the chart
+  series palette (`--series-1…5`, a chart's n-th curve the n-th colour —
+  [`results.md`](?doc=web/results.md) § 2.5), and the
   layout/spacing/type scales (`--radius`, `--gap`, `--space-xs…xl`,
   `--text-2xs…xl`).
 - **Module-private (prefixed)** — a module's own tokens, kept out of the shared

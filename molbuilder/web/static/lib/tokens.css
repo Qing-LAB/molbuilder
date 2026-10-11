@@ -62,6 +62,19 @@
      * the existing palette; the explicit alias documents intent. */
     --text-on-accent: var(--bg-page);
 
+    /* ---- Chart series ----
+     * THE ONE PALETTE a chart's curves are told apart by -- the n-th series
+     * of any chart the n-th colour, wrapping (lib/plot-theme.js).  Chosen to
+     * stay distinct on the dark card and to the most common colour-vision
+     * deficiencies (blue / orange / green / pink / purple); the severities
+     * (--success, --warning, --error) stay for what they mean -- a
+     * tolerance line, a failure -- never for one curve among others. */
+    --series-1:      #5aa9e6;
+    --series-2:      #f4a259;
+    --series-3:      #69c37b;
+    --series-4:      #e07a9c;
+    --series-5:      #b48ead;
+
     /* ---- Shadows ---- */
     --shadow-card:   0 1px 0 rgba(255, 255, 255, 0.02) inset,
                      0 4px 12px rgba(0, 0, 0, 0.30);

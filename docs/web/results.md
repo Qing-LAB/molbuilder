@@ -591,16 +591,25 @@ its own:
   not yet do — so the fix lands once, for both.
 * **One Plotly theme**: every chart here reads its colours and its font from
   the tokens through one small helper, `lib/plot-theme.js` (`plotTheme()` —
-  paper, grid, axis, ink, the severities, the accent's shades, a hover label's
-  ground, edge and words, the trace palette, `--font-sans` — and
+  grid, axis, ink, the muted ink, the success colour of a target line, a hover
+  label's ground, edge and words, the series palette, `--font-sans` — and
   `themedLayout()`): the transport report's, the SCF plot, the bench chart, the
   trajectory's energy and force, and the spectra viewer's level diagram and
-  thermochemistry, which name its colours by role (`_esTheme`). A token that is
+  thermochemistry (`_esTheme`). A token that is
   not there is said, never covered by a second copy of its value *(one reader
   since 2026-10-10, Q18; until then the trajectory, bench and spectra charts
   each read the tokens their own way, with copied fallbacks, and the
-  trajectory's two plots drew on white)*. SpectrumChart keeps its own sealed
-  palette ([`spectrumchart.md`](?doc=web/spectrumchart.md) § 11).
+  trajectory's two plots drew on white)*. **One series palette**: a chart's
+  curves are told apart by `--series-1` … `--series-5` (blue, orange, green,
+  pink, purple — distinct on the dark card and to the common colour-vision
+  deficiencies), the n-th curve or bar the n-th colour, a chart of one curve
+  the first; a severity keeps its meaning, the target line's success colour,
+  never one curve among others *(the user, 2026-10-10; the bench chart's
+  palette made the one — until then the trace palette was the accent and the
+  severities, the force chart's all-atoms curve was the error red and the
+  thermochemistry's total the warning)*. SpectrumChart keeps
+  its own sealed palette ([`spectrumchart.md`](?doc=web/spectrumchart.md)
+  § 11).
 * **One Plotly box**: every chart on this page — the transport report's, the
   SCF plot, the spectra tab's level diagram and thermochemistry, the bench
   chart, the trajectory's energy and force — is drawn through one door,

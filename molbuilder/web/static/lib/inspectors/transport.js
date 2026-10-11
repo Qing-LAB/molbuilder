@@ -846,7 +846,7 @@ const WORKSPACE_TAG = "results:transport";
                 mode: "lines+markers",
                 name: n > 1 ? frameWords(f, n)
                             : (computed ? "I computed from T(E, 0)" : "I (total)"),
-                line: { color: n > 1 ? col(f) : t.accent,
+                line: { color: col(f),
                         width: all("iv") && f === frame ? 2.5 : 1.5,
                         dash: computed ? "dash" : "solid" },
                 marker: { size: got.map((q) => (f === frame

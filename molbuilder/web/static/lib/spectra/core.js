@@ -2143,18 +2143,18 @@
      * own module, docs/web/spectrumchart.md), so they live beside the diagram
      * and are named for it.
      */
-    /* THE LEVEL DIAGRAM'S AND THE THERMOCHEMISTRY'S COLOURS, BY ROLE -- from
-     * the one chart theme (`lib/plot-theme.js`), which reads every colour from
-     * the tokens; nothing here reads a token or keeps a copy of one.  A level's
-     * frontier: the HOMO the accent, the LUMO the warm soft one; the
-     * thermochemistry's bars: the accent's strong shade, the warning for the
-     * total. */
+    /* THE LEVEL DIAGRAM'S AND THE THERMOCHEMISTRY'S COLOURS -- from the one
+     * chart theme (`lib/plot-theme.js`), which reads every colour from the
+     * tokens; nothing here reads a token or keeps a copy of one.  Their
+     * curves, bars and frontiers are series, told apart by the series
+     * palette in order: the HOMO the first colour, the LUMO the second; the
+     * thermochemistry's n-th curve and n-th bar the n-th. */
     function _esTheme() {
         const t = root.molbuilder.plotTheme();
         return {
             grid: t.grid, axis: t.axis, ink: t.ink, dim: t.muted,
-            homo: t.accent, lumo: t.warnSoft,
-            stick: t.accentStrong, stickSel: t.warning,
+            homo: t.palette[0], lumo: t.palette[1],
+            series: t.palette,
         };
     }
 
@@ -3292,11 +3292,11 @@
         };
         root.molbuilder.plotBox.draw(els.thermoCurves, [
             { x: T, y: gRel, name: rrho ? "G − E_elec" : "F_vib",
-              mode: "lines", line: { color: t.homo, width: 2 } },
+              mode: "lines", line: { color: t.series[0], width: 2 } },
             { x: T, y: hRel, name: rrho ? "H − E_elec" : "ZPE + U_vib",
-              mode: "lines", line: { color: t.stick, width: 2 } },
+              mode: "lines", line: { color: t.series[1], width: 2 } },
             { x: T, y: ts, name: rrho ? "T·S" : "T·S_vib", mode: "lines",
-              line: { color: t.lumo, width: 2 } },
+              line: { color: t.series[2], width: 2 } },
         ], root.molbuilder.themedLayout({
             // NO height -- the .thermo-chart box owns it.
             margin: { t: 8, r: 8, b: 34, l: 52 },
@@ -3328,13 +3328,12 @@
         const rest = kcal(grid.h_eh[i0] - eElec) - zpe - uvib;
         const bars = rrho
             ? { x: ["ZPE", "U_vib", "trans + rot + pV", "−T·S", "G − E_elec"],
-                y: [zpe, uvib, rest, mts, gnet],
-                c: [t.stick, t.homo, t.axis, t.lumo, t.stickSel] }
+                y: [zpe, uvib, rest, mts, gnet] }
             : { x: ["ZPE", "U_vib", "−T·S_vib", "F_vib"],
-                y: [zpe, uvib, mts, gnet],
-                c: [t.stick, t.homo, t.lumo, t.stickSel] };
+                y: [zpe, uvib, mts, gnet] };
         root.molbuilder.plotBox.draw(els.thermoDecomp, [{
-            type: "bar", x: bars.x, y: bars.y, marker: { color: bars.c },
+            type: "bar", x: bars.x, y: bars.y,
+            marker: { color: bars.x.map((_, i) => t.series[i % t.series.length]) },
         }], root.molbuilder.themedLayout({
             margin: { t: 8, r: 8, b: 34, l: 52 },
             font: { color: t.ink, size: 10 },

@@ -1,11 +1,11 @@
 /* plot-theme.js — the charts' colours, read from the tokens.
  *
- * ONE PLACE a Plotly chart asks what its paper, plot, grid, axis and ink are,
- * and which colour its n-th trace takes (`web/results.md` § 2.5): every value
- * a token of `lib/tokens.css`, read when the chart is drawn, so a chart
- * follows the page's palette instead of keeping one of its own -- the app's
- * font among them (`--font-sans`).  No second copy of any value: a page that
- * draws a chart loads the tokens.
+ * ONE PLACE a Plotly chart asks what its grid, axis and ink are, which colour
+ * its n-th trace takes and which marks a target (`web/results.md` § 2.5):
+ * every value a token of `lib/tokens.css`, read when the chart is drawn, so
+ * a chart follows the page's palette instead of keeping one of its own -- the
+ * app's font among them (`--font-sans`).  No second copy of any value: a page
+ * that draws a chart loads the tokens.
  * SpectrumChart keeps its own sealed palette (`web/spectrumchart.md` § 11).
  */
 (function (root) {
@@ -23,27 +23,21 @@
             return v;
         };
         const t = {
-            paper:   get("--bg-card"),
             grid:    get("--border-subtle"),
             axis:    get("--border-soft"),
             ink:     get("--text-secondary"),
             muted:   get("--text-muted"),
-            accent:  get("--accent"),
-            success: get("--success"),
-            warning: get("--warning"),
-            error:   get("--error"),
-            warnSoft: get("--warn-soft"),
-            accentStrong: get("--accent-strong"),
-            accentHover:  get("--accent-hover"),
+            success: get("--success"),       // a target line, met or not
             page:    get("--bg-page"),       // a hover label's ground
             edge:    get("--border-strong"), // a hover label's edge
             text:    get("--text-primary"),  // a hover label's words
             font:    get("--font-sans"),
         };
-        /* THE TRACE PALETTE, in order: the n-th curve of a chart takes the
-         * n-th colour, wrapping. */
-        t.palette = [t.accent, t.warning, t.success, t.error,
-                     t.warnSoft, t.muted];
+        /* THE SERIES PALETTE, in order (`--series-*`, colour-vision safe):
+         * the n-th curve of a chart takes the n-th colour, wrapping.  A
+         * severity never colours one curve among others. */
+        t.palette = ["--series-1", "--series-2", "--series-3", "--series-4",
+                     "--series-5"].map(get);
         return t;
     }
 

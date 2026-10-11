@@ -1289,7 +1289,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             x: x,
             y: energies_plot,
             mode: "lines+markers",
-            line: { color: theme.accent, width: 1.5 },
+            line: { color: theme.palette[0], width: 1.5 },
             marker: { size: 6 },
             name: "E_KS",
             connectgaps: false,
@@ -1328,31 +1328,19 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // ``max_forces_constrained`` is an empty list when no frame
         // in the run carried a constrained value (no frozen atoms);
         // in that case we render the single trace.
+        //
+        // The curve SIESTA compares against the target comes FIRST, so
+        // it takes the series palette's first colour in both cases; the
+        // target line keeps the success colour for itself.
         const constrained = max_forces_c_plot;  // filtered via plottableFrames
-        const forceTraces = [{
-            x: x,
-            y: max_forces_plot,
-            mode: "lines+markers",
-            line: { color: theme.error, width: 1.5,
-                    dash: (constrained && constrained.length)
-                            ? "dash" : "solid" },
-            marker: { size: (constrained && constrained.length) ? 4 : 6 },
-            name: (constrained && constrained.length)
-                    ? "all atoms"
-                    : "Max |F|",
-            hovertemplate: "step %{x}<br>Max |F| (all atoms): "
-                         + "%{y:.4r} eV/A<extra></extra>",
-            connectgaps: false,
-        }];
-        if (constrained && constrained.length) {
+        var hasBothTraces = !!(constrained && constrained.length);
+        const forceTraces = [];
+        if (hasBothTraces) {
             forceTraces.push({
                 x: x,
                 y: constrained,
                 mode: "lines+markers",
-                // Theme accent (blue) for the convergence-gating
-                // primary signal — moved off green so the green
-                // threshold line stays unambiguously "the target".
-                line: { color: theme.accent, width: 2 },
+                line: { color: theme.palette[0], width: 2 },
                 marker: { size: 6 },
                 name: "free atoms",
                 hovertemplate: "step %{x}<br>Max |F| (free atoms): "
@@ -1361,8 +1349,18 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 connectgaps: false,
             });
         }
-        // ``hasBothTraces`` is used twice — extract for readability.
-        var hasBothTraces = !!(constrained && constrained.length);
+        forceTraces.push({
+            x: x,
+            y: max_forces_plot,
+            mode: "lines+markers",
+            line: { color: theme.palette[forceTraces.length], width: 1.5,
+                    dash: hasBothTraces ? "dash" : "solid" },
+            marker: { size: hasBothTraces ? 4 : 6 },
+            name: hasBothTraces ? "all atoms" : "Max |F|",
+            hovertemplate: "step %{x}<br>Max |F| (all atoms): "
+                         + "%{y:.4r} eV/A<extra></extra>",
+            connectgaps: false,
+        });
 
         // Threshold-line shape + annotation on the force plot when
         // the parser found a convergence target.  Green dashed at

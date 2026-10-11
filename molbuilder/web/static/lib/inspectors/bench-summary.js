@@ -98,9 +98,6 @@
      * could not measure it (no GPU on that shelf), and a zero would read
      * as "measured, and it was idle" -- the opposite of the truth.  A
      * panel whose every series is absent is dropped entirely.          */
-    //: Group colours -- distinguishable on the dark card and to the most
-    //: common colour-vision deficiencies (blue / orange / green / pink).
-    const PALETTE = ["#5aa9e6", "#f4a259", "#69c37b", "#e07a9c", "#b48ead"];
 
     const PANELS = [
         { title: "s / iter", series: [
@@ -306,7 +303,7 @@
                     hovertemplate: "<b>%{customdata}</b><br>"
                                  + ser.name + ": %{y}<extra></extra>",
                     marker: {
-                        color: PALETTE[gi % PALETTE.length],
+                        color: theme.palette[gi % theme.palette.length],
                         /* The WINNER is outlined rather than recoloured:
                            colour already means "which run", and a second
                            meaning on the same channel is unreadable. */
