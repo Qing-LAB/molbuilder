@@ -137,10 +137,10 @@ def ladder(base, task, *, template_text: Optional[str] = None,
 def preselected(base, task, answers: List[Readiness]) -> List[str]:
     """The stages `prep task` offers pre-selected (D2, `job-system.md`, *The
     task*): for a kind whose stages each have a role -- transport, a
-    vibration (`template.KIND_ROLES`) -- every ready stage that builds on
+    vibration (`paths.KIND_ROLES`) -- every ready stage that builds on
     nothing (`group.upstream_of`), which may share one job; for any other
     kind, the first ready stage."""
-    from ..template import KIND_ROLES
+    from ..paths import KIND_ROLES
     from .group import upstream_of
     ready = [a.stage for a in answers if a.ready]
     if not ready:

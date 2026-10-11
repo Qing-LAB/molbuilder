@@ -6,11 +6,11 @@
  * it holds makes it citable, engines/transport.md § 3.1) -- sets
  * everything downstream — the viewer loads the CITED
  * calculation's own labeled structure, the chemistry analysis runs on
- * it, and Describe writes the FINISHED task.json into the selected
- * folder (no hand-over -- user ruling 2026-08-29: nothing is awaiting,
- * so the tab selects and decides; the shared door in
- * lib/task-handover.js still supplies the destination guards and the
- * file-layer write).  There is no sidebar commit channel here: a
+ * it, and Describe has the FINISHED description written into the
+ * selected folder by its server door (no hand-over -- user ruling
+ * 2026-08-29: nothing is awaiting, so the tab selects and decides; the
+ * shared sender in lib/task-handover.js names the folder, and the door
+ * refuses a described one -- transport.md § 3.8.2a).  There is no sidebar commit channel here: a
  * second way to fill the viewer would be a second source for the
  * composite's one fact (molview.md § 9.3a, one level up).
  *
@@ -518,9 +518,10 @@ const WORKSPACE_TAG = "transport";
 
     /* =================================================================
      *  The COMPOSITE (transport.md § 3.8): cite the junction,
-     *  state the bias, Describe -- the tab writes the finished task.json
-     *  itself (no hand-over; user ruling 2026-08-29).  The tab's facts
-     *  are declared once, above.
+     *  state the bias, Describe -- the describe door writes the finished
+     *  description into the selected folder (no hand-over; user ruling
+     *  2026-08-29; transport.md § 3.8.2a).  The tab's facts are declared
+     *  once, above.
      * ================================================================= */
 
     /** One fetch answers everything about a picked path: whether
@@ -535,10 +536,16 @@ const WORKSPACE_TAG = "transport";
      * line show the junction as this calculation will compose it.  The cited
      * junction is never written. */
     var _swapElectrodesChoice = false;
+    /* WHERE THE JUNCTION SITS IN ITS CELL is this calculation's choice too
+     * (transport.md § 4; user, 2026-10-11), held and read the same way:
+     * until Describe writes `centre_junction: true`, every describe of the
+     * citation is read WITH it. */
+    var _centreJunctionChoice = false;
     function _describeAttempt(rel) {
         return root.fetch("/api/transport/describe_attempt?path="
                           + encodeURIComponent(rel.replace(/^\/+/, ""))
-                          + (_swapElectrodesChoice ? "&swap_electrodes=1" : ""))
+                          + (_swapElectrodesChoice ? "&swap_electrodes=1" : "")
+                          + (_centreJunctionChoice ? "&centre_junction=1" : ""))
             .then(function (r) { return r.json(); })
             .then(function (b) {
                 if (!b || b.ok === false) {
@@ -632,6 +639,87 @@ const WORKSPACE_TAG = "transport";
             });
     }
 
+    /* WHERE THE JUNCTION SITS ALONG Z, AND THE OFFER TO CENTRE IT
+     * (transport.md § 3.8.1, § 4; user, 2026-10-11: "always, with the
+     * numbers").  Shown whenever the junction states its offset -- the
+     * rule then leaves it where it is -- and while this calculation holds
+     * the centring, so it can be withdrawn; a junction the rule places is
+     * centred already, and nothing is said.  The numbers are the server's
+     * (`placement`); nothing here measures. */
+    var CENTRE_LABEL = "Centre the junction in its cell";
+    var UNCENTRE_LABEL = "Withdraw the centring";
+    function _ang(v) { return Number(v).toFixed(3) + " \u00c5"; }
+    /* The room between the atoms and one face -- or, below zero, how far
+     * the atoms pass it, said as such rather than as a negative room. */
+    function _room(v, face) {
+        if (v >= 0) return _ang(v) + " from the cell's " + face + " face";
+        // A pass smaller than the shown precision is still a pass: say it.
+        var past = -Number(v);
+        return (past < 0.001 ? past.toFixed(4) + " \u00c5" : _ang(past))
+            + " past the cell's " + face + " face";
+    }
+    function _offerCentre(described) {
+        var host = _$("transport-junction-place");
+        if (!host) return;
+        var pl = described && described.placement;
+        var holds = !!(described && described.centre_junction);
+        if (!pl || (!pl.stated && !holds)) {
+            host.hidden = true;
+            host.textContent = "";
+            return;
+        }
+        host.hidden = false;
+        host.textContent = "";
+        var outside = (pl.outside || []).length;
+        var say = root.document.createElement("span");
+        say.className = "hint";
+        say.textContent = "Along z, the transport direction, the atoms sit "
+            + _room(pl.below_ang, "lower") + " and "
+            + _room(pl.above_ang, "upper") + "; centred, "
+            + _ang(pl.centred_ang) + " each side.  "
+            + (outside
+               ? outside + " atom" + (outside === 1 ? " lies" : "s lie")
+                 + " outside the cell along z, and prep refuses the "
+                 + (holds
+                    ? "junction: centred, the atoms span more than the "
+                      + "cell's length there.  "
+                    : "junction until it is centred.  ")
+               : "")
+            + (holds
+               ? "This calculation centres its own copy of the junction "
+                 + "(centre_junction: true); the cited junction is unchanged."
+               : "The citation's coordinates keep the placement they "
+                 + "state.  Centring moves every atom of this calculation's "
+                 + "own copy by the same amount, and the description "
+                 + "records it; the cited junction is never written, and "
+                 + "another calculation citing it makes its own choice.");
+        var btn = root.document.createElement("button");
+        btn.type = "button";
+        btn.id = "transport-centre-junction-btn";
+        btn.className = "full-btn";
+        btn.textContent = holds ? UNCENTRE_LABEL : CENTRE_LABEL;
+        btn.addEventListener("click", function () {
+            btn.disabled = true;
+            btn.textContent = holds ? "Withdrawing\u2026" : "Centring\u2026";
+            _centreJunctionChoice = !holds;
+            _describeAttempt(described.citation)
+                .then(function (d) {
+                    _adoptCitation(d, (_centreJunctionChoice
+                        ? "This calculation centres its copy of the junction "
+                          + "(centre_junction: true).  Re-cited: "
+                        : "The centring is withdrawn.  Re-cited: "));
+                })
+                .catch(function (e) {
+                    _centreJunctionChoice = holds;
+                    btn.disabled = false;
+                    btn.textContent = holds ? UNCENTRE_LABEL : CENTRE_LABEL;
+                    _setStatus("The centring failed: " + e, "error");
+                });
+        });
+        host.appendChild(say);
+        host.appendChild(btn);
+    }
+
     function _adoptCitation(described, statusPrefix) {
         var vf = (root.molbuilder || {}).validationFindings;
         var fpanel = _$("transport-junction-findings");
@@ -669,6 +757,7 @@ const WORKSPACE_TAG = "transport";
          * (validation.md 4.1 R2), under the one-line summary. */
         if (vf && fpanel) vf.render(described.findings || [], { panel: fpanel });
         _offerFix(described);
+        _offerCentre(described);
         _writePanelNote();
         _refreshSendButton();
         /* Honest state, not a gate (strict composition refuses at
@@ -824,6 +913,7 @@ const WORKSPACE_TAG = "transport";
                 calculation: "transport",
                 junction: _junction,
                 swap_electrodes: _swapElectrodesChoice,
+                centre_junction: _centreJunctionChoice,
                 bias: bias,
                 low_bias_approximation: approx,
                 stages: bags,

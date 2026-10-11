@@ -25,11 +25,10 @@ hand-over — nothing is awaiting, so the tab selects and decides):
     GET  /api/transport/pdos              the PDOS of selected atoms at
                                           one point -- a frame and a
                                           voltage -- by orbital type
-    POST /api/transport/describe          the FINISHED task.json text —
-                                          the web spelling of `jobset
-                                          init --calculation transport`;
-                                          the browser writes it where
-                                          the user chose
+    POST /api/transport/describe          writes the FINISHED description
+                                          into the chosen folder -- the
+                                          web spelling of `jobset init
+                                          --calculation transport`
 
 Mirrors Build's ``/api/build/schema/<engine>``: the form is drawn from the
 catalogue (`catalogue_to_form_schema`), and every deck renders through
@@ -76,6 +75,18 @@ def _fence(raw: str):
     return str(cited.relative_to(root)), cited, root, None
 
 
+def _placement_answer(struct, junction_placement):
+    """`compose.junction_placement` of the junction, or None where there is
+    none to place -- no structure read, or a cell the rule cannot place in
+    (the composition's own refusal says why, among the findings)."""
+    if struct is None:
+        return None
+    try:
+        return junction_placement(struct)
+    except ValueError:                # `cell.to_engine`: no usable cell
+        return None
+
+
 # ===================================================================== #
 # /api/transport/describe_attempt  --  the slot picker's describe seam  #
 # ===================================================================== #
@@ -108,12 +119,16 @@ def api_transport_describe_attempt() -> Any:
     that classifies but cannot be built into a calculation still
     answers with its junction, and the refusal is a finding beside it.
     ``fix`` is a word the tab can act on (today only
-    ``"swap_electrodes"``), never prose to match.
+    ``"swap_electrodes"``), never prose to match.  ``placement`` says where
+    the junction sits along z and whether it states its offset
+    (`compose.junction_placement`), for the card's offer to centre it
+    (§ 3.8.1); null where the junction has no cell to place it in.
     """
     from molbuilder.transport.compose import (CitedPair, ComposeError,
                                               classify_citation,
                                               compose_junction,
                                               frame_set_answer,
+                                              junction_placement,
                                               labeled_citation_structure)
     from molbuilder.issues import Issue
     from molbuilder.transport.sort import (ORDER_INVERTED,
@@ -126,6 +141,9 @@ def api_transport_describe_attempt() -> Any:
     # it, so the viewer and the meta line show the junction as this
     # calculation will compose it; the cited run is read, never written.
     swap = str(request.args.get("swap_electrodes") or "").lower() in (
+        "1", "true", "yes")
+    # ...AND THE CENTRING IT HOLDS, likewise (§ 4).
+    centre = str(request.args.get("centre_junction") or "").lower() in (
         "1", "true", "yes")
     citation, cited_path, root, refusal = _fence(raw)
     if refusal is not None:
@@ -202,6 +220,7 @@ def api_transport_describe_attempt() -> Any:
     # labeled citation structure), so the happy path reads the .XV once
     # and only the refusal path pays for a second look.
     structure_wire = None
+    placed = None                 # the junction as it will be placed
     fix = None
     # WHAT THE COMPOSITION MEASURED, as findings with the severity each
     # has (`science/validation.md` § 4.1 R4): a measurement is `info`, the
@@ -210,11 +229,13 @@ def api_transport_describe_attempt() -> Any:
     findings: list = []
     try:
         composed = compose_junction(citation, tree_root=root,
-                                    swap_electrodes=swap)
+                                    swap_electrodes=swap,
+                                    centre_junction=centre)
         rel_struct = (composed.relaxed
                       if composed.relaxed is not None
                       else composed.sorted.structure)
         structure_wire = rel_struct.to_dict()
+        placed = rel_struct
         # THE CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user
         # ruling, 2026-08-29).  An inverted junction composes and runs
         # -- it biases the other end -- so the tab gets the observation
@@ -242,7 +263,10 @@ def api_transport_describe_attempt() -> Any:
         # refusal is about something else entirely.
         try:
             cited_struct, _src = labeled_citation_structure(cited)
+            if centre:
+                cited_struct = cited_struct.replace(engine_offset=None)
             structure_wire = cited_struct.to_dict()
+            placed = cited_struct
             if electrode_orientation(cited_struct) == ORDER_INVERTED:
                 fix = "swap_electrodes"
         except (ComposeError, OSError, ValueError):
@@ -263,6 +287,10 @@ def api_transport_describe_attempt() -> Any:
         # THE RENAME THIS ANSWER WAS COMPOSED WITH, so the tab shows the
         # choice it holds and offers to withdraw it (§ 4).
         "swap_electrodes": swap,
+        # WHERE THE JUNCTION SITS ALONG Z, as this answer places it, and the
+        # centring it was composed with (§ 4, § 3.8.1).
+        "placement": _placement_answer(placed, junction_placement),
+        "centre_junction": centre,
         # WHAT ITS FRAMES ARE (§ 3.8.1): the count, and a mode's definition.
         "frame_set": frame_set_answer(cited),
     })
@@ -360,17 +388,20 @@ def api_transport_pdos() -> Any:
 
 @bp.route("/api/transport/describe", methods=["POST"])
 def api_transport_describe() -> Any:
-    """Render the transport calculation's COMPLETE ``task.json`` text.
+    """Write the transport calculation's COMPLETE description -- the
+    template and ``task.json`` -- into the folder the person chose.
 
     There is no hand-over for the composite (user ruling 2026-08-29):
     the other kinds hand to Task setup because that tab owns questions
     they cannot answer — shape, stages, what varies.  Transport has
-    none open: the five stages and the hierarchical shape are fixed by
-    design, the identity derives from the citation, the knobs ride the
-    stages' override bags.  So this door answers with the finished
-    description, ONE file, and the browser writes it where the user
-    chose through the content-blind file layer (`web/projects.md` § 1 —
-    the same division of labour as every other tab's writes).
+    none open: the ladder and the hierarchical shape are fixed by the
+    kind (`task.fixed_by_kind`), the identity derives from the citation,
+    the knobs ride the stages' override bags.  So this door writes the
+    finished description in one act, through the writer `jobset init`
+    takes (`describe.write_description`), into a folder that holds none
+    -- a description is written by the server's door that validated it
+    (`web/handover-procedure.md` § 4).  Once written it is Task setup's
+    to edit, as every kind's is (`engines/transport.md` § 3.8.2a).
 
     Validation is the codec's and the description's own check: the
     ``Task`` construction below is the gate `read_task` runs, and the
@@ -379,9 +410,7 @@ def api_transport_describe() -> Any:
     ``notices``.  The citation resolves through the same door prep
     composes through.
     """
-    from molbuilder.persist import json_text
     from molbuilder.projects import projects_root
-    from molbuilder.task import FILENAME as TASK_FILENAME
     from molbuilder.task import Task, derive_run
     from molbuilder.transport.compose import ComposeError, resolve_citation
     from molbuilder import template as _T
@@ -432,6 +461,12 @@ def api_transport_describe() -> Any:
     if not isinstance(swap, bool):
         return jsonify({"ok": False,
                         "error": "swap_electrodes is true or false"}), 400
+    # ...AND WHERE THE JUNCTION SITS IN ITS CELL, as chosen on the junction
+    # card -- this calculation's own copy too (§ 4).
+    centre = body.get("centre_junction", False)
+    if not isinstance(centre, bool):
+        return jsonify({"ok": False,
+                        "error": "centre_junction is true or false"}), 400
     # PER-RUNG BAGS, the shape `task.stages` carries (`engines/transport.md`
     # § 3.8.2a): a rung's tab writes that rung's bag, so the rung is the
     # person's answer and nothing here routes.
@@ -458,6 +493,35 @@ def api_transport_describe() -> Any:
         _, cited = resolve_citation(citation, projects_root())
     except ComposeError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+    # THE FOLDER, and the two refusals every door that describes asks
+    # (`engines/transport.md` § 3.8.2a; user, 2026-10-11): one calculation
+    # per folder -- Describe is one act, and a described calculation is
+    # changed on Task setup -- and never inside its citation (§ 3.1).
+    from molbuilder.describe import (Description, DescribeError,
+                                     refuse_described, write_description)
+    from molbuilder.projects import OutsideRoot, contain
+    from molbuilder.transport.compose import refuse_inside_citation
+    from pathlib import Path
+    root = Path(projects_root()).resolve()
+    dest_raw = str(body.get("dest") or "")
+    if not dest_raw:
+        return jsonify({"ok": False,
+                        "error": "no folder to describe into -- select the "
+                                 "calculation's folder in the projects "
+                                 "sidebar"}), 400
+    try:
+        dest = contain(Path(dest_raw), root)
+    except OutsideRoot as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if not dest.is_dir():
+        return jsonify({"ok": False,
+                        "error": f"{dest_raw} is not a folder"}), 400
+    try:
+        refuse_described(dest)
+        refuse_inside_citation(dest, cited)
+    except (DescribeError, ComposeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 409
 
     # Refused HERE, not at prep on the cluster: an unknown knob, a shared
     # value or a role-fixed one names itself while changing it is still
@@ -521,7 +585,7 @@ def api_transport_describe() -> Any:
             structure=None, calculation="transport",
             slots={"junction": citation}, bias=bias,
             low_bias_approximation=approx,
-            swap_electrodes=swap,
+            swap_electrodes=swap, centre_junction=centre,
             # the stages.md 6.2 rule holds here too: an override names
             # a PROMOTED field, and `varies` is the promotion
             varies=tuple(sorted({n for b in bags.values() for n in b})),
@@ -580,21 +644,24 @@ def api_transport_describe() -> Any:
             "findings": _issues_to_json(_pf, cfg=_cfg_cls_for(task)),
         }), 400
 
+    # WRITTEN HERE, every file or none, through the writer `jobset init`
+    # takes (`describe.write_description`; `web/handover-procedure.md` § 4:
+    # a description is written by the server's door that validated it).
+    # TWO FILES: a transport description is `task.json` AND a template,
+    # like every other kind's (TR1).  Its values are DEFAULTED FROM THE
+    # CITED RUN (§ 2a.7, ruling 1) and are the person's to change
+    # afterwards; a `citation` row nobody answered stays VALUELESS
+    # (§ 3.8.3).
+    try:
+        written = write_description(Description(task=task,
+                                                template=_tmpl_text), dest)
+    except (DescribeError, OSError) as exc:
+        return jsonify({"ok": False,
+                        "error": f"nothing was written: {exc}"}), 500
     return jsonify({
         "ok": True,
         "label": task.label,
-        # TWO FILES: a transport description is `task.json` AND a
-        # template, like every other kind's (TR1).
-        #
-        # Its values are DEFAULTED FROM THE CITED RUN (§ 2a.7, ruling 1) and
-        # are the person's to change afterwards; a `citation` row nobody
-        # answered stays VALUELESS (§ 3.8.3).  The text comes through the
-        # same door `jobset init` writes it through, so the two roads
-        # cannot produce two files for one description.
-        "files": [{"name": TASK_FILENAME,
-                   "text": json_text(task.to_dict())},
-                  {"name": _T.template_filename(task.label),
-                   "text": _tmpl_text}],
+        "written": [p.name for p in written],
         "notices": _issues_to_json(_pf, cfg=_cfg_cls_for(task)),
     })
 

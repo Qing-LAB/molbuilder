@@ -1,7 +1,8 @@
 """``describe`` — write the portable description, and nothing else.
 
 **Module:** L2. Imports ``task``, ``template``, ``identity`` and
-``validation.task``; imported by ``jobset/_cli`` and ``jobset/materialize``.
+``validation.task``; imported by ``jobset/_cli``, ``jobset/materialize`` and
+the Transport tab's describe door (``web/blueprints/transport``).
 It is **pure up to one function**: everything is built and
 checked in memory, and :func:`write_description` is the only part that touches
 a disk.
@@ -205,6 +206,21 @@ def _check(task: Task, cfg, *, generators=None) -> None:
 #  ... -> write                                                         #
 # --------------------------------------------------------------------- #
 
+def refuse_described(dest) -> None:
+    """ONE CALCULATION PER FOLDER (user, 2026-10-01: refuse): a folder that
+    already holds a description is changed in Task setup or its
+    ``task.json``, never described again.  Asked by every door that
+    describes -- `jobset init` and the Transport tab's describe door
+    (`engines/transport.md` § 3.8.2a) -- before anything is read or
+    written."""
+    if (Path(dest) / TASK_FILENAME).is_file():
+        raise DescribeError(
+            f"{dest} already holds a calculation ({TASK_FILENAME}) -- one "
+            f"calculation per folder.  Change it in Task setup or its "
+            f"{TASK_FILENAME}, or describe the new one in a folder of its "
+            f"own.")
+
+
 def write_description(desc: Description, dest, *,
                       psml_lib=None, struct=None) -> List[Path]:
     """Write *desc* into *dest*, publishing every file or none.
@@ -244,8 +260,11 @@ def write_description(desc: Description, dest, *,
     # MODIFY the structure it was handed (``--vacuum``), whose facts live in
     # metadata a bare copy has nowhere to put.  The original path stays the locator; what lands in the folder is the
     # description's own, self-contained reference.
+    # A TRANSPORT DESCRIPTION NAMES NO STRUCTURE: its structure is the
+    # junction citation, composed at prep (`engines/transport.md` § 3.1).
     src = (Path(desc.task.structure.source).expanduser()
-           if desc.task.structure.source else None)
+           if desc.task.structure is not None and desc.task.structure.source
+           else None)
     pair: List[Tuple[Path, bytes]] = []
     if src is not None and src.is_file():
         codec = StructureCodec()
@@ -308,4 +327,4 @@ def write_description(desc: Description, dest, *,
 
 
 __all__ = ["Description", "DescribeError",
-           "build_description", "write_description"]
+           "build_description", "refuse_described", "write_description"]

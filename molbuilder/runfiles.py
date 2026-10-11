@@ -866,7 +866,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(".template.toml", "every parameter, with the value it was given",
              staged=False,
              when="setup", level="calculation", kind="source",
-             writer="`jobset init`; the hand-over and the Transport tab, "
+             writer="`jobset init` and the Transport tab's describe "
+                    "door (`describe.write_description`); the hand-over, "
                     "which the browser writes; `jobset migrate` -- each "
                     "naming it with `template.template_path`",
              door="template.find_template"),
@@ -1141,8 +1142,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(name=TASK_FILE, what="the description: what varies, the stages, "
                                   "the shape, the structure",
              when="setup", level="calculation", kind="source",
-             writer="`jobset init`; Task setup's Save; the Transport tab's "
-                    "describe, which the browser writes",
+             writer="`jobset init` and the Transport tab's describe door "
+                    "(`describe.write_description`); Task setup's Save",
              door="task.read_task"),
     Artifact(name=TASK_HANDOVER_FILE,
              what="a hand-over waiting for its shape and stages; Save "

@@ -421,9 +421,10 @@ the project root, on any tab — `{title?, nameTitle?, initial?, hint?}` →
 the page has no project root yet). **One door for every flow that deposits
 artifacts under the root**: the MolView exports ride it today.  *(The
 transport calculation was the named future consumer; it shipped 2026-08-29
-consolidating NOTHING in the browser — the citation composes at `prep`, so
-the tab writes one `task.json` through `projects.safeSave`, the same
-content-blind file layer, and this door gained no second caller.)*
+consolidating NOTHING in the browser — the citation composes at `prep`, and
+the tab's describe door writes the description on the server (since
+2026-10-11; `engines/transport.md` § 3.8.2a), so this door gained no second
+caller.)*
 
 *(Whole-file **download** is not a method here — it is a direct browser download
 from the row's `⋯` menu.)*

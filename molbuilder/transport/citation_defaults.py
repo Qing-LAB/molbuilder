@@ -291,6 +291,10 @@ def transport_template_text(cite_dir, *, label: str, blank=(),
     sources.update({k: "person" for k, v in mine.items()
                     if not (k in sources and cited.values[k] == v)})
     sources["system_label"] = "person"
+    # A CITED RUN'S PSEUDOPOTENTIALS TRAVEL WITH IT (`asked_of_the_person`):
+    # the citation answers the directory, so no surface says it is nobody's.
+    if cited.source == "deck":
+        sources["psml_lib"] = "cited"
     return _T.template_with_values(cfg, engine="siesta",
                                    calculation="transport",
                                    valueless=unanswered, sources=sources)

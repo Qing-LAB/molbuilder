@@ -55,7 +55,7 @@ import typing
 import json
 import pathlib
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ...chemistry import BackendUnavailable as _BackendUnavailable
 from ...issues import Issue
@@ -1514,6 +1514,11 @@ def api_task_setup_sweepable():
             "label":           it.label or it.name,
             "help":            it.help or "",
             "machine_answers": it.allocation,
+            # A ROW ON EVERY RUN CARD FROM THE START, blank until stated
+            # (`web/task-setup.md` § 6.2b), on the rungs that read it --
+            # the catalogue's `run_card` and `stages`.
+            "run_card":        it.run_card,
+            "stages":          list(it.stages) or None,
             # THE VALUE SHAPE (user, 2026-08-20): the machine card births
             # a row at its value in force and offers an enum's choices or
             # a bool's two values from a dropdown -- it can only do either
@@ -2122,6 +2127,12 @@ def api_task_setup_folder():
         # answer (`prep_inputs.bench_refusal`), so the page offers the
         # Measure step exactly where `prep bench` would take it.
         "bench_refusal": _folder_bench_refusal(folder, described),
+        # WHAT THE KIND FIXES -- a transport description's shape and its
+        # five rungs, in order -- by the reader's own answer
+        # (`task.fixed_by_kind`), so the page offers no control the reader
+        # refuses (`web/task-setup.md` § 4, § 5.3); null for every other
+        # kind.
+        "fixed": _folder_fixed(_task),
         # HOW A TRANSPORT DESCRIPTION TREATS ITS BIAS LIST, by the one rule
         # the record names it with (`Task.treatment`); null for every other
         # kind.  The "What came over" card echoes it (`task-setup.md` § 3).
@@ -2147,6 +2158,16 @@ def api_task_setup_folder():
         "ladder": (_folder_ladder(folder) if described is not None
                    else {"stages": [], "offer": []}),
     })
+
+
+def _folder_fixed(task) -> Optional[dict]:
+    """``task.fixed_by_kind`` of a description that reads, as the wire
+    carries it; ``None`` for a kind that fixes nothing, or no description."""
+    from molbuilder.task import fixed_by_kind
+    fixed = fixed_by_kind(getattr(task, "calculation", ""))
+    return None if fixed is None else {"shape": fixed["shape"],
+                                       "stages": list(fixed["stages"]),
+                                       "optional": list(fixed["optional"])}
 
 
 def _folder_ladder(folder) -> dict:

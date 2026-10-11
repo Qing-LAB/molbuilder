@@ -69,9 +69,12 @@
 
       <section class="card" id="ts-came-card" hidden>
         <h2>What came over</h2>
-        <p class="hint">Read-only. Set where the calculation was described;
-          change it there, not here — changing these is changing what the
-          calculation <em>is</em>.</p>
+        <p class="hint">Read-only here — this is what the calculation
+          <em>is</em>. Its name and what it is of (its structure, or a
+          transport calculation's junction) name it: a different one is a new
+          calculation, described in a new folder. A transport calculation's
+          two choices on its junction and its bias list are corrected in
+          <code>task.json</code>, below.</p>
         <dl class="ts-facts" id="ts-facts"></dl>
         {#- A cited frame set's frames -- its count and, for a mode's set, its
             mode line and per-frame table -- by the one frame-set card
@@ -84,8 +87,9 @@
         <div class="ts-came-shared" id="ts-shared-wrap" hidden>
           <h3 class="ts-reports-head">Shared by every stage</h3>
           <p class="hint">One value for the whole calculation, and where it
-            came from. No stage can change it; change it where the
-            calculation was described.</p>
+            came from. No stage can change it: it is the template's, and is
+            changed in that file — or the calculation is described anew in a
+            new folder.</p>
           <dl class="ts-facts" id="ts-shared"></dl>
         </div>
       </section>
@@ -113,6 +117,8 @@
         </div>
         <p class="ts-needs" id="ts-shape-needs">Needed before this can be
           written</p>
+        {#- A KIND THAT FIXES THE SHAPE says so (task-setup.md § 4). -#}
+        <p class="hint" id="ts-shape-fixed" hidden></p>
       </section>
 
       <!-- WHICH MACHINE.  Same component and same rationale as the shape
@@ -209,9 +215,19 @@
       
       <section class="card" id="ts-stages-card" hidden>
         <h2>Stages</h2>
-        <p class="hint">Rows are stages, columns are the parameters that vary.
+        <p class="hint" id="ts-stages-hint">Rows are stages, columns are the
+          parameters that vary.
           A cell shown muted is <em>this stage uses the template's value</em>
           &mdash; a real state, not a blank.</p>
+        {#- A KIND THAT FIXES ITS RUNGS (task-setup.md § 5.3): a transport
+            folder's rows are its ladder, and each rung's values its own. -#}
+        <p class="hint" id="ts-stages-rungs" hidden>Rows are the ladder's
+          rungs, in its order, numbered as the Transport tab numbers them;
+          columns are each rung's own values over the template &mdash; set
+          first on the Transport tab, changed here once the description is
+          written. A muted cell is <em>this rung uses the template's
+          value</em>; a column's cells on rungs that do not read it are
+          disabled. Only the seed may be left out.</p>
         <div class="ts-tablewrap">
           <table class="ts-table" id="ts-stage-table">
             <thead><tr><th>Stage</th></tr></thead>
@@ -224,8 +240,9 @@
                   aria-label="add a parameter column"></select>
           <button type="button" class="btn" id="ts-add-col-go">+ Add
             column</button>
-          <span class="hint">A new stage copies the previous one's values —
-            a refinement starts from what came before.</span>
+          <span class="hint" id="ts-add-stage-hint">A new stage copies the
+            previous one's values — a refinement starts from what came
+            before.</span>
         </div>
       </section>
 

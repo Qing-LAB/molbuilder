@@ -122,6 +122,11 @@
     {#- The one refusal with a one-click fix: inverted electrode
         labels.  Populated by core.js from the describe's `fix` word. -#}
     <div id="transport-junction-fix" hidden></div>
+    {#- Where the junction sits along z, and the offer to centre it in its
+        cell -- shown whenever the junction states its offset
+        (engines/transport.md § 3.8.1, § 4), from the describe's
+        `placement`. -#}
+    <div id="transport-junction-place" hidden></div>
     <span id="transport-status" class="status" role="status"
           aria-live="polite"></span>
     {#- Empty host -> molview.mount builds the full fused card here when
@@ -295,7 +300,7 @@
       {#- A disabled button shows no tooltip; the wrapper does
           (form-schema.css `.disabled-tip`). -#}
       <span class="disabled-tip"
-            title="Writes the finished task.json into the folder selected in the Projects sidebar; enabled once a junction is cited.  Prep it stage by stage from Task setup or the CLI.">
+            title="Writes the finished description (task.json and its template) into the folder selected in the Projects sidebar -- one that holds no description yet; enabled once a junction is cited.  Change it afterwards on Task setup; prep it stage by stage there or with the CLI.">
         <button id="transport-send-btn" class="full-btn" disabled>
           Describe this calculation
         </button>
@@ -441,9 +446,10 @@
 {#- the rung strip of card 4 (engines/transport.md 3.8.2a) -- the same
     switcher the engine strips use -#}
 <script src="{{ url_for('static', filename='lib/tab-strip.js') }}"></script>
-{# lib/task-handover.js supplies the destination guards + the file-layer
-   write; the transport branch posts to /api/transport/describe and does
-   NOT navigate (user ruling 2026-08-29) #}
+{# lib/task-handover.js names the folder and posts to
+   /api/transport/describe, whose server door refuses a described folder or
+   one inside the citation and writes the description; the page does NOT
+   navigate (user ruling 2026-08-29; engines/transport.md 3.8.2a) #}
 <script src="{{ url_for('static', filename='lib/task-handover.js') }}"></script>
 {#- the ONE findings renderer, which card 5's panel is drawn by -#}
 <script type="module" src="{{ url_for('static', filename='lib/validation-findings-global.js') }}"></script>

@@ -822,6 +822,7 @@ Write <job>.molwatch.log alongside the run: per-step coordinates, energy and for
 """
 [item.mpi_np]
 kind = "wrapper"
+run_card = true
 category = ["execution"]
 engines = ["siesta"]
 engine_key = "(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)"
@@ -842,6 +843,7 @@ For a run by hand the run script takes ``bash <stem>.run.sh --run N -np M``, to 
 # BOTH ENGINES (`execution/gpu.md` § 1.1): how many GPUs a run asks for is
 # stated, on every engine, and has no default.
 kind = "wrapper"
+run_card = true
 category = ["execution"]
 engine_key = "(molbuilder: scheduler ``--gres=gpu:G``; not in the deck)"
 type = "int"
@@ -898,6 +900,7 @@ Splitting over k-points when there is only one leaves the other ranks nothing to
 
 [item.omp_threads]
 kind = "wrapper"
+run_card = true
 category = ["execution"]
 engines = ["siesta"]
 engine_key = "(molbuilder: .run.sh OMP_NUM_THREADS + .fdf runtime_info comment)"
@@ -943,6 +946,7 @@ stages = ["seed", "electrode_L", "electrode_R", "device", "relaxation", "force_c
 # (PySCF carries an `expands` entry it does not honour as a keyword) is
 # the cost 6.3 states out loud for `restart`.
 kind = "deck"
+run_card = true
 category = ["execution"]
 expands = ["Diag.ELPA.GPU", "gpu4pyscf"]
 engine_key = "Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)"
@@ -1625,6 +1629,7 @@ For water the three agree closely; the choice matters in low-dielectric solvents
 
 [item.threads]
 kind = "engine"
+run_card = true
 category = ["execution"]
 engines = ["pyscf"]
 allocation = true

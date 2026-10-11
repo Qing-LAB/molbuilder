@@ -599,10 +599,10 @@ def _source_stage(base, task, stage: str, template_text: Optional[str] = None
 
 def _independent(task) -> bool:
     """An INDEPENDENT ladder, whose stages continue one from another: a kind
-    without rung roles (`template.KIND_ROLES`).  A linked stage's input is
+    without rung roles (`paths.KIND_ROLES`).  A linked stage's input is
     its kind's: a transport rung's gather (`prep.gather_sources`),
     and a force-constant stage builds on `relax` (:func:`_source_stage`)."""
-    from ..template import KIND_ROLES
+    from ..paths import KIND_ROLES
     return task.calculation not in KIND_ROLES
 
 

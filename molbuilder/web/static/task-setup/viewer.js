@@ -170,8 +170,38 @@ function renderStages(task) {
     }
     thead.appendChild(hrow);
 
+    /* WHAT THE KIND FIXES (`task-setup.md` § 5.3): a transport folder's
+     * rows are its ladder's rungs -- numbered as the Transport tab numbers
+     * them, never renamed or moved, only the optional ones removed or added
+     * back.  The folder answer's `fixed`, the reader's own rule. */
+    const fixed = _fs.fixed;
     stages.forEach((st, i) => {
         const name = (st && st.name) || "(unnamed)";
+
+        if (fixed) {
+            const at = fixed.stages.indexOf(name);
+            const optional = fixed.optional.indexOf(name) !== -1;
+            let dropRung = null;
+            if (optional) {
+                dropRung = el("button", {
+                    type: "button", class: "ts-rowbtn ts-rowbtn-drop",
+                    title: "Leave this rung out -- the ladder skips it",
+                    "aria-label": "Remove stage " + name,
+                }, "\u00d7");
+                dropRung.addEventListener("click", () => removeStage(i));
+            }
+            const ranRung = _fs.runs[name];
+            const row = el("tr", null, el("td", null,
+                el("span", { class: "ts-cell-name" },
+                   (at === -1 ? "" : (at + 1) + " \u00b7 ") + name),
+                dropRung,
+                ranRung === undefined ? null
+                    : el("span", { class: "ts-ran" },
+                         ranRung ? ranRung + "\u00d7" : "\u2014")));
+            appendCells(row, st, i, name);
+            tbody.appendChild(row);
+            return;
+        }
 
         const nameInput = el("input", {
             class: "ts-cell ts-cell-name", value: name,
@@ -229,7 +259,17 @@ function renderStages(task) {
 
         const tr = el("tr", null,
             el("td", null, nameInput, drop, preset, ranEl));
+        appendCells(tr, st, i, name);
+        tbody.appendChild(tr);
+    });
 
+    const actions = $("ts-stage-actions");
+    if (actions) actions.hidden = false;
+    paintStageWords(stages);
+    card.hidden = false;
+
+    /* One row's cells, a column each -- the same for every kind. */
+    function appendCells(tr, st, i, name) {
         const ov = (st && st.overrides) || {};
         for (const col of varies) {
             const has = Object.prototype.hasOwnProperty.call(ov, col);
@@ -302,12 +342,27 @@ function renderStages(task) {
             cell.addEventListener("change", () => setCell(i, col, cell.value));
             tr.appendChild(el("td", { "data-template": has ? null : "yes" }, cell));
         }
-        tbody.appendChild(tr);
-    });
+    }
+}
 
-    const actions = $("ts-stage-actions");
-    if (actions) actions.hidden = false;
-    card.hidden = false;
+/** The card's words and its add button, as the kind has them (§ 5.3): on a
+ *  kind that fixes its rungs, the rung sentence and an add button only for
+ *  an optional rung that is left out -- added back in its place. */
+function paintStageWords(stages) {
+    const fixed = _fs.fixed;
+    const names = (stages || []).map((st) => st && st.name);
+    const missing = fixed
+        ? fixed.optional.filter((n) => names.indexOf(n) === -1) : [];
+    const show = (id, on) => { const n = $(id); if (n) n.hidden = !on; };
+    show("ts-stages-hint", !fixed);
+    show("ts-stages-rungs", !!fixed);
+    show("ts-add-stage-hint", !fixed);
+    const add = $("ts-add-stage");
+    if (add) {
+        add.hidden = !!fixed && !missing.length;
+        add.textContent = fixed && missing.length
+            ? "+ Add " + missing[0] : "+ Add stage";
+    }
 }
 
 /* ---------- what this machine would actually run ---------- */
@@ -361,6 +416,7 @@ function freshFolderState() {
         prepared:      { task: {}, bench: {}, placed: {} },  // kind -> stage -> prep's own sentence
         ladder:       { stages: [], offer: [] },  // the ready door's answer per stage
         prepPick:     null,       // the stages picked for the task's Prep; null = the offer
+        fixed:        null,       // what the kind fixes -- shape, stages, optional (§ 5.3)
     };
 }
 
@@ -532,8 +588,10 @@ const LANE_ASKS = [
       placeholder: "public" },
 ];
 
-/** The parameters this card offers: every setting the bench declares, plus
- *  whatever the condition already states, plus any the person added here.
+/** The parameters this card offers: the launch rows the catalogue stands on
+ *  every card (`run_card`, on the rungs that read them -- `task-setup.md`
+ *  § 6.2b), every setting the bench declares, whatever the condition
+ *  already states, and any the person added here.
  *
  *  OFFERED, NEVER READ (user, 2026-09-02): the bench's own points do not
  *  reach this card's values -- what the run uses is `execution`, and the
@@ -542,6 +600,9 @@ const LANE_ASKS = [
 function runRowNames(task, stage) {
     const out = [];
     const add = (n) => { if (out.indexOf(n) === -1) out.push(n); };
+    for (const it of (_sweep || [])) {
+        if (it && it.run_card && readsHere(it.name, stage)) add(it.name);
+    }
     for (const n of Object.keys((task && task.bench) || {})) add(n);
     for (const n of Object.keys(runConditionOf(task, stage))) add(n);
     for (const n of extraRunRows(stage)) add(n);
@@ -1054,7 +1115,7 @@ async function loadFolder(projects, dir, opts) {
     }
     if (docKind === "transport" && taskText) {
         markFile("ts-f-task", true,
-                 "already here — the five stages, the bias and the "
+                 "already here — the rungs, the bias and the "
                  + "citation; the structure is the cited junction, "
                  + "composed at prep");
     }
@@ -1180,6 +1241,8 @@ async function loadFolder(projects, dir, opts) {
      * answer (W55 B4): a calculation's machine is its first prep's and does
      * not change (`configuration.md` M-3), so the card shows it fixed. */
     _fs.setTo = said.set_to || null;
+    /* WHAT THE KIND FIXES (§ 4, § 5.3), the reader's own answer. */
+    _fs.fixed = said.fixed || null;
     _fs.prepared = said.prepared;
     /* THE TASK'S LADDER, the ready door's (`job-system.md`, *The task*):
      * each stage prepared, ready or waiting -- and the pick starts again
@@ -1264,6 +1327,22 @@ function removeStage(i) {
 function addStage() {
     if (!_task) return;
     const stages = _task.stages || (_task.stages = []);
+    /* A KIND THAT FIXES ITS RUNGS (§ 5.3) takes back a left-out optional
+     * rung, in its ladder place, with no values of its own -- it is a rung,
+     * not a refinement of the one before it. */
+    const fixed = _fs.fixed;
+    if (fixed) {
+        const names = stages.map((x) => x && x.name);
+        const name = fixed.optional.find((n) => names.indexOf(n) === -1);
+        if (!name) return;
+        const at = fixed.stages.indexOf(name);
+        const before = stages.findIndex(
+            (x) => fixed.stages.indexOf(x && x.name) > at);
+        stages.splice(before === -1 ? stages.length : before, 0,
+                      { name, overrides: {} });
+        syncFromModel();
+        return;
+    }
     const prev = stages[stages.length - 1];
     let name = "stage" + (stages.length + 1);
     const taken = new Set(stages.map((x) => String(x.name || "").toLowerCase()));
@@ -1350,7 +1429,12 @@ function renderCameOver(obj, treatment, frameSet, shared) {
             ["Electrodes", obj.swap_electrodes
                 ? "L-electrode and R-electrode traded in this calculation's "
                   + "copy (swap_electrodes: true)"
-                : "as labelled on the cited junction"]);
+                : "as labelled on the cited junction"],
+            // ...AND WHERE THAT COPY SITS IN ITS CELL (transport.md § 4).
+            ["Placement", obj.centre_junction
+                ? "centred in its cell in this calculation's copy "
+                  + "(centre_junction: true)"
+                : "as the cited junction places it"]);
     } else {
         rows.push(
             ["Structure", st.source ? String(st.source).split("/").pop() : "\u2014"],
@@ -1551,7 +1635,7 @@ function _fillSweepMeta(items) {
         if (i && i.name && !_meta[i.name]) {
             _meta[i.name] = { name: i.name, label: i.label, help: i.help,
                               type: i.type, choices: i.choices,
-                              default: i.default };
+                              default: i.default, stages: i.stages };
         }
     }
 }
@@ -1591,14 +1675,22 @@ function fillPicker(sel, items, taken, empty) {
     }
     sel.disabled = false;
     sel.appendChild(el("option", { value: "" }, "choose a parameter\u2026"));
+    /* THE RUNGS OF THIS CALCULATION THAT READ AN ITEM, by their names --
+     * the catalogue's `stages` are roles across every kind, and each stage
+     * here is matched by its role, as its cells are (`readsHere`). */
+    const own = ((_task && _task.stages) || []).map((st) => st && st.name)
+        .filter(Boolean);
     for (const i of left) {
         const d = defaultText(i.name);
+        const readers = (Array.isArray(i.stages) && i.stages.length)
+            ? own.filter((n) => i.stages.indexOf(roleOf(n)) !== -1) : [];
         sel.appendChild(el("option", {
             value: i.name,
             title: helpText(i.name) || i.help || "",
         }, i.name
            + (i.label && i.label !== i.name ? "  \u2014  " + i.label : "")
            + (d ? "  [" + d + "]" : "")
+           + (readers.length ? "  \u00b7 read by " + readers.join(", ") : "")
            + (i.machine_answers ? "  (the machine answers this)" : "")));
     }
 }
@@ -3593,10 +3685,23 @@ async function loadMachines() {
 }
 
 function setShape(shape) {
+    /* A KIND THAT FIXES THE SHAPE (`task-setup.md` § 4) takes no other: the
+     * reader refuses it, so the card neither offers nor writes it. */
+    const fixedShape = (_fs.fixed && _fs.fixed.shape) || "";
+    if (fixedShape && shape && shape !== fixedShape) return;
     _shape = shape;
     for (const b of document.querySelectorAll("#ts-shape-card .opt")) {
         b.setAttribute("aria-pressed",
                        b.getAttribute("data-shape") === shape ? "true" : "false");
+        b.disabled = !!fixedShape && b.getAttribute("data-shape") !== fixedShape;
+    }
+    const fixedSaid = $("ts-shape-fixed");
+    if (fixedSaid) {
+        fixedSaid.hidden = !fixedShape;
+        fixedSaid.textContent = fixedShape
+            ? "A " + ((_task && _task.calculation) || "") + " calculation is "
+              + fixedShape + " \u2014 the kind fixes it, so no other is offered."
+            : "";
     }
     const needs = $("ts-shape-needs");
     if (needs) needs.hidden = !!shape;

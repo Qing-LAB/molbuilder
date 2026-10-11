@@ -42,13 +42,13 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..structure import frame_words
-from ..template import KIND_ROLES
+from ..paths import KIND_ROLES
 
 #: The composite's fixed ladder (§ 1) -- the five stages in
 #: dependency order.  ``jobset init`` writes exactly these into
 #: ``task.json``; `prep` names its rungs from the same tuple.  They are the
 #: kind's rung ROLES too, so their one home is the catalogue's role
-#: vocabulary (`template.KIND_ROLES`, `engines/template.md` § 6.4).
+#: vocabulary (`paths.KIND_ROLES`, `engines/template.md` § 6.4).
 TRANSPORT_STAGES = KIND_ROLES["transport"]
 
 #: **WHICH FACT EACH RUNG ANSWERS WITH** — a column, because the five rungs

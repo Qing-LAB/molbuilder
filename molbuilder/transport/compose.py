@@ -625,8 +625,94 @@ def _with_swapped_leads(struct, source_name: str):
     return struct.replace(regions=regions)
 
 
+#: THE TRANSPORT AXIS, lattice vector ``c`` -- z, as every junction states
+#: its axis kinds (:func:`junction_axis_kind`).
+_TRANSPORT_AXIS = 2
+
+
+def junction_placement(struct: Structure) -> Dict:
+    """Where the junction sits in its cell along z, as every rung's deck
+    will place it (`engines/transport.md` § 4, § 3.8.1; user, 2026-10-11):
+    ``{stated, below_ang, above_ang, centred_ang, outside}`` -- whether the
+    junction states its offset (the rule then leaves it where it is); the
+    distance from the atoms to the cell's lower and upper face, and what
+    each would be centred, in Å, measured square to the faces; and the
+    atoms outside the cell along z in any frame (0-based, this structure's
+    order).  Read through the one placement rule (`cell.to_engine`) and
+    the hand-off's own containment check (`cell.atoms_outside`); nothing
+    here places anything."""
+    from ..cell import atoms_outside, to_engine
+    frame = to_engine(struct)
+    cell = frame.cell
+    height = float(abs(np.linalg.det(cell))
+                   / np.linalg.norm(np.cross(cell[0], cell[1])))
+    frac = np.linalg.solve(cell.T, frame.positions.T).T[:, _TRANSPORT_AXIS]
+    lo, hi = float(frac.min()), float(frac.max())
+    outside = set()
+    for i in range(struct.n_frames):
+        outside |= set(atoms_outside(to_engine(struct.frame_at(i)))
+                       .get(_TRANSPORT_AXIS, ()))
+    return {"stated": struct.engine_offset is not None,
+            "below_ang": lo * height,
+            "above_ang": (1.0 - hi) * height,
+            "centred_ang": (1.0 - (hi - lo)) / 2.0 * height,
+            "outside": sorted(outside)}
+
+
+def _centred(struct: Structure) -> Structure:
+    """THIS CALCULATION'S COPY, centred in its cell (`engines/transport.md`
+    § 4; user, 2026-10-11): the description's ``centre_junction: true`` --
+    the copy states no offset, so the one placement rule (`cell.py`)
+    centres it for every rung.  Its coordinates, labels and cell are the
+    citation's; the cited run is never written."""
+    return struct.replace(engine_offset=None)
+
+
+def _refuse_outside(struct: Structure, centre_junction: bool) -> None:
+    """An atom outside the cell along z is refused as the junction is
+    composed (`engines/transport.md` § 4): TranSIESTA requires every atom
+    inside, and the hand-off would refuse it (`cell.require_placed`) in
+    words that cannot name the way out a transport calculation has."""
+    outside = junction_placement(struct)["outside"]
+    if not outside:
+        return
+    where = atom_words(outside, struct.elements, limit=8)
+    # PLACED BY THE RULE ALREADY -- centred by choice, or a junction that
+    # states no offset: centring changes nothing, the cell is too short.
+    if centre_junction or struct.engine_offset is None:
+        raise ComposeError(
+            f"the junction, centred in its cell, has {where} outside it "
+            f"along z, the transport direction: the atoms span more than "
+            f"the cell's length there (engines/transport.md 4).")
+    raise ComposeError(
+        f"the cited junction has {where} outside its cell along z, the "
+        f"transport direction, where TranSIESTA requires every atom inside "
+        f"-- the citation's coordinates keep the placement they state.  "
+        f"Centre the junction in its cell: state \"centre_junction\": true "
+        f"in this calculation's task.json (Task setup's editor), or choose "
+        f"it on the Transport tab's junction card when describing anew "
+        f"(engines/transport.md 4).")
+
+
+def refuse_inside_citation(dest, cited: "CitedRun | CitedPair") -> None:
+    """THE CALCULATION NEVER LIVES IN ITS CITATION (`engines/transport.md`
+    § 3.1): describing into the cited run's folder, or below it, would put
+    ``task.json`` -- and later every prep attempt -- inside the finished
+    relaxation it cites.  Asked by both doors that describe."""
+    home = Path(cited.path).resolve()
+    there = Path(dest).resolve()
+    if there == home or home in there.parents:
+        raise ComposeError(
+            f"{there} {'is' if there == home else 'is inside'} the cited "
+            f"junction {home.name} -- the calculation never lives inside its "
+            f"citation.  Make a folder for this transport calculation (under "
+            f"the project's transport topic) and describe it there "
+            f"(engines/transport.md 3.1).")
+
+
 def compose_junction(citation: str, *, tree_root,
-                     swap_electrodes: bool = False) -> ComposedJunction:
+                     swap_electrodes: bool = False,
+                     centre_junction: bool = False) -> ComposedJunction:
     """The whole § 4.1–4.2 compose: citation → sorted, gated, extracted --
     from either kind (`engines/transport.md` § 3.1): a cited run's relaxed
     geometry (:func:`_run_parts`) or a cited pair's frames
@@ -642,6 +728,9 @@ def compose_junction(citation: str, *, tree_root,
              if isinstance(cited, CitedPair)
              else _run_parts(cited, citation, swap_electrodes))
     relaxed, start, ion_dir, deck_text, files, said = parts
+    if centre_junction:
+        relaxed = _centred(relaxed)
+    _refuse_outside(relaxed, centre_junction)
 
     sorted_res = sort_by(relaxed, "transport")
     dev = sorted_res.structure
@@ -669,6 +758,9 @@ def compose_junction(citation: str, *, tree_root,
         # THE RENAME THIS COPY CARRIES (§ 4): the record answers for the
         # choice it was composed with, as it answers for its citation.
         "swap_electrodes": bool(swap_electrodes),
+        # AND WHERE IT SITS (§ 4): this copy centred in its cell, or placed
+        # as the citation states.
+        "centre_junction": bool(centre_junction),
         "slot": "junction",
         "citation": citation,
         # The files this junction was composed from, with hashes -- a
@@ -811,7 +903,8 @@ def _pair_unchanged(cited: CitedPair, provenance, citation: str) -> None:
 
 def load_compose_record(base_dir, *, citation: str, tree_root=None,
                         why: "Optional[list]" = None,
-                        swap_electrodes: bool = False
+                        swap_electrodes: bool = False,
+                        centre_junction: bool = False
                         ) -> Optional[ComposedJunction]:
     """The travelled copy, loaded back — or ``None`` when there is no
     complete record for THIS citation (prep then composes fresh).
@@ -868,10 +961,12 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     # THE RENAME IS PART OF THE RECORD'S IDENTITY (§ 4): a copy composed
     # with the leads one way round does not serve a description that now
     # says the other.
-    if bool(provenance.get("swap_electrodes", False)) != bool(swap_electrodes):
-        return _no(f"the record beside it was composed with "
-                   f"swap_electrodes {bool(provenance.get('swap_electrodes', False))}, "
-                   f"and this task now says {bool(swap_electrodes)}")
+    for key, now in (("swap_electrodes", swap_electrodes),
+                     ("centre_junction", centre_junction)):
+        if bool(provenance.get(key, False)) != bool(now):
+            return _no(f"the record beside it was composed with "
+                       f"{key} {bool(provenance.get(key, False))}, "
+                       f"and this task now says {bool(now)}")
     kind = provenance.get("kind")
     if kind not in CITATION_KINDS:
         return _no(f"the record beside it names no citation kind "

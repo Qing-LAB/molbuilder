@@ -160,9 +160,9 @@ The split is `projects.md`'s, not this document's invention:
 
 | | who | why |
 |---|---|---|
-| the structure's pair, the template, the hand-over | **the browser**, via `safeSave` | raw bytes — the content-blind layer. The browser is a **courier**: every byte was generated on the server, and it composes neither a name nor a document |
+| the structure's pair, the template, the hand-over | **the browser**, via `safeSave` — a transport calculation's template is its describe door's, with its `task.json` (row 3) | raw bytes — the content-blind layer. The browser is a **courier**: every byte was generated on the server, and it composes neither a name nor a document |
 | removing the hand-over | **the browser**, via `deleteEntry` | likewise, and **only after** the write succeeded: the reverse order loses the parameters if the write fails |
-| `task.json` | **the server**, via `/api/task-setup/save` | a **content-aware door**, for the reason § 3 of `projects.md` gives about the sidecar: *"a browser-written sidecar had no schema stamp, so the load door rejected it — a save-then-reload trap"*. A description is validated through `task.read_task`, the same door `prep` uses, so the browser cannot become a second drifting writer |
+| `task.json` | **the server**, via `/api/task-setup/save` — or, for a transport calculation, `/api/transport/describe`, which writes the whole description in one act (§ 6) | a **content-aware door**, for the reason § 3 of `projects.md` gives about the sidecar: *"a browser-written sidecar had no schema stamp, so the load door rejected it — a save-then-reload trap"*. A description is validated through `task.read_task`, the same door `prep` uses, so the browser cannot become a second drifting writer |
 
 ---
 
@@ -236,17 +236,27 @@ and two copies of a contract drift.
 **Transport does not use this procedure — resolved 2026-08-29, and not the
 way this section once predicted.**  A hand-over exists because Task setup
 owns questions the sending tab leaves open (shape, stages, what varies).
-The composite leaves NONE open: the five stages and the hierarchical shape
-are fixed by design, the electronic contract — its spin included — is
+The composite leaves NONE open: its rungs and the hierarchical shape are
+fixed by the kind (`task.fixed_by_kind`; a ladder skips its seed by leaving it
+out), the electronic contract — its spin included — is
 defaulted into the template from the cited run at `init`, where the shared
 panel edits it for every rung, and the knobs ride the stages' override bags.
 So the Transport tab describes DIRECTLY — `POST /api/transport/describe`
-answers with the finished `task.json`, the browser writes it where the
-user chose, and **nothing is awaiting** ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)
+writes the complete description, the template and `task.json`, through the
+server in one act (`describe.write_description`, as `jobset init`), into a
+folder that holds none — and **nothing is
+awaiting** ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)
 P7b).  The `transport-handover@1` schema this section once proposed was
 never needed: with no open questions there is no hand-over payload to
-carry.  Task setup remains the run surface that READS the description —
-machine, queue, prep — like any other.
+carry.  **Once written, Task setup is its editor, as every kind's** *(user,
+2026-10-11)*: each rung's own values in its Stages card — the rungs
+fixed, the seed the one left out or added back, `web/task-setup.md` § 5.3 —
+and the run's settings; what came over is what
+the calculation is: its citation names it — a different junction is a new
+description in a new folder — and its two choices and its bias are corrected
+in `task.json` itself, in Task setup's editor.  *(Until 2026-10-11 this said Task setup
+only READS the description, while its stage table edited the rungs' values,
+and the browser wrote the server's text.)*
 
 ---
 

@@ -100,8 +100,25 @@ STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _TOP_KEYS = ("schema", "engine", "shape", "run",
              "structure", "varies", "stages", "calculation", "bench",
              "allocation", "execution",
-             "notify", "slots", "bias", "swap_electrodes")
+             "notify", "slots", "bias", "swap_electrodes",
+             "centre_junction")
 _BIAS_KEYS = ("voltages_v", "low_bias_approximation")
+
+def fixed_by_kind(calculation: str) -> Optional[Dict[str, Any]]:
+    """WHAT A CALCULATION KIND FIXES, so its description states it and no
+    surface offers another (`engines/transport.md` § 3.8.2a,
+    `web/task-setup.md` § 5.3; user, 2026-10-11): ``{"shape", "stages",
+    "optional"}`` for transport -- hierarchical; its five rungs in order;
+    the seed the one a description may leave out, which is how a ladder
+    skips it (ruling Q4, `engines/stages.md` § 2) -- and ``None`` for a
+    kind that fixes neither.  The reader's check asks it, and Task setup's
+    folder answer serves it, so the two cannot disagree."""
+    if calculation != "transport":
+        return None
+    from .paths import KIND_ROLES
+    return {"shape": "hierarchical", "stages": KIND_ROLES["transport"],
+            "optional": ("seed",)}
+
 
 #: A slot citation names its junction explicitly, by its tree-relative
 #: path (`engines/transport.md` § 3.1): a finished relaxation run's folder,
@@ -412,6 +429,14 @@ class Task:
     #: a transport description carries it; false writes no key.
     swap_electrodes: bool = False
 
+    #: WHERE THE JUNCTION SITS IN ITS CELL IS THIS CALCULATION'S CHOICE TOO
+    #: (`engines/transport.md` § 4; user, 2026-10-11): ``True`` says THIS
+    #: calculation's copy of the cited junction states no offset, so the one
+    #: placement rule centres it in its cell for every rung (`cell.py`); the
+    #: cited run is never written.  Only a transport description carries it;
+    #: false writes no key.
+    centre_junction: bool = False
+
     #: THE BIAS SWEEP AXIS, volts (engines/transport.md § 2a.10) -- like
     #: ``bench``, a list of points the description asks for, not a
     #: machine's answer.  Empty means zero-bias only (the default every
@@ -475,23 +500,33 @@ class Task:
                     "task: a transport calculation carries no 'structure' "
                     "block -- its structure IS the junction citation, "
                     "copied in at prep (engines/transport.md § 3.1)")
-            if self.shape != "hierarchical":
+            fixed = fixed_by_kind(self.calculation)
+            if self.shape != fixed["shape"]:
                 raise ValueError(
-                    f"task: a transport calculation is hierarchical "
+                    f"task: a transport calculation is {fixed['shape']} "
                     f"(got {self.shape!r}) -- its five stages exchange "
                     f"files through their own attempts, which the flat "
                     f"shape has no directories to hold "
                     f"(engines/transport.md § 2a.11)")
+            names = tuple(st.name for st in (self.stages or ()))
+            if names != tuple(n for n in fixed["stages"]
+                              if n not in fixed["optional"] or n in names):
+                raise ValueError(
+                    f"task: a transport calculation's stages are its "
+                    f"rungs, in order -- {', '.join(fixed['stages'])}, the "
+                    f"{' and '.join(fixed['optional'])} the one it may "
+                    f"leave out (got {', '.join(names) or 'none'}) "
+                    f"(engines/transport.md § 3.8.2a)")
         else:
             if self.slots:
                 raise ValueError(
                     f"task: 'slots' belongs to calculation='transport' "
                     f"alone (this is {self.calculation!r})")
-            if self.swap_electrodes:
-                raise ValueError(
-                    f"task: 'swap_electrodes' belongs to "
-                    f"calculation='transport' alone (this is "
-                    f"{self.calculation!r})")
+            for key in ("swap_electrodes", "centre_junction"):
+                if getattr(self, key):
+                    raise ValueError(
+                        f"task: {key!r} belongs to calculation='transport' "
+                        f"alone (this is {self.calculation!r})")
             if self.bias:
                 raise ValueError(
                     f"task: 'bias' belongs to calculation='transport' "
@@ -820,10 +855,14 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 f"{type(bias_raw).__name__}", where="bias")
     bias = tuple(bias_raw)
     low_bias_approximation = bias_obj.get("low_bias_approximation")
-    swap_electrodes = obj.get("swap_electrodes", False)
-    if not isinstance(swap_electrodes, bool):
-        _refuse(f"swap_electrodes is true or false, got "
-                f"{type(swap_electrodes).__name__}", where="swap_electrodes")
+    # THE TWO CHOICES A TRANSPORT CALCULATION MAKES ON ITS OWN COPY OF THE
+    # JUNCTION (`engines/transport.md` § 4), each true or false.
+    copy_choices = {}
+    for key in ("swap_electrodes", "centre_junction"):
+        copy_choices[key] = obj.get(key, False)
+        if not isinstance(copy_choices[key], bool):
+            _refuse(f"{key} is true or false, got "
+                    f"{type(copy_choices[key]).__name__}", where=key)
 
     has_stages = "stages" in obj
 
@@ -881,7 +920,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                                         calculation=calc),
                 slots=slots, bias=bias,
                 low_bias_approximation=low_bias_approximation,
-                swap_electrodes=swap_electrodes)
+                **copy_choices)
 
 
 def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
@@ -1262,8 +1301,9 @@ def _task_to_dict(task: Task) -> dict:
     # (engines/transport.md § 2a.14): slots, then bias, then the stages.
     if task.slots:
         out["slots"] = dict(sorted(task.slots.items()))
-    if task.swap_electrodes:
-        out["swap_electrodes"] = True
+    for key in ("swap_electrodes", "centre_junction"):
+        if getattr(task, key):
+            out[key] = True
     if task.bias:
         out["bias"] = {"voltages_v": [float(v) for v in task.bias],
                        **({"low_bias_approximation":

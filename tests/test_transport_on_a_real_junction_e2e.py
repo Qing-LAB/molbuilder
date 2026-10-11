@@ -401,11 +401,26 @@ def junction(tmp_path_factory):
                               "text": json.dumps(task)})
         assert s.status_code == 200, s.get_json()
 
-        # ...and through the Transport tab's describe, and its card's read
-        # of the citation.
+        # ...and through the Transport tab's describe, which writes the
+        # description into the folder it names (`engines/transport.md`
+        # § 3.8.2a), and its card's read of the citation.
+        run.described_at = tree / "P" / "transport" / "T2"
+        run.described_at.mkdir()
         b = client.post("/api/transport/describe", json=dict(
-            engine="siesta", name="T2", junction=cite, bias=[0.0]))
+            engine="siesta", name="T2", junction=cite, bias=[0.0],
+            dest=str(run.described_at)))
         run.said["describe"] = Said(b.status_code, json.dumps(b.get_json()))
+        # ...AND AGAIN, INTO THE FOLDER IT HAS JUST DESCRIBED: Describe is
+        # one act, and that folder is now a calculation (§ 3.8.2a).
+        run.described_before = {f.name: f.read_bytes()
+                                for f in run.described_at.iterdir()}
+        b = client.post("/api/transport/describe", json=dict(
+            engine="siesta", name="T2", junction=cite, bias=[0.0, 0.5],
+            low_bias_approximation=True, dest=str(run.described_at)))
+        run.said["describe again"] = Said(b.status_code,
+                                          json.dumps(b.get_json()))
+        run.described_after = {f.name: f.read_bytes()
+                               for f in run.described_at.iterdir()}
         a = client.get(f"/api/transport/describe_attempt?path={cite}")
         run.said["describe_attempt"] = Said(a.status_code,
                                             json.dumps(a.get_json()))
@@ -652,8 +667,11 @@ def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
     from molbuilder.template import one, read_template
     describe = json.loads(junction.said["describe"].output)
     assert junction.said["describe"].exit_code == 200, describe
+    written = next(n for n in describe["written"]
+                   if n.endswith(".template.toml"))
     for tmpl in (read_template(junction.template_at_init),
-                 read_template(describe["files"][1]["text"])):
+                 read_template((junction.described_at / written)
+                               .read_text())):
         assert one(tmpl, "mesh_cutoff").value == 150.0
         assert one(tmpl, "basis_size").value == "SZ"
         assert one(tmpl, "electronic_temperature").value == 350.0
@@ -662,6 +680,19 @@ def test_a_cited_run_brings_its_settings_and_its_spin_on_both_roads(junction):
         for name, value in (("mixing_weight", 0.1), ("pulay_history", 6)):
             assert one(tmpl, name).value == value, name
             assert one(tmpl, name).source == "cited", name
+
+
+def test_describe_is_one_act_and_refuses_a_described_folder(junction):
+    """`engines/transport.md` § 3.8.2a: the describe door writes a
+    description into a folder that holds none and refuses one that holds one
+    -- the one-calculation-per-folder refusal `jobset init` asks, in the door
+    that writes -- leaving the folder exactly as it was.  Without it a second
+    Describe silently replaces a calculation Task setup has since changed:
+    its rungs' values, its run settings."""
+    said = junction.said["describe again"]
+    assert said.exit_code == 409, said.output
+    assert "one calculation per folder" in json.loads(said.output)["error"]
+    assert junction.described_after == junction.described_before
 
 
 def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(

@@ -10,9 +10,11 @@
  *   * lib/transport/core.js             -- engine siesta, calculation
  *     transport: NO structure/params -- `junction` (the citation),
  *     `bias` (volts, 0.0 first), `low_bias_approximation`,
- *     `swap_electrodes`, `stages` (per-rung override bags) and `shared`
- *     ride instead, and the answer is TWO files, task.json and the
- *     template (transport.md § 3.8.5)
+ *     `swap_electrodes`, `centre_junction`, `stages` (per-rung override
+ *     bags) and `shared` ride instead, with the folder (`dest`) the door
+ *     writes the description into -- a folder holding one is refused --
+ *     and the answer names what it wrote (`written`; transport.md
+ *     § 3.8.2a, § 3.8.5)
  *
  * Classic script on the `window.molbuilder` namespace (same loading
  * pattern as lib/form-schema.js) so both a classic-script consumer
@@ -42,6 +44,8 @@
  *     junction,     // transport only: the citation string
  *     bias,         // transport only: [volts...], 0.0 first
  *     low_bias_approximation, // transport only: true | false for several voltages
+ *     swap_electrodes, centre_junction, // transport only: the two choices
+ *                   //   on the calculation's own copy of the junction
  *     stages,       // transport only: {rung: {catalogue item: value}}, per-rung bags
  *     shared,       // transport only: {catalogue item: value}, the shared panel
  *   })
@@ -120,32 +124,13 @@
             return;
         }
 
-        /* THE CALCULATION NEVER LIVES IN ITS CITATION (transport.md
-         * § 3.1): describing into the cited directory would drop task.json --
-         * and later every prep attempt -- inside the finished relaxation it
-         * cites.  The sidebar selection lingers on the attempt the person
-         * just browsed to cite, so this is the easy mistake to make.
-         *
-         * "Inside" means inside, not "equal to": a subfolder of the
-         * citation buries the calculation just as thoroughly. */
-        const relNorm = rel.replace(/\/+$/, "");
-        const citeNorm = String(o.junction || "").replace(/\/+$/, "");
-        const inside = citeNorm && relNorm
-            && (relNorm === citeNorm || relNorm.startsWith(citeNorm + "/"));
-        if (isTransport && inside) {
-            say("warn",
-                (relNorm === citeNorm
-                    ? "That folder IS the cited junction"
-                    : "That folder is INSIDE the cited junction")
-                + " — the calculation never lives inside its citation.  "
-                + "Make a folder for this transport job (e.g. under the "
-                + "project's transport topic) and select it.");
-            return;
-        }
-
-        /* ONE JOB PER FOLDER (`job-contracts.md` § 2.1 Rule 1).  Send writes
-         * with `overwrite: true`, so without this it would silently replace
-         * another calculation's template.  The check goes through the file
+        /* ONE JOB PER FOLDER (`job-contracts.md` § 2.1 Rule 1) -- for a
+         * hand-over, whose bytes this module writes.  A transport describe
+         * is written by its server door, which refuses a described folder
+         * and one inside the citation itself, as `jobset init` does
+         * (`engines/transport.md` § 3.8.2a), so it is not asked here.
+         * Send writes with `overwrite: true`, so without this it would
+         * silently replace another calculation's template.  The check goes through the file
          * layer like every other read -- `missingOk` makes "no description
          * here" a 200 rather than a logged 404, which is the normal case.
          * It lives on the side that chooses where to write. */
@@ -155,8 +140,9 @@
          * real failure -- a 403/500/network drop, and it refuses: a
          * one-job-per-folder check that fails OPEN overwrites the folder
          * it could not read. */
-        const prior = await projects.readFile(dest + "/task.json",
-                                              { missingOk: true });
+        const prior = isTransport ? null
+            : await projects.readFile(dest + "/task.json",
+                                      { missingOk: true });
         if (prior && prior.ok === false) {
             say("error", "Could not check the folder for an existing "
                 + "description: " + (prior.error || "read failed")
@@ -198,8 +184,14 @@
             req.low_bias_approximation =
                 typeof o.low_bias_approximation === "boolean"
                     ? o.low_bias_approximation : null;
+            // THE TWO CHOICES ON THE CALCULATION'S OWN COPY OF THE JUNCTION
+            // (transport.md § 4), as the tab holds them.
+            req.swap_electrodes = !!o.swap_electrodes;
+            req.centre_junction = !!o.centre_junction;
             req.stages    = o.stages || {};      // {rung: {item: value}}
             req.shared    = o.shared || {};
+            // THE FOLDER THE DOOR WRITES INTO (transport.md § 3.8.2a).
+            req.dest      = dest;
         } else {
             req.structure = structure;
             req.params    = o.params || {};
@@ -210,9 +202,9 @@
         }
         /* NO HAND-OVER FOR THE COMPOSITE (user ruling 2026-08-29):
          * nothing is awaiting -- stages, shape and identity are fixed
-         * by design -- so the transport door answers with the FINISHED
-         * task.json and this module only writes it where the user
-         * chose.  Every other kind still hands to Task setup, which
+         * by the kind -- so the transport door WRITES the finished
+         * description itself, into the folder named here (transport.md
+         * § 3.8.2a).  Every other kind still hands to Task setup, which
          * owns the questions those kinds leave open. */
         const url = isTransport ? "/api/transport/describe"
                                 : "/api/task-setup/handover";
@@ -240,20 +232,24 @@
             return;
         }
 
-        /* The BYTES go through the content-blind file layer, never a fetch of
-         * our own (`web/projects.md` § 1).  `safeSave` writes into the folder
-         * the user selected, refuses at the projects root, re-lists the
-         * sidebar afterwards, and returns the four-way shape below. */
+        /* A HAND-OVER'S BYTES go through the content-blind file layer, never
+         * a fetch of our own (`web/projects.md` § 1).  `safeSave` writes into
+         * the folder the user selected, refuses at the projects root,
+         * re-lists the sidebar afterwards, and returns the four-way shape
+         * below.  A transport description was written by its door: there is
+         * nothing to write, and the sidebar is re-listed to show it. */
         say("muted", "Writing…");
         /* The STRUCTURE goes first, and the order is deliberate: the hand-over
          * NAMES those files, so writing it before them would leave a folder
          * whose description points at nothing if the next write fails. */
-        const parts = isTransport
-            ? (out.files || []).map((f) => [f.name, f.text])
+        const parts = isTransport ? []
             : (out.structure_files || []).map((f) => [f.name, f.text])
                   .concat([[out.template_name, out.template_text],
                            [out.handover_name, out.handover_text]]);
         const toWrite = parts.filter(([n, x]) => n && typeof x === "string");
+        if (isTransport && typeof projects.refresh === "function") {
+            await projects.refresh();
+        }
         for (const [name, text] of toWrite) {
             // safeSave(TEXT, FILENAME, opts) -- text first.
             const wrote = await projects.safeSave(text, name, { overwrite: true })
@@ -268,7 +264,8 @@
                 return;
             }
         }
-        const written = toWrite.map(([n]) => n);
+        const written = isTransport ? (out.written || [])
+                                    : toWrite.map(([n]) => n);
 
         /* WHAT THE CELL GATE SAID.  The same gate every structure door runs
          * answers with notices as well as refusals: a refusal is the 400 above,

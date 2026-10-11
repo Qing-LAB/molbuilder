@@ -52,6 +52,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple, Union
 
 from .identity import stage_key
+from .paths import KIND_ROLES
 from .persist import check_schema
 
 
@@ -379,6 +380,12 @@ class Item:
     #:
     #: Ask it directly, or filter for it: ``select(t, allocation=True)``.
     allocation: bool = False
+
+    #: **A row on every run card from the start**, blank until stated
+    #: (`web/task-setup.md` § 6.2b; user, 2026-10-11): the run's launch --
+    #: ranks, threads, the GPU switch and count.  It states no value and
+    #: decides nothing prep does; the run card reads it.
+    run_card: bool = False
 
     #: **The CITATION answers this one** — `allocation`'s sibling on the same
     #: axis (§ 6.4), added 2026-09-15 on the user's ruling for the transport
@@ -915,7 +922,7 @@ def _toml_key(k: Any) -> str:
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "type",
                    "choices", "value", "source", "default", "recommended", "offered", "optional", "required",
-                   "allocation",
+                   "allocation", "run_card",
                    "citation", "shared", "role", "role_values", "stages",
                    "unit", "range", "above", "at_least", "tightens", "tier",
                    "pattern",
@@ -983,6 +990,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["refs"] = list(it.refs)
     if it.allocation:
         out["allocation"] = True
+    if it.run_card:
+        out["run_card"] = True
     if it.citation:
         out["citation"] = list(it.citation)
     if it.role:
@@ -1758,6 +1767,7 @@ def _item_from(name: str, body: Any) -> Item:
         tightens=_tightens_from(name, body.get("tightens")),
         refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
+        run_card=bool(body.get("run_card", False)),
         citation=tuple(body.get("citation", ()) or ()),
         role=tuple(body.get("role", ()) or ()),
         role_values=_table_from(name, "role_values", body.get("role_values"),
@@ -1932,18 +1942,6 @@ def _rungs_words(stages) -> str:
             else ", ".join(names[:-1]) + " and " + names[-1])
 
 
-#: THE RUNG ROLES each kind's ``stages`` names (§ 6.4, plan § 5w K4): which
-#: rung of a kind reads an item, named by what the rung DOES -- the kind's
-#: own vocabulary.  Transport's roles are its five rungs, by name; a
-#: vibration's are its relaxation and its force-constant run, whatever the
-#: stages are called.  A kind absent here has no roles: every rung reads
-#: every item the kind carries (an optimization ladder is one calculation
-#: tuned N ways).
-KIND_ROLES: Dict[str, Tuple[str, ...]] = {
-    "transport": ("seed", "electrode_L", "electrode_R", "device",
-                  "transmission"),
-    "vibration": ("relaxation", "force_constants"),
-}
 
 
 def stage_role_rule(engine: str, kind: str) -> Optional[Dict[str, Any]]:

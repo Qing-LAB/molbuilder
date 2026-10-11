@@ -149,7 +149,7 @@ the tab neither uses nor duplicates it.
 | | asks | answers |
 |---|---|---|
 | `checkpoint.py::_is_bundle_root` | *does this path declare itself the root of one multi-directory unit of work?* | one boolean, over `task.json` **or** `job-set.json` — enough to decide the folder owns its subdirectories (`checkpointing.md` **L1**) |
-| **this page** | *does this folder hold a description to edit, a hand-over to finish, or nothing yet?* (a transport folder is always the FIRST state: the composite describes directly and never produces a hand-over — its `task.json` arrives finished, and this page reads it as an ordinary description whose five stages and shape are fixed) | **three** states, and it distinguishes `task.json` from `task.1st.json` — a distinction `_is_bundle_root` does not make and has no reason to |
+| **this page** | *does this folder hold a description to edit, a hand-over to finish, or nothing yet?* (a transport folder is always the FIRST state: the composite describes directly and never produces a hand-over — its `task.json` arrives finished, and this page opens it as an ordinary description and edits it, its shape and its rungs fixed by the kind, § 5.3) | **three** states, and it distinguishes `task.json` from `task.1st.json` — a distinction `_is_bundle_root` does not make and has no reason to |
 
 **The invariant that does bind them**, and it holds today: a folder this page
 treats as a described calculation is one the checkpoint system also covers.
@@ -175,7 +175,8 @@ list it walks, how it treats that list (`single-bias`,
 `low-bias-approximation` or `self-consistent` — the folder answer's
 `treatment`, the one rule the record names it by) and whether it trades the
 two electrode labels in its own copy of the junction (`swap_electrodes`,
-[`engines/transport.md`](?doc=engines/transport.md) § 4) — and the label every
+[`engines/transport.md`](?doc=engines/transport.md) § 4) and whether it
+centres that copy in its cell (`centre_junction`, the same section) — and the label every
 emitted file is stemmed on. **A cited frame set says what its frames are**,
 under them: its count and, for a mode's set, its mode line and a row per
 frame — the frame-set card the Transport tab's junction card draws, from the
@@ -197,8 +198,17 @@ The folder's answer carries them (`template.shared`, read by the template's
 own reader beside the catalogue's `shared`); the page keeps no list.
 
 **They are shown because you are about to commit a week of compute against
-them** — not so they can be changed. Changing them is changing what the
-calculation *is*, which is the other tab's job.
+them** — not so they can be changed here. What names the calculation — its
+name and what it is of, a structure or a transport calculation's junction —
+is its identity: the run id is derived from it, so a different one is a new
+calculation, described in a new folder (Save refuses another calculation's
+id, § 2). The rest is corrected in `task.json` itself, in the editor below
+(§ 9a), as `jobset init`'s refusal says of a described folder — a transport
+calculation's two choices on its junction and its bias list; a shared value
+is the template's, changed in that file, which a person reads and edits
+([`engines/template.md`](?doc=engines/template.md)). A transport
+calculation's Describe is one act and writes into no described folder
+([`engines/transport.md`](?doc=engines/transport.md) § 3.8.2a).
 
 The **id** (`<label>_<formula>`) is displayed and never recomputed here: it is
 read from the file and checked, which is what makes renaming detectable rather
@@ -220,6 +230,12 @@ already on disk — would hand somebody a directory tree they never asked for, a
 the trade it decides (what survives after three stages have run) is theirs to
 make ([`stages.md § 6.7`](?doc=engines/stages.md),
 [`project-layout.md § 1.2`](?doc=execution/project-layout.md)).
+
+**A kind that fixes the shape shows it fixed.** A transport calculation is
+hierarchical — its five rungs exchange files through their own attempts
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) — so on a
+transport folder the card shows that shape, says the kind fixes it, and offers
+no other (the folder answer's `fixed`, § 5.3).
 
 **It is fixed once the calculation has produced.** Before the first produce it is
 free to change; after, it would orphan every deck, output and warm file. So once
@@ -261,7 +277,8 @@ thirteen shared values, `mesh_cutoff` and `basis_size` among them.)* **A column
 a rung does not read (`stages`, by the rung's ROLE) shows on that rung's row as
 a disabled cell naming the rungs that read it**, never as an editor — a
 transmission window on the seed's row, a relaxation tolerance on a vibration's
-`freq`. The payload carries each item's roles and, beside the columns, how the
+`freq` — and the picker names those rungs beside the item (*read by
+transmission*, 2026-10-11). The payload carries each item's roles and, beside the columns, how the
 kind names its rungs' roles (`roles`, `template.stage_role_rule`), so the table
 maps each row to its role — the name matched in any case, as `stage_role`
 matches it (`stages.md` § 2) — and keeps no rule of its own; the description's own
@@ -360,6 +377,35 @@ assigned once and never reassigned
 counter follows* everywhere else in the system, and stage names are compared
 case-insensitively, because they key filenames
 ([`stages.md § 2`](?doc=engines/stages.md)).
+
+### 5.3 A transport folder's stages are its five rungs *(user, 2026-10-11)*
+
+A transport calculation's stages are not refinements designed here: they are
+the ladder's five rungs — `seed`, `electrode_L`, `electrode_R`, `device`,
+`transmission` — fixed by the kind, in that order, the seed the one a
+description may leave out, which is how a ladder skips it (ruling Q4,
+[`engines/stages.md`](?doc=engines/stages.md) § 2;
+[`engines/transport.md`](?doc=engines/transport.md) § 3.8.2a); the reader
+refuses any other list. Their values are each rung's OWN over the template:
+the Transport tab's rung tabs state them first, at Describe; once the
+description is written it is this page's to edit, as every kind's is
+([`handover-procedure.md`](?doc=web/handover-procedure.md) § 6) — Describe is
+one act and never writes into a described folder. So on a transport folder
+the Stages card has:
+
+| | |
+|---|---|
+| **rows** | the rungs, numbered as the Transport tab numbers them (*1 · seed* … *5 · transmission*); none is renamed or moved and no preset is offered; only the seed may be removed, and, once removed, added back in its place, with no values of its own |
+| **columns** | the items a rung may own (the column rule above); the picker names, beside each item, the rung or rungs that read it (*read by transmission*), and a column's cells on the other rungs are disabled, as on every kind |
+| **words** | *each rung's own values over the template — set first on the Transport tab, changed here after Describe*, in place of the refinement sentence of § 9's *add a stage* |
+
+What a kind fixes — its shape and its stages — is one answer,
+`task.fixed_by_kind`, which the reader's check asks and the folder answer
+serves (`fixed`); the page keeps no list. *(Measured 2026-10-11 on
+`AuBDTAu/transport/transport_lowbias`: the card offered + Add stage, × on
+every rung, the refinement sentence and a picker naming no rung; the shape
+card offered Flat, which Save then refused; and the reader accepted a ladder
+with a rung removed.)*
 
 ---
 
@@ -564,6 +610,21 @@ is the thing you are deciding about — and the grid's points sit beside each
 field in grey (*measuring: 4, 8, 16*) as **information that fills nothing**.
 It carries its own *+ Add setting* for a knob no benchmark touched, since a
 run may want one a measurement did not.
+
+**The launch rows stand on every rung's card from the start** *(user,
+2026-10-11: "show them and leave blank - explicit setting is better than
+implicit, in addition, expose gpu enable and gpu number too")*: the items the
+catalogue marks `run_card` — for SIESTA the ranks, the threads per rank, the
+GPU switch and the GPU count; for PySCF its threads, the GPU switch and the
+GPU count — each a row whether or not a benchmark names it, **blank until
+stated** and nothing proposed, on the rungs that read it (the item's `stages`,
+by role, as the stage table's cells follow them). Before
+2026-10-11 the rows were the bench's, the condition's and those added by hand
+only, so a calculation with no benchmark — every transport calculation —
+showed none, and the values prep requires were met first as its refusal. The
+marker is the catalogue's ([`engines/template.md`](?doc=engines/template.md)
+§ 5), served with each item by `/api/task-setup/sweepable`; the page keeps
+no list.
 
 **Two rows are the run's alone and are never the bench's**: `time` and
 `domain`, offered by *+ Add setting* beside the sweepable items and by name
@@ -886,6 +947,10 @@ or somebody edited by hand ([`tabs.md § 6`](?doc=web/tabs.md)).
 ## 9. The operations, and what each must not lose
 
 Every one of these can silently destroy a value if its rule is not stated.
+On a transport folder the rows are fixed (§ 5.3): no stage is renamed or
+moved and no preset is offered; only the seed is removed, or added back in its
+place with no values of its own — a rung, not a refinement of the one before
+it; columns and cells work as they do on every kind.
 
 | Operation | What it does | The rule that keeps it safe |
 |---|---|---|

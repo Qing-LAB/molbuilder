@@ -329,8 +329,8 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     """
     from pathlib import Path as _P
 
-    from ..task import Stage, Task, derive_run, write_task
-    from ..task import FILENAME as TASK_FILENAME
+    from ..describe import DescribeError
+    from ..task import Stage, Task, derive_run
     # The ladder is the transport module's fact (one door): five stages
     # in dependency order; the seed is skipped by removing it (Q4).
     from ..transport.stages import TRANSPORT_STAGES
@@ -378,7 +378,6 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # missing (strict composition, Q2).
     from ..projects import projects_root
     from ..transport.compose import CitedPair, ComposeError, resolve_citation
-    from .. import template as _T
     root = _P(projects_root()).expanduser().resolve()
     raw = _P(slots["junction"]).expanduser()
     if raw.is_absolute():
@@ -398,6 +397,11 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     dest = (out_dir if out_dir.is_absolute()
             else _P(_resolve_bundle(None, None, str(out_dir),
                                     must_exist=False)))
+    from ..transport.compose import refuse_inside_citation
+    try:
+        refuse_inside_citation(dest, cited)
+    except ComposeError as exc:
+        raise click.ClickException(str(exc))
 
     bias = ()
     if bias_opt:
@@ -448,27 +452,27 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
             click.echo(f"note: {issue.message}", err=True)
     except ValidationError as exc:
         raise click.ClickException(str(exc))
-    dest.mkdir(parents=True, exist_ok=True)
-    write_task(dest / TASK_FILENAME, task)
-
-    # THE TEMPLATE -- transport's shared baseline, like every other kind's
-    # (`engines/transport.md` § 2a.3).
+    # THE DESCRIPTION AND ITS TEMPLATE, every file or none, through the one
+    # writer every describe takes (`describe.write_description`) -- the
+    # Transport tab's describe door writes through it too.
     #
-    # Its values are DEFAULTED FROM THE CITED RUN, not sealed to it
-    # (§ 2a.7): the person may change any of them afterwards, and a change
-    # applies to every stage at once because there is one template.
-    # ...and its TEXT comes through the same door the browser's describe
-    # door uses (`citation_defaults.transport_template_text`): a `citation`
-    # row the cited directory does not answer stays VALUELESS
-    # (`engines/transport.md` § 3.8.3).
-    # THE ONE DOOR that forms this name (`template.template_path`).
-    tmpl = _T.template_path(dest, task.label)
-    tmpl.write_text(_tmpl_text, encoding="utf-8")
+    # The template is transport's shared baseline, like every other kind's
+    # (`engines/transport.md` § 2a.3): its values are DEFAULTED FROM THE
+    # CITED RUN, not sealed to it (§ 2a.7), and its TEXT comes through the
+    # same door the describe door uses (`citation_defaults.
+    # transport_template_text`): a `citation` row the cited directory does
+    # not answer stays VALUELESS (§ 3.8.3).
+    from ..describe import Description, write_description
+    try:
+        written = write_description(Description(task=task,
+                                                 template=_tmpl_text), dest)
+    except (DescribeError, OSError) as exc:
+        raise click.ClickException(str(exc))
 
     click.echo(f"Described transport '{task.run.name}' in {dest} -- "
                f"composes {citation}.")
-    click.echo(f"  {TASK_FILENAME}")
-    click.echo(f"  {tmpl.name}")
+    for path in written:
+        click.echo(f"  {path.name}")
     click.echo("")
     click.echo("The template carries the shared electronic description, "
                "filled in from the "
@@ -582,15 +586,14 @@ def init_cmd(structure, bundle: str, shape: str,
 
     out_dir = _P(bundle)
     run_name = name or out_dir.name
-    # ONE CALCULATION PER FOLDER (user, 2026-10-01: refuse).  A folder that
-    # already holds a description is changed in Task setup or its
-    # task.json.  Refused before anything is read or written.
-    from ..task import FILENAME as _TASK
-    if (out_dir / _TASK).is_file():
-        raise click.ClickException(
-            f"{out_dir} already holds a calculation ({_TASK}) -- one "
-            f"calculation per folder.  Change it in Task setup or its "
-            f"{_TASK}, or describe the new one in a folder of its own.")
+    # ONE CALCULATION PER FOLDER (user, 2026-10-01: refuse), the one check
+    # every door that describes asks (`describe.refuse_described`) --
+    # before anything is read or written.
+    from ..describe import refuse_described
+    try:
+        refuse_described(out_dir)
+    except DescribeError as exc:
+        raise click.ClickException(str(exc))
 
     if calculation == "transport":
         _init_transport(out_dir=out_dir, shape=shape, run_name=run_name,

@@ -117,7 +117,7 @@ both call (§ 5.3, *One prep, two doors*):
    a terminal (repeat it for several); with no terminal and none named, the
    prep is refused, naming the ready stages and the line that picks them.
    *What is offered pre-selected*: the first ready stage — and, for a kind
-   whose stages have roles (transport, a vibration: `template.KIND_ROLES`),
+   whose stages have roles (transport, a vibration: `paths.KIND_ROLES`),
    every ready stage that builds on nothing (D2): a transport ladder's seed
    and both leads; a vibration's force-constant stages when its structure is
    stated relaxed.

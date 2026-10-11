@@ -1686,7 +1686,8 @@ def _composed_for_prep(base, task, plan):
         why: list = []
         composed = load_compose_record(base, citation=citation,
                                        tree_root=root, why=why,
-                                       swap_electrodes=task.swap_electrodes)
+                                       swap_electrodes=task.swap_electrodes,
+                                       centre_junction=task.centre_junction)
         if composed is not None:
             return composed
         if root is None:
@@ -1715,10 +1716,12 @@ def _composed_for_prep(base, task, plan):
         with tempfile.TemporaryDirectory(prefix="molbuilder-compose-") as tmp:
             names = write_compose_record(
                 tmp, compose_junction(citation, tree_root=root,
-                                      swap_electrodes=task.swap_electrodes))
+                                      swap_electrodes=task.swap_electrodes,
+                                      centre_junction=task.centre_junction))
             composed = load_compose_record(tmp, citation=citation,
                                            tree_root=root, why=why,
-                                           swap_electrodes=task.swap_electrodes)
+                                           swap_electrodes=task.swap_electrodes,
+                                           centre_junction=task.centre_junction)
             if composed is None:
                 raise PrepError(
                     f"the composed junction was written and could not be "
@@ -1941,7 +1944,8 @@ def _composed_junction(base, task):
     composed = load_compose_record(base, citation=task.slots["junction"],
                                    tree_root=find_projects_root(base),
                                    why=why,
-                                   swap_electrodes=task.swap_electrodes)
+                                   swap_electrodes=task.swap_electrodes,
+                                   centre_junction=task.centre_junction)
     if composed is None:
         # THE RECORD IS THE FIRST RUNG'S PREP'S TO WRITE, and a prepared rung
         # is not prepared again (`job-system.md` § 5.0): the way on is the
@@ -2368,7 +2372,7 @@ class PrepAnswer:
     #: Which run this stage continues from, and what it was
     #: (`continuation.Continuation`).
     continuation: Optional[object] = None
-    #: A LINKED stage -- its kind gives its rungs roles (`template.KIND_ROLES`)
+    #: A LINKED stage -- its kind gives its rungs roles (`paths.KIND_ROLES`)
     #: -- which builds on what its kind says, never on the stage before it:
     #: when it takes nothing from another run, both doors say so without
     #: "the first stage, or one that starts clean".
@@ -2884,7 +2888,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             # THE ATTEMPT -- opened once, with what it continues from
             # (`_open_attempts`).  A later attempt is `launch`'s.  Flat keeps no
             # attempt directories: the run is the calculation's folder.
-            from ..template import KIND_ROLES
+            from ..paths import KIND_ROLES
             out.linked = task.calculation in KIND_ROLES
             out.cold = bool(cold)
             from .materialize import SweepRun

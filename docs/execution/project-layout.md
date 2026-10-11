@@ -2622,7 +2622,7 @@ In the flat shape the root is also the run folder, so the files of § 5.2 and
 <!-- manifest:calculation -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<label>.template.toml` | every parameter, with the value it was given | `jobset init`; the hand-over and the Transport tab, which the browser writes; `jobset migrate` -- each naming it with `template.template_path` | `template.find_template` | source |
+| `<label>.template.toml` | every parameter, with the value it was given | `jobset init` and the Transport tab's describe door (`describe.write_description`); the hand-over, which the browser writes; `jobset migrate` -- each naming it with `template.template_path` | `template.find_template` | source |
 | `<label>.source.xyz` | the structure the calculation is of | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.source.molstruct.json` | its cell and its region labels | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.template.toml.pre-m6` — only: a template migrated | the template as it was before `jobset migrate` rewrote it | `jobset migrate` | none | record |
@@ -2630,7 +2630,7 @@ In the flat shape the root is also the run folder, so the files of § 5.2 and
 | `<label>.transport.nc` *(transport)* | the transport results as data on their grid -- every point's raw outputs beside what is derived from them, a frame set's definition beside every frame's values (NetCDF-4) | `jobset summarize task` (`transport.datafile.write_data_file`) | `transport.datafile.read_data_file` | result |
 | `<label>.fc-sweep.json` *(SIESTA, vibration)* — only: two or more force-constant stages | the force-constant stages compared, when the ladder has two or more (a displacement sweep), by `summarize task`: each stage and what it varied, every mode's frequency per stage, the force-constant changes, and where each stage's files are | `jobset summarize task` (`spectra.displacement_sweep.write_sweep`) | `parse.sidecars.fc_sweep.FcSweepRecordFileParser` | result |
 | `<base>.<engine>.<shape>.pipeline.log` | what each step of a prep received, decided and produced | every prep, from either door, beside its `STAGE-PLAN.md` (`pipeline_log.PipelineLog`) | none | record |
-| `task.json` | the description: what varies, the stages, the shape, the structure | `jobset init`; Task setup's Save; the Transport tab's describe, which the browser writes | `task.read_task` | source |
+| `task.json` | the description: what varies, the stages, the shape, the structure | `jobset init` and the Transport tab's describe door (`describe.write_description`); Task setup's Save | `task.read_task` | source |
 | `task.1st.json` | a hand-over waiting for its shape and stages; Save removes it | the hand-over route, which the browser writes | `web.blueprints.build.api_task_setup_folder` | record |
 | `warm-files.toml` — only: a person writes one | this calculation's own restart-file list | a person, from molbuilder's list for the engine | `warmfiles.warm_list` | source |
 | `environment.json` | the machine record this calculation is set to — its first prep's | the first prep (`jobset.machine.set_machine`) | `scheduler.record.machine_for` | record |

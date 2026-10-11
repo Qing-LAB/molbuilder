@@ -490,7 +490,14 @@ two things state one:
   a relaxation run before the record left its atoms flush against a face, so
   the rule places it instead. The shift is rigid, which changes nothing
   TranSIESTA reads but SIESTA's meV egg-box ripple, and it keeps such a
-  relaxation citable without relaxing it again.
+  relaxation citable without relaxing it again. **A transport calculation may
+  also centre its own copy by choice** *(user, 2026-10-11)*: a run that
+  recorded a placement still flush against a face — a relaxation whose input
+  was itself saved from a run made before this rule — keeps it, and the
+  junction card says where it sits and offers to centre it; chosen, the
+  description states `centre_junction: true` and its copy states no offset,
+  so the rule places it ([`engines/transport.md`](?doc=engines/transport.md)
+  § 4). The cited run is never written.
 
 The engine gets the coordinates plus the stated offset, the cell at
 `(0,0,0)`, and the deck's record says the offset was stated. An operation that

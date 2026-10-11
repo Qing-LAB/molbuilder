@@ -190,9 +190,8 @@ def json_text(obj: Any) -> str:
     pretty, 2-space indent, trailing newline, and JSON a browser reads
     (:func:`json_safe`).  One spelling:
     :func:`write_json` writes it to disk, and a surface that hands the
-    text to another writer (the transport tab's describe, whose browser
-    writes through the file layer) reads it from here, so the two roads
-    cannot produce different bytes."""
+    text to another writer reads it from here, so the two roads cannot
+    produce different bytes."""
     # The walk only when it is needed: almost every artifact holds no
     # number JSON cannot hold, and `allow_nan=False` says when one does.
     try:

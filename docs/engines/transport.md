@@ -1349,7 +1349,8 @@ one voltage is the single bias, and states none. The tab's list is typed, or
 filled by its **start / stop / step** builder — 0 V first, then the walk — and
 stays editable; one list either way. Beside the junction slot,
 `"swap_electrodes": true` states the electrode rename this calculation makes
-in its own copy of the cited junction (§ 4); false writes no key.
+in its own copy of the cited junction (§ 4), and `"centre_junction": true`
+that it centres that copy in its cell (§ 4); false writes neither key.
 
 | `low_bias_approximation` | the device | the transmission | the I–V | what the record calls it |
 |---|---|---|---|---|
@@ -2336,9 +2337,9 @@ frame and voltage (§ 2a.11).
 
 **A calculation's folder is its own.** A calculation does not live inside its
 own input: describing into the cited run's folder, or a folder below it, is
-refused before anything is written (the Transport tab's Describe,
-`lib/task-handover.js`) — every later prep would otherwise write into the
-finished run it cites. A pair is a file, so no folder is inside it.
+refused before anything is written (`compose.refuse_inside_citation`, asked by
+the Transport tab's describe door and by `jobset init`) — every later prep
+would otherwise write into the finished run it cites. A pair is a file, so no folder is inside it.
 
 **Settings** here means what every stage of the calculation must agree on: the
 basis, the exchange–correlation functional and its authors, the mesh cutoff, the
@@ -2982,6 +2983,19 @@ brings none; nothing for a run, whose pseudopotentials travel with it) join
 the panel, and the describe door's check (`check_pseudopotentials`) asks the
 same function — so the field shows exactly when the check requires it.
 
+**Where the junction sits in its cell, and the offer to centre it** (§ 4;
+*user, 2026-10-11*). When the junction states its offset — a cited run, or a
+pair stating one — the card says, along z, the room between the atoms and the
+cell's lower face, the room to its upper face, and the room each side would
+have centred, and how many atoms lie outside the cell; and it offers *Centre the
+junction in its cell*, not chosen until the person chooses it. Chosen, the
+citation is described again with it, so the viewer, the numbers and the
+findings show the junction as it will be composed, and Describe writes
+`centre_junction: true`; it can be withdrawn the same way. The numbers are the
+describe door's `placement` (`compose.junction_placement`, from the one
+placement rule, `cell.py`); the page computes none. A junction that states no
+offset is centred by the rule, and the card says nothing about it.
+
 A path that is neither kind — a folder holding a relaxation SIESTA was
 handed by hand, a pair with no `info.calculation` — answers the refusal
 instead, naming the whole condition and the road to a citable run (§ 3.1).
@@ -3064,6 +3078,8 @@ correct order".)*
 | **A tab offers** the items the rung owns (`stages` names it) and the items any rung may set (no `stages`) | never another rung's item — that is on its own tab — and never a shared one — that is card 2 |
 | **Inside a tab the group cards fold** (`renderForm`'s `foldable` option, `form-schema.md` § 1.3): a card holding an item the rung OWNS opens; a card holding only any-rung items starts folded, its summary naming the count. **Every card is named with the rung** (*seed · Convergence targets*) and one sentence above them says the values are the rung's own over the template's — the schema's `stage` and `stage_words` *(user, 2026-10-09: "make sure the title and text in each panel for these stages are clear ... so the user is not confused by the repetition")* | the rung's own physics is what the eye lands on; the seed, both leads and the device each carry the same SCF settings with their own values, and each tab says whose they are |
 | **The describe door takes per-rung bags** — `stages: {rung: {item: value}}`, the shape `task.stages` carries — and refuses a bag naming an item the rung does not own, through the one door `prep` refuses from (`template.unread_overrides`, the description's check — `validation/task.py`) | the flat `overrides` mapping, and the router that parked an unowned item on the device (the holding position TR8 left, TR7's surface was to replace), are gone |
+| **The ladder is its five rungs, in order** — a transport description's `stages` are `seed`, `electrode_L`, `electrode_R`, `device`, `transmission`, the seed the one it may leave out (ruling Q4: a ladder skips its seed by removing it, `engines/stages.md` § 2), and its shape hierarchical (`task.fixed_by_kind`, from `paths.KIND_ROLES`); the description's reader refuses anything else, naming what the kind fixes, and Task setup offers no control that would change either beyond the seed's removal (`web/task-setup.md` § 5.3) *(user, 2026-10-11)* | a rung removed, added, renamed or moved is a ladder no prep can walk; the reader took all three until 2026-10-11, and Task setup's stage table offered them |
+| **Describe is one act, and the server writes it** — `POST /api/transport/describe` names the folder (`dest`); the door refuses one that already holds a `task.json` (one calculation per folder), and one inside the citation (§ 3.1) — the checks `jobset init` asks, through the same two functions (`describe.refuse_described`, `compose.refuse_inside_citation`) — and writes the template and `task.json`, every file or none, through the writer every describe takes (`describe.write_description`); the browser writes neither (`web/handover-procedure.md` § 4) *(user, 2026-10-11)*. Once written, the description is Task setup's to edit, as every kind's is: each rung's own values in its Stages card (`web/task-setup.md` § 5.3), the run's settings on each rung's run card. The citation, its two choices and the bias are what the calculation is (§ 3.8.1, § 4), and Task setup's cards show them and change none. The citation names the calculation — its run id is derived from it — so a different junction is a new description in a new folder; the two choices and the bias are corrected in `task.json` itself, in Task setup's editor, as `jobset init`'s refusal says of a described folder (user, 2026-10-01); a shared value is the template's, changed in that file | the refusal belongs to the door that writes; until 2026-10-11 the browser wrote the server's text through the content-blind layer and the one-folder refusal lived in the page alone |
 
 The numbered cards and the tab strip read as one order: **1 cite the junction
 → 2 the shared description, once → 3 check the chemistry → 4 each rung, on
@@ -3285,10 +3301,10 @@ door's question.
 | the describe door (`/api/transport/describe`) | ✅ refuses a per-rung override | ✅ refuses a bag naming an item the rung does not own (`template.unread_overrides`, the door `prep` asks too) | ✅ refuses | ✅ fills the template through `transport_template_text` | — |
 | `jobset init` | — | — | ✅ valueless in the template | ✅ fills, through the same door | ✅ valueless |
 | `prep` (`_resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | ✅ refuses a stage override, pin, sweep axis or template value naming one, and puts the rung's answer into its config (`template.role_answers`, *2026-09-29*) | — (reads the template, never the citation) | ✅ fills from the machine |
-| Task setup — the column picker (`/api/task-setup/columns`) | ✅ not a column *(2026-09-24)* | ✅ the payload names the owners | ✅ not a column | — | ✅ not a column |
-| Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)* | — | — | — |
+| Task setup — the column picker (`/api/task-setup/columns`) | ✅ not a column *(2026-09-24)* | ✅ the payload names the owners, and the picker names the calculation's own rungs that read each item, on every kind whose rungs have roles (`web/task-setup.md` § 5, *2026-10-11*) | ✅ not a column | — | ✅ not a column |
+| Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)*; on a transport folder the rows are the ladder's rungs, fixed save the seed's removal, and each rung's own values are edited here once the description is written (`web/task-setup.md` § 5.3, *2026-10-11*) | — | — | — |
 | Task setup — a read-only echo of every shared value, with its source (§ 6.6 obligation 3) | ✅ *Shared by every stage*, on *What came over* *(2026-10-11)* | — | — | ✅ the file records the source, and the hover names it *(K7)* | — |
-| Task setup — "What came over": the description's own parameters (the junction it cites, its bias list, its treatment — `single-bias` / `low-bias-approximation` / `self-consistent`, the folder answer's `treatment` from `Task.treatment` — and the electrode rename, `swap_electrodes`, § 4; a frame set's card, § 3.8.1, from the folder answer's `frame_set`) *(built 2026-10-08, B8 U7 / T1; the frame set 2026-10-10, Q17-f4)* | — | — | — | ✅ the citation, named | — |
+| Task setup — "What came over": the description's own parameters (the junction it cites, its bias list, its treatment — `single-bias` / `low-bias-approximation` / `self-consistent`, the folder answer's `treatment` from `Task.treatment` — the electrode rename, `swap_electrodes`, and the centring, `centre_junction`, § 4; a frame set's card, § 3.8.1, from the folder answer's `frame_set`) *(built 2026-10-08, B8 U7 / T1; the frame set 2026-10-10, Q17-f4)* | — | — | — | ✅ the citation, named | — |
 | the deck (`prep` → `prepare_deck`) | ✅ one value, every rung | ✅ each rung its own | ✅ the rung's answer, laid on its config by `resolve` | ✅ who set each value, in its PROVENANCE block — a value nobody chose *not chosen* (obligation 4, 2026-10-11) | ✅ |
 
 ---
@@ -3463,6 +3479,46 @@ expansion in the shipped 2-terminal scope.)
 > own deck, or the sidecar beside it, inside its finished attempt, and left a
 > `<sidecar>.lock` there — "fixed at the source, so every later citation of that
 > directory is right too".)*
+
+> **Where the junction sits in its cell is this calculation's choice too**
+> *(user, 2026-10-11: "when detecting the average Z is off the center, the
+> user can be reminded that we can shift/offset the whole structure to have it
+> sitting in the middle of the cell"; the offer "always, with the numbers")*.
+> A cited run's coordinates are the engine's own frame — they state an offset
+> of 0 (hop 2, [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)
+> § 6.0) — and a pair's stated origin is its author's, so neither is centred
+> by itself. A junction relaxed from a structure that sat flush against a
+> face keeps that placement (measured 2026-10-11:
+> `AuBDTAu/optimization/min_force_relax/01_fine/run-0`, one gold layer at
+> z = −0.0005 Å, from a structure saved before the 2026-09-25 rule), and along
+> z — the transport direction, where TranSIESTA requires every atom inside the
+> cell — that is refused.
+>
+> So **whenever the junction states its offset, the junction card says where
+> it sits** — the room between the atoms and the cell's lower and upper face
+> along z, and the room centring gives on each side — **and offers to centre
+> it**, not chosen until the person chooses it (§ 3.8.1). Choosing it states
+> `centre_junction: true` beside the junction slot; compose then takes this
+> calculation's copy with no stated offset, and the one rule
+> (`model/structure-periodicity.md` § 6.0) centres
+> it in its cell for every rung — a rigid shift of every atom, along every
+> lattice vector as the rule always does; along x and y, which repeat, it
+> changes nothing. It is recorded in `slot-provenance.json`
+> (`centre_junction`), whose record serves only a description with the same
+> choice, as the rename's does. The cited run is read, never written; another
+> calculation citing it makes its own choice. A junction that states no
+> offset — a pair with none — is centred by the rule already, and nothing is
+> offered.
+>
+> **An atom outside the cell along z is refused when the junction is
+> composed**, unless it is centred: `cell.atoms_outside`, the hand-off's own
+> check (`model/structure-periodicity.md` § 6.0, check 3), asked at compose
+> so the refusal names this
+> choice as the way out. Like the rename it is what the calculation is: a
+> described folder's junction is centred in its `task.json`, in Task setup's
+> editor, or by a new Describe into a new folder (§ 3.8.2a); a choice changed
+> after the junction was composed is a new composition — the record composed
+> with the other choice no longer serves (§ 3.1).
 
 > **Bias direction.** Bias is `V_left − V_right`; the emitter binds
 > `L-electrode → chem-pot Left → μ = +V/2` **by name**, and the deck states which
@@ -4265,7 +4321,7 @@ sideways.
 | regions, annotations, `info`, identity | hops 2→6 | `replace()` names the per-atom fields and carries everything else, so the label store, the recorded contract and the identity columns all survive the sort |
 | regions, annotations, `info`, identity | **hop 7 — NOT carried** | `as_structure()` states elements, positions, title, cell and `axis_kind`, and nothing else. A lead therefore renders with no region partition (correct — it has no partition to state), and also with no recorded contract and no identity columns |
 | `axis_kind` | **z stated at hop 2; x and y as the citation recorded them** *(since M5 step 2)* | along z it is a fact of *being a transport calculation*: I8 settles it, z is open. Across z it is the person's declaration: a cited run's deck recorded it — its ENGINE-OFFSET block carries the structure's kinds (since 2026-09-25) — and a cited pair's sidecar states it: a slab junction is periodic across, a wire or chain junction isolated (§ 6.1c). A deck from before that record states none, and its junction is read periodic across. SIESTA's own output carries no kinds; it has no such concept |
-| `engine_offset` | **a cited run's: stated `0` at hop 2 with its cell (`Declared.frame`); a cited pair's: the one its sidecar states** | a run's output is SIESTA's own frame, the cell at the origin, so the junction states an offset of 0 with its coordinates (`structure-periodicity.md` § 6.0), as the Results tab's view of the run does. An authoring sidecar's offset belonged to *different* coordinates and is never carried |
+| `engine_offset` | **a cited run's: stated `0` at hop 2 with its cell (`Declared.frame`); a cited pair's: the one its sidecar states — either, none when the description centres the junction (`centre_junction`, § 4)** | a run's output is SIESTA's own frame, the cell at the origin, so the junction states an offset of 0 with its coordinates (`structure-periodicity.md` § 6.0), as the Results tab's view of the run does — unless this calculation chose to centre its copy, which then states none and the rule centres it. An authoring sidecar's offset belonged to *different* coordinates and is never carried |
 
 #### Where the box and the atoms come from
 
@@ -4277,8 +4333,9 @@ for `resolve_cell()` to derive, and if it ever did derive one the answer would
 be a padded box, which is the thing § 7 forbids. The **atoms** are placed by
 `cell.to_engine` (`structure-periodicity.md` § 6.0): the junction states the
 engine's offset, 0 (hop 2), so the device deck writes the relaxed coordinates as
-the engine had them; a lead taken out at hop 7 states none, so the rule centres
-it in its own cell. Until 2026-09-25 this block subtracted
+the engine had them — or, when the description centres it (§ 4), states none,
+and the rule centres it; a lead taken out at hop 7 states none, so the rule
+centres it in its own cell. Until 2026-09-25 this block subtracted
 `resolve_cell_origin()` by hand.
 
 ---
@@ -4462,7 +4519,7 @@ single-point, or a relaxation if those layers are not frozen.
   bias, and **Describe writes the finished `task.json`** into the selected
   folder (`POST /api/transport/describe` — the web spelling of `jobset
   init --calculation transport`; no hand-over, because nothing is
-  awaiting).  Transport-only knobs changed in the form ride as
+  awaiting; written by the server since 2026-10-11, § 3.8.2a).  Transport-only knobs changed in the form ride as
   device-stage overrides; the electronic-contract fields are sealed at
   both doors (the citation's to say).  ⚠️ **SUPERSEDED by § 2a.7 and
   § 3.8.2**: the cited run DEFAULTS them and the person may change them.
