@@ -125,7 +125,7 @@ SCHEMA_VERSION    = 11                 # sidecars/molstruct.py
 READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11})
 ```
 
-*(v11, 2026-10-09, plan § 5z.8 F.)* **Additive**: the optional `customized`
+*(v11, 2026-10-09, `archive/2026-10-09-plan-consolidation.md` § 5z.8 F.)* **Additive**: the optional `customized`
 block (`model/structure.md` § 2.2d) and the envelope's `n_frames_total`,
 written by every v11 writer. A v7–v10 file has neither and holds nothing
 indexed by frame, so it reads whole: its labels, cell and `info` apply to every

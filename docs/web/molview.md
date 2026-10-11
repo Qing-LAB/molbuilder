@@ -1663,7 +1663,7 @@ refuses it: the person may state what they know; the reader says whose
 statement it is.
 
 **A Customized section — the structure's named values, and the displayed
-frame's** *(W39, user 2026-09-27; plan § 5z.8 F, 2026-10-09)*.  Below the
+frame's** *(W39, user 2026-09-27; `archive/2026-10-09-plan-consolidation.md` § 5z.8 F, 2026-10-09)*.  Below the
 `info` entries the page shows the structure's `customized` rows
 ([`model/structure.md`](?doc=model/structure.md) § 2.2d) — one row each, name,
 value, unit and note — and, on a structure of several frames, **the displayed
@@ -4458,7 +4458,7 @@ That was not always so, and the last door to hold out was the cell's: it took a
 the cell answered 400 to every request ever made of it, silently, for as long as
 it existed. A door whose shape only one side can speak is a door that is shut.
 
-**A frame set crosses inside the envelope, both ways** *(plan § 5z.8 F)*. In:
+**A frame set crosses inside the envelope, both ways** *(`archive/2026-10-09-plan-consolidation.md` § 5z.8 F)*. In:
 `installMolecule` handed a path or a text and no `frame` asks the server for
 the whole file (`frames`) — the envelope with `frames` in place of `positions`
 and each frame's rows in `metadata.customized.frames` (`model/structure.md`

@@ -927,7 +927,7 @@ row below).*
 | **Class C ships per-stage defaults** | Each stage carries an opinionated profile rather than inheriting one shared set: a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike, and the electrode's dense transport-axis k is a default, not something a person should have to discover |
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
 | **Default grouping** | The preparatory block — seed and both leads — as one submission: `jobset prep task` offers the three pre-selected, since none builds on another, and they are prepared as one group (`--stage seed --stage electrode_L --stage electrode_R` without a terminal); `jobset launch task` sends it as one job ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.6; [`execution/job-system.md`](?doc=execution/job-system.md), *The task*). Then the device; then the transmission, each scan one job walking its points. The device and the transmission never share a job: the transmission builds on the device, which you look at first |
-| **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). Both axes are built (§ 2a.11): a frame set is cited (§ 3.1, Q17-c), its points run (Q17-d) and its record carries each frame's point and the mode's average (§ 2a.12, Q17-e); its Results are plan § 5z, Q17-f |
+| **A device point is (frame, voltage)** | either axis may be one; frames independent, voltages chained within a frame — § 2a.9, *Both axes* (the user, 2026-10-09, replacing the one-bias ruling of 2026-09-16). Both axes are built (§ 2a.11): a frame set is cited (§ 3.1, Q17-c), its points run (Q17-d) and its record carries each frame's point and the mode's average (§ 2a.12, Q17-e); its Results are built (`web/results.md` § 2.5, Q17-f, 2026-10-10) |
 | **The bias treatment is an exposed choice** | `low_bias_approximation`, true or false, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.10 |
 | **Automatic resubmission is deferred, and load-bearing on nothing** | The stages, their decks, the parameter map and the directory structure are identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing here waits on it. When built, the monitor is its home — it already watches a run to its end. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
 | **Net charge and gating are deferred** | Not designed now. In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is separate work. How a gate is applied in SIESTA 5.x — a charge-distribution block, a scripted hook, or neither — **has not been verified against the manual** and should be before anything depends on it |
@@ -1086,7 +1086,7 @@ frame***. Frames whose transmissions were computed with different basis sets or
 functionals are not comparable to each other — and comparing them is the entire
 reason for computing a group.
 
-#### Both axes — a device point is (frame, voltage) *(user, 2026-10-09; plan § 5z.8 A–E)*
+#### Both axes — a device point is (frame, voltage) *(user, 2026-10-09; `archive/2026-10-10-q17.md` § 5z.8 A–E)*
 
 > *"This is the framework design period. I would rather to have this already
 > built in and then later on we can tune it."*
@@ -1535,7 +1535,7 @@ the points — done or not done and why, what each started from, and what each
 alone took (a transmission point's device point). Every transport rung's
 `status <stage>` shows its gather the same way.
 
-#### The frame axis (§ 2a.9) — a level for each axis that varies *(user, 2026-10-09, D4: "yes"; plan § 5z.8 D)*
+#### The frame axis (§ 2a.9) — a level for each axis that varies *(user, 2026-10-09, D4: "yes"; `archive/2026-10-10-q17.md` § 5z.8 D)*
 
 *Built 2026-10-10 (plan § 5z Q17-d): a point is `transport.stages.Point` —
 a frame and a voltage, each `None` when its axis does not vary — and one door

@@ -435,7 +435,7 @@ both halves were mutation-checked: before it, reverting the keyword strip
 broke nothing across 116 tests and restoring the identity column broke
 nothing across 131.
 
-### 2.2d `customized` — named values the structure carries, its own and each frame's *(W39; plan § 5z.8 F)*
+### 2.2d `customized` — named values the structure carries, its own and each frame's *(W39; `archive/2026-10-09-plan-consolidation.md` § 5z.8 F)*
 
 *(User, 2026-09-27: "provide an additional customization list so user can make
 a list of parameters as meta data to be stored in the \"customized\" category
@@ -485,7 +485,7 @@ unset value, and otherwise written whole:
 `frames` has exactly `F` entries — an empty list for a frame with no rows — so
 every per-frame list of the structure has the same length (§ 2.2e).
 
-### 2.2e Frames — a frame set is a data set *(user, 2026-10-09; plan § 5z.8 F)*
+### 2.2e Frames — a frame set is a data set *(user, 2026-10-09; `archive/2026-10-09-plan-consolidation.md` § 5z.8 F)*
 
 > *"The multi-frame is a tool for us to manage data set that's intrinsically
 > consistent with each other … the way we create them is a set of script that
@@ -1236,7 +1236,7 @@ the web save does — `modify` since 2026-09-07, `xv2xyz` with this change. And
 the door that made the violation reachable is shut rather than merely unused:
 the writers no longer accept a path at all (§ 2.3). Every surface obeys § 2.4.
 
-**Built 2026-10-09 (plan § 5z.8 F, steps 1–3):** `customized` (§ 2.2d), frames
+**Built 2026-10-09 (`archive/2026-10-09-plan-consolidation.md` § 5z.8 F, steps 1–3):** `customized` (§ 2.2d), frames
 inside the structure (§ 2.2e), the frame options of `load` (§ 2.3, § 2.4),
 sidecar schema 11, and MolView's half (`web/molview.md` § 6.1–6.2, § 8.4a,
 § 9.3–9.4, § 11.7). Pinned by `tests/data/frame_sets.toml`.
