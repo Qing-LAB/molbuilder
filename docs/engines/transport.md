@@ -4101,8 +4101,12 @@ pair states its own, set where it is made): the kinds come from the cited
 attempt's deck, a launched attempt is never rewritten,
 and a calculation composed before keeps the kinds it was composed with
 (`load_compose_record` reloads the junction it wrote) — so the structure is
-declared isolated on the Cell page, relaxed, and that relaxation cited. A
-lighter door is `plan.md` § 5u.2's TD13.
+declared isolated on the Cell page, relaxed, and that relaxation cited — or
+the run is saved as a pair (the Results tab's Export), its cell declared on
+the Cell page and the pair cited: the edit marks the pair's record outdated
+and keeps it (`model/structure.md` § 2.2a), and the citation reads its
+settings (§ 3.1). No transport-side declaration overrides what was cited
+*(the user, 2026-10-11, retiring `plan.md` § 5u.2's TD13)*.
 
 This replaces I12's fixed 3.0 Å warning
 (§ 5), which only warned, and whose one number was wrong both ways: a lead
