@@ -89,9 +89,9 @@ def test_build_dna_response_includes_backend_used(web_client):
 
 
 def test_build_response_carries_validation_issues(web_client):
-    """When the user opts out of add_hydrogens (e.g., to inspect the
-    X3DNA heavy-atom skeleton), the build response must include the
-    h_ratio warn issue so the UI can flag it."""
+    """The build response carries the structure's findings, so the page
+    shows them as soon as the structure exists -- here the H/heavy
+    reference note of an X3DNA heavy-atom skeleton (add_hydrogens off)."""
     from molbuilder.builders.backends import available_backends
     if not available_backends().get("threedna"):
         pytest.skip("threedna backend not installed")
@@ -103,25 +103,12 @@ def test_build_response_carries_validation_issues(web_client):
     body = r.get_json()
     assert body["ok"] is True
     issues = body.get("issues") or []
-    h_ratio_warns = [i for i in issues
-                     if i["severity"] == "warn" and i["where"] == "geometry.h_ratio"]
-    assert len(h_ratio_warns) == 1, (
-        f"expected one h_ratio warn for heavy-atom skeleton, got: {issues}"
+    h_ratio_notes = [i for i in issues
+                     if i["severity"] == "info" and i["where"] == "geometry.h_ratio"]
+    assert len(h_ratio_notes) == 1, (
+        f"expected one h_ratio note for the skeleton, got: {issues}"
     )
 
-
-def test_build_response_no_issues_when_protonated(web_client):
-    """The flip side: the default path (add_hydrogens=True) produces a
-    healthy structure and the response carries no warnings."""
-    r = web_client.post("/api/build/molecule",
-                        json={"kind": "peptide", "input": "ARNDC"})
-    body = r.get_json()
-    assert body["ok"] is True
-    issues = body.get("issues") or []
-    h_ratio_warns = [i for i in issues if i["where"] == "geometry.h_ratio"]
-    assert h_ratio_warns == [], (
-        f"protonated peptide should not warn on h_ratio; got: {h_ratio_warns}"
-    )
 
 
 def test_all_pages_serve_with_shared_tab_nav(web_client):

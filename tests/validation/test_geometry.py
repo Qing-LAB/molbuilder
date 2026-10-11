@@ -60,52 +60,30 @@ def test_min_distance_normal_bonds_no_issue(water_structure):
 
 
 # --------------------------------------------------------------------- #
-#  H/heavy ratio: catches heavy-atom skeletons headed for DFT           #
+#  H/heavy ratio: a reference number, never a verdict                   #
 # --------------------------------------------------------------------- #
 
 
-def test_h_ratio_skeleton_is_warn():
-    """A heavy-atom-only structure (typical X3DNA fiber raw output, or a
-    user-loaded heavy-atom PDB) is missing electrons -- DFT will compute
-    the wrong total electron count.  Severity is warn (not error)
-    because the user may legitimately want to inspect / hand-process
-    the skeleton; the warning surfaces the issue prominently."""
-    # 4 heavy atoms, 0 H -> ratio 0.0
-    s = Structure(
-        elements=["C", "N", "O", "P"],
-        positions=np.array([[0,0,0],[1.5,0,0],[3.0,0,0],[4.5,0,0]],
-                           dtype=float),
-    )
-    issues = validate(s, SiestaConfig())
-    warns = [i for i in issues if i.severity == "warn"
-             and i.where == "geometry.h_ratio"]
-    assert len(warns) == 1, f"expected 1 h_ratio warn, got {warns}"
-    assert "0.00" in warns[0].message    # ratio printed to 2 decimals
+@pytest.mark.parametrize("elements, said", [
+    (["O", "H", "H"], "H/heavy atoms: 2/1 = 2.00"),
+    # Counted BY ELEMENT: labelled hydrogens are hydrogens (A1.12 -- the
+    # raw labels read labelled methane as 0/5).
+    (["C1", "H1", "H2", "H3", "H4"], "H/heavy atoms: 4/1 = 4.00"),
+])
+def test_the_h_ratio_is_a_reference_note_counted_by_element(elements, said):
+    """`science/overview.md` § 4: the ratio is said on every structure with
+    a heavy atom, at `info` -- whether hydrogens are missing is the
+    scientist's to judge (the user, 2026-10-11).
 
-
-
-def test_h_ratio_low_but_not_zero_is_warn():
-    """Borderline case: ratio < 0.3 still warns (3 H, 12 heavy = 0.25)."""
-    elements = ["C"] * 12 + ["H"] * 3
-    pos = np.zeros((15, 3))
-    for i in range(15):
-        pos[i] = (i * 1.5, 0, 0)
+    MUTATIONS THIS MUST FAIL AGAINST: counting raw labels (`e == "H"`);
+    the note at any other severity."""
+    pos = np.array([[i * 1.2, 0.0, 0.0] for i in range(len(elements))])
     s = Structure(elements=elements, positions=pos)
-    issues = validate(s, SiestaConfig())
-    assert any(i.severity == "warn" and i.where == "geometry.h_ratio"
-               for i in issues)
+    notes = [i for i in validate(s, SiestaConfig())
+             if i.where == "geometry.h_ratio"]
+    assert [(i.severity, i.message.split(" (")[0]) for i in notes] == [
+        ("info", said)], notes
 
-
-
-def test_h_ratio_organic_no_warn():
-    """A canonical organic molecule (water, H/heavy = 2.0) must not
-    warn -- typical organic ratios are 0.6 to 1.5."""
-    s = Structure(
-        elements=["O", "H", "H"],
-        positions=np.array([[0,0,0],[0.957,0,0],[-0.24,0.927,0]]),
-    )
-    issues = validate(s, SiestaConfig())
-    assert [i for i in issues if i.where == "geometry.h_ratio"] == []
 
 
 
@@ -162,25 +140,6 @@ def test_polymer_orientation_no_phosphorus_silent():
     s = build_peptide("ARNDC")
     issues = validate(s, SiestaConfig())
     assert [i for i in issues if i.where == "polymer.orientation"] == []
-
-
-
-def test_h_ratio_runs_after_layer2_protonation():
-    """The user contract: validation runs at FDF/PySCF emission time,
-    AFTER any add_hydrogens step at build time.  An X3DNA-built ATGC
-    chain with default kwargs (add_hydrogens=True) must NOT trip the
-    h_ratio warn -- protonation already happened, the ratio is healthy."""
-    from molbuilder.builders.backends import available_backends
-    if not available_backends().get("threedna"):
-        pytest.skip("threedna backend not installed")
-    from molbuilder.nucleic import build_dna
-    s = build_dna("ATGC", backend="threedna")     # default: add_hydrogens=True
-    issues = validate(s, SiestaConfig())
-    h_ratio_warns = [i for i in issues if i.where == "geometry.h_ratio"]
-    assert h_ratio_warns == [], (
-        f"X3DNA + add_hydrogens=True should produce a healthy H/heavy "
-        f"ratio; got warning: {h_ratio_warns}"
-    )
 
 
 

@@ -21,8 +21,8 @@ def validate_geometry(struct: Structure,
     """Run only the geometry-side checks (no config / engine dispatch).
 
     Useful for surfaces that don't have a cfg yet -- e.g. the web
-    Build page wants to flag a heavy-atom-only structure as soon as
-    the user clicks Build, before they even pick SIESTA vs PySCF.
+    Build page shows the structure's findings as soon as the user clicks
+    Build, before they even pick SIESTA vs PySCF.
 
     Cell-dependent checks (volume / image distance / determinant) are
     skipped when ``cell is None``; the always-applicable checks
@@ -56,44 +56,22 @@ def validate_geometry(struct: Structure,
                 "geometry.min_distance",
             ))
 
-    # H/heavy ratio.  Heavy-atom-only skeletons (typically X3DNA's `fiber`
-    # output with `add_hydrogens=False`, or a hand-loaded heavy-atom PDB)
-    # produce the wrong total electron count in DFT and are missing the
-    # Watson-Crick / hydrogen-bond donors that hold the chemistry together.
-    # Typical organic molecules sit at H/heavy ~ 0.6-1.5; nucleic acids
-    # ~ 0.6.  A ratio below 0.3 is unambiguously a heavy-atom skeleton.
-    #
-    # **Severity: warn, not error.**  The user may legitimately want to
-    # inspect or hand-process the heavy-atom skeleton (e.g., feed it to
-    # an external protonator with different residue assumptions).  The
-    # warning surfaces the issue prominently so they don't accidentally
-    # ship a broken structure to a calculation.
-    #
-    # **CONDITIONED, NOT GATED** (2026-08-19).  The ratio fires on any
-    # structure with few hydrogens, so it also fires on every metal, oxide
-    # and semiconductor -- and Au12 has no hydrogens to be missing.  The fix is the SENTENCE, not a
-    # molecule/crystal test: we cannot categorise reliably (a periodic
-    # organic crystal is molecular; C60 and graphene are hydrogen-free by
-    # construction), and a gate we get wrong silently drops the warning for
-    # the DNA skeleton this exists to catch.  Say something true either way
-    # and let the scientist decide whether it applies -- that judgement is
-    # theirs, and a warning that hedges honestly costs them one line.
+    # H/heavy ratio -- A REFERENCE NUMBER, never a verdict (user,
+    # 2026-10-11: "maybe just provide that ratio as a reference").  Whether
+    # a structure is missing hydrogens is the scientist's to judge -- a
+    # metal, an oxide or graphene has none by construction -- so it is
+    # said on every structure with a heavy atom, at `info`, with the range
+    # organic molecules usually sit in beside it.
     if n >= 1:
         # BY ELEMENT, not by label (`chemistry.is_atom`): a labelled
         # methane's H1..H4 are hydrogens.
         n_h     = sum(1 for e in struct.elements if is_atom(e, "H"))
         n_heavy = len(struct.elements) - n_h
-        if n_heavy > 0 and (n_h / n_heavy) < 0.3:
+        if n_heavy > 0:
             issues.append(Issue(
-                "warn",
-                f"H/heavy ratio is {n_h}/{n_heavy}={n_h/n_heavy:.2f}.  "
-                f"IF THIS IS A MOLECULAR SYSTEM that is a heavy-atom "
-                f"skeleton (typical organic molecules sit at H/heavy ~ "
-                f"0.6-1.5), and DFT will compute the wrong electron count "
-                f"without explicit H -- did you mean to add hydrogens?  "
-                f"For a metal, an oxide, or anything else with no hydrogens "
-                f"by construction, this ratio says nothing about the "
-                f"structure and there is nothing to fix.",
+                "info",
+                f"H/heavy atoms: {n_h}/{n_heavy} = {n_h / n_heavy:.2f} (for "
+                f"reference: organic molecules usually sit at 0.6-1.5).",
                 "geometry.h_ratio",
             ))
 

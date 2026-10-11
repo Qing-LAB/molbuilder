@@ -191,23 +191,8 @@ def test_validate_clean_water_returns_no_errors(capsys, tmp_path):
     out = capsys.readouterr().out
     body = json.loads(out)
     assert body["n_errors"] == 0
-    # The h_ratio validator runs on every structure -- water at 2:1
-    # H/heavy is well above the 0.3 warn threshold.
-    assert not any(i["where"] == "geometry.h_ratio" for i in body["issues"])
     assert body["engine"] is None
 
-
-def test_validate_skeleton_warns_on_h_ratio(capsys, tmp_path):
-    """A heavy-atom skeleton (ratio ~ 0) must surface the h_ratio
-    warn issue in the JSON payload."""
-    import json
-    xyz = "3\nskeleton\nC 0 0 0\nN 1.5 0 0\nO 3.0 0 0\n"
-    rc = cli.main(["validate", _write_xyz(tmp_path / "sk.xyz", xyz)])
-    assert rc == 0     # warnings don't stop the run
-    body = json.loads(capsys.readouterr().out)
-    h_warns = [i for i in body["issues"]
-               if i["severity"] == "warn" and i["where"] == "geometry.h_ratio"]
-    assert len(h_warns) == 1
 
 
 def test_validate_exit_on_error_returns_2(monkeypatch, capsys, tmp_path):
