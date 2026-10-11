@@ -574,7 +574,7 @@ const WORKSPACE_TAG = "transport";
             // else changes: the citation held stays the citation, with
             // its findings and its offer.
             _setStatus((described && described.summary)
-                || "That directory is not citable.", "warn");
+                || "That is not citable.", "warn");
             return;
         }
         _junction = described.citation;

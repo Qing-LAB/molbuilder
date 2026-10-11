@@ -81,12 +81,6 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 ### 0.4 Designed, not built yet
 
-- **A transport calculation's report** (§ 2.5) is built and seen on the
-  walks (2026-10-08); the root opens it through its `task.json` from `init`
-  on (§ 0.1); its frame axis — every chart's *one frame* / *all frames*, the
-  points and the ladder named by frame and voltage — is being built (plan
-  § 5z, Q17-f3; § 2.5).
-
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
   viewer's badge shows the open file's own ending.
@@ -485,7 +479,15 @@ the app. **The PDOS by region** shows only the regions whose atoms are in
 TBtrans's device region — here the bridge; a lead's atoms are its electrode, not
 the device. **Seen in a browser** *(2026-10-08, B8)*: the report drawn on the
 three walks, its tabs, the I–V picks and the ladder's rows opening it at a
-point. The frame family is designed, not built (plan § 5z, Q17-f; below).
+point. **The frame family** (below) built 2026-10-10 (plan § 5z, Q17-f) and
+**seen in a browser** the same day on an H2 frame set walked through the
+road — the junction and its mode's three frames written by scripts through
+the Structure API, cited on the Transport tab, handed to Task setup, the
+printed `prep` / `launch` run, read here
+(`projects/claude-transport-walk/transport/h-frames`): the ladder's rows and
+the points table named *Frame 2 of 3 · 0.2 V*, a row moving the frame bar,
+*all frames* on T(E) (the mode's average dashed, its numbers and
+assumptions under the card), the DOS and the device's convergence.
 
 **Two selections, each with one owner** — the spectra tab's pattern (one state
 owner, every view mirrors it through a cheap door; [`spectra.md`](?doc=web/spectra.md)

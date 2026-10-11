@@ -48,29 +48,33 @@
   <section class="card" id="junction-card">
     <h2>1. The junction</h2>
     <p class="hint">
-      <strong>Point the calculation at one directory that already holds
-      a relaxed junction.</strong>  Every later stage is derived from
-      it: the sorted copy, both electrode cells, the device, the
-      transmission.  Nothing is uploaded or copied here — the
-      directory is cited.
+      <strong>Point the calculation at one relaxed junction.</strong>
+      Every later stage is derived from it: the sorted copy, both
+      electrode cells, the device, the transmission.  Nothing is
+      uploaded or copied here — the junction is cited.
     </p>
     <p class="hint">
-      A directory qualifies by its <strong>files</strong>, not its name
-      or location: it is a <strong>relaxation run of molbuilder's own
-      that finished</strong> — its one <code>.fdf</code> and one
-      <code>.XV</code>, launched through <em>jobset</em> so its run
-      record says how it ended, its region labels in the deck or the
-      <code>.molstruct.json</code> beside it.  Its deck answers the
+      It is one of two things, told apart by what it holds, not its name
+      or location.  <strong>A relaxation run of molbuilder's own that
+      finished</strong> — its folder: its deck and its result, launched
+      through <em>jobset</em> so its run record says how it ended, its
+      region labels in the deck.  Or <strong>a structure pair that
+      records the optimization its geometry came from</strong> — its
+      <code>.xyz</code>, saved from such a run (the Results tab's Export,
+      or <code>molbuilder xv2xyz --from-run</code>): one frame, or a
+      frame set, each frame a point of its own.  Either answers the
       basis, functional and mesh, and step 2 shows them as the run's,
-      yours to change.  A structure saved from the Molbuilder tab is not
-      a citation: relax it first (Structure optimization → Task setup),
-      then cite the run.
+      yours to change; a pair brings no pseudopotentials, so step 2 asks
+      for the directory that holds them.  A structure that records no
+      optimization is not a citation: relax it first (Structure
+      optimization → Task setup), then cite the run.
     </p>
     <p class="hint">
-      Pick any directory: the line under the button names what it is,
-      or what it is missing.  The viewer then shows the cited structure
-      with its region labels — use it to check that the electrodes and
-      the bridge are the atoms you meant.
+      Pick a folder or a pair's <code>.xyz</code>: the line under the
+      button names what it is, or what it is missing, and a frame set's
+      card says what each frame is.  The viewer then shows the cited
+      structure with its region labels — use it to check that the
+      electrodes and the bridge are the atoms you meant.
     </p>
     <p class="hint">
       Labels are assigned where the junction is built, on the
@@ -85,13 +89,13 @@
       Reference —
       <a href="/documents?doc=engines/transport.md" target="_blank"
          rel="noopener">Transport contract</a>:
-      § 3.1 what makes a directory citable, § 4 how region labels
-      drive the five stages.
+      § 3.1 what you can cite, § 4 how region labels drive the five
+      stages.
     </p>
     <div class="action-row">
       <button id="transport-junction-btn" type="button"
-              title="Walk the projects tree and pick the finished relaxation run of the junction (a run of molbuilder's own: its .fdf and .XV with its run record).">
-        Choose junction directory…
+              title="Walk the projects tree and pick the junction: a finished relaxation run of molbuilder's own (its folder), or a structure pair saved from one (its .xyz, one frame or a frame set).">
+        Choose junction…
       </button>
       <span id="transport-junction-readout" class="muted">
         no junction cited yet

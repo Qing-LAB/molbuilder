@@ -705,7 +705,8 @@ const WORKSPACE_TAG = "results:transport";
                   + "'s " + _fmt(a.base_conductance_g0, 4, false) + " G0, "
                   + _fmt(a.conductance_change_percent, 2, false) + " %; the "
                   + "weights sum to " + _fmt(state.average.weight_sum, 6, false)
-                  + ", checked to " + state.average.tolerance + "."
+                  + ", checked to " + state.average.tolerance + ".  It assumes: "
+                  + (state.average.assumptions || []).join(" ")
                 : ((a && (a.why || a.conductance_why)) || state.average.why || "");
         } else {
             pts.filter((q) => _pf(q) === frame).forEach((q, i) => {
