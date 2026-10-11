@@ -2306,6 +2306,12 @@ the leads' connectivity itself when it runs.
 once, seed once); its device and transmission run per frame, a point each
 frame and voltage (§ 2a.11).
 
+**A calculation's folder is its own.** A calculation does not live inside its
+own input: describing into the cited run's folder, or a folder below it, is
+refused before anything is written (the Transport tab's Describe,
+`lib/task-handover.js`) — every later prep would otherwise write into the
+finished run it cites. A pair is a file, so no folder is inside it.
+
 **Settings** here means what every stage of the calculation must agree on: the
 basis, the exchange–correlation functional and its authors, the mesh cutoff, the
 orbital energy shift, the transverse k-grid, the electronic temperature and the
@@ -2996,7 +3002,7 @@ carries the template's value and its source (`form-schema.md` § 1.1): the
 shared panel **holds** them, the citation's answers named as such; a rung's
 tab holds the rung's own values, and shows the template's as what a blank
 field runs — the transmission grid the cited run's transverse pair, *from the
-run you cited*. A rung's tab is drawn from what the shared panel holds too,
+junction you cited*. A rung's tab is drawn from what the shared panel holds too,
 and again whenever it changes: a rung's value can follow a shared one, the
 transmission grid starting at the SCF's (`_apply_kgrid`'s one rule, applied to
 a mesh the person sets as to the cited one). The two panels sit one above the

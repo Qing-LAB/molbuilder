@@ -132,6 +132,12 @@ _PDOS_ASKS = (
     {"name": "by orbital type, through the device run's orbital index",
      "calc": "P/transport/F", "query": "frame=2&point=0&orbitals=s",
      "at": (2, 0.0)},
+    # THE FILTER ITSELF: the minimal basis holds s orbitals alone, so a p
+    # selection is refused by name -- the row above passes with or without
+    # the filter.
+    {"name": "an orbital type the selection's basis does not hold",
+     "calc": "P/transport/F", "query": "frame=1&point=0&orbitals=p",
+     "refused": "the selected atoms have no p orbital"},
     {"name": "a frame set's point that names no frame",
      "calc": "P/transport/F", "query": "point=0.2",
      "refused": "name the frame (its index, 0 … 2)"},

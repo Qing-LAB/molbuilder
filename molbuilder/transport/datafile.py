@@ -399,7 +399,7 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
     for p in done_points:
         if p["energy_ev"] != grid:
             raise DataFileError(
-                f"{p.get('point') or 'a point'}'s transmission is on another "
+                f"{p['point']}'s transmission is on another "
                 f"energy grid than the first point's -- every point's "
                 f"transmission deck is the one template's")
     # THE SPIN CHANNELS, by the record's names: a polarized point's two
@@ -495,7 +495,7 @@ def write_data_file(base_dir, task, record: Dict) -> Path:
                 and np.allclose(dos["energy_ev"], grid, rtol=0.0,
                                 atol=AVTRANS_ENERGY_HALF_DECIMAL_EV)):
             raise DataFileError(
-                f"{p.get('point') or 'a point'}'s DOS is on another energy "
+                f"{p['point']}'s DOS is on another energy "
                 f"grid than its transmission -- not the same points within "
                 f"the {AVTRANS_ENERGY_HALF_DECIMAL_EV:g} eV the transmission "
                 f"file's five decimals allow")
@@ -662,7 +662,11 @@ def _run_facts(run: Dict, prefix: str, cell: Tuple, values: Dict[str, Any],
                           ("fermi_ev", "rung_fermi_ev")):
             if run.get(key) is not None:
                 values[name][cell] = run[key]
-    rows = run.get("scf") or ()
+    # A RUN THAT DID NOT RUN states no history: its count keeps the fill,
+    # -1, never 0, which is a count (§ 2a.12).
+    if "scf" not in run:
+        return
+    rows = run["scf"] or ()
     values[f"{prefix}_scf_cycles"][cell] = len(rows)
     for c, row in enumerate(rows):
         for (key, suffix, *_rest) in columns:

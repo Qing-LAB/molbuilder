@@ -293,7 +293,7 @@ B8)*.
    tab, brought into view), and the status line says it too. The browser
    writes the two files into the selected folder and does not navigate; the
    destination must be the calculation's own folder — describing into the
-   cited directory is refused (§ 3.1). Task setup then reads it as an
+   cited run's folder is refused (`engines/transport.md` § 3.1). Task setup then reads it as an
    ordinary description and echoes the junction — a frame set's card
    included — the bias list, the treatment and the rename.
 

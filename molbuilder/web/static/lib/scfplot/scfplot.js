@@ -63,7 +63,9 @@
         const theme = root.molbuilder.plotTheme();
         const layoutOf = root.molbuilder.themedLayout;
         const colour = (i) => theme.palette[i % theme.palette.length];
-        const many = given.length > 1;
+        // SEVERAL RUNS ASKED FOR are named and coloured as runs, though only
+        // one holds rows yet -- its plot says whose it is.
+        const many = (Array.isArray(runs) ? runs : []).length > 1;
         /* EVERY TRACE, run by run and phase by phase. */
         const traces = [];
         given.forEach((run, r) => {

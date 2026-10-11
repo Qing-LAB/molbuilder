@@ -435,7 +435,8 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
                 points = []
         if points:
             fact["taken"] = [
-                {"frame": p.get("frame"), "bias_v": p.get("bias_v"),
+                {"frame": p.get("frame"), "of": p.get("of"),
+                 "bias_v": p.get("bias_v"),
                  "attempt": (f"{s.dir}/{p['folder']}" if s.dir and p.get("folder")
                              else None),
                  "started_from": p.get("started_from"),
@@ -624,8 +625,7 @@ def _rung_points(base: Path, task, name: str, token: str,
     names = RunNames.of(task.label, token, task.shape)
     out: List[Dict] = []
     for pt, where, run in result_folders(base, task, name, run=run):
-        entry: Dict = {"frame": pt.frame, "bias_v": pt.bias_v,
-                       "point": pt.words()}
+        entry: Dict = {**pt.to_wire(), "point": pt.words()}
         if where is None or not where.is_dir():
             from ..jobset.runstatus import MISSING
             entry.update(state=MISSING[0], detail=MISSING[1])
@@ -738,8 +738,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
         v = pt.bias_v
         # WHICH POINT, on every entry: its frame (``None`` with no frame
         # axis), its folder below the run, and in words.
-        at = {"frame": pt.frame, "bias_v": v, "tokens": pt.rel,
-              "point": pt.words()}
+        at = {**pt.to_wire(), "tokens": pt.rel, "point": pt.words()}
         opened = opened or where is not None
         if where is None:
             pending.append({**at, "state": rung["state"],
@@ -822,7 +821,7 @@ def collect_record(base_dir, task, *, partial: bool = False) -> Dict:
                + block(run_first("transmission", base=base_dir)))
             + "\n"
             + "".join(f"  ({what}: "
-                      + "; ".join(f"{p['point'] or 'the one point'}, "
+                      + "; ".join(f"{p['point']}, "
                                   f"{p['state']} ({p['why']})"
                                   for p in got) + ")\n"
                       for what, got in (("pending", pending),
@@ -939,26 +938,27 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
     if frame is not None and not 0 <= int(frame) < n:
         raise RecordError(f"{frame_words(int(frame))} is not one of this "
                           f"calculation's {n} frame(s): 0 … {n - 1}")
-    want = Point(frame=None if frame is None else int(frame), volts=bias_v)
-    said = (frame_words(int(frame), n) + " · " if frame is not None
-            else "") + f"{bias_v:g} V"
+    want = Point(frame=None if frame is None else int(frame), volts=bias_v,
+                 of=n if frame is not None else None)
+    said = want.words()
 
-    def _at(stage: str, run: Optional[Path] = None) -> Optional[Path]:
+    def _at(stage: str, run: Optional[Path] = None):
         # THE POINT BY EACH AXIS THE RUNG VARIES (`stages.rung_points`): an
         # axis a rung does not vary is ``None`` on its points, and its one
         # result serves every value of it -- a rung that runs once serves
         # every point, one that runs per frame every voltage (a single
-        # bias, the low-bias approximation).
-        return next((w for pt, w, _r in result_folders(base, task, stage,
-                                                       run=run)
+        # bias, the low-bias approximation).  ``(point, folder)``.
+        return next(((pt, w) for pt, w, _r in result_folders(
+                         base, task, stage, run=run)
                      if (pt.frame is None or pt.frame == want.frame)
                      and (pt.volts is None
-                          or same_volts(pt.bias_v, want.bias_v))), None)
+                          or same_volts(pt.bias_v, want.bias_v))),
+                    (None, None))
 
     if not any(same_volts(v, bias_v)
                for v in (task.bias or (0.0,))):
         raise RecordError(f"no transmission point at {bias_v:g} V")
-    where = _at("transmission")
+    read_at, where = _at("transmission")
     if where is None:
         raise RecordError(f"no transmission point at {said}")
     nc = tbt_file(where, task.label)
@@ -967,10 +967,14 @@ def selection_pdos(base_dir, task, bias_v: float, atoms, orbitals: str,
                           f"no {task.label}.TBT.nc")
     # THE DEVICE RUN THE TRANSMISSION GATHERED, as every device fact beside
     # a transmission is (`engines/transport.md` § 2a.12) -- never a newer one.
-    dev = _at("device", run=gathered_device_run(base, task))
+    _dev_at, dev = _at("device", run=gathered_device_run(base, task))
     orb = (dev / f"{task.label}.ORB_INDX") if dev is not None else None
     try:
-        return _pdos(nc, orb, atoms, orbitals)
+        # THE POINT IT WAS READ AT, stated beside the answer: under the
+        # low-bias approximation a voltage's PDOS is its frame's 0 V slice.
+        return {**_pdos(nc, orb, atoms, orbitals),
+                "point": Point(frame=read_at.frame, volts=read_at.volts,
+                               of=want.of).to_wire()}
     except (TbtError, OSError, ValueError) as exc:
         # A FILE THAT DOES NOT READ is a refusal in its words, as the record
         # says every other one.
@@ -1204,10 +1208,17 @@ def _average_lines(avg: Dict) -> List[str]:
         return []
     if avg.get("why"):
         return [f"  the frames' average: {avg['why']}"]
+    # EACH NUMBER IN ITS ROW'S UNIT, the definition's own (`frameset.ROWS`,
+    # `model/structure.md` § 2.2f): the angstrom spelled out, `A` the
+    # ampere's on the same printout.
+    from ..frameset import STRUCTURE_ROWS
+    unit = {r.name: r.unit for r in STRUCTURE_ROWS}
     head = (f"  the mode's average over {avg['frames']} frames -- mode "
             f"{avg.get('mode_index_1based')} at "
-            f"{avg.get('frequency_cm1'):g} cm-1, {avg.get('temperature_k'):g} K, "
-            f"sigma {avg.get('sigma_amu12_ang'):.6g} amu^1/2 A")
+            f"{avg.get('frequency_cm1'):g} {unit['frequency_cm1']}, "
+            f"{avg.get('temperature_k'):g} {unit['temperature_k']}, "
+            f"sigma {avg.get('sigma_amu12_ang'):.6g} "
+            f"{unit['sigma_amu12_ang']}")
     lines = [head + f", weights {avg['weights']} (sum "
              f"{avg['weight_sum']!r}, within {avg['tolerance']:g} of 1):"]
     for e in avg.get("at", ()):

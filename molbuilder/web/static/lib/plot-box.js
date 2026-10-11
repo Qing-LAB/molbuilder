@@ -23,6 +23,7 @@
 
     const BOX = "plot-box";
     const watching = new WeakMap();      // element -> its ResizeObserver
+    const live = new WeakSet();          // the boxes a chart is drawn in
 
     /* Plotly's resize answers with a promise, rejected for a hidden plot. */
     function _fit(el) {
@@ -59,8 +60,12 @@
             throw new Error("plotBox.draw: #" + (el.id || "?") + " is not a"
                 + " plot box -- its markup carries no '" + BOX + "' class");
         }
+        // A BOX WITH NO CHART IN IT holds only words standing in for one --
+        // `say`'s, or a module's notice -- and they go before it is drawn.
+        if (!live.has(el)) el.replaceChildren();
         const drawn = root.Plotly.react(el, traces, layout,
             Object.assign({}, config, { responsive: false }));
+        live.add(el);
         _watch(el);
         return drawn;
     }
@@ -78,6 +83,7 @@
     function release(el) {
         const obs = watching.get(el);
         if (obs) { obs.disconnect(); watching.delete(el); }
+        live.delete(el);
         try { root.Plotly.purge(el); } catch (_) { /* never drawn */ }
     }
 

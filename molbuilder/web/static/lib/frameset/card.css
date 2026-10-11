@@ -4,6 +4,10 @@
 
 .frameset-card {
     margin: var(--space-sm) 0;
+    /* The table's headers are the definition's names with their units, a
+       cell each kept on one line: in a narrow column it scrolls in its
+       card, never past it (Task setup's stage table does the same). */
+    overflow-x: auto;
 }
 
 .frameset-line {

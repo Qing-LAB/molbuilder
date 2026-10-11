@@ -95,8 +95,9 @@
             return;
         }
         if (isTransport && !o.junction) {
-            say("warn", "Pick the relaxed junction's attempt first — "
-                + "the composite derives everything from that citation.");
+            say("warn", "Pick the relaxed junction first — a finished "
+                + "relaxation run, or a structure pair saved from one: the "
+                + "composite derives everything from that citation.");
             return;
         }
         /* A CALCULATION LIVES UNDER A TOPIC (`job-contracts.md` § 2.5): the

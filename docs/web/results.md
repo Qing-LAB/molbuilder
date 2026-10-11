@@ -495,7 +495,7 @@ owner, every view mirrors it through a cheap door; [`spectra.md`](?doc=web/spect
 
 | selection | its one owner | what follows it |
 |---|---|---|
-| **the frame** — which structure of the calculation's frame set (one structure: MolView hides its bar) | MolView's model: `data.setCurrentFrame(i)` / `data.onFrameChange(fn)` ([`molview.md`](?doc=web/molview.md) § 6.4) — nothing keeps its own copy | the structure, every chart's *one frame* view, the points table's row, the device's convergence and a selection's PDOS — and in *all frames* the frame drawn bold |
+| **the frame** — which structure of the calculation's frame set (one structure: MolView hides its bar) | MolView's model: `data.setCurrentFrame(i)` / `data.onFrameChange(fn)` ([`molview.md`](?doc=web/molview.md) § 6.4), once the junction is in it — nothing keeps its own copy; until then, or when the junction cannot be opened, the report holds the frame a pick asked for | the structure, every chart's *one frame* view, the points table's row, the device's convergence and a selection's PDOS — and in *all frames* the frame drawn bold |
 | **the bias point** — one of the sweep's voltages (one for a single-bias calculation) | the report: one `bias`, set by clicking a curve, an I–V point or a row of the points table — a row and the ladder setting the frame too, through its owner (`selectPoint({frame, bias})`) | the highlighted curve in T(E) and DOS, the marked I–V point, the points table's row, and the device convergence tab, which shows that point's device run |
 
 **The layout** — the page's cards (`.card`, `.card-row`; [`ui-contract.md`](?doc=web/ui-contract.md)
@@ -597,7 +597,8 @@ its own:
 * **One Plotly box**: every chart on this page — the transport report's, the
   SCF plot, the spectra tab's level diagram and thermochemistry, the bench
   chart, the trajectory's energy and force — is drawn through one door,
-  `lib/plot-box.js` (`molbuilder.plotBox.draw`, `release`), into a box that
+  `lib/plot-box.js` (`molbuilder.plotBox.draw`, `say`, `release` — `say` the
+  sentence a box shows in place of its chart, why there is none), into a box that
   states its size: the module's markup makes the element a box (the
   `plot-box` class beside its own — `draw` refuses any other), so it stands
   at its size before a drawing and after one; `lib/plot-box.css` gives it a

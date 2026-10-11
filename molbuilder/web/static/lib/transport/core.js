@@ -2,8 +2,8 @@
  * (engines/transport.md § 3.8).
  *
  * ONE driver: the junction citation.  Picking the relaxed junction -- a
- * run's folder, or a structure pair's .xyz (the shared tree-picker; its
- * FILES make it citable, engines/transport.md § 3.1) -- sets
+ * run's folder, or a structure pair's .xyz (the shared tree-picker; what
+ * it holds makes it citable, engines/transport.md § 3.1) -- sets
  * everything downstream — the viewer loads the CITED
  * calculation's own labeled structure, the chemistry analysis runs on
  * it, and Describe writes the FINISHED task.json into the selected
@@ -470,7 +470,7 @@ const WORKSPACE_TAG = "transport";
      * description (`swap_electrodes: true`), and every describe of the
      * citation is read WITH it, so the viewer, the findings and the meta
      * line show the junction as this calculation will compose it.  The cited
-     * run is never written. */
+     * junction is never written. */
     var _swapElectrodesChoice = false;
     function _describeAttempt(rel) {
         return root.fetch("/api/transport/describe_attempt?path="
@@ -573,10 +573,10 @@ const WORKSPACE_TAG = "transport";
         var vf = (root.molbuilder || {}).validationFindings;
         var fpanel = _$("transport-junction-findings");
         if (!described || !described.citation) {
-            // Not citable: the server's summary IS the condition, naming
-            // the missing file -- said in the status line, and nothing
-            // else changes: the citation held stays the citation, with
-            // its findings and its offer.
+            // Not citable: the server's summary IS the refusal, naming
+            // what is missing and the whole condition -- said in the status
+            // line, and nothing else changes: the citation held stays the
+            // citation, with its findings and its offer.
             _setStatus((described && described.summary)
                 || "That is not citable.", "warn");
             return;
@@ -870,8 +870,8 @@ const WORKSPACE_TAG = "transport";
                 ? "Values from the record of the optimization your structure "
                   + "pair carries (" + src.name + ").  Change any of them; a "
                   + "change applies to all five rungs at once."
-                : "The run you cited has a deck this build could not read "
-                  + "(card 1 names the unit), so it answers none of these.  "
+                : "The junction you cited states none of these settings in "
+                  + "a form this build reads, so it answers none of them.  "
                   + "A blank field is not chosen: the template records no "
                   + "value for it and prep falls back to the catalogue's "
                   + "default until you choose.";

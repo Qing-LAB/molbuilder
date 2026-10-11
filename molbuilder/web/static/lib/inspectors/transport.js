@@ -142,7 +142,10 @@ const WORKSPACE_TAG = "results:transport";
         // block names the composed junction's, `engines/transport.md`
         // § 2a.12); one structure is one.
         state.nFrames = Number(state.average.frames) || 1;
-        if (state.bias === null && pts.length) state.bias = pts[0].bias_v;
+        // THE STARTING POINT: the first that exists -- a transmission's, or
+        // one still to come or failed, whose device run may already speak.
+        const first = pts[0] || pending[0] || failed[0];
+        if (state.bias === null && first) state.bias = first.bias_v;
 
         const wrap = _el("div", "transport-record");
         const head = _el("div", "card transport-head");
@@ -292,8 +295,8 @@ const WORKSPACE_TAG = "results:transport";
         /* A ROW IS A POINT -- a frame and a voltage -- named as the frame bar
          * counts, and a pick moves both (`web/results.md` § 2.5): ``at`` is
          * the point the row picks, the slice its numbers come from. */
-        function pickRow(frame, bias, cells, at) {
-            const tr = _el("tr", "transport-iv-row is-pick");
+        function pickRow(frame, bias, cells, at, cls) {
+            const tr = _el("tr", "transport-iv-row" + (cls ? " " + cls : ""));
             tr.dataset.frame = String(at.frame);
             tr.dataset.bias = String(at.bias);
             const words = pointWords(frame, n, bias);
@@ -303,11 +306,15 @@ const WORKSPACE_TAG = "results:transport";
             // mouse's wider target for the same pick.
             const pick = _el("button", "transport-iv-pick", words);
             pick.type = "button";
-            pick.setAttribute("aria-label", "show the point " + words);
+            // THE POINT IT PICKS, said as such -- under the low-bias
+            // approximation a row's numbers come from its frame's 0 V slice.
+            pick.setAttribute("aria-label", "show the point "
+                              + pointWords(at.frame, n, at.bias));
             first.appendChild(pick);
             tr.addEventListener("click", () => _select(state, at));
             tr.appendChild(first);
-            cells.forEach((c) => tr.appendChild(_el("td", null, c)));
+            cells.forEach((c) => tr.appendChild(
+                typeof c === "string" ? _el("td", null, c) : c));
             table.appendChild(tr);
         }
         if (computed) {
@@ -340,18 +347,15 @@ const WORKSPACE_TAG = "results:transport";
                 { frame: _pf(p), bias: p.bias_v }));
         }
         /* A POINT WITHOUT ITS TRANSMISSION, in its run's words: pending is
-         * still to come, never a failure; failed ended without it. */
+         * still to come, never a failure; failed ended without it.  A pick
+         * like every row -- its device run may already speak. */
         pending.concat(failed).forEach((p) => {
-            const tr = _el("tr", "transport-pending");
-            tr.appendChild(_el("td", null,
-                pointWords(_pf(p), n, p.bias_v)));
             const st = _el("td");
             st.appendChild(_chip(p.state));
-            tr.appendChild(st);
             const why = _el("td", null, p.why || "");
             why.setAttribute("colspan", "2");
-            tr.appendChild(why);
-            table.appendChild(tr);
+            pickRow(_pf(p), p.bias_v, [st, why],
+                    { frame: _pf(p), bias: p.bias_v }, "transport-pending");
         });
         panel.appendChild(table);
         state.nodes.table = table;
@@ -411,8 +415,9 @@ const WORKSPACE_TAG = "results:transport";
             const src = pts ? _find(pts, frame, state.bias) : st;
             if (!src) {
                 line.replaceChildren(_el("span", "transport-stage-detail",
-                    pointWords(frame, n, state.bias)
-                    + " · this rung has not run at this point"));
+                    state.bias === null ? "this rung has not run yet"
+                        : pointWords(frame, n, state.bias)
+                          + " · this rung has not run at this point"));
                 e.hidden = true;
                 r.hidden = true;
                 return;
@@ -609,8 +614,9 @@ const WORKSPACE_TAG = "results:transport";
 
     /* A POINT PICKED -- a curve, an I-V point, a table row, the ladder:
      * ``at`` is ``{frame, bias}``, either left out to keep it.  The voltage
-     * is this report's; the frame goes to its owner, the frame bar, whose
-     * change redraws (`_mountDevice`). */
+     * is this report's; the frame goes to its owner -- the frame bar, whose
+     * change redraws (`_mountDevice`), or, before the junction is in it,
+     * the report, which redraws here. */
     function _select(state, at) {
         const bias = at && at.bias !== undefined ? at.bias : state.bias;
         const frame = at && at.frame !== undefined && at.frame !== null
@@ -776,7 +782,13 @@ const WORKSPACE_TAG = "results:transport";
                     yaxis: { title: { text: "DOS (states/eV)", standoff: 4 },
                              automargin: true } });
             } else {
-                root.molbuilder.plotBox.say(state.nodes.dos, nothingYet());
+                // THE TRANSMISSIONS THERE, THEIR DOS NOT: said in the
+                // record's words; no transmission at all, said so.
+                const at = pts.filter((q) => q.bias_v === state.bias);
+                root.molbuilder.plotBox.say(state.nodes.dos, at.length
+                    ? "No DOS at " + pointWords(null, n, state.bias)
+                      + (at[0].dos_why ? ": " + at[0].dos_why : ".")
+                    : nothingYet());
             }
         } else {
             const dos = p && p.dos;
@@ -874,8 +886,11 @@ const WORKSPACE_TAG = "results:transport";
      * ``{frame, bias}`` as `meta` (per marker, on the I-V).  Bound once per
      * chart. */
     function _onClick(node, state) {
-        if (node.dataset.bound || typeof node.on !== "function") return;
-        node.dataset.bound = "1";
+        if (typeof node.on !== "function") return;
+        // ONE HANDLER, set after every draw: a chart built afresh -- after a
+        // sentence stood in its place (`plotBox.say`) -- holds none, and one
+        // updated in place holds the last draw's, dropped here.
+        node.removeAllListeners("plotly_click");
         node.on("plotly_click", (ev) => {
             const pt = ev && ev.points && ev.points[0];
             if (!pt) return;
@@ -893,7 +908,8 @@ const WORKSPACE_TAG = "results:transport";
             const li = _el("li", "transport-pdos-item",
                 s.name + " — " + s.atoms.length + " atom"
                 + (s.atoms.length === 1 ? "" : "s") + ", " + s.orbitals
-                + (s.error ? " — " + s.error : ""));
+                + (s.error && s.at === _pointKey(_frame(state), state.bias)
+                   ? " — " + s.error : ""));
             const rm = _el("button", "transport-pdos-remove", "remove");
             rm.type = "button";
             rm.setAttribute("aria-label", "remove the selection " + s.name);

@@ -419,9 +419,10 @@
         // once its rows' wording has loaded, in the order announced.
         _wordsReady.then(() => _renderLadder(ladder), (e) => {
             // THE WORDING DID NOT LOAD: said where the ladder stands, never
-            // a ladder silently missing.
+            // a ladder silently missing -- and nothing where there is none.
             const host = $("results-ladder");
-            if (!host) return;
+            if (!host || !(ladder && Array.isArray(ladder.stages)
+                           && ladder.stages.length)) return;
             host.hidden = false;
             host.textContent = "The ladder could not be drawn: "
                 + "lib/results/point-words.js did not load (" + e + ").";

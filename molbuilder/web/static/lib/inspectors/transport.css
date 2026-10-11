@@ -101,13 +101,13 @@
 .transport-iv th { text-align: right; }
 .transport-rungs th { text-align: left; }
 
-/* A row that picks a bias point says so; a computed row (the low-bias
- * I-V, one slice behind every point) does not. */
-.transport-iv-row.is-pick { cursor: pointer; }
+/* Every row of the points table picks its point -- under the low-bias
+ * approximation its frame's 0 V slice. */
+.transport-iv-row { cursor: pointer; }
 .transport-iv-row.is-selected td { background: var(--surface-recessed); }
 
-/* The pick in a measured row is a button (ui-contract.md § 4.1): the
- * cell's own text with the keyboard's focus ring, none of a button's chrome. */
+/* A row's pick is a button (ui-contract.md § 4.1): the cell's own text
+ * with the keyboard's focus ring, none of a button's chrome. */
 .transport-iv-pick {
     background: transparent;
     border: 0;

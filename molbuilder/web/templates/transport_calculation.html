@@ -61,8 +61,9 @@
       region labels in the deck.  Or <strong>a structure pair that
       records the optimization its geometry came from</strong> — its
       <code>.xyz</code>, saved from such a run (the Results tab's Export,
-      or <code>molbuilder xv2xyz --from-run</code>): one frame, or a
-      frame set, each frame a point of its own.  Either answers the
+      or <code>molbuilder xv2xyz --from-run</code>), or a frame set a
+      script wrote onto that pair through the structure's own doors —
+      every frame then runs at every voltage of the list.  Either answers the
       basis, functional and mesh, and step 2 shows them as the run's,
       yours to change; a pair brings no pseudopotentials, so step 2 asks
       for the directory that holds them.  A structure that records no
@@ -94,7 +95,7 @@
     </p>
     <div class="action-row">
       <button id="transport-junction-btn" type="button"
-              title="Walk the projects tree and pick the junction: a finished relaxation run of molbuilder's own (its folder), or a structure pair saved from one (its .xyz, one frame or a frame set).">
+              title="Walk the projects tree and pick the junction: a finished relaxation run of molbuilder's own (its folder), or a structure pair saved from one, or a frame set written onto such a pair (its .xyz).">
         Choose junction…
       </button>
       <span id="transport-junction-readout" class="muted">

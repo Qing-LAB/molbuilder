@@ -2100,7 +2100,7 @@ def api_task_setup_folder():
         # set, its definition -- by the describe door's own helper
         # (`compose.frame_set_answer`; `engines/transport.md` § 3.8.1); null
         # for every other kind.  The "What came over" card draws it.
-        "frame_set": _folder_frame_set(_task),
+        "frame_set": _folder_frame_set(_task, folder),
         # THE MACHINE IT IS SET TO -- its first prep's, read from its copy
         # of the record, or null before that (`configuration.md` M-3): the
         # page shows it fixed rather than offering a choice that can only be
@@ -2137,21 +2137,28 @@ def _folder_ladder(folder) -> dict:
         return {"error": str(exc), "stages": [], "offer": []}
 
 
-def _folder_frame_set(task):
+def _folder_frame_set(task, folder):
     """The cited junction's frames, as the describe door answers them
     (`compose.frame_set_answer`), for a transport description; ``None`` for
     every other kind.  A citation that does not read says why, in its
     words -- the folder still opens."""
     if getattr(task, "calculation", None) != "transport":
         return None
-    from molbuilder.projects import projects_root
+    from molbuilder.projects import find_projects_root
     from molbuilder.transport.compose import (ComposeError, frame_set_answer,
                                               resolve_citation)
     cited_at = ((getattr(task, "slots", None) or {}).get("junction"))
     if not cited_at:
         return None
+    # THE CALCULATION'S OWN TREE, as prep resolves the same citation
+    # (`projects.find_projects_root`), never the server's.
+    tree = find_projects_root(pathlib.Path(folder))
+    if tree is None:
+        return {"n_frames": None, "definition": None,
+                "why": f"{folder} is in no projects tree, so its citation "
+                       f"{cited_at} names nothing"}
     try:
-        _, cited = resolve_citation(str(cited_at), projects_root())
+        _, cited = resolve_citation(str(cited_at), tree)
     except ComposeError as exc:
         return {"n_frames": None, "definition": None, "why": str(exc)}
     return frame_set_answer(cited)

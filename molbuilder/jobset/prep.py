@@ -2306,8 +2306,8 @@ class PrepAnswer:
     flat: bool = False
     #: The attempt opened or reused (`materialize.Attempt`).
     attempt: Optional[object] = None
-    #: A swept rung's run: ``(point folder, volts, [(source, file), ...])``
-    #: per point (`gather_sources`, `engines/transport.md` § 2a.11).
+    #: A rung that runs per point: ``(point folder, Point, [(source, file),
+    #: ...])`` each (`gather_sources`, `engines/transport.md` § 2a.11).
     points: List[tuple] = dataclasses.field(default_factory=list)
     #: A transport rung's carry into its one attempt: ``(source, file)``.
     gathered: List[tuple] = dataclasses.field(default_factory=list)

@@ -111,8 +111,10 @@ class StageStatus:
     #: does for you*, 4).  Beside the state, never folded into it: a run can
     #: finish and not converge (`parse.dirs.run_status`).
     converged: Optional[str] = None
-    #: A swept rung's points, in bias order -- ``{bias_v, folder, done, why,
-    #: started_from, took}`` each, read from the point's own files
+    #: A rung's points, frames outer and voltages inner -- the point's wire
+    #: form (`stages.Point.to_wire`: ``frame``, ``of``, ``bias_v``) with
+    #: ``point`` (its words), ``folder``, ``done``, ``why``,
+    #: ``started_from`` and ``took`` each, read from the point's own files
     #: (`point_rows`; `engines/transport.md` § 2a.11) -- or ``[]``.
     points: List[Dict[str, Any]] = field(default_factory=list)
     #: What the run GATHERED from the rungs upstream -- ``<file> <- <run>``
@@ -231,7 +233,7 @@ def point_rows(run, names, task, stage: str, *, launch, products, base):
         src = (read_continued_from(pdir, names, 0) if pdir.is_dir()
                else None)
         took = [g for g in _gathered_lines(pdir) if g not in gathered]
-        pts.append({"frame": pt.frame, "bias_v": pt.bias_v,
+        pts.append({**pt.to_wire(),
                     "point": pt.words(), "folder": f"{run.name}/{pt.rel}",
                     "done": ok, "why": why, "started_from": src,
                     "took": took})
@@ -286,7 +288,7 @@ def every_run(base, task, st: StageStatus) -> List[Dict[str, Any]]:
                 # its frame, how many frames the set holds, its voltage --
                 # what a row is named by on a page (`web/results.md` § 2.5).
                 **(pt.to_wire() if pt is not None
-                   else {"frame": None, "of": None, "bias_v": None}),
+                   else dict.fromkeys(("frame", "of", "bias_v"))),
                 "dir": str(folder.relative_to(root)),
                 "state": got.state,
                 "detail": got.detail,
@@ -780,7 +782,7 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
     # A SWEEP'S POINTS, one row each (`engines/transport.md` § 2a.11): done
     # or not done and why, what it started from, what it alone took.
     for p in s.points:
-        rows.append((f"  {p['bias_v']:g} V",
+        rows.append((f"  {p['point']}",
                      ("done" if p["done"] else f"not done -- {p['why']}")
                      + (f"; from {p['started_from']}" if p.get("started_from")
                         else "; from what it gathered"

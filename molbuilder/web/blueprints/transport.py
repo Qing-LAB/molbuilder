@@ -87,8 +87,8 @@ def api_transport_describe_attempt() -> Any:
     against `engines/transport.md` § 3.1's citation condition and describe
     what it provides — the `describe`
     seam the shared tree-picker feeds on when the Transport tab picks
-    the junction slot (user ruling: the condition is FILES, never
-    layout).
+    the junction slot (user ruling: the condition is what the path holds,
+    never where it sits).
 
     ``?path=`` is tree-relative: a finished relaxation run's folder, or a
     structure pair's ``.xyz`` (§ 3.1).  A path that is neither answers
@@ -133,8 +133,8 @@ def api_transport_describe_attempt() -> Any:
     try:
         cited = classify_citation(cited_path)
     except ComposeError as exc:
-        # Not citable -- the refusal IS the answer (it names the
-        # missing file and states the whole condition).
+        # Not citable -- the refusal IS the answer (it names what is
+        # missing and states the whole condition).
         return jsonify({"ok": True, "citation": None,
                         "summary": str(exc), "findings": []}), 200
 
@@ -400,7 +400,9 @@ def api_transport_describe() -> Any:
     if not citation:
         return jsonify({"ok": False,
                         "error": "no junction citation -- pick the "
-                                 "relaxed junction's attempt first"}), 400
+                                 "relaxed junction first: a finished "
+                                 "relaxation run, or a structure pair "
+                                 "saved from one"}), 400
     bias_raw = body.get("bias") or [0.0]
     try:
         bias = tuple(float(v) for v in bias_raw)
