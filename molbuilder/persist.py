@@ -9,6 +9,8 @@ L1: pure stdlib, no molbuilder deps -- any layer may use it.
 from __future__ import annotations
 
 import json
+import math
+import numbers
 import os
 import tempfile
 from pathlib import Path
@@ -150,14 +152,53 @@ def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None,
     return target
 
 
+def json_safe(obj: Any) -> Any:
+    """``obj`` with every number JSON cannot hold -- NaN, an infinity --
+    as ``None``: *not stated*.  A reader decodes a Fortran field the engine
+    overflowed as NaN so the rest of its row survives
+    (`siesta_grammar.fortran_float`); JSON has no NaN, and a strict reader
+    -- a browser's ``JSON.parse`` -- refuses the token, so on the way out
+    it is the null every JSON reader takes, and a plot draws it as a gap.
+    THE ONE RULE: both JSON doors ask it (:func:`json_text` for a file, the
+    app's JSON provider for a route), the trajectory's wire form asks it,
+    and so does a reader that reasons on an engine's numbers before they
+    leave (the transport record).  Numpy's scalars and arrays are numbers
+    too (``float32`` is no ``float``), walked without importing numpy."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, numbers.Real) and not isinstance(obj, (bool, int)):
+        try:
+            return obj if math.isfinite(float(obj)) else None
+        except (TypeError, ValueError, OverflowError):
+            return obj
+    if hasattr(obj, "tolist") and not isinstance(obj, (str, bytes)):
+        try:
+            return json_safe(obj.tolist())
+        except (TypeError, ValueError):
+            return obj
+    if isinstance(obj, dict):
+        return {k: json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [json_safe(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(json_safe(v) for v in obj)
+    return obj
+
+
 def json_text(obj: Any) -> str:
     """THE byte shape of every JSON artifact this package writes —
-    pretty, 2-space indent, trailing newline.  One spelling:
+    pretty, 2-space indent, trailing newline, and JSON a browser reads
+    (:func:`json_safe`).  One spelling:
     :func:`write_json` writes it to disk, and a surface that hands the
     text to another writer (the transport tab's describe, whose browser
     writes through the file layer) reads it from here, so the two roads
     cannot produce different bytes."""
-    return json.dumps(obj, indent=2) + "\n"
+    # The walk only when it is needed: almost every artifact holds no
+    # number JSON cannot hold, and `allow_nan=False` says when one does.
+    try:
+        return json.dumps(obj, indent=2, allow_nan=False) + "\n"
+    except ValueError:
+        return json.dumps(json_safe(obj), indent=2, allow_nan=False) + "\n"
 
 
 def write_json(path, obj: Any, *, tmp_dir: Optional[Path] = None,

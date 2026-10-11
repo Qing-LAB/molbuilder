@@ -110,40 +110,40 @@ class TestTrajectoryDictNanSafe:
     path that legitimately produces NaN.
     """
 
-    def test_nan_to_none_pure_helper(self):
+    def test_json_safe_pure_helper(self):
         import math
-        from molbuilder.parse.engines._helpers import _nan_to_none
-        assert _nan_to_none(1.0) == 1.0
-        assert _nan_to_none(0) == 0
-        assert _nan_to_none(None) is None
-        assert _nan_to_none(float("nan")) is None
-        out = _nan_to_none({"a": 1.0, "b": float("nan"), "c": None})
+        from molbuilder.persist import json_safe
+        assert json_safe(1.0) == 1.0
+        assert json_safe(0) == 0
+        assert json_safe(None) is None
+        assert json_safe(float("nan")) is None
+        out = json_safe({"a": 1.0, "b": float("nan"), "c": None})
         assert out == {"a": 1.0, "b": None, "c": None}
-        out = _nan_to_none([
+        out = json_safe([
             {"x": float("nan")}, {"x": 5.0}, [float("nan"), 1.0]
         ])
         assert out == [{"x": None}, {"x": 5.0}, [None, 1.0]]
         # Original input untouched.
         src = {"v": float("nan")}
-        _ = _nan_to_none(src)
+        _ = json_safe(src)
         assert math.isnan(src["v"])
 
-    def test_nan_to_none_handles_infinity(self):
+    def test_json_safe_handles_infinity(self):
         """+inf and -inf serialise as ``Infinity`` / ``-Infinity``
         out-of-spec too.  Sanitise to None alongside NaN so the
         browser's strict JSON parser doesn't reject."""
         import json
-        from molbuilder.parse.engines._helpers import _nan_to_none
-        assert _nan_to_none(float("inf")) is None
-        assert _nan_to_none(float("-inf")) is None
+        from molbuilder.persist import json_safe
+        assert json_safe(float("inf")) is None
+        assert json_safe(float("-inf")) is None
         # Round-trip a structure with all three pathological values.
-        cleaned = _nan_to_none(
+        cleaned = json_safe(
             [float("nan"), float("inf"), float("-inf"), 1.0])
         assert cleaned == [None, None, None, 1.0]
         # Strict JSON must succeed.
         assert json.dumps(cleaned, allow_nan=False) == "[null, null, null, 1.0]"
 
-    def test_nan_to_none_handles_numpy_scalars(self):
+    def test_json_safe_handles_numpy_scalars(self):
         """``isinstance(np.float64(...), float)`` is False on some
         numpy/python combos so the pre-2026-06-14 path would skip
         numpy NaN entirely -- causing strict-JSON failure
@@ -151,12 +151,12 @@ class TestTrajectoryDictNanSafe:
         duck-typing."""
         import json
         import numpy as np
-        from molbuilder.parse.engines._helpers import _nan_to_none
-        assert _nan_to_none(np.float64("nan")) is None
-        assert _nan_to_none(np.float32("nan")) is None
-        assert _nan_to_none(np.float64(2.5)) == 2.5
+        from molbuilder.persist import json_safe
+        assert json_safe(np.float64("nan")) is None
+        assert json_safe(np.float32("nan")) is None
+        assert json_safe(np.float64(2.5)) == 2.5
         # Nested.
-        cleaned = _nan_to_none({
+        cleaned = json_safe({
             "a": np.float64("nan"),
             "b": [np.float32("inf"), 1.0, np.float64(-3.5)],
         })
@@ -166,17 +166,17 @@ class TestTrajectoryDictNanSafe:
         assert cleaned["b"][2] == -3.5
         json.dumps(cleaned, allow_nan=False)   # must not raise
 
-    def test_nan_to_none_handles_numpy_ndarray(self):
+    def test_json_safe_handles_numpy_ndarray(self):
         """A numpy ndarray that contains NaN must serialise to a
         nested list with None in place of NaN.  Catches the
         ``trajectory_to_legacy_dict.lattice`` path if a parser
         ever forgets to call ``.tolist()`` before assigning."""
         import json
         import numpy as np
-        from molbuilder.parse.engines._helpers import _nan_to_none
+        from molbuilder.persist import json_safe
         arr = np.array([[1.0, float("nan")],
                         [float("inf"), 3.0]])
-        cleaned = _nan_to_none(arr)
+        cleaned = json_safe(arr)
         assert cleaned == [[1.0, None], [None, 3.0]]
         json.dumps(cleaned, allow_nan=False)   # must not raise
 

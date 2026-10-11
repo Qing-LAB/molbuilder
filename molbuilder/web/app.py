@@ -297,6 +297,21 @@ def create_app(*, config=None) -> Flask:
 
     app = Flask(__name__)
     app.config["JSON_SORT_KEYS"] = False
+    # EVERY ROUTE ANSWERS JSON A BROWSER READS: a number JSON cannot hold
+    # (an engine's overflowed field, decoded as NaN) goes out as null, by
+    # the rule a JSON file is written with (`persist.json_safe`).
+    from flask.json.provider import DefaultJSONProvider
+    from molbuilder.persist import json_safe
+
+    class _JSONProvider(DefaultJSONProvider):
+        def dumps(self, obj, **kwargs):
+            # The walk only when it is needed (`persist.json_text`'s way).
+            try:
+                return super().dumps(obj, allow_nan=False, **kwargs)
+            except ValueError:
+                return super().dumps(json_safe(obj), **kwargs)
+
+    app.json = _JSONProvider(app)
     app.config["MAX_CONTENT_LENGTH"] = _MAX_UPLOAD_MB * 1024 * 1024
     # ---- Static assets: REVALIDATE, never serve a stale copy blind ------
     #

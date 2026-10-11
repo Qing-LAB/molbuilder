@@ -143,6 +143,8 @@ class TestStages:
                                    "bias_voltage_v", "ts_hs_save",
                                    "ts_elecs_eta_ev",
                                    "negf_neq_fermi_cutoff_kt",
+                                   "ts_scf_dq_converge",
+                                   "ts_scf_dq_tolerance",
                                    "ts_solution_method", "ts_hartree_fix",
                                    "electrodes_bulk"} | scf
         # THE LEADS' BULK TREATMENT IS NO RUNG'S ALONE (2026-09-29): tbtrans

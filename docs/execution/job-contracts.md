@@ -2260,7 +2260,16 @@ single shared helper `molbuilder/persist.py` (`schema_major`, `check_schema`,
 `read_json`, `write_json`), adopted by `scheduler/record.py`, `bench/result.py`,
 `jobset/model.py`, `task.py`, `template.py`, and `checkpoint.py` (it was
 hand-rolled three times with a subtle missing-`@` inconsistency before). New
-persisted artifacts must use it. The one bare-integer exception predates the
+persisted artifacts must use it. **A JSON artifact is JSON a browser reads**:
+a number JSON cannot hold — NaN, an infinity, which a reader decodes from an
+engine's overflowed Fortran field (`siesta_grammar.fortran_float`) — is
+written `null`, *not stated*, by the one rule `persist.json_safe`, which the
+file writer (`json_text`), the web app's JSON provider, the trajectory's wire
+form and the transport record (before it reasons on a Fermi level) all ask
+*(2026-10-11: a spin-polarised run's overflowed Fermi levels went out of
+`/api/transport/record` as `NaN` and the Results report would not draw, and
+`summarize task` wrote them into `<label>.transport.json`; the trajectory's
+own copy of the rule, `_nan_to_none`, folded into it)*. The one bare-integer exception predates the
 convention: `.molstruct.json`, whose number lives in
 `sidecars/molstruct.SCHEMA_VERSION` and is never typed in a doc — a number
 typed here drifts from the code, which is what the registry row above forbids.

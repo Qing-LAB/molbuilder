@@ -120,7 +120,7 @@ field it names ([`engines/template.md`](?doc=engines/template.md) § 5.3).
 
 | key | why the form cannot derive it |
 |---|---|
-| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of **19** optional items only **16** carry one, so three would silently lose their *(auto)* option |
+| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of **20** optional items only **17** carry one, so three would silently lose their *(auto)* option |
 | `tier` | `basic` / `advanced`. A judgement about the parameter, not about the widget — the form dims advanced fields |
 | `pattern` | a regex the value must match. Two items have one (`system_label`, `job_name`) and nothing else can express it |
 

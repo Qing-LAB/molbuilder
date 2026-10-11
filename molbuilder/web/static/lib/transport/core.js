@@ -14,9 +14,11 @@
  * second way to fill the viewer would be a second source for the
  * composite's one fact (molview.md § 9.3a, one level up).
  *
- * The form (schema-driven from /api/transport/schema) persists to
- * sessionStorage; the cited junction persists in the tab's own
- * workspace note, so a reload restores the whole describe state.
+ * What the forms hold (schema-driven from /api/transport/schema) -- the
+ * shared panel and each rung's tab -- and the cited junction persist
+ * through the workspace's one door, each under the tab's own tag
+ * (`transport:form`, `transport:panel`; workspace.md § 4), so a reload
+ * restores the whole describe state.
  */
 import { mount } from "/static/lib/molview/index.js";
 
@@ -28,8 +30,6 @@ const WORKSPACE_TAG = "transport";
     "use strict";
 
     var SCHEMA_URL = "/api/transport/schema";
-    // WHAT EACH RUNG'S TAB HOLDS, per rung (`_saveRung`).
-    var FORM_KEY   = "molbuilder.transport_held";
 
     /* THE ONE STATUS WRITER (`lib/status.js`): its severities are the ones
      * `page-shell.css` declares, so a failure reads as one on every tab. */
@@ -154,9 +154,9 @@ const WORKSPACE_TAG = "transport";
      * server answers the rung list -- name, ladder index, one-line note
      * -- and one schema per rung; a tab holds that rung's own items and
      * the ones any rung may set, each written into THAT rung's bag.  Its
-     * values are kept across a reload (session storage, per rung), and
-     * what it HOLDS is the bag the description carries -- the template's
-     * values are what a blank field runs (form-schema.md § 1.1). */
+     * values are kept across a reload (the `transport:form` note, per
+     * rung), and what it HOLDS is the bag the description carries -- the
+     * template's values are what a blank field runs (form-schema.md § 1.1). */
     function _fetchAndRender(formContainer, formSchema) {
         // A SEQUENCE, like the other in-flight guards here: the tabs are
         // drawn again at each citation and each change on the shared panel,
@@ -221,7 +221,10 @@ const WORKSPACE_TAG = "transport";
                             if (!b || seq !== _rungsSeq) return;
                             _rungSchemas[p.rung] = b.schema;
                             _rungHosts[p.rung] = p.host;
-                            _restoreFormValues(p.host, b.schema, formSchema, p.rung);
+                            _restoreFormValues(p.host, b.schema, formSchema,
+                                               p.rung, function () {
+                                                   return seq === _rungsSeq;
+                                               });
                             _wirePersistence(p.host, b.schema, formSchema, p.rung);
                         });
                 }));
@@ -233,64 +236,112 @@ const WORKSPACE_TAG = "transport";
             });
     }
 
-    /* WHAT A RUNG'S TAB HOLDS BELONGS TO THE JUNCTION IT WAS TYPED FOR:
-     * keyed by the citation and the rung, so citing another junction --
-     * another calculation -- never sends the last one's values. */
-    function _formKey(rung) {
-        return FORM_KEY + ":" + (_junction || "") + ":" + (rung || "");
+    /* WHAT THE FORMS HOLD -- the shared panel's values and each rung's
+     * tab -- kept through the workspace's one door under the tab's own tag
+     * (`workspace.md` §§ 4-5), so a reload brings back what was typed:
+     * one note, `{v, junction, shared, rungs: {rung: values}}`, the draft
+     * slot of `transport:form`.  It belongs to the JUNCTION it was typed
+     * for: citing another -- another calculation -- starts an empty note,
+     * never the last one's values. */
+    var FORM_TAG = WORKSPACE_TAG + ":form";
+    var _formNote = null;          // the note as last read or written
+    var _formNoteRead = null;      // its one read, a promise
+    var _restoring = false;        // a restore is writing the fields back
+
+    function _formIdentity(ws) {
+        return { workspace_id: ws.workspaceId(FORM_TAG), state_index: 0 };
     }
 
-    function _restoreFormValues(container, schema, formSchema, rung) {
-        var raw;
-        try { raw = root.sessionStorage.getItem(_formKey(rung)); }
-        catch (_) { return; }
-        if (!raw) return;
-        var saved;
-        try { saved = JSON.parse(raw); } catch (_) { return; }
-        if (!saved || typeof saved !== "object") return;
-        // BY THE SCHEMA, NOT BY A `name` ATTRIBUTE: `form-schema.js` sets
-        // `id` on every control it builds and `name` on none of them, and
-        // the id (`t-transmission-emin-ev`) is not the saved key
-        // (`transmission_emin_ev`).
-        //
-        // `setValues` is the renderer's own door and knows how each field
-        // kind is built, which is what stops this drifting again.
-        try {
-            formSchema.setValues(container, schema, saved);
-        } catch (_) {
-            // A saved bag from an older schema can name a field this form
-            // no longer has.  Best-effort, exactly like the write side.
-        }
+    /** The stored note, read once per page -- every restore and every save
+     *  waits for it, so a save never writes over values not yet read. */
+    function _readFormNote() {
+        if (_formNoteRead) return _formNoteRead;
+        var ws = root.molbuilder && root.molbuilder.workspace;
+        _formNoteRead = (ws && typeof ws.readState === "function")
+            ? Promise.resolve(ws.readState(_formIdentity(ws)))
+                .catch(function () { return null; })
+            : Promise.resolve(null);
+        _formNoteRead = _formNoteRead.then(function (note) {
+            _formNote = (note && note.v === 1) ? note : null;
+            return _formNote;
+        });
+        return _formNoteRead;
     }
 
-    /* What one rung's tab holds, into its session slot -- field by field
+    /** One surface's values in the note -- ``"shared"`` or a rung's name. */
+    function _heldIn(note, surface) {
+        if (!note) return null;
+        return surface === "shared" ? note.shared
+                                    : (note.rungs || {})[surface];
+    }
+
+    /* A surface just drawn gets back what it held, for the junction it was
+     * typed for.  BY THE SCHEMA, NOT BY A `name` ATTRIBUTE: `setValues` is
+     * the renderer's own door and knows how each field kind is built. */
+    /* ``isCurrent``, given, is asked when the note is in hand: a surface
+     * drawn again since (another citation, a change on the shared panel)
+     * gets nothing -- its newer draw restores for itself. */
+    function _restoreFormValues(container, schema, formSchema, surface,
+                                isCurrent) {
+        return _readFormNote().then(function () {
+            // THE NOTE AS IT IS NOW, not as it was read at load: the saves
+            // since (`_saveSurface`) write `_formNote`, and a redraw after an
+            // edit must put the edit back.
+            var note = _formNote;
+            if (isCurrent && !isCurrent()) return;
+            if (!note || note.junction !== (_junction || "")) return;
+            var saved = _heldIn(note, surface);
+            if (!saved || typeof saved !== "object") return;
+            // WRITING BACK IS NOT AN EDIT: the fields' input and change
+            // events would each save the note it came from (`_saveSurface`).
+            _restoring = true;
+            try {
+                formSchema.setValues(container, schema, saved);
+            } catch (_) {
+                // A note from an older schema can name a field this form
+                // no longer has; the rest is put back.
+            } finally {
+                _restoring = false;
+            }
+        });
+    }
+
+    /* What one surface holds, into the note -- field by field
      * (`formSchema.heldValues`): a field that will not read keeps the value
      * it was last saved with, so one half-typed field does not stop every
-     * later edit on the tab being saved. */
-    function _saveRung(container, schema, formSchema, rung) {
-        try {
-            var kept = null;
+     * later edit on the surface being kept. */
+    function _saveSurface(container, schema, formSchema, surface) {
+        var ws = root.molbuilder && root.molbuilder.workspace;
+        if (!ws || typeof ws.persist !== "function") return;
+        // A RESTORE IS NOT AN EDIT, and values typed with NO JUNCTION cited
+        // belong to no calculation -- nor are they kept: a reload draws the
+        // forms before it re-cites, and a save then would write over the
+        // note the citation is about to bring back.
+        if (_restoring || !_junction) return;
+        _readFormNote().then(function () {
+            var junction = _junction || "";
+            var note = (_formNote && _formNote.junction === junction)
+                ? _formNote : { v: 1, junction: junction, shared: {}, rungs: {} };
+            var values;
             try {
-                kept = JSON.parse(root.sessionStorage.getItem(_formKey(rung))
-                                  || "null");
-            } catch (_) { kept = null; }
-            var values = formSchema.heldValues(container, schema, kept);
-            root.sessionStorage.setItem(
-                _formKey(rung), JSON.stringify(values));
-        } catch (_) {
-            // Best-effort — quota / collectForm validation
-            // failure shouldn't break the form's interactive
-            // state.  The form still functions; only the
-            // refresh-survives behavior degrades.
-        }
+                values = formSchema.heldValues(container, schema,
+                                               _heldIn(note, surface));
+            } catch (_) { return; }
+            if (surface === "shared") note.shared = values;
+            else (note.rungs = note.rungs || {})[surface] = values;
+            _formNote = note;
+            ws.persist(FORM_TAG, note, _formIdentity(ws));
+        });
     }
 
-    /* Saved on EVERY edit, not after a pause: the tabs are drawn again at
-     * each citation and each change on the shared panel, and the restore
+    /* Saved on EVERY edit, not after a pause: the surfaces are drawn again
+     * at each citation and each change on the shared panel, and the restore
      * after a redraw is what puts the person's values back -- a save that
      * waited could miss a value typed just before one. */
-    function _wirePersistence(container, schema, formSchema, rung) {
-        function persist() { _saveRung(container, schema, formSchema, rung); }
+    function _wirePersistence(container, schema, formSchema, surface) {
+        function persist() {
+            _saveSurface(container, schema, formSchema, surface);
+        }
         container.addEventListener("input", persist);
         container.addEventListener("change", persist);
     }
@@ -854,6 +905,16 @@ const WORKSPACE_TAG = "transport";
                     _renderRungs();
                 }, 300);
             });
+            // ...AND WHAT IT HOLDS IS KEPT, as a rung's tab is
+            // (`_wirePersistence`): one listener for the host, saving
+            // through the schema the panel is drawn from at that moment.
+            var keep = function () {
+                if (_sharedSchema) {
+                    _saveSurface(host, _sharedSchema, formSchema, "shared");
+                }
+            };
+            host.addEventListener("input", keep);
+            host.addEventListener("change", keep);
         }
         // A SEQUENCE, as the rung tabs': the panel's host outlives each
         // citation, so an answer for an earlier citation that lands late
@@ -863,7 +924,12 @@ const WORKSPACE_TAG = "transport";
                              function () { return seq === _sharedSeq; })
                 .then(function (body) {
             if (seq !== _sharedSeq) return;
-            if (body) _sharedSchema = body.schema;
+            if (body) {
+                _sharedSchema = body.schema;
+                // What the panel held, for this junction, comes back.
+                _restoreFormValues(host, body.schema, formSchema, "shared",
+                                   function () { return seq === _sharedSeq; });
+            }
             // The panel is rendered for the junction now (or could not be):
             // the chemistry card answers for what it says, about the
             // junction the tab holds -- or hides, with none.

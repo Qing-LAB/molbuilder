@@ -385,8 +385,6 @@ Two small ordering rules keep the history consistent:
 - `test_molview_model.py` / `test_molview_stores_history.py` — restore-at-mount
   through the real model (`load(0)` adopts; a restored session still receives
   frames).
-- `test_persistence_wiring_js.py` — each tab reads back what it writes, under
-  its own tag.
 
 *(Four rows here used to name files that do not exist —
 `test_workspace_dispatcher_js.py` and kin.  A test map that names phantom

@@ -300,6 +300,16 @@ B8)*.
    ordinary description and echoes the junction — a frame set's card
    included — the bias list, the treatment and the rename.
 
+**A reload keeps the citation and what the forms hold**, through the
+workspace's one door, each under the tab's own tag
+([`workspace.md`](?doc=web/workspace.md) § 4): the citation
+(`transport:panel`), and what the shared panel and each rung's tab hold
+(`transport:form` — one note, saved on every edit while a junction is cited
+and put back after each surface draws, for the junction it was typed for: the
+last one edited) *(2026-10-11; the rung tabs kept theirs in a browser slot of
+their own, and the shared panel kept nothing, until then)*. The bias list, its
+treatment and the electrode rename are not kept: a reload starts them over.
+
 **Beside the five cards, a rail** — the shared two-column page
 (`form-components.css` `.page-cols` / `.page-aside`, as Task setup's) with
 four cards about the whole calculation, in plain words with an example each

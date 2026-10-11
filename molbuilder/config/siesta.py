@@ -1126,6 +1126,27 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
+    ts_scf_dq_converge: bool = field(default=True, metadata={
+        "category": ("convergence", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Require the device's charge to settle",
+        "engine_key":  "TS.SCF.dQ.Converge",
+        "tier":        "advanced",
+    })
+
+    # BLANK IS NOT SET: TranSIESTA's own tolerance, a thousandth of the
+    # electrons on the atoms that are not buffer atoms (the catalogue's help).
+    ts_scf_dq_tolerance: Optional[float] = field(default=None, metadata={
+        "category": ("convergence", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "How far the device's charge may be off (electrons)",
+        "engine_key":  "TS.SCF.dQ.Tolerance",
+        "range":       (0.0001, 10.0),
+        "tier":        "advanced",
+    })
+
     # BLANK IS NOT 0 (2.1.0): unset leaves TranSIESTA's own rule, a tenth of
     # the leads' broadening; 0 is no device broadening (the catalogue's help).
     negf_neq_eta_ev: Optional[float] = field(default=None, metadata={

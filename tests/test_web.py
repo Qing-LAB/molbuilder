@@ -1182,9 +1182,13 @@ def test_modify_translate_rejects_nan_offset(web_client):
     """A NaN dx must not propagate through to the structure -- the
     boundary helper ``_shared.finite_float`` rejects non-finite
     values."""
-    r = web_client.post("/api/modify/translate", json={
+    # THE BODY AS RAW TEXT: the app's JSON provider writes a NaN as null
+    # (`persist.json_safe`), and the test client encodes `json=` with it --
+    # a NaN literal on the wire is what another client can still send.
+    import json as _json
+    r = web_client.post("/api/modify/translate", data=_json.dumps({
         "structure": _env(_LINEAR_XYZ), "dx": float("nan"), "dy": 0.0, "dz": 0.0,
-    })
+    }), content_type="application/json")
     assert r.status_code == 400
     assert "finite" in r.get_json()["error"]
 

@@ -254,7 +254,7 @@ every field of the two engine classes has its help in the catalogue, and
 `help_for` is the only reader.
 
 **The rest of that duplication is the debt, and it is measured rather than
-guarded.** **512 facts live in two places** (measured 2026-08-20 at 307, 618
+guarded.** **519 facts live in two places** (measured 2026-08-20 at 307, 618
 on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item, 486 once the one-choice `engine` item retired, and 489 with `already_relaxed` on SIESTA, all 2026-09-24, and 486 once
 `wrap_into_cell` retired on 2026-09-25, 482 on 2026-09-28 once PySCF's
 `es_top_n` and `es_threshold` were removed and `temperature_K` joined SIESTA,
@@ -269,10 +269,11 @@ self-energy broadening, which the device deck left to TranSIESTA's own
 default until then (`transport.md` § 6.1b) — and 512 at 2.1.0 (2026-10-11)
 with `ts_solution_method`, `tbt_solution_method`, `ts_hartree_fix` and
 `negf_neq_fermi_cutoff_kt`, four TranSIESTA / tbtrans lines the decks left
-unsaid until then (`transport.md` § 2a.13) —
+unsaid until then (`transport.md` § 2a.13), and 519 at 2.3.0 with the device's
+charge check, `ts_scf_dq_converge` and `ts_scf_dq_tolerance` —
 every fall in the series came from deleting a home rather than from adding a
 check, and the rises are items gaining a home: two merged items gaining a
-second engine, whose declarations `config/state.py` writes once, and six
+second engine, whose declarations `config/state.py` writes once, and eight
 keywords the catalogue had not declared).
 **The six mirrored facts are compared on every run** — `MIRRORED` plus
 `workflow_group`, by `test_every_mirrored_fact_agrees`, which goes red naming
@@ -771,7 +772,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `above` | **a hard limit: the value must be greater than `value`**, and `why` is the reason — `above = { value = 0, why = "SIESTA divides each force difference by it (ofc.f90)" }`. Refused on every surface with one message, through `template.why_not` (§ 5.3, 2026-09-30); for a triple, each component |
 | `at_least` | **the same, inclusive: the value must be at least `value`** — for an engine whose own rule is *larger than or equal to*: `at_least = { value = 2.5, why = "TranSIESTA stops a run below 2.5 …" }` on `negf_neq_fermi_cutoff_kt` (`m_ts_contour_neq.f90`, 2.1.0). The limit refuses exactly what the engine refuses, through the same door (`template.why_not`, § 5.3) |
 | `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). **What each card says** — its title and the line under it — has one home, `template.GROUP_WORDS`, served with every form schema as `group_words` (`web/form-schema.md` § 1.3). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
-| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 19 optional items only 16 carry one, so three would silently lose the option *(`dispersion` stopped being optional on 2026-09-28: its "none" is a value, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 7a; the two NEGF device broadenings became optional at 2.1.0, blank being *not set*, [`transport.md`](?doc=engines/transport.md) § 2a.13)* (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
+| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 20 optional items only 17 carry one, so three would silently lose the option *(`dispersion` stopped being optional on 2026-09-28: its "none" is a value, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 7a; the two NEGF device broadenings became optional at 2.1.0, blank being *not set*, [`transport.md`](?doc=engines/transport.md) § 2a.13)* (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
 | `required` | **which calculation KINDS' forms draw this optional item as required** — `required = ["optimization", "vibration"]` on `psml_lib` (2026-09-30, plan § 5w K20): unset stays a state the item has, but on those kinds the Send refuses until its question is answered, so the form marks it required and shows it red while it is empty. A list, like `calculations`; absence means *not required*. It refuses nothing itself — the Send's check does ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1) |
 | `tier` | `basic` or `advanced`. A judgement about the **parameter**, not about the widget: a surface dims the advanced ones so a first-time reader is not asked to weigh every knob at once |
 | `pattern` | a regex the value must match. Two items have one — `system_label`, `job_name` — and nothing else in the vocabulary can express *"letters, digits, hyphens, underscores; no dots"* |

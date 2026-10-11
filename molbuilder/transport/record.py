@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ..atom_permutation import PERMUTATION_FILE
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
+from ..persist import json_safe
 
 if TYPE_CHECKING:
     from .stages import Point
@@ -542,7 +543,11 @@ def _science(out: Path, answers: str) -> Dict:
     # THE RUN'S SCF, AS IT RAN (`web/results.md` § 2.5): every row of the
     # last step, phase-tagged -- a device's periodic start and its NEGF
     # loop apart -- with what each phase had to reach and how it ended.
-    hist = (frames[-1].scf_history or []) if frames else []
+    # AN ENGINE'S UNREADABLE NUMBER IS NOT STATED (`persist.json_safe`): a
+    # field SIESTA overflowed reads as NaN, and every figure below -- E_F,
+    # the leads' agreement, the frames' note -- is reasoned on, so it
+    # enters the record as None, never as a NaN that compares and prints.
+    hist = json_safe(frames[-1].scf_history or []) if frames else []
     fact["scf"] = [{k: c[k] for k in _SCF_FIELDS if k in c} for c in hist]
     if info.get("scf_criteria"):
         fact["scf_criteria"] = info["scf_criteria"]

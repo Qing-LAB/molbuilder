@@ -2670,6 +2670,49 @@ How far past each lead's Fermi level the non-equilibrium part of TranSIESTA's in
 5, TranSIESTA's own default, catches the Fermi functions' tails; TranSIESTA stops a run below 2.5 (SIESTA 5.4.2 `m_ts_contour_neq.f90`).  A plain number -- the deck writes no unit word, because TranSIESTA reads it in kT.
 """
 
+[item.ts_scf_dq_converge]
+stages = ["device"]
+kind = "engine"
+category = ["convergence"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.SCF.dQ.Converge"
+engine_key = "TS.SCF.dQ.Converge"
+manual = "SIESTA 5.4.2 TranSIESTA §'Convergence' (TS.SCF.dQ.Converge)"
+type = "bool"
+value = true
+default = true
+group = "stage"
+label = "Require the device's charge to settle"
+tier = "advanced"
+help = """
+Whether the device's self-consistent run counts as converged only when its charge is right too: on top of the density and Hamiltonian changes every SIESTA run checks, TranSIESTA then asks that the electrons in the device differ from what it should hold by less than the tolerance beside it (SIESTA 5.4.2 `scfconvergence_test.F`).  On -- TranSIESTA's own default.
+Off lets a run whose density has stopped changing finish with its charge off.  It then writes its Hamiltonian -- SIESTA writes it only on convergence (`final_H_f_stress.F`) -- and the transmission is computed from a device holding that charge.
+"""
+
+[item.ts_scf_dq_tolerance]
+stages = ["device"]
+kind = "engine"
+category = ["convergence"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.SCF.dQ.Tolerance"
+engine_key = "TS.SCF.dQ.Tolerance"
+manual = "SIESTA 5.4.2 TranSIESTA §'Convergence' (TS.SCF.dQ.Tolerance)"
+type = "float"
+optional = true
+range = [0.0001, 10.0]
+group = "stage"
+label = "How far the device's charge may be off (electrons)"
+null_label = "(not set: a thousandth of the electrons, buffer atoms aside)"
+tier = "advanced"
+not_set = "TranSIESTA allows a thousandth of the electrons on the atoms that are not buffer atoms (m_ts_options.F90)"
+help = """
+How many electrons the device's charge may be off by at convergence, while the charge must settle (the switch beside it).
+  Blank (not set) -- no value is written, and TranSIESTA allows a thousandth of the electrons on the atoms that are not buffer atoms (SIESTA 5.4.2 `m_ts_options.F90`).
+  A number -- written as given: a plain number of electrons, so the deck writes no unit word.
+"""
+
 [item.ts_elecs_eta_ev]
 stages = ["device"]
 kind = "engine"

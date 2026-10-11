@@ -17,16 +17,12 @@ Public surface:
 
 from __future__ import annotations
 
-from numbers import Real as _Real
 from pathlib import Path
 from typing import Any, Dict, List
 
 from molbuilder.frame import Trajectory
 from molbuilder.parse.types import ParseResult, ParseWarning, TrajectoryResult
-
-
-_POS_INF = float("inf")
-_NEG_INF = float("-inf")
+from molbuilder.persist import json_safe
 
 
 def wrap_trajectory(traj: Trajectory, parser_name: str,
@@ -75,66 +71,6 @@ def wrap_trajectory(traj: Trajectory, parser_name: str,
 # --------------------------------------------------------------------- #
 #  Legacy-dict adapter (web layer + 3Dmol.js consumer)                   #
 # --------------------------------------------------------------------- #
-
-
-def _nan_to_none(obj: Any) -> Any:
-    """Recursively replace NaN / ±inf scalars with ``None`` for JSON
-    safety.
-
-    The JSON spec doesn't allow ``NaN`` / ``Infinity`` tokens; Python's
-    :func:`json.dumps` emits them anyway (``allow_nan=True`` is the
-    default), but the BROWSER's strict ``r.json()`` / ``JSON.parse``
-    rejects them and the fetch throws — silently blanking the
-    Results-tab view.
-
-    NaN reaches the trajectory dict primarily from
-    ``_parse_fortran_float`` (Fortran fixed-width overflow on a
-    divergent SCF cycle).  Replacing with ``None`` (which serialises
-    as ``null``) lets the frontend treat the overflow column as
-    "value missing" — Plotly renders the gap in the trace.
-
-    Also handles ``numpy.float64`` /
-    ``numpy.float32`` / 0-d numpy arrays (their isinstance(., float)
-    check returns False!) and ``numpy.ndarray``.
-    """
-    # Python float fast-path.  ``obj != obj`` is a stdlib-free NaN
-    # check; ``not math.isfinite(obj)`` also catches ±inf which would
-    # otherwise serialise as ``Infinity`` (out-of-spec).
-    if isinstance(obj, float):
-        if obj != obj:           # NaN
-            return None
-        if obj == _POS_INF or obj == _NEG_INF:
-            return None
-        return obj
-    # Numpy scalars (float16/32/64/128, complex skipped).
-    # isinstance(np.float64, float) is False on some numpy / python
-    # combinations, so check numbers.Real to catch the duck-typed
-    # case without importing numpy here.
-    if isinstance(obj, _Real) and not isinstance(obj, bool):
-        try:
-            f = float(obj)
-        except (TypeError, ValueError, OverflowError):
-            return obj
-        if f != f:
-            return None
-        if f == _POS_INF or f == _NEG_INF:
-            return None
-        # Preserve int identity for normal ints.
-        return obj
-    # Numpy ndarray — walk the underlying tolist().  Duck-type on
-    # ``.tolist()`` so we don't need a numpy import here.
-    if hasattr(obj, "tolist") and not isinstance(obj, (str, bytes)):
-        try:
-            return _nan_to_none(obj.tolist())
-        except (TypeError, ValueError):
-            return obj
-    if isinstance(obj, dict):
-        return {k: _nan_to_none(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_nan_to_none(v) for v in obj]
-    if isinstance(obj, tuple):
-        return tuple(_nan_to_none(v) for v in obj)
-    return obj
 
 
 def trajectory_result_to_legacy_dict(
@@ -252,13 +188,13 @@ def trajectory_result_to_legacy_dict(
     # Results-tab trajectory plot renders blank.  Plotly renders
     # ``null`` as a gap in the line; that gap IS the divergence
     # diagnostic.
-    out_scf = _nan_to_none(out_scf)
-    out_energies = _nan_to_none(out_energies)
-    out_max_forces = _nan_to_none(out_max_forces)
-    out_max_forces_constrained = _nan_to_none(out_max_forces_constrained)
-    out_forces = _nan_to_none(out_forces)
-    out_frames = _nan_to_none(out_frames)
-    lattice_out = _nan_to_none(lattice_out)
+    out_scf = json_safe(out_scf)
+    out_energies = json_safe(out_energies)
+    out_max_forces = json_safe(out_max_forces)
+    out_max_forces_constrained = json_safe(out_max_forces_constrained)
+    out_forces = json_safe(out_forces)
+    out_frames = json_safe(out_frames)
+    lattice_out = json_safe(lattice_out)
 
     # When NO frame is in-progress (the typical case for a finished
     # run), collapse to a top-level empty list — same shape pattern
@@ -276,8 +212,8 @@ def trajectory_result_to_legacy_dict(
     # reached through a series that was not being sieved.  Sieving first also means the derivation can only ever see None
     # or a finite number, so it cannot manufacture a fresh NaN by
     # subtracting one.
-    out_wall_clock = _nan_to_none(out_wall_clock)
-    out_elapsed = _nan_to_none(out_elapsed)
+    out_wall_clock = json_safe(out_wall_clock)
+    out_elapsed = json_safe(out_elapsed)
 
     # P-T3 (parse.md § 2a): derive `elapsed_s` from the epoch series,
     # here and nowhere else.  A run's start IS knowable from the frames
@@ -366,5 +302,4 @@ __all__ = [
     "wrap_trajectory",
     "trajectory_result_to_legacy_dict",
     "trajectory_to_legacy_dict",
-    "_nan_to_none",
 ]
