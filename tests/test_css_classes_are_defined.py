@@ -15,7 +15,7 @@ Two guards:
     misses it is exactly the failure above and is invisible until someone
     opens it.
 
-Prefix fragments (``"phase-" + kind``) are not class names and are listed by
+Prefix fragments (``"spectra-phase-" + kind``) are not class names and are listed by
 name below -- an allowlist that has to be edited is the point: adding to it is
 a decision, not an accident.
 """
@@ -33,7 +33,7 @@ _STATIC = _ROOT / "molbuilder/web/static"
 #: Written as ``"<prefix>" + something`` -- a fragment, never a whole name.
 _PREFIX_FRAGMENTS = {
     "app-notification--",   # + severity, app-notifications.js
-    "phase-",               # + phase name, lib/spectra/core.js
+    "spectra-phase-",       # + phase name, lib/spectra/core.js
     "is-",                  # + the state's tone, lib/state-chip.js
 }
 

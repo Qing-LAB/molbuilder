@@ -15,12 +15,6 @@
  * directly via <link>, so we don't @import it here.
  */
 
-/* The viewer card has no extra padding on its inner grid so the 3Dmol
-   canvas can sit flush against the card's padded edges. */
-.viewer-card {
-    padding: var(--space-md) var(--space-md) var(--space-md);
-}
-
 /* ---- Viewer + force-control layout ---------------------------------
  *
  * ``#viewer-host`` is an empty div that molview.mount fills with the
@@ -76,8 +70,8 @@
 .trajectory-force-controls label.check > input[type="checkbox"] {
     flex: 0 0 auto;
 }
-.trajectory-force-controls #force-scale { width: 7rem; }
-.trajectory-force-controls #force-min   { width: 4.5rem; }
+.trajectory-force-scale { width: var(--traj-force-scale-w); }
+.trajectory-force-min   { width: var(--traj-force-min-w); }
 .trajectory-force-controls .row-with-readout {
     display: flex;
     align-items: center;
@@ -87,7 +81,7 @@
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     color: var(--text-mono);
-    min-width: 28px;
+    min-width: var(--traj-readout-w);
     text-align: right;
 }
 
@@ -115,8 +109,8 @@
     background: var(--bg-card);
     color: var(--text-primary);
     border: 1px solid var(--border-strong);
-    border-radius: var(--radius, 4px);
-    padding: var(--space-xs) 10px;
+    border-radius: var(--radius);
+    padding: var(--space-xs) var(--space-sm2);
     /* the app's font, named (ui-contract.md § 4: a `font:` shorthand
      * names var(--font-sans), or it is not written) */
     font: var(--text-xs)/1.3 var(--font-sans);
@@ -136,7 +130,7 @@
 /* ---- Convergence-targets summary ---------------------------------
  *
  * Sits between the run-state badge and the plots row.  Mirrors the
- * .run-state visual treatment (single bordered block, no card
+ * .trajectory-run-state visual treatment (single bordered block, no card
  * chrome) so the metadata band reads as one continuous strip.  Left
  * border in --success when targets are known + the run is on track,
  * --warn-soft when current > 2× target, --text-muted when targets
@@ -217,18 +211,18 @@
 }
 .convergence-summary-hint[hidden] { display: none; }
 
-.plots-row {
+.trajectory-plots-row {
     display: grid;
     /* ``min(280px, 100%)`` floor lets a plot cell shrink below
      * 280 px when the container is narrower (a narrow inspector
      * panel rendered inside a phone viewport).  See
      * docs/web/ui-contract.md for the responsive-grid
      * pattern. */
-    grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--traj-plot-min), 100%), 1fr));
     gap: var(--gap);
 }
 /* A chart's box (lib/plot-box.css): its height, and its frame. */
-.plot {
+.trajectory-plot {
     --plot-box-h: var(--traj-plot-h);
     border: 1px solid var(--border-strong);
     background: var(--bg-card);
@@ -260,18 +254,18 @@
 
 .scf-banner-row { display: flex; }
 /* HTML5 ``hidden`` attribute must beat the display: flex above and
- * the display: grid on .plots-row below; the browser's default
+ * the display: grid on .trajectory-plots-row below; the browser's default
  * [hidden]{display:none} loses to the .* rules without an explicit
  * override. */
 .scf-banner-row[hidden] { display: none; }
-.plot[hidden]           { display: none; }
+.trajectory-plot[hidden]           { display: none; }
 .scf-banner {
     flex: 1;
     background: var(--bg-card);
     border: 1px solid var(--border-strong);
     border-left: 3px solid var(--accent);
     border-radius: var(--radius);
-    padding: 9px var(--space-md);
+    padding: var(--space-sm) var(--space-md);
     font-size: var(--text-base);
     display: flex;
     gap: var(--space-sm2);
@@ -296,7 +290,7 @@
      * grid: [icon+label] [detail] [runtime] in one row, wraps on narrow
    ---- */
 
-.run-state {
+.trajectory-run-state {
     display:        flex;
     flex-wrap:      wrap;
     align-items:    baseline;
@@ -311,21 +305,21 @@
     font-size:      var(--text-sm);
     line-height:    1.35;
 }
-.run-state-label {
+.trajectory-run-state-label {
     font-weight:    600;
     font-size:      var(--text-sm);
     color:          var(--text-primary);
     letter-spacing: 0;
     /* Status icon as ::before so the JS doesn't need to know. */
 }
-.run-state-label::before {
+.trajectory-run-state-label::before {
     display:        inline-block;
     margin-right: 0.45em;
     font-weight:    700;
     /* Match icon vertical baseline. */
     transform:      translateY(0);
 }
-.run-state-detail {
+.trajectory-run-state-detail {
     font-weight:    400;
     font-size:      var(--text-sm);
     color:          var(--text-secondary);
@@ -350,27 +344,27 @@
    icon.  Background stays neutral so the badge reads as informational,
    not as a page-level alert.  Uses tokens.css colours so dark / light
    themes pick the right contrast. */
-.run-state.run-state-finished { border-left-color: var(--success); }
-.run-state.run-state-finished .run-state-label::before {
+.trajectory-run-state.trajectory-run-state-finished { border-left-color: var(--success); }
+.trajectory-run-state.trajectory-run-state-finished .trajectory-run-state-label::before {
     content: "\2713";   /* ✓ */
     color:   var(--success);
 }
-.run-state.run-state-ongoing  { border-left-color: var(--warning); }
-.run-state.run-state-ongoing  .run-state-label::before {
+.trajectory-run-state.trajectory-run-state-ongoing  { border-left-color: var(--warning); }
+.trajectory-run-state.trajectory-run-state-ongoing  .trajectory-run-state-label::before {
     content: "\25D4";   /* ◔ - quarter-filled clock */
     color:   var(--warning);
 }
-.run-state.run-state-error    { border-left-color: var(--error); }
-.run-state.run-state-error    .run-state-label::before {
+.trajectory-run-state.trajectory-run-state-error    { border-left-color: var(--error); }
+.trajectory-run-state.trajectory-run-state-error    .trajectory-run-state-label::before {
     content: "\26A0";   /* ⚠ */
     color:   var(--error);
 }
-.run-state.run-state-blank    { display: none; }
+.trajectory-run-state.trajectory-run-state-blank    { display: none; }
 /* Every component CSS rule that sets a non-none ``display`` pairs with
- * a ``[hidden]`` guard: the base ``.run-state { display: flex; }`` ties
+ * a ``[hidden]`` guard: the base ``.trajectory-run-state { display: flex; }`` ties
  * on specificity with the UA stylesheet's ``[hidden] { display: none }``
  * and wins by source order. */
-.run-state[hidden]            { display: none; }
+.trajectory-run-state[hidden]            { display: none; }
 
 /* ------------------------------------------------------------------ *
  *  Parse-warnings panel                                               *

@@ -73,7 +73,7 @@
 .mb-dialog input[type="text"]:focus-visible {
     outline: none;
     border-color: var(--accent);
-    box-shadow: var(--shadow-input);
+    box-shadow: var(--focus-ring);
 }
 
 /* A derived value shown back to the user -- the filename a save will use.

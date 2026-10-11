@@ -29,10 +29,10 @@ tab's dropdown, and the page is read against `web/spectra.md`:
 
 Every hiding is read from the COMPUTED style, not the attribute or the
 class: a ``display`` rule of the element's own beats ``[hidden]`` in the
-author cascade, which ``.phase[hidden]`` guards against.
+author cascade, which ``.spectra-phase[hidden]`` guards against.
 
 MUTATIONS THIS MUST FAIL AGAINST: the width control shown whatever the
-strengths (``drawn`` forced true); the ``.phase[hidden]`` guard
+strengths (``drawn`` forced true); the ``.spectra-phase[hidden]`` guard
 removed (the Raman dot stays on screen); the electronic-structure notice
 without its route branch (a SIESTA reader is then told about a selection
 their run could not make); the full-RRHO labels forced on every result.
@@ -159,13 +159,13 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
                 (line, summary[line])
 
         # NO DOT FOR A PHASE THE ROUTE DOES NOT HAVE (§ 3).
-        assert _shown(page, '.phase-dot[data-phase="frequencies"]')
-        assert not _shown(page, '.phase-dot[data-phase="raman"]')
-        assert not _shown(page, '.phase-dot[data-phase="es"]')
+        assert _shown(page, '.spectra-phase-dot[data-phase="frequencies"]')
+        assert not _shown(page, '.spectra-phase-dot[data-phase="raman"]')
+        assert not _shown(page, '.spectra-phase-dot[data-phase="es"]')
         # the Infrared dot exists in the partial and, SIESTA computing no
         # intensities, is not shown (web/spectra.md § 3)
-        assert page.locator('.phase-dot[data-phase="ir"]').count() == 1
-        assert not _shown(page, '.phase-dot[data-phase="ir"]')
+        assert page.locator('.spectra-phase-dot[data-phase="ir"]').count() == 1
+        assert not _shown(page, '.spectra-phase-dot[data-phase="ir"]')
 
         # THE ELECTRONS' RESPONSE: planned, and named as what it will be.
         page.click("#mode-tabbtn-es")

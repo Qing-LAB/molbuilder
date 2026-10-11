@@ -20,7 +20,7 @@
 -#}
 
   {#- ONE ROOT, AND IT IS A CARD: page-shell's `.card` is the surface every
-      Results-tab viewer sits on, and `.card-section` blocks divide a card
+      Results-tab viewer sits on, and `.spectra-section` blocks divide a card
       (lib/inspectors/spectra.css). -#}
   <div class="card spectra-inspector">
     <!-- ── The run's progress ───────────────────── -->
@@ -28,7 +28,7 @@
         route (web/results.md § 2.1).  A run still going is followed by
         itself, every 2 s, until every phase its description asked for is
         done (web/spectra.md § 7): one status line, and the phase dots. -#}
-    <div class="card-section run-progress">
+    <div class="spectra-section run-progress">
       <p id="watch-status" class="status" role="status" aria-live="polite"></p>
 
       <!-- Phase-progress chips: one dot per computational phase
@@ -36,35 +36,35 @@
            filling in as each lands; a phase the file's route does not
            have shows no dot (web/spectra.md § 3).  Hidden until the
            first load. -->
-      <div id="phase-indicator" class="phase-indicator" hidden
+      <div id="phase-indicator" class="spectra-phase-indicator" hidden
            aria-label="Run-phase progress">
-        <span class="phase">
-          <span class="phase-label">Relaxation</span>
-          <span class="phase-dot" data-phase="relaxation"></span>
+        <span class="spectra-phase">
+          <span class="spectra-phase-label">Relaxation</span>
+          <span class="spectra-phase-dot" data-phase="relaxation"></span>
         </span>
-        <span class="phase">
-          <span class="phase-label">Frequencies</span>
-          <span class="phase-dot" data-phase="frequencies"></span>
+        <span class="spectra-phase">
+          <span class="spectra-phase-label">Frequencies</span>
+          <span class="spectra-phase-dot" data-phase="frequencies"></span>
         </span>
-        <span class="phase">
-          <span class="phase-label">Raman</span>
-          <span class="phase-dot" data-phase="raman"></span>
+        <span class="spectra-phase">
+          <span class="spectra-phase-label">Raman</span>
+          <span class="spectra-phase-dot" data-phase="raman"></span>
         </span>
-        <span class="phase">
-          <span class="phase-label">Infrared</span>
-          <span class="phase-dot" data-phase="ir"></span>
+        <span class="spectra-phase">
+          <span class="spectra-phase-label">Infrared</span>
+          <span class="spectra-phase-dot" data-phase="ir"></span>
         </span>
-        <span class="phase">
-          <span class="phase-label">Per-mode ES</span>
-          <span class="phase-dot" data-phase="es"></span>
+        <span class="spectra-phase">
+          <span class="spectra-phase-label">Per-mode ES</span>
+          <span class="spectra-phase-dot" data-phase="es"></span>
         </span>
       </div>
 
     </div>
 
     <!-- ── Results panel (only visible after load) ── -->
-    <div id="results-summary" class="card-section results-summary" hidden>
-      <header class="section-header">
+    <div id="results-summary" class="spectra-section results-summary" hidden>
+      <header class="spectra-section-header">
         <h2>Results</h2>
       </header>
       <dl id="results-summary-list" class="results-meta"></dl>
@@ -364,7 +364,7 @@
       <div id="mode-tab-es" class="panel-tabpanel" role="tabpanel"
            aria-labelledby="mode-tabbtn-es" hidden>
         <div id="es-panel" class="es-panel" hidden>
-          <header class="section-header subsection-h">
+          <header class="spectra-section-header subsection-h">
             <h3>Mode <span id="es-mode-idx">?</span></h3>
             <span id="es-mode-freq" class="status muted"></span>
           </header>

@@ -2,9 +2,9 @@
  *
  * MODULE: the spectra inspector (templates/_spectra_inspector.html, mounted by
  *   lib/inspectors/spectra.js on /results AND composed into the /spectra page).
- * ROLE: styles for the inspector's COMPONENT classes only (.card-section /
- *   .section-header / .modes-table / .spectrum-chart / .mode-viewer /
- *   .phase-indicator / .es-* / .results-meta / .inline-row).
+ * ROLE: styles for the inspector's COMPONENT classes only (.spectra-section /
+ *   .spectra-section-header / .modes-table / .spectrum-chart / .mode-viewer /
+ *   .spectra-phase-indicator / .es-* / .results-meta / .spectra-inline-row).
  *   /results does not load the spectra PAGE sheet (`web/ui-contract.md` § 1:
  *   one owner per pattern; a page sheet never restyles another page).
  * USED BY: templates/spectra.html + templates/results.html (both <link> this
@@ -14,24 +14,24 @@
 
 /* ---- Card / section model ----
  *
- * A `.card` is the column container; inside it, `.card-section`
+ * A `.card` is the column container; inside it, `.spectra-section`
  * blocks separate concerns -- on the Results tab, the run's progress and
  * the Results panel.  Sections use consistent vertical rhythm (1.4rem gap
  * between sections, 0.7rem inside).
  */
-.card-section {
+.spectra-section {
     padding: var(--space-sm2) 0;
 }
-.card-section + .card-section {
+.spectra-section + .spectra-section {
     border-top: 1px solid var(--border-soft);
 }
-.card-section:first-of-type { padding-top: 0.4rem; }
-.card-section:last-of-type { padding-bottom: 0; }
+.spectra-section:first-of-type { padding-top: var(--space-sm); }
+.spectra-section:last-of-type { padding-bottom: 0; }
 
 /* Section headers: consistent layout, one source of truth.
  * Step-numbered for the left column (Structure / Parameters /
  * Generate), plain for the right column. */
-.section-header {
+.spectra-section-header {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
@@ -39,12 +39,12 @@
     gap: var(--space-sm);
     margin: 0 0 var(--space-sm);
 }
-.section-header h2 {
+.spectra-section-header h2 {
     margin: 0;
-    font: var(--weight-semibold) 1.02rem/1.2 var(--font-sans);
+    font: var(--weight-semibold) var(--text-md)/var(--line-tight) var(--font-sans);
     color: var(--text-primary);
 }
-.section-header h3 {
+.spectra-section-header h3 {
     margin: 0;
     font: var(--weight-semibold) var(--text-base)/1.2 var(--font-sans);
     color: var(--text-primary);
@@ -59,10 +59,10 @@
 
 /* ---- Row helpers ---- */
 
-/* Horizontal rows of controls.  inline-row stays inline and wraps
+/* Horizontal rows of controls.  spectra-inline-row stays inline and wraps
  * on narrow viewports.  primary-actions gives a bit more vertical
  * breathing room for the main Generate row. */
-.inline-row {
+.spectra-inline-row {
     display: flex;
     gap: var(--space-sm);
     align-items: center;
@@ -89,7 +89,7 @@
    columns rather than one readable one. */
 .spectrum-controls {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--sp-control-min), 100%), 1fr));
     gap: var(--space-md);
     align-items: start;
     margin: var(--space-xs) 0 var(--space-sm);
@@ -111,11 +111,11 @@
 }
 .spectrum-controls input[type="range"] {
     flex: 1;
-    min-width: 6rem;
-    accent-color: var(--accent, #7aa6d2);
+    min-width: var(--sp-range-min-w);
+    accent-color: var(--accent);
 }
 .spectrum-controls output {
-    min-width: 3.2em;
+    min-width: var(--sp-output-min-w);
     text-align: right;
     font-variant-numeric: tabular-nums;
     color: var(--text-primary);
@@ -157,13 +157,13 @@
 }
 .modes-table-controls input[type="text"] {
     flex: 1;
-    min-width: 160px;
+    min-width: var(--sp-filter-min-w);
 }
 
 .modes-table-wrap {
     /* It owns a tab, so the useful limit is the viewport rather than a share
        of a page. */
-    max-height: clamp(320px, 55vh, 760px);
+    max-height: var(--sp-table-max-h);
     overflow: auto;
     border: 1px solid var(--border-soft);
     border-radius: var(--radius);
@@ -272,7 +272,7 @@
     padding: 2px var(--space-xs);
     line-height: var(--line-tight);
 }
-.mode-viewer-wrap .viewer-controls input[type="range"] { width: 6.5rem; }
+.mode-viewer-wrap .viewer-controls input[type="range"] { width: var(--sp-mode-range-w); }
 .mode-viewer-wrap .viewer-controls .unit { font-size: var(--text-2xs); }
 
 .amplitude-help {
@@ -304,7 +304,7 @@
  * in the module's own sheet, which the module links itself. */
 .mode-viewer {
     width: 100%;
-    height: clamp(200px, 26vh, 320px);
+    height: var(--sp-viewer-h);
     margin: var(--space-xs) 0;
     border: 1px solid var(--border-soft);
     border-radius: var(--radius);
@@ -330,7 +330,7 @@
     color: var(--text-secondary);
 }
 .viewer-controls input[type="range"] {
-    width: 9rem;
+    width: var(--sp-viewer-range-w);
 }
 /* ---- Electronic structure: the level diagram and its numbers ----
  *
@@ -454,7 +454,7 @@
  * / not requested -- in the loaded or followed spectra.json.  The dot
  * colour mirrors the PHASE_* string in molbuilder.spectra.results so the
  * UI never disagrees with the backend's notion of "what's done". */
-.phase-indicator {
+.spectra-phase-indicator {
     display: flex;
     gap: var(--space-lg);
     flex-wrap: wrap;
@@ -468,8 +468,8 @@
 /* ``display: flex`` above ties on specificity with the UA stylesheet's
  * ``[hidden] { display: none }`` rule and wins (author cascade).  Explicit
  * guard wins. */
-.phase-indicator[hidden] { display: none; }
-.phase {
+.spectra-phase-indicator[hidden] { display: none; }
+.spectra-phase {
     display: inline-flex;
     align-items: center;
     gap: var(--space-sm);
@@ -477,9 +477,9 @@
 }
 /* A phase the file's route does not have (web/spectra.md § 3) -- the same
  * author-cascade guard as the indicator's own, one rule up. */
-.phase[hidden] { display: none; }
-.phase-label { user-select: none; }
-.phase-dot {
+.spectra-phase[hidden] { display: none; }
+.spectra-phase-label { user-select: none; }
+.spectra-phase-dot {
     display: inline-block;
     width: 0.85em;
     height: 0.85em;
@@ -488,25 +488,25 @@
     border: 1px solid var(--border-strong);
     box-shadow: inset 0 0 0 2px var(--bg-input);
 }
-.phase-dot.phase-running {
+.spectra-phase-dot.spectra-phase-running {
     background: var(--warning);
     border-color: var(--warning);
     box-shadow: inset 0 0 0 2px var(--bg-input);
-    animation: phase-pulse 1.4s ease-in-out infinite;
+    animation: spectra-phase-pulse 1.4s ease-in-out infinite;
 }
-.phase-dot.phase-complete {
+.spectra-phase-dot.spectra-phase-complete {
     background: var(--success);
     border-color: var(--success);
     box-shadow: inset 0 0 0 2px var(--bg-input);
 }
 /* A phase the description never asked for (vibration.md § 4.9): hollow and
  * dashed, so it reads as "nothing was asked", not as "not yet". */
-.phase-dot.phase-not-requested {
+.spectra-phase-dot.spectra-phase-not-requested {
     background: transparent;
     border-style: dashed;
     box-shadow: none;
 }
-@keyframes phase-pulse {
+@keyframes spectra-phase-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.45; }
 }
@@ -560,8 +560,8 @@
     overflow-wrap: anywhere;
     font-family: var(--font-mono);
     font-size: var(--text-sm);
-    line-height: 1.5;
-    max-height: 22rem;
+    line-height: var(--line-normal);
+    max-height: var(--sp-methods-max-h);
     overflow-y: auto;
     padding: var(--space-sm) var(--space-md);
     margin: 0;

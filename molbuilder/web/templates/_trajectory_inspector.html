@@ -23,9 +23,9 @@
      buried in the bottom status banner.  Three states + initial-
      blank; populated by core.js once the file is loaded.  Authoritative when the writer emitted
      end-of-run markers; defaults to "ongoing" otherwise. -->
-<div id="run-state-badge" class="run-state run-state-blank" hidden>
-  <span class="run-state-label" id="run-state-label"></span>
-  <span class="run-state-detail" id="run-state-detail"></span>
+<div id="run-state-badge" class="trajectory-run-state trajectory-run-state-blank" hidden>
+  <span class="trajectory-run-state-label" id="run-state-label"></span>
+  <span class="trajectory-run-state-detail" id="run-state-detail"></span>
   <!-- Compact runtime line: small font, low-key, lives inside the
        run-state badge so it's there when the user looks for "what
        did this run actually consume?" without taking layout space
@@ -114,14 +114,14 @@
       title="Arrow length drawn per eV/&Aring; of force. Scales the whole overlay; does not change the forces.">
       <span class="tfc-label">Arrow scale</span>
       <span class="row-with-readout">
-        <input id="force-scale" type="range" min="0.1" max="5.0" step="0.1" value="1.0">
+        <input id="force-scale" class="trajectory-force-scale" type="range" min="0.1" max="5.0" step="0.1" value="1.0">
         <span id="force-scale-val" class="readout">1.0</span>
       </span>
     </label>
     <label class="tfc-field"
       title="Hide arrows on atoms whose |F| is below this magnitude (eV/&Aring;).">
       <span class="tfc-label">Min |F|</span>
-      <input id="force-min" type="number" min="0" max="10" step="0.01" value="0.01">
+      <input id="force-min" class="trajectory-force-min" type="number" min="0" max="10" step="0.01" value="0.01">
     </label>
 
     {#- "Exclude frozen atoms" affects the force arrows only: frozen atoms'
@@ -180,9 +180,9 @@
      SCF data is available; CSS ``display: none`` on the hidden
      attribute removes them from the grid so the remaining cells
      redistribute. -->
-<section class="plots-row">
-  <div id="energy-plot"     class="plot plot-box"></div>
-  <div id="force-plot"      class="plot plot-box"></div>
-  <div id="scf-energy-plot" class="plot plot-box" hidden></div>
-  <div id="scf-gnorm-plot"  class="plot plot-box" hidden></div>
+<section class="trajectory-plots-row">
+  <div id="energy-plot"     class="trajectory-plot plot-box"></div>
+  <div id="force-plot"      class="trajectory-plot plot-box"></div>
+  <div id="scf-energy-plot" class="trajectory-plot plot-box" hidden></div>
+  <div id="scf-gnorm-plot"  class="trajectory-plot plot-box" hidden></div>
 </section>

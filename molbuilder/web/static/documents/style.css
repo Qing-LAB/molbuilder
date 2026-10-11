@@ -77,12 +77,12 @@
 }
 .docs-link.is-active .docs-link-name,
 .docs-link-parent.is-active .docs-link-name {
-    color: var(--accent-fg);
+    color: var(--text-on-accent);
     font-weight: 600;
 }
 .docs-link.is-active .docs-link-subtitle,
 .docs-link-parent.is-active .docs-link-subtitle {
-    color: var(--accent-fg);
+    color: var(--text-on-accent);
     opacity: 0.8;
 }
 

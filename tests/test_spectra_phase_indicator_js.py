@@ -14,7 +14,7 @@ Contracts covered:
      ``if (!els.phaseIndicator) return``) — early return, no
      crash on mounts where the partial doesn't include the dot
      bar.
-  3. Each ``.phase-dot`` gets a class reflecting its phase status.  The
+  3. Each ``.spectra-phase-dot`` gets a class reflecting its phase status.  The
      status comes from ``results.phase_<dot-name>`` (e.g.,
      ``phase_frequencies``, ``phase_raman``, ``phase_es``).
   4. Calling ``updatePhaseIndicator`` a second time with new
@@ -67,16 +67,16 @@ def _extract_fn_source(name: str) -> str:
 
 def _make_phase_indicator_stub(*, dot_phases: list[str]):
     """Build the JS literal for a stubbed phase-indicator element
-    + its child ``.phase-dot`` array.  Mirrors the partial's
+    + its child ``.spectra-phase-dot`` array.  Mirrors the partial's
     actual DOM shape: a parent ``<div id="phase-indicator">``
-    with N ``<span class="phase-dot" data-phase="X">`` children.
+    with N ``<span class="spectra-phase-dot" data-phase="X">`` children.
     """
     dots = [
         {
             "dataset": {"phase": ph},
             # className + title get overwritten by the function;
             # initialize them to bare values for the round-trip.
-            "className": "phase-dot",
+            "className": "spectra-phase-dot",
             "title": "",
         }
         for ph in dot_phases
@@ -84,7 +84,7 @@ def _make_phase_indicator_stub(*, dot_phases: list[str]):
     return {
         "hidden": True,
         "_dots": dots,
-        # querySelectorAll(".phase-dot") returns the dots array.
+        # querySelectorAll(".spectra-phase-dot") returns the dots array.
         # We can't pickle JS methods in JSON; the bootstrap below
         # injects a custom querySelectorAll wrapper.
     }
@@ -96,7 +96,7 @@ def _run_with_results(
     dot_phases: list[str] = None,
     element_present: bool = True,
 ) -> dict[str, object]:
-    """Stub ``els.phaseIndicator`` (a parent with N phase-dot
+    """Stub ``els.phaseIndicator`` (a parent with N spectra-phase-dot
     children); call ``updatePhaseIndicator(results)``; report the
     resulting visibility + dot classes."""
     node = shutil.which("node")
@@ -111,16 +111,16 @@ def _run_with_results(
     bootstrap = f"""
         // ===== Stub the ``els.phaseIndicator`` element =====
         const dots = {json.dumps(stub["_dots"])};
-        // each dot sits in its own ``.phase`` label, as in the partial
+        // each dot sits in its own ``.spectra-phase`` label, as in the partial
         dots.forEach(d => {{
             const wrap = {{ hidden: false }};
             d._wrap = wrap;
-            d.closest = (sel) => (sel === ".phase" ? wrap : null);
+            d.closest = (sel) => (sel === ".spectra-phase" ? wrap : null);
         }});
         const phaseIndicator = {{
             hidden: {json.dumps(stub["hidden"])},
             querySelectorAll(sel) {{
-                if (sel === ".phase-dot") return dots;
+                if (sel === ".spectra-phase-dot") return dots;
                 return [];
             }},
         }};
@@ -225,7 +225,7 @@ def test_missing_element_silent_no_op():
 
 
 def test_dot_classes_match_phase_status():
-    """Each ``.phase-dot`` gets the class ``phase-dot phase-<status>``
+    """Each ``.spectra-phase-dot`` gets the class ``spectra-phase-dot spectra-phase-<status>``
     based on ``results.phase_<dot's data-phase>``."""
     out = _run_with_results({
         "phase_frequencies": "complete",
@@ -233,15 +233,15 @@ def test_dot_classes_match_phase_status():
         "phase_es": "not requested",
     })
     by_phase = {d["phase"]: d for d in out["dot_states"]}
-    assert by_phase["frequencies"]["className"] == "phase-dot phase-complete"
-    assert by_phase["raman"]["className"]       == "phase-dot phase-running"
+    assert by_phase["frequencies"]["className"] == "spectra-phase-dot spectra-phase-complete"
+    assert by_phase["raman"]["className"]       == "spectra-phase-dot spectra-phase-running"
     # the phrase is the state (vibration.md § 4.9); the class is one token
-    assert by_phase["es"]["className"]          == "phase-dot phase-not-requested"
+    assert by_phase["es"]["className"]          == "spectra-phase-dot spectra-phase-not-requested"
 
 
 def test_missing_phase_field_defaults_to_empty():
     """If the results blob omits ``phase_es`` entirely, the dot
-    gets class ``phase-dot phase-empty`` (the default).  Catches
+    gets class ``spectra-phase-dot spectra-phase-empty`` (the default).  Catches
     a regression where results-shape drift might leave dots
     hanging on a stale class."""
     out = _run_with_results({
@@ -250,8 +250,8 @@ def test_missing_phase_field_defaults_to_empty():
         # phase_es missing
     })
     by_phase = {d["phase"]: d for d in out["dot_states"]}
-    assert by_phase["raman"]["className"] == "phase-dot phase-empty"
-    assert by_phase["es"]["className"]    == "phase-dot phase-empty"
+    assert by_phase["raman"]["className"] == "spectra-phase-dot spectra-phase-empty"
+    assert by_phase["es"]["className"]    == "spectra-phase-dot spectra-phase-empty"
 
 
 def test_relaxation_dot_is_data_driven():
@@ -269,15 +269,15 @@ def test_relaxation_dot_is_data_driven():
         dot_phases=["relaxation", "frequencies", "raman", "es"],
     )
     by_phase = {d["phase"]: d for d in out["dot_states"]}
-    assert by_phase["relaxation"]["className"] == "phase-dot phase-complete"
-    assert by_phase["frequencies"]["className"] == "phase-dot phase-running"
+    assert by_phase["relaxation"]["className"] == "spectra-phase-dot spectra-phase-complete"
+    assert by_phase["frequencies"]["className"] == "spectra-phase-dot spectra-phase-running"
 
     v4 = _run_with_results(
         {"phase_frequencies": "complete"},
         dot_phases=["relaxation", "frequencies", "raman", "es"],
     )
     by_phase = {d["phase"]: d for d in v4["dot_states"]}
-    assert by_phase["relaxation"]["className"] == "phase-dot phase-empty"
+    assert by_phase["relaxation"]["className"] == "spectra-phase-dot spectra-phase-empty"
 
 
 def test_a_phase_the_files_route_does_not_have_shows_no_dot():

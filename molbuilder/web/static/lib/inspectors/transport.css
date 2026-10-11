@@ -20,7 +20,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
-    min-width: 0;
 }
 
 .transport-sub,
@@ -30,9 +29,11 @@
     font-size: var(--text-sm);
 }
 
-/* ROW 1 — the device beside the curves: the curves take the spare width,
- * the device keeps room for MolView's square window; below the two minima
- * the row wraps and the curves follow the device. */
+/* ROW 1 — the device beside the curves (page-shell's `.card-row`): the
+ * curves take the spare width, the device keeps room for MolView's square
+ * window; when the two bases no longer fit side by side the row wraps, the
+ * curves under the device, and a card alone on its line shrinks no further
+ * than its `--card-min`. */
 .transport-device-card {
     --card-weight: 1;
     --card-basis: 420px;

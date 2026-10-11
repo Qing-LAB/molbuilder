@@ -404,11 +404,6 @@
     border-radius: var(--radius-sm);
     cursor: pointer;
 }
-.ts-rowbtn[aria-pressed="true"] {
-    border-color: var(--accent);
-    color: var(--accent-hover);
-    background: var(--accent-bg);
-}
 .ts-rowbtn-drop:hover { border-color: var(--error); color: var(--error); }
 /* A disabled stage keeps its values and says so by fading, not by hiding. */
 

@@ -1331,7 +1331,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             yaxis: { title: { text: "E_KS (eV)", standoff: 4 },
                      tickformat: ".6~r", zeroline: false,
                      automargin: true, nticks: 5 },
-            font: { family: "system-ui, sans-serif", size: 10 },
+            font: { family: window.molbuilder.plotTheme().font, size: 10 },
         }, { displayModeBar: false });
 
         // Two traces when the engine reports both.
@@ -1438,7 +1438,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                      type: forceYType,
                      zeroline: false,
                      automargin: true, nticks: 5 },
-            font: { family: "system-ui, sans-serif", size: 10 },
+            font: { family: window.molbuilder.plotTheme().font, size: 10 },
             showlegend: hasBothTraces,
             legend: {
                 orientation: "h",
@@ -1981,8 +1981,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const badgeDet  = $("run-state-detail");
         if (badge) {
             badge.classList.remove(
-                "run-state-blank", "run-state-finished",
-                "run-state-ongoing", "run-state-error",
+                "trajectory-run-state-blank", "trajectory-run-state-finished",
+                "trajectory-run-state-ongoing", "trajectory-run-state-error",
             );
             badge.hidden = false;
             // "Last result at <time>": prefer the per-frame
@@ -2006,7 +2006,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             const joinParts = (...parts) =>
                 parts.filter(s => s && s.length).join(" \u00b7 ");
             if (kind === "finished") {
-                badge.classList.add("run-state-finished");
+                badge.classList.add("trajectory-run-state-finished");
                 badgeLab.textContent = "Finished";
                 badgeDet.textContent = joinParts(
                     endedTs ? "ended " + endedTs : "",
@@ -2021,7 +2021,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // as a classified tag; the raw parser message is the
                 // tooltip so power users can read it without losing
                 // the visual hierarchy.
-                badge.classList.add("run-state-error");
+                badge.classList.add("trajectory-run-state-error");
                 badgeLab.textContent = "Stopped";
                 // The output's own stop where it states one; else the run's
                 // own words -- a kill its monitor saw states nothing in the
@@ -2041,20 +2041,20 @@ import { molviewFiles } from "../projects/molview-doors.js";
             } else if (kind === "unreadable") {
                 // A record that does not read is said in its reader's words,
                 // which name the file and the way out (web/results.md § 4.1).
-                badge.classList.add("run-state-error");
+                badge.classList.add("trajectory-run-state-error");
                 badgeLab.textContent = "Record unreadable";
                 badgeDet.textContent = (run && run.detail) || "";
                 badgeDet.removeAttribute("title");
             } else if (kind === "queued" || kind === "pending") {
                 // Launched and silent, or prepared and never launched: the
                 // run's own words beneath -- "queued as job 481923".
-                badge.classList.add("run-state-ongoing");
+                badge.classList.add("trajectory-run-state-ongoing");
                 badgeLab.textContent = kind === "queued" ? "Queued"
                                                          : "Not launched";
                 badgeDet.textContent = (run && run.detail) || "";
                 badgeDet.removeAttribute("title");
             } else {
-                badge.classList.add("run-state-ongoing");
+                badge.classList.add("trajectory-run-state-ongoing");
                 badgeLab.textContent = "Running";
                 badgeDet.textContent = joinParts(
                     lastResultTs ? "last result " + lastResultTs : "",

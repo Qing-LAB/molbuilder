@@ -65,7 +65,6 @@
     /* ---- Shadows ---- */
     --shadow-card:   0 1px 0 rgba(255, 255, 255, 0.02) inset,
                      0 4px 12px rgba(0, 0, 0, 0.30);
-    --shadow-input:  0 0 0 3px var(--accent-glow);
     /* A modal floats above everything, so its shadow is deeper than a card's
        -- the surface has to read as LIFTED off the page rather than inset
        into it, or a dialog looks like a panel that failed to open. */
@@ -227,8 +226,6 @@
     --text-tertiary:     #7c7c7c;
     --radius-md:         8px;
     --font-sans:         system-ui, -apple-system, "Segoe UI", sans-serif;
-    --accent-fg:         #0a1018;                  /* dark text on an accent fill */
-    --accent-on:         var(--bg-page);           /* = #14171c */
     --card-row-gap:      var(--gap);
     /* Embed severity — aliases of the canonical palette (one vocabulary). */
     --ok:                var(--success);
@@ -292,6 +289,10 @@
     --tr-offer-min-w:   12rem;   /* the swap-electrodes offer's button */
     /* --- Trajectory viewer (lib/trajectory/trajectory-inspector.css) --- */
     --traj-plot-h:      clamp(200px, 24vh, 260px); /* one of the plots row's charts */
+    --traj-plot-min:    280px;    /* a plots-row cell's floor before it stacks */
+    --traj-readout-w:   28px;     /* a force knob's value readout */
+    --traj-force-scale-w: 7rem;   /* the arrow-scale slider */
+    --traj-force-min-w: 4.5rem;   /* the smallest-force box: a number */
     /* --- Bench summary (lib/inspectors/bench-summary.css) --- */
     --bench-chart-h:    600px;    /* up to three stacked panels, each readable */
     /* --- Spectra results (lib/inspectors/spectra.css) --- */
@@ -299,6 +300,19 @@
      * keeps its own, the same), so the figures stand alike. */
     --sp-figure-h:      clamp(220px, 34vh, 460px);
     --sp-figure-min:    22rem;    /* a figure stops being readable below it */
+    --sp-control-min:   22rem;    /* a chart control and its explanation, one block */
+    --sp-range-min-w:   6rem;     /* a control's slider */
+    --sp-output-min-w:  3.2em;    /* the slider's value beside it */
+    --sp-filter-min-w:  160px;    /* the modes table's filter box */
+    --sp-table-max-h:   clamp(320px, 55vh, 760px); /* the modes table, its own tab */
+    --sp-viewer-h:      clamp(200px, 26vh, 320px); /* the mode viewer's box */
+    --sp-viewer-range-w: 9rem;    /* the mode viewer's sliders */
+    --sp-mode-range-w:  6.5rem;   /* the same, in the viewer tab's control row */
+    --sp-methods-max-h: 22rem;    /* the Methods text before it scrolls */
+    /* --- Results tab (results/style.css) --- */
+    --results-page-max: 1200px;   /* the plots row legible without wrapping */
+    --results-host-min-h: 360px;  /* the viewer's host before a viewer mounts */
+    --results-source-max-h: 60vh; /* the source viewer before it scrolls */
     /* --- Transport report (lib/inspectors/transport.css) --- */
     --tr-plot-h:        21.25rem; /* T(E), DOS and I-V: one chart's height */
     --tr-plot-half-h:   16rem;    /* the convergence pair, side by side */

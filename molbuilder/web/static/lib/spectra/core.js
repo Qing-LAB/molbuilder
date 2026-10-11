@@ -1323,7 +1323,7 @@
     function updatePhaseIndicator(results) {
         if (!els.phaseIndicator) return;
         els.phaseIndicator.hidden = false;
-        const dots = els.phaseIndicator.querySelectorAll(".phase-dot");
+        const dots = els.phaseIndicator.querySelectorAll(".spectra-phase-dot");
         dots.forEach(dot => {
             const ph = dot.dataset.phase;   // relaxation|frequencies|raman|ir|es
             // A phase the file's route does not have shows no dot at all
@@ -1335,11 +1335,11 @@
                                        && results.phase_ir !== "")
                       : ph === "es" ? _routeHas(results, "es_mode_selection")
                       : true;
-            const wrap = dot.closest(".phase");
+            const wrap = dot.closest(".spectra-phase");
             if (wrap) wrap.hidden = !has;
             const v  = results["phase_" + ph] || "empty";
             // the state is a phrase (`not requested`); the class is one token
-            dot.className = "phase-dot phase-" + String(v).replace(/\s+/g, "-");
+            dot.className = "spectra-phase-dot spectra-phase-" + String(v).replace(/\s+/g, "-");
             dot.title = ph + ": " + v;
         });
     }

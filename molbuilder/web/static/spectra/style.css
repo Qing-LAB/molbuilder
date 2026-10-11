@@ -3,9 +3,9 @@
  * Page chrome: header, the .card column container, the page's bare form
  * controls, the .is-locked form fade and the .status base.
  *
- * The spectra-INSPECTOR component classes (.card-section / .section-header /
- * .modes-table / .spectrum-chart / .mode-viewer / .phase-indicator / .es-* /
- * .results-meta / .inline-row) live in
+ * The spectra-INSPECTOR component classes (.spectra-section / .spectra-section-header /
+ * .modes-table / .spectrum-chart / .mode-viewer / .spectra-phase-indicator / .es-* /
+ * .results-meta / .spectra-inline-row) live in
  * lib/inspectors/spectra.css -- the shared sheet BOTH /spectra and /results
  * link, so the inspector partial is styled everywhere WITHOUT this page sheet
  * (and its bare element rules) ever loading on another page
@@ -25,7 +25,7 @@ html, body { height: 100%; }
 /* The canonical body rules live in lib/page-shell.css.  Header rules
  * below stay per-page (the spectra page uses different padding + border
  * treatment than the shared default).  Scoped to the banner's own class:
- * a bare ``header`` would also dress every ``<header class="section-header">``
+ * a bare ``header`` would also dress every ``<header class="spectra-section-header">``
  * on the page. */
 
 .app-header {

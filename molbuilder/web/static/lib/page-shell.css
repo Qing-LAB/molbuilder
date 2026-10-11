@@ -47,7 +47,7 @@ body {
     font-family: var(--font-sans);
     color: var(--text-primary);
     background: var(--bg-page);
-    line-height: 1.5;
+    line-height: var(--line-normal);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
 }
@@ -74,7 +74,7 @@ body {
 .app-header h1 {
     margin: 0;
     font-size: var(--text-xl);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     letter-spacing: -0.01em;
     color: var(--text-primary);
 }
@@ -96,14 +96,14 @@ body {
     font-size: var(--text-sm);
     white-space: nowrap;
 }
-.app-header .app-account__email { color: var(--text-primary); font-weight: 500; }
+.app-header .app-account__email { color: var(--text-primary); font-weight: var(--weight-medium); }
 .app-header .app-account__logout {
     color: var(--accent);
     text-decoration: none;
     padding: var(--space-xs) var(--space-sm2);
     border: 1px solid var(--accent);
     border-radius: var(--radius-sm);
-    font-weight: 500;
+    font-weight: var(--weight-medium);
     transition: background 0.12s, color 0.12s;
 }
 .app-header .app-account__logout:hover {
@@ -352,7 +352,7 @@ input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--accent);
     background: var(--bg-input-focus);
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    box-shadow: var(--focus-ring);
 }
 input[type="checkbox"] {
     accent-color: var(--accent);
@@ -428,7 +428,7 @@ button:disabled {
     margin-left: var(--space-xs);
     /* Multi-line error messages render with their newlines preserved. */
     white-space: pre-line;
-    line-height: 1.4;
+    line-height: var(--line-normal);
     /* A status names paths ("Loading /abs/path…"), and a path has no space
      * to break at: without this it ran out of its box. */
     overflow-wrap: anywhere;
@@ -549,8 +549,10 @@ button:disabled {
  * Each child tunes ITSELF with three custom properties (named, not magic
  * literals buried in the layout rule):
  *   --card-weight : flex-grow emphasis for spare width          (default 1)
- *   --card-basis  : preferred width before growing/shrinking     (default 320px)
- *   --card-min    : hard minimum; the sum of these is the wrap point (default 300px)
+ *   --card-basis  : preferred width; the row wraps when the cards' bases no
+ *                   longer fit side by side                     (default 320px)
+ *   --card-min    : the floor a card alone on its line never shrinks below
+ *                                                                (default 300px)
  * ------------------------------------------------------------------------- */
 .card-row {
     display: flex;
@@ -675,7 +677,7 @@ button:disabled {
     border-left: 3px solid var(--border-soft);
     background: var(--bg-input);
     color: var(--text-secondary);
-    line-height: 1.4;
+    line-height: var(--line-normal);
     display: flex;
     gap: var(--space-sm);
     align-items: baseline;
@@ -686,7 +688,7 @@ button:disabled {
  * this sheet cannot draw is the same defect one layer down. */
 .issues-panel .issue-item::before {
     flex: 0 0 auto;
-    font-weight: 700;
+    font-weight: var(--weight-bold);
     content: "\2022";
 }
 .issues-panel .issue-item[data-severity="warn"] {

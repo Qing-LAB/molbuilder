@@ -37,7 +37,7 @@
      * page-shell padding still leave room on common 1440-wide
      * displays; on narrow viewports the inspector cards fall back to
      * their natural flow. */
-    max-width: 1200px;
+    max-width: var(--results-page-max);
     margin: 0 auto;
     /* The system-load monitor sits INSIDE this flow container (see
      * results.html): it takes its own height naturally, never overlaps
@@ -114,7 +114,7 @@
    =========================================================== */
 
 .results-inspector-host {
-    min-height: 360px;
+    min-height: var(--results-host-min-h);
     /* Mounted inspectors should fill the host's width without
      * gymnastics; their own internal layout takes over. */
     display: flex;
@@ -491,7 +491,7 @@
      * ``scrollTop`` / ``scrollHeight`` / ``clientHeight`` off this
      * element, so the overflow + max-height MUST live here, not
      * on the inner <pre>. */
-    max-height:     60vh;
+    max-height:     var(--results-source-max-h);
     overflow:       auto;
     background:     var(--bg-code);
     border:         1px solid var(--border-soft);
@@ -626,7 +626,7 @@
     outline:        none;
     border-color:   var(--accent);
     background:     var(--bg-input-focus);
-    box-shadow:     var(--shadow-input);
+    box-shadow:     var(--focus-ring);
 }
 
 .result-list-select option {
