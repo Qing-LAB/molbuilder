@@ -77,6 +77,17 @@
             mode line and per-frame table -- by the one frame-set card
             (engines/transport.md § 3.8.1; task-setup.md § 3). -#}
         <div id="ts-frameset" class="frameset-card" hidden></div>
+        {#- EVERY VALUE SHARED BY EVERY STAGE, read-only, with whose it is
+            (task-setup.md § 3; engines/template.md § 6.6 obligation 3): no
+            stage may change one, so none is a column of the stage table, and
+            this is where a reader sees them. -#}
+        <div class="ts-came-shared" id="ts-shared-wrap" hidden>
+          <h3 class="ts-reports-head">Shared by every stage</h3>
+          <p class="hint">One value for the whole calculation, and where it
+            came from. No stage can change it; change it where the
+            calculation was described.</p>
+          <dl class="ts-facts" id="ts-shared"></dl>
+        </div>
       </section>
 
       <section class="card" id="ts-shape-card" hidden>

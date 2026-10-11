@@ -1640,12 +1640,15 @@ def api_task_setup_columns():
                     "roles": _T.stage_role_rule(engine, _calc_kind)})
 
 
-def _folder_template(folder, label) -> dict:
+def _folder_template(folder, label, *, engine=None, kind=None) -> dict:
     """What the folder's template answers -- the payload, not the response.
 
     ``label`` is the
     calculation's -- its description's, else its hand-over's -- and ``None``
-    for a folder that is neither, which has no template to show.
+    for a folder that is neither, which has no template to show.  ``engine``
+    and ``kind``, a described folder's, add ``shared``: every value shared by
+    every stage of that kind, echoed read-only with whose it is
+    (`task-setup.md` § 3, `engines/template.md` § 6.6 obligation 3).
     """
     # THE door, not a glob (`template.find_template`): this tab and `prep`
     # read the same file.
@@ -1676,7 +1679,27 @@ def _folder_template(folder, label) -> dict:
     # key existed says *not recorded*, never a guess.
     said = {it.name: SOURCE_WORDS[it.source or "unrecorded"]
             for it in select(tmpl) if it.is_set}
-    return {"ok": True, "name": found.name, "values": values, "said": said}
+    # EVERY VALUE SHARED BY EVERY STAGE, read-only, with whose it is: not a
+    # column of the stage table (`shared`, § 5), so the one place on this
+    # page a reader sees them -- in the catalogue's order, by its label.  A
+    # value nobody gave reads as the template has it: none, *not chosen*.
+    shared = []
+    if engine and kind:
+        from molbuilder.template import catalogue
+        mine = {it.name: it for it in select(tmpl)}
+        for it in select(catalogue(), engine=engine, calculation=kind,
+                         shared=True):
+            if kind not in it.shared:
+                continue
+            own = mine.get(it.name)
+            shared.append({
+                "name": it.name, "label": it.label or it.name,
+                "unit": it.unit,
+                "value": own.value if own is not None and own.is_set else None,
+                "said": SOURCE_WORDS[(own.source if own is not None else None)
+                                     or "unrecorded"]})
+    return {"ok": True, "name": found.name, "values": values, "said": said,
+            "shared": shared}
 
 
 def _folder_provenance(dest) -> dict:
@@ -2075,7 +2098,10 @@ def api_task_setup_folder():
         # asks *is the file this description names actually present*, which
         # is a fact about the folder and belongs in the folder's answer.
         "files": sorted(e.name for e in folder.iterdir() if e.is_file()),
-        "template": _folder_template(folder, _label),
+        "template": _folder_template(
+            folder, _label,
+            engine=getattr(_task, "engine", None),
+            kind=getattr(_task, "calculation", None)),
         "provenance": _folder_provenance(folder),
         # Only a described folder has stages, so only then is there anything
         # to count -- and `_folder_attempts` says so itself rather than this

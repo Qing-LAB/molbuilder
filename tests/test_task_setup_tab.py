@@ -396,6 +396,24 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     assert said["mesh_cutoff"] == "you set this", said["mesh_cutoff"]
     assert said["relax_force_tol"] == "not chosen", said["relax_force_tol"]
 
+    # ...AND, ONCE DESCRIBED, EVERY VALUE SHARED BY EVERY STAGE IS ECHOED with
+    # whose it is (`task-setup.md` § 3, obligation 3): no stage may change
+    # one, so no column of the stage table shows it.  The calculation's
+    # identity is one; a value a stage may set is none of them.
+    over = _json.loads(rendered["handover_text"])
+    described = {"schema": "molbuilder/task@1", "engine": over["engine"],
+                 "calculation": over["calculation"], "shape": "flat",
+                 "run": over["run"], "structure": over["structure"],
+                 "varies": [], "stages": [{"name": "relax", "enabled": True,
+                                           "overrides": {}}]}
+    s = web_client.post("/api/task-setup/save",
+                        json={"dest": str(d), "text": _json.dumps(described)})
+    assert s.status_code == 200, s.get_json()
+    shared = {r["name"]: r for r in _folder(web_client, d)["template"]["shared"]}
+    assert (shared["system_label"]["value"],
+            shared["system_label"]["said"]) == ("probe", "you set this"), shared
+    assert "mesh_cutoff" not in shared, sorted(shared)
+
 
 def test_a_folder_with_no_template_is_not_an_error(web_client, isolated_projects_root):
     """An empty folder is an ordinary state, not a failure — the cells fall

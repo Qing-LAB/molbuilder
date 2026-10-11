@@ -1145,7 +1145,8 @@ async function loadFolder(projects, dir, opts) {
              + ` · ${(task.stages || []).length} stage(s)`);
 
     _mode = "description"; _handover = null; _task = task;
-    renderCameOver(task, said.treatment, said.frame_set);
+    renderCameOver(task, said.treatment, said.frame_set,
+                   said.template && said.template.shared);
     /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1), and into
      * `_fs`, which `loadFolder` replaces wholesale.  A separate variable
      * here would be a reset somebody has to remember. */
@@ -1309,11 +1310,12 @@ function setCell(i, col, raw) {
  * (`treatment`, the folder answer's word from the one rule the record
  * names it by).  Every parameter of the description is echoed here
  * (`template.md` § 6.6 obligation 3). */
-function renderCameOver(obj, treatment, frameSet) {
+function renderCameOver(obj, treatment, frameSet, shared) {
     const host = $("ts-facts");
     const card = $("ts-came-card");
     if (!host || !card) return;
     host.textContent = "";
+    renderShared(obj ? shared : null);
     /* THE CITED JUNCTION'S FRAMES, by the one card (transport.md § 3.8.1),
      * from the folder's answer; nothing for one structure or another kind. */
     renderFrameSet($("ts-frameset"), obj && frameSet && frameSet.n_frames
@@ -1355,6 +1357,25 @@ function renderCameOver(obj, treatment, frameSet) {
             el("dt", null, k), el("dd", null, v)));
     }
     card.hidden = false;
+}
+
+/** EVERY VALUE SHARED BY EVERY STAGE, read-only, each with whose it is --
+ *  the folder answer's `template.shared` (task-setup.md § 3,
+ *  engines/template.md § 6.6 obligation 3), in the catalogue's order and by
+ *  its label.  A value nobody gave shows the template's answer, none, beside
+ *  its words. */
+function renderShared(rows) {
+    const wrap = $("ts-shared-wrap");
+    const host = $("ts-shared");
+    if (!wrap || !host) return;
+    host.textContent = "";
+    wrap.hidden = !(rows && rows.length);
+    for (const r of rows || []) {
+        const value = renderValue(r.value, r.unit) || "\u2014";
+        host.appendChild(el("div", null,
+            el("dt", null, r.label),
+            el("dd", null, value + " \u00b7 " + r.said)));
+    }
 }
 
 /* ---------- the pickers: what may be added, from the catalogue ---------- */

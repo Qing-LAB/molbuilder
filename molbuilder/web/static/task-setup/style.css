@@ -478,6 +478,10 @@
  * and wins on source order.  The came-over facts are always shown; the
  * resolved-config list is hidden until a folder is open. */
 .ts-facts[hidden] { display: none; }
+/* What came over's second list -- every value shared by every stage
+ * (task-setup.md § 3) -- set off from the facts above it as the plan is in
+ * its card (`.ts-plan`). */
+.ts-came-shared { margin-top: var(--space-md); }
 .ts-facts > div {
     display: flex; flex-direction: column; gap: var(--space-xs);
     /* Ask for the pair's natural width, but be allowed to shrink: a flex

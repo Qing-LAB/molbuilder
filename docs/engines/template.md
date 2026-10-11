@@ -1996,8 +1996,8 @@ Five obligations, each naming the reader it binds.
   `source`, and an item the rung fixes is echoed read-only (`locked`, at the
   rung's answer, with why). [`transport.md`](?doc=engines/transport.md)
   § 3.8.2's *"must never show a shared value"* reads *never as a control,
-  always as an echo*; the echo of every shared value on Task setup is not
-  built (§ 3.8.9);
+  always as an echo*; and Task setup echoes every shared value with its
+  source since 2026-10-11 (`web/task-setup.md` § 3);
 * ~~an `optional` item at `None` writes nothing: `BlockSize`
   (`siesta/input.py:497`); and `TBT.Verbosity` reaches every transport deck
   from a field no catalogue row declares~~ — **closed**: `TBT.Verbosity` has
