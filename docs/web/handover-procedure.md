@@ -253,7 +253,7 @@ carry.  **Once written, Task setup is its editor, as every kind's** *(user,
 fixed, the seed the one left out or added back, `web/task-setup.md` § 5.3 —
 and the run's settings; what came over is what
 the calculation is: its citation names it — a different junction is a new
-description in a new folder — and its two choices and its bias are corrected
+description in a new folder — and its electrode rename and its bias are corrected
 in `task.json` itself, in Task setup's editor.  *(Until 2026-10-11 this said Task setup
 only READS the description, while its stage table edited the rungs' values,
 and the browser wrote the server's text.)*

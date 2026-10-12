@@ -1,12 +1,11 @@
-"""The Transport tab's Describe request carries the choices the tab holds
+"""The Transport tab's Describe request carries the choice the tab holds
 (`engines/transport.md` § 4, § 3.8.2a).
 
-THE SILENT FAILURE.  The tab holds two choices about its own copy of the
-cited junction -- the electrode rename and the centring -- and shows the
-junction composed with them; the sender (`lib/task-handover.js`) builds the
-request the describe door writes the description from.  A choice the sender
-does not copy is a description that silently differs from what the tab
-showed: until 2026-10-11 the sender never sent `swap_electrodes`, so a junction
+THE SILENT FAILURE.  The tab holds a choice about its own copy of the cited
+junction -- the electrode rename -- and shows the junction composed with it;
+the sender (`lib/task-handover.js`) builds the request the describe door
+writes the description from.  A choice the sender does not copy is a
+description that silently differs from what the tab showed: until 2026-10-11 the sender never sent `swap_electrodes`, so a junction
 shown with its leads traded was described with them as cited, and biased at
 the other end.  The mapping crosses two files (`transport/core.js` hands the
 options, the sender builds the body), which is why reading either alone did
@@ -59,23 +58,17 @@ window.molbuilder.taskHandover.send(Object.assign({
 """
 
 
-@pytest.mark.parametrize("swap,centre", [
-    (True, True),
-    (False, False),
-    (True, False),
-    (False, True),
-])
-def test_the_describe_request_carries_the_tabs_two_choices_and_its_folder(
-        tmp_path, swap, centre):
+@pytest.mark.parametrize("swap", [True, False])
+def test_the_describe_request_carries_the_tabs_rename_and_its_folder(
+        tmp_path, swap):
     driver = tmp_path / "drive.js"
     driver.write_text(_DRIVER)
     out = subprocess.run(
         ["node", str(driver), str(_SENDER),
-         json.dumps({"swap_electrodes": swap, "centre_junction": centre})],
+         json.dumps({"swap_electrodes": swap})],
         capture_output=True, text=True, timeout=60, check=True).stdout
     sent = json.loads(out)
     assert sent["url"] == "/api/transport/describe"
     assert sent["body"]["swap_electrodes"] is swap
-    assert sent["body"]["centre_junction"] is centre
     # THE FOLDER THE DOOR WRITES INTO (§ 3.8.2a).
     assert sent["body"]["dest"] == "/tree/P/transport/T"

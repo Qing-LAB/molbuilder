@@ -1094,7 +1094,14 @@ def api_task_setup_handover():
     # would be answering a question that already has an answer.
     from molbuilder.workingcopy_structure import StructureCodec
     from ._shared import checked_periodicity
-    struct, struct_notices = checked_periodicity(struct)
+    # THE BOX IS JUDGED AS PREP WILL PLACE IT (`cell.entering`,
+    # structure-periodicity.md § 6.0): an engine's origin is not carried into
+    # the calculation, so a flush face it left is not this calculation's.
+    # The pair is written as given, its origin's record with it.
+    from molbuilder.cell import entering, keeps_engine_frame
+    _entered, struct_notices = checked_periodicity(entering(
+        struct, keep_engine_frame=keeps_engine_frame(
+            calculation, getattr(cfg, "already_relaxed", False))))
     try:
         # ``<label>.source.xyz`` -- the dotted segment is the reservation
         # (`job-contracts.md` § 6.3): every identity is validated
@@ -1298,7 +1305,14 @@ def api_task_setup_prep():
     for d in said:
         if d.get("machine") == LOCAL_TARGET:
             d["machine"] = "(this machine)"
-    return jsonify({"ok": True, "answers": said,
+    # WHAT COMES NEXT, as the terminal's prep ends: the launch of what was
+    # just prepared -- a group's one job by its members.  Launching stays at
+    # the terminal (`task-setup.md` § 1).
+    from molbuilder.jobset.commands import launch_lines
+    prepared = list(dict.fromkeys(d["stage"] for d in said))
+    nxt = (launch_lines(kind, *prepared, base=dest)
+           if prepared and not preview else [])
+    return jsonify({"ok": True, "answers": said, "next": nxt,
                     "plan_id": said[0].get("plan_id") if said else None})
 
 
@@ -2224,6 +2238,20 @@ def _folder_set_to(folder):
     return "(this machine)" if name == LOCAL_TARGET else name
 
 
+def _launch_words(folder, stage: str) -> list:
+    """The stages `launch task` sends for prepared ``stage``, by the status
+    door's one rule (`runstatus.launch_words`), read from the folder's job
+    set."""
+    from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME
+    from molbuilder.jobset.model import JobSet
+    from molbuilder.jobset.runstatus import jobset_status, launch_words
+    rows = jobset_status(JobSet.load(folder / JOBSET_FILENAME),
+                         folder).stages
+    row = next((r for r in rows if r.name == stage), None)
+    return launch_words(row, stage,
+                        {r.name for r in rows if r.state == "pending"})
+
+
 def _folder_prepared(folder) -> dict:
     """``{"task": {stage: why}, "bench": {stage: why}}``: the stages prepared
     as each, and the prep entry's own sentence for each -- what a prep of it
@@ -2292,6 +2320,10 @@ def api_task_setup_commands():
         target = LOCAL_TARGET
     said = _folder_prepared(dest).get(kind, {})
     prepared = all(s in said for s in stages)
+    if kind == "task" and prepared and len(stages) == 1:
+        # A STAGE PREPARED IN A GROUP is launched as `jobset status` says:
+        # the group's one job while every member waits, alone after (D4).
+        stages = _launch_words(dest, stages[0])
     return jsonify({"ok": True, "lines": stage_lines(
         kind, stages, base=dest, from_attempt=(body.get("from") or None),
         cold=bool(body.get("cold")), target=target, prepared=prepared)})

@@ -1315,7 +1315,8 @@ def _sidecar_for(struct: Structure) -> dict:
     info = {k: v for k, v in (struct.info or {}).items()
             if k not in ("relaxation", "calculation")}
     return StructureCodec().pair(
-        struct.replace(engine_offset=np.zeros(3), info=info)).sidecar
+        struct.replace(engine_offset=np.zeros(3), offset_by="engine",
+                       info=info)).sidecar
 
 
 def emit_outfile_helper() -> List[str]:

@@ -445,6 +445,9 @@ export function structureForServer(structure, coordinates) {
             regions:     groupByLabel(structure.annotations),
             cell:        clone(per.cell),
             engine_offset: clone(per.engine_offset),
+            // ...AND WHOSE IT IS (structure-periodicity.md § 6.0), carried
+            // back as the server stated it.
+            offset_by:   clone(per.offset_by),
             axis_kind:   clone(per.axis_kind),
             vacuum:      clone(per.vacuum),
         },

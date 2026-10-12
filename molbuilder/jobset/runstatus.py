@@ -687,17 +687,25 @@ def _sweep_next(status: JobSetStatus) -> str:
     return "Every trial has ended -- read what they measured:\n" + read
 
 
+def launch_words(s: Optional[StageStatus], name: str,
+                 pending=frozenset()) -> List[str]:
+    """The stages `launch task` sends for prepared ``name``: A GROUP
+    PREPARED AND NOT LAUNCHED goes as its one job -- every member still
+    ``pending`` (``pending``, the names in that state); a member launched,
+    or launched again, goes alone (D4).  The one rule the status door,
+    `launch task`'s own pick and Task setup's lines ask."""
+    return (list(s.group) if s is not None and s.group
+            and s.state == "pending"
+            and all(g in pending for g in s.group) else [name])
+
+
 def next_step(s: Optional[StageStatus], name: str, *, base,
               pending=frozenset()) -> str:
     """What to do about a PREPARED stage that has not finished, by its state
     -- each a command that works.  molbuilder does NOT auto-resume; the
     person decides (`engines/stages.md`)."""
     state = s.state if s is not None else "stopped"
-    # A GROUP PREPARED AND NOT LAUNCHED goes as its one job -- every member
-    # still ``pending`` -- as `launch task` takes it (`_cli._launch_unit`).
-    # A member launched, or launched again, goes alone (D4).
-    words = (s.group if s is not None and s.group and state == "pending"
-             and all(g in pending for g in s.group) else [name])
+    words = launch_words(s, name, pending)
     if state == "pending":
         return (f"First incomplete stage: {name}, prepared and not "
                 f"launched:\n" + block(launch_lines("task", *words, base=base)))

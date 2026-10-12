@@ -30,7 +30,7 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 11,
+  "schema_version": 12,
   "n_atoms_total": 2,
   "n_frames_total": 2,
   "structure_hash": "9f2c…(sha256 hex)",
@@ -40,6 +40,7 @@ plus the structure's **metadata fields** spread in alongside them.
   "regions": {"L-electrode": [0], "frozen_atoms": [1]},
   "cell": [[10,0,0],[0,10,0],[0,0,10]],
   "engine_offset": null,
+  "offset_by": null,
   "axis_kind": ["periodic", "periodic", "isolated"],
   "vacuum": [0.0, 0.0, 12.0],
   "annotations": {"charge": {"kind": "value", "data": {"0": 0.1}}},
@@ -79,14 +80,14 @@ of them: its sidecar holds the envelope, the metadata fields and
 atom, and survives atom edits because every edit layer carries it with its atom
 (`regions` membership, the identity columns, each channel's atom-indexed
 half) — or it is **system** — stored separately, whole (`cell`,
-`engine_offset`, `axis_kind`, `vacuum`, each channel's kind/color/fdf, the
+`engine_offset` and `offset_by`, `axis_kind`, `vacuum`, each channel's kind/color/fdf, the
 structure's `customized` rows) — or it is **per-frame** — one entry per frame,
 indexed like the frames, exactly `n_frames_total` of them (`customized.frames`;
 `model/structure.md` § 2.2e).  Everything in this file is one of the three, and
 every layer (the codec, the wire, the viewer's two translation doors) folds and
 unfolds along exactly those lines.
 
-The **metadata fields** (`regions`, `cell`, `engine_offset`,
+The **metadata fields** (`regions`, `cell`, `engine_offset`, `offset_by`,
 `axis_kind`, `vacuum`, `annotations`, `customized`) are exactly the set
 `Structure`'s codec owns (`METADATA_FIELDS`) — they are **spread in, not
 re-listed**, by the writer and the reader alike
@@ -118,12 +119,21 @@ is `structure.md § 2.2`.
 
 ## 2. Schema versioning — a readable SET, strict about shape
 
-**Current schema: v11. The reader accepts {7, 8, 9, 10, 11} and nothing else.**
+**Current schema: v12. The reader accepts {7, 8, 9, 10, 11, 12} and nothing else.**
 
 ```python
-SCHEMA_VERSION    = 11                 # sidecars/molstruct.py
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11})
+SCHEMA_VERSION    = 12                 # sidecars/molstruct.py
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12})
 ```
+
+*(v12, 2026-10-11.)* **Additive**: the optional **`offset_by`** beside
+`engine_offset` — whose the stated offset is, `person` (an origin assigned on
+the Cell page) or `engine` (coordinates read back from a run), `null` when the
+structure states none. A new calculation made from a structure drops an
+engine's offset and keeps a person's
+([`structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0,
+*Entering a new calculation*). A v7–v11 file records no `offset_by`: a stated
+offset it carries is read as the person's, kept as stated.
 
 *(v11, 2026-10-09, `archive/2026-10-09-plan-consolidation.md` § 5z.8 F.)* **Additive**: the optional `customized`
 block (`model/structure.md` § 2.2d) and the envelope's `n_frames_total`,
@@ -241,7 +251,8 @@ at any of them is refused, not upgraded.
 | v8 | the optional **identity columns** (`atom_names`, `residue_ids`, `residue_names`, `chain_ids` — `title` was a fifth until 2026-09-23 and is now a retired key, see *Retired keys* above), written only when real, applied **full-replace** on read (an absent column resets to the synthesized default, same as the metadata block) — so a PDB-born residue identity stops being erased by a save, and an xyz-born sidecar does not grow a byte. **Still readable** |
 | v9 | *(2026-08-29)* the optional **`info` block** (`structure-info`): a free key→value store of what the caller knows about these atoms that is not the atoms. Applied **full-replace** like every other block, so a stale store cannot survive a pair that no longer carries one | **Still readable**
 | v10 | *(2026-09-25)* — `cell_origin` **retired** (read and ignored, never written) and the optional stated **`engine_offset`** added (`null` = the rule). **Readable**: v7–v9 files open with their corner ignored
-| **v11** | **current** *(2026-10-09)* — the optional **`customized`** block (the structure's rows and each frame's) and the envelope's **`n_frames_total`**. **Readable**: a v7–v10 file holds nothing indexed by frame
+| v11 | *(2026-10-09)* — the optional **`customized`** block (the structure's rows and each frame's) and the envelope's **`n_frames_total`**. **Readable**: a v7–v10 file holds nothing indexed by frame
+| **v12** | **current** *(2026-10-11)* — the optional **`offset_by`**: whose the stated `engine_offset` is, `person` or `engine`. **Readable**: a v7–v11 file's stated offset is read as the person's
 
 ### Changing the schema
 

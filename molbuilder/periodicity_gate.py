@@ -320,8 +320,16 @@ def _apply_block(s: Structure, payload: Any,
                              "null to clear it")
 
     s.cell = cell
+    prev_offset, prev_by = s.engine_offset, s.offset_by
     s.engine_offset = (None if cell is None or corner is None
                        else -np.asarray(corner, dtype=float))
+    # WHOSE IT IS: a corner the panel sends back unchanged keeps its record --
+    # the Cell page fills its origin boxes from the stated offset, whoever
+    # stated it -- and only a new or moved corner is the person's.
+    s.offset_by = (None if s.engine_offset is None
+                   else prev_by if prev_offset is not None and np.allclose(
+                       s.engine_offset, prev_offset, rtol=0.0, atol=1e-9)
+                   else "person")
     s.axis_kind = kinds
     s.vacuum = None if vac is None else tuple(vac)
     s.__post_init__()
@@ -496,6 +504,7 @@ def apply_edit(struct: Structure, op: str,
     if len(corner) != 3 or not np.all(np.isfinite(corner)):
         raise ValueError("the origin must be 3 numbers (Å)")
     s.engine_offset = -np.asarray(corner, dtype=float)
+    s.offset_by = "person"          # the person's origin, kept by every door
     s.__post_init__()
     # The validator DECIDES here; it does not report here: whether the atoms
     # are still inside is a CONDITION, answered once on the result.

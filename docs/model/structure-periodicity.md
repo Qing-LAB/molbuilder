@@ -40,11 +40,12 @@ file.
 |---|---|---|---|
 | `cell` | 3×3 (rows = lattice vectors, Å) or `null` | the lattice / box vectors | derived (§ 4) |
 | `engine_offset` | 3 floats (Å) or `null` | the offset the structure **states** (§ 6.0): an origin the person assigned at P, stored as `−P`, on a typed `cell` only; or an engine's own output, `[0, 0, 0]`. The box is drawn at `−engine_offset` of the coordinates beside it, and the engine gets those coordinates plus it | `null` = **the rule places the atoms**, centred in the cell (§ 6.0) |
+| `offset_by` | `person`, `engine` or `null` | whose the stated offset is (§ 6.0): the person's assigned origin, kept; or an engine's own frame, kept from stage to stage and not carried into a new calculation (`cell.entering`) | `null` beside a `null` offset — and beside the offset `Structure.frame_at` gives a later frame of a set, frame 0's as the rule placed it, which nobody stated (*A frame set gets one offset*, below); a v7–v11 file's stated offset is read as `person`, and written so (`sidecars.molstruct.apply_to_structure`) |
 | **`axis_kind`** | 3 × enum `{periodic, isolated, transport}` | **how axis *i* is treated — the authoritative periodicity field** (§ 2) | `(periodic,periodic,periodic)` if a cell is present, else all-`isolated` |
 | ~~`pbc`~~ | — | **NOT A FIELD** since 2026-09-22. The boolean view is the accessor `Structure.pbc()`, computed from `axis_kind` on demand (§ 2.0a) | — |
 | `vacuum` | 3 floats (Å) **or `null`** | isolation padding, **per side** — meaningful only on an `isolated` axis. `null` means *nobody chose one*, which is what earns that axis the default gap (§ 6.1); `[0,0,0]` means *no gap, deliberately*, and is used verbatim | `null` (unset) |
 
-`cell`, `engine_offset`, `axis_kind` and `vacuum` all live on `Structure`
+`cell`, `engine_offset`, `offset_by`, `axis_kind` and `vacuum` all live on `Structure`
 (`structure.py`) and serialize through the one metadata codec
 (`metadata_to_dict`/`apply_metadata_dict`, see `structure.md § 2.2`).
 
@@ -424,8 +425,8 @@ recipe gives (`AtomicCoordinatesOrigin 0 0 1.1773`: half its 2.3545 Å
 | **design coordinates** | the `.xyz`: the author's intent. No engine step rewrites them |
 | **engine coordinates** | design + `engine_offset`, the cell at `(0,0,0)` — what SIESTA, TranSIESTA and PySCF are all handed |
 | **where a viewer draws the box** | at `−engine_offset` **of the coordinates on screen**: for design coordinates, the structure's offset negated — the computed one, or the origin the person assigned; for engine coordinates, `(0,0,0)`. The viewer draws the coordinates it is given and moves no atom *(user, 2026-09-25: "the 3d viewer should just follow what coordinate is in the structure, and draw the cell box with the offset in mind (start from -offset). i don't believe the 3d viewer should do the job of translation")* |
-| **coordinates that came from an engine** | `engine_offset = 0`, **stated, not recomputed**: they are the engine's own frame, drawn verbatim (§ 6.1 clause 5) and handed to the next engine unchanged. Recomputing would redraw an older flush run centred, which is the misleading picture itself — and would move a relaxed geometry against SIESTA's real-space mesh, where it is no longer stationary (`engines/vibration.md` § 5.2a) |
-| **a structure saved from an engine's output** | carries the engine's coordinates **with the engine's origin**, `(0,0,0)` — the two set together, as a stated offset of `0` — so its next treatment applies nothing and the box stays where the engine had it. One saved from a run made before this rule carries that run's frame, flush corner included; check 3 refuses an atom it leaves outside, and *Automatic* on the Cell page re-centres it |
+| **coordinates that came from an engine** | `engine_offset = 0`, **stated by the engine** and recorded as the engine's (`offset_by`): they are the engine's own frame, drawn verbatim (§ 6.1 clause 5), and kept from stage to stage within one calculation — a ladder's next stage continues the geometry on the grid it was found on (`engines/vibration.md` § 5.2a). **Entering a new calculation they are placed by the rule** (*Entering a new calculation*, below): the engine's origin is a fact about the run that produced them, not a choice anyone made for the next one |
+| **a structure saved from an engine's output** | carries the engine's coordinates **with the engine's origin**, `(0,0,0)`, set together and recorded as the engine's — so the saved pair draws its box where the engine had it, and a new calculation made from it is centred (below). *Automatic* on the Cell page centres the pair itself |
 
 **Why fractional, and why never re-wrapped** — both measured on the junction
 that surfaced this, `projects/claude-vib-ui/structure/au333x6_bdt`:
@@ -454,7 +455,10 @@ recomputed on those engine coordinates is `[0, 0, 0]`.
 
 **A stated offset — an origin the person assigns, and an engine's own.** The
 rule is the default, not a cage. A structure may STATE its offset instead, and
-two things state one:
+two things state one; the structure records which, as `offset_by` — `person`
+or `engine` — beside the offset (`model/structure-molstruct.md` v12). A file
+written before the record (v10–v11) states an offset and not whose: it is read
+as the person's, kept as stated, and *Automatic* on the Cell page centres it.
 
 * **An origin the person assigns** *(user, 2026-09-25: "we should add one that
   can allow user to explicitly assign the origin of the cell box as the user
@@ -474,8 +478,8 @@ two things state one:
 * **Coordinates that came from an engine** state `0`: their origin is the
   engine's, `(0,0,0)`, set together with them — the table above. Every door
   that makes a structure from an engine's output states it: the next rung of
-  a ladder (the vibration `freq` stage from `relax`'s output, a transport
-  rung from the cited relaxation's `.XV`), every save of a run's output, and
+  a ladder (the vibration `freq` stage from `relax`'s output), every save of
+  a run's output, and
   every read of an engine's own structure file — SIESTA's `<label>.xyz` and
   `<label>.XV`, written with no sidecar, take their run's frame from what that
   run declared, `declared(run)` (`execution/architecture.md` § 3.2): the codec
@@ -484,20 +488,43 @@ two things state one:
   own deck's records, never a sidecar looked for beside the file *(plan B12,
   D19; until 2026-10-04 the composer was `parse/dirs/atom_metadata.engine_frame_for_run_dir`
   and `xv2xyz` looked beside the `.XV` instead)*.
-  The transport citation of a run states it only when the cited deck recorded
-  its placement — its `engine-offset` record *(user, 2026-09-25, plan § 5q
-  D7)*; a cited pair's is the one its sidecar states:
-  a relaxation run before the record left its atoms flush against a face, so
-  the rule places it instead. The shift is rigid, which changes nothing
-  TranSIESTA reads but SIESTA's meV egg-box ripple, and it keeps such a
-  relaxation citable without relaxing it again. **A transport calculation may
-  also centre its own copy by choice** *(user, 2026-10-11)*: a run that
-  recorded a placement still flush against a face — a relaxation whose input
-  was itself saved from a run made before this rule — keeps it, and the
-  junction card says where it sits and offers to centre it; chosen, the
-  description states `centre_junction: true` and its copy states no offset,
-  so the rule places it ([`engines/transport.md`](?doc=engines/transport.md)
-  § 4). The cited run is never written.
+
+**Entering a new calculation, the engine's origin is not carried over**
+*(user, 2026-10-11: "the engine doesn't really care about what is users
+coordinate origin ... the only thing that we care about is that when the
+engine receives it then we would like to normalize it such that it's cleaned
+up")*. A structure whose stated offset is the engine's (`offset_by =
+engine`) enters a new calculation stating none, so the rule centres it
+(`cell.entering`). Prep takes it, where the template's word is final: the
+calculation's structure as prep reads it for a stage (`prep._structure_for`
+— its `.source` pair is written as given, its origin's record with it), and a
+transport junction composed from its citation — a cited run, whose
+coordinates are always the engine's, or a cited pair recording the engine's
+origin ([`engines/transport.md`](?doc=engines/transport.md) § 4). The
+hand-over judges the box as prep will place it. What is kept:
+
+* **an origin the person assigned** — theirs, by choice;
+* **the engine's frame from stage to stage within one calculation** — the
+  vibration's `freq` stage from its `relax` stage, a relaxation continuing
+  from the stage before it: the geometry continues on the grid it was found
+  on, and a rigid shift moves a relaxed geometry against SIESTA's real-space
+  mesh, where it is no longer stationary (`engines/vibration.md` § 5.2a);
+* **a vibration's input stated relaxed** — *already relaxed* ticked
+  (`engines/vibration.md` § 2.2) — keeps the engine's frame, for the same
+  reason: it is used as the force minimum on that grid *(user, 2026-10-11)*.
+
+Every other new calculation — a transport calculation, a relaxation or a
+single point started from a saved run's output — is centred: a rigid shift,
+which changes nothing those runs compute but SIESTA's meV egg-box ripple (plan
+§ 5q.7 R3). The Results tab still draws a run's own coordinates in its own
+frame. *(Plan § 5q D7 placed a citation of a run made before the placement record by
+the rule — built 2026-09-25, `dba66a9a`; lost 2026-10-10 when the citation
+began reading a run as the Results tab reads one, `d7f37054`, with no
+decision; subsumed here. A relaxation whose input was saved from a run made
+before the rule kept its flush face through two hand-offs, and TranSIESTA's
+cell check refused the junction cited from it — measured on
+`AuBDTAu/optimization/min_force_relax/01_fine/run-0`; 2.5.0's explicit
+`centre_junction` choice is retired with this rule.)*
 
 The engine gets the coordinates plus the stated offset, the cell at
 `(0,0,0)`, and the deck's record says the offset was stated. An operation that
@@ -538,10 +565,11 @@ it is judged"*, and the one place atoms are placed: every emitter takes
 |---|---|---|
 | `engine_offset(struct)` | the rule: the offset the structure states when it states one, else the centring | `to_engine`, `resolve`, `Structure.to_wire`, `Structure.frame_at` (a later frame of a set states frame 0's, below) |
 | `to_engine(struct) → EngineFrame` | the cell, the engine coordinates, the offset, and whether it was stated | every emitter — the SIESTA deck, the TranSIESTA rungs, the PySCF script, the molwatch log's step 0, the validators' subject |
-| every door that builds a structure from an engine's output | states `engine_offset = 0` on it, set together with the coordinates — one keyword, no API of its own (plan § 5q D10) | the `.XV` reader, the transport citation (with a record, D7), the vibration `freq` stage, the Results door, `xv2xyz`, the SIESTA validators' subject |
+| every door that builds a structure from an engine's output | states `engine_offset = 0` on it, set together with the coordinates and recorded as the engine's (`offset_by = engine`) — keywords, no API of their own (plan § 5q D10) | the `.XV` reader, a run's view (`runs.Declared.frame`: the transport citation, the Results door, `xv2xyz`), PySCF's own pairs, the vibration `freq` stage, the SIESTA validators' subject |
+| `entering(struct, *, keep_engine_frame)` | the structure as a new calculation takes it: an engine's stated offset dropped, so the rule places it; a person's kept; the engine's kept when the kind says so (a vibration's input stated relaxed, read from the template at prep) | `prep._structure_for`, the transport compose, and the two that show or judge it as it will be taken: the hand-over's box check, the Transport tab's describe of a citation |
 | `Structure.to_wire` | `box_corner = −engine_offset`, the one place a viewer's corner is worked out | every payload that tells a viewer where to draw |
 | `require_placed(frame, axis_kind)` | refuses coordinates that were not placed: a computed frame whose atoms are not centred, and any frame with an atom outside the cell along a non-periodic lattice vector, to 1e-6 Å | the deck renderer, before it writes a line |
-| the periodicity door's `box_corner` op | assigns the box's origin on a typed cell, or clears it back to the rule | the Cell page |
+| the periodicity door's `box_corner` op | assigns the box's origin on a typed cell (`offset_by = person`), or clears it back to the rule | the Cell page |
 | `resolve(struct) → ResolvedCell` | the box and its judgement | the periodicity gate, the validators |
 
 **The record — engine-neutral, beside the coordinates it labels.** Every deck
@@ -1124,8 +1152,8 @@ volume first.
 
 ## 8. Persistence + the data-flow loop
 
-`cell`, `engine_offset`, `axis_kind`, and `vacuum` persist in the
-`.molstruct.json` sidecar (`pbc` is not written at all — § 2.0a; the envelope + schema are in
+`cell`, `engine_offset` with its `offset_by`, `axis_kind`, and `vacuum`
+persist in the `.molstruct.json` sidecar (`pbc` is not written at all — § 2.0a; the envelope + schema are in
 `structure-molstruct.md`). **Schema v5 dropped the `kgrid` key** — periodicity
 carries no sampling parameter. Periodicity flows one way, read at each stage:
 

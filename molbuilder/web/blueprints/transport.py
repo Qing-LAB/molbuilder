@@ -75,18 +75,6 @@ def _fence(raw: str):
     return str(cited.relative_to(root)), cited, root, None
 
 
-def _placement_answer(struct, junction_placement):
-    """`compose.junction_placement` of the junction, or None where there is
-    none to place -- no structure read, or a cell the rule cannot place in
-    (the composition's own refusal says why, among the findings)."""
-    if struct is None:
-        return None
-    try:
-        return junction_placement(struct)
-    except ValueError:                # `cell.to_engine`: no usable cell
-        return None
-
-
 # ===================================================================== #
 # /api/transport/describe_attempt  --  the slot picker's describe seam  #
 # ===================================================================== #
@@ -119,16 +107,12 @@ def api_transport_describe_attempt() -> Any:
     that classifies but cannot be built into a calculation still
     answers with its junction, and the refusal is a finding beside it.
     ``fix`` is a word the tab can act on (today only
-    ``"swap_electrodes"``), never prose to match.  ``placement`` says where
-    the junction sits along z and whether it states its offset
-    (`compose.junction_placement`), for the card's offer to centre it
-    (§ 3.8.1); null where the junction has no cell to place it in.
+    ``"swap_electrodes"``), never prose to match.
     """
     from molbuilder.transport.compose import (CitedPair, ComposeError,
                                               classify_citation,
                                               compose_junction,
                                               frame_set_answer,
-                                              junction_placement,
                                               labeled_citation_structure)
     from molbuilder.issues import Issue
     from molbuilder.transport.sort import (ORDER_INVERTED,
@@ -141,9 +125,6 @@ def api_transport_describe_attempt() -> Any:
     # it, so the viewer and the meta line show the junction as this
     # calculation will compose it; the cited run is read, never written.
     swap = str(request.args.get("swap_electrodes") or "").lower() in (
-        "1", "true", "yes")
-    # ...AND THE CENTRING IT HOLDS, likewise (§ 4).
-    centre = str(request.args.get("centre_junction") or "").lower() in (
         "1", "true", "yes")
     citation, cited_path, root, refusal = _fence(raw)
     if refusal is not None:
@@ -220,7 +201,6 @@ def api_transport_describe_attempt() -> Any:
     # labeled citation structure), so the happy path reads the .XV once
     # and only the refusal path pays for a second look.
     structure_wire = None
-    placed = None                 # the junction as it will be placed
     fix = None
     # WHAT THE COMPOSITION MEASURED, as findings with the severity each
     # has (`science/validation.md` § 4.1 R4): a measurement is `info`, the
@@ -229,13 +209,11 @@ def api_transport_describe_attempt() -> Any:
     findings: list = []
     try:
         composed = compose_junction(citation, tree_root=root,
-                                    swap_electrodes=swap,
-                                    centre_junction=centre)
+                                    swap_electrodes=swap)
         rel_struct = (composed.relaxed
                       if composed.relaxed is not None
                       else composed.sorted.structure)
         structure_wire = rel_struct.to_dict()
-        placed = rel_struct
         # THE CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user
         # ruling, 2026-08-29).  An inverted junction composes and runs
         # -- it biases the other end -- so the tab gets the observation
@@ -262,11 +240,10 @@ def api_transport_describe_attempt() -> Any:
         # and the rename is still worth offering on a junction whose
         # refusal is about something else entirely.
         try:
+            from molbuilder.cell import entering
             cited_struct, _src = labeled_citation_structure(cited)
-            if centre:
-                cited_struct = cited_struct.replace(engine_offset=None)
-            structure_wire = cited_struct.to_dict()
-            placed = cited_struct
+            # As this calculation will take it (`cell.entering`).
+            structure_wire = entering(cited_struct).to_dict()
             if electrode_orientation(cited_struct) == ORDER_INVERTED:
                 fix = "swap_electrodes"
         except (ComposeError, OSError, ValueError):
@@ -287,10 +264,6 @@ def api_transport_describe_attempt() -> Any:
         # THE RENAME THIS ANSWER WAS COMPOSED WITH, so the tab shows the
         # choice it holds and offers to withdraw it (§ 4).
         "swap_electrodes": swap,
-        # WHERE THE JUNCTION SITS ALONG Z, as this answer places it, and the
-        # centring it was composed with (§ 4, § 3.8.1).
-        "placement": _placement_answer(placed, junction_placement),
-        "centre_junction": centre,
         # WHAT ITS FRAMES ARE (§ 3.8.1): the count, and a mode's definition.
         "frame_set": frame_set_answer(cited),
     })
@@ -461,12 +434,6 @@ def api_transport_describe() -> Any:
     if not isinstance(swap, bool):
         return jsonify({"ok": False,
                         "error": "swap_electrodes is true or false"}), 400
-    # ...AND WHERE THE JUNCTION SITS IN ITS CELL, as chosen on the junction
-    # card -- this calculation's own copy too (§ 4).
-    centre = body.get("centre_junction", False)
-    if not isinstance(centre, bool):
-        return jsonify({"ok": False,
-                        "error": "centre_junction is true or false"}), 400
     # PER-RUNG BAGS, the shape `task.stages` carries (`engines/transport.md`
     # § 3.8.2a): a rung's tab writes that rung's bag, so the rung is the
     # person's answer and nothing here routes.
@@ -517,9 +484,10 @@ def api_transport_describe() -> Any:
     if not dest.is_dir():
         return jsonify({"ok": False,
                         "error": f"{dest_raw} is not a folder"}), 400
+    shown = str(dest.relative_to(root))
     try:
-        refuse_described(dest)
-        refuse_inside_citation(dest, cited)
+        refuse_described(dest, shown=shown)
+        refuse_inside_citation(dest, cited, shown=shown)
     except (DescribeError, ComposeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 409
 
@@ -585,7 +553,7 @@ def api_transport_describe() -> Any:
             structure=None, calculation="transport",
             slots={"junction": citation}, bias=bias,
             low_bias_approximation=approx,
-            swap_electrodes=swap, centre_junction=centre,
+            swap_electrodes=swap,
             # the stages.md 6.2 rule holds here too: an override names
             # a PROMOTED field, and `varies` is the promotion
             varies=tuple(sorted({n for b in bags.values() for n in b})),

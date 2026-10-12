@@ -271,10 +271,9 @@ B8)*.
    labelling (`L-electrode` the high-z block) as a warning — never a refusal,
    the junction cites and runs — with a *Swap L-electrode and R-electrode*
    button offering the rename as **this calculation's own** (`swap_electrodes`
-   in the description; the cited junction is never written — § 4). Beneath,
-   where the junction sits along z — the room to each face, and centred — with
-   *Centre the junction in its cell* whenever the junction states its offset
-   (`centre_junction`, § 4, § 3.8.1). A read-only
+   in the description; the cited junction is never written — § 4); the
+   junction enters the calculation centred in its cell, save a cited
+   pair's origin a person assigned, which it keeps (§ 4). A read-only
    **MolView** follows the citation, re-opened on every cite and reload as
    this calculation composes it.
 2. **Shared by every rung** — the template's one electronic description, the
@@ -299,13 +298,13 @@ B8)*.
    field on its own tab, brought into view), and the status line says it too.
    The page does not navigate. Describe is one act: a folder that already
    holds a description is refused — a described calculation is changed on
-   Task setup: its rung values and run settings on the cards, its two choices
-   and its bias in its `task.json`; a different junction is a new description
+   Task setup: its rung values and run settings on the cards, its electrode
+   rename and its bias in its `task.json`; a different junction is a new description
    in a new folder — and so is the
    cited run's own folder (`engines/transport.md` § 3.1, § 3.8.2a). Task setup
    then opens it as an ordinary description, its editor from then on, and
    echoes the junction — a frame set's card included — the bias list, the
-   treatment, the rename and the centring.
+   treatment and the rename.
 
 **A reload keeps the citation and what the forms hold**, through the
 workspace's one door, each under the tab's own tag
@@ -315,8 +314,7 @@ workspace's one door, each under the tab's own tag
 and put back after each surface draws, for the junction it was typed for: the
 last one edited) *(2026-10-11; the rung tabs kept theirs in a browser slot of
 their own, and the shared panel kept nothing, until then)*. The bias list, its
-treatment, the electrode rename and the centring are not kept: a reload starts
-them over.
+treatment and the electrode rename are not kept: a reload starts them over.
 
 **Beside the five cards, a rail** — the shared two-column page
 (`form-components.css` `.page-cols` / `.page-aside`, as Task setup's) with
@@ -331,8 +329,7 @@ The deliverable is read on the Results tab: a transport root opens its
 ([`web/results.md`](?doc=web/results.md) § 0.1, § 2.5).
 
 The tab's three live routes are `/describe`, `/describe_attempt` (which also
-describes a citation with the electrode rename, `&swap_electrodes=1`, and
-the centring, `&centre_junction=1`) and
+describes a citation with the electrode rename, `&swap_electrodes=1`) and
 `/schema` ([`web/web-api.md`](?doc=web/web-api.md)).
 
 ## 5. Documents — the in-app reader (this page)

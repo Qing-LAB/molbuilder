@@ -10,8 +10,8 @@
  *   * lib/transport/core.js             -- engine siesta, calculation
  *     transport: NO structure/params -- `junction` (the citation),
  *     `bias` (volts, 0.0 first), `low_bias_approximation`,
- *     `swap_electrodes`, `centre_junction`, `stages` (per-rung override
- *     bags) and `shared` ride instead, with the folder (`dest`) the door
+ *     `swap_electrodes`, `stages` (per-rung override bags) and `shared`
+ *     ride instead, with the folder (`dest`) the door
  *     writes the description into -- a folder holding one is refused --
  *     and the answer names what it wrote (`written`; transport.md
  *     § 3.8.2a, § 3.8.5)
@@ -44,8 +44,8 @@
  *     junction,     // transport only: the citation string
  *     bias,         // transport only: [volts...], 0.0 first
  *     low_bias_approximation, // transport only: true | false for several voltages
- *     swap_electrodes, centre_junction, // transport only: the two choices
- *                   //   on the calculation's own copy of the junction
+ *     swap_electrodes, // transport only: the electrode rename on the
+ *                   //   calculation's own copy of the junction
  *     stages,       // transport only: {rung: {catalogue item: value}}, per-rung bags
  *     shared,       // transport only: {catalogue item: value}, the shared panel
  *   })
@@ -184,10 +184,9 @@
             req.low_bias_approximation =
                 typeof o.low_bias_approximation === "boolean"
                     ? o.low_bias_approximation : null;
-            // THE TWO CHOICES ON THE CALCULATION'S OWN COPY OF THE JUNCTION
-            // (transport.md § 4), as the tab holds them.
+            // THE ELECTRODE RENAME ON THE CALCULATION'S OWN COPY OF THE
+            // JUNCTION (transport.md § 4), as the tab holds it.
             req.swap_electrodes = !!o.swap_electrodes;
-            req.centre_junction = !!o.centre_junction;
             req.stages    = o.stages || {};      // {rung: {item: value}}
             req.shared    = o.shared || {};
             // THE FOLDER THE DOOR WRITES INTO (transport.md § 3.8.2a).

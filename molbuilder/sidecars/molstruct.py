@@ -86,7 +86,12 @@ except ImportError:                  # pragma: no cover - Windows branch
 #:
 #: A version gate that admits a version the code cannot honour is worse than
 #: no gate: it turns a loud failure into a quiet one.
-SCHEMA_VERSION = 11  # 11: + the OPTIONAL `customized` block (the
+SCHEMA_VERSION = 12  # 12: + the OPTIONAL `offset_by` -- whose the
+#                      stated `engine_offset` is, the person's or the
+#                      engine's (model/structure-periodicity.md § 6.0) --
+#                      additive: a 7-11 file's stated offset reads as the
+#                      person's, kept as stated.
+#                   11: + the OPTIONAL `customized` block (the
 #                      structure's named values, one row set per frame;
 #                      model/structure.md § 2.2d) and the envelope's
 #                      `n_frames_total` -- additive: a 7-10 file holds
@@ -134,7 +139,10 @@ SCHEMA_VERSION = 11  # 11: + the OPTIONAL `customized` block (the
 #: v11 added two: `customized`, absent meaning no row, and `n_frames_total`,
 #: which a 7-10 file does not state and needs no more than it needs rows --
 #: nothing in it is indexed by frame.
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11})
+#:
+#: v12 added `offset_by`, absent meaning an offset whose kind nobody recorded
+#: -- read as the person's, so the file is placed exactly as before.
+READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12})
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a
 #: Structure metadata field.  Named so :func:`apply_to_structure` can hand the
@@ -687,6 +695,12 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
         # Surface field-validation failures as the sidecar-layer error type,
         # preserving the clear per-field message from the dataclass invariants.
         raise MolstructJsonError(str(exc)) from exc
+    # A V7-V11 FILE STATES AN OFFSET AND NOT WHOSE: it is the person's
+    # (`model/structure-molstruct.md` v12), stated so -- a re-save then
+    # writes `person`, never `null` beside an offset.
+    if (struct.engine_offset is not None and struct.offset_by is None
+            and int(sidecar_data.get("schema_version") or SCHEMA_VERSION) < 12):
+        struct.offset_by = "person"
 
 
 def load(sidecar_path, *, retired_out=None):

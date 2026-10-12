@@ -612,6 +612,29 @@ def require_placed(frame: "EngineFrame", axis_kind) -> None:
             "deck.atoms_outside")])
 
 
+def keeps_engine_frame(calculation: str, already_relaxed: bool) -> bool:
+    """Whether a new calculation KEEPS the engine's frame of its input
+    (`model/structure-periodicity.md` § 6.0; user, 2026-10-11): a vibration
+    whose input is stated relaxed does -- it is used as the force minimum on
+    the grid it was found on, where a rigid shift would move it off.  Every
+    other kind's new calculation is placed by the rule."""
+    return calculation == "vibration" and bool(already_relaxed)
+
+
+def entering(struct: Structure, *, keep_engine_frame: bool = False
+             ) -> Structure:
+    """THE STRUCTURE AS A NEW CALCULATION TAKES IT (§ 6.0, *Entering a new
+    calculation*; user, 2026-10-11): an offset the ENGINE stated -- the
+    origin of coordinates read back from a run -- is not carried over, so
+    the one rule places the atoms; an origin the person assigned is kept (a
+    v7-v11 sidecar's is read as theirs); ``keep_engine_frame``
+    (:func:`keeps_engine_frame`) keeps the engine's too.  ``struct`` itself
+    when its offset is kept, else a copy; ``struct`` is never changed."""
+    if struct.offset_by != "engine" or keep_engine_frame:
+        return struct
+    return struct.replace(engine_offset=None)
+
+
 def to_engine(struct: Structure, *,
               box: Optional[np.ndarray] = None) -> EngineFrame:
     """What every engine is handed: the design coordinates plus

@@ -352,6 +352,10 @@ class Declared:
             out["cell"] = rec["cell"]
         if "cell" in out:
             out["engine_offset"] = [0.0, 0.0, 0.0]
+            # ...THE ENGINE'S origin, recorded as such: a new calculation made
+            # from these coordinates does not carry it (§ 6.0, *Entering a new
+            # calculation*).
+            out["offset_by"] = "engine"
         return out or None
 
 
@@ -402,6 +406,7 @@ class RunView:
             positions=[[float(v) for v in p] for p in positions],
             cell=per.get("cell"),
             engine_offset=per.get("engine_offset"),
+            offset_by=per.get("offset_by"),
             axis_kind=(tuple(per["axis_kind"]) if per.get("axis_kind")
                        else None))
         if self.atom_metadata:

@@ -68,7 +68,8 @@ class Structure:
     chain_ids:     Optional[List[str]] = None # single char; default = all "A"
     title:         str = ""                   # XYZ comment / PDB TITLE
     # ── metadata (each detailed in a sub-doc; serialized as one block) ──
-    # cell, engine_offset, axis_kind, vacuum → structure-periodicity.md
+    # cell, engine_offset (+ offset_by: whose it is), axis_kind, vacuum
+    #     → structure-periodicity.md
     #     (NB: kgrid is NOT a structure field — it is a SiestaConfig DFT
     #      sampling knob; see engines/siesta.md)
     # regions (THE label store), annotations    → structure-annotations.md
@@ -113,7 +114,7 @@ Three methods on `Structure` (`structure.py`), all shipped:
 |---|---|---|
 | `to_dict()` → `dict` (`:1008`) | The ONE canonical serializer: coordinates + per-atom columns + the full metadata block (via `metadata_to_dict()`). | **Yes** — `from_dict(s.to_dict())` reproduces `s` exactly. |
 | `from_dict(d)` → `Structure` (`:1034`) | The ONE canonical deserializer: builds the object, then `apply_metadata_dict` (the same validator a fresh Structure runs). | inverse of `to_dict` |
-| `to_wire()` → `dict` (`:1077`) | A read-only view the web layer builds on: identity columns + a **flattened** `periodicity` block (raw `cell`/`engine_offset`/`axis_kind`/`vacuum` **plus** the server-resolved `resolved_cell`/`box_corner` the client must not recompute — `structure-periodicity.md` § 6.0) + `annotations`. It carries **no** `positions`, **no** flat `atoms` render list, and **no** legacy aliases. | No — a different, flatter view (not a superset of `to_dict`) |
+| `to_wire()` → `dict` (`:1077`) | A read-only view the web layer builds on: identity columns + a **flattened** `periodicity` block (raw `cell`/`engine_offset`/`offset_by`/`axis_kind`/`vacuum` **plus** the server-resolved `resolved_cell`/`box_corner` the client must not recompute — `structure-periodicity.md` § 6.0) + `annotations`. It carries **no** `positions`, **no** flat `atoms` render list, and **no** legacy aliases. | No — a different, flatter view (not a superset of `to_dict`) |
 
 ```python
 # to_dict() — the loss-free round-trip unit; NOBODY else assembles this dict
@@ -157,8 +158,8 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
 ```
 
 - **Scope** = the dataclass's own metadata fields, named once as
-  `METADATA_FIELDS`: `regions`, `cell`, `engine_offset`, `axis_kind`,
-  `vacuum`, `annotations`, `customized` (§ 2.2d). (`regions` is the
+  `METADATA_FIELDS`: `regions`, `cell`, `engine_offset`, `offset_by`,
+  `axis_kind`, `vacuum`, `annotations`, `customized` (§ 2.2d). (`regions` is the
   whole label store; a reserved label such as `frozen_atoms` is in it, so there
   is no field of its own to serialise — `structure-annotations.md` § 2.)
   `customized`'s frame row sets are indexed by frame, so the block is applied
@@ -260,7 +261,7 @@ one is TAKEN FROM A STATED OWNER:
 
 | field | comes from | why |
 |---|---|---|
-| `cell`, `engine_offset` | the first input that **states a cell** | a lattice is the one thing an incoming fragment can supply that a cell-less canvas genuinely lacks. A slab's explicit 2.9 Å box is a real crystal; the molecule's derived vacuum box is not a competing statement, so there is nothing to override *(user, 2026-09-22)* |
+| `cell`, `engine_offset`, `offset_by` | the first input that **states a cell** | a lattice is the one thing an incoming fragment can supply that a cell-less canvas genuinely lacks. A slab's explicit 2.9 Å box is a real crystal; the molecule's derived vacuum box is not a competing statement, so there is nothing to override *(user, 2026-09-22)* |
 | `axis_kind`, `vacuum`, `info` | **the first input**, cell or no cell | these are facts OF THE CANVAS — what the person set in the Cell tab and the contract they recorded. They are equally true of a structure that states no lattice, so a fragment arriving with a box must not restate them |
 | everything atom-indexed | joined | `regions`, the annotation channels and the residue IDs are re-indexed and unioned — see `concat`. Residue re-indexing is conditional: `renumber_residues=True` (the default) renumbers, `False` concatenates the ids verbatim |
 | `title` | **neither input** — the caller's `title=` argument (§ 2.2c) | a merged structure is not either input, so `concat` takes the name from whoever asked for the merge. `Structure.concat([a, b])` with no `title=` yields `''`; `append_structure` passes the canvas's, which is why the seam this section is about keeps its name |

@@ -462,14 +462,14 @@ def _vibration_stage_geometry(base, task, pset, struct, *, builds_on=None,
     from ..parse.contract import relaxation_of_output
     return (struct.replace(positions=np.asarray(last.structure.positions,
                                                 dtype=float),
-                           engine_offset=np.zeros(3),
+                           engine_offset=np.zeros(3), offset_by="engine",
                            info={k: v for k, v in (struct.info or {}).items()
                                  if k != "relaxation"}),
             (np.asarray(cell, dtype=float) if cell is not None else None),
             relaxation_of_output(out, traj, engine=str(task.engine)))
 
 
-def _structure_for(task, base: Path):
+def _structure_for(task, base: Path, pset):
     """The structure this calculation is *of*, from the reference in the
     description (`stages.md` § 6.3 — a reference plus a witness, never a copy).
 
@@ -510,7 +510,16 @@ def _structure_for(task, base: Path):
             f"{struct.formula} with {struct.n_atoms}.\n"
             f"  Describing again is the honest fix -- rendering this deck would "
             f"build a different calculation under the same id.")
-    return struct
+    # THE STRUCTURE ENTERS THIS CALCULATION (`model/structure-periodicity.md`
+    # § 6.0): an engine's stated origin is not carried in, so the one rule
+    # places it -- unless the kind keeps the engine's frame: a vibration
+    # whose input is stated relaxed, as THIS stage resolves it (``pset``,
+    # the stage's own values over the template's -- the door every other
+    # reader of `already_relaxed` asks).
+    from ..cell import entering, keeps_engine_frame
+    relaxed = bool(getattr(pset[0].render_config(), "already_relaxed", False))
+    return entering(struct, keep_engine_frame=keeps_engine_frame(
+        task.calculation, relaxed))
 
 
 # --------------------------------------------------------------------- #
@@ -575,7 +584,7 @@ def _described_rung(base, task, pset, *, seam, template_text, sweep,
                     log, plan, continuation) -> Rung:
     """A calculation of its described structure, one deck per element --
     every kind with no steps of its own."""
-    return Rung(struct=_structure_for(task, base),
+    return Rung(struct=_structure_for(task, base, pset),
                 render_kind=task.calculation)
 
 
@@ -610,7 +619,7 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
             f"(engines/vibration.md 5.9): describe it with --shape "
             f"hierarchical, or keep one force-constant stage here.")
     from ..transport.sort import sort_by, write_permutation
-    _sorted = sort_by(_structure_for(task, base), "held-first")
+    _sorted = sort_by(_structure_for(task, base, pset), "held-first")
     _perm_path = write_permutation(base, _sorted, plan=plan)
     struct = _sorted.structure
     log.step("the atom order the engine needs")
@@ -1686,8 +1695,7 @@ def _composed_for_prep(base, task, plan):
         why: list = []
         composed = load_compose_record(base, citation=citation,
                                        tree_root=root, why=why,
-                                       swap_electrodes=task.swap_electrodes,
-                                       centre_junction=task.centre_junction)
+                                       swap_electrodes=task.swap_electrodes)
         if composed is not None:
             return composed
         if root is None:
@@ -1716,12 +1724,10 @@ def _composed_for_prep(base, task, plan):
         with tempfile.TemporaryDirectory(prefix="molbuilder-compose-") as tmp:
             names = write_compose_record(
                 tmp, compose_junction(citation, tree_root=root,
-                                      swap_electrodes=task.swap_electrodes,
-                                      centre_junction=task.centre_junction))
+                                      swap_electrodes=task.swap_electrodes))
             composed = load_compose_record(tmp, citation=citation,
                                            tree_root=root, why=why,
-                                           swap_electrodes=task.swap_electrodes,
-                                           centre_junction=task.centre_junction)
+                                           swap_electrodes=task.swap_electrodes)
             if composed is None:
                 raise PrepError(
                     f"the composed junction was written and could not be "
@@ -1862,8 +1868,8 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
                     c, st, block(launch_lines("task", upstream, base=base)),
                     detail=d)
                 raise PrepError(
-                    f"the {stage} stage consumes {filename} from {upstream}, "
-                    f"whose newest run"
+                    f"the {stage} stage consumes {filename} from "
+                    f"{upstream}'s newest run"
                     + (f", {newest.relative_to(base)}," if newest else "")
                     + f" {why}.  {first}{q2}")
         # WHERE THE FILE IS: the run -- or, for an upstream that runs per
@@ -1944,8 +1950,7 @@ def _composed_junction(base, task):
     composed = load_compose_record(base, citation=task.slots["junction"],
                                    tree_root=find_projects_root(base),
                                    why=why,
-                                   swap_electrodes=task.swap_electrodes,
-                                   centre_junction=task.centre_junction)
+                                   swap_electrodes=task.swap_electrodes)
     if composed is None:
         # THE RECORD IS THE FIRST RUNG'S PREP'S TO WRITE, and a prepared rung
         # is not prepared again (`job-system.md` § 5.0): the way on is the

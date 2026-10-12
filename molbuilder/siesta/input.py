@@ -805,7 +805,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # over would put the validators a whole offset away from the atoms they
     # judge, and nothing downstream may place them a second time (§ 6.0).
     validation_struct = struct.replace(positions=positions,
-                                       engine_offset=np.zeros(3))
+                                       engine_offset=np.zeros(3),
+                                       offset_by="engine")
 
     # The gate is NOT run here.  `render_deck` owns step 3.3 and applies it
     # to the subject this spec names -- the placed coordinates and the

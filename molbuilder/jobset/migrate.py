@@ -18,7 +18,10 @@ this command (plan W57, decision 7).  Each key an older file left out is
 written with the meaning its absence had -- `optimization`, every channel and
 every field (`["*"]`), off, an empty point, no finish, resumes, no placement,
 prepared alone -- and each is printed; the old file
-is kept beside the new as ``<name>.pre-w57``.
+is kept beside the new as ``<name>.pre-w57``.  A key a release retired is
+removed and said: `task.json`'s `centre_junction` (2.6.0, the junction enters
+its calculation centred), the old file kept as ``<name>.pre-2.6.0`` when that
+is all that changed.
 
 **The template**, as follows.
 
@@ -187,17 +190,19 @@ def _never_as_zero(hours) -> bool:
 
 def _migrate_records(base: Path):
     """`task.json` and every `job-set.json` of the calculation, each key an
-    older file left out given the meaning its absence had -- read raw, since
+    older file left out given the meaning its absence had, and a key a
+    release retired removed (`centre_junction`, 2.6.0) -- read raw, since
     the readers refuse such a file, and each rewritten file checked by its
     reader.  Nothing is written here: returns what changed (a line each), the
-    files to write (``(path, text)``), and the description as rewritten."""
+    files to write (``(path, text, kept-as suffix)``), and the description as
+    rewritten."""
     from ..persist import json_text, read_json
     from ..task import FILENAME as TASK_FILENAME
     from ..task import Task
     from .materialize import sweep_set_paths
     from .model import FILENAME as JOBSET_FILENAME, JobSet
     said: List[str] = []
-    writes: List[Tuple[Path, str]] = []
+    writes: List[Tuple[Path, str, str]] = []
 
     task_path = base / TASK_FILENAME
     obj = read_json(task_path)
@@ -206,6 +211,12 @@ def _migrate_records(base: Path):
         if key not in obj:
             obj[key] = meant
             lines.append(f"{key} = {meant!r} (it was left out)")
+    retired = obj.pop("centre_junction", None) is not None
+    if retired:
+        # RETIRED IN 2.6.0: the junction enters its calculation centred
+        # (`model/structure-periodicity.md` § 6.0).
+        lines.append("centre_junction removed (2.6.0: the junction enters "
+                     "its calculation centred)")
     bias = obj.get("bias")
     if isinstance(bias, dict) and len(bias.get("voltages_v") or []) > 1:
         # THE SWITCH, from the word it replaced (`engines/transport.md`
@@ -233,7 +244,11 @@ def _migrate_records(base: Path):
         raise MigrateError(f"{task_path.name} rewritten would still be "
                            f"refused, so nothing was written: {exc}")
     if lines:
-        writes.append((task_path, json_text(task.to_dict())))
+        # KEPT AS WHAT IT WAS WRITTEN BEFORE: the release whose retirement
+        # alone rewrote it, else the records' change (W57).
+        writes.append((task_path, json_text(task.to_dict()),
+                       ".pre-2.6.0" if retired and len(lines) == 1
+                       else ".pre-w57"))
         said += [f"{TASK_FILENAME}: {ln}" for ln in lines]
 
     for js_path in [base / JOBSET_FILENAME, *sweep_set_paths(base)]:
@@ -252,7 +267,7 @@ def _migrate_records(base: Path):
             except ValueError as exc:
                 raise MigrateError(f"{js_path} rewritten would still be "
                                    f"refused, so nothing was written: {exc}")
-            writes.append((js_path, json_text(body)))
+            writes.append((js_path, json_text(body), ".pre-w57"))
             said.append(f"{js_path.relative_to(base)}: {filled} job(s) given "
                         f"every key -- {', '.join(_JOB_ABSENT)} "
                         f"(those left out, as their absence meant)")
@@ -334,8 +349,9 @@ def migrate_state(base) -> List[str]:
         from ..persist import json_text
         from ..task import FILENAME as TASK_FILENAME
         task_path, text = base / TASK_FILENAME, json_text(t_task.to_dict())
-        if any(p == task_path for p, _x in writes):
-            writes = [(p, text if p == task_path else x) for p, x in writes]
+        if any(p == task_path for p, _x, _k in writes):
+            writes = [(p, text if p == task_path else x, k)
+                      for p, x, k in writes]
         else:
             from ..template import ZERO_MEANING_CHANGED_AT
             t_writes.append((task_path, text,
@@ -345,8 +361,7 @@ def migrate_state(base) -> List[str]:
         raise MigrateError(
             f"{', '.join(p.name for p in taken)} already exist -- a run file "
             f"cannot be numbered over another; nothing was written.")
-    for path, text, keep in ([(p, x, ".pre-w57") for p, x in writes]
-                             + t_writes):
+    for path, text, keep in writes + t_writes:
         kept = path.with_name(path.name + keep)
         kept.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
         path.write_text(text, encoding="utf-8")
@@ -355,8 +370,8 @@ def migrate_state(base) -> List[str]:
     said += n_said + t_said
     from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "
-                  "wrote, rewritten (plan W57 decisions 2, 6 and 7; "
-                  "science/chemistry-correctness.md § 2a)", changes=said)
+                  "wrote, rewritten -- each change with its reason",
+                  changes=said)
     return said
 
 

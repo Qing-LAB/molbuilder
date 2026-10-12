@@ -125,8 +125,14 @@ XYZ_DECIMALS = 6
 #: than partly applied: a key this does not know is a fact the caller believes
 #: it stored, and silently dropping it is how a structure reaches a calculation
 #: missing labels nobody noticed were gone.
-METADATA_FIELDS = ("regions", "cell", "engine_offset", "axis_kind",
-                   "vacuum", "annotations", "customized")
+METADATA_FIELDS = ("regions", "cell", "engine_offset", "offset_by",
+                   "axis_kind", "vacuum", "annotations", "customized")
+
+#: WHOSE A STATED OFFSET IS (`model/structure-periodicity.md` § 6.0): an
+#: origin the person assigned on the Cell page, or the engine's own origin of
+#: coordinates read back from a run.  A new calculation keeps the person's
+#: and drops the engine's (``cell.entering``).
+OFFSET_BY = ("person", "engine")
 
 #: What every door that would edit a frame set answers (``model/structure.md``
 #: § 2.2e).  A frame set is a data set made by scripts through the frame doors
@@ -610,6 +616,10 @@ class Structure:
     # applies it as it stands, and nothing derives it; the sidecar carries it
     # (``metadata_to_dict``), and ``None`` there means the rule.
     engine_offset: Optional[np.ndarray]            = None
+    # WHOSE THE STATED OFFSET IS -- one of ``OFFSET_BY``, or None: no offset
+    # stated, or one recorded before the record (a v7-v11 sidecar), read as
+    # the person's and kept (`model/structure-molstruct.md` v12).
+    offset_by:     Optional[str]                   = None
     # Extensible per-atom annotations (model/structure-annotations.md).  Holds
     # channels BEYOND the labels (regions -> tag channels, reserved ones
     # included), e.g. future per-atom value channels (charge / spin /
@@ -757,6 +767,13 @@ class Structure:
                 raise ValueError(
                     "Structure.engine_offset must be 3 finite floats (Angstrom)")
             self.engine_offset = eo
+        else:
+            # No offset stated, so nobody stated one: the record goes with it.
+            self.offset_by = None
+        if self.offset_by is not None and self.offset_by not in OFFSET_BY:
+            raise ValueError(
+                f"Structure.offset_by is one of {', '.join(OFFSET_BY)}, or "
+                f"None; got {self.offset_by!r}")
         # Shape vacuum (per-side gap).  ``None`` MEANS THE STRUCTURE SAYS
         # NOTHING -- the same "unset" its siblings (cell, engine_offset,
         # axis_kind) have always had, and the state the whole regime model
@@ -935,6 +952,9 @@ class Structure:
             # `cell_origin`: that key is retired and no writer emits it again.
             "engine_offset": (self.engine_offset.tolist()
                               if self.engine_offset is not None else None),
+            # ...and whose it is -- written only beside an offset.
+            "offset_by":    (self.offset_by
+                             if self.engine_offset is not None else None),
             "axis_kind":    (list(self.axis_kind)
                              if self.axis_kind is not None else None),
             "vacuum":       ([float(x) for x in self.vacuum]
@@ -1021,6 +1041,9 @@ class Structure:
         self.engine_offset = (np.asarray(data["engine_offset"], dtype=float)
                               if data.get("engine_offset") is not None
                               else None)
+        self.offset_by    = (str(data["offset_by"])
+                             if data.get("offset_by") is not None
+                             and self.engine_offset is not None else None)
         self.axis_kind    = (tuple(str(k) for k in data["axis_kind"])
                              if data.get("axis_kind") is not None else None)
         self.vacuum       = _vacuum_from_stored(data.get("vacuum"))
@@ -1162,6 +1185,9 @@ class Structure:
                 # The offset the structure STATES, as stored -- None means the
                 # rule places it.  Raw, so a client echoes it back unchanged.
                 "engine_offset":        (self.engine_offset.tolist()
+                                         if self.engine_offset is not None else None),
+                # ...and whose it is, echoed back unchanged with it.
+                "offset_by":            (self.offset_by
                                          if self.engine_offset is not None else None),
                 "resolved_cell":        resolved_cell,
                 "box_corner":           box_corner,
@@ -1469,7 +1495,8 @@ class Structure:
         set gets one offset*): frame 0 is as it is, and a later frame states
         frame 0's offset -- the stated one, or the rule's computed on frame 0
         -- so every frame reaches the engine through ``cell.to_engine`` with
-        the same one and no electrode atom moves between frames.  Where the
+        the same one and no electrode atom moves between frames.  The rule's
+        offset is nobody's choice: its ``offset_by`` stays None.  Where the
         rule cannot place frame 0 -- no cell to place it in -- there is no
         offset to state, and the door that acts refuses the cell itself."""
         f = self._frame_index(i)
@@ -2140,6 +2167,7 @@ class Structure:
             cell        = (self.cell.copy() if self.cell is not None else None),
             engine_offset = (self.engine_offset.copy()
                              if self.engine_offset is not None else None),
+            offset_by   = self.offset_by,
             axis_kind   = self.axis_kind,
             vacuum      = self.vacuum,
             info        = _copy.deepcopy(self.info) if self.info else {},
@@ -2393,6 +2421,7 @@ class Structure:
             _box = base._carry_nonatom()
             lattice["cell"] = _box["cell"]
             lattice["engine_offset"] = _box["engine_offset"]
+            lattice["offset_by"] = _box["offset_by"]
         # `info` IS NOT THE LATTICE'S.  The recorded contract belongs to the
         # one being appended TO, which is the first, cell or no cell.
         lattice["info"] = (_copy.deepcopy(first.info) if first.info else {})

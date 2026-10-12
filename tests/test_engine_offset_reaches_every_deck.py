@@ -382,3 +382,65 @@ def test_a_crystal_that_fills_its_cell_is_not_called_tight(
                                default_siesta_stages("publishable"), "siesta")
     report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt")).read_text()
     assert "[cell.volume]" not in report, report
+
+
+def _engine_frame():
+    """Water inside a typed 10 Å box, OFF its centre, stating the engine's
+    origin -- coordinates read back from a run (`runs.Declared.frame`): every
+    atom already inside, so the engine's frame is placeable as it stands, and
+    the rule would centre it elsewhere."""
+    return Structure(elements=["O", "H", "H"],
+                     positions=_water().positions + np.array([3.0, 3.0, 3.0]),
+                     cell=np.eye(3) * 10.0, axis_kind=("isolated",) * 3,
+                     engine_offset=[0.0, 0.0, 0.0], offset_by="engine")
+
+
+def _vibration(already_relaxed=False, freq_says=None):
+    """A SIESTA vibration's config and ladder: `relax` then `freq`, or `freq`
+    alone when stated relaxed -- by the template, or by ``freq``'s own value
+    over it (``freq_says``)."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.pyscf.stages import vibration_stages
+    from molbuilder.task import Stage
+    cfg = SiestaConfig(system_label="JOB", already_relaxed=already_relaxed)
+    if freq_says is None:
+        return cfg, vibration_stages("siesta", already_relaxed=already_relaxed)
+    return cfg, [Stage(name="freq", overrides={"already_relaxed": freq_says})]
+
+
+@pytest.mark.parametrize("calculation, ladder, stage, kept", [
+    # an engine's origin is not carried into a new calculation ...
+    ("optimization", lambda: _engine("siesta"), None, False),
+    ("vibration", lambda: _vibration(), "relax", False),
+    # ... save a SIESTA vibration's input stated relaxed: its grid minimum --
+    # by the template, or by the force-constant stage's own value
+    ("vibration", lambda: _vibration(already_relaxed=True), "freq", True),
+    ("vibration", lambda: _vibration(freq_says=True), "freq", True),
+])
+def test_an_engines_origin_enters_a_new_calculation_by_the_rule(
+        isolated_projects_root, calculation, ladder, stage, kept):
+    """A structure whose stated origin is the engine's enters a new
+    calculation stating none, so the deck is placed by the rule -- unless the
+    calculation keeps the engine's frame: a vibration whose input is stated
+    relaxed, as the stage being prepared resolves it.  Read from the deck's
+    own ENGINE-OFFSET record.
+
+    THE SILENT FAILURE: the engine's origin carried over keeps whatever
+    placement the run had -- a layer flush against a face reached a
+    transport prep through two hand-offs on 2026-10-11 -- while dropping it
+    on a relaxed vibration moves the reference geometry off its force
+    minimum; neither says so.
+
+    CONTRACT: `model/structure-periodicity.md` § 6.0, *Entering a new
+    calculation*.
+    """
+    struct = _engine_frame()
+    cfg, stages = ladder()
+    _dest, _stage, text = _prep(isolated_projects_root, struct, cfg, stages,
+                                "siesta", calculation=calculation, stage=stage)
+    record = extract_engine_offset(text)
+    rule = cellmod.engine_offset(struct.replace(engine_offset=None))
+    assert np.linalg.norm(rule) > 1.0, "the fixture must be one the rule moves"
+    assert record["stated"] is kept, record
+    np.testing.assert_allclose(record["applied_offset"],
+                               np.zeros(3) if kept else rule, atol=1e-7)

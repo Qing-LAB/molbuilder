@@ -707,7 +707,7 @@ function stageRunCard(task, stage) {
             // stated" is true but useless for a field whose format
             // (`D-HH:MM:SS`) is the thing people get wrong.
             const lane = LANE_ASKS.find((a) => a.name === name);
-            input = el("input", { class: "ts-runval",
+            input = el("input", { type: "text", class: "ts-runval",
                                   placeholder: from !== undefined
                                       ? "\u2014 " + String(from)
                                         + " (every stage)"
@@ -1429,12 +1429,7 @@ function renderCameOver(obj, treatment, frameSet, shared) {
             ["Electrodes", obj.swap_electrodes
                 ? "L-electrode and R-electrode traded in this calculation's "
                   + "copy (swap_electrodes: true)"
-                : "as labelled on the cited junction"],
-            // ...AND WHERE THAT COPY SITS IN ITS CELL (transport.md § 4).
-            ["Placement", obj.centre_junction
-                ? "centred in its cell in this calculation's copy "
-                  + "(centre_junction: true)"
-                : "as the cited junction places it"]);
+                : "as labelled on the cited junction"]);
     } else {
         rows.push(
             ["Structure", st.source ? String(st.source).split("/").pop() : "\u2014"],
@@ -2755,6 +2750,17 @@ function _showPrepAnswers(wrap, say, r) {
             + all.map((a) => a.stage).join(", ") + " as one job for "
             + all[0].machine
             + (all[0].preview ? " — nothing is written until Prep." : ".");
+    }
+    /* WHAT COMES NEXT, as the terminal's prep ends: the launch of what was
+     * just prepared, a group's one job by its members -- launched at the
+     * terminal (task-setup.md § 1) -- first, under the line that says what
+     * was prepared, above each member's report. */
+    if ((r.next || []).length) {
+        wrap.insertBefore(el("div", { class: "ts-prep-answer" },
+            el("div", { class: "ts-prep-answer-head" },
+               "Next, at the terminal"),
+            el("pre", { class: "ts-cmd" }, r.next.join("\n"))),
+            wrap.querySelector(".ts-prep-answer"));
     }
 }
 

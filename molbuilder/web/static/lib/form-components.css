@@ -359,6 +359,9 @@ a.btn-like:hover {
  * (ui-contract.md § 1: a widget on more than one page has one shared owner). */
 .tabs {
     display: flex;
+    /* A row wider than its column -- five rungs in a narrow main column --
+     * wraps rather than clipping the last tabs out of reach. */
+    flex-wrap: wrap;
     gap: var(--space-xs);
     margin: var(--space-xs) 0 var(--space-md);
     border-bottom: 1px solid var(--border-strong);

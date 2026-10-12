@@ -206,16 +206,17 @@ def _check(task: Task, cfg, *, generators=None) -> None:
 #  ... -> write                                                         #
 # --------------------------------------------------------------------- #
 
-def refuse_described(dest) -> None:
+def refuse_described(dest, *, shown: Optional[str] = None) -> None:
     """ONE CALCULATION PER FOLDER (user, 2026-10-01: refuse): a folder that
     already holds a description is changed in Task setup or its
     ``task.json``, never described again.  Asked by every door that
     describes -- `jobset init` and the Transport tab's describe door
     (`engines/transport.md` § 3.8.2a) -- before anything is read or
-    written."""
+    written.  ``shown`` is the folder as the door's reader names it (the
+    browser's, from the projects root); the path otherwise."""
     if (Path(dest) / TASK_FILENAME).is_file():
         raise DescribeError(
-            f"{dest} already holds a calculation ({TASK_FILENAME}) -- one "
+            f"{shown or dest} already holds a calculation ({TASK_FILENAME}) -- one "
             f"calculation per folder.  Change it in Task setup or its "
             f"{TASK_FILENAME}, or describe the new one in a folder of its "
             f"own.")

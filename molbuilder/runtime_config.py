@@ -526,6 +526,14 @@ _HOST_ENV_FIXED = (
     "2026-10-02: \"let's enforce one name\").")
 
 
+def _is_comment(key) -> bool:
+    """A key starting with ``_`` is a COMMENT ("_comment_tls": ...) -- JSON
+    has no comments and the committed templates lean on this idiom
+    (`execution/architecture.md`'s one carve-out from refusing unknown keys):
+    every reader skips it and nothing reports it as supplied."""
+    return str(key).startswith("_")
+
+
 def _read_envs(raw: Mapping[str, Any]):
     """``envs`` -- the conda environment each category runs in when it is not
     the default name, and the conda-compatible command (`configuration.md`
@@ -538,7 +546,7 @@ def _read_envs(raw: Mapping[str, Any]):
     from .diagnostics import DEFAULT_ENV_NAMES
     _refuse_unknown(envs, (*DEFAULT_ENV_NAMES, "manager"), "envs")
     for k, v in envs.items():
-        if str(k).startswith("_"):
+        if _is_comment(k):
             continue
         if not isinstance(k, str) or not isinstance(v, str):
             raise RuntimeConfigError(
@@ -725,7 +733,7 @@ def _read_execution_renamed(raw: Mapping[str, Any]):
     mode = section.get("mode")
     launch = json.dumps({"mode": mode}) if mode else '{"mode": "direct"}'
     gone = sorted(k for k in section
-                  if k != "mode" and not str(k).startswith("_"))
+                  if k != "mode" and not _is_comment(k))
     dropped = (f"  {', '.join(map(repr, gone))} "
                f"{'has' if len(gone) == 1 else 'have'} no replacement: a job "
                f"names its own queue (`allocation.domain` in task.json, or "
@@ -762,7 +770,7 @@ def _refuse_unknown(section: Mapping[str, Any], allowed, where: str,
     every section.
     """
     unknown = sorted(str(k) for k in section
-                     if k not in allowed and not str(k).startswith("_"))
+                     if k not in allowed and not _is_comment(k))
     if not unknown:
         return
     keys = [repr(k) for k in allowed]
@@ -1004,7 +1012,7 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
     # JSON has no comments and the committed templates lean on this idiom.
     # An explicit marker is not the typo class the refusal exists for.
     unknown = sorted(k for k in raw
-                     if k not in _SECTIONS and not k.startswith("_"))
+                     if k not in _SECTIONS and not _is_comment(k))
     if "secret_key_file" in unknown:
         raise RuntimeConfigError(_SECRET_KEY_MOVED.format(path=CONFIG_FILENAME))
     # NAMED BEFORE THE GENERIC LIST: whoever wrote them is owed the
@@ -1408,6 +1416,8 @@ def config_provenance(project_dir: Optional[Path] = None, *,
         if not isinstance(block, Mapping):
             continue
         for key, value in block.items():
+            if _is_comment(key):
+                continue
             effective[f"{section}.{key}"] = {"value": value,
                                              "from": "machine"}
     # Domains come from the MACHINE RECORD (N4), not from these files, so

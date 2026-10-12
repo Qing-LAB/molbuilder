@@ -933,8 +933,9 @@ absorbed point here (§ 5u.5).
 | **9** | **The Results surface, finished** — **→ § 5x B6.** Designed 2026-10-07, `web/results.md` § 2.5 (:440-463), approved (user: "yes, go ahead with the build"); ① record fields (DOS, PDOS by label, eigenchannels, per-rung SCF, NEGF figures, chain, caveat) + the shared SCF-plot module and ② the report's cards, tabs, two selections, PDOS of a selection by atoms and orbital type — **built**; ③ the frame axis waits on step 11; the rest is § 5x B6 (R1–R4, R6, R7, R9, the low-bias I(V)) | W10; § 5c.3 (e) and (f)'s rung half — (f)'s citation half is built (`transport.js` draws `provenance.slot`); TR10's chain; W30 ④ (the deck viewer) | § 5x B6's: `summarize task` and the Results tab on the road junction, the three cases. Named here from the first done-when, for B6 to carry: presenters read through a door rather than `JSON.parse` (a framework door, not transport's alone); the decks viewable per rung, run and bias point beside their `.validation.txt` (W30 ④) |
 | **10** | **Every value says where it came from** — TD5's ruling, framework-wide. **Done 2026-10-11** (`bac8ccbe`, `2c951f48`): each deck's PROVENANCE block says who set each value it is rendered from (`parameters:`, `ResolvedConfig.deck_sources`, both render roads; `job-contracts.md` § 3.2); a setting left to the engine says so where its line would be, in the item's own `not_set` — the catalogue key the user named (*"unset may suggest removed or cleared by user"*), required on every optional engine/deck item (`template.md` § 5, § 6.6); Task setup's *What came over* lists every value shared by every stage with whose it is (`task-setup.md` § 3). Reviewed in two rounds by fresh agents, every finding re-read against the code and fixed (`048824a7`, and the commit after it): the table names the step that set a value after `resolve` and who answers a blank; both PySCF decks say their unset solvent and fitting basis; the diagonaliser and output items declare the SCF rungs, so the transmission's table and tab carry none of them | W30 ③'s remainder; `engines/template.md` § 6.6 obligations 2–4; the read-only echo of shared values | a template item carries `source` (`cited` · `person` · `default` — `record` retired, `template.py:1168-1172`; built, K7), written at `init` and by the describe door, read by every surface; each deck's provenance block carries the per-parameter table; an `optional` item left unset writes a line naming the engine default that applies |
 | **11** | **The frame axis → Q17 (§ 5z)** — on step 5's group (its *Left*). **Done 2026-10-10** (Q17, archived) | W32 ②, ③, ⑤ (④ left transport by TD10's ruling: transport is handed a multi-frame structure and reads each frame's details from its `customized` section; the generator is V1.25's own procedure) | as W32 states them, the frame walk on step 5's groups; step 9 ③ with it |
-| **12** | **A transport description's life** *(user, 2026-10-11, on the AuBDTAu walk; design B of the framework analysis — who writes which part, when)*: ① Describe is one act and the server writes it (`/api/transport/describe` writes the template and `task.json` into a folder holding none, through `describe.write_description` with `jobset init`'s two refusals) — `engines/transport.md` § 3.8.2a, `web/handover-procedure.md` § 4, § 6; ② once written, Task setup is its editor as every kind's: the Stages card's rows are the ladder's rungs, fixed and numbered — only the seed removed or added back (ruling Q4) — the picker naming the rungs that read each item, the shape shown fixed — what a kind fixes is `task.fixed_by_kind`, which the reader enforces (`web/task-setup.md` § 4, § 5.3); ③ the launch rows stand on every rung's run card, blank — the catalogue's `run_card` (§ 6.2b); ④ the junction card says where the junction sits along z and offers to centre it — `centre_junction: true`, this calculation's own copy, refused at compose otherwise when an atom lies outside along z (§ 4, § 3.8.1); ⑤ the swap choice reaches the description (the sender never sent it) | — | built and reviewed twice; `AuBDTAu/transport/transport_lowbias`'s junction composes centred |
-| **13** | **Found on the 2026-10-11 browser walk — the user's word first** (the road ran: Describe wrote the description through the server, Task setup echoed it, Preview refused until the launch rows were stated, then composed the AuBDTAu junction centred): ① D7 (`model/structure-periodicity.md` § 6.0: a cited run whose deck recorded no placement is placed by the rule) is not what the code does — `runs.Declared.frame` states 0 for every run since a refactor after `dba66a9a`; restore it, or let the explicit centring replace it and rewrite the sentence; ② the transmission tab echoes `WriteForces` / `WriteCoorStep` as fixed on, though tbtrans writes neither — § 6.1b keeps their one answer for every rung on purpose; limit them to the SIESTA rungs (`stages`), or keep; ③ the device's and transmission's *Bias voltage* echo is an empty box — show the bias list's points; ④ the H/heavy reference note counts gold as heavy — 0/75 on every lead; ⑤ the run card's refusal names `task.json` and flags, not the card on the page; ⑥ at ~1200 px the Transport tab's main column is narrow: the rung strip overflows and the run card's number boxes show a dash | — | each ruled; the ruled ones built |
+| **12** | **A transport description's life** *(user, 2026-10-11, on the AuBDTAu walk; design B of the framework analysis — who writes which part, when)*: ① Describe is one act and the server writes it (`/api/transport/describe` writes the template and `task.json` into a folder holding none, through `describe.write_description` with `jobset init`'s two refusals) — `engines/transport.md` § 3.8.2a, `web/handover-procedure.md` § 4, § 6; ② once written, Task setup is its editor as every kind's: the Stages card's rows are the ladder's rungs, fixed and numbered — only the seed removed or added back (ruling Q4) — the picker naming the rungs that read each item, the shape shown fixed — what a kind fixes is `task.fixed_by_kind`, which the reader enforces (`web/task-setup.md` § 4, § 5.3); ③ the launch rows stand on every rung's run card, blank — the catalogue's `run_card` (§ 6.2b); ④ ~~the junction card's centring offer~~ — built at 2.5.0, retired at 2.6.0: the junction enters the calculation centred (row 13 ①); ⑤ the swap choice reaches the description (the sender never sent it) | — | built and reviewed twice; `AuBDTAu/transport/transport_lowbias`'s junction composes centred |
+| **13** | **Found on the 2026-10-11 browser walk — the user's word first** (the road ran: Describe wrote the description through the server, Task setup echoed it, Preview refused until the launch rows were stated, then composed the AuBDTAu junction centred): ① ~~D7~~ — **ruled 2026-10-11, built at 2.6.0**: a structure entering a new calculation is centred unless its origin is a person's; a vibration's input stated relaxed keeps the engine's frame (`structure-periodicity.md` § 6.0, *Entering a new calculation*; the sidecar records whose the origin is, v12); D7, lost in `d7f37054` with no decision, is subsumed and 2.5.0's `centre_junction` retired; ② the transmission tab echoes `WriteForces` / `WriteCoorStep` as fixed on, though tbtrans writes neither — § 6.1b keeps their one answer for every rung on purpose; limit them to the SIESTA rungs (`stages`), or keep; ③ the device's and transmission's *Bias voltage* echo is an empty box — show the bias list's points; ④ the H/heavy reference note counts gold as heavy — 0/75 on every lead; ⑤ the run card's refusal names `task.json` and flags, not the card on the page; ⑥ ~~at ~1200 px the Transport tab's main column is narrow: the rung strip overflows and the run card's number boxes show a dash~~ — **fixed 2026-10-11** (second walk): the `.tabs` strip wraps (tabs 4–5 were clipped out of reach), and the run card's boxes are typed text inputs, so the theme styles them. **The second walk, end to end on `claude-transport-walk/transport/e2e-walk{,2}`** (Describe → refused again → Task setup: stages edited, seed removed and added back, Save, run cards, Preview, Prep → Results), fixed: ⑦ the machine card and `STAGE-PLAN.md` listed `molbuilder.json`'s `launch._comment` as a value it supplied (`config_provenance`); ⑧ a Prep's answer stopped before the terminal's *next* line, and every rung's tab named its stage alone, so a group's one launch was shown nowhere — the answer carries `next`, and the tabs ask the status door's rule (`runstatus.launch_words`, D4); ⑨ a waiting rung read *"…from seed, whose newest run, 01_seed/run-0, which has not been launched"*; ⑩ the Transport tab drew all five rung forms three times on load — restoring the shared panel fired its change listener; ⑪ the describe refusals named the folder by its absolute path. **Open, the user's word first**: ⑫ the transmission grid's one-line hint reads *"not chosen · 15, 15, 1 you set this"*: the value is the 3× rule's (`kmesh.transmission_start`) on the shared mesh the person set, and the line says neither the rule nor its purpose, which only ⓘ help gives (§ 0.3b) — proposed: *"3 × the shared k-point mesh (5, 5): T(E) needs a finer in-plane mesh than the density; converge until T(E_F) moves < 1 %"*. Traced 2026-10-11: the cited AuBDTAu run is 3 × 3 × 1, offset 0; the user's `transport_lowbias` set 5 × 5 × 1 (→ 15 × 15 × 1); the 4 × 4 seen on the walk was the walk's own test edit, since undone in the user's note. Parity and Γ, from SIESTA 5.4.2's source: the block form reaches `find_kgrid` with `firm_displ = .true.` (`kpoint_t.F90` `setup_mp`; tbtrans's `m_tbt_kpoint.F90` likewise), so the 0.0 offset is kept, and the index runs −(n−1)/2 … n/2 — Γ is a sample on an odd or an even count; an even count adds the zone edge. The 3× rule keeps parity (5 → 15, 4 → 12). A parity rule, if wanted, is chosen with the literature first; ⑬ ~~GPU binding on a machine with no queue~~ — **withdrawn**: the box is the calculation's own switch (`execution/gpu.md` G9, the person's column of § 1), and the queue card writes `allocation` whole (`web/task-setup.md` § 6); a machine fact decides nothing about it; ⑭ without the seed the stage folders renumber (`01_electrode_L/`) while the rows read *2 · electrode_L*; ⑮ a focus jump (find-in-page, `scrollIntoView`) scrolls the window itself, leaving the header off-screen and a blank band below — `body`'s `overflow: hidden` reaches the viewport, which can still be scrolled by script | — | each ruled; the ruled ones built |
+| **14** | **Groups are stages' numbers; prep writes every group; launch gathers** *(user, 2026-10-11, after the browser walk found the page treating a group's one job as three stages: "the prep UI clearly still treats each stage separately ... steps that are beyond logic"; "the checkbox for grouping is awkward: it cannot assign different groups"; "prep should be able to prepare all groups at the same time ... that's the launch status, not the prep")*. **Ruled 2026-10-11, the four questions as put**: ① each stage states a **group number** in `task.json` (`stages[i].group`), edited on Task setup's Stages card: the first stage is group 1, each later one repeats the number above it or adds one; a stage may not repeat the number of a group holding a stage it builds on; the defaults repeat where allowed (transport 1 1 1 2 3); ② one tab per group on Task setup, holding the group's one run card — what the job shares (ranks, cores per rank, GPU use and count, queue) written to every member's `execution`; the wall per stage, the job asking their sum; ③ **one prep prepares every group** — each group one job — and **the gather moves to launch**: `launch task` sends the next group, first checking each stage's upstream newest run finished and ran the deck described now, copying the inputs with their `.gathered-from`, refusing before anything is sent when not; ④ a stage **prepared and never launched may be prepared again** (no run's record to falsify). **The design, traced and reviewed: § 5aa** — V settled (the force-constant stage keeps its geometry in its deck), R answered by a save before a group's first launch (put to the user with the contract). Contract first: `job-system.md` (*The task*, the states, § 5.0, § 5.4, § 6.0), `project-layout.md` § 1.6.6, `stages.md` (the field), `transport.md` § 1.1, `task-setup.md` (§ 5.3, § 11, the run card), `web-api.md`; then code; then the user's `lowbias` setup proved in the browser (this machine; a Sol preview) | the walk's grouped-prep refusal on `AuBDTAu/transport/lowbias` (2026-10-11: the job's resources stated on the seed only) | proved through the browser on the user's setup, two review rounds |
 
 **TD12 — settled 2026-10-09** (§ 2, TD12): `engines/transport.md` § 6.1b states what tbtrans reads and the deck's header says so; the four SCF rungs carry their own SCF settings and the transmission none, its tab saying why (`RUNG_NOTES`), the user's word on B8 U1's cut.
 
@@ -970,6 +971,244 @@ questions as put, and the user's words, are in the archive.)*
 
 ---
 
+
+## 5aa. Groups, every group prepared at once, and a run's inputs taken at launch — the design *(plan § 5u.1 row 14; user, 2026-10-11; two review rounds 2026-10-11, revision 3)*
+
+> *"we want to combine certain stages ... as one grouped job ... but the prep
+> UI clearly still treats each stage separately"* · *"the checkbox for grouping
+> is awkward: it cannot assign different groups"* · *"the prep should be able
+> to prepare all groups at the same time ... that's the launch status, not the
+> prep"* · *"the stages should have a group number assigned to it, either
+> repeat the last group number or add one"* · *"consolidate such this is a
+> framework that would work for other tasks as well - we don't need a patch"* ·
+> *"think hard to find the best balance between flexibility, logical, and
+> cleanness"*.
+
+**Ruled 2026-10-11** (the four questions as put): a stage's group number lives
+in `task.json`; a group's wall is its members' walls summed; the upstream files
+are copied **at launch**; a stage prepared and **never launched** may be
+prepared again. **Settled by the trace:** V (§ 5aa.4 — option (a) withdrawn)
+and R (§ 5aa.5 — option (i) withdrawn; the answer, a save before a group's
+first launch, is put to the user with the contract).
+
+### 5aa.1 The model
+
+* **A group is a job.** Each stage states a number; the stages with one number
+  are one job, launched together; the numbers run in ladder order.
+* **Two kinds of hand-over, told apart by what the next stage's deck needs.**
+  - **Files** — the next run reads them when it starts: an optimization
+    ladder's `.XV`/`.DM`/history (SIESTA) or `_optimized.xyz`/`.chk` (PySCF);
+    transport's `.DM`, the leads' `.TSHS`, the device's `.TS.HSX`. The deck
+    does not depend on them, so **it is prepared any time, and the files are
+    taken when the run is launched**.
+  - **Values written into the deck** — one case: a SIESTA force-constant
+    stage, whose deck holds `relax`'s relaxed coordinates and cell (§ 5aa.4).
+    **It is prepared once `relax` has finished**, its source run decided at its
+    prep; its file hand-over (relax's `.DM`, read under `DM.UseSaveDM .true.`)
+    is copied at its first launch **from that same run**.
+* **Prep makes what a stage IS** — deck, run script, header, job row — and
+  reads another stage's run only for a value hand-over.
+* **Launch makes a RUN and fills it with what it starts from** — the file
+  hand-overs, decided at the launch that uses them, recorded in the run.
+  **A group's first launch saves the folder's state first**, as prep does
+  before it writes: the state a redo of that group restores — every run
+  upstream already in it (§ 5aa.5).
+* **Nothing starts a stage but you, and you still look first** (`job-system.md`
+  § 5.4, *the gap is the feature*): the gap moves from before prep to before
+  launch, where the run is spent.
+
+### 5aa.2 What the code does today (traced and cross-checked 2026-10-11; file:line at that date)
+
+| fact | where |
+|---|---|
+| a stage is **ready** to prep only when what it builds on has a newest run that finished — transport by `gather_sources`, every other kind by `continuation_answer`; else **waiting** | `jobset/ready.py:60-95` |
+| prep opens `run-0` with the stage's own files (deck, run script, header, pseudos, `atom-permutation.json`, bundles) and **copies in what it continues from** (`warm_carry`, `.continued-from`) or **gathers** (transport, `.gathered-from`), per point for a swept rung | `prep._open_attempts` 1327-1353 → `materialize.prepare_attempt` 678-812 (`bring_files` 591-633, carry 783-790); `prep.transport_inputs` 1766-1930, `_gather_into` 1933-1940; `open_sweep_run` (materialize 648-675) |
+| **every run folder holds its own copy of the deck and run script** | `materialize.bring_files` 591-633 (seen: `01_seed/run-0/e2e-walk_01_seed.fdf`) |
+| the first launch **runs in prep's `run-0`** (an unlaunched last attempt is reused) | `materialize.resolve_attempt` 500-521; `submit._plan_member` 748-752 |
+| a relaunch opens `run-<n+1>`: warm from its own latest run when the stage continues (`Job.relaunch_continues`: not a force-constant stage, not `restart: clean`), else empty; cold from none; a single-run transport rung **re-copies the inputs its prep gathered** from the run `.gathered-from` names (refused when one is gone), a swept one from its previous run's copies | `continuation.relaunch` 501-537; `submit._plan_member` 753-778, `_carry_the_gather` 799-827, `_carry_sweep_gather` 2159-2182 |
+| `--from` exists on **prep only**; `launch --cold` on a stage never launched is refused | `_cli.py:1083`; `submit._refuse_cold_first` 632-644 |
+| launch checks **no upstream run's state** (prep does) | prep: `continuation._by_default` 468-498, `prep.transport_inputs` |
+| **an earlier run's facts are read from the stage's one job row and today's description, not from the run**: the optimizer a `.CG` may follow (`warm_carry` against the job row), a swept rung's points (today's bias list, the frame record) | `model.warm_carry` 453-490; `materialize._source_job`; `transport/stages.points_in` 247-252; `runstatus._sweep_status`; `transport/record.py:352` |
+| prep places each member of a group alone and renders the header with the summed wall without admitting the sum; launch admits it | `prep.prep_group` 3141-3168; `submit._sbatch_request` 270-275 |
+| the printed ways back name *"the state saved before X's prep"* (`commands.rollback`); `continuation._by_default` prints `prep … --cold` / `--from` | `submit.py:494, 642, 730, 822, 2003`; `prep.py:1824, 1922`; `continuation.py:444, 495` |
+| launch writes its planned files **before** it sends (`carry_out`), so a refused `sbatch` leaves them | `submit.py:1161` |
+| a group: several `--stage` at one prep — any pick none of whose stages builds on another and that share one allocation (`envelope`: queue, ranks, cores per rank, GPUs, GPU use, binding the same; wall summed; memory largest); `Job.group` (names) + `launch/<g>.sbatch`. **Stages named together at launch also go as one group**, a header rendered then | `prep.prep_group` 3080-3224; `group.py` 36-112; `submit._plan_group` 2252-2357 |
+| with nothing named, `launch task` offers a relaunch **only when nothing prepared is waiting** | `_cli._launch_unit` 1211-1261 (1238-1247) |
+| "prepared" = the stage has a row in `job-set.json`; prepared again is refused, naming the rollback to the state before its prep | `prep.prepared_already` 2468-2507; checkpoint 2a 2696-2702 |
+| a checkpoint restore **overwrites the folder**: runs made after the state are gone unless saved | `checkpointing.md` § 7 (A5) |
+| the SIESTA force-constant deck is written **at `relax`'s relaxed coordinates and cell**, read at prep from relax's output, with the relaxation record in its `vibration` block | `prep._vibration_stage_geometry` 349-469; `_vibration_block` 318-346 |
+| it writes `MD.UseSaveXV .false.` because **a force-constant run writes its LAST DISPLACEMENT to `<label>.XV`** (measured 2026-09-23) — a deck reading it would take a nudged geometry as the stationary point; a re-run restarts at `FC.First` (`[vibration] resumes = false`) | `siesta/vibration_deck.py:108-127`; `siesta/warm-files.toml:155-170` |
+| the vibration finish reads the reference geometry from FC step 0 of its own output, the cell from the deck, masses, criterion and relaxation record from the deck's block | `spectra/siesta_vibration.py:228-255, 286-308` |
+| a transport frame count is read from the composition record on disk — "no record yet means nothing is prepared: 1" | `transport/stages.frames_of` 203-212 |
+| transport's fourth gate compares the upstream's **ran** deck with what the upstream renders **now**; nothing compares the downstream's own prepared deck with now | `prep.transport_inputs` 1886-1924 |
+| a benchmark is its own lane: trials opened cold, nothing copied in; a force-constant stage's trials written at relax's geometry read at `prep bench` | `prep.py:2805-2823, 650-654`; `submit._walk_of` 1791-1797 |
+| every file hand-over is read at run start — SIESTA `.XV` (`MD.UseSaveXV`), `.DM`, `.CG` for the same optimizer; its history (`.MD.nc`, `.MD`, `.MDE`, `.ANI`) is appended to, never read; PySCF `_optimized.xyz` and `.chk` when the stage continues; transport `.DM`, `.TSHS`, `.TS.HSX` | `siesta/warm-files.toml:45-115`; `pyscf/input.py:437-460`; `transport/stages.stage_inputs` 255-290 |
+| a task's stage has `name`, `overrides`, `execution` (the run card, which holds `restart`); `task.py` is the stdlib-only description layer | `task.py:17-31, 306-331, 1138-1187` |
+
+### 5aa.3 Every situation, and what the design does
+
+**Kinds and shapes.**
+
+| # | situation | today | the design |
+|---|---|---|---|
+| K1 | SIESTA optimization ladder, hierarchical | prep medium only after coarse finished; copies `.XV`/`.DM`/history (+`.CG`, same optimizer) into `run-0` | defaults 1, 2, 3; prep writes all; the first launch of medium takes coarse's newest run, which must have finished (D5: an older one never stands in), and copies the same files |
+| K2 | same, flat | nothing copied; prep requires the stage before finished and writes the flat `.continued-from` | prep writes all; the first launch requires the stage before's latest run finished and writes the flat `.continued-from` (launch already does on a flat relaunch) |
+| K3 | a stage set `restart: clean` | builds on nothing | may share the group above; nothing copied |
+| K4 | PySCF ladder | `.chk`, `_optimized.xyz` | as K1 |
+| K5 | SIESTA vibration, relax → freq | freq prepped after relax finished; deck at relax's geometry; relax's restart files copied into `run-0` at prep (`.DM` read) | freq is preparable once relax has finished, its source run decided at its prep (`--from` a relax run); prep-all prepares the groups before it and says freq's group waits for relax before it can be prepared; its first launch copies relax's files **from the run its prep took** (recorded on its job), never the newest |
+| K6 | SIESTA vibration stated relaxed (freq only) | the structure as given | one group, nothing upstream |
+| K7 | SIESTA displacement sweep | each FC stage after relax; flat refused | defaults 1, 2, 2 …; each FC stage as K5 |
+| K8 | PySCF vibration | one rung | unchanged |
+| K9 | transport | seed + leads one group; device after they finish (gathering); transmission after the device | defaults 1 1 1 2 3; prep writes all five; the first launch of group 2 gathers (the four gates: prepared · every point done · finished · the deck it renders now) into `run-0`, per point for a swept rung |
+| K10 | transport without the seed | | defaults 1 1 2 3 |
+| K11 | transport bias sweep (self-consistent) | per point gathers at prep | per point at the first launch; the walk and a relaunch's point takeover unchanged |
+| K12 | transport over a frame set | frame × voltage points; the frame count read from disk | **the frame count comes from the junction composed in the same prep** (the plan holds the composition record before any member is planned), never from disk — else a prep-all plans the device and transmission with one frame |
+| K13 | benchmark | its own lane | unchanged and outside groups; a force-constant stage's benchmark still waits for relax (K5). **Found, to verify by a test before any fix (separate item):** a force-constant trial's deck keeps the kind's `DM.UseSaveDM .true.`, which `agreement.check_trial_starts_cold` refuses at `launch bench` |
+
+**Groups.**
+
+| # | situation | the design |
+|---|---|---|
+| G1 | the rule | the first stage is group 1; each later stage repeats the number above it or adds one; a stage may not repeat the number of a group holding a stage it builds on (`group.upstream_of`). **Where checked:** the reader (`task.py`, stdlib) checks the numbers' shape — whole numbers from 1, each the one above or one more; the building-on rule needs the template and the engine, so it is prep's preflight (`stages.md` § 6.6) and the folder route's answer to the page, said beside the row |
+| G2 | defaults for a new description (`jobset init`, the hand-over's Save, the transport describe door) | repeat where allowed — transport 1 1 1 2 3, an optimization ladder 1 2 3, clean stages 1 1 1 — written before any run card exists |
+| G3 | one job's allocation | as `envelope` today; the group's run card writes each shared value into every member's `execution` **when you set it**; members that already disagree are shown disagreeing, never overwritten unasked, and prep's `envelope` still refuses a disagreement by name |
+| G4 | numbers changed for groups prepared and never launched | **groups are compared by membership** (`Job.group`, the names), never by number — numbers are positions, and removing a stage shifts them. A prep whose picked group's membership changed, or that touches a prepared group whose membership changed, forms every such job again in the same prep, the stale header removed; `prep --group N` naming only some of them is refused, naming the others (nothing prepared unseen) |
+| G5 | a launched stage's group membership changed | refused at prep (it reads the run records): a launched stage's group is fixed, as its deck is; a renumbering alone (a stage removed above it) is no change |
+| G6 | relaunch | a member alone (D4), or its whole group; **stages named together at launch no longer form a group** — a group is its number (`submit._plan_group`'s launch-time header retired) |
+| G7 | a launch whose prepared jobs' memberships disagree with the description's groups | refused, naming the prep that forms the jobs again (G4) |
+| G8 | a group's job admitted | prep admits the **group's** request — the summed wall, the largest memory, the shared ranks/cores/GPUs — against the queue it names, as a run's is (`placement.admitted`), so a prep-all that passes is one launch takes (R9) |
+| G9 | the first launch of one member of a group of several | refused: a group goes whole the first time; a member alone is a relaunch (D4) |
+
+**Prep.**
+
+| # | situation | the design |
+|---|---|---|
+| P1 | `prep task` with nothing named | shows the groups, asks once — every group not prepared and preparable pre-selected; one save; each group one job. With nobody to ask, refused, naming `prep task --group N …` — nothing prepared unseen |
+| P2 | `prep task --group N` (repeatable) | those groups |
+| P3 | what may be prepared | every described stage, except a stage with a value hand-over (K5) whose upstream has not finished; the description's checks, the machine, the placement and every deck's gates as today |
+| P4 | a stage prepared and never launched, prepared again (ruled ④) | allowed — its job row replaced, its deck/scripts/header rendered again, its `run-0` reused and emptied of anything an earlier prep or a refused send put there; the folder saved first. **A group is prepared again whole.** Reverses 2026-10-02's *"refuse it, redo via rollback"* for a stage never launched |
+| P5 | a launched stage, prepared again | refused, as today — earlier runs' facts are read from the stage's job row and the description (§ 5aa.2), so its runs must keep the deck and row they ran with; the way back is § 5aa.5's |
+| P6 | the plan identity | no upstream copies at prep: stable while upstream runs end |
+| P7 | the machine | set at the first prep, as today |
+| P8 | what prep says | each group, its job, its files; for a file hand-over, *"at launch: takes <files> from <stage>'s newest run, which must have finished"*; for K5, the run it was written at |
+
+**Launch.**
+
+| # | situation | the design |
+|---|---|---|
+| L1 | `launch task`, nothing named | the prepared groups not launched whose upstream has finished — one: sent, several: asked (D3); none of those: the stages launched before, offered to launch again (today's rule, `_launch_unit`), beside what each waiting group waits for |
+| L2 | `launch task --group N` | refused before anything is sent if a member's upstream has not finished — in the status door's words, with the command |
+| L3 | a stage's FIRST launch, file hand-over | the one door, asked at launch: the stage before's newest run, which must have finished (D5), or the transport gather; `--from RUN` / `--cold` as prep takes them today, for a launch of one stage (L3a); copied into `run-0`, recorded (`.continued-from` / `.gathered-from` → `run.json`), ledger `continues` / `gathers`. K5: its files from the run its prep took |
+| L3a | `--from` / `--cold` on a first launch | a launch of ONE stage; a group's members each take their default |
+| L4 | **the prepared stage is still what the description gives now** | at every launch that takes inputs — a first launch, and a relaunch with `--from` / `--gather` (L6) — each member's prepared files (deck, run script, header, job row: its resources included) are compared with what prep's own plan would write now (`Plan.identity`, stamps masked; the allocation included, since a deck's values follow it — `BlockSize` from `mpi_np`; K5 planned at the relax run its prep took); a difference is refused, naming the prep again (a stage never launched) or § 5aa.5's way back (a launched one). Without it, an edit after prep-all — a template value, a run card's ranks, a re-prep of group 1 alone — would run the old job on new files, unsaid. A plain relaunch (warm or cold, nothing taken anew) runs the stage as prepared, as today |
+| L5 | a relaunch | unchanged: warm from its own latest run, `--cold` none; a transport rung keeps its gathered inputs |
+| L6 | a launched stage takes a newer upstream | `launch --from RUN` (an independent stage) and `launch --gather` (transport: the upstreams' newest finished runs, the four gates) on a relaunch — decided at the launch that uses it, recorded; warm or cold is the person's (2026-10-07) |
+| L7 | the plan shown and asked | per member, what its run takes and from where, before the one question; `--dry-run` shows it, writes nothing |
+| L8 | a refused send | an unlaunched `run-0` is filled anew at every launch until one is sent — what a refused send left is cleared first, so a later `--from` or a newer upstream is taken (`project-layout.md` § 1.6.3); K5's files are refilled from the run its prep took |
+| L11 | the save before a first launch | a group's first launch saves the folder's state, at the send, before anything is written — once its plan stands, as prep's checkpoint 5 — and says which; the ledger records it (§ 5aa.5) |
+| L9 | upstream failed / not converged | the door's answers, as prep's today: failed refused (name `--from`), not converged taken with a warning, the transport gates |
+| L10 | the walk (group, bias sweep) | unchanged |
+
+**Status and surfaces.**
+
+| # | situation | the design |
+|---|---|---|
+| U1 | states | described → prepared (pending: *ready to launch* or *waits for X*) → launched → ended; a K5 stage not prepared: *waits for relax before it can be prepared* |
+| U2 | `jobset status`, the Results ladder | the same door |
+| U3 | Task setup — Stages card | a **Group** column: the number with *same as above* / *new group*; the building-on rule said beside the row (the folder route) |
+| U4 | Task setup — Prep box | the groups, each: not prepared · prepared (never launched → **Prep again**) · launched; Preview and Prep for the picked |
+| U5 | Task setup — tabs | **one tab per group**: its run card (shared values; a wall row per member, the job's wall their sum), and per member its *measure it* (benchmark, K13) and its lines; the launch line carries the Continue-from choice (L3a) |
+| U6 | commands | the group's prep and launch; a member alone for a relaunch (D4) |
+
+**Migration.**
+
+| # | situation | the design |
+|---|---|---|
+| M1 | a `task.json` with no `group` | refused by the reader, naming `jobset migrate`: prepared stages take the groups `job-set.json` records; the rest repeat the number above only where the rule allows it (no stage it builds on in that group, `group.upstream_of`) **and** their run cards share the allocation, else add one. A prepared grouping the rule cannot state (non-adjacent stages) is refused by name, and the person decides |
+| M2 | a `run-0` filled by a prep under today's rule, never launched | as L8: filled anew at the first launch |
+
+### 5aa.4 V — settled by the trace: the force-constant stage keeps its geometry in its deck
+
+Option (a) — write the force-constant deck from the structure and let SIESTA
+read relax's `.XV` — is **withdrawn**: a force-constant run writes its last
+displacement into `.XV` (`vibration_deck.py:119-127`, measured), so a retry
+in the same folder (`continue_retries`) would start from a nudged geometry,
+and the finish, whose reference is FC step 0 of its own output, could not
+tell. The deck holding relax's coordinates is the design's reason, not an
+accident. So a force-constant stage is the one value hand-over: preparable
+once `relax` has finished, its source decided at its prep (`--from` a relax
+run), as today.
+
+### 5aa.5 R — redoing a launched stage: a save before a group's first launch
+
+With every group prepared at once, *"redo via rollback to the state before its
+prep"* restores the state before the one prep — and removes every run made
+since, the earlier groups' included (`checkpointing.md` § 7, A5). Every printed
+way back says it today (§ 5aa.2).
+
+**Withdrawn, (i) — prepare a launched stage again in place.** Its runs keep
+their own deck, but molbuilder reads an earlier run's facts from the stage's
+one job row and today's description (the optimizer a `.CG` follows, a swept
+rung's points): preparing again would make it misread its own runs.
+
+**The answer: a group's first launch saves the folder's state first** (L11).
+That state holds every run upstream of the group — they had to finish before
+it could launch — and the group as prepared, never launched. **Redoing a
+launched stage = restoring the state saved before its group's first launch,
+then preparing it again** (P4: never launched there). Only the runs made since
+— the group's own, and anything that built on them — are removed, and the
+restore names them first (A5). Every printed way back
+(`commands.rollback` and its callers, § 5aa.2) names that state; a stage never
+launched needs no restore (P4). Today's rule, *a launched stage is not
+prepared again*, stands.
+
+### 5aa.6 The contract, then the code
+
+**Contract (written first, shown for a yes):** `job-system.md` (*The task*; *What molbuilder does for you* rule 3;
+the states; § 5.0 agreement 4–5, checkpoints 2, 2a, 4a, 6, the preview; § 5.4
+the two ladders, *A stage launched again*; § 6.0 step 1, step 4) ·
+`project-layout.md` § 1.6 lead, § 1.6.2, § 1.6.3 (the table: `.continued-from`
+by launch; the prepared row), § 1.6.5, § 1.6.6, § 1.6.7 (`prep --cold` moves to
+launch) · `stages.md` (the `group` field; § 6.6 the preflight's group check) ·
+`architecture.md` § 3.2 · `job-contracts.md` (the copy at launch, :109) ·
+`transport.md` § 1.1, § 2a.11, § 2a.14 (:2045), § 6.1 (:3759, :3813) and its restatements (:1510, :2197-2260, :4466)
+· `vibration.md` § 5.2a (the force-constant stage named as the value
+hand-over; its files at its first launch from the run its prep took) · `task-setup.md` § 5.3, § 6, § 11 · `web-api.md` (prep, commands,
+folder) · `checkpointing.md` § 9 (a group's first launch saves, L11).
+
+**Code:** `task.py` (the field and its shape) · `jobset/ready.py` (preparable;
+launch readiness) · `jobset/prep.py` (prep groups; no file copy, no gather;
+re-prep; the frame count from the plan; the group rule in the preflight;
+`--group`) · `jobset/continuation.py` (the one door, asked by launch) ·
+`jobset/submit.py` (first-launch take, L4's plan check, L8's refill, L11's save, `--from`
+/ `--gather` on a relaunch, the upstream gate, G9; launch-time grouping retired) ·
+`jobset/commands.py` and every printed way back (`rollback` callers; `prep --from/--cold` → launch) ·
+`jobset/placement.py` (G8, the group's request admitted at prep) ·
+`jobset/_cli.py` (`--group`; launch flags; L1's offer) · `jobset/runstatus.py`
+· `jobset/migrate.py` (M1) · every description writer (G2) · Task setup page
+and routes (U3–U6) · Results ladder.
+
+### 5aa.7 Tests
+
+Retired or rewritten (each asserts prep's copying or prep's waiting):
+`test_the_road_on_real_runs_e2e.py:113`, `test_restart_group.py:135`,
+`test_status_lists_the_ladder.py:42`, `test_hand_overs.py:33`,
+`test_task_setup_prep_e2e.py:1265`, and the transport e2e cases reading
+`.gathered-from` written at prep (`test_transport_on_a_real_junction_e2e.py`
+:925). New rows through the road (`init → prep → launch --dry-run`): G1's
+refused cases, P1, P4, G4 (membership, a removed stage), G8, G9, L2, L3, L4 (a template edit and a run-card edit after prep, each refused), L6, L8, L11 (the save, and a redo restoring it keeps the upstream runs).
+Engine e2e on the user's word.
+
+### 5aa.8 Before the work, and done when
+
+2.6.0 (uncommitted) is committed first, on the user's word; this lands as its
+own minor version (`task.json` gains a field; readers refuse one without it,
+naming `jobset migrate`). Done when the contract is agreed, the code built
+through the framework, two review rounds passed, and the user's
+`AuBDTAu/transport/lowbias` prepared whole through the browser — this machine,
+and a Sol preview — with group 1 launched by the user.
+
+---
 
 ## 5z. Q17 — transport over a set of frames — ARCHIVED 2026-10-10
 

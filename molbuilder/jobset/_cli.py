@@ -1217,7 +1217,7 @@ def _launch_unit(base, js, *, dry_run: bool = False) -> list:
     refused, naming each line."""
     from .ask import choose
     from .commands import block, command, launch_lines
-    from .runstatus import jobset_status
+    from .runstatus import jobset_status, launch_words
     rows = [r for r in jobset_status(js, base).stages if r.prepared]
     waiting = [r for r in rows if r.state == "pending"]
     names = {r.name for r in waiting}
@@ -1225,8 +1225,7 @@ def _launch_unit(base, js, *, dry_run: bool = False) -> list:
     for r in waiting:
         if any(r.name in u for u in units):
             continue
-        whole = r.group and all(g in names for g in r.group)
-        units.append(list(r.group) if whole else [r.name])
+        units.append(launch_words(r, r.name, names))
     if len(units) == 1:
         return units[0]
     if units:
@@ -2276,6 +2275,8 @@ def migrate_cmd(bundle: str) -> None:
     `tbt_contours_eta_ev` -- in the template, or a rung's override in
     task.json -- wrote no line, and the program's own rule applied; since,
     0 is no broadening.  Each is written blank, which is what it meant.
+    Its RETIRED KEY (2.6.0): a transport task.json's `centre_junction`,
+    removed -- the junction enters its calculation centred.
 
     What the calculation was is KEPT -- every old value becomes a stated
     one -- and each change is printed.  Each old file rewritten stays beside

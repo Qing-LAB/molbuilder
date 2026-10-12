@@ -147,7 +147,7 @@ def read_xv_with_cell(path: Union[str, Path]):
     # applies nothing, and a viewer draws it as the engine had it.
     return Structure(elements=elements, positions=positions_ang,
                      cell=cell, title=p.stem,
-                     engine_offset=[0.0, 0.0, 0.0]), cell
+                     engine_offset=[0.0, 0.0, 0.0], offset_by="engine"), cell
 
 
 def _read_xv(path: Union[str, Path]) -> Structure:

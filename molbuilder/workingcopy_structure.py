@@ -182,7 +182,8 @@ class StructureCodec:
             run_frame = declared(run_of(src)).frame()
             if run_frame and run_frame.get("cell") is not None:
                 changes = {"cell": run_frame["cell"],
-                           "engine_offset": run_frame["engine_offset"]}
+                           "engine_offset": run_frame["engine_offset"],
+                           "offset_by": run_frame["offset_by"]}
                 if run_frame.get("axis_kind"):
                     changes["axis_kind"] = tuple(run_frame["axis_kind"])
                 struct = struct.replace(**changes)
@@ -349,7 +350,9 @@ class StructureCodec:
         ``<label>.source.xyz`` and its sidecar -- the catalogue's name
         (`runfiles.WRITTEN`, `job-contracts.md` § 6.3), for :meth:`files` to
         give the format's suffix.  Both writers of a calculation's structure
-        ask it: the hand-over and `jobset init`."""
+        ask it: the hand-over and `jobset init`.  Written AS GIVEN, its
+        origin's record with it: prep decides how the calculation takes it
+        (`cell.entering`, `jobset.prep._structure_for`)."""
         from .runfiles import compose
         return self.files(struct, compose(label, ".source.xyz"))
 

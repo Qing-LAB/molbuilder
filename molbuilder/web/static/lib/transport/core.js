@@ -18,7 +18,8 @@
  * shared panel and each rung's tab -- and the cited junction persist
  * through the workspace's one door, each under the tab's own tag
  * (`transport:form`, `transport:panel`; workspace.md § 4), so a reload
- * restores the whole describe state.
+ * restores them; the bias list, its treatment and the electrode rename
+ * start over (`web/tabs.md`).
  */
 import { mount } from "/static/lib/molview/index.js";
 
@@ -536,16 +537,10 @@ const WORKSPACE_TAG = "transport";
      * line show the junction as this calculation will compose it.  The cited
      * junction is never written. */
     var _swapElectrodesChoice = false;
-    /* WHERE THE JUNCTION SITS IN ITS CELL is this calculation's choice too
-     * (transport.md § 4; user, 2026-10-11), held and read the same way:
-     * until Describe writes `centre_junction: true`, every describe of the
-     * citation is read WITH it. */
-    var _centreJunctionChoice = false;
     function _describeAttempt(rel) {
         return root.fetch("/api/transport/describe_attempt?path="
                           + encodeURIComponent(rel.replace(/^\/+/, ""))
-                          + (_swapElectrodesChoice ? "&swap_electrodes=1" : "")
-                          + (_centreJunctionChoice ? "&centre_junction=1" : ""))
+                          + (_swapElectrodesChoice ? "&swap_electrodes=1" : ""))
             .then(function (r) { return r.json(); })
             .then(function (b) {
                 if (!b || b.ok === false) {
@@ -639,87 +634,6 @@ const WORKSPACE_TAG = "transport";
             });
     }
 
-    /* WHERE THE JUNCTION SITS ALONG Z, AND THE OFFER TO CENTRE IT
-     * (transport.md § 3.8.1, § 4; user, 2026-10-11: "always, with the
-     * numbers").  Shown whenever the junction states its offset -- the
-     * rule then leaves it where it is -- and while this calculation holds
-     * the centring, so it can be withdrawn; a junction the rule places is
-     * centred already, and nothing is said.  The numbers are the server's
-     * (`placement`); nothing here measures. */
-    var CENTRE_LABEL = "Centre the junction in its cell";
-    var UNCENTRE_LABEL = "Withdraw the centring";
-    function _ang(v) { return Number(v).toFixed(3) + " \u00c5"; }
-    /* The room between the atoms and one face -- or, below zero, how far
-     * the atoms pass it, said as such rather than as a negative room. */
-    function _room(v, face) {
-        if (v >= 0) return _ang(v) + " from the cell's " + face + " face";
-        // A pass smaller than the shown precision is still a pass: say it.
-        var past = -Number(v);
-        return (past < 0.001 ? past.toFixed(4) + " \u00c5" : _ang(past))
-            + " past the cell's " + face + " face";
-    }
-    function _offerCentre(described) {
-        var host = _$("transport-junction-place");
-        if (!host) return;
-        var pl = described && described.placement;
-        var holds = !!(described && described.centre_junction);
-        if (!pl || (!pl.stated && !holds)) {
-            host.hidden = true;
-            host.textContent = "";
-            return;
-        }
-        host.hidden = false;
-        host.textContent = "";
-        var outside = (pl.outside || []).length;
-        var say = root.document.createElement("span");
-        say.className = "hint";
-        say.textContent = "Along z, the transport direction, the atoms sit "
-            + _room(pl.below_ang, "lower") + " and "
-            + _room(pl.above_ang, "upper") + "; centred, "
-            + _ang(pl.centred_ang) + " each side.  "
-            + (outside
-               ? outside + " atom" + (outside === 1 ? " lies" : "s lie")
-                 + " outside the cell along z, and prep refuses the "
-                 + (holds
-                    ? "junction: centred, the atoms span more than the "
-                      + "cell's length there.  "
-                    : "junction until it is centred.  ")
-               : "")
-            + (holds
-               ? "This calculation centres its own copy of the junction "
-                 + "(centre_junction: true); the cited junction is unchanged."
-               : "The citation's coordinates keep the placement they "
-                 + "state.  Centring moves every atom of this calculation's "
-                 + "own copy by the same amount, and the description "
-                 + "records it; the cited junction is never written, and "
-                 + "another calculation citing it makes its own choice.");
-        var btn = root.document.createElement("button");
-        btn.type = "button";
-        btn.id = "transport-centre-junction-btn";
-        btn.className = "full-btn";
-        btn.textContent = holds ? UNCENTRE_LABEL : CENTRE_LABEL;
-        btn.addEventListener("click", function () {
-            btn.disabled = true;
-            btn.textContent = holds ? "Withdrawing\u2026" : "Centring\u2026";
-            _centreJunctionChoice = !holds;
-            _describeAttempt(described.citation)
-                .then(function (d) {
-                    _adoptCitation(d, (_centreJunctionChoice
-                        ? "This calculation centres its copy of the junction "
-                          + "(centre_junction: true).  Re-cited: "
-                        : "The centring is withdrawn.  Re-cited: "));
-                })
-                .catch(function (e) {
-                    _centreJunctionChoice = holds;
-                    btn.disabled = false;
-                    btn.textContent = holds ? UNCENTRE_LABEL : CENTRE_LABEL;
-                    _setStatus("The centring failed: " + e, "error");
-                });
-        });
-        host.appendChild(say);
-        host.appendChild(btn);
-    }
-
     function _adoptCitation(described, statusPrefix) {
         var vf = (root.molbuilder || {}).validationFindings;
         var fpanel = _$("transport-junction-findings");
@@ -757,7 +671,6 @@ const WORKSPACE_TAG = "transport";
          * (validation.md 4.1 R2), under the one-line summary. */
         if (vf && fpanel) vf.render(described.findings || [], { panel: fpanel });
         _offerFix(described);
-        _offerCentre(described);
         _writePanelNote();
         _refreshSendButton();
         /* Honest state, not a gate (strict composition refuses at
@@ -913,7 +826,6 @@ const WORKSPACE_TAG = "transport";
                 calculation: "transport",
                 junction: _junction,
                 swap_electrodes: _swapElectrodesChoice,
-                centre_junction: _centreJunctionChoice,
                 bias: bias,
                 low_bias_approximation: approx,
                 stages: bags,
@@ -984,6 +896,9 @@ const WORKSPACE_TAG = "transport";
             host.dataset.rungsFollow = "1";
             var t = null;
             host.addEventListener("change", function () {
+                // A RESTORE IS NOT AN EDIT: the panel's draw waits for its
+                // restore before the rungs are drawn from it.
+                if (_restoring) return;
                 if (t) clearTimeout(t);
                 t = setTimeout(function () {
                     // A VALUE THAT WILL NOT READ is said beside its field,
@@ -1014,36 +929,44 @@ const WORKSPACE_TAG = "transport";
                              function () { return seq === _sharedSeq; })
                 .then(function (body) {
             if (seq !== _sharedSeq) return;
+            var restored = Promise.resolve();
             if (body) {
                 _sharedSchema = body.schema;
-                // What the panel held, for this junction, comes back.
-                _restoreFormValues(host, body.schema, formSchema, "shared",
-                                   function () { return seq === _sharedSeq; });
+                // What the panel held, for this junction, comes back --
+                // before the rungs are drawn from it, so a rung value that
+                // follows a shared one follows the person's.
+                restored = _restoreFormValues(
+                    host, body.schema, formSchema, "shared",
+                    function () { return seq === _sharedSeq; });
             }
-            // The panel is rendered for the junction now (or could not be):
-            // the chemistry card answers for what it says, about the
-            // junction the tab holds -- or hides, with none.
-            if (_chemistry) _chemistry.refresh();
-            if (!body) return;
-            var line = _$("transport-shared-source");
-            if (!line) return;
-            var src = body.source || {kind: "none", name: ""};
-            line.textContent = !_junction
-                ? "No junction cited yet: nothing is chosen, and each blank "
-                  + "field shows the value that would apply."
-                : src.kind === "deck"
-                ? "Values from the run you cited (" + src.name + ").  Change "
-                  + "any of them; a change applies to every rung that reads it."
-                : src.kind === "pair"
-                ? "Values from the record of the optimization your structure "
-                  + "pair carries (" + src.name + ").  Change any of them; a "
-                  + "change applies to every rung that reads it."
-                : "The junction you cited states none of these settings in "
-                  + "a form this build reads, so it answers none of them.  "
-                  + "A blank field is not chosen: the template records no "
-                  + "value for it and prep falls back to the catalogue's "
-                  + "default until you choose.";
+            return restored.then(function () { _paintShared(body); });
         });
+    }
+
+    function _paintShared(body) {
+        // The panel is rendered for the junction now (or could not be):
+        // the chemistry card answers for what it says, about the
+        // junction the tab holds -- or hides, with none.
+        if (_chemistry) _chemistry.refresh();
+        if (!body) return;
+        var line = _$("transport-shared-source");
+        if (!line) return;
+        var src = body.source || {kind: "none", name: ""};
+        line.textContent = !_junction
+            ? "No junction cited yet: nothing is chosen, and each blank "
+              + "field shows the value that would apply."
+            : src.kind === "deck"
+            ? "Values from the run you cited (" + src.name + ").  Change "
+              + "any of them; a change applies to every rung that reads it."
+            : src.kind === "pair"
+            ? "Values from the record of the optimization your structure "
+              + "pair carries (" + src.name + ").  Change any of them; a "
+              + "change applies to every rung that reads it."
+            : "The junction you cited states none of these settings in "
+              + "a form this build reads, so it answers none of them.  "
+              + "A blank field is not chosen: the template records no "
+              + "value for it and prep falls back to the catalogue's "
+              + "default until you choose.";
     }
 
     /* What the shared panel HOLDS now -- every field, a blank as null: the

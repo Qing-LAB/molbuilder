@@ -175,8 +175,7 @@ list it walks, how it treats that list (`single-bias`,
 `low-bias-approximation` or `self-consistent` — the folder answer's
 `treatment`, the one rule the record names it by) and whether it trades the
 two electrode labels in its own copy of the junction (`swap_electrodes`,
-[`engines/transport.md`](?doc=engines/transport.md) § 4) and whether it
-centres that copy in its cell (`centre_junction`, the same section) — and the label every
+[`engines/transport.md`](?doc=engines/transport.md) § 4) — and the label every
 emitted file is stemmed on. **A cited frame set says what its frames are**,
 under them: its count and, for a mode's set, its mode line and a row per
 frame — the frame-set card the Transport tab's junction card draws, from the
@@ -204,7 +203,7 @@ is its identity: the run id is derived from it, so a different one is a new
 calculation, described in a new folder (Save refuses another calculation's
 id, § 2). The rest is corrected in `task.json` itself, in the editor below
 (§ 9a), as `jobset init`'s refusal says of a described folder — a transport
-calculation's two choices on its junction and its bias list; a shared value
+calculation's electrode rename and its bias list; a shared value
 is the template's, changed in that file, which a person reads and edits
 ([`engines/template.md`](?doc=engines/template.md)). A transport
 calculation's Describe is one act and writes into no described folder
@@ -1147,7 +1146,7 @@ the folder is read again, and the boxes start again from the new offer.
 | | |
 |---|---|
 | **measure it** | `prep bench <stage>` → `launch bench` → `summarize bench`, and the hint that says which rung is worth measuring |
-| **run it** | the run card, the Continue-from choice, and the lines `prep task --stage <stage>` → `launch task --stage <stage>` — prepared with the task's Prep above; the last line for every kind: a run writes its own result, and a SIESTA vibration's force-constant job derives its modes itself after SIESTA ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5; the `summarize run freq` line this printed from 2026-09-24 went with the host read-back, 2026-09-28) |
+| **run it** | the run card, the Continue-from choice, and the lines `prep task --stage <stage>` → `launch task --stage <stage>` — prepared with the task's Prep above; a stage prepared in a group launches as `jobset status` says, the group's one job while every member waits and alone after (D4, `runstatus.launch_words`) *(2026-10-11; until then the tab named the stage alone)*; the last line for every kind: a run writes its own result, and a SIESTA vibration's force-constant job derives its modes itself after SIESTA ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5; the `summarize run freq` line this printed from 2026-09-24 went with the host read-back, 2026-09-28) |
 
 **What each stage will PRODUCE is not in the tab** — it is § 7.1's list, in the
 travelling rail (§ 9a.1). A tab is one rung and that list is the whole ladder:
@@ -1299,7 +1298,13 @@ from the same answer:
 * **what a transport rung gathered** from the newest finished runs upstream;
 * **the resources** the stage will launch with, and **whether the deck
   agrees**: a deck rendered for another width is said here, before `launch`
-  refuses it — and redone by going back to the state saved before this prep.
+  refuses it — and redone by going back to the state saved before this prep;
+* **what comes next** — after a Prep, the line that launches what it
+  prepared, as the terminal's prep ends with it: a group's one job by its
+  members (`launch task --stage seed --stage electrode_L --stage
+  electrode_R`), typed at the terminal *(2026-10-11; until then a Prep's
+  answer stopped at its resources, and a group's launch was shown nowhere —
+  each rung's tab names its own stage alone)*.
 
 **A refusal shows what it had found** — the preflight's notes and what the
 inputs said — beside its own sentence: a bench refused because *no cell

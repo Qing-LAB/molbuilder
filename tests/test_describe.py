@@ -128,7 +128,7 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path):
     the catalogue's name and the hand-over's (`job-contracts.md` § 6.3,
     `StructureCodec.source_files`) -- ``task.json`` records that name, and
     the ``--vacuum 8`` it was described with travels in the sidecar, so
-    prep's own loader reads it back (the fix of 2026-08-12).
+    the loader prep reads the pair with reads it back (the fix of 2026-08-12).
 
     The structure FILE is ``h2.xyz`` and the label ``JOB``: init named the
     pair ``h2.source.*`` until 2026-10-04 (plan D20)."""
@@ -158,8 +158,9 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path):
         "JOB.source.molstruct.json", "JOB.source.xyz"]
     task = read_task(calc / "task.json")
     assert task.structure.source == "JOB.source.xyz"
-    from molbuilder.jobset.prep import _structure_for
-    assert _structure_for(task, calc).vacuum == (8.0, 8.0, 8.0)
+    from molbuilder.workingcopy_structure import StructureCodec
+    assert StructureCodec().load(calc / task.structure.source).vacuum == (
+        8.0, 8.0, 8.0)
 
 
 def test_every_description_states_its_kind(struct, cfg, tmp_path):
