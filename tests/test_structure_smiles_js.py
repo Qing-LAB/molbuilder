@@ -130,7 +130,7 @@ class TestLazyResolve:
         ''')
         # Without the lazy-resolve fix this would be
         # {rejected: true, msg: "smiles: fetch not configured"}.
-        assert out == {"ok": True, "n_atoms": 1}
+        assert out == {"ok": True, "n_atoms": 1, "warnings": []}
 
 
 class TestInputValidation:
@@ -238,7 +238,7 @@ class TestHappyPath:
                 loadCalls: loadCalls,
             }));
         ''')
-        assert out["envelope"] == {"ok": True, "n_atoms": 3}
+        assert out["envelope"] == {"ok": True, "n_atoms": 3, "warnings": []}
         assert out["url"] == "/api/build/molecule"
         assert out["body"] == {"kind": "smiles", "input": "CCO"}
         # The load door receives the ENVELOPE, and the columns XYZ
@@ -373,6 +373,42 @@ class TestCanvasGate:
         ''')
         assert out == {"ok": False, "cancelled": True}
 
+    def test_the_build_runs_under_the_fence_and_its_cancel_is_an_answer(self):
+        """`tabs.md`, *One chain for the five generators*: the build runs
+        under the page's fence with a Cancel that aborts the request, and a
+        Cancel pressed is answered ``cancelled`` -- nothing on the canvas,
+        no error -- never "Could not reach" a server that was reached."""
+        out = _run_node('''
+            const claims = [];
+            globalThis.molbuilder.pageBusy = {
+                run: async (reason, cancelers, fn) => {
+                    claims.push({ reason, cancelers: cancelers.length });
+                    const answer = fn();
+                    cancelers.forEach((c) => c());     // Cancel, pressed
+                    return await answer;
+                },
+            };
+            let loads = 0;
+            smiles.configure({
+                fetch: (url, init) => new Promise((resolve, reject) => {
+                    init.signal.addEventListener("abort", () => {
+                        const e = new Error("aborted");
+                        e.name = "AbortError";
+                        reject(e);
+                    });
+                }),
+                structurePage: { loadIntoCanvas: async () => {
+                    loads += 1; return { ok: true }; } },
+            });
+            const r = await smiles.generate("C");
+            console.log(JSON.stringify({ claims, r, loads }));
+        ''')
+        assert out["claims"] == [{
+            "reason": "Generating 3-D structure from SMILES\u2026",
+            "cancelers": 1}], out
+        assert out["r"] == {"ok": False, "cancelled": True}, out
+        assert out["loads"] == 0, out
+
     def test_canvas_accept_returns_ok(self):
         """The load door accepting the XYZ (loadIntoCanvas resolving
         ok) is the whole success path — the door parses + renders
@@ -393,7 +429,7 @@ class TestCanvasGate:
             const r = await smiles.generate("C");
             console.log(JSON.stringify({envelope: r, loadCalls}));
         ''')
-        assert out["envelope"] == {"ok": True, "n_atoms": 1}
+        assert out["envelope"] == {"ok": True, "n_atoms": 1, "warnings": []}
         assert out["loadCalls"] == 1
 
 

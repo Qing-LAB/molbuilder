@@ -38,6 +38,7 @@
  * Invariants: docs/execution/checkpointing.md.
  */
 
+import { askFields } from "../dialog.js";
 import { pageBusy } from "../page-busy.js";
 
 const _state = {
@@ -573,24 +574,12 @@ async function _refresh(opts = {}) {
     if (!dir) return;
     _hideAdvisory();
     if (!opts.deep) return _readInto(dir, undefined, opts);
-    /* NOT OURS TO TAKE IF SOMEONE ELSE HAS IT.  `claim()` throws while
-     * claimed, and the cover does not make this button unreachable: it
-     * blocks the mouse but sets no `inert`, so Tab + Enter still fires
-     * the handler during a SMILES build or a task.json save.  Passing
-     * through on the outer cover is what `task-setup/viewer.js` does at
-     * its own writer, and it is the same answer here -- the window is
-     * already held, so there is nothing this claim would add. */
-    if (pageBusy.isClaimed()) return _readInto(dir, undefined, opts);
-    // The three layers of § 10's recovery contract, spelled out: the
-    // canceler aborts, Cancel runs it, and the `finally` uncovers
-    // whatever happens.
+    // § 10's recovery contract: the canceler aborts the read, Cancel runs
+    // it, and `run` uncovers the window whatever happens.
     const ctl = new AbortController();
-    pageBusy.claim("Checking this folder's files\u2026", [() => ctl.abort()]);
-    try {
-        return await _readInto(dir, ctl.signal, opts);
-    } finally {
-        pageBusy.release();
-    }
+    return pageBusy.run("Checking this folder's files\u2026",
+                        [() => ctl.abort()],
+                        () => _readInto(dir, ctl.signal, opts));
 }
 
 async function _readInto(dir, sig, opts) {
@@ -667,28 +656,32 @@ async function _readInto(dir, sig, opts) {
  * them.  The ordinary case never sees a prompt.
  */
 async function _onInitClick() {
-    if (!_state.currentDir) return;
+    // THE FOLDER IS READ ONCE, before the question: what is answered
+    // is about the folder it was asked of.
+    const dir = _state.currentDir;
+    if (!dir) return;
     _hideAdvisory();
     elInitBtn.disabled = true;
     try {
         let res = await _fetchJSON("POST", "/api/checkpoint/init",
-            { path: _state.currentDir });
+            { path: dir });
         const refusal = (res.body && Array.isArray(res.body.errors_only)
                          && res.body.errors_only.length)
             ? res.body.errors_only[0] : null;
         if (refusal && refusal.where === "calculation") {
-            const name = prompt(
-                "This folder's name cannot be used as a calculation name -- "
-                + "it is written into every saved state as you type it, and is "
-                + "never changed for you.\n\n"
-                + "Letters, digits, - and _ only:", "");
-            if (name === null) return;               // user cancelled
-            if (!name.trim()) {
-                _showAdvisory("A calculation needs a name. Nothing was set up.");
-                return;
-            }
+            const got = await askFields({
+                title: "A name for this calculation",
+                hint: "This folder's name cannot be used as a calculation "
+                    + "name -- it is written into every saved state as you "
+                    + "type it, and is never changed for you.",
+                fields: [{ name: "name",
+                           label: "Letters, digits, - and _ only" }],
+                validate: (v) => (v.name.trim() ? null : ""),
+                confirmLabel: "Set up",
+            });
+            if (!got) return;                        // cancelled
             res = await _fetchJSON("POST", "/api/checkpoint/init",
-                { path: _state.currentDir, calculation: name.trim() });
+                { path: dir, calculation: got.name.trim() });
         }
         if (res.body && res.body.ok) {
             await _refresh();
@@ -714,21 +707,27 @@ async function _onInitClick() {
  * refused here rather than filled in.
  */
 async function _onCommitClick() {
-    if (!_state.currentDir) return;
-    const note = prompt(
-        "What happened, and what were you about to do?\n"
-        + "(e.g. \"stage 1 converged, 41 steps -- before retightening\")", "");
-    if (note === null) return;     // user cancelled
-    if (!note.trim()) {
-        _showAdvisory("A state needs a note. Nothing was saved.");
-        return;
-    }
+    // THE FOLDER IS READ ONCE, before the question: what is answered
+    // is about the folder it was asked of.
+    const dir = _state.currentDir;
+    if (!dir) return;
+    const got = await askFields({
+        title: "Save this folder's state",
+        fields: [{ name: "note",
+                   label: "What happened, and what were you about to do?",
+                   placeholder: "stage 1 converged, 41 steps -- before "
+                       + "retightening" }],
+        validate: (v) => (v.note.trim() ? null : ""),
+        confirmLabel: "Save",
+    });
+    if (!got) return;              // cancelled
+    const note = got.note;
     _hideAdvisory();
     elCommitBtn.disabled = true;
     try {
         // Through the public API (§ 5), so the panel and a tab that must take
         // a state before writing share ONE implementation.
-        const out = await saveState(_state.currentDir, note.trim());
+        const out = await saveState(dir, note.trim());
         const res = { body: { ok: out.ok, changed: out.changed,
                               error: out.error } };
         if (res.body && res.body.ok) {
@@ -755,21 +754,26 @@ async function _onCommitClick() {
  * own tags easy to see in a list a month later.
  */
 async function _onTagClick() {
-    if (!_state.currentDir) return;
-    const name = prompt("Name this state (e.g. stage1-good):", "");
-    if (name === null) return;                     // user cancelled
-    if (!name.trim()) return;
-    const note = prompt("Why is it worth coming back to?", "");
-    if (note === null) return;
-    if (!note.trim()) {
-        _showAdvisory("A tag needs a note saying why. Nothing was tagged.");
-        return;
-    }
+    // THE FOLDER IS READ ONCE, before the question: what is answered
+    // is about the folder it was asked of.
+    const dir = _state.currentDir;
+    if (!dir) return;
+    const got = await askFields({
+        title: "Name this state",
+        fields: [
+            { name: "name", label: "Name", placeholder: "stage1-good" },
+            { name: "note", label: "Why is it worth coming back to?" },
+        ],
+        validate: (v) => (v.name.trim() && v.note.trim() ? null : ""),
+        confirmLabel: "Name it",
+    });
+    if (!got) return;                              // cancelled
+    const { name, note } = got;
     _hideAdvisory();
     elTagBtn.disabled = true;
     try {
         const res = await _fetchJSON("POST", "/api/checkpoint/tag", {
-            path: _state.currentDir,
+            path: dir,
             name: name.trim(),
             note: note.trim(),
         });
@@ -802,21 +806,25 @@ function _onListClick(ev) {
 }
 
 async function _onRestoreClick(sha) {
-    if (!_state.currentDir) return;
+    // THE FOLDER IS READ ONCE, before the question: what is answered
+    // is about the folder it was asked of.
+    const dir = _state.currentDir;
+    if (!dir) return;
     if (!sha) return;
     const target = _state.states.find(s => s.id === sha);
     const label = target
         ? (target.tags && target.tags.length ? target.tags[0] : target.short)
         : sha.slice(0, 7);
-    if (!confirm(
-        `Put this folder back to ${label}?\n\n` +
-        `The whole folder returns to that state -- text and big files\n` +
-        `together.  Anything here that is not saved is named first, and\n` +
-        `you get the choice before anything changes.`)) {
-        return;
-    }
+    const sure = await window.molbuilder.warningModal.confirm({
+        title: `Put this folder back to ${label}?`,
+        body: "The whole folder returns to that state -- text and big files "
+            + "together.  Anything here that is not saved is named first, "
+            + "and you get the choice before anything changes.",
+        confirmLabel: "Put it back",
+    });
+    if (!sure) return;
     _hideAdvisory();
-    await _restore(sha, label, false);
+    await _restore(dir, sha, label, false);
 }
 
 /**
@@ -825,10 +833,10 @@ async function _onRestoreClick(sha) {
  * files in front of them, which is the whole difference between an informed
  * decision and a shrug.  Nothing is stashed or set aside either way.
  */
-async function _restore(sha, label, force) {
+async function _restore(dir, sha, label, force) {
     try {
         const res = await _fetchJSON("POST", "/api/checkpoint/restore", {
-            path:  _state.currentDir,
+            path:  dir,
             state: sha,
             force: !!force,
         });
@@ -843,7 +851,7 @@ async function _restore(sha, label, force) {
              * are open or what they cache. */
             const _p = window.molbuilder && window.molbuilder.projects;
             if (_p && typeof _p.publishFolderChanged === "function") {
-                _p.publishFolderChanged(_state.currentDir);
+                _p.publishFolderChanged(dir);
             }
             _showAdvisory(`This folder is now ${label}.`);
             return;
@@ -852,8 +860,12 @@ async function _restore(sha, label, force) {
             && res.body.errors_only.length
             ? res.body.errors_only[0].message : null;
         if (advisory && !force) {
-            if (confirm(advisory + "\n\nGo ahead and lose it?")) {
-                await _restore(sha, label, true);
+            if (await window.molbuilder.warningModal.confirm({
+                    title: "Lose what is not saved?",
+                    body: advisory,
+                    confirmLabel: "Lose it and put back",
+                })) {
+                await _restore(dir, sha, label, true);
             } else {
                 _showAdvisory("Nothing was changed.");
             }

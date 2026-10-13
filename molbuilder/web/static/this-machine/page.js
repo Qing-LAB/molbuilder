@@ -33,17 +33,8 @@
      * anything else disarms; a mis-click costs a second, not a channel. */
     var armed = null;
 
-    /* HOW LONG AGO, in the unit a person reads it in: each unit until one
-     * and a half of the next (90 s, 90 min, 36 h). */
-    var MINUTE = 60, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
-    function ago(seconds) {
-        if (!seconds) return "";
-        var d = Math.max(0, Date.now() / 1000 - seconds);
-        if (d < 1.5 * MINUTE) return "just now";
-        if (d < 1.5 * HOUR) return Math.round(d / MINUTE) + "m ago";
-        if (d < 1.5 * DAY) return Math.round(d / HOUR) + "h ago";
-        return Math.round(d / DAY) + "d ago";
-    }
+    /* HOW LONG AGO, said as every page says it (`lib/time-ago.js`). */
+    var ago = window.molbuilder.timeAgo;
 
     /* ---------- channels ---------- */
 

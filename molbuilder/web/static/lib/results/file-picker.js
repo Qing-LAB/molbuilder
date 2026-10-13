@@ -49,7 +49,6 @@
  *                         in the sidebar moves this panel (results.md
  *                         § 2.1); Reload does.
  *   ``parseDir(file)``            -- pure helper (exported for testing).
- *   ``formatRelativeTime(epoch)`` -- pure helper (testing).
  *   ``filterToResultFiles(entries, dir, pickResult)`` -- pure helper.
  *   ``absorbSatellites(entries, pickResult)`` -- pure helper that drops
  *                         the files a run's master subsumes, so one run is
@@ -85,23 +84,6 @@
             dir:  file.slice(0, ix),
             name: file.slice(ix + 1),
         };
-    }
-
-    /**
-     * Format an epoch_seconds value as a relative-time string for
-     * the dropdown's ``(2m ago)`` / ``(3h ago)`` suffix.  Returns ""
-     * when the epoch is missing.
-     */
-    function formatRelativeTime(epoch_s) {
-        if (epoch_s == null || !Number.isFinite(epoch_s)) return "";
-        const now = Date.now() / 1000;
-        const delta = Math.max(0, now - epoch_s);
-        if (delta < 60)    return Math.floor(delta) + "s ago";
-        if (delta < 3600)  return Math.floor(delta / 60) + "m ago";
-        if (delta < 86400) return Math.floor(delta / 3600) + "h ago";
-        const days = Math.floor(delta / 86400);
-        if (days < 30)     return days + "d ago";
-        return new Date(epoch_s * 1000).toLocaleDateString();
     }
 
     /**
@@ -233,7 +215,7 @@
      * timestamp off-screen.
      */
     function labelForResult(entry) {
-        const rel = formatRelativeTime(entry.mtime);
+        const rel = root.molbuilder.timeAgo(entry.mtime);
         return rel ? (entry.name + " (" + rel + ")") : entry.name;
     }
 
@@ -390,7 +372,7 @@
         // shows as the highest index.
         const chronIx = results.length - ix;
         const cur = results[ix];
-        const rel = formatRelativeTime(cur.mtime);
+        const rel = root.molbuilder.timeAgo(cur.mtime);
         const parts = [chronIx + " of " + results.length];
         if (rel) parts.push(rel);
         metaEl.textContent = parts.join(" · ");
@@ -1200,7 +1182,6 @@
     root.molbuilder.resultsFilePicker = {
         mount:               mount,
         parseDir:            parseDir,
-        formatRelativeTime:  formatRelativeTime,
         filterToResultFiles: filterToResultFiles,
         groupResultFiles:    groupResultFiles,
         absorbSatellites:    absorbSatellites,

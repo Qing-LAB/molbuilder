@@ -28,7 +28,7 @@ stage label: a fact about the description is not a fact about a member of it.
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, List, Sequence, Tuple
 
 from ..issues import Issue
 

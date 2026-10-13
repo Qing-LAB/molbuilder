@@ -52,14 +52,7 @@ _MARKERS = {
         "an inspector failed to mount; the card it is set on is already "
         "`.card`, and 15 tests name this to find the failure",
     "molbuilder-warning-modal":
-        "the discard dialog, for tests to find; `.mb-dialog` dresses it",
-    "molbuilder-save-name-modal":
-        "the save-as dialog, same",
-    "molbuilder-save-overwrite-modal":
-        "the overwrite dialog, same",
-    "molbuilder-projects-dest-root":
-        "the root <ul> of the destination tree; the tree's own rules select "
-        "through it rather than on it",
+        "the one confirm, for tests to find; `.mb-dialog` dresses it",
 }
 _ALLOWED_UNSTYLED = set(_MARKERS)
 
@@ -113,8 +106,7 @@ def test_every_dialog_wears_the_shared_component():
         text = js.read_text(encoding="utf-8")
         for m in re.finditer(r'createElement\(\s*["\']dialog["\']\s*\)', text):
             after = text[m.end():m.end() + 400]
-            if "mb-dialog" not in after and "molbuilder-projects-dialog" \
-                    not in after:
+            if "mb-dialog" not in after:
                 line = text[:m.start()].count("\n") + 1
                 offenders.append(f"{js.relative_to(_STATIC).as_posix()}:{line}")
     assert not offenders, (

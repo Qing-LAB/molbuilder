@@ -158,6 +158,24 @@ export const pageBusy = {
         }
     },
 
+    /** Run ``fn`` under the fence -- THE way an operation takes it (§ 10):
+     *  claim, run, release in a ``finally``.  When the fence is already
+     *  held, ``fn`` runs inside that claim: with the mouse and the keyboard
+     *  fenced, only the operation holding it can reach another ``run``, so
+     *  the caller is one of its steps, and two steps compose in one claim;
+     *  the step runs under that claim's Cancel, its own ``cancelers``
+     *  unused.  ``claim`` and ``release`` are called through this object,
+     *  so a spy on them sees every claim. */
+    async run(reason, cancelers, fn) {
+        if (_claim !== null) return await fn();
+        pageBusy.claim(reason, cancelers);
+        try {
+            return await fn();
+        } finally {
+            pageBusy.release();
+        }
+    },
+
     /** Is the fence held?  Programmatic movers of shared state
      *  (``projects.navigateTo``) refuse while this is true. */
     isClaimed() { return _claim !== null; },

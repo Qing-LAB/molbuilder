@@ -155,14 +155,6 @@
                 say("Saved at " + new Date().toLocaleTimeString(), "ok");
             }
 
-            // Browser navigation warning if there are unsaved edits.
-            const beforeunload = (ev) => {
-                if (dirty && !aborted) {
-                    ev.preventDefault();
-                    ev.returnValue = "";
-                }
-            };
-            window.addEventListener("beforeunload", beforeunload);
             const onSaveClick = () => save();
             elSave.addEventListener("click", onSaveClick);
 
@@ -248,8 +240,6 @@
                 dispose() {
                     aborted = true;
                     clearTimeout(renderTimer);
-                    window.removeEventListener(
-                        "beforeunload", beforeunload);
                     elSave.removeEventListener("click", onSaveClick);
                     // CodeMirror has no explicit destroy(); detaching
                     // its DOM is enough for GC to reclaim.

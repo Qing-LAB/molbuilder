@@ -1398,8 +1398,8 @@ def webhook_request(dest: Dict[str, Any],
         # The timestamp is signed WITH the body, not sent beside it --
         # otherwise it could be rewritten freely.
         ts = "%d" % int(time.time())
-        head["X-Molbuilder-Timestamp"] = ts
-        head["X-Molbuilder-Signature"] = sign_report(dest["key"], ts, body)
+        head[TIMESTAMP_HEADER] = ts
+        head[SIGNATURE_HEADER] = sign_report(dest["key"], ts, body)
     return body, head
 
 
@@ -1583,14 +1583,20 @@ def channels_for(wanted: Optional[Sequence[str]],
     return chosen, missing
 
 
-def sign_report(key: str, timestamp: str, body: bytes) -> str:
-    """The signature, computed exactly as the listener computes it.
+#: The two headers a signed report carries, named once for both ends (the
+#: listener reads them by these names, `web/blueprints/notify.py`).
+TIMESTAMP_HEADER = "X-Molbuilder-Timestamp"
+SIGNATURE_HEADER = "X-Molbuilder-Signature"
 
-    **The same rule written twice, and it has to be.**  This file ships to
-    a compute node as a standalone stdlib-only script, so it cannot import
-    the server's copy -- and the server cannot import this one.  The two
-    are kept in step by `web/blueprints/notify.py::sign` and a test that
-    feeds this notifier's own output to the real route.
+
+def sign_report(key: str, timestamp: str, body: bytes) -> str:
+    """The signature a report carries, and the one the listener checks it
+    against: **one definition**.  This file ships to a compute node as a
+    standalone stdlib-only script, and the server imports this same function
+    (`web/blueprints/notify.py`), so the two ends cannot come to disagree.
+
+    The timestamp is inside the signed material rather than beside it:
+    signing the body alone would leave the timestamp free to be rewritten.
 
     Why a signature rather than a bearer token: a token is on the wire every time, so one capture yields a
     credential good forever and for any body.  This key never leaves the

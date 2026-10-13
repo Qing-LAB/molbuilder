@@ -27,11 +27,11 @@ from __future__ import annotations
 
 # The two quantities a job asks for -- a wall and an amount of memory --
 # and every dialect each is written in.  One object, one module.
-from .quantities import (  # noqa: F401
+from .quantities import (
     parse_walltime, parse_duration, parse_memory,
     slurm_time, slurm_mem, canonical_time, canonical_mem, human_wall,
 )
-from .record import (  # noqa: F401
+from .record import (
     SCHEMA, FILENAME,
     Topology, Site, Domain, Device, Environment,
     detect_scheduler, detect_topology, detect_site,
@@ -44,10 +44,10 @@ from .record import (  # noqa: F401
     known_machines, choice_required,
     topology_field_types,
 )
-from .admit import (  # noqa: F401
+from .admit import (
     Request, admits, domain_ceiling_s, domain_serves_gpu,
 )
-from .quantities import parse_mem_gb  # noqa: F401
+from .quantities import parse_mem_gb
 
 __all__ = [
     "SCHEMA", "FILENAME",

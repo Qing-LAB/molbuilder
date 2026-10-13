@@ -292,7 +292,8 @@ def calls_made(calls: Path):
 # a prep that was not refused says nothing of `said_lacks`.
 # THEN, refused or not: the description saved through Task setup's Save with
 # `saved`'s fields changed (`{shape = "flat"}`) -- refused, with
-# `save_refused`'s words, or taken.  A REFUSED prep, its remedy done: this
+# `save_refused`'s words, the sentence the folder answer gave the shape card
+# before (`shape_fixed`), or taken.  A REFUSED prep, its remedy done: this
 # machine re-probed holding `reprobed` (its record's fields), the same prep
 # is typed again and taken.
 #
@@ -444,23 +445,33 @@ def _road_regrouped(groups, bundle) -> None:
 def _road_saved(case, bundle) -> None:
     """The description saved through Task setup's Save -- the page's door,
     which no `jobset` verb reaches -- with ``saved``'s fields changed:
-    refused, saying each of ``save_refused``, or taken."""
+    refused, saying each of ``save_refused`` in the sentence the folder
+    answer gave the shape card (`shape_fixed`), or taken."""
     if "saved" not in case:
         return
     import json
     from molbuilder.web.app import create_app
     task = json.loads((bundle / "task.json").read_text())
+    shape = task.get("shape")
     task.update(case["saved"])
-    r = create_app(config={}).test_client().post(
-        "/api/task-setup/save",
-        json={"dest": str(bundle), "text": json.dumps(task)})
+    client = create_app(config={}).test_client()
+    # What the shape card is told before anything is typed: the same answer
+    # the save refuses with (`task-setup.md` § 4).
+    card = client.get("/api/task-setup/folder",
+                      query_string={"dir": str(bundle)}).get_json()
+    r = client.post("/api/task-setup/save",
+                    json={"dest": str(bundle), "text": json.dumps(task)})
     said = (r.get_json() or {}).get("error") or ""
     if "save_refused" not in case:
         assert r.status_code == 200, said
+        if "shape" in case["saved"]:          # another shape, taken: free
+            assert card["shape_fixed"] is None, card["shape_fixed"]
         return
     assert r.status_code == 409, (r.status_code, said)
     for words in case["save_refused"]:
         assert words in said, said
+    assert card["shape_fixed"] == {"shape": shape, "why": said}, (
+        card["shape_fixed"])
 
 
 def _reprobed(fields) -> None:

@@ -77,8 +77,8 @@ MADELUNG_CUBIC: float = 2.8373
 # is naturally in atomic units (Hartree per electron²/Bohr); we
 # convert L from Angstrom and the result to eV so it matches what
 # SIESTA writes in the .out file.
-from molbuilder.constants import HARTREE_EV          # noqa: F401 -- re-exported below
-from molbuilder.constants import BOHR_ANGSTROM       # noqa: F401 -- re-exported below
+from molbuilder.constants import HARTREE_EV          # re-exported below
+from molbuilder.constants import BOHR_ANGSTROM       # re-exported below
 
 
 def compute_correction(

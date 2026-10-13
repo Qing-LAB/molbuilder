@@ -605,9 +605,10 @@ touches no project, and cannot start, stop, retry or alter a job.
 Gate 3 is the control. Gates 1, 2 and 4 keep a stranger from learning whether
 gate 3 is even there.
 
-**The signature**, computed identically at both ends with the standard
-library — the only library the monitor may use, since it runs where molbuilder
-is not installed:
+**The signature**, computed at both ends by one function, `monitor.sign_report`
+— the monitor's own, which the listener imports — with the standard library,
+the only library the monitor may use, since it runs where molbuilder is not
+installed:
 
 | header | value |
 |---|---|
@@ -842,7 +843,7 @@ asks, and what the wrapper then does is the wrapper's
 | which channels one run uses | `monitor.channels_for`, from `--notify-channels` (§ 3.0) |
 | what identifies a report | `monitor.run_identity` — the stem, job id, array index, host (§ 4.1a) |
 | the envelope each channel reads | `monitor.webhook_request` (§ 4.1b) |
-| how a report is signed | `monitor.sign_report` and the listener's `sign` — HMAC-SHA256, standard library only (§ 4.1) |
+| how a report is signed | `monitor.sign_report`, which the listener imports and checks with — HMAC-SHA256, standard library only (§ 4.1) |
 | overriding the channels once | `MB_NOTIFY_URL` + `MB_NOTIFY_KEY` (§ 3) |
 | the card that sets **when** and ticks the names | the Task-setup tab, [`task-setup.md`](?doc=web/task-setup.md) § 9b |
 | the tab that sets **what a name is** | *This machine*, [`this-machine.md`](?doc=web/this-machine.md) |

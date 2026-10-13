@@ -27,6 +27,7 @@ whichever engine ran it.
 """
 from __future__ import annotations
 
+import importlib
 import os
 import socket
 from typing import Mapping, Optional, Tuple
@@ -208,7 +209,9 @@ def probe_gpu(facts: dict, min_compute_capability: int =
     """
     try:
         import cupy as cp
-        import gpu4pyscf  # noqa: F401
+        # IMPORTABLE, not used here: the run needs it, so its absence is
+        # said now, beside the device's.
+        importlib.import_module("gpu4pyscf")
         if cp.cuda.runtime.getDeviceCount() == 0:
             raise RuntimeError("no NVIDIA GPU detected")
         props = cp.cuda.runtime.getDeviceProperties(0)

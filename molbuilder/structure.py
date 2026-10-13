@@ -53,7 +53,7 @@ import re as _re
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union  # noqa: F401 -- `Any` annotates AtomChannel.data
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 

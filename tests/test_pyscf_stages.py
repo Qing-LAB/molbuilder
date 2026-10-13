@@ -21,11 +21,8 @@ import dataclasses
 
 import pytest
 
-from molbuilder.config.pyscf import (
-    PySCFConfig,
-    PYSCF_STAGE_PRESETS,
-    STAGE_STRATEGY_PRESETS,
-)
+from molbuilder.config.pyscf import PySCFConfig, PYSCF_STAGE_PRESETS
+from molbuilder.config.stages import STAGE_STRATEGY_PRESETS
 from molbuilder.config.siesta import SIESTA_STAGE_NAMES
 from molbuilder.pyscf.stages import default_pyscf_stages
 from molbuilder.task import Stage

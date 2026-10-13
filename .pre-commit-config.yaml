@@ -20,9 +20,10 @@ repos:
     rev: '3.2.0'
     hooks:
       - id: pyflakes
-        # Skip third-party-shaped vendored files / tests that
-        # deliberately use unused imports (e.g. import * lookups).
-        exclude: '^(molbuilder/web/static/vendor/|tests/data/)'
+        # Skip third-party-shaped vendored files, test data, and
+        # molbuilder/data/, where nothing is imported (the notebook server's
+        # config is executed by Jupyter, which gives it its `c`).
+        exclude: '^(molbuilder/web/static/vendor/|molbuilder/data/|tests/data/)'
 
   # Local-repo hook: the JS syntax check.  The tests a commit must pass
   # are not a hook -- they are the tests the change touched, chosen by

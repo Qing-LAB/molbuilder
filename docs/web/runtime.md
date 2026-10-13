@@ -98,7 +98,7 @@ a `window.molbuilder.*` global (a couple also register with the runtime).
 | Building block | Reach it as | What it is |
 |---|---|---|
 | Notification bar | `molbuilder.notify` | The app-wide message framework — dismissible messages (dedup by id, × / Esc / Clear-all), any tab. A **first-class module with its own doc**: [`notifications.md`](?doc=web/notifications.md). |
-| Discard-unsaved modal | `molbuilder.warningModal` | The "you have unsaved changes — discard them?" confirm dialog; `confirmDiscardUnsaved()` returns a yes/no promise (its only method). The most-used shared UI block — **6 consumers**: modify (×3), structure-opt, spectra, transport. (The *overwrite*-confirm is not this: it is `projects/dialogs.js`'s `confirmDestructive`, reached through the MolView files door — `modify/structure/save-dialog.js` held a second copy until it was retired on 2026-09-02.) |
+| The one confirm | `molbuilder.warningModal` | Every yes/no question the app asks (`ui-contract.md` § 11), loaded by the page header on every page. `confirmDiscardUnsaved()` is the "you have unsaved changes — discard them?" dialog, its wording fixed below; `confirm({title, body, confirmLabel})` asks any other — the sidebar's overwrite and delete (`projects/dialogs.js`'s `confirmDestructive` delegates to it), the preview editor's unsaved edits, the server restart. Each returns a yes/no promise. (`modify/structure/save-dialog.js` held a second overwrite confirm until it was retired on 2026-09-02.) |
 | Markdown renderer | `molbuilder.markdownRender` | The **one** place markdown becomes safe HTML (marked → DOMPurify; then lazy KaTeX for `$...$` and `$$...$$` math, set aside before the markdown pass and never read inside code, and lazy mermaid). The Documents tab and the Results markdown viewer both go through it. |
 | Path helpers | `molbuilder.path` | Small POSIX path-string helpers (basename, relative-from-dir) — no filesystem, no DOM. |
 | Shared constants | `molbuilder.constants` | The single source of truth for the `sessionStorage` keys + custom-event names the modules agree on — a frozen object. (Today it's *partly* duplicated: `projects/state.js` re-declares `SS_FILE`/`SS_DIR` as ES exports, held in lock-step by a test; the ESM pass makes this the one source and drops the copy — see § 4.) |
@@ -124,23 +124,26 @@ Spectrum — has no canvas to lose: loading a structure replaces it without
 asking, and the parameters stay as typed *(user, 2026-10-12)*. `tests/test_structure_warning_modal_js.py` pins all four
 strings against this table, so a wording change has to update both together.
 
-*(A browser-level `beforeunload` guard was part of the original design, was
-never shipped, and is **retired 2026-09-03** — closing the tab does not warn
-you, and will not. The modal above guards the actions that discard work inside
-the app, which is where the work is; a browser dialog on tab close is a
-different, coarser thing that the platform half-honours anyway.)*
+*(A browser-level `beforeunload` guard for the canvas was part of the original
+design, was never shipped, and is **retired 2026-09-03** — closing the tab does
+not warn you, and will not, on any page. The modal above guards the actions
+that discard work inside the app, which is where the work is; a browser dialog
+on tab close is a different, coarser thing that the platform half-honours
+anyway. The Results markdown editor carried one of its own, removed
+2026-10-13; that editor mounts nowhere today (`results.md` § 3), and should
+it return, its unsaved text needs the in-app question the sidebar's preview
+editor asks — the one confirm — not a tab-close guard.)*
 
 **These are *not* runtime primitives** — they were catalogued here only because
 they share the `lib/` folder, but their substance lives with their real subject:
 
 - **`detection-chip.js`** — *not a neutral UI widget.* It shows each form's own
-  electronic state in one line — the answer the server's electronic-state class
-  gave for what that form says — and **hardcodes compute-budget heuristics**
-  (atom-count × metal thresholds → relax/SCF advice) in the frontend. That's
-  chemistry + science, not a primitive — its home is the chemistry card's
-  domain (`science/chemistry-correctness.md` § 2.5), and a clean-up / re-validate
-  review of the budget line is open in [`plans/plan.md`](?doc=plans/plan.md) § 0a's
-  *Unscheduled* list (M6 / § 5s.4).
+  electronic state in one line on its Profile card — the answer the server's
+  electronic-state class gave for what that form says — and advises nothing.
+  Its home is the chemistry card's domain
+  (`science/chemistry-correctness.md` § 2.5). *(A Budget-card line of
+  atom-count × metal thresholds → "bump the caps" advice stood here until
+  2026-10-13: no contract stated it, so it was removed — plan § 2, CHIP.)*
 - **`system-load-monitor.js`** — a self-mounting CPU/RAM/GPU sparkline strip on
   the **Results tab only**, not a shared block; documented with the Results tab.
 - **`region-label-definitions.js`** (+ its popover) — the transport **device-role

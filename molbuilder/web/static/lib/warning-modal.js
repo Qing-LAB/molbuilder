@@ -1,222 +1,70 @@
-/* The "discard unsaved modifications" warning modal.
+/* lib/warning-modal.js -- THE ONE CONFIRM (`ui-contract.md` § 11).
  *
- * Fired when an action would discard unsaved work (the callers of
- * ``confirmDiscardUnsaved``).
+ * Every yes/no question the app asks: the canvas's "discard unsaved
+ * modifications?", the sidebar's overwrite and delete, the preview editor's
+ * unsaved edits, the server restart.  Built on the one modal component
+ * (`lib/dialog.js`), so a confirm keeps its rules: ONE dialog at a time -- a
+ * dialog opened over it answers it no -- and Esc, the native close and a
+ * click off it answer no.
  *
- * Surface:
+ * Surface (`window.molbuilder.warningModal`, read at the click by the
+ * classic scripts):
  *
+ *   const go = await warningModal.confirm({title, body, confirmLabel,
+ *                                          cancelLabel});
  *   const proceed = await warningModal.confirmDiscardUnsaved();
- *   if (proceed) { canvas.clear(); loadNew(); }
  *
- * Returns ``Promise<boolean>`` — true when the user clicked
- * "Discard and continue", false on Cancel (and on ESC, which the
- * native <dialog> element treats as a cancel).
+ * Each resolves true on the costly answer -- marked `.danger`, and last --
+ * and false on Cancel, which comes first and takes the focus, so the key
+ * that closes the question keeps what you had.
  *
- * Modal content per docs/web/runtime.md § 3:
- *
- *   Title:   "Unsaved modifications"
- *   Body:    "You have unsaved changes to the current canvas.
- *             Continuing will discard them."
- *   Buttons: Cancel (default focus) + Discard and continue.
- *
- * Concurrency: a single dialog instance is reused.  Calling
- * ``confirmDiscardUnsaved`` while a prior call's modal is still
- * open returns the SAME pending Promise — so two near-simultaneous
- * user actions don't stack two modals on top of each other.
+ * With no text given, the question is the discard-unsaved one, whose four
+ * strings are fixed copy (`runtime.md` § 3).
  */
-(function (root) {
-    "use strict";
 
-    var TITLE   = "Unsaved modifications";
-    var BODY    = "You have unsaved changes to the current canvas. "
-                + "Continuing will discard them.";
-    var CANCEL  = "Cancel";
-    var DISCARD = "Discard and continue";
+import {
+  dialogActions, dialogHint, dialogTitle, newDialog, openDialog, settleDialog,
+} from "./dialog.js";
 
-    // Per-SLOT in-flight state: the discard dialog and the generic confirm are
-    // independent conversations, so re-entering one must not inherit the
-    // other's answer.  Shape: { <slot>: {dialog, resolve, promise} | null }.
-    // EVERY reader must key by slot.
-    var _active = {};
+const TITLE   = "Unsaved modifications";
+const BODY    = "You have unsaved changes to the current canvas. "
+              + "Continuing will discard them.";
+const CANCEL  = "Cancel";
+const DISCARD = "Discard and continue";
 
-    /**
-     * Show the discard-unsaved confirmation modal.
-     *
-     * @param {object} [opts]
-     * @param {Document} [opts.doc] - the document to render into
-     *   (defaults to the page's ``document``).  Tests inject a
-     *   stub here; production callers rely on the default.
-     *
-     * @returns {Promise<boolean>} resolves true if the user clicks
-     *   "Discard and continue", false on Cancel / ESC.
-     */
-    function confirmDiscardUnsaved(opts) {
-        opts = opts || {};
-        var doc = opts.doc || root.document;
-        if (!doc) {
-            return Promise.reject(new Error(
-                "warningModal.confirmDiscardUnsaved: no document — "
-              + "module must run in a browser-like environment"));
-        }
+/** Ask ``{title, body, confirmLabel, cancelLabel}`` -- each defaulting to
+ *  the discard-unsaved question's -- and resolve true or false. */
+function confirm(opts) {
+  opts = opts || {};
+  const dialog = newDialog("molbuilder-warning-modal");
+  dialog.setAttribute("aria-labelledby", "molbuilder-warning-title");
+  dialog.setAttribute("aria-describedby", "molbuilder-warning-body");
+  const title = dialogTitle(opts.title || TITLE);
+  title.id = "molbuilder-warning-title";
+  const body = dialogHint(opts.body || BODY);
+  body.id = "molbuilder-warning-body";
+  dialog.appendChild(title);
+  dialog.appendChild(body);
+  dialog.appendChild(dialogActions([
+    { label: opts.cancelLabel || CANCEL, action: "cancel",
+      onClick: () => settleDialog(false) },
+    { label: opts.confirmLabel || DISCARD, action: "discard", kind: "danger",
+      onClick: () => settleDialog(true) },
+  ]));
+  const answer = openDialog(dialog, false);
+  const cancel = dialog.querySelector('[data-action="cancel"]');
+  if (cancel && typeof cancel.focus === "function") cancel.focus();
+  return answer;
+}
 
-        // Re-entrancy (per slot): return the in-flight Promise instead
-        // of stacking a second modal of the SAME kind.
-        var _slot = opts.confirmLabel ? "confirm" : "discard";
-        if (_active[_slot]) return _active[_slot].promise;
+export const warningModal = {
+  confirm: confirm,
+  confirmDiscardUnsaved: confirm,
+};
 
-        var dialog = _buildDialog(doc, opts);
-        doc.body.appendChild(dialog);
-
-        var resolve;
-        var promise = new Promise(function (res) { resolve = res; });
-        _active[_slot] = { dialog: dialog, resolve: resolve, promise: promise };
-
-        function _settle(value) {
-            if (!_active[_slot] || _active[_slot].dialog !== dialog) return;
-            _active[_slot] = null;
-            try { dialog.close(); } catch (_) {}
-            // Remove from DOM so multiple invocations don't leak
-            // detached <dialog>s and so a future open lands on a
-            // freshly-built element.
-            try {
-                if (dialog.parentNode) dialog.parentNode.removeChild(dialog);
-            } catch (_) {}
-            resolve(value);
-        }
-
-        // Wire button clicks.
-        dialog.querySelector('[data-action="cancel"]')
-            .addEventListener("click", function () { _settle(false); });
-        dialog.querySelector('[data-action="discard"]')
-            .addEventListener("click", function () { _settle(true); });
-
-        // <dialog>'s native ESC + form-close semantics resolve to
-        // ``cancel`` — pin that to false.  The "close" event fires
-        // after close() too, so guard against a second _settle
-        // (the if-check inside _settle handles it).
-        dialog.addEventListener("cancel", function () { _settle(false); });
-        dialog.addEventListener("close",  function () { _settle(false); });
-
-        // Open the dialog modally.  showModal is the right call;
-        // show() leaves the page below interactable.  Some test
-        // stubs only implement show, so fall back if needed.
-        try {
-            if (typeof dialog.showModal === "function") {
-                dialog.showModal();
-            } else if (typeof dialog.show === "function") {
-                dialog.show();
-            }
-        } catch (_) {}
-
-        // Default focus on Cancel — the safe action.
-        try {
-            var cancelBtn = dialog.querySelector('[data-action="cancel"]');
-            if (cancelBtn && typeof cancelBtn.focus === "function") {
-                cancelBtn.focus();
-            }
-        } catch (_) {}
-
-        return promise;
-    }
-
-    /**
-     * Build the dialog DOM.  Kept in its own function so the call
-     * site stays readable and tests can mock createElement at a
-     * single seam.
-     */
-    function _buildDialog(doc, txt) {
-        txt = txt || {};
-        var dialog = doc.createElement("dialog");
-        dialog.className = "mb-dialog molbuilder-warning-modal";
-        dialog.setAttribute("aria-labelledby", "molbuilder-warning-title");
-        dialog.setAttribute("aria-describedby", "molbuilder-warning-body");
-
-        var title = doc.createElement("h2");
-        title.className = "mb-dialog-title";
-        title.id = "molbuilder-warning-title";
-        title.textContent = txt.title || TITLE;
-        dialog.appendChild(title);
-
-        var body = doc.createElement("p");
-        body.className = "mb-dialog-hint";
-        body.id = "molbuilder-warning-body";
-        body.textContent = txt.body || BODY;
-        dialog.appendChild(body);
-
-        var actions = doc.createElement("div");
-        actions.className = "mb-dialog-actions";
-
-        var cancel = doc.createElement("button");
-        cancel.type = "button";
-        cancel.setAttribute("data-action", "cancel");
-        cancel.textContent = txt.cancelLabel || CANCEL;
-        actions.appendChild(cancel);
-
-        var discard = doc.createElement("button");
-        discard.type = "button";
-        // The irreversible option is MARKED, and it is not the default:
-        // `.danger` says what it costs, and cancel comes first so the
-        // key that closes a dialog is the one that keeps your work.
-        discard.className = "danger";
-        discard.setAttribute("data-action", "discard");
-        discard.textContent = txt.confirmLabel || DISCARD;
-        actions.appendChild(discard);
-
-        dialog.appendChild(actions);
-        return dialog;
-    }
-
-    /**
-     * Test seam — checks whether a modal is currently visible.
-     * Production code should not need this; tests use it to assert
-     * single-instance semantics.
-     */
-    function isOpen(slot) {
-        // ANY slot open, or a named one.
-        if (slot) return !!_active[slot];
-        return Object.keys(_active).some(function (k) { return !!_active[k]; });
-    }
-
-    /**
-     * Test seam — force-close any open modal (resolves the pending
-     * Promise to ``false``, like Cancel).  Production code should
-     * never call this.
-     */
-    function _reset(slot) {
-        // Every slot by default, or one named slot.
-        var slots = slot ? [slot] : Object.keys(_active);
-        slots.forEach(function (key) {
-            var pending = _active[key];
-            if (!pending) return;
-            _active[key] = null;
-            try { pending.dialog.close(); } catch (_) {}
-            try {
-                if (pending.dialog.parentNode) {
-                    pending.dialog.parentNode.removeChild(pending.dialog);
-                }
-            } catch (_) {}
-            pending.resolve(false);
-        });
-    }
-
-    var api = {
-        confirmDiscardUnsaved: confirmDiscardUnsaved,
-        // Generic confirm: the same modal machinery with caller text
-        // ({title, body, confirmLabel, cancelLabel}) -> Promise<bool>.
-        confirm: confirmDiscardUnsaved,
-        isOpen:                isOpen,
-        _reset:                _reset,
-    };
-
-    if (typeof module !== "undefined" && module.exports) {
-        module.exports = api;
-    } else {
-        root.molbuilder = root.molbuilder || {};
-        root.molbuilder.warningModal = api;
-        if (root.molbuilder.runtime
-            && typeof root.molbuilder.runtime.register === "function") {
-            root.molbuilder.runtime.register(
-                "structure.warningModal", api);
-        }
-    }
-})(typeof window !== "undefined" ? window : globalThis);
+window.molbuilder = window.molbuilder || {};
+window.molbuilder.warningModal = warningModal;
+if (window.molbuilder.runtime
+    && typeof window.molbuilder.runtime.register === "function") {
+  window.molbuilder.runtime.register("structure.warningModal", warningModal);
+}

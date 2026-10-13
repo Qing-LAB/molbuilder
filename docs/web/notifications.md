@@ -10,8 +10,11 @@ with, and the other shared building blocks; [`workspace.md`](?doc=web/workspace.
 `notify` (`lib/app-notifications.js`, `window.molbuilder.notify`) is the **one
 consistent surface for system-level messages** that matter regardless of which
 tab you're on — a stack of notifications you clear individually. It is built as a
-**general framework** any part of the app can call; today it has a single caller
-(a failed background save), but the API is open to all.
+**general framework** any part of the app can call. What an action says once
+it has run — a refusal, a failure, an archive that came out incomplete — is a
+notification or the page's own status line, never the browser's own `alert()`
+([`ui-contract.md`](?doc=web/ui-contract.md) § 11); § 3 is the one source
+built into the module itself.
 
 ## 1. The API — any caller, any level
 
@@ -62,8 +65,7 @@ The workspace persistence layer, when a save to disk fails, dispatches a
 listens for it and shows a single, stable-id error row —
 *"Couldn't save state to disk … your edits are kept in memory, but
 retract / crash-recovery history may be incomplete."* A burst of failures updates
-that one row rather than stacking. This is the whole reason the framework exists
-so far; everything else in the API is there for the callers to come.
+that one row rather than stacking.
 
 ## 4. Where the module stands (current → target ESM)
 

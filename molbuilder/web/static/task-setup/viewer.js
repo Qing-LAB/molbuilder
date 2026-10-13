@@ -27,6 +27,9 @@ import { clear as clearFindings,
 import { CELL_READERS } from "./cell-readers.js";
 import { renderFrameSet } from "../lib/frameset/card.js";
 import { pointWords } from "../lib/results/point-words.js";
+// THE PAGE'S FENCE (`ui-contract.md` § 10): every card edit, Save, Preview
+// and Prep takes it.
+import { pageBusy } from "../lib/page-busy.js";
 
 const TASK_JSON     = "task.json";
 /* The hand-over a parameter tab leaves (`stages.md` § 6.5a).  Read ONLY when
@@ -210,7 +213,7 @@ function renderStages(task) {
                 return;
             }
             _task.stages[i].name = v;
-            syncFromModel();
+            commitEdit("Renaming the stage\u2026");
         });
 
         const drop = el("button", {
@@ -407,7 +410,7 @@ function setGroup(i, rel) {
     let n = 0;
     stages.forEach((st, j) => { n += rels[j] === "same" ? 0 : 1;
                                 st.group = n; });
-    syncFromModel();
+    return commitEdit("Regrouping the stages\u2026");
 }
 
 /** The numbers again from 1, each stage keeping who it shares a job with
@@ -479,6 +482,7 @@ function freshFolderState() {
         continueChoice: {},       // stage -> the person's choice: "", a run, "--cold"
         answers:      {},         // "task" / "bench:<stage>" -> the last prep answer shown
         setTo:        null,       // the machine its first prep set, or null (M-3)
+        shapeFixed:   null,       // {shape, why} once fixed, or null (§ 4)
         prepared:      { bench: {} },  // stage -> prep's own sentence, a benchmark's
         ladder:       { stages: [], offer: [] },  // the ready door's answer per stage
         groups:       { stages: [], groups: [], shared: [] },  // each stage's group, each group's state
@@ -695,38 +699,34 @@ function stageExecutionOf(stage, make) {
 /** ``name`` set to ``raw`` on each of ``members`` -- a stage's own card,
  *  or every stage of a group for a shared row (`task-setup.md` § 6.2b). */
 function setRunValue(name, raw, members) {
-    return underFence("Writing " + name + "\u2026", async () => {
-        const v = coercePoint(raw);
-        const blank = (v === null || raw === "");
-        for (const stage of members) {
-            const box = stageExecutionOf(stage, !blank);
-            if (!box) continue;
-            // BLANK IS A STATE: the calculation's own value, or unstated --
-            // which prep refuses for a launch value (architecture.md § 5.2).
-            if (blank) delete box[name]; else box[name] = v;
-            if (!Object.keys(box).length) {
-                const st = _task.stages.find((x) => x && x.name === stage);
-                if (st) delete st.execution;
-            }
+    const v = coercePoint(raw);
+    const blank = (v === null || raw === "");
+    for (const stage of members) {
+        const box = stageExecutionOf(stage, !blank);
+        if (!box) continue;
+        // BLANK IS A STATE: the calculation's own value, or unstated --
+        // which prep refuses for a launch value (architecture.md § 5.2).
+        if (blank) delete box[name]; else box[name] = v;
+        if (!Object.keys(box).length) {
+            const st = _task.stages.find((x) => x && x.name === stage);
+            if (st) delete st.execution;
         }
-        await syncFromModel();
-    });
+    }
+    return commitEdit("Writing " + name + "\u2026");
 }
 
 function dropRunRow(name, members) {
-    return underFence("Removing " + name + "\u2026", async () => {
-        for (const stage of members) {
-            extraRunRows(stage).delete(name);
-            const box = stageExecutionOf(stage, false);
-            if (!box) continue;
-            delete box[name];
-            if (!Object.keys(box).length) {
-                const st = _task.stages.find((x) => x && x.name === stage);
-                if (st) delete st.execution;
-            }
+    for (const stage of members) {
+        extraRunRows(stage).delete(name);
+        const box = stageExecutionOf(stage, false);
+        if (!box) continue;
+        delete box[name];
+        if (!Object.keys(box).length) {
+            const st = _task.stages.find((x) => x && x.name === stage);
+            if (st) delete st.execution;
         }
-        await syncFromModel();
-    });
+    }
+    return commitEdit("Removing " + name + "\u2026");
 }
 
 /** THE ORDER EVERY RUN CARD LISTS ITS ROWS IN -- the same on every card
@@ -1439,7 +1439,11 @@ async function loadFolder(projects, dir, opts) {
      * answer (W55 B4): a calculation's machine is its first prep's and does
      * not change (`configuration.md` M-3), so the card shows it fixed. */
     _fs.setTo = said.set_to || null;
-    /* WHAT THE KIND FIXES (§ 4, § 5.3), the reader's own answer. */
+    /* ...AND ITS SHAPE, WHEN FIXED (§ 4): by the kind, or once it has
+     * produced -- the answer Save refuses another shape with. */
+    _fs.shapeFixed = said.shape_fixed || null;
+    /* WHAT THE KIND FIXES of the stage table (§ 5.3), the reader's own
+     * answer: the rungs, numbered and never renamed. */
     _fs.fixed = said.fixed || null;
     _fs.prepared = said.prepared;
     /* THE TASK'S LADDER, the ready door's (`job-system.md`, *The task*):
@@ -1523,7 +1527,7 @@ function removeStage(i) {
     }
     _task.stages.splice(i, 1);
     compressGroups(_task.stages);
-    syncFromModel();
+    return commitEdit("Removing the stage\u2026");
 }
 
 /** `task-setup.md` § 9: a new stage COPIES the previous one's overrides.
@@ -1545,7 +1549,7 @@ function addStage() {
         group: ((prev && prev.group) || 0) + 1,
         overrides: Object.assign({}, (prev && prev.overrides) || {}),
     });
-    syncFromModel();
+    return commitEdit("Adding a stage\u2026");
 }
 
 function setCell(i, col, raw) {
@@ -1556,8 +1560,7 @@ function setCell(i, col, raw) {
         // Empty means "this stage uses the template's value" — a real state,
         // expressed by the key being ABSENT (`stages.md` § 6.2).
         delete ov[col];
-        syncFromModel();
-        return;
+        return commitEdit("Writing " + col + "\u2026");
     }
     /* THE DECLARED TYPE DECIDES, and nothing else may.  A value's LOOK
      * never picks its type -- that is the rule `legalValues` keeps for the
@@ -1568,7 +1571,7 @@ function setCell(i, col, raw) {
     const read = CELL_READERS[(_meta[col] || {}).type];
     const v = read ? read(text) : undefined;
     ov[col] = (v === undefined) ? text : v;
-    syncFromModel();
+    return commitEdit("Writing " + col + "\u2026");
 }
 
 /* ---------- what came over ---------- */
@@ -2079,7 +2082,7 @@ function applyPreset(i, values) {
                  + (added.length === 1 ? "" : "s") + ", because the preset "
                  + "sets them.");
     }
-    syncFromModel();
+    return commitEdit("Applying the preset\u2026");
 }
 
 /* ---------- the columns: which parameters vary ---------- */
@@ -2111,7 +2114,7 @@ function addColumn(name) {
     }
     if (v.indexOf(name) !== -1) return;
     v.push(name);
-    syncFromModel();
+    return commitEdit("Adding the column " + name + "\u2026");
 }
 
 /* Removing a column destroys values, so it is a TWO-CLICK act: the first says
@@ -2151,7 +2154,7 @@ function removeColumn(name) {
         if (st && st.overrides) delete st.overrides[name];
     }
     sayLoaded(_task);           // the question is answered
-    syncFromModel();
+    return commitEdit("Removing the column " + name + "\u2026");
 }
 
 /* ---------- what a prep will write, per stage (§ 7.1) ---------- */
@@ -2593,7 +2596,7 @@ function taskPrepCard(task) {
         const kept = _fs.answers.task;
         if (kept) {
             const host = el("div", { class: "ts-prep" });
-            const say = el("div", { class: "ts-prep-say" });
+            const say = el("div", { class: "ts-prep-say ts-keeps-lines" });
             host.appendChild(say);
             _showPrepAnswers(host, say, kept);
             wrap.appendChild(host);
@@ -2619,7 +2622,7 @@ function continueFromChoice(task, name, cf) {
          * with no `relax` and a structure not stated relaxed -- the one
          * hand-over door's answer, here before anything is written
          * (`engines/vibration.md` § 5.2a). */
-        const note = el("p", { class: "hint ts-continue-note" },
+        const note = el("p", { class: "hint ts-continue-note ts-keeps-lines" },
                         String(cf.refused || ""));
         note.setAttribute("data-state", "warn");
         wrap.append(note);
@@ -2641,7 +2644,7 @@ function continueFromChoice(task, name, cf) {
         _fs.continueChoice[name] = sel.value;
         renderNext(_task || task);
     });
-    const note = el("p", { class: "hint ts-continue-note" });
+    const note = el("p", { class: "hint ts-continue-note ts-keeps-lines" });
     if (sel.value === "") {
         if (cf.default) {
             note.textContent = cf.default.line;
@@ -2752,7 +2755,7 @@ function prepButton(kind, picks) {
      * since nothing has been previewed on the new panel.
      */
     const wrap = el("div", { class: "ts-prep" });
-    const say = el("div", { class: "ts-prep-say" });
+    const say = el("div", { class: "ts-prep-say ts-keeps-lines" });
     // ONE ANSWER FOR THE TASK'S PREP, whatever it picked; a bench's per stage.
     const key = kind === "task" ? "task" : kind + ":" + picks.join("+");
     const what = kind === "task" ? "group " + picks.join(", ")
@@ -2821,8 +2824,8 @@ function prepButton(kind, picks) {
         /* UNDER THE PAGE'S FENCE, as every write is (`task-setup.md` § 7a):
          * a Save, a stage tab or another folder taken mid-call would plan,
          * or show, something other than what the person is looking at. */
-        return underFence("Previewing " + what + "\u2026",
-                          async () => {
+        return pageBusy.run("Previewing " + what + "\u2026", [],
+                            async () => {
             try {
                 /* THE ENTRY'S PREVIEW (`job-system.md` § 5.0): the plan,
                  * stopped before the save -- or the refusal prep would give,
@@ -2910,8 +2913,8 @@ function prepButton(kind, picks) {
     function write() {
         btnWrite.disabled = true;
         btnPreview.disabled = true;
-        return underFence("Prepping " + what + "\u2026",
-                          async () => {
+        return pageBusy.run("Prepping " + what + "\u2026", [],
+                            async () => {
             try {
                 say.textContent = "Preparing\u2026";
                 say.setAttribute("data-state", "ok");
@@ -3228,7 +3231,7 @@ function addPoint(name, raw) {
     if (pts.some((p) => String(p) === String(v))) return;
     pts.push(v);
     b[name] = pts;
-    syncFromModel();
+    return commitEdit("Adding a point to " + name + "\u2026");
 }
 
 function removePoint(name, idx) {
@@ -3238,14 +3241,14 @@ function removePoint(name, idx) {
     // setting with zero points -- it is a setting that is not being measured.
     if (!b[name].length) delete b[name];
     if (!Object.keys(b).length) delete _task.bench;
-    syncFromModel();
+    return commitEdit("Removing a point of " + name + "\u2026");
 }
 
 function removeSetting(name) {
     const b = benchOf(); if (!b) return;
     delete b[name];
     if (!Object.keys(b).length) delete _task.bench;
-    syncFromModel();
+    return commitEdit("Removing " + name + " from the benchmark\u2026");
 }
 
 /* ---------- the shape, and what a hand-over becomes ---------- */
@@ -3684,10 +3687,14 @@ function keepingPagePut(fn) {
  * sends, and `syncFromModel` serialises `_task` OVER the buffer -- so a card
  * that patched the buffer alone would be overwritten by a stale `_task`.
  *
- * `patchDoc` is the one door for "change the open document from a card": it
- * reads the buffer (the newer of the two, since a hand edit lands there
- * first), applies the change, and writes BOTH.  A caller that returns false
- * changed nothing and nothing is written. */
+ * `patchDoc` is how a card whose own controls hold its values -- the queue
+ * card, the notify card, written as each control changes -- changes the open
+ * document: it reads the buffer (the newer of the two, since a hand edit
+ * lands there first), applies the change, and writes BOTH, repainting
+ * nothing, so the control being used keeps its place.  It runs under the
+ * edit's fence (`applyBlockToDoc`); every other card edit leaves by
+ * `commitEdit`.  A caller that returns false changed nothing and nothing is
+ * written. */
 function patchDoc(change) {
     if (!_cm) return false;
     let task;
@@ -3709,43 +3716,24 @@ function patchDoc(change) {
 }
 
 
-/** Run a write of the description behind the page-wide fence.
+/** HOW A CARD EDIT LEAVES (`task-setup.md` § 7a): an edit of the stage table,
+ * the machine rows or the plan changes `_task`, then commits it here -- the
+ * editor's text and every panel drawn from the model -- under the page-wide
+ * fence (`ui-contract.md` § 10), so no other edit, Save, Preview or Prep runs
+ * while it writes; the queue and notify cards write theirs through `patchDoc`
+ * under the same fence.  The change itself is made synchronously just
+ * before, so nothing can come between it and the claim.
  *
- * `ui-contract.md` § 10: **one cover for every heavy click**, and while it is
- * up *everything* -- tabs, sidebar, forms, this card -- is blocked by
- * construction rather than wired per control.
- *
- * WHY A PARAMETER WRITE IS ONE OF THEM.  A card edit is three writes that
- * must land together: this rung's `execution` in `_task`, the editor buffer
- * that `Save` posts, and the panels rendered from both; a second edit
- * arriving inside it would interleave.  The framework already has a
- * barrier, so the write takes it *(user, 2026-09-02: "before the
- * parameter is ready or persistently saved, the user can't do anything …
- * what the fuck do you care about half a second")*.
- *
- * NESTED CLAIMS ARE THE CALLER'S BUG, not a case to handle: `claim()` throws
- * when already claimed, which is § 10's design ("one heavy operation at a
- * time"). So this checks and passes through rather than stacking a second
- * cover -- the outer claim is already blocking everything this one would.
- *
- * `release()` is in a `finally`, per § 10's recovery contract, so a write
- * that throws cannot leave the window covered.
- */
-async function underFence(reason, write) {
-    /* `typeof window`, not a bare read: this module's writers are exercised
-     * headless in node (`tests/_node_esm.py`), where there is no window at
-     * all -- and a bare `window.molbuilder` there is a ReferenceError, not
-     * an undefined.  The same guard `page-busy.js` uses for its own
-     * classic-script door. */
-    const root = (typeof window === "object" && window) ? window : null;
-    const fence = root && root.molbuilder && root.molbuilder.pageBusy;
-    if (!fence || fence.isClaimed()) return await write();
-    fence.claim(reason);
-    try {
-        return await write();
-    } finally {
-        fence.release();
-    }
+ * WHY A PARAMETER WRITE TAKES THE FENCE.  A card edit is three writes that
+ * must land together: the model, the editor buffer that `Save` posts, and
+ * the panels rendered from both; a second edit arriving inside it would
+ * interleave *(user, 2026-09-02: "before the parameter is ready or
+ * persistently saved, the user can't do anything … what the fuck do you
+ * care about half a second")*.  An edit made inside an operation that holds
+ * the fence already is a step of it, and `pageBusy.run` runs it there. */
+function commitEdit(reason) {
+    return pageBusy.run(reason || "Writing task.json\u2026", [],
+                        syncFromModel);
 }
 
 
@@ -3764,7 +3752,7 @@ async function underFence(reason, write) {
  * the page's cursor for a keystroke that wrote the same text back.
  */
 function applyBlockToDoc(key, read) {
-    return underFence("Writing " + key + "\u2026", async () => patchDoc((task) => {
+    return pageBusy.run("Writing " + key + "\u2026", [], async () => patchDoc((task) => {
         const want = read();
         const had = JSON.stringify(task[key] || null);
         if (Object.keys(want).length) task[key] = want;
@@ -4016,9 +4004,14 @@ async function loadMachines() {
 }
 
 function setShape(shape) {
-    /* A KIND THAT FIXES THE SHAPE (`task-setup.md` § 4) takes no other: the
-     * reader refuses it, so the card neither offers nor writes it. */
-    const fixedShape = (_fs.fixed && _fs.fixed.shape) || "";
+    /* A FIXED SHAPE (`task-setup.md` § 4) takes no other -- its kind fixes
+     * it, or the calculation has produced: the save refuses another, so the
+     * card neither offers nor writes it, and says why and the way back in
+     * the server's words (`shape_fixed`, the answer the save refuses with).
+     * When the folder's plan could not be read, that is said instead, and
+     * both shapes stay offered: the save asks again. */
+    const fixedShape = (_fs.shapeFixed && _fs.shapeFixed.shape) || "";
+    const unread = (_fs.shapeFixed && _fs.shapeFixed.error) || "";
     if (fixedShape && shape && shape !== fixedShape) return;
     _shape = shape;
     for (const b of document.querySelectorAll("#ts-shape-card .opt")) {
@@ -4028,11 +4021,10 @@ function setShape(shape) {
     }
     const fixedSaid = $("ts-shape-fixed");
     if (fixedSaid) {
-        fixedSaid.hidden = !fixedShape;
-        fixedSaid.textContent = fixedShape
-            ? "A " + ((_task && _task.calculation) || "") + " calculation is "
-              + fixedShape + " \u2014 the kind fixes it, so no other is offered."
-            : "";
+        fixedSaid.hidden = !fixedShape && !unread;
+        fixedSaid.textContent = fixedShape ? _fs.shapeFixed.why
+            : unread ? "Whether the shape is fixed could not be read: "
+                       + unread : "";
     }
     const needs = $("ts-shape-needs");
     if (needs) needs.hidden = !!shape;
@@ -4051,7 +4043,7 @@ function setShape(shape) {
         // a file nobody edited as edited (and open the editor's fold).
         if (_task.shape !== shape) {
             _task.shape = shape;
-            syncFromModel();
+            commitEdit("Changing the shape\u2026");
         }
         refreshSave();
         return;
@@ -4069,22 +4061,29 @@ function setShape(shape) {
         // benchmark, and a grid is the target machine's to enumerate at
         // `prep bench`, never the page's.  The sweep vocabulary is loaded
         // for the pickers.
-        Promise.all([loadColumnChoices(engine),
-                     loadSweepChoices(engine)]).then(([cols]) => {
-            const seed = cols.filter((c) => c.group === "stage")
-                             .map((c) => c.name);
-            const text = proposedFromHandover(_handover, shape, seed);
-            try { _task = JSON.parse(text); } catch (_) { _task = null; }
-            return setEditorText(text).then(() => {
-                if (_task) { renderStages(_task); renderNext(_task);
-                             renderMachine(_task);
-                             refreshPickers(); }
-            });
-        }).catch(() => {
-            const text = proposedFromHandover(_handover, shape, []);
-            try { _task = JSON.parse(text); } catch (_) { _task = null; }
-            setEditorText(text).then(() => { if (_task) renderStages(_task); });
-        });
+        //
+        // UNDER THE FENCE, as every write is (§ 7a): the proposal lands
+        // after two fetches, and another folder taken meanwhile would have it
+        // written over that folder's description.
+        pageBusy.run("Proposing the stages\u2026", [], () =>
+            Promise.all([loadColumnChoices(engine),
+                         loadSweepChoices(engine)]).then(([cols]) => {
+                const seed = cols.filter((c) => c.group === "stage")
+                                 .map((c) => c.name);
+                const text = proposedFromHandover(_handover, shape, seed);
+                try { _task = JSON.parse(text); } catch (_) { _task = null; }
+                return setEditorText(text).then(() => {
+                    if (_task) { renderStages(_task); renderNext(_task);
+                                 renderMachine(_task);
+                                 refreshPickers(); }
+                });
+            }).catch(() => {
+                const text = proposedFromHandover(_handover, shape, []);
+                try { _task = JSON.parse(text); } catch (_) { _task = null; }
+                return setEditorText(text).then(() => {
+                    if (_task) renderStages(_task);
+                });
+            }));
     }
     refreshSave();
 }
@@ -4165,14 +4164,15 @@ function saidSave(text, state) {
  * then a POST, then a re-read of the folder; switching directories mid-save
  * would retarget the steps after the switch.
  *
- * The parameter writers take the same fence (`underFence`), so a card edit
- * and a save can never be in flight together: whichever is first covers the
- * window and the other cannot start *(user, 2026-09-02: "before the
+ * Every card edit takes the same fence -- through `pageBusy.run`, by
+ * `commitEdit` or `applyBlockToDoc` -- so an edit and a save can never be in
+ * flight together: whichever is first covers the window and the other
+ * cannot start *(user, 2026-09-02: "before the
  * parameter is ready or persistently saved, the user can't do anything")*.
  */
 async function save() {
     if (!_cm || !_dir) return;
-    return underFence("Saving task.json\u2026", _save);
+    return pageBusy.run("Saving task.json\u2026", [], _save);
 }
 
 async function _save() {

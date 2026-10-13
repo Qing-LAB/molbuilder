@@ -1,11 +1,10 @@
 /* style.css — the INDEX (Build) page's OWN styles.
  *
  * Shared vocabulary lives elsewhere (`web/ui-contract.md` § 1):
- *   - global base (header / button / input / .card / .status / scrollbar) →
- *     lib/page-shell.css (loaded on every page)
+ *   - global base (header / button and its .primary / .danger / input /
+ *     .card / .status / scrollbar) → lib/page-shell.css (loaded on every page)
  *   - form-page COMPONENTS (.app-grid, the chemistry card, .viewer-*,
- *     .issues-panel, .hint, .fdf-*, button.primary, .card h2) →
- *     lib/form-components.css
+ *     .issues-panel, .hint, .fdf-*, .card h2) → lib/form-components.css
  * What remains here is genuinely index-only: the #generate card, the
  * index fieldset forms, the footer, tooltips.
  * Design tokens live in lib/tokens.css; use them via var(--…).

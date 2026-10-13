@@ -21,17 +21,16 @@
 (function (root) {
     "use strict";
 
-    var BUILD_URL = "/api/build/molecule";
+    var BUILD_URL = root.molbuilder.panelDeps.BUILD_URL;
     var VALID_RNA = /^[ACGU]+$/i;
     var VALID_FORMS = ["A", "B", "Z"];
     var VALID_BACKENDS = ["auto", "threedna", "amber", "rdkit"];
 
     // The panel's dependency slots, wired once for all five panels
-    // (`panel-deps.js`): `configure` is the test door, `_lazyResolve` the
-    // production re-read.
+    // (`panel-deps.js`): `configure` is the test door; the chain resolves
+    // and checks them at each call.
     var _deps = root.molbuilder.panelDeps.make(root);
     var configure = _deps.configure;
-    var _lazyResolve = _deps.resolve;
 
     function generate(sequence, opts) {
         opts = opts || {};
@@ -67,67 +66,12 @@
                      + JSON.stringify(backend),
             });
         }
-        // Lazy-resolve dependencies in case the script-load
-        // order put us above page.js / lib/*.
-        _lazyResolve();
-        if (!_deps.fetch) {
-            return Promise.reject(new Error(
-                "rna: fetch not configured"));
-        }
-        if (!_deps.structurePage) {
-            return Promise.reject(new Error(
-                "rna: structurePage not configured"));
-        }
-        return _deps.fetch(BUILD_URL, {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({
-                kind:    "rna",
-                input:   trimmed,
-                form:    form,
-                backend: backend,
-            }),
-        })
-        .then(function (r) {
-            return r.json().then(function (body) {
-                return { httpOk: r.ok, body: body };
-            });
-        })
-        .then(function (env) {
-            var body = env.body || {};
-            if (!env.httpOk || !body.ok) {
-                return {
-                    ok:    false,
-                    error: body.error
-                            || ("HTTP error from " + BUILD_URL),
-                };
-            }
-            return _deps.structurePage.loadIntoCanvas(
-                { structure: body.structure },
-                { kind: "rna",
-                  generator_input: {
-                      sequence: trimmed, form: form,
-                      backend: backend,
-                  } }
-            ).then(function (gate) {
-                if (!gate.ok) {
-                    return { ok: false, cancelled: true };
-                }
-                // loadIntoCanvas installs into an empty viewer or appends to
-                // the open structure (the MODEL door; the FILE door is
-                // projects.parser.openMolecule -- not used here).
-                return { ok: true, n_atoms: body.n_atoms,
-                         backend_used: body.backend_used };
-            });
-        })
-        .catch(function (err) {
-            return {
-                ok:    false,
-                error: "Could not reach " + BUILD_URL + ": "
-                     + (err && err.message ? err.message
-                                            : String(err)),
-            };
-        });
+        return _deps.generate(
+            { kind: "rna", input: trimmed, form: form, backend: backend },
+            { kind: "rna",
+              generator_input: { sequence: trimmed, form: form,
+                                 backend: backend } },
+            "Building the RNA\u2026");
     }
 
     var _wired = false;

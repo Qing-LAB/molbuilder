@@ -1450,6 +1450,14 @@
 .molviewer-panel-tab-option[data-has-content] > span::after {
     background: var(--molviewer-color-pick);
 }
+/* A reserved label name typed in the new-label box, said under it: a
+ * caution, not a refusal -- the panel's soft warning tone. */
+.molviewer-selection-reserved-note {
+    margin: var(--molviewer-space-xs) 0 0;
+    color: var(--warn-soft);
+    font: var(--molviewer-text-2xs)/var(--molviewer-line-normal)
+          var(--molviewer-control-family);
+}
 .molviewer-export-info-note {
     margin-top: var(--molviewer-space-xs);
     color: var(--molviewer-color-text-dim);

@@ -76,7 +76,7 @@ builds geometry, or runs a job.
 | `selection.py` | L1 | atom-selection rule algebra (duck-typed on `struct`) | `Rule`, `evaluate`, `to_json` / `from_json` |
 | `config/` | L1 | the engine-knob **dataclasses** (the lingua franca) + field metadata | `SiestaConfig`, `PySCFConfig` (the two engine configs; `config/state.py` declares the electronic-state items both carry, `config/stages.py` the stage strategies both share) |
 | `trajectory_log/` | L1 | the molwatch progress-log format + writer | `format`, `emitter` |
-| `persist.py` | L1 | versioned-doc schema check + atomic JSON IO | `schema_major`, `check_schema_major`, `read_json`, `write_json` |
+| `persist.py` | L1 | versioned-doc schema check + atomic JSON IO | `schema_major`, `check_schema`, `read_json`, `write_json` |
 | `parse/` | L2 | the single **read-side** stack: File / Text → typed `ParseResult` (the Dir tier is specified but unbuilt, `model/parse.md` § 5) | `parse.registry.{parse,parse_text}`; `parse.dirs.job.run_status` — see [`model/parse.md`](?doc=model/parse.md) |
 | `sidecars/` | L2 | write-side `.molstruct` / `.spectra` / `.transport` JSON | `molstruct.{to_dict,save,load,apply_to_structure}` |
 | `workingcopy_structure.py` | L2 | the paired `.xyz`+`.molstruct.json` file door — one generator, one adapter per destination | `StructureCodec.{pair,files,write,read}` — see [`model/structure.md`](?doc=model/structure.md) § 2.4 |
@@ -307,7 +307,7 @@ When adding backend code, place it by concern **and** layer:
   knowledge belongs in a *producer* (like `bench/to_jobset`). Never parse a
   `.fdf` in the `jobset` core.
 - **A new data codec** routes through the `Structure` authority
-  (`to_dict` / `from_dict` / `to_wire`) and `persist.check_schema_major`; never
+  (`to_dict` / `from_dict` / `to_wire`) and `persist.check_schema`; never
   hand-list metadata fields or hand-roll a schema check.
 
 The import direction is review's (`process/code-audit.md` § 1c (e)). This

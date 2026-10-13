@@ -38,8 +38,8 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
 
     Raises ``ValueError`` on an unknown strategy.
     """
-    from ..config.siesta import (SIESTA_STAGE_NAMES, SIESTA_STAGE_PRESETS,
-                                 STAGE_STRATEGY_PRESETS)
+    from ..config.siesta import SIESTA_STAGE_NAMES, SIESTA_STAGE_PRESETS
+    from ..config.stages import STAGE_STRATEGY_PRESETS
 
     if strategy not in STAGE_STRATEGY_PRESETS:
         valid = ", ".join(sorted(STAGE_STRATEGY_PRESETS))

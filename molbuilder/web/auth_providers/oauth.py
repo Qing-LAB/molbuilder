@@ -18,10 +18,11 @@ The CAS protocol is a different beast (it's not OAuth) and lives in
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Mapping, Optional, Tuple
 
-from flask import url_for, request
+from flask import url_for
+
+from ..auth import authenticate
 
 
 # --------------------------------------------------------------------- #
@@ -210,7 +211,6 @@ def finish_flow(app, entry: Mapping):
     apply IdP-side filters, hand off to ``auth.authenticate``."""
     import logging
 
-    from ..auth import authenticate  # local import: avoid circular at import time
     client = _ensure_client(app, entry)
     try:
         token = client.authorize_access_token()

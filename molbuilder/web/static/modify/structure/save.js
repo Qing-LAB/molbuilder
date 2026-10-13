@@ -136,10 +136,10 @@
         }
         return Promise.resolve(doors.save("project", _stem(), payload))
             .then(function (res) {
-                /* TELL THE PAGE WHERE THE BYTES WENT, from the SERVER's
-                 * answer -- `auto_rename` may have written `<stem>-2.xyz`,
-                 * and confirming the name we merely asked for would name a
-                 * file that does not exist. */
+                /* TELL THE PAGE WHERE THE BYTES WENT -- the door's answer:
+                 * the path chosen, its extension added once
+                 * (`molview-doors.js`); an existing file is replaced only
+                 * after the person says so, never renamed. */
                 if (res && res.ok && _structurePage
                         && typeof _structurePage.markSavedTo === "function") {
                     _structurePage.markSavedTo(res.path);

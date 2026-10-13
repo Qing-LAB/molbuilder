@@ -23,7 +23,7 @@ Defaults are tuned for "build a small/medium molecule and relax it":
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ..electronic_state import METHODS
 from ..identity import RestartGroup
@@ -110,9 +110,6 @@ PYSCF_RESTART_GROUP = RestartGroup(
               "literal geometry",
     field="job_name",
 )
-
-
-from .stages import STAGE_STRATEGY_PRESETS   # THE shared table
 
 
 @dataclass

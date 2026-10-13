@@ -29,7 +29,6 @@ The load path:
 from __future__ import annotations
 
 import json
-import typing
 from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, jsonify, render_template, request
@@ -44,9 +43,8 @@ from molbuilder.sidecars.spectra import (
     parse_spectra_json,
     parse_spectra_json_dict,
 )
-from molbuilder.spectra.results import SpectraResults, motion_share_by_element
+from molbuilder.spectra.results import motion_share_by_element
 from ...spectra.methods import with_ir_route
-from molbuilder.structure import Structure
 
 
 bp = Blueprint("spectra", __name__)

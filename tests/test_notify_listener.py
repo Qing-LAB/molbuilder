@@ -39,7 +39,7 @@ from pathlib import Path
 import pytest
 
 from molbuilder.web.app import create_app
-from molbuilder.web.blueprints.notify import sign
+from molbuilder.monitor import sign_report
 
 
 KEY = "test-key-not-a-real-one"
@@ -93,7 +93,7 @@ def _post(client, key=KEY, body=None, raw=None, path=PATH, ts=None, sig=None):
     if sig is not None:
         headers["X-Molbuilder-Signature"] = sig
     elif key is not None:
-        headers["X-Molbuilder-Signature"] = sign(key, stamp, blob)
+        headers["X-Molbuilder-Signature"] = sign_report(key, stamp, blob)
     return client.post(path, data=data, headers=headers)
 
 
@@ -343,7 +343,7 @@ def test_the_signature_covers_the_BODY_so_it_cannot_be_edited(store):
     r = client.post(PATH, data=tampered, headers={
         "Content-Type": "application/json",
         "X-Molbuilder-Timestamp": stamp,
-        "X-Molbuilder-Signature": sign(KEY, stamp, honest)})
+        "X-Molbuilder-Signature": sign_report(KEY, stamp, honest)})
     assert r.status_code == 404
     assert _lines(log_root) == []
 
@@ -357,7 +357,7 @@ def test_the_signature_covers_the_TIMESTAMP_too(store):
     r = client.post(PATH, data=body, headers={
         "Content-Type": "application/json",
         "X-Molbuilder-Timestamp": "%d" % (int(time.time()) - 60),
-        "X-Molbuilder-Signature": sign(KEY, real, body)})
+        "X-Molbuilder-Signature": sign_report(KEY, real, body)})
     assert r.status_code == 404
     assert _lines(log_root) == []
 
@@ -563,13 +563,11 @@ def test_a_long_string_is_capped(store):
 # --------------------------------------------------------------------- #
 
 def test_the_MONITOR_signs_what_the_LISTENER_verifies(store):
-    """The two halves live in different files and ship separately — the
-    monitor's copy travels to a compute node as a standalone stdlib-only
-    script, so it cannot import the server's `sign` and the server cannot
-    import its `sign_report`. **The same rule, written twice, kept in step
-    by this test.** A change on one side would show up as reports that
-    vanish in silence, because the notifier swallows every failure by
-    design."""
+    """The whole loop: the monitor's own notifier builds and signs a report,
+    and the real route takes it -- the headers, the route segment, the body
+    and the signer both ends call (`monitor.sign_report`).  A break anywhere
+    on it would show up as reports that vanish in silence, because the
+    notifier swallows every failure by design."""
     client, log_root = store
     from molbuilder import monitor as M
 

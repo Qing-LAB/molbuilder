@@ -44,7 +44,7 @@ from pathlib import Path
 
 #: Beside ``job-set.json`` in the bundle root — one ledger per calculation,
 #: all verbs interleaved in the order they actually ran.
-from ..runfiles import LEDGER_FILE  # noqa: E402,F401 -- the catalogue's name
+from ..runfiles import LEDGER_FILE  # noqa: E402 -- the catalogue's name
 
 
 def record(base, verb: str, decision: str, **facts) -> None:

@@ -58,20 +58,16 @@
      * another folder mid-send cannot split the files between two folders,
      * and its Cancel aborts the request in flight.  A transport Describe
      * offers none: its door writes the description in one act on the
-     * server, which an aborted request does not stop.  Inside an outer
-     * claim the outer cover already blocks what this one would. */
+     * server, which an aborted request does not stop. */
     async function send(opts) {
         const fence = window.molbuilder && window.molbuilder.pageBusy;
-        if (!fence || fence.isClaimed()) return await sendUnder(opts, undefined);
+        if (!fence) return await sendUnder(opts, undefined);
         const ctl = new AbortController();
         const describe = !!(opts && opts.calculation === "transport");
-        fence.claim(describe ? "Describing\u2026" : "Sending to Task setup\u2026",
-                    describe ? [] : [() => ctl.abort()]);
-        try {
-            return await sendUnder(opts, ctl.signal);
-        } finally {
-            fence.release();
-        }
+        return await fence.run(
+            describe ? "Describing\u2026" : "Sending to Task setup\u2026",
+            describe ? [] : [() => ctl.abort()],
+            () => sendUnder(opts, ctl.signal));
     }
 
     async function sendUnder(opts, signal) {
@@ -319,15 +315,12 @@
          * parameters and refusing to save them helps nobody. */
         const notices = Array.isArray(out.notices) ? out.notices : [];
         if (showFindings) showFindings(beside(notices));
-        // THE ROAD FROM A DESCRIBED TRANSPORT CALCULATION, said whether or
-        // not something came back: a notice is read, not a stop.
-        const transportNext = "Next: prep task prepares every stage at "
-            + "once (the CLI, or Task setup's Prep on this folder); each "
-            + "launch task sends the next group whose upstream has finished "
-            + "— first the seed and both leads as one job, then, run again, "
-            + "the device, and again the transmission — each taking what it "
-            + "needs from the runs before it at its first launch; summarize "
-            + "task writes the I–V record.";
+        // THE ROAD FROM A DESCRIBED TRANSPORT CALCULATION, pointed to whether
+        // or not something came back -- a notice is read, not a stop.  The
+        // road itself is said once, on the page's "After you describe" card
+        // (`transport_calculation.html`); this line names it, never a copy.
+        const transportNext = "Next: the steps under \u201cAfter you "
+            + "describe\u201d, on this page.";
         const described = "Described — wrote " + written.join(" and ")
             + " into " + (rel || "the selected folder") + ".";
         if (notices.length) {

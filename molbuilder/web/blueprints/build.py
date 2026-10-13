@@ -607,7 +607,8 @@ def api_build_load():
         was showing; answered whole, no frame chosen.
       * {"text": "...", "filename": "<optional>"} -- raw-geometry IMPORT
         (a paste / upload with no persisted file yet); atoms only, the
-        format read off the filename's suffix or sniffed.
+        format read off the filename's suffix or sniffed.  An XYZ text is a
+        lone file, and says so in the same ``structure.lone_file`` notice.
     A path or a text load answers frame 0, or ``frame`` (0-based), or the
     whole set with ``frames: true``; every answer says ``n_frames``, the
     count the file holds.  Returns the same JSON shape as
@@ -736,6 +737,17 @@ def api_build_load():
         struct = _chosen_frame(whole, body)
     except (TypeError, ValueError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+    # AN XYZ TEXT IS A LONE FILE -- atoms only, nothing beside it -- and says
+    # so as the path branch does, in the same sentence (`model/structure.md`
+    # § 2.3).
+    said: list = []
+    if fmt == "xyz":
+        from molbuilder.issues import Issue
+        from molbuilder.periodicity_gate import notices_for_report
+        from molbuilder.workingcopy_structure import lone_xyz_said
+        said = notices_for_report([Issue(
+            "info", lone_xyz_said(filename or "The pasted text", text),
+            "structure.lone_file")])
 
     # Route through the canonical ``ok_structure_response`` helper.
     # Per-atom payload, legacy aliases, validate-pass issues, and the
@@ -756,6 +768,7 @@ def api_build_load():
         # the top level and the ``extra`` sub-dict.
         "source_format": fmt,
         "n_frames":      whole.n_frames,
+        **({"notices": said} if said else {}),
     })
 
 
@@ -1434,28 +1447,21 @@ def api_task_setup_save():
                          f"here would orphan its results. One calculation per folder — "
                          f"pick or make another.",
             }), 409
-        # THE SHAPE IS FIXED ONCE THE CALCULATION HAS PRODUCED
-        # (`web/task-setup.md` § 4): a prepared stage -- a run or a benchmark,
-        # the prep entry's own answer (`prep.prepared_stages`) -- lies where
-        # the shape put it, and another shape would orphan every deck, output
-        # and warm file there.  A redo is a rollback (`job-system.md` § 5.0).
+        # THE SHAPE, WHEN IT IS FIXED (`web/task-setup.md` § 4): by the
+        # kind, or once the calculation has produced -- a prepared stage lies
+        # where the shape put it.  The one answer the shape card draws
+        # (`prep.shape_fixed`), so the refusal says what the page said.
         if prior is not None and prior.shape and task.shape != prior.shape:
-            from molbuilder.jobset.commands import rollback
-            from molbuilder.jobset.prep import prepared_stages
-            done = prepared_stages(dest, prior)
-            if done:
-                return jsonify({
-                    "ok": False,
-                    "error": f"this calculation is {prior.shape}, and its "
-                             f"shape is fixed once it has produced "
-                             f"(task-setup.md § 4): {', '.join(done)} "
-                             f"{'is' if len(done) == 1 else 'are'} prepared, "
-                             f"laid out {prior.shape}, and a {task.shape} "
-                             f"calculation would orphan every deck, output "
-                             f"and warm file there.  To make it "
-                             f"{task.shape}: " + rollback("its first prep",
-                                                          base=dest),
-                }), 409
+            from molbuilder.jobset.errors import PrepError
+            from molbuilder.jobset.prep import shape_fixed
+            try:
+                fixed = shape_fixed(dest, prior)
+            except (OSError, ValueError, PrepError) as exc:
+                # WHAT ITS READERS REFUSE -- a plan in a format they no longer
+                # read -- is said, and nothing is written over it.
+                return jsonify({"ok": False, "error": str(exc)}), 409
+            if fixed is not None:
+                return jsonify({"ok": False, "error": fixed["why"]}), 409
 
     # THE FOLDER'S STATE, SAVED FIRST -- always, by the one function prep
     # calls (`checkpointing.md` § 9; user, 2026-10-03, B10: "make this
@@ -2164,11 +2170,11 @@ def api_task_setup_folder():
         # answer (`prep_inputs.bench_refusal`), so the page offers the
         # Measure step exactly where `prep bench` would take it.
         "bench_refusal": _folder_bench_refusal(folder, described),
-        # WHAT THE KIND FIXES -- a transport description's shape and its
+        # WHAT THE KIND FIXES of the stage table -- a transport description's
         # five rungs, in order -- by the reader's own answer
-        # (`task.fixed_by_kind`), so the page offers no control the reader
-        # refuses (`web/task-setup.md` § 4, § 5.3); null for every other
-        # kind.
+        # (`task.fixed_by_kind`), so the page offers no stage-table control
+        # the reader refuses (`web/task-setup.md` § 5.3); null for every
+        # other kind.
         "fixed": _folder_fixed(_task),
         # HOW A TRANSPORT DESCRIPTION TREATS ITS BIAS LIST, by the one rule
         # the record names it with (`Task.treatment`); null for every other
@@ -2184,6 +2190,12 @@ def api_task_setup_folder():
         # page shows it fixed rather than offering a choice that can only be
         # refused (W55 B4, D12).
         "set_to": _folder_set_to(folder),
+        # ...AND THE SHAPE, WHEN IT IS FIXED -- by the kind, or once the
+        # calculation has produced -- with why and the way back
+        # (`prep.shape_fixed`, the answer the save refuses with); null while
+        # it may change, `{error}` when its readers refuse the folder's plan
+        # (`web/task-setup.md` § 4).
+        "shape_fixed": _folder_shape_fixed(_task, folder),
         # WHICH STAGES ARE PREPARED AS A BENCHMARK -- each with the prep
         # entry's own sentence (`prep.prepared_already`), which the page
         # shows in place of a Prep it would refuse; a task's stages are the
@@ -2203,12 +2215,13 @@ def api_task_setup_folder():
 
 
 def _folder_fixed(task) -> Optional[dict]:
-    """``task.fixed_by_kind`` of a description that reads, as the wire
-    carries it; ``None`` for a kind that fixes nothing, or no description."""
+    """The stages ``task.fixed_by_kind`` fixes, ``{"stages"}``, as the stage
+    table reads them; ``None`` for a kind that fixes nothing, or no
+    description.  The shape it fixes reaches the page as ``shape_fixed``,
+    with why (`prep.shape_fixed`)."""
     from molbuilder.task import fixed_by_kind
     fixed = fixed_by_kind(getattr(task, "calculation", ""))
-    return None if fixed is None else {"shape": fixed["shape"],
-                                       "stages": list(fixed["stages"])}
+    return None if fixed is None else {"stages": list(fixed["stages"])}
 
 
 def _folder_ladder(folder) -> dict:
@@ -2294,6 +2307,21 @@ def _folder_frame_set(task, folder):
     except ComposeError as exc:
         return {"n_frames": None, "definition": None, "why": str(exc)}
     return frame_set_answer(cited)
+
+
+def _folder_shape_fixed(task, folder) -> Optional[dict]:
+    """``prep.shape_fixed`` of a description that reads -- ``None`` with no
+    description, or while its shape may change.  Fail-soft, like the
+    folder's other parts: what its readers refuse -- a plan written before
+    the reader's format -- is ``{"error"}``, said on the shape card."""
+    if task is None or not hasattr(task, "stages"):
+        return None
+    from molbuilder.jobset.errors import PrepError
+    from molbuilder.jobset.prep import shape_fixed
+    try:
+        return shape_fixed(pathlib.Path(folder), task)
+    except (OSError, ValueError, PrepError) as exc:
+        return {"error": str(exc)}
 
 
 def _folder_set_to(folder):

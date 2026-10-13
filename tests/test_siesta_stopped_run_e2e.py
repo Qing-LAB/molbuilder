@@ -300,7 +300,9 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     a scan that fails announces nothing, so the old record must not stay.
 
     MUTATION THIS MUST FAIL AGAINST: the picker not carrying ``record`` in
-    its selection event; the panel not hiding when it is re-bound.
+    its selection event; the panel not hiding when it is re-bound; the file
+    card following a sidebar click by the scope's folder rather than the
+    folder its files are from.
     """
     from molbuilder import diagnostics
 
@@ -378,3 +380,30 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
     rebind(bundle)
     page.locator(".results-ladder").wait_for(state="visible", timeout=20000)
     assert panel.is_hidden()
+
+    # A RUN PICKED OFF THE LADDER: the file card then holds THAT run's files
+    # (`web/results.md` § 2.4) while the sidebar stays on the root -- so a
+    # single click on a root file is not looked up among the run's files, and
+    # the card keeps naming the run's; a click on another file of the run's
+    # own folder is followed (plan § 2, R2-15).
+    page.locator(".results-ladder-open[aria-pressed]").first.click()
+    page.locator(".results-ladder-open[aria-pressed='true']").wait_for(
+        timeout=20000)
+    card = page.locator("#results-file-card .fc-name")
+    card.wait_for(timeout=20000)
+    picked = card.inner_text()
+    page.evaluate("([d, f]) => window.molbuilder.projects.setShared(d, f)",
+                  [str(bundle), str(bundle / "task.json")])
+    page.wait_for_timeout(500)
+    assert card.inner_text() == picked, (
+        "a click on a root file was taken for one of the picked run's files")
+    opened = page.locator(".results-ladder-open[aria-pressed='true']") \
+        .first.get_attribute("title").split(" \u2014 ")[0]
+    run_dir = bundle / Path(opened).parent
+    other = next(f for f in sorted(run_dir.iterdir())
+                 if f.is_file() and f.name != picked)
+    page.evaluate("([d, f]) => window.molbuilder.projects.setShared(d, f)",
+                  [str(run_dir), str(other)])
+    page.wait_for_function(
+        "(n) => document.querySelector('#results-file-card .fc-name')"
+        "         .textContent === n", arg=other.name, timeout=10000)

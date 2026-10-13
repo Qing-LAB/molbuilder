@@ -331,11 +331,24 @@ globalThis.fetch = async (url, opts = {}) => {
   const hit = __replies.find(r => url.includes(r.match)) || {};
   return { status: hit.http ?? 200, json: async () => hit.body ?? { ok: true } };
 };
-globalThis.__prompts = [];      // answers handed to prompt(), in order
+// THE APP'S OWN DIALOGS, answered: the panel's `../dialog.js` resolves to a
+// module whose `askFields` records the question and hands back the next of
+// `__answers` (null, a cancel, when none is left); the one confirm says yes.
+globalThis.__answers = [];      // what each dialog is answered, in order
 globalThis.__asked   = [];      // the questions it asked
-globalThis.prompt = (q) => { __asked.push(q); return __prompts.shift() ?? null; };
-globalThis.confirm = () => true;
+{
+  const { registerHooks } = await import("node:module");
+  const stub = "data:text/javascript," + encodeURIComponent(
+    "export async function askFields(o) { globalThis.__asked.push(o.title);"
+    + " return globalThis.__answers.shift() ?? null; }\n");
+  registerHooks({ resolve(spec, ctx, next) {
+    return spec === "../dialog.js"
+        && String(ctx.parentURL).endsWith("/lib/projects/checkpoint.js")
+      ? { url: stub, shortCircuit: true } : next(spec, ctx);
+  } });
+}
 globalThis.molbuilder = {
+  warningModal: { confirm: async () => true },
   projects: { getProjectsRoot: () => "/p", onChange() {}, getCurrentDir: () => null },
   // The one tab strip, which every page's header loads (`lib/tab-strip.js`);
   // the List / Graph strip is not what these tests drive.
@@ -589,7 +602,7 @@ def test_re_entering_the_same_directory_does_not_re_fetch():
 
 
 def test_setup_asks_for_a_name_only_when_a_name_is_what_is_missing():
-    """The refusal→prompt→retry path, executed end to end.
+    """The refusal→question→retry path, executed end to end.
 
     The first POST carries no name, the server refuses with
     `where: "calculation"`, the panel asks, and the SECOND POST carries what
@@ -611,7 +624,7 @@ def test_setup_asks_for_a_name_only_when_a_name_is_what_is_missing():
         }
         return {status: 200, json: async () => ({ok: true, initialized: false})};
       };
-      __prompts = ["BDT_Au_relax"];
+      __answers = [{name: "BDT_Au_relax"}];
       const m = await import(process.env.PANEL_URL);
       m.initCheckpointPanel();
       await m.onDirectoryChange("/p/BDT-Au/optimization/relax");

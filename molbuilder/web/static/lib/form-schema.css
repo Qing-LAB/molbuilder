@@ -585,9 +585,9 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     font-style: italic;
 }
 
-/* Detection chip on the right side of the header: the form's own
- * answer in a line ("4 atoms · closed shell · charge -1" on the Profile
- * card, a size hint on the Budget card -- lib/detection-chip.js).
+/* Detection chip on the right side of the Profile card's header: the
+ * form's own answer in a line ("4 atoms · closed shell · charge -1",
+ * lib/detection-chip.js).
  * Tinted background uses color-mix against the group accent so a
  * theme change to the role tokens repaints the chip automatically. */
 .workflow-detection-chip {

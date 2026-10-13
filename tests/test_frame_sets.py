@@ -19,7 +19,10 @@ Keys of a ``[[case]]``:
     ``edit`` -- the edit named by ``edit`` (``_EDITS``);
     ``read_document`` -- ``Structure.from_xyz(document)``;
     ``lone_file`` -- ``document`` written alone, no sidecar, and read through
-    ``StructureCodec.load(..., said_out=[...])``.
+    every door that opens a file for a person (``structure.md`` § 2.3):
+    ``StructureCodec.load(..., said_out=[...])``, which ``jobset init`` and
+    the CLI print from, and ``POST /api/build/load`` with ``{path}`` and with
+    ``{text, filename}`` -- each answering the same, in the same sentence.
 ``refused``
     the door raises (or the route answers 400) with this text in its message.
 ``expect``
@@ -219,11 +222,25 @@ def test_frame_set(case, tmp_path, monkeypatch):
         written = None
         act = lambda: Structure.from_xyz(case["document"])  # noqa: E731
     elif door == "lone_file":
-        lone = tmp_path / "lone.xyz"
+        from conftest import _point_the_one_door_at
+        from molbuilder.web.app import create_app
+        tree = _point_the_one_door_at(tmp_path / "tree", monkeypatch.setenv)
+        (tree / "P").mkdir()
+        lone = tree / "P" / "lone.xyz"
         lone.write_text(case["document"])
         said: list = []
         _check(expect, StructureCodec().load(lone, said_out=said), built,
                said=said)
+        client = create_app(config={}).test_client()
+        for body in ({"path": str(lone)},
+                     {"text": case["document"], "filename": lone.name}):
+            answer = client.post("/api/build/load", json=body).get_json()
+            assert answer["ok"], answer
+            notices = [n["message"] for n in answer.get("notices", [])
+                       if n["where"] == "structure.lone_file"]
+            assert notices == said, (body, notices)
+            _check(expect, Structure.from_dict(answer["structure"]), built,
+                   said=notices)
         return
     else:
         raise KeyError(f"frame_sets.toml: no door {door!r}")

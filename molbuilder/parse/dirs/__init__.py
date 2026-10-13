@@ -11,8 +11,8 @@ run door's, `molbuilder.runs` (floor 2), which asks these with what it read --
 `runs.folder_answer` is the directory door the Results tab serves.
 """
 
-from .job import run_status   # noqa: F401  -- re-export
-from .rundir import openable_in, run_state_of   # noqa: F401
+from .job import run_status   # re-export
+from .rundir import openable_in, run_state_of
 
 __all__ = [
     "run_status",

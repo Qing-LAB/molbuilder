@@ -17,12 +17,12 @@
 import { apiList, apiDelete } from "./api.js";
 import {
   setShared, publishCommit, getProjectsRoot, setRefreshHandler,
-  SS_FILE, SS_DIR, readSelectionSlot,
+  SS_FILE, SS_DIR, readSelectionSlot, tell,
   projects as _projectsApi,
 } from "./state.js";
 import { showPreview } from "./preview.js";
 import {
-  chooseName, chooseDestinationDir, confirmDestructive,
+  chooseName, chooseDestinationDir, confirmByTyping, confirmDestructive,
 } from "./dialogs.js";
 
 let elCrumb, elList;
@@ -391,9 +391,8 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
         // Don't let an action throw kill the whole sidebar.
         if (window.console) window.console.error(
           "[sidebar kebab] action threw:", e);
-        window.alert(
-          "Action failed: "
-          + (e && e.message ? e.message : String(e)));
+        tell("error", "Action failed: "
+            + (e && e.message ? e.message : String(e)));
       }
     });
     menu.appendChild(it);
@@ -410,25 +409,20 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
   // other items in this branch.
   if (_isProjectDirAtDepth0(entry, currentPath)) {
     _addItem("Delete project…", async () => {
-      const phrase = entry.name;
-      const typed = window.prompt(
-        "Delete the entire project \"" + entry.name + "\"?\n\n"
-        + "This removes EVERY file under this project: structure, "
-        + "optimization, spectrum, transport, and user-supplied "
-        + "files.  It cannot be undone.\n\n"
-        + "Type the project name (\"" + phrase + "\") to confirm:"
-      );
-      if (typed === null) return;                  // user cancelled
-      if (typed.trim() !== phrase) {
-        window.alert(
-          "Typed name did not match.  Nothing was deleted."
-        );
-        return;
-      }
+      const sure = await confirmByTyping({
+        title: "Delete the entire project \u201c" + entry.name
+          + "\u201d?",
+        body: "This removes EVERY file under this project: structure, "
+          + "optimization, spectrum, transport, and user-supplied "
+          + "files.  It cannot be undone.",
+        phrase: entry.name,
+        confirmLabel: "Delete project",
+      });
+      if (!sure) return;
       const r = await apiDelete(fullPath, true, { force: true });
       if (r && r.aborted) return;
       if (!r || !r.ok) {
-        window.alert((r && r.error) || "Delete failed.");
+        tell("error", (r && r.error) || "Delete failed.");
         return;
       }
       if (elList) {
@@ -455,25 +449,19 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
   // regular file actions don't apply to a topic dir.
   if (_isCanonicalTopicDirAtDepth1(entry, currentPath)) {
     _addItem("Delete directory…", async () => {
-      const phrase = entry.name;
-      const typed = window.prompt(
-        "Delete the entire \"" + entry.name + "\" subdirectory of "
-        + "this project?\n\n"
-        + "This removes all files inside (xyz, fdf, sidecars, run "
-        + "outputs).  It cannot be undone.\n\n"
-        + "Type the directory name (\"" + phrase + "\") to confirm:"
-      );
-      if (typed === null) return;                  // user cancelled
-      if (typed.trim() !== phrase) {
-        window.alert(
-          "Typed name did not match.  Nothing was deleted."
-        );
-        return;
-      }
+      const sure = await confirmByTyping({
+        title: "Delete the entire \u201c" + entry.name
+          + "\u201d subdirectory of this project?",
+        body: "This removes all files inside (xyz, fdf, sidecars, run "
+          + "outputs).  It cannot be undone.",
+        phrase: entry.name,
+        confirmLabel: "Delete directory",
+      });
+      if (!sure) return;
       const r = await apiDelete(fullPath, true, { force: true });
       if (r && r.aborted) return;
       if (!r || !r.ok) {
-        window.alert((r && r.error) || "Delete failed.");
+        tell("error", (r && r.error) || "Delete failed.");
         return;
       }
       if (elList) {
@@ -537,7 +525,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
       const r = await _projectsApi.rename(fullPath, newName);
       if (r && r.aborted) return;
       if (!r || !r.ok) {
-        window.alert((r && r.error) || "Rename failed.");
+        tell("error", (r && r.error) || "Rename failed.");
       }
     });
   }
@@ -555,7 +543,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
       const r = await _projectsApi.move(fullPath, dest);
       if (r && r.aborted) return;
       if (!r || !r.ok) {
-        window.alert((r && r.error) || "Move failed.");
+        tell("error", (r && r.error) || "Move failed.");
       }
     });
     _addItem("Copy to…", async () => {
@@ -583,7 +571,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
         newName ? { newName } : undefined);
       if (r && r.aborted) return;
       if (!r || !r.ok) {
-        window.alert((r && r.error) || "Copy failed.");
+        tell("error", (r && r.error) || "Copy failed.");
       }
     });
   }
@@ -602,7 +590,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
         entry.kind === "directory");
       if (r && r.aborted) return;
       if (!r || !r.ok) {
-        window.alert((r && r.error) || "Delete failed.");
+        tell("error", (r && r.error) || "Delete failed.");
       } else if (elList) {
         // Reuse the openDir refresh path so the entry list re-paints.
         await openDir(currentPath);

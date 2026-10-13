@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..identity import RestartGroup
+from ..issues import Issue
 from . import state as _state
 
 # Job-layout v1 protocol (docs/execution/job-contracts.md): the basename
@@ -58,7 +59,6 @@ def _validate_kgrid(value):
     on every door.  What a rung writes along each axis is the k-point
     mesh's (`kmesh.py`, `engines/siesta.md` § 6.1).
     """
-    from ..issues import Issue
     if not isinstance(value, (tuple, list)) or len(value) != 3:
         return [Issue(
             "error",
@@ -84,7 +84,6 @@ def _validate_block_size(value):
     honoured verbatim.  ``0`` is refused by the catalogue's hard limit
     (``above``), so this checks only that the value is an integer.
     """
-    from ..issues import Issue
     if value is None:
         return []                       # auto -- the keyword is omitted
     if not isinstance(value, int) or isinstance(value, bool):
@@ -114,7 +113,6 @@ def _validate_kgrid_displacement(value):
     sampling choice, not a mistake, and the ``help`` text already says which
     parity wants which value.
     """
-    from ..issues import Issue
     if not isinstance(value, (tuple, list)) or len(value) != 3:
         return [Issue(
             "error",
@@ -159,8 +157,6 @@ def _validate_basename(label: str):
     there*.  Prefer that shape.
     """
     def _check(value, _cfg=None):
-        # Local import to avoid an L1->L1 cycle (issues sits next door).
-        from ..issues import Issue
         if not isinstance(value, str) or not _BASENAME_RE.fullmatch(value):
             return Issue(
                 severity="error",
@@ -1299,14 +1295,8 @@ SIESTA_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
 }
 
 
-# THE SHARED TABLE (`config/stages.py`): a strategy says which TIERS run,
-# which is not an engine's property.
-from .stages import STAGE_STRATEGY_PRESETS
-
-
 __all__ = [
     "SiestaConfig",
     "SIESTA_STAGE_NAMES",
     "SIESTA_STAGE_PRESETS",
-    "STAGE_STRATEGY_PRESETS",
 ]

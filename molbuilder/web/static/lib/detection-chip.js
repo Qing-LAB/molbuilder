@@ -7,10 +7,10 @@
  * ``state.<engine>``, docs/science/chemistry-correctness.md § 2a).  One form,
  * one chip, from that form's own answer: a page with a SIESTA and a PySCF form
  * shows two chips that may differ, because the two forms may say different
- * things.  The Budget card's chip is a size hint.
+ * things.  It states what the calculation carries and advises nothing.
  *
  * Exports (on window.molbuilder.detectionChip):
- *   buildText(resp, engine) → { profile, budget } — pure text helper
+ *   buildText(resp, engine) → { profile } — pure text helper
  *   render(resp, hosts) → number of headers patched (null resp: removed)
  */
 (function () {
@@ -40,39 +40,18 @@
             var q = st.net_charge.value;
             if (q) parts.push("charge " + (q > 0 ? "+" : "") + q);
         }
-        var sysLine = parts.join(" · ");
-
-        // --- Budget line ------------------------------------------------ //
-        // Size-aware hint.  Au-BDT-Au-class systems (≥ 150 metallic atoms)
-        // get an explicit "bump the caps" nudge; pure organics under 100
-        // atoms a "defaults are fine" so nobody second-guesses them.
-        var budgetLine = (n_atoms != null) ? (n_atoms + " atoms") : "";
-        if (n_atoms != null) {
-            if (n_atoms >= 150 && metals.length > 0) {
-                budgetLine += " · bump relax_steps + max_scf_iter "
-                            + "for large metallic systems";
-            } else if (n_atoms >= 100) {
-                budgetLine += " · consider higher caps for large systems";
-            } else if (n_atoms >= 50 && metals.length > 0) {
-                budgetLine += " · metallic system — watch SCF "
-                            + "convergence; bump caps if needed";
-            } else {
-                budgetLine += " · defaults are fine";
-            }
-        }
-        return { profile: sysLine, budget: budgetLine };
+        return { profile: parts.join(" · ") };
     }
 
     /**
-     * Inject (or refresh) the chip in every Profile and Budget card header
-     * inside each engine's form host (``hosts``: {engine: element}).
+     * Inject (or refresh) the chip in every Profile card header inside each
+     * engine's form host (``hosts``: {engine: element}).
      * Idempotent — re-running replaces the chip text in place; a null
      * ``resp`` removes the chips.  Returns the number of headers patched.
      */
     function render(resp, hosts) {
         var n = 0;
-        var sel = ".workflow-group--profile .workflow-group-header, "
-                + ".workflow-group--budget .workflow-group-header";
+        var sel = ".workflow-group--profile .workflow-group-header";
         Object.keys(hosts || {}).forEach(function (engine) {
             var host = hosts[engine];
             if (!host || !host.querySelectorAll) return;
@@ -80,11 +59,7 @@
             var headers = host.querySelectorAll(sel);
             for (var i = 0; i < headers.length; i++) {
                 var header = headers[i];
-                var card = header.closest(".workflow-group");
-                if (!card) continue;
-                var role = card.classList.contains("workflow-group--profile")
-                    ? "profile" : "budget";
-                var text = chips[role];
+                var text = chips.profile;
                 var chip = header.querySelector(".workflow-detection-chip");
                 if (!text) {
                     // No answer (no structure, or the server could not

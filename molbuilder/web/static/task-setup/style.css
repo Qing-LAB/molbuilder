@@ -115,7 +115,7 @@
     font-weight: var(--weight-semibold);
     color: var(--text-primary);
 }
-.ts-state-body { margin: var(--space-xs) 0 0; color: var(--text-secondary); white-space: pre-line; }
+.ts-state-body { margin: var(--space-xs) 0 0; color: var(--text-secondary); }
 /* The [hidden]-precedence guard, same as `.issues-panel` and the load
  * monitor's cells: the rule above sets `display: flex`, which ties with the
  * browser's own `[hidden] { display: none }` and wins on source order.  The
@@ -622,12 +622,15 @@
     gap: var(--space-sm);
     margin-top: var(--space-xs);
 }
-/* pre-wrap: a refusal keeps its lines -- the commands it names are each
-   one to type (`job-system.md` § 5.3). */
+/* A SENTENCE THAT NAMES COMMANDS KEEPS ITS LINES -- each command is one to
+   type (`job-system.md` § 5.3): prep's refusal, the Continue-from note, the
+   shape card's way back, Save's refusal, the folder's state box.  One rule,
+   worn by each. */
+.ts-keeps-lines { white-space: pre-wrap; }
+
 .ts-prep-say {
     color: var(--text-secondary);
     font-size: var(--text-sm);
-    white-space: pre-wrap;
 }
 .ts-prep-say[data-state="bad"]  { color: var(--ts-refuse-fg); }
 .ts-prep-say[data-state="warn"] { color: var(--warn-soft); }
@@ -664,8 +667,7 @@
 
 /* Continue from (plan W37, `task-setup.md` § 11): what a stage starts from,
    and under it what that means -- prep's own line, or why prep refuses it,
-   whole, its commands on their own lines. */
-.ts-continue-note { white-space: pre-wrap; }
+   whole, its commands on their own lines (`.ts-keeps-lines`). */
 .ts-continue-note[data-state="warn"] { color: var(--warn-soft); }
 
 /* ---- "Tell me how it is going" ------------------------------------- */

@@ -27,6 +27,17 @@ ROOT = Path(__file__).resolve().parents[1]
 VIEWER = ROOT / "molbuilder/web/static/task-setup/viewer.js"
 
 
+#: A STAND-IN FOR THE PAGE'S FENCE that only runs the step it is given: the
+#: page imports `lib/page-busy.js`; a slice cannot, so the harness declares
+#: `pageBusy`, as it declares the page's `$`.  What these tests read is the
+#: document the step writes; the fence's own claim and release are
+#: `test_page_busy_js.py`'s, and the card's way through it the Task setup
+#: fence table's (`test_task_setup_prep_e2e.py`).
+_FENCE_IN_NODE = """
+const pageBusy = { run: async (reason, cancelers, fn) => fn() };
+"""
+
+
 def _slice(src: str, start: str, end: str) -> str:
     i = src.index(start)
     return src[i:src.index(end, i)].rstrip()
@@ -51,6 +62,7 @@ def _run(controls: dict, task: dict | None, want: str):
         _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
         # `applyNotifyToDoc` calls it, so the harness needs it too.
+        _FENCE_IN_NODE,
         _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
         _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
         _slice(src, "function readNotifyFromTask(task)", "/** One line saying"),
@@ -232,6 +244,7 @@ def test_an_unparseable_document_loses_nothing():
         _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
         # `applyNotifyToDoc` calls it, so the harness needs it too.
+        _FENCE_IN_NODE,
         _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
         _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
         # `patchDoc` refuses through it.
@@ -359,6 +372,7 @@ def test_a_card_write_moves_the_MODEL_too_not_only_the_buffer():
         _slice(src, "//: ``null`` until the server has answered", "/** Paint one tick per report"),
         _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
+        _FENCE_IN_NODE,
         _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
         _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
     ])

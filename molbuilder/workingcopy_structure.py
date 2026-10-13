@@ -101,6 +101,23 @@ def _metadata_is_default(meta: dict) -> bool:
     return meta == _DEFAULT_METADATA
 
 
+def lone_xyz_said(name: str, text: str) -> str:
+    """What reading a LONE ``.xyz`` says to a person (``model/structure.md``
+    § 2.3): atoms and coordinates only, and the comment line it did not read as
+    metadata, quoted whole.  ``name`` is what the person knows it by -- the
+    file's name, or the filename a pasted text came with -- and ``text`` its
+    content.  One sentence for every door that opens one: the codec's read,
+    and the load route's text."""
+    lines = text.splitlines()
+    comment = lines[1].strip() if len(lines) > 1 else ""
+    return (f"{name} has no .molstruct.json beside it, so only its atoms and "
+            f"coordinates were read -- no cell, no labels"
+            + (f"; its comment line was not read as metadata: «{comment}»"
+               if comment else "")
+            + ".  Set what you meant on the Molbuilder tab, its Cell and "
+            "Metadata pages; saving there writes it to the .molstruct.json.")
+
+
 class StructureCodec:
     """``.xyz`` + ``.molstruct.json`` ⇄ :class:`~molbuilder.structure.Structure`."""
 
@@ -192,15 +209,7 @@ class StructureCodec:
             # is what `from_xyz` read -- atoms and coordinates -- and the read
             # says so, quoting the comment line it did not read as metadata
             # (`model/structure.md` § 2.3).
-            lines = text.splitlines()
-            comment = lines[1].strip() if len(lines) > 1 else ""
-            said_out.append(
-                f"{src.name} has no .molstruct.json beside it, so only its "
-                f"atoms and coordinates were read -- no cell, no labels"
-                + (f"; its comment line was not read as metadata: «{comment}»"
-                   if comment else "")
-                + ".  Set what you meant on the Molbuilder tab, its Cell and "
-                "Metadata pages; saving there writes it to the .molstruct.json.")
+            said_out.append(lone_xyz_said(src.name, text))
         # READING DOES NOT JUDGE (structure-periodicity.md § 8.2, decided
         # 2026-08-03).  A file whose sidecar holds an unusable box -- a
         # left-handed cell, or one too small for any origin -- OPENS, and what

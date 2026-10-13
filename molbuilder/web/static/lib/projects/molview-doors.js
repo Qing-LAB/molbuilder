@@ -48,14 +48,20 @@ function _download(filename, blob) {
 }
 
 /* WHERE and AS WHAT is the unified question (`chooseSavePath`,
- * projects.md § 5) — this door only phrases it for an export. */
-function _askProjectPath(stem, what) {
-    return chooseSavePath({
+ * projects.md § 5) — this door phrases it for an export, and ADDS THE
+ * EXPORT'S EXTENSION ``ext``, as its hint promises: once, so a name typed
+ * with it (`x.xyz`, any case) is kept as typed rather than doubled.
+ * Resolves the full path, or null on cancel. */
+async function _askProjectPath(stem, what, ext) {
+    const picked = await chooseSavePath({
         title: "Save " + what + " where?",
         nameTitle: "Save " + what + " as",
         initial: stem,
         hint: "The extension is added for you.",
     });
+    if (!picked) return null;
+    return picked.toLowerCase().endsWith(ext.toLowerCase())
+        ? picked : picked + ext;
 }
 
 export const molviewFiles = {
@@ -111,10 +117,10 @@ export const molviewFiles = {
                          notices: notices };
             }
             if (destination === "project") {
-                const path = await _askProjectPath(stem, "structure");
+                const path = await _askProjectPath(stem, "structure", ".xyz");
                 if (!path) return { ok: false, cancelled: true };
                 const body = {
-                    path: path + ".xyz",
+                    path: path,
                     structure: payload.structure,
                 };
                 let res = await _postJSON("/api/structure/save", body);
@@ -124,7 +130,7 @@ export const molviewFiles = {
                     // automation driving the page.
                     const sure = await confirmDestructive({
                         title: "Overwrite?",
-                        body: path + ".xyz exists.  Overwriting replaces it "
+                        body: path + " exists.  Overwriting replaces it "
                             + "and its metadata sidecar together.",
                         confirmLabel: "Overwrite",
                     });
@@ -138,7 +144,7 @@ export const molviewFiles = {
                         || ("HTTP " + res.http) };
                 }
                 _refreshSidebar();
-                return { ok: true, path: path + ".xyz",
+                return { ok: true, path: path,
                          notices: Array.isArray(res.body.notices)
                              ? res.body.notices : null };
             }
@@ -163,10 +169,10 @@ export const molviewFiles = {
                 const dot = filename.lastIndexOf(".");
                 const stem = dot > 0 ? filename.slice(0, dot) : filename;
                 const ext = dot > 0 ? filename.slice(dot) : "";
-                const picked = await _askProjectPath(stem, "image");
+                const picked = await _askProjectPath(stem, "image", ext);
                 if (!picked) return { ok: false, cancelled: true };
                 const dir = picked.slice(0, picked.lastIndexOf("/"));
-                const name = picked.slice(picked.lastIndexOf("/") + 1) + ext;
+                const name = picked.slice(picked.lastIndexOf("/") + 1);
                 // Binary bytes ride the upload route (apiWrite is JSON text);
                 // auto_rename keeps a collision from silently clobbering.
                 const out = await apiUpload(dir, blob,

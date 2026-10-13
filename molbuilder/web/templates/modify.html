@@ -938,8 +938,7 @@
     owner: it mounts the one viewer the page has and starts them with it:
     MolView publishes no global to find the viewer by. -#}
 {# The shared MolView + workspace stack -- ONE include, not a pasted copy
-   (_molview_scripts.html: vendor 3Dmol + molview/index.js + workspace/dispatcher.js +
-   warning-modal). #}
+   (_molview_scripts.html: vendor 3Dmol + molview/index.js + workspace/dispatcher.js). #}
 {% include "_molview_scripts.html" %}
 <script type="module" src="{{ url_for('static', filename='modify/selection-bootstrap.js') }}"></script>
 {# Molbuilder-tab Sources panel + generators.  page.js binds ws.*

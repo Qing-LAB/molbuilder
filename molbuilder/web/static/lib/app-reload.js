@@ -55,17 +55,20 @@
     }
 
     function _reload() {
-        var btn = _btn();
         /* NAME THE COST BEFORE DOING IT. This disconnects everyone using this
          * server, and a workspace write that is still in flight is lost --
          * `persist` does not wait for the server (workspace.md § 6), so "sent"
-         * is not "saved". */
-        var ok = root.confirm(
-            "Restart the server?\n\n"
-            + "Everyone using it is disconnected while it comes back, and "
-            + "saves that are still in flight are lost.");
-        if (!ok) return;
+         * is not "saved".  Asked by the one confirm (`lib/warning-modal.js`). */
+        root.molbuilder.warningModal.confirm({
+            title: "Restart the server?",
+            body: "Everyone using it is disconnected while it comes back, "
+                + "and saves that are still in flight are lost.",
+            confirmLabel: "Restart",
+        }).then(function (ok) { if (ok) _restart(); });
+    }
 
+    function _restart() {
+        var btn = _btn();
         if (btn) btn.disabled = true;
         _notify("info", "Restarting the server…");
 

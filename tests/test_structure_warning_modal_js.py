@@ -1,478 +1,180 @@
-"""Unit tests for the Structure-tab discard-unsaved warning modal.
+"""The one confirm -- ``molbuilder/web/static/lib/warning-modal.js``.
 
-Pins the public API of ``molbuilder/web/static/lib/warning-modal.js``
-— the single-source-of-truth dialog for "you have unsaved canvas
-modifications, continuing will discard them".
+Every yes/no question the app asks goes through it (`ui-contract.md` § 11),
+and it is built on the one dialog component (`lib/dialog.js`), so it answers
+by that component's rules.  What these rows pin, each named for its failure:
 
-These tests cover the contract the tab UI depends on:
+  * HOW IT IS ANSWERED -- the costly button yes; Cancel, Esc and a click off
+    the surface no; a click on its own padding nothing at all (a confirm that
+    closed under a stray click would lose the person's answer);
+  * THE FIXED COPY of the discard-unsaved question (`runtime.md` § 3), on a
+    `<dialog>` the component dresses, its costly answer marked and last;
+  * Cancel takes the focus, so the key that closes it keeps what you had;
+  * ONE DIALOG AT A TIME -- a second question answers the first no;
+  * an answered dialog leaves the page, and is opened modally.
 
-  * confirmDiscardUnsaved returns a Promise<boolean>.
-  * Cancel resolves false; Discard resolves true; ESC resolves
-    false (the native <dialog> "cancel" event).
-  * Single-instance: two near-simultaneous calls share the SAME
-    pending Promise — modals don't stack.
-  * Default focus lands on Cancel (the safe action).
-  * The DOM structure carries the documented title/body/buttons.
-  * After resolution the dialog is detached from the DOM (no leak
-    on repeated invocations).
+Run under Node against a DOM stub small enough to read: the module is an ES
+module and imports the component beside it.
 """
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
+from tests._node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/warning-modal.js"
 
-
-# Minimum-viable DOM stub the modal helper needs:
-#   createElement, an element shape supporting setAttribute /
-#   className / id / textContent / type / appendChild /
-#   querySelector / addEventListener / focus / parentNode /
-#   removeChild / showModal / close / dispatchEvent.
-#
-# Kept inline in each test snippet via a shared prelude so the
-# tests stay readable.
-_DOM_PRELUDE = r"""
+#: What the module and the component touch, and nothing more: an element
+#: holds its children, its listeners and its attributes; a `<dialog>` opens
+#: and closes, firing `close` as the platform does; its box is 0..100.
+_DOM = r"""
 function _mkEl(tag) {
-    const el = {
-        tagName:       String(tag).toUpperCase(),
-        className:     "",
-        id:            "",
-        textContent:   "",
-        type:          "",
-        _attrs:        new Map(),
-        _children:     [],
-        _listeners:    new Map(),
-        _parent:       null,
-        _open:         false,
-        focused:       false,
-        get parentNode() { return el._parent; },
-        setAttribute: (k, v) => el._attrs.set(k, String(v)),
-        getAttribute: (k) => el._attrs.has(k) ? el._attrs.get(k) : null,
-        appendChild: (c) => {
-            el._children.push(c);
-            c._parent = el;
-            return c;
-        },
-        removeChild: (c) => {
-            const ix = el._children.indexOf(c);
-            if (ix >= 0) el._children.splice(ix, 1);
-            c._parent = null;
-            return c;
-        },
-        addEventListener: (ev, fn) => {
-            if (!el._listeners.has(ev)) el._listeners.set(ev, []);
-            el._listeners.get(ev).push(fn);
-        },
-        dispatchEvent: (event) => {
-            const lis = el._listeners.get(event.type) || [];
-            for (const fn of lis.slice()) fn(event);
-        },
-        // <dialog>-like helpers.
-        showModal: () => { el._open = true; },
-        show:      () => { el._open = true; },
-        close: () => {
-            if (!el._open) return;
-            el._open = false;
-            // Native <dialog> fires a "close" event when close()
-            // runs.  Mirror that so the helper's wired close
-            // handler is exercised on the test path.
-            el.dispatchEvent({ type: "close" });
-        },
-        focus: () => { el.focused = true; },
-        // Walk children + self to find first by-attr match.
-        querySelector: (sel) => {
-            // Tiny subset: `[data-action="name"]` selectors.
-            const m = sel.match(/^\[data-action="([^"]+)"\]$/);
-            if (!m) return null;
-            const want = m[1];
-            function walk(n) {
-                if (n.getAttribute && n.getAttribute("data-action") === want) {
-                    return n;
-                }
-                for (const c of (n._children || [])) {
-                    const r = walk(c);
-                    if (r) return r;
-                }
-                return null;
-            }
-            return walk(el);
-        },
-    };
-    return el;
+  const el = {
+    tagName: String(tag).toUpperCase(), className: "", id: "",
+    textContent: "", type: "", _attrs: new Map(), _children: [],
+    _listeners: new Map(), _parent: null, _open: false, focused: false,
+    _opensVia: null,
+    get parentNode() { return el._parent; },
+    setAttribute: (k, v) => el._attrs.set(k, String(v)),
+    getAttribute: (k) => el._attrs.has(k) ? el._attrs.get(k) : null,
+    appendChild: (c) => { el._children.push(c); c._parent = el; return c; },
+    removeChild: (c) => {
+      const ix = el._children.indexOf(c);
+      if (ix >= 0) el._children.splice(ix, 1);
+      c._parent = null; return c;
+    },
+    remove: () => { if (el._parent) el._parent.removeChild(el); },
+    addEventListener: (ev, fn) => {
+      if (!el._listeners.has(ev)) el._listeners.set(ev, []);
+      el._listeners.get(ev).push(fn);
+    },
+    dispatchEvent: (event) => {
+      for (const fn of (el._listeners.get(event.type) || []).slice()) fn(event);
+    },
+    showModal: () => { el._open = true; el._opensVia = "showModal"; },
+    show: () => { el._open = true; el._opensVia = "show"; },
+    close: () => {
+      if (!el._open) return;
+      el._open = false;
+      el.dispatchEvent({ type: "close", target: el });
+    },
+    getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 100 }),
+    focus: () => { el.focused = true; },
+    querySelector: (sel) => {
+      const m = sel.match(/^\[data-action="([^"]+)"\]$/);
+      if (!m) return null;
+      const walk = (n) => {
+        if (n.getAttribute && n.getAttribute("data-action") === m[1]) return n;
+        for (const c of (n._children || [])) { const r = walk(c); if (r) return r; }
+        return null;
+      };
+      return walk(el);
+    },
+  };
+  return el;
 }
-const _body = _mkEl("body");
-global.document = {
-    createElement: (tag) => _mkEl(tag),
-    body: _body,
-};
-global.window = global;
+globalThis.document = { createElement: (t) => _mkEl(t), body: _mkEl("body") };
+globalThis.__dialogs = () => document.body._children.filter(
+  (c) => c.tagName === "DIALOG");
+globalThis.__last = () => { const d = __dialogs(); return d[d.length - 1]; };
+globalThis.__click = (d, action) =>
+  d.querySelector('[data-action="' + action + '"]')._listeners.get("click")[0]();
+globalThis.__settled = (p) => Promise.race([
+  p.then((v) => ({ settled: true, value: v })),
+  new Promise((r) => setTimeout(() => r({ settled: false }), 20)),
+]);
 """
 
 
-def _run_node(snippet: str, *, prelude: str = "") -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    module_path = MODULE.resolve()
-    bootstrap = f"""
-        {_DOM_PRELUDE}
-        {prelude}
-        const modal = require({json.dumps(str(module_path))});
-        try {{
-            (async () => {{
-                {snippet}
-            }})().catch(err => {{
-                console.log(JSON.stringify({{
-                    __test_unexpected_throw: true,
-                    message: err && err.message ? err.message : String(err),
-                    stack:   err && err.stack ? err.stack : null,
-                }}));
-            }});
-        }} catch (err) {{
-            console.log(JSON.stringify({{
-                __test_unexpected_throw: true,
-                message: err && err.message ? err.message : String(err),
-                stack:   err && err.stack ? err.stack : null,
-            }}));
-        }}
-    """
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", bootstrap],
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\n"
-            f"stdout:\n{proc.stdout}"
-        )
-    last_line = proc.stdout.strip().splitlines()[-1]
-    out = json.loads(last_line)
-    if isinstance(out, dict):
-        assert "__test_unexpected_throw" not in out, (
-            "module threw: " + str(out)
-        )
-    return out
+def _run(snippet: str):
+    prelude = ("const { warningModal: modal } = await import("
+               + json.dumps(MODULE.resolve().as_uri()) + ");\n")
+    return run_node([], prelude + snippet, globals_js=_DOM)
 
 
-# ----- Surface presence ------------------------------------------ #
+#: How the question is answered, and what it answers.
+_ANSWERS = [
+    ("the costly button", "__click(d, 'discard');", True),
+    ("Cancel", "__click(d, 'cancel');", False),
+    ("Esc", "d.dispatchEvent({type: 'cancel', target: d,"
+            " preventDefault() {}});", False),
+    ("a click off the surface",
+     "for (const t of ['pointerdown', 'click'])"
+     " d.dispatchEvent({type: t, target: d, clientX: -5, clientY: 50});", False),
+    ("a click on its own padding",
+     "for (const t of ['pointerdown', 'click'])"
+     " d.dispatchEvent({type: t, target: d, clientX: 50, clientY: 50});", None),
+]
 
 
-class TestSurfacePresence:
-
-    def test_methods_callable(self):
-        out = _run_node('''
-            console.log(JSON.stringify({
-                confirmDiscardUnsaved: typeof modal.confirmDiscardUnsaved,
-                isOpen:                typeof modal.isOpen,
-                _reset:                typeof modal._reset,
-            }));
-        ''')
-        assert out["confirmDiscardUnsaved"] == "function"
-        assert out["isOpen"]                == "function"
-        assert out["_reset"]                == "function"
-
-
-# ----- Promise resolution ---------------------------------------- #
+@pytest.mark.parametrize("how,act,answer", _ANSWERS,
+                         ids=[a[0] for a in _ANSWERS])
+def test_how_the_question_is_answered(how, act, answer):
+    out = _run(f"""
+        const p = modal.confirm({{ title: "Delete file", body: "Gone?" }});
+        const d = __last();
+        {act}
+        console.log(JSON.stringify(await __settled(p)));
+    """)
+    if answer is None:
+        assert out == {"settled": False}, f"{how} answered the question"
+    else:
+        assert out == {"settled": True, "value": answer}, out
 
 
-class TestPromiseResolution:
-
-    def test_returns_a_thenable(self):
-        out = _run_node('''
-            const r = modal.confirmDiscardUnsaved();
-            console.log(JSON.stringify({
-                isThenable: r && typeof r.then === "function",
-            }));
-            modal._reset();
-        ''')
-        assert out["isThenable"] is True
-
-    def test_cancel_resolves_false(self):
-        out = _run_node('''
-            const p = modal.confirmDiscardUnsaved();
-            const dialog = document.body._children[document.body._children.length - 1];
-            const cancelBtn = dialog.querySelector(\'[data-action="cancel"]\');
-            cancelBtn._listeners.get("click")[0]();
-            const v = await p;
-            console.log(JSON.stringify(v));
-        ''')
-        assert out is False
-
-    def test_discard_resolves_true(self):
-        out = _run_node('''
-            const p = modal.confirmDiscardUnsaved();
-            const dialog = document.body._children[document.body._children.length - 1];
-            const discardBtn = dialog.querySelector(\'[data-action="discard"]\');
-            discardBtn._listeners.get("click")[0]();
-            const v = await p;
-            console.log(JSON.stringify(v));
-        ''')
-        assert out is True
-
-    def test_esc_resolves_false(self):
-        """Native <dialog> fires a 'cancel' event when ESC is pressed
-        — the helper must treat that as a Cancel-equivalent (false)."""
-        out = _run_node('''
-            const p = modal.confirmDiscardUnsaved();
-            const dialog = document.body._children[document.body._children.length - 1];
-            dialog.dispatchEvent({ type: "cancel" });
-            const v = await p;
-            console.log(JSON.stringify(v));
-        ''')
-        assert out is False
+def test_the_discard_question_carries_its_fixed_copy():
+    out = _run("""
+        modal.confirmDiscardUnsaved();
+        const d = __last();
+        const [title, body] = d._children;
+        const cancel = d.querySelector('[data-action="cancel"]');
+        const discard = d.querySelector('[data-action="discard"]');
+        const row = cancel._parent._children;
+        console.log(JSON.stringify({
+          tag: d.tagName, cls: d.className,
+          labelledby: d.getAttribute("aria-labelledby") === title.id,
+          describedby: d.getAttribute("aria-describedby") === body.id,
+          title: title.textContent, body: body.textContent,
+          cancel: cancel.textContent, discard: discard.textContent,
+          types: [cancel.type, discard.type], danger: discard.className,
+          order: row.map((b) => b.getAttribute("data-action")),
+          focused: [cancel.focused, discard.focused], opensVia: d._opensVia,
+        }));
+    """)
+    assert out["tag"] == "DIALOG"
+    assert out["cls"] == "mb-dialog molbuilder-warning-modal"
+    assert out["labelledby"] and out["describedby"]
+    assert (out["title"], out["body"], out["cancel"], out["discard"]) == (
+        "Unsaved modifications",
+        "You have unsaved changes to the current canvas. "
+        "Continuing will discard them.",
+        "Cancel", "Discard and continue")
+    assert out["types"] == ["button", "button"]
+    assert out["danger"] == "danger" and out["order"] == ["cancel", "discard"]
+    assert out["focused"] == [True, False], "the focus is not on Cancel"
+    assert out["opensVia"] == "showModal", "the page below stays clickable"
 
 
-# ----- DOM structure --------------------------------------------- #
-
-
-class TestDOMStructure:
-
-    def test_dialog_carries_documented_strings(self):
-        out = _run_node('''
-            const p = modal.confirmDiscardUnsaved();
-            const dialog = document.body._children[document.body._children.length - 1];
-            // Walk the children for the title (h2), body (p), and
-            // both buttons.
-            function findByTag(root, tag) {
-                if (root.tagName === tag) return root;
-                for (const c of (root._children || [])) {
-                    const r = findByTag(c, tag);
-                    if (r) return r;
-                }
-                return null;
-            }
-            const title = findByTag(dialog, "H2");
-            const body  = findByTag(dialog, "P");
-            const cancel  = dialog.querySelector(\'[data-action="cancel"]\');
-            const discard = dialog.querySelector(\'[data-action="discard"]\');
-            console.log(JSON.stringify({
-                tag:           dialog.tagName,
-                titleText:     title  ? title.textContent  : null,
-                bodyText:      body   ? body.textContent   : null,
-                cancelText:    cancel  ? cancel.textContent  : null,
-                discardText:   discard ? discard.textContent : null,
-                cancelType:    cancel  ? cancel.type  : null,
-                discardType:   discard ? discard.type : null,
-            }));
-            modal._reset();
-        ''')
-        assert out["tag"] == "DIALOG"
-        assert out["titleText"] == "Unsaved modifications"
-        assert "unsaved changes" in out["bodyText"]
-        assert out["cancelText"] == "Cancel"
-        assert out["discardText"] == "Discard and continue"
-        # Both buttons type="button" so the dialog form-default
-        # submit semantics don't fire on click.
-        assert out["cancelType"] == "button"
-        assert out["discardType"] == "button"
-
-    def test_aria_attributes_present(self):
-        """Accessibility: dialog wires aria-labelledby + aria-describedby
-        to the title + body so screen readers announce the modal."""
-        out = _run_node('''
-            modal.confirmDiscardUnsaved();
-            const dialog = document.body._children[document.body._children.length - 1];
-            console.log(JSON.stringify({
-                labelledby:  dialog.getAttribute("aria-labelledby"),
-                describedby: dialog.getAttribute("aria-describedby"),
-            }));
-            modal._reset();
-        ''')
-        assert out["labelledby"]
-        assert out["describedby"]
-        assert out["labelledby"] != out["describedby"]
-
-
-# ----- Default focus --------------------------------------------- #
-
-
-class TestDefaultFocus:
-
-    def test_focus_lands_on_cancel(self):
-        """Per § 5.4 Cancel is the default focus — the safe action.
-        Pin the focus call so a future refactor that drops it gets
-        caught."""
-        out = _run_node('''
-            modal.confirmDiscardUnsaved();
-            const dialog = document.body._children[document.body._children.length - 1];
-            const cancel  = dialog.querySelector(\'[data-action="cancel"]\');
-            const discard = dialog.querySelector(\'[data-action="discard"]\');
-            console.log(JSON.stringify({
-                cancelFocused:  cancel.focused,
-                discardFocused: discard.focused,
-            }));
-            modal._reset();
-        ''')
-        assert out["cancelFocused"] is True
-        assert out["discardFocused"] is False
-
-
-# ----- Single-instance ------------------------------------------- #
-
-
-class TestSingleInstance:
-
-    def test_isOpen_reflects_open_state(self):
-        out = _run_node('''
-            const before = modal.isOpen();
-            modal.confirmDiscardUnsaved();
-            const during = modal.isOpen();
-            modal._reset();
-            const after = modal.isOpen();
-            console.log(JSON.stringify({
-                before: before, during: during, after: after,
-            }));
-        ''')
-        assert out == {"before": False, "during": True, "after": False}
-
-    def test_concurrent_calls_share_promise(self):
-        """A second call while a prior modal is open returns the
-        same in-flight Promise — modals must NOT stack."""
-        out = _run_node('''
-            const p1 = modal.confirmDiscardUnsaved();
-            const p2 = modal.confirmDiscardUnsaved();
-            // Only one <dialog> in body.
-            const dialogCount = document.body._children.filter(
-                c => c.tagName === "DIALOG").length;
-            const same = p1 === p2;
-            modal._reset();
-            const r1 = await p1;
-            const r2 = await p2;
-            console.log(JSON.stringify({
-                same: same,
-                dialogCount: dialogCount,
-                r1: r1, r2: r2,
-            }));
-        ''')
-        assert out["same"] is True
-        assert out["dialogCount"] == 1
-        # Both resolve to the same Cancel value because _reset()
-        # cancels.
-        assert out["r1"] is False
-        assert out["r2"] is False
-
-    def test_dialog_detached_from_dom_after_resolution(self):
-        """After Cancel / Discard the <dialog> is removed from
-        document.body so a future invocation lands a fresh element.
-        Otherwise the body would accumulate one detached <dialog>
-        per Save / Generate cycle."""
-        out = _run_node('''
-            // First cycle: Cancel.
-            const p1 = modal.confirmDiscardUnsaved();
-            const d1 = document.body._children[document.body._children.length - 1];
-            d1.querySelector(\'[data-action="cancel"]\')
-              ._listeners.get("click")[0]();
-            await p1;
-            const dialogsAfter1 = document.body._children.filter(
-                c => c.tagName === "DIALOG").length;
-            // Second cycle: Discard.
-            const p2 = modal.confirmDiscardUnsaved();
-            const d2 = document.body._children[document.body._children.length - 1];
-            d2.querySelector(\'[data-action="discard"]\')
-              ._listeners.get("click")[0]();
-            await p2;
-            const dialogsAfter2 = document.body._children.filter(
-                c => c.tagName === "DIALOG").length;
-            console.log(JSON.stringify({
-                dialogsAfter1:  dialogsAfter1,
-                dialogsAfter2:  dialogsAfter2,
-                differentNodes: d1 !== d2,
-            }));
-        ''')
-        # Both cycles leave the body with no detached <dialog>s.
-        assert out["dialogsAfter1"] == 0
-        assert out["dialogsAfter2"] == 0
-        # And the second invocation built a NEW dialog node, not
-        # reused the disposed first one.
-        assert out["differentNodes"] is True
-
-    def test_subsequent_calls_after_close_get_fresh_modal(self):
-        """After a Cancel, a SUBSEQUENT call (not concurrent) gets
-        a fresh modal that resolves on its own buttons."""
-        out = _run_node('''
-            const p1 = modal.confirmDiscardUnsaved();
-            const d1 = document.body._children[document.body._children.length - 1];
-            d1.querySelector(\'[data-action="cancel"]\')
-              ._listeners.get("click")[0]();
-            const r1 = await p1;
-            const p2 = modal.confirmDiscardUnsaved();
-            const d2 = document.body._children[document.body._children.length - 1];
-            d2.querySelector(\'[data-action="discard"]\')
-              ._listeners.get("click")[0]();
-            const r2 = await p2;
-            console.log(JSON.stringify({ r1: r1, r2: r2 }));
-        ''')
-        assert out == {"r1": False, "r2": True}
-
-
-# ----- Dialog lifecycle ------------------------------------------ #
-
-
-class TestDialogLifecycle:
-
-    def test_showModal_called_on_open(self):
-        """The helper opens with showModal() (NOT show()) — the
-        difference is whether the page below is interactable while
-        the modal is up.  An unsaved-changes confirmation MUST
-        block interaction; show() leaves the page clickable."""
-        out = _run_node('''
-            // Wrap createElement so the dialog node tracks which
-            // open method was called.
-            const origCreate = document.createElement;
-            document.createElement = function (tag) {
-                const el = origCreate(tag);
-                if (tag === "dialog") {
-                    el._opensVia = null;
-                    el.showModal = function () {
-                        el._opensVia = "showModal";
-                        el._open = true;
-                    };
-                    el.show = function () {
-                        el._opensVia = "show";
-                        el._open = true;
-                    };
-                }
-                return el;
-            };
-            modal.confirmDiscardUnsaved();
-            const dialog = document.body._children[document.body._children.length - 1];
-            console.log(JSON.stringify({ opensVia: dialog._opensVia }));
-            modal._reset();
-        ''')
-        assert out["opensVia"] == "showModal"
-
-    def test_no_doc_returns_rejected_promise(self):
-        """If somehow the helper runs without a document (Node
-        without the DOM stub installed), it must NOT throw — it
-        returns a rejected Promise the caller can surface as a
-        UX-level error.
-
-        Reproduces the no-document state by wiping global.document
-        for this call only; the helper's fallback to ``root.document``
-        is what surfaces the missing-DOM case in real life (a stale
-        SSR import path, an embedded context without a window).
-        """
-        out = _run_node('''
-            global.document = undefined;
-            const p = modal.confirmDiscardUnsaved();
-            let rejected = false;
-            let msg = "";
-            try { await p; }
-            catch (e) { rejected = true; msg = e.message; }
-            console.log(JSON.stringify({
-                rejected: rejected,
-                msg:      msg,
-            }));
-        ''')
-        assert out["rejected"] is True
-        assert "no document" in out["msg"]
+def test_one_dialog_at_a_time_and_an_answered_one_leaves():
+    out = _run("""
+        const p1 = modal.confirm({ title: "first" });
+        const d1 = __last();
+        const p2 = modal.confirm({ title: "second" });
+        const first = await __settled(p1);
+        const open = __dialogs().length;
+        const d2 = __last();
+        __click(d2, "discard");
+        console.log(JSON.stringify({
+          first, open, second: await p2, left: __dialogs().length,
+          fresh: d1 !== d2,
+        }));
+    """)
+    assert out["first"] == {"settled": True, "value": False}, (
+        "a second question did not answer the first no")
+    assert out["open"] == 1, "two confirms stood on the page at once"
+    assert out["second"] is True and out["fresh"] is True
+    assert out["left"] == 0, "an answered dialog stayed on the page"

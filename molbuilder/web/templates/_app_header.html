@@ -80,6 +80,13 @@
      aria-label="System notifications" hidden></div>
 <script src="{{ url_for('static', filename='lib/app-notifications.js') }}" defer></script>
 <script src="{{ url_for('static', filename='lib/app-reload.js') }}" defer></script>
+{#- THE ONE CONFIRM (`lib/warning-modal.js`, `ui-contract.md` § 11): a yes/no
+    question any page asks -- the sidebar's overwrite, a canvas's discard, the
+    reload offer -- has one implementation, built on the one dialog component,
+    so it loads here, where every page includes it.  A module, so it runs
+    before the page is ready; the classic scripts read its global at a
+    click. -#}
+<script type="module" src="{{ url_for('static', filename='lib/warning-modal.js') }}"></script>
 
 {#- System-load monitor is mounted explicitly by the Results template
     (results.html) -- it lives in ``_system_load_monitor.html`` as a

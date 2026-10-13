@@ -206,6 +206,23 @@ The sources, and what each produces (all POST `/api/build/molecule` with
 | **RNA** | `rna` | A-form canonical | |
 | **Peptide** | `peptide` | AmberTools `tleap` | extended chain from a sequence |
 
+**One chain for the five generators** *(2026-10-13)*. Each source's panel
+checks its own input and names its request — SMILES and name, whose input is
+one line of text, through the slot's `generateText` (blank refused, the text
+trimmed); what follows is one chain, the panels' shared slot (`generate`,
+`modify/structure/panel-deps.js`): its dependencies resolved and checked, a
+missing one refused naming the panel, then the POST,
+then the page's load gate (`structurePage.loadIntoCanvas`, with the record of
+what made it), **under the page's fence** with a Cancel that aborts the
+request ([`ui-contract.md`](?doc=web/ui-contract.md) § 10 — a build is real
+server work, and a tab or folder taken meanwhile would lose or misplace the
+result), and **one answer for every panel**: `{ok: true, n_atoms,
+backend_used, warnings}` — the backend that built it when the server names it,
+the builder's warnings (a mismatched-duplex clash), `[]` when none —
+`{ok: false, cancelled: true}` when the gate declines or the fence's Cancel is
+pressed — nothing was put on the canvas, and no error is said — else `{ok:
+false, error}`.
+
 The tabs that show one file at a time — Structure optimization, Spectrum, the
 Results inspector — open a file through `projects.parser.openMolecule`, which
 replaces what the viewer holds after its own discard-unsaved check; the

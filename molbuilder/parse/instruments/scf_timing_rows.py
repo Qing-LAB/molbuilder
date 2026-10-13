@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 try:                                        # inside molbuilder
     from ..engines import molwatch_grammar as _MG

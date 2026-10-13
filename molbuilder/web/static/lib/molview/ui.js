@@ -1676,6 +1676,23 @@ function mountPanel(doc, card, model) {
     targetRow.appendChild(target);
     assign.appendChild(targetRow);
 
+    /* A RESERVED NAME TYPED SAYS SO (molview.md, *Typing a reserved name is
+     * allowed, and the viewer says so*): nothing refuses it -- a reserved name
+     * is just a label -- but the moment what is typed matches one, the line
+     * under the box says it is reserved and what it does, from the notes the
+     * chooser and the chip show (`labelNote`). */
+    const reservedSaid = el("p", "molviewer-selection-reserved-note");
+    reservedSaid.hidden = true;
+    assign.appendChild(reservedSaid);
+    const sayReserved = () => {
+        const typed = target.hidden ? "" : String(target.value || "").trim();
+        const note = labelNote.get(typed);
+        reservedSaid.hidden = !note;
+        reservedSaid.textContent = note
+            ? typed + " is a reserved name: " + note : "";
+    };
+    target.addEventListener("input", sayReserved);
+
     /* WHAT IS CHOSEN — three states, and they are three TYPES rather than three
      * strings: `undefined` before the list has been drawn, `null` for
      * "+ new label…", and a string for a label that exists.
@@ -1688,7 +1705,7 @@ function mountPanel(doc, card, model) {
     let chosen;
     const NO_NAME = "";     // the option's DOM value — a select carries strings
     // The free-text box is only in the way when an existing label is chosen.
-    const showNewBox = () => { target.hidden = chosen !== null; };
+    const showNewBox = () => { target.hidden = chosen !== null; sayReserved(); };
     chooser.addEventListener("change", () => {
         chosen = chooser.value || null;
         showNewBox();

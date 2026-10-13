@@ -5,6 +5,9 @@
  *
  * One component, on the global tokens, so a dialog cannot be half-designed
  * by accident: a class that nothing answers is visible the moment it renders.
+ * Its behaviour -- one at a time, Esc and a click off it cancel, the parts
+ * built in this vocabulary -- is `lib/dialog.js`, beside it, and the one
+ * confirm (`lib/warning-modal.js`) is built on it (`ui-contract.md` § 11).
  *
  * Vocabulary — the parts a modal actually has:
  *   .mb-dialog            the surface (and its ::backdrop)
@@ -58,6 +61,7 @@
     color: var(--text-secondary);
 }
 .mb-dialog input[type="text"],
+.mb-dialog input[type="number"],
 .mb-dialog input[type="file"] {
     font: inherit;
     padding: var(--space-xs) var(--space-sm);
@@ -70,7 +74,8 @@
     min-width: 0;
     width: 100%;
 }
-.mb-dialog input[type="text"]:focus-visible {
+.mb-dialog input[type="text"]:focus-visible,
+.mb-dialog input[type="number"]:focus-visible {
     outline: none;
     border-color: var(--accent);
     box-shadow: var(--focus-ring);

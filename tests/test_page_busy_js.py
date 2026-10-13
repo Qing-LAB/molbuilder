@@ -12,7 +12,11 @@ under guard, each named for its failure:
 * ``release()`` is idempotent and lowers the cover;
 * the KEYBOARD is fenced too, and Cancel is shown only with cancelers --
   Enter on the button just clicked would otherwise send again, uncovered
-  by any Cancel (§ 10).
+  by any Cancel (§ 10);
+* ``run`` -- the way an operation takes the fence -- releases when the
+  operation throws, and inside an outer claim runs there, neither throwing
+  nor lowering that claim: a stuck cover, or one lowered mid-operation, is
+  what a hand-rolled claim got wrong.
 """
 from __future__ import annotations
 
@@ -226,3 +230,37 @@ def test_the_keyboard_is_fenced_and_cancel_shows_only_with_cancelers():
     assert (out["hiddenWith"], out["focusWith"]) == (
         False, "page-busy-cancel"), out
 
+
+def test_run_releases_on_a_throw_and_composes_inside_a_claim():
+    """§ 10: ``run`` claims, runs and releases in a ``finally``; held
+    already, it runs the step inside the claim that holds it."""
+    out = _run_node('''
+        let during = null;
+        const got = await pageBusy.run("Saving…", [], async () => {
+            during = pageBusy.reason();
+            return 7;
+        });
+        const afterOk = pageBusy.isClaimed();
+        let thrown = null;
+        try {
+            await pageBusy.run("Failing…", [], async () => {
+                throw new Error("the operation failed");
+            });
+        } catch (e) { thrown = e.message; }
+        const afterThrow = pageBusy.isClaimed();
+        pageBusy.claim("outer op", []);
+        let inner = null;
+        await pageBusy.run("a step", [], async () => {
+            inner = pageBusy.reason();
+        });
+        const outerHeld = pageBusy.isClaimed() && pageBusy.reason();
+        pageBusy.release();
+        console.log(JSON.stringify({ during, got, afterOk, thrown,
+                                     afterThrow, inner, outerHeld }));
+    ''')
+    assert (out["during"], out["got"], out["afterOk"]) == ("Saving…", 7, False)
+    assert out["thrown"] == "the operation failed", out
+    assert out["afterThrow"] is False, "a thrown operation left the cover up"
+    assert out["inner"] == "outer op", "the step did not run inside the claim"
+    assert out["outerHeld"] == "outer op", (
+        "the step lowered the claim of the operation holding it")

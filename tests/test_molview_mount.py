@@ -1641,6 +1641,45 @@ def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out():
     )
 
 
+def test_typing_a_reserved_name_says_what_it_does():
+    """`web/molview.md`, *Typing a reserved name is allowed, and the viewer
+    says so*: nothing refuses it, but the moment what is typed matches a
+    reserved name, the line under the box says it is reserved and what it
+    does -- the silent failure it prevents is a group labelled `frozen_atoms`
+    as a note, held still in the next calculation.  An ordinary name says
+    nothing.
+
+    MUTATION THIS MUST FAIL AGAINST: the box's input listener dropped (only
+    the hover titles left, as before 2026-10-13)."""
+    out = _run(
+        """
+        globalThis.__nextAtoms = [
+            { index: 0, element: "C", x: 0, y: 0, z: 0, regions: [] },
+        ];
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        const card = host.querySelector(".molviewer-card");
+        const chooser = card.querySelector(".molviewer-selection-assign-select");
+        const box = card.querySelector(".molviewer-selection-new-label");
+        const said = card.querySelector(".molviewer-selection-reserved-note");
+        chooser.value = chooser.children[chooser.children.length - 1].value;
+        chooser.dispatch("change", { target: chooser });
+        const before = said.hidden;
+        box.value = "frozen_atoms";
+        box.dispatch("input", { target: box });
+        const reserved = { hidden: said.hidden, text: said.textContent };
+        box.value = "my_group";
+        box.dispatch("input", { target: box });
+        console.log(JSON.stringify({ before, reserved, plain: said.hidden }));
+        """
+    )
+    assert out["before"] is True
+    assert out["reserved"]["hidden"] is False, out
+    assert "frozen_atoms is a reserved name" in out["reserved"]["text"], out
+    assert "held still" in out["reserved"]["text"], out
+    assert out["plain"] is True, out
+
+
 def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
     """A label is offered, never retyped — a typo while retyping makes a SECOND
     label that looks like the first, which is a whole extra region as far as

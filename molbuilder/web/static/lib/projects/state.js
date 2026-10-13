@@ -724,6 +724,14 @@ async function navigateTo(absPath, opts) {
  *  Called once at sidebar init.  Idempotent. */
 export function setNavigateToImpl(fn) { _navigateToImpl = fn; }
 
+/** What a sidebar action says once it has run -- a refusal, a failure, an
+ *  archive that came out incomplete (`ui-contract.md` § 11): a row of the
+ *  notification bar.  Its words are its id, so the same words twice are one
+ *  row, counted, and different ones each keep their own. */
+export function tell(level, message) {
+  window.molbuilder.notify.show({ level, message, id: "projects: " + message });
+}
+
 export const projects = {
   getCurrentDir:       () => readSelectionSlot(SS_DIR),
   getCurrentFile:      () => readSelectionSlot(SS_FILE),

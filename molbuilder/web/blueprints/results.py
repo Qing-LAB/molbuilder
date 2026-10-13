@@ -22,8 +22,6 @@ Spec: ``docs/web/results.md``.
 """
 from __future__ import annotations
 
-import re
-
 from flask import Blueprint, jsonify, make_response, render_template, request
 
 bp = Blueprint("results", __name__)
@@ -111,8 +109,6 @@ def api_results_contract():
     cannot come to disagree about what a directory records."""
     from pathlib import Path
 
-    from flask import jsonify, request
-
     from molbuilder.parse.dirs.run_info import run_info
     from .files import _PickerError, _resolve_within_roots
 
@@ -157,8 +153,6 @@ def api_results_dir():
     door's own pick, the run the folder speaks for.
     """
     from pathlib import Path
-
-    from flask import jsonify, request
 
     from molbuilder import calcdirs
     from molbuilder.runs import folder_answer

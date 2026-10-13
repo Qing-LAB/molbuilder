@@ -15,7 +15,7 @@ bearing.
 
 ## 1. The conventions that are actually enforced
 
-These are held by a check — a test, the pre-commit hook, or review where the
+These are held by a check — a test, the milestone review, or review where the
 item says so:
 
 - **Layering — imports only point *down*.** The code is layered, and the two
@@ -26,15 +26,22 @@ item says so:
   upward import breaks shows up by itself: a cycle that fails every import of the
   module, or a shipped monitor file that fails beside the job
   (`tests/test_monitor_watches_a_live_run_e2e.py`).
-- **The parse layer stays pure.** The memory-only text parsers do **no I/O**
-  (`tests/parse/test_scripts.py::test_text_parsers_do_no_io`), the file parsers do
-  **no subprocess / network / threads**, and the parse core carries **no
-  engine-specific names** (`tests/parse/test_audit_gaps.py`). These keep the
+- **The parse layer stays pure.** The block readers take a string and do **no
+  I/O** (`tests/test_script_emit.py::test_the_block_readers_do_no_io`), the file
+  parsers do **no subprocess / network / threads**, and the parse core carries
+  **no engine-specific names** (`tests/parse/test_audit_gaps.py`). These keep the
   parse module reusable and testable without a filesystem.
-- **`pyflakes` on every commit.** A pre-commit hook runs pyflakes
-  (`.pre-commit-config.yaml`) — it doesn't lint style, only "would this actually
-  run" (undefined names, unused imports). Plus a `node -c` syntax check on any
-  changed `*.js`.
+- **The package is `pyflakes`-clean, checked at every milestone's review**
+  (`plans/plan.md` § 0a): `python -m pyflakes $(git ls-files 'molbuilder/*.py'
+  ':!:molbuilder/data/*')` answers nothing. It doesn't lint style, only "would
+  this actually run" (undefined names, unused imports). pyflakes reads no
+  `# noqa`, so an import kept for what importing does says so in code
+  (`importlib.import_module`), never in a comment. `molbuilder/data/` is left
+  out: nothing there is imported — the notebook server's config is executed by
+  Jupyter, which gives it its `c`. The tests, `tools/` and `scripts/` are not
+  clean yet (plan § 2, PYF-T). `.pre-commit-config.yaml` runs pyflakes and a
+  `node -c` syntax check on every commit where a person installs the hook;
+  nothing here depends on that.
 - **The tests a change touched gate its commit** — run through
   `tools/testrun.py`, chosen by what the change touched, e2e included; the whole
   suite only when that set cannot bound what could break
@@ -47,8 +54,8 @@ item says so:
   assert "the body doesn't contain X" without first pinning the status code.
 
 Two things worth internalising from the list: there is **no CI** — all of this is
-held locally, by the pre-commit hook and the tests run before a commit (there is
-no `.github/workflows/`); and the code runs from the tree (`pythonpath=["."]`,
+held locally, by review and the tests run before a commit (there is no
+`.github/workflows/`); and the code runs from the tree (`pythonpath=["."]`,
 **no `pip install -e`**).
 
 ## 2. The module-provenance header (advisory)
@@ -300,6 +307,6 @@ the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
 > here against code: `validate` uses `--engine` (not `--config`), defaults to
 > geometry-only, emits a JSON *object*, and exits non-zero only with
 > `--exit-on-error`; the CLI *does* have dedicated tests (five files, not "none");
-> and enforcement is pre-commit, not CI. The full command families
+> and nothing ran in CI. The full command families
 > (`envs`/`jobset`/`transport`/`checkpoint`/…) that the legacy table
 > omitted are included above.

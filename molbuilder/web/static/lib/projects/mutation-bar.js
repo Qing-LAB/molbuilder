@@ -23,7 +23,7 @@ import {
   chooseName, chooseUploadFile,
 } from "./dialogs.js";
 import {
-  projects, getProjectsRoot, SS_DIR, atProjectsRoot, readSelectionSlot,
+  projects, getProjectsRoot, SS_DIR, atProjectsRoot, readSelectionSlot, tell,
 } from "./state.js";
 import { openDir } from "./list.js";
 
@@ -137,7 +137,7 @@ async function _doDownloadZip() {
   }
   if (!out || !out.ok) {
     _setZipBusy(false, "");
-    window.alert((out && out.error) || "Could not build the archive.");
+    tell("error", (out && out.error) || "Could not build the archive.");
     return;
   }
   zipReport = _dirName(dir) + ".zip — " + _describeArchive(out);
@@ -145,9 +145,9 @@ async function _doDownloadZip() {
     // Not a tooltip matter: files the person expected to be in the
     // archive are not in it, and they have to know before they carry
     // it to another machine.
-    window.alert(
-      "Archive ready: " + zipReport + ".\n\nThose links point outside "
-      + "the projects tree, so their targets could not be included.");
+    tell("warn", "Archive ready: " + zipReport + ".  Those links point "
+        + "outside the projects tree, so their targets could not be "
+        + "included.");
   }
   // The bytes exist: this navigation starts the save immediately.
   _setZipBusy(true, "Saving…");
@@ -170,17 +170,15 @@ async function _doNewProject() {
   if (r && r.ok && r.path) {
     await openDir(r.path);
   } else {
-    window.alert((r && r.error) || "Project creation failed.");
+    tell("error", (r && r.error) || "Project creation failed.");
   }
 }
 
 async function _doNewFolder() {
   const currentDir = readSelectionSlot(SS_DIR) || getProjectsRoot();
   if (!currentDir || atProjectsRoot(currentDir)) {
-    window.alert(
-      "Cannot create a folder at the projects root.  "
-      + "Pick a project in the sidebar first.",
-    );
+    tell("warn", "Cannot create a folder at the projects root.  "
+        + "Pick a project in the sidebar first.");
     return;
   }
   const ctx = projects.relativeToProjects(currentDir) || "projects/";
@@ -197,17 +195,15 @@ async function _doNewFolder() {
   if (r && r.ok && r.path) {
     await openDir(r.path);
   } else {
-    window.alert((r && r.error) || "Folder creation failed.");
+    tell("error", (r && r.error) || "Folder creation failed.");
   }
 }
 
 async function _doUpload() {
   const currentDir = readSelectionSlot(SS_DIR) || getProjectsRoot();
   if (!currentDir || atProjectsRoot(currentDir)) {
-    window.alert(
-      "Cannot upload to the projects root.  Pick a project in the "
-      + "sidebar first.",
-    );
+    tell("warn", "Cannot upload to the projects root.  Pick a project in "
+        + "the sidebar first.");
     return;
   }
   const ctx = projects.relativeToProjects(currentDir) || "projects/";
@@ -216,7 +212,7 @@ async function _doUpload() {
   const r = await projects.upload(currentDir, file);
   if (r && r.aborted) return;
   if (!r || !r.ok) {
-    window.alert((r && r.error) || "Upload failed.");
+    tell("error", (r && r.error) || "Upload failed.");
   }
 }
 

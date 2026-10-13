@@ -76,7 +76,8 @@ def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:
     mask instead would answer a question nobody asked -- and silently, since a
     misspelled strategy would run a ladder the caller did not name.
     """
-    from ..config.pyscf import PYSCF_STAGE_PRESETS, STAGE_STRATEGY_PRESETS
+    from ..config.pyscf import PYSCF_STAGE_PRESETS
+    from ..config.stages import STAGE_STRATEGY_PRESETS
     from ..config.siesta import SIESTA_STAGE_NAMES
     from ..task import Stage
 

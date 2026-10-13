@@ -88,7 +88,6 @@ def check_electrode_labels_are_frozen(struct: Structure, *,
     already there.
     """
     from ..transport.sort import ELECTRODE_LABELS
-    from ..structure import FROZEN_LABEL
 
     regions = getattr(struct, "regions", None) or {}
     lead_idx = {i for name, idxs in regions.items()

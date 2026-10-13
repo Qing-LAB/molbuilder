@@ -187,7 +187,7 @@ class TestHappyPath:
                 canvas:   canvasArgs,
             }));
         ''')
-        assert out["envelope"] == {"ok": True, "n_atoms": 23}
+        assert out["envelope"] == {"ok": True, "n_atoms": 23, "warnings": []}
         assert out["body"] == {"kind": "peptide", "input": "ACD"}
         # The residues survive, because an envelope has a slot for them
         # and a coordinate document does not.

@@ -1993,6 +1993,39 @@ def prepared_stages(base, task) -> List[str]:
                    for kind in ("task", "bench"))]
 
 
+def shape_fixed(base, task) -> Optional[Dict[str, str]]:
+    """The shape ``task`` holds FIXED, and why -- ``{"shape", "why"}`` -- or
+    ``None`` while it may still change (`web/task-setup.md` § 4).
+
+    Two reasons, one answer: the calculation's KIND fixes it
+    (`task.fixed_by_kind` -- a transport calculation is hierarchical), or the
+    calculation has PRODUCED (:func:`prepared_stages`) -- a prepared stage
+    lies where the shape put it, and another shape would orphan every deck,
+    output and warm file there; the way back is the state saved before its
+    first prep (`job-system.md` § 5.0).  Asked by the page that draws the
+    shape card and by the save that refuses another shape, so the two say
+    the same thing."""
+    from ..task import fixed_by_kind
+    from ..template import a_kind
+    kind = fixed_by_kind(task.calculation)
+    if kind is not None:
+        said = a_kind(task.calculation)
+        return {"shape": kind["shape"],
+                "why": f"{said[:1].upper()}{said[1:]} is {kind['shape']} -- "
+                       f"the kind fixes it, so no other is offered."}
+    done = prepared_stages(base, task) if task.shape else []
+    if not done:
+        return None
+    from .commands import rollback
+    return {"shape": task.shape,
+            "why": f"This calculation is {task.shape}, and its shape is "
+                   f"fixed once it has produced: {', '.join(done)} "
+                   f"{'is' if len(done) == 1 else 'are'} prepared, laid out "
+                   f"{task.shape}, and another shape would orphan every deck, "
+                   f"output and warm file there (task-setup.md § 4).  To "
+                   f"change it: " + rollback("its first prep", base=base)}
+
+
 @dataclass
 class Described:
     """The calculation as the entry read it, ONCE (W55 B1): its description

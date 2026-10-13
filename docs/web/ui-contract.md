@@ -21,8 +21,8 @@ distinct thing**:
 ```mermaid
 flowchart TD
   T["lib/tokens.css<br/>every color, space, size — as var(--…)"]
-  PS["lib/page-shell.css<br/>body · .app-header · .card · form controls<br/>.status severity · <b>.issues-panel — the finding row</b><br/>the app shell · .dock-panel · .card-row"]
-  FC["lib/form-components.css<br/>.app-grid · .hint · shared buttons · viewer chrome<br/>a finding beside its .schema-field"]
+  PS["lib/page-shell.css<br/>body · .app-header · .card · form controls<br/>button and its .primary / .danger · .status severity<br/><b>.issues-panel — the finding row</b><br/>the app shell · .dock-panel · .card-row"]
+  FC["lib/form-components.css<br/>.app-grid · .hint · viewer chrome<br/>a finding beside its .schema-field"]
   M["module sheets<br/>projects-sidebar · fused-layout · selection-panel · form-schema · the 3D embed"]
   P["the tab's own sheet<br/>composition only: max-width, per-instance values"]
   T --> PS --> FC --> M --> P
@@ -31,8 +31,8 @@ flowchart TD
 | Layer | Owns |
 |---|---|
 | `lib/tokens.css` | **only** the design tokens — every color, spacing, size, and type value (§ 2). Nothing else. |
-| `lib/page-shell.css` | the shell (`body`, `.app-header` — the banner, a class since 2026-09-28 because a bare `header` selector dressed every `<header>` on the page — `main`), the generic form controls, `.card`, the `.status` message severities, **the finding row (`.issues-panel`, `.issue-item[data-severity]`)** — *moved here from form-components 2026-09-11: one renderer for every surface needs one stylesheet on every surface, and `/results` loads no form sheet but mounts MolView, which draws notices through that renderer* — the app-shell + sidebar dock geometry, `.card-row`, the spinner, **the toggle button** (`.toggle-button`, a button that stays pressed — `aria-pressed`) and **the number table** (`.num-table`, numbers in columns — the transport report's tables, the frame-set card on the Transport tab and Task setup) *(2026-10-10)*. |
-| `lib/form-components.css` | the **shared form-page widgets** — the form grid, hints, the shared buttons, the viewer chrome, the engine strip (`.tabs` / `.tab-btn` / `.tab-panel`, whose behaviour is `lib/tab-strip.js`), the two-column page and its travelling rail (`.page-cols` / `.page-main` / `.page-aside`, Task setup's and the Transport tab's — `--page-aside-w`), and the one findings rule only a form can use (a finding sitting beside its `.schema-field` control). |
+| `lib/page-shell.css` | the shell (`body`, `.app-header` — the banner, a class since 2026-09-28 because a bare `header` selector dressed every `<header>` on the page — `main`), the generic form controls and the button's two variants (`.primary`, `.danger` — *moved here from form-components 2026-10-13: a dialog opens on every page, and its answer wears one*, § 11), `.card`, the `.status` message severities, **the finding row (`.issues-panel`, `.issue-item[data-severity]`)** — *moved here from form-components 2026-09-11: one renderer for every surface needs one stylesheet on every surface, and `/results` loads no form sheet but mounts MolView, which draws notices through that renderer* — the app-shell + sidebar dock geometry, `.card-row`, the spinner, **the toggle button** (`.toggle-button`, a button that stays pressed — `aria-pressed`) and **the number table** (`.num-table`, numbers in columns — the transport report's tables, the frame-set card on the Transport tab and Task setup) *(2026-10-10)*. |
+| `lib/form-components.css` | the **shared form-page widgets** — the form grid, hints, the viewer chrome, the engine strip (`.tabs` / `.tab-btn` / `.tab-panel`, whose behaviour is `lib/tab-strip.js`), the two-column page and its travelling rail (`.page-cols` / `.page-main` / `.page-aside`, Task setup's and the Transport tab's — `--page-aside-w`), and the one findings rule only a form can use (a finding sitting beside its `.schema-field` control). |
 | `lib/<module>/*.css` | one self-contained component each (the projects sidebar, the fused MolView card, the selection panel, the form renderer, the embed), class-prefixed so they don't collide. |
 | `<tab>/style.css` | **composition only** — arranging a page: max-width, centering, per-instance token values. |
 
@@ -276,6 +276,13 @@ own `[hidden]` guard (§ 6).
   name hits they stop agreeing, in a way no one is looking for. The rule: *a
   `font:` shorthand names `var(--font-sans)`, or it is not written* — reach for
   the longhands instead, which leave the family alone.
+- **How long ago, said one way** (2026-10-13). An age shown to a person — a
+  result's *(5m ago)* in the Results picker, a channel's *reached 2h ago* on
+  This machine — comes from one helper, `lib/time-ago.js`
+  (`window.molbuilder.timeAgo`): each unit until one and a half of the next
+  (90 s, 90 min, 36 h), *just now* below that, past 30 days the date itself,
+  nothing when there is no moment. Two tabs had grown their own, and one said *7s ago* where the other
+  said *just now*.
 - **Rhythm** — spacing, type sizes, and radii all come from the `--space-*` /
   `--text-*` / `--radius*` scales. **Spacing is a 4px grid** (2026-08-23):
   every step is a whole number of 4px units, so any two spacings are
@@ -507,7 +514,7 @@ before concluding anything.
 | rule | verdict | how it was settled |
 |---|---|---|
 | `.workflow-group--stage` | **live** | composed from `role`; 11 SIESTA fields carry it; 2 matches measured on the Build form |
-| `.mb-dialog-title`, `.mb-dialog-field` | **declared API — keep** | both dialog modes opened; neither uses them. But `dialog.css`'s own header names them as the component's vocabulary, and that sheet exists *because* JS once wrote ten classes no stylesheet answered and the browser painted its own chrome. The one file that put a bare `<h2>` where the vocabulary says `.mb-dialog-title` was `modify/structure/save-dialog.js`, **retired 2026-09-02** when the Save panel moved onto `projects.chooseSavePath` — so the drift left with it rather than being patched. Any new dialog uses the vocabulary. |
+| `.mb-dialog-title`, `.mb-dialog-field` | **live** *(2026-10-13)* | `lib/dialog.js`'s parts (`dialogTitle`, `dialogField`) build every dialog of the one component (§ 11), and the one confirm wears the title. Until then they were declared API that no dialog used. |
 | `.mb-dialog::backdrop` | **live** | Trap 3 — not selectable, matches on every modal |
 | `.inspector-section{,-header,-hint}`, `.fdf-actions`, `.fdf-output`, `.disabled-tip`, `.structure-error`, `.source-body-error` | **no builder found — deliberately NOT deleted** | no literal reference and no composition prefix, but never observed in their own state either |
 | `.workflow-group-apply-btn` | **deleted 2026-09-29** | the "Apply suggestions" button a card's suggested defaults were applied with. It stood in the row above until the electronic state retired suggestions altogether ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a: a blank field is the instruction, the chemistry card its answer, and nothing is filled in), so no builder can come back for it |
@@ -569,10 +576,21 @@ geometry exists before the first claim can raise it.  Visibility is the
 ```js
 import { pageBusy } from "../lib/page-busy.js";
 
-pageBusy.claim("Generating 3-D structure…", [() => controller.abort()]);
-try   { ... the operation ... }
-finally { pageBusy.release(); }
+const ctl = new AbortController();
+await pageBusy.run("Generating 3-D structure…", [() => ctl.abort()],
+                   () => theOperation(ctl.signal));
 ```
+
+**`run` is the way an operation takes it**: it claims, runs the operation,
+and releases in a `finally`, so the recovery contract below is kept in one
+place rather than at every caller.  When the fence is already held, `run`
+runs the operation inside that claim: with the mouse and the keyboard
+fenced, only the operation holding it can reach another `run`, so the
+caller is one of its steps, and two steps compose in one claim. The step
+runs under that claim's Cancel — its own cancelers are not added — because
+the operation holding the fence owns what Cancel stops.
+`claim` and `release` stay for the fence's own tests; a classic script
+reaches the same object as `window.molbuilder.pageBusy`.
 
 While claimed, a full-window cover shows the reason, a spinner, and — when
 the operation can be cancelled — a **Cancel** button.  The whole window is
@@ -591,7 +609,8 @@ are cancelers, is the human override, always clickable — it runs them but
 does **not** release (the operation's own `finally` does, after its abort
 unwinds).
 There is no silent stuck state.  `claim()` while claimed **throws** —
-one heavy operation at a time is the design, not a limitation.
+one heavy operation at a time is the design, not a limitation; `run` is
+how a step joins the operation already holding it.
 
 **Who claims it.**  User-*triggered* heavy or risky operations only.
 Periodic or automatic work (the GPU sampler, status polling) never
@@ -607,3 +626,43 @@ moves shared state from code should do the same.
 **The honest limit.**  The fence protects this window against its own
 user.  A second browser tab, or another user of a shared server, still
 reaches the backend — that class stays server-side, case by case.
+
+## 11. Dialogs — one component, and never the browser's own
+
+*(2026-10-13, the CSS pass: two dialog vocabularies had grown — the shared
+`.mb-dialog` and the sidebar's own, grey with dark-blue and dark-red fills —
+and 27 native `prompt()` / `confirm()` / `alert()` calls stood beside them.)*
+
+**One component.** Its look is `lib/dialog.css` and its behaviour
+`lib/dialog.js`, beside it: `openDialog` shows a `<dialog>` modally and
+resolves with its answer — **one at a time** (opening a second answers the
+first with its cancel value), and Esc, the native close and a click off the
+surface all cancel; `settleDialog` answers it; the parts (`newDialog`,
+`dialogTitle`, `dialogHint`, `dialogField`, `dialogError`, `dialogActions`)
+build it in the one vocabulary; `askFields` is the form dialog — labelled
+fields checked as typed, the answer's button enabled only while the answer
+can stand, its refusal on a line that is reserved so nothing moves under the
+pointer. Buttons run cancel first and the answer last, which wears `.primary`
+or, when it costs something, `.danger` — both in `page-shell.css`, because a
+dialog opens on every page. The sidebar's questions (`lib/projects/dialogs.js`)
+and the tree picker (`lib/tree-picker.js`) are built on it.
+
+**One confirm.** A yes/no question is `warningModal.confirm({title, body,
+confirmLabel})` (`lib/warning-modal.js`), loaded by the page header on every
+page: its costly answer marked `.danger`, Cancel focused, so the key that
+closes it keeps what you had. It is built on the component, so it keeps its
+rules: one dialog at a time, a dialog opened over it answering it no, and Esc
+or a click off it answering no. The costliest questions — deleting a project or a topic folder with everything in
+it — are answered by **typing the thing's name** (`confirmByTyping`), so a
+stray Enter cannot answer them. A control that arms on its first click and acts
+on its second — Task setup's column removal, This machine's channel removal —
+asks no question, and is not one.
+
+**Never the browser's own.** No `prompt()`, `confirm()` or `alert()`: a native
+dialog blocks the whole page and the browser's automation with it, takes no
+part of the page's look, and stands outside the page fence's keyboard rule
+(§ 10). A question is a dialog; what an action *says* afterwards — a refusal,
+a failure, an archive that came out incomplete — is a notification
+(`notify.show`, [`notifications.md`](?doc=web/notifications.md)) or the page's
+own status line. MolView's hosts already held this for a clear
+([`molview.md`](?doc=web/molview.md) § 6.7a).

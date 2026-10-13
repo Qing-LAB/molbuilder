@@ -9,7 +9,9 @@ does nothing' was the user-reported bug this door closes.
 The PROJECT half's dialog flow needs a real DOM (this module's own dialogs)
 and is covered at three other levels: the server route's overwrite contract
 (test_web.py), the menu-to-door handoff (test_molview_mount.py), and the
-live walk-through in the plan's done-when.
+live walk-through in the plan's done-when.  What the door makes of the
+dialog's ANSWER is its own, and is run here with the dialog answered by a
+stand-in (`_ANSWERED`).
 """
 from __future__ import annotations
 
@@ -47,12 +49,28 @@ globalThis.window = globalThis;
 """
 
 
-def _run(snippet: str):
+# The save-where dialog, answered: the door's `./dialogs.js` resolves to a
+# module whose `chooseSavePath` answers `globalThis.__picked`.
+_ANSWERED = r"""
+const { registerHooks } = await import("node:module");
+const __dialogs = "data:text/javascript," + encodeURIComponent(
+    "export async function chooseSavePath() { return globalThis.__picked; }\n"
+    + "export async function confirmDestructive() { return true; }\n");
+registerHooks({ resolve(spec, ctx, next) {
+    return spec === "./dialogs.js"
+            && String(ctx.parentURL).endsWith("/lib/projects/molview-doors.js")
+        ? { url: __dialogs, shortCircuit: true } : next(spec, ctx);
+} });
+"""
+
+
+def _run(snippet: str, *, answered: bool = False):
     prelude = (
         "const { molviewFiles } = await import("
         + json.dumps(DOOR.resolve().as_uri()) + ");\n"
     )
-    return run_node([], prelude + snippet, globals_js=_DOM)
+    return run_node([], prelude + snippet,
+                    globals_js=_DOM + (_ANSWERED if answered else ""))
 
 
 def test_a_pair_downloads_as_one_archive_holding_both_files():
@@ -158,3 +176,22 @@ def test_the_gates_verdicts_ride_the_doors_result():
     assert out["notices"] == [{"severity": "warn",
                                "message": "the origin is user-owned",
                                "about": "cell.edit"}]
+
+
+def test_a_name_typed_with_its_extension_is_saved_as_typed():
+    """`projects.md` § 3: the door adds the extension to the name it asked
+    for, and a name typed with it -- in any case -- is taken as typed: a
+    second `.xyz` names a file nobody chose (V1.14, the 2026-09-23 walk)."""
+    out = _run(r"""
+        const saved = [];
+        for (const typed of ["P/x", "P/x.xyz", "P/x.XYZ"]) {
+            globalThis.__picked = typed;
+            __calls.length = 0;
+            await molviewFiles.save("project", "x",
+                                    { structure: { elements: ["C"] } });
+            saved.push(__calls.find(
+                (c) => c.url.includes("/api/structure/save")).body.path);
+        }
+        console.log(JSON.stringify(saved));
+    """, answered=True)
+    assert out == ["P/x.xyz", "P/x.xyz", "P/x.XYZ"], out

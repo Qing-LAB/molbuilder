@@ -234,14 +234,20 @@ make ([`stages.md § 6.7`](?doc=engines/stages.md),
 hierarchical — its five rungs exchange files through their own attempts
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) — so on a
 transport folder the card shows that shape, says the kind fixes it, and offers
-no other (the folder answer's `fixed`, § 5.3).
+no other.
 
 **It is fixed once the calculation has produced.** Before the first produce it is
 free to change; after, it would orphan every deck, output and warm file. So once
 a stage is prepared — as a run or as a benchmark; a prep that was refused counts
-for none — Save refuses another shape, naming the way back: the state saved
-before the first prep, restored ([`execution/job-system.md`](?doc=execution/job-system.md)
-§ 5.0).
+for none — the card shows the shape fixed, and Save refuses another, both naming
+the way back: the state saved before the first prep, restored
+([`execution/job-system.md`](?doc=execution/job-system.md) § 5.0).
+
+**One answer says both**: `prep.shape_fixed` — the shape and why, the way back
+included, or nothing while it may still change. The folder answer carries it
+(`shape_fixed`) and Save refuses with it, so the card and the refusal say the
+same sentence. When the folder's plan is one its readers refuse, the card says
+that instead, and Save refuses another shape with the same words.
 
 ---
 
@@ -930,6 +936,17 @@ memory value, blur, press *+ Add stage* straight away, and the block the
 first was writing was gone. *(User, 2026-09-02: "before the parameter is
 ready or persistently saved, the user can't do anything … what the fuck do
 you care about half a second".)*
+
+**Two ways out, both fenced.** An edit of the stage table, the machine rows
+or the plan changes the model and leaves by one door, `commitEdit`, which
+writes the editor's text from the model and repaints every panel drawn from
+it. The queue and notify cards hold their values in their own controls and
+write at each change, so they patch the document in place (`patchDoc`):
+both copies move, nothing is repainted, and the control being used keeps its
+place. Both run under the fence through `pageBusy.run`, so the claim is
+taken in one way, never hand-rolled at a card. A hand-over's first proposal
+is not an edit: it builds the description from what came over (§ 3), under
+the same fence, and draws the cards from it.
 
 The save was the case § 10 already names as its own example — a multi-step
 operation — and only its own button was disabled, so the sidebar stayed live

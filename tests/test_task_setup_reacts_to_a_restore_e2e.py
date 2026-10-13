@@ -92,31 +92,22 @@ def _editor_text(page):
         "        return cm ? cm.CodeMirror.getValue() : ''; }")
 
 
-def _dialogs(page, answers):
-    """Answer the panel's own prompts, the way a person at the keyboard does.
+def _note(page, note):
+    """Answer Save-a-state's question, the way a person does: the page's own
+    dialog (`ui-contract.md` § 11), its note field filled and its answer
+    clicked."""
+    asked = page.locator("dialog.mb-dialog[open]")
+    asked.wait_for(state="visible", timeout=20000)
+    asked.locator("input[data-role='note']").fill(note)
+    asked.locator("[data-action='confirm']").click()
 
-    Every step of this walk is a real control and two of them ask a
-    question: Commit prompts for the note (`_onCommitClick`), Restore
-    confirms before rewriting the folder (`_onRestoreClick`).  Playwright
-    DISMISSES dialogs unless told otherwise, which silently cancels the
-    action and leaves the assertion failing for a reason that has nothing
-    to do with the contract.
 
-    ``page.on`` rather than ``page.once``: `_restore` asks a SECOND time
-    when the server refuses because of unsaved work, and a handler that has
-    already fired would let that one be dismissed -- turning a restore that
-    the code correctly guarded into a silent no-op the test blames on the
-    announcement.
-    """
-    queue = list(answers)
-
-    def _answer(d):
-        if d.type == "prompt":
-            d.accept(queue.pop(0) if queue else "")
-        else:
-            d.accept()
-
-    page.on("dialog", _answer)
+def _yes(page):
+    """Answer the one confirm (`warningModal.confirm`) with its costly
+    choice -- Restore asks before rewriting the folder."""
+    asked = page.locator("dialog.molbuilder-warning-modal[open]")
+    asked.wait_for(state="visible", timeout=20000)
+    asked.locator("[data-action='discard']").click()
 
 
 def _show_panel(page):
@@ -158,7 +149,8 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
     "rearranged behind an open tab", which is by definition something the
     tab did not do.
     """
-    _dialogs(page, ["after the edit"])
+    native = []
+    page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
 
     slot = json.dumps(str(calc_dir))
     page.add_init_script(
@@ -207,6 +199,7 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
     write_task(calc_dir / "task.json",
                dataclasses.replace(before, stages=(renamed,)))
     page.click("#ps-checkpoint-commit-btn")
+    _note(page, "after the edit")
     page.wait_for_function(
         "() => [...document.querySelectorAll('.ps-checkpoint-list-item')]"
         "        .some(li => li.textContent.includes('after the edit'))",
@@ -242,6 +235,7 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
         row.click();                          // expand to reveal the actions
         row.querySelector('[data-action="restore"]').click();
     }""")
+    _yes(page)
 
     # ── the tab must catch up on its own ────────────────────────────────
     # The wait is bounded and its failure is SWALLOWED, so the assertion
@@ -263,3 +257,4 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
         "`projects.publishFolderChanged(dir)` and the tab must re-read on "
         "`onFolderChanged` (`web/projects.md` § 4.1).  Right now a person "
         "is looking at stages the folder no longer has.")
+    assert native == [], f"a native dialog was opened: {native}"

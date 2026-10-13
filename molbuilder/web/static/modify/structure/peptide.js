@@ -28,7 +28,7 @@
 (function (root) {
     "use strict";
 
-    var BUILD_URL = "/api/build/molecule";
+    var BUILD_URL = root.molbuilder.panelDeps.BUILD_URL;
     // One-letter amino-acid codes the backend's tleap path
     // recognises.  Used for client-side validation so the user
     // gets a clear inline error before the request hits the
@@ -36,11 +36,10 @@
     var VALID_AA = /^[ACDEFGHIKLMNPQRSTVWY]+$/i;
 
     // The panel's dependency slots, wired once for all five panels
-    // (`panel-deps.js`): `configure` is the test door, `_lazyResolve` the
-    // production re-read.
+    // (`panel-deps.js`): `configure` is the test door; the chain resolves
+    // and checks them at each call.
     var _deps = root.molbuilder.panelDeps.make(root);
     var configure = _deps.configure;
-    var _lazyResolve = _deps.resolve;
 
     /**
      * Generate a peptide from a one-letter amino-acid sequence.
@@ -67,60 +66,10 @@
                      + JSON.stringify(sequence),
             });
         }
-        // Lazy-resolve dependencies in case the script-load
-        // order put us above page.js / lib/*.
-        _lazyResolve();
-        if (!_deps.fetch) {
-            return Promise.reject(new Error(
-                "peptide: fetch not configured"));
-        }
-        if (!_deps.structurePage) {
-            return Promise.reject(new Error(
-                "peptide: structurePage not configured"));
-        }
-        return _deps.fetch(BUILD_URL, {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({
-                kind: "peptide", input: trimmed,
-            }),
-        })
-        .then(function (r) {
-            return r.json().then(function (body) {
-                return { httpOk: r.ok, body: body };
-            });
-        })
-        .then(function (env) {
-            var body = env.body || {};
-            if (!env.httpOk || !body.ok) {
-                return {
-                    ok:    false,
-                    error: body.error
-                            || ("HTTP error from " + BUILD_URL),
-                };
-            }
-            return _deps.structurePage.loadIntoCanvas(
-                { structure: body.structure },
-                { kind: "peptide",
-                  generator_input: { sequence: trimmed } }
-            ).then(function (gate) {
-                if (!gate.ok) {
-                    return { ok: false, cancelled: true };
-                }
-                // loadIntoCanvas installs into an empty viewer or appends to
-                // the open structure (the MODEL door; the FILE door is
-                // projects.parser.openMolecule -- not used here).
-                return { ok: true, n_atoms: body.n_atoms };
-            });
-        })
-        .catch(function (err) {
-            return {
-                ok:    false,
-                error: "Could not reach " + BUILD_URL + ": "
-                     + (err && err.message ? err.message
-                                            : String(err)),
-            };
-        });
+        return _deps.generate(
+            { kind: "peptide", input: trimmed },
+            { kind: "peptide", generator_input: { sequence: trimmed } },
+            "Building the peptide\u2026");
     }
 
     var _wired = false;

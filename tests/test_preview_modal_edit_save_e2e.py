@@ -315,9 +315,9 @@ def test_preview_modal_disables_edit_for_large_files(
 
 def test_preview_modal_close_prompts_when_dirty(
         page, flask_server, tmp_path, monkeypatch):
-    """Closing the modal with unsaved edits must prompt the user.
-    Pin the dialog so a future refactor that drops the
-    ``confirm()`` (or trades it for a silent close) surfaces."""
+    """Closing the modal with unsaved edits asks first -- the one confirm
+    (`ui-contract.md` § 11), never the browser's own: Cancel keeps the
+    editor open with the edit, the costly answer closes it unsaved."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     proj = tmp_path / "myproj"
     proj.mkdir()
@@ -335,27 +335,35 @@ def test_preview_modal_close_prompts_when_dirty(
     page.wait_for_function(
         "() => !document.getElementById('ps-preview-save-btn').disabled"
     )
+    native = []
+    page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
+    asked = page.locator("dialog.molbuilder-warning-modal[open]")
 
-    # Dialog handler — Playwright only honours one listener per
-    # page, so we flip a flag controlling accept/dismiss inside
-    # the same handler.
-    decisions = {"action": "dismiss"}
-    page.on("dialog", lambda d: (
-        d.accept() if decisions["action"] == "accept" else d.dismiss()
-    ))
+    # Esc asks the same question -- the key that closes the preview must
+    # not also answer the confirm it opens.
+    page.keyboard.press("Escape")
+    asked.wait_for(state="visible", timeout=5000)
+    page.wait_for_timeout(300)
+    assert asked.is_visible(), "Esc answered the question it had just asked"
+    asked.locator("[data-action='cancel']").click()
+    asked.wait_for(state="detached", timeout=5000)
 
-    # First close: dismiss the confirm; modal stays open.
+    # A close: Cancel; the modal stays open.
     page.locator(".ps-preview-close-footer").click()
-    page.wait_for_timeout(200)
+    asked.wait_for(state="visible", timeout=5000)
+    asked.locator("[data-action='cancel']").click()
+    asked.wait_for(state="detached", timeout=5000)
     assert not page.evaluate(
         "() => document.getElementById('ps-preview-modal').hidden"
     ), "modal closed despite the dirty-confirm declining"
 
-    # Second close: accept; modal closes.
-    decisions["action"] = "accept"
+    # Second close: the costly answer; the modal closes.
     page.locator(".ps-preview-close-footer").click()
+    asked.wait_for(state="visible", timeout=5000)
+    asked.locator("[data-action='discard']").click()
     page.wait_for_function(
         "() => document.getElementById('ps-preview-modal').hidden"
     )
+    assert native == [], f"a native dialog was opened: {native}"
     # The on-disk file was NOT modified (we declined to save).
     assert target.read_text() == "hello\n"

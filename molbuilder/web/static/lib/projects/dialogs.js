@@ -1,391 +1,150 @@
-/* projects/dialogs.js -- modal dialogs for sidebar mutations
+/* projects/dialogs.js -- the projects sidebar's questions
  * (see web/projects.md § 4).
  *
- * Each export opens a <dialog>, lets the user type / pick something,
- * and resolves with the chosen value (or null on cancel / ESC).  No
- * HTTP here — the caller dispatches to projects.{mkdir, move, copy,
- * rename, upload, createProject} after the dialog resolves.
+ * Each export asks one question and resolves with the answer (or null on
+ * cancel / Esc).  No HTTP here -- the caller dispatches to
+ * projects.{mkdir, move, copy, rename, upload, createProject} after the
+ * dialog resolves.
  *
- * Single-instance: opening dialog A while dialog A is already open
- * returns the existing pending promise; opening dialog A while B is
- * open closes B and starts A.  No modal stacking.
- *
- * Each dialog runs the warning-modal pattern (`lib/warning-modal.js`):
- *   * ESC + Cancel + clicking off the modal all resolve to null
- *   * primary input gets initial focus
- *   * destructive actions (overwrite) default-focus on Cancel
+ * Built on the ONE modal component (`lib/dialog.js`, `lib/dialog.css`):
+ * one dialog at a time, its look and its keys said once there.  A yes/no
+ * question is the one confirm, `warningModal.confirm`.
  */
 
-import { apiList } from "./api.js";
+import { askFields } from "../dialog.js";
 import { getProjectsRoot } from "./state.js";
-
-// ─── Single-instance bookkeeping ─────────────────────────────────── //
-
-let _active = null;
-
-function _settle(value) {
-  if (!_active) return;
-  const { dialog, resolve } = _active;
-  _active = null;
-  try { dialog.close(); } catch (_) {}
-  try {
-    if (dialog.parentNode) dialog.parentNode.removeChild(dialog);
-  } catch (_) {}
-  resolve(value);
-}
-
-function _open(dialog) {
-  // If a prior dialog is open, kill it (resolves to null so its
-  // caller gets the "cancelled" signal).  No stacking — one modal
-  // at a time keeps the user's focus + the ESC contract sane.
-  if (_active) _settle(null);
-  document.body.appendChild(dialog);
-  const resolve = { fn: null };
-  const promise = new Promise((res) => { resolve.fn = res; });
-  _active = { dialog, resolve: resolve.fn };
-  // Identity-guard the close/cancel listeners: ``dialog.close()`` fires ``close`` on a
-  // QUEUED task, so when one dialog settles and the caller SYNCHRONOUSLY opens the next
-  // (e.g. Copy: chooseDestinationDir -> chooseName), the FIRST dialog's late ``close``
-  // must not resolve the SECOND (now-active) one to null and tear it down.  Only settle
-  // when the event's own dialog is still the active one.
-  dialog.addEventListener("cancel", () => {
-    if (_active && _active.dialog === dialog) _settle(null);
-  });
-  dialog.addEventListener("close", () => {
-    if (_active && _active.dialog === dialog) _settle(null);
-  });
-  try {
-    if (typeof dialog.showModal === "function") dialog.showModal();
-    else if (typeof dialog.show === "function") dialog.show();
-  } catch (_) {}
-  return promise;
-}
 
 // ─── Filename / dirname validation ───────────────────────────────── //
 
-// Same rules as the rename endpoint: basename-only, no separators,
-// not . / .. .
-function _validateName(raw) {
+/** The rename endpoint's rules -- a basename: no separators, not . / ..
+ *  -- as `askFields`' refusal: ``null`` when it can stand. */
+function _nameRefusal(raw) {
   const s = (raw || "").trim();
-  if (!s) return { ok: false, reason: "" };
+  if (!s) return "";
   if (s.indexOf("/") !== -1 || s.indexOf("\\") !== -1) {
-    return {
-      ok: false,
-      reason: "Name cannot contain '/' or '\\\\'.",
-    };
+    return "Name cannot contain '/' or '\\'.";
   }
-  if (s === "." || s === "..") {
-    return { ok: false, reason: "Reserved name." };
-  }
-  return { ok: true, value: s };
+  if (s === "." || s === "..") return "Reserved name.";
+  return null;
 }
 
-// ─── DOM scaffolding ─────────────────────────────────────────────── //
-
-function _mkDialog(cls) {
-  const dlg = document.createElement("dialog");
-  dlg.className = "molbuilder-projects-dialog " + cls;
-  return dlg;
-}
-
-function _mkHeader(text) {
-  const h = document.createElement("h2");
-  h.textContent = text;
-  return h;
-}
-
-function _mkParagraph(text, cls) {
-  const p = document.createElement("p");
-  if (cls) p.className = cls;
-  p.textContent = text;
-  return p;
-}
-
-function _mkErrorSlot() {
-  const p = document.createElement("p");
-  p.className = "molbuilder-projects-dialog-error";
-  p.setAttribute("data-role", "error");
-  p.hidden = true;
-  return p;
-}
-
-function _mkLabeledInput(labelText, opts) {
-  opts = opts || {};
-  const wrap = document.createElement("label");
-  wrap.className = "molbuilder-projects-dialog-field";
-
-  const span = document.createElement("span");
-  span.textContent = labelText;
-  wrap.appendChild(span);
-
-  const input = document.createElement("input");
-  input.type = opts.type || "text";
-  input.value = opts.value || "";
-  input.setAttribute("autocomplete", "off");
-  input.setAttribute("spellcheck", "false");
-  if (opts.placeholder) input.placeholder = opts.placeholder;
-  if (opts.dataRole)    input.setAttribute("data-role", opts.dataRole);
-  wrap.appendChild(input);
-
-  return { wrap, input };
-}
-
-function _mkActions(buttons) {
-  const row = document.createElement("div");
-  row.className = "molbuilder-projects-dialog-actions";
-  buttons.forEach((b) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = b.label;
-    btn.setAttribute("data-action", b.action);
-    if (b.cls) btn.className = b.cls;
-    btn.addEventListener("click", b.onClick);
-    row.appendChild(btn);
-  });
-  return row;
-}
-
-// ─── chooseFolderName / choose project ───────────────────────────── //
+// ─── chooseName ──────────────────────────────────────────────────── //
 
 /**
- * Generic "name + Cancel/OK" dialog.  Used by:
- *   * new project (intent="project")
- *   * new folder  (intent="folder", contextDir provided)
- *   * rename      (intent="rename", initial = current basename)
- *
- * Resolves to a non-empty string (validated basename) on OK or
- * null on cancel / ESC.
+ * A name for a new project, a new folder, a rename, a copy -- resolves to
+ * the validated basename, or null.
  *
  * @param {object} opts
- * @param {string} opts.title    — modal heading
- * @param {string} opts.label    — input label
- * @param {string} [opts.initial] — initial value (selected on focus)
- * @param {string} [opts.hint]   — small hint paragraph below input
- * @param {string} [opts.confirmLabel] — primary button text (default "OK")
+ * @param {string} opts.title    — the dialog's heading
+ * @param {string} opts.label    — the field's label
+ * @param {string} [opts.initial] — the value offered (selected)
+ * @param {string} [opts.hint]   — why, in smaller prose
+ * @param {string} [opts.confirmLabel] — the answer's button (default "OK")
  * @param {string} [opts.placeholder]
  */
-export function chooseName(opts) {
+export async function chooseName(opts) {
   opts = opts || {};
-  const dialog = _mkDialog("molbuilder-projects-name-dialog");
-  dialog.appendChild(_mkHeader(opts.title || "Name"));
-  if (opts.hint) {
-    dialog.appendChild(_mkParagraph(opts.hint,
-      "molbuilder-projects-dialog-hint"));
-  }
-  const { wrap, input } = _mkLabeledInput(opts.label || "Name", {
-    value:       opts.initial || "",
-    placeholder: opts.placeholder || "",
-    dataRole:    "name",
+  const got = await askFields({
+    title: opts.title || "Name",
+    hint: opts.hint,
+    fields: [{ name: "name", label: opts.label || "Name",
+               value: opts.initial || "", placeholder: opts.placeholder }],
+    validate: (v) => _nameRefusal(v.name),
+    confirmLabel: opts.confirmLabel || "OK",
   });
-  dialog.appendChild(wrap);
-
-  const err = _mkErrorSlot();
-  dialog.appendChild(err);
-
-  let confirmBtn;
-  function _validate() {
-    const v = _validateName(input.value);
-    err.textContent = v.ok ? "" : v.reason;
-    err.hidden = v.ok;
-    if (confirmBtn) confirmBtn.disabled = !v.ok;
-    return v;
-  }
-
-  const actions = _mkActions([
-    {
-      label:   "Cancel",
-      action:  "cancel",
-      onClick: () => _settle(null),
-    },
-    {
-      label:   opts.confirmLabel || "OK",
-      action:  "confirm",
-      cls:     "is-primary",
-      onClick: () => {
-        const v = _validate();
-        if (v.ok) _settle(v.value);
-      },
-    },
-  ]);
-  confirmBtn = actions.querySelector('[data-action="confirm"]');
-  dialog.appendChild(actions);
-
-  input.addEventListener("input", _validate);
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const v = _validate();
-      if (v.ok) _settle(v.value);
-    }
-  });
-
-  const p = _open(dialog);
-  try {
-    input.focus();
-    if (typeof input.select === "function") input.select();
-  } catch (_) {}
-  _validate();
-  return p;
+  return got ? got.name.trim() : null;
 }
 
 // ─── chooseFrame ─────────────────────────────────────────────────── //
 
 /**
- * Which frame of a file holding several (`web/tabs.md` § 2): a tab that holds
- * one frame asks before it loads one.  Counted from 1, as the frame bar counts
- * (`model/structure.md` § 2.2e).
- *
- * Resolves to the frame NUMBER (1 … count) on Load, or null on cancel / ESC.
+ * Which frame of a file holding several (`web/tabs.md` § 2): counted from
+ * 1, as the frame bar counts (`model/structure.md` § 2.2e).  Resolves to the
+ * frame NUMBER (1 … count), or null.
  *
  * @param {object} opts
- * @param {string} opts.title   — modal heading (the file's name)
- * @param {number} opts.count   — how many frames the file holds
+ * @param {string} opts.title    — the dialog's heading (the file's name)
+ * @param {number} opts.count    — how many frames the file holds
  * @param {number} [opts.initial] — the number offered (default 1)
  */
-export function chooseFrame(opts) {
+export async function chooseFrame(opts) {
   opts = opts || {};
   const count = Number(opts.count) || 0;
-  const dialog = _mkDialog("molbuilder-projects-frame-dialog");
-  dialog.appendChild(_mkHeader(opts.title || "Which frame?"));
-  dialog.appendChild(_mkParagraph(
-    "This file holds " + count + " frames -- which one do you want to load?",
-    "molbuilder-projects-dialog-hint"));
-  const { wrap, input } = _mkLabeledInput("Frame (1 … " + count + ")", {
-    type:     "number",
-    value:    String(opts.initial || 1),
-    dataRole: "frame",
-  });
-  input.min = "1";
-  input.max = String(count);
-  input.step = "1";
-  dialog.appendChild(wrap);
-
-  const err = _mkErrorSlot();
-  dialog.appendChild(err);
-
-  let confirmBtn;
-  function _validate() {
-    const n = Number(String(input.value).trim());
-    const ok = Number.isInteger(n) && n >= 1 && n <= count;
-    err.textContent = ok ? "" : "A frame is a whole number from 1 to "
-      + count + ".";
-    err.hidden = ok;
-    if (confirmBtn) confirmBtn.disabled = !ok;
-    return ok ? n : null;
-  }
-
-  const actions = _mkActions([
-    { label: "Cancel", action: "cancel", onClick: () => _settle(null) },
-    {
-      label:   "Load",
-      action:  "confirm",
-      cls:     "is-primary",
-      onClick: () => {
-        const n = _validate();
-        if (n != null) _settle(n);
-      },
+  const got = await askFields({
+    title: opts.title || "Which frame?",
+    hint: "This file holds " + count
+      + " frames -- which one do you want to load?",
+    fields: [{ name: "frame", label: "Frame (1 … " + count + ")",
+               type: "number", value: String(opts.initial || 1),
+               attrs: { min: 1, max: count, step: 1 } }],
+    validate: (v) => {
+      const n = Number(String(v.frame).trim());
+      return Number.isInteger(n) && n >= 1 && n <= count ? null
+        : "A frame is a whole number from 1 to " + count + ".";
     },
-  ]);
-  confirmBtn = actions.querySelector('[data-action="confirm"]');
-  dialog.appendChild(actions);
-
-  input.addEventListener("input", _validate);
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const n = _validate();
-      if (n != null) _settle(n);
-    }
+    confirmLabel: "Load",
   });
-
-  const p = _open(dialog);
-  try {
-    input.focus();
-    if (typeof input.select === "function") input.select();
-  } catch (_) {}
-  _validate();
-  return p;
+  return got ? Number(String(got.frame).trim()) : null;
 }
 
-// ─── Upload dialog ───────────────────────────────────────────────── //
+// ─── chooseUploadFile ────────────────────────────────────────────── //
 
 /**
- * Pick a file from disk + confirm upload to the current directory.
- * Resolves to the selected File on confirm or null on cancel.
+ * A file from disk to upload into the current directory -- resolves to the
+ * File, or null.
  *
  * @param {object} opts
- * @param {string} opts.contextDir  — destination dir basename (for the hint)
+ * @param {string} opts.contextDir — the destination's name, for the hint
  */
-export function chooseUploadFile(opts) {
+export async function chooseUploadFile(opts) {
   opts = opts || {};
-  const dialog = _mkDialog("molbuilder-projects-upload-dialog");
-  dialog.appendChild(_mkHeader("Upload file"));
-  if (opts.contextDir) {
-    dialog.appendChild(_mkParagraph(
-      `Uploaded into ${opts.contextDir}.`,
-      "molbuilder-projects-dialog-hint",
-    ));
-  }
+  const got = await askFields({
+    title: "Upload file",
+    hint: opts.contextDir ? "Uploaded into " + opts.contextDir + "." : null,
+    fields: [{ name: "file", label: "Pick a file", type: "file" }],
+    validate: (v) => (v.file ? null : ""),
+    confirmLabel: "Upload",
+  });
+  return got ? got.file : null;
+}
 
-  const field = document.createElement("label");
-  field.className = "molbuilder-projects-dialog-field";
-  const span = document.createElement("span");
-  span.textContent = "Pick a file";
-  field.appendChild(span);
-  const input = document.createElement("input");
-  input.type = "file";
-  input.setAttribute("data-role", "file");
-  field.appendChild(input);
-  dialog.appendChild(field);
+// ─── confirmByTyping ─────────────────────────────────────────────── //
 
-  const err = _mkErrorSlot();
-  dialog.appendChild(err);
-
-  let confirmBtn;
-  function _validate() {
-    const ok = input.files && input.files.length > 0;
-    err.textContent = ok ? "" : "";
-    err.hidden = ok || !input.files;
-    if (confirmBtn) confirmBtn.disabled = !ok;
-  }
-
-  const actions = _mkActions([
-    {
-      label:   "Cancel",
-      action:  "cancel",
-      onClick: () => _settle(null),
-    },
-    {
-      label:   "Upload",
-      action:  "confirm",
-      cls:     "is-primary",
-      onClick: () => {
-        if (input.files && input.files.length > 0) {
-          _settle(input.files[0]);
-        }
-      },
-    },
-  ]);
-  confirmBtn = actions.querySelector('[data-action="confirm"]');
-  dialog.appendChild(actions);
-
-  input.addEventListener("change", _validate);
-
-  const p = _open(dialog);
-  try { input.focus(); } catch (_) {}
-  _validate();
-  return p;
+/**
+ * The costliest questions -- deleting a project, a directory with
+ * everything in it -- are answered by TYPING the thing's name, so a stray
+ * Enter cannot answer them.  Resolves true when the name was typed and
+ * confirmed, false otherwise.
+ *
+ * @param {object} opts
+ * @param {string} opts.title
+ * @param {string} opts.body          — what will be lost
+ * @param {string} opts.phrase        — the name to type
+ * @param {string} [opts.confirmLabel] — default "Delete"
+ */
+export async function confirmByTyping(opts) {
+  opts = opts || {};
+  const phrase = String(opts.phrase || "");
+  const got = await askFields({
+    title: opts.title || "Confirm",
+    hint: opts.body,
+    fields: [{ name: "typed", label: "Type \u201c" + phrase
+                                   + "\u201d to confirm" }],
+    validate: (v) => (v.typed.trim() === phrase ? null : ""),
+    confirmLabel: opts.confirmLabel || "Delete",
+    danger: true,
+  });
+  return got !== null;
 }
 
 // ─── Destination-dir picker (tree) ───────────────────────────────── //
 
 /**
- * Show a tree of the projects directory; user picks a folder to
- * be the destination of a move/copy.  Resolves to the absolute
- * picked path, or null on cancel.
+ * A folder of the projects tree, the destination of a move or a copy --
+ * resolves to its absolute path, or null.
  *
  * @param {object} opts
- * @param {string} opts.title   — modal heading (e.g. "Move to…")
+ * @param {string} opts.title   — the dialog's heading (e.g. "Move to…")
  */
 export async function chooseDestinationDir(opts) {
   // Delegates to the ONE pop-out picker (lib/tree-picker.js) --
@@ -400,41 +159,20 @@ export async function chooseDestinationDir(opts) {
   });
 }
 
-// ─── Confirm overwrite (for move + copy when destination matches) ── //
+// ─── confirmDestructive ──────────────────────────────────────────── //
 
 /**
- * Confirm a destructive action with the user.  Used for sidecar-
- * overwrite warnings + future bulk-action confirmations.  Resolves
- * to true on confirm, false on cancel.
+ * A destructive yes/no -- an overwrite, a delete.  The ONE confirm
+ * (`warningModal.confirm`): its costly choice marked `.danger`, Cancel first
+ * and focused.  Resolves true on confirm, false otherwise.
  */
 export function confirmDestructive(opts) {
   opts = opts || {};
-  const dialog = _mkDialog("molbuilder-projects-confirm-dialog");
-  dialog.appendChild(_mkHeader(opts.title || "Confirm"));
-  if (opts.body) {
-    dialog.appendChild(_mkParagraph(opts.body));
-  }
-  const actions = _mkActions([
-    {
-      label:   "Cancel",
-      action:  "cancel",
-      onClick: () => _settle(false),
-    },
-    {
-      label:   opts.confirmLabel || "Proceed",
-      action:  "confirm",
-      cls:     "is-destructive",
-      onClick: () => _settle(true),
-    },
-  ]);
-  dialog.appendChild(actions);
-  const p = _open(dialog);
-  // Default focus on Cancel (the safe action) for destructive flows.
-  try {
-    const cancel = dialog.querySelector('[data-action="cancel"]');
-    if (cancel) cancel.focus();
-  } catch (_) {}
-  return p;
+  return window.molbuilder.warningModal.confirm({
+    title: opts.title || "Confirm",
+    body: opts.body || "",
+    confirmLabel: opts.confirmLabel || "Proceed",
+  });
 }
 
 /**

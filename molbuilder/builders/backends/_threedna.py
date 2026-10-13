@@ -89,6 +89,7 @@ from typing import Optional
 
 import numpy as np
 
+from ... import repo_root as _repo_root
 from ...structure import Structure
 from ._common import (parse_pdb_to_structure, select_chain,
                       verify_backbone_connectivity)
@@ -149,9 +150,6 @@ def _find_in_tree() -> Optional[_Threedna]:
     ``x3dna-v2.4-linux-64bit.tar.gz`` (file, not dir) or
     ``x3dna_notes/`` (dir, but missing bin/fiber + config/).
     """
-    # Imported inside the function: this module is in the package
-    # import chain, so a module-level import would cycle.
-    from molbuilder import repo_root as _repo_root
     repo_root = _repo_root()
     for candidate in sorted(repo_root.glob("x3dna*")):
         if candidate.is_dir() and _looks_complete(str(candidate)):
@@ -648,7 +646,6 @@ def _unavailable_message() -> str:
       * a one-line non-commercial-license reminder;
       * the names of the fallback backends (amber, rdkit).
     """
-    from molbuilder import repo_root as _repo_root
     repo_root = _repo_root()
     in_tree_glob = repo_root / "x3dna*"
     env_root = os.environ.get("X3DNA", "(unset)")

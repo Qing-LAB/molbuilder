@@ -161,7 +161,9 @@ given, so it needed a UI layer to decide one, and the tab's copy of that layer
 went with it — § 5):*
 
 0. It asks **where**: a folder, then a name (`chooseSavePath`). Cancel either
-   and nothing is written.
+   and nothing is written. The name is asked without its extension, which the
+   door adds (`.xyz`; a picture's own); a name typed with it, in any case, is
+   taken as typed — `x.xyz` is saved as `x.xyz`, never `x.xyz.xyz`.
 1. The caller has already asked MolView for the structure
    (`molview.data.exportFile()` → `{name, structure}`: one envelope, the
    range's frames and their rows inside it — data, not bytes).
@@ -175,9 +177,9 @@ went with it — § 5):*
 Why the server writes the sidecar: a browser-written sidecar had no schema
 stamp, so the *load* door rejected it — a save-then-reload trap. Letting the
 server own the write closes that. If the file already exists, the
-server answers with a "needs overwrite" signal and the door returns
-`{ ok:false, needsOverwrite:true }`, so the tab can show its overwrite dialog and
-retry with `{ overwrite:true }`.
+server answers `409 {needsOverwrite: true}`; the door itself asks — the one
+confirm, naming the file and its sidecar — and on a yes posts again with
+`{ overwrite: true }`, on a no answers `cancelled`. The tab never sees the 409.
 
 ```mermaid
 flowchart TB
@@ -261,8 +263,13 @@ touch it. The parts:
   only the items that apply shown (a project or topic folder shows just its
   type-to-confirm Delete). No menu appears when nothing applies.
 - **Dialogs** — the modal pop-ups for naming a file, choosing a destination
-  folder, picking an upload, and confirming a delete. Only one is ever open;
-  opening another closes the first.
+  folder, picking an upload, and confirming a delete, all the app's one dialog
+  component ([`ui-contract.md`](?doc=web/ui-contract.md) § 11). Only one is
+  ever open; opening another closes the first. A delete is the one confirm
+  (`warningModal.confirm`); a project or topic folder's delete asks for its
+  name to be typed. What an action says afterwards — *Rename failed: …*, a
+  refusal at the projects root — is a notification, never the browser's own
+  alert.
 - **The preview pop-up** — a view/edit window for **any** file. Two things
   open it: the row's **View** item, and a **double-click on the Results tab**,
   whose "use this file" action is to show the file rather than mount it

@@ -908,17 +908,18 @@ rest finished inside that window on the other seven.
 
 ## 7. What gates a commit
 
-There is **no CI**. Two things gate a commit, and only the first is a hook:
+There is **no CI**. What gates a commit is **the tests the change touched**;
+the package's pyflakes check is the milestone review's
+([`conventions.md`](?doc=process/conventions.md) § 1), and the pre-commit hook
+(`.pre-commit-config.yaml`, installed by `make precommit`) runs file hygiene,
+pyflakes and a `node -c` syntax check only where a person installs it.
 
-- **The pre-commit hook** (`.pre-commit-config.yaml`, installed by
-  `make precommit`): file hygiene, pyflakes, and a `node -c` syntax check on
-  each changed `*.js`.
-- **The tests the change touched**, run through `tools/testrun.py` (§ 6.1)
-  before committing: the unit's own tests and every test file that touches a
-  name the change moved or added. The set is found by what the change touched,
-  never by layer, so it holds the touched areas' e2e tests too — the
-  2026-06-14 workspace-dispatcher clobber shipped through three commits
-  because the e2e test that caught it sat behind `-m "not e2e"`.
+The tests the change touched run through `tools/testrun.py` (§ 6.1) before
+committing: the unit's own tests and every test file that touches a name the
+change moved or added. The set is found by what the change touched, never by
+layer, so it holds the touched areas' e2e tests too — the 2026-06-14
+workspace-dispatcher clobber shipped through three commits because the e2e
+test that caught it sat behind `-m "not e2e"`.
 
 The whole suite is not a step before every commit *(user, 2026-09-30)*. It
 runs when the touched set cannot bound what could break — a change that moves

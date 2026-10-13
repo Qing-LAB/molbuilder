@@ -95,7 +95,7 @@ def _normalised_dict(
     if identity:
         from molbuilder.structure import Structure as _Structure
         try:
-            _scratch = _Structure(
+            _Structure(                  # built for its checks alone
                 elements=["X"] * n_atoms_total,
                 positions=[[0.0, 0.0, 0.0]] * n_atoms_total,
                 atom_names=identity.get("atom_names"),

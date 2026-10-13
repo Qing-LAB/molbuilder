@@ -27,14 +27,13 @@
 (function (root) {
     "use strict";
 
-    var BUILD_URL = "/api/build/molecule";
+    var BUILD_URL = root.molbuilder.panelDeps.BUILD_URL;
 
     // The panel's dependency slots, wired once for all five panels
-    // (`panel-deps.js`): `configure` is the test door, `_lazyResolve` the
-    // production re-read.
+    // (`panel-deps.js`): `configure` is the test door; the chain resolves
+    // and checks them at each call.
     var _deps = root.molbuilder.panelDeps.make(root);
     var configure = _deps.configure;
-    var _lazyResolve = _deps.resolve;
 
 
     /**
@@ -48,86 +47,9 @@
      *                    n_atoms?: number}>}
      */
     function generate(smiles) {
-        if (typeof smiles !== "string" || !smiles.trim()) {
-            return Promise.resolve({
-                ok: false, error: "Enter a SMILES string first." });
-        }
-        // Lazy-resolve dependencies in case the script-load
-        // order put us above page.js / lib/*.
-        _lazyResolve();
-        if (!_deps.fetch) {
-            return Promise.reject(new Error(
-                "smiles: fetch not configured"));
-        }
-        if (!_deps.structurePage) {
-            return Promise.reject(new Error(
-                "smiles: structurePage not configured"));
-        }
-        var trimmed = smiles.trim();
-        // Page busy fence (ui-contract.md § 10): the embed is real
-        // server work, and while it runs, a tab switch or sidebar
-        // click would abandon or retarget the result.  Cover the
-        // window; Cancel aborts the request; the finally releases.
-        var busy = (root.molbuilder && root.molbuilder.pageBusy) || null;
-        var ctl  = (typeof AbortController === "function")
-                       ? new AbortController() : null;
-        if (busy) {
-            busy.claim("Generating 3-D structure from SMILES…",
-                       ctl ? [function () { ctl.abort(); }] : []);
-        }
-        return _deps.fetch(BUILD_URL, {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ kind: "smiles", input: trimmed }),
-            signal:  ctl ? ctl.signal : undefined,
-        })
-        .then(function (r) {
-            return r.json().then(function (body) {
-                return { httpOk: r.ok, body: body };
-            });
-        })
-        .then(function (env) {
-            var body = env.body || {};
-            if (!env.httpOk || !body.ok) {
-                return {
-                    ok:    false,
-                    error: body.error
-                            || ("HTTP error from " + BUILD_URL),
-                };
-            }
-            // Hand off to the page's load gate.
-            return _deps.structurePage.loadIntoCanvas(
-                { structure: body.structure },
-                { kind: "smiles",
-                  generator_input: { smiles: trimmed } }
-            ).then(function (gate) {
-                if (!gate.ok) {
-                    // Not applied — leave the workspace alone.
-                    return { ok: false, cancelled: true };
-                }
-                // loadIntoCanvas installs into an empty viewer or appends to
-                // the open structure (the MODEL door; the FILE door is
-                // projects.parser.openMolecule -- not used here).
-                return { ok: true, n_atoms: body.n_atoms,
-                         backend_used: body.backend_used };
-            });
-        })
-        .catch(function (err) {
-            // Network drop / JSON parse failure — surface as a
-            // single error envelope so the UI doesn't need to
-            // branch on exception types.
-            return {
-                ok:    false,
-                error: "Could not reach " + BUILD_URL + ": "
-                     + (err && err.message ? err.message
-                                            : String(err)),
-            };
-        })
-        .finally(function () {
-            // The recovery contract (ui-contract.md § 10): the fence releases on
-            // every path -- success, refusal, cancel, network drop.
-            if (busy) busy.release();
-        });
+        return _deps.generateText(smiles, "smiles",
+            "Enter a SMILES string first.",
+            "Generating 3-D structure from SMILES\u2026");
     }
 
     /**

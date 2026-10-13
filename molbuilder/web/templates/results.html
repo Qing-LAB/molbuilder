@@ -227,8 +227,7 @@
    frame, selection, camera) persists + restores on reload.  "Read-only" means no EDIT
    controls, NOT no persistence. #}
 {# The shared MolView + workspace stack -- ONE include, not a pasted copy
-   (_molview_scripts.html: vendor 3Dmol + molview/index.js + workspace/dispatcher.js +
-   warning-modal). #}
+   (_molview_scripts.html: vendor 3Dmol + molview/index.js + workspace/dispatcher.js). #}
 {% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/inspectors/lifecycle.js') }}"></script>
 {#- The one element builder the record viewers below share (bench-summary,
@@ -252,6 +251,7 @@
    (trajectory + spectra below).  MUST load before the adapters that
    call ``makePartialInspector`` from it. #}
 <script src="{{ url_for('static', filename='lib/inspectors/_partial_inspector_factory.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/time-ago.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/results/file-picker.js') }}"></script>
 {# The Run panel listens to the picker's events and nothing else; a module,
    so it is deferred -- it registers before the picker's first scan, which

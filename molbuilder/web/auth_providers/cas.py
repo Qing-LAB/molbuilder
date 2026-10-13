@@ -28,6 +28,8 @@ from typing import Mapping, Optional, Tuple
 
 from flask import url_for, request, redirect
 
+from ..auth import authenticate
+
 
 def _cas_client(entry: Mapping):
     """Build a python-cas client for this provider entry.
@@ -106,8 +108,6 @@ def start_flow(app, entry: Mapping):
 def finish_flow(app, entry: Mapping):
     """Validate the ticket sent by CAS, extract the identity, hand
     off to ``auth.authenticate``."""
-    from ..auth import authenticate  # local import: avoid circular at import
-
     ticket = request.args.get("ticket")
     if not ticket:
         # User landed on the callback without a ticket (shouldn't

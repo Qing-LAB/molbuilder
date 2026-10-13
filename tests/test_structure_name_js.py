@@ -146,7 +146,7 @@ class TestHappyPath:
                 canvas:   canvasArgs,
             }));
         ''')
-        assert out["envelope"] == {"ok": True, "n_atoms": 9}
+        assert out["envelope"] == {"ok": True, "n_atoms": 9, "warnings": []}
         # POST body uses kind="name", NOT kind="smiles".
         assert out["body"] == {"kind": "name", "input": "ethanol"}
         # Canvas source provenance carries kind="name" + the

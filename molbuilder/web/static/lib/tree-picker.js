@@ -14,25 +14,16 @@
  * this module only displays it.  Listing goes through the same fenced
  * `projects` API the sidebar uses; nothing here touches HTTP directly.
  *
- * Dialog chrome: the shared `molbuilder-projects-dialog` class
- * (lib/dialog.css, the ONE modal sheet — which also owns every `tp-*`
- * rule this file writes).  Single-instance like every dialog: opening
- * while open settles the previous one to null first.
+ * Dialog chrome and behaviour: the ONE modal component (`lib/dialog.js`,
+ * `lib/dialog.css` -- which also owns every `tp-*` rule this file writes):
+ * one dialog at a time, Esc and a click off it answer null.
  */
 
+import {
+  dialogActions, dialogHint, dialogTitle, newDialog, openDialog, settleDialog,
+} from "./dialog.js";
 import { apiList } from "./projects/api.js";
 import { getProjectsRoot } from "./projects/state.js";
-
-let _active = null;
-
-function _settle(value) {
-  if (!_active) return;
-  const { dialog, resolve } = _active;
-  _active = null;
-  try { dialog.close(); } catch (_) { /* already closed */ }
-  dialog.remove();
-  resolve(value);
-}
 
 function _el(tag, cls, text) {
   const node = document.createElement(tag);
@@ -68,12 +59,10 @@ export async function pickPath(opts) {
   const mode = opts.mode || "dir";
   const root = getProjectsRoot();
   if (!root) return null;
-  if (_active) _settle(null);
 
-  const dialog = _el("dialog",
-    "molbuilder-projects-dialog molbuilder-tree-picker-dialog");
-  dialog.appendChild(_el("h2", null, opts.title || "Choose"));
-  dialog.appendChild(_el("p", "molbuilder-projects-dialog-hint",
+  const dialog = newDialog("molbuilder-tree-picker-dialog");
+  dialog.appendChild(dialogTitle(opts.title || "Choose"));
+  dialog.appendChild(dialogHint(
     opts.hint || (mode === "dir"
       ? "Click a folder to select it.  ▸ expands."
       : "Click an entry to select it.  ▸ expands a folder.")));
@@ -87,11 +76,6 @@ export async function pickPath(opts) {
   // selection never moves the rows under the pointer.
   const meta = _el("p", "tp-meta");
   dialog.appendChild(meta);
-
-  const err = _el("p", "molbuilder-projects-dialog-error");
-  err.setAttribute("data-role", "error");
-  err.hidden = true;
-  dialog.appendChild(err);
 
   let chosenPath = null;
   let confirmBtn = null;
@@ -278,32 +262,15 @@ export async function pickPath(opts) {
   rootUl.appendChild(rootNode);
   await _expand(rootNode);
 
-  const actions = _el("div", "molbuilder-projects-dialog-actions");
-  const cancel = _el("button", null, "Cancel");
-  cancel.type = "button";
-  cancel.setAttribute("data-action", "cancel");
-  cancel.addEventListener("click", () => _settle(null));
-  actions.appendChild(cancel);
-  confirmBtn = _el("button", "is-primary", opts.confirmLabel || "Choose");
-  confirmBtn.type = "button";
-  confirmBtn.setAttribute("data-action", "confirm");
+  const actions = dialogActions([
+    { label: "Cancel", action: "cancel", onClick: () => settleDialog(null) },
+    { label: opts.confirmLabel || "Choose", action: "confirm",
+      kind: "primary",
+      onClick: () => { if (chosenPath) settleDialog(chosenPath); } },
+  ]);
+  confirmBtn = actions.querySelector('[data-action="confirm"]');
   confirmBtn.disabled = true;
-  confirmBtn.addEventListener("click",
-    () => { if (chosenPath) _settle(chosenPath); });
-  actions.appendChild(confirmBtn);
   dialog.appendChild(actions);
 
-  dialog.addEventListener("cancel", (ev) => {   // ESC
-    ev.preventDefault();
-    _settle(null);
-  });
-  dialog.addEventListener("click", (ev) => {    // click off the panel
-    if (ev.target === dialog) _settle(null);
-  });
-
-  document.body.appendChild(dialog);
-  return new Promise((resolve) => {
-    _active = { dialog, resolve };
-    try { dialog.showModal(); } catch (_) { dialog.setAttribute("open", ""); }
-  });
+  return openDialog(dialog, null);
 }

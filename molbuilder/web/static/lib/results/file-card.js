@@ -18,7 +18,10 @@
 const NS = window.molbuilder || {};
 const C = NS.constants || {};
 
-const shown = { dir: "", files: [], name: "" };
+// ``dir`` is the panel's scope, ``recordDir`` the folder whose ``files``
+// the card holds -- one and the same, save for a run picked off the ladder,
+// which keeps the root's scope (the Run panel keeps the two apart alike).
+const shown = { dir: "", recordDir: "", files: [], name: "" };
 
 function baseName(path) {
     return String(path || "").replace(/\/+$/, "").split("/").pop();
@@ -78,6 +81,7 @@ if (C.EVENT_FILE_SELECTED) {
     document.addEventListener(C.EVENT_FILE_SELECTED, (evt) => {
         const d = (evt && evt.detail) || {};
         shown.dir = d.dir || "";
+        shown.recordDir = d.record_dir || d.dir || "";
         shown.files = d.files || [];
         shown.name = baseName(d.file);
         render();
@@ -88,6 +92,7 @@ if (C.EVENT_SCOPE_CHANGED) {
         const dir = ((evt && evt.detail) || {}).dir || "";
         if (dir !== shown.dir) {
             shown.dir = dir;
+            shown.recordDir = dir;
             shown.files = [];
             shown.name = "";
             render();
@@ -95,8 +100,9 @@ if (C.EVENT_SCOPE_CHANGED) {
     });
 }
 /* The sidebar's single click: a preview, and the card follows it -- only
- * inside the folder the panel shows, whose files the scan has already
- * answered for.
+ * inside the folder whose files the card holds (``recordDir``), which the
+ * scan has already answered for: after a run is picked off the ladder, that
+ * run's folder, not the root's.
  *
  * SUBSCRIBED AT DOMContentLoaded, reading the namespace then: the sidebar's
  * module comes after this one on the page, so `molbuilder.projects` does not
@@ -107,8 +113,9 @@ function followTheSidebar() {
     if (!projects || typeof projects.onChange !== "function") return;
     projects.onChange((sel) => {
         const file = sel && sel.file;
-        if (!file || !shown.dir) return;
-        if (dirName(file).replace(/\/+$/, "") !== shown.dir.replace(/\/+$/, "")) return;
+        if (!file || !shown.recordDir) return;
+        if (dirName(file).replace(/\/+$/, "")
+                !== shown.recordDir.replace(/\/+$/, "")) return;
         shown.name = baseName(file);
         render();
     });

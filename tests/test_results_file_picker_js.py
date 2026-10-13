@@ -1,6 +1,6 @@
 """Unit tests for ``lib/results/file-picker.js`` driven via node.
 
-These tests cover the tab-level result-file picker's pure helpers (``parseDir``, ``formatRelativeTime``,
+These tests cover the tab-level result-file picker's pure helpers (``parseDir``,
 ``filterToResultFiles``, ``_labelForResult``) under Node in a
 minimal stub environment -- no Chromium, no network.
 
@@ -22,6 +22,8 @@ from molbuilder.runfiles import compose as _rf
 
 ROOT   = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/results/file-picker.js"
+# Loaded before the picker, as `results.html` loads it: the one "ago".
+TIME_AGO = ROOT / "molbuilder/web/static/lib/time-ago.js"
 
 
 def _run_node(snippet: str) -> object:
@@ -50,7 +52,8 @@ def _run_node(snippet: str) -> object:
         };
         global.fetch = () => Promise.resolve({ ok: false });
     """
-    full = bootstrap + "\n" + MODULE.read_text() + "\n" + snippet
+    full = "\n".join([bootstrap, TIME_AGO.read_text(), MODULE.read_text(),
+                      snippet])
     proc = subprocess.run(
         [node, "--input-type=commonjs", "-e", full],
         capture_output=True, text=True, timeout=15,
@@ -96,63 +99,6 @@ class TestParseDir:
             "console.log(JSON.stringify(r));"
         )
         assert out == {"dir": "", "name": ""}
-
-
-class TestFormatRelativeTime:
-
-    def test_just_now(self):
-        out = _run_node(
-            "const now = Date.now()/1000;\n"
-            "const r = window.molbuilder.resultsFilePicker."
-            "formatRelativeTime(now - 7);\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == "7s ago"
-
-    def test_minutes(self):
-        out = _run_node(
-            "const now = Date.now()/1000;\n"
-            "const r = window.molbuilder.resultsFilePicker."
-            "formatRelativeTime(now - 180);\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == "3m ago"
-
-    def test_hours(self):
-        out = _run_node(
-            "const now = Date.now()/1000;\n"
-            "const r = window.molbuilder.resultsFilePicker."
-            "formatRelativeTime(now - 7200);\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == "2h ago"
-
-    def test_days(self):
-        out = _run_node(
-            "const now = Date.now()/1000;\n"
-            "const r = window.molbuilder.resultsFilePicker."
-            "formatRelativeTime(now - 2 * 86400);\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == "2d ago"
-
-    def test_future_timestamp_clamped(self):
-        """Clock skew: a 'future' mtime clamps to 0s, not negative."""
-        out = _run_node(
-            "const now = Date.now()/1000;\n"
-            "const r = window.molbuilder.resultsFilePicker."
-            "formatRelativeTime(now + 100);\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == "0s ago"
-
-    def test_null_returns_empty(self):
-        out = _run_node(
-            "const r = window.molbuilder.resultsFilePicker."
-            "formatRelativeTime(null);\n"
-            "console.log(JSON.stringify(r));"
-        )
-        assert out == ""
 
 
 class TestFilterToResultFiles:
@@ -470,7 +416,6 @@ class TestAPISurface:
             "console.log(JSON.stringify({"
             "  hasMount:               typeof api.mount === 'function',"
             "  hasParseDir:            typeof api.parseDir === 'function',"
-            "  hasFormatRelativeTime:  typeof api.formatRelativeTime === 'function',"
             "  hasFilterToResultFiles: typeof api.filterToResultFiles === 'function',"
             "  hasGroupResultFiles:    typeof api.groupResultFiles === 'function',"
             "  hasLabelForResult:      typeof api._labelForResult === 'function'"
@@ -479,7 +424,6 @@ class TestAPISurface:
         assert out == {
             "hasMount":               True,
             "hasParseDir":            True,
-            "hasFormatRelativeTime":  True,
             "hasFilterToResultFiles": True,
             "hasGroupResultFiles":    True,
             "hasLabelForResult":      True,

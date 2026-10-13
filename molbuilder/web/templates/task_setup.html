@@ -54,8 +54,7 @@
         <div class="ts-state" id="ts-state" data-state="empty">
           <div>
             <span class="ts-state-title" id="ts-state-title">Nothing selected</span>
-            <p class="ts-state-body" id="ts-state-body">Pick a calculation folder
-              in the sidebar to read its description.</p>
+            <p class="ts-state-body ts-keeps-lines" id="ts-state-body">Pick a calculation folder in the sidebar to read its description.</p>
             {#- WHAT A SAVE'S CHECK SAID (gate ③, workflow.md § 9): the
                 description's warnings, row by row -- drawn by
                 lib/validation-findings.js, the one renderer
@@ -117,8 +116,9 @@
         </div>
         <p class="ts-needs" id="ts-shape-needs">Needed before this can be
           written</p>
-        {#- A KIND THAT FIXES THE SHAPE says so (task-setup.md § 4). -#}
-        <p class="hint" id="ts-shape-fixed" hidden></p>
+        {#- A FIXED SHAPE says so -- its kind fixes it, or the calculation
+            has produced, with the way back (task-setup.md § 4). -#}
+        <p class="hint ts-keeps-lines" id="ts-shape-fixed" hidden></p>
       </section>
 
       <!-- WHICH MACHINE.  Same component and same rationale as the shape
@@ -138,7 +138,7 @@
         <div class="ts-state" id="ts-target-state" hidden>
           <div>
             <div class="ts-state-title" id="ts-target-state-title"></div>
-            <p class="ts-state-body" id="ts-target-state-body"></p>
+            <p class="ts-state-body ts-keeps-lines" id="ts-target-state-body"></p>
           </div>
         </div>
 
@@ -317,7 +317,7 @@
             the shared state box is `loadFolder`'s -- a save ends by reopening
             the folder, which paints "Loaded ..." into it.  One surface, one
             owner. -#}
-        <p class="ts-ask-note" id="ts-save-said" hidden></p>
+        <p class="ts-ask-note ts-keeps-lines" id="ts-save-said" hidden></p>
       </details>
 
       <section class="card" id="ts-next-card" hidden>

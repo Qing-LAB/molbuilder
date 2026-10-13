@@ -122,15 +122,17 @@ export function closePreviewModal() {
 }
 
 /**
- * Close the modal, prompting first if the editor has unsaved
- * changes.  Wired to Esc / × / Close.
+ * Close the modal, asking first -- the one confirm -- if the editor has
+ * unsaved changes.  Wired to Esc / × / Close.
  */
-function tryCloseModal() {
+async function tryCloseModal() {
     if (_state.editing && _isDirty()) {
-        const ok = window.confirm(
-            "You have unsaved edits in this file.  Close anyway?\n\n"
-            + "Click Cancel to stay and Save first."
-        );
+        const ok = await window.molbuilder.warningModal.confirm({
+            title: "Unsaved edits",
+            body: "You have unsaved edits in this file.  Close anyway?  "
+                + "Cancel to stay and save first.",
+            confirmLabel: "Close without saving",
+        });
         if (!ok) return;
     }
     closePreviewModal();
@@ -417,14 +419,17 @@ export async function showPreview(wanted) {
     }
     /* RE-ENTRY MUST NOT EAT AN EDIT.  `_state = _emptyState()` below
      * drops the editor's contents, and `tryCloseModal` -- the only
-     * other teardown -- prompts first.  A commit subscriber can reach
+     * other teardown -- asks first.  A commit subscriber can reach
      * this while the modal is open, because `publishCommit` is public. */
     if (_state.editing && _isDirty() && path !== _state.path) {
-        const ok = window.confirm(
-            "You have unsaved edits in " + String(_state.path).split("/").pop()
-            + ".  Open " + String(path).split("/").pop() + " anyway?\n\n"
-            + "Click Cancel to stay and Save first."
-        );
+        const ok = await window.molbuilder.warningModal.confirm({
+            title: "Unsaved edits",
+            body: "You have unsaved edits in "
+                + String(_state.path).split("/").pop() + ".  Open "
+                + String(path).split("/").pop() + " anyway?  Cancel to "
+                + "stay and save first.",
+            confirmLabel: "Open without saving",
+        });
         if (!ok) return;
     }
     _state = _emptyState();

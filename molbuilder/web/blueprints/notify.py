@@ -64,7 +64,6 @@ installed and runs under whatever python the job's env has.
 """
 from __future__ import annotations
 
-import hashlib
 import hmac
 import json
 import logging
@@ -175,22 +174,6 @@ def read_keys() -> Dict[str, str]:
     return keys
 
 
-def sign(key: str, timestamp: str, body: bytes) -> str:
-    """The signature both ends compute.  **One function, one definition.**
-
-    The monitor's copy travels to a compute node as a standalone script, so
-    the two halves ship separately and can only agree by being written
-    against the same rule.  A change on one side would show up as reports
-    that vanish silently -- the notifier swallows every failure by design,
-    so an unreachable server never costs a run anything.
-
-    The timestamp is inside the signed material rather than beside it:
-    signing the body alone would leave the timestamp free to be rewritten.
-    """
-    msg = timestamp.encode("ascii", "replace") + b"." + body
-    return hmac.new(key.encode("utf-8"), msg, hashlib.sha256).hexdigest()
-
-
 def _resolve_user(presented: str, timestamp: str, body: bytes,
                   keys: Dict[str, str]) -> Optional[str]:
     """Which user's key produced ``presented``, or ``None``.
@@ -204,9 +187,12 @@ def _resolve_user(presented: str, timestamp: str, body: bytes,
     what stops one person's key writing into another's record, and what
     lets a key be revoked without disturbing anybody else.
     """
+    # THE MONITOR'S OWN SIGNER, the one definition both ends compute: the
+    # server imports the module that travels to the job, never a copy of it.
+    from ...monitor import sign_report
     found = None
     for user, key in keys.items():
-        if hmac.compare_digest(presented, sign(key, timestamp, body)):
+        if hmac.compare_digest(presented, sign_report(key, timestamp, body)):
             found = user
     return found
 
@@ -300,8 +286,10 @@ def api_notify(route: str):
         # memory as JSON first.
         _deny()
 
-    ts = request.headers.get("X-Molbuilder-Timestamp", "")
-    sig = request.headers.get("X-Molbuilder-Signature", "")
+    # THE MONITOR'S NAMES for the two headers it signs with -- one spelling.
+    from ...monitor import SIGNATURE_HEADER, TIMESTAMP_HEADER
+    ts = request.headers.get(TIMESTAMP_HEADER, "")
+    sig = request.headers.get(SIGNATURE_HEADER, "")
     try:
         skew = abs(time.time() - float(ts))
     except (TypeError, ValueError):

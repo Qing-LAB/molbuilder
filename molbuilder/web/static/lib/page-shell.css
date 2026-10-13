@@ -392,6 +392,45 @@ button:disabled {
     cursor: not-allowed;
     opacity: 0.6;
 }
+/* ---- The button's two variants -------------------------------------
+ * HERE, beside the button, because a dialog opens on every page -- the
+ * sidebar's Move, Copy and Delete on Results and Documents too, which load
+ * no form sheet -- and its answer wears one of these (`lib/dialog.js`).
+ *
+ * The PRIMARY choice: the answer a form or a dialog is for. */
+button.primary {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    color: var(--text-on-accent);
+    font-weight: var(--weight-medium);
+}
+button.primary:hover:not(:disabled) {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+button.primary:disabled {
+    background: var(--bg-input);
+    border-color: var(--border-strong);
+    color: var(--text-muted);
+}
+
+/* The DESTRUCTIVE choice, beside its sibling above: discarding unsaved work
+ * and deleting a folder are the same kind of answer.  Marked, but NOT the
+ * default: a dialog's cancel comes first, so the key that closes it is the
+ * one that keeps your work. */
+button.danger {
+    border-color: var(--error);
+    color: var(--error);
+}
+button.danger:hover:not(:disabled) {
+    background: var(--error);
+    color: var(--bg-page);
+    border-color: var(--error);
+}
+button.danger:disabled {
+    opacity: 0.5;
+}
+
 /* A toggle button -- one that stays pressed while its choice is on screen,
    `aria-pressed` (ui-contract.md § 4.1): the accent's edge and wash, hovered
    or not.  Opt-in by the class, so a component with a pressed look of its own

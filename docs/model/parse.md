@@ -1361,7 +1361,7 @@ window from its own input:
 |---|---|---|---|---|
 | `wall_clock_s` | an absolute instant | the molwatch emitter's epoch | `MolwatchLogFileParser` | the Finished badge's timestamp |
 | `elapsed_s` | since the **run** began | the frame epoch series, `t[i] − t[0]` | `parse/engines/_helpers.py::trajectory_result_to_legacy_dict` — the one home P-T3 allows | the plot's x-axis, the badge's duration |
-| `engine_elapsed_s` | the **engine**, launch to exit | the wrapper's `benchmark: <program> wall <s>s` line | `runwrap.read_wrapper_log` | the run record (§ 5d.2) |
+| `engine_elapsed_s` | the **engine**, launch to exit | the wrapper's `benchmark: <program> wall <s>s` line | `wrapper_log.read_wrapper_log` | the run record (§ 5d.2) |
 | `monitored_elapsed_s` | since the **monitor** started | `util.csv` rows, `epochs[-1] − epochs[0]` | `util_csv_metrics` | the bench table's `monitored` column |
 | `JobStatus.elapsed_s` | since the run began, **so far** | the live process clock, `now − start` | `monitor.py::run_monitor` | the notification card, `[MONITOR]` log lines |
 | `run_start_local` · `run_end_local` | the run's two ends, as the node's local time of day | the `.out`'s `>> Start of run` / `>> End of run` | `siesta_grammar.read_launch_line` | the run record (§ 5d.2) |

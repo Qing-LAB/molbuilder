@@ -15,6 +15,8 @@ Public surface:
   first turns a registry overlap into an unhandled exception.
 """
 
+import importlib
+
 from .base import FileParser
 from .errors import (AmbiguousFormatError, ParseError,
                      UnknownFormatError)
@@ -29,12 +31,11 @@ from .types import (
     EngineParamsResult,
 )
 
-# Import sub-packages so their register() side-effects run.
-from . import engines as _engines   # noqa: F401  -- side-effect import
-from . import coords as _coords   # noqa: F401  -- side-effect import
-from . import sidecars as _sidecars   # noqa: F401  -- side-effect import
-from . import instruments as _instruments   # noqa: F401  -- side-effect import
-from . import dirs as _dirs   # noqa: F401  -- side-effect import
+# THE PARSERS REGISTER THEMSELVES when their sub-package is imported, so each
+# is imported here for that alone -- in this order, and nothing bound.
+for _sub in ("engines", "coords", "sidecars", "instruments", "dirs"):
+    importlib.import_module(f"{__name__}.{_sub}")
+del _sub
 
 __all__ = [
     # ABCs

@@ -816,10 +816,67 @@ def test_a_folder_with_no_description_shows_no_plan_from_the_last(
         "the previous folder's file list is still on screen")
 
 
+def _pick_first(page, select_id):
+    """Choose the first offered option of a picker -- whatever the server
+    offered, since the row is about the fence, not the choice."""
+    page.wait_for_function(
+        f"() => {{ const s = document.getElementById('{select_id}');"
+        f" return !!s && Array.from(s.options).some(o => o.value); }}",
+        timeout=20000)
+    page.evaluate(
+        f"() => {{ const s = document.getElementById('{select_id}');"
+        f" s.value = Array.from(s.options).find(o => o.value).value; }}")
+
+
+def _edit_a_stage_cell(page):
+    sel = '.ts-cell[aria-label="coarse mesh_cutoff"]'
+    page.wait_for_selector(sel, timeout=20000)
+    page.fill(sel, "250")
+    page.dispatch_event(sel, "change")
+
+
+def _add_a_column(page):
+    _pick_first(page, "ts-add-col")
+    page.click("#ts-add-col-go")
+
+
+def _add_a_bench_point(page):
+    _pick_first(page, "ts-add-setting")
+    page.click("#ts-add-setting-go")
+
+
+def _change_the_shape(page):
+    page.click("#ts-shape-flat")
+
+
+def _add_a_stage(page):
+    page.click("#ts-add-stage")
+
+
+def _ask_another_wall_time(page):
+    page.fill("#ts-ask-time", "0-05:00:00")
+    page.dispatch_event("#ts-ask-time", "change")
+
+
+#: The card edits beside the run card's value, a row each (`task-setup.md`
+#: § 7a): the stage table's, the bench's and the shape's leave by
+#: `commitEdit`, the queue card's by `applyBlockToDoc` -- both through the
+#: fence, so nothing else on the page can start while one writes.  Made after
+#: the save and never saved, so the folder on disk stays as that save left it.
+_CARD_EDITS = (
+    ("a stage cell", _edit_a_stage_cell),
+    ("a stage added", _add_a_stage),
+    ("a column added", _add_a_column),
+    ("a bench point added", _add_a_bench_point),
+    ("the shape changed", _change_the_shape),
+    ("the queue card's wall time", _ask_another_wall_time),
+)
+
+
 def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
         page, flask_server, filled_dir):
     """`ui-contract.md` § 10 — **one cover for every heavy click**, and a
-    parameter write is one.
+    card edit is one.
 
     A card edit is three writes that must land together: this rung's
     `execution` in the model, the editor buffer that Save posts, and the
@@ -832,7 +889,9 @@ def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
     has a barrier that covers the whole window, so the write takes it and
     the question does not arise *(user, 2026-09-02: "before the parameter is
     ready or persistently saved, the user can't do anything … what the fuck
-    do you care about half a second")*.
+    do you care about half a second")*.  A run-card value and the save are
+    taken first -- the value reaches disk, which is the point of blocking at
+    all -- then every other kind of card edit (`_CARD_EDITS`).
 
     Recorded rather than raced: catching the cover mid-flight is a
     stopwatch test and would be flaky. What is asserted is the property §
@@ -856,29 +915,41 @@ def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
         "  f.release = () => { window.__fence.push(['release', null]);"
         "                      return r(); }; }")
 
-    page.fill(sel, "3")
-    page.dispatch_event(sel, "change")
-    page.wait_for_function(
-        "() => window.__fence.some(e => e[0] === 'release')", timeout=20000)
-    after_edit = page.evaluate("() => window.__fence.slice()")
+    # Each edit claims in its own handler, before its first `await`, so the
+    # claim is recorded when the action returns; waiting for the fence to be
+    # DOWN then waits out the write -- and an edit that never claimed is
+    # down at once, and said so below by name.
+    def fenced(act):
+        page.evaluate("() => { window.__fence.length = 0; }")
+        act()
+        page.wait_for_function(
+            "() => !window.molbuilder.pageBusy.isClaimed()", timeout=30000)
+        return page.evaluate("() => window.__fence.slice()")
 
-    page.evaluate("() => { window.__fence.length = 0; }")
-    page.click("#ts-save")
+    def run_card_value():
+        page.fill(sel, "3")
+        page.dispatch_event(sel, "change")
+
+    logs = [("a run-card value", fenced(run_card_value))]
     # WAIT FOR THE FENCE, not for the message.  The confirmation is said
     # BEFORE the folder is re-read (`task-setup.md` § 7a, rule 3: a message
     # about the write belongs to the write), and the re-read is inside the
     # operation -- so "Saved" appears while the window is still, correctly,
     # covered.  Sampling on the message caught the save mid-flight and read
     # as a stuck cover.
-    page.wait_for_function(
-        "() => window.__fence.some(e => e[0] === 'release')", timeout=30000)
-    after_save = page.evaluate("() => window.__fence.slice()")
+    logs.append(("a save", fenced(lambda: page.click("#ts-save"))))
     assert page.evaluate(
         "() => { const n = document.getElementById('ts-save-said');"
         " return !!n && !n.hidden && /Saved/.test(n.textContent); }"), (
         "the save finished without saying so")
+    # The value reached disk, which is the point of blocking at all.
+    on_disk = json.loads((filled_dir / "task.json").read_text())
+    assert on_disk["stages"][0]["execution"]["omp_threads"] == 3, on_disk
 
-    for what, log in (("a parameter write", after_edit), ("a save", after_save)):
+    for what, act in _CARD_EDITS:
+        logs.append((what, fenced(lambda: act(page))))
+
+    for what, log in logs:
         kinds = [e[0] for e in log]
         assert "claim" in kinds, (
             f"{what} did not cover the window -- everything else on the page "
@@ -891,10 +962,6 @@ def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
 
     # And the fence is DOWN afterwards -- no stuck cover.
     assert page.evaluate("() => window.molbuilder.pageBusy.isClaimed()") is False
-
-    # The value still reached disk, which is the point of blocking at all.
-    on_disk = json.loads((filled_dir / "task.json").read_text())
-    assert on_disk["stages"][0]["execution"]["omp_threads"] == 3, on_disk
 
 
 def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
@@ -1155,7 +1222,10 @@ def test_a_calculation_set_to_its_machine_is_shown_so(
     first prep, which does not change (`configuration.md` M-3), so once a
     stage is prepared the card shows that machine chosen, offers no other,
     and says why -- the folder's own answer, `set_to`.  The answer's half
-    is `test_printed_commands_run.py`'s."""
+    is `test_printed_commands_run.py`'s.  The shape is fixed by the same
+    prep (`task-setup.md` § 4): the shape card offers no other and says why
+    and the way back -- the sentence Save refuses with, whose half is
+    `prep_protocol.toml`'s."""
     _open(page, flask_server, two_stage_dir)
     this = page.locator('#ts-target-choice .opt[data-machine="(this machine)"]')
     this.wait_for(state="visible", timeout=20000)
@@ -1177,6 +1247,13 @@ def test_a_calculation_set_to_its_machine_is_shown_so(
     assert page.locator(f'#ts-target-choice .opt[data-machine='
                         f'"{a_named_machine}"]').is_disabled(), (
         "a calculation set to this machine was offered another")
+
+    page.wait_for_selector("#ts-shape-fixed:not([hidden])", timeout=20000)
+    said = page.inner_text("#ts-shape-fixed")
+    assert "fixed once it has produced" in said and "To change it" in said, said
+    assert page.locator("#ts-shape-hier").get_attribute("aria-pressed") == "true"
+    assert page.locator("#ts-shape-flat").is_disabled(), (
+        "a prepared hierarchical calculation was offered the flat shape")
 
 
 def test_the_notify_card_offers_this_machines_channels(
